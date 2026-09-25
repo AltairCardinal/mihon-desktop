@@ -43,6 +43,11 @@ class SyncRemoteProjectionWriter(
 
     suspend fun prepare() = bootstrap.awaitReady()
 
+    /** Complete the creator identity migration before a projection page can roll back. */
+    suspend fun prepareBatch() {
+        creatorIndexWriter.indexLibraryMangaBatch(emptyList())
+    }
+
     suspend fun localMembership(key: SyncObjectKey): Boolean? = handler.await(inTransaction = true) {
         validateIdentity(key)
         when (key.type) {

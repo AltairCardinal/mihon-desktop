@@ -62,7 +62,10 @@ class SyncBaselineStore(private val handler: DatabaseHandler, private val bootst
             require(sync_journalQueries.getSpace(import.space_id, import.generation).executeAsOne().active) {
                 "import space is inactive"
             }
-            sync_importQueries.getImportEntries(importId, limit.toLong()).executeAsList().forEach { row ->
+            // Read one look-ahead row so a full final page can still report exact completion
+            // without counting the entire remaining import queue.
+            val page = sync_importQueries.getImportEntries(importId, limit.toLong() + 1L).executeAsList()
+            page.take(limit).forEach { row ->
                 val material = row.material()
                 val parents = material.effects.associate { effect ->
                     SyncFieldKey(effect.objectKey, effect.field) to sync_importQueries.getImportHead(
@@ -94,7 +97,10 @@ class SyncBaselineStore(private val handler: DatabaseHandler, private val bootst
                 }
                 sync_importQueries.removeImportEntry(row.id)
             }
-            SyncImportProgress(import.total, sync_importQueries.countImportEntries(importId).executeAsOne())
+            // A full chunk proves that work remains without scanning the entire queue. Only the
+            // final short chunk performs the exact count needed for UI completion.
+            val remaining = if (page.size > limit) 1L else 0L
+            SyncImportProgress(import.total, remaining)
         }
     }
 }

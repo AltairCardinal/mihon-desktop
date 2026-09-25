@@ -1,10 +1,28 @@
 package mihon.data.sync
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import mihon.data.sync.http.InMemorySyncMetrics
+import mihon.data.sync.http.NoopSyncMetrics
+import mihon.data.sync.http.SyncMetrics
+import mihon.data.sync.runtime.StoredSyncMaterial
+import mihon.data.sync.runtime.StoredSyncSetup
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncRuntime
+import mihon.data.sync.transport.GitHubSyncTransport
+import mihon.data.sync.transport.SyncBatchSyncService
+import mihon.domain.sync.SyncBatch
+import mihon.domain.sync.SyncCategory
+import mihon.domain.sync.SyncEffect
+import mihon.domain.sync.SyncEffectKind
+import mihon.domain.sync.SyncEventEnvelope
+import mihon.domain.sync.SyncField
+import mihon.domain.sync.SyncObjectKey
+import mihon.domain.sync.SyncObjectType
+import mihon.domain.sync.SyncOrigin
 import mihon.domain.sync.auth.GitHubAccessToken
 import mihon.domain.sync.auth.GitHubAuthEndpoints
 import mihon.domain.sync.crypto.SyncRecoveryCodec
@@ -14,12 +32,14 @@ import mihon.domain.sync.runtime.SyncTrigger
 import mihon.domain.sync.security.SyncSecureStore
 import mihon.domain.sync.security.SyncSecureStoreException
 import mihon.domain.sync.transport.SyncRepository
+import mockwebserver3.MockResponse
 import okhttp3.Call
 import okhttp3.EventListener
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -34,9 +54,295 @@ import tachiyomi.data.Mangas
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.prefs.Preferences
 
 class SyncRuntimeWiringTest {
+    @Test
+    fun `fresh run skips totals reconciliation and recovery reconciles durable progress once`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+
+                val metrics = InMemorySyncMetrics()
+                val runtime = setup.runtime(metrics)
+                setup.git.nextReadFailure = MockResponse(code = 500, body = "temporary outage")
+
+                val first = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+
+                assertEquals(SyncRunStatus.FAILED, first.status)
+                assertEquals(0, metrics.snapshot().totalsReconciliations)
+
+                setup.now += 10_000
+                val recovered = runtime.coordinator.synchronize(SyncTrigger.RECOVERY)
+
+                assertEquals(SyncRunStatus.SUCCESS, recovered.status)
+                assertEquals(1, metrics.snapshot().totalsReconciliations)
+            }
+        }
+    }
+
+    @Test
+    fun `production cold snapshot rolls guard manifest and discovery back together`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                val material = setup.existing("")
+                val transport = GitHubSyncTransport(
+                    f.client,
+                    { "synthetic-token" },
+                    setup.git.baseUrl,
+                    spaceMaterial = material,
+                )
+                val service = SyncBatchSyncService(transport, spaceMaterial = material)
+                val before = transport.readSnapshot(setup.repository, "space", 1).getOrThrow()
+                val batch = remoteBatch()
+                service.upload(
+                    setup.repository,
+                    before,
+                    batch,
+                    ".mihon-sync/batches/sender/1/${batch.batchId}.json",
+                    persist = {},
+                )
+                setup.authorize()
+                val storedSetup = StoredSyncSetup(
+                    accountId = setup.accountId,
+                    accountLogin = setup.accountLogin,
+                    attemptId = "manifest-atomicity-check",
+                    newSpace = false,
+                    material = StoredSyncMaterial.from(material),
+                    repositoryId = 99,
+                    owner = setup.repository.owner,
+                    repository = setup.repository.name,
+                    branch = setup.repository.branch,
+                )
+                setup.runtime.bindSetup(storedSetup)
+                f.storage.driver.execute(
+                    null,
+                    """
+                    CREATE TRIGGER reject_snapshot_manifest BEFORE INSERT ON sync_snapshot_manifests
+                    BEGIN SELECT RAISE(ABORT, 'injected manifest commit failure'); END
+                    """.trimIndent(),
+                    0,
+                )
+
+                val failed = setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+
+                assertEquals(SyncRunStatus.FAILED, failed.status)
+                assertNull(
+                    f.storage.handler.await {
+                        sync_remote_guardQueries.getGuard("space", 1).executeAsOneOrNull()
+                    },
+                )
+                assertNull(
+                    f.storage.handler.await {
+                        sync_remote_guardQueries.getSnapshotManifest("space", 1).executeAsOneOrNull()
+                    },
+                )
+                assertTrue(
+                    f.storage.handler.await {
+                        sync_inboxQueries.getDiscoveredBatches("space", 1, 128).executeAsList().isEmpty()
+                    },
+                )
+
+                f.storage.driver.execute(null, "DROP TRIGGER reject_snapshot_manifest", 0)
+                assertEquals(SyncRunStatus.SUCCESS, setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                assertNotNull(
+                    f.storage.handler.await {
+                        sync_remote_guardQueries.getSnapshotManifest("space", 1).executeAsOneOrNull()
+                    },
+                )
+                assertEquals(
+                    1L,
+                    f.storage.handler.await {
+                        sync_inboxQueries.countInboxBatches("space", 1)
+                            .executeAsList().single { it.status == "RECEIVED" }.count
+                    },
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `production runtime rejects snapshot from a run whose owner expired during ref read`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val runtime = setup.runtime
+                val connection = requireNotNull(runtime.connection())
+                val guardBeforeRead = f.storage.handler.await {
+                    sync_remote_guardQueries.getGuard(connection.spaceId, connection.generation).executeAsOneOrNull()
+                }
+                val manifestBeforeRead = f.storage.handler.await {
+                    sync_remote_guardQueries.getSnapshotManifest(connection.spaceId, connection.generation)
+                        .executeAsOneOrNull()
+                }
+                val discoveryBeforeRead = f.storage.handler.await {
+                    sync_inboxQueries.getDiscoveredBatches(connection.spaceId, connection.generation, 128)
+                        .executeAsList()
+                }
+                val run = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                val refReadStarted = CountDownLatch(1)
+                val releaseRefRead = CountDownLatch(1)
+                setup.git.nextRefReadBarrier = refReadStarted to releaseRefRead
+
+                val expiredOwnerAttempt = async(Dispatchers.IO) {
+                    runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                }
+                try {
+                    assertTrue(refReadStarted.await(5, TimeUnit.SECONDS), "snapshot ref read did not reach the barrier")
+                    val ownerBeforeRecovery = requireNotNull(runtime.runStore.get(run.runId)?.ownerSession)
+                    assertTrue(runtime.runStore.releaseForRecovery(run.runId))
+                    releaseRefRead.countDown()
+
+                    val staleResult = expiredOwnerAttempt.await()
+
+                    assertEquals(SyncRunProblem.REMOTE_CHANGED, staleResult.problem)
+                    val afterStaleRead = requireNotNull(runtime.runStore.get(run.runId))
+                    assertEquals(SyncRunState.WAITING_SYSTEM, afterStaleRead.state)
+                    assertEquals(null, afterStaleRead.ownerSession)
+                    assertTrue(ownerBeforeRecovery.isNotBlank())
+                    assertEquals(
+                        guardBeforeRead,
+                        f.storage.handler.await {
+                            sync_remote_guardQueries.getGuard(
+                                connection.spaceId,
+                                connection.generation,
+                            ).executeAsOneOrNull()
+                        },
+                    )
+                    assertEquals(
+                        manifestBeforeRead,
+                        f.storage.handler.await {
+                            sync_remote_guardQueries.getSnapshotManifest(connection.spaceId, connection.generation)
+                                .executeAsOneOrNull()
+                        },
+                    )
+                    assertEquals(
+                        discoveryBeforeRead,
+                        f.storage.handler.await {
+                            sync_inboxQueries.getDiscoveredBatches(connection.spaceId, connection.generation, 128)
+                                .executeAsList()
+                        },
+                    )
+
+                    val recovered = setup.runtime()
+                    try {
+                        assertEquals(
+                            SyncRunStatus.SUCCESS,
+                            recovered.coordinator.synchronize(SyncTrigger.RECOVERY).status,
+                        )
+                        assertNotNull(
+                            f.storage.handler.await {
+                                sync_remote_guardQueries.getGuard(
+                                    connection.spaceId,
+                                    connection.generation,
+                                ).executeAsOneOrNull()
+                            },
+                        )
+                        assertNotNull(
+                            f.storage.handler.await {
+                                sync_remote_guardQueries.getSnapshotManifest(connection.spaceId, connection.generation)
+                                    .executeAsOneOrNull()
+                            },
+                        )
+                    } finally {
+                        recovered.stopPanel()
+                    }
+                } finally {
+                    releaseRefRead.countDown()
+                    if (!expiredOwnerAttempt.isCompleted) expiredOwnerAttempt.cancel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `production runtime reopens a validated snapshot and falls back after cache context damage`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val firstRuntime = setup.runtime
+
+                assertEquals(SyncRunStatus.SUCCESS, firstRuntime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                assertNotNull(
+                    f.storage.handler.await {
+                        sync_remote_guardQueries.getSnapshotManifest("space", 1).executeAsOneOrNull()
+                    },
+                )
+                firstRuntime.stopPanel()
+                val refsBeforeWarm = setup.git.snapshotReads
+                val commitsBeforeWarm = setup.git.commitReads
+                val treesBeforeWarm = setup.git.treeRequests
+                val blobsBeforeWarm = setup.git.blobReads
+                val reopened = setup.runtime()
+                try {
+                    assertEquals(SyncRunStatus.SUCCESS, reopened.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                    assertEquals(refsBeforeWarm + 1, setup.git.snapshotReads)
+                    assertEquals(commitsBeforeWarm, setup.git.commitReads)
+                    assertEquals(treesBeforeWarm, setup.git.treeRequests)
+                    assertEquals(blobsBeforeWarm, setup.git.blobReads)
+
+                    f.storage.driver.execute(
+                        null,
+                        "UPDATE sync_snapshot_manifests SET checksum = 'damaged' WHERE space_id = 'space' AND generation = 1",
+                        0,
+                    )
+                    val commitsBeforeFallback = setup.git.commitReads
+                    val treesBeforeFallback = setup.git.treeRequests
+                    val fallback = setup.runtime()
+                    try {
+                        assertEquals(SyncRunStatus.SUCCESS, fallback.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                    } finally {
+                        fallback.stopPanel()
+                    }
+                    assertTrue(setup.git.commitReads > commitsBeforeFallback)
+                    assertTrue(setup.git.treeRequests > treesBeforeFallback)
+                    assertFalse(
+                        f.storage.handler.await {
+                            sync_remote_guardQueries.getGuard("space", 1).executeAsOne().blocked
+                        },
+                    )
+
+                    for ((column, value) in listOf(
+                        "api_origin" to "'https://other.example'",
+                        "validator_version" to "'other-validator'",
+                        "validation_scope" to "'other-scope'",
+                        "connection_revision" to "'other-connection'",
+                        "account_id" to "2",
+                        "repository_id" to "100",
+                    )) {
+                        f.storage.driver.execute(
+                            null,
+                            "UPDATE sync_snapshot_manifests SET $column = $value " +
+                                "WHERE space_id = 'space' AND generation = 1",
+                            0,
+                        )
+                        val treesBeforeContextMiss = setup.git.treeRequests
+                        val isolated = setup.runtime()
+                        try {
+                            assertEquals(
+                                SyncRunStatus.SUCCESS,
+                                isolated.coordinator.synchronize(SyncTrigger.MANUAL).status,
+                            )
+                        } finally {
+                            isolated.stopPanel()
+                        }
+                        assertTrue(setup.git.treeRequests > treesBeforeContextMiss, "context mismatch: $column")
+                    }
+                } finally {
+                    reopened.stopPanel()
+                }
+            }
+        }
+    }
+
     @Test
     fun `temporary token refresh failures retain credentials and report retryable network failure`() = runBlocking {
         Fixture().use { f ->
@@ -58,18 +364,28 @@ class SyncRuntimeWiringTest {
                         assertEquals(expiring, runtime.credentials.read())
                         assertFalse(runtime.preferences.history.get().contains("private diagnostic"))
                         assertEquals(SyncRunState.WAITING_RETRY, runtime.runStore.active("space", 1)?.state)
+                        assertEquals(
+                            if (code == 500) 1L else 2L,
+                            runtime.runStore.active("space", 1)?.networkFailureCount,
+                        )
                         if (code == 500) {
                             assertEquals(
                                 SyncRunStatus.SKIPPED,
                                 runtime.coordinator.synchronize(SyncTrigger.PERIODIC).status,
                             )
+                            assertEquals(1L, runtime.runStore.active("space", 1)?.networkFailureCount)
                         }
                         setup.now = if (code == 500) 11_000L else 41_000L
                     }
                     auth.enqueue(mockwebserver3.MockResponse(code = 500, body = "private diagnostic"))
                     assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).problem)
+                    assertEquals(3L, runtime.runStore.active("space", 1)?.networkFailureCount)
+                    setup.now = 161_000L
+                    auth.enqueue(mockwebserver3.MockResponse(code = 500, body = "private diagnostic"))
+                    assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).problem)
                     assertEquals(SyncRunState.FAILED, runtime.runStore.latest("space", 1)?.state)
                     assertEquals("retry_exhausted", runtime.runStore.latest("space", 1)?.stopReason)
+                    assertEquals(4L, runtime.runStore.latest("space", 1)?.networkFailureCount)
                     assertEquals(null, runtime.runStore.active("space", 1))
                 }
             }
@@ -97,6 +413,7 @@ class SyncRuntimeWiringTest {
                     },
                     completedLogs.toString(),
                 )
+                assertFalse(completedLogs.any { it.detail.contains("已接收") }, completedLogs.toString())
                 assertTrue(f.networkCalls > 0)
                 assertEquals(2_000L, runtime.preferences.lastSuccess.get())
                 assertTrue(runtime.preferences.history.get().contains("SUCCESS"))
@@ -338,6 +655,34 @@ class SyncRuntimeWiringTest {
 
     private fun token() = GitHubAccessToken("access-secret", null, "bearer", emptySet(), null, null)
 
+    private fun remoteBatch() = SyncBatch(
+        protocolVersion = 1,
+        spaceId = "space",
+        generation = 1,
+        batchId = "manifest-remote-batch",
+        events = listOf(
+            SyncEventEnvelope(
+                protocolVersion = 1,
+                spaceId = "space",
+                generation = 1,
+                actorId = "sender",
+                epoch = 1,
+                seq = 1,
+                category = SyncCategory.FAVORITE,
+                effects = listOf(
+                    SyncEffect(
+                        effectId = "favorite",
+                        objectKey = SyncObjectKey(SyncObjectType.MANGA, sourceId = "1", originalUrl = "/remote"),
+                        field = SyncField.FAVORITE,
+                        kind = SyncEffectKind.ADD,
+                    ),
+                ),
+                origin = SyncOrigin.USER,
+                batchId = "manifest-remote-batch",
+            ),
+        ),
+    )
+
     private class MemorySecureStore : SyncSecureStore {
         val values = mutableMapOf<String, String>()
         var fail = false
@@ -373,9 +718,14 @@ class SyncRuntimeWiringTest {
                 networkCalls++
             }
         }).build()
-        fun runtime(baseUrl: String, tokenUrl: String = "https://github.com/login/oauth/access_token") = SyncRuntime(
+        fun runtime(
+            baseUrl: String,
+            tokenUrl: String = "https://github.com/login/oauth/access_token",
+            metrics: SyncMetrics = NoopSyncMetrics,
+        ) = SyncRuntime(
             storage.handler, storage.bootstrap, storage.creators, storage.creators, { true }, secure,
             preferences, client, GitHubAuthEndpoints(accessTokenUrl = tokenUrl, apiBaseUrl = baseUrl), { now },
+            syncMetrics = metrics,
         )
         override fun close() {
             storage.close()

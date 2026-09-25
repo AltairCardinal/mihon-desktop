@@ -38,6 +38,8 @@ data class SyncRunResult(
     val downloaded: Int = 0,
     val pending: Int = 0,
     val problem: SyncRunProblem? = null,
+    /** Server-advised delay for the next automatic attempt, when available. */
+    val retryAfterMillis: Long? = null,
 )
 
 fun interface SyncRunPort {

@@ -1,0 +1,200 @@
+Configuration on demand is an incubating feature.
+Type-safe project accessors is an incubating feature.
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :buildSrc:generateExternalPluginSpecBuilders UP-TO-DATE
+> Task :buildSrc:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+> Task :buildSrc:compilePluginsBlocks UP-TO-DATE
+> Task :buildSrc:generatePrecompiledScriptPluginAccessors UP-TO-DATE
+> Task :buildSrc:generateScriptPluginAdapters UP-TO-DATE
+> Task :buildSrc:compileKotlin UP-TO-DATE
+> Task :buildSrc:compileJava NO-SOURCE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+> Task :i18n:generateLocalesConfig UP-TO-DATE
+> Task :source-api:preBuild UP-TO-DATE
+> Task :core:common:preBuild UP-TO-DATE
+> Task :domain:preBuild UP-TO-DATE
+> Task :domain:preDebugBuild UP-TO-DATE
+> Task :data:kmpPartiallyResolvedDependenciesChecker
+> Task :core:common:preDebugBuild UP-TO-DATE
+> Task :source-api:preDebugBuild UP-TO-DATE
+> Task :data:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :i18n:generateMRcommonMain UP-TO-DATE
+> Task :i18n:generateMRandroidDebug SKIPPED
+> Task :domain:generateDebugResValues UP-TO-DATE
+> Task :core:common:generateDebugResValues UP-TO-DATE
+> Task :source-api:generateDebugResValues UP-TO-DATE
+> Task :core:common:generateDebugResources UP-TO-DATE
+> Task :source-api:generateDebugResources UP-TO-DATE
+> Task :i18n:generateMRandroidInstrumentedTest UP-TO-DATE
+> Task :domain:generateDebugResources UP-TO-DATE
+> Task :i18n:generateMRandroidInstrumentedTestDebug SKIPPED
+> Task :domain:packageDebugResources UP-TO-DATE
+> Task :source-api:packageDebugResources UP-TO-DATE
+> Task :core:common:packageDebugResources UP-TO-DATE
+> Task :core:common:processDebugNavigationResources UP-TO-DATE
+> Task :domain:processDebugNavigationResources UP-TO-DATE
+> Task :source-api:processDebugNavigationResources UP-TO-DATE
+> Task :data:generateCommonMainDatabaseInterface UP-TO-DATE
+> Task :data:preBuild UP-TO-DATE
+> Task :data:preDebugBuild UP-TO-DATE
+> Task :data:generateDebugResValues UP-TO-DATE
+> Task :data:generateDebugResources UP-TO-DATE
+> Task :data:packageDebugResources UP-TO-DATE
+> Task :source-api:parseDebugLocalResources UP-TO-DATE
+> Task :core:common:parseDebugLocalResources UP-TO-DATE
+> Task :domain:parseDebugLocalResources UP-TO-DATE
+> Task :data:processDebugNavigationResources UP-TO-DATE
+> Task :source-api:kmpPartiallyResolvedDependenciesChecker
+> Task :source-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :domain:kmpPartiallyResolvedDependenciesChecker
+> Task :domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:common:kmpPartiallyResolvedDependenciesChecker
+> Task :core:common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:parseDebugLocalResources UP-TO-DATE
+> Task :core:common:javaPreCompileDebug UP-TO-DATE
+> Task :domain:javaPreCompileDebug UP-TO-DATE
+> Task :source-api:javaPreCompileDebug UP-TO-DATE
+> Task :data:javaPreCompileDebug UP-TO-DATE
+> Task :data:preDebugUnitTestBuild UP-TO-DATE
+> Task :data:javaPreCompileDebugUnitTest FROM-CACHE
+> Task :i18n:generateMRandroidMain
+> Task :i18n:generateMRandroidRelease SKIPPED
+> Task :i18n:generateMRcommonTest UP-TO-DATE
+> Task :i18n:generateMRandroidUnitTest UP-TO-DATE
+> Task :i18n:generateMRandroidUnitTestDebug SKIPPED
+> Task :i18n:generateMRandroidUnitTestRelease SKIPPED
+> Task :i18n:generateMRjvmMain UP-TO-DATE
+> Task :i18n:generateMRjvmTest UP-TO-DATE
+> Task :i18n:preBuild
+> Task :i18n:preDebugBuild
+> Task :i18n:generateDebugResValues UP-TO-DATE
+> Task :i18n:generateDebugResources
+> Task :i18n:packageDebugResources
+> Task :i18n:processDebugNavigationResources
+> Task :i18n:kmpPartiallyResolvedDependenciesChecker
+> Task :i18n:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :i18n:javaPreCompileDebug UP-TO-DATE
+> Task :i18n:parseDebugLocalResources
+> Task :i18n:generateDebugRFile
+> Task :core:common:generateDebugRFile
+> Task :source-api:generateDebugRFile
+> Task :domain:generateDebugRFile
+> Task :data:generateDebugRFile
+> Task :data:generateDebugUnitTestStubRFile
+> Task :i18n:compileDebugKotlinAndroid
+> Task :i18n:compileDebugJavaWithJavac NO-SOURCE
+> Task :i18n:processDebugJavaRes UP-TO-DATE
+> Task :i18n:bundleLibRuntimeToJarDebug
+> Task :i18n:bundleLibCompileToJarDebug
+> Task :core:common:compileDebugKotlinAndroid
+> Task :core:common:compileDebugJavaWithJavac NO-SOURCE
+> Task :core:common:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :core:common:processDebugJavaRes UP-TO-DATE
+> Task :core:common:bundleLibCompileToJarDebug
+> Task :source-api:compileDebugKotlinAndroid
+> Task :source-api:compileDebugJavaWithJavac NO-SOURCE
+> Task :source-api:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :source-api:processDebugJavaRes UP-TO-DATE
+> Task :source-api:bundleLibCompileToJarDebug
+
+> Task :domain:compileDebugKotlinAndroid
+w: file:///D:/Codex/worktrees/85be/mihon/domain/src/commonMain/kotlin/tachiyomi/domain/library/LibrarySelectionPolicy.kt:45:9 Condition is always 'true'.
+w: file:///D:/Codex/worktrees/85be/mihon/domain/src/commonMain/kotlin/tachiyomi/domain/track/interactor/SyncReadingProgressWithTrack.kt:87:44 The corresponding parameter in the supertype 'DelayedTrackerSyncPersistence' is named 'item'. This may cause problems when calling this function with named arguments.
+
+> Task :domain:compileDebugJavaWithJavac NO-SOURCE
+> Task :domain:processDebugJavaRes UP-TO-DATE
+> Task :domain:bundleLibCompileToJarDebug
+> Task :domain:bundleLibRuntimeToJarDebug
+
+> Task :data:compileDebugKotlinAndroid
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/androidMain/kotlin/mihon/data/sync/crypto/SyncAeadEngineFactoryAndroid.kt:18:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/androidMain/kotlin/mihon/data/sync/crypto/SyncAeadEngineFactoryAndroid.kt:57:14 'fun <P : Any!> getPrimitive(targetClassObject: Class<P!>!): P!' is deprecated. Deprecated in Java.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/androidMain/kotlin/mihon/data/sync/crypto/SyncRecoveryFactoryAndroid.kt:9:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/crypto/SyncAeadEngineFactory.kt:5:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/crypto/SyncRecoveryFactory.kt:5:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/http/SyncHttpClient.kt:121:52 The corresponding parameter in the supertype 'Callback' is named 'e'. This may cause problems when calling this function with named arguments.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncPanelController.kt:267:57 Unnecessary safe call on a non-null receiver of type 'SyncConnection'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:207:59 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:208:55 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:209:59 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:210:57 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:211:56 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/transport/GitHubGitDatabaseClient.kt:117:45 Unnecessary non-null assertion (!!) on a non-null receiver of type 'CompletableDeferred<ByteArray>'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/transport/GitHubGitDatabaseClient.kt:1365:17 Condition is always 'true'.
+
+> Task :data:compileDebugJavaWithJavac NO-SOURCE
+> Task :data:processDebugJavaRes
+> Task :data:bundleLibRuntimeToJarDebug
+> Task :data:bundleLibCompileToJarDebug
+
+> Task :data:compileDebugUnitTestKotlinAndroid
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt:36:31 Java type mismatch: inferred type is 'String?', but 'String' was expected.
+
+> Task :data:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :data:processDebugUnitTestJavaRes
+
+> Task :data:testDebugUnitTest
+
+AndroidSyncInboxStorageContractTest > bulk freezes selection excludes arrivals and resumes after restart() PASSED
+
+AndroidSyncInboxStorageContractTest > batch projection isolates unavailable field and retries it independently() PASSED
+
+AndroidSyncInboxStorageContractTest > unexpected field write failure replays once and preserves the received inbox() PASSED
+
+AndroidSyncInboxStorageContractTest > remote cancellation requires each receiver decision and keep survives restart() PASSED
+
+AndroidSyncInboxStorageContractTest > reading reconstructs chapter history and causal resume may move backward() PASSED
+
+AndroidSyncInboxStorageContractTest > quarantined ancestor invalidates cancellation without replacing bytes() PASSED
+
+AndroidSyncInboxStorageContractTest > receipt failure rolls back events descriptors and cursor together() PASSED
+
+AndroidSyncInboxStorageContractTest > unavailable source remains in inbox and retries without upload echo() PASSED
+
+AndroidSyncInboxStorageContractTest > missing parent waits and later add invalidates an already displayed cancellation() PASSED
+
+AndroidSyncInboxStorageContractTest > native continuation chooses remote chapter by stable tie and retains histories() PASSED
+
+AndroidSyncInboxStorageContractTest > migration indexes existing local envelopes and preserves their pending upload() PASSED
+
+AndroidSyncInboxStorageContractTest > changed event identity is quarantined without replacing accepted data() PASSED
+
+AndroidSyncInboxStorageContractTest > one hundred twenty pending items page and finish in bounded chunks() PASSED
+
+AndroidSyncInboxStorageContractTest > authenticated Git receipt survives restart without upload echo() PASSED
+
+AndroidSyncInboxStorageContractTest > local explicit action clears pending and remains uploadable() PASSED
+
+AndroidSyncInboxStorageContractTest > merged author local intent invalidates alias decision across restart and bulk() PASSED
+
+AndroidSyncInboxStorageContractTest > three databases exchange through encrypted Git without cancellation echo() PASSED
+
+AndroidSyncInboxStorageContractTest > bulk records isolated failure without partial cancel and continues remaining items() PASSED
+
+AndroidSyncInboxStorageContractTest > cancelled page rolls back all fields and preserves author migration readiness() PASSED
+
+AndroidSyncInboxStorageContractTest > invalid scope and incomplete event sequence cannot enter the received cursor() PASSED
+
+AndroidSyncRemoteProjectionContractTest > existing manga preserves preferences and categories without source or descriptors() PASSED
+
+AndroidSyncRemoteProjectionContractTest > outer receive transaction rolls back business and author index after later failure() PASSED
+
+AndroidSyncRemoteProjectionContractTest > missing source and descriptions defer reconstruction and source arrival permits retry() PASSED
+
+AndroidSyncRemoteProjectionContractTest > author redirects follow identity and deleted or cyclic identities remain unavailable() PASSED
+
+AndroidSyncRemoteProjectionContractTest > chapter reconstruction binds identity and missing metadata rolls back parent creation() PASSED
+
+AndroidSyncRemoteProjectionContractTest > remote favorite reconstructs exact source identity and existing creator library index() PASSED
+
+AndroidSyncRemoteProjectionContractTest > read resume and history preserve local settings and never replay reading duration() PASSED
+
+AndroidSyncRemoteProjectionContractTest > same named author keys resolve to one local root and watch policy() PASSED
+
+BUILD SUCCESSFUL in 59s
+82 actionable tasks: 33 executed, 1 from cache, 48 up-to-date

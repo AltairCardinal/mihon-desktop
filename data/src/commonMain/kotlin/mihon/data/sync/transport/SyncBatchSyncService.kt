@@ -2,6 +2,8 @@ package mihon.data.sync.transport
 
 import kotlinx.coroutines.CancellationException
 import mihon.data.sync.crypto.SyncAeadEngineFactory
+import mihon.data.sync.http.SyncHttpException
+import mihon.data.sync.http.SyncHttpFailureClass
 import mihon.domain.sync.SyncBatch
 import mihon.domain.sync.crypto.SyncBatchEncryption
 import mihon.domain.sync.crypto.SyncSecret
@@ -52,8 +54,15 @@ class SyncBatchSyncService(
         snapshot: SyncSnapshot,
         entry: SyncBatchIndexEntry,
     ): SyncReceiveResult {
-        val encrypted = transport.readBatch(snapshot, entry).getOrElse {
-            return SyncReceiveResult(null, "sync batch could not be read")
+        // A transport failure is retryable and must leave the durable discovery
+        // row intact. Only authenticated/decode failures become terminal null.
+        val encrypted = try {
+            transport.readBatch(snapshot, entry).getOrThrow()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            if (error.isRetryableOrActionableReadFailure()) throw error
+            return SyncReceiveResult(null, "sync batch could not be decoded")
         }
         return try {
             SyncReceiveResult(SyncBatchEncryption.decrypt(engine, secret, encrypted, spaceMaterial))
@@ -63,4 +72,16 @@ class SyncBatchSyncService(
             SyncReceiveResult(null, "sync batch could not be authenticated")
         }
     }
+}
+
+private fun Exception.isRetryableOrActionableReadFailure(): Boolean = when (this) {
+    is SyncHttpException -> retryable || failureClass in setOf(
+        SyncHttpFailureClass.AUTHORIZATION,
+        SyncHttpFailureClass.CONFLICT,
+        SyncHttpFailureClass.NETWORK,
+        SyncHttpFailureClass.RATE_LIMITED,
+        SyncHttpFailureClass.SERVER,
+    )
+    is java.io.IOException -> true
+    else -> false
 }

@@ -2,15 +2,22 @@ package mihon.data.sync.runtime
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.yield
+import mihon.data.sync.http.NoopSyncMetrics
 import mihon.data.sync.http.SyncHttpException
+import mihon.data.sync.http.SyncHttpFailureClass
+import mihon.data.sync.http.SyncMetrics
+import mihon.data.sync.inbox.SyncDiscoveryStore
 import mihon.data.sync.inbox.SyncInboxExchange
 import mihon.data.sync.inbox.SyncInboxProjector
 import mihon.data.sync.inbox.SyncInboxStore
 import mihon.data.sync.journal.SyncBaselineStore
 import mihon.data.sync.journal.SyncOutboxExchange
 import mihon.data.sync.journal.SyncOutboxStore
+import mihon.data.sync.transport.GitHubSyncTransport
 import mihon.data.sync.transport.SyncBatchSyncService
 import mihon.data.sync.transport.SyncRemoteSnapshotRejected
+import mihon.data.sync.transport.SyncRemoteSnapshotStaleCandidate
+import mihon.data.sync.transport.SyncSnapshotWriteOwner
 import mihon.domain.sync.SyncBatch
 import mihon.domain.sync.SyncField
 import mihon.domain.sync.SyncObjectKey
@@ -22,8 +29,10 @@ import mihon.domain.sync.runtime.SyncRunProblem
 import mihon.domain.sync.runtime.SyncRunResult
 import mihon.domain.sync.runtime.SyncRunStatus
 import mihon.domain.sync.security.SyncSecureStoreException
+import mihon.domain.sync.transport.SyncPublishFailureClass
 import mihon.domain.sync.transport.SyncPublishStatus
 import mihon.domain.sync.transport.SyncRepository
+import mihon.domain.sync.transport.SyncSnapshot
 import mihon.domain.sync.transport.SyncTransportPort
 import tachiyomi.data.DatabaseHandler
 import java.io.IOException
@@ -42,7 +51,13 @@ class SyncDatabaseExchange(
     private val initialDownloaded: Long = 0,
     private val uploadedBaseline: Long = 0,
     private val downloadedBaseline: Long = 0,
+    private val reconcileTotalsOnStart: Boolean = true,
+    private val metrics: SyncMetrics = NoopSyncMetrics,
+    private val snapshotOwner: SyncSnapshotWriteOwner? = null,
 ) {
+    private val inboxStore = SyncInboxStore(handler)
+    internal val snapshotEvidenceEvaluations: Long get() = inboxStore.remoteGuard.evidenceEvaluations
+
     suspend fun exchange(spaceId: String, generation: Long, repository: SyncRepository): SyncRunResult {
         var uploaded = 0
         var downloaded = 0
@@ -50,6 +65,7 @@ class SyncDatabaseExchange(
         var downloadedTotal = initialDownloaded
         var pending = 0
         var problem: SyncRunProblem? = null
+        var retryAfterMillis: Long? = null
         try {
             val enabled = handler.await {
                 sync_journalQueries.getSpace(spaceId, generation).executeAsOneOrNull()?.let {
@@ -68,10 +84,22 @@ class SyncDatabaseExchange(
                 progress?.log(importId, "首次合并", "已写入已保存的数据", SyncRunLogStatus.COMPLETED)
                 yield()
             }
-            val store = SyncInboxStore(handler)
+            val store = inboxStore
+            val discovery = SyncDiscoveryStore(handler)
             val service = SyncBatchSyncService(transport, secret, spaceMaterial = spaceMaterial)
             val inbox = SyncInboxExchange(store, service)
             val outbox = SyncOutboxExchange(SyncOutboxStore(handler), service)
+            val githubTransport = transport as? GitHubSyncTransport
+            githubTransport?.installSnapshotFenceProvider { candidateSpace, candidateGeneration ->
+                store.remoteGuard.captureFence(candidateSpace, candidateGeneration, snapshotOwner)
+            }
+            suspend fun observeSnapshot(snapshot: SyncSnapshot, excludedBatchId: String? = null) {
+                val fence = githubTransport?.takeSnapshotFence(snapshot)
+                val admission = githubTransport?.takeWarmAdmission(snapshot)
+                if (admission != null && store.confirmWarmSnapshot(snapshot, admission, fence)) return
+                val manifest = githubTransport?.takeSnapshotManifest(snapshot)
+                store.observeSnapshot(snapshot, discovery, manifest, setOfNotNull(excludedBatchId), fence)
+            }
             suspend fun reconcileTotals() {
                 val published = handler.await {
                     sync_journalQueries.countPublishedEvents(spaceId, generation).executeAsOne()
@@ -83,31 +111,28 @@ class SyncDatabaseExchange(
                 downloadedTotal = maxOf(downloadedTotal, (remote - downloadedBaseline).coerceAtLeast(0))
                 progress?.totals(uploadedTotal, downloadedTotal)
             }
-            reconcileTotals()
+            if (reconcileTotalsOnStart) {
+                metrics.recordTotalsReconciliation()
+                reconcileTotals()
+            } else {
+                progress?.totals(uploadedTotal, downloadedTotal)
+            }
             projector.retryUnavailable(spaceId, generation)
-            val attempted = mutableSetOf<String>()
             var snapshot = transport.readSnapshot(repository, spaceId, generation).getOrThrow()
+            var catchUpSegments = 0
+            var performedExchangeWork = false
             while (true) {
                 progress?.phase(SyncRunPhase.DOWNLOADING, downloadedTotal, 0, completed = downloadedTotal)
-                store.observeSnapshot(snapshot)
-                for (entry in snapshot.batches) {
-                    if (!attempted.add(entry.batchId)) continue
-                    val alreadyReceived = handler.await {
-                        sync_inboxQueries.getReceivedBatch(spaceId, generation, entry.batchId).executeAsOneOrNull() !=
-                            null ||
-                            sync_journalQueries.getBatch(
-                                spaceId,
-                                generation,
-                                entry.batchId,
-                            ).executeAsOneOrNull()?.status ==
-                            "PUBLISHED"
-                    }
-                    if (alreadyReceived) continue
-                    val result = inbox.receive(snapshot, entry)
+                observeSnapshot(snapshot)
+                val discovered = discovery.pending(spaceId, generation)
+                if (discovered.isNotEmpty()) performedExchangeWork = true
+                for (entry in discovered) {
+                    val result = inbox.receive(snapshot, entry, snapshotAlreadyObserved = true)
                     if (result.accepted) {
                         if (!result.duplicate) {
                             downloaded += (entry.lastSeq - entry.firstSeq + 1).toInt()
-                            reconcileTotals()
+                            downloadedTotal += (entry.lastSeq - entry.firstSeq + 1).coerceAtLeast(0)
+                            progress?.totals(uploadedTotal, downloadedTotal)
                         }
                         progress?.phase(
                             SyncRunPhase.MERGING,
@@ -126,20 +151,67 @@ class SyncDatabaseExchange(
                     }
                     yield()
                 }
-                reconcileTotals()
                 while (projector.project(spaceId, generation) == 50) yield()
                 pending = store.status(spaceId, generation).pendingDecisions.toInt()
+                // Discovery is paged to keep each durable query bounded. Drain every page before
+                // reporting completion or switching to uploads so large snapshots converge fully.
+                if (discovery.pending(spaceId, generation, limit = 1).isNotEmpty()) {
+                    yield()
+                    continue
+                }
                 progress?.phase(SyncRunPhase.UPLOADING, uploadedTotal, 0, completed = uploadedTotal)
-                val result = outbox.uploadNext(snapshot) ?: break
+                val result = outbox.uploadNext(snapshot, ::observeSnapshot)
+                if (result == null) {
+                    // No-op runs stop after their initial snapshot. When this exchange moved data,
+                    // probe only the ref first; parse a full snapshot only if another device advanced it.
+                    if (!performedExchangeWork) break
+                    val finalHead = transport.readCurrentHead(repository, spaceId, generation).getOrThrow()
+                    if (finalHead == snapshot.head) break
+                    snapshot = transport.readSnapshot(repository, spaceId, generation).getOrThrow()
+                    observeSnapshot(snapshot)
+                    catchUpSegments++
+                    if (catchUpSegments > MAX_CATCH_UP_SEGMENTS) {
+                        if (discovery.pending(spaceId, generation, limit = 1).isNotEmpty()) {
+                            problem = SyncRunProblem.REMOTE_CHANGED
+                            progress?.phase(
+                                SyncRunPhase.DOWNLOADING,
+                                downloadedTotal,
+                                0,
+                                completed = downloadedTotal,
+                                state = SyncRunState.BLOCKED,
+                                reason = problem.name.lowercase(),
+                            )
+                        }
+                        break
+                    }
+                    continue
+                }
+                performedExchangeWork = true
                 if (result.publish.status != SyncPublishStatus.PUBLISHED) {
-                    problem = SyncRunProblem.NETWORK
+                    problem = when (result.publish.failureClass) {
+                        SyncPublishFailureClass.AUTHORIZATION -> SyncRunProblem.AUTHORIZATION
+                        SyncPublishFailureClass.INVALID_REQUEST -> SyncRunProblem.INVALID_DATA
+                        SyncPublishFailureClass.CONFLICT -> SyncRunProblem.REMOTE_CHANGED
+                        SyncPublishFailureClass.RATE_LIMITED,
+                        SyncPublishFailureClass.NETWORK,
+                        SyncPublishFailureClass.UNKNOWN,
+                        null,
+                        -> SyncRunProblem.NETWORK
+                    }
+                    retryAfterMillis = result.publish.retryAfterMillis
                     progress?.phase(
                         SyncRunPhase.UPLOADING,
                         uploadedTotal + downloadedTotal,
                         0,
                         completed = uploadedTotal + downloadedTotal,
-                        state = SyncRunState.WAITING_RETRY,
-                        reason = "network",
+                        state = if (problem ==
+                            SyncRunProblem.NETWORK
+                        ) {
+                            SyncRunState.WAITING_RETRY
+                        } else {
+                            SyncRunState.BLOCKED
+                        },
+                        reason = problem.name.lowercase(),
                     )
                     break
                 }
@@ -161,6 +233,7 @@ class SyncDatabaseExchange(
             throw cancelled
         } catch (failure: Exception) {
             problem = failure.syncProblem()
+            retryAfterMillis = (failure as? SyncHttpException)?.retryAfterMillis
         }
         return SyncRunResult(
             status = when {
@@ -172,9 +245,12 @@ class SyncDatabaseExchange(
             downloaded = downloaded,
             pending = pending,
             problem = problem,
+            retryAfterMillis = retryAfterMillis,
         )
     }
 }
+
+private const val MAX_CATCH_UP_SEGMENTS = 3
 
 private data class SyncBatchLogEntry(val key: String, val title: String, val detail: String)
 
@@ -184,9 +260,11 @@ private suspend fun SyncProgressReporter?.logBatch(batch: SyncBatch?, batchId: S
         this?.log(batchId, "同步数据", result, SyncRunLogStatus.COMPLETED)
         return
     }
-    entries.forEach { entry ->
-        this?.log("$batchId:${entry.key}", entry.title, entry.detail, SyncRunLogStatus.COMPLETED)
-    }
+    this?.logBatch(
+        entries.map { entry ->
+            SyncRunLogEntry("$batchId:${entry.key}", entry.title, entry.detail, SyncRunLogStatus.COMPLETED)
+        },
+    )
 }
 
 private fun SyncBatch.itemLogs(result: String): List<SyncBatchLogEntry> {
@@ -228,7 +306,21 @@ internal fun Exception.syncProblem(): SyncRunProblem = when (this) {
     is GitHubAuthException -> if (failure.retryable) SyncRunProblem.NETWORK else SyncRunProblem.AUTHORIZATION
     is SyncSecureStoreException -> SyncRunProblem.STORAGE
     is SyncRemoteSnapshotRejected -> SyncRunProblem.REMOTE_CHANGED
-    is SyncHttpException -> if (code == 401 || code == 403) SyncRunProblem.AUTHORIZATION else SyncRunProblem.NETWORK
+    is SyncRemoteSnapshotStaleCandidate -> SyncRunProblem.REMOTE_CHANGED
+    is SyncHttpException -> when (failureClass) {
+        SyncHttpFailureClass.AUTHORIZATION -> SyncRunProblem.AUTHORIZATION
+        SyncHttpFailureClass.CONFLICT -> SyncRunProblem.REMOTE_CHANGED
+        SyncHttpFailureClass.INVALID_REQUEST -> SyncRunProblem.INVALID_DATA
+        SyncHttpFailureClass.NETWORK,
+        SyncHttpFailureClass.RATE_LIMITED,
+        SyncHttpFailureClass.SERVER,
+        -> SyncRunProblem.NETWORK
+        SyncHttpFailureClass.UNKNOWN -> if (code == 401 || code == 403) {
+            SyncRunProblem.AUTHORIZATION
+        } else {
+            SyncRunProblem.NETWORK
+        }
+    }
     is IOException -> SyncRunProblem.NETWORK
     else -> SyncRunProblem.UNKNOWN
 }

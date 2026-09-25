@@ -1,0 +1,2 @@
+STARTED key=sync-perf-p9-data-sync-full-r1 workerPid=59724
+FAILED key=sync-perf-p9-data-sync-full-r1 workerPid=59724 processPid=74932 exitCode=1

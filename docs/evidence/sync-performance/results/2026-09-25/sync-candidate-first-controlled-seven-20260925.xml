@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="mihon.data.sync.SyncScaleAcceptanceTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-09-25T05:21:13.165Z" hostname="G-BURST" time="189.785">
+  <properties/>
+  <testcase name="controlled first import and exchange profile()[jvm]" classname="mihon.data.sync.SyncScaleAcceptanceTest" time="189.785"/>
+  <system-out><![CDATA[SYNC_SCALE_SAMPLE 1
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_fixture_local_library","httpRequests":0,"databaseBytes":1093632,"sampledJvmHeapBytesIncludingFixture":89695464,"elapsedMillis":10684,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_connect_freeze","httpRequests":11,"databaseBytes":1138688,"sampledJvmHeapBytesIncludingFixture":89695464,"elapsedMillis":751,"blobReads":2,"preexistingBlobReads":2,"treeReads":5,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_import_and_upload_confirmed_total","httpRequests":50,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":89695464,"elapsedMillis":5415,"blobReads":8,"preexistingBlobReads":2,"treeReads":25,"refUpdates":2}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_initial_import_generated","elapsedSinceConnectMillis":1623,"observation":"sqldelight_query_notification"}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_first_batch_locally_confirmed","elapsedSinceConnectMillis":4444,"confirmation":"durable_published_batch","observation":"sqldelight_query_notification"}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_all_confirmed_since_connect","elapsedSinceConnectMillis":6170,"sample":1}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_download_connect_merge","httpRequests":45,"databaseBytes":1982464,"sampledJvmHeapBytesIncludingFixture":89695464,"elapsedMillis":4103,"blobReads":12,"preexistingBlobReads":12,"treeReads":24,"refUpdates":0}
+SYNC_SCALE {"phase":"runtime_controlled_first_wire_bytes","sample":1,"requestBodyBytes":258647,"responseBodyBytes":537904}
+SYNC_SCALE_SAMPLE 2
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_fixture_local_library","httpRequests":0,"databaseBytes":1093632,"sampledJvmHeapBytesIncludingFixture":51817856,"elapsedMillis":10441,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_connect_freeze","httpRequests":11,"databaseBytes":1138688,"sampledJvmHeapBytesIncludingFixture":51817856,"elapsedMillis":735,"blobReads":2,"preexistingBlobReads":2,"treeReads":5,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_import_and_upload_confirmed_total","httpRequests":50,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":52274224,"elapsedMillis":5109,"blobReads":8,"preexistingBlobReads":2,"treeReads":25,"refUpdates":2}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_initial_import_generated","elapsedSinceConnectMillis":1581,"observation":"sqldelight_query_notification"}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_first_batch_locally_confirmed","elapsedSinceConnectMillis":4184,"confirmation":"durable_published_batch","observation":"sqldelight_query_notification"}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_all_confirmed_since_connect","elapsedSinceConnectMillis":5844,"sample":2}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_download_connect_merge","httpRequests":45,"databaseBytes":1982464,"sampledJvmHeapBytesIncludingFixture":53541560,"elapsedMillis":3916,"blobReads":12,"preexistingBlobReads":12,"treeReads":24,"refUpdates":0}
+SYNC_SCALE {"phase":"runtime_controlled_first_wire_bytes","sample":2,"requestBodyBytes":258647,"responseBodyBytes":537904}
+SYNC_SCALE_SAMPLE 3
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_fixture_local_library","httpRequests":0,"databaseBytes":1093632,"sampledJvmHeapBytesIncludingFixture":53253552,"elapsedMillis":11050,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_connect_freeze","httpRequests":11,"databaseBytes":1138688,"sampledJvmHeapBytesIncludingFixture":53897448,"elapsedMillis":711,"blobReads":2,"preexistingBlobReads":2,"treeReads":5,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_import_and_upload_confirmed_total","httpRequests":50,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":54990728,"elapsedMillis":5256,"blobReads":8,"preexistingBlobReads":2,"treeReads":25,"refUpdates":2}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_initial_import_generated","elapsedSinceConnectMillis":1599,"observation":"sqldelight_query_notification"}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_first_batch_locally_confirmed","elapsedSinceConnectMillis":4214,"confirmation":"durable_published_batch","observation":"sqldelight_query_notification"}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_all_confirmed_since_connect","elapsedSinceConnectMillis":5968,"sample":3}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_download_connect_merge","httpRequests":45,"databaseBytes":1982464,"sampledJvmHeapBytesIncludingFixture":54990728,"elapsedMillis":4042,"blobReads":12,"preexistingBlobReads":12,"treeReads":24,"refUpdates":0}
+SYNC_SCALE {"phase":"runtime_controlled_first_wire_bytes","sample":3,"requestBodyBytes":258647,"responseBodyBytes":537904}
+SYNC_SCALE_SAMPLE 4
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_fixture_local_library","httpRequests":0,"databaseBytes":1093632,"sampledJvmHeapBytesIncludingFixture":54332120,"elapsedMillis":10761,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_connect_freeze","httpRequests":11,"databaseBytes":1138688,"sampledJvmHeapBytesIncludingFixture":54332120,"elapsedMillis":725,"blobReads":2,"preexistingBlobReads":2,"treeReads":5,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_import_and_upload_confirmed_total","httpRequests":50,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":54332120,"elapsedMillis":4987,"blobReads":8,"preexistingBlobReads":2,"treeReads":25,"refUpdates":2}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_initial_import_generated","elapsedSinceConnectMillis":1475,"observation":"sqldelight_query_notification"}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_first_batch_locally_confirmed","elapsedSinceConnectMillis":4071,"confirmation":"durable_published_batch","observation":"sqldelight_query_notification"}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_all_confirmed_since_connect","elapsedSinceConnectMillis":5712,"sample":4}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_download_connect_merge","httpRequests":45,"databaseBytes":1990656,"sampledJvmHeapBytesIncludingFixture":54512744,"elapsedMillis":3880,"blobReads":12,"preexistingBlobReads":12,"treeReads":24,"refUpdates":0}
+SYNC_SCALE {"phase":"runtime_controlled_first_wire_bytes","sample":4,"requestBodyBytes":258647,"responseBodyBytes":537904}
+SYNC_SCALE_SAMPLE 5
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_fixture_local_library","httpRequests":0,"databaseBytes":1093632,"sampledJvmHeapBytesIncludingFixture":54519136,"elapsedMillis":10622,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_connect_freeze","httpRequests":11,"databaseBytes":1138688,"sampledJvmHeapBytesIncludingFixture":54519136,"elapsedMillis":726,"blobReads":2,"preexistingBlobReads":2,"treeReads":5,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_import_and_upload_confirmed_total","httpRequests":50,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":54519136,"elapsedMillis":5209,"blobReads":8,"preexistingBlobReads":2,"treeReads":25,"refUpdates":2}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_initial_import_generated","elapsedSinceConnectMillis":1502,"observation":"sqldelight_query_notification"}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_first_batch_locally_confirmed","elapsedSinceConnectMillis":4125,"confirmation":"durable_published_batch","observation":"sqldelight_query_notification"}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_all_confirmed_since_connect","elapsedSinceConnectMillis":5936,"sample":5}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_download_connect_merge","httpRequests":45,"databaseBytes":1990656,"sampledJvmHeapBytesIncludingFixture":54519136,"elapsedMillis":3907,"blobReads":12,"preexistingBlobReads":12,"treeReads":24,"refUpdates":0}
+SYNC_SCALE {"phase":"runtime_controlled_first_wire_bytes","sample":5,"requestBodyBytes":258647,"responseBodyBytes":537904}
+SYNC_SCALE_SAMPLE 6
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_fixture_local_library","httpRequests":0,"databaseBytes":1093632,"sampledJvmHeapBytesIncludingFixture":54665208,"elapsedMillis":10620,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_connect_freeze","httpRequests":11,"databaseBytes":1138688,"sampledJvmHeapBytesIncludingFixture":54692792,"elapsedMillis":745,"blobReads":2,"preexistingBlobReads":2,"treeReads":5,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_import_and_upload_confirmed_total","httpRequests":50,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":54745240,"elapsedMillis":5089,"blobReads":8,"preexistingBlobReads":2,"treeReads":25,"refUpdates":2}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_initial_import_generated","elapsedSinceConnectMillis":1618,"observation":"sqldelight_query_notification"}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_first_batch_locally_confirmed","elapsedSinceConnectMillis":4196,"confirmation":"durable_published_batch","observation":"sqldelight_query_notification"}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_all_confirmed_since_connect","elapsedSinceConnectMillis":5834,"sample":6}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_download_connect_merge","httpRequests":45,"databaseBytes":1990656,"sampledJvmHeapBytesIncludingFixture":55013072,"elapsedMillis":3864,"blobReads":12,"preexistingBlobReads":12,"treeReads":24,"refUpdates":0}
+SYNC_SCALE {"phase":"runtime_controlled_first_wire_bytes","sample":6,"requestBodyBytes":258647,"responseBodyBytes":537904}
+SYNC_SCALE_SAMPLE 7
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_fixture_local_library","httpRequests":0,"databaseBytes":1093632,"sampledJvmHeapBytesIncludingFixture":54366232,"elapsedMillis":10363,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_connect_freeze","httpRequests":11,"databaseBytes":1138688,"sampledJvmHeapBytesIncludingFixture":54366232,"elapsedMillis":741,"blobReads":2,"preexistingBlobReads":2,"treeReads":5,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_import_and_upload_confirmed_total","httpRequests":50,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":54658792,"elapsedMillis":5111,"blobReads":8,"preexistingBlobReads":2,"treeReads":25,"refUpdates":2}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_initial_import_generated","elapsedSinceConnectMillis":1563,"observation":"sqldelight_query_notification"}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_first_batch_locally_confirmed","elapsedSinceConnectMillis":4132,"confirmation":"durable_published_batch","observation":"sqldelight_query_notification"}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_all_confirmed_since_connect","elapsedSinceConnectMillis":5853,"sample":7}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_download_connect_merge","httpRequests":45,"databaseBytes":1982464,"sampledJvmHeapBytesIncludingFixture":54658792,"elapsedMillis":3876,"blobReads":12,"preexistingBlobReads":12,"treeReads":24,"refUpdates":0}
+SYNC_SCALE {"phase":"runtime_controlled_first_wire_bytes","sample":7,"requestBodyBytes":258647,"responseBodyBytes":537904}
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

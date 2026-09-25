@@ -84,6 +84,12 @@ class DesktopSyncWiringTest {
         val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node))
         try {
             val runtime = Injekt.get<SyncRuntime>()
+            val cacheField = runtime.javaClass.getDeclaredField("persistentObjectCacheDirectory")
+                .apply { isAccessible = true }
+            assertEquals(
+                File(folder, "cache/network/mihon-sync-objects").absolutePath.replace('\\', '/'),
+                cacheField.get(runtime).toString().replace('\\', '/'),
+            )
             val longSpace = "space".repeat(25)
             runtime.preferences.activeBulkJob(longSpace, 1).set("paused-a")
             runtime.preferences.activeBulkJob("other", 1).set("paused-b")

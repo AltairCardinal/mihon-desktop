@@ -1,0 +1,304 @@
+Configuration on demand is an incubating feature.
+Type-safe project accessors is an incubating feature.
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :buildSrc:generateExternalPluginSpecBuilders
+> Task :buildSrc:extractPrecompiledScriptPluginPlugins
+> Task :buildSrc:generateScriptPluginAdapters
+> Task :buildSrc:pluginDescriptors
+> Task :buildSrc:processResources
+> Task :buildSrc:compilePluginsBlocks
+> Task :buildSrc:generatePrecompiledScriptPluginAccessors
+> Task :buildSrc:compileKotlin
+> Task :buildSrc:compileJava NO-SOURCE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:classes
+> Task :buildSrc:jar
+> Task :domain:kmpPartiallyResolvedDependenciesChecker
+> Task :data:kmpPartiallyResolvedDependenciesChecker
+> Task :i18n:kmpPartiallyResolvedDependenciesChecker
+> Task :core:common:kmpPartiallyResolvedDependenciesChecker
+> Task :source-api:kmpPartiallyResolvedDependenciesChecker
+> Task :domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :source-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :i18n:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:common:jvmProcessResources NO-SOURCE
+> Task :source-api:jvmProcessResources NO-SOURCE
+> Task :domain:jvmProcessResources NO-SOURCE
+> Task :source-api:processJvmMainResources SKIPPED
+> Task :domain:processJvmMainResources SKIPPED
+> Task :core:common:processJvmMainResources SKIPPED
+> Task :data:jvmProcessResources NO-SOURCE
+> Task :data:processJvmMainResources SKIPPED
+> Task :data:jvmTestProcessResources
+> Task :data:processJvmTestResources SKIPPED
+> Task :i18n:generateMRcommonMain
+> Task :i18n:generateMRjvmMain
+> Task :i18n:jvmProcessResources
+> Task :i18n:processJvmMainResources SKIPPED
+> Task :i18n:compileKotlinJvm
+> Task :i18n:compileJvmMainJava NO-SOURCE
+> Task :i18n:jvmMainClasses
+> Task :i18n:jvmJar
+
+> Task :core:common:compileKotlinJvm
+w: file:///D:/Codex/worktrees/85be/mihon/core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/network/OkHttpExtensions.kt:80:34 'fun resume(value: Response, onCancellation: ((Throwable) -> Unit)?): Unit' is deprecated. Use the overload that also accepts the `value` and the coroutine context in lambda.
+
+> Task :core:common:compileJvmMainJava NO-SOURCE
+> Task :core:common:jvmMainClasses
+> Task :core:common:jvmJar
+> Task :source-api:compileKotlinJvm
+> Task :source-api:compileJvmMainJava NO-SOURCE
+> Task :source-api:jvmMainClasses
+> Task :source-api:jvmJar
+> Task :data:generateCommonMainDatabaseInterface
+
+> Task :domain:compileKotlinJvm
+w: file:///D:/Codex/worktrees/85be/mihon/domain/src/commonMain/kotlin/tachiyomi/domain/library/LibrarySelectionPolicy.kt:45:9 Condition is always 'true'.
+w: file:///D:/Codex/worktrees/85be/mihon/domain/src/commonMain/kotlin/tachiyomi/domain/track/interactor/SyncReadingProgressWithTrack.kt:87:44 The corresponding parameter in the supertype 'DelayedTrackerSyncPersistence' is named 'item'. This may cause problems when calling this function with named arguments.
+
+> Task :domain:compileJvmMainJava NO-SOURCE
+> Task :domain:jvmMainClasses
+> Task :domain:jvmJar
+
+> Task :data:compileKotlinJvm
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/crypto/SyncAeadEngineFactory.kt:5:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/crypto/SyncRecoveryFactory.kt:5:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/http/SyncHttpClient.kt:120:52 The corresponding parameter in the supertype 'Callback' is named 'e'. This may cause problems when calling this function with named arguments.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncPanelController.kt:267:57 Unnecessary safe call on a non-null receiver of type 'SyncConnection'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:207:59 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:208:55 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:209:59 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:210:57 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:211:56 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/transport/GitHubGitDatabaseClient.kt:117:45 Unnecessary non-null assertion (!!) on a non-null receiver of type 'CompletableDeferred<ByteArray>'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/transport/GitHubGitDatabaseClient.kt:1340:17 Condition is always 'true'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/jvmMain/kotlin/mihon/data/sync/crypto/SyncAeadEngineFactoryJvm.kt:18:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/jvmMain/kotlin/mihon/data/sync/crypto/SyncAeadEngineFactoryJvm.kt:57:14 'fun <P : Any!> getPrimitive(targetClassObject: Class<P!>!): P!' is deprecated. Deprecated in Java.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/jvmMain/kotlin/mihon/data/sync/crypto/SyncRecoveryFactoryJvm.kt:9:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+
+> Task :data:compileJvmMainJava NO-SOURCE
+> Task :data:jvmMainClasses
+> Task :data:jvmJar
+
+> Task :data:compileTestKotlinJvm
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/jvmTest/kotlin/mihon/data/sync/SyncDatabaseExchangeHistoricalLookupTest.kt:117:52 Unchecked cast of 'Any!' to 'List<SyncGitTreeEntry>'.
+
+> Task :data:compileJvmTestJava NO-SOURCE
+> Task :data:jvmTestClasses
+
+> Task :data:jvmTest
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > reclaimed run owner cannot commit a snapshot read by its stale attempt()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > guard revision advances only when an accepted head changes()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > failed durable anchor write prevents exchange network effects()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > rollback prevents preparation upload and download without new HTTP requests()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > observed immutable deletion blocks the space across database reopen and reconnect()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > stale guard revision cannot poison a newer accepted head()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > same immutable batch identity cannot be replaced by another authenticated ciphertext()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > growth and repeated heads are accepted without inventing an initial anchor()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > wrong repository or inactive space is rejected without poisoning the correct binding()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > publish observer failure preserves outbox and prevents competing ref retry writes()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > same head cache cannot conceal changed batch or index tree material()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > authenticated bootstrap index is immutable across otherwise valid growing heads()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > successful publish anchors its readback before acknowledgement and survives restart()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > known historical ref rollback is blocked after a legal forward head()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > persistent warm admission skips evidence and a blocked guard forces full validation()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > new head updates only changed normalized manifest rows()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > deep wide tree cache stays within a byte budget and returns complete paths()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > receiving a valid discovered batch deletes its queue row once()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > stable snapshot does not query receipt status once per historical batch()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > new head preserves BMP and supplementary plane manifest paths()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > legacy full json manifest is a cache miss and is rebuilt without clearing the guard()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > invalid discovered batch is removed exactly once()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > cancelling the single flight owner does not cancel another valid waiter()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > graphql adapter requires complete commit data and surfaces errors()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > lost publish response is confirmed by reading the reachable frozen bytes()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > stale snapshot cannot overwrite a batch published with different frozen bytes()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > reader rejects a fully authenticated index chain with a sequence gap()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > lost ref response cannot confirm a different ciphertext merely from matching index metadata()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > continuous competing writes exhaust three attempts without replacing the saved artifact()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > inline tree planner keeps UTF8 entries inline and binary entries as blobs()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > prepare freezes batch index and head without starting network requests()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > competing initializers adopt matching winner and require import for a different key()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > truncated and malformed tree completion flags cannot report a complete snapshot()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > indexed missing batch and an actor head rolled back within a newer Git commit are rejected()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > cached published snapshot cannot confirm a damaged or unreadable current ref()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > initialization with a lost response recognizes its completed space()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > HTTP failures and malformed HEAD responses cannot become an empty successful sync()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > raw blob response is accepted and validated by git object id()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > transport cancellation remains coroutine cancellation instead of a failed sync result()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > stale publishers retain both actors and immutable index bytes()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > a batch bound to another space cannot be published into the current snapshot()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > an outgoing actor batch cannot skip a sequence()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > blob cache single flights concurrent loads and isolates validation context()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > blob response with a different object id is rejected()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > snapshot keeps its immutable blob identities when the branch moves()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > initialization never writes into an existing space with missing indexes()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > a different ciphertext for an already published batch cannot overwrite its immutable path()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > initialization preserves README and exchanges a real batch()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > failed durable save cannot make any Git HTTP request()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > an existing branch never bypasses the private repository check during initialization()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > create blob rejects a response whose oid does not match uploaded bytes()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > recreated service reuses immutable index bytes when retrying a saved artifact()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > empty private repository is bootstrapped only after its existence has been confirmed()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > inline tree planner falls back when final body exceeds budget()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > unconfirmed publication retains its artifact and retry confirms without creating new objects()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > re-reading an unchanged snapshot only probes ref()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > an indexed actor without its encrypted head is not a complete snapshot()[jvm] PASSED
+
+SyncGitTreeCacheFailureIntegrationTest[jvm] > cyclic tree responses are evicted so a repaired response can be read()[jvm] PASSED
+
+SyncGitTreeCacheFailureIntegrationTest[jvm] > invalid duplicate paths are not retained in the tree cache()[jvm] PASSED
+
+SyncGitTreeSingleFlightIntegrationTest[jvm] > failed tree load is removed so a later caller can retry()[jvm] PASSED
+
+SyncGitTreeSingleFlightIntegrationTest[jvm] > cancelling a flight waiter does not cancel its shared loader()[jvm] PASSED
+
+SyncGitTreeSingleFlightIntegrationTest[jvm] > cancelling the flight owner preserves the shared load for its waiter()[jvm] PASSED
+
+SyncGitTreeSingleFlightIntegrationTest[jvm] > concurrent cold snapshots share one request for the same tree()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > transport restart reuses validated raw trees and blobs from its private object cache()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > corrupted object cache records are fetched again and replaced()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > new root tree reuses unchanged sync subtree after transport restart()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > newer L2 objects cannot warm admit a snapshot ahead of its persisted manifest()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > persistent cache evicts objects within its configured file budget()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > cache directory failures do not fail validated remote reads()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > persistent cache is disabled when stable repository id is unavailable()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > reading a hot object protects it from the next capacity eviction()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > transport cache is isolated by revision space and generation()[jvm] PASSED
+
+SyncPersistentGitObjectCacheTest[jvm] > atomic move failure leaves a cache miss without damaging other objects()[jvm] PASSED
+
+SyncPersistentGitObjectCacheTest[jvm] > blob cache record must match the requested git object id()[jvm] PASSED
+
+SyncPersistentGitObjectCacheTest[jvm] > tree cache record must match the requested oid in its json()[jvm] PASSED
+
+SyncPersistentGitObjectCacheTest[jvm] > disk full while writing cache content leaves no readable object and permits retry()[jvm] PASSED
+
+SyncPersistentGitObjectCacheTest[jvm] > silently short cache writes are rejected before publication()[jvm] PASSED
+
+SyncPersistentGitObjectCacheTest[jvm] > object cache key isolates every repository and validation binding()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > reopened panel restores retry exhausted and blocked runs()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > temporary token refresh failures retain credentials and report retryable network failure()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > unconfigured runtime does not access credentials or network and invalid periods are rejected()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > production runtime rejects snapshot from a run whose owner expired during ref read()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > manual continuation reuses the resumed run instead of creating a second run()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > system recovery reclaims an orphaned run while user pause stays paused()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > production cold snapshot rolls guard manifest and discovery back together()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > startup never replaces a user paused run()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > system recovery reclaims an owner left in waiting retry()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > restoring a database without this devices secure binding renews actor before reconnecting()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > missing authorization and unavailable secure storage are distinct safe failures()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > fresh run skips totals reconciliation and recovery reconciles durable progress once()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > reopened panel keeps the latest successful run available for review()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > manual retry supersedes blocked run so periodic sync can continue()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > startup does not reset an exhausted automatic run()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > configured graph uses credentials production client database exchange and local history()[jvm] PASSED
+
+SyncRuntimeWiringTest[jvm] > production runtime reopens a validated snapshot and falls back after cache context damage()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 34 migration separates retry failures from the persisted claim id()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 36 migration adds guard revision and normalized snapshot rows without deleting metadata()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > current schema reserves compatibility migration after published sync schema()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 28 sync file migrates after close and reopen without losing runtime data()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 29 author file migrates after close and reopen without losing author data()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > published sync schema upgrades without losing runtime data()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > unknown same-number sync table shape fails without advancing the database()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > author schema 29 receives sync tables while preserving author data()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 33 migration creates the durable snapshot manifest table()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > same-number manifest table with incompatible shape fails without advancing schema()[jvm] PASSED
+
+BUILD SUCCESSFUL in 1m 59s
+31 actionable tasks: 31 executed

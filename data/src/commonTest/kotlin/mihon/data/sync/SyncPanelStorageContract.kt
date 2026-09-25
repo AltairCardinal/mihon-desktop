@@ -49,6 +49,7 @@ import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.data.Database
+import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.History
 import tachiyomi.data.Mangas
@@ -797,10 +798,12 @@ abstract class SyncPanelStorageContract {
         awaitIdle()
     }
 
-    private suspend fun withPanel(
+    protected suspend fun withPanel(
         storage: SyncRuntimeStorageContract.Storage,
         endpoints: GitHubAuthEndpoints = GitHubAuthEndpoints(),
         bootstrap: tachiyomi.domain.creator.repository.CreatorArchiveBootstrap = storage.bootstrap,
+        handler: DatabaseHandler = storage.handler,
+        clock: () -> Long = { 1000L },
         block: suspend (SyncPanelController, SyncRuntime) -> Unit,
     ) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -821,10 +824,10 @@ abstract class SyncPanelStorageContract {
                 strings.computeIfAbsent(key) { defaults.getString(key, defaultValue) }
         }
         val runtime = SyncRuntime(
-            storage.handler, bootstrap, storage.creators, storage.creators, { true }, secure,
-            preferences, client, endpoints, clock = { 1000L },
+            handler, bootstrap, storage.creators, storage.creators, { true }, secure,
+            preferences, client, endpoints, clock = clock,
         )
-        val panel = SyncPanelController(runtime, storage.handler, scope) { 1000L }
+        val panel = SyncPanelController(runtime, handler, scope, clock)
         try {
             block(panel, runtime)
         } finally {

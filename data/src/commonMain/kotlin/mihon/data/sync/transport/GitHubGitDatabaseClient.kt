@@ -3,6 +3,11 @@
 package mihon.data.sync.transport
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -20,6 +25,8 @@ import kotlinx.serialization.json.longOrNull
 import mihon.data.sync.crypto.SyncAeadEngineFactory
 import mihon.data.sync.http.SyncHttpClient
 import mihon.data.sync.http.SyncHttpException
+import mihon.data.sync.http.SyncHttpFailureClass
+import mihon.data.sync.http.SyncHttpRequestGate
 import mihon.data.sync.http.SyncHttpResponse
 import mihon.domain.sync.crypto.SyncAeadCiphertext
 import mihon.domain.sync.crypto.SyncAeadEngine
@@ -40,6 +47,7 @@ import mihon.domain.sync.transport.SyncGitTree
 import mihon.domain.sync.transport.SyncGitTreeEntry
 import mihon.domain.sync.transport.SyncInitializationResult
 import mihon.domain.sync.transport.SyncPreparedUpload
+import mihon.domain.sync.transport.SyncPublishFailureClass
 import mihon.domain.sync.transport.SyncPublishResult
 import mihon.domain.sync.transport.SyncPublishStatus
 import mihon.domain.sync.transport.SyncRepository
@@ -51,6 +59,9 @@ import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import okio.ByteString.Companion.decodeBase64
 import okio.ByteString.Companion.toByteString
+import okio.Path
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import kotlin.collections.LinkedHashMap
 
 private val githubJson = Json {
@@ -60,6 +71,16 @@ private val githubJson = Json {
 }
 private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
+internal fun gitBlobOid(content: ByteArray, oidLength: Int): String? {
+    val header = "blob ${content.size}\u0000".encodeToByteArray()
+    val objectBytes = (header + content).toByteString()
+    return when (oidLength) {
+        40 -> objectBytes.sha1().hex()
+        64 -> objectBytes.sha256().hex()
+        else -> null
+    }
+}
+
 /**
  * A bounded cache for immutable Git blob bytes.
  *
@@ -67,13 +88,64 @@ private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
  * already validated against the requested id. The cache contains no credentials
  * or durable sync state and can be dropped without changing the trust history.
  */
-private class SyncBlobCache(private val maxBytes: Long = 16L * 1024 * 1024) {
-    private val values = LinkedHashMap<String, ByteArray>(16, 0.75f, true)
+internal data class SyncBlobCacheKey(
+    val apiOrigin: String,
+    val repository: String,
+    val branch: String,
+    val objectFormat: String,
+    val objectOid: String,
+    val validationScope: String,
+    val connectionRevision: String,
+)
+
+internal class SyncBlobCache(private val maxBytes: Long = 16L * 1024 * 1024) {
+    private val mutex = Mutex()
+    private val values = LinkedHashMap<SyncBlobCacheKey, ByteArray>(16, 0.75f, true)
+    private val inFlight = mutableMapOf<SyncBlobCacheKey, CompletableDeferred<ByteArray>>()
     private var sizeBytes = 0L
 
-    fun get(key: String): ByteArray? = values[key]?.copyOf()
+    suspend fun getOrLoad(key: SyncBlobCacheKey, loader: suspend () -> ByteArray): ByteArray {
+        var cached: ByteArray? = null
+        var deferred: CompletableDeferred<ByteArray>? = null
+        var owner = false
+        mutex.withLock {
+            cached = values[key]?.copyOf()
+            if (cached == null) {
+                deferred = inFlight[key]
+                if (deferred == null) {
+                    deferred = CompletableDeferred()
+                    inFlight[key] = deferred!!
+                    owner = true
+                }
+            }
+        }
+        cached?.let { return it }
+        val flight = requireNotNull(deferred)
+        if (!owner) return flight.await().copyOf()
+        return try {
+            withContext(NonCancellable) {
+                // Keep publication and flight cleanup together: cancellation while waiting
+                // for the mutex must not strand callers on an incomplete deferred.
+                val loaded = loader().copyOf()
+                mutex.withLock {
+                    putLocked(key, loaded)
+                    if (inFlight[key] === flight) inFlight.remove(key)
+                }
+                flight.complete(loaded.copyOf())
+                loaded
+            }
+        } catch (error: Throwable) {
+            withContext(NonCancellable) {
+                mutex.withLock {
+                    if (inFlight[key] === flight) inFlight.remove(key)
+                }
+                flight.completeExceptionally(error)
+            }
+            throw error
+        }
+    }
 
-    fun put(key: String, content: ByteArray) {
+    private fun putLocked(key: SyncBlobCacheKey, content: ByteArray) {
         if (content.size.toLong() > maxBytes) return
         values.remove(key)?.let { sizeBytes -= it.size }
         values[key] = content.copyOf()
@@ -87,6 +159,62 @@ private class SyncBlobCache(private val maxBytes: Long = 16L * 1024 * 1024) {
     }
 }
 
+internal class SyncLoadSingleFlight<K : Any, V> {
+    private val mutex = Mutex()
+    private val inFlight = mutableMapOf<K, CompletableDeferred<V>>()
+
+    suspend fun getOrLoad(key: K, loader: suspend () -> V): V {
+        var owner = false
+        val flight = mutex.withLock {
+            inFlight[key] ?: CompletableDeferred<V>().also {
+                inFlight[key] = it
+                owner = true
+            }
+        }
+        if (!owner) return flight.await()
+
+        return try {
+            withContext(NonCancellable) {
+                val value = loader()
+                mutex.withLock {
+                    if (inFlight[key] === flight) inFlight.remove(key)
+                }
+                flight.complete(value)
+                value
+            }
+        } catch (error: Throwable) {
+            withContext(NonCancellable) {
+                mutex.withLock {
+                    if (inFlight[key] === flight) inFlight.remove(key)
+                }
+                flight.completeExceptionally(error)
+            }
+            throw error
+        }
+    }
+}
+
+private data class SyncTreeCacheKey(
+    val apiOrigin: String,
+    val repository: String,
+    val branch: String,
+    val treeOid: String,
+    val validationScope: String,
+    val connectionRevision: String,
+)
+
+private data class CachedRawTree(val entries: List<SyncGitTreeEntry>, val truncated: Boolean)
+
+private data class SyncSnapshotCacheKey(
+    val repository: SyncRepository,
+    val spaceId: String,
+    val generation: Long,
+    val head: String,
+    val apiOrigin: String,
+    val validationScope: String,
+    val connectionRevision: String,
+)
+
 class GitHubSyncTransport(
     productionClient: OkHttpClient,
     private val tokenProvider: suspend () -> String,
@@ -95,18 +223,144 @@ class GitHubSyncTransport(
     private val indexSecret: SyncSecret? = null,
     private val indexEngine: SyncAeadEngine = SyncAeadEngineFactory.create(),
     private val spaceMaterial: SyncSpaceMaterial? = null,
+    connectionRevision: String = "transport-instance",
+    persistentObjectCacheDirectory: Path? = null,
+    requestGate: SyncHttpRequestGate? = null,
+    repositoryId: Long? = null,
 ) : SyncTransportPort {
-    private val http = SyncHttpClient(productionClient, setOf(apiBaseUrl.hostOrNull() ?: "api.github.com"))
+    private var connectionRevision = connectionRevision
+    private var stableRepositoryId = repositoryId
+    private val http = SyncHttpClient(
+        productionClient,
+        setOf(apiBaseUrl.hostOrNull() ?: "api.github.com"),
+        requestGate = requestGate,
+    )
+    private val persistentObjectCache = SyncPersistentGitObjectCache(persistentObjectCacheDirectory)
     private val blobCache = SyncBlobCache()
+    private val treeLoads = SyncLoadSingleFlight<SyncTreeCacheKey, CachedRawTree>()
+    private val treeCacheMutex = Mutex()
+    private val treeCache = mutableMapOf<SyncTreeCacheKey, CachedRawTree>()
+    private val treeCacheOrder = mutableListOf<SyncTreeCacheKey>()
+    private var treeCacheWeightBytes = 0L
+    private val maxTreeCacheWeightBytes = 4L * 1024 * 1024
+    internal var treePathMaterializations: Long = 0
+        private set
+    private var snapshotCache: Pair<SyncSnapshotCacheKey, SyncSnapshot>? = null
+    private val manifestCandidateMutex = Mutex()
+    private val manifestCandidates = mutableListOf<Pair<SyncSnapshot, PreparedSyncSnapshotManifest>>()
+    private val warmAdmissionMutex = Mutex()
+    private val warmAdmissions = mutableListOf<Pair<SyncSnapshot, WarmSyncSnapshotAdmission>>()
+    private val snapshotFenceMutex = Mutex()
+    private val snapshotFences = mutableListOf<Pair<SyncSnapshot, SyncRemoteSnapshotFence>>()
+    private var snapshotFenceProvider: suspend (String, Long) -> SyncRemoteSnapshotFence? = { _, _ -> null }
+    private var snapshotManifestStore: SyncSnapshotManifestStore? = null
+    private var snapshotManifestBinding: SyncSnapshotManifestBinding? = null
+    private val apiOrigin: String by lazy {
+        val url = apiBaseUrl.toHttpUrl()
+        "${url.scheme}://${url.host}:${url.port}"
+    }
+
+    internal fun installSnapshotManifestStore(
+        store: SyncSnapshotManifestStore,
+        binding: SyncSnapshotManifestBinding,
+    ) {
+        snapshotManifestStore = store
+        snapshotManifestBinding = binding
+        connectionRevision = binding.connectionRevision
+        stableRepositoryId = binding.repositoryId
+    }
+
+    internal fun installSnapshotFenceProvider(provider: suspend (String, Long) -> SyncRemoteSnapshotFence?) {
+        snapshotFenceProvider = provider
+    }
+
+    internal suspend fun takeSnapshotManifest(snapshot: SyncSnapshot): PreparedSyncSnapshotManifest? =
+        manifestCandidateMutex.withLock {
+            val index = manifestCandidates.indexOfFirst { it.first === snapshot }
+            if (index < 0) null else manifestCandidates.removeAt(index).second
+        }
+
+    internal suspend fun takeWarmAdmission(snapshot: SyncSnapshot): WarmSyncSnapshotAdmission? =
+        warmAdmissionMutex.withLock {
+            val index = warmAdmissions.indexOfFirst { it.first === snapshot }
+            if (index < 0) null else warmAdmissions.removeAt(index).second
+        }
+
+    internal suspend fun takeSnapshotFence(snapshot: SyncSnapshot): SyncRemoteSnapshotFence? =
+        snapshotFenceMutex.withLock {
+            val index = snapshotFences.indexOfLast { it.first === snapshot }
+            if (index < 0) {
+                null
+            } else {
+                val newest = snapshotFences[index].second
+                // The in-memory snapshot cache can return the same object for several reads.
+                // Once consumed, older fences for that object must not escape on a later observe.
+                snapshotFences.removeAll { it.first === snapshot }
+                newest
+            }
+        }
+
+    override suspend fun readCurrentHead(
+        repository: SyncRepository,
+        expectedSpaceId: String,
+        expectedGeneration: Long,
+    ): Result<String> = suspendResult {
+        require(expectedSpaceId.isNotBlank() && expectedGeneration > 0) { "invalid sync snapshot scope" }
+        val ref = getRef(repository)
+        require(ref.name == "refs/heads/${repository.branch}") { "GitHub returned a different sync ref" }
+        ref.objectSha
+    }
 
     override suspend fun readSnapshot(
         repository: SyncRepository,
         expectedSpaceId: String,
         expectedGeneration: Long,
     ): Result<SyncSnapshot> = suspendResult {
+        // Capture durable ownership before starting the ref/tree network read.
+        val snapshotFence = snapshotFenceProvider(expectedSpaceId, expectedGeneration)
+        val validatorVersion = SYNC_SNAPSHOT_VALIDATOR_VERSION
+        val validationScope = "space=$expectedSpaceId;generation=$expectedGeneration;validator=$validatorVersion"
         val ref = getRef(repository)
+        val manifestContext = snapshotManifestBinding?.let { binding ->
+            SyncSnapshotManifestContext(
+                binding,
+                repository,
+                apiOrigin,
+                validatorVersion,
+                validationScope,
+            )
+        }
+        val manifestStore = snapshotManifestStore
+        if (manifestStore != null && manifestContext != null) {
+            val warmAdmission = manifestStore.findWarmSnapshot(
+                repository,
+                expectedSpaceId,
+                expectedGeneration,
+                ref.objectSha,
+                manifestContext,
+            )
+            if (warmAdmission != null) {
+                snapshotFence?.let { rememberSnapshotFence(warmAdmission.snapshot, it) }
+                warmAdmissionMutex.withLock { warmAdmissions += warmAdmission.snapshot to warmAdmission }
+                return@suspendResult warmAdmission.snapshot
+            }
+        } else {
+            val key = SyncSnapshotCacheKey(
+                repository,
+                expectedSpaceId,
+                expectedGeneration,
+                ref.objectSha,
+                apiOrigin,
+                validationScope,
+                connectionRevision,
+            )
+            treeCacheMutex.withLock { snapshotCache?.takeIf { it.first == key }?.second }?.let {
+                snapshotFence?.let { fence -> rememberSnapshotFence(it, fence) }
+                return@suspendResult it
+            }
+        }
         val commit = getCommit(repository, ref.objectSha)
-        val tree = getTree(repository, commit.treeSha)
+        val tree = getTree(repository, commit.treeSha, validationScope)
         require(!tree.truncated && tree.entries.size <= maxTreeEntries) { "sync tree is truncated or oversized" }
         val files = tree.entries.associateBy { it.path }
         require(files.size == tree.entries.size) { "sync tree contains duplicate paths" }
@@ -120,7 +374,9 @@ class GitHubSyncTransport(
             require(descriptor.type == "blob" && descriptor.mode == "100644") {
                 "space descriptor must be a regular file"
             }
-            val remote = SyncSpaceDescriptorCodec.decode(getBlob(repository, descriptor.sha).content).getOrThrow()
+            val remote = SyncSpaceDescriptorCodec.decode(
+                getBlob(repository, descriptor.sha, validationScope = validationScope).content,
+            ).getOrThrow()
             require(remote == material.descriptor) { "sync space descriptor changed" }
         }
         val indexEntries = tree.entries.filter { it.type == "blob" && it.path.startsWith(".mihon-sync/index/") }
@@ -128,7 +384,12 @@ class GitHubSyncTransport(
         require(indexEntries.size <= 10_000) { "sync index exceeds entry limit" }
         val shards = indexEntries.map { entry ->
             require(entry.mode == "100644") { "sync index must be a regular file" }
-            decryptShard(getBlob(repository, entry.sha).content, entry.path, expectedSpaceId, expectedGeneration)
+            decryptShard(
+                getBlob(repository, entry.sha, validationScope = validationScope).content,
+                entry.path,
+                expectedSpaceId,
+                expectedGeneration,
+            )
         }
         val bootstrap = shards.filter { it.batch == null }
         require(
@@ -139,7 +400,12 @@ class GitHubSyncTransport(
         val chains = shards.filter { it.batch != null }.groupBy { it.actorId to it.epoch }
         val heads = tree.entries.filter { it.type == "blob" && it.path.startsWith(".mihon-sync/heads/") }.map { entry ->
             require(entry.mode == "100644") { "sync head must be a regular file" }
-            decryptHead(getBlob(repository, entry.sha).content, entry.path, expectedSpaceId, expectedGeneration)
+            decryptHead(
+                getBlob(repository, entry.sha, validationScope = validationScope).content,
+                entry.path,
+                expectedSpaceId,
+                expectedGeneration,
+            )
         }
         require(heads.size == chains.size && heads.map { it.actorId to it.epoch }.toSet() == chains.keys) {
             "sync actor head is missing or duplicated"
@@ -199,13 +465,42 @@ class GitHubSyncTransport(
             .filter { it.type == "blob" && it.path.startsWith(".mihon-sync/batches/") }
             .map { it.path }.toSet()
         require(storedPaths == index.map { it.path }.toSet()) { "sync batch has no authenticated index" }
-        SyncSnapshot(repository, ref.objectSha, tree, expectedSpaceId, expectedGeneration, index)
+        val snapshot = SyncSnapshot(repository, ref.objectSha, tree, expectedSpaceId, expectedGeneration, index)
+        snapshotFence?.let { rememberSnapshotFence(snapshot, it) }
+        if (manifestStore != null && manifestContext != null) {
+            manifestStore.prepare(snapshot, manifestContext)?.let { prepared ->
+                manifestCandidateMutex.withLock { manifestCandidates += snapshot to prepared }
+            }
+        } else {
+            val key = SyncSnapshotCacheKey(
+                repository,
+                expectedSpaceId,
+                expectedGeneration,
+                ref.objectSha,
+                apiOrigin,
+                validationScope,
+                connectionRevision,
+            )
+            treeCacheMutex.withLock { snapshotCache = key to snapshot }
+        }
+        snapshot
+    }
+
+    private suspend fun rememberSnapshotFence(snapshot: SyncSnapshot, fence: SyncRemoteSnapshotFence) {
+        snapshotFenceMutex.withLock { snapshotFences += snapshot to fence }
     }
 
     suspend fun readEncryptedBatch(snapshot: SyncSnapshot, entry: SyncBatchIndexEntry): SyncEncryptedBatch {
         val treeEntry = snapshot.tree.entries.firstOrNull { it.path == entry.path }
             ?: throw IllegalStateException("sync batch is missing")
-        val stored = decodeStoredBatch(getBlob(snapshot.repository, treeEntry.sha, cache = false).content)
+        val stored = decodeStoredBatch(
+            getBlob(
+                snapshot.repository,
+                treeEntry.sha,
+                cache = false,
+                validationScope = "space=${snapshot.spaceId};generation=${snapshot.generation};validator=sync-v1",
+            ).content,
+        )
         require(stored.batchId == entry.batchId) { "sync batch id does not match index" }
         require(stored.plaintextDigestHex == entry.digestHex) { "sync batch digest does not match index" }
         require(stored.spaceId == snapshot.spaceId && stored.generation == snapshot.generation) {
@@ -301,14 +596,21 @@ class GitHubSyncTransport(
                 getRepositoryInfo(repository).private
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
-                false
+            } catch (error: Exception) {
+                return SyncPublishResult(
+                    SyncPublishStatus.FAILED,
+                    batch.batchId,
+                    error = "private repository access could not be verified",
+                    failureClass = publishFailureClass(error),
+                    retryAfterMillis = (error as? SyncHttpException)?.retryAfterMillis,
+                )
             }
             if (!private) {
                 return SyncPublishResult(
                     SyncPublishStatus.FAILED,
                     batch.batchId,
                     error = "private repository access could not be verified",
+                    failureClass = SyncPublishFailureClass.AUTHORIZATION,
                 )
             }
         }
@@ -345,26 +647,41 @@ class GitHubSyncTransport(
                     batch.batchId,
                     error = "sync actor advanced; saved upload retained",
                     attempts = attempt - 1,
+                    failureClass = SyncPublishFailureClass.CONFLICT,
                 )
             }
             val commit = try {
-                val entries = blobs ?: listOf(
+                val payloads = listOf(
                     batch.path to StoredSyncBatch.fromDomain(batch).body(),
                     upload.indexPath to upload.indexCiphertext.bytes,
                     upload.headPath to upload.headCiphertext.bytes,
-                ).map { (path, bytes) ->
-                    SyncGitTreeEntry(path, "100644", "blob", createBlob(repository, bytes).sha, bytes.size.toLong())
+                )
+                val entries = blobs ?: SyncTreeEntryPayloadPlanner.plan(
+                    payloads,
+                    baseTreeSha = current.tree.sha,
+                ).map { planned ->
+                    val sha = planned.inlineContent?.let { "" } ?: createBlob(repository, planned.bytes).sha
+                    SyncGitTreeEntry(
+                        planned.path,
+                        "100644",
+                        "blob",
+                        sha,
+                        planned.bytes.size.toLong(),
+                        planned.inlineContent,
+                    )
                 }.also { blobs = it }
                 val tree = createTree(repository, current.tree.sha, entries)
                 createCommit(repository, tree.sha, current.head)
             } catch (error: CancellationException) {
                 throw error
-            } catch (_: Exception) {
+            } catch (error: Exception) {
                 return SyncPublishResult(
                     SyncPublishStatus.FAILED,
                     batch.batchId,
                     error = "upload objects could not be created",
                     attempts = attempt,
+                    failureClass = publishFailureClass(error),
+                    retryAfterMillis = (error as? SyncHttpException)?.retryAfterMillis,
                 )
             }
             var refError: Exception? = null
@@ -393,6 +710,7 @@ class GitHubSyncTransport(
                         batch.batchId,
                         error = "ref update could not be safely retried",
                         attempts = attempt,
+                        failureClass = SyncPublishFailureClass.CONFLICT,
                     )
                 }
                 current = observed
@@ -405,6 +723,8 @@ class GitHubSyncTransport(
                 commit.sha,
                 error = "publish response was not confirmed",
                 attempts = attempt,
+                failureClass = publishFailureClass(refError),
+                retryAfterMillis = (refError as? SyncHttpException)?.retryAfterMillis,
             )
         }
         error("unreachable publish loop")
@@ -670,49 +990,251 @@ class GitHubSyncTransport(
         )
     }
 
-    private suspend fun getTree(repository: SyncRepository, sha: String): SyncGitTree {
-        val response = call(repository, "GET", "/git/trees/$sha?recursive=1")
-        val json = response.requireSuccess().json()
-        val entries = json.array("tree").take(maxTreeEntries + 1).map { item ->
-            val obj = item.jsonObject
-            SyncGitTreeEntry(
-                obj.string("path"),
-                obj.string("mode"),
-                obj.string("type"),
-                obj.string("sha"),
-                obj.long("size"),
+    private suspend fun getTree(
+        repository: SyncRepository,
+        sha: String,
+        validationScope: String = "unbound",
+    ): SyncGitTree {
+        val activeTrees = mutableSetOf<String>()
+        val visitedTrees = linkedMapOf<SyncTreeCacheKey, SyncPersistentGitObjectKey?>()
+        val flattened = mutableListOf<SyncGitTreeEntry>()
+        val directoryPathBudget = maxTreeEntries.toLong() * 4 + 256
+        var directoryPathVisits = 0L
+        var truncated = false
+
+        suspend fun appendSubtree(treeSha: String, depth: Int, prefix: String) {
+            require(depth <= 256) { "sync tree depth exceeds limit" }
+            directoryPathVisits++
+            require(directoryPathVisits <= directoryPathBudget) { "sync tree directory path budget exceeded" }
+            require(activeTrees.add(treeSha)) { "sync tree contains a cycle" }
+            val key = SyncTreeCacheKey(
+                apiOrigin,
+                repository.fullName,
+                repository.branch,
+                treeSha,
+                validationScope,
+                connectionRevision,
             )
+            val persistentKey = persistentGitObjectKey(
+                repository = repository,
+                kind = SyncGitObjectKind.TREE,
+                objectOid = treeSha,
+                validationScope = validationScope,
+            )
+            visitedTrees[key] = persistentKey
+            try {
+                val direct = getCachedTree(key) ?: treeLoads.getOrLoad(key) {
+                    getCachedTree(key) ?: persistentKey?.let { loadPersistentTree(it, treeSha) }?.also {
+                        putCachedTree(key, it)
+                    } ?: run {
+                        val response = call(repository, "GET", "/git/trees/$treeSha").requireSuccess()
+                        val raw = response.body
+                        val parsed = parseTree(treeSha, raw)
+                        if (!parsed.truncated) {
+                            persistentKey?.let { persistentObjectCache.write(it, raw) }
+                            putCachedTree(key, parsed)
+                        }
+                        parsed
+                    }
+                }
+                if (direct.truncated) {
+                    truncated = true
+                    return
+                }
+                for (entry in direct.entries) {
+                    if (flattened.size > maxTreeEntries) {
+                        truncated = true
+                        break
+                    }
+                    val path = if (prefix.isEmpty()) entry.path else "$prefix/${entry.path}"
+                    if (entry.type == "tree") {
+                        appendSubtree(entry.sha, depth + 1, path)
+                        if (truncated) break
+                    } else {
+                        flattened += if (prefix.isEmpty()) entry else materializeTreePath(entry, path)
+                    }
+                }
+            } finally {
+                activeTrees.remove(treeSha)
+            }
         }
-        return SyncGitTree(sha, entries, json.boolean("truncated") || entries.size > maxTreeEntries)
+
+        try {
+            appendSubtree(sha, 0, "")
+        } catch (error: Throwable) {
+            withContext(NonCancellable) {
+                for ((key, persistentKey) in visitedTrees) {
+                    removeCachedTree(key)
+                    persistentKey?.let { persistentObjectCache.remove(it) }
+                }
+            }
+            throw error
+        }
+        return SyncGitTree(sha, flattened.take(maxTreeEntries + 1), truncated || flattened.size > maxTreeEntries)
     }
+
+    private suspend fun removeCachedTree(key: SyncTreeCacheKey) = treeCacheMutex.withLock {
+        treeCache.remove(key)?.let { removed -> treeCacheWeightBytes -= treeCacheWeight(key, removed) }
+        treeCacheOrder.remove(key)
+    }
+
+    private fun materializeTreePath(entry: SyncGitTreeEntry, path: String): SyncGitTreeEntry {
+        treePathMaterializations++
+        return entry.copy(path = path)
+    }
+
+    private suspend fun getCachedTree(key: SyncTreeCacheKey): CachedRawTree? = treeCacheMutex.withLock {
+        treeCache[key]?.also {
+            treeCacheOrder.remove(key)
+            treeCacheOrder += key
+        }
+    }
+
+    private suspend fun loadPersistentTree(
+        key: SyncPersistentGitObjectKey,
+        requestedSha: String,
+    ): CachedRawTree? {
+        val raw = persistentObjectCache.read(key) ?: return null
+        val parsed = runCatching { parseTree(requestedSha, raw) }.getOrNull()
+        if (parsed == null || parsed.truncated) {
+            persistentObjectCache.remove(key)
+            return null
+        }
+        return parsed
+    }
+
+    private fun parseTree(requestedSha: String, raw: ByteArray): CachedRawTree {
+        val json = githubJson.parseToJsonElement(raw.decodeToString()).jsonObject
+        require(json.string("sha") == requestedSha) { "sync tree id does not match requested object" }
+        var truncated = json.boolean("truncated")
+        val entries = mutableListOf<SyncGitTreeEntry>()
+        val paths = mutableSetOf<String>()
+        json.array("tree").forEach { item ->
+            if (entries.size > maxTreeEntries) {
+                truncated = true
+                return@forEach
+            }
+            val obj = item.jsonObject
+            val type = obj.string("type")
+            val path = obj.string("path")
+            require(type == "tree" || type == "blob") { "sync tree entry type is invalid" }
+            require(
+                path.isNotEmpty() && !path.startsWith("/") && '/' !in path && '\\' !in path &&
+                    path.split('/').none { it.isEmpty() || it == "." || it == ".." },
+            ) { "sync tree entry path is invalid" }
+            require(paths.add(path)) { "sync tree contains duplicate paths" }
+            val mode = obj.string("mode")
+            require(if (type == "tree") mode == "040000" else mode == "100644") {
+                "sync tree entry mode is invalid"
+            }
+            entries += SyncGitTreeEntry(path, mode, type, obj.string("sha"), obj.long("size"))
+        }
+        return CachedRawTree(entries, truncated || entries.size > maxTreeEntries)
+    }
+
+    private suspend fun putCachedTree(key: SyncTreeCacheKey, tree: CachedRawTree) {
+        val weight = treeCacheWeight(key, tree)
+        if (weight > maxTreeCacheWeightBytes) return
+        treeCacheMutex.withLock {
+            treeCache.remove(key)?.let { previous -> treeCacheWeightBytes -= treeCacheWeight(key, previous) }
+            treeCacheOrder.remove(key)
+            treeCache[key] = tree
+            treeCacheOrder += key
+            treeCacheWeightBytes += weight
+            while (treeCacheWeightBytes > maxTreeCacheWeightBytes && treeCacheOrder.isNotEmpty()) {
+                val oldest = treeCacheOrder.removeAt(0)
+                treeCache.remove(oldest)?.let { removed -> treeCacheWeightBytes -= treeCacheWeight(oldest, removed) }
+            }
+        }
+    }
+
+    private fun treeCacheWeight(key: SyncTreeCacheKey, tree: CachedRawTree): Long =
+        128L + key.apiOrigin.byteSize() + key.repository.byteSize() + key.branch.byteSize() +
+            key.treeOid.byteSize() + key.validationScope.byteSize() + key.connectionRevision.byteSize() +
+            tree.entries.sumOf { entry ->
+                64L + entry.path.byteSize() + entry.mode.byteSize() + entry.type.byteSize() + entry.sha.byteSize() +
+                    (entry.size?.toString()?.byteSize() ?: 0)
+            }
+
+    private fun String.byteSize(): Int = encodeToByteArray().size
 
     private suspend fun getBlob(
         repository: SyncRepository,
         sha: String,
         cache: Boolean = true,
+        validationScope: String = "unbound",
     ): SyncGitBlob {
-        val cacheKey = "$apiBaseUrl|git-${sha.length}|${repository.owner}/${repository.name}/${repository.branch}:$sha"
-        if (cache) {
-            blobCache.get(cacheKey)?.let { return SyncGitBlob(sha, it) }
+        val cacheKey = SyncBlobCacheKey(
+            apiOrigin = apiBaseUrl,
+            repository = repository.fullName,
+            branch = repository.branch,
+            objectFormat = "git-sha-${sha.length}",
+            objectOid = sha,
+            validationScope = validationScope,
+            connectionRevision = connectionRevision,
+        )
+        val persistentKey = persistentGitObjectKey(
+            repository = repository,
+            kind = SyncGitObjectKind.BLOB,
+            objectOid = sha,
+            validationScope = validationScope,
+        )
+        suspend fun load(): ByteArray {
+            val response = call(
+                repository,
+                "GET",
+                "/git/blobs/$sha",
+                headers = mapOf("Accept" to "application/vnd.github.raw+json"),
+            ).requireSuccess()
+            val jsonEnvelope = runCatching { response.json() }.getOrNull()
+                ?.takeIf { it["sha"] != null && it["encoding"] != null && it["content"] != null }
+            val content = if (jsonEnvelope != null) {
+                val json = jsonEnvelope
+                require(json.string("sha") == sha) { "sync blob id does not match requested object" }
+                require(json.string("encoding") == "base64") { "sync blob encoding is invalid" }
+                json.string("content").replace("\n", "").decodeBase64()?.toByteArray()
+                    ?: throw IllegalStateException("sync blob content is invalid")
+            } else {
+                response.body
+            }
+            require(content.size <= 2 * 1024 * 1024) { "sync blob exceeds limit" }
+            require(gitBlobOid(content, sha.length) == sha) {
+                "sync blob content does not match its Git object id"
+            }
+            return content
         }
-        val json = call(repository, "GET", "/git/blobs/$sha").requireSuccess().json()
-        require(json.string("sha") == sha) { "sync blob id does not match requested object" }
-        require(json.string("encoding") == "base64") { "sync blob encoding is invalid" }
-        val content = json.string("content").replace("\n", "").decodeBase64()?.toByteArray()
-            ?: throw IllegalStateException("sync blob content is invalid")
-        require(content.size <= 2 * 1024 * 1024) { "sync blob exceeds limit" }
-        val gitObjectHeader = "blob ${content.size}\u0000".encodeToByteArray()
-        val objectBytes = (gitObjectHeader + content).toByteString()
-        val computedSha = when (sha.length) {
-            40 -> objectBytes.sha1().hex()
-            64 -> objectBytes.sha256().hex()
-            else -> null
+        suspend fun loadWithPersistentCache(): ByteArray {
+            persistentKey?.let { key ->
+                persistentObjectCache.read(key)?.let { cached ->
+                    if (cached.size <= 2 * 1024 * 1024 && gitBlobOid(cached, sha.length) == sha) return cached
+                    persistentObjectCache.remove(key)
+                }
+            }
+            val content = load()
+            persistentKey?.let { persistentObjectCache.write(it, content) }
+            return content
         }
-        require(computedSha == sha) {
-            "sync blob content does not match its Git object id"
-        }
-        if (cache) blobCache.put(cacheKey, content)
+        val content = if (cache) blobCache.getOrLoad(cacheKey, ::loadWithPersistentCache) else load()
         return SyncGitBlob(sha, content)
+    }
+
+    private fun persistentGitObjectKey(
+        repository: SyncRepository,
+        kind: SyncGitObjectKind,
+        objectOid: String,
+        validationScope: String,
+    ): SyncPersistentGitObjectKey? = stableRepositoryId?.let { repositoryId ->
+        SyncPersistentGitObjectKey(
+            apiOrigin = apiOrigin,
+            repositoryId = repositoryId.toString(),
+            repository = repository.fullName,
+            branch = repository.branch,
+            kind = kind,
+            objectFormat = "git-sha-${objectOid.length}",
+            objectOid = objectOid,
+            validationScope = validationScope,
+            connectionRevision = connectionRevision,
+        )
     }
 
     private suspend fun createBlob(repository: SyncRepository, content: ByteArray): SyncGitBlob {
@@ -721,7 +1243,11 @@ class GitHubSyncTransport(
             put("encoding", JsonPrimitive("base64"))
         }
         val json = call(repository, "POST", "/git/blobs", payload).requireSuccess().json()
-        return SyncGitBlob(json.string("sha"), content)
+        val returnedSha = json.string("sha")
+        require(gitBlobOid(content, returnedSha.length) == returnedSha) {
+            "sync blob response does not match uploaded bytes"
+        }
+        return SyncGitBlob(returnedSha, content)
     }
 
     private suspend fun createTree(
@@ -740,7 +1266,11 @@ class GitHubSyncTransport(
                                 put("path", JsonPrimitive(entry.path))
                                 put("mode", JsonPrimitive(entry.mode))
                                 put("type", JsonPrimitive(entry.type))
-                                put("sha", JsonPrimitive(entry.sha))
+                                if (entry.content != null) {
+                                    put("content", JsonPrimitive(entry.content))
+                                } else {
+                                    put("sha", JsonPrimitive(entry.sha))
+                                }
                             },
                         )
                     }
@@ -810,6 +1340,7 @@ class GitHubSyncTransport(
         method: String,
         path: String,
         body: JsonObject? = null,
+        headers: Map<String, String> = emptyMap(),
     ): SyncHttpResponse {
         val token = tokenProvider().takeIf { it.isNotBlank() } ?: throw IllegalStateException("authorization required")
         val requestBody = body?.let {
@@ -823,7 +1354,7 @@ class GitHubSyncTransport(
                     "Accept" to "application/vnd.github+json",
                     "Authorization" to "Bearer $token",
                     "X-GitHub-Api-Version" to "2026-03-10",
-                ),
+                ) + headers,
                 body = requestBody,
             ),
         )
@@ -831,14 +1362,81 @@ class GitHubSyncTransport(
 
     private fun SyncHttpResponse.requireSuccess(): SyncHttpResponse {
         if (code !in 200..299) {
+            val message = runCatching { json().string("message") }.getOrNull()?.lowercase().orEmpty()
+            val secondaryRateLimit = message.contains("secondary rate") || message.contains("abuse detection")
+            val failureClass = when {
+                code == 401 -> SyncHttpFailureClass.AUTHORIZATION
+                code == 403 && (headers["x-ratelimit-remaining"] == "0" || secondaryRateLimit) ->
+                    SyncHttpFailureClass.RATE_LIMITED
+                code == 403 -> SyncHttpFailureClass.AUTHORIZATION
+                code == 409 -> SyncHttpFailureClass.CONFLICT
+                code == 422 -> SyncHttpFailureClass.INVALID_REQUEST
+                code == 429 -> SyncHttpFailureClass.RATE_LIMITED
+                code != null && code >= 500 -> SyncHttpFailureClass.SERVER
+                else -> SyncHttpFailureClass.UNKNOWN
+            }
+            val resetEpochSeconds = headers["x-ratelimit-reset"]?.toLongOrNull()?.takeIf { it > 0L }
+            val primaryRateLimitExhausted = headers["x-ratelimit-remaining"] == "0"
+            val nowMillis = System.currentTimeMillis()
+            val retryAfterDeadlineMillis = headers["retry-after"]?.let { value ->
+                value.trim().toLongOrNull()?.let { seconds ->
+                    seconds.coerceAtLeast(0L).saturatedMultiply(1_000L).saturatedAdd(nowMillis)
+                } ?: runCatching {
+                    ZonedDateTime.parse(value.trim(), DateTimeFormatter.RFC_1123_DATE_TIME)
+                        .toInstant()
+                        .toEpochMilli()
+                }.getOrNull()
+            }
+            val resetDeadlineMillis = resetEpochSeconds.takeIf { primaryRateLimitExhausted }
+                ?.let { it.saturatedMultiply(1_000L) }
+            val secondaryFallbackDeadlineMillis = if ((secondaryRateLimit || code == 429) &&
+                retryAfterDeadlineMillis == null
+            ) {
+                nowMillis.saturatedAdd(60_000L)
+            } else {
+                null
+            }
+            val retryDeadlineMillis = listOfNotNull(
+                retryAfterDeadlineMillis,
+                resetDeadlineMillis,
+                secondaryFallbackDeadlineMillis,
+            ).maxOrNull()
+            val retryAfterMillis = retryDeadlineMillis?.let { deadline ->
+                if (deadline <= nowMillis) 0L else deadline - nowMillis
+            }
             throw SyncHttpException(
                 code,
                 "GitHub sync request failed",
-                retryable =
-                code == 409 || code == 429 || code >= 500,
+                retryable = code == 409 || failureClass == SyncHttpFailureClass.RATE_LIMITED || code >= 500,
+                failureClass = failureClass,
+                retryAfterMillis = retryAfterMillis,
+                rateLimitResetEpochSeconds = resetEpochSeconds,
             )
         }
         return this
+    }
+
+    private fun Long.saturatedMultiply(multiplier: Long): Long =
+        if (this > Long.MAX_VALUE / multiplier) Long.MAX_VALUE else this * multiplier
+
+    private fun Long.saturatedAdd(other: Long): Long =
+        if (other > 0L && this > Long.MAX_VALUE - other) Long.MAX_VALUE else this + other
+
+    private fun publishFailureClass(error: Exception?): SyncPublishFailureClass = when (error) {
+        is SyncHttpException -> when (error.failureClass) {
+            SyncHttpFailureClass.NETWORK,
+            SyncHttpFailureClass.SERVER,
+            -> SyncPublishFailureClass.NETWORK
+            SyncHttpFailureClass.AUTHORIZATION -> SyncPublishFailureClass.AUTHORIZATION
+            SyncHttpFailureClass.RATE_LIMITED -> SyncPublishFailureClass.RATE_LIMITED
+            SyncHttpFailureClass.CONFLICT -> SyncPublishFailureClass.CONFLICT
+            SyncHttpFailureClass.INVALID_REQUEST -> SyncPublishFailureClass.INVALID_REQUEST
+            SyncHttpFailureClass.UNKNOWN ->
+                if (error.retryable) SyncPublishFailureClass.NETWORK else SyncPublishFailureClass.UNKNOWN
+        }
+        is java.io.IOException -> SyncPublishFailureClass.NETWORK
+        null -> SyncPublishFailureClass.NETWORK
+        else -> SyncPublishFailureClass.UNKNOWN
     }
 
     private fun SyncHttpResponse.json(): JsonObject =

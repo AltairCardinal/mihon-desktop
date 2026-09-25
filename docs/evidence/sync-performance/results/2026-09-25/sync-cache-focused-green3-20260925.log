@@ -1,0 +1,109 @@
+Starting a Gradle Daemon, 1 busy and 6 stopped Daemons could not be reused, use --status for details
+Configuration on demand is an incubating feature.
+Type-safe project accessors is an incubating feature.
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :buildSrc:generateExternalPluginSpecBuilders UP-TO-DATE
+> Task :buildSrc:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+> Task :buildSrc:compilePluginsBlocks UP-TO-DATE
+> Task :buildSrc:generatePrecompiledScriptPluginAccessors UP-TO-DATE
+> Task :buildSrc:generateScriptPluginAdapters UP-TO-DATE
+> Task :buildSrc:compileKotlin UP-TO-DATE
+> Task :buildSrc:compileJava NO-SOURCE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :source-api:kmpPartiallyResolvedDependenciesChecker
+> Task :i18n:kmpPartiallyResolvedDependenciesChecker
+> Task :core:common:kmpPartiallyResolvedDependenciesChecker
+> Task :data:kmpPartiallyResolvedDependenciesChecker
+> Task :domain:kmpPartiallyResolvedDependenciesChecker
+> Task :i18n:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :source-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:common:jvmProcessResources NO-SOURCE
+> Task :source-api:jvmProcessResources NO-SOURCE
+> Task :domain:jvmProcessResources NO-SOURCE
+> Task :source-api:processJvmMainResources SKIPPED
+> Task :domain:processJvmMainResources SKIPPED
+> Task :core:common:processJvmMainResources SKIPPED
+> Task :i18n:generateMRcommonMain UP-TO-DATE
+> Task :i18n:generateMRjvmMain UP-TO-DATE
+> Task :data:generateCommonMainDatabaseInterface UP-TO-DATE
+> Task :data:jvmProcessResources NO-SOURCE
+> Task :data:processJvmMainResources SKIPPED
+> Task :data:jvmTestProcessResources UP-TO-DATE
+> Task :data:processJvmTestResources SKIPPED
+> Task :i18n:compileKotlinJvm UP-TO-DATE
+> Task :i18n:compileJvmMainJava NO-SOURCE
+> Task :i18n:jvmProcessResources UP-TO-DATE
+> Task :i18n:processJvmMainResources SKIPPED
+> Task :i18n:jvmMainClasses UP-TO-DATE
+> Task :i18n:jvmJar UP-TO-DATE
+> Task :core:common:compileKotlinJvm UP-TO-DATE
+> Task :core:common:compileJvmMainJava NO-SOURCE
+> Task :core:common:jvmMainClasses UP-TO-DATE
+> Task :core:common:jvmJar UP-TO-DATE
+> Task :source-api:compileKotlinJvm UP-TO-DATE
+> Task :source-api:compileJvmMainJava NO-SOURCE
+> Task :source-api:jvmMainClasses UP-TO-DATE
+> Task :source-api:jvmJar UP-TO-DATE
+> Task :domain:compileKotlinJvm UP-TO-DATE
+> Task :domain:compileJvmMainJava NO-SOURCE
+> Task :domain:jvmMainClasses UP-TO-DATE
+> Task :domain:jvmJar UP-TO-DATE
+> Task :data:compileKotlinJvm UP-TO-DATE
+> Task :data:compileJvmMainJava NO-SOURCE
+> Task :data:jvmMainClasses UP-TO-DATE
+> Task :data:jvmJar UP-TO-DATE
+> Task :data:compileTestKotlinJvm
+> Task :data:compileJvmTestJava NO-SOURCE
+> Task :data:jvmTestClasses
+
+> Task :data:jvmTest
+
+SyncPersistentGitObjectCacheComplexityTest[jvm] > warm reads keep filesystem work linear at 100 and 200 objects()[jvm] PASSED
+
+SyncPersistentGitObjectCacheComplexityTest[jvm] > oversized inventory degrades without rescanning on every operation()[jvm] PASSED
+
+SyncPersistentGitObjectCacheComplexityTest[jvm] > same logical directory path stays isolated across filesystem instances()[jvm] PASSED
+
+SyncPersistentGitObjectCacheComplexityTest[jvm] > capacity and lru state is shared by cache instances for one directory()[jvm] PASSED
+
+SyncPersistentGitObjectCacheComplexityTest[jvm] > continuous appends keep filesystem work linear at 100 and 200 objects()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > transport restart reuses validated raw trees and blobs from its private object cache()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > corrupted object cache records are fetched again and replaced()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > new root tree reuses unchanged sync subtree after transport restart()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > newer L2 objects cannot warm admit a snapshot ahead of its persisted manifest()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > persistent cache evicts objects within its configured file budget()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > cache directory failures do not fail validated remote reads()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > persistent cache is disabled when stable repository id is unavailable()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > reading a hot object protects it from the next capacity eviction()[jvm] PASSED
+
+SyncPersistentGitObjectCacheIntegrationTest[jvm] > transport cache is isolated by revision space and generation()[jvm] PASSED
+
+SyncPersistentGitObjectCacheTest[jvm] > atomic move failure leaves a cache miss without damaging other objects()[jvm] PASSED
+
+SyncPersistentGitObjectCacheTest[jvm] > blob cache record must match the requested git object id()[jvm] PASSED
+
+SyncPersistentGitObjectCacheTest[jvm] > tree cache record must match the requested oid in its json()[jvm] PASSED
+
+SyncPersistentGitObjectCacheTest[jvm] > disk full while writing cache content leaves no readable object and permits retry()[jvm] PASSED
+
+SyncPersistentGitObjectCacheTest[jvm] > silently short cache writes are rejected before publication()[jvm] PASSED
+
+SyncPersistentGitObjectCacheTest[jvm] > object cache key isolates every repository and validation binding()[jvm] PASSED
+
+BUILD SUCCESSFUL in 35s
+31 actionable tasks: 7 executed, 24 up-to-date

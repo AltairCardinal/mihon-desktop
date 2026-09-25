@@ -1,0 +1,1631 @@
+Initialized native services in: C:\Users\feeli\.gradle\native
+Initialized jansi services in: C:\Users\feeli\.gradle\native
+The client will now receive all logging from the daemon (pid: 93292). The daemon log file: C:\Users\feeli\.gradle\daemon\8.14.4\daemon-93292.out.log
+Starting 34th build in daemon [uptime: 1 hrs 36 mins 54.632 secs, performance: 100%, GC rate: 0.00/s, heap usage: 0% of 4 GiB]
+Using 32 worker leases.
+Configuration on demand is an incubating feature.
+Now considering [D:\Codex\worktrees\85be\mihon, D:\Codex\worktrees\85be\mihon\buildSrc, D:\Codex\worktrees\85be\mihon-sync-old-96db\buildSrc, D:\Codex\worktrees\85be\mihon-sync-old-96db] as hierarchies to watch
+Now considering [D:\Codex\worktrees\85be\mihon\buildSrc, D:\Codex\worktrees\85be\mihon, D:\Codex\worktrees\85be\mihon-sync-old-96db\buildSrc, D:\Codex\worktrees\85be\mihon-sync-old-96db] as hierarchies to watch
+Watching the file system is configured to be enabled if available
+File system watching is active
+Starting Build
+Settings evaluated using settings file 'D:\Codex\worktrees\85be\mihon\settings.gradle.kts'.
+Using local directory build cache for the root build (location = C:\Users\feeli\.gradle\caches\build-cache-1, remove unused entries = after 7 days).
+Type-safe project accessors is an incubating feature.
+Projects loaded. Root project using build file 'D:\Codex\worktrees\85be\mihon\build.gradle.kts'.
+Included projects: [root project 'Mihon', project ':app', project ':app-desktop', project ':core', project ':core-metadata', project ':data', project ':domain', project ':i18n', project ':macrobenchmark', project ':presentation-core', project ':presentation-sync', project ':presentation-theme', project ':presentation-widget', project ':source-api', project ':source-local', project ':telemetry', project ':test-desktop', project ':core:archive', project ':core:common']
+
+> Configure project :buildSrc
+Evaluating project ':buildSrc' using build file 'D:\Codex\worktrees\85be\mihon\buildSrc\build.gradle.kts'.
+Resolved plugin [id: 'org.gradle.kotlin.kotlin-dsl', version: '5.2.0']
+Using Kotlin Gradle Plugin gradle85 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+file or directory 'D:\Codex\worktrees\85be\mihon\buildSrc\src\main\java', not found
+Resolve mutations for :buildSrc:checkKotlinGradlePluginConfigurationErrors (Thread[#13126,Execution worker,5,main]) started.
+:buildSrc:checkKotlinGradlePluginConfigurationErrors (Thread[#13130,Execution worker Thread 5,5,main]) started.
+
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':buildSrc:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :buildSrc:generateExternalPluginSpecBuilders (Thread[#13130,Execution worker Thread 5,5,main]) started.
+:buildSrc:generateExternalPluginSpecBuilders (Thread[#13153,Execution worker Thread 27,5,main]) started.
+
+> Task :buildSrc:generateExternalPluginSpecBuilders UP-TO-DATE
+Build cache key for task ':buildSrc:generateExternalPluginSpecBuilders' is a6e98e5f374fecdc327f657b1cd59c36
+Skipping task ':buildSrc:generateExternalPluginSpecBuilders' as it is up-to-date.
+Resolve mutations for :buildSrc:extractPrecompiledScriptPluginPlugins (Thread[#13153,Execution worker Thread 27,5,main]) started.
+:buildSrc:extractPrecompiledScriptPluginPlugins (Thread[#13140,Execution worker Thread 15,5,main]) started.
+
+> Task :buildSrc:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+Build cache key for task ':buildSrc:extractPrecompiledScriptPluginPlugins' is 4d5b1bfbd52065c2ad61e0af0d5e1e64
+Skipping task ':buildSrc:extractPrecompiledScriptPluginPlugins' as it is up-to-date.
+Resolve mutations for :buildSrc:compilePluginsBlocks (Thread[#13140,Execution worker Thread 15,5,main]) started.
+:buildSrc:compilePluginsBlocks (Thread[#13140,Execution worker Thread 15,5,main]) started.
+
+> Task :buildSrc:compilePluginsBlocks UP-TO-DATE
+Custom actions are attached to task ':buildSrc:compilePluginsBlocks'.
+Build cache key for task ':buildSrc:compilePluginsBlocks' is 611e325a6e1239a424a4c7e84f7807d2
+Skipping task ':buildSrc:compilePluginsBlocks' as it is up-to-date.
+Resolve mutations for :buildSrc:generatePrecompiledScriptPluginAccessors (Thread[#13140,Execution worker Thread 15,5,main]) started.
+:buildSrc:generatePrecompiledScriptPluginAccessors (Thread[#13140,Execution worker Thread 15,5,main]) started.
+
+> Task :buildSrc:generatePrecompiledScriptPluginAccessors UP-TO-DATE
+Build cache key for task ':buildSrc:generatePrecompiledScriptPluginAccessors' is e0de2576801605ed3795af7734766488
+Skipping task ':buildSrc:generatePrecompiledScriptPluginAccessors' as it is up-to-date.
+Resolve mutations for :buildSrc:generateScriptPluginAdapters (Thread[#13140,Execution worker Thread 15,5,main]) started.
+:buildSrc:generateScriptPluginAdapters (Thread[#13140,Execution worker Thread 15,5,main]) started.
+
+> Task :buildSrc:generateScriptPluginAdapters UP-TO-DATE
+Build cache key for task ':buildSrc:generateScriptPluginAdapters' is ac0b8b14f2f1c967a56923808cf6a1a5
+Skipping task ':buildSrc:generateScriptPluginAdapters' as it is up-to-date.
+Resolve mutations for :buildSrc:compileKotlin (Thread[#13140,Execution worker Thread 15,5,main]) started.
+:buildSrc:compileKotlin (Thread[#13140,Execution worker Thread 15,5,main]) started.
+
+> Task :buildSrc:compileKotlin UP-TO-DATE
+Custom actions are attached to task ':buildSrc:compileKotlin'.
+Build cache key for task ':buildSrc:compileKotlin' is d58942d04095262a1969eb69ac375e4a
+Skipping task ':buildSrc:compileKotlin' as it is up-to-date.
+Resolve mutations for :buildSrc:compileJava (Thread[#13140,Execution worker Thread 15,5,main]) started.
+:buildSrc:compileJava (Thread[#13140,Execution worker Thread 15,5,main]) started.
+
+> Task :buildSrc:compileJava NO-SOURCE
+Skipping task ':buildSrc:compileJava' as it has no source files and no previous output files.
+Resolve mutations for :buildSrc:compileGroovy (Thread[#13140,Execution worker Thread 15,5,main]) started.
+:buildSrc:compileGroovy (Thread[#13143,Execution worker Thread 18,5,main]) started.
+
+> Task :buildSrc:compileGroovy NO-SOURCE
+Skipping task ':buildSrc:compileGroovy' as it has no source files and no previous output files.
+Resolve mutations for :buildSrc:pluginDescriptors (Thread[#13143,Execution worker Thread 18,5,main]) started.
+:buildSrc:pluginDescriptors (Thread[#13143,Execution worker Thread 18,5,main]) started.
+
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+Caching disabled for task ':buildSrc:pluginDescriptors' because:
+  Not worth caching
+Skipping task ':buildSrc:pluginDescriptors' as it is up-to-date.
+Resolve mutations for :buildSrc:processResources (Thread[#13143,Execution worker Thread 18,5,main]) started.
+:buildSrc:processResources (Thread[#13143,Execution worker Thread 18,5,main]) started.
+
+> Task :buildSrc:processResources UP-TO-DATE
+Caching disabled for task ':buildSrc:processResources' because:
+  Not worth caching
+Skipping task ':buildSrc:processResources' as it is up-to-date.
+Resolve mutations for :buildSrc:classes (Thread[#13143,Execution worker Thread 18,5,main]) started.
+:buildSrc:classes (Thread[#13142,Execution worker Thread 17,5,main]) started.
+
+> Task :buildSrc:classes UP-TO-DATE
+Skipping task ':buildSrc:classes' as it has no actions.
+Resolve mutations for :buildSrc:jar (Thread[#13142,Execution worker Thread 17,5,main]) started.
+:buildSrc:jar (Thread[#13138,Execution worker Thread 13,5,main]) started.
+
+> Task :buildSrc:jar UP-TO-DATE
+Caching disabled for task ':buildSrc:jar' because:
+  Not worth caching
+Skipping task ':buildSrc:jar' as it is up-to-date.
+Task path ':data:jvmTest' matched project ':data'
+
+> Configure project :
+Evaluating root project 'Mihon' using build file 'D:\Codex\worktrees\85be\mihon\build.gradle.kts'.
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.serialization', version: '2.3.10', apply: false]
+Resolved plugin [id: 'com.mikepenz.aboutlibraries.plugin.android', version: '14.0.0', apply: false]
+Resolved plugin [id: 'com.google.firebase.crashlytics', version: '3.0.6', apply: false]
+Resolved plugin [id: 'com.google.gms.google-services', version: '4.4.4', apply: false]
+Resolved plugin [id: 'dev.icerock.mobile.multiplatform-resources', version: '0.26.0', apply: false]
+Resolved plugin [id: 'app.cash.sqldelight', version: '2.2.1', apply: false]
+Resolved plugin [id: 'org.jetbrains.compose', version: '1.10.2', apply: false]
+
+> Configure project :data
+Evaluating project ':data' using build file 'D:\Codex\worktrees\85be\mihon\data\build.gradle.kts'.
+Resolved plugin [id: 'mihon.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.multiplatform']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.serialization']
+Resolved plugin [id: 'app.cash.sqldelight', version: '2.2.1']
+Using default execution profile
+Build 88da3b65-6ace-426f-bbe7-7652c8a3c189 is started
+Using Kotlin Gradle Plugin gradle813 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+[:data] commonizeCInterop task registration disabled. cInteropCommonizationEnabled == false
+Task name matched 'jvmTest'
+Task path ':domain:jvmTest' matched project ':domain'
+
+> Configure project :domain
+Evaluating project ':domain' using build file 'D:\Codex\worktrees\85be\mihon\domain\build.gradle.kts'.
+Resolved plugin [id: 'mihon.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.multiplatform']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.serialization']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+[:domain] commonizeCInterop task registration disabled. cInteropCommonizationEnabled == false
+Task name matched 'jvmTest'
+Task path ':presentation-sync:jvmTest' matched project ':presentation-sync'
+
+> Configure project :presentation-sync
+Evaluating project ':presentation-sync' using build file 'D:\Codex\worktrees\85be\mihon\presentation-sync\build.gradle.kts'.
+Resolved plugin [id: 'mihon.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.multiplatform']
+Resolved plugin [id: 'org.jetbrains.compose', version: '1.10.2']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+Configure multi-module compose resources
+Configure compose resources generation
+Configure Res object generation for commonMain
+Configure resource accessors generation for commonMain
+Configure resource accessors generation for commonTest
+Configure expect resource collectors generation for commonMain
+Configure compose resources with AndroidComponentsExtension
+Configure resource accessors generation for androidInstrumentedTest
+Configure resource accessors generation for androidMain
+Configure resource accessors generation for androidUnitTest
+Configure actual resource collectors generation for androidMain
+Configure resource accessors generation for jvmMain
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+Configure resource accessors generation for jvmTest
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+Configure actual resource collectors generation for jvmMain
+Configure main resources for 'jvm' target
+Configure test resources for 'jvm' target
+Configure debug resources for 'android' target
+Configure debugAndroidTest resources for 'android' target
+Configure release resources for 'android' target
+Configure resource accessors generation for androidInstrumentedTestDebug
+Configure resource accessors generation for androidUnitTestDebug
+Configure resource accessors generation for androidDebug
+Configure resource accessors generation for androidUnitTestRelease
+Configure resource accessors generation for androidRelease
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+[:presentation-sync] commonizeCInterop task registration disabled. cInteropCommonizationEnabled == false
+Check that new 'org.jetbrains.kotlin.plugin.compose' was applied
+Configure resource accessors generation for jvmDev
+kotlin scripting plugin: created the scripting discovery configuration: devKotlinScriptDef
+Configure dev resources for 'jvm' target
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Task name matched 'jvmTest'
+Selected primary task 'jvmTest' from project :data
+
+> Configure project :source-api
+Evaluating project ':source-api' using build file 'D:\Codex\worktrees\85be\mihon\source-api\build.gradle.kts'.
+Resolved plugin [id: 'mihon.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.multiplatform']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.serialization']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+[:source-api] commonizeCInterop task registration disabled. cInteropCommonizationEnabled == false
+
+> Configure project :core
+Evaluating project ':core' using build file 'D:\Codex\worktrees\85be\mihon\core\build.gradle'.
+
+> Configure project :core:common
+Evaluating project ':core:common' using build file 'D:\Codex\worktrees\85be\mihon\core\common\build.gradle.kts'.
+Resolved plugin [id: 'mihon.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.multiplatform']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.serialization']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+[:core:common] commonizeCInterop task registration disabled. cInteropCommonizationEnabled == false
+
+> Configure project :i18n
+Evaluating project ':i18n' using build file 'D:\Codex\worktrees\85be\mihon\i18n\build.gradle.kts'.
+Resolved plugin [id: 'mihon.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.multiplatform']
+Resolved plugin [id: 'dev.icerock.mobile.multiplatform-resources', version: '0.26.0']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+[:i18n] commonizeCInterop task registration disabled. cInteropCommonizationEnabled == false
+Selected primary task 'jvmTest' from project :domain
+Selected primary task 'jvmTest' from project :presentation-sync
+All projects evaluated.
+Tasks to be executed: [task ':data:kmpPartiallyResolvedDependenciesChecker', task ':data:checkKotlinGradlePluginConfigurationErrors', task ':data:generateCommonMainDatabaseInterface', task ':domain:kmpPartiallyResolvedDependenciesChecker', task ':domain:checkKotlinGradlePluginConfigurationErrors', task ':source-api:kmpPartiallyResolvedDependenciesChecker', task ':source-api:checkKotlinGradlePluginConfigurationErrors', task ':i18n:kmpPartiallyResolvedDependenciesChecker', task ':i18n:checkKotlinGradlePluginConfigurationErrors', task ':i18n:generateMRcommonMain', task ':i18n:generateMRjvmMain', task ':i18n:compileKotlinJvm', task ':i18n:compileJvmMainJava', task ':i18n:jvmProcessResources', task ':i18n:processJvmMainResources', task ':i18n:jvmMainClasses', task ':i18n:jvmJar', task ':core:common:kmpPartiallyResolvedDependenciesChecker', task ':core:common:checkKotlinGradlePluginConfigurationErrors', task ':core:common:compileKotlinJvm', task ':core:common:compileJvmMainJava', task ':core:common:jvmProcessResources', task ':core:common:processJvmMainResources', task ':core:common:jvmMainClasses', task ':core:common:jvmJar', task ':source-api:compileKotlinJvm', task ':source-api:compileJvmMainJava', task ':source-api:jvmProcessResources', task ':source-api:processJvmMainResources', task ':source-api:jvmMainClasses', task ':source-api:jvmJar', task ':domain:compileKotlinJvm', task ':domain:compileJvmMainJava', task ':domain:jvmProcessResources', task ':domain:processJvmMainResources', task ':domain:jvmMainClasses', task ':domain:jvmJar', task ':data:compileKotlinJvm', task ':data:compileJvmMainJava', task ':data:jvmProcessResources', task ':data:processJvmMainResources', task ':data:jvmMainClasses', task ':data:jvmJar', task ':data:compileTestKotlinJvm', task ':data:compileJvmTestJava', task ':data:jvmTestProcessResources', task ':data:processJvmTestResources', task ':data:jvmTestClasses', task ':data:jvmTest', task ':domain:compileTestKotlinJvm', task ':domain:compileJvmTestJava', task ':domain:jvmTestProcessResources', task ':domain:processJvmTestResources', task ':domain:jvmTestClasses', task ':domain:jvmTest', task ':presentation-sync:kmpPartiallyResolvedDependenciesChecker', task ':presentation-sync:checkKotlinGradlePluginConfigurationErrors', task ':presentation-sync:convertXmlValueResourcesForCommonMain', task ':presentation-sync:copyNonXmlValueResourcesForCommonMain', task ':presentation-sync:prepareComposeResourcesTaskForCommonMain', task ':presentation-sync:generateResourceAccessorsForCommonMain', task ':presentation-sync:convertXmlValueResourcesForJvmMain', task ':presentation-sync:copyNonXmlValueResourcesForJvmMain', task ':presentation-sync:prepareComposeResourcesTaskForJvmMain', task ':presentation-sync:generateResourceAccessorsForJvmMain', task ':presentation-sync:generateActualResourceCollectorsForJvmMain', task ':presentation-sync:generateComposeResClass', task ':presentation-sync:generateExpectResourceCollectorsForCommonMain', task ':presentation-sync:compileKotlinJvm', task ':presentation-sync:compileJvmMainJava', task ':presentation-sync:convertXmlValueResourcesForCommonTest', task ':presentation-sync:copyNonXmlValueResourcesForCommonTest', task ':presentation-sync:prepareComposeResourcesTaskForCommonTest', task ':presentation-sync:generateResourceAccessorsForCommonTest', task ':presentation-sync:convertXmlValueResourcesForJvmTest', task ':presentation-sync:copyNonXmlValueResourcesForJvmTest', task ':presentation-sync:prepareComposeResourcesTaskForJvmTest', task ':presentation-sync:generateResourceAccessorsForJvmTest', task ':presentation-sync:assembleJvmMainResources', task ':presentation-sync:jvmProcessResources', task ':presentation-sync:processJvmMainResources', task ':presentation-sync:jvmMainClasses', task ':presentation-sync:jvmJar', task ':presentation-sync:compileTestKotlinJvm', task ':presentation-sync:compileJvmTestJava', task ':presentation-sync:assembleJvmTestResources', task ':presentation-sync:jvmTestProcessResources', task ':presentation-sync:processJvmTestResources', task ':presentation-sync:jvmTestClasses', task ':presentation-sync:jvmTest']
+Tasks that were excluded: []
+Resolve mutations for :data:kmpPartiallyResolvedDependenciesChecker (Thread[#13149,Execution worker Thread 23,5,main]) started.
+Resolve mutations for :domain:kmpPartiallyResolvedDependenciesChecker (Thread[#13125,included builds,5,main]) started.
+Resolve mutations for :source-api:kmpPartiallyResolvedDependenciesChecker (Thread[#13133,Execution worker Thread 8,5,main]) started.
+Resolve mutations for :i18n:kmpPartiallyResolvedDependenciesChecker (Thread[#13142,Execution worker Thread 17,5,main]) started.
+Resolve mutations for :core:common:kmpPartiallyResolvedDependenciesChecker (Thread[#13129,Execution worker Thread 4,5,main]) started.
+destroyer locations for task group 0 (Thread[#13144,Execution worker Thread 19,5,main]) started.
+:i18n:kmpPartiallyResolvedDependenciesChecker (Thread[#13142,Execution worker Thread 17,5,main]) started.
+Resolve mutations for :presentation-sync:kmpPartiallyResolvedDependenciesChecker (Thread[#13132,Execution worker Thread 7,5,main]) started.
+destroyer locations for task group 1 (Thread[#13138,Execution worker Thread 13,5,main]) started.
+:presentation-sync:kmpPartiallyResolvedDependenciesChecker (Thread[#13132,Execution worker Thread 7,5,main]) started.
+:core:common:kmpPartiallyResolvedDependenciesChecker (Thread[#13129,Execution worker Thread 4,5,main]) started.
+:data:kmpPartiallyResolvedDependenciesChecker (Thread[#13149,Execution worker Thread 23,5,main]) started.
+:source-api:kmpPartiallyResolvedDependenciesChecker (Thread[#13133,Execution worker Thread 8,5,main]) started.
+:domain:kmpPartiallyResolvedDependenciesChecker (Thread[#13125,included builds,5,main]) started.
+
+> Task :core:common:kmpPartiallyResolvedDependenciesChecker
+Caching disabled for task ':core:common:kmpPartiallyResolvedDependenciesChecker' because:
+  This task is not intended for execution
+Task ':core:common:kmpPartiallyResolvedDependenciesChecker' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Execution stopped by some action with message: null
+
+> Task :domain:kmpPartiallyResolvedDependenciesChecker
+Caching disabled for task ':domain:kmpPartiallyResolvedDependenciesChecker' because:
+  This task is not intended for execution
+Task ':domain:kmpPartiallyResolvedDependenciesChecker' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Execution stopped by some action with message: null
+
+> Task :presentation-sync:kmpPartiallyResolvedDependenciesChecker
+Caching disabled for task ':presentation-sync:kmpPartiallyResolvedDependenciesChecker' because:
+  This task is not intended for execution
+Task ':presentation-sync:kmpPartiallyResolvedDependenciesChecker' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Execution stopped by some action with message: null
+
+> Task :source-api:kmpPartiallyResolvedDependenciesChecker
+Caching disabled for task ':source-api:kmpPartiallyResolvedDependenciesChecker' because:
+  This task is not intended for execution
+Task ':source-api:kmpPartiallyResolvedDependenciesChecker' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Execution stopped by some action with message: null
+
+> Task :i18n:kmpPartiallyResolvedDependenciesChecker
+Caching disabled for task ':i18n:kmpPartiallyResolvedDependenciesChecker' because:
+  This task is not intended for execution
+Task ':i18n:kmpPartiallyResolvedDependenciesChecker' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Execution stopped by some action with message: null
+
+> Task :data:kmpPartiallyResolvedDependenciesChecker
+Caching disabled for task ':data:kmpPartiallyResolvedDependenciesChecker' because:
+  This task is not intended for execution
+Task ':data:kmpPartiallyResolvedDependenciesChecker' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Execution stopped by some action with message: null
+Resolve mutations for :domain:checkKotlinGradlePluginConfigurationErrors (Thread[#13125,included builds,5,main]) started.
+Resolve mutations for :i18n:checkKotlinGradlePluginConfigurationErrors (Thread[#13142,Execution worker Thread 17,5,main]) started.
+Resolve mutations for :source-api:checkKotlinGradlePluginConfigurationErrors (Thread[#13133,Execution worker Thread 8,5,main]) started.
+Resolve mutations for :core:common:checkKotlinGradlePluginConfigurationErrors (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:domain:checkKotlinGradlePluginConfigurationErrors (Thread[#13125,included builds,5,main]) started.
+:i18n:checkKotlinGradlePluginConfigurationErrors (Thread[#13142,Execution worker Thread 17,5,main]) started.
+Resolve mutations for :presentation-sync:checkKotlinGradlePluginConfigurationErrors (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:checkKotlinGradlePluginConfigurationErrors (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':domain:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+
+> Task :i18n:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':i18n:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+
+> Task :presentation-sync:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':presentation-sync:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :domain:jvmProcessResources (Thread[#13125,included builds,5,main]) started.
+:domain:jvmProcessResources (Thread[#13125,included builds,5,main]) started.
+Resolve mutations for :presentation-sync:convertXmlValueResourcesForCommonMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+Resolve mutations for :i18n:generateMRcommonMain (Thread[#13142,Execution worker Thread 17,5,main]) started.
+:core:common:checkKotlinGradlePluginConfigurationErrors (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:source-api:checkKotlinGradlePluginConfigurationErrors (Thread[#13133,Execution worker Thread 8,5,main]) started.
+Resolve mutations for :data:checkKotlinGradlePluginConfigurationErrors (Thread[#13149,Execution worker Thread 23,5,main]) started.
+:data:checkKotlinGradlePluginConfigurationErrors (Thread[#13149,Execution worker Thread 23,5,main]) started.
+
+> Task :core:common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':core:common:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+
+> Task :data:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':data:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+:i18n:generateMRcommonMain (Thread[#13129,Execution worker Thread 4,5,main]) started.
+
+> Task :source-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':source-api:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :core:common:jvmProcessResources (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:core:common:jvmProcessResources (Thread[#13145,Execution worker Thread 20,5,main]) started.
+Resolve mutations for :source-api:jvmProcessResources (Thread[#13133,Execution worker Thread 8,5,main]) started.
+Resolve mutations for :data:generateCommonMainDatabaseInterface (Thread[#13149,Execution worker Thread 23,5,main]) started.
+
+> Task :domain:jvmProcessResources NO-SOURCE
+Skipping task ':domain:jvmProcessResources' as it has no source files and no previous output files.
+:source-api:jvmProcessResources (Thread[#13133,Execution worker Thread 8,5,main]) started.
+Resolve mutations for :domain:processJvmMainResources (Thread[#13125,included builds,5,main]) started.
+:domain:processJvmMainResources (Thread[#13125,included builds,5,main]) started.
+
+> Task :domain:processJvmMainResources SKIPPED
+Skipping task ':domain:processJvmMainResources' as task onlyIf 'Task is enabled' is false.
+Resolve mutations for :domain:jvmTestProcessResources (Thread[#13125,included builds,5,main]) started.
+:domain:jvmTestProcessResources (Thread[#13125,included builds,5,main]) started.
+:data:generateCommonMainDatabaseInterface (Thread[#13149,Execution worker Thread 23,5,main]) started.
+
+> Task :i18n:generateMRcommonMain UP-TO-DATE
+Build cache key for task ':i18n:generateMRcommonMain' is d394a514f1aa491c4fecd4144240f998
+Skipping task ':i18n:generateMRcommonMain' as it is up-to-date.
+
+> Task :source-api:jvmProcessResources NO-SOURCE
+Skipping task ':source-api:jvmProcessResources' as it has no source files and no previous output files.
+:presentation-sync:convertXmlValueResourcesForCommonMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+Resolve mutations for :i18n:generateMRjvmMain (Thread[#13129,Execution worker Thread 4,5,main]) started.
+
+> Task :core:common:jvmProcessResources NO-SOURCE
+Skipping task ':core:common:jvmProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :core:common:processJvmMainResources (Thread[#13145,Execution worker Thread 20,5,main]) started.
+Resolve mutations for :source-api:processJvmMainResources (Thread[#13133,Execution worker Thread 8,5,main]) started.
+:core:common:processJvmMainResources (Thread[#13145,Execution worker Thread 20,5,main]) started.
+
+> Task :presentation-sync:convertXmlValueResourcesForCommonMain NO-SOURCE
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\build\generated\compose\resourceGenerator\preparedResources\commonMain\composeResources', not found
+Skipping task ':presentation-sync:convertXmlValueResourcesForCommonMain' as it has no source files and no previous output files.
+
+> Task :core:common:processJvmMainResources SKIPPED
+Skipping task ':core:common:processJvmMainResources' as task onlyIf 'Task is enabled' is false.
+:source-api:processJvmMainResources (Thread[#13133,Execution worker Thread 8,5,main]) started.
+
+> Task :source-api:processJvmMainResources SKIPPED
+Skipping task ':source-api:processJvmMainResources' as task onlyIf 'Task is enabled' is false.
+:i18n:generateMRjvmMain (Thread[#13129,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :presentation-sync:copyNonXmlValueResourcesForCommonMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:copyNonXmlValueResourcesForCommonMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :i18n:generateMRjvmMain UP-TO-DATE
+Build cache key for task ':i18n:generateMRjvmMain' is 97005e74ffd751f5021d180d97ce6e98
+Skipping task ':i18n:generateMRjvmMain' as it is up-to-date.
+Resolve mutations for :i18n:compileKotlinJvm (Thread[#13129,Execution worker Thread 4,5,main]) started.
+
+> Task :presentation-sync:copyNonXmlValueResourcesForCommonMain NO-SOURCE
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\build\generated\compose\resourceGenerator\preparedResources\commonMain\composeResources', not found
+Skipping task ':presentation-sync:copyNonXmlValueResourcesForCommonMain' as it has no source files and no previous output files.
+:i18n:compileKotlinJvm (Thread[#13129,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :presentation-sync:prepareComposeResourcesTaskForCommonMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:prepareComposeResourcesTaskForCommonMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:prepareComposeResourcesTaskForCommonMain NO-SOURCE
+Skipping task ':presentation-sync:prepareComposeResourcesTaskForCommonMain' as it has no source files and no previous output files.
+Resolve mutations for :presentation-sync:generateResourceAccessorsForCommonMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:generateResourceAccessorsForCommonMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:generateResourceAccessorsForCommonMain SKIPPED
+Skipping task ':presentation-sync:generateResourceAccessorsForCommonMain' as task onlyIf 'Task satisfies onlyIf spec' is false.
+Resolve mutations for :presentation-sync:convertXmlValueResourcesForJvmMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :domain:jvmTestProcessResources UP-TO-DATE
+Caching disabled for task ':domain:jvmTestProcessResources' because:
+  Not worth caching
+Skipping task ':domain:jvmTestProcessResources' as it is up-to-date.
+Resolve mutations for :domain:processJvmTestResources (Thread[#13125,included builds,5,main]) started.
+:domain:processJvmTestResources (Thread[#13125,included builds,5,main]) started.
+
+> Task :domain:processJvmTestResources SKIPPED
+Skipping task ':domain:processJvmTestResources' as task onlyIf 'Task is enabled' is false.
+:presentation-sync:convertXmlValueResourcesForJvmMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:convertXmlValueResourcesForJvmMain NO-SOURCE
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\build\generated\compose\resourceGenerator\preparedResources\jvmMain\composeResources', not found
+Skipping task ':presentation-sync:convertXmlValueResourcesForJvmMain' as it has no source files and no previous output files.
+Resolve mutations for :presentation-sync:copyNonXmlValueResourcesForJvmMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:copyNonXmlValueResourcesForJvmMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:copyNonXmlValueResourcesForJvmMain NO-SOURCE
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\build\generated\compose\resourceGenerator\preparedResources\jvmMain\composeResources', not found
+Skipping task ':presentation-sync:copyNonXmlValueResourcesForJvmMain' as it has no source files and no previous output files.
+Resolve mutations for :presentation-sync:prepareComposeResourcesTaskForJvmMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:prepareComposeResourcesTaskForJvmMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:prepareComposeResourcesTaskForJvmMain NO-SOURCE
+Skipping task ':presentation-sync:prepareComposeResourcesTaskForJvmMain' as it has no source files and no previous output files.
+Resolve mutations for :presentation-sync:generateResourceAccessorsForJvmMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:generateResourceAccessorsForJvmMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:generateResourceAccessorsForJvmMain SKIPPED
+Skipping task ':presentation-sync:generateResourceAccessorsForJvmMain' as task onlyIf 'Task satisfies onlyIf spec' is false.
+Resolve mutations for :presentation-sync:generateActualResourceCollectorsForJvmMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:generateActualResourceCollectorsForJvmMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:generateActualResourceCollectorsForJvmMain SKIPPED
+Skipping task ':presentation-sync:generateActualResourceCollectorsForJvmMain' as task onlyIf 'Task satisfies onlyIf spec' is false.
+Resolve mutations for :presentation-sync:generateComposeResClass (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:generateComposeResClass (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:generateComposeResClass SKIPPED
+Skipping task ':presentation-sync:generateComposeResClass' as task onlyIf 'Task satisfies onlyIf spec' is false.
+Resolve mutations for :presentation-sync:generateExpectResourceCollectorsForCommonMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:generateExpectResourceCollectorsForCommonMain (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:generateExpectResourceCollectorsForCommonMain SKIPPED
+Skipping task ':presentation-sync:generateExpectResourceCollectorsForCommonMain' as task onlyIf 'Task satisfies onlyIf spec' is false.
+Resolve mutations for :presentation-sync:convertXmlValueResourcesForCommonTest (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:convertXmlValueResourcesForCommonTest (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:convertXmlValueResourcesForCommonTest NO-SOURCE
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\build\generated\compose\resourceGenerator\preparedResources\commonTest\composeResources', not found
+Skipping task ':presentation-sync:convertXmlValueResourcesForCommonTest' as it has no source files and no previous output files.
+Resolve mutations for :presentation-sync:copyNonXmlValueResourcesForCommonTest (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:copyNonXmlValueResourcesForCommonTest (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:copyNonXmlValueResourcesForCommonTest NO-SOURCE
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\build\generated\compose\resourceGenerator\preparedResources\commonTest\composeResources', not found
+Skipping task ':presentation-sync:copyNonXmlValueResourcesForCommonTest' as it has no source files and no previous output files.
+Resolve mutations for :presentation-sync:prepareComposeResourcesTaskForCommonTest (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:prepareComposeResourcesTaskForCommonTest (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:prepareComposeResourcesTaskForCommonTest NO-SOURCE
+Skipping task ':presentation-sync:prepareComposeResourcesTaskForCommonTest' as it has no source files and no previous output files.
+Resolve mutations for :presentation-sync:generateResourceAccessorsForCommonTest (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:generateResourceAccessorsForCommonTest (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:generateResourceAccessorsForCommonTest SKIPPED
+Skipping task ':presentation-sync:generateResourceAccessorsForCommonTest' as task onlyIf 'Task satisfies onlyIf spec' is false.
+Resolve mutations for :presentation-sync:convertXmlValueResourcesForJvmTest (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:convertXmlValueResourcesForJvmTest (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:convertXmlValueResourcesForJvmTest NO-SOURCE
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\build\generated\compose\resourceGenerator\preparedResources\jvmTest\composeResources', not found
+Skipping task ':presentation-sync:convertXmlValueResourcesForJvmTest' as it has no source files and no previous output files.
+Resolve mutations for :presentation-sync:copyNonXmlValueResourcesForJvmTest (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:copyNonXmlValueResourcesForJvmTest (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:copyNonXmlValueResourcesForJvmTest NO-SOURCE
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\build\generated\compose\resourceGenerator\preparedResources\jvmTest\composeResources', not found
+Skipping task ':presentation-sync:copyNonXmlValueResourcesForJvmTest' as it has no source files and no previous output files.
+Resolve mutations for :presentation-sync:prepareComposeResourcesTaskForJvmTest (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:prepareComposeResourcesTaskForJvmTest (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:prepareComposeResourcesTaskForJvmTest NO-SOURCE
+Skipping task ':presentation-sync:prepareComposeResourcesTaskForJvmTest' as it has no source files and no previous output files.
+Resolve mutations for :presentation-sync:generateResourceAccessorsForJvmTest (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:generateResourceAccessorsForJvmTest (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :presentation-sync:generateResourceAccessorsForJvmTest SKIPPED
+Skipping task ':presentation-sync:generateResourceAccessorsForJvmTest' as task onlyIf 'Task satisfies onlyIf spec' is false.
+Resolve mutations for :presentation-sync:assembleJvmMainResources (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:assembleJvmMainResources (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :data:generateCommonMainDatabaseInterface UP-TO-DATE
+Build cache key for task ':data:generateCommonMainDatabaseInterface' is c5b236000c2248ff294e3bcfa3102557
+Skipping task ':data:generateCommonMainDatabaseInterface' as it is up-to-date.
+Resolve mutations for :data:jvmProcessResources (Thread[#13149,Execution worker Thread 23,5,main]) started.
+:data:jvmProcessResources (Thread[#13133,Execution worker Thread 8,5,main]) started.
+
+> Task :presentation-sync:assembleJvmMainResources UP-TO-DATE
+Caching disabled for task ':presentation-sync:assembleJvmMainResources' because:
+  There is no logic, just copy files
+Skipping task ':presentation-sync:assembleJvmMainResources' as it is up-to-date.
+Resolve mutations for :presentation-sync:jvmProcessResources (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:jvmProcessResources (Thread[#13137,Execution worker Thread 12,5,main]) started.
+
+> Task :data:jvmProcessResources NO-SOURCE
+Skipping task ':data:jvmProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :data:processJvmMainResources (Thread[#13133,Execution worker Thread 8,5,main]) started.
+:data:processJvmMainResources (Thread[#13133,Execution worker Thread 8,5,main]) started.
+
+> Task :data:processJvmMainResources SKIPPED
+Skipping task ':data:processJvmMainResources' as task onlyIf 'Task is enabled' is false.
+Resolve mutations for :data:jvmTestProcessResources (Thread[#13133,Execution worker Thread 8,5,main]) started.
+:data:jvmTestProcessResources (Thread[#13133,Execution worker Thread 8,5,main]) started.
+
+> Task :presentation-sync:jvmProcessResources UP-TO-DATE
+Caching disabled for task ':presentation-sync:jvmProcessResources' because:
+  Not worth caching
+Skipping task ':presentation-sync:jvmProcessResources' as it is up-to-date.
+Resolve mutations for :presentation-sync:processJvmMainResources (Thread[#13137,Execution worker Thread 12,5,main]) started.
+:presentation-sync:processJvmMainResources (Thread[#13125,included builds,5,main]) started.
+
+> Task :presentation-sync:processJvmMainResources SKIPPED
+Skipping task ':presentation-sync:processJvmMainResources' as task onlyIf 'Task is enabled' is false.
+Resolve mutations for :presentation-sync:assembleJvmTestResources (Thread[#13151,Execution worker Thread 25,5,main]) started.
+:presentation-sync:assembleJvmTestResources (Thread[#13151,Execution worker Thread 25,5,main]) started.
+
+> Task :data:jvmTestProcessResources UP-TO-DATE
+Caching disabled for task ':data:jvmTestProcessResources' because:
+  Not worth caching
+Skipping task ':data:jvmTestProcessResources' as it is up-to-date.
+Resolve mutations for :data:processJvmTestResources (Thread[#13133,Execution worker Thread 8,5,main]) started.
+:data:processJvmTestResources (Thread[#13133,Execution worker Thread 8,5,main]) started.
+
+> Task :data:processJvmTestResources SKIPPED
+Skipping task ':data:processJvmTestResources' as task onlyIf 'Task is enabled' is false.
+
+> Task :presentation-sync:assembleJvmTestResources UP-TO-DATE
+Caching disabled for task ':presentation-sync:assembleJvmTestResources' because:
+  There is no logic, just copy files
+Skipping task ':presentation-sync:assembleJvmTestResources' as it is up-to-date.
+Resolve mutations for :presentation-sync:jvmTestProcessResources (Thread[#13151,Execution worker Thread 25,5,main]) started.
+:presentation-sync:jvmTestProcessResources (Thread[#13151,Execution worker Thread 25,5,main]) started.
+
+> Task :presentation-sync:jvmTestProcessResources UP-TO-DATE
+Caching disabled for task ':presentation-sync:jvmTestProcessResources' because:
+  Not worth caching
+Skipping task ':presentation-sync:jvmTestProcessResources' as it is up-to-date.
+Resolve mutations for :presentation-sync:processJvmTestResources (Thread[#13151,Execution worker Thread 25,5,main]) started.
+:presentation-sync:processJvmTestResources (Thread[#13151,Execution worker Thread 25,5,main]) started.
+
+> Task :presentation-sync:processJvmTestResources SKIPPED
+Skipping task ':presentation-sync:processJvmTestResources' as task onlyIf 'Task is enabled' is false.
+
+> Task :i18n:compileKotlinJvm UP-TO-DATE
+Build cache key for task ':i18n:compileKotlinJvm' is 29567bdf4df914e7df1f994e42b6fca0
+Skipping task ':i18n:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :i18n:compileJvmMainJava (Thread[#13129,Execution worker Thread 4,5,main]) started.
+:i18n:compileJvmMainJava (Thread[#13129,Execution worker Thread 4,5,main]) started.
+
+> Task :i18n:compileJvmMainJava NO-SOURCE
+Skipping task ':i18n:compileJvmMainJava' as it has no source files and no previous output files.
+Resolve mutations for :i18n:jvmProcessResources (Thread[#13129,Execution worker Thread 4,5,main]) started.
+:i18n:jvmProcessResources (Thread[#13132,Execution worker Thread 7,5,main]) started.
+
+> Task :i18n:jvmProcessResources UP-TO-DATE
+Caching disabled for task ':i18n:jvmProcessResources' because:
+  Not worth caching
+Skipping task ':i18n:jvmProcessResources' as it is up-to-date.
+Resolve mutations for :i18n:processJvmMainResources (Thread[#13132,Execution worker Thread 7,5,main]) started.
+:i18n:processJvmMainResources (Thread[#13132,Execution worker Thread 7,5,main]) started.
+
+> Task :i18n:processJvmMainResources SKIPPED
+Skipping task ':i18n:processJvmMainResources' as task onlyIf 'Task is enabled' is false.
+Resolve mutations for :i18n:jvmMainClasses (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:i18n:jvmMainClasses (Thread[#13145,Execution worker Thread 20,5,main]) started.
+
+> Task :i18n:jvmMainClasses UP-TO-DATE
+Skipping task ':i18n:jvmMainClasses' as it has no actions.
+Resolve mutations for :i18n:jvmJar (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:i18n:jvmJar (Thread[#13145,Execution worker Thread 20,5,main]) started.
+
+> Task :i18n:jvmJar UP-TO-DATE
+Caching disabled for task ':i18n:jvmJar' because:
+  Not worth caching
+Skipping task ':i18n:jvmJar' as it is up-to-date.
+work action resolve i18n-jvm.jar (project :i18n) (Thread[#13145,Execution worker Thread 20,5,main]) started.
+Resolve mutations for :core:common:compileKotlinJvm (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:core:common:compileKotlinJvm (Thread[#13145,Execution worker Thread 20,5,main]) started.
+
+> Task :core:common:compileKotlinJvm UP-TO-DATE
+Build cache key for task ':core:common:compileKotlinJvm' is 539a3fe97851747472e922a47cf3ca9e
+Skipping task ':core:common:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :core:common:compileJvmMainJava (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:core:common:compileJvmMainJava (Thread[#13145,Execution worker Thread 20,5,main]) started.
+
+> Task :core:common:compileJvmMainJava NO-SOURCE
+Skipping task ':core:common:compileJvmMainJava' as it has no source files and no previous output files.
+Resolve mutations for :core:common:jvmMainClasses (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:core:common:jvmMainClasses (Thread[#13145,Execution worker Thread 20,5,main]) started.
+
+> Task :core:common:jvmMainClasses UP-TO-DATE
+Skipping task ':core:common:jvmMainClasses' as it has no actions.
+Resolve mutations for :core:common:jvmJar (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:core:common:jvmJar (Thread[#13145,Execution worker Thread 20,5,main]) started.
+
+> Task :core:common:jvmJar UP-TO-DATE
+Caching disabled for task ':core:common:jvmJar' because:
+  Not worth caching
+Skipping task ':core:common:jvmJar' as it is up-to-date.
+work action resolve common-jvm.jar (project :core:common) (Thread[#13145,Execution worker Thread 20,5,main]) started.
+Resolve mutations for :source-api:compileKotlinJvm (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:source-api:compileKotlinJvm (Thread[#13145,Execution worker Thread 20,5,main]) started.
+
+> Task :source-api:compileKotlinJvm UP-TO-DATE
+Build cache key for task ':source-api:compileKotlinJvm' is cf2ca1e3765271dfe611a5a8f452d0a6
+Skipping task ':source-api:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :source-api:compileJvmMainJava (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:source-api:compileJvmMainJava (Thread[#13145,Execution worker Thread 20,5,main]) started.
+
+> Task :source-api:compileJvmMainJava NO-SOURCE
+Skipping task ':source-api:compileJvmMainJava' as it has no source files and no previous output files.
+Resolve mutations for :source-api:jvmMainClasses (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:source-api:jvmMainClasses (Thread[#13145,Execution worker Thread 20,5,main]) started.
+
+> Task :source-api:jvmMainClasses UP-TO-DATE
+Skipping task ':source-api:jvmMainClasses' as it has no actions.
+Resolve mutations for :source-api:jvmJar (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:source-api:jvmJar (Thread[#13145,Execution worker Thread 20,5,main]) started.
+
+> Task :source-api:jvmJar UP-TO-DATE
+Caching disabled for task ':source-api:jvmJar' because:
+  Not worth caching
+Skipping task ':source-api:jvmJar' as it is up-to-date.
+work action resolve source-api-jvm.jar (project :source-api) (Thread[#13145,Execution worker Thread 20,5,main]) started.
+Resolve mutations for :domain:compileKotlinJvm (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:domain:compileKotlinJvm (Thread[#13145,Execution worker Thread 20,5,main]) started.
+
+> Task :domain:compileKotlinJvm UP-TO-DATE
+Build cache key for task ':domain:compileKotlinJvm' is 07b92cd573d81d78e969f5741f22d05d
+Skipping task ':domain:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :domain:compileJvmMainJava (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:domain:compileJvmMainJava (Thread[#13145,Execution worker Thread 20,5,main]) started.
+
+> Task :domain:compileJvmMainJava NO-SOURCE
+Skipping task ':domain:compileJvmMainJava' as it has no source files and no previous output files.
+Resolve mutations for :domain:jvmMainClasses (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:domain:jvmMainClasses (Thread[#13145,Execution worker Thread 20,5,main]) started.
+
+> Task :domain:jvmMainClasses UP-TO-DATE
+Skipping task ':domain:jvmMainClasses' as it has no actions.
+Resolve mutations for :domain:jvmJar (Thread[#13145,Execution worker Thread 20,5,main]) started.
+:domain:jvmJar (Thread[#13139,Execution worker Thread 14,5,main]) started.
+
+> Task :domain:jvmJar UP-TO-DATE
+Caching disabled for task ':domain:jvmJar' because:
+  Not worth caching
+Skipping task ':domain:jvmJar' as it is up-to-date.
+work action resolve domain-jvm.jar (project :domain) (Thread[#13139,Execution worker Thread 14,5,main]) started.
+Resolve mutations for :data:compileKotlinJvm (Thread[#13139,Execution worker Thread 14,5,main]) started.
+Resolve mutations for :domain:compileTestKotlinJvm (Thread[#13133,Execution worker Thread 8,5,main]) started.
+:domain:compileTestKotlinJvm (Thread[#13133,Execution worker Thread 8,5,main]) started.
+:data:compileKotlinJvm (Thread[#13139,Execution worker Thread 14,5,main]) started.
+
+> Task :data:compileKotlinJvm UP-TO-DATE
+Build cache key for task ':data:compileKotlinJvm' is 39cec4c6f7225651bd3b1260b30253f0
+Skipping task ':data:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :data:compileJvmMainJava (Thread[#13139,Execution worker Thread 14,5,main]) started.
+:data:compileJvmMainJava (Thread[#13139,Execution worker Thread 14,5,main]) started.
+
+> Task :data:compileJvmMainJava NO-SOURCE
+Skipping task ':data:compileJvmMainJava' as it has no source files and no previous output files.
+Resolve mutations for :data:jvmMainClasses (Thread[#13139,Execution worker Thread 14,5,main]) started.
+:data:jvmMainClasses (Thread[#13139,Execution worker Thread 14,5,main]) started.
+
+> Task :data:jvmMainClasses UP-TO-DATE
+Skipping task ':data:jvmMainClasses' as it has no actions.
+Resolve mutations for :data:jvmJar (Thread[#13139,Execution worker Thread 14,5,main]) started.
+:data:jvmJar (Thread[#13139,Execution worker Thread 14,5,main]) started.
+
+> Task :data:jvmJar UP-TO-DATE
+Caching disabled for task ':data:jvmJar' because:
+  Not worth caching
+Skipping task ':data:jvmJar' as it is up-to-date.
+work action resolve data-jvm.jar (project :data) (Thread[#13139,Execution worker Thread 14,5,main]) started.
+Resolve mutations for :data:compileTestKotlinJvm (Thread[#13138,Execution worker Thread 13,5,main]) started.
+Resolve mutations for :presentation-sync:compileKotlinJvm (Thread[#13139,Execution worker Thread 14,5,main]) started.
+:data:compileTestKotlinJvm (Thread[#13138,Execution worker Thread 13,5,main]) started.
+:presentation-sync:compileKotlinJvm (Thread[#13139,Execution worker Thread 14,5,main]) started.
+
+> Task :data:compileTestKotlinJvm UP-TO-DATE
+Build cache key for task ':data:compileTestKotlinJvm' is fbef28603867faa57a78f46113816428
+Skipping task ':data:compileTestKotlinJvm' as it is up-to-date.
+Resolve mutations for :data:compileJvmTestJava (Thread[#13138,Execution worker Thread 13,5,main]) started.
+:data:compileJvmTestJava (Thread[#13138,Execution worker Thread 13,5,main]) started.
+
+> Task :data:compileJvmTestJava NO-SOURCE
+Skipping task ':data:compileJvmTestJava' as it has no source files and no previous output files.
+Resolve mutations for :data:jvmTestClasses (Thread[#13138,Execution worker Thread 13,5,main]) started.
+:data:jvmTestClasses (Thread[#13138,Execution worker Thread 13,5,main]) started.
+
+> Task :data:jvmTestClasses UP-TO-DATE
+Skipping task ':data:jvmTestClasses' as it has no actions.
+Resolve mutations for :data:jvmTest (Thread[#13138,Execution worker Thread 13,5,main]) started.
+:data:jvmTest (Thread[#13138,Execution worker Thread 13,5,main]) started.
+
+> Task :presentation-sync:compileKotlinJvm UP-TO-DATE
+Build cache key for task ':presentation-sync:compileKotlinJvm' is 12fac881d7e64bf31cc4e2a7d5a39633
+Skipping task ':presentation-sync:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :presentation-sync:compileJvmMainJava (Thread[#13139,Execution worker Thread 14,5,main]) started.
+:presentation-sync:compileJvmMainJava (Thread[#13129,Execution worker Thread 4,5,main]) started.
+
+> Task :presentation-sync:compileJvmMainJava NO-SOURCE
+Skipping task ':presentation-sync:compileJvmMainJava' as it has no source files and no previous output files.
+Resolve mutations for :presentation-sync:jvmMainClasses (Thread[#13129,Execution worker Thread 4,5,main]) started.
+:presentation-sync:jvmMainClasses (Thread[#13129,Execution worker Thread 4,5,main]) started.
+
+> Task :presentation-sync:jvmMainClasses UP-TO-DATE
+Skipping task ':presentation-sync:jvmMainClasses' as it has no actions.
+Resolve mutations for :presentation-sync:jvmJar (Thread[#13129,Execution worker Thread 4,5,main]) started.
+:presentation-sync:jvmJar (Thread[#13129,Execution worker Thread 4,5,main]) started.
+
+> Task :presentation-sync:jvmJar UP-TO-DATE
+Caching disabled for task ':presentation-sync:jvmJar' because:
+  Not worth caching
+Skipping task ':presentation-sync:jvmJar' as it is up-to-date.
+Resolve mutations for :presentation-sync:compileTestKotlinJvm (Thread[#13129,Execution worker Thread 4,5,main]) started.
+:presentation-sync:compileTestKotlinJvm (Thread[#13129,Execution worker Thread 4,5,main]) started.
+Gradle Test Executor 31 started executing tests.
+
+> Task :presentation-sync:compileTestKotlinJvm
+Build cache key for ClasspathEntrySnapshotTransform: D:\Codex\worktrees\85be\mihon\presentation-sync\build\classes\kotlin\jvm\main is ca2cbb58ad96ce3e2eca938bfc9cbe94
+Stored cache entry for ClasspathEntrySnapshotTransform: D:\Codex\worktrees\85be\mihon\presentation-sync\build\classes\kotlin\jvm\main with cache key ca2cbb58ad96ce3e2eca938bfc9cbe94
+Build cache key for task ':presentation-sync:compileTestKotlinJvm' is fda0f5d8aaa821dfb71e6473f62af3b7
+Task ':presentation-sync:compileTestKotlinJvm' is not up-to-date because:
+  Input property 'classpathSnapshotProperties.classpathSnapshot' file C:\Users\feeli\.gradle\caches\8.14.4\transforms\d32ac3111d7a9d142c24be08ffa4503e\transformed\data-jvm_jar-snapshot.bin has been removed.
+  Input property 'classpathSnapshotProperties.classpathSnapshot' file C:\Users\feeli\.gradle\caches\8.14.4\transforms\bdd7158880d365df01765f3a98a4ff54\transformed\domain-jvm_jar-snapshot.bin has been removed.
+  Input property 'classpathSnapshotProperties.classpathSnapshot' file C:\Users\feeli\.gradle\caches\8.14.4\transforms\ffe3196da815b9844de10e058190d360\transformed\i18n-jvm_jar-snapshot.bin has been removed.
+  and more...
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\src\jvmTest\java', not found
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\src\commonTest\kotlin', not found
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\src\jvmTest\java', not found
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\src\commonTest\kotlin', not found
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\src\jvmTest\java', not found
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\src\commonTest\kotlin', not found
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\src\jvmTest\java', not found
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\src\commonTest\kotlin', not found
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\src\jvmTest\java', not found
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\src\commonTest\kotlin', not found
+Kotlin source files: D:\Codex\worktrees\85be\mihon\presentation-sync\src\jvmTest\kotlin\mihon\presentation\sync\SyncPanelContentTest.kt, D:\Codex\worktrees\85be\mihon\presentation-sync\src\jvmTest\kotlin\mihon\presentation\sync\SyncPanelOnboardingIntegrationTest.kt
+Java source files: 
+Script source files: 
+Script file extensions: 
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\src\jvmTest\java', not found
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\src\commonTest\kotlin', not found
+Using Kotlin/JVM incremental compilation
+[KOTLIN] Kotlin compilation 'jdkHome' argument: C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot
+Options for KOTLIN DAEMON: IncrementalCompilationOptions(super=CompilationOptions(compilerMode=INCREMENTAL_COMPILER, targetPlatform=JVM, reportCategories=[0, 3], reportSeverity=2, requestedCompilationResults=[0], kotlinScriptExtensions=[]), sourceChanges=org.jetbrains.kotlin.buildtools.api.SourcesChanges$Known@2a6fb085, classpathChanges=ToBeComputedByIncrementalCompiler, workingDir=D:\Codex\worktrees\85be\mihon\presentation-sync\build\kotlin\compileTestKotlinJvm\cacheable, multiModuleICSettings=MultiModuleICSettings(buildHistoryFile=D:\Codex\worktrees\85be\mihon\presentation-sync\build\kotlin\compileTestKotlinJvm\local-state\build-history.bin, useModuleDetection=false), icFeatures=IncrementalCompilationFeatures(usePreciseJavaTracking=true, withAbiSnapshot=false, preciseCompilationResultsBackup=true, keepIncrementalCompilationCachesInMemory=true, enableUnsafeIncrementalCompilationForMultiplatform=false, enableMonotonousIncrementalCompileSetExpansion=true), outputFiles=[D:\Codex\worktrees\85be\mihon\presentation-sync\build\classes\kotlin\jvm\test, D:\Codex\worktrees\85be\mihon\presentation-sync\build\kotlin\compileTestKotlinJvm\cacheable, D:\Codex\worktrees\85be\mihon\presentation-sync\build\kotlin\compileTestKotlinJvm\local-state])
+Finished executing kotlin compiler using DAEMON strategy
+Stored cache entry for task ':presentation-sync:compileTestKotlinJvm' with cache key fda0f5d8aaa821dfb71e6473f62af3b7
+Resolve mutations for :presentation-sync:compileJvmTestJava (Thread[#13129,Execution worker Thread 4,5,main]) started.
+:presentation-sync:compileJvmTestJava (Thread[#13129,Execution worker Thread 4,5,main]) started.
+
+> Task :presentation-sync:compileJvmTestJava NO-SOURCE
+Skipping task ':presentation-sync:compileJvmTestJava' as it has no source files and no previous output files.
+Resolve mutations for :presentation-sync:jvmTestClasses (Thread[#13129,Execution worker Thread 4,5,main]) started.
+:presentation-sync:jvmTestClasses (Thread[#13129,Execution worker Thread 4,5,main]) started.
+
+> Task :presentation-sync:jvmTestClasses
+Skipping task ':presentation-sync:jvmTestClasses' as it has no actions.
+Resolve mutations for :presentation-sync:jvmTest (Thread[#13155,Execution worker Thread 29,5,main]) started.
+:presentation-sync:jvmTest (Thread[#13155,Execution worker Thread 29,5,main]) started.
+Gradle Test Executor 32 started executing tests.
+
+> Task :domain:compileTestKotlinJvm
+Build cache key for ClasspathEntrySnapshotTransform: D:\Codex\worktrees\85be\mihon\domain\build\classes\kotlin\jvm\main is 3f68ac5cf618d0d5e6f947d6d46f0329
+Stored cache entry for ClasspathEntrySnapshotTransform: D:\Codex\worktrees\85be\mihon\domain\build\classes\kotlin\jvm\main with cache key 3f68ac5cf618d0d5e6f947d6d46f0329
+Build cache key for task ':domain:compileTestKotlinJvm' is 1373c6fae3eea4933ddd14bf613da53f
+Task ':domain:compileTestKotlinJvm' is not up-to-date because:
+  Input property 'classpathSnapshotProperties.classpathSnapshot' file C:\Users\feeli\.gradle\caches\8.14.4\transforms\8700f1d3fa31b267884d9742d538e92a\transformed\main-snapshot.bin has been removed.
+  Input property 'classpathSnapshotProperties.classpathSnapshot' file C:\Users\feeli\.gradle\caches\8.14.4\transforms\3e6b5838723ac17517cedbd41247a8e9\transformed\main-snapshot.bin has been added.
+file or directory 'D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\java', not found
+file or directory 'D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\java', not found
+file or directory 'D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\java', not found
+file or directory 'D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\java', not found
+file or directory 'D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\java', not found
+Kotlin source files: D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\mihon\domain\extension\ExtensionCatalogServiceTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\mihon\domain\extension\ExtensionInstallCoordinatorTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\mihon\domain\extension\ExtensionSharedContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\mihon\domain\extensionrepo\service\ExtensionCatalogHttpClientTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\mihon\domain\extensionrepo\service\ExtensionRepoServiceV2DiscoveryTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\tachiyomi\domain\chapter\service\MissingChaptersJvmTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\tachiyomi\domain\creator\service\ChapterVariantNormalizerTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\tachiyomi\domain\creator\service\CreatorDiscoveryBackoffTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\tachiyomi\domain\creator\service\CreatorDiscoveryPlanningTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\tachiyomi\domain\creator\service\CreatorDiscoveryScheduleTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\tachiyomi\domain\creator\service\CreatorDiscoveryServicePaginationTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\tachiyomi\domain\creator\service\CreatorSettingsEditorTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\tachiyomi\domain\creator\service\MangaLanguageDetectorTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\tachiyomi\domain\creator\service\WorkMatchScorerTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\tachiyomi\domain\release\interactor\GetApplicationReleaseParityTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\tachiyomi\domain\source\service\SourceLoginSessionTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\tachiyomi\domain\source\service\SourceMangaSearchCommonBoundaryTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\kotlin\tachiyomi\domain\source\service\SourceMangaSearchServiceTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\download\DownloadQueueStateMachineTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\download\DownloadUseCasesTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\error\AppErrorTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\extension\ExtensionCatalogServiceContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\extension\ExtensionCatalogSnapshotContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\extension\ExtensionInstallArbiterTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\extension\ExtensionProtocolSupportContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\extension\ExtensionSuggestionBatchControllerTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\extension\ExtensionSuggestionContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\extension\ExtensionSuggestionPanelTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\extension\ObserveExtensionSuggestionsTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\extension\presentation\ExtensionPresentationStoreTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\extensionrepo\service\ExtensionRepoServiceContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\license\service\LicenseNoticePolicyTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\migration\MigrationOrchestratorTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\platform\PlatformParityContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\AdaptiveReaderLayoutContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\content\ReaderContentPolicyTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\content\ReaderPageContentAttemptIdentityTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\content\ReaderPageContentOpenCoordinatorTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\materialize\ReaderMaterializeExecutorTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\observability\ReaderIoObservationTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\partial\PartialDownloadSnapshotPolicyTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\partial\PartialReaderPageListPolicyTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\progress\ReaderProgressPolicyTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\ReaderAdjacentChapterPolicyTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\ReaderChapterBoundaryTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\ReaderModeFlagsContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\ReaderPageDecodeKeyTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\ReaderPairingAdjustmentContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\ReaderParityContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\scheduler\ReaderPageMaterializeRunnerTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\scheduler\ReaderRequestSchedulerTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\session\ReaderChapterWindowReducerTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\session\ReaderSessionCoreTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\session\ReaderSessionReducerTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\reader\storage\EncodedPageStoreContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\security\AppSecurityPolicyTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\settings\SettingsSearchPolicyTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\source\model\SourceScreenStateTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\sync\SyncCoordinatorTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\sync\SyncObjectDescriptorContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\sync\SyncProtocolContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\sync\SyncSafetyContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\task\BackgroundTaskContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\mihon\domain\task\TaskStateTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\chapter\ChapterItemClickPolicyTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\chapter\interactor\BatchUpdateChaptersTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\creator\CreatorArchiveV2ContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\creator\interactor\ExtractCreatorsFromMangaTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\creator\service\CreatorDiscoveryOutboxWorkerTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\creator\service\CreatorLibraryIndexerTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\creator\service\CreatorNameNormalizerTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\extension\SourceUpdateMemoContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\library\interactor\AggregateLibraryStatsTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\library\interactor\EvaluateLibraryTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\library\LibraryPresentationProjectionTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\library\LibraryQueryAndCategoryProjectionTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\library\LibrarySelectionPolicyTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\library\service\LibraryUpdateScopeTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\manga\interactor\UpdateCustomCoverTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\manga\interactor\UpdateLibraryMembershipTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\source\service\GlobalSearchSourcePolicyTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\source\service\SourceMembershipProjectionTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\source\service\SourceOnlyQueryContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\track\interactor\SyncReadingProgressWithTrackTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\track\service\DelayedTrackerSyncQueueTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\track\service\TrackerProviderContractTest.kt, D:\Codex\worktrees\85be\mihon\domain\src\commonTest\kotlin\tachiyomi\domain\track\service\TrackerProviderProtocolTest.kt
+Java source files: 
+Script source files: 
+Script file extensions: 
+file or directory 'D:\Codex\worktrees\85be\mihon\domain\src\jvmTest\java', not found
+Using Kotlin/JVM incremental compilation
+[KOTLIN] Kotlin compilation 'jdkHome' argument: C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot
+Options for KOTLIN DAEMON: IncrementalCompilationOptions(super=CompilationOptions(compilerMode=INCREMENTAL_COMPILER, targetPlatform=JVM, reportCategories=[0, 3], reportSeverity=2, requestedCompilationResults=[0], kotlinScriptExtensions=[]), sourceChanges=org.jetbrains.kotlin.buildtools.api.SourcesChanges$Known@133e7919, classpathChanges=ToBeComputedByIncrementalCompiler, workingDir=D:\Codex\worktrees\85be\mihon\domain\build\kotlin\compileTestKotlinJvm\cacheable, multiModuleICSettings=MultiModuleICSettings(buildHistoryFile=D:\Codex\worktrees\85be\mihon\domain\build\kotlin\compileTestKotlinJvm\local-state\build-history.bin, useModuleDetection=false), icFeatures=IncrementalCompilationFeatures(usePreciseJavaTracking=true, withAbiSnapshot=false, preciseCompilationResultsBackup=true, keepIncrementalCompilationCachesInMemory=true, enableUnsafeIncrementalCompilationForMultiplatform=false, enableMonotonousIncrementalCompileSetExpansion=true), outputFiles=[D:\Codex\worktrees\85be\mihon\domain\build\classes\kotlin\jvm\test, D:\Codex\worktrees\85be\mihon\domain\build\kotlin\compileTestKotlinJvm\cacheable, D:\Codex\worktrees\85be\mihon\domain\build\kotlin\compileTestKotlinJvm\local-state])
+w: file:///D:/Codex/worktrees/85be/mihon/domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceOnlyQueryContractTest.kt:23:46 Delegated member 'suspend fun getPopularManga(page: Int): MangasPage' hides supertype override 'suspend fun getPopularManga(page: Int): MangasPage'. Specify proper override explicitly.
+w: file:///D:/Codex/worktrees/85be/mihon/domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceOnlyQueryContractTest.kt:23:46 Delegated member 'suspend fun getLatestUpdates(page: Int): MangasPage' hides supertype override 'suspend fun getLatestUpdates(page: Int): MangasPage'. Specify proper override explicitly.
+w: file:///D:/Codex/worktrees/85be/mihon/domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceOnlyQueryContractTest.kt:23:46 Delegated member 'suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage' hides supertype override 'suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage'. Specify proper override explicitly.
+w: file:///D:/Codex/worktrees/85be/mihon/domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionSharedContractTest.kt:111:19 Redundant creation of Json format. Creating instances for each usage can be slow.
+Finished executing kotlin compiler using DAEMON strategy
+Stored cache entry for task ':domain:compileTestKotlinJvm' with cache key 1373c6fae3eea4933ddd14bf613da53f
+Resolve mutations for :domain:compileJvmTestJava (Thread[#13133,Execution worker Thread 8,5,main]) started.
+:domain:compileJvmTestJava (Thread[#13133,Execution worker Thread 8,5,main]) started.
+
+> Task :domain:compileJvmTestJava NO-SOURCE
+Skipping task ':domain:compileJvmTestJava' as it has no source files and no previous output files.
+Resolve mutations for :domain:jvmTestClasses (Thread[#13133,Execution worker Thread 8,5,main]) started.
+:domain:jvmTestClasses (Thread[#13135,Execution worker Thread 10,5,main]) started.
+
+> Task :domain:jvmTestClasses
+Skipping task ':domain:jvmTestClasses' as it has no actions.
+Resolve mutations for :domain:jvmTest (Thread[#13151,Execution worker Thread 25,5,main]) started.
+:domain:jvmTest (Thread[#13151,Execution worker Thread 25,5,main]) started.
+
+> Task :data:jvmTest
+Build cache key for task ':data:jvmTest' is 634b5c16aa771a45c5bdb036d0f50d76
+Task ':data:jvmTest' is not up-to-date because:
+  Value of input property 'filter.commandLineIncludePatterns' has changed for task ':data:jvmTest'
+file or directory 'D:\Codex\worktrees\85be\mihon\data\build\classes\java\jvmTest', not found
+Starting process 'Gradle Test Executor 31'. Working directory: D:\Codex\worktrees\85be\mihon\data Command: C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot\bin\java.exe -Dorg.gradle.internal.worker.tmpdir=D:\Codex\worktrees\85be\mihon\data\build\tmp\jvmTest\work @C:\Users\feeli\.gradle\.tmp\gradle-worker-classpath6022363468842235758txt -Xmx512m -Dfile.encoding=UTF-8 -Duser.country=CN -Duser.language=zh -Duser.variant -ea worker.org.gradle.process.internal.worker.GradleWorkerMain 'Gradle Test Executor 31'
+Successfully started process 'Gradle Test Executor 31'
+
+Gradle Test Executor 33 started executing tests.
+
+> Task :presentation-sync:jvmTest
+Build cache key for task ':presentation-sync:jvmTest' is 4f722da6efba5744f356f71212b741c0
+Task ':presentation-sync:jvmTest' is not up-to-date because:
+  Value of input property 'filter.commandLineIncludePatterns' has changed for task ':presentation-sync:jvmTest'
+file or directory 'D:\Codex\worktrees\85be\mihon\presentation-sync\build\classes\java\jvmTest', not found
+Starting process 'Gradle Test Executor 32'. Working directory: D:\Codex\worktrees\85be\mihon\presentation-sync Command: C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot\bin\java.exe -Dorg.gradle.internal.worker.tmpdir=D:\Codex\worktrees\85be\mihon\presentation-sync\build\tmp\jvmTest\work @C:\Users\feeli\.gradle\.tmp\gradle-worker-classpath16218574120650278626txt -Xmx512m -Dfile.encoding=UTF-8 -Duser.country=CN -Duser.language=zh -Duser.variant -ea worker.org.gradle.process.internal.worker.GradleWorkerMain 'Gradle Test Executor 32'
+Successfully started process 'Gradle Test Executor 32'
+
+SyncPanelContentTest[jvm] > rate limit wait explains why the persisted countdown is active()[jvm] FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:158)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:139)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:69)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:41)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:35)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:195)
+        at app//mihon.presentation.sync.SyncPanelContentTest$rate limit wait explains why the persisted countdown is active$1.invokeSuspend(SyncPanelContentTest.kt:572)
+        at app//mihon.presentation.sync.SyncPanelContentTest$rate limit wait explains why the persisted countdown is active$1.invoke(SyncPanelContentTest.kt)
+        at app//mihon.presentation.sync.SyncPanelContentTest$rate limit wait explains why the persisted countdown is active$1.invoke(SyncPanelContentTest.kt)
+        at app//mihon.presentation.sync.SyncPanelContentTest$rendered$1.invokeSuspend(SyncPanelContentTest.kt:708)
+        at app//kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+        at app//kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+        at app//kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+        at app//kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+        at app//kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+        at app//kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+        at app//kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+        at app//kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+        at app//mihon.presentation.sync.SyncPanelContentTest.rendered(SyncPanelContentTest.kt:704)
+        at app//mihon.presentation.sync.SyncPanelContentTest.rate limit wait explains why the persisted countdown is active(SyncPanelContentTest.kt:545)
+
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+Gradle Test Executor 32 finished executing tests.
+
+> Task :presentation-sync:jvmTest FAILED
+
+28 tests completed, 1 failed
+Finished generating test XML results (0.002 secs) into: D:\Codex\worktrees\85be\mihon\presentation-sync\build\test-results\jvmTest
+Generating HTML test report...
+Finished generating test html results (0.006 secs) into: D:\Codex\worktrees\85be\mihon\presentation-sync\build\reports\tests\jvmTest
+
+> Task :domain:jvmTest
+Build cache key for task ':domain:jvmTest' is 1b3e09161e6401babe2d3238506f38c7
+Task ':domain:jvmTest' is not up-to-date because:
+  Input property 'candidateClassFiles' file D:\Codex\worktrees\85be\mihon\domain\build\classes\kotlin\jvm\test\mihon\domain\sync\SyncCoordinatorTest$failed exchange does not immediately retry queued automatic triggers$1.class has changed.
+  Input property 'candidateClassFiles' file D:\Codex\worktrees\85be\mihon\domain\build\classes\kotlin\jvm\test\mihon\domain\sync\SyncCoordinatorTest$overlapping callers share one flight and drain a burst once$1$coordinator$1.class has changed.
+  Input property 'candidateClassFiles' file D:\Codex\worktrees\85be\mihon\domain\build\classes\kotlin\jvm\test\mihon\domain\sync\SyncCoordinatorTest.class has changed.
+  and more...
+file or directory 'D:\Codex\worktrees\85be\mihon\domain\build\classes\java\jvmTest', not found
+Starting process 'Gradle Test Executor 33'. Working directory: D:\Codex\worktrees\85be\mihon\domain Command: C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot\bin\java.exe -Dorg.gradle.internal.worker.tmpdir=D:\Codex\worktrees\85be\mihon\domain\build\tmp\jvmTest\work @C:\Users\feeli\.gradle\.tmp\gradle-worker-classpath6242108586904416053txt -Xmx512m -Dfile.encoding=UTF-8 -Duser.country=CN -Duser.language=zh -Duser.variant -ea worker.org.gradle.process.internal.worker.GradleWorkerMain 'Gradle Test Executor 33'
+Successfully started process 'Gradle Test Executor 33'
+
+ExtensionSuggestionPanelTest[jvm] > encoded ignore survives reconstructed preferences version updates and session dismissal()[jvm] STANDARD_ERROR
+    WARNING: A Java agent has been loaded dynamically (C:\Users\feeli\.gradle\caches\modules-2\files-2.1\net.bytebuddy\byte-buddy-agent\1.18.2\62f38a6faf7f069d661b79a07d566f504b0b20c4\byte-buddy-agent-1.18.2.jar)
+    WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+    WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+    WARNING: Dynamic loading of agents will be disallowed by default in a future release
+
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+
+> Task :data:jvmTest
+
+ExtensionRepoRepositoryPersistenceTest[jvm] > equivalent signing key spellings still require repository replacement confirmation()[jvm] STANDARD_ERROR
+    WARNING: A Java agent has been loaded dynamically (C:\Users\feeli\.gradle\caches\modules-2\files-2.1\net.bytebuddy\byte-buddy-agent\1.18.2\62f38a6faf7f069d661b79a07d566f504b0b20c4\byte-buddy-agent-1.18.2.jar)
+    WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+    WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+    WARNING: Dynamic loading of agents will be disallowed by default in a future release
+
+Gradle Test Executor 33 finished executing tests.
+
+> Task :domain:jvmTest
+
+ExtensionRepoServiceV2DiscoveryTest[jvm] > unsafe redirect is invalid metadata rather than an unavailable repository()[jvm] STANDARD_ERROR
+    [DispatchedCoroutine] Failed to reach repository metadata
+    java.io.IOException: java.lang.IllegalArgumentException: Catalog URL must use HTTPS or loopback HTTP
+    	at mihon.domain.extensionrepo.service.ExtensionRepoService$fetchRepoDetailsResult$2.invokeSuspend$fetch(ExtensionRepoService.kt:49)
+    	at mihon.domain.extensionrepo.service.ExtensionRepoService$fetchRepoDetailsResult$2.invokeSuspend(ExtensionRepoService.kt:51)
+    	at _COROUTINE._BOUNDARY._(CoroutineDebugging.kt:42)
+    	at eu.kanade.tachiyomi.network.OkHttpExtensionsKt.awaitSuccess(OkHttpExtensions.kt:115)
+    	at mihon.domain.extensionrepo.service.ExtensionRepoService$fetchRepoDetailsResult$2.invokeSuspend$fetch(ExtensionRepoService.kt:49)
+    	at mihon.domain.extensionrepo.service.ExtensionRepoService$fetchRepoDetailsResult$2.invokeSuspend(ExtensionRepoService.kt:51)
+    	at mihon.domain.extensionrepo.service.ExtensionRepoServiceV2DiscoveryTest$unsafe redirect is invalid metadata rather than an unavailable repository$1.invokeSuspend(ExtensionRepoServiceV2DiscoveryTest.kt:39)
+    Caused by: java.io.IOException: java.lang.IllegalArgumentException: Catalog URL must use HTTPS or loopback HTTP
+    	at mihon.domain.extensionrepo.service.ExtensionRepoService$fetchRepoDetailsResult$2.invokeSuspend$fetch(ExtensionRepoService.kt:49)
+    	at mihon.domain.extensionrepo.service.ExtensionRepoService$fetchRepoDetailsResult$2.invokeSuspend(ExtensionRepoService.kt:51)
+    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+    	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:124)
+    	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:89)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:586)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:820)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:717)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:704)
+    Caused by: mihon.domain.extensionrepo.service.InvalidCatalogRequestException: java.lang.IllegalArgumentException: Catalog URL must use HTTPS or loopback HTTP
+    	at mihon.domain.extensionrepo.service.ExtensionCatalogHttpClientKt$withCatalogRedirectPolicy$$inlined$-addInterceptor$1.intercept(OkHttpClient.kt:1419)
+    	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:126)
+    	at okhttp3.internal.connection.RealCall.getResponseWithInterceptorChain$okhttp(RealCall.kt:226)
+    	at okhttp3.internal.connection.RealCall$AsyncCall.run(RealCall.kt:574)
+    	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+    	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+    	at java.base/java.lang.Thread.run(Thread.java:1583)
+    Caused by: java.lang.IllegalArgumentException: Catalog URL must use HTTPS or loopback HTTP
+    	at mihon.domain.extensionrepo.service.ExtensionStoreCatalogDecoder.requireSupportedCatalogUrl(ExtensionStoreCatalogDecoder.kt:315)
+    	at mihon.domain.extensionrepo.service.ExtensionCatalogHttpClientKt$withCatalogRedirectPolicy$$inlined$-addInterceptor$1.intercept(OkHttpClient.kt:1407)
+    	... 6 more
+
+
+CreatorArchiveV2ContractTest[jvm] > physical table names unique keys and deletion policies are frozen()[jvm] FAILED
+    org.opentest4j.AssertionFailedError: expected: <24> but was: <28>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:158)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:139)
+        at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:201)
+        at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:152)
+        at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:147)
+        at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:558)
+        at app//tachiyomi.domain.creator.CreatorArchiveV2ContractTest.physical table names unique keys and deletion policies are frozen(CreatorArchiveV2ContractTest.kt:102)
+
+Gradle Test Executor 33[jvm] STANDARD_ERROR
+    9月 25, 2026 1:35:18 下午 org.junit.platform.launcher.core.DiscoveryIssueNotifier logIssues
+    警告: TestEngine with ID 'junit-jupiter' encountered a non-critical issue during test discovery:
+
+    (1) [WARNING] @Test method 'public final tachiyomi.domain.source.service.SourcePageResult$Empty tachiyomi.domain.source.service.SourceMangaSearchServiceTest.first page without manga produces empty result()' must not return a value. It will not be executed.
+        Source: MethodSource [className = 'tachiyomi.domain.source.service.SourceMangaSearchServiceTest', methodName = 'first page without manga produces empty result', methodParameterTypes = '']
+                at tachiyomi.domain.source.service.SourceMangaSearchServiceTest.first page without manga produces empty result(SourceFile:0)
+
+519 tests completed, 1 failed
+Finished generating test XML results (0.055 secs) into: D:\Codex\worktrees\85be\mihon\domain\build\test-results\jvmTest
+Generating HTML test report...
+Finished generating test html results (0.105 secs) into: D:\Codex\worktrees\85be\mihon\domain\build\reports\tests\jvmTest
+
+> Task :domain:jvmTest FAILED
+
+> Task :data:jvmTest
+
+ExtensionRepoRepositoryPersistenceTest[jvm] > real HTTP discovery duplicate migration and reopen retain repository identity()[jvm] STANDARD_ERROR
+    [DispatchedCoroutine] Repository metadata request failed with HTTP 500
+    eu.kanade.tachiyomi.network.HttpException: HTTP error 500
+    	at mihon.domain.extensionrepo.service.ExtensionRepoService$fetchRepoDetailsResult$2.invokeSuspend$fetch(ExtensionRepoService.kt:49)
+    	at mihon.domain.extensionrepo.service.ExtensionRepoService$fetchRepoDetailsResult$2.invokeSuspend(ExtensionRepoService.kt:51)
+    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+    	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:124)
+    	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:89)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:586)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:820)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:717)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:704)
+
+
+ExtensionRepoRepositoryPersistenceTest[jvm] > version eighteen repository table migrates before metadata can be reopened()[jvm] FAILED
+    org.sqlite.SQLiteException: [SQLITE_ERROR] SQL error or missing database (duplicate column name: first_seen_date)
+        at app//org.sqlite.core.DB.newSQLException(DB.java:1179)
+        at app//org.sqlite.core.DB.newSQLException(DB.java:1190)
+        at app//org.sqlite.core.DB.throwex(DB.java:1150)
+        at app//org.sqlite.core.NativeDB.prepare_utf8(Native Method)
+        at app//org.sqlite.core.NativeDB.prepare(NativeDB.java:135)
+        at app//org.sqlite.core.DB.prepare(DB.java:264)
+        at app//org.sqlite.core.CorePreparedStatement.<init>(CorePreparedStatement.java:46)
+        at app//org.sqlite.jdbc3.JDBC3PreparedStatement.<init>(JDBC3PreparedStatement.java:32)
+        at app//org.sqlite.jdbc4.JDBC4PreparedStatement.<init>(JDBC4PreparedStatement.java:28)
+        at app//org.sqlite.jdbc4.JDBC4Connection.prepareStatement(JDBC4Connection.java:34)
+        at app//org.sqlite.jdbc3.JDBC3Connection.prepareStatement(JDBC3Connection.java:225)
+        at app//org.sqlite.jdbc3.JDBC3Connection.prepareStatement(JDBC3Connection.java:205)
+        at app//app.cash.sqldelight.driver.jdbc.JdbcDriver.execute(JdbcDriver.kt:139)
+        at app//app.cash.sqldelight.db.SqlDriver$DefaultImpls.execute$default(SqlDriver.kt:63)
+        at app//tachiyomi.data.data.DatabaseImpl$Schema.migrateInternal-ElmaSbI(DatabaseImpl.kt:3625)
+        at app//tachiyomi.data.data.DatabaseImpl$Schema.migrate-zeHU3Mk(DatabaseImpl.kt:3916)
+        at app//tachiyomi.data.data.DatabaseImpl$Schema.migrate(DatabaseImpl.kt:116)
+        at app//tachiyomi.data.DatabaseMigration.migrateAtomically$lambda$1(DatabaseMigration.kt:16)
+        at app//app.cash.sqldelight.TransacterImpl.transactionWithWrapper(Transacter.kt:374)
+        at app//app.cash.sqldelight.TransacterImpl.transaction(Transacter.kt:353)
+        at app//app.cash.sqldelight.Transacter$DefaultImpls.transaction$default(Transacter.kt:94)
+        at app//tachiyomi.data.DatabaseMigration.migrateAtomically(DatabaseMigration.kt:14)
+        at app//mihon.data.repository.ExtensionRepoRepositoryPersistenceTest$version eighteen repository table migrates before metadata can be reopened$1.invokeSuspend(ExtensionRepoRepositoryPersistenceTest.kt:202)
+        at app//mihon.data.repository.ExtensionRepoRepositoryPersistenceTest$version eighteen repository table migrates before metadata can be reopened$1.invoke(ExtensionRepoRepositoryPersistenceTest.kt)
+        at app//mihon.data.repository.ExtensionRepoRepositoryPersistenceTest$version eighteen repository table migrates before metadata can be reopened$1.invoke(ExtensionRepoRepositoryPersistenceTest.kt)
+        at app//kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$1.invokeSuspend(TestBuilders.kt:317)
+        at app//kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+        at app//kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+        at app//kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+        at app//kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+        at app//kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:326)
+        at app//kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+        at app//kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+        at app//kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+        at app//kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+        at app//kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+        at app//kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+        at app//kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+        at app//kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+        at app//kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+        at app//kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:309)
+        at app//kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(Unknown Source)
+        at app//kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:167)
+        at app//kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(Unknown Source)
+        at app//kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0$default(TestBuilders.kt:159)
+        at app//kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0$default(Unknown Source)
+        at app//mihon.data.repository.ExtensionRepoRepositoryPersistenceTest.version eighteen repository table migrates before metadata can be reopened(ExtensionRepoRepositoryPersistenceTest.kt:178)
+
+JvmSyncHistorySuppressionContractTest[jvm] > failed suppression write cannot clear business history()[jvm] STANDARD_ERROR
+    [HistoryRepositoryImpl] org.sqlite.SQLiteException: [SQLITE_CONSTRAINT_TRIGGER] A RAISE function within a trigger fired, causing the SQL statement to abort (injected)
+    	at org.sqlite.core.DB.newSQLException(DB.java:1179)
+    	at org.sqlite.core.DB.newSQLException(DB.java:1190)
+    	at org.sqlite.core.DB.execute(DB.java:985)
+    	at org.sqlite.jdbc3.JDBC3PreparedStatement.lambda$execute$0(JDBC3PreparedStatement.java:59)
+    	at org.sqlite.jdbc3.JDBC3Statement.withConnectionTimeout(JDBC3Statement.java:458)
+    	at org.sqlite.jdbc3.JDBC3PreparedStatement.execute(JDBC3PreparedStatement.java:53)
+    	at app.cash.sqldelight.driver.jdbc.JdbcPreparedStatement.execute(JdbcDriver.kt:296)
+    	at app.cash.sqldelight.driver.jdbc.JdbcDriver.execute(JdbcDriver.kt:142)
+    	at tachiyomi.data.Sync_historyQueries.recordClear(Sync_historyQueries.kt:81)
+    	at mihon.data.sync.inbox.SyncHistoryPolicyKt.recordHistoryClear(SyncHistoryPolicy.kt:54)
+    	at mihon.data.sync.inbox.SyncHistoryPolicyKt.suppressSyncChapterHistory(SyncHistoryPolicy.kt:36)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$resetHistory$2.invokeSuspend(HistoryRepositoryImpl.kt:42)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$resetHistory$2.invoke(HistoryRepositoryImpl.kt)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$resetHistory$2.invoke(HistoryRepositoryImpl.kt)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invokeSuspend(JvmDatabaseHandler.kt:87)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invoke(JvmDatabaseHandler.kt)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invoke(JvmDatabaseHandler.kt)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2$1$1.invokeSuspend(JvmTransactionContext.kt:52)
+    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+    	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+    	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+    	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2.invokeSuspend$lambda$0(JvmTransactionContext.kt:51)
+    	at app.cash.sqldelight.TransacterImpl.transactionWithWrapper(Transacter.kt:374)
+    	at app.cash.sqldelight.TransacterImpl.transactionWithResult(Transacter.kt:360)
+    	at app.cash.sqldelight.Transacter$DefaultImpls.transactionWithResult$default(Transacter.kt:83)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2.invokeSuspend(JvmTransactionContext.kt:50)
+    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+    	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+    	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+    	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+    	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+    	at tachiyomi.data.JvmTransactionContextKt$acquireTransactionThread$2$2.run(JvmTransactionContext.kt:73)
+    	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:124)
+    	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:89)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:586)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:820)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:717)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:704)
+
+    [HistoryRepositoryImpl] org.sqlite.SQLiteException: [SQLITE_CONSTRAINT_TRIGGER] A RAISE function within a trigger fired, causing the SQL statement to abort (injected)
+    	at org.sqlite.core.DB.newSQLException(DB.java:1179)
+    	at org.sqlite.core.DB.newSQLException(DB.java:1190)
+    	at org.sqlite.core.DB.execute(DB.java:985)
+    	at org.sqlite.jdbc3.JDBC3PreparedStatement.lambda$execute$0(JDBC3PreparedStatement.java:59)
+    	at org.sqlite.jdbc3.JDBC3Statement.withConnectionTimeout(JDBC3Statement.java:458)
+    	at org.sqlite.jdbc3.JDBC3PreparedStatement.execute(JDBC3PreparedStatement.java:53)
+    	at app.cash.sqldelight.driver.jdbc.JdbcPreparedStatement.execute(JdbcDriver.kt:296)
+    	at app.cash.sqldelight.driver.jdbc.JdbcDriver.execute(JdbcDriver.kt:142)
+    	at tachiyomi.data.Sync_historyQueries.recordClear(Sync_historyQueries.kt:81)
+    	at mihon.data.sync.inbox.SyncHistoryPolicyKt.recordHistoryClear(SyncHistoryPolicy.kt:54)
+    	at mihon.data.sync.inbox.SyncHistoryPolicyKt.suppressSyncMangaHistory(SyncHistoryPolicy.kt:42)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$resetHistoryByMangaId$2.invokeSuspend(HistoryRepositoryImpl.kt:53)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$resetHistoryByMangaId$2.invoke(HistoryRepositoryImpl.kt)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$resetHistoryByMangaId$2.invoke(HistoryRepositoryImpl.kt)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invokeSuspend(JvmDatabaseHandler.kt:87)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invoke(JvmDatabaseHandler.kt)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invoke(JvmDatabaseHandler.kt)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2$1$1.invokeSuspend(JvmTransactionContext.kt:52)
+    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+    	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+    	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+    	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2.invokeSuspend$lambda$0(JvmTransactionContext.kt:51)
+    	at app.cash.sqldelight.TransacterImpl.transactionWithWrapper(Transacter.kt:374)
+    	at app.cash.sqldelight.TransacterImpl.transactionWithResult(Transacter.kt:360)
+    	at app.cash.sqldelight.Transacter$DefaultImpls.transactionWithResult$default(Transacter.kt:83)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2.invokeSuspend(JvmTransactionContext.kt:50)
+    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+    	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+    	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+    	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+    	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+    	at tachiyomi.data.JvmTransactionContextKt$acquireTransactionThread$2$2.run(JvmTransactionContext.kt:73)
+    	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:124)
+    	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:89)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:586)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:820)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:717)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:704)
+
+    [HistoryRepositoryImpl] org.sqlite.SQLiteException: [SQLITE_CONSTRAINT_TRIGGER] A RAISE function within a trigger fired, causing the SQL statement to abort (injected)
+    	at org.sqlite.core.DB.newSQLException(DB.java:1179)
+    	at org.sqlite.core.DB.newSQLException(DB.java:1190)
+    	at org.sqlite.core.DB.execute(DB.java:985)
+    	at org.sqlite.jdbc3.JDBC3PreparedStatement.lambda$execute$0(JDBC3PreparedStatement.java:59)
+    	at org.sqlite.jdbc3.JDBC3Statement.withConnectionTimeout(JDBC3Statement.java:458)
+    	at org.sqlite.jdbc3.JDBC3PreparedStatement.execute(JDBC3PreparedStatement.java:53)
+    	at app.cash.sqldelight.driver.jdbc.JdbcPreparedStatement.execute(JdbcDriver.kt:296)
+    	at app.cash.sqldelight.driver.jdbc.JdbcDriver.execute(JdbcDriver.kt:142)
+    	at tachiyomi.data.Sync_historyQueries.recordClear(Sync_historyQueries.kt:81)
+    	at mihon.data.sync.inbox.SyncHistoryPolicyKt.recordHistoryClear(SyncHistoryPolicy.kt:54)
+    	at mihon.data.sync.inbox.SyncHistoryPolicyKt.suppressAllSyncHistory(SyncHistoryPolicy.kt:49)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$deleteAllHistory$2.invokeSuspend(HistoryRepositoryImpl.kt:64)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$deleteAllHistory$2.invoke(HistoryRepositoryImpl.kt)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$deleteAllHistory$2.invoke(HistoryRepositoryImpl.kt)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invokeSuspend(JvmDatabaseHandler.kt:87)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invoke(JvmDatabaseHandler.kt)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invoke(JvmDatabaseHandler.kt)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2$1$1.invokeSuspend(JvmTransactionContext.kt:52)
+    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+    	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+    	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+    	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2.invokeSuspend$lambda$0(JvmTransactionContext.kt:51)
+    	at app.cash.sqldelight.TransacterImpl.transactionWithWrapper(Transacter.kt:374)
+    	at app.cash.sqldelight.TransacterImpl.transactionWithResult(Transacter.kt:360)
+    	at app.cash.sqldelight.Transacter$DefaultImpls.transactionWithResult$default(Transacter.kt:83)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2.invokeSuspend(JvmTransactionContext.kt:50)
+    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+    	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+    	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+    	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+    	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+    	at tachiyomi.data.JvmTransactionContextKt$acquireTransactionThread$2$2.run(JvmTransactionContext.kt:73)
+    	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:124)
+    	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:89)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:586)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:820)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:717)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:704)
+
+
+JvmSyncHistorySuppressionContractTest[jvm] > failed business clear rolls back suppression and preserves later projection()[jvm] STANDARD_ERROR
+    [HistoryRepositoryImpl] org.sqlite.SQLiteException: [SQLITE_CONSTRAINT_TRIGGER] A RAISE function within a trigger fired, causing the SQL statement to abort (injected)
+    	at org.sqlite.core.DB.newSQLException(DB.java:1179)
+    	at org.sqlite.core.DB.newSQLException(DB.java:1190)
+    	at org.sqlite.core.DB.execute(DB.java:985)
+    	at org.sqlite.jdbc3.JDBC3PreparedStatement.lambda$execute$0(JDBC3PreparedStatement.java:59)
+    	at org.sqlite.jdbc3.JDBC3Statement.withConnectionTimeout(JDBC3Statement.java:458)
+    	at org.sqlite.jdbc3.JDBC3PreparedStatement.execute(JDBC3PreparedStatement.java:53)
+    	at app.cash.sqldelight.driver.jdbc.JdbcPreparedStatement.execute(JdbcDriver.kt:296)
+    	at app.cash.sqldelight.driver.jdbc.JdbcDriver.execute(JdbcDriver.kt:142)
+    	at tachiyomi.data.HistoryQueries.resetHistoryById(HistoryQueries.kt:60)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$resetHistory$2.invokeSuspend(HistoryRepositoryImpl.kt:43)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$resetHistory$2.invoke(HistoryRepositoryImpl.kt)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$resetHistory$2.invoke(HistoryRepositoryImpl.kt)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invokeSuspend(JvmDatabaseHandler.kt:87)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invoke(JvmDatabaseHandler.kt)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invoke(JvmDatabaseHandler.kt)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2$1$1.invokeSuspend(JvmTransactionContext.kt:52)
+    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+    	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+    	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+    	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2.invokeSuspend$lambda$0(JvmTransactionContext.kt:51)
+    	at app.cash.sqldelight.TransacterImpl.transactionWithWrapper(Transacter.kt:374)
+    	at app.cash.sqldelight.TransacterImpl.transactionWithResult(Transacter.kt:360)
+    	at app.cash.sqldelight.Transacter$DefaultImpls.transactionWithResult$default(Transacter.kt:83)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2.invokeSuspend(JvmTransactionContext.kt:50)
+    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+    	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+    	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+    	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+    	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+    	at tachiyomi.data.JvmTransactionContextKt$acquireTransactionThread$2$2.run(JvmTransactionContext.kt:73)
+    	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:124)
+    	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:89)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:586)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:820)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:717)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:704)
+
+    [HistoryRepositoryImpl] org.sqlite.SQLiteException: [SQLITE_CONSTRAINT_TRIGGER] A RAISE function within a trigger fired, causing the SQL statement to abort (injected)
+    	at org.sqlite.core.DB.newSQLException(DB.java:1179)
+    	at org.sqlite.core.DB.newSQLException(DB.java:1190)
+    	at org.sqlite.core.DB.execute(DB.java:985)
+    	at org.sqlite.jdbc3.JDBC3PreparedStatement.lambda$execute$0(JDBC3PreparedStatement.java:59)
+    	at org.sqlite.jdbc3.JDBC3Statement.withConnectionTimeout(JDBC3Statement.java:458)
+    	at org.sqlite.jdbc3.JDBC3PreparedStatement.execute(JDBC3PreparedStatement.java:53)
+    	at app.cash.sqldelight.driver.jdbc.JdbcPreparedStatement.execute(JdbcDriver.kt:296)
+    	at app.cash.sqldelight.driver.jdbc.JdbcDriver.execute(JdbcDriver.kt:142)
+    	at tachiyomi.data.HistoryQueries.resetHistoryByMangaId(HistoryQueries.kt:78)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$resetHistoryByMangaId$2.invokeSuspend(HistoryRepositoryImpl.kt:54)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$resetHistoryByMangaId$2.invoke(HistoryRepositoryImpl.kt)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$resetHistoryByMangaId$2.invoke(HistoryRepositoryImpl.kt)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invokeSuspend(JvmDatabaseHandler.kt:87)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invoke(JvmDatabaseHandler.kt)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invoke(JvmDatabaseHandler.kt)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2$1$1.invokeSuspend(JvmTransactionContext.kt:52)
+    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+    	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+    	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+    	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2.invokeSuspend$lambda$0(JvmTransactionContext.kt:51)
+    	at app.cash.sqldelight.TransacterImpl.transactionWithWrapper(Transacter.kt:374)
+    	at app.cash.sqldelight.TransacterImpl.transactionWithResult(Transacter.kt:360)
+    	at app.cash.sqldelight.Transacter$DefaultImpls.transactionWithResult$default(Transacter.kt:83)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2.invokeSuspend(JvmTransactionContext.kt:50)
+    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+    	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+    	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+    	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+    	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+    	at tachiyomi.data.JvmTransactionContextKt$acquireTransactionThread$2$2.run(JvmTransactionContext.kt:73)
+    	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:124)
+    	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:89)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:586)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:820)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:717)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:704)
+
+    [HistoryRepositoryImpl] org.sqlite.SQLiteException: [SQLITE_CONSTRAINT_TRIGGER] A RAISE function within a trigger fired, causing the SQL statement to abort (injected)
+    	at org.sqlite.core.DB.newSQLException(DB.java:1179)
+    	at org.sqlite.core.DB.newSQLException(DB.java:1190)
+    	at org.sqlite.core.DB.execute(DB.java:985)
+    	at org.sqlite.jdbc3.JDBC3PreparedStatement.lambda$execute$0(JDBC3PreparedStatement.java:59)
+    	at org.sqlite.jdbc3.JDBC3Statement.withConnectionTimeout(JDBC3Statement.java:458)
+    	at org.sqlite.jdbc3.JDBC3PreparedStatement.execute(JDBC3PreparedStatement.java:53)
+    	at app.cash.sqldelight.driver.jdbc.JdbcPreparedStatement.execute(JdbcDriver.kt:296)
+    	at app.cash.sqldelight.driver.jdbc.JdbcDriver.execute(JdbcDriver.kt:142)
+    	at app.cash.sqldelight.db.SqlDriver$DefaultImpls.execute$default(SqlDriver.kt:63)
+    	at tachiyomi.data.HistoryQueries.removeAllHistory(HistoryQueries.kt:104)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$deleteAllHistory$2.invokeSuspend(HistoryRepositoryImpl.kt:65)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$deleteAllHistory$2.invoke(HistoryRepositoryImpl.kt)
+    	at tachiyomi.data.history.HistoryRepositoryImpl$deleteAllHistory$2.invoke(HistoryRepositoryImpl.kt)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invokeSuspend(JvmDatabaseHandler.kt:87)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invoke(JvmDatabaseHandler.kt)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invoke(JvmDatabaseHandler.kt)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2$1$1.invokeSuspend(JvmTransactionContext.kt:52)
+    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+    	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+    	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+    	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2.invokeSuspend$lambda$0(JvmTransactionContext.kt:51)
+    	at app.cash.sqldelight.TransacterImpl.transactionWithWrapper(Transacter.kt:374)
+    	at app.cash.sqldelight.TransacterImpl.transactionWithResult(Transacter.kt:360)
+    	at app.cash.sqldelight.Transacter$DefaultImpls.transactionWithResult$default(Transacter.kt:83)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2.invokeSuspend(JvmTransactionContext.kt:50)
+    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+    	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+    	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+    	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+    	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+    	at tachiyomi.data.JvmTransactionContextKt$acquireTransactionThread$2$2.run(JvmTransactionContext.kt:73)
+    	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:124)
+    	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:89)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:586)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:820)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:717)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:704)
+
+
+JvmSyncJournalStorageContractTest[jvm] > batch update failure rolls back every favorite and journal entry()[jvm] STANDARD_ERROR
+    [MangaRepositoryImpl] org.sqlite.SQLiteException: [SQLITE_CONSTRAINT_TRIGGER] A RAISE function within a trigger fired, causing the SQL statement to abort (synthetic second event failure)
+    	at org.sqlite.core.DB.newSQLException(DB.java:1179)
+    	at org.sqlite.core.DB.newSQLException(DB.java:1190)
+    	at org.sqlite.core.DB.execute(DB.java:985)
+    	at org.sqlite.jdbc3.JDBC3PreparedStatement.lambda$execute$0(JDBC3PreparedStatement.java:59)
+    	at org.sqlite.jdbc3.JDBC3Statement.withConnectionTimeout(JDBC3Statement.java:458)
+    	at org.sqlite.jdbc3.JDBC3PreparedStatement.execute(JDBC3PreparedStatement.java:53)
+    	at app.cash.sqldelight.driver.jdbc.JdbcPreparedStatement.execute(JdbcDriver.kt:296)
+    	at app.cash.sqldelight.driver.jdbc.JdbcDriver.execute(JdbcDriver.kt:142)
+    	at tachiyomi.data.Sync_journalQueries.insertOutbox(Sync_journalQueries.kt:696)
+    	at mihon.data.sync.journal.SyncTransactionJournalKt.appendSyncOperation(SyncTransactionJournal.kt:111)
+    	at mihon.data.sync.journal.SyncTransactionJournalKt.appendSyncOperation$default(SyncTransactionJournal.kt:25)
+    	at mihon.data.sync.journal.SyncTransactionJournalKt.appendFavoriteOperation(SyncTransactionJournal.kt:137)
+    	at tachiyomi.data.manga.MangaRepositoryImpl$partialUpdate$2.invokeSuspend(MangaRepositoryImpl.kt:263)
+    	at tachiyomi.data.manga.MangaRepositoryImpl$partialUpdate$2.invoke(MangaRepositoryImpl.kt)
+    	at tachiyomi.data.manga.MangaRepositoryImpl$partialUpdate$2.invoke(MangaRepositoryImpl.kt)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invokeSuspend(JvmDatabaseHandler.kt:87)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invoke(JvmDatabaseHandler.kt)
+    	at tachiyomi.data.JvmDatabaseHandler$dispatch$2.invoke(JvmDatabaseHandler.kt)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2$1$1.invokeSuspend(JvmTransactionContext.kt:52)
+    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+    	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+    	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+    	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2.invokeSuspend$lambda$0(JvmTransactionContext.kt:51)
+    	at app.cash.sqldelight.TransacterImpl.transactionWithWrapper(Transacter.kt:374)
+    	at app.cash.sqldelight.TransacterImpl.transactionWithResult(Transacter.kt:360)
+    	at app.cash.sqldelight.Transacter$DefaultImpls.transactionWithResult$default(Transacter.kt:83)
+    	at tachiyomi.data.JvmTransactionContextKt$runTransaction$2.invokeSuspend(JvmTransactionContext.kt:50)
+    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+    	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+    	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+    	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+    	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+    	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+    	at tachiyomi.data.JvmTransactionContextKt$acquireTransactionThread$2$2.run(JvmTransactionContext.kt:73)
+    	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:124)
+    	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:89)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:586)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:820)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:717)
+    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:704)
+
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding rejects legacy binding before network without deleting its recovery data()[jvm] FAILED
+    org.opentest4j.AssertionFailedError: expected: <INVALID_DATA> but was: <STORAGE>
+        at app//mihon.data.sync.SyncPanelStorageContract$onboarding rejects legacy binding before network without deleting its recovery data$1.invokeSuspend(SyncPanelStorageContract.kt:275)
+        at app//kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+        at app//kotlinx.coroutines.internal.ScopeCoroutine.afterResume(Scopes.kt:35)
+        at app//kotlinx.coroutines.AbstractCoroutine.resumeWith(AbstractCoroutine.kt:101)
+        at app//kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:47)
+        at app//kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+        at app//kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+        at app//kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+        at app//kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+        at app//kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+        at app//kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+        at app//kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+        at app//mihon.data.sync.SyncPanelStorageContract.onboarding rejects legacy binding before network without deleting its recovery data(SyncPanelStorageContract.kt:254)
+        at java.base@21.0.11/java.lang.reflect.Method.invoke(Method.java:580)
+        at java.base@21.0.11/java.util.ArrayList.forEach(ArrayList.java:1596)
+        at java.base@21.0.11/java.util.ArrayList.forEach(ArrayList.java:1596)
+
+SyncDirtyFieldsQueryPlanTest[jvm] > ten thousand dirty fields report actual query plan and page cost()[jvm] STANDARD_OUT
+    SYNC_SQL_DIAGNOSTIC rows=10000 pages=200 queryMs=86 updateMs=121 plan=[SEARCH sync_field_state USING INDEX sync_dirty_fields (space_id=? AND generation=? AND dirty=?), USE TEMP B-TREE FOR ORDER BY]
+
+SyncPersistentGitObjectCacheComplexityTest[jvm] > warm reads keep filesystem work linear at 100 and 200 objects()[jvm] STANDARD_OUT
+    {"scenario":"warm-read","objects":100,"listCalls":0,"listedEntries":0,"metadataCalls":200}
+    {"scenario":"warm-read","objects":200,"listCalls":0,"listedEntries":0,"metadataCalls":400}
+
+SyncPersistentGitObjectCacheComplexityTest[jvm] > oversized inventory degrades without rescanning on every operation()[jvm] STANDARD_OUT
+    {"scenario":"oversized-sentinel","objects":20001,"listCalls":1}
+
+SyncPersistentGitObjectCacheComplexityTest[jvm] > continuous appends keep filesystem work linear at 100 and 200 objects()[jvm] STANDARD_OUT
+    {"scenario":"append","objects":100,"listCalls":0,"listedEntries":0,"metadataCalls":200}
+    {"scenario":"append","objects":200,"listCalls":0,"listedEntries":0,"metadataCalls":400}
+
+SyncRunStoreTest[jvm] > schema 27 migration creates durable runtime tables()[jvm] FAILED
+    org.sqlite.SQLiteException: [SQLITE_ERROR] SQL error or missing database (duplicate column name: revision)
+        at app//org.sqlite.core.DB.newSQLException(DB.java:1179)
+        at app//org.sqlite.core.DB.newSQLException(DB.java:1190)
+        at app//org.sqlite.core.DB.throwex(DB.java:1150)
+        at app//org.sqlite.core.NativeDB.prepare_utf8(Native Method)
+        at app//org.sqlite.core.NativeDB.prepare(NativeDB.java:135)
+        at app//org.sqlite.core.DB.prepare(DB.java:264)
+        at app//org.sqlite.core.CorePreparedStatement.<init>(CorePreparedStatement.java:46)
+        at app//org.sqlite.jdbc3.JDBC3PreparedStatement.<init>(JDBC3PreparedStatement.java:32)
+        at app//org.sqlite.jdbc4.JDBC4PreparedStatement.<init>(JDBC4PreparedStatement.java:28)
+        at app//org.sqlite.jdbc4.JDBC4Connection.prepareStatement(JDBC4Connection.java:34)
+        at app//org.sqlite.jdbc3.JDBC3Connection.prepareStatement(JDBC3Connection.java:225)
+        at app//org.sqlite.jdbc3.JDBC3Connection.prepareStatement(JDBC3Connection.java:205)
+        at app//app.cash.sqldelight.driver.jdbc.JdbcDriver.execute(JdbcDriver.kt:139)
+        at app//app.cash.sqldelight.db.SqlDriver$DefaultImpls.execute$default(SqlDriver.kt:63)
+        at app//tachiyomi.data.data.DatabaseImpl$Schema.migrateInternal-ElmaSbI(DatabaseImpl.kt:3863)
+        at app//tachiyomi.data.data.DatabaseImpl$Schema.migrate-zeHU3Mk(DatabaseImpl.kt:3916)
+        at app//tachiyomi.data.data.DatabaseImpl$Schema.migrate(DatabaseImpl.kt:116)
+        at app//mihon.data.sync.SyncRunStoreTest$schema 27 migration creates durable runtime tables$1.invokeSuspend(SyncRunStoreTest.kt:70)
+        at app//kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+        at app//kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+        at app//kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+        at app//kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+        at app//kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+        at app//kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+        at app//kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+        at app//kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+        at app//mihon.data.sync.SyncRunStoreTest.schema 27 migration creates durable runtime tables(SyncRunStoreTest.kt:45)
+
+SyncScaleAcceptanceTest[jvm] > complete histories and frozen decisions remain correct at ten and hundred thousand events()[jvm] STANDARD_OUT
+    SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"fixture_initial","httpRequests":0,"databaseBytes":1015808,"sampledJvmHeapBytesIncludingFixture":139570792,"elapsedMillis":173,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"first_exchange","httpRequests":110,"databaseBytes":16437248,"sampledJvmHeapBytesIncludingFixture":139570792,"elapsedMillis":3329,"blobReads":87,"preexistingBlobReads":87,"treeReads":20,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"fixture_increment","httpRequests":0,"databaseBytes":16437248,"sampledJvmHeapBytesIncludingFixture":139570792,"elapsedMillis":3,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"increment_exchange","httpRequests":52,"databaseBytes":16691200,"sampledJvmHeapBytesIncludingFixture":139570792,"elapsedMillis":539,"blobReads":12,"preexistingBlobReads":9,"treeReads":30,"refUpdates":1}
+    SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"panel_open","httpRequests":0,"databaseBytes":16691200,"sampledJvmHeapBytesIncludingFixture":139570792,"elapsedMillis":33,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"panel_load_more","httpRequests":0,"databaseBytes":16691200,"sampledJvmHeapBytesIncludingFixture":139570792,"elapsedMillis":13,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"panel_select_all","httpRequests":0,"databaseBytes":16691200,"sampledJvmHeapBytesIncludingFixture":139570792,"elapsedMillis":0,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"panel_freeze_selection","httpRequests":0,"databaseBytes":16732160,"sampledJvmHeapBytesIncludingFixture":139570792,"elapsedMillis":23,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"bulk_first_chunk","httpRequests":0,"databaseBytes":16740352,"sampledJvmHeapBytesIncludingFixture":139570792,"elapsedMillis":1007,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"bulk_resume_and_close","httpRequests":0,"databaseBytes":16740352,"sampledJvmHeapBytesIncludingFixture":139570792,"elapsedMillis":1567,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"unchanged_exchange","httpRequests":1,"databaseBytes":16740352,"sampledJvmHeapBytesIncludingFixture":139570792,"elapsedMillis":29,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"complete","httpRequests":256,"databaseBytes":16740352,"sampledJvmHeapBytesIncludingFixture":139570792,"events":10123,"repositoryInitialBlobBytes":6661892,"repositoryReachableBlobBytes":6758146,"repositoryBlobGrowthBytes":96254,"heapBaselineBytes":78824952,"heapPeakGrowthBytes":60745840}
+    SYNC_SCALE {"initialEvents":100000,"historyActors":10,"pendingDecisions":10000,"phase":"fixture_initial","httpRequests":0,"databaseBytes":1015808,"sampledJvmHeapBytesIncludingFixture":187589672,"elapsedMillis":1470,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":100000,"historyActors":10,"pendingDecisions":10000,"phase":"first_exchange","httpRequests":868,"databaseBytes":170348544,"sampledJvmHeapBytesIncludingFixture":229418824,"elapsedMillis":82890,"blobReads":810,"preexistingBlobReads":810,"treeReads":55,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":100000,"historyActors":10,"pendingDecisions":10000,"phase":"fixture_increment","httpRequests":0,"databaseBytes":170348544,"sampledJvmHeapBytesIncludingFixture":229418824,"elapsedMillis":143,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":100000,"historyActors":10,"pendingDecisions":10000,"phase":"increment_exchange","httpRequests":168,"databaseBytes":188968960,"sampledJvmHeapBytesIncludingFixture":247242656,"elapsedMillis":19955,"blobReads":93,"preexistingBlobReads":90,"treeReads":65,"refUpdates":1}
+    SYNC_SCALE {"initialEvents":100000,"historyActors":10,"pendingDecisions":10000,"phase":"panel_open","httpRequests":0,"databaseBytes":188968960,"sampledJvmHeapBytesIncludingFixture":249586832,"elapsedMillis":65,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":100000,"historyActors":10,"pendingDecisions":10000,"phase":"panel_load_more","httpRequests":0,"databaseBytes":188968960,"sampledJvmHeapBytesIncludingFixture":249586832,"elapsedMillis":26,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":100000,"historyActors":10,"pendingDecisions":10000,"phase":"panel_select_all","httpRequests":0,"databaseBytes":188968960,"sampledJvmHeapBytesIncludingFixture":249586832,"elapsedMillis":0,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":100000,"historyActors":10,"pendingDecisions":10000,"phase":"panel_freeze_selection","httpRequests":0,"databaseBytes":192065536,"sampledJvmHeapBytesIncludingFixture":249586832,"elapsedMillis":151,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":100000,"historyActors":10,"pendingDecisions":10000,"phase":"bulk_first_chunk","httpRequests":0,"databaseBytes":192090112,"sampledJvmHeapBytesIncludingFixture":250857400,"elapsedMillis":1600,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":100000,"historyActors":10,"pendingDecisions":10000,"phase":"bulk_resume_and_close","httpRequests":0,"databaseBytes":192090112,"sampledJvmHeapBytesIncludingFixture":267251600,"elapsedMillis":240644,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":100000,"historyActors":10,"pendingDecisions":10000,"phase":"unchanged_exchange","httpRequests":1,"databaseBytes":192090112,"sampledJvmHeapBytesIncludingFixture":267251600,"elapsedMillis":1610,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":100000,"historyActors":10,"pendingDecisions":10000,"phase":"complete","httpRequests":1076,"databaseBytes":192090112,"sampledJvmHeapBytesIncludingFixture":267251600,"events":110003,"repositoryInitialBlobBytes":73023089,"repositoryReachableBlobBytes":80512548,"repositoryBlobGrowthBytes":7489459,"heapBaselineBytes":38818448,"heapPeakGrowthBytes":228433152}
+
+SyncScaleAcceptanceTest[jvm] > controlled first import and exchange profile()[jvm] STANDARD_OUT
+    SYNC_SCALE_SAMPLE 1
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_fixture_local_library","httpRequests":0,"databaseBytes":1093632,"sampledJvmHeapBytesIncludingFixture":254507128,"elapsedMillis":10136,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_connect_freeze","httpRequests":11,"databaseBytes":1138688,"sampledJvmHeapBytesIncludingFixture":256167488,"elapsedMillis":744,"blobReads":2,"preexistingBlobReads":2,"treeReads":5,"refUpdates":0}
+    SYNC_CONTROLLED_CONNECT_PATHS sample=1 paths=GET /user|GET /repos/fixture-owner/mihon-sync|GET /repos/fixture-owner/mihon-sync/git/ref/heads/mihon-sync-v1|GET /repos/fixture-owner/mihon-sync/git/commits/0000000000000000000000000000000000000005|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000004|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000006|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000007|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000008|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000009|GET /repos/fixture-owner/mihon-sync/git/blobs/a8db7b4ac901f70716fc93da41958bada2a60468|GET /repos/fixture-owner/mihon-sync/git/blobs/34a500112552ba561d58bf9a3347aff3c54b190b
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_import_and_upload_confirmed_total","httpRequests":50,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":265470752,"elapsedMillis":5180,"blobReads":8,"preexistingBlobReads":2,"treeReads":25,"refUpdates":2}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_initial_import_generated","elapsedSinceConnectMillis":1549,"observation":"sqldelight_query_notification"}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_first_batch_locally_confirmed","elapsedSinceConnectMillis":4150,"confirmation":"durable_published_batch","observation":"sqldelight_query_notification"}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_all_confirmed_since_connect","elapsedSinceConnectMillis":5929,"sample":1}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_download_connect_merge","httpRequests":45,"databaseBytes":1982464,"sampledJvmHeapBytesIncludingFixture":266111760,"elapsedMillis":3870,"blobReads":12,"preexistingBlobReads":12,"treeReads":24,"refUpdates":0}
+    SYNC_SCALE {"phase":"runtime_controlled_first_wire_bytes","sample":1,"requestBodyBytes":258647,"responseBodyBytes":537904}
+    SYNC_SCALE_SAMPLE 2
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_fixture_local_library","httpRequests":0,"databaseBytes":1093632,"sampledJvmHeapBytesIncludingFixture":228801280,"elapsedMillis":10546,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_connect_freeze","httpRequests":11,"databaseBytes":1138688,"sampledJvmHeapBytesIncludingFixture":230075992,"elapsedMillis":721,"blobReads":2,"preexistingBlobReads":2,"treeReads":5,"refUpdates":0}
+    SYNC_CONTROLLED_CONNECT_PATHS sample=2 paths=GET /user|GET /repos/fixture-owner/mihon-sync|GET /repos/fixture-owner/mihon-sync/git/ref/heads/mihon-sync-v1|GET /repos/fixture-owner/mihon-sync/git/commits/0000000000000000000000000000000000000005|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000004|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000006|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000007|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000008|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000009|GET /repos/fixture-owner/mihon-sync/git/blobs/a8db7b4ac901f70716fc93da41958bada2a60468|GET /repos/fixture-owner/mihon-sync/git/blobs/34a500112552ba561d58bf9a3347aff3c54b190b
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_import_and_upload_confirmed_total","httpRequests":50,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":250086192,"elapsedMillis":5074,"blobReads":8,"preexistingBlobReads":2,"treeReads":25,"refUpdates":2}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_initial_import_generated","elapsedSinceConnectMillis":1497,"observation":"sqldelight_query_notification"}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_first_batch_locally_confirmed","elapsedSinceConnectMillis":4087,"confirmation":"durable_published_batch","observation":"sqldelight_query_notification"}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_all_confirmed_since_connect","elapsedSinceConnectMillis":5795,"sample":2}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_download_connect_merge","httpRequests":45,"databaseBytes":1982464,"sampledJvmHeapBytesIncludingFixture":264871752,"elapsedMillis":3997,"blobReads":12,"preexistingBlobReads":12,"treeReads":24,"refUpdates":0}
+    SYNC_SCALE {"phase":"runtime_controlled_first_wire_bytes","sample":2,"requestBodyBytes":258647,"responseBodyBytes":537904}
+    SYNC_SCALE_SAMPLE 3
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_fixture_local_library","httpRequests":0,"databaseBytes":1093632,"sampledJvmHeapBytesIncludingFixture":203717248,"elapsedMillis":10453,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_connect_freeze","httpRequests":11,"databaseBytes":1138688,"sampledJvmHeapBytesIncludingFixture":205016272,"elapsedMillis":729,"blobReads":2,"preexistingBlobReads":2,"treeReads":5,"refUpdates":0}
+    SYNC_CONTROLLED_CONNECT_PATHS sample=3 paths=GET /user|GET /repos/fixture-owner/mihon-sync|GET /repos/fixture-owner/mihon-sync/git/ref/heads/mihon-sync-v1|GET /repos/fixture-owner/mihon-sync/git/commits/0000000000000000000000000000000000000005|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000004|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000006|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000007|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000008|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000009|GET /repos/fixture-owner/mihon-sync/git/blobs/a8db7b4ac901f70716fc93da41958bada2a60468|GET /repos/fixture-owner/mihon-sync/git/blobs/34a500112552ba561d58bf9a3347aff3c54b190b
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_import_and_upload_confirmed_total","httpRequests":50,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":256679936,"elapsedMillis":5191,"blobReads":8,"preexistingBlobReads":2,"treeReads":25,"refUpdates":2}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_initial_import_generated","elapsedSinceConnectMillis":1577,"observation":"sqldelight_query_notification"}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_first_batch_locally_confirmed","elapsedSinceConnectMillis":4287,"confirmation":"durable_published_batch","observation":"sqldelight_query_notification"}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_all_confirmed_since_connect","elapsedSinceConnectMillis":5922,"sample":3}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_download_connect_merge","httpRequests":45,"databaseBytes":1990656,"sampledJvmHeapBytesIncludingFixture":256679936,"elapsedMillis":3783,"blobReads":12,"preexistingBlobReads":12,"treeReads":24,"refUpdates":0}
+    SYNC_SCALE {"phase":"runtime_controlled_first_wire_bytes","sample":3,"requestBodyBytes":258647,"responseBodyBytes":537904}
+    SYNC_SCALE_SAMPLE 4
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_fixture_local_library","httpRequests":0,"databaseBytes":1093632,"sampledJvmHeapBytesIncludingFixture":266026600,"elapsedMillis":10476,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_connect_freeze","httpRequests":11,"databaseBytes":1138688,"sampledJvmHeapBytesIncludingFixture":266026600,"elapsedMillis":732,"blobReads":2,"preexistingBlobReads":2,"treeReads":5,"refUpdates":0}
+    SYNC_CONTROLLED_CONNECT_PATHS sample=4 paths=GET /user|GET /repos/fixture-owner/mihon-sync|GET /repos/fixture-owner/mihon-sync/git/ref/heads/mihon-sync-v1|GET /repos/fixture-owner/mihon-sync/git/commits/0000000000000000000000000000000000000005|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000004|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000006|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000007|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000008|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000009|GET /repos/fixture-owner/mihon-sync/git/blobs/a8db7b4ac901f70716fc93da41958bada2a60468|GET /repos/fixture-owner/mihon-sync/git/blobs/34a500112552ba561d58bf9a3347aff3c54b190b
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_import_and_upload_confirmed_total","httpRequests":50,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":266026600,"elapsedMillis":5141,"blobReads":8,"preexistingBlobReads":2,"treeReads":25,"refUpdates":2}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_initial_import_generated","elapsedSinceConnectMillis":1574,"observation":"sqldelight_query_notification"}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_first_batch_locally_confirmed","elapsedSinceConnectMillis":4153,"confirmation":"durable_published_batch","observation":"sqldelight_query_notification"}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_all_confirmed_since_connect","elapsedSinceConnectMillis":5874,"sample":4}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_download_connect_merge","httpRequests":45,"databaseBytes":1982464,"sampledJvmHeapBytesIncludingFixture":266026600,"elapsedMillis":3894,"blobReads":12,"preexistingBlobReads":12,"treeReads":24,"refUpdates":0}
+    SYNC_SCALE {"phase":"runtime_controlled_first_wire_bytes","sample":4,"requestBodyBytes":258647,"responseBodyBytes":537904}
+    SYNC_SCALE_SAMPLE 5
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_fixture_local_library","httpRequests":0,"databaseBytes":1093632,"sampledJvmHeapBytesIncludingFixture":263592280,"elapsedMillis":10090,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_connect_freeze","httpRequests":11,"databaseBytes":1138688,"sampledJvmHeapBytesIncludingFixture":265334112,"elapsedMillis":744,"blobReads":2,"preexistingBlobReads":2,"treeReads":5,"refUpdates":0}
+    SYNC_CONTROLLED_CONNECT_PATHS sample=5 paths=GET /user|GET /repos/fixture-owner/mihon-sync|GET /repos/fixture-owner/mihon-sync/git/ref/heads/mihon-sync-v1|GET /repos/fixture-owner/mihon-sync/git/commits/0000000000000000000000000000000000000005|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000004|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000006|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000007|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000008|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000009|GET /repos/fixture-owner/mihon-sync/git/blobs/a8db7b4ac901f70716fc93da41958bada2a60468|GET /repos/fixture-owner/mihon-sync/git/blobs/34a500112552ba561d58bf9a3347aff3c54b190b
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_import_and_upload_confirmed_total","httpRequests":50,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":266652864,"elapsedMillis":5042,"blobReads":8,"preexistingBlobReads":2,"treeReads":25,"refUpdates":2}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_initial_import_generated","elapsedSinceConnectMillis":1516,"observation":"sqldelight_query_notification"}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_first_batch_locally_confirmed","elapsedSinceConnectMillis":4090,"confirmation":"durable_published_batch","observation":"sqldelight_query_notification"}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_all_confirmed_since_connect","elapsedSinceConnectMillis":5787,"sample":5}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_download_connect_merge","httpRequests":45,"databaseBytes":1982464,"sampledJvmHeapBytesIncludingFixture":266652864,"elapsedMillis":3834,"blobReads":12,"preexistingBlobReads":12,"treeReads":24,"refUpdates":0}
+    SYNC_SCALE {"phase":"runtime_controlled_first_wire_bytes","sample":5,"requestBodyBytes":258647,"responseBodyBytes":537904}
+    SYNC_SCALE_SAMPLE 6
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_fixture_local_library","httpRequests":0,"databaseBytes":1093632,"sampledJvmHeapBytesIncludingFixture":236823000,"elapsedMillis":10422,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_connect_freeze","httpRequests":11,"databaseBytes":1138688,"sampledJvmHeapBytesIncludingFixture":238696728,"elapsedMillis":725,"blobReads":2,"preexistingBlobReads":2,"treeReads":5,"refUpdates":0}
+    SYNC_CONTROLLED_CONNECT_PATHS sample=6 paths=GET /user|GET /repos/fixture-owner/mihon-sync|GET /repos/fixture-owner/mihon-sync/git/ref/heads/mihon-sync-v1|GET /repos/fixture-owner/mihon-sync/git/commits/0000000000000000000000000000000000000005|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000004|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000006|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000007|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000008|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000009|GET /repos/fixture-owner/mihon-sync/git/blobs/a8db7b4ac901f70716fc93da41958bada2a60468|GET /repos/fixture-owner/mihon-sync/git/blobs/34a500112552ba561d58bf9a3347aff3c54b190b
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_import_and_upload_confirmed_total","httpRequests":50,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":256760224,"elapsedMillis":5112,"blobReads":8,"preexistingBlobReads":2,"treeReads":25,"refUpdates":2}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_initial_import_generated","elapsedSinceConnectMillis":1549,"observation":"sqldelight_query_notification"}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_first_batch_locally_confirmed","elapsedSinceConnectMillis":4145,"confirmation":"durable_published_batch","observation":"sqldelight_query_notification"}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_all_confirmed_since_connect","elapsedSinceConnectMillis":5837,"sample":6}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_download_connect_merge","httpRequests":45,"databaseBytes":1990656,"sampledJvmHeapBytesIncludingFixture":256760224,"elapsedMillis":3839,"blobReads":12,"preexistingBlobReads":12,"treeReads":24,"refUpdates":0}
+    SYNC_SCALE {"phase":"runtime_controlled_first_wire_bytes","sample":6,"requestBodyBytes":258647,"responseBodyBytes":537904}
+    SYNC_SCALE_SAMPLE 7
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_fixture_local_library","httpRequests":0,"databaseBytes":1093632,"sampledJvmHeapBytesIncludingFixture":266228768,"elapsedMillis":10191,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_connect_freeze","httpRequests":11,"databaseBytes":1138688,"sampledJvmHeapBytesIncludingFixture":266228768,"elapsedMillis":700,"blobReads":2,"preexistingBlobReads":2,"treeReads":5,"refUpdates":0}
+    SYNC_CONTROLLED_CONNECT_PATHS sample=7 paths=GET /user|GET /repos/fixture-owner/mihon-sync|GET /repos/fixture-owner/mihon-sync/git/ref/heads/mihon-sync-v1|GET /repos/fixture-owner/mihon-sync/git/commits/0000000000000000000000000000000000000005|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000004|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000006|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000007|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000008|GET /repos/fixture-owner/mihon-sync/git/trees/0000000000000000000000000000000000000009|GET /repos/fixture-owner/mihon-sync/git/blobs/a8db7b4ac901f70716fc93da41958bada2a60468|GET /repos/fixture-owner/mihon-sync/git/blobs/34a500112552ba561d58bf9a3347aff3c54b190b
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_import_and_upload_confirmed_total","httpRequests":50,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":266228768,"elapsedMillis":5014,"blobReads":8,"preexistingBlobReads":2,"treeReads":25,"refUpdates":2}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_initial_import_generated","elapsedSinceConnectMillis":1474,"observation":"sqldelight_query_notification"}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_first_batch_locally_confirmed","elapsedSinceConnectMillis":4038,"confirmation":"durable_published_batch","observation":"sqldelight_query_notification"}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_all_confirmed_since_connect","elapsedSinceConnectMillis":5715,"sample":7}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_download_connect_merge","httpRequests":45,"databaseBytes":1982464,"sampledJvmHeapBytesIncludingFixture":266228768,"elapsedMillis":3864,"blobReads":12,"preexistingBlobReads":12,"treeReads":24,"refUpdates":0}
+    SYNC_SCALE {"phase":"runtime_controlled_first_wire_bytes","sample":7,"requestBodyBytes":258647,"responseBodyBytes":537904}
+
+SyncScaleAcceptanceTest[jvm] > candidate baseline first import upload download warm exchange and recovery()[jvm] STANDARD_OUT
+    SYNC_SCALE {"initialEvents":1000,"historyActors":1,"pendingDecisions":0,"phase":"candidate_fixture_local_library","httpRequests":0,"databaseBytes":1323008,"sampledJvmHeapBytesIncludingFixture":211427440,"elapsedMillis":34883,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":1000,"historyActors":1,"pendingDecisions":0,"phase":"candidate_first_import","httpRequests":0,"databaseBytes":3330048,"sampledJvmHeapBytesIncludingFixture":211427440,"elapsedMillis":833,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":1000,"historyActors":1,"pendingDecisions":0,"phase":"candidate_first_upload_total","httpRequests":82,"databaseBytes":4362240,"sampledJvmHeapBytesIncludingFixture":211427440,"elapsedMillis":1038,"blobReads":12,"preexistingBlobReads":0,"treeReads":40,"refUpdates":4}
+    SYNC_SCALE {"initialEvents":1000,"historyActors":1,"pendingDecisions":0,"phase":"candidate_first_download_total","httpRequests":25,"databaseBytes":3706880,"sampledJvmHeapBytesIncludingFixture":211427440,"elapsedMillis":1348,"blobReads":10,"preexistingBlobReads":10,"treeReads":12,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":1000,"historyActors":1,"pendingDecisions":0,"phase":"candidate_warm_upload_one","httpRequests":22,"databaseBytes":4362240,"sampledJvmHeapBytesIncludingFixture":211427440,"elapsedMillis":127,"blobReads":3,"preexistingBlobReads":0,"treeReads":10,"refUpdates":1}
+    SYNC_SCALE {"initialEvents":1000,"historyActors":1,"pendingDecisions":0,"phase":"candidate_lost_publish_and_read_failure","httpRequests":7,"databaseBytes":4362240,"sampledJvmHeapBytesIncludingFixture":211427440,"elapsedMillis":85,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":1}
+    SYNC_SCALE {"initialEvents":1000,"historyActors":1,"pendingDecisions":0,"phase":"candidate_recovery_fresh_transport","httpRequests":27,"databaseBytes":4362240,"sampledJvmHeapBytesIncludingFixture":211427440,"elapsedMillis":92,"blobReads":11,"preexistingBlobReads":11,"treeReads":12,"refUpdates":0}
+
+SyncScaleAcceptanceTest[jvm] > runtime baseline first import complete exchange warm increment and recovery()[jvm] STANDARD_OUT
+    SYNC_SCALE_SAMPLE 1
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_fixture_local_library","httpRequests":0,"databaseBytes":1093632,"sampledJvmHeapBytesIncludingFixture":134727904,"elapsedMillis":10185,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_connect_freeze","httpRequests":11,"databaseBytes":1138688,"sampledJvmHeapBytesIncludingFixture":136546888,"elapsedMillis":76,"blobReads":2,"preexistingBlobReads":2,"treeReads":5,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_import_and_upload_confirmed_total","httpRequests":50,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":197938784,"elapsedMillis":1796,"blobReads":8,"preexistingBlobReads":2,"treeReads":25,"refUpdates":2}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_initial_import_generated","elapsedSinceConnectMillis":808,"observation":"sqldelight_query_notification"}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_first_batch_locally_confirmed","elapsedSinceConnectMillis":1316,"confirmation":"durable_published_batch","observation":"sqldelight_query_notification"}
+    SYNC_SCALE {"initialEvents":300,"phase":"runtime_all_confirmed_since_connect","elapsedSinceConnectMillis":1873,"sample":1}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_download_connect_merge","httpRequests":45,"databaseBytes":1982464,"sampledJvmHeapBytesIncludingFixture":204841968,"elapsedMillis":980,"blobReads":12,"preexistingBlobReads":12,"treeReads":24,"refUpdates":0}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_warm_upload_one","httpRequests":23,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":204841968,"elapsedMillis":508,"blobReads":3,"preexistingBlobReads":0,"treeReads":10,"refUpdates":1}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_lost_publish_and_read_failure","httpRequests":8,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":204841968,"elapsedMillis":256,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":1}
+    SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_recovery_new_runtime","httpRequests":22,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":204841968,"elapsedMillis":506,"blobReads":5,"preexistingBlobReads":5,"treeReads":10,"refUpdates":0}
+
+SyncScaleAcceptanceTest[jvm] > controlled warm increment with one hundred historical batches()[jvm] STANDARD_OUT
+    SYNC_SCALE {"initialEvents":100,"historyActors":1,"pendingDecisions":0,"phase":"h100_warm_increment_sample_1","httpRequests":23,"databaseBytes":1392640,"sampledJvmHeapBytesIncludingFixture":207309880,"elapsedMillis":2244,"blobReads":3,"preexistingBlobReads":0,"treeReads":10,"refUpdates":1}
+    SYNC_SCALE {"phase":"h100_wire_bytes_sample_1","requestBodyBytes":3318,"responseBodyBytes":6493}
+    SYNC_SCALE {"initialEvents":100,"historyActors":1,"pendingDecisions":0,"phase":"h100_warm_increment_sample_2","httpRequests":23,"databaseBytes":1392640,"sampledJvmHeapBytesIncludingFixture":207142344,"elapsedMillis":2140,"blobReads":3,"preexistingBlobReads":0,"treeReads":10,"refUpdates":1}
+    SYNC_SCALE {"phase":"h100_wire_bytes_sample_2","requestBodyBytes":3318,"responseBodyBytes":6493}
+    SYNC_SCALE {"initialEvents":100,"historyActors":1,"pendingDecisions":0,"phase":"h100_warm_increment_sample_3","httpRequests":23,"databaseBytes":1392640,"sampledJvmHeapBytesIncludingFixture":184575800,"elapsedMillis":2032,"blobReads":3,"preexistingBlobReads":0,"treeReads":10,"refUpdates":1}
+    SYNC_SCALE {"phase":"h100_wire_bytes_sample_3","requestBodyBytes":3318,"responseBodyBytes":6493}
+    SYNC_SCALE {"initialEvents":100,"historyActors":1,"pendingDecisions":0,"phase":"h100_warm_increment_sample_4","httpRequests":23,"databaseBytes":1392640,"sampledJvmHeapBytesIncludingFixture":205756152,"elapsedMillis":2138,"blobReads":3,"preexistingBlobReads":0,"treeReads":10,"refUpdates":1}
+    SYNC_SCALE {"phase":"h100_wire_bytes_sample_4","requestBodyBytes":3318,"responseBodyBytes":6493}
+    SYNC_SCALE {"initialEvents":100,"historyActors":1,"pendingDecisions":0,"phase":"h100_warm_increment_sample_5","httpRequests":23,"databaseBytes":1392640,"sampledJvmHeapBytesIncludingFixture":207652920,"elapsedMillis":2096,"blobReads":3,"preexistingBlobReads":0,"treeReads":10,"refUpdates":1}
+    SYNC_SCALE {"phase":"h100_wire_bytes_sample_5","requestBodyBytes":3318,"responseBodyBytes":6493}
+    SYNC_SCALE {"initialEvents":100,"historyActors":1,"pendingDecisions":0,"phase":"h100_warm_increment_sample_6","httpRequests":23,"databaseBytes":1392640,"sampledJvmHeapBytesIncludingFixture":208175056,"elapsedMillis":2071,"blobReads":3,"preexistingBlobReads":0,"treeReads":10,"refUpdates":1}
+    SYNC_SCALE {"phase":"h100_wire_bytes_sample_6","requestBodyBytes":3318,"responseBodyBytes":6493}
+    SYNC_SCALE {"initialEvents":100,"historyActors":1,"pendingDecisions":0,"phase":"h100_warm_increment_sample_7","httpRequests":23,"databaseBytes":1392640,"sampledJvmHeapBytesIncludingFixture":207561264,"elapsedMillis":2135,"blobReads":3,"preexistingBlobReads":0,"treeReads":10,"refUpdates":1}
+    SYNC_SCALE {"phase":"h100_wire_bytes_sample_7","requestBodyBytes":3318,"responseBodyBytes":6493}
+
+SyncScaleAcceptanceTest[jvm] > diagnose projected fields with real inbox and file database()[jvm] STANDARD_OUT
+    SYNC_PROJECT_DIAGNOSTIC events=5000 actors=1 uniqueFields=500 pages=11 ingestMs=1149 projectMs=661 commitCalls=13 commitMs=236 emptyTransactionMs=171 sqlCalls=11028 sqlMs=337 dirtyQueryCalls=11 dirtyQueryMs=16 transactions=2013 outerTransactions=513
+
+CreatorArchiveMigration15Test[jvm] > fresh schema is latest and contains the complete frozen archive()[jvm] FAILED
+    org.opentest4j.AssertionFailedError: expected:<31L> but was:<37L>
+        at app//tachiyomi.data.creator.CreatorArchiveMigration15Test.fresh schema is latest and contains the complete frozen archive(CreatorArchiveMigration15Test.kt:22)
+
+CreatorArchiveMigration16Test[jvm] > v16 through latest preserves archive data and accepts split chapter variants()[jvm] FAILED
+    org.opentest4j.AssertionFailedError: expected:<37L> but was:<31L>
+        at app//tachiyomi.data.creator.CreatorArchiveMigration16Test.v16 through latest preserves archive data and accepts split chapter variants(CreatorArchiveMigration16Test.kt:70)
+
+CreatorArchivePerformanceContractTest[jvm] > production backfill indexes ten thousand manga within the frozen budget and stays idempotent()[jvm] STANDARD_OUT
+    Exact creator backfill first pass: BackfillTiming(firstProgressMillis=3, totalMillis=7027)
+    Exact creator backfill idempotent replay: BackfillTiming(firstProgressMillis=1, totalMillis=4729)
+
+CreatorArchiveV15FixtureContractTest[jvm] > current generated schema and target migration version match the frozen contract()[jvm] FAILED
+    org.opentest4j.AssertionFailedError: expected:<31L> but was:<37L>
+        at app//tachiyomi.data.creator.CreatorArchiveV15FixtureContractTest.current generated schema and target migration version match the frozen contract(CreatorArchiveV15FixtureContractTest.kt:44)
+
+CreatorRepositoryImplTest[jvm] > migration recovery retains full premerge graph after failure and file reopen()[jvm] FAILED
+    org.sqlite.SQLiteException: [SQLITE_ERROR] SQL error or missing database (table author_archive_source_works has 19 columns but 14 values were supplied)
+        at app//org.sqlite.core.DB.newSQLException(DB.java:1179)
+        at app//org.sqlite.core.DB.newSQLException(DB.java:1190)
+        at app//org.sqlite.core.DB.throwex(DB.java:1150)
+        at app//org.sqlite.core.NativeDB.prepare_utf8(Native Method)
+        at app//org.sqlite.core.NativeDB.prepare(NativeDB.java:135)
+        at app//org.sqlite.core.DB.prepare(DB.java:264)
+        at app//org.sqlite.core.CorePreparedStatement.<init>(CorePreparedStatement.java:46)
+        at app//org.sqlite.jdbc3.JDBC3PreparedStatement.<init>(JDBC3PreparedStatement.java:32)
+        at app//org.sqlite.jdbc4.JDBC4PreparedStatement.<init>(JDBC4PreparedStatement.java:28)
+        at app//org.sqlite.jdbc4.JDBC4Connection.prepareStatement(JDBC4Connection.java:34)
+        at app//org.sqlite.jdbc3.JDBC3Connection.prepareStatement(JDBC3Connection.java:225)
+        at app//org.sqlite.jdbc3.JDBC3Connection.prepareStatement(JDBC3Connection.java:205)
+        at app//app.cash.sqldelight.driver.jdbc.JdbcDriver.execute(JdbcDriver.kt:139)
+        at app//app.cash.sqldelight.db.SqlDriver$DefaultImpls.execute$default(SqlDriver.kt:63)
+        at app//tachiyomi.data.creator.CreatorRepositoryImplTest$migration recovery retains full premerge graph after failure and file reopen$1.invokeSuspend$seed(CreatorRepositoryImplTest.kt:189)
+        at app//tachiyomi.data.creator.CreatorRepositoryImplTest$migration recovery retains full premerge graph after failure and file reopen$1.invokeSuspend(CreatorRepositoryImplTest.kt:213)
+        at app//kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+        at app//kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+        at app//kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+        at app//kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+        at app//kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+        at app//kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+        at app//kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+        at app//kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+        at app//tachiyomi.data.creator.CreatorRepositoryImplTest.migration recovery retains full premerge graph after failure and file reopen(CreatorRepositoryImplTest.kt:182)
+
+Gradle Test Executor 31 finished executing tests.
+
+> Task :data:jvmTest
+
+589 tests completed, 7 failed
+Finished generating test XML results (0.017 secs) into: D:\Codex\worktrees\85be\mihon\data\build\test-results\jvmTest
+Generating HTML test report...
+Finished generating test html results (0.028 secs) into: D:\Codex\worktrees\85be\mihon\data\build\reports\tests\jvmTest
+
+> Task :data:jvmTest FAILED
+Build 88da3b65-6ace-426f-bbe7-7652c8a3c189 is closed
+
+FAILURE: Build completed with 3 failures.
+
+1: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':presentation-sync:jvmTest'.
+> There were failing tests. See the report at: file:///D:/Codex/worktrees/85be/mihon/presentation-sync/build/reports/tests/jvmTest/index.html
+
+* Try:
+> Run with --scan to get full insights.
+==============================================================================
+
+2: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':domain:jvmTest'.
+> There were failing tests. See the report at: file:///D:/Codex/worktrees/85be/mihon/domain/build/reports/tests/jvmTest/index.html
+
+* Try:
+> Run with --scan to get full insights.
+==============================================================================
+
+3: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':data:jvmTest'.
+> There were failing tests. See the report at: file:///D:/Codex/worktrees/85be/mihon/data/build/reports/tests/jvmTest/index.html
+
+* Try:
+> Run with --scan to get full insights.
+==============================================================================
+
+BUILD FAILED in 14m 25s
+43 actionable tasks: 11 executed, 32 up-to-date
+Watched directory hierarchies: [D:\Codex\worktrees\85be\mihon, D:\Codex\worktrees\85be\mihon-sync-old-96db]

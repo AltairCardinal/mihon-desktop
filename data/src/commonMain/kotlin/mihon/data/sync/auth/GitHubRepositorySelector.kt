@@ -12,6 +12,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import mihon.data.sync.http.SyncHttpClient
 import mihon.data.sync.http.SyncHttpException
+import mihon.data.sync.http.SyncHttpRequestGate
 import mihon.data.sync.http.SyncHttpResponse
 import mihon.domain.sync.transport.SyncRepository
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -27,9 +28,14 @@ class GitHubPrivateRepositorySelector(
     productionClient: OkHttpClient,
     private val accessToken: suspend () -> String,
     apiBaseUrl: String = "https://api.github.com",
+    requestGate: SyncHttpRequestGate? = null,
 ) {
     private val baseUrl = apiBaseUrl.trimEnd('/')
-    private val http = SyncHttpClient(productionClient, setOf(baseUrl.hostOrNull() ?: "api.github.com"))
+    private val http = SyncHttpClient(
+        productionClient,
+        setOf(baseUrl.hostOrNull() ?: "api.github.com"),
+        requestGate = requestGate,
+    )
 
     internal suspend fun objects(path: String, field: String): List<JsonObject> =
         collectPages("$baseUrl$path") { response -> response.json().array(field).map { it.jsonObject } }.flatten()

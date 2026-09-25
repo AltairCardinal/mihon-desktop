@@ -134,8 +134,11 @@ class SyncOutboxStore(private val handler: DatabaseHandler) {
 
 /** One bounded upload; application scheduling and receiving are separate responsibilities. */
 class SyncOutboxExchange(private val store: SyncOutboxStore, private val service: SyncBatchSyncService) {
-    suspend fun uploadNext(snapshot: SyncSnapshot): SyncUploadResult? {
-        store.observeSnapshot(snapshot)
+    suspend fun uploadNext(
+        snapshot: SyncSnapshot,
+        observeSnapshot: suspend (SyncSnapshot, String?) -> Unit = { current, _ -> store.observeSnapshot(current) },
+    ): SyncUploadResult? {
+        observeSnapshot(snapshot, null)
         val batch = store.nextBatch(snapshot.spaceId, snapshot.generation) ?: return null
         val upload = store.prepared(batch) ?: store.savePrepared(
             batch,
@@ -146,7 +149,11 @@ class SyncOutboxExchange(private val store: SyncOutboxStore, private val service
                     "${batch.events.first().epoch}/${batch.batchId}.json",
             ),
         )
-        val result = service.uploadPrepared(snapshot.repository, snapshot, upload, store::observeSnapshot)
+        val result = service.uploadPrepared(snapshot.repository, snapshot, upload) { confirmed ->
+            // The snapshot can contain this upload before the outbox transaction marks it PUBLISHED.
+            // Exclude only its known batch ID from discovery during that confirmation window.
+            observeSnapshot(confirmed, batch.batchId)
+        }
         if (result.publish.status == SyncPublishStatus.PUBLISHED) store.acknowledge(upload, result.publish)
         return result.copy(batch = batch)
     }

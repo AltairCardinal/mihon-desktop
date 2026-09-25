@@ -1,6 +1,7 @@
 package mihon.data.sync
 
 import app.cash.sqldelight.db.SqlDriver
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -269,6 +270,97 @@ abstract class SyncInboxStorageContract {
             s.projector.retryUnavailable("space", 1)
             s.projectAll()
             assertEquals(true, s.writer.localMembership(manga))
+            assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
+        }
+    }
+
+    @Test
+    fun `batch projection isolates unavailable field and retries it independently`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            val good = manga.copy(originalUrl = "/good")
+            val unavailable = manga.copy(sourceId = "43", originalUrl = "/unavailable")
+            assertTrue(s.inbox.ingest(membership(1, SyncEffectKind.ADD, key = good)).accepted)
+            assertTrue(s.inbox.ingest(membership(2, SyncEffectKind.ADD, key = unavailable)).accepted)
+            s.projectAll()
+            assertEquals(true, s.writer.localMembership(good))
+            assertEquals(null, s.writer.localMembership(unavailable))
+            s.sources += 43L
+            s.projector.retryUnavailable("space", 1)
+            s.projectAll()
+            assertEquals(true, s.writer.localMembership(unavailable))
+        }
+    }
+
+    @Test
+    fun `cancelled page rolls back all fields and preserves author migration readiness`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            val first = manga.copy(originalUrl = "/first")
+            val second = manga.copy(originalUrl = "/second")
+            assertTrue(s.inbox.ingest(membership(1, SyncEffectKind.ADD, key = first)).accepted)
+            assertTrue(s.inbox.ingest(membership(2, SyncEffectKind.ADD, key = second)).accepted)
+            var sourceChecks = 0
+            val cancellingWriter = SyncRemoteProjectionWriter(
+                s.handler,
+                s.creators,
+                s.creators,
+                s.bootstrap,
+                sourceAvailable = {
+                    if (++sourceChecks == 2) throw CancellationException("cancel projection page")
+                    true
+                },
+            )
+            val cancellingProjector = SyncInboxProjector(s.handler, cancellingWriter)
+            try {
+                cancellingProjector.project("space", 1)
+                error("projection should have been cancelled")
+            } catch (_: CancellationException) {
+                // Both fields remain dirty; the next run must be able to apply them.
+            }
+            assertEquals(null, s.writer.localMembership(first))
+            assertEquals(null, s.writer.localMembership(second))
+            assertEquals(
+                "COMPLETED",
+                s.handler.await {
+                    author_archiveQueries.getArchiveIdentityMigrationState("global-exact-name-v1")
+                        .executeAsOneOrNull()
+                },
+            )
+            s.projectAll()
+            assertEquals(true, s.writer.localMembership(first))
+            assertEquals(true, s.writer.localMembership(second))
+        }
+    }
+
+    @Test
+    fun `unexpected field write failure replays once and preserves the received inbox`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            val first = manga.copy(originalUrl = "/first")
+            val second = manga.copy(originalUrl = "/second")
+            assertTrue(s.inbox.ingest(membership(1, SyncEffectKind.ADD, key = first)).accepted)
+            assertTrue(s.inbox.ingest(membership(2, SyncEffectKind.ADD, key = second)).accepted)
+            s.driver.execute(
+                null,
+                """CREATE TRIGGER block_second_sync_favorite BEFORE UPDATE OF favorite ON mangas
+                    WHEN NEW.url = '/second' BEGIN SELECT RAISE(ABORT, 'blocked second favorite'); END""",
+                0,
+            )
+            val failure = try {
+                s.projector.project("space", 1)
+                null
+            } catch (failure: Exception) {
+                failure
+            }
+            assertTrue(failure != null && failure !is CancellationException)
+            assertEquals(true, s.writer.localMembership(first))
+            assertEquals(null, s.writer.localMembership(second))
+            assertEquals(2, s.inbox.status("space", 1).receivedBatches)
+            assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
+            s.driver.execute(null, "DROP TRIGGER block_second_sync_favorite", 0)
+            s.projectAll()
+            assertEquals(true, s.writer.localMembership(second))
             assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
         }
     }

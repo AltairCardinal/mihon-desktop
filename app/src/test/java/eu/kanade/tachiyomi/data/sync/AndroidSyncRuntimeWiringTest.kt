@@ -183,6 +183,10 @@ class AndroidSyncRuntimeWiringTest {
             Injekt.importModule(DomainModule())
             val runtime = Injekt.get<SyncRuntime>()
             assertSame(runtime, Injekt.get<SyncRuntime>())
+            assertEquals(
+                context.cacheDir.resolve("mihon-sync-objects").absolutePath,
+                property(runtime, "persistentObjectCacheDirectory").toString(),
+            )
             assertTrue(Injekt.get<SyncSecureStore>() is AndroidSyncSecureStore)
             val worker = TestListenableWorkerBuilder<SyncWorker>(context).build()
             assertEquals(ListenableWorker.Result.success(), worker.doWork())
@@ -304,7 +308,7 @@ class AndroidSyncRuntimeWiringTest {
     }
 
     @Test
-    fun `worker only retries transient network failure within a bounded budget`() = runBlocking {
+    fun `worker persists network retry state instead of adding a second WorkManager budget`() = runBlocking {
         var currentProblem = SyncRunProblem.NETWORK
         runtime { SyncRunResult(SyncRunStatus.FAILED, problem = currentProblem) }
         for (problem in SyncRunProblem.entries) {
@@ -314,19 +318,14 @@ class AndroidSyncRuntimeWiringTest {
                 .build()
                 .doWork()
             assertEquals(
-                if (problem ==
-                    SyncRunProblem.NETWORK
-                ) {
-                    ListenableWorker.Result.retry()
+                if (problem == SyncRunProblem.NETWORK) {
+                    ListenableWorker.Result.success()
                 } else {
                     ListenableWorker.Result.failure()
                 },
                 result,
             )
         }
-        currentProblem = SyncRunProblem.NETWORK
-        val exhausted = TestListenableWorkerBuilder<SyncWorker>(context).setRunAttemptCount(3).build()
-        assertEquals(ListenableWorker.Result.failure(), exhausted.doWork())
     }
 
     @Test

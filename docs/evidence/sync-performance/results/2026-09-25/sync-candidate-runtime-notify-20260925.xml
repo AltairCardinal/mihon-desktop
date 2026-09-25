@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="mihon.data.sync.SyncScaleAcceptanceTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-09-25T03:49:16.366Z" hostname="G-BURST" time="33.703">
+  <properties/>
+  <testcase name="runtime baseline first import complete exchange warm increment and recovery()[jvm]" classname="mihon.data.sync.SyncScaleAcceptanceTest" time="33.703"/>
+  <system-out><![CDATA[SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_fixture_local_library","httpRequests":0,"databaseBytes":1093632,"sampledJvmHeapBytesIncludingFixture":89781008,"elapsedMillis":10777,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_connect_freeze","httpRequests":11,"databaseBytes":1138688,"sampledJvmHeapBytesIncludingFixture":89781008,"elapsedMillis":109,"blobReads":2,"preexistingBlobReads":2,"treeReads":5,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_import_and_upload_confirmed_total","httpRequests":50,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":89781008,"elapsedMillis":7628,"blobReads":8,"preexistingBlobReads":2,"treeReads":25,"refUpdates":2}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_initial_import_generated","elapsedSinceConnectMillis":879,"observation":"sqldelight_query_notification"}
+SYNC_SCALE {"initialEvents":300,"phase":"runtime_first_batch_locally_confirmed","elapsedSinceConnectMillis":7289,"confirmation":"durable_published_batch","observation":"sqldelight_query_notification"}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_first_download_connect_merge","httpRequests":45,"databaseBytes":1982464,"sampledJvmHeapBytesIncludingFixture":89781008,"elapsedMillis":7052,"blobReads":12,"preexistingBlobReads":12,"treeReads":24,"refUpdates":0}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_warm_upload_one","httpRequests":23,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":89781008,"elapsedMillis":500,"blobReads":3,"preexistingBlobReads":0,"treeReads":10,"refUpdates":1}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_lost_publish_and_read_failure","httpRequests":8,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":89781008,"elapsedMillis":344,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":1}
+SYNC_SCALE {"initialEvents":300,"historyActors":1,"pendingDecisions":0,"phase":"runtime_recovery_new_runtime","httpRequests":22,"databaseBytes":2306048,"sampledJvmHeapBytesIncludingFixture":89781008,"elapsedMillis":500,"blobReads":5,"preexistingBlobReads":5,"treeReads":10,"refUpdates":0}
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

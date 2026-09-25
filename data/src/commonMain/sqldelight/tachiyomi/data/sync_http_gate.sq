@@ -1,0 +1,15 @@
+CREATE TABLE sync_http_account_gates (
+    account_id INTEGER NOT NULL PRIMARY KEY,
+    not_before_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL
+);
+
+getAccountHttpNotBefore:
+SELECT not_before_ms FROM sync_http_account_gates WHERE account_id = ?;
+
+extendAccountHttpNotBefore:
+INSERT INTO sync_http_account_gates(account_id, not_before_ms, updated_at)
+VALUES (?, ?, ?)
+ON CONFLICT(account_id) DO UPDATE SET
+    not_before_ms = MAX(sync_http_account_gates.not_before_ms, excluded.not_before_ms),
+    updated_at = excluded.updated_at;

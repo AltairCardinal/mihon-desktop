@@ -1,0 +1,160 @@
+Configuration on demand is an incubating feature.
+Type-safe project accessors is an incubating feature.
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :buildSrc:generateExternalPluginSpecBuilders UP-TO-DATE
+> Task :buildSrc:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+> Task :buildSrc:compilePluginsBlocks UP-TO-DATE
+> Task :buildSrc:generatePrecompiledScriptPluginAccessors UP-TO-DATE
+> Task :buildSrc:generateScriptPluginAdapters UP-TO-DATE
+> Task :buildSrc:compileKotlin UP-TO-DATE
+> Task :buildSrc:compileJava NO-SOURCE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :core:common:kmpPartiallyResolvedDependenciesChecker
+> Task :source-api:kmpPartiallyResolvedDependenciesChecker
+> Task :data:kmpPartiallyResolvedDependenciesChecker
+> Task :domain:kmpPartiallyResolvedDependenciesChecker
+> Task :i18n:kmpPartiallyResolvedDependenciesChecker
+> Task :data:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :i18n:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :source-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :domain:jvmProcessResources NO-SOURCE
+> Task :domain:processJvmMainResources SKIPPED
+> Task :core:common:jvmProcessResources NO-SOURCE
+> Task :core:common:processJvmMainResources SKIPPED
+> Task :source-api:jvmProcessResources NO-SOURCE
+> Task :source-api:processJvmMainResources SKIPPED
+> Task :i18n:generateMRcommonMain UP-TO-DATE
+> Task :i18n:generateMRjvmMain UP-TO-DATE
+> Task :data:generateCommonMainDatabaseInterface UP-TO-DATE
+> Task :data:jvmProcessResources NO-SOURCE
+> Task :data:processJvmMainResources SKIPPED
+> Task :data:jvmTestProcessResources UP-TO-DATE
+> Task :data:processJvmTestResources SKIPPED
+> Task :i18n:compileKotlinJvm UP-TO-DATE
+> Task :i18n:compileJvmMainJava NO-SOURCE
+> Task :i18n:jvmProcessResources UP-TO-DATE
+> Task :i18n:processJvmMainResources SKIPPED
+> Task :i18n:jvmMainClasses UP-TO-DATE
+> Task :i18n:jvmJar UP-TO-DATE
+> Task :core:common:compileKotlinJvm UP-TO-DATE
+> Task :core:common:compileJvmMainJava NO-SOURCE
+> Task :core:common:jvmMainClasses UP-TO-DATE
+> Task :core:common:jvmJar UP-TO-DATE
+> Task :source-api:compileKotlinJvm UP-TO-DATE
+> Task :source-api:compileJvmMainJava NO-SOURCE
+> Task :source-api:jvmMainClasses UP-TO-DATE
+> Task :source-api:jvmJar UP-TO-DATE
+> Task :domain:compileKotlinJvm UP-TO-DATE
+> Task :domain:compileJvmMainJava NO-SOURCE
+> Task :domain:jvmMainClasses UP-TO-DATE
+> Task :domain:jvmJar UP-TO-DATE
+> Task :data:compileKotlinJvm UP-TO-DATE
+> Task :data:compileJvmMainJava NO-SOURCE
+> Task :data:jvmMainClasses UP-TO-DATE
+> Task :data:jvmJar UP-TO-DATE
+
+> Task :data:compileTestKotlinJvm
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/jvmTest/kotlin/mihon/data/sync/SyncDatabaseExchangeHistoricalLookupTest.kt:176:52 Unchecked cast of 'Any!' to 'List<SyncGitTreeEntry>'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/jvmTest/kotlin/mihon/data/sync/SyncScaleAcceptanceTest.kt:979:13 Delegated member 'fun Connection.beginTransaction(): Unit' hides supertype override 'fun Connection.beginTransaction(): Unit'. Specify proper override explicitly.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/jvmTest/kotlin/mihon/data/sync/SyncScaleAcceptanceTest.kt:979:13 Delegated member 'fun Connection.rollbackTransaction(): Unit' hides supertype override 'fun Connection.rollbackTransaction(): Unit'. Specify proper override explicitly.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/jvmTest/kotlin/mihon/data/sync/SyncScaleAcceptanceTest.kt:979:13 Delegated member 'var transaction: ConnectionManager.Transaction?' hides supertype override 'var transaction: ConnectionManager.Transaction?'. Specify proper override explicitly.
+
+> Task :data:compileJvmTestJava NO-SOURCE
+> Task :data:jvmTestClasses
+
+> Task :data:jvmTest
+
+JvmSyncInboxStorageContractTest[jvm] > bulk freezes selection excludes arrivals and resumes after restart()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > batch projection isolates unavailable field and retries it independently()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > unexpected field write failure replays once and preserves the received inbox()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > remote cancellation requires each receiver decision and keep survives restart()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > reading reconstructs chapter history and causal resume may move backward()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > quarantined ancestor invalidates cancellation without replacing bytes()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > receipt failure rolls back events descriptors and cursor together()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > unavailable source remains in inbox and retries without upload echo()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > missing parent waits and later add invalidates an already displayed cancellation()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > native continuation chooses remote chapter by stable tie and retains histories()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > migration indexes existing local envelopes and preserves their pending upload()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > changed event identity is quarantined without replacing accepted data()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > one hundred twenty pending items page and finish in bounded chunks()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > authenticated Git receipt survives restart without upload echo()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > local explicit action clears pending and remains uploadable()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > merged author local intent invalidates alias decision across restart and bulk()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > three databases exchange through encrypted Git without cancellation echo()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > bulk records isolated failure without partial cancel and continues remaining items()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > cancelled page rolls back all fields and preserves author migration readiness()[jvm] PASSED
+
+JvmSyncInboxStorageContractTest[jvm] > invalid scope and incomplete event sequence cannot enter the received cursor()[jvm] PASSED
+
+JvmSyncRemoteProjectionContractTest[jvm] > existing manga preserves preferences and categories without source or descriptors()[jvm] PASSED
+
+JvmSyncRemoteProjectionContractTest[jvm] > outer receive transaction rolls back business and author index after later failure()[jvm] PASSED
+
+JvmSyncRemoteProjectionContractTest[jvm] > missing source and descriptions defer reconstruction and source arrival permits retry()[jvm] PASSED
+
+JvmSyncRemoteProjectionContractTest[jvm] > author redirects follow identity and deleted or cyclic identities remain unavailable()[jvm] PASSED
+
+JvmSyncRemoteProjectionContractTest[jvm] > chapter reconstruction binds identity and missing metadata rolls back parent creation()[jvm] PASSED
+
+JvmSyncRemoteProjectionContractTest[jvm] > remote favorite reconstructs exact source identity and existing creator library index()[jvm] PASSED
+
+JvmSyncRemoteProjectionContractTest[jvm] > read resume and history preserve local settings and never replay reading duration()[jvm] PASSED
+
+JvmSyncRemoteProjectionContractTest[jvm] > same named author keys resolve to one local root and watch policy()[jvm] PASSED
+
+SyncHttpRequestGateIntegrationTest[jvm] > header confirmed account cooldown survives oversized error body()[jvm] PASSED
+
+SyncHttpRequestGateIntegrationTest[jvm] > rate limit deadline is persisted and shared by account across http clients()[jvm] PASSED
+
+SyncHttpRequestGateIntegrationTest[jvm] > header confirmed cooldown persists when slow error body is cancelled()[jvm] PASSED
+
+SyncHttpRequestGateIntegrationTest[jvm] > request gate persists a response cooldown before the next HTTP call()[jvm] PASSED
+
+SyncScaleAcceptanceTest[jvm] > diagnose projected fields with real inbox and file database()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 34 migration separates retry failures from the persisted claim id()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 36 migration adds guard revision and normalized snapshot rows without deleting metadata()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > current schema reserves compatibility migration after published sync schema()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 28 sync file migrates after close and reopen without losing runtime data()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 29 author file migrates after close and reopen without losing author data()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > published sync schema upgrades without losing runtime data()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > unknown same-number sync table shape fails without advancing the database()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > author schema 29 receives sync tables while preserving author data()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 33 migration creates the durable snapshot manifest table()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > same-number manifest table with incompatible shape fails without advancing schema()[jvm] PASSED
+
+BUILD SUCCESSFUL in 51s
+31 actionable tasks: 7 executed, 24 up-to-date

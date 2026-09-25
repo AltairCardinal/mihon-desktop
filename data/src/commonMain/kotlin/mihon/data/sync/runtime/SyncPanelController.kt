@@ -134,7 +134,6 @@ class SyncPanelController(
                 if (visible) {
                     while (true) {
                         mutableState.update { it.copy(nowMillis = clock()) }
-                        queueRefresh()
                         delay(1_000)
                     }
                 }

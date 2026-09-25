@@ -1813,6 +1813,7 @@
     <string name="sync_paused">同步已暂停</string>
     <string name="sync_blocked">同步需要处理</string>
     <string name="sync_waiting_retry">已安排重试</string>
+    <string name="sync_waiting_rate_limit">等待 GitHub 限流解除</string>
     <string name="sync_retry_after_seconds">将在 %1$d 秒后自动重试</string>
     <string name="sync_retry_after_minutes">将在 %1$d 分钟后自动重试</string>
     <string name="sync_retry_ready">即将重试</string>

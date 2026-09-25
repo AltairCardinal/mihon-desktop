@@ -7,6 +7,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import mihon.data.sync.auth.SyncCreationAttempt
 import mihon.data.sync.auth.SyncGitHubAccount
+import mihon.data.sync.transport.SyncSnapshotManifestBinding
+import mihon.data.sync.transport.SyncSnapshotManifestCrypto
 import mihon.domain.sync.crypto.SyncSecret
 import mihon.domain.sync.crypto.SyncSpaceDescriptorCodec
 import mihon.domain.sync.crypto.SyncSpaceMaterial
@@ -54,6 +56,28 @@ internal data class StoredSyncConnection(
 ) {
     fun repository() = SyncRepository(owner, repository, branch)
     override fun toString(): String = "StoredSyncConnection(<redacted>)"
+}
+
+internal fun StoredSyncConnection.snapshotManifestBinding(): SyncSnapshotManifestBinding {
+    val descriptorContext = SyncSnapshotManifestCrypto.sha256(material.descriptor.encodeToByteArray())
+    val keyId = material.keyHex?.let { value ->
+        SyncSnapshotManifestCrypto.sha256(value.decodeHex().toByteArray())
+    } ?: "unprotected"
+    val revision = listOf(
+        "mihon-sync-connection-v1",
+        accountId.toString(),
+        repositoryId.toString(),
+        owner,
+        repository,
+        branch,
+        descriptorContext,
+        keyId,
+    ).joinToString("\u0000")
+    return SyncSnapshotManifestBinding(
+        accountId = accountId,
+        repositoryId = repositoryId,
+        connectionRevision = SyncSnapshotManifestCrypto.sha256(revision.encodeToByteArray()),
+    )
 }
 
 @Serializable

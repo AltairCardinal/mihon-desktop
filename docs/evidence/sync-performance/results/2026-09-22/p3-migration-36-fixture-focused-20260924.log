@@ -1,0 +1,102 @@
+Configuration on demand is an incubating feature.
+Type-safe project accessors is an incubating feature.
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :buildSrc:generateExternalPluginSpecBuilders UP-TO-DATE
+> Task :buildSrc:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+> Task :buildSrc:compilePluginsBlocks UP-TO-DATE
+> Task :buildSrc:generatePrecompiledScriptPluginAccessors UP-TO-DATE
+> Task :buildSrc:generateScriptPluginAdapters UP-TO-DATE
+> Task :buildSrc:compileKotlin UP-TO-DATE
+> Task :buildSrc:compileJava NO-SOURCE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :core:common:kmpPartiallyResolvedDependenciesChecker
+> Task :core:common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :domain:kmpPartiallyResolvedDependenciesChecker
+> Task :source-api:kmpPartiallyResolvedDependenciesChecker
+> Task :i18n:kmpPartiallyResolvedDependenciesChecker
+> Task :domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :source-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :i18n:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:kmpPartiallyResolvedDependenciesChecker
+> Task :data:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :domain:jvmProcessResources NO-SOURCE
+> Task :source-api:jvmProcessResources NO-SOURCE
+> Task :core:common:jvmProcessResources NO-SOURCE
+> Task :domain:processJvmMainResources SKIPPED
+> Task :source-api:processJvmMainResources SKIPPED
+> Task :core:common:processJvmMainResources SKIPPED
+> Task :i18n:generateMRcommonMain UP-TO-DATE
+> Task :i18n:generateMRjvmMain UP-TO-DATE
+> Task :data:generateCommonMainDatabaseInterface UP-TO-DATE
+> Task :data:jvmProcessResources NO-SOURCE
+> Task :data:processJvmMainResources SKIPPED
+> Task :data:jvmTestProcessResources UP-TO-DATE
+> Task :data:processJvmTestResources SKIPPED
+> Task :i18n:compileKotlinJvm UP-TO-DATE
+> Task :i18n:compileJvmMainJava NO-SOURCE
+> Task :i18n:jvmProcessResources UP-TO-DATE
+> Task :i18n:processJvmMainResources SKIPPED
+> Task :i18n:jvmMainClasses UP-TO-DATE
+> Task :i18n:jvmJar UP-TO-DATE
+> Task :core:common:compileKotlinJvm UP-TO-DATE
+> Task :core:common:compileJvmMainJava NO-SOURCE
+> Task :core:common:jvmMainClasses UP-TO-DATE
+> Task :core:common:jvmJar UP-TO-DATE
+> Task :source-api:compileKotlinJvm UP-TO-DATE
+> Task :source-api:compileJvmMainJava NO-SOURCE
+> Task :source-api:jvmMainClasses UP-TO-DATE
+> Task :source-api:jvmJar UP-TO-DATE
+> Task :domain:compileKotlinJvm UP-TO-DATE
+> Task :domain:compileJvmMainJava NO-SOURCE
+> Task :domain:jvmMainClasses UP-TO-DATE
+> Task :domain:jvmJar UP-TO-DATE
+> Task :data:compileKotlinJvm UP-TO-DATE
+> Task :data:compileJvmMainJava NO-SOURCE
+> Task :data:jvmMainClasses UP-TO-DATE
+> Task :data:jvmJar UP-TO-DATE
+> Task :data:compileTestKotlinJvm
+> Task :data:compileJvmTestJava NO-SOURCE
+> Task :data:jvmTestClasses
+
+> Task :data:jvmTest
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 34 migration separates retry failures from the persisted claim id()[jvm] FAILED
+    org.sqlite.SQLiteException at DatabaseMigrationCompatibilityTest.kt:135
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 36 migration adds guard revision and normalized snapshot rows without deleting metadata()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > current schema reserves compatibility migration after published sync schema()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 28 sync file migrates after close and reopen without losing runtime data()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 29 author file migrates after close and reopen without losing author data()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > published sync schema upgrades without losing runtime data()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > unknown same-number sync table shape fails without advancing the database()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > author schema 29 receives sync tables while preserving author data()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 33 migration creates the durable snapshot manifest table()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > same-number manifest table with incompatible shape fails without advancing schema()[jvm] PASSED
+
+10 tests completed, 1 failed
+
+> Task :data:jvmTest FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':data:jvmTest'.
+> There were failing tests. See the report at: file:///D:/Codex/worktrees/85be/mihon/data/build/reports/tests/jvmTest/index.html
+
+* Try:
+> Run with --scan to get full insights.
+
+BUILD FAILED in 24s
+31 actionable tasks: 7 executed, 24 up-to-date

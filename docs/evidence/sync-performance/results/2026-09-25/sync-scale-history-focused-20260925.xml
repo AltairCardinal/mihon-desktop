@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="mihon.data.sync.SyncScaleAcceptanceTest" tests="1" skipped="0" failures="1" errors="0" timestamp="2026-09-25T03:53:49.685Z" hostname="G-BURST" time="27.068">
+  <properties/>
+  <testcase name="complete histories and frozen decisions remain correct at ten and hundred thousand events()[jvm]" classname="mihon.data.sync.SyncScaleAcceptanceTest" time="27.068">
+    <failure message="org.opentest4j.AssertionFailedError: SyncRunResult(status=PARTIAL, uploaded=0, downloaded=2, pending=120, problem=REMOTE_CHANGED, retryAfterMillis=null) ==&gt; expected: &lt;SUCCESS&gt; but was: &lt;PARTIAL&gt;" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: SyncRunResult(status=PARTIAL, uploaded=0, downloaded=2, pending=120, problem=REMOTE_CHANGED, retryAfterMillis=null) ==&gt; expected: &lt;SUCCESS&gt; but was: &lt;PARTIAL&gt;
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:158)
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:139)
+	at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:201)
+	at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:184)
+	at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:1199)
+	at app//mihon.data.sync.SyncScaleAcceptanceTest.assertExchange(SyncScaleAcceptanceTest.kt:568)
+	at app//mihon.data.sync.SyncScaleAcceptanceTest.assertExchange$default(SyncScaleAcceptanceTest.kt:567)
+	at app//mihon.data.sync.SyncScaleAcceptanceTest.runScenario(SyncScaleAcceptanceTest.kt:459)
+	at app//mihon.data.sync.SyncScaleAcceptanceTest.access$runScenario(SyncScaleAcceptanceTest.kt:84)
+	at app//mihon.data.sync.SyncScaleAcceptanceTest$runScenario$1.invokeSuspend(SyncScaleAcceptanceTest.kt)
+	at app//kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at app//kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:98)
+	at app//kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at app//kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+	at app//kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+	at app//kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at app//kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at app//kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at app//mihon.data.sync.SyncScaleAcceptanceTest.complete histories and frozen decisions remain correct at ten and hundred thousand events(SyncScaleAcceptanceTest.kt:366)
+</failure>
+  </testcase>
+  <system-out><![CDATA[SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"fixture_initial","httpRequests":0,"databaseBytes":1015808,"sampledJvmHeapBytesIncludingFixture":129451552,"elapsedMillis":423,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"first_exchange","httpRequests":110,"databaseBytes":16437248,"sampledJvmHeapBytesIncludingFixture":196193792,"elapsedMillis":6103,"blobReads":87,"preexistingBlobReads":87,"treeReads":20,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"fixture_increment","httpRequests":0,"databaseBytes":16437248,"sampledJvmHeapBytesIncludingFixture":196193792,"elapsedMillis":5,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"increment_exchange","httpRequests":52,"databaseBytes":16691200,"sampledJvmHeapBytesIncludingFixture":196858192,"elapsedMillis":2806,"blobReads":12,"preexistingBlobReads":9,"treeReads":30,"refUpdates":1}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"panel_open","httpRequests":0,"databaseBytes":16691200,"sampledJvmHeapBytesIncludingFixture":196858192,"elapsedMillis":44,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"panel_load_more","httpRequests":0,"databaseBytes":16691200,"sampledJvmHeapBytesIncludingFixture":196858192,"elapsedMillis":31,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"panel_select_all","httpRequests":0,"databaseBytes":16691200,"sampledJvmHeapBytesIncludingFixture":196858192,"elapsedMillis":0,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"panel_freeze_selection","httpRequests":0,"databaseBytes":16732160,"sampledJvmHeapBytesIncludingFixture":196858192,"elapsedMillis":27,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"bulk_first_chunk","httpRequests":0,"databaseBytes":16740352,"sampledJvmHeapBytesIncludingFixture":196858192,"elapsedMillis":1031,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"bulk_resume_and_close","httpRequests":0,"databaseBytes":16740352,"sampledJvmHeapBytesIncludingFixture":196858192,"elapsedMillis":1544,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"unchanged_exchange","httpRequests":1,"databaseBytes":16740352,"sampledJvmHeapBytesIncludingFixture":196858192,"elapsedMillis":30,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

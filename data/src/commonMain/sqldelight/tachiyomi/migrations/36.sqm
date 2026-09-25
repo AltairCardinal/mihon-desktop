@@ -1,0 +1,30 @@
+ALTER TABLE sync_remote_guards ADD COLUMN revision INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sync_snapshot_manifests ADD COLUMN tree_sha TEXT NOT NULL DEFAULT '';
+ALTER TABLE sync_snapshot_manifests ADD COLUMN truncated INTEGER AS Boolean NOT NULL DEFAULT 0;
+
+CREATE TABLE sync_snapshot_manifest_entries (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    type TEXT NOT NULL,
+    sha TEXT NOT NULL,
+    size INTEGER,
+    content TEXT,
+    PRIMARY KEY (space_id, generation, path)
+);
+
+CREATE TABLE sync_snapshot_manifest_batches (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    batch_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    digest_hex TEXT NOT NULL,
+    first_seq INTEGER NOT NULL,
+    last_seq INTEGER NOT NULL,
+    actor_id TEXT NOT NULL,
+    epoch INTEGER NOT NULL,
+    index_path TEXT NOT NULL,
+    index_ciphertext_digest_hex TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, batch_id)
+);

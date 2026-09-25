@@ -5,7 +5,7 @@ import app.cash.sqldelight.db.SqlDriver
 
 /** Runs generated SQLDelight migrations as one atomic database change. */
 object DatabaseMigration {
-    const val COMPATIBILITY_SCHEMA_VERSION = 33L
+    const val COMPATIBILITY_SCHEMA_VERSION = 37L
 
     fun migrateAtomically(driver: SqlDriver, oldVersion: Long, newVersion: Long) {
         require(oldVersion <= newVersion) {
@@ -53,7 +53,8 @@ object DatabaseMigration {
                 "downloaded",
                 "uploaded_baseline",
                 "downloaded_baseline",
-                "attempt",
+                "attempt_id",
+                "network_failure_count",
                 "next_retry_at",
                 "last_progress_at",
                 "stop_reason",
@@ -67,6 +68,52 @@ object DatabaseMigration {
             table = "sync_runtime_logs",
             columns = setOf("run_id", "log_key", "title", "detail", "status", "created_at"),
         )
+        requireTable(
+            driver,
+            table = "sync_snapshot_manifests",
+            columns = setOf(
+                "space_id",
+                "generation",
+                "account_id",
+                "repository_id",
+                "repository_owner",
+                "repository_name",
+                "repository_branch",
+                "api_origin",
+                "validator_version",
+                "validation_scope",
+                "connection_revision",
+                "head_sha",
+                "head_fingerprint",
+                "checksum",
+                "tree_sha",
+                "truncated",
+                "manifest_json",
+            ),
+        )
+        requireTable(
+            driver,
+            "sync_remote_guards",
+            setOf("space_id", "generation", "latest_head", "blocked", "revision"),
+        )
+        requireTable(
+            driver,
+            "sync_snapshot_manifest_entries",
+            setOf("space_id", "generation", "path", "mode", "type", "sha", "size", "content"),
+        )
+        requireTable(
+            driver,
+            "sync_snapshot_manifest_batches",
+            setOf(
+                "space_id", "generation", "batch_id", "path", "digest_hex", "first_seq", "last_seq",
+                "actor_id", "epoch", "index_path", "index_ciphertext_digest_hex",
+            ),
+        )
+        requireTable(
+            driver,
+            table = "sync_http_account_gates",
+            columns = setOf("account_id", "not_before_ms", "updated_at"),
+        )
         requireObject(driver, "index", "sync_runtime_active")
         requireObject(driver, "index", "sync_runtime_log_order")
     }
@@ -76,34 +123,71 @@ object DatabaseMigration {
             "author_archive_representative_work_cache" to setOf("creator_id", "strategy_version", "payload"),
             "sync_runtime_runs" to setOf(
                 "run_id", "space_id", "generation", "trigger", "state", "phase", "processed", "total",
-                "completed", "skipped", "failed", "attempt", "next_retry_at", "last_progress_at",
-                "stop_reason", "owner_session", "created_at", "updated_at",
+                "completed", "skipped", "failed", "next_retry_at", "last_progress_at", "stop_reason",
+                "owner_session", "created_at", "updated_at",
             ),
             "sync_runtime_logs" to setOf("run_id", "log_key", "title", "detail", "status", "created_at"),
+            "sync_snapshot_manifests" to setOf(
+                "space_id", "generation", "account_id", "repository_id", "repository_owner", "repository_name",
+                "repository_branch", "api_origin", "validator_version", "validation_scope", "connection_revision",
+                "head_sha", "head_fingerprint", "checksum", "manifest_json",
+            ),
+            "sync_remote_guards" to setOf(
+                "space_id",
+                "generation",
+                "repository_owner",
+                "repository_name",
+                "repository_branch",
+                "blocked",
+                "latest_head",
+            ),
+            "sync_http_account_gates" to setOf("account_id", "not_before_ms", "updated_at"),
         ).forEach { (table, columns) ->
-            if (hasObject(driver, "table", table)) requireTable(driver, table, columns)
+            if (hasObject(driver, "table", table)) {
+                if (table == "sync_runtime_runs") {
+                    val legacyShape = columns + "attempt"
+                    val currentShape = columns + setOf("attempt_id", "network_failure_count")
+                    requireTableWithOneShape(driver, table, legacyShape, currentShape)
+                } else {
+                    requireTable(driver, table, columns)
+                }
+            }
+        }
+    }
+
+    private fun requireTableWithOneShape(
+        driver: SqlDriver,
+        table: String,
+        vararg shapes: Set<String>,
+    ) {
+        requireObject(driver, "table", table)
+        val actualColumns = tableColumns(driver, table)
+        require(shapes.any(actualColumns::containsAll)) {
+            "Incompatible $table schema; expected one of ${shapes.toList()}, found $actualColumns"
         }
     }
 
     private fun requireTable(driver: SqlDriver, table: String, columns: Set<String>) {
         requireObject(driver, "table", table)
-        val actualColumns = driver.executeQuery(
-            identifier = null,
-            sql = "SELECT name FROM pragma_table_info(?)",
-            parameters = 1,
-            mapper = { cursor ->
-                app.cash.sqldelight.db.QueryResult.Value(
-                    buildSet {
-                        while (cursor.next().value) add(requireNotNull(cursor.getString(0)))
-                    },
-                )
-            },
-            binders = { bindString(0, table) },
-        ).value
+        val actualColumns = tableColumns(driver, table)
         require(actualColumns.containsAll(columns)) {
             "Incompatible $table schema; missing columns: ${columns - actualColumns}"
         }
     }
+
+    private fun tableColumns(driver: SqlDriver, table: String): Set<String> = driver.executeQuery(
+        identifier = null,
+        sql = "SELECT name FROM pragma_table_info(?)",
+        parameters = 1,
+        mapper = { cursor ->
+            app.cash.sqldelight.db.QueryResult.Value(
+                buildSet {
+                    while (cursor.next().value) add(requireNotNull(cursor.getString(0)))
+                },
+            )
+        },
+        binders = { bindString(0, table) },
+    ).value
 
     private fun requireObject(driver: SqlDriver, type: String, name: String) {
         require(hasObject(driver, type, name)) { "Missing required SQLite $type: $name" }

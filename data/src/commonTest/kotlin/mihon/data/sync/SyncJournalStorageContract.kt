@@ -123,6 +123,32 @@ abstract class SyncJournalStorageContract {
     }
 
     @Test
+    fun `journal aggregate counts stay isolated by sync space and generation`() = runBlocking {
+        open().use { storage ->
+            storage.connect()
+            val manga = storage.insertManga("/scoped-count")
+            assertTrue(
+                UpdateLibraryMembership(storage.repository).await(manga, true) is LibraryMembershipResult.Success,
+            )
+            storage.handler.await {
+                sync_journalQueries.deactivateSpaces()
+                sync_journalQueries.insertSpace("other-space", 7, "owner", "other", "sync")
+                sync_journalQueries.insertActor("other-space", 7, "other-device", 1)
+                sync_journalQueries.insertBatch("other-space", 7, "other-batch", "other-device", 1, 1, 1, 0)
+                sync_journalQueries.insertEvent(
+                    "other-space", 7, "other-device", 1, 1, "FAVORITE", "USER", "other-batch",
+                    "{}", 1,
+                )
+                sync_journalQueries.insertOutbox("other-space", 7, "other-device", 1, 1, "other-batch")
+                assertEquals(1L, sync_journalQueries.countEventsForSpace("space", 1).executeAsOne())
+                assertEquals(1L, sync_journalQueries.countEventsForSpace("other-space", 7).executeAsOne())
+                assertEquals(1L, sync_journalQueries.countBatchesForSpace("space", 1).executeAsOne())
+                assertEquals(1L, sync_journalQueries.countBatchesForSpace("other-space", 7).executeAsOne())
+            }
+        }
+    }
+
+    @Test
     fun `batch update failure rolls back every favorite and journal entry`() = runBlocking {
         open().use { storage ->
             storage.connect()

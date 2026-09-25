@@ -47,7 +47,9 @@ class SyncWorker(context: Context, parameters: WorkerParameters) : CoroutineWork
         }
         return when {
             result.status == SyncRunStatus.SUCCESS || result.status == SyncRunStatus.SKIPPED -> Result.success()
-            result.problem == SyncRunProblem.NETWORK && runAttemptCount < 3 -> Result.retry()
+            // SyncRuntime persists the four-attempt business budget and schedules the
+            // durable recovery wake. WorkManager must not add another retry budget.
+            result.problem == SyncRunProblem.NETWORK -> Result.success()
             else -> Result.failure()
         }
     }

@@ -1830,6 +1830,7 @@
     <string name="sync_paused">Sync paused</string>
     <string name="sync_blocked">Sync needs your attention</string>
     <string name="sync_waiting_retry">Retry scheduled</string>
+    <string name="sync_waiting_rate_limit">Waiting for GitHub rate limit</string>
     <string name="sync_retry_after_seconds">Automatic retry in %1$d seconds</string>
     <string name="sync_retry_after_minutes">Automatic retry in %1$d minutes</string>
     <string name="sync_retry_ready">Retrying soon</string>

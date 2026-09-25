@@ -22,8 +22,10 @@ import mihon.domain.sync.crypto.SyncSpaceDescriptorCodec
 import mihon.domain.sync.crypto.SyncSpaceMaterial
 import mihon.domain.sync.crypto.SyncSpacePayload
 import mihon.domain.sync.transport.SyncInitializationResult
+import mihon.domain.sync.transport.SyncPublishFailureClass
 import mihon.domain.sync.transport.SyncPublishStatus
 import mihon.domain.sync.transport.SyncRepository
+import mockwebserver3.MockResponse
 import okhttp3.OkHttpClient
 import okio.ByteString.Companion.decodeBase64
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -173,6 +175,56 @@ class SyncSpaceTransportContractTest {
                 }
                 assertTrue(git.forceFlags.all { !it })
             }
+        }
+    }
+
+    @Test
+    fun `publish preserves repository verification failure class and retry deadline`() = runTest {
+        for ((status, expected) in listOf(
+            429 to SyncPublishFailureClass.RATE_LIMITED,
+            500 to SyncPublishFailureClass.NETWORK,
+        )) {
+            SyncGitSafetyContractTest().GitFixture(empty = true).use { git ->
+                val material = SyncSpaceCrypto.create("space", 1, "")
+                val transport = transport(git, material)
+                assertTrue(transport.initialize(repository, "space", 1) is SyncInitializationResult.Initialized)
+                val snapshot = transport.readSnapshot(repository, "space", 1).getOrThrow()
+                val head = git.head("mihon-sync")
+                git.nextRepositoryResponse = MockResponse.Builder()
+                    .code(status)
+                    .addHeader("Retry-After", "3")
+                    .body("synthetic failure")
+                    .build()
+
+                val result = SyncBatchSyncService(transport, spaceMaterial = material)
+                    .upload(repository, snapshot, batch(), batchPath, persist = {}).publish
+
+                assertEquals(SyncPublishStatus.FAILED, result.status)
+                assertEquals(expected, result.failureClass)
+                if (status == 429) assertTrue(requireNotNull(result.retryAfterMillis) > 0)
+                assertEquals(head, git.head("mihon-sync"))
+            }
+        }
+        SyncGitSafetyContractTest().GitFixture(empty = true).use { git ->
+            val material = SyncSpaceCrypto.create("space", 1, "")
+            val transport = transport(git, material)
+            assertTrue(transport.initialize(repository, "space", 1) is SyncInitializationResult.Initialized)
+            val snapshot = transport.readSnapshot(repository, "space", 1).getOrThrow()
+            git.privateRepository = false
+            val result = SyncBatchSyncService(transport, spaceMaterial = material)
+                .upload(repository, snapshot, batch(), batchPath, persist = {}).publish
+            assertEquals(SyncPublishFailureClass.AUTHORIZATION, result.failureClass)
+        }
+        SyncGitSafetyContractTest().GitFixture(empty = true).use { git ->
+            val material = SyncSpaceCrypto.create("space", 1, "")
+            val transport = transport(git, material)
+            assertTrue(transport.initialize(repository, "space", 1) is SyncInitializationResult.Initialized)
+            val snapshot = transport.readSnapshot(repository, "space", 1).getOrThrow()
+            git.server.close()
+            val result = SyncBatchSyncService(transport, spaceMaterial = material)
+                .upload(repository, snapshot, batch(), batchPath, persist = {}).publish
+            assertEquals(SyncPublishStatus.FAILED, result.status)
+            assertEquals(SyncPublishFailureClass.NETWORK, result.failureClass)
         }
     }
 

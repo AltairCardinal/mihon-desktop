@@ -14,7 +14,8 @@ CREATE TABLE sync_runtime_runs (
     downloaded INTEGER NOT NULL DEFAULT 0,
     uploaded_baseline INTEGER NOT NULL DEFAULT 0,
     downloaded_baseline INTEGER NOT NULL DEFAULT 0,
-    attempt INTEGER NOT NULL DEFAULT 0,
+    attempt_id INTEGER NOT NULL DEFAULT 0,
+    network_failure_count INTEGER NOT NULL DEFAULT 0,
     next_retry_at INTEGER NOT NULL DEFAULT 0,
     last_progress_at INTEGER NOT NULL,
     stop_reason TEXT,
@@ -60,18 +61,18 @@ ORDER BY updated_at DESC LIMIT 1;
 updateRuntimeProgress:
 UPDATE sync_runtime_runs SET
     state = ?, phase = ?, processed = ?, total = ?, completed = ?, skipped = ?, failed = ?,
-    attempt = ?, next_retry_at = ?, last_progress_at = ?, stop_reason = ?, owner_session = ?, updated_at = ?
+    attempt_id = ?, next_retry_at = ?, last_progress_at = ?, stop_reason = ?, owner_session = ?, updated_at = ?
 WHERE run_id = ?;
 
 updateRuntimeProgressOwned:
 UPDATE sync_runtime_runs SET
     state = ?, phase = ?, processed = ?, total = ?, completed = ?, skipped = ?, failed = ?,
-    attempt = ?, next_retry_at = ?, last_progress_at = ?, stop_reason = ?, owner_session = ?, updated_at = ?
+    attempt_id = ?, next_retry_at = ?, last_progress_at = ?, stop_reason = ?, owner_session = ?, updated_at = ?
 WHERE run_id = ? AND owner_session = ?;
 
 claimRuntimeRun:
 UPDATE sync_runtime_runs SET
-    state = 'RUNNING', attempt = ?, next_retry_at = 0, stop_reason = NULL, owner_session = ?, updated_at = ?
+    state = 'RUNNING', attempt_id = ?, next_retry_at = 0, stop_reason = NULL, owner_session = ?, updated_at = ?
 WHERE run_id = ?
   AND state IN ('QUEUED', 'RUNNING', 'WAITING_NETWORK', 'WAITING_RETRY', 'WAITING_SYSTEM')
   AND (owner_session IS NULL OR owner_session = ?);
@@ -79,15 +80,23 @@ WHERE run_id = ?
 releaseRuntimeRunForRecovery:
 UPDATE sync_runtime_runs SET
     state = 'WAITING_SYSTEM',
-    attempt = CASE WHEN attempt > 0 THEN attempt - 1 ELSE 0 END,
     stop_reason = ?,
     owner_session = NULL,
     updated_at = ?
 WHERE run_id = ? AND state IN ('RUNNING', 'WAITING_NETWORK', 'WAITING_RETRY') AND owner_session IS NOT NULL;
 
-rewindRuntimeAttempt:
-UPDATE sync_runtime_runs SET attempt = attempt - 1, updated_at = ?
-WHERE run_id = ? AND state = 'WAITING_SYSTEM' AND attempt > 0;
+deferRuntimeRunUntilAccountGate:
+UPDATE sync_runtime_runs SET
+    state = 'WAITING_RETRY',
+    next_retry_at = MAX(next_retry_at, ?),
+    stop_reason = 'rate_limit',
+    updated_at = ?
+WHERE run_id = ? AND owner_session IS NULL
+  AND state IN ('QUEUED', 'WAITING_NETWORK', 'WAITING_RETRY', 'WAITING_SYSTEM');
+
+incrementRuntimeNetworkFailureOwned:
+UPDATE sync_runtime_runs SET network_failure_count = network_failure_count + 1, updated_at = ?
+WHERE run_id = ? AND owner_session = ?;
 
 updateRuntimeState:
 UPDATE sync_runtime_runs SET state = ?, stop_reason = ?, owner_session = ?, updated_at = ?
@@ -120,6 +129,16 @@ SELECT log_key FROM sync_runtime_logs WHERE run_id = ? ORDER BY created_at ASC, 
 
 deleteRuntimeLog:
 DELETE FROM sync_runtime_logs WHERE run_id = ? AND log_key = ?;
+
+trimRuntimeLogs:
+DELETE FROM sync_runtime_logs
+WHERE run_id = ?
+  AND log_key NOT IN (
+      SELECT log_key FROM sync_runtime_logs
+      WHERE run_id = ?
+      ORDER BY created_at DESC, log_key DESC
+      LIMIT ?
+  );
 
 updateRuntimeTotals:
 UPDATE sync_runtime_runs SET uploaded = ?, downloaded = ?, updated_at = ?

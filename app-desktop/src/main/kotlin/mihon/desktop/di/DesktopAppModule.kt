@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toOkioPath
 import mihon.desktop.BuildInfo
 import okhttp3.OkHttpClient
 import mihon.desktop.extension.DesktopExtensionLoader
@@ -989,6 +990,7 @@ internal fun initUILayer(
         secureStore = syncSecureStore,
         preferenceStore = preferenceStore,
         productionClient = networkHelper.client,
+        persistentObjectCacheDirectory = paths.networkCacheDir.resolve("mihon-sync-objects").toOkioPath(),
     )
     Injekt.addSingleton(syncRuntime)
     val syncScheduler = mihon.desktop.sync.DesktopSyncScheduler(

@@ -1,0 +1,276 @@
+Configuration on demand is an incubating feature.
+Type-safe project accessors is an incubating feature.
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :buildSrc:generateExternalPluginSpecBuilders UP-TO-DATE
+> Task :buildSrc:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+> Task :buildSrc:compilePluginsBlocks UP-TO-DATE
+> Task :buildSrc:generatePrecompiledScriptPluginAccessors UP-TO-DATE
+> Task :buildSrc:generateScriptPluginAdapters UP-TO-DATE
+> Task :buildSrc:compileKotlin UP-TO-DATE
+> Task :buildSrc:compileJava NO-SOURCE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :source-api:kmpPartiallyResolvedDependenciesChecker
+> Task :domain:kmpPartiallyResolvedDependenciesChecker
+> Task :data:kmpPartiallyResolvedDependenciesChecker
+> Task :i18n:kmpPartiallyResolvedDependenciesChecker
+> Task :core:common:kmpPartiallyResolvedDependenciesChecker
+> Task :data:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :i18n:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :source-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :source-api:jvmProcessResources NO-SOURCE
+> Task :domain:jvmProcessResources NO-SOURCE
+> Task :core:common:jvmProcessResources NO-SOURCE
+> Task :source-api:processJvmMainResources SKIPPED
+> Task :domain:processJvmMainResources SKIPPED
+> Task :core:common:processJvmMainResources SKIPPED
+> Task :i18n:generateMRcommonMain UP-TO-DATE
+> Task :i18n:generateMRjvmMain UP-TO-DATE
+> Task :data:generateCommonMainDatabaseInterface UP-TO-DATE
+> Task :data:jvmProcessResources NO-SOURCE
+> Task :data:processJvmMainResources SKIPPED
+> Task :data:jvmTestProcessResources UP-TO-DATE
+> Task :data:processJvmTestResources SKIPPED
+> Task :i18n:compileKotlinJvm UP-TO-DATE
+> Task :i18n:compileJvmMainJava NO-SOURCE
+> Task :i18n:jvmProcessResources UP-TO-DATE
+> Task :i18n:processJvmMainResources SKIPPED
+> Task :i18n:jvmMainClasses UP-TO-DATE
+> Task :i18n:jvmJar UP-TO-DATE
+> Task :core:common:compileKotlinJvm UP-TO-DATE
+> Task :core:common:compileJvmMainJava NO-SOURCE
+> Task :core:common:jvmMainClasses UP-TO-DATE
+> Task :core:common:jvmJar UP-TO-DATE
+> Task :source-api:compileKotlinJvm UP-TO-DATE
+> Task :source-api:compileJvmMainJava NO-SOURCE
+> Task :source-api:jvmMainClasses UP-TO-DATE
+> Task :source-api:jvmJar UP-TO-DATE
+> Task :domain:compileKotlinJvm UP-TO-DATE
+> Task :domain:compileJvmMainJava NO-SOURCE
+> Task :domain:jvmMainClasses UP-TO-DATE
+> Task :domain:jvmJar UP-TO-DATE
+> Task :data:compileKotlinJvm UP-TO-DATE
+> Task :data:compileJvmMainJava NO-SOURCE
+> Task :data:jvmMainClasses UP-TO-DATE
+> Task :data:jvmJar UP-TO-DATE
+> Task :data:compileTestKotlinJvm UP-TO-DATE
+> Task :data:compileJvmTestJava NO-SOURCE
+> Task :data:jvmTestClasses UP-TO-DATE
+
+> Task :data:jvmTest
+
+JvmSyncPanelStorageContractTest[jvm] > bulk confirmation performs real decisions and completed feedback never replays on reopen()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding resumes after database binding succeeds but connected marker persistence fails()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > all selection covers unloaded rows and freezes confirmation before new arrivals()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > range selection uses complete ordered pending identities and closes without decisions()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding completion has one session notice and never replays after reopen()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding public repository stops uploads with explicit privacy feedback and retains queue()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding creates password space and automatically finishes actual baseline exchange()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding existing plain space merges immediately without a password or confirmation()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding invalid nonempty passwords cannot create an unprotected space()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding creates plain space and automatically finishes actual baseline exchange()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > closing device authorization clears the code and never stores an unfinished credential()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding rejects legacy binding before network without deleting its recovery data()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding public space stops before binding with privacy feedback()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > switching spaces retains each paused bulk resume entry()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > paused durable batch cannot be replaced by a new decision()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding disconnected legacy binding permits fresh setup without consuming the old queue()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding another account cannot transmit the original queued events()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding response lost after create resumes same remote repository without another POST()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding existing password space requires verification before connecting()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding paused merge resumes after restart without password or duplicate creation()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > inactive space stops a running durable batch without consuming its remaining decisions()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding confirmed background setup does not seize settings or replay completion()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > opening observes upload queue rather than existing library totals()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > settings return and close retain local schedule while clearing session selection()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > expired device authorization can acquire a fresh code without reusing the old value()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > closing repository discovery cancels its busy state and allows setup again()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > pausing initial import still exchanges independent changes and resuming drains the baseline()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > onboarding verified password repairs a damaged local data key while preserving queued work()[jvm] PASSED
+
+JvmSyncPanelStorageContractTest[jvm] > visible countdown ticker updates time without refreshing database()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > cancelling the single flight owner does not cancel another valid waiter()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > graphql adapter requires complete commit data and surfaces errors()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > lost publish response is confirmed by reading the reachable frozen bytes()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > stale snapshot cannot overwrite a batch published with different frozen bytes()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > reader rejects a fully authenticated index chain with a sequence gap()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > lost ref response cannot confirm a different ciphertext merely from matching index metadata()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > continuous competing writes exhaust three attempts without replacing the saved artifact()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > inline tree planner keeps UTF8 entries inline and binary entries as blobs()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > prepare freezes batch index and head without starting network requests()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > competing initializers adopt matching winner and require import for a different key()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > truncated and malformed tree completion flags cannot report a complete snapshot()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > indexed missing batch and an actor head rolled back within a newer Git commit are rejected()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > cached published snapshot cannot confirm a damaged or unreadable current ref()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > initialization with a lost response recognizes its completed space()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > HTTP failures and malformed HEAD responses cannot become an empty successful sync()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > raw blob response is accepted and validated by git object id()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > transport cancellation remains coroutine cancellation instead of a failed sync result()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > stale publishers retain both actors and immutable index bytes()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > a batch bound to another space cannot be published into the current snapshot()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > an outgoing actor batch cannot skip a sequence()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > blob cache single flights concurrent loads and isolates validation context()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > blob response with a different object id is rejected()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > snapshot keeps its immutable blob identities when the branch moves()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > initialization never writes into an existing space with missing indexes()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > a different ciphertext for an already published batch cannot overwrite its immutable path()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > initialization preserves README and exchanges a real batch()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > failed durable save cannot make any Git HTTP request()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > an existing branch never bypasses the private repository check during initialization()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > create blob rejects a response whose oid does not match uploaded bytes()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > recreated service reuses immutable index bytes when retrying a saved artifact()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > empty private repository is bootstrapped only after its existence has been confirmed()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > inline tree planner falls back when final body exceeds budget()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > unconfirmed publication retains its artifact and retry confirms without creating new objects()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > re-reading an unchanged snapshot only probes ref()[jvm] PASSED
+
+SyncGitSafetyContractTest[jvm] > an indexed actor without its encrypted head is not a complete snapshot()[jvm] PASSED
+
+SyncGitTreeBoundsIntegrationTest[jvm] > tree traversal accepts depth 256 and rejects depth 257()[jvm] PASSED
+
+SyncGitTreeBoundsIntegrationTest[jvm] > multiple immutable tree oids stay within LRU budget and evicted trees reload completely()[jvm] PASSED
+
+SyncGitTreeBoundsIntegrationTest[jvm] > tree entry limit accepts limit and rejects only limit plus one()[jvm] PASSED
+
+SyncGitTreeBoundsIntegrationTest[jvm] > empty directory DAG accepts path visit budget and rejects one more without publishing()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > source cookies and explicit cookie headers never accompany sync credentials()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > cancelling after response headers promptly cancels a delayed response body()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > sync requests actually use the injected production proxy selector and DNS()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > chunked responses enforce the size limit while reading without a content length()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > response diagnostics never expose credential bearing headers or payload bytes()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > short and empty HTTP bodies are complete responses rather than unexpected EOF()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > disallowed host is rejected before any production network request()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > sync HTTP metrics count calls bytes and failures without payload details()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > response over the configured limit fails instead of returning truncated success()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > production response body exceptions are converted to safe HTTP failures()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > sync ignores the source disk cache for credential-bearing requests(Path)[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > production application and network HTTP loggers cannot see sync secrets()[jvm] PASSED
+
+SyncRunStoreTest[jvm] > user pause remains authoritative when an owner is cancelled()[jvm] PASSED
+
+SyncRunStoreTest[jvm] > stage callbacks cannot reset the durable retry attempt()[jvm] PASSED
+
+SyncRunStoreTest[jvm] > schema 27 migration creates durable runtime tables()[jvm] PASSED
+
+SyncRunStoreTest[jvm] > a batch of run logs is persisted and trimmed in one store operation()[jvm] PASSED
+
+SyncRunStoreTest[jvm] > logs are bounded without deleting the active run()[jvm] PASSED
+
+SyncRunStoreTest[jvm] > changing phase starts a fresh progress segment()[jvm] PASSED
+
+SyncRunStoreTest[jvm] > waiting retry owner can be reclaimed after a process restart()[jvm] PASSED
+
+SyncRunStoreTest[jvm] > process restart advances the claim id without rewinding it()[jvm] PASSED
+
+SyncRunStoreTest[jvm] > account cooldown is durable monotonic and isolated by account()[jvm] PASSED
+
+SyncRunStoreTest[jvm] > account rate limit deferral keeps claim and actual network failure counts()[jvm] PASSED
+
+SyncRunStoreTest[jvm] > network failure count is owner fenced and independent from the claim id()[jvm] PASSED
+
+SyncRunStoreTest[jvm] > stale owner cannot overwrite progress or finish a newer attempt()[jvm] PASSED
+
+SyncRunStoreTest[jvm] > durable exchange totals keep upload and download counts separate()[jvm] PASSED
+
+SyncRunStoreTest[jvm] > run intent and item logs survive reopening and preserve user pause()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 34 migration separates retry failures from the persisted claim id()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 36 migration adds guard revision and normalized snapshot rows without deleting metadata()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > current schema reserves compatibility migration after published sync schema()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 28 sync file migrates after close and reopen without losing runtime data()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 29 author file migrates after close and reopen without losing author data()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > published sync schema upgrades without losing runtime data()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > unknown same-number sync table shape fails without advancing the database()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > author schema 29 receives sync tables while preserving author data()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > schema 33 migration creates the durable snapshot manifest table()[jvm] PASSED
+
+DatabaseMigrationCompatibilityTest[jvm] > same-number manifest table with incompatible shape fails without advancing schema()[jvm] PASSED
+
+BUILD SUCCESSFUL in 29s
+31 actionable tasks: 6 executed, 25 up-to-date

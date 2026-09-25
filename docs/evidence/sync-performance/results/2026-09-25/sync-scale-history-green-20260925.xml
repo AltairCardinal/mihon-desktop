@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="mihon.data.sync.SyncScaleAcceptanceTest" tests="1" skipped="0" failures="1" errors="0" timestamp="2026-09-25T04:03:13.274Z" hostname="G-BURST" time="1200.143">
+  <properties/>
+  <testcase name="complete histories and frozen decisions remain correct at ten and hundred thousand events()[jvm]" classname="mihon.data.sync.SyncScaleAcceptanceTest" time="1200.143">
+    <failure message="java.util.concurrent.TimeoutException: complete histories and frozen decisions remain correct at ten and hundred thousand events() timed out after 20 minutes" type="java.util.concurrent.TimeoutException">java.util.concurrent.TimeoutException: complete histories and frozen decisions remain correct at ten and hundred thousand events() timed out after 20 minutes
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	Suppressed: java.lang.InterruptedException
+		at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:98)
+		at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+		at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+		at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+		at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+		at mihon.data.sync.SyncScaleAcceptanceTest.complete histories and frozen decisions remain correct at ten and hundred thousand events(SyncScaleAcceptanceTest.kt:366)
+</failure>
+  </testcase>
+  <system-out><![CDATA[SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"fixture_initial","httpRequests":0,"databaseBytes":1015808,"sampledJvmHeapBytesIncludingFixture":141952736,"elapsedMillis":455,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"first_exchange","httpRequests":110,"databaseBytes":16437248,"sampledJvmHeapBytesIncludingFixture":195431704,"elapsedMillis":10021,"blobReads":87,"preexistingBlobReads":87,"treeReads":20,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"fixture_increment","httpRequests":0,"databaseBytes":16437248,"sampledJvmHeapBytesIncludingFixture":196464920,"elapsedMillis":5,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"increment_exchange","httpRequests":52,"databaseBytes":16691200,"sampledJvmHeapBytesIncludingFixture":196464920,"elapsedMillis":4696,"blobReads":12,"preexistingBlobReads":9,"treeReads":30,"refUpdates":1}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"panel_open","httpRequests":0,"databaseBytes":16691200,"sampledJvmHeapBytesIncludingFixture":196464920,"elapsedMillis":46,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"panel_load_more","httpRequests":0,"databaseBytes":16691200,"sampledJvmHeapBytesIncludingFixture":196464920,"elapsedMillis":36,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"panel_select_all","httpRequests":0,"databaseBytes":16691200,"sampledJvmHeapBytesIncludingFixture":196464920,"elapsedMillis":0,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"panel_freeze_selection","httpRequests":0,"databaseBytes":16732160,"sampledJvmHeapBytesIncludingFixture":196464920,"elapsedMillis":47,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"bulk_first_chunk","httpRequests":0,"databaseBytes":16740352,"sampledJvmHeapBytesIncludingFixture":196464920,"elapsedMillis":1794,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"bulk_resume_and_close","httpRequests":0,"databaseBytes":16740352,"sampledJvmHeapBytesIncludingFixture":196464920,"elapsedMillis":3690,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"unchanged_exchange","httpRequests":1,"databaseBytes":16740352,"sampledJvmHeapBytesIncludingFixture":196464920,"elapsedMillis":490,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":10000,"historyActors":3,"pendingDecisions":120,"phase":"complete","httpRequests":256,"databaseBytes":16740352,"sampledJvmHeapBytesIncludingFixture":196464920,"events":10123,"repositoryInitialBlobBytes":6661892,"repositoryReachableBlobBytes":6758146,"repositoryBlobGrowthBytes":96254,"heapBaselineBytes":69279920,"heapPeakGrowthBytes":127185000}
+SYNC_SCALE {"initialEvents":100000,"historyActors":10,"pendingDecisions":10000,"phase":"fixture_initial","httpRequests":0,"databaseBytes":1015808,"sampledJvmHeapBytesIncludingFixture":247154688,"elapsedMillis":1572,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":100000,"historyActors":10,"pendingDecisions":10000,"phase":"first_exchange","httpRequests":868,"databaseBytes":170348544,"sampledJvmHeapBytesIncludingFixture":281384144,"elapsedMillis":1124136,"blobReads":810,"preexistingBlobReads":810,"treeReads":55,"refUpdates":0}
+SYNC_SCALE {"initialEvents":100000,"historyActors":10,"pendingDecisions":10000,"phase":"fixture_increment","httpRequests":0,"databaseBytes":170348544,"sampledJvmHeapBytesIncludingFixture":281384144,"elapsedMillis":142,"blobReads":0,"preexistingBlobReads":0,"treeReads":0,"refUpdates":0}
+SYNC_SCALE {"initialEvents":100000,"historyActors":10,"pendingDecisions":10000,"phase":"increment_exchange","httpRequests":147,"databaseBytes":186699776,"sampledJvmHeapBytesIncludingFixture":283825264,"elapsedMillis":21057,"blobReads":90,"preexistingBlobReads":90,"treeReads":55,"refUpdates":0}
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

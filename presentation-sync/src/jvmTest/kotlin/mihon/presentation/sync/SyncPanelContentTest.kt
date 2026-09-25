@@ -77,7 +77,7 @@ class SyncPanelContentTest {
                 completed = 70,
                 skipped = 2,
                 failed = 3,
-                attempt = 1,
+                attemptId = 1,
                 nextRetryAt = 0,
                 lastProgressAt = 1,
                 stopReason = null,
@@ -381,7 +381,7 @@ class SyncPanelContentTest {
                 completed = 2,
                 skipped = 0,
                 failed = 0,
-                attempt = 1,
+                attemptId = 1,
                 nextRetryAt = 0,
                 lastProgressAt = 1,
                 stopReason = null,
@@ -426,7 +426,7 @@ class SyncPanelContentTest {
                 completed = 1,
                 skipped = 0,
                 failed = 0,
-                attempt = 1,
+                attemptId = 1,
                 nextRetryAt = 0,
                 lastProgressAt = 1,
                 stopReason = null,
@@ -459,7 +459,7 @@ class SyncPanelContentTest {
                 completed = 24,
                 skipped = 0,
                 failed = 0,
-                attempt = 3,
+                attemptId = 3,
                 nextRetryAt = 0,
                 lastProgressAt = 1,
                 stopReason = "retry_exhausted",
@@ -491,7 +491,7 @@ class SyncPanelContentTest {
                 completed = 4,
                 skipped = 0,
                 failed = 0,
-                attempt = 1,
+                attemptId = 1,
                 nextRetryAt = 0,
                 lastProgressAt = 1,
                 stopReason = "AUTHORIZATION",
@@ -523,7 +523,7 @@ class SyncPanelContentTest {
                 completed = 2,
                 skipped = 0,
                 failed = 0,
-                attempt = 1,
+                attemptId = 1,
                 nextRetryAt = 6_000,
                 lastProgressAt = 1,
                 stopReason = "network",
@@ -537,6 +537,41 @@ class SyncPanelContentTest {
         assertTrue(
             texts().contains(
                 MR.strings.sync_retry_after_seconds.localized(Locale.getDefault(), 5),
+            ),
+        )
+    }
+
+    @Test
+    fun `rate limit wait explains why the persisted countdown is active`() = rendered(
+        connected().copy(
+            nowMillis = 1_000,
+            run = SyncRunSnapshot(
+                runId = "run-rate-limit",
+                spaceId = "space",
+                generation = 1,
+                trigger = mihon.domain.sync.runtime.SyncTrigger.RECOVERY,
+                state = SyncRunState.WAITING_RETRY,
+                phase = SyncRunPhase.CHECKING,
+                processed = 0,
+                total = 0,
+                completed = 0,
+                skipped = 0,
+                failed = 0,
+                attemptId = 1,
+                nextRetryAt = 61_000,
+                lastProgressAt = 1,
+                stopReason = "rate_limit",
+                ownerSession = null,
+                createdAt = 1,
+                updatedAt = 1,
+            ),
+        ),
+    ) {
+        awaitTag("sync-retry-countdown")
+        assertTrue(texts().contains(MR.strings.sync_waiting_rate_limit.localized(Locale.getDefault())))
+        assertTrue(
+            texts().contains(
+                MR.strings.sync_retry_after_minutes.localized(Locale.getDefault(), 1),
             ),
         )
     }

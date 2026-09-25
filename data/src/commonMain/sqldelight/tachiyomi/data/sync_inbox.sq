@@ -119,6 +119,24 @@ saveInboxBatch:
 INSERT INTO sync_inbox_batches(space_id, generation, batch_id, status, body_json, error) VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT(space_id, generation, batch_id, status) DO UPDATE SET body_json = excluded.body_json, error = excluded.error;
 
+insertDiscoveredBatch:
+INSERT INTO sync_inbox_batches(space_id, generation, batch_id, status, body_json, error)
+SELECT ?, ?, ?, 'DISCOVERED', ?, NULL
+WHERE NOT EXISTS (
+    SELECT 1 FROM sync_batches
+    WHERE space_id = ? AND generation = ? AND batch_id = ? AND status = 'PUBLISHED'
+)
+ON CONFLICT(space_id, generation, batch_id, status) DO UPDATE SET body_json = excluded.body_json;
+
+getDiscoveredBatches:
+SELECT body_json FROM sync_inbox_batches
+WHERE space_id = ? AND generation = ? AND status = 'DISCOVERED'
+ORDER BY batch_id LIMIT ?;
+
+deleteDiscoveredBatch:
+DELETE FROM sync_inbox_batches
+WHERE space_id = ? AND generation = ? AND batch_id = ? AND status = 'DISCOVERED';
+
 countInboxBatches:
 SELECT status, count(*) AS count FROM sync_inbox_batches WHERE space_id = ? AND generation = ? GROUP BY status;
 

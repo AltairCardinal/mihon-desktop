@@ -989,7 +989,12 @@ private fun SyncProgressCard(
                 SyncRunState.WAITING_NETWORK -> Text(syncString(MR.strings.sync_waiting_network))
                 SyncRunState.WAITING_SYSTEM -> Text(syncString(MR.strings.sync_waiting_system))
                 SyncRunState.WAITING_RETRY -> {
-                    Text(syncString(MR.strings.sync_waiting_retry))
+                    val waitingLabel = if (run.stopReason == "rate_limit") {
+                        MR.strings.sync_waiting_rate_limit
+                    } else {
+                        MR.strings.sync_waiting_retry
+                    }
+                    Text(syncString(waitingLabel))
                     Text(retryLabel(run, state.nowMillis), Modifier.testTag("sync-retry-countdown"))
                 }
                 SyncRunState.FAILED -> {

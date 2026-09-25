@@ -45,17 +45,45 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
             if (!active(spaceId, generation)) return@await emptyList()
             sync_inboxQueries.getDirtyFields(spaceId, generation, limit.toLong()).executeAsList()
         }
-        fields.forEach { entry ->
-            try {
+        if (fields.isNotEmpty()) {
+            writer.prepareBatch()
+            val batchApplied = try {
                 handler.await(inTransaction = true) {
-                    if (!active(spaceId, generation)) return@await
-                    val current = sync_inboxQueries.getFieldState(spaceId, generation, entry.object_key, entry.field_)
-                        .executeAsOneOrNull() ?: return@await
-                    if (current.dirty) projectField(current)
+                    fields.forEach { entry ->
+                        coroutineContext.ensureActive()
+                        if (!active(spaceId, generation)) return@await
+                        val current = sync_inboxQueries.getFieldState(
+                            spaceId,
+                            generation,
+                            entry.object_key,
+                            entry.field_,
+                        )
+                            .executeAsOneOrNull()
+                        if (current?.dirty == true) projectField(current)
+                    }
                 }
-            } catch (failure: SyncProjectionUnavailable) {
-                handler.await(inTransaction = true) {
-                    if (active(spaceId, generation)) finish(entry, failure.reason.name, entry.applied_heads)
+                true
+            } catch (failure: Exception) {
+                if (failure is CancellationException) throw failure
+                coroutineContext.ensureActive()
+                false
+            }
+            if (!batchApplied) {
+                fields.forEach { entry ->
+                    coroutineContext.ensureActive()
+                    try {
+                        handler.await(inTransaction = true) {
+                            if (!active(spaceId, generation)) return@await
+                            val current =
+                                sync_inboxQueries.getFieldState(spaceId, generation, entry.object_key, entry.field_)
+                                    .executeAsOneOrNull() ?: return@await
+                            if (current.dirty) projectField(current)
+                        }
+                    } catch (failure: SyncProjectionUnavailable) {
+                        handler.await(inTransaction = true) {
+                            if (active(spaceId, generation)) finish(entry, failure.reason.name, entry.applied_heads)
+                        }
+                    }
                 }
             }
         }

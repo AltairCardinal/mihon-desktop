@@ -1,0 +1,477 @@
+Configuration on demand is an incubating feature.
+Type-safe project accessors is an incubating feature.
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :buildSrc:generateExternalPluginSpecBuilders UP-TO-DATE
+> Task :buildSrc:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+> Task :buildSrc:compilePluginsBlocks UP-TO-DATE
+> Task :buildSrc:generatePrecompiledScriptPluginAccessors UP-TO-DATE
+> Task :buildSrc:generateScriptPluginAdapters UP-TO-DATE
+> Task :buildSrc:compileKotlin UP-TO-DATE
+> Task :buildSrc:compileJava NO-SOURCE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :source-api:preBuild UP-TO-DATE
+> Task :source-local:preBuild UP-TO-DATE
+> Task :core-metadata:preBuild UP-TO-DATE
+> Task :domain:preBuild UP-TO-DATE
+> Task :telemetry:preBuild UP-TO-DATE
+> Task :presentation-widget:preBuild UP-TO-DATE
+> Task :data:preBuild UP-TO-DATE
+> Task :core:common:preBuild UP-TO-DATE
+> Task :presentation-core:preBuild UP-TO-DATE
+> Task :core:archive:preBuild UP-TO-DATE
+> Task :core-metadata:preReleaseBuild UP-TO-DATE
+> Task :presentation-widget:preReleaseBuild UP-TO-DATE
+> Task :domain:preReleaseBuild UP-TO-DATE
+> Task :source-local:preReleaseBuild UP-TO-DATE
+> Task :core:common:preReleaseBuild UP-TO-DATE
+> Task :source-api:preReleaseBuild UP-TO-DATE
+> Task :core:archive:preReleaseBuild UP-TO-DATE
+> Task :presentation-core:preReleaseBuild UP-TO-DATE
+> Task :data:preReleaseBuild UP-TO-DATE
+> Task :telemetry:preReleaseBuild UP-TO-DATE
+> Task :i18n:generateMRcommonMain UP-TO-DATE
+> Task :domain:generateReleaseResValues UP-TO-DATE
+> Task :source-api:generateReleaseResValues UP-TO-DATE
+> Task :presentation-core:generateReleaseResValues UP-TO-DATE
+> Task :core-metadata:generateReleaseResValues UP-TO-DATE
+> Task :core:common:generateReleaseResValues UP-TO-DATE
+> Task :telemetry:generateReleaseResValues UP-TO-DATE
+> Task :i18n:generateMRandroidMain UP-TO-DATE
+> Task :presentation-widget:generateReleaseResValues UP-TO-DATE
+> Task :data:generateReleaseResValues UP-TO-DATE
+> Task :core:archive:generateReleaseResValues UP-TO-DATE
+> Task :source-local:generateReleaseResValues UP-TO-DATE
+> Task :i18n:generateMRandroidRelease SKIPPED
+> Task :i18n:generateLocalesConfig UP-TO-DATE
+> Task :source-api:generateReleaseResources UP-TO-DATE
+> Task :telemetry:generateReleaseResources UP-TO-DATE
+> Task :core:common:generateReleaseResources UP-TO-DATE
+> Task :domain:generateReleaseResources UP-TO-DATE
+> Task :i18n:generateMRandroidDebug SKIPPED
+> Task :core-metadata:generateReleaseResources UP-TO-DATE
+> Task :data:generateReleaseResources UP-TO-DATE
+> Task :source-local:generateReleaseResources UP-TO-DATE
+> Task :i18n:generateMRandroidInstrumentedTest UP-TO-DATE
+> Task :i18n:generateMRandroidInstrumentedTestDebug SKIPPED
+> Task :core:archive:generateReleaseResources UP-TO-DATE
+> Task :i18n:generateMRcommonTest UP-TO-DATE
+> Task :presentation-widget:generateReleaseResources UP-TO-DATE
+> Task :presentation-core:generateReleaseResources UP-TO-DATE
+> Task :i18n:generateMRandroidUnitTest UP-TO-DATE
+> Task :i18n:generateMRandroidUnitTestDebug SKIPPED
+> Task :core:common:packageReleaseResources UP-TO-DATE
+> Task :i18n:generateMRandroidUnitTestRelease SKIPPED
+> Task :telemetry:packageReleaseResources UP-TO-DATE
+> Task :source-api:packageReleaseResources UP-TO-DATE
+> Task :domain:packageReleaseResources UP-TO-DATE
+> Task :core-metadata:packageReleaseResources UP-TO-DATE
+> Task :i18n:generateMRjvmMain UP-TO-DATE
+> Task :i18n:generateMRjvmTest UP-TO-DATE
+> Task :data:packageReleaseResources UP-TO-DATE
+> Task :i18n:preBuild UP-TO-DATE
+> Task :source-local:packageReleaseResources UP-TO-DATE
+> Task :i18n:preReleaseBuild UP-TO-DATE
+> Task :core:archive:packageReleaseResources UP-TO-DATE
+> Task :i18n:generateReleaseResValues UP-TO-DATE
+> Task :presentation-sync:convertXmlValueResourcesForAndroidMain NO-SOURCE
+> Task :presentation-theme:convertXmlValueResourcesForAndroidMain NO-SOURCE
+> Task :presentation-sync:copyNonXmlValueResourcesForAndroidMain NO-SOURCE
+> Task :presentation-theme:copyNonXmlValueResourcesForAndroidMain NO-SOURCE
+> Task :i18n:generateReleaseResources FROM-CACHE
+> Task :presentation-theme:prepareComposeResourcesTaskForAndroidMain NO-SOURCE
+> Task :presentation-sync:prepareComposeResourcesTaskForAndroidMain NO-SOURCE
+> Task :presentation-sync:convertXmlValueResourcesForAndroidRelease NO-SOURCE
+> Task :presentation-theme:convertXmlValueResourcesForAndroidRelease NO-SOURCE
+> Task :core:common:writeReleaseAarMetadata UP-TO-DATE
+> Task :telemetry:writeReleaseAarMetadata UP-TO-DATE
+> Task :source-api:writeReleaseAarMetadata UP-TO-DATE
+> Task :presentation-sync:copyNonXmlValueResourcesForAndroidRelease NO-SOURCE
+> Task :presentation-theme:copyNonXmlValueResourcesForAndroidRelease NO-SOURCE
+> Task :presentation-sync:prepareComposeResourcesTaskForAndroidRelease NO-SOURCE
+> Task :presentation-theme:prepareComposeResourcesTaskForAndroidRelease NO-SOURCE
+> Task :source-api:processReleaseNavigationResources UP-TO-DATE
+> Task :data:writeReleaseAarMetadata UP-TO-DATE
+> Task :telemetry:processReleaseNavigationResources UP-TO-DATE
+> Task :core:common:processReleaseNavigationResources UP-TO-DATE
+> Task :presentation-sync:convertXmlValueResourcesForCommonMain NO-SOURCE
+> Task :presentation-theme:convertXmlValueResourcesForCommonMain NO-SOURCE
+> Task :telemetry:extractDeepLinksRelease UP-TO-DATE
+> Task :presentation-sync:copyNonXmlValueResourcesForCommonMain NO-SOURCE
+> Task :source-local:writeReleaseAarMetadata UP-TO-DATE
+> Task :source-api:extractDeepLinksRelease UP-TO-DATE
+> Task :presentation-theme:copyNonXmlValueResourcesForCommonMain NO-SOURCE
+> Task :data:processReleaseNavigationResources UP-TO-DATE
+> Task :core:common:extractDeepLinksRelease UP-TO-DATE
+> Task :domain:writeReleaseAarMetadata UP-TO-DATE
+> Task :presentation-sync:prepareComposeResourcesTaskForCommonMain NO-SOURCE
+> Task :source-local:processReleaseNavigationResources UP-TO-DATE
+> Task :data:extractDeepLinksRelease UP-TO-DATE
+> Task :presentation-theme:prepareComposeResourcesTaskForCommonMain NO-SOURCE
+> Task :domain:processReleaseNavigationResources UP-TO-DATE
+> Task :source-local:extractDeepLinksRelease UP-TO-DATE
+> Task :core-metadata:writeReleaseAarMetadata UP-TO-DATE
+> Task :domain:extractDeepLinksRelease UP-TO-DATE
+> Task :core:archive:writeReleaseAarMetadata UP-TO-DATE
+> Task :presentation-theme:copyReleaseComposeResourcesToAndroidAssets UP-TO-DATE
+> Task :source-api:processReleaseManifest UP-TO-DATE
+> Task :presentation-sync:copyReleaseComposeResourcesToAndroidAssets UP-TO-DATE
+> Task :presentation-core:writeReleaseAarMetadata UP-TO-DATE
+> Task :presentation-sync:preBuild UP-TO-DATE
+> Task :presentation-sync:preReleaseBuild UP-TO-DATE
+> Task :presentation-widget:writeReleaseAarMetadata UP-TO-DATE
+> Task :telemetry:processReleaseManifest UP-TO-DATE
+> Task :core-metadata:processReleaseNavigationResources UP-TO-DATE
+> Task :presentation-theme:preBuild UP-TO-DATE
+> Task :presentation-theme:preReleaseBuild UP-TO-DATE
+> Task :data:processReleaseManifest UP-TO-DATE
+> Task :core:archive:processReleaseNavigationResources UP-TO-DATE
+> Task :presentation-theme:generateReleaseResValues UP-TO-DATE
+> Task :core:common:processReleaseManifest UP-TO-DATE
+> Task :core-metadata:extractDeepLinksRelease UP-TO-DATE
+> Task :presentation-sync:generateReleaseResValues UP-TO-DATE
+> Task :core:archive:extractDeepLinksRelease UP-TO-DATE
+> Task :domain:processReleaseManifest UP-TO-DATE
+> Task :presentation-theme:generateReleaseResources UP-TO-DATE
+> Task :presentation-sync:generateReleaseResources UP-TO-DATE
+> Task :data:parseReleaseLocalResources UP-TO-DATE
+> Task :domain:parseReleaseLocalResources UP-TO-DATE
+> Task :source-api:parseReleaseLocalResources UP-TO-DATE
+> Task :telemetry:parseReleaseLocalResources UP-TO-DATE
+> Task :core-metadata:processReleaseManifest UP-TO-DATE
+> Task :domain:kmpPartiallyResolvedDependenciesChecker
+> Task :data:kmpPartiallyResolvedDependenciesChecker
+> Task :source-api:kmpPartiallyResolvedDependenciesChecker
+> Task :domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :source-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :presentation-core:packageReleaseResources UP-TO-DATE
+> Task :source-api:javaPreCompileRelease UP-TO-DATE
+> Task :core:archive:processReleaseManifest UP-TO-DATE
+> Task :domain:javaPreCompileRelease UP-TO-DATE
+> Task :core:common:parseReleaseLocalResources UP-TO-DATE
+> Task :core-metadata:parseReleaseLocalResources UP-TO-DATE
+> Task :core:common:kmpPartiallyResolvedDependenciesChecker
+> Task :core-metadata:kmpPartiallyResolvedDependenciesChecker
+> Task :core:common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core-metadata:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :presentation-core:processReleaseNavigationResources UP-TO-DATE
+> Task :presentation-sync:packageReleaseResources UP-TO-DATE
+> Task :domain:mergeReleaseShaders UP-TO-DATE
+> Task :core:archive:parseReleaseLocalResources UP-TO-DATE
+> Task :core:common:javaPreCompileRelease UP-TO-DATE
+> Task :presentation-theme:packageReleaseResources UP-TO-DATE
+> Task :source-api:mergeReleaseShaders UP-TO-DATE
+> Task :core-metadata:javaPreCompileRelease UP-TO-DATE
+> Task :domain:compileReleaseShaders NO-SOURCE
+> Task :presentation-core:extractDeepLinksRelease UP-TO-DATE
+> Task :domain:generateReleaseAssets UP-TO-DATE
+> Task :presentation-widget:packageReleaseResources UP-TO-DATE
+> Task :source-api:compileReleaseShaders NO-SOURCE
+> Task :core:common:mergeReleaseShaders UP-TO-DATE
+> Task :domain:releaseAssetsCopyForAGP NO-SOURCE
+> Task :source-api:generateReleaseAssets UP-TO-DATE
+> Task :core:common:compileReleaseShaders NO-SOURCE
+> Task :source-api:releaseAssetsCopyForAGP NO-SOURCE
+> Task :core:common:generateReleaseAssets UP-TO-DATE
+> Task :core:common:releaseAssetsCopyForAGP NO-SOURCE
+> Task :presentation-widget:processReleaseNavigationResources UP-TO-DATE
+> Task :core-metadata:mergeReleaseShaders UP-TO-DATE
+> Task :telemetry:generateReleaseRFile UP-TO-DATE
+> Task :telemetry:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :domain:mergeReleaseAssets UP-TO-DATE
+> Task :core-metadata:compileReleaseShaders NO-SOURCE
+> Task :presentation-theme:writeReleaseAarMetadata UP-TO-DATE
+> Task :presentation-sync:writeReleaseAarMetadata UP-TO-DATE
+> Task :core-metadata:generateReleaseAssets UP-TO-DATE
+> Task :presentation-widget:extractDeepLinksRelease UP-TO-DATE
+> Task :source-api:mergeReleaseAssets UP-TO-DATE
+> Task :core:common:mergeReleaseAssets UP-TO-DATE
+> Task :presentation-core:processReleaseManifest UP-TO-DATE
+> Task :core-metadata:releaseAssetsCopyForAGP NO-SOURCE
+> Task :presentation-theme:processReleaseNavigationResources UP-TO-DATE
+> Task :presentation-sync:processReleaseNavigationResources UP-TO-DATE
+> Task :presentation-sync:extractDeepLinksRelease UP-TO-DATE
+> Task :core-metadata:mergeReleaseAssets UP-TO-DATE
+> Task :presentation-theme:extractDeepLinksRelease UP-TO-DATE
+> Task :presentation-widget:processReleaseManifest UP-TO-DATE
+> Task :presentation-core:parseReleaseLocalResources UP-TO-DATE
+> Task :presentation-core:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:archive:generateReleaseRFile UP-TO-DATE
+> Task :presentation-core:javaPreCompileRelease UP-TO-DATE
+> Task :presentation-sync:processReleaseManifest UP-TO-DATE
+> Task :core:archive:kmpPartiallyResolvedDependenciesChecker
+> Task :core:archive:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :presentation-theme:processReleaseManifest UP-TO-DATE
+> Task :presentation-widget:parseReleaseLocalResources UP-TO-DATE
+> Task :presentation-core:mergeReleaseShaders UP-TO-DATE
+> Task :presentation-widget:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :presentation-core:compileReleaseShaders NO-SOURCE
+> Task :presentation-core:generateReleaseAssets UP-TO-DATE
+> Task :presentation-widget:javaPreCompileRelease UP-TO-DATE
+> Task :data:generateCommonMainDatabaseInterface UP-TO-DATE
+> Task :presentation-theme:parseReleaseLocalResources UP-TO-DATE
+> Task :presentation-theme:kmpPartiallyResolvedDependenciesChecker
+> Task :presentation-sync:parseReleaseLocalResources UP-TO-DATE
+> Task :presentation-theme:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :presentation-theme:generateResourceAccessorsForAndroidMain SKIPPED
+> Task :presentation-core:mergeReleaseAssets UP-TO-DATE
+> Task :presentation-theme:generateResourceAccessorsForCommonMain SKIPPED
+> Task :presentation-theme:generateActualResourceCollectorsForAndroidMain SKIPPED
+> Task :presentation-sync:kmpPartiallyResolvedDependenciesChecker
+> Task :data:javaPreCompileRelease UP-TO-DATE
+> Task :presentation-sync:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :presentation-widget:mergeReleaseShaders UP-TO-DATE
+> Task :presentation-theme:generateComposeResClass SKIPPED
+> Task :presentation-sync:generateResourceAccessorsForAndroidMain SKIPPED
+> Task :presentation-sync:generateResourceAccessorsForCommonMain SKIPPED
+> Task :presentation-sync:generateActualResourceCollectorsForAndroidMain SKIPPED
+> Task :presentation-theme:generateExpectResourceCollectorsForCommonMain SKIPPED
+> Task :presentation-widget:compileReleaseShaders NO-SOURCE
+> Task :presentation-theme:generateResourceAccessorsForAndroidRelease SKIPPED
+> Task :source-local:processReleaseManifest UP-TO-DATE
+> Task :presentation-widget:generateReleaseAssets UP-TO-DATE
+> Task :presentation-sync:generateComposeResClass SKIPPED
+> Task :presentation-sync:generateExpectResourceCollectorsForCommonMain SKIPPED
+> Task :presentation-sync:generateResourceAccessorsForAndroidRelease SKIPPED
+> Task :data:mergeReleaseShaders UP-TO-DATE
+> Task :presentation-theme:javaPreCompileRelease UP-TO-DATE
+> Task :presentation-widget:mergeReleaseAssets UP-TO-DATE
+> Task :data:compileReleaseShaders NO-SOURCE
+> Task :data:generateReleaseAssets UP-TO-DATE
+> Task :presentation-sync:javaPreCompileRelease UP-TO-DATE
+> Task :source-local:parseReleaseLocalResources UP-TO-DATE
+> Task :source-local:kmpPartiallyResolvedDependenciesChecker
+> Task :presentation-theme:mergeReleaseShaders UP-TO-DATE
+> Task :source-local:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:releaseAssetsCopyForAGP NO-SOURCE
+> Task :presentation-theme:compileReleaseShaders NO-SOURCE
+> Task :presentation-theme:generateReleaseAssets UP-TO-DATE
+> Task :presentation-sync:mergeReleaseShaders UP-TO-DATE
+> Task :source-local:javaPreCompileRelease UP-TO-DATE
+> Task :presentation-theme:releaseAssetsCopyForAGP NO-SOURCE
+> Task :presentation-sync:compileReleaseShaders NO-SOURCE
+> Task :presentation-sync:generateReleaseAssets UP-TO-DATE
+> Task :data:mergeReleaseAssets UP-TO-DATE
+> Task :presentation-sync:releaseAssetsCopyForAGP NO-SOURCE
+> Task :source-local:mergeReleaseShaders UP-TO-DATE
+> Task :presentation-theme:mergeReleaseAssets UP-TO-DATE
+> Task :source-local:compileReleaseShaders NO-SOURCE
+> Task :source-local:generateReleaseAssets UP-TO-DATE
+> Task :source-local:releaseAssetsCopyForAGP NO-SOURCE
+> Task :presentation-sync:mergeReleaseAssets UP-TO-DATE
+> Task :source-local:mergeReleaseAssets UP-TO-DATE
+> Task :telemetry:compileReleaseKotlin UP-TO-DATE
+> Task :telemetry:javaPreCompileRelease UP-TO-DATE
+> Task :telemetry:compileReleaseJavaWithJavac NO-SOURCE
+> Task :telemetry:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :telemetry:mergeReleaseShaders UP-TO-DATE
+> Task :core:archive:compileReleaseKotlinAndroid UP-TO-DATE
+> Task :telemetry:compileReleaseShaders NO-SOURCE
+> Task :telemetry:generateReleaseAssets UP-TO-DATE
+> Task :telemetry:mergeReleaseAssets UP-TO-DATE
+> Task :core:archive:javaPreCompileRelease UP-TO-DATE
+> Task :telemetry:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :core:archive:compileReleaseJavaWithJavac NO-SOURCE
+> Task :core:archive:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :telemetry:processReleaseJavaRes UP-TO-DATE
+> Task :core:archive:mergeReleaseShaders UP-TO-DATE
+> Task :core:archive:compileReleaseShaders NO-SOURCE
+> Task :core:archive:generateReleaseAssets UP-TO-DATE
+> Task :core:archive:releaseAssetsCopyForAGP NO-SOURCE
+> Task :core:archive:mergeReleaseAssets UP-TO-DATE
+> Task :core:archive:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :core:archive:processReleaseJavaRes UP-TO-DATE
+> Task :app:buildKotlinToolingMetadata UP-TO-DATE
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :i18n:packageReleaseResources
+> Task :i18n:writeReleaseAarMetadata UP-TO-DATE
+> Task :i18n:processReleaseNavigationResources FROM-CACHE
+> Task :i18n:extractDeepLinksRelease UP-TO-DATE
+> Task :i18n:processReleaseManifest UP-TO-DATE
+> Task :i18n:parseReleaseLocalResources FROM-CACHE
+> Task :i18n:generateReleaseRFile FROM-CACHE
+> Task :i18n:kmpPartiallyResolvedDependenciesChecker
+> Task :i18n:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:common:generateReleaseRFile FROM-CACHE
+> Task :source-api:generateReleaseRFile FROM-CACHE
+> Task :domain:generateReleaseRFile FROM-CACHE
+> Task :app:compileReleaseAidl UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core-metadata:generateReleaseRFile
+> Task :data:generateReleaseRFile FROM-CACHE
+> Task :source-local:generateReleaseRFile
+> Task :i18n:javaPreCompileRelease UP-TO-DATE
+> Task :i18n:mergeReleaseShaders UP-TO-DATE
+> Task :i18n:compileReleaseShaders NO-SOURCE
+> Task :i18n:generateReleaseAssets UP-TO-DATE
+> Task :i18n:releaseAssetsCopyForAGP NO-SOURCE
+> Task :i18n:mergeReleaseAssets UP-TO-DATE
+> Task :presentation-sync:generateReleaseRFile
+> Task :presentation-core:generateReleaseRFile
+> Task :app:dataBindingMergeDependencyArtifactsRelease UP-TO-DATE
+> Task :app:generateReleaseResValues UP-TO-DATE
+> Task :app:generateReleaseResources UP-TO-DATE
+> Task :app:prepareLibraryDefinitionsRelease UP-TO-DATE
+> Task :presentation-theme:generateReleaseRFile
+> Task :presentation-widget:generateReleaseRFile
+> Task :app:prepareReleaseShortcutXML
+> Task :i18n:compileReleaseKotlinAndroid
+> Task :i18n:compileReleaseJavaWithJavac NO-SOURCE
+> Task :i18n:bundleLibCompileToJarRelease
+> Task :i18n:processReleaseJavaRes UP-TO-DATE
+> Task :i18n:bundleLibRuntimeToJarRelease
+> Task :presentation-theme:compileReleaseKotlinAndroid
+> Task :presentation-theme:compileReleaseJavaWithJavac NO-SOURCE
+> Task :presentation-theme:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :presentation-theme:processReleaseJavaRes UP-TO-DATE
+> Task :presentation-theme:bundleLibCompileToJarRelease
+> Task :core:common:compileReleaseKotlinAndroid
+> Task :core:common:compileReleaseJavaWithJavac NO-SOURCE
+> Task :core:common:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :core:common:processReleaseJavaRes UP-TO-DATE
+> Task :core:common:bundleLibCompileToJarRelease
+> Task :source-api:compileReleaseKotlinAndroid
+> Task :source-api:compileReleaseJavaWithJavac NO-SOURCE
+> Task :source-api:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :source-api:processReleaseJavaRes UP-TO-DATE
+> Task :source-api:bundleLibCompileToJarRelease
+> Task :presentation-core:compileReleaseKotlin
+> Task :presentation-core:compileReleaseJavaWithJavac NO-SOURCE
+> Task :presentation-core:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :presentation-core:processReleaseJavaRes UP-TO-DATE
+> Task :presentation-core:bundleLibCompileToJarRelease
+> Task :core-metadata:compileReleaseKotlinAndroid
+> Task :core-metadata:compileReleaseJavaWithJavac NO-SOURCE
+> Task :core-metadata:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :core-metadata:processReleaseJavaRes UP-TO-DATE
+> Task :core-metadata:bundleLibCompileToJarRelease
+> Task :app:generateReleaseBuildConfig
+> Task :app:checkReleaseAarMetadata UP-TO-DATE
+> Task :app:processReleaseNavigationResources FROM-CACHE
+> Task :app:compileReleaseNavigationResources UP-TO-DATE
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease FROM-CACHE
+> Task :app:processReleaseMainManifest FROM-CACHE
+> Task :app:processReleaseManifest FROM-CACHE
+> Task :app:processReleaseManifestForPackage FROM-CACHE
+> Task :app:javaPreCompileRelease UP-TO-DATE
+> Task :app:preReleaseUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileReleaseUnitTest UP-TO-DATE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets UP-TO-DATE
+> Task :app:processReleaseUnitTestManifest UP-TO-DATE
+
+> Task :domain:compileReleaseKotlinAndroid
+w: file:///D:/Codex/worktrees/85be/mihon/domain/src/commonMain/kotlin/tachiyomi/domain/library/LibrarySelectionPolicy.kt:45:9 Condition is always 'true'.
+w: file:///D:/Codex/worktrees/85be/mihon/domain/src/commonMain/kotlin/tachiyomi/domain/track/interactor/SyncReadingProgressWithTrack.kt:87:44 The corresponding parameter in the supertype 'DelayedTrackerSyncPersistence' is named 'item'. This may cause problems when calling this function with named arguments.
+
+> Task :domain:compileReleaseJavaWithJavac NO-SOURCE
+> Task :domain:processReleaseJavaRes UP-TO-DATE
+> Task :domain:bundleLibRuntimeToJarRelease
+> Task :domain:bundleLibCompileToJarRelease
+> Task :source-local:compileReleaseKotlinAndroid
+> Task :source-local:compileReleaseJavaWithJavac NO-SOURCE
+> Task :source-local:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :source-local:processReleaseJavaRes UP-TO-DATE
+> Task :source-local:bundleLibCompileToJarRelease
+> Task :presentation-widget:compileReleaseKotlin
+> Task :presentation-widget:compileReleaseJavaWithJavac NO-SOURCE
+> Task :presentation-widget:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :presentation-widget:processReleaseJavaRes UP-TO-DATE
+> Task :presentation-widget:bundleLibCompileToJarRelease
+> Task :app:mergeReleaseResources
+> Task :app:dataBindingGenBaseClassesRelease UP-TO-DATE
+> Task :app:processReleaseResources
+> Task :app:convertLinkedResourcesToBinaryRelease
+> Task :app:packageReleaseUnitTestForUnitTest
+> Task :app:generateReleaseUnitTestConfig
+
+> Task :data:compileReleaseKotlinAndroid
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/androidMain/kotlin/mihon/data/sync/crypto/SyncAeadEngineFactoryAndroid.kt:18:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/androidMain/kotlin/mihon/data/sync/crypto/SyncAeadEngineFactoryAndroid.kt:57:14 'fun <P : Any!> getPrimitive(targetClassObject: Class<P!>!): P!' is deprecated. Deprecated in Java.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/androidMain/kotlin/mihon/data/sync/crypto/SyncRecoveryFactoryAndroid.kt:9:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/crypto/SyncAeadEngineFactory.kt:5:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/crypto/SyncRecoveryFactory.kt:5:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/http/SyncHttpClient.kt:121:52 The corresponding parameter in the supertype 'Callback' is named 'e'. This may cause problems when calling this function with named arguments.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncPanelController.kt:267:57 Unnecessary safe call on a non-null receiver of type 'SyncConnection'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:207:59 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:208:55 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:209:59 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:210:57 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:211:56 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/transport/GitHubGitDatabaseClient.kt:117:45 Unnecessary non-null assertion (!!) on a non-null receiver of type 'CompletableDeferred<ByteArray>'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/commonMain/kotlin/mihon/data/sync/transport/GitHubGitDatabaseClient.kt:1365:17 Condition is always 'true'.
+
+> Task :data:compileReleaseJavaWithJavac NO-SOURCE
+> Task :data:processReleaseJavaRes
+> Task :data:bundleLibCompileToJarRelease
+> Task :data:bundleLibRuntimeToJarRelease
+> Task :presentation-sync:compileReleaseKotlinAndroid
+> Task :presentation-sync:compileReleaseJavaWithJavac NO-SOURCE
+> Task :presentation-sync:processReleaseJavaRes UP-TO-DATE
+> Task :presentation-sync:bundleLibCompileToJarRelease
+> Task :presentation-sync:bundleLibRuntimeToJarRelease
+
+> Task :app:compileReleaseKotlin
+w: file:///D:/Codex/worktrees/85be/mihon/app/src/main/java/eu/kanade/tachiyomi/data/notification/NotificationReceiver.kt:83:17 This is a delicate API and its use requires care. Make sure you fully read and understand documentation of the declaration that is marked as a delicate API.
+w: file:///D:/Codex/worktrees/85be/mihon/app/src/main/java/eu/kanade/tachiyomi/data/notification/NotificationReceiver.kt:210:9 This is a delicate API and its use requires care. Make sure you fully read and understand documentation of the declaration that is marked as a delicate API.
+w: file:///D:/Codex/worktrees/85be/mihon/app/src/main/java/eu/kanade/tachiyomi/data/notification/NotificationReceiver.kt:236:9 This is a delicate API and its use requires care. Make sure you fully read and understand documentation of the declaration that is marked as a delicate API.
+w: file:///D:/Codex/worktrees/85be/mihon/app/src/main/java/mihon/app/shizuku/ShellInterface.kt:82:18 This call may have inconsistent results because 'AtomicReference' uses identity equality and 'Boolean?' does not have a consistent identity. Consider using 'AtomicBoolean' instead.
+w: file:///D:/Codex/worktrees/85be/mihon/app/src/main/java/mihon/app/shizuku/ShellInterface.kt:140:16 Java type mismatch: inferred type is 'Any?', but 'Any' was expected.
+
+> Task :app:compileReleaseJavaWithJavac
+> Task :app:processReleaseJavaRes UP-TO-DATE
+> Task :app:bundleReleaseClassesToCompileJar
+> Task :app:bundleReleaseClassesToRuntimeJar
+
+> Task :app:compileReleaseUnitTestKotlin
+w: file:///D:/Codex/worktrees/85be/mihon/app/src/test/java/eu/kanade/tachiyomi/data/sync/AndroidSyncPanelTest.kt:54:19 'fun createEmptyComposeRule(effectContext: CoroutineContext = ...): ComposeTestRule' is deprecated. Use `androidx.compose.ui.test.junit4.v2.createEmptyComposeRule` instead. The v2 APIs use `StandardTestDispatcher` by default to better simulate production behavior where coroutines are queued rather than executed immediately.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/testFixtures/kotlin/mihon/data/extension/ExtensionSuggestionSqlContract.kt:110:31 Unnecessary non-null assertion (!!) on a non-null receiver of type 'ExtensionSuggestionSqlContract.Session'.
+w: file:///D:/Codex/worktrees/85be/mihon/data/src/testFixtures/kotlin/mihon/data/extension/ExtensionSuggestionSqlContract.kt:111:34 Unnecessary non-null assertion (!!) on a non-null receiver of type 'ExtensionSuggestionSqlContract.Session'.
+
+> Task :app:compileReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processReleaseUnitTestJavaRes UP-TO-DATE
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+
+> Task :app:testReleaseUnitTest
+
+AndroidSyncRuntimeWiringTest > first periodic work waits for the deadline shown by the panel PASSED
+
+AndroidSyncRuntimeWiringTest > stopping the production worker cancels the coordinator exchange PASSED
+
+AndroidSyncRuntimeWiringTest > recovery worker does not execute the same run twice PASSED
+
+AndroidSyncRuntimeWiringTest > manual completion and period changes move the existing work deadline PASSED
+
+AndroidSyncRuntimeWiringTest > period changes update one connected job and disabling cancels it PASSED
+
+AndroidSyncRuntimeWiringTest > manual network failure schedules a durable recovery wake PASSED
+
+AndroidSyncRuntimeWiringTest > cancelled startup leaves the periodic preference subscription active PASSED
+
+AndroidSyncRuntimeWiringTest > DomainModule and production worker share the same unconfigured runtime PASSED
+
+AndroidSyncRuntimeWiringTest > application startup returns before synchronization and obeys the startup option PASSED
+
+AndroidSyncRuntimeWiringTest > recovery worker leaves a delayed retry for its scheduled wake PASSED
+
+AndroidSyncRuntimeWiringTest > worker persists network retry state instead of adding a second WorkManager budget PASSED
+
+AndroidSyncRuntimeWiringTest > real application onCreate invokes the asynchronous sync entry PASSED
+
+[Incubating] Problems report is available at: file:///D:/Codex/worktrees/85be/mihon/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.14.4/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 1m 9s
+272 actionable tasks: 59 executed, 13 from cache, 200 up-to-date

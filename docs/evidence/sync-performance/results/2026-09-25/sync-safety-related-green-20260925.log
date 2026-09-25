@@ -1,0 +1,154 @@
+Configuration on demand is an incubating feature.
+Type-safe project accessors is an incubating feature.
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :buildSrc:generateExternalPluginSpecBuilders UP-TO-DATE
+> Task :buildSrc:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+> Task :buildSrc:compilePluginsBlocks UP-TO-DATE
+> Task :buildSrc:generatePrecompiledScriptPluginAccessors UP-TO-DATE
+> Task :buildSrc:generateScriptPluginAdapters UP-TO-DATE
+> Task :buildSrc:compileKotlin UP-TO-DATE
+> Task :buildSrc:compileJava NO-SOURCE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :domain:kmpPartiallyResolvedDependenciesChecker
+> Task :i18n:kmpPartiallyResolvedDependenciesChecker
+> Task :data:kmpPartiallyResolvedDependenciesChecker
+> Task :core:common:kmpPartiallyResolvedDependenciesChecker
+> Task :domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :i18n:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :source-api:kmpPartiallyResolvedDependenciesChecker
+> Task :source-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :domain:jvmProcessResources NO-SOURCE
+> Task :core:common:jvmProcessResources NO-SOURCE
+> Task :domain:processJvmMainResources SKIPPED
+> Task :core:common:processJvmMainResources SKIPPED
+> Task :source-api:jvmProcessResources NO-SOURCE
+> Task :source-api:processJvmMainResources SKIPPED
+> Task :i18n:generateMRcommonMain UP-TO-DATE
+> Task :i18n:generateMRjvmMain UP-TO-DATE
+> Task :data:generateCommonMainDatabaseInterface UP-TO-DATE
+> Task :data:jvmProcessResources NO-SOURCE
+> Task :data:processJvmMainResources SKIPPED
+> Task :data:jvmTestProcessResources UP-TO-DATE
+> Task :data:processJvmTestResources SKIPPED
+> Task :i18n:compileKotlinJvm UP-TO-DATE
+> Task :i18n:compileJvmMainJava NO-SOURCE
+> Task :i18n:jvmProcessResources UP-TO-DATE
+> Task :i18n:processJvmMainResources SKIPPED
+> Task :i18n:jvmMainClasses UP-TO-DATE
+> Task :i18n:jvmJar UP-TO-DATE
+> Task :core:common:compileKotlinJvm UP-TO-DATE
+> Task :core:common:compileJvmMainJava NO-SOURCE
+> Task :core:common:jvmMainClasses UP-TO-DATE
+> Task :core:common:jvmJar UP-TO-DATE
+> Task :source-api:compileKotlinJvm UP-TO-DATE
+> Task :source-api:compileJvmMainJava NO-SOURCE
+> Task :source-api:jvmMainClasses UP-TO-DATE
+> Task :source-api:jvmJar UP-TO-DATE
+> Task :domain:compileKotlinJvm UP-TO-DATE
+> Task :domain:compileJvmMainJava NO-SOURCE
+> Task :domain:jvmMainClasses UP-TO-DATE
+> Task :domain:jvmJar UP-TO-DATE
+> Task :data:compileKotlinJvm UP-TO-DATE
+> Task :data:compileJvmMainJava NO-SOURCE
+> Task :data:jvmMainClasses UP-TO-DATE
+> Task :data:jvmJar UP-TO-DATE
+> Task :data:compileTestKotlinJvm UP-TO-DATE
+> Task :data:compileJvmTestJava NO-SOURCE
+> Task :data:jvmTestClasses UP-TO-DATE
+
+> Task :data:jvmTest
+
+GitHubRetryAfterIntegrationTest[jvm] > secondary rate limit without a server hint waits before retry()[jvm] PASSED
+
+GitHubRetryAfterIntegrationTest[jvm] > primary rate limit honors the later HTTP date or reset deadline()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > reclaimed run owner cannot commit a snapshot read by its stale attempt()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > guard revision advances only when an accepted head changes()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > failed durable anchor write prevents exchange network effects()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > rollback prevents preparation upload and download without new HTTP requests()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > observed immutable deletion blocks the space across database reopen and reconnect()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > stale guard revision cannot poison a newer accepted head()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > same immutable batch identity cannot be replaced by another authenticated ciphertext()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > growth and repeated heads are accepted without inventing an initial anchor()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > wrong repository or inactive space is rejected without poisoning the correct binding()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > publish observer failure preserves outbox and prevents competing ref retry writes()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > same head cache cannot conceal changed batch or index tree material()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > authenticated bootstrap index is immutable across otherwise valid growing heads()[jvm] PASSED
+
+JvmSyncRemoteSnapshotGuardContractTest[jvm] > successful publish anchors its readback before acknowledgement and survives restart()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > known historical ref rollback is blocked after a legal forward head()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > persistent warm admission skips evidence and a blocked guard forces full validation()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > new head updates only changed normalized manifest rows()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > deep wide tree cache stays within a byte budget and returns complete paths()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > fallback snapshot cache retains only the latest head()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > receiving a valid discovered batch deletes its queue row once()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > stable snapshot does not query receipt status once per historical batch()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > cached snapshot consumes only its newest fence once()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > new head preserves BMP and supplementary plane manifest paths()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > legacy full json manifest is a cache miss and is rebuilt without clearing the guard()[jvm] PASSED
+
+SyncDatabaseExchangeHistoricalLookupTest[jvm] > invalid discovered batch is removed exactly once()[jvm] PASSED
+
+SyncHttpRequestGateIntegrationTest[jvm] > header confirmed account cooldown survives oversized error body()[jvm] PASSED
+
+SyncHttpRequestGateIntegrationTest[jvm] > rate limit deadline is persisted and shared by account across http clients()[jvm] PASSED
+
+SyncHttpRequestGateIntegrationTest[jvm] > header confirmed cooldown persists when slow error body is cancelled()[jvm] PASSED
+
+SyncHttpRequestGateIntegrationTest[jvm] > request gate persists a response cooldown before the next HTTP call()[jvm] PASSED
+
+SyncHttpResponseBoundaryIntegrationTest[jvm] > response byte limit accepts limit minus one and limit but rejects limit plus one()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > source cookies and explicit cookie headers never accompany sync credentials()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > cancelling after response headers promptly cancels a delayed response body()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > sync requests actually use the injected production proxy selector and DNS()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > chunked responses enforce the size limit while reading without a content length()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > response diagnostics never expose credential bearing headers or payload bytes()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > short and empty HTTP bodies are complete responses rather than unexpected EOF()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > disallowed host is rejected before any production network request()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > sync HTTP metrics count calls bytes and failures without payload details()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > response over the configured limit fails instead of returning truncated success()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > production response body exceptions are converted to safe HTTP failures()[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > sync ignores the source disk cache for credential-bearing requests(Path)[jvm] PASSED
+
+SyncHttpSafetyContractTest[jvm] > production application and network HTTP loggers cannot see sync secrets()[jvm] PASSED
+
+BUILD SUCCESSFUL in 19s
+31 actionable tasks: 6 executed, 25 up-to-date

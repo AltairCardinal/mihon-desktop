@@ -11,6 +11,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import mihon.data.sync.auth.GitHubSyncSpaceClient
 import mihon.data.sync.crypto.SyncSpaceCrypto
+import mihon.data.sync.http.NoopSyncMetrics
+import mihon.data.sync.http.SyncMetrics
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelController
 import mihon.data.sync.runtime.SyncRuntime
@@ -25,6 +27,7 @@ import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.RecordedRequest
 import okhttp3.OkHttpClient
+import okio.Path
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
@@ -127,9 +130,14 @@ internal class SyncOnboardingFixture(
         }
     }
 
-    fun runtime(): SyncRuntime = SyncRuntime(
+    fun runtime(
+        metrics: SyncMetrics = NoopSyncMetrics,
+        persistentObjectCacheDirectory: Path? = null,
+    ): SyncRuntime = SyncRuntime(
         storage.handler, storage.bootstrap, storage.creators, storage.creators, { true }, secure,
         preferences, client, endpoints, clock = { now },
+        persistentObjectCacheDirectory = persistentObjectCacheDirectory,
+        syncMetrics = metrics,
     )
 
     suspend fun authorize(token: String = "synthetic-token") {

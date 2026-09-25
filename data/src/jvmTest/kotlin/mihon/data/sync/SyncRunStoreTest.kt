@@ -2,6 +2,7 @@ package mihon.data.sync
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.runBlocking
+import mihon.data.sync.runtime.SyncRunLogEntry
 import mihon.data.sync.runtime.SyncRunLogStatus
 import mihon.data.sync.runtime.SyncRunPhase
 import mihon.data.sync.runtime.SyncRunState
@@ -21,6 +22,26 @@ import tachiyomi.data.UpdateStrategyColumnAdapter
 
 class SyncRunStoreTest {
     @Test
+    fun `account cooldown is durable monotonic and isolated by account`() = runBlocking {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val database = Database(
+            driver,
+            History.Adapter(DateColumnAdapter),
+            Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        ).also { Database.Schema.create(driver) }
+        var now = 10_000L
+        val store = SyncRunStore(JvmDatabaseHandler(database, driver), clock = { now })
+        store.extendAccountHttpNotBefore(accountId = 101, notBeforeMillis = now + 60_000)
+        store.extendAccountHttpNotBefore(accountId = 101, notBeforeMillis = now + 10_000)
+
+        val reopened = SyncRunStore(JvmDatabaseHandler(database, driver), clock = { now })
+        assertEquals(now + 60_000L, reopened.accountHttpNotBefore(101))
+        assertEquals(0L, reopened.accountHttpNotBefore(202))
+        now += 60_001L
+        assertTrue(reopened.accountHttpNotBefore(101) <= now)
+    }
+
+    @Test
     fun `schema 27 migration creates durable runtime tables`() = runBlocking {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(driver)
@@ -28,6 +49,11 @@ class SyncRunStoreTest {
         driver.execute(null, "DROP INDEX IF EXISTS sync_runtime_log_order", 0)
         driver.execute(null, "DROP TABLE IF EXISTS sync_runtime_logs", 0)
         driver.execute(null, "DROP TABLE IF EXISTS sync_runtime_runs", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS sync_http_account_gates", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS sync_snapshot_manifest_entries", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS sync_snapshot_manifest_batches", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS sync_snapshot_manifests", 0)
+        driver.execute(null, "ALTER TABLE sync_remote_guards DROP COLUMN revision", 0)
         driver.execute(null, "DROP TRIGGER IF EXISTS author_archive_source_work_first_seen_defaults", 0)
         driver.execute(null, "DROP TABLE IF EXISTS author_archive_source_date_quality_samples", 0)
         driver.execute(null, "DROP TABLE IF EXISTS author_archive_source_date_quality_current", 0)
@@ -97,6 +123,28 @@ class SyncRunStoreTest {
     }
 
     @Test
+    fun `a batch of run logs is persisted and trimmed in one store operation`() = runBlocking {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val database = Database(
+            driver,
+            History.Adapter(DateColumnAdapter),
+            Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        ).also { Database.Schema.create(driver) }
+        val store = SyncRunStore(JvmDatabaseHandler(database, driver), maxLogEntries = 3)
+        val run = store.start("space", 1, SyncTrigger.RECOVERY)
+        store.logBatch(
+            run.runId,
+            listOf(
+                SyncRunLogEntry("batch-1", "作品 1", "已接收", SyncRunLogStatus.COMPLETED),
+                SyncRunLogEntry("batch-2", "作品 2", "已接收", SyncRunLogStatus.COMPLETED),
+                SyncRunLogEntry("batch-3", "作品 3", "已接收", SyncRunLogStatus.COMPLETED),
+                SyncRunLogEntry("batch-4", "作品 4", "已接收", SyncRunLogStatus.COMPLETED),
+            ),
+        )
+        assertEquals(listOf("batch-4", "batch-3", "batch-2"), store.logs(run.runId).map { it.key })
+    }
+
+    @Test
     fun `stale owner cannot overwrite progress or finish a newer attempt`() = runBlocking {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         val database = Database(
@@ -144,7 +192,7 @@ class SyncRunStoreTest {
             ownerSession = "owner",
         )
 
-        assertEquals(2L, store.get(run.runId)?.attempt)
+        assertEquals(2L, store.get(run.runId)?.attemptId)
     }
 
     @Test
@@ -206,7 +254,7 @@ class SyncRunStoreTest {
     }
 
     @Test
-    fun `process restart does not spend the automatic network attempt`() = runBlocking {
+    fun `process restart advances the claim id without rewinding it`() = runBlocking {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         val database = Database(
             driver,
@@ -218,7 +266,32 @@ class SyncRunStoreTest {
         assertTrue(store.claim(run.runId, "owner", 2))
 
         assertTrue(store.releaseForRecovery(run.runId))
-        assertEquals(1L, store.get(run.runId)?.attempt)
+        assertEquals(2L, store.get(run.runId)?.attemptId)
+    }
+
+    @Test
+    fun `network failure count is owner fenced and independent from the claim id`() = runBlocking {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val database = Database(
+            driver,
+            History.Adapter(DateColumnAdapter),
+            Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        ).also { Database.Schema.create(driver) }
+        val store = SyncRunStore(JvmDatabaseHandler(database, driver))
+        val run = store.start("space", 1, SyncTrigger.RECOVERY)
+
+        assertTrue(store.claim(run.runId, "owner-1", attemptId = 1))
+        assertEquals(1L, store.recordNetworkFailure(run.runId, "owner-1"))
+        store.finish(run.runId, SyncRunState.WAITING_RETRY, "network", ownerSession = "owner-1")
+
+        assertTrue(store.claim(run.runId, "owner-2", attemptId = 2))
+        val reclaimed = requireNotNull(store.get(run.runId))
+        assertEquals(2L, reclaimed.attemptId)
+        assertEquals(1L, reclaimed.networkFailureCount)
+        assertTrue(runCatching { store.recordNetworkFailure(run.runId, "owner-1") }.isFailure)
+        assertEquals(1L, store.get(run.runId)?.networkFailureCount)
+        assertEquals(2L, store.recordNetworkFailure(run.runId, "owner-2"))
+        assertEquals(2L, store.get(run.runId)?.attemptId)
     }
 
     @Test
@@ -243,7 +316,36 @@ class SyncRunStoreTest {
 
         assertTrue(store.releaseForRecovery(run.runId))
         assertEquals(SyncRunState.WAITING_SYSTEM, store.get(run.runId)?.state)
-        assertEquals(0L, store.get(run.runId)?.attempt)
+        assertEquals(1L, store.get(run.runId)?.attemptId)
+    }
+
+    @Test
+    fun `account rate limit deferral keeps claim and actual network failure counts`() = runBlocking {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val database = Database(
+            driver,
+            History.Adapter(DateColumnAdapter),
+            Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        ).also { Database.Schema.create(driver) }
+        var now = 10_000L
+        val store = SyncRunStore(JvmDatabaseHandler(database, driver), clock = { now })
+        val run = store.start("space", 1, SyncTrigger.RECOVERY)
+        assertTrue(store.claim(run.runId, "owner", attemptId = 2))
+        assertEquals(1L, store.recordNetworkFailure(run.runId, "owner"))
+        assertTrue(store.releaseForRecovery(run.runId))
+
+        val deadline = now + 60_000L
+        assertTrue(store.deferUntilAccountHttpGate(run.runId, deadline))
+        val deferred = requireNotNull(store.get(run.runId))
+        assertEquals(SyncRunState.WAITING_RETRY, deferred.state)
+        assertEquals("rate_limit", deferred.stopReason)
+        assertEquals(deadline, deferred.nextRetryAt)
+        assertEquals(2L, deferred.attemptId)
+        assertEquals(1L, deferred.networkFailureCount)
+
+        now += 1_000L
+        assertTrue(store.deferUntilAccountHttpGate(run.runId, now + 5_000L))
+        assertEquals(deadline, store.get(run.runId)?.nextRetryAt)
     }
 
     @Test
