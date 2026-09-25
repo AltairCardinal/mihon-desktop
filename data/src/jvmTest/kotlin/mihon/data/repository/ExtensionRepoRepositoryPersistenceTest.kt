@@ -257,6 +257,9 @@ class ExtensionRepoRepositoryPersistenceTest {
             "chapter_count_state",
             "catalog_chapter_count",
             "latest_chapter_at",
+            "published_date_snapshot_at",
+            "published_date_snapshot_basis",
+            "published_date_snapshot_reason",
         ).forEach { column ->
             driver.execute(null, "ALTER TABLE author_archive_source_works DROP COLUMN $column", 0)
         }

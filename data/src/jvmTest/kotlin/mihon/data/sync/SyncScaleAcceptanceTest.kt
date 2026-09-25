@@ -69,6 +69,8 @@ import java.util.concurrent.atomic.AtomicLong
  * Sequential, file-backed scale acceptance through production HTTP, AEAD, SQL and panel wiring.
  * Device counts describe independent event actors, not simultaneous OS application instances.
  * Fixture history construction is reported separately from measured production exchanges.
+ * Run this module's JVM suite without other large module test suites on constrained hosts:
+ * the twenty-minute bound covers both scenarios and shared resource contention can exhaust it.
  */
 @Timeout(value = 20, unit = TimeUnit.MINUTES)
 class SyncScaleAcceptanceTest {
