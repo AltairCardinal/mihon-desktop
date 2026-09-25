@@ -5,7 +5,6 @@ import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseMigration
-import tachiyomi.domain.creator.model.CreatorArchiveV2Contract
 
 class CreatorArchiveMigration16Test {
 
@@ -65,7 +64,7 @@ class CreatorArchiveMigration16Test {
             0,
         )
 
-        DatabaseMigration.migrateAtomically(driver, 16, CreatorArchiveV2Contract.LATEST_SCHEMA_VERSION)
+        DatabaseMigration.migrateAtomically(driver, 16, Database.Schema.version)
 
         queryLong(driver, "PRAGMA user_version") shouldBe Database.Schema.version
         queryLong(

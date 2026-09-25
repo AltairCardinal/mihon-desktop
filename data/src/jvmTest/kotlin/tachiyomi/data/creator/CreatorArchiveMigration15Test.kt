@@ -4,6 +4,7 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.longs.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import tachiyomi.data.Database
@@ -19,7 +20,8 @@ class CreatorArchiveMigration15Test {
         Database.Schema.create(driver)
         driver.execute(null, "PRAGMA foreign_keys = ON", 0)
 
-        Database.Schema.version shouldBe CreatorArchiveV2Contract.LATEST_SCHEMA_VERSION
+        // The archive contract freezes its own migration milestone, not the application's latest schema.
+        Database.Schema.version shouldBeGreaterThanOrEqual CreatorArchiveV2Contract.LATEST_SCHEMA_VERSION
         archiveTables(driver).shouldContainExactlyInAnyOrder(
             CreatorArchivePhysicalSchema.tables.map { it.name },
         )

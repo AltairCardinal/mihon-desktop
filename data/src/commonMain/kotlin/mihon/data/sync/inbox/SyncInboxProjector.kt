@@ -141,35 +141,68 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
     suspend fun processBulk(jobId: String, limit: Int = 50): SyncBulkProgress {
         require(limit in 1..50)
         writer.prepare()
-        repeat(limit) {
-            var itemId: Long? = null
-            try {
-                val processed = handler.await(inTransaction = true) {
-                    val job = sync_inboxQueries.getBulkJob(jobId).executeAsOne()
-                    if (!active(job.space_id, job.generation)) return@await false
-                    val item = sync_inboxQueries.getBulkItems(jobId, 1).executeAsOneOrNull() ?: return@await false
-                    itemId = item.pending_id
+        val hasPending = handler.await {
+            val job = sync_inboxQueries.getBulkJob(jobId).executeAsOne()
+            active(job.space_id, job.generation) &&
+                sync_inboxQueries.getBulkItems(jobId, 1).executeAsOneOrNull() != null
+        }
+        if (!hasPending) return bulkProgress(jobId)
+        // Complete author identity preparation outside the page transaction so a rollback
+        // cannot leave its in-memory ready flag ahead of the durable migration state.
+        writer.prepareBatch()
+        try {
+            handler.await(inTransaction = true) {
+                val job = sync_inboxQueries.getBulkJob(jobId).executeAsOne()
+                if (!active(job.space_id, job.generation)) return@await
+                val decision = SyncCancellationDecision.valueOf(job.decision)
+                sync_inboxQueries.getBulkItems(jobId, limit.toLong()).executeAsList().forEach { item ->
+                    coroutineContext.ensureActive()
+                    if (!active(job.space_id, job.generation)) return@await
                     val outcome = decideInTransaction(
                         job.space_id,
                         job.generation,
                         SyncPendingItem(item.pending_id, item.binding, Json.decodeFromString(item.object_json), ""),
-                        SyncCancellationDecision.valueOf(job.decision),
+                        decision,
                     )
                     sync_inboxQueries.finishBulkItem(outcome.name, jobId, item.pending_id)
-                    true
-                }
-                if (!processed) return bulkProgress(jobId)
-            } catch (failure: Exception) {
-                if (failure is CancellationException) throw failure
-                coroutineContext.ensureActive()
-                val failedId = itemId ?: throw failure
-                // The decision transaction has rolled back. Keep its pending row and report this item independently.
-                handler.await(inTransaction = true) {
-                    sync_inboxQueries.finishBulkItem("FAILED", jobId, failedId)
                 }
             }
+        } catch (failure: Exception) {
+            if (failure is CancellationException) throw failure
+            coroutineContext.ensureActive()
+            // A failed page is fully rolled back. Replay once with the original per-item
+            // transaction boundary so one bad decision does not hide the other outcomes.
+            repeat(limit) { if (!processBulkItem(jobId)) return bulkProgress(jobId) }
         }
         return bulkProgress(jobId)
+    }
+
+    private suspend fun processBulkItem(jobId: String): Boolean {
+        var itemId: Long? = null
+        return try {
+            handler.await(inTransaction = true) {
+                val job = sync_inboxQueries.getBulkJob(jobId).executeAsOne()
+                if (!active(job.space_id, job.generation)) return@await false
+                val item = sync_inboxQueries.getBulkItems(jobId, 1).executeAsOneOrNull() ?: return@await false
+                itemId = item.pending_id
+                val outcome = decideInTransaction(
+                    job.space_id,
+                    job.generation,
+                    SyncPendingItem(item.pending_id, item.binding, Json.decodeFromString(item.object_json), ""),
+                    SyncCancellationDecision.valueOf(job.decision),
+                )
+                sync_inboxQueries.finishBulkItem(outcome.name, jobId, item.pending_id)
+                true
+            }
+        } catch (failure: Exception) {
+            if (failure is CancellationException) throw failure
+            coroutineContext.ensureActive()
+            val failedId = itemId ?: throw failure
+            handler.await(inTransaction = true) {
+                sync_inboxQueries.finishBulkItem("FAILED", jobId, failedId)
+            }
+            true
+        }
     }
 
     suspend fun bulkProgress(job: String): SyncBulkProgress = handler.await {

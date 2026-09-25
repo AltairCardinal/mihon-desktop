@@ -211,7 +211,10 @@ class CreatorRepositoryImplTest {
                 "(2,1,2,'ARTIST',1,'RESTORE','Variant',0.9,'artist evidence',3,4)",
         )
         seed(
-            "INSERT INTO author_archive_source_works VALUES " +
+            "INSERT INTO author_archive_source_works(" +
+                "_id,source_id,stable_source_url,manga_id,title,normalized_title,author_text,artist_text," +
+                "thumbnail_url,first_seen_at,last_seen_at,details_fetched_at,legacy_candidate_id," +
+                "legacy_review_snapshot) VALUES " +
                 "(1,77,'/raw',1,'Work','work','Same','Variant',NULL,1,2,3,201,'ACCEPTED')",
         )
         seed(

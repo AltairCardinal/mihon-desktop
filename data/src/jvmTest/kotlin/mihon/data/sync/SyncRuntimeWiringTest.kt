@@ -14,6 +14,8 @@ import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.data.sync.transport.GitHubSyncTransport
 import mihon.data.sync.transport.SyncBatchSyncService
+import mihon.data.sync.transport.SyncSnapshotManifestBinding
+import mihon.data.sync.transport.SyncSnapshotManifestStore
 import mihon.domain.sync.SyncBatch
 import mihon.domain.sync.SyncCategory
 import mihon.domain.sync.SyncEffect
@@ -32,7 +34,9 @@ import mihon.domain.sync.runtime.SyncTrigger
 import mihon.domain.sync.security.SyncSecureStore
 import mihon.domain.sync.security.SyncSecureStoreException
 import mihon.domain.sync.transport.SyncRepository
+import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
+import mockwebserver3.RecordedRequest
 import okhttp3.Call
 import okhttp3.EventListener
 import okhttp3.OkHttpClient
@@ -56,9 +60,181 @@ import tachiyomi.data.UpdateStrategyColumnAdapter
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.prefs.Preferences
 
 class SyncRuntimeWiringTest {
+    @Test
+    fun `new exchange transport reads changed head through direct subtree objects`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                val material = setup.existing("")
+                setup.authorize()
+                val runtime = setup.runtime()
+                try {
+                    val space = (runtime.onboarding.discover() as mihon.data.sync.auth.SyncSpaceDiscovery.Found).space
+                    runtime.onboarding.resume(runtime.onboarding.join(space, material))
+                    assertTrue(setup.git.recursiveTreeRequests >= 1)
+                    assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                    setup.git.replaceFile(setup.repository.branch, "unrelated-note.txt", "new head".encodeToByteArray())
+                    val beforeRecursive = setup.git.recursiveTreeRequests
+                    val beforeTrees = setup.git.treeRequests
+                    assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                    assertEquals(beforeRecursive, setup.git.recursiveTreeRequests)
+                    assertTrue(setup.git.treeRequests - beforeTrees >= 1)
+                } finally {
+                    runtime.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `cold recursive truncation and oversized success fall back to bounded direct traversal`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                val material = setup.existing("")
+                val root = setup.git.treeSha(setup.repository.branch)
+                fun transport() = GitHubSyncTransport(
+                    fixture.client,
+                    { "synthetic-token" },
+                    setup.git.baseUrl,
+                    spaceMaterial = material,
+                ).also {
+                    it.installSnapshotManifestStore(
+                        SyncSnapshotManifestStore(fixture.storage.handler),
+                        SyncSnapshotManifestBinding(1, 99, "cold-fallback-contract"),
+                    )
+                }
+                setup.git.overrideNextTreeResponse(root, """{"sha":"$root","truncated":true,"tree":[]}""")
+                val beforeTruncated = setup.git.treeRequests
+                assertTrue(transport().readSnapshot(setup.repository, "space", 1).isSuccess)
+                assertTrue(setup.git.treeRequests - beforeTruncated > 1)
+
+                val delegate = setup.git.server.dispatcher
+                val oversized = AtomicInteger()
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.url.encodedPath.contains("/git/trees/") &&
+                            request.url.queryParameter("recursive") == "1"
+                        ) {
+                            oversized.incrementAndGet()
+                            return MockResponse(body = "x".repeat(2 * 1024 * 1024 + 1))
+                        }
+                        return delegate.dispatch(request)
+                    }
+                }
+                val beforeOversized = setup.git.treeRequests
+                assertTrue(transport().readSnapshot(setup.repository, "space", 1).isSuccess)
+                assertEquals(1, oversized.get())
+                assertTrue(setup.git.treeRequests - beforeOversized > 0)
+            }
+        }
+    }
+
+    @Test
+    fun `cold recursive rate limit and server failures never fall back to direct tree reads`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                val material = setup.existing("")
+                val delegate = setup.git.server.dispatcher
+                val recursive = AtomicInteger()
+                var failureCode = 429
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.url.encodedPath.contains("/git/trees/") &&
+                            request.url.queryParameter("recursive") == "1"
+                        ) {
+                            recursive.incrementAndGet()
+                            return MockResponse(code = failureCode, body = "failed")
+                        }
+                        return delegate.dispatch(request)
+                    }
+                }
+                for (code in listOf(429, 500)) {
+                    failureCode = code
+                    val transport = GitHubSyncTransport(
+                        fixture.client,
+                        { "synthetic-token" },
+                        setup.git.baseUrl,
+                        spaceMaterial = material,
+                    )
+                    transport.installSnapshotManifestStore(
+                        SyncSnapshotManifestStore(fixture.storage.handler),
+                        SyncSnapshotManifestBinding(1, 99, "cold-failure-contract"),
+                    )
+                    val beforeDirect = setup.git.treeRequests
+                    assertTrue(transport.readSnapshot(setup.repository, "space", 1).isFailure)
+                    assertEquals(beforeDirect, setup.git.treeRequests)
+                }
+                assertEquals(2, recursive.get())
+            }
+        }
+    }
+
+    @Test
+    fun `cold recursive tree rejects depth directory and UTF8 boundary violations`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                val material = setup.existing("")
+                val root = setup.git.treeSha(setup.repository.branch)
+                val oid = "0".repeat(40)
+                val empty = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+                fun tree(path: String, sha: String = empty) =
+                    """{"path":"$path","mode":"040000","type":"tree","sha":"$sha"}"""
+                val cases = listOf(
+                    "tree depth" to "[${tree("d/".repeat(256) + "end")}]",
+                    "directory exceeds limit" to "[${tree("a")},${tree("b")},${tree("c")}]",
+                    "path is invalid" to "[${tree("\\uD800")}]",
+                    "parent is missing" to "[${tree("a/b")}]",
+                    "hash does not match" to "[${tree("a")},${tree("b")}]",
+                    "hash does not match" to "[${tree("a", oid)}]",
+                )
+                for ((reason, entries) in cases) {
+                    val transport = GitHubSyncTransport(
+                        fixture.client,
+                        { "synthetic-token" },
+                        setup.git.baseUrl,
+                        maxTreeEntries = 2,
+                        spaceMaterial = material,
+                    )
+                    transport.installSnapshotManifestStore(
+                        SyncSnapshotManifestStore(fixture.storage.handler),
+                        SyncSnapshotManifestBinding(1, 99, "cold-parser-contract"),
+                    )
+                    setup.git.overrideNextTreeResponse(
+                        root,
+                        """{"sha":"$root","truncated":false,"tree":$entries}""",
+                    )
+                    val failure = transport.readSnapshot(setup.repository, "space", 1).exceptionOrNull()
+                    assertTrue(failure?.message?.contains(reason) == true, "$reason: $failure")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `first production connection reads complete tree with one verified recursive request`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                val material = setup.existing("")
+                setup.authorize()
+                val runtime = setup.runtime()
+                try {
+                    val space = (runtime.onboarding.discover() as mihon.data.sync.auth.SyncSpaceDiscovery.Found).space
+                    val intent = runtime.onboarding.join(space, material)
+                    val beforeTrees = setup.git.treeRequests
+                    val beforeRecursive = setup.git.recursiveTreeRequests
+                    runtime.onboarding.resume(intent)
+                    assertEquals(1, setup.git.treeRequests - beforeTrees)
+                    assertEquals(1, setup.git.recursiveTreeRequests - beforeRecursive)
+                } finally {
+                    runtime.stopPanel()
+                }
+            }
+        }
+    }
+
     @Test
     fun `fresh run skips totals reconciliation and recovery reconciles durable progress once`() = runBlocking {
         Fixture().use { f ->

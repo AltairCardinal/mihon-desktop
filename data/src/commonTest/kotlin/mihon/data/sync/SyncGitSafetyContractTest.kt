@@ -26,6 +26,7 @@ import mihon.data.sync.transport.SyncBlobCacheKey
 import mihon.data.sync.transport.SyncGraphQlSingleBatchAdapter
 import mihon.data.sync.transport.SyncTreeEntryPayloadPlanner
 import mihon.data.sync.transport.SyncUploadArtifactCodec
+import mihon.data.sync.transport.gitTreeOid
 import mihon.domain.sync.SyncBatch
 import mihon.domain.sync.SyncCategory
 import mihon.domain.sync.SyncEffect
@@ -39,6 +40,7 @@ import mihon.domain.sync.crypto.SyncAeadCiphertext
 import mihon.domain.sync.crypto.SyncAeadEngine
 import mihon.domain.sync.crypto.SyncBatchEncryption
 import mihon.domain.sync.crypto.SyncSecret
+import mihon.domain.sync.transport.SyncGitTreeEntry
 import mihon.domain.sync.transport.SyncInitializationResult
 import mihon.domain.sync.transport.SyncPublishFailureClass
 import mihon.domain.sync.transport.SyncPublishStatus
@@ -51,6 +53,7 @@ import okhttp3.Headers.Companion.headersOf
 import okhttp3.OkHttpClient
 import okio.Buffer
 import okio.ByteString.Companion.decodeBase64
+import okio.ByteString.Companion.decodeHex
 import okio.ByteString.Companion.toByteString
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -65,6 +68,28 @@ import java.util.concurrent.atomic.AtomicInteger
 class SyncGitSafetyContractTest {
     private val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
     private val secret = SyncSecret.fromBytes(ByteArray(32) { (it + 1).toByte() })
+
+    @Test
+    fun `canonical tree oid matches independently generated Git SHA1 and SHA256 vectors`() {
+        val names = listOf("\uD800\uDC00", "\uE000", "a.c", "中文")
+        val vectors = listOf(
+            Triple(
+                "ee8c1ee49b4799bbd170233915a897c19e3b55e1",
+                "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+                "69cf418d00c7ed155b15869acb9bd25187838d61",
+            ),
+            Triple(
+                "fc2593998f8e1dec9c3a8be11557888134dad90ef5c7a2d6236ed75534c7698e",
+                "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321",
+                "b6ab1dc61af0027f736f456f18bedd3eafcb995d7bf05b0361d9208b3e273b08",
+            ),
+        )
+        vectors.forEach { (blob, emptyTree, root) ->
+            val entries = names.map { SyncGitTreeEntry(it, "100644", "blob", blob, 8) } +
+                SyncGitTreeEntry("a", "040000", "tree", emptyTree, null)
+            assertEquals(root, gitTreeOid(entries, blob.length))
+        }
+    }
 
     @Test
     fun `graphql adapter requires complete commit data and surfaces errors`() {
@@ -138,6 +163,14 @@ class SyncGitSafetyContractTest {
         release.complete(Unit)
         jobs.awaitAll().forEach { assertEquals(listOf(1.toByte()), it.toList()) }
         assertEquals(1, calls.get())
+        assertEquals(
+            listOf(1.toByte()),
+            cache.getOrLoad(key) {
+                calls.incrementAndGet()
+                byteArrayOf(9)
+            }.toList(),
+        )
+        assertEquals(1, calls.get(), "a validated object must remain available after the single flight completes")
         assertEquals(byteArrayOf(2).toList(), cache.getOrLoad(otherScope) { byteArrayOf(2) }.toList())
         assertEquals(byteArrayOf(3).toList(), cache.getOrLoad(otherRevision) { byteArrayOf(3) }.toList())
     }
@@ -888,6 +921,7 @@ class SyncGitSafetyContractTest {
     internal inner class GitFixture(
         empty: Boolean = false,
         repositoryOverride: SyncRepository? = null,
+        private val realTreeOids: Boolean = empty,
     ) : AutoCloseable {
         private val repository = repositoryOverride ?: this@SyncGitSafetyContractTest.repository
         val server = MockWebServer()
@@ -933,7 +967,7 @@ class SyncGitSafetyContractTest {
         init {
             if (!empty) {
                 val readme = storeBlob("# Existing private repository".encodeToByteArray())
-                val initialTree = sha().also { trees[it] = mapOf("README.md" to readme) }
+                val initialTree = storeTree(mapOf("README.md" to readme))
                 refs["main"] = sha().also { commits[it] = initialTree to emptyList() }
             }
             server.dispatcher = object : Dispatcher() {
@@ -1042,25 +1076,59 @@ class SyncGitSafetyContractTest {
         fun removeFile(branch: String, path: String) {
             val parent = refs.getValue(branch)
             val files = trees.getValue(commits.getValue(parent).first) - path
-            val tree = sha().also { trees[it] = files }
+            val tree = storeTree(files)
             refs[branch] = sha().also { commits[it] = tree to listOf(parent) }
         }
 
         fun replaceFile(branch: String, path: String, value: ByteArray) {
             val parent = refs.getValue(branch)
             val files = trees.getValue(commits.getValue(parent).first) + (path to storeBlob(value))
-            val tree = sha().also { trees[it] = files }
+            val tree = storeTree(files)
             refs[branch] = sha().also { commits[it] = tree to listOf(parent) }
         }
 
         fun replaceFiles(branch: String, values: Map<String, ByteArray>) {
             val parent = refs.getValue(branch)
             val files = trees.getValue(commits.getValue(parent).first) + values.mapValues { storeBlob(it.value) }
-            val tree = sha().also { trees[it] = files }
+            val tree = storeTree(files)
             refs[branch] = sha().also { commits[it] = tree to listOf(parent) }
         }
 
         private fun sha(): String = (nextObject++).toString(16).padStart(40, '0')
+        private fun storeTree(files: Map<String, String>): String {
+            val id = if (realTreeOids) treeOid(files) else sha()
+            trees[id] = files.toMap()
+            return id
+        }
+
+        private fun treeOid(files: Map<String, String>): String {
+            val directFiles = files.filterKeys { '/' !in it }
+            val directories = files.keys.filter { '/' in it }.map { it.substringBefore('/') }.distinct()
+            val entries = buildList {
+                directFiles.forEach { (name, oid) -> add(Triple(name, "100644", oid)) }
+                directories.forEach { name ->
+                    val children = files.filterKeys { it.startsWith("$name/") }
+                        .mapKeys { it.key.removePrefix("$name/") }
+                    add(Triple(name, "40000", treeOid(children)))
+                }
+            }.sortedWith { a, b ->
+                val left = (a.first + if (a.second == "40000") "/" else "").encodeToByteArray()
+                val right = (b.first + if (b.second == "40000") "/" else "").encodeToByteArray()
+                var comparison = 0
+                for (index in 0 until minOf(left.size, right.size)) {
+                    comparison = (left[index].toInt() and 255).compareTo(right[index].toInt() and 255)
+                    if (comparison != 0) break
+                }
+                if (comparison == 0) left.size.compareTo(right.size) else comparison
+            }
+            val body = Buffer()
+            entries.forEach { (name, mode, oid) ->
+                body.writeUtf8("$mode $name").writeByte(0).write(oid.decodeHex())
+            }
+            val bytes = body.readByteArray()
+            return ("tree ${bytes.size}\u0000".encodeToByteArray() + bytes).toByteString().sha1().hex()
+        }
+
         private fun storeBlob(bytes: ByteArray): String {
             val header = "blob ${bytes.size}\u0000".encodeToByteArray()
             return (header + bytes).toByteString().sha1().hex().also { blobs[it] = bytes.copyOf() }
@@ -1158,7 +1226,7 @@ class SyncGitSafetyContractTest {
                                 val subtreeKey = subtree.entries.sortedBy { it.key }
                                     .joinToString("\u0000") { (path, blob) -> "$path\u0000$blob" }
                                 val directorySha = subtrees.getOrPut(subtreeKey) {
-                                    sha().also { child -> trees[child] = subtree }
+                                    storeTree(subtree)
                                 }
                                 add(
                                     buildJsonObject {
@@ -1261,7 +1329,7 @@ class SyncGitSafetyContractTest {
                     tree[entryPath] = blob
                     pathWrites.getOrPut(entryPath) { mutableListOf() } += blobs.getValue(blob).toByteString().base64()
                 }
-                val id = sha().also { trees[it] = tree }
+                val id = storeTree(tree)
                 return respond(buildJsonObject { put("sha", id) }, 201)
             }
             if (method == "POST" && path == "/git/commits") {
@@ -1322,7 +1390,7 @@ class SyncGitSafetyContractTest {
                         ?: return error(500, "Ciphertext field missing")
                     old[encryptedField] = JsonPrimitive(ByteArray(64) { 3 }.toByteString().base64())
                     tree[damagedPath] = storeBlob(JsonObject(old).toString().encodeToByteArray())
-                    val damagedTree = sha().also { trees[it] = tree }
+                    val damagedTree = storeTree(tree)
                     refs[branch] = sha().also { commits[it] = damagedTree to listOf(proposed) }
                     corruptNextPublishedPath = null
                     return error(500, "Synthetic lost response after publishing")
@@ -1350,7 +1418,7 @@ class SyncGitSafetyContractTest {
                 if (oldHead == null && refs.isNotEmpty()) return error(404, "Branch not found")
                 val tree = oldHead?.let { trees.getValue(commits.getValue(it).first).toMutableMap() } ?: mutableMapOf()
                 tree[path.removePrefix("/contents/")] = storeBlob(field("content").decodeBase64()!!.toByteArray())
-                val treeId = sha().also { trees[it] = tree }
+                val treeId = storeTree(tree)
                 val commitId = sha().also { commits[it] = treeId to listOfNotNull(oldHead) }
                 refs[branch] = commitId
                 return respond(buildJsonObject { put("commit", buildJsonObject { put("sha", commitId) }) }, 201)

@@ -46,6 +46,7 @@ import tachiyomi.data.creator.CreatorArchiveLegacyBootstrap
 import tachiyomi.data.creator.CreatorArchiveLegacyBridge
 import tachiyomi.data.creator.CreatorRepositoryImpl
 import tachiyomi.data.manga.MangaRepositoryImpl
+import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import java.io.File
@@ -486,11 +487,12 @@ abstract class SyncInboxStorageContract {
                 s.inbox.ingest(membership(i * 2L + 1, SyncEffectKind.REMOVE, add.events.single(), key))
                 s.projectAll()
             }
-            val first = s.projector.pending("space", 1).first()
+            val items = s.projector.pending("space", 1)
+            val failed = items.last()
             s.driver.execute(
                 null,
                 "CREATE TRIGGER fail_decision BEFORE INSERT ON sync_decisions " +
-                    "WHEN NEW.binding = '${first.binding.replace("'", "''")}' " +
+                    "WHEN NEW.binding = '${failed.binding.replace("'", "''")}' " +
                     "BEGIN SELECT RAISE(ABORT, 'synthetic decision failure'); END",
                 0,
             )
@@ -498,12 +500,65 @@ abstract class SyncInboxStorageContract {
             val progress = s.projector.processBulk(job)
             assertEquals(1L, progress.outcomes["FAILED"])
             assertEquals(1L, progress.outcomes["APPLIED"])
-            assertEquals(true, s.writer.localMembership(first.objectKey))
+            assertEquals(false, s.writer.localMembership(items.first().objectKey))
+            assertEquals(true, s.writer.localMembership(failed.objectKey))
             assertEquals(1L, s.inbox.status("space", 1).pendingDecisions)
             s.driver.execute(null, "DROP TRIGGER fail_decision", 0)
             val retry = s.projector.startBulk("space", 1, SyncCancellationDecision.CONFIRM)
             assertEquals(1L, s.projector.processBulk(retry).outcomes["APPLIED"])
-            assertEquals(false, s.writer.localMembership(first.objectKey))
+            assertEquals(false, s.writer.localMembership(failed.objectKey))
+        }
+    }
+
+    @Test
+    fun `cancelled bulk page rolls back earlier decisions and can resume`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            s.sources += 43L
+            val first = manga.copy(originalUrl = "/bulk-cancel-first")
+            val second = manga.copy(sourceId = "43", originalUrl = "/bulk-cancel-second")
+            listOf(first, second).forEachIndexed { index, key ->
+                val add = membership(index * 2L + 1, SyncEffectKind.ADD, key = key)
+                s.inbox.ingest(add)
+                s.projectAll()
+                s.inbox.ingest(membership(index * 2L + 2, SyncEffectKind.REMOVE, add.events.single(), key))
+                s.projectAll()
+            }
+            val job = s.projector.startBulk("space", 1, SyncCancellationDecision.CONFIRM)
+            var removedIndexes = 0
+            val cancellingIndex = object : CreatorLibraryIndexWriter by s.creators {
+                override suspend fun removeLibraryMangaIndex(mangaId: Long) {
+                    if (++removedIndexes == 2) throw CancellationException("cancel second bulk decision")
+                    s.creators.removeLibraryMangaIndex(mangaId)
+                }
+            }
+            val cancellingWriter = SyncRemoteProjectionWriter(
+                s.handler,
+                cancellingIndex,
+                s.creators,
+                s.bootstrap,
+                s.sources::contains,
+            )
+            try {
+                SyncInboxProjector(s.handler, cancellingWriter).processBulk(job)
+                error("bulk page should have been cancelled")
+            } catch (_: CancellationException) {
+                // The whole in-flight page is rolled back before resuming.
+            }
+            assertEquals(2L, s.projector.bulkProgress(job).queued)
+            assertEquals(2L, s.inbox.status("space", 1).pendingDecisions)
+            assertEquals(true, s.writer.localMembership(first))
+            assertEquals(true, s.writer.localMembership(second))
+            assertEquals(
+                "COMPLETED",
+                s.handler.await {
+                    author_archiveQueries.getArchiveIdentityMigrationState("global-exact-name-v1")
+                        .executeAsOneOrNull()
+                },
+            )
+            assertEquals(2L, s.projector.processBulk(job).outcomes["APPLIED"])
+            assertEquals(false, s.writer.localMembership(first))
+            assertEquals(false, s.writer.localMembership(second))
         }
     }
 

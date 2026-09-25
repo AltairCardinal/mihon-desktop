@@ -220,8 +220,15 @@ class ExtensionRepoRepositoryPersistenceTest {
 
     private fun createVersion18Fixture(driver: JdbcSqliteDriver) {
         // v18 already contained the full author archive. Keep that history while removing only
-        // additions from migrations 18..26, so this test still exercises the complete upgrade.
+        // later additions, so this test still exercises the complete upgrade.
         Database.Schema.create(driver)
+        driver.execute(null, "DROP TRIGGER IF EXISTS author_archive_source_work_first_seen_defaults", 0)
+        listOf(
+            "author_archive_source_date_quality_samples",
+            "author_archive_source_date_quality_current",
+            "author_archive_source_date_quality",
+            "author_archive_representative_work_cache",
+        ).forEach { table -> driver.execute(null, "DROP TABLE IF EXISTS $table", 0) }
         val laterObjects = driver.executeQuery(
             null,
             """SELECT type, name FROM sqlite_master
@@ -243,6 +250,15 @@ class ExtensionRepoRepositoryPersistenceTest {
         driver.execute(null, "ALTER TABLE author_archive_creators DROP COLUMN identity_revision", 0)
         driver.execute(null, "ALTER TABLE mangas DROP COLUMN memo", 0)
         driver.execute(null, "ALTER TABLE chapters DROP COLUMN memo", 0)
+        listOf(
+            "first_seen_date",
+            "first_seen_zone",
+            "chapter_count_state",
+            "catalog_chapter_count",
+            "latest_chapter_at",
+        ).forEach { column ->
+            driver.execute(null, "ALTER TABLE author_archive_source_works DROP COLUMN $column", 0)
+        }
         listOf("index_url", "extension_list_url", "contact_discord").forEach { column ->
             driver.execute(null, "ALTER TABLE extension_repos DROP COLUMN $column", 0)
         }

@@ -52,6 +52,21 @@ internal data class WarmSyncSnapshotAdmission(
 internal class SyncSnapshotManifestStore(private val handler: DatabaseHandler) {
     private val json = Json { encodeDefaults = true }
 
+    /** A scoped prior record only disables the cold fast path; it never admits a snapshot. */
+    suspend fun hasPriorManifestForScope(
+        spaceId: String,
+        generation: Long,
+        context: SyncSnapshotManifestContext,
+    ): Boolean = handler.await {
+        val row = sync_remote_guardQueries.getSnapshotManifest(spaceId, generation).executeAsOneOrNull()
+            ?: return@await false
+        row.repository_owner == context.repository.owner && row.repository_name == context.repository.name &&
+            row.repository_branch == context.repository.branch && row.account_id == context.binding.accountId &&
+            row.repository_id == context.binding.repositoryId &&
+            row.connection_revision == context.binding.connectionRevision && row.api_origin == context.apiOrigin &&
+            row.validation_scope == context.validationScope && row.validator_version == context.validatorVersion
+    }
+
     suspend fun findWarmSnapshot(
         repository: SyncRepository,
         spaceId: String,

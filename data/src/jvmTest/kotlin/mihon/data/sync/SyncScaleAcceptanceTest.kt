@@ -562,10 +562,16 @@ class SyncScaleAcceptanceTest {
         }
     }
 
-    private suspend fun runScenario(scenario: Scenario) {
+    @Test
+    fun `diagnose frozen bulk decisions on file database`() = runBlocking {
+        runScenario(Scenario(5_010, 10, 501), profileBulk = true)
+    }
+
+    private suspend fun runScenario(scenario: Scenario, profileBulk: Boolean = false) {
         val client = OkHttpClient()
         val memory = HeapSampler()
-        val primary = FileStorage()
+        val timing = if (profileBulk) SqlTiming() else null
+        val primary = FileStorage(timing)
         // A second independent real receiver checks convergence without replaying 100k twice.
         val second = if (scenario.events == 10_000) FileStorage() else null
         try {
@@ -629,7 +635,7 @@ class SyncScaleAcceptanceTest {
                     )
                 }
 
-                exercisePanel(scenario, storage, primary, history, transport, git, memory)
+                exercisePanel(scenario, storage, primary, history, transport, git, memory, timing)
                 val expectedEvents = scenario.events + scenario.pending + 3L
                 assertEquals(expectedEvents, storage.eventCount())
                 val unchangedHead = git.head(repository.branch)
@@ -685,6 +691,7 @@ class SyncScaleAcceptanceTest {
         transport: GitHubSyncTransport,
         git: SyncGitSafetyContractTest.GitFixture,
         memory: HeapSampler,
+        timing: SqlTiming?,
     ) = withPanel(storage) { panel, runtime ->
         measure(scenario, "panel_open", git, file, memory) { panel.act(SyncPanelAction.Open) }
         assertEquals(scenario.pending.toLong(), panel.state.value.pendingTotal)
@@ -713,6 +720,9 @@ class SyncScaleAcceptanceTest {
         history.append(1, scenario.devices, "arrive", SyncEffectKind.REMOVE) { scenario.pending }
         assertExchange(storage.exchange(transport, secret, repository), downloaded = 2, pending = scenario.pending)
         assertEquals(scenario.pending.toLong(), runtime.projector.bulkProgress(confirmation.jobId).total)
+        timing?.reset()
+        file.commitTiming?.reset()
+        val bulkStarted = System.nanoTime()
         val firstChunk = measure(scenario, "bulk_first_chunk", git, file, memory) {
             runtime.projector.processBulk(confirmation.jobId)
         }
@@ -725,6 +735,18 @@ class SyncScaleAcceptanceTest {
             // Keep the whole test's twenty-minute safety limit unchanged.
             withTimeout(600_000) { panel.awaitBulkIdle() }
             panel.act(SyncPanelAction.Open)
+        }
+        if (timing != null) {
+            val outerTransactions = timing.outerTransactions
+            println(
+                "SYNC_BULK_DIAGNOSTIC events=${scenario.events} pending=${scenario.pending} " +
+                    "elapsedMs=${TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - bulkStarted)} " +
+                    "outerTransactions=$outerTransactions sqlCalls=${timing.calls} " +
+                    "sqlMs=${TimeUnit.NANOSECONDS.toMillis(timing.nanos)} " +
+                    "commitCount=${file.commitTiming?.count} " +
+                    "commitMs=${TimeUnit.NANOSECONDS.toMillis(file.commitTiming?.nanos ?: 0)}",
+            )
+            assertTrue(outerTransactions <= 30, "501 decisions must use bounded page commits: $outerTransactions")
         }
         val completed = runtime.projector.bulkProgress(confirmation.jobId)
         assertEquals(0L, completed.queued)

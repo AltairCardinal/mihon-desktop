@@ -80,6 +80,19 @@ internal fun StoredSyncConnection.snapshotManifestBinding(): SyncSnapshotManifes
     )
 }
 
+/** Setup and connection use the same durable scope; actor and epoch are intentionally absent from the binding. */
+internal fun StoredSyncSetup.snapshotManifestBinding(): SyncSnapshotManifestBinding = StoredSyncConnection(
+    accountId = accountId,
+    accountLogin = accountLogin,
+    repositoryId = requireNotNull(repositoryId),
+    owner = owner,
+    repository = repository,
+    branch = branch,
+    material = material,
+    actorId = "",
+    epoch = 1,
+).snapshotManifestBinding()
+
 @Serializable
 internal data class StoredSyncSetup(
     val version: Int = 2,

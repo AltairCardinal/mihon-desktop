@@ -38,6 +38,7 @@ internal class SyncOnboarding(
     private val client: OkHttpClient,
     private val apiBaseUrl: String,
     val storage: SyncSetupStorage,
+    private val snapshotManifestStore: SyncSnapshotManifestStore,
 ) {
     suspend fun discover(): SyncSpaceDiscovery = spaces(runtime.accessToken()).discover()
 
@@ -145,6 +146,8 @@ internal class SyncOnboarding(
             session.token,
             material,
             repositoryId = requireNotNull(setup.repositoryId),
+            manifestStore = snapshotManifestStore,
+            manifestBinding = setup.snapshotManifestBinding(),
             persistentObjectCacheDirectory = runtime.persistentObjectCacheDirectory,
             requestGate = runtime.accountHttpRequestGate(session.account.id),
         ).readSnapshot(

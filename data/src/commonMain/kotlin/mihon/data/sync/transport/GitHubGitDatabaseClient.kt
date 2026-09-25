@@ -57,7 +57,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.Buffer
 import okio.ByteString.Companion.decodeBase64
+import okio.ByteString.Companion.decodeHex
 import okio.ByteString.Companion.toByteString
 import okio.Path
 import java.time.ZonedDateTime
@@ -79,6 +81,36 @@ internal fun gitBlobOid(content: ByteArray, oidLength: Int): String? {
         64 -> objectBytes.sha256().hex()
         else -> null
     }
+}
+
+/** Git's canonical tree object: byte-sorted names, a trailing slash for tree sort order. */
+internal fun gitTreeOid(entries: List<SyncGitTreeEntry>, oidLength: Int): String? {
+    if (oidLength != 40 && oidLength != 64) return null
+    fun sortName(entry: SyncGitTreeEntry) =
+        (entry.path + if (entry.type == "tree") "/" else "").encodeToByteArray()
+    val body = Buffer()
+    val oidPattern = if (oidLength == 40) Regex("[0-9a-f]{40}") else Regex("[0-9a-f]{64}")
+    entries.sortedWith { left, right ->
+        val a = sortName(left)
+        val b = sortName(right)
+        var difference = 0
+        for (index in 0 until minOf(a.size, b.size)) {
+            difference = (a[index].toInt() and 255).compareTo(b[index].toInt() and 255)
+            if (difference != 0) break
+        }
+        if (difference == 0) a.size.compareTo(b.size) else difference
+    }.forEach { entry ->
+        if (!oidPattern.matches(entry.sha) ||
+            (entry.type != "tree" && entry.type != "blob")
+        ) {
+            return null
+        }
+        val mode = if (entry.type == "tree") "40000" else "100644"
+        body.writeUtf8("$mode ${entry.path}").writeByte(0).write(entry.sha.decodeHex())
+    }
+    val bytes = body.readByteArray()
+    val objectBytes = ("tree ${bytes.size}\u0000".encodeToByteArray() + bytes).toByteString()
+    return if (oidLength == 40) objectBytes.sha1().hex() else objectBytes.sha256().hex()
 }
 
 /**
@@ -241,6 +273,7 @@ class GitHubSyncTransport(
     private val treeCacheMutex = Mutex()
     private val treeCache = mutableMapOf<SyncTreeCacheKey, CachedRawTree>()
     private val treeCacheOrder = mutableListOf<SyncTreeCacheKey>()
+    private var hasValidatedSnapshot = false
     private var treeCacheWeightBytes = 0L
     private val maxTreeCacheWeightBytes = 4L * 1024 * 1024
     internal var treePathMaterializations: Long = 0
@@ -340,6 +373,7 @@ class GitHubSyncTransport(
                 manifestContext,
             )
             if (warmAdmission != null) {
+                treeCacheMutex.withLock { hasValidatedSnapshot = true }
                 snapshotFence?.let { rememberSnapshotFence(warmAdmission.snapshot, it) }
                 warmAdmissionMutex.withLock { warmAdmissions += warmAdmission.snapshot to warmAdmission }
                 return@suspendResult warmAdmission.snapshot
@@ -360,7 +394,10 @@ class GitHubSyncTransport(
             }
         }
         val commit = getCommit(repository, ref.objectSha)
-        val tree = getTree(repository, commit.treeSha, validationScope)
+        val coldTree = manifestStore != null && manifestContext != null &&
+            treeCacheMutex.withLock { !hasValidatedSnapshot } &&
+            !manifestStore.hasPriorManifestForScope(expectedSpaceId, expectedGeneration, manifestContext)
+        val tree = getTree(repository, commit.treeSha, validationScope, coldTree)
         require(!tree.truncated && tree.entries.size <= maxTreeEntries) { "sync tree is truncated or oversized" }
         val files = tree.entries.associateBy { it.path }
         require(files.size == tree.entries.size) { "sync tree contains duplicate paths" }
@@ -483,6 +520,7 @@ class GitHubSyncTransport(
             )
             treeCacheMutex.withLock { snapshotCache = key to snapshot }
         }
+        treeCacheMutex.withLock { hasValidatedSnapshot = true }
         snapshot
     }
 
@@ -990,11 +1028,99 @@ class GitHubSyncTransport(
         )
     }
 
+    /** Recursive GitHub response is only a cold hint until every direct tree object hashes to its declared OID. */
+    private suspend fun verifiedRecursiveTree(repository: SyncRepository, rootSha: String): SyncGitTree? {
+        val response = try {
+            call(repository, "GET", "/git/trees/$rootSha?recursive=1").requireSuccess()
+        } catch (failure: SyncHttpException) {
+            if (failure.code == 200 && failure.message == "sync response exceeds limit") return null
+            throw failure
+        }
+        val json = response.json()
+        require(json.string("sha") == rootSha) { "recursive sync tree id does not match requested object" }
+        if (json.boolean("truncated")) return null
+        val oidLength = rootSha.length
+        require(oidLength == 40 || oidLength == 64) { "sync tree object id has invalid length" }
+        val objects = linkedMapOf<String, SyncGitTreeEntry>()
+        val oidPattern = if (oidLength == 40) Regex("[0-9a-f]{40}") else Regex("[0-9a-f]{64}")
+        var blobs = 0
+        var directories = 1L
+        json.array("tree").forEach { value ->
+            val item = value.jsonObject
+            val path = item.string("path")
+            val parts = path.split('/')
+            require(
+                path.isNotEmpty() && '\\' !in path && '\u0000' !in path &&
+                    path.encodeToByteArray().decodeToString() == path &&
+                    parts.all { it.isNotEmpty() && it != "." && it != ".." },
+            ) { "recursive sync tree path is invalid" }
+            val type = item.string("type")
+            val mode = item.string("mode")
+            require(parts.size <= if (type == "tree") 256 else 257) { "recursive sync tree depth exceeds limit" }
+            require((type == "tree" && mode == "040000") || (type == "blob" && mode == "100644")) {
+                "recursive sync tree entry type or mode is invalid"
+            }
+            val entrySha = item.string("sha")
+            require(oidPattern.matches(entrySha)) { "recursive sync tree object id is invalid" }
+            require(path !in objects) { "recursive sync tree contains duplicate paths" }
+            objects[path] = SyncGitTreeEntry(path, mode, type, entrySha, item.long("size"))
+            if (type == "blob") blobs++
+            if (type == "tree") directories++
+            require(blobs <= maxTreeEntries) { "recursive sync tree exceeds file limit" }
+            require(directories <= maxTreeEntries.toLong() * 4 + 256) {
+                "recursive sync tree directory path budget exceeded"
+            }
+        }
+        objects.forEach { (path, entry) ->
+            val parent = path.substringBeforeLast('/', "")
+            if (parent.isNotEmpty()) {
+                require(objects[parent]?.type == "tree") { "recursive sync tree parent is missing" }
+            }
+            if (entry.type == "tree") {
+                var ancestor = parent
+                while (ancestor.isNotEmpty()) {
+                    require(objects[ancestor]?.sha != entry.sha) { "recursive sync tree contains a cycle" }
+                    ancestor = ancestor.substringBeforeLast('/', "")
+                }
+                require(entry.sha != rootSha) { "recursive sync tree contains a cycle" }
+            }
+        }
+        val children = objects.values.groupBy { it.path.substringBeforeLast('/', "") }
+        require(children.values.all { it.size <= maxTreeEntries }) { "recursive sync tree directory exceeds limit" }
+        val directoryPaths = objects.values.filter { it.type == "tree" }.map { it.path }
+            .sortedByDescending { it.count { character -> character == '/' } } + ""
+        val resolved = mutableMapOf<String, String>()
+        directoryPaths.forEach { directory ->
+            val direct = children[directory].orEmpty().map { entry ->
+                val name = entry.path.substringAfterLast('/')
+                entry.copy(
+                    path = name,
+                    sha = if (entry.type ==
+                        "tree"
+                    ) {
+                        requireNotNull(resolved[entry.path])
+                    } else {
+                        entry.sha
+                    },
+                )
+            }
+            val actual = requireNotNull(gitTreeOid(direct, oidLength))
+            val declared = if (directory.isEmpty()) rootSha else requireNotNull(objects[directory]).sha
+            require(actual == declared) { "recursive sync tree object hash does not match declared id" }
+            resolved[directory] = actual
+        }
+        return SyncGitTree(rootSha, objects.values.filter { it.type == "blob" }, truncated = false)
+    }
+
     private suspend fun getTree(
         repository: SyncRepository,
         sha: String,
         validationScope: String = "unbound",
+        allowVerifiedRecursive: Boolean = false,
     ): SyncGitTree {
+        if (allowVerifiedRecursive) {
+            verifiedRecursiveTree(repository, sha)?.let { return it }
+        }
         val activeTrees = mutableSetOf<String>()
         val visitedTrees = linkedMapOf<SyncTreeCacheKey, SyncPersistentGitObjectKey?>()
         val flattened = mutableListOf<SyncGitTreeEntry>()

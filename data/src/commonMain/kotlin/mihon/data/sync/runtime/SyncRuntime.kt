@@ -95,7 +95,13 @@ class SyncRuntime(
     private val refresher = GitHubTokenRefresher(authorization, credentials, clock)
     private val connectionMutex = Mutex()
     internal val onboarding =
-        SyncOnboarding(this, productionClient, endpoints.apiBaseUrl, SyncSetupStorage(secureStore))
+        SyncOnboarding(
+            this,
+            productionClient,
+            endpoints.apiBaseUrl,
+            SyncSetupStorage(secureStore),
+            SyncSnapshotManifestStore(handler),
+        )
 
     internal fun accountHttpRequestGate(accountId: Long) = SyncAccountHttpRequestGate(runStore, accountId, clock)
 

@@ -3,6 +3,7 @@ package tachiyomi.data.creator
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.longs.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.creator.model.CreatorArchiveV2Contract
@@ -40,8 +41,8 @@ class CreatorArchiveV15FixtureContractTest {
     }
 
     @Test
-    fun `current generated schema and target migration version match the frozen contract`() {
-        DatabaseVersion.current() shouldBe CreatorArchiveV2Contract.LATEST_SCHEMA_VERSION
+    fun `current generated schema includes the frozen archive migration contract`() {
+        DatabaseVersion.current() shouldBeGreaterThanOrEqual CreatorArchiveV2Contract.LATEST_SCHEMA_VERSION
         CreatorArchiveV2Contract.TARGET_SCHEMA_VERSION shouldBe CreatorArchiveV2Contract.CURRENT_SCHEMA_VERSION + 1
         CreatorArchiveV2Contract.TARGET_MIGRATION shouldBe "${CreatorArchiveV2Contract.CURRENT_SCHEMA_VERSION}.sqm"
     }
