@@ -4,6 +4,7 @@ import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.core.common.preference.getEnum
+import tachiyomi.domain.creator.service.WorkTitleNormalizer
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.model.LibrarySort
 import tachiyomi.domain.manga.model.Manga
@@ -35,6 +36,18 @@ class LibraryPreferences(
     fun creatorWorkPresentationExclusions() = preferenceStore.getStringSet(
         Preference.appStateKey("creator_work_presentation_exclusions"),
     )
+
+    /** One device-local title per creator, script and presentation group. */
+    fun creatorWorkPresentationTitle(
+        creatorRootId: Long,
+        script: WorkTitleNormalizer.DisplayScript?,
+        groupKey: String,
+    ): Preference<String> {
+        val scriptKey = script?.name ?: "NONE"
+        val groupHash = groupKey.hashCode().toUInt().toString(16)
+        val key = "creator_work_presentation_title_${creatorRootId}_${scriptKey}_$groupHash"
+        return preferenceStore.getString(Preference.appStateKey(key))
+    }
 
     fun sortingMode() = preferenceStore.getObjectFromString(
         "library_sorting_mode",

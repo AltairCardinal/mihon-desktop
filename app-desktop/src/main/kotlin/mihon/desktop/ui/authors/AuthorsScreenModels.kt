@@ -62,6 +62,7 @@ import tachiyomi.domain.creator.model.WorkPresentationGroup
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.creator.service.CreatorWorkPresentationExclusions
+import tachiyomi.domain.creator.service.CreatorWorkPresentationTitleHistory
 import tachiyomi.domain.creator.service.WorkPresentationGroupService
 import tachiyomi.domain.creator.service.WorkTitleNormalizer
 import java.util.Locale
@@ -498,6 +499,19 @@ internal class AuthorDetailScreenModel(
         creatorId, identityActions.manageCreatorIdentity, scope,
     )
     private val activeCreatorId: Long get() = identityEditor.state.value.identity?.id ?: creatorId
+    private val presentationTitleHistory = CreatorWorkPresentationTitleHistory(
+        libraryPreferences, { activeCreatorId }, preferredDisplayScript,
+    )
+
+    private fun projectPresentationGroups(
+        archive: CreatorWorkArchive,
+        excluded: Set<SourceWorkNaturalKey>,
+    ): List<WorkPresentationGroup> = WorkPresentationGroupService.project(
+        archive,
+        excludedNaturalKeys = excluded,
+        previousTitleForGroup = presentationTitleHistory::get,
+        preferredDisplayScript = preferredDisplayScript,
+    ).also(presentationTitleHistory::remember)
 
     init {
         libraryPreferences?.let { preferences ->
@@ -539,11 +553,7 @@ internal class AuthorDetailScreenModel(
                         it.copy(
                             workArchive = workArchive,
                             presentationExcluded = excluded,
-                            presentationGroups = WorkPresentationGroupService.project(
-                                workArchive,
-                                excludedNaturalKeys = excluded,
-                                preferredDisplayScript = preferredDisplayScript,
-                            ),
+                            presentationGroups = projectPresentationGroups(workArchive, excluded),
                         )
                     }
                 }
@@ -683,11 +693,7 @@ internal class AuthorDetailScreenModel(
                 state.copy(
                     actionRunning = false,
                     presentationExcluded = next,
-                    presentationGroups = WorkPresentationGroupService.project(
-                        state.workArchive,
-                        excludedNaturalKeys = next,
-                        preferredDisplayScript = preferredDisplayScript,
-                    ),
+                    presentationGroups = projectPresentationGroups(state.workArchive, next),
                 )
             }
             true
@@ -714,11 +720,7 @@ internal class AuthorDetailScreenModel(
                 state.copy(
                     actionRunning = false,
                     presentationExcluded = next,
-                    presentationGroups = WorkPresentationGroupService.project(
-                        state.workArchive,
-                        excludedNaturalKeys = next,
-                        preferredDisplayScript = preferredDisplayScript,
-                    ),
+                    presentationGroups = projectPresentationGroups(state.workArchive, next),
                 )
             }
             true

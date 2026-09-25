@@ -52,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -123,6 +124,7 @@ import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.model.WorkPresentationGroup
 import tachiyomi.domain.creator.service.CreatorIdentityEditor
 import tachiyomi.domain.creator.service.CreatorWorkPresentationExclusions
+import tachiyomi.domain.creator.service.CreatorWorkPresentationTitleHistory
 import tachiyomi.domain.creator.service.OpenCreatorWorkVersion
 import tachiyomi.domain.creator.service.WorkPresentationGroupService
 import tachiyomi.domain.creator.service.WorkTitleNormalizer
@@ -614,19 +616,26 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
         val snackbarScope = rememberCoroutineScope()
         val separateDisplayDoneMessage = stringResource(MR.strings.creator_work_separate_display_done)
         val separateDisplayUndoLabel = stringResource(MR.strings.creator_work_separate_display_undo)
-        var sourceFocusRequester by remember { mutableStateOf<FocusRequester?>(null) }
-        var pendingSourceFocusRestore by remember { mutableStateOf<FocusRequester?>(null) }
-        LaunchedEffect(pendingSourceFocusRestore) {
-            pendingSourceFocusRestore?.let { requester ->
+        var pendingFocusGroupKey by remember { mutableStateOf<String?>(null) }
+        var pendingFocusSourceKey by remember { mutableStateOf<SourceWorkNaturalKey?>(null) }
+        val cardFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+        val returnFocusRequester = remember { FocusRequester() }
+        LaunchedEffect(pendingFocusGroupKey, pendingFocusSourceKey, state.visiblePresentationCards) {
+            if (pendingFocusGroupKey != null || pendingFocusSourceKey != null) {
                 withFrameNanos { }
-                requester.requestFocus()
-                pendingSourceFocusRestore = null
+                val groupKey = pendingFocusSourceKey?.let { sourceKey ->
+                    state.visiblePresentationCards.firstOrNull { group ->
+                        group.members.any { it.naturalKey == sourceKey }
+                    }?.groupKey
+                } ?: pendingFocusGroupKey
+                (groupKey?.let(cardFocusRequesters::get) ?: returnFocusRequester).requestFocus()
+                pendingFocusGroupKey = null
+                pendingFocusSourceKey = null
             }
         }
         LaunchedEffect(model) {
             model.openManga.collect { request ->
                 showSourceChooserFor = null
-                sourceFocusRequester = null
                 navigator.push(eu.kanade.tachiyomi.ui.manga.MangaScreen(request.mangaId))
                 model.markWorkSeenAfterNavigation(request.creatorId, request.sourceWork)
             }
@@ -657,8 +666,7 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                     onSeparate = { version ->
                         snackbarScope.launch {
                             if (model.excludePresentationVersion(version)) {
-                                pendingSourceFocusRestore = sourceFocusRequester
-                                sourceFocusRequester = null
+                                pendingFocusSourceKey = version.naturalKey
                                 showSourceChooserFor = null
                                 val result = snackbarHostState.showSnackbar(
                                     message = separateDisplayDoneMessage,
@@ -672,8 +680,7 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                     },
                     onDismiss = {
                         model.clearWorkOpenError()
-                        pendingSourceFocusRestore = sourceFocusRequester
-                        sourceFocusRequester = null
+                        pendingFocusGroupKey = groupKey
                         showSourceChooserFor = null
                     },
                 )
@@ -688,7 +695,9 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                         Text(state.details.creator?.displayName ?: stringResource(MR.strings.desktop_ui_authors))
                     },
                     navigationIcon = {
-                        IconButton(onClick = { navigator.pop() }) {
+                        IconButton(onClick = {
+                            navigator.pop()
+                        }, modifier = Modifier.focusRequester(returnFocusRequester)) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = stringResource(MR.strings.action_bar_up_description),
@@ -804,6 +813,14 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                         items(state.visiblePresentationCards, key = { "presentation-${it.groupKey}" }) { group ->
                             val presentationCardKey = group.canonicalWorkId?.toString() ?: group.groupKey
                             val focusRequester = remember(group.groupKey) { FocusRequester() }
+                            DisposableEffect(group.groupKey, focusRequester) {
+                                cardFocusRequesters[group.groupKey] = focusRequester
+                                onDispose {
+                                    if (cardFocusRequesters[group.groupKey] === focusRequester) {
+                                        cardFocusRequesters.remove(group.groupKey)
+                                    }
+                                }
+                            }
                             CreatorArchiveWorkCard(
                                 title = group.title,
                                 version = group.representative,
@@ -814,7 +831,6 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                                 mode = mode,
                                 focusRequester = focusRequester,
                                 onClick = {
-                                    sourceFocusRequester = focusRequester
                                     showSourceChooserFor = group.groupKey
                                 },
                             ) {
@@ -851,6 +867,14 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                         items(state.visiblePresentationCards, key = { "presentation-${it.groupKey}" }) { group ->
                             val presentationCardKey = group.canonicalWorkId?.toString() ?: group.groupKey
                             val focusRequester = remember(group.groupKey) { FocusRequester() }
+                            DisposableEffect(group.groupKey, focusRequester) {
+                                cardFocusRequesters[group.groupKey] = focusRequester
+                                onDispose {
+                                    if (cardFocusRequesters[group.groupKey] === focusRequester) {
+                                        cardFocusRequesters.remove(group.groupKey)
+                                    }
+                                }
+                            }
                             CreatorArchiveWorkCard(
                                 title = group.title,
                                 version = group.representative,
@@ -861,7 +885,6 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                                 mode = mode,
                                 focusRequester = focusRequester,
                                 onClick = {
-                                    sourceFocusRequester = focusRequester
                                     showSourceChooserFor = group.groupKey
                                 },
                             ) {
@@ -1002,7 +1025,8 @@ private fun AndroidCreatorWorkSourceChooserDialog(
                             TextButton(
                                 enabled = !opening,
                                 onClick = { onSeparate(version) },
-                                modifier = Modifier.align(Alignment.End),
+                                modifier = Modifier.align(Alignment.End)
+                                    .testTag("creator-source-separate-${version.sourceWorkId}"),
                             ) {
                                 Text(stringResource(MR.strings.creator_work_separate_display))
                             }
@@ -1441,6 +1465,21 @@ internal class AndroidAuthorDetailScreenModel(
     fun sourceName(version: SourceWorkArchiveVersion): String = sources.getOrStub(version.naturalKey.sourceId).name
     val identityEditor = CreatorIdentityEditor(creatorId, identity, screenModelScope)
     private val activeCreatorId: Long get() = identityEditor.state.value.identity?.id ?: creatorId
+    private val presentationTitleHistory = CreatorWorkPresentationTitleHistory(
+        libraryPreferences,
+        { activeCreatorId },
+        preferredDisplayScript,
+    )
+
+    private fun projectPresentationGroups(
+        archive: CreatorWorkArchive,
+        excluded: Set<SourceWorkNaturalKey>,
+    ): List<WorkPresentationGroup> = WorkPresentationGroupService.project(
+        archive,
+        excludedNaturalKeys = excluded,
+        previousTitleForGroup = presentationTitleHistory::get,
+        preferredDisplayScript = preferredDisplayScript,
+    ).also(presentationTitleHistory::remember)
     init {
         libraryPreferences?.let { preferences ->
             screenModelScope.launch {
@@ -1469,11 +1508,7 @@ internal class AndroidAuthorDetailScreenModel(
                     state.copy(
                         archive = value,
                         presentationExcluded = excluded,
-                        presentationGroups = WorkPresentationGroupService.project(
-                            value,
-                            excludedNaturalKeys = excluded,
-                            preferredDisplayScript = preferredDisplayScript,
-                        ),
+                        presentationGroups = projectPresentationGroups(value, excluded),
                     )
                 }
             }
@@ -1553,11 +1588,7 @@ internal class AndroidAuthorDetailScreenModel(
                 state.copy(
                     workOpening = false,
                     presentationExcluded = next,
-                    presentationGroups = WorkPresentationGroupService.project(
-                        state.archive,
-                        excludedNaturalKeys = next,
-                        preferredDisplayScript = preferredDisplayScript,
-                    ),
+                    presentationGroups = projectPresentationGroups(state.archive, next),
                 )
             }
             true
@@ -1584,11 +1615,7 @@ internal class AndroidAuthorDetailScreenModel(
                 state.copy(
                     workOpening = false,
                     presentationExcluded = next,
-                    presentationGroups = WorkPresentationGroupService.project(
-                        state.archive,
-                        excludedNaturalKeys = next,
-                        preferredDisplayScript = preferredDisplayScript,
-                    ),
+                    presentationGroups = projectPresentationGroups(state.archive, next),
                 )
             }
             true

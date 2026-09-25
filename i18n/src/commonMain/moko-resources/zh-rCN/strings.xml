@@ -1355,6 +1355,7 @@
     <string name="desktop_ui_mark_all_as_read">全部标记为已读</string>
     <string name="desktop_ui_mark_all_as_read_b69f52ab">全部标记为已读？</string>
     <string name="desktop_ui_mark_all_read">标记全部已读</string>
+    <string name="desktop_ui_mark_all_read_failed">未能将所有项目标为已读。部分项目可能已更新，请刷新后重试。</string>
     <string name="desktop_ui_mark_all_unread">全部标记为未读</string>
     <string name="desktop_ui_mark_below_as_read">将下面标记为已读</string>
     <string name="desktop_ui_mark_read">标记已读</string>

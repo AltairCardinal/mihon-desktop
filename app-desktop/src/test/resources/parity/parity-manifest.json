@@ -35864,7 +35864,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/updates/UpdatesScreenModel.kt",
           "symbol": "rawItems = getUpdates.subscribe(",
-          "line": 111
+          "line": 114
         }
       ],
       "FIXTURE": [
@@ -46017,7 +46017,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/updates/UpdatesScreenModel.kt",
           "symbol": "private val getUpdates: GetUpdates",
-          "line": 77
+          "line": 80
         }
       ],
       "FIXTURE": [

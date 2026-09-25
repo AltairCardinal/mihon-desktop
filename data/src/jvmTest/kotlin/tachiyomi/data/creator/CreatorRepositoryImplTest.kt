@@ -680,6 +680,74 @@ class CreatorRepositoryImplTest {
     }
 
     @Test
+    fun `canonical reminder marks each authors own source group seen`() = runBlocking<Unit> {
+        val first = repository.upsertCreator("First Group Author")
+        val second = repository.upsertCreator("Second Group Author")
+        val firstKey = SourceWorkNaturalKey(71L, "/first")
+        val secondKey = SourceWorkNaturalKey(72L, "/second")
+        listOf(first to firstKey, second to secondKey).forEach { (creator, key) ->
+            repository.upsertWatchPolicy(
+                ArchiveWatchPolicy(creator.id, true, 1_000L, setOf(key.sourceId), emptySet()),
+                now = 1L,
+            )
+            repository.upsertSourceWork(
+                key.sourceId,
+                key.stableSourceUrl,
+                null,
+                "Shared Canonical",
+                creator.displayName,
+                null,
+                null,
+                10L,
+            )
+            repository.upsertSourceWorkCreator(
+                key, creator.id, CreatorRole.AUTHOR, 0L, CreatorRelationOrigin.USER,
+                CreatorRelationVerification.VERIFIED, "fixture", 1.0, "fixture",
+            )
+        }
+        val canonical = repository.createCanonicalWork("Shared Canonical", first.id, null)
+        listOf(firstKey, secondKey).forEachIndexed { index, key ->
+            repository.appendWorkDecision(
+                key,
+                canonical.id,
+                WorkDecisionContract(WorkDecisionState.CONFIRMED, DecisionActor.USER, explicit = true),
+                null,
+                1.0,
+                "fixture",
+                10L + index,
+                "distinct-canonical-$index",
+            )
+        }
+        listOf(first to firstKey, second to secondKey).forEachIndexed { index, (creator, key) ->
+            repository.commitDiscovery(
+                DiscoveryCommit(
+                    creator.id,
+                    key,
+                    DiscoveryKind.NEW_WORK_CANDIDATE,
+                    "fixture",
+                    1L,
+                    100L + index,
+                    "TEST",
+                    "distinct-discovery-$index",
+                ),
+            )
+        }
+
+        val reminder = repository.getUnreadWorkDiscoveries(10L).single()
+        reminder.creatorIds.toSet() shouldBe setOf(first.id, second.id)
+        reminder.sourceWorksByCreator shouldBe mapOf(first.id to firstKey, second.id to secondKey)
+        reminder.creatorIds.forEach { creatorId ->
+            repository.markPresentationGroupSeen(
+                creatorId,
+                checkNotNull(reminder.sourceWorksByCreator[creatorId]),
+                200L,
+            )
+        }
+        repository.markWorkSeen(reminder.sourceWork, 200L)
+        repository.getUnreadWorkDiscoveries(10L) shouldBe emptyList()
+    }
+
+    @Test
     fun `seen canonical work is inherited by a later discovery for another author`() = runBlocking<Unit> {
         val creators = listOf(
             repository.upsertCreator("Canonical First"),

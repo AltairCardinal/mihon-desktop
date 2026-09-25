@@ -65,6 +65,7 @@ import kotlinx.coroutines.launch
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import mihon.desktop.ui.authors.AuthorDetailScreen
 import mihon.desktop.updates.UpdatesScreenModelFactory
+import mihon.desktop.updates.UpdatesState
 import mihon.desktop.ui.authors.LanguageArchiveFilter
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.updates.model.UpdatesWithRelations
@@ -115,27 +116,10 @@ class UpdatesRootScreen : Screen {
         }
 
         if (state.showMarkAllReadDialog) {
-            AlertDialog(
-                onDismissRequest = { model.setShowMarkAllReadDialog(false) },
-                title = { Text(MR.strings.desktop_ui_mark_all_as_read_b69f52ab.localized()) },
-                text = {
-                    Text(
-                        MR.strings.desktop_ui_mark_updates_read.localized(
-                            Locale.getDefault(),
-                            state.items.count { !it.read } + state.unreadDiscoveryCount,
-                        ),
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        scope.launch {
-                            model.markAllRead()
-                        }
-                    }) { Text(MR.strings.desktop_ui_mark_all_read.localized()) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { model.setShowMarkAllReadDialog(false) }) { Text(MR.strings.action_cancel.localized()) }
-                },
+            UpdatesMarkAllReadDialog(
+                state = state,
+                onDismiss = { model.setShowMarkAllReadDialog(false) },
+                onConfirm = { scope.launch { model.markAllRead() } },
             )
         }
 
@@ -349,6 +333,43 @@ class UpdatesRootScreen : Screen {
             }
         }
     }
+}
+
+@Composable
+internal fun UpdatesMarkAllReadDialog(
+    state: UpdatesState,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(MR.strings.desktop_ui_mark_all_as_read_b69f52ab.localized()) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    MR.strings.desktop_ui_mark_updates_read.localized(
+                        Locale.getDefault(),
+                        state.items.count { !it.read } + state.unreadDiscoveryCount,
+                    ),
+                )
+                if (state.markAllReadFailed) {
+                    Text(
+                        MR.strings.desktop_ui_mark_all_read_failed.localized(),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("updates-mark-all-read-error"),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !state.markAllReadRunning, onClick = onConfirm) {
+                Text(MR.strings.desktop_ui_mark_all_read.localized())
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
+        },
+    )
 }
 
 @Composable

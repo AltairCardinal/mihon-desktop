@@ -163,6 +163,8 @@ data class ArchiveUnreadWork(
     val title: String,
     val firstDiscoveredAt: Long,
     val creatorName: String = "",
+    /** A source owned by each creator in this reminder, for author-scoped presentation updates. */
+    val sourceWorksByCreator: Map<Long, SourceWorkNaturalKey> = mapOf(creatorId to sourceWork),
 )
 
 data class NotificationOutboxItem(

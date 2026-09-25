@@ -257,6 +257,52 @@ class WorkPresentationGroupServiceTest {
         group.groupKey shouldBe "source:20:/only"
     }
 
+    @Test
+    fun `non equivalent confirmed title remains authoritative over source title`() {
+        val canonical = canonicalGroup(100L, "confirmed", "用户确认的作品名", 10L, "/confirmed")
+            .copy(versions = listOf(version(10L, "/confirmed", "不同的来源译名")))
+
+        val group = WorkPresentationGroupService.project(
+            CreatorWorkArchive(listOf(canonical), emptyList(), emptyList()),
+            preferredDisplayScript = WorkTitleNormalizer.DisplayScript.SIMPLIFIED,
+        ).single()
+
+        group.title shouldBe "用户确认的作品名"
+    }
+
+    @Test
+    fun `canonical alias only chooses source titles equivalent to confirmed title`() {
+        val confirmed = version(20L, "/confirmed", "用户确认的作品名")
+        val unrelated = version(10L, "/unrelated", "不同的来源译名")
+        val canonical = canonicalGroup(100L, "confirmed", "用户确认的作品名", 20L, "/confirmed")
+            .copy(versions = listOf(unrelated, confirmed))
+
+        WorkPresentationGroupService.project(
+            CreatorWorkArchive(listOf(canonical), emptyList(), emptyList()),
+        ).single().title shouldBe "用户确认的作品名"
+    }
+
+    @Test
+    fun `unread groups sort before seen groups by first discovery independent of bucket type`() {
+        val oldCanonical = canonicalGroup(100L, "old", "Old", 10L, "/old")
+        val earlier = version(20L, "/earlier", "Earlier", unread = true, unreadFirstDiscoveredAt = 100L)
+        val later = version(30L, "/later", "Later", unread = true, unreadFirstDiscoveredAt = 300L)
+        val archive = CreatorWorkArchive(listOf(oldCanonical), listOf(earlier, later), emptyList())
+
+        WorkPresentationGroupService.project(archive).map { it.title } shouldContainExactly
+            listOf("Later", "Earlier", "Old")
+    }
+
+    @Test
+    fun `unread source groups sort by first discovery rather than source id`() {
+        val earlier = version(10L, "/earlier", "Earlier", unread = true, unreadFirstDiscoveredAt = 100L)
+        val later = version(20L, "/later", "Later", unread = true, unreadFirstDiscoveredAt = 300L)
+
+        WorkPresentationGroupService.project(
+            CreatorWorkArchive(emptyList(), listOf(earlier, later), emptyList()),
+        ).map { it.title } shouldContainExactly listOf("Later", "Earlier")
+    }
+
     private fun canonicalGroup(
         workId: Long,
         portableKey: String,
@@ -276,6 +322,7 @@ class WorkPresentationGroupServiceTest {
         title: String,
         inLibrary: Boolean = false,
         unread: Boolean = false,
+        unreadFirstDiscoveredAt: Long? = null,
         firstSeenAt: Long = 1L,
         publishedDateAt: Long? = null,
         publishedDateQuality: SourceDateQualityStatus = if (publishedDateAt != null) {
@@ -316,5 +363,6 @@ class WorkPresentationGroupServiceTest {
         publishedDateQuality = publishedDateQuality,
         latestChapterAt = latestChapterAt,
         unread = unread,
+        unreadFirstDiscoveredAt = unreadFirstDiscoveredAt,
     )
 }

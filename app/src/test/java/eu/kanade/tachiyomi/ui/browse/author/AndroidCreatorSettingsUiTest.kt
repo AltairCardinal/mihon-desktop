@@ -418,6 +418,85 @@ class AndroidCreatorSettingsUiTest {
         }
     }
 
+    @Test
+    @Config(qualifiers = "w480dp-h900dp-mdpi")
+    fun `mounted split display returns focus to the new source card`(): Unit = runBlocking {
+        val previous = Injekt
+        Injekt = InjektScope(DefaultRegistrar())
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        val shared = activity.get().getSharedPreferences("creator-split-focus-ui", Context.MODE_PRIVATE)
+        shared.edit().clear().commit()
+        val store = AndroidPreferenceStore(activity.get(), shared)
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        Database.Schema.create(driver)
+        val database = Database(
+            driver,
+            historyAdapter = History.Adapter(DateColumnAdapter),
+            mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        )
+        val handler = AndroidDatabaseHandler(database, driver)
+        val repository = CreatorRepositoryImpl(handler)
+        try {
+            val creator = repository.upsertCreator("Focus Author")
+            listOf(20L to "詭譎屋", 30L to "诡谲屋").forEach { (sourceId, title) ->
+                val key = SourceWorkNaturalKey(sourceId, "/work-$sourceId")
+                repository.upsertSourceWork(
+                    sourceId,
+                    key.stableSourceUrl,
+                    null,
+                    title,
+                    creator.displayName,
+                    null,
+                    null,
+                    1L,
+                )
+                repository.upsertSourceWorkCreator(
+                    key, creator.id, CreatorRole.AUTHOR, 0L, CreatorRelationOrigin.AUTOMATIC,
+                    CreatorRelationVerification.VERIFIED, creator.displayName, 1.0, "fixture",
+                )
+            }
+            val selected = repository.getCreatorWorkArchive(creator.id).pending.first { it.naturalKey.sourceId == 20L }
+            val archive = CreatorArchive(repository, repository)
+            val details = GetCreatorDetails(repository)
+            val mangaRepository = tachiyomi.data.manga.MangaRepositoryImpl(handler, NoopCreatorLibraryIndexWriter)
+            Injekt.addSingleton(GetCreators(repository))
+            Injekt.addSingleton(archive)
+            Injekt.addSingleton(CreatorDiscoveryPreferences(store))
+            Injekt.addSingleton(eu.kanade.domain.source.service.SourcePreferences(store))
+            Injekt.addSingleton(CoverCache(activity.get()))
+            Injekt.addSingleton(details)
+            Injekt.addSingleton(SetCreatorFollow(repository))
+            Injekt.addSingleton(DiscoverCreatorWorks(mockk(relaxed = true), details))
+            Injekt.addSingleton(mockk<SourceManager>(relaxed = true))
+            Injekt.addSingleton(ManageCreatorIdentity(repository))
+            Injekt.addSingleton(NetworkToLocalManga(mangaRepository))
+            val libraryPreferences = LibraryPreferences(store)
+            libraryPreferences.displayMode().set(LibraryDisplayMode.List)
+            Injekt.addSingleton(libraryPreferences)
+
+            activity.get().setContent { MaterialTheme { Navigator(AndroidAuthorDetailScreen(creator.id)) } }
+            val oldCard = "creator-work-card-title:诡谲屋"
+            val newCard = "creator-work-card-source:20:/work-20"
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithTag(oldCard, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithTag(oldCard, useUnmergedTree = true).performClick()
+            compose.onNodeWithTag("creator-source-separate-${selected.sourceWorkId}", useUnmergedTree = true)
+                .performClick()
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithTag(newCard, useUnmergedTree = true).fetchSemanticsNodes()
+                    .any { it.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Focused) { false } }
+            }
+            assertTrue(compose.onAllNodesWithTag(oldCard, useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+            compose.onNodeWithTag(newCard, useUnmergedTree = true).assertIsFocused()
+        } finally {
+            activity.pause().stop().destroy()
+            driver.close()
+            shared.edit().clear().commit()
+            Injekt = previous
+        }
+    }
+
     @Test fun `mounted author card refreshes followed state after repository change`(): Unit = runBlocking {
         val previous = Injekt
         Injekt = InjektScope(DefaultRegistrar())

@@ -23,6 +23,7 @@ object WorkPresentationGroupService {
         archive: CreatorWorkArchive,
         excludedNaturalKeys: Set<SourceWorkNaturalKey> = emptySet(),
         previousTitles: Map<String, String> = emptyMap(),
+        previousTitleForGroup: (String) -> String? = { null },
         preferredLanguageTags: Set<String> = emptySet(),
         preferredDisplayScript: WorkTitleNormalizer.DisplayScript? = null,
     ): List<WorkPresentationGroup> {
@@ -72,6 +73,7 @@ object WorkPresentationGroupService {
                     groupKey = "$CANONICAL_GROUP_PREFIX${bucket.source.portableKey}",
                     members = members,
                     previousTitles = previousTitles,
+                    previousTitleForGroup = previousTitleForGroup,
                     preferredLanguages = preferredLanguages,
                     preferredDisplayScript = preferredDisplayScript,
                     fallback = bucket.source.title.ifBlank { members.first().title },
@@ -106,6 +108,7 @@ object WorkPresentationGroupService {
                             groupKey,
                             members,
                             previousTitles,
+                            previousTitleForGroup,
                             preferredLanguages,
                             preferredDisplayScript,
                             fallback = null,
@@ -130,7 +133,15 @@ object WorkPresentationGroupService {
                 )
             }
 
-        return groups
+        return groups.sortedWith(
+            compareByDescending<WorkPresentationGroup> { it.unread }
+                .thenByDescending { group ->
+                    group.members.mapNotNull { member ->
+                        member.unreadFirstDiscoveredAt?.takeIf { member.unread }
+                    }.minOrNull() ?: Long.MIN_VALUE
+                }
+                .thenBy { group -> group.groupKey.takeIf { group.unread }.orEmpty() },
+        )
     }
 
     private fun presentationKey(title: String): String? {
@@ -142,12 +153,19 @@ object WorkPresentationGroupService {
         groupKey: String,
         members: List<SourceWorkArchiveVersion>,
         previousTitles: Map<String, String>,
+        previousTitleForGroup: (String) -> String?,
         preferredLanguages: Set<String>,
         preferredDisplayScript: WorkTitleNormalizer.DisplayScript?,
         fallback: String?,
     ): String {
-        val previous = previousTitles[groupKey]
-        if (previous != null && members.any { it.title == previous } &&
+        val eligibleMembers = fallback?.takeIf(String::isNotBlank)?.let { confirmedTitle ->
+            presentationKey(confirmedTitle)?.let { canonicalKey ->
+                members.filter { presentationKey(it.title) == canonicalKey }
+            }
+        } ?: members
+        if (eligibleMembers.isEmpty()) return checkNotNull(fallback)
+        val previous = previousTitles[groupKey] ?: previousTitleForGroup(groupKey)
+        if (previous != null && eligibleMembers.any { it.title == previous } &&
             (
                 preferredDisplayScript == null ||
                     WorkTitleNormalizer.matchesDisplayScript(previous, preferredDisplayScript)
@@ -156,10 +174,10 @@ object WorkPresentationGroupService {
             return previous
         }
         val candidates = if (preferredDisplayScript == null) {
-            members
+            eligibleMembers
         } else {
-            members.filter { WorkTitleNormalizer.matchesDisplayScript(it.title, preferredDisplayScript) }
-                .ifEmpty { members }
+            eligibleMembers.filter { WorkTitleNormalizer.matchesDisplayScript(it.title, preferredDisplayScript) }
+                .ifEmpty { eligibleMembers }
         }
         return candidates
             .sortedWith(titleComparator(preferredLanguages))

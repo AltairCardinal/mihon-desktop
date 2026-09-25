@@ -197,6 +197,7 @@ class UpdatesScreenModelTest {
         coEvery { archive.getDiscoveries(any()) } returns emptyList()
         coEvery { archive.getUnreadWorkDiscoveries(any()) } returns listOf(work)
         coEvery { archive.markWorkSeen(any(), any()) } returns Unit
+        coEvery { archive.markPresentationGroupSeen(any(), any(), any()) } returns Unit
         val model = buildModel(creatorArchiveRepository = archive)
 
         model.loadUpdates(Instant.EPOCH)
@@ -205,8 +206,74 @@ class UpdatesScreenModelTest {
         model.markAllRead()
 
         coVerify(exactly = 1) { archive.markWorkSeen(work.sourceWork, any()) }
+        coVerify(exactly = 1) { archive.markPresentationGroupSeen(11L, work.sourceWork, any()) }
         assertTrue(model.state.value.unreadWorks.isEmpty())
         assertFalse(model.state.value.showMarkAllReadDialog)
+    }
+
+    @Test
+    fun `markAllRead clears each author presentation group sharing a reminder`() = runTest {
+        val archive = mockk<CreatorArchiveRepository>()
+        val work = ArchiveUnreadWork(
+            workKey = "source:7:/new-work",
+            creatorId = 11L,
+            creatorIds = listOf(11L, 12L),
+            representativeDiscoveryId = 31L,
+            sourceWork = SourceWorkNaturalKey(7L, "/new-work"),
+            title = "New work",
+            firstDiscoveredAt = 100L,
+            creatorName = "Author",
+            sourceWorksByCreator = mapOf(
+                11L to SourceWorkNaturalKey(7L, "/new-work"),
+                12L to SourceWorkNaturalKey(8L, "/other-source"),
+            ),
+        )
+        coEvery { archive.getDiscoveries(any()) } returns emptyList()
+        coEvery { archive.getUnreadWorkDiscoveries(any()) } returns listOf(work)
+        coEvery { archive.markWorkSeen(any(), any()) } returns Unit
+        coEvery { archive.markPresentationGroupSeen(any(), any(), any()) } returns Unit
+        val model = buildModel(creatorArchiveRepository = archive)
+
+        model.loadUpdates(Instant.EPOCH)
+        model.markAllRead()
+
+        coVerify(exactly = 1) { archive.markPresentationGroupSeen(11L, work.sourceWork, any()) }
+        coVerify(exactly = 1) { archive.markPresentationGroupSeen(12L, SourceWorkNaturalKey(8L, "/other-source"), any()) }
+        coVerify(exactly = 1) { archive.markWorkSeen(work.sourceWork, any()) }
+    }
+
+    @Test
+    fun `markAllRead keeps reminder visible when author membership becomes stale`() = runTest {
+        val archive = mockk<CreatorArchiveRepository>()
+        val work = ArchiveUnreadWork(
+            workKey = "source:7:/new-work",
+            creatorId = 11L,
+            creatorIds = listOf(11L),
+            representativeDiscoveryId = 31L,
+            sourceWork = SourceWorkNaturalKey(7L, "/new-work"),
+            title = "New work",
+            firstDiscoveredAt = 100L,
+        )
+        coEvery { archive.getDiscoveries(any()) } returns emptyList()
+        coEvery { archive.getUnreadWorkDiscoveries(any()) } returns listOf(work)
+        coEvery { archive.markPresentationGroupSeen(any(), any(), any()) } throws IllegalStateException("source moved")
+        val model = buildModel(creatorArchiveRepository = archive)
+
+        model.loadUpdates(Instant.EPOCH)
+        model.setShowMarkAllReadDialog(true)
+        runCatching { model.markAllRead() }
+
+        assertEquals(listOf(work), model.state.value.unreadWorks)
+        assertTrue(model.state.value.showMarkAllReadDialog)
+        assertTrue(model.state.value.markAllReadFailed)
+        coVerify(exactly = 0) { archive.markWorkSeen(any(), any()) }
+
+        coEvery { archive.markPresentationGroupSeen(any(), any(), any()) } returns Unit
+        coEvery { archive.markWorkSeen(any(), any()) } returns Unit
+        model.markAllRead()
+        assertFalse(model.state.value.markAllReadFailed)
+        assertFalse(model.state.value.showMarkAllReadDialog)
+        assertTrue(model.state.value.unreadWorks.isEmpty())
     }
 
     private fun buildModel(

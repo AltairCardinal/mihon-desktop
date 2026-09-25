@@ -175,3 +175,9 @@
 修复按真实 SQLite、双端 production wiring 红绿测试实施。独立审查发现的排除卡已读、非日精度快照、canonical 标题三项阻塞已分别经聚焦复审关闭；相关 data 回归 66/66、卡片投影 14/14，Desktop 作者接线 20/20 与图标 1/1，Android 作者接线 10/10 通过。`git diff --check` 与相关格式检查通过。未读列表目前会先加载全部未读候选再按 `limit` 截取，属于已记录的非阻塞大数据量性能风险，不在此次补漏中重写分页。
 
 本次整体验收运行 `spotlessCheck :app:testReleaseUnitTest :app-desktop:jvmTest :test-desktop:test -PincludeIntegrationTests=true`：Desktop、`test-desktop` 和格式任务完成；Android 612 次执行中 18 次失败集中于 6 个挂载测试的重复执行，原因是测试专用 Injekt 容器缺少新增的 `LibraryPreferences` 绑定。补齐测试容器并等待异步列表加载后，受影响的 `AndroidCreatorSettingsUiTest` 和 `AndroidAuthorArchiveWiringTest` 聚焦复验通过；依本计划的一次全量上限，未再次运行 Android 全量，因此本次不能声明 Android 全量全绿。正式 `scripts/build-desktop.sh build-only` 生成 Windows 未打包应用并通过扩展运行验收，正式 EXE 的 Test Mode `/test/state` 返回 HTTP 200。macOS 与真实 Android 设备运行验收仍缺，RF-06 保持未勾选。
+
+### 2026-09-25 · 本分支追加实现审查的五项修复
+
+本轮补正分开显示后的双端焦点、Desktop 更新页批量已读、canonical 展示标题、未查看作品排序及双端标题历史接线。分开显示按自然键聚焦仍可见的新卡，虚拟滚动或筛选导致不可见时退回稳定的顶栏返回按钮。标题历史使用作者根＋有效脚本＋组键的设备本地 app state；仅缓存多来源或 canonical 组，不携带到备份/同步。旧缓存键可残留，读取/写入失败时忽略磁盘缓存并保留当前会话标题，不中断页面。
+
+更新页提醒的聚合 DTO 提供每位作者自己拥有的来源自然键；批量已读逐作者调用现有整组事务，再保留代表来源的既有跨作者 canonical 已读操作。成员过期等失败时确认框保留并显示可重试消息；此前已完成的章节或其他提醒可能保持已读，刷新后以仓库事实为准。本轮验证和提交状态由对应修复提交及最终验收报告记录；未完成独立审查和提交前不修改上方历史 checkbox。

@@ -36,6 +36,7 @@ import tachiyomi.domain.creator.model.DecisionActor
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WorkDecisionContract
 import tachiyomi.domain.creator.model.WorkDecisionState
+import tachiyomi.domain.creator.service.WorkTitleNormalizer
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 
 class AndroidAuthorScriptMergeWiringTest {
@@ -116,6 +117,7 @@ class AndroidAuthorScriptMergeWiringTest {
                     sources = mockk(relaxed = true),
                     identity = ManageCreatorIdentity(repository),
                     networkToLocal = mockk<NetworkToLocalManga>(relaxed = true),
+                    preferredDisplayScript = WorkTitleNormalizer.DisplayScript.TRADITIONAL,
                 )
             }
             withContext(Dispatchers.Default.limitedParallelism(1)) {
@@ -126,8 +128,29 @@ class AndroidAuthorScriptMergeWiringTest {
             val presentation = model.state.value.presentationGroups.single()
             assertEquals(null, presentation.canonicalWorkId)
             assertEquals(setOf("詭譎屋", "诡谲屋"), presentation.members.map { it.title }.toSet())
+            assertEquals("詭譎屋", presentation.title)
+            val arriving = SourceWorkNaturalKey(9L, "/new-traditional")
+            repository.upsertSourceWork(
+                arriving.sourceId,
+                arriving.stableSourceUrl,
+                103L,
+                "《詭譎屋》",
+                creator.displayName,
+                null,
+                null,
+                2L,
+            )
+            repository.upsertSourceWorkCreator(
+                arriving, creator.id, CreatorRole.AUTHOR, 2L,
+                CreatorRelationOrigin.AUTOMATIC, CreatorRelationVerification.VERIFIED,
+                creator.displayName, 1.0, "script-variant-test",
+            )
+            withContext(Dispatchers.Default.limitedParallelism(1)) {
+                withTimeout(5_000) { model.state.first { it.presentationGroups.singleOrNull()?.sourceCount == 3 } }
+            }
+            assertEquals("詭譎屋", model.state.value.presentationGroups.single().title)
             val persistedArchive = CreatorArchive(repository, repository).get(creator.id)
-            assertEquals(2, persistedArchive.pending.size)
+            assertEquals(3, persistedArchive.pending.size)
             assertEquals(emptyList<Any>(), persistedArchive.works)
         } finally {
             modelHost.close()

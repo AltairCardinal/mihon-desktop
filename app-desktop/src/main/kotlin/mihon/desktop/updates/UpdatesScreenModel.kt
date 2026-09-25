@@ -2,6 +2,7 @@ package mihon.desktop.updates
 
 import cafe.adriel.voyager.core.model.ScreenModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -33,6 +34,8 @@ data class UpdatesState(
     val items: List<UpdatesWithRelations> = emptyList(),
     val isRefreshing: Boolean = false,
     val showMarkAllReadDialog: Boolean = false,
+    val markAllReadFailed: Boolean = false,
+    val markAllReadRunning: Boolean = false,
     val showFilterDialog: Boolean = false,
     val filterUnread: TriState = TriState.DISABLED,
     val filterDownloaded: TriState = TriState.DISABLED,
@@ -141,7 +144,7 @@ class UpdatesScreenModel(
     }
 
     fun setShowMarkAllReadDialog(show: Boolean) {
-        _state.update { it.copy(showMarkAllReadDialog = show) }
+        _state.update { it.copy(showMarkAllReadDialog = show, markAllReadFailed = false) }
     }
 
     fun setShowFilterDialog(show: Boolean) {
@@ -149,34 +152,50 @@ class UpdatesScreenModel(
     }
 
     suspend fun markAllRead() {
-        val unreadItems = state.value.items.filter { !it.read }
-        val unreadDiscoveries = state.value.creatorDiscoveries.filter {
-            it.state.readState == DiscoveryReadState.UNSEEN
-        }
-        updateChapter.awaitAll(unreadItems.map { ChapterUpdate(id = it.chapterId, read = true) })
-        if (state.value.unreadWorks.isNotEmpty()) {
-            state.value.unreadWorks.forEach { work ->
-                creatorArchiveRepository?.markWorkSeen(work.sourceWork, now())
+        if (state.value.markAllReadRunning) return
+        _state.update { it.copy(markAllReadRunning = true, markAllReadFailed = false) }
+        try {
+            val unreadItems = state.value.items.filter { !it.read }
+            val unreadDiscoveries = state.value.creatorDiscoveries.filter {
+                it.state.readState == DiscoveryReadState.UNSEEN
             }
-        } else {
-            creatorArchiveRepository?.markDiscoveriesSeen(unreadDiscoveries.mapTo(mutableSetOf(), ArchiveDiscovery::id), now())
-        }
-        val unreadIds = unreadItems.map { it.chapterId }.toSet()
-        val unreadDiscoveryIds = unreadDiscoveries.mapTo(mutableSetOf(), ArchiveDiscovery::id)
-        rawItems = rawItems.map { if (it.chapterId in unreadIds) it.copy(read = true) else it }
-        _state.update {
-            it.copy(
-                items = it.items.map { item -> if (item.chapterId in unreadIds) item.copy(read = true) else item },
-                creatorDiscoveries = it.creatorDiscoveries.map { discovery ->
-                    if (discovery.id in unreadDiscoveryIds) {
-                        discovery.copy(state = discovery.state.copy(readState = DiscoveryReadState.SEEN))
-                    } else {
-                        discovery
+            updateChapter.awaitAll(unreadItems.map { ChapterUpdate(id = it.chapterId, read = true) })
+            if (state.value.unreadWorks.isNotEmpty()) {
+                state.value.unreadWorks.forEach { work ->
+                    work.creatorIds.forEach { creatorId ->
+                        val authorSourceWork = requireNotNull(work.sourceWorksByCreator[creatorId]) {
+                            "Unread reminder no longer has a source for author $creatorId"
+                        }
+                        creatorArchiveRepository?.markPresentationGroupSeen(creatorId, authorSourceWork, now())
                     }
-                },
-                unreadWorks = emptyList(),
-                showMarkAllReadDialog = false,
-            )
+                    creatorArchiveRepository?.markWorkSeen(work.sourceWork, now())
+                }
+            } else {
+                creatorArchiveRepository?.markDiscoveriesSeen(unreadDiscoveries.mapTo(mutableSetOf(), ArchiveDiscovery::id), now())
+            }
+            val unreadIds = unreadItems.map { it.chapterId }.toSet()
+            val unreadDiscoveryIds = unreadDiscoveries.mapTo(mutableSetOf(), ArchiveDiscovery::id)
+            rawItems = rawItems.map { if (it.chapterId in unreadIds) it.copy(read = true) else it }
+            _state.update {
+                it.copy(
+                    items = it.items.map { item -> if (item.chapterId in unreadIds) item.copy(read = true) else item },
+                    creatorDiscoveries = it.creatorDiscoveries.map { discovery ->
+                        if (discovery.id in unreadDiscoveryIds) {
+                            discovery.copy(state = discovery.state.copy(readState = DiscoveryReadState.SEEN))
+                        } else {
+                            discovery
+                        }
+                    },
+                    unreadWorks = emptyList(),
+                    showMarkAllReadDialog = false,
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            _state.update { it.copy(markAllReadFailed = true) }
+        } finally {
+            _state.update { it.copy(markAllReadRunning = false) }
         }
     }
 

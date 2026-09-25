@@ -60,6 +60,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -102,6 +103,7 @@ import tachiyomi.domain.creator.model.MangaCreator
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.SourceDateQualityStatus
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
+import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WorkPresentationGroup
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
 import tachiyomi.domain.source.service.SourceManager
@@ -445,15 +447,21 @@ data class AuthorDetailScreen(
         var confirmUnfollow by remember { mutableStateOf(false) }
         var showDisplayModeMenu by remember { mutableStateOf(false) }
         var showSourceChooserFor by remember { mutableStateOf<String?>(null) }
-        var sourceFocusRequester by remember { mutableStateOf<FocusRequester?>(null) }
-        var pendingSourceFocusRestore by remember { mutableStateOf<FocusRequester?>(null) }
+        var pendingFocusGroupKey by remember { mutableStateOf<String?>(null) }
+        var pendingFocusSourceKey by remember { mutableStateOf<SourceWorkNaturalKey?>(null) }
+        val cardFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+        val returnFocusRequester = remember { FocusRequester() }
         val snackbarHostState = remember { SnackbarHostState() }
         val snackbarScope = rememberCoroutineScope()
-        LaunchedEffect(pendingSourceFocusRestore) {
-            pendingSourceFocusRestore?.let { requester ->
+        LaunchedEffect(pendingFocusGroupKey, pendingFocusSourceKey, presentationCards) {
+            if (pendingFocusGroupKey != null || pendingFocusSourceKey != null) {
                 withFrameNanos { }
-                requester.requestFocus()
-                pendingSourceFocusRestore = null
+                val groupKey = pendingFocusSourceKey?.let { sourceKey ->
+                    presentationCards.firstOrNull { group -> group.members.any { it.naturalKey == sourceKey } }?.groupKey
+                } ?: pendingFocusGroupKey
+                (groupKey?.let(cardFocusRequesters::get) ?: returnFocusRequester).requestFocus()
+                pendingFocusGroupKey = null
+                pendingFocusSourceKey = null
             }
         }
         LaunchedEffect(model) {
@@ -461,7 +469,6 @@ data class AuthorDetailScreen(
                 when (effect) {
                     is AuthorDetailEffect.OpenManga -> {
                         showSourceChooserFor = null
-                        sourceFocusRequester = null
                         navigator.push(MangaDetailScreen(effect.mangaId))
                         model.markWorkSeenAfterNavigation(effect.creatorId, effect.sourceWork)
                     }
@@ -508,8 +515,7 @@ data class AuthorDetailScreen(
                     onSeparate = { version ->
                         snackbarScope.launch {
                             if (model.excludePresentationVersion(version)) {
-                                pendingSourceFocusRestore = sourceFocusRequester
-                                sourceFocusRequester = null
+                                pendingFocusSourceKey = version.naturalKey
                                 showSourceChooserFor = null
                                 if (snackbarHostState.showSnackbar(
                                         message = MR.strings.creator_work_separate_display_done.localized(),
@@ -523,8 +529,7 @@ data class AuthorDetailScreen(
                     },
                     onDismiss = {
                         model.clearWorkOpenError()
-                        pendingSourceFocusRestore = sourceFocusRequester
-                        sourceFocusRequester = null
+                        pendingFocusGroupKey = groupKey
                         showSourceChooserFor = null
                     },
                 )
@@ -550,7 +555,7 @@ data class AuthorDetailScreen(
                 TopAppBar(
                     title = { Text(creator?.displayName ?: MR.strings.author.localized()) },
                     navigationIcon = {
-                        IconButton(onClick = { navigator.pop() }) {
+                        IconButton(onClick = { navigator.pop() }, modifier = Modifier.focusRequester(returnFocusRequester)) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
                         }
                     },
@@ -806,6 +811,14 @@ data class AuthorDetailScreen(
                                 items(presentationCards, key = { "presentation-${it.groupKey}" }) { group ->
                                     val presentationCardKey = group.canonicalWorkId?.toString() ?: group.groupKey
                                     val focusRequester = remember(group.groupKey) { FocusRequester() }
+                                    DisposableEffect(group.groupKey, focusRequester) {
+                                        cardFocusRequesters[group.groupKey] = focusRequester
+                                        onDispose {
+                                            if (cardFocusRequesters[group.groupKey] === focusRequester) {
+                                                cardFocusRequesters.remove(group.groupKey)
+                                            }
+                                        }
+                                    }
                                     CreatorArchiveWorkCard(
                                         title = group.title,
                                         thumbnailUrl = group.representative.thumbnailUrl,
@@ -817,7 +830,6 @@ data class AuthorDetailScreen(
                                         mode = mode,
                                         focusRequester = focusRequester,
                                         onClick = {
-                                            sourceFocusRequester = focusRequester
                                             showSourceChooserFor = group.groupKey
                                         },
                                         content = {
@@ -882,6 +894,14 @@ data class AuthorDetailScreen(
                                 items(presentationCards, key = { "presentation-${it.groupKey}" }) { group ->
                                     val presentationCardKey = group.canonicalWorkId?.toString() ?: group.groupKey
                                     val focusRequester = remember(group.groupKey) { FocusRequester() }
+                                    DisposableEffect(group.groupKey, focusRequester) {
+                                        cardFocusRequesters[group.groupKey] = focusRequester
+                                        onDispose {
+                                            if (cardFocusRequesters[group.groupKey] === focusRequester) {
+                                                cardFocusRequesters.remove(group.groupKey)
+                                            }
+                                        }
+                                    }
                                     CreatorArchiveWorkCard(
                                         title = group.title,
                                         thumbnailUrl = group.representative.thumbnailUrl,
@@ -893,7 +913,6 @@ data class AuthorDetailScreen(
                                         mode = mode,
                                         focusRequester = focusRequester,
                                         onClick = {
-                                            sourceFocusRequester = focusRequester
                                             showSourceChooserFor = group.groupKey
                                         },
                                         content = {

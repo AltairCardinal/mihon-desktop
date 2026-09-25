@@ -1380,12 +1380,12 @@ class CreatorRepositoryImpl(
         }
         return candidates.indices.groupBy(::root).values.map { indexes ->
             val rows = indexes.map(candidates::get)
-            val representative = rows.minWith(
+            val representativeOrder =
                 compareBy<UnreadDiscoveryCandidate> { it.firstDiscoveredAt }
                     .thenBy { it.creatorPortableKey }
                     .thenBy { "${it.sourceWork.sourceId}:${it.sourceWork.stableSourceUrl}" }
-                    .thenBy { it.discoveryId },
-            )
+                    .thenBy { it.discoveryId }
+            val representative = rows.minWith(representativeOrder)
             val presentationKey = presentationKeyByCandidate[
                 representative.creatorId to representative.sourceWork,
             ] ?: "source:${representative.sourceWork.sourceId}:${representative.sourceWork.stableSourceUrl}"
@@ -1404,6 +1404,8 @@ class CreatorRepositoryImpl(
                 title = representative.title,
                 firstDiscoveredAt = rows.minOf(UnreadDiscoveryCandidate::firstDiscoveredAt),
                 creatorName = representative.creatorName,
+                sourceWorksByCreator = rows.groupBy(UnreadDiscoveryCandidate::creatorId)
+                    .mapValues { (_, authorRows) -> authorRows.minWith(representativeOrder).sourceWork },
             )
         }.sortedWith(
             compareByDescending<ArchiveUnreadWork> { it.firstDiscoveredAt }.thenByDescending { it.workKey },

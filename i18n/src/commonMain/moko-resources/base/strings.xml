@@ -1542,6 +1542,7 @@
     <string name="desktop_ui_mark_all_as_read">Mark all as read</string>
     <string name="desktop_ui_mark_all_as_read_b69f52ab">Mark all as read?</string>
     <string name="desktop_ui_mark_all_read">Mark all read</string>
+    <string name="desktop_ui_mark_all_read_failed">Could not mark every item as read. Some items may already be marked; refresh and try again.</string>
     <string name="desktop_ui_mark_all_unread">Mark all unread</string>
     <string name="desktop_ui_mark_below_as_read">Mark below as read</string>
     <string name="desktop_ui_mark_read">Mark read</string>

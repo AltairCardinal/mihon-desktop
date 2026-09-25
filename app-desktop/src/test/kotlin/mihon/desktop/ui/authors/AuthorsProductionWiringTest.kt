@@ -227,6 +227,154 @@ class AuthorsProductionWiringTest {
     }
 
     @Test
+    fun `desktop detail keeps a script title when a lower source arrives and after model recreation`() = runBlocking {
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
+        )
+        Database.Schema.create(driver)
+        val handler = JvmDatabaseHandler(
+            Database(driver, historyAdapter = History.Adapter(DateColumnAdapter),
+                mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter)), driver,
+        )
+        val preferenceNode = Preferences.userRoot().node("/mihon-tests/author-title-${UUID.randomUUID()}")
+        val preferences = LibraryPreferences(DesktopPreferenceStore(preferenceNode))
+        val repository = tachiyomi.data.creator.CreatorRepositoryImpl(handler)
+        val creator = repository.upsertCreator("Title Author")
+        suspend fun add(sourceId: Long, url: String, title: String) {
+            val key = SourceWorkNaturalKey(sourceId, url)
+            repository.upsertSourceWork(sourceId, url, null, title, creator.displayName, null, null, 1L)
+            repository.upsertSourceWorkCreator(
+                key, creator.id, CreatorRole.AUTHOR, 0L, CreatorRelationOrigin.AUTOMATIC,
+                CreatorRelationVerification.VERIFIED, creator.displayName, 1.0, "fixture",
+            )
+        }
+        fun model(script: tachiyomi.domain.creator.service.WorkTitleNormalizer.DisplayScript) = AuthorDetailScreenModel(
+            creatorId = creator.id,
+            collectOnOpen = false,
+            getCreatorDetails = GetCreatorDetails(repository),
+            getCreators = GetCreators(repository),
+            setCreatorFollow = SetCreatorFollow(repository),
+            discoveryScheduler = null,
+            creatorArchive = CreatorArchive(repository, repository),
+            identityActions = AuthorIdentityActions(ManageCreatorIdentity(repository)),
+            libraryPreferences = LibraryPreferences(DesktopPreferenceStore(preferenceNode)),
+            preferredDisplayScript = script,
+        )
+        var detail: AuthorDetailScreenModel? = null
+        try {
+            add(20L, "/traditional", "詭譎屋")
+            add(30L, "/simplified", "诡谲屋")
+            detail = model(tachiyomi.domain.creator.service.WorkTitleNormalizer.DisplayScript.TRADITIONAL)
+            withTimeout(5_000) { checkNotNull(detail).state.first { it.presentationGroups.singleOrNull()?.sourceCount == 2 } }
+            assertEquals("詭譎屋", checkNotNull(detail).state.value.presentationGroups.single().title)
+
+            add(10L, "/new-traditional", "《詭譎屋》")
+            withTimeout(5_000) { checkNotNull(detail).state.first { it.presentationGroups.singleOrNull()?.sourceCount == 3 } }
+            assertEquals("詭譎屋", checkNotNull(detail).state.value.presentationGroups.single().title)
+            detail?.onDispose()
+            detail = model(tachiyomi.domain.creator.service.WorkTitleNormalizer.DisplayScript.TRADITIONAL)
+            withTimeout(5_000) { checkNotNull(detail).state.first { it.presentationGroups.singleOrNull()?.sourceCount == 3 } }
+            assertEquals("詭譎屋", checkNotNull(detail).state.value.presentationGroups.single().title)
+            detail?.onDispose()
+            detail = model(tachiyomi.domain.creator.service.WorkTitleNormalizer.DisplayScript.SIMPLIFIED)
+            withTimeout(5_000) { checkNotNull(detail).state.first { it.presentationGroups.singleOrNull()?.sourceCount == 3 } }
+            assertEquals("诡谲屋", checkNotNull(detail).state.value.presentationGroups.single().title)
+        } finally {
+            detail?.onDispose()
+            handler.close()
+            driver.close()
+            preferenceNode.removeNode()
+        }
+    }
+
+    @Test
+    fun `mounted split display focuses the surviving new source card`() = runBlocking {
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
+        )
+        Database.Schema.create(driver)
+        val handler = JvmDatabaseHandler(
+            Database(driver, historyAdapter = History.Adapter(DateColumnAdapter),
+                mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter)), driver,
+        )
+        val repository = tachiyomi.data.creator.CreatorRepositoryImpl(handler)
+        val creator = repository.upsertCreator("Focus Author")
+        listOf(20L to "詭譎屋", 30L to "诡谲屋").forEach { (sourceId, title) ->
+            val key = SourceWorkNaturalKey(sourceId, "/work-$sourceId")
+            repository.upsertSourceWork(sourceId, key.stableSourceUrl, null, title, creator.displayName, null, null, 1L)
+            repository.upsertSourceWorkCreator(
+                key, creator.id, CreatorRole.AUTHOR, 0L, CreatorRelationOrigin.AUTOMATIC,
+                CreatorRelationVerification.VERIFIED, creator.displayName, 1.0, "fixture",
+            )
+        }
+        val preferenceNode = Preferences.userRoot().node("/mihon-tests/author-focus-${UUID.randomUUID()}")
+        val sources = mockk<tachiyomi.domain.source.service.SourceManager> {
+            every { get(any<Long>()) } returns null
+            every { getOrStub(any()) } answers {
+                val sourceId = firstArg<Long>()
+                mockk { every { id } returns sourceId; every { name } returns "Source $sourceId" }
+            }
+        }
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { getCreators } returns GetCreators(repository)
+            every { getCreatorDetails } returns GetCreatorDetails(repository)
+            every { setCreatorFollow } returns SetCreatorFollow(repository)
+            every { creatorArchive } returns CreatorArchive(repository, repository)
+            every { creatorArchiveRepository } returns repository
+            every { manageCreatorIdentity } returns ManageCreatorIdentity(repository)
+            every { creatorDiscoveryScheduler } returns null
+            every { sourceManager } returns sources
+            every { saveSourceMangaForDetails } returns mockk()
+            every { libraryPreferences } returns LibraryPreferences(DesktopPreferenceStore(preferenceNode))
+        }
+        val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
+        fun tagged(tag: String) = nodes(scene, unmerged = true).first { node ->
+            node.config.getOrElse(SemanticsProperties.TestTag) { "" } == tag
+        }
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(AuthorDetailScreen(creator.id))
+                }
+            }
+            val oldCard = "creator-work-card-title:诡谲屋"
+            val newCard = "creator-work-card-source:20:/work-20"
+            withTimeout(5_000) {
+                while (nodes(scene, unmerged = true).none {
+                        it.config.getOrElse(SemanticsProperties.TestTag) { "" } == oldCard
+                    }) { scene.render(); kotlinx.coroutines.delay(10) }
+            }
+            tagged(oldCard).config[SemanticsActions.OnClick].action?.invoke()
+            withTimeout(5_000) {
+                while (nodes(scene).count { node ->
+                        node.config.getOrElse(SemanticsProperties.Text) { emptyList() }
+                            .any { it.text == MR.strings.creator_work_separate_display.localized() }
+                    } < 2) { scene.render(); kotlinx.coroutines.delay(10) }
+            }
+            nodes(scene).first { node ->
+                node.config.contains(SemanticsActions.OnClick) &&
+                    node.config.getOrElse(SemanticsProperties.Text) { emptyList() }
+                        .any { it.text == MR.strings.creator_work_separate_display.localized() }
+            }.config[SemanticsActions.OnClick].action?.invoke()
+            withTimeout(5_000) {
+                while (nodes(scene, unmerged = true).none { node ->
+                        node.config.getOrElse(SemanticsProperties.TestTag) { "" } == newCard &&
+                            node.config.getOrElse(SemanticsProperties.Focused) { false }
+                    }) { scene.render(); kotlinx.coroutines.delay(10) }
+            }
+            assertTrue(nodes(scene, unmerged = true).none {
+                it.config.getOrElse(SemanticsProperties.TestTag) { "" } == oldCard
+            })
+            assertTrue(tagged(newCard).config.getOrElse(SemanticsProperties.Focused) { false })
+        } finally {
+            scene.close()
+            handler.close()
+            driver.close()
+            preferenceNode.removeNode()
+        }
+    }
+
+    @Test
     fun `authors root defaults to the followed scope`() {
         assertTrue(AuthorsRootState().followedOnly)
     }
@@ -1422,7 +1570,12 @@ class AuthorsProductionWiringTest {
             repeat(5) { scene.render(); kotlinx.coroutines.yield() }
             check(preferences.current() == tachiyomi.domain.creator.service.CreatorCheckFrequency.WEEKLY)
             check(tagged("creator-settings-open").config[SemanticsProperties.Focused])
-            check(MR.strings.creator_settings_saved.localized() in texts(scene))
+            kotlinx.coroutines.withTimeout(5_000) {
+                while (MR.strings.creator_settings_saved.localized() !in texts(scene)) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
+            }
         } finally { scene.close(); indexer.stop(); node.removeNode() }
     }
 
