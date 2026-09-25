@@ -1,0 +1,11 @@
+--- a/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncBaselineStore.kt
++++ b/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncBaselineStore.kt
+@@ -30,7 +30,7 @@
+     private val handler: DatabaseHandler,
+     private val bootstrap: CreatorArchiveBootstrap,
+     private val onDescriptionCacheReuse: (() -> Unit)? = null,
+-    private val enableDescriptionPageCache: Boolean = true,
++    private val enableDescriptionPageCache: Boolean = false,
+ ) {
+     suspend fun connectAndImport(
+         spaceId: String,
