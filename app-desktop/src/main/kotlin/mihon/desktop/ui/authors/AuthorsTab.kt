@@ -437,6 +437,7 @@ data class AuthorDetailScreen(
         val workArchive = state.visibleWorkArchive
         val presentationCards = state.visiblePresentationCards
         val pendingPresentationVersions = state.visiblePendingVersions
+        val pendingSourceWorkIds = state.workArchive.pending.mapTo(mutableSetOf()) { it.sourceWorkId }
         val discoveryState = state.discovery
         val sourceCheckpoints = state.checkpoints
         val allCreators = state.allCreators
@@ -512,6 +513,10 @@ data class AuthorDetailScreen(
                     error = state.workOpenError,
                     opening = state.actionRunning,
                     onOpen = model::openVersion,
+                    onCompare = { version ->
+                        showSourceChooserFor = null
+                        navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
+                    },
                     onSeparate = { version ->
                         snackbarScope.launch {
                             if (model.excludePresentationVersion(version)) {
@@ -829,18 +834,15 @@ data class AuthorDetailScreen(
                                         key = presentationCardKey,
                                         mode = mode,
                                         focusRequester = focusRequester,
+                                        sourceNames = sourceNamesForGroup(group, desktopDependencies.sourceManager),
+                                        pendingVersion = group.members.singleOrNull()?.takeIf {
+                                            group.canonicalWorkId == null && it.sourceWorkId in pendingSourceWorkIds
+                                        },
+                                        onPendingCompare = { version ->
+                                            navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
+                                        },
                                         onClick = {
                                             showSourceChooserFor = group.groupKey
-                                        },
-                                        content = {
-                                            CreatorCanonicalVersions(
-                                                group,
-                                                state.workFilter.sourceId,
-                                                model,
-                                                navigator,
-                                                creator?.id ?: creatorId,
-                                                desktopDependencies.sourceManager,
-                                            )
                                         },
                                     )
                                     HorizontalDivider()
@@ -912,18 +914,15 @@ data class AuthorDetailScreen(
                                         key = presentationCardKey,
                                         mode = mode,
                                         focusRequester = focusRequester,
+                                        sourceNames = sourceNamesForGroup(group, desktopDependencies.sourceManager),
+                                        pendingVersion = group.members.singleOrNull()?.takeIf {
+                                            group.canonicalWorkId == null && it.sourceWorkId in pendingSourceWorkIds
+                                        },
+                                        onPendingCompare = { version ->
+                                            navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
+                                        },
                                         onClick = {
                                             showSourceChooserFor = group.groupKey
-                                        },
-                                        content = {
-                                            CreatorCanonicalVersions(
-                                                group,
-                                                state.workFilter.sourceId,
-                                                model,
-                                                navigator,
-                                                creator?.id ?: creatorId,
-                                                desktopDependencies.sourceManager,
-                                            )
                                         },
                                     )
                                 }
@@ -1048,6 +1047,7 @@ private fun CreatorWorkSourceChooserDialog(
     error: String?,
     opening: Boolean,
     onOpen: (SourceWorkArchiveVersion) -> Unit,
+    onCompare: (SourceWorkArchiveVersion) -> Unit,
     onSeparate: ((SourceWorkArchiveVersion) -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
@@ -1069,6 +1069,7 @@ private fun CreatorWorkSourceChooserDialog(
                 group.members.forEach { version ->
                     val sourceName = sourceManager.getOrStub(version.naturalKey.sourceId).name
                     val sourceMissing = sourceManager.get(version.naturalKey.sourceId) == null
+                    var showVersionMenu by remember(version.sourceWorkId) { mutableStateOf(false) }
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1079,6 +1080,7 @@ private fun CreatorWorkSourceChooserDialog(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable(enabled = !opening) { onOpen(version) }
+                                    .testTag("creator-source-open-${version.sourceWorkId}")
                                     .padding(8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.Top,
@@ -1117,6 +1119,27 @@ private fun CreatorWorkSourceChooserDialog(
                                 Text(latestChapterDateLabel(version), style = MaterialTheme.typography.bodySmall)
                             }
                             }
+                            Box(Modifier.align(Alignment.End)) {
+                                IconButton(
+                                    onClick = { showVersionMenu = true },
+                                    modifier = Modifier.testTag("creator-source-compare-more-${version.sourceWorkId}"),
+                                ) {
+                                    Icon(Icons.Default.MoreVert, MR.strings.label_more.localized())
+                                }
+                                DropdownMenu(
+                                    expanded = showVersionMenu,
+                                    onDismissRequest = { showVersionMenu = false },
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text(MR.strings.creator_work_correction.localized()) },
+                                        onClick = {
+                                            showVersionMenu = false
+                                            onCompare(version)
+                                        },
+                                        modifier = Modifier.testTag("creator-source-compare-${version.sourceWorkId}"),
+                                    )
+                                }
+                            }
                             if (onSeparate != null && group.canonicalWorkId == null && group.members.size > 1) {
                                 TextButton(
                                     onClick = { onSeparate(version) },
@@ -1145,41 +1168,11 @@ private fun CreatorWorkSourceChooserDialog(
     )
 }
 
-@Composable
-private fun CreatorCanonicalVersions(
-    work: WorkPresentationGroup,
-    sourceId: Long?,
-    model: AuthorDetailScreenModel,
-    navigator: Navigator,
-    creatorId: Long,
-    sourceManager: SourceManager,
-) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        work.members.filter { sourceId == null || it.naturalKey.sourceId == sourceId }.forEach { version ->
-            var showVersionMenu by remember(version.sourceWorkId) { mutableStateOf(false) }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(
-                    onClick = { model.openVersion(version) },
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .testTag("creator-version-${version.sourceWorkId}"),
-                ) {
-                    Text(authorVersionLabel(version, sourceManager))
-                }
-                IconButton(onClick = { showVersionMenu = true }, modifier = Modifier.width(32.dp)) {
-                    Icon(Icons.Default.MoreVert, MR.strings.action_edit.localized())
-                }
-                DropdownMenu(expanded = showVersionMenu, onDismissRequest = { showVersionMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text(MR.strings.desktop_ui_pending_work_suggestions.localized()) },
-                        onClick = {
-                            showVersionMenu = false
-                            navigator.push(WorkCompareScreen(version.sourceWorkId, creatorId))
-                        },
-                    )
-                }
-            }
-        }
+private fun sourceNamesForGroup(group: WorkPresentationGroup, sourceManager: SourceManager): List<String> {
+    val missingLabel = MR.strings.desktop_ui_source_missing.localized()
+    return group.sourceNames { sourceId ->
+        sourceManager.getOrStub(sourceId).name.ifBlank { sourceId.toString() } +
+            if (sourceManager.get(sourceId) == null) " ($missingLabel)" else ""
     }
 }
 
@@ -1194,8 +1187,10 @@ private fun CreatorArchiveWorkCard(
     key: String,
     mode: LibraryDisplayMode,
     focusRequester: FocusRequester,
+    sourceNames: List<String>,
+    pendingVersion: SourceWorkArchiveVersion?,
+    onPendingCompare: (SourceWorkArchiveVersion) -> Unit,
     onClick: () -> Unit,
-    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
     val cardModifier = Modifier
         .fillMaxWidth()
@@ -1214,6 +1209,12 @@ private fun CreatorArchiveWorkCard(
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("creator-work-$key"))
                     unreadWorkLabel(unread, key)
+                    Text(
+                        sourceNames.joinToString(" · "),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("creator-work-sources-$key"),
+                    )
                     dateLabel?.let { date ->
                         Text(
                             date,
@@ -1221,7 +1222,7 @@ private fun CreatorArchiveWorkCard(
                             modifier = Modifier.testTag("creator-work-first-seen-$key"),
                         )
                     }
-                    content()
+                    pendingVersion?.let { CreatorPendingCompareButton(it, onPendingCompare) }
                 }
             }
         }
@@ -1245,7 +1246,7 @@ private fun CreatorArchiveWorkCard(
                                 .testTag("creator-work-first-seen-$key"),
                         )
                     }
-                    content()
+                    pendingVersion?.let { CreatorPendingCompareButton(it, onPendingCompare) }
                 }
             }
         }
@@ -1264,10 +1265,23 @@ private fun CreatorArchiveWorkCard(
                         )
                     }
                     unreadWorkLabel(unread, key)
-                    content()
+                    pendingVersion?.let { CreatorPendingCompareButton(it, onPendingCompare) }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CreatorPendingCompareButton(
+    version: SourceWorkArchiveVersion,
+    onCompare: (SourceWorkArchiveVersion) -> Unit,
+) {
+    IconButton(
+        onClick = { onCompare(version) },
+        modifier = Modifier.testTag("creator-pending-more-${version.sourceWorkId}"),
+    ) {
+        Icon(Icons.Default.MoreVert, MR.strings.label_more.localized())
     }
 }
 

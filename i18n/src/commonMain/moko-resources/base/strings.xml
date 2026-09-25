@@ -2032,6 +2032,7 @@
     <string name="creator_work_choose_source">Choose a source</string>
     <string name="creator_work_all_source_versions">All known source versions for this work</string>
     <string name="creator_work_separate_display">Separate this source version</string>
+    <string name="creator_work_correction">Correct work</string>
     <string name="creator_work_separate_display_done">Source version kept separate</string>
     <string name="creator_work_separate_display_undo">Undo</string>
     <string name="creator_work_separate_display_failed">Could not separate this source version. Try again.</string>

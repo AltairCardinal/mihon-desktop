@@ -547,13 +547,43 @@ class AuthorsProductionWiringTest {
         try {
             awaitWork(scene)
             assertTrue(!preferences.creatorWorkDisplayModeOverride().isSet())
+            assertTrue(nodes(scene, unmerged = true).none {
+                it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-sources-${work.id}"
+            })
+            tagged(scene, "creator-display-mode-button").config[SemanticsActions.OnClick].action?.invoke()
+            awaitTag(scene, "creator-display-mode-option-LIST")
+            tagged(scene, "creator-display-mode-option-LIST")
+                .config[SemanticsActions.OnClick].action?.invoke()
+            scene.render()
+            assertTrue(preferences.creatorWorkDisplayModeOverride().isSet())
+            assertEquals(LibraryDisplayMode.List, preferences.creatorWorkDisplayModeOverride().get())
+            awaitTag(scene, "creator-work-sources-${work.id}")
+            assertTrue(texts(scene).any { it.contains("Source 241") })
+            assertTrue(nodes(scene, unmerged = true).none {
+                it.config.getOrElse(SemanticsProperties.TestTag) { "" }.startsWith("creator-version-")
+            })
+
+            tagged(scene, "creator-display-mode-button").config[SemanticsActions.OnClick].action?.invoke()
+            awaitTag(scene, "creator-display-mode-option-COMPACT_GRID")
+            tagged(scene, "creator-display-mode-option-COMPACT_GRID")
+                .config[SemanticsActions.OnClick].action?.invoke()
+            withTimeout(5_000) {
+                while (nodes(scene, unmerged = true).any {
+                        it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-sources-${work.id}"
+                    }) { scene.render(); kotlinx.coroutines.delay(10) }
+            }
+            assertTrue(nodes(scene, unmerged = true).none {
+                it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-sources-${work.id}"
+            })
+
             tagged(scene, "creator-display-mode-button").config[SemanticsActions.OnClick].action?.invoke()
             awaitTag(scene, "creator-display-mode-option-COMFORTABLE_GRID")
             tagged(scene, "creator-display-mode-option-COMFORTABLE_GRID")
                 .config[SemanticsActions.OnClick].action?.invoke()
             scene.render()
-            assertTrue(preferences.creatorWorkDisplayModeOverride().isSet())
-            assertEquals(LibraryDisplayMode.ComfortableGrid, preferences.creatorWorkDisplayModeOverride().get())
+            assertTrue(nodes(scene, unmerged = true).none {
+                it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-sources-${work.id}"
+            })
 
             preferences.displayMode().set(LibraryDisplayMode.List)
             scene.close()
@@ -582,7 +612,7 @@ class AuthorsProductionWiringTest {
     }
 
     @Test
-    fun `narrow author page wraps names and source buttons in both themes`() =
+    fun `narrow author page wraps source text and chooser in both themes`() =
         verifyNarrowArchive(tachiyomi.domain.creator.model.WorkDecisionState.CONFIRMED)
 
     @Test
@@ -667,6 +697,8 @@ class AuthorsProductionWiringTest {
             every { libraryPreferences } returns preferences
         }
         fun sourceLabel(id: Int) = "Source $id long edition · ${MR.strings.desktop_ui_source_missing.localized()}"
+        fun cardSourceName(id: Int) = "Source $id long edition (${MR.strings.desktop_ui_source_missing.localized()})"
+        val allSourceNames = (1..3).joinToString(" · ") { cardSourceName(it) }
         try {
             for (dark in listOf(false, true)) {
                 val scene = ImageComposeScene(320, if (grouped) 1100 else 2200, coroutineContext = coroutineContext) {}
@@ -678,13 +710,18 @@ class AuthorsProductionWiringTest {
                             CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
                                 Navigator(AuthorDetailScreen(target.id)) { nav ->
                                     mountedNavigator = nav
-                                    cafe.adriel.voyager.navigator.CurrentScreen()
+                                    if (nav.lastItem is AuthorDetailScreen) {
+                                        cafe.adriel.voyager.navigator.CurrentScreen()
+                                    }
                                 }
                             }
                         }
                     }
                     withTimeout(5000) {
-                        while (sourceLabel(1) !in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) }
+                        while ((if (decision == WorkDecisionState.REJECTED) sourceLabel(1) else
+                                if (grouped) allSourceNames else cardSourceName(1)) !in texts(scene)) {
+                            scene.render(); kotlinx.coroutines.delay(10)
+                        }
                     }
                     val cover = nodes(scene, unmerged = true).single {
                         it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-cover-$rowKey"
@@ -694,17 +731,27 @@ class AuthorsProductionWiringTest {
                     }
                     assertTrue(kotlin.math.abs(cover.boundsInRoot.top - title.boundsInRoot.top) < 1f)
                     val buttons = nodes(scene).filter { it.config.getOrElse(SemanticsProperties.TestTag) { "" }.startsWith("creator-version-") }
-                    assertTrue(buttons.size == 3)
-                    assertTrue(buttons.first().boundsInRoot.top >= title.boundsInRoot.bottom)
+                    assertTrue(buttons.size == if (decision == WorkDecisionState.REJECTED) 3 else 0)
                     val menus = nodes(scene).filter {
                         it.config.contains(SemanticsActions.OnClick) &&
                             it.config.getOrElse(SemanticsProperties.ContentDescription) { emptyList() }
                                 .contains(MR.strings.action_edit.localized())
                     }
-                    assertTrue(menus.size == 3)
-                    assertTrue(menus.all { it.boundsInRoot.width >= 24 && it.boundsInRoot.left >= 0 && it.boundsInRoot.right <= 320 })
-                    assertTrue(buttons.map { it.boundsInRoot.top }.distinct().size > 1)
-                    assertTrue(buttons.all { it.boundsInRoot.left >= 0 && it.boundsInRoot.right <= 320 })
+                    if (decision != null) {
+                        assertTrue(menus.size == if (decision == WorkDecisionState.REJECTED) 3 else 0)
+                    }
+                    if (decision == WorkDecisionState.REJECTED) {
+                        assertTrue(buttons.first().boundsInRoot.top >= title.boundsInRoot.bottom)
+                        assertTrue(menus.all { it.boundsInRoot.width >= 24 && it.boundsInRoot.left >= 0 && it.boundsInRoot.right <= 320 })
+                        assertTrue(buttons.map { it.boundsInRoot.top }.distinct().size > 1)
+                        assertTrue(buttons.all { it.boundsInRoot.left >= 0 && it.boundsInRoot.right <= 320 })
+                    } else {
+                        val sourceText = nodes(scene, unmerged = true).single {
+                            it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-sources-$rowKey"
+                        }
+                        assertTrue(sourceText.boundsInRoot.left >= 0 && sourceText.boundsInRoot.right <= 320)
+                        assertTrue(sourceText.boundsInRoot.top >= title.boundsInRoot.bottom)
+                    }
                     val output = java.nio.file.Paths.get("build/ga02/author-${decision?.name?.lowercase() ?: "pending"}-320-${if (dark) "dark" else "light"}.png")
                     java.nio.file.Files.createDirectories(output.parent)
                     var rendered = byteArrayOf()
@@ -713,13 +760,26 @@ class AuthorsProductionWiringTest {
                         assertTrue(cover.boundsInRoot.width > 0 && cover.boundsInRoot.height > 0)
                     }
                     } finally { java.nio.file.Files.write(output, rendered) }
-                    if (!grouped) {
-                        if (decision != null) {
-                            menus.first().config[SemanticsActions.OnClick].action?.invoke()
-                            val review = mountedNavigator!!.lastItem as WorkCompareScreen
-                            org.junit.jupiter.api.Assertions.assertEquals(checkNotNull(firstVersion).sourceWorkId, review.workId)
-                            org.junit.jupiter.api.Assertions.assertEquals(target.id, review.creatorId)
+                    if (decision == null) {
+                        val pendingVersion = checkNotNull(firstVersion)
+                        val pendingMore = nodes(scene, unmerged = true).single {
+                            it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                                "creator-pending-more-${pendingVersion.sourceWorkId}"
                         }
+                        assertTrue(pendingMore.boundsInRoot.width >= 24)
+                        assertTrue(pendingMore.boundsInRoot.left >= 0 && pendingMore.boundsInRoot.right <= 320)
+                        assertTrue(pendingMore.boundsInRoot.top >= title.boundsInRoot.bottom)
+                        pendingMore.config[SemanticsActions.OnClick].action?.invoke()
+                        val review = mountedNavigator!!.lastItem as WorkCompareScreen
+                        assertEquals(pendingVersion.sourceWorkId, review.workId)
+                        assertEquals(target.id, review.creatorId)
+                        mountedNavigator!!.pop()
+                    }
+                    if (decision == WorkDecisionState.REJECTED) {
+                        menus.first().config[SemanticsActions.OnClick].action?.invoke()
+                        val review = mountedNavigator!!.lastItem as WorkCompareScreen
+                        org.junit.jupiter.api.Assertions.assertEquals(checkNotNull(firstVersion).sourceWorkId, review.workId)
+                        org.junit.jupiter.api.Assertions.assertEquals(target.id, review.creatorId)
                         mountedNavigator!!.pop()
                     }
                     val search = nodes(scene).single { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-search" }
@@ -728,28 +788,68 @@ class AuthorsProductionWiringTest {
                     assertTrue(MR.strings.creator_work_version_count.localized(Locale.getDefault(), totalWorks, 3) in texts(scene))
                     search.config[SemanticsActions.SetText].action?.invoke(AnnotatedString(""))
                     scene.render()
-                    if (decision == null) {
-                        assertTrue(
-                            nodes(scene).any {
-                                it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
-                                    "creator-version-${checkNotNull(firstVersion).sourceWorkId}"
-                            },
-                        )
-                    } else {
+                    if (grouped) {
                         clickableTextNode(scene, MR.strings.creator_work_sources_all.localized()).config[SemanticsActions.OnClick].action?.invoke()
                         scene.render()
                         clickableTextNode(scene, "Source 2 long edition").config[SemanticsActions.OnClick].action?.invoke()
-                        withTimeout(5000) { while (sourceLabel(3) in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
+                        scene.render()
+                        assertTrue(allSourceNames in texts(scene), "Source filtering must keep the complete group on the list card")
                     }
                     assertTrue(MR.strings.creator_work_version_count.localized(Locale.getDefault(), totalWorks, 3) in texts(scene))
-                    if (decision != null) {
+                    if (decision == WorkDecisionState.REJECTED) {
                         clickableTextNode(scene, sourceLabel(2)).config[SemanticsActions.OnClick].action?.invoke()
-                        withTimeout(5000) {
-                            while (mountedNavigator?.lastItem !is mihon.desktop.ui.library.MangaDetailScreen) kotlinx.coroutines.delay(10)
+                    } else {
+                        val selected = if (grouped) currentArchive.works.single().versions.single {
+                            it.naturalKey.sourceId == 2L
+                        } else checkNotNull(firstVersion)
+                        val card = nodes(scene, unmerged = true).single {
+                            it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-card-$rowKey"
                         }
-                        org.junit.jupiter.api.Assertions.assertEquals(mangas[1].id,
-                            (mountedNavigator!!.lastItem as mihon.desktop.ui.library.MangaDetailScreen).mangaId)
+                        card.config[SemanticsActions.OnClick].action?.invoke()
+                        withTimeout(5000) {
+                            while (nodes(scene, unmerged = true).none {
+                                    it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                                        "creator-source-version-${selected.sourceWorkId}"
+                                }) { scene.render(); kotlinx.coroutines.delay(10) }
+                        }
+                        if (grouped) {
+                            assertTrue(currentArchive.works.single().versions.all { version ->
+                                nodes(scene, unmerged = true).any {
+                                    it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                                        "creator-source-version-${version.sourceWorkId}"
+                                }
+                            })
+                        }
+                        nodes(scene, unmerged = true).single {
+                            it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                                "creator-source-compare-more-${selected.sourceWorkId}"
+                        }.config[SemanticsActions.OnClick].action?.invoke()
+                        scene.render()
+                        nodes(scene, unmerged = true).single {
+                            it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                                "creator-source-compare-${selected.sourceWorkId}"
+                        }.config[SemanticsActions.OnClick].action?.invoke()
+                        assertEquals(selected.sourceWorkId, (mountedNavigator!!.lastItem as WorkCompareScreen).workId)
+                        mountedNavigator!!.pop()
+                        scene.render()
+                        nodes(scene, unmerged = true).single {
+                            it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-card-$rowKey"
+                        }.config[SemanticsActions.OnClick].action?.invoke()
+                        scene.render()
+                        nodes(scene, unmerged = true).single {
+                            it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                                "creator-source-open-${selected.sourceWorkId}"
+                        }.config[SemanticsActions.OnClick].action?.invoke()
                     }
+                    withTimeout(5000) {
+                        while (mountedNavigator?.lastItem !is mihon.desktop.ui.library.MangaDetailScreen) {
+                            scene.render(); kotlinx.coroutines.delay(10)
+                        }
+                    }
+                    assertEquals(
+                        if (decision == WorkDecisionState.REJECTED || grouped) mangas[1].id else mangas[0].id,
+                        (mountedNavigator!!.lastItem as mihon.desktop.ui.library.MangaDetailScreen).mangaId,
+                    )
                 } finally { scene.close() }
             }
         } finally {

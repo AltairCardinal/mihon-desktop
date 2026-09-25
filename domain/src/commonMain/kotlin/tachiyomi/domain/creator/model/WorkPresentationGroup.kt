@@ -24,6 +24,14 @@ data class WorkPresentationGroup(
     val sourceCount: Int
         get() = members.size
 
+    /** Preserve the complete group's order and source identities independently of card filtering. */
+    fun sourceNames(resolve: (Long) -> String): List<String> = members
+        .distinctBy { it.naturalKey.sourceId }
+        .map { version ->
+            val sourceId = version.naturalKey.sourceId
+            resolve(sourceId).ifBlank { sourceId.toString() }
+        }
+
     val inLibrary: Boolean
         get() = members.any(SourceWorkArchiveVersion::inLibrary)
 

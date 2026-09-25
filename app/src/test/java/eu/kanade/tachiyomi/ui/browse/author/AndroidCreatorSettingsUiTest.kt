@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
@@ -24,6 +25,7 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.presentation.components.TabbedScreen
 import eu.kanade.tachiyomi.data.cache.CoverCache
+import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -323,7 +325,7 @@ class AndroidCreatorSettingsUiTest {
                 repository.upsertSourceWork(
                     sourceId = key.sourceId,
                     stableSourceUrl = key.stableSourceUrl,
-                    mangaId = null,
+                    mangaId = 700L + index,
                     title = "Version ${index + 1}",
                     authorText = creator.displayName,
                     artistText = null,
@@ -352,6 +354,25 @@ class AndroidCreatorSettingsUiTest {
                     idempotencyKey = "android-layout:$index",
                 )
             }
+            val pendingKey = SourceWorkNaturalKey(90L, "/android-layout/pending")
+            repository.upsertSourceWork(
+                pendingKey.sourceId,
+                pendingKey.stableSourceUrl,
+                null,
+                "Pending correction",
+                creator.displayName,
+                null,
+                null,
+                1L,
+            )
+            repository.upsertSourceWorkCreator(
+                pendingKey, creator.id, CreatorRole.AUTHOR, 0L,
+                CreatorRelationOrigin.USER, CreatorRelationVerification.VERIFIED,
+                creator.displayName, 1.0, "Pending correction fixture",
+            )
+            val pendingVersion = repository.getCreatorWorkArchive(creator.id).pending.single {
+                it.naturalKey == pendingKey
+            }
             val details = GetCreatorDetails(repository)
             val mangaRepository = tachiyomi.data.manga.MangaRepositoryImpl(
                 handler,
@@ -365,14 +386,34 @@ class AndroidCreatorSettingsUiTest {
             Injekt.addSingleton(details)
             Injekt.addSingleton(SetCreatorFollow(repository))
             Injekt.addSingleton(DiscoverCreatorWorks(mockk(relaxed = true), details))
-            Injekt.addSingleton(mockk<SourceManager>(relaxed = true))
+            Injekt.addSingleton(
+                mockk<SourceManager> {
+                    every { get(any<Long>()) } returns null
+                    every { getOrStub(any()) } answers {
+                        val sourceId = firstArg<Long>()
+                        mockk { every { name } returns "Source $sourceId long edition" }
+                    }
+                },
+            )
             Injekt.addSingleton(ManageCreatorIdentity(repository))
             Injekt.addSingleton(NetworkToLocalManga(mangaRepository))
             val libraryPreferences = LibraryPreferences(store)
             libraryPreferences.displayMode().set(LibraryDisplayMode.ComfortableGrid)
             Injekt.addSingleton(libraryPreferences)
 
-            activity.get().setContent { MaterialTheme { Navigator(AndroidAuthorDetailScreen(creator.id)) } }
+            var mountedNavigator: Navigator? = null
+            activity.get().setContent {
+                MaterialTheme {
+                    Navigator(AndroidAuthorDetailScreen(creator.id)) { navigator ->
+                        mountedNavigator = navigator
+                        if (navigator.lastItem is AndroidAuthorDetailScreen) {
+                            (navigator.lastItem as AndroidAuthorDetailScreen).Content()
+                        } else {
+                            Text("Manga navigation captured")
+                        }
+                    }
+                }
+            }
 
             compose.waitUntil(5_000) {
                 compose.onAllNodesWithTag("creator-work-${work.id}", useUnmergedTree = true)
@@ -384,6 +425,7 @@ class AndroidCreatorSettingsUiTest {
                 .fetchSemanticsNode().boundsInRoot
             compose.onNodeWithTag("creator-work-first-seen-${work.id}", useUnmergedTree = true)
                 .assertIsDisplayed()
+            compose.onNodeWithTag("creator-work-sources-${work.id}", useUnmergedTree = true).assertDoesNotExist()
             assertTrue(
                 "Comfortable author work layout should put title below cover: $cover / $title",
                 cover.bottom <= title.top,
@@ -393,11 +435,22 @@ class AndroidCreatorSettingsUiTest {
             compose.onNodeWithTag("creator-display-mode-option-LIST").performClick()
             compose.onNodeWithTag("creator-cover-${work.id}", useUnmergedTree = true).assertIsDisplayed()
             compose.onNodeWithTag("creator-work-${work.id}", useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithTag("creator-work-sources-${work.id}", useUnmergedTree = true)
+                .assertTextContains("Source 71 long edition", substring = true)
+                .assertTextContains("Source 72 long edition", substring = true)
+                .assertTextContains("Source 73 long edition", substring = true)
+                .assertTextContains("source missing", substring = true)
+            compose.onNodeWithTag("creator-source-chip-71").performClick()
+            compose.onNodeWithTag("creator-work-sources-${work.id}", useUnmergedTree = true)
+                .assertTextContains("Source 72 long edition", substring = true)
+                .assertTextContains("Source 73 long edition", substring = true)
+            compose.onNodeWithTag("creator-source-chip-all").performClick()
 
             compose.onNodeWithTag("creator-display-mode-button").performClick()
             compose.onNodeWithTag("creator-display-mode-option-COMPACT_GRID").performClick()
             compose.onNodeWithTag("creator-cover-${work.id}", useUnmergedTree = true).assertIsDisplayed()
             compose.onNodeWithTag("creator-work-${work.id}", useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithTag("creator-work-sources-${work.id}", useUnmergedTree = true).assertDoesNotExist()
 
             compose.onNodeWithTag("creator-source-chip-71").performClick()
             compose.onNodeWithTag("creator-work-card-${work.id}", useUnmergedTree = true).performClick()
@@ -410,6 +463,24 @@ class AndroidCreatorSettingsUiTest {
             compose.onNodeWithTag("creator-source-version-3", useUnmergedTree = true).assertIsDisplayed()
             compose.onNodeWithTag("creator-source-cancel", useUnmergedTree = true).performClick()
             compose.onNodeWithTag("creator-work-card-${work.id}", useUnmergedTree = true).assertIsFocused()
+            compose.onNodeWithTag("creator-work-card-${work.id}", useUnmergedTree = true).performClick()
+            compose.onNodeWithTag("creator-source-version-2", useUnmergedTree = true).performClick()
+            compose.waitUntil(5_000) { mountedNavigator?.lastItem is MangaScreen }
+            val openedManga = mountedNavigator!!.lastItem as MangaScreen
+            val mangaIdField = MangaScreen::class.java.getDeclaredField("mangaId").apply { isAccessible = true }
+            assertEquals(701L, mangaIdField.getLong(openedManga))
+            mountedNavigator!!.pop()
+            compose.waitForIdle()
+            compose.onNodeWithTag("creator-source-chip-all").performClick()
+            compose.onNodeWithTag("creator-display-mode-button").performClick()
+            compose.onNodeWithTag("creator-display-mode-option-LIST").performClick()
+            compose.onNodeWithTag("creator-work-list").performScrollToIndex(1)
+            compose.onNodeWithText("Needs review").assertDoesNotExist()
+            compose.onNodeWithTag("creator-pending-more-${pendingVersion.sourceWorkId}", useUnmergedTree = true)
+                .performClick()
+            compose.onNodeWithTag("creator-pending-correct-${pendingVersion.sourceWorkId}", useUnmergedTree = true)
+                .performClick()
+            compose.onNodeWithTag("creator-review-dialog", useUnmergedTree = true).assertIsDisplayed()
         } finally {
             activity.pause().stop().destroy()
             driver.close()

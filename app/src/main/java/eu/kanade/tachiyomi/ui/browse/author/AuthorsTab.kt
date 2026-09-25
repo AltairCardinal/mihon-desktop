@@ -6,7 +6,6 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -29,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -808,8 +808,9 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                     Text(stringResource(MR.strings.creator_work_filter_empty))
                 }
                 val mode = state.effectiveWorkDisplayMode
+                val pendingSourceWorkIds = state.archive.pending.mapTo(mutableSetOf()) { it.sourceWorkId }
                 if (mode == LibraryDisplayMode.List) {
-                    LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+                    LazyColumn(Modifier.fillMaxWidth().weight(1f).testTag("creator-work-list")) {
                         items(state.visiblePresentationCards, key = { "presentation-${it.groupKey}" }) { group ->
                             val presentationCardKey = group.canonicalWorkId?.toString() ?: group.groupKey
                             val focusRequester = remember(group.groupKey) { FocusRequester() }
@@ -830,21 +831,20 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                                 key = presentationCardKey,
                                 mode = mode,
                                 focusRequester = focusRequester,
+                                sourceNames = sourceNamesForGroup(group, model),
+                                pendingVersion = group.members.singleOrNull()?.takeIf {
+                                    group.canonicalWorkId == null && it.sourceWorkId in pendingSourceWorkIds
+                                },
+                                onReview = model::openReview,
                                 onClick = {
                                     showSourceChooserFor = group.groupKey
                                 },
-                            ) {
-                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    group.members.forEach { version -> CreatorVersionButton(version, model) }
-                                }
-                            }
+                            )
                         }
                         items(state.visiblePendingVersions, key = { "pending-${it.sourceWorkId}" }) { version ->
                             CreatorArchiveWorkRow(version.title, version.thumbnailUrl) {
                                 CreatorVersionButton(version, model)
-                                TextButton(onClick = { model.openReview(version) }) {
-                                    Text(stringResource(MR.strings.desktop_ui_pending_work_suggestions))
-                                }
+                                CreatorPendingMore(version, model::openReview)
                             }
                         }
                         items(state.visibleArchive.rejected, key = { "rejected-${it.sourceWorkId}" }) { version ->
@@ -884,14 +884,15 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                                 key = presentationCardKey,
                                 mode = mode,
                                 focusRequester = focusRequester,
+                                sourceNames = sourceNamesForGroup(group, model),
+                                pendingVersion = group.members.singleOrNull()?.takeIf {
+                                    group.canonicalWorkId == null && it.sourceWorkId in pendingSourceWorkIds
+                                },
+                                onReview = model::openReview,
                                 onClick = {
                                     showSourceChooserFor = group.groupKey
                                 },
-                            ) {
-                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    group.members.forEach { version -> CreatorVersionButton(version, model) }
-                                }
-                            }
+                            )
                         }
                         items(
                             state.visiblePendingVersions,
@@ -900,9 +901,7 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                         ) { version ->
                             CreatorArchiveWorkRow(version.title, version.thumbnailUrl) {
                                 CreatorVersionButton(version, model)
-                                TextButton(onClick = { model.openReview(version) }) {
-                                    Text(stringResource(MR.strings.desktop_ui_pending_work_suggestions))
-                                }
+                                CreatorPendingMore(version, model::openReview)
                             }
                         }
                         items(
@@ -921,6 +920,7 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
         }
         state.reviewing?.let { version ->
             AlertDialog(
+                modifier = Modifier.testTag("creator-review-dialog"),
                 onDismissRequest = model::closeReview,
                 title = { Text(version.title) },
                 text = {
@@ -1051,6 +1051,19 @@ private fun AndroidCreatorWorkSourceChooserDialog(
 }
 
 @Composable
+private fun sourceNamesForGroup(
+    group: WorkPresentationGroup,
+    model: AndroidAuthorDetailScreenModel,
+): List<String> {
+    val missingLabel = stringResource(MR.strings.desktop_ui_source_missing)
+    return group.sourceNames { sourceId ->
+        val version = group.members.first { it.naturalKey.sourceId == sourceId }
+        model.sourceName(version).ifBlank { sourceId.toString() } +
+            if (model.isSourceMissing(version)) " ($missingLabel)" else ""
+    }
+}
+
+@Composable
 private fun CreatorArchiveWorkCard(
     title: String,
     version: SourceWorkArchiveVersion?,
@@ -1060,8 +1073,10 @@ private fun CreatorArchiveWorkCard(
     key: String,
     mode: LibraryDisplayMode,
     focusRequester: FocusRequester,
+    sourceNames: List<String>,
+    pendingVersion: SourceWorkArchiveVersion?,
+    onReview: (SourceWorkArchiveVersion) -> Unit,
     onClick: () -> Unit,
-    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
     val cardModifier = Modifier
         .fillMaxWidth()
@@ -1090,6 +1105,12 @@ private fun CreatorArchiveWorkCard(
                         modifier = Modifier.testTag("creator-work-$key"),
                     )
                     unreadWorkLabel(unread, key)
+                    Text(
+                        sourceNames.joinToString(" · "),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("creator-work-sources-$key"),
+                    )
                     dateLabel?.let { date ->
                         Text(
                             date,
@@ -1097,7 +1118,7 @@ private fun CreatorArchiveWorkCard(
                             modifier = Modifier.testTag("creator-work-first-seen-$key"),
                         )
                     }
-                    content()
+                    pendingVersion?.let { CreatorPendingMore(it, onReview) }
                 }
             }
         }
@@ -1128,7 +1149,7 @@ private fun CreatorArchiveWorkCard(
                                 .testTag("creator-work-first-seen-$key"),
                         )
                     }
-                    content()
+                    pendingVersion?.let { CreatorPendingMore(it, onReview) }
                 }
             }
         }
@@ -1154,7 +1175,7 @@ private fun CreatorArchiveWorkCard(
                         )
                     }
                     unreadWorkLabel(unread, key)
-                    content()
+                    pendingVersion?.let { CreatorPendingMore(it, onReview) }
                 }
             }
         }
@@ -1316,6 +1337,32 @@ private fun CreatorVersionButton(version: SourceWorkArchiveVersion, model: Andro
                 ""
             },
         )
+    }
+}
+
+@Composable
+private fun CreatorPendingMore(
+    version: SourceWorkArchiveVersion,
+    onReview: (SourceWorkArchiveVersion) -> Unit,
+) {
+    var expanded by remember(version.sourceWorkId) { mutableStateOf(false) }
+    Box {
+        IconButton(
+            onClick = { expanded = true },
+            modifier = Modifier.testTag("creator-pending-more-${version.sourceWorkId}"),
+        ) {
+            Icon(Icons.Default.MoreVert, contentDescription = stringResource(MR.strings.label_more))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(MR.strings.creator_work_correction)) },
+                onClick = {
+                    expanded = false
+                    onReview(version)
+                },
+                modifier = Modifier.testTag("creator-pending-correct-${version.sourceWorkId}"),
+            )
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 # 作者详情作品图源展示 · 迭代设计
 
-日期：2026-09-25。状态：交互 DEMO 已获用户审核通过；生产实现待执行。
+日期：2026-09-25。状态：交互 DEMO 已获用户审核通过；Android/Desktop 生产实现已完成。验收证据见[实施 Roadmap](roadmap/2026-09-25-author-work-list-source-display-roadmap.md)。
 
 - 审核基线：[双端交互 DEMO](prototypes/author-identity/index.html)，提交 `8fae5d0ff85aa89c9c7efb5aa69a2b7e55581f83`；[DEMO 说明](prototypes/author-identity/README.md)。
 - 历史能力与数据规则沿用[作者页体验迭代设计](2026-09-18-author-experience-iteration-design.md)及[实现审查修复计划](roadmap/2026-09-21-branch-implementation-review-fixes-roadmap.md)。本文只覆盖与本次审核交互冲突的作品卡呈现和直接审阅按钮；其他规则不变。

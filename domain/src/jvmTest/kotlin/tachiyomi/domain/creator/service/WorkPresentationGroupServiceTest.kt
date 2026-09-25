@@ -21,6 +21,24 @@ import tachiyomi.domain.creator.model.WorkDecisionState
 class WorkPresentationGroupServiceTest {
 
     @Test
+    fun `source names keep complete member order and distinct source identities`() {
+        val first = version(10L, "/one", "Work")
+        val repeated = first.copy(sourceWorkId = 11L, naturalKey = SourceWorkNaturalKey(10L, "/two"))
+        val sameName = version(20L, "/three", "Work")
+        val missing = version(30L, "/missing", "Work")
+        val group = tachiyomi.domain.creator.model.WorkPresentationGroup(
+            "work",
+            "Work",
+            listOf(first, repeated, sameName, missing),
+            null,
+            first,
+        )
+
+        group.sourceNames { id -> mapOf(10L to "Mirror", 20L to "Mirror", 30L to "").getValue(id) }
+            .shouldContainExactly("Mirror", "Mirror", "30")
+    }
+
+    @Test
     fun `retained earliest date stays visible under review and follows current membership`() {
         val retained = version(
             10L,
