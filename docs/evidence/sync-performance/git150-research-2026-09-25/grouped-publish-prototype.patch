@@ -1,0 +1,276 @@
+diff --git a/data/src/commonMain/kotlin/mihon/data/sync/transport/GitHubGitDatabaseClient.kt b/data/src/commonMain/kotlin/mihon/data/sync/transport/GitHubGitDatabaseClient.kt
+index f6d9d6c3c7..297d42e17b 100644
+--- a/data/src/commonMain/kotlin/mihon/data/sync/transport/GitHubGitDatabaseClient.kt
++++ b/data/src/commonMain/kotlin/mihon/data/sync/transport/GitHubGitDatabaseClient.kt
+@@ -768,6 +768,60 @@ class GitHubSyncTransport(
+         error("unreachable publish loop")
+     }
+ 
++    /** Research only: caller supplies already validated, durably frozen FINAL files. No queue integration. */
++    internal suspend fun researchPublishFrozenFiles(
++        snapshot: SyncSnapshot,
++        files: Map<String, ByteArray>,
++    ): SyncSnapshot {
++        require(files.keys.all { it.startsWith(".mihon-sync/") && ".." !in it.split('/') })
++        require(files.keys.containsAll(snapshot.tree.entries.map { it.path }))
++        require(getRepositoryInfo(snapshot.repository).private)
++        val before = snapshot.tree.entries.associateBy { it.path }
++        val changed = files.toSortedMap().filter { (path, bytes) ->
++            before[path]?.let { gitBlobOid(bytes, it.sha.length) != it.sha } ?: true
++        }.toList()
++        require(changed.isNotEmpty())
++        var treeSha = snapshot.tree.sha
++        val pending = mutableListOf<Pair<String, ByteArray>>()
++        suspend fun flush() {
++            if (pending.isEmpty()) return
++            val planned = SyncTreeEntryPayloadPlanner.plan(pending, baseTreeSha = treeSha)
++            require(planned.all { it.inlineContent != null }) { "research group exceeds inline request budget" }
++            val entries = planned.map { entry ->
++                SyncGitTreeEntry(entry.path, "100644", "blob", "", entry.bytes.size.toLong(), entry.inlineContent)
++            }
++            treeSha = createTree(snapshot.repository, treeSha, entries).sha
++            pending.clear()
++        }
++        for (entry in changed) {
++            val proposed = SyncTreeEntryPayloadPlanner.plan(pending + entry, baseTreeSha = treeSha)
++            if (proposed.any { it.inlineContent == null }) flush()
++            pending += entry
++        }
++        flush()
++        val commit = createCommit(snapshot.repository, treeSha, snapshot.head)
++        try {
++            updateRef(snapshot.repository, commit.sha)
++        } catch (cancelled: CancellationException) {
++            throw cancelled
++        } catch (_: Exception) {
++            // Even a lost response must be reconciled against the live ref, never assumed successful.
++        }
++        val observed = readSnapshot(snapshot.repository, snapshot.spaceId, snapshot.generation).getOrThrow()
++        require(observed.head == commit.sha) { "research publication commit was not confirmed" }
++        val reached = observed.tree.entries.associateBy { it.path }
++        require(reached.keys == files.keys) { "research publication file set was not confirmed" }
++        require(
++            files.all { (path, bytes) ->
++                reached[path]?.let {
++                    it.mode == "100644" && it.type == "blob" && gitBlobOid(bytes, it.sha.length) == it.sha
++                }
++                    ?: false
++            },
++        ) { "research publication frozen bytes were not confirmed" }
++        return observed
++    }
++
+     private suspend fun matches(snapshot: SyncSnapshot, upload: SyncPreparedUpload): Boolean {
+         val entry = snapshot.batches.firstOrNull { it.batchId == upload.encryptedBatch.batchId } ?: return false
+         val indexDigest = indexEngine.sha256(upload.indexCiphertext.bytes).toByteString().hex()
+diff --git a/data/src/jvmTest/kotlin/mihon/data/sync/SyncGroupedPublishResearchTest.kt b/data/src/jvmTest/kotlin/mihon/data/sync/SyncGroupedPublishResearchTest.kt
+new file mode 100644
+index 0000000000..b11e32225a
+--- /dev/null
++++ b/data/src/jvmTest/kotlin/mihon/data/sync/SyncGroupedPublishResearchTest.kt
+@@ -0,0 +1,205 @@
++package mihon.data.sync
++
++import kotlinx.coroutines.runBlocking
++import kotlinx.serialization.json.Json
++import kotlinx.serialization.json.buildJsonArray
++import kotlinx.serialization.json.buildJsonObject
++import kotlinx.serialization.json.jsonObject
++import kotlinx.serialization.json.jsonPrimitive
++import kotlinx.serialization.json.put
++import mihon.data.sync.auth.GitHubSyncSpaceClient
++import mihon.data.sync.crypto.SyncSpaceCrypto
++import mihon.data.sync.transport.GitHubSyncTransport
++import mihon.domain.sync.crypto.SyncSpaceDescriptorCodec
++import mihon.domain.sync.transport.SyncInitializationResult
++import mihon.domain.sync.transport.SyncRepository
++import mockwebserver3.Dispatcher
++import mockwebserver3.MockResponse
++import mockwebserver3.RecordedRequest
++import okhttp3.OkHttpClient
++import org.junit.jupiter.api.Assertions.assertEquals
++import org.junit.jupiter.api.Assertions.assertTrue
++import org.junit.jupiter.api.Assumptions.assumeTrue
++import org.junit.jupiter.api.Test
++import org.junit.jupiter.api.Timeout
++import java.nio.charset.StandardCharsets
++import java.nio.file.Files
++import java.nio.file.Path
++import java.util.concurrent.TimeUnit
++
++/** Measures a transport-only lower-cost candidate. Not production batching or recovery integration. */
++@Timeout(value = 10, unit = TimeUnit.MINUTES)
++class SyncGroupedPublishResearchTest {
++    @Test
++    fun `bounded trees publish same frozen files with one confirmed ref update`() = runBlocking {
++        val inputName = System.getenv("SYNC_GROUP_INPUT")
++        val outputName = System.getenv("SYNC_GROUP_OUTPUT")
++        assumeTrue(inputName != null && outputName != null, "explicit private artifact research only")
++        val input = Path.of(requireNotNull(inputName))
++        val output = Path.of(requireNotNull(outputName))
++        require(!Files.exists(output))
++        fun readFiles(root: Path): Map<String, ByteArray> = Files.walk(root).use { paths ->
++            paths.filter { Files.isRegularFile(it) }.toList().associate { path ->
++                root.relativize(path).toString().replace('\\', '/') to Files.readAllBytes(path)
++            }
++        }
++        val initial = readFiles(input.resolve("initial"))
++        val finalFiles = readFiles(input.resolve("final"))
++        val original = Json.parseToJsonElement(Files.readString(input.resolve("summary.json"))).jsonObject
++        val descriptor = SyncSpaceDescriptorCodec.decode(initial.getValue(".mihon-sync/space.json")).getOrThrow()
++        val material = SyncSpaceCrypto.unlock(descriptor, "synthetic-git-compare-space-password").getOrThrow()
++        assertTrue(material.secret != null)
++        val repository = SyncRepository("fixture-owner", "mihon-sync", GitHubSyncSpaceClient.BRANCH)
++        SyncGitSafetyContractTest().GitFixture(empty = true, repositoryOverride = repository).use { git ->
++            fun transport() = GitHubSyncTransport(OkHttpClient(), {
++                "synthetic-token"
++            }, git.baseUrl, spaceMaterial = material)
++            assertTrue(
++                transport().initialize(
++                    repository,
++                    descriptor.spaceId,
++                    descriptor.generation,
++                ) is SyncInitializationResult.Initialized,
++            )
++            git.replaceFiles(repository.branch, initial)
++            assertEquals(original.getValue("initialTreeOid").jsonPrimitive.content, git.treeSha(repository.branch))
++            val delegate = git.server.dispatcher
++            val requests = mutableListOf<kotlinx.serialization.json.JsonObject>()
++            var maximumWriteBytes = 0L
++            git.server.dispatcher = object : Dispatcher() {
++                override fun dispatch(request: RecordedRequest): MockResponse {
++                    val response = delegate.dispatch(request)
++                    val upload = request.body?.size?.toLong() ?: 0L
++                    maximumWriteBytes = maxOf(maximumWriteBytes, upload)
++                    requests += buildJsonObject {
++                        put("method", request.method)
++                        put("kind", request.url.encodedPath.substringAfter("/git/", "repository"))
++                        put("requestBytes", upload)
++                        put("responseBytes", response.body?.contentLength ?: 0L)
++                    }
++                    val uploadMillis = (upload + 1_249L) / 1_250L
++                    if (uploadMillis > 0) Thread.sleep(uploadMillis)
++                    return response.newBuilder().headersDelay(50, TimeUnit.MILLISECONDS)
++                        .throttleBody(12_500, 10, TimeUnit.MILLISECONDS).build()
++                }
++            }
++            val publisher = transport()
++            val refsBefore = git.forceFlags.size
++            val started = System.nanoTime()
++            val snapshot = publisher.readSnapshot(repository, descriptor.spaceId, descriptor.generation).getOrThrow()
++            val observed = publisher.researchPublishFrozenFiles(snapshot, finalFiles)
++            val elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
++            assertEquals(original.getValue("finalTreeOid").jsonPrimitive.content, observed.tree.sha)
++            assertEquals(1, git.forceFlags.size - refsBefore)
++            assertTrue(maximumWriteBytes <= 2 * 1024 * 1024)
++            val reached = git.files(repository.branch)
++            assertEquals(finalFiles.keys, reached.keys)
++            assertTrue(finalFiles.all { (path, bytes) -> bytes.contentEquals(reached.getValue(path)) })
++            val result = buildJsonObject {
++                put("elapsedMillis", elapsed)
++                put("httpRequests", requests.size)
++                put("requestBodyBytes", requests.sumOf { it.getValue("requestBytes").jsonPrimitive.content.toLong() })
++                put("responseBodyBytes", requests.sumOf { it.getValue("responseBytes").jsonPrimitive.content.toLong() })
++                put("maximumWriteBytes", maximumWriteBytes)
++                put("refUpdates", git.forceFlags.size - refsBefore)
++                put("batches", observed.batches.size)
++                put("finalFiles", reached.size)
++                put("initialTreeOid", snapshot.tree.sha)
++                put("finalTreeOid", observed.tree.sha)
++                put("requests", buildJsonArray { requests.forEach(::add) })
++            }
++            Files.createDirectories(output.parent)
++            Files.writeString(output, result.toString(), StandardCharsets.UTF_8)
++            println("GROUPED_RESEARCH elapsedMs=$elapsed requests=${requests.size} files=${reached.size}")
++        }
++    }
++
++    @Test
++    fun `group research confirms lost response but fails closed on unsafe outcomes`() = runBlocking {
++        val name = System.getenv("SYNC_GROUP_FAULT_INPUT")
++        assumeTrue(name != null, "explicit small frozen fixture only")
++        val input = Path.of(requireNotNull(name))
++        fun read(root: Path): Map<String, ByteArray> = Files.walk(root).use { paths ->
++            paths.filter { Files.isRegularFile(it) }.toList().associate {
++                root.relativize(it).toString().replace('\\', '/') to Files.readAllBytes(it)
++            }
++        }
++        val initial = read(input.resolve("initial"))
++        val finalFiles = read(input.resolve("final"))
++        val descriptor = SyncSpaceDescriptorCodec.decode(initial.getValue(".mihon-sync/space.json")).getOrThrow()
++        val material = SyncSpaceCrypto.unlock(descriptor, "synthetic-git-compare-space-password").getOrThrow()
++        val repository = SyncRepository("fixture-owner", "mihon-sync", GitHubSyncSpaceClient.BRANCH)
++        for (scenario in listOf("lost", "unreadable", "conflict", "corrupt", "stage-failure", "equal-other-commit")) {
++            SyncGitSafetyContractTest().GitFixture(empty = true, repositoryOverride = repository).use { git ->
++                val publisher =
++                    GitHubSyncTransport(OkHttpClient(), { "synthetic-token" }, git.baseUrl, spaceMaterial = material)
++                assertTrue(
++                    publisher.initialize(
++                        repository,
++                        descriptor.spaceId,
++                        descriptor.generation,
++                    ) is SyncInitializationResult.Initialized,
++                )
++                git.replaceFiles(repository.branch, initial)
++                val snapshot = publisher.readSnapshot(
++                    repository,
++                    descriptor.spaceId,
++                    descriptor.generation,
++                ).getOrThrow()
++                val refsBefore = git.forceFlags.size
++                when (scenario) {
++                    "lost" -> git.nextRefResponse = MockResponse(code = 500)
++                    "unreadable" -> git.failReadAfterPatch = true
++                    "conflict" -> git.competingWrites = 1
++                    "corrupt" ->
++                        git.corruptNextPublishedPath =
++                            finalFiles.keys.first { it.startsWith(".mihon-sync/batches/") }
++                    "equal-other-commit" -> {
++                        val delegate = git.server.dispatcher
++                        git.server.dispatcher = object : Dispatcher() {
++                            override fun dispatch(request: RecordedRequest): MockResponse =
++                                if (request.method == "PATCH") {
++                                    git.replaceFiles(repository.branch, finalFiles)
++                                    MockResponse(code = 500)
++                                } else {
++                                    delegate.dispatch(request)
++                                }
++                        }
++                    }
++                    "stage-failure" -> {
++                        val delegate = git.server.dispatcher
++                        git.server.dispatcher = object : Dispatcher() {
++                            override fun dispatch(request: RecordedRequest): MockResponse =
++                                if (request.method == "POST" && request.url.encodedPath.endsWith("/git/trees")) {
++                                    MockResponse(code = 500)
++                                } else {
++                                    delegate.dispatch(request)
++                                }
++                        }
++                    }
++                }
++                val attempt = runCatching { publisher.researchPublishFrozenFiles(snapshot, finalFiles) }
++                if (scenario == "lost") {
++                    assertTrue(attempt.isSuccess, scenario)
++                    assertTrue(
++                        finalFiles.all { (path, bytes) ->
++                            bytes.contentEquals(git.file(repository.branch, path))
++                        },
++                    )
++                } else {
++                    assertTrue(attempt.isFailure, scenario)
++                }
++                if (scenario == "stage-failure") {
++                    assertEquals(snapshot.head, git.head(repository.branch))
++                    assertEquals(refsBefore, git.forceFlags.size)
++                }
++                if (scenario == "conflict") {
++                    assertTrue(git.file(repository.branch, "README.md") != null)
++                    assertTrue(git.files(repository.branch).keys.none { it.startsWith(".mihon-sync/batches/") })
++                }
++                assertTrue(git.forceFlags.none { it }, scenario)
++            }
++        }
++        println("GROUPED_RESEARCH_FAULTS lost/unreadable/conflict/corrupt/stage-failure/equal-other-commit PASS")
++    }
++}
