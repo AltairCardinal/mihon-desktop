@@ -1,0 +1,1076 @@
+{
+  "baseCommit": "720a29afa1",
+  "inputSha256": "e2cbcb9dad186f22a15615b374588f8b694e37b2f660e515c160b10ceea17458",
+  "runtime": {
+    "inputRecords": 1600,
+    "inputChapters": 8700,
+    "inputReadingEntries": 8700,
+    "events": 10300,
+    "batches": 41,
+    "populateMillisExcluded": 1480,
+    "freezeMillisSinceAccepted": 641,
+    "importGeneratedMillisSinceAccepted": 18486,
+    "firstConfirmedMillisSinceAccepted": 37042,
+    "allConfirmedMillisSinceAccepted": 138984,
+    "baselineProcessEndMillisSinceAccepted": [
+      1117,
+      1199,
+      1277,
+      1368,
+      1457,
+      1519,
+      1589,
+      1657,
+      1734,
+      1826,
+      1893,
+      1959,
+      2038,
+      2125,
+      2206,
+      2291,
+      2352,
+      2439,
+      2532,
+      2621,
+      2698,
+      2765,
+      2845,
+      2926,
+      3018,
+      3114,
+      3180,
+      3264,
+      3358,
+      3468,
+      3575,
+      3675,
+      3744,
+      3813,
+      3913,
+      3995,
+      4074,
+      4137,
+      4225,
+      4301,
+      4380,
+      4450,
+      4521,
+      4583,
+      4663,
+      4738,
+      4815,
+      4871,
+      4942,
+      5031,
+      5119,
+      5194,
+      5252,
+      5313,
+      5381,
+      5469,
+      5532,
+      5622,
+      5686,
+      5765,
+      5861,
+      5936,
+      6001,
+      6070,
+      6139,
+      6216,
+      6294,
+      6366,
+      6438,
+      6505,
+      6580,
+      6651,
+      6722,
+      6838,
+      6910,
+      6980,
+      7053,
+      7118,
+      7188,
+      7274,
+      7349,
+      7426,
+      7486,
+      7553,
+      7632,
+      7709,
+      7796,
+      7871,
+      7942,
+      8020,
+      8105,
+      8246,
+      8312,
+      8376,
+      8472,
+      8599,
+      8699,
+      8815,
+      8888,
+      8957,
+      9037,
+      9149,
+      9214,
+      9302,
+      9384,
+      9463,
+      9539,
+      9620,
+      9691,
+      9773,
+      9848,
+      9928,
+      10005,
+      10062,
+      10144,
+      10218,
+      10301,
+      10376,
+      10443,
+      10526,
+      10625,
+      10754,
+      10841,
+      10920,
+      11008,
+      11091,
+      11172,
+      11264,
+      11334,
+      11417,
+      11512,
+      11585,
+      11690,
+      11794,
+      11854,
+      11938,
+      12012,
+      12097,
+      12186,
+      12260,
+      12339,
+      12410,
+      12506,
+      12585,
+      12662,
+      12769,
+      12871,
+      12985,
+      13128,
+      13210,
+      13343,
+      13432,
+      13531,
+      13625,
+      13713,
+      13806,
+      13923,
+      14048,
+      14135,
+      14218,
+      14302,
+      14390,
+      14487,
+      14591,
+      14673,
+      14753,
+      14854,
+      14946,
+      15043,
+      15135,
+      15217,
+      15321,
+      15426,
+      15537,
+      15616,
+      15693,
+      15802,
+      15926,
+      16031,
+      16105,
+      16193,
+      16289,
+      16380,
+      16481,
+      16556,
+      16617,
+      16679,
+      16741,
+      16844,
+      16917,
+      16995,
+      17061,
+      17140,
+      17238,
+      17367,
+      17458,
+      17587,
+      17707,
+      17821,
+      17938,
+      18011,
+      18078,
+      18176,
+      18287,
+      18376,
+      18483
+    ],
+    "firstProjectorStartMillisSinceAccepted": 18820,
+    "firstProjectorEndMillisSinceAccepted": 18947,
+    "runtimeJfrRecorded": true,
+    "runtimeHttpRequests": 794,
+    "runtimeRequestBodyBytes": 19338640,
+    "runtimeResponseBodyBytes": 19682529,
+    "runtimeRefUpdates": 41,
+    "initialTreeOid": "edb3cdd39cf348fa7a2a79a69cf49a145e2e6cfa",
+    "finalTreeOid": "516244b46e3c2f6901ca48543f50066da4bfae12",
+    "frozenReplaySkipped": true,
+    "artifacts": [
+      {
+        "ordinal": 1,
+        "events": 256,
+        "batchBytes": 264016,
+        "indexBytes": 696,
+        "headBytes": 588
+      },
+      {
+        "ordinal": 2,
+        "events": 256,
+        "batchBytes": 247636,
+        "indexBytes": 852,
+        "headBytes": 588
+      },
+      {
+        "ordinal": 3,
+        "events": 256,
+        "batchBytes": 254432,
+        "indexBytes": 852,
+        "headBytes": 588
+      },
+      {
+        "ordinal": 4,
+        "events": 256,
+        "batchBytes": 257392,
+        "indexBytes": 852,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 5,
+        "events": 256,
+        "batchBytes": 255132,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 6,
+        "events": 256,
+        "batchBytes": 257352,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 7,
+        "events": 256,
+        "batchBytes": 272472,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 8,
+        "events": 256,
+        "batchBytes": 279140,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 9,
+        "events": 256,
+        "batchBytes": 275516,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 10,
+        "events": 256,
+        "batchBytes": 276500,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 11,
+        "events": 256,
+        "batchBytes": 280140,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 12,
+        "events": 256,
+        "batchBytes": 284364,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 13,
+        "events": 256,
+        "batchBytes": 281716,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 14,
+        "events": 256,
+        "batchBytes": 277560,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 15,
+        "events": 256,
+        "batchBytes": 279276,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 16,
+        "events": 256,
+        "batchBytes": 278588,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 17,
+        "events": 256,
+        "batchBytes": 278304,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 18,
+        "events": 256,
+        "batchBytes": 280812,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 19,
+        "events": 256,
+        "batchBytes": 280500,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 20,
+        "events": 256,
+        "batchBytes": 278928,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 21,
+        "events": 256,
+        "batchBytes": 282148,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 22,
+        "events": 256,
+        "batchBytes": 276924,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 23,
+        "events": 256,
+        "batchBytes": 278112,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 24,
+        "events": 256,
+        "batchBytes": 277280,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 25,
+        "events": 256,
+        "batchBytes": 276928,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 26,
+        "events": 256,
+        "batchBytes": 278404,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 27,
+        "events": 256,
+        "batchBytes": 282520,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 28,
+        "events": 256,
+        "batchBytes": 351644,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 29,
+        "events": 256,
+        "batchBytes": 574480,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 30,
+        "events": 256,
+        "batchBytes": 595352,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 31,
+        "events": 256,
+        "batchBytes": 604788,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 32,
+        "events": 256,
+        "batchBytes": 630660,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 33,
+        "events": 256,
+        "batchBytes": 628528,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 34,
+        "events": 256,
+        "batchBytes": 592632,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 35,
+        "events": 256,
+        "batchBytes": 476512,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 36,
+        "events": 256,
+        "batchBytes": 476712,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 37,
+        "events": 256,
+        "batchBytes": 478408,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 38,
+        "events": 256,
+        "batchBytes": 478232,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 39,
+        "events": 256,
+        "batchBytes": 530528,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 40,
+        "events": 256,
+        "batchBytes": 479144,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 41,
+        "events": 60,
+        "batchBytes": 133624,
+        "indexBytes": 856,
+        "headBytes": 592
+      }
+    ],
+    "phaseNanos": {
+      "baseline.process": 16858353400,
+      "outbox.ack": 2274297100,
+      "outbox.claim": 1950892100,
+      "outbox.confirmObserve": 810840500,
+      "outbox.loadPrepared": 925781200,
+      "outbox.observeBefore": 105421100,
+      "outbox.persistPrepared": 2620685100,
+      "outbox.prepareAeadAndTree": 686970600,
+      "outbox.publishWithConfirm": 89366201200,
+      "outbox.total": 97251277400,
+      "projector.project": 15974655300,
+      "projector.retryUnavailable": 21101200,
+      "snapshot.initialRead": 195008000,
+      "snapshot.observe": 1044231000
+    },
+    "phaseCalls": {
+      "baseline.process": 206,
+      "outbox.ack": 41,
+      "outbox.claim": 42,
+      "outbox.confirmObserve": 41,
+      "outbox.loadPrepared": 41,
+      "outbox.observeBefore": 42,
+      "outbox.persistPrepared": 41,
+      "outbox.prepareAeadAndTree": 41,
+      "outbox.publishWithConfirm": 41,
+      "outbox.total": 42,
+      "projector.project": 231,
+      "projector.retryUnavailable": 1,
+      "snapshot.initialRead": 1,
+      "snapshot.observe": 125
+    }
+  },
+  "jfr": {
+    "recordingSha256": "75711a4b4cbd1e14bc5d114ae1b283304811bfc9584ef8e513b3f4ad3954820a",
+    "executionSamples": 354,
+    "executionStackDepth": 64,
+    "phaseSamples": {
+      "other": 136,
+      "baseline": 99,
+      "projection": 38,
+      "outbox": 81
+    },
+    "phaseApplicationMethods": {
+      "other": [
+        {
+          "method": "mihon.data.sync.runtime.SyncPanelState.equals",
+          "samples": 5
+        },
+        {
+          "method": "mihon.data.sync.runtime.SyncPanelController.refresh",
+          "samples": 4
+        },
+        {
+          "method": "mihon.data.sync.runtime.SyncConnection.equals",
+          "samples": 2
+        },
+        {
+          "method": "org.sqlite.JDBC.connect",
+          "samples": 2
+        },
+        {
+          "method": "org.sqlite.jdbc4.JDBC4Connection.<init>",
+          "samples": 2
+        },
+        {
+          "method": "org.sqlite.JDBC.createConnection",
+          "samples": 2
+        },
+        {
+          "method": "org.sqlite.SQLiteConnection.<init>",
+          "samples": 2
+        },
+        {
+          "method": "org.sqlite.jdbc3.JDBC3Connection.<init>",
+          "samples": 2
+        },
+        {
+          "method": "mihon.data.sync.SyncGitCompareAcceptanceTest.production first import and same prepared artifacts replay",
+          "samples": 2
+        },
+        {
+          "method": "mihon.domain.sync.transport.SyncRepository.equals",
+          "samples": 1
+        },
+        {
+          "method": "mihon.data.sync.runtime.StoredSyncMaterial.material",
+          "samples": 1
+        },
+        {
+          "method": "mihon.domain.sync.crypto.SyncSpaceDescriptorCodec.decode-IoAF18A",
+          "samples": 1
+        },
+        {
+          "method": "mihon.data.sync.runtime.SyncRuntime.connection",
+          "samples": 1
+        },
+        {
+          "method": "mihon.domain.sync.crypto.SyncSpaceDescriptorCodec.validate",
+          "samples": 1
+        },
+        {
+          "method": "org.sqlite.SQLiteConfig.apply",
+          "samples": 1
+        },
+        {
+          "method": "mihon.data.sync.runtime.SyncRunStore.logs",
+          "samples": 1
+        },
+        {
+          "method": "mihon.data.sync.runtime.SyncPanelState.copy",
+          "samples": 1
+        },
+        {
+          "method": "org.sqlite.SQLiteConnection.open",
+          "samples": 1
+        },
+        {
+          "method": "mihon.data.sync.transport.GitHubSyncTransport.call",
+          "samples": 1
+        },
+        {
+          "method": "mihon.data.sync.transport.GitHubSyncTransport.publish",
+          "samples": 1
+        },
+        {
+          "method": "mihon.data.sync.transport.GitHubSyncTransport.createTree",
+          "samples": 1
+        },
+        {
+          "method": "mihon.data.sync.http.SyncHttpClient.execute",
+          "samples": 1
+        }
+      ],
+      "baseline": [
+        {
+          "method": "mihon.data.sync.journal.SyncTransactionJournalKt.appendSyncOperation",
+          "samples": 99
+        },
+        {
+          "method": "mihon.data.sync.journal.SyncObjectDescriptions.decode",
+          "samples": 34
+        },
+        {
+          "method": "mihon.data.sync.journal.SyncObjectDescriptions.batchBytes",
+          "samples": 28
+        },
+        {
+          "method": "mihon.data.sync.journal.SyncObjectDescriptions.encode",
+          "samples": 11
+        },
+        {
+          "method": "org.sqlite.core.SafeStmtPtr.safeRun",
+          "samples": 8
+        },
+        {
+          "method": "org.sqlite.core.NativeDB.utf8ByteBufferToString",
+          "samples": 8
+        },
+        {
+          "method": "org.sqlite.jdbc3.JDBC3ResultSet.getString",
+          "samples": 8
+        },
+        {
+          "method": "org.sqlite.jdbc3.JDBC3ResultSet.safeGetColumnText",
+          "samples": 8
+        },
+        {
+          "method": "org.sqlite.core.NativeDB.column_text",
+          "samples": 8
+        },
+        {
+          "method": "mihon.domain.sync.SyncCodec.encode",
+          "samples": 6
+        },
+        {
+          "method": "mihon.domain.sync.SyncCodec.rawEncode",
+          "samples": 6
+        },
+        {
+          "method": "org.sqlite.core.NativeDB.stringToUtf8ByteArray",
+          "samples": 6
+        },
+        {
+          "method": "org.sqlite.core.DB.sqlbind",
+          "samples": 6
+        },
+        {
+          "method": "org.sqlite.core.DB.execute",
+          "samples": 6
+        },
+        {
+          "method": "org.sqlite.jdbc3.JDBC3Statement.withConnectionTimeout",
+          "samples": 6
+        },
+        {
+          "method": "org.sqlite.jdbc3.JDBC3PreparedStatement.execute",
+          "samples": 6
+        },
+        {
+          "method": "org.sqlite.core.NativeDB.bind_text",
+          "samples": 6
+        },
+        {
+          "method": "org.sqlite.core.SafeStmtPtr.safeRunInt",
+          "samples": 6
+        },
+        {
+          "method": "mihon.domain.sync.SyncObjectKey.<init>",
+          "samples": 1
+        },
+        {
+          "method": "mihon.domain.sync.SyncObjectKey.hashCode",
+          "samples": 1
+        }
+      ],
+      "projection": [
+        {
+          "method": "mihon.data.sync.inbox.SyncInboxProjector.projectField",
+          "samples": 38
+        },
+        {
+          "method": "mihon.data.sync.inbox.SyncInboxProjector.reduction",
+          "samples": 35
+        },
+        {
+          "method": "mihon.domain.sync.SyncReducer.reduce",
+          "samples": 23
+        },
+        {
+          "method": "mihon.domain.sync.SyncValidator.validate",
+          "samples": 8
+        },
+        {
+          "method": "mihon.domain.sync.SyncCodec.decode",
+          "samples": 6
+        },
+        {
+          "method": "mihon.domain.sync.SyncEffectRef.getStableKey",
+          "samples": 5
+        },
+        {
+          "method": "mihon.domain.sync.SyncReducer.completeRefs",
+          "samples": 4
+        },
+        {
+          "method": "mihon.domain.sync.SyncReducer.records",
+          "samples": 4
+        },
+        {
+          "method": "mihon.domain.sync.SyncEventId.getStableKey",
+          "samples": 3
+        },
+        {
+          "method": "mihon.domain.sync.SyncValidator.validatePayload",
+          "samples": 3
+        },
+        {
+          "method": "mihon.domain.sync.SyncReducer.findCycleRefs",
+          "samples": 2
+        },
+        {
+          "method": "mihon.data.sync.inbox.SyncInboxProjector.projectHistory",
+          "samples": 1
+        },
+        {
+          "method": "mihon.domain.sync.SyncFieldKey.hashCode",
+          "samples": 1
+        },
+        {
+          "method": "mihon.domain.sync.SyncReduction.projection",
+          "samples": 1
+        },
+        {
+          "method": "mihon.domain.sync.SyncObjectKey.hashCode",
+          "samples": 1
+        },
+        {
+          "method": "org.sqlite.jdbc3.JDBC3Statement.withConnectionTimeout",
+          "samples": 1
+        },
+        {
+          "method": "org.sqlite.core.SafeStmtPtr.safeRunInt",
+          "samples": 1
+        },
+        {
+          "method": "org.sqlite.jdbc3.JDBC3Statement.getResultSet",
+          "samples": 1
+        },
+        {
+          "method": "org.sqlite.jdbc3.JDBC3PreparedStatement.executeQuery",
+          "samples": 1
+        },
+        {
+          "method": "mihon.domain.sync.SyncEventEnvelope.getEventId",
+          "samples": 1
+        },
+        {
+          "method": "mihon.domain.sync.SyncEventEnvelope.ref",
+          "samples": 1
+        },
+        {
+          "method": "mihon.data.sync.projection.SyncRemoteProjectionWriter.applyReadStatus",
+          "samples": 1
+        }
+      ],
+      "outbox": [
+        {
+          "method": "mihon.data.sync.journal.SyncOutboxExchange.uploadNext",
+          "samples": 46
+        },
+        {
+          "method": "mihon.data.sync.SyncGitCompareAcceptanceTest.production first import and same prepared artifacts replay",
+          "samples": 43
+        },
+        {
+          "method": "mihon.data.sync.transport.SyncBatchSyncService.prepare",
+          "samples": 32
+        },
+        {
+          "method": "mihon.domain.sync.crypto.SyncBatchEncryption.decrypt",
+          "samples": 28
+        },
+        {
+          "method": "mihon.data.sync.journal.SyncOutboxStore.readBatch",
+          "samples": 22
+        },
+        {
+          "method": "mihon.domain.sync.crypto.SyncSpacePayloadCodec.decode",
+          "samples": 21
+        },
+        {
+          "method": "mihon.domain.sync.SyncBatchCodec.decode",
+          "samples": 20
+        },
+        {
+          "method": "mihon.domain.sync.crypto.SyncBatchEncryption.encrypt",
+          "samples": 17
+        },
+        {
+          "method": "mihon.data.sync.transport.GitHubSyncTransport.prepare",
+          "samples": 15
+        },
+        {
+          "method": "mihon.domain.sync.SyncBatchCodec.validate",
+          "samples": 15
+        },
+        {
+          "method": "mihon.domain.sync.SyncBatchCodec.rawEncode",
+          "samples": 15
+        },
+        {
+          "method": "mihon.data.sync.transport.SyncBatchSyncService.uploadPrepared",
+          "samples": 14
+        },
+        {
+          "method": "mihon.data.sync.transport.GitHubSyncTransport.publish",
+          "samples": 14
+        },
+        {
+          "method": "mihon.data.sync.transport.GitHubSyncTransport.validatePrepared",
+          "samples": 14
+        },
+        {
+          "method": "mihon.data.sync.journal.SyncOutboxStore.requireBatch",
+          "samples": 14
+        },
+        {
+          "method": "mihon.domain.sync.crypto.SyncSpacePayloadCodec.encode",
+          "samples": 12
+        },
+        {
+          "method": "mihon.data.sync.crypto.TinkAeadEngine.encrypt",
+          "samples": 9
+        },
+        {
+          "method": "mihon.data.sync.crypto.TinkAeadEngine.decrypt",
+          "samples": 8
+        },
+        {
+          "method": "mihon.data.sync.transport.SyncUploadArtifactCodec.encode",
+          "samples": 5
+        },
+        {
+          "method": "mihon.data.sync.journal.SyncOutboxStore.validateUpload",
+          "samples": 5
+        },
+        {
+          "method": "mihon.domain.sync.SyncObjectKey.getStableKey",
+          "samples": 4
+        },
+        {
+          "method": "mihon.domain.sync.SyncBatchCodec.validateDescriptions",
+          "samples": 4
+        },
+        {
+          "method": "mihon.domain.sync.SyncBatchCodec.encode",
+          "samples": 4
+        },
+        {
+          "method": "mihon.domain.sync.SyncCodec.decode",
+          "samples": 4
+        },
+        {
+          "method": "mihon.domain.sync.SyncValidator.validate",
+          "samples": 4
+        },
+        {
+          "method": "mihon.domain.sync.SyncValidator.validatePayload",
+          "samples": 3
+        },
+        {
+          "method": "mihon.domain.sync.crypto.SyncSpaceKt.strictSyncObject",
+          "samples": 2
+        },
+        {
+          "method": "mihon.data.sync.transport.SyncUploadArtifactCodec.decode",
+          "samples": 2
+        },
+        {
+          "method": "mihon.data.sync.transport.StoredSyncBatch.toDomain",
+          "samples": 2
+        },
+        {
+          "method": "mihon.domain.sync.SyncBatch.equals",
+          "samples": 1
+        }
+      ]
+    },
+    "nativeOverviewStackDepth": 5,
+    "allEventTypes": {
+      "jdk.NativeMethodSample": 4740,
+      "jdk.ExecutionSample": 354
+    },
+    "nativeLeafOverview": [
+      {
+        "method": "sun.nio.ch.WEPoll.wait",
+        "samples": 1302
+      },
+      {
+        "method": "sun.nio.ch.Net.accept",
+        "samples": 1301
+      },
+      {
+        "method": "sun.nio.ch.Net.poll",
+        "samples": 937
+      },
+      {
+        "method": "sun.nio.ch.SocketDispatcher.read0",
+        "samples": 376
+      },
+      {
+        "method": "org.sqlite.core.NativeDB.step",
+        "samples": 359
+      },
+      {
+        "method": "sun.nio.ch.SocketDispatcher.write0",
+        "samples": 190
+      },
+      {
+        "method": "org.sqlite.core.NativeDB.prepare_utf8",
+        "samples": 152
+      },
+      {
+        "method": "jdk.jfr.internal.JVM.emitEvent",
+        "samples": 102
+      },
+      {
+        "method": "java.lang.String.encodeUTF8_UTF16",
+        "samples": 39
+      },
+      {
+        "method": "okio.-Base64.decodeBase64ToArray",
+        "samples": 13
+      },
+      {
+        "method": "kotlinx.serialization.json.internal.StringJsonLexer.consumeKeyString",
+        "samples": 12
+      },
+      {
+        "method": "kotlinx.serialization.json.internal.JsonToStringWriter.ensureTotalCapacity",
+        "samples": 12
+      }
+    ],
+    "interpretation": "Inclusive sampled stacks overlap; counts are not elapsed time or CPU percentages. Native SQLite I/O is not covered by Java file events."
+  },
+  "conditionalOverlapAnalysis": {
+    "notAnIntegratedRuntimeMeasurement": true,
+    "nativeGitMillis": 14591.507,
+    "targetMillis": 21887.2605,
+    "measuredSerialImportAndProjectionMillis": 32833.0087,
+    "requiredReductionFractionEvenWithHiddenNetwork": 0.33337633781944565,
+    "firstFullBatchPageCompletedMillis": 1519,
+    "lastImportPageCompletedMillis": 18483,
+    "excludedCosts": [
+      "artifact preparation and persistence",
+      "queue claim and acknowledgement",
+      "progress and other orchestration",
+      "contention introduced by concurrency"
+    ],
+    "assumption": "Retain measured serial baseline.process and projector.project work; no claim that a redesigned implementation has this hard lower bound."
+  },
+  "queryEvidence": {
+    "fileFixtureOriginalReads": 304,
+    "fileFixturePrototypeReads": 3,
+    "fullFixtureOldReadsPredictedFromEffects": 14757,
+    "fullFixturePrototypeNonemptyPages": 206,
+    "fullFixtureQueryCountDirectlyInstrumented": false
+  },
+  "evidence": [
+    {
+      "key": "sync-import-head-red",
+      "status": "FAILED",
+      "exitCode": 1,
+      "logSha256": "55245bc618b8e2f6bb3fbe8c6a62d7a6c9672a838633a82c95f81e4db7736fa6"
+    },
+    {
+      "key": "sync-import-head-file-old",
+      "status": "FAILED",
+      "exitCode": 1,
+      "logSha256": "416e4eaaa666c00ce6f039f2b49181702fd3ebdcc2402a6ad53db6f74da51781"
+    },
+    {
+      "key": "sync-import-head-green2",
+      "status": "PASSED",
+      "exitCode": 0,
+      "logSha256": "f59b91dcf01ea9b1b44525828d3555a325082c8fd48dc8aa7138215ab340631c"
+    },
+    {
+      "key": "sync-import-head-contract2",
+      "status": "PASSED",
+      "exitCode": 0,
+      "logSha256": "baafad0b9f5c1af657a7db4e4976b2f2696418775bf498c0ef734013c8eb308b"
+    },
+    {
+      "key": "sync-import-head-1600-jfr",
+      "status": "CANCELLED",
+      "exitCode": 130,
+      "logSha256": "99bd16e86e1aa8be91120d21356e8ca8a3db63f7c605d006bf966a728b21ddd0"
+    },
+    {
+      "key": "sync-import-head-1600-jfr-v2",
+      "status": "PASSED",
+      "exitCode": 0,
+      "logSha256": "87701b4e8bfcf7a2da1f55e223a0b69e9b109463d44053ae473680d90a60bd5c"
+    },
+    {
+      "key": "sync-import-head-spotless2",
+      "status": "PASSED",
+      "exitCode": 0,
+      "logSha256": "2971aef5d6faab29a7f51603136cc4921ead95d703b9c9cacb3742e994f8ba39"
+    }
+  ],
+  "patchSha256": "b9c219b41c5809f3dc15eba18f16ff0a76037d25efbaf9ced10ecb2d521f48f5"
+}
