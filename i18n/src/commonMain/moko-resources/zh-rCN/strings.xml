@@ -1684,6 +1684,7 @@
     <string name="sync_problem_data">部分远端数据未通过校验。</string>
     <string name="sync_problem_unknown">同步未能完成，请重试。</string>
     <string name="sync_auth_failed">授权未完成，请重试或取消。</string>
+    <string name="sync_auth_request_failed">无法完成 GitHub 授权请求，请检查网络或代理后重试。</string>
     <string name="sync_file_error">无法读取或保存恢复资料。</string>
     <string name="sync_manga">取消收藏</string>
     <string name="sync_author">取消关注</string>

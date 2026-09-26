@@ -46,6 +46,7 @@ class SyncTestModeIntegrationTest {
         val actions = java.util.concurrent.CopyOnWriteArrayList<SyncPanelAction>()
         val panel = object : SyncPanel {
             override val state = MutableStateFlow(SyncPanelState())
+            override fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean = false
             override fun dispatch(action: SyncPanelAction) {
                 actions += action
             }
@@ -188,6 +189,7 @@ class SyncTestModeIntegrationTest {
                     ),
                 ),
             )
+            override fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean = false
             override fun dispatch(action: SyncPanelAction) = Unit
         }
         val brokenStore = object : SyncSecureStore {

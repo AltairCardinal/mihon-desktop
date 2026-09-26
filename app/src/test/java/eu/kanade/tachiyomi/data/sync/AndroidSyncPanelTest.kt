@@ -27,6 +27,7 @@ import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelState
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.data.sync.runtime.SyncSetupStep
+import mihon.domain.sync.auth.GitHubDeviceCode
 import mihon.domain.sync.transport.SyncRepository
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -123,6 +124,25 @@ class AndroidSyncPanelTest {
         assertTrue(clipboard.primaryClip?.description?.extras?.getBoolean("android.content.extra.IS_SENSITIVE") == true)
     }
 
+    @Test
+    fun `receiving device code opens the system browser from the real sync sheet`() {
+        panel.state.value = panel.state.value.copy(
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.SIGN_IN,
+            deviceCode = GitHubDeviceCode(
+                "secret-device",
+                "ABCD-EFGH",
+                "https://github.com/login/device",
+                900,
+                5,
+            ),
+        )
+        showToolbar()
+        compose.onNodeWithTag("sync-open").performClick()
+        compose.waitForIdle()
+        assertEquals("https://github.com/login/device", shadowOf(activity.get()).nextStartedActivity?.dataString)
+    }
+
     private fun showToolbar() {
         activity.get().setContent {
             MaterialTheme {
@@ -147,6 +167,8 @@ class AndroidSyncPanelTest {
                 ),
             ),
         )
+        private val openedDeviceCodes = mutableSetOf<String>()
+        override fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean = openedDeviceCodes.add(code.deviceCode)
         val actions = mutableListOf<SyncPanelAction>()
         override fun dispatch(action: SyncPanelAction) {
             actions += action

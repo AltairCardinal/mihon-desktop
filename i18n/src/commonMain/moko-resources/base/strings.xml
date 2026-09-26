@@ -1951,6 +1951,7 @@
     <string name="sync_problem_data">Some remote data could not be verified.</string>
     <string name="sync_problem_unknown">Synchronization could not finish. Try again.</string>
     <string name="sync_auth_failed">Authorization did not finish. Retry or cancel.</string>
+    <string name="sync_auth_request_failed">Could not complete the GitHub authorization request. Check your network or proxy, then retry.</string>
     <string name="sync_file_error">Unable to read or save recovery material.</string>
     <string name="sync_manga">Remove from library</string>
     <string name="sync_author">Unfollow author</string>

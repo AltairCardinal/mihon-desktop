@@ -29,6 +29,7 @@ import mihon.data.sync.crypto.SyncSpaceCrypto
 import mihon.data.sync.inbox.SyncBulkProgress
 import mihon.domain.sync.SyncField
 import mihon.domain.sync.auth.GitHubDeviceAuthResult
+import mihon.domain.sync.auth.GitHubDeviceCode
 import mihon.domain.sync.crypto.SyncSpaceMaterial
 import mihon.domain.sync.crypto.SyncSpaceProtection
 import mihon.domain.sync.runtime.SyncRunProblem
@@ -49,6 +50,7 @@ class SyncPanelController(
     override val state: StateFlow<SyncPanelState> = mutableState
     private val commands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private val refreshQueued = AtomicBoolean(false)
+    private val deviceBrowserOpened = AtomicBoolean(false)
     private var references = linkedMapOf<Long, String>()
     private var selectedBindings = emptyMap<Long, String>()
     private var anchor: Long? = null
@@ -158,6 +160,13 @@ class SyncPanelController(
     override fun dispatch(action: SyncPanelAction) {
         enqueue { handle(action) }
     }
+
+    override fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean =
+        state.value.let { current ->
+            current.visible && current.page == SyncPanelPage.SETUP &&
+                current.setupStep == SyncSetupStep.SIGN_IN && current.deviceCode?.deviceCode == code.deviceCode &&
+                deviceBrowserOpened.compareAndSet(false, true)
+        }
 
     suspend fun stop() {
         lifetime.cancelAndJoin()
@@ -575,6 +584,7 @@ class SyncPanelController(
         repositoryJob?.cancelAndJoin()
         repositoryJob = null
         mutableState.update { it.copy(deviceCode = null, setupBusy = setupJob?.isActive == true) }
+        deviceBrowserOpened.set(false)
     }
 
     private suspend fun authorize() {

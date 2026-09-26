@@ -39,6 +39,7 @@ class GitHubAuthClient(
     private val endpoints: GitHubAuthEndpoints = GitHubAuthEndpoints(),
     private val waiter: GitHubAuthWaiter = GitHubAuthWaiter { delay(it) },
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
+    private val deviceCodeRequestTimeoutMillis: Long = 30_000,
 ) : GitHubAuthPort {
     private val http = SyncHttpClient(
         productionClient,
@@ -54,8 +55,14 @@ class GitHubAuthClient(
         onDeviceCode: suspend (GitHubDeviceCode) -> Unit,
     ): GitHubDeviceAuthResult {
         require(clientId.isNotBlank() && clientId.length <= 200) { "client id is invalid" }
+        require(deviceCodeRequestTimeoutMillis > 0) { "device code request timeout is invalid" }
         val device = try {
-            requestDeviceCode(clientId)
+            withContext(Dispatchers.IO) {
+                withTimeoutOrNull(deviceCodeRequestTimeoutMillis) { requestDeviceCode(clientId) }
+            }
+                ?: return GitHubDeviceAuthResult.Failed(
+                    GitHubAuthFailure(GitHubAuthFailureReason.HTTP, "device code request timed out", true),
+                )
         } catch (error: CancellationException) {
             throw error
         } catch (error: SyncHttpException) {

@@ -48,6 +48,7 @@ import mihon.data.sync.runtime.SyncSetupStep
 import mihon.domain.sync.SyncCancellationDecision
 import mihon.domain.sync.SyncObjectKey
 import mihon.domain.sync.SyncObjectType
+import mihon.domain.sync.auth.GitHubAuthFailureReason
 import mihon.domain.sync.auth.GitHubDeviceCode
 import mihon.domain.sync.runtime.SyncRunProblem
 import mihon.domain.sync.runtime.SyncRunResult
@@ -1223,12 +1224,72 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-copy-open")
-        click("sync-copy-open")
         assertEquals(listOf("ABCD-EFGH"), copied)
         assertEquals(listOf("https://github.com/login/device"), opened)
+        render()
+        assertEquals(1, opened.size)
+        click("sync-copy-open")
+        assertEquals(listOf("ABCD-EFGH", "ABCD-EFGH"), copied)
+        assertEquals(listOf("https://github.com/login/device", "https://github.com/login/device"), opened)
         assertFalse(texts().any { it.contains("secret-device") })
         click("sync-cancel-auth")
         assertEquals(SyncPanelAction.CancelAuthorization, actions.last())
+    }
+
+    @Test
+    fun `browser opens when delayed device code replaces waiting state`() = rendered(
+        SyncPanelState(visible = true, page = SyncPanelPage.SETUP, setupBusy = true),
+    ) {
+        render()
+        assertTrue(opened.isEmpty())
+        panel.state.value = panel.state.value.copy(
+            deviceCode = GitHubDeviceCode("secret-device", "ABCD-EFGH", "https://github.com/login/device", 900, 5),
+        )
+        awaitTag("sync-copy-open")
+        assertEquals(listOf("ABCD-EFGH"), copied)
+        assertEquals(listOf("https://github.com/login/device"), opened)
+        render()
+        assertEquals(1, opened.size)
+    }
+
+    @Test
+    fun `failed GitHub connection replaces the code spinner with retry guidance`() = rendered(
+        SyncPanelState(
+            visible = true,
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.SIGN_IN,
+            setupBusy = false,
+            authFailure = GitHubAuthFailureReason.HTTP,
+        ),
+    ) {
+        awaitTag("sync-authorize")
+        assertTrue(texts().contains("无法完成 GitHub 授权请求，请检查网络或代理后重试。"))
+        assertTrue(opened.isEmpty())
+        click("sync-authorize")
+        assertEquals(SyncPanelAction.Authorize, actions.last())
+    }
+
+    @Test
+    fun `remounting setup never reopens the same code but a new code opens`() = rendered(
+        SyncPanelState(
+            visible = true,
+            page = SyncPanelPage.SETUP,
+            deviceCode = GitHubDeviceCode("first-secret", "FIRST-CODE", "https://github.com/login/device", 900, 5),
+        ),
+    ) {
+        awaitTag("sync-copy-open")
+        assertEquals(1, opened.size)
+        scene.setContent {}
+        render()
+        setContent()
+        awaitTag("sync-copy-open")
+        assertEquals(1, opened.size)
+        panel.state.value = panel.state.value.copy(
+            deviceCode = GitHubDeviceCode("next-secret", "NEXT-CODE", "https://github.com/login/device", 900, 5),
+        )
+        render()
+        assertEquals(listOf("FIRST-CODE", "NEXT-CODE"), copied)
+        assertEquals(2, opened.size)
     }
 
     @Test
@@ -1419,6 +1480,8 @@ class SyncPanelContentTest {
 
     private class TestPanel(initial: SyncPanelState, private val actions: MutableList<SyncPanelAction>) : SyncPanel {
         override val state = MutableStateFlow(initial)
+        private val openedDeviceCodes = mutableSetOf<String>()
+        override fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean = openedDeviceCodes.add(code.deviceCode)
         override fun dispatch(action: SyncPanelAction) {
             actions += action
         }

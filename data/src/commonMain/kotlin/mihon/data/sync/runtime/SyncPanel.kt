@@ -152,4 +152,7 @@ sealed interface SyncPanelAction {
 interface SyncPanel {
     val state: StateFlow<SyncPanelState>
     fun dispatch(action: SyncPanelAction)
+
+    /** Claims the one automatic browser launch for this authorization code across sheet remounts. */
+    fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean
 }

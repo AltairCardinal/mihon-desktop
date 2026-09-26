@@ -24,6 +24,7 @@ import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelState
 import mihon.data.sync.runtime.SyncSetupStep
+import mihon.domain.sync.auth.GitHubDeviceCode
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.fakes.FakeCategoryRepository
@@ -102,7 +103,8 @@ class DesktopSyncPanelTest {
                 ),
             )
             click("sync-copy-open")
-            verify(exactly = 2) { dependencies.notificationService.post(any()) }
+            verify(exactly = 2) { uriHandler.openUri("https://github.com/login/device") }
+            verify(exactly = 4) { dependencies.notificationService.post(any()) }
             panel.state.value = panel.state.value.copy(setupStep = SyncSetupStep.NEW_PASSWORD, deviceCode = null)
             withTimeout(2_000) { while (find("sync-password-input") == null) render() }
             requireNotNull(find("sync-password-input")!!.config[SemanticsActions.RequestFocus].action).invoke()
@@ -124,6 +126,8 @@ class DesktopSyncPanelTest {
 
     private class TestPanel : SyncPanel {
         override val state = MutableStateFlow(SyncPanelState(loaded = true))
+        private val openedDeviceCodes = mutableSetOf<String>()
+        override fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean = openedDeviceCodes.add(code.deviceCode)
         val actions = mutableListOf<SyncPanelAction>()
         override fun dispatch(action: SyncPanelAction) {
             actions += action

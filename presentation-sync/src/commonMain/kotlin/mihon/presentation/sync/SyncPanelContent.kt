@@ -102,6 +102,8 @@ import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncSetupStep
 import mihon.domain.sync.SyncCancellationDecision
 import mihon.domain.sync.SyncObjectType
+import mihon.domain.sync.auth.GitHubAuthFailureReason
+import mihon.domain.sync.auth.GitHubDeviceCode
 import mihon.domain.sync.runtime.SyncRunProblem
 import mihon.domain.sync.runtime.SyncRunStatus
 import tachiyomi.i18n.MR
@@ -165,6 +167,7 @@ fun SyncPanelContent(
                 panel::dispatch,
                 onOpenBrowser,
                 onCopyCode,
+                panel::claimDeviceCodeBrowser,
                 Modifier.weight(1f),
             )
         }
@@ -759,8 +762,18 @@ private fun SetupPage(
     dispatch: (SyncPanelAction) -> Unit,
     openBrowser: (String) -> Unit,
     copyCode: (String) -> Unit,
+    claimBrowser: (GitHubDeviceCode) -> Boolean,
     modifier: Modifier,
 ) {
+    val deviceCode = state.deviceCode
+    LaunchedEffect(state.visible, deviceCode?.deviceCode) {
+        if (state.visible && state.setupStep == SyncSetupStep.SIGN_IN && deviceCode != null &&
+            claimBrowser(deviceCode)
+        ) {
+            copyCode(deviceCode.userCode)
+            openBrowser(deviceCode.verificationUri)
+        }
+    }
     // Session-local text only: closing or leaving this step discards unsubmitted input.
     var password by remember(state.visible, state.setupStep, state.setupRepository) { mutableStateOf(TextFieldValue()) }
     var showPassword by remember(state.visible, state.setupStep) { mutableStateOf(false) }
@@ -786,7 +799,19 @@ private fun SetupPage(
                         }
                     }
                 }
-                if (state.authFailure != null) item { Text(syncString(MR.strings.sync_auth_failed)) }
+                state.authFailure?.let { failure ->
+                    item {
+                        Text(
+                            syncString(
+                                if (failure == GitHubAuthFailureReason.HTTP) {
+                                    MR.strings.sync_auth_request_failed
+                                } else {
+                                    MR.strings.sync_auth_failed
+                                },
+                            ),
+                        )
+                    }
+                }
                 if (state.deviceCode == null || state.authFailure != null) {
                     item {
                         Action(
