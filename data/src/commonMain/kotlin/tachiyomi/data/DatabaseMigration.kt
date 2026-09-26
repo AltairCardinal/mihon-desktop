@@ -13,12 +13,33 @@ object DatabaseMigration {
         }
         object : TransacterImpl(driver) {}.transaction {
             rejectIncompatibleExistingObjects(driver)
+            repairMissingRuntimeFamilyForSchema32(driver, oldVersion)
             Database.Schema.migrate(driver, oldVersion, newVersion)
             if (newVersion >= COMPATIBILITY_SCHEMA_VERSION) {
                 validateCompatibility(driver)
             }
             driver.execute(null, "PRAGMA user_version = $newVersion", 0)
         }
+    }
+
+    /**
+     * Replays the schema-30 bridge and schema-31 additions for the published v32 author branch.
+     * Call only inside the same upgrade transaction as the remaining generated migrations.
+     */
+    fun repairMissingRuntimeFamilyForSchema32(driver: SqlDriver, recordedVersion: Long) {
+        if (recordedVersion != 32L) return
+        val objects = listOf(
+            "table" to "sync_runtime_runs",
+            "index" to "sync_runtime_active",
+            "table" to "sync_runtime_logs",
+            "index" to "sync_runtime_log_order",
+        )
+        val present = objects.map { (type, name) -> hasObject(driver, type, name) }
+        if (present.all { it }) return
+        require(present.none { it }) {
+            "Incomplete sync_runtime schema for version 32; refusing to reconstruct a partial family"
+        }
+        Database.Schema.migrate(driver, 30, 32)
     }
 
     /**

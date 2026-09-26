@@ -7,6 +7,7 @@ import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.data.Database
+import tachiyomi.data.LegacySyncSchema32Contract
 import tachiyomi.domain.creator.model.CreatorArchivePhysicalSchema
 import java.io.File
 
@@ -42,6 +43,47 @@ class DesktopDatabaseMigrationSafetyTest {
         createDriver(database).use { driver ->
             queryUserVersion(driver) shouldBe Database.Schema.version.toInt()
             assertForeignKeysEnforced(driver)
+        }
+    }
+
+    @Test
+    fun `synthetic version 32 without runtime tables opens and preserves existing sync data`() {
+        val database = File(directory, "mihon.db")
+        JdbcSqliteDriver("jdbc:sqlite:${database.absolutePath}").use { driver ->
+            LegacySyncSchema32Contract.prepareWithoutRuntime(driver)
+        }
+
+        createDriver(database).use { driver ->
+            LegacySyncSchema32Contract.assertMigrated(driver, hadRuntime = false)
+            assertForeignKeysEnforced(driver)
+        }
+    }
+
+    @Test
+    fun `synthetic version 32 with runtime history keeps it while upgrading`() {
+        val database = File(directory, "mihon.db")
+        JdbcSqliteDriver("jdbc:sqlite:${database.absolutePath}").use {
+            LegacySyncSchema32Contract.prepareWithRuntime(it)
+        }
+
+        createDriver(database).use { driver ->
+            LegacySyncSchema32Contract.assertMigrated(driver, hadRuntime = true)
+            assertForeignKeysEnforced(driver)
+        }
+    }
+
+    @Test
+    fun `synthetic version 32 runtime repair rolls back when a later migration fails`() {
+        val database = File(directory, "mihon.db")
+        JdbcSqliteDriver("jdbc:sqlite:${database.absolutePath}").use { driver ->
+            LegacySyncSchema32Contract.prepareWithoutRuntime(driver)
+            driver.execute(null, "CREATE TABLE sync_snapshot_manifest_entries(unexpected TEXT)", 0)
+        }
+
+        shouldThrow<IllegalStateException> { createDriver(database) }
+
+        JdbcSqliteDriver("jdbc:sqlite:${database.absolutePath}").use {
+            LegacySyncSchema32Contract.assertRepairRolledBack(it)
         }
     }
 

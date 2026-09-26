@@ -10,6 +10,58 @@ import java.nio.file.Path
 
 class DatabaseMigrationCompatibilityTest {
     @Test
+    fun `schema 32 without runtime family restores it before later migrations and preserves existing data`() {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        LegacySyncSchema32Contract.prepareWithoutRuntime(driver)
+
+        DatabaseMigration.migrateAtomically(driver, 32, Database.Schema.version)
+
+        LegacySyncSchema32Contract.assertMigrated(driver, hadRuntime = false)
+    }
+
+    @Test
+    fun `schema 32 with existing runtime history upgrades without replaying its old columns`() {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        LegacySyncSchema32Contract.prepareWithRuntime(driver)
+
+        DatabaseMigration.migrateAtomically(driver, 32, Database.Schema.version)
+
+        LegacySyncSchema32Contract.assertMigrated(driver, hadRuntime = true)
+    }
+
+    @Test
+    fun `schema 32 runtime repair rolls back if a later migration fails`() {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        LegacySyncSchema32Contract.prepareWithoutRuntime(driver)
+        driver.execute(null, "CREATE TABLE sync_snapshot_manifest_entries(unexpected TEXT)", 0)
+
+        shouldThrow<Exception> { DatabaseMigration.migrateAtomically(driver, 32, Database.Schema.version) }
+
+        LegacySyncSchema32Contract.assertRepairRolledBack(driver)
+    }
+
+    @Test
+    fun `schema 32 with only part of runtime family fails without inventing missing data`() {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        LegacySyncSchema32Contract.prepareWithoutRuntime(driver)
+        driver.execute(
+            null,
+            "CREATE TABLE sync_runtime_logs(run_id TEXT NOT NULL, log_key TEXT NOT NULL, title TEXT NOT NULL, " +
+                "detail TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(run_id, log_key))",
+            0,
+        )
+        driver.execute(null, "CREATE INDEX sync_runtime_log_order ON sync_runtime_logs(run_id, created_at DESC)", 0)
+
+        val failure = shouldThrow<IllegalArgumentException> {
+            DatabaseMigration.migrateAtomically(driver, 32, Database.Schema.version)
+        }
+
+        failure.message.orEmpty() shouldContain "sync_runtime"
+        queryLong(driver, "PRAGMA user_version") shouldBe 32L
+        queryLong(driver, "SELECT COUNT(*) FROM sqlite_master WHERE name = 'sync_runtime_runs'") shouldBe 0L
+    }
+
+    @Test
     fun `current schema reserves compatibility migration after published sync schema`() {
         Database.Schema.version shouldBe 38L
     }

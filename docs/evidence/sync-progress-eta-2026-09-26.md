@@ -75,3 +75,26 @@ Android 通用 APK：`app/build/outputs/apk/debug/mihon-source-independent-sync-
 | 准备完成至全部确认 | 117,818、117,085、116,991 | 117,627、116,380、117,456 | −0.16% |
 
 按事先约定的配对中位数口径，累计准备和传输主路径低于 5% 增幅。单次配对存在准备 +5.42%、准备完成至首确认 +5.84% 的波动，因此结果仅证明本地受控样本下的门槛，不代表所有设备和网络。原始摘要位于忽略目录 `.gradle-coordinator/sync-eta-perf-verified/`。性能对照没有放宽安全确认，也没有写入真实远端仓库。
+
+## Windows 旧库启动迁移修复（2026-09-27）
+
+用户点击上一轮正式 EXE 后看到 `Failed to launch JVM`。真实启动崩溃日志证明 JVM 21 已运行，失败发生在 `createDriver` 的 SQLite 迁移：原库 `user_version=32`，但整组 `sync_runtime_runs/logs` 表及索引缺失；迁移 32 直接 ALTER 缺失的运行表。原先仅用新建隔离库做启动验收，遗漏了这条既有数据库路径。
+
+兼容修复复用既有生成迁移：仅对版本 32 且运行时两表、两索引全部缺失的形态，在同一个升级事务内执行 30→32 补全，再正常执行 32→38。完整家族不重放；部分家族拒绝并保留原库。Desktop 的共享迁移包装与 Android 真实 AppModule `onUpgrade` 使用同一入口；后续迁移失败会回滚补建表和版本号。未改写既有迁移 SQL、未降低版本号、未重建数据库。
+
+### 测试与独立审查
+
+- 实施代理完成红绿测试；`legacy-v32-runtime-red` 与 `legacy-v32-android-assertion-red` 分别在共享/JDBC Desktop 与真实 Android 入口复现 `no such table: sync_runtime_runs`。
+- 主代理独立检查窄形态判定、事务边界、已有运行历史保留与失败回滚；要求补齐完整 v32 运行家族的测试，并将双端 fixture/断言抽为最小共享契约。测试夹具移除 v32 尚未存在的 baseline 列后复验。
+- `legacy-v32-contract-verified`：共享迁移 15 项、Desktop 数据库入口 9 项、Android 真实回调 3 项，均通过；data/app 格式检查与 `git diff --check` 通过。
+- `scripts/build-desktop.sh full-tests`（`legacy-v32-desktop-full`）：3168 项、0 失败、3 跳过。完整 Desktop 测试只运行一轮；后续 `build-only` 复用同一代码的测试证据。
+
+### 正式产物与实际旧库
+
+Windows 按 `Final unpacked EXE:` 核验：`D:/Codex/worktrees/85be/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.60.3ad938a-unpacked/Mihon Desktop.exe`。构建脚本的版本与真实扩展安装验收通过。macOS 隔离应用 `/Users/altair/Applications/Mihon Sync Source Free.app` 构建为 `0.11.19.60.d9999a3`，完成 Test Mode 的 HomeScreen → LibraryTab → 正常退出；该隔离 worktree 使用此前源快照叠加本轮修复，因此版本中的基线 Git 短号与 Windows 不同。
+
+先用 SQLite 只读 backup 保存实际旧库，再从备份复制独立运行配置，用上述正式 Windows EXE 启动和进入书架。副本从 32 升至 38，`integrity_check=ok`，外键错误 0；逐表比较 75 张原表：71 张所有旧列完全一致，另外 4 张只有正常启动维护时间戳变化，所有表记录数和其余内容均一致。变化为 `mangas.last_modified_at`（非收藏漫画的既有 viewer 清理触发器），以及作者索引三张表的 `last_modified_at/last_seen_at`。源码对应 `DesktopAppRuntime` 的启动清理/作者索引服务，并非本轮迁移 SQL 对漫画内容的改写。没有丢失漫画、章节、历史、收藏或作者关联。副本 Test Mode 关闭超过 15 秒测试等待而由测试程序终止，未将这一项记作正常退出通过。
+
+在副本验收通过后，用已备份保护的真实用户配置普通启动新 EXE。运行窗口标题 `Mihon Desktop 0.11.19.60.3ad938a`，`Responding=True`，原库版本已为 38；漫画 1155、章节 5497、历史 1103 条，与备份一致。启动崩溃日志最后修改时间仍为修复前的 01:21:09，没有新增启动崩溃。新程序保留运行供用户验收。
+
+原库备份、75 表基线指纹、实际运行日志及验证 JSON 位于本机忽略目录 `.gradle-coordinator/legacy-startup-20260927/`；含用户数据库的过程文件不提交、不传到其他主机。其他测试与构建日志为 `.gradle-coordinator/legacy-v32-*.log`。本批跨共享迁移、双端入口测试、共享测试契约与维护说明，是同一个旧库升级修复；没有扩张到窗口关闭或其他启动维护行为。

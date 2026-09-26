@@ -71,6 +71,14 @@ class AppModule(val app: Application) : InjektModule {
                         DatabaseMigration.validateCompatibility(it)
                     },
                 ) {
+                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
+                        DatabaseMigration.repairMissingRuntimeFamilyForSchema32(
+                            AndroidSqliteDriver(db),
+                            oldVersion.toLong(),
+                        )
+                        super.onUpgrade(db, oldVersion, newVersion)
+                    }
+
                     override fun onOpen(db: SupportSQLiteDatabase) {
                         super.onOpen(db)
                         setPragma(db, "foreign_keys = ON")
