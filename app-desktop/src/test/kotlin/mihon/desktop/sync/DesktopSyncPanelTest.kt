@@ -94,6 +94,19 @@ class DesktopSyncPanelTest {
             assertEquals(SyncPanelPage.MAIN, panel.state.value.page)
             panel.state.value = panel.state.value.copy(
                 page = SyncPanelPage.SETUP,
+                setupStep = SyncSetupStep.SIGN_IN,
+                setupBusy = true,
+                authRequestStartedAtMillis = 1_000,
+                nowMillis = 1_000,
+            )
+            render()
+            assertTrue(find("sync-auth-getting-code") != null)
+            assertTrue(find("sync-auth-network-hint") == null)
+            panel.state.value = panel.state.value.copy(nowMillis = 6_000)
+            render()
+            assertTrue(find("sync-auth-network-hint") != null)
+            panel.state.value = panel.state.value.copy(
+                page = SyncPanelPage.SETUP,
                 deviceCode = mihon.domain.sync.auth.GitHubDeviceCode(
                     "secret",
                     "ABCD-EFGH",
@@ -102,10 +115,16 @@ class DesktopSyncPanelTest {
                     5,
                 ),
             )
+            render()
+            assertTrue(find("sync-auth-waiting-browser") != null)
             click("sync-copy-open")
             verify(exactly = 2) { uriHandler.openUri("https://github.com/login/device") }
             verify(exactly = 4) { dependencies.notificationService.post(any()) }
-            panel.state.value = panel.state.value.copy(setupStep = SyncSetupStep.NEW_PASSWORD, deviceCode = null)
+            panel.state.value = panel.state.value.copy(
+                setupStep = SyncSetupStep.NEW_PASSWORD,
+                setupBusy = false,
+                deviceCode = null,
+            )
             withTimeout(2_000) { while (find("sync-password-input") == null) render() }
             requireNotNull(find("sync-password-input")!!.config[SemanticsActions.RequestFocus].action).invoke()
             render()

@@ -616,24 +616,30 @@ abstract class SyncPanelStorageContract {
             auth.enqueue(deviceCode())
             auth.enqueue(deviceCode("SECOND-CODE"))
             open().use { storage ->
-                withPanel(storage, endpoints = endpoints(auth)) { panel, runtime ->
+                var now = 1_000L
+                withPanel(storage, endpoints = endpoints(auth), clock = { now }) { panel, runtime ->
                     panel.act(SyncPanelAction.Open)
                     panel.act(SyncPanelAction.Authorize)
+                    assertEquals(1_000L, panel.state.value.authRequestStartedAtMillis)
                     withTimeout(3_000) { panel.state.first { it.deviceCode != null } }
                     val code = requireNotNull(panel.state.value.deviceCode)
                     assertTrue(panel.claimDeviceCodeBrowser(code))
                     assertFalse(panel.claimDeviceCodeBrowser(code))
                     panel.act(SyncPanelAction.Close)
                     assertNull(panel.state.value.deviceCode)
+                    assertNull(panel.state.value.authRequestStartedAtMillis)
                     assertFalse(panel.claimDeviceCodeBrowser(code))
                     assertFalse(panel.state.value.setupBusy)
                     assertNull(runtime.credentials.read())
                     panel.act(SyncPanelAction.Open)
                     assertNull(panel.state.value.deviceCode)
+                    now = 10_000L
                     panel.act(SyncPanelAction.Authorize)
+                    assertEquals(10_000L, panel.state.value.authRequestStartedAtMillis)
                     withTimeout(3_000) { panel.state.first { it.deviceCode?.userCode == "SECOND-CODE" } }
                     assertTrue(panel.claimDeviceCodeBrowser(requireNotNull(panel.state.value.deviceCode)))
                     panel.act(SyncPanelAction.CancelAuthorization)
+                    assertNull(panel.state.value.authRequestStartedAtMillis)
                 }
             }
         }

@@ -1659,6 +1659,9 @@
     <string name="sync_connect">连接 GitHub</string>
     <string name="sync_reconnect">重新连接 GitHub</string>
     <string name="sync_auth_description">请在系统浏览器中授权，本应用不会要求输入 GitHub 密码。</string>
+    <string name="sync_auth_getting_code">正在获取 GitHub 验证码…</string>
+    <string name="sync_auth_waiting_browser">等待你在浏览器完成授权…</string>
+    <string name="sync_auth_check_network">如果持续无法获取，请检查您的网络是否能够访问 GitHub。</string>
     <string name="sync_copy_open">复制验证码并打开 GitHub</string>
     <string name="sync_auth_retry">重新获取验证码</string>
     <string name="sync_auth_cancel">取消授权</string>

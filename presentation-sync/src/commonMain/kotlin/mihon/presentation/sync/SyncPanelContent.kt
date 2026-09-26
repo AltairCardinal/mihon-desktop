@@ -778,13 +778,56 @@ private fun SetupPage(
     var password by remember(state.visible, state.setupStep, state.setupRepository) { mutableStateOf(TextFieldValue()) }
     var showPassword by remember(state.visible, state.setupStep) { mutableStateOf(false) }
     val passwordFocus = remember { FocusRequester() }
-    LazyColumn(modifier.padding(24.dp).testTag("sync-setup-list"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (state.setupBusy) item { CircularProgressIndicator(Modifier.size(24.dp)) }
+    LazyColumn(
+        modifier.fillMaxWidth().padding(24.dp).testTag("sync-setup-list"),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        if (state.setupBusy && state.setupStep != SyncSetupStep.SIGN_IN) {
+            item { CircularProgressIndicator(Modifier.size(24.dp)) }
+        }
         state.setupProblem?.let { item { Text(setupProblemText(it), Modifier.testTag("sync-setup-error")) } }
         if (state.setupProblem == null) state.problem?.let { item { Text(problemText(it)) } }
         when (state.setupStep) {
             SyncSetupStep.SIGN_IN -> {
-                item { Text(syncString(MR.strings.sync_auth_description)) }
+                if (state.setupBusy && state.authFailure == null) {
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().testTag(
+                                if (state.deviceCode == null) {
+                                    "sync-auth-getting-code"
+                                } else {
+                                    "sync-auth-waiting-browser"
+                                },
+                            ),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(Modifier.size(24.dp))
+                            Text(
+                                syncString(
+                                    if (state.deviceCode == null) {
+                                        MR.strings.sync_auth_getting_code
+                                    } else {
+                                        MR.strings.sync_auth_waiting_browser
+                                    },
+                                ),
+                                Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
+                if (state.setupBusy && state.deviceCode == null && state.authFailure == null) {
+                    val startedAt = state.authRequestStartedAtMillis
+                    if (startedAt != null && state.nowMillis >= startedAt && state.nowMillis - startedAt >= 5_000) {
+                        item {
+                            Text(
+                                syncString(MR.strings.sync_auth_check_network),
+                                Modifier.fillMaxWidth().testTag("sync-auth-network-hint"),
+                            )
+                        }
+                    }
+                }
+                item { Text(syncString(MR.strings.sync_auth_description), Modifier.fillMaxWidth()) }
                 state.deviceCode?.let { code ->
                     item { Text(code.userCode, style = MaterialTheme.typography.headlineMedium) }
                     item {

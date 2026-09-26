@@ -1220,10 +1220,12 @@ class SyncPanelContentTest {
         SyncPanelState(
             visible = true,
             page = SyncPanelPage.SETUP,
+            setupBusy = true,
             deviceCode = GitHubDeviceCode("secret-device", "ABCD-EFGH", "https://github.com/login/device", 900, 5),
         ),
     ) {
         awaitTag("sync-copy-open")
+        assertTrue(texts().contains("等待你在浏览器完成授权…"))
         assertEquals(listOf("ABCD-EFGH"), copied)
         assertEquals(listOf("https://github.com/login/device"), opened)
         render()
@@ -1267,6 +1269,50 @@ class SyncPanelContentTest {
         assertTrue(opened.isEmpty())
         click("sync-authorize")
         assertEquals(SyncPanelAction.Authorize, actions.last())
+    }
+
+    @Test
+    fun `device code request names its work then offers network guidance after five seconds`() = rendered(
+        SyncPanelState(
+            visible = true,
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.SIGN_IN,
+            setupBusy = true,
+            authRequestStartedAtMillis = 1_000,
+            nowMillis = 1_000,
+        ),
+    ) {
+        awaitTag("sync-authorize")
+        assertTrue(texts().contains("正在获取 GitHub 验证码…"))
+        assertFalse(texts().contains("如果持续无法获取，请检查您的网络是否能够访问 GitHub。"))
+        panel.state.value = panel.state.value.copy(nowMillis = 5_999)
+        render()
+        assertFalse(texts().contains("如果持续无法获取，请检查您的网络是否能够访问 GitHub。"))
+        panel.state.value = panel.state.value.copy(nowMillis = 6_000)
+        render()
+        assertTrue(texts().contains("如果持续无法获取，请检查您的网络是否能够访问 GitHub。"))
+        panel.state.value = panel.state.value.copy(
+            deviceCode = GitHubDeviceCode("secret-device", "ABCD-EFGH", "https://github.com/login/device", 900, 5),
+        )
+        render()
+        assertFalse(texts().contains("正在获取 GitHub 验证码…"))
+        assertFalse(texts().contains("如果持续无法获取，请检查您的网络是否能够访问 GitHub。"))
+        panel.state.value = panel.state.value.copy(
+            deviceCode = null,
+            setupBusy = false,
+            authFailure = GitHubAuthFailureReason.HTTP,
+        )
+        render()
+        assertFalse(texts().contains("正在获取 GitHub 验证码…"))
+        panel.state.value = panel.state.value.copy(
+            setupBusy = true,
+            authFailure = null,
+            authRequestStartedAtMillis = 10_000,
+            nowMillis = 10_000,
+        )
+        render()
+        assertTrue(texts().contains("正在获取 GitHub 验证码…"))
+        assertFalse(texts().contains("如果持续无法获取，请检查您的网络是否能够访问 GitHub。"))
     }
 
     @Test

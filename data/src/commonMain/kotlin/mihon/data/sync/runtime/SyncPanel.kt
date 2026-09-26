@@ -90,6 +90,7 @@ data class SyncPanelState(
     val logsHasMore: Boolean = false,
     val setupStep: SyncSetupStep = SyncSetupStep.SIGN_IN,
     val setupBusy: Boolean = false,
+    val authRequestStartedAtMillis: Long? = null,
     val deviceCode: GitHubDeviceCode? = null,
     val authFailure: GitHubAuthFailureReason? = null,
     val setupProblem: SyncDiscoveryProblem? = null,

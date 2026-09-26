@@ -129,6 +129,7 @@ class AndroidSyncPanelTest {
         panel.state.value = panel.state.value.copy(
             page = SyncPanelPage.SETUP,
             setupStep = SyncSetupStep.SIGN_IN,
+            setupBusy = true,
             deviceCode = GitHubDeviceCode(
                 "secret-device",
                 "ABCD-EFGH",
@@ -140,7 +141,25 @@ class AndroidSyncPanelTest {
         showToolbar()
         compose.onNodeWithTag("sync-open").performClick()
         compose.waitForIdle()
+        compose.onNodeWithTag("sync-auth-waiting-browser", useUnmergedTree = true).assertIsDisplayed()
         assertEquals("https://github.com/login/device", shadowOf(activity.get()).nextStartedActivity?.dataString)
+    }
+
+    @Test
+    fun `real sync sheet explains device code wait and delayed network check`() {
+        panel.state.value = panel.state.value.copy(
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.SIGN_IN,
+            setupBusy = true,
+            authRequestStartedAtMillis = 1_000,
+            nowMillis = 1_000,
+        )
+        showToolbar()
+        compose.onNodeWithTag("sync-open").performClick()
+        compose.onNodeWithTag("sync-auth-getting-code", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("sync-auth-network-hint").assertDoesNotExist()
+        panel.state.value = panel.state.value.copy(nowMillis = 6_000)
+        compose.onNodeWithTag("sync-auth-network-hint", useUnmergedTree = true).assertIsDisplayed()
     }
 
     private fun showToolbar() {

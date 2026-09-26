@@ -583,7 +583,9 @@ class SyncPanelController(
         authJob = null
         repositoryJob?.cancelAndJoin()
         repositoryJob = null
-        mutableState.update { it.copy(deviceCode = null, setupBusy = setupJob?.isActive == true) }
+        mutableState.update {
+            it.copy(deviceCode = null, setupBusy = setupJob?.isActive == true, authRequestStartedAtMillis = null)
+        }
         deviceBrowserOpened.set(false)
     }
 
@@ -595,8 +597,16 @@ class SyncPanelController(
         cancelAuthorization()
         val version = authVersion
         val previous = runtime.credentials.read()?.revision
+        val startedAt = clock()
         mutableState.update {
-            it.copy(page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.SIGN_IN, setupBusy = true, authFailure = null)
+            it.copy(
+                page = SyncPanelPage.SETUP,
+                setupStep = SyncSetupStep.SIGN_IN,
+                setupBusy = true,
+                authFailure = null,
+                authRequestStartedAtMillis = startedAt,
+                nowMillis = startedAt,
+            )
         }
         authJob = scope.launch {
             val result = runtime.authorization.authorize(SyncRuntime.CLIENT_ID) { code ->
@@ -612,12 +622,22 @@ class SyncPanelController(
                     is GitHubDeviceAuthResult.Authorized -> {
                         runtime.acceptAuthorization(previous, result.token)
                         mutableState.update {
-                            it.copy(deviceCode = null, setupStep = SyncSetupStep.DISCOVERING, setupBusy = false)
+                            it.copy(
+                                deviceCode = null,
+                                setupStep = SyncSetupStep.DISCOVERING,
+                                setupBusy = false,
+                                authRequestStartedAtMillis = null,
+                            )
                         }
                         discover()
                     }
                     is GitHubDeviceAuthResult.Failed -> mutableState.update {
-                        it.copy(deviceCode = null, setupBusy = false, authFailure = result.failure.reason)
+                        it.copy(
+                            deviceCode = null,
+                            setupBusy = false,
+                            authFailure = result.failure.reason,
+                            authRequestStartedAtMillis = null,
+                        )
                     }
                 }
             }

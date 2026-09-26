@@ -1926,6 +1926,9 @@
     <string name="sync_connect">Connect GitHub</string>
     <string name="sync_reconnect">Reconnect GitHub</string>
     <string name="sync_auth_description">Authorize in your system browser. This app never asks for your GitHub password.</string>
+    <string name="sync_auth_getting_code">Getting a GitHub verification code…</string>
+    <string name="sync_auth_waiting_browser">Waiting for you to authorize in your browser…</string>
+    <string name="sync_auth_check_network">If this takes too long, check whether your network can reach GitHub.</string>
     <string name="sync_copy_open">Copy code and open GitHub</string>
     <string name="sync_auth_retry">Get a new code</string>
     <string name="sync_auth_cancel">Cancel authorization</string>
