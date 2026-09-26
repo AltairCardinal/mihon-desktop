@@ -1844,8 +1844,13 @@
     <string name="sync_terminal_cancelled">本次同步已取消</string>
     <string name="sync_terminal_pending_receipts">%1$d 个下载批次待确认，涉及 %2$d 条变动</string>
     <string name="sync_terminal_pending_explanation">批次内变动仍待核对，不代表这些变动都已失败</string>
-    <string name="sync_terminal_source_fields">有 %1$d 项核对内容因漫画源不可用，暂无法确认</string>
-    <string name="sync_terminal_source_retry">请先恢复对应漫画源后再重试；仅重试同步无法解决源不可用的问题</string>
+    <string name="sync_terminal_source_fields">上次有 %1$d 项核对内容因漫画源不可用而未能恢复</string>
+    <string name="sync_terminal_source_retry">请重试同步，重新检查并恢复已保存的数据</string>
+    <string name="sync_failure_log_count">本次有 %1$d 项无法还原，详情已保存至失败日志</string>
+    <string name="sync_failure_log_open">打开失败日志</string>
+    <string name="sync_failure_log_save_failed">有 %1$d 项无法还原，失败日志保存失败</string>
+    <string name="sync_failure_log_save_failed_unknown">失败日志保存失败，无法确定未还原项数</string>
+    <string name="sync_failure_log_open_failed">无法打开失败日志，请检查文件是否存在或安装文本查看器</string>
     <string name="sync_eta_unknown_whole">全部剩余时间正在估算</string>
     <string name="sync_eta_unknown">正在估算</string>
     <string name="sync_eta_unavailable">剩余时间暂无法估算</string>

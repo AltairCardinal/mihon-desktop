@@ -197,7 +197,7 @@ class SyncPanelController(
         }
     }
 
-    private suspend fun refresh() {
+    private suspend fun refresh(forceFailureLog: Boolean = false) {
         val connection = runtime.connection()
         if (connection?.unsupportedFormat == true) {
             mutableState.update {
@@ -312,6 +312,7 @@ class SyncPanelController(
                 SyncRunState.CANCELLED,
             )
         }?.let { runtime.runStore.terminalSummary(it.runId) }
+        val failureLog = run?.let { runtime.failureLogFor(it, forceFailureLog) }
         val persistedProblem = run?.takeIf { it.state in setOf(SyncRunState.FAILED, SyncRunState.BLOCKED) }
             ?.let(::persistedProblem)
         mutableState.update {
@@ -339,6 +340,7 @@ class SyncPanelController(
                 records = runtime.records().asReversed(),
                 run = run,
                 terminalSummary = terminalSummary,
+                failureLog = failureLog,
                 progress = run?.let { runtime.progressFor(it.runId) ?: restoredProgress(it) },
                 logs = logs,
                 logsHasMore = run != null && logLimit < 500L && logs.size.toLong() == logLimit,
@@ -396,7 +398,7 @@ class SyncPanelController(
         when (action) {
             SyncPanelAction.Open -> {
                 mutableState.update { it.copy(visible = true, page = SyncPanelPage.MAIN, notice = null) }
-                refresh()
+                refresh(forceFailureLog = true)
             }
             SyncPanelAction.Close -> {
                 panelSession++

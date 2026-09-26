@@ -81,6 +81,47 @@ SELECT COUNT(*) FROM (
         AND s.status = 'SOURCE' AND s.dirty = 0
 );
 
+countFailureReportFields:
+SELECT COUNT(*) FROM sync_runtime_confirmations c
+JOIN sync_events e ON e.space_id = :spaceId AND e.generation = :generation AND e.batch_id = c.batch_id
+JOIN sync_event_fields f ON f.space_id = e.space_id AND f.generation = e.generation AND f.event_key = e.event_key
+JOIN sync_field_state s ON s.space_id = f.space_id AND s.generation = f.generation
+    AND s.object_key = f.object_key AND s.field = f.field
+WHERE c.run_id = :runId AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING'
+    AND s.status IN ('SOURCE', 'DESCRIPTION', 'IDENTITY') AND s.dirty = 0;
+
+getFailureReportFields:
+SELECT c.batch_id AS batch_id, e.event_key AS event_key, e.event_json AS event_json,
+    f.object_json AS object_json, f.field AS field_name, s.status AS failure_reason,
+    d.description_json AS description_json
+FROM sync_runtime_confirmations c
+JOIN sync_events e ON e.space_id = :spaceId AND e.generation = :generation AND e.batch_id = c.batch_id
+JOIN sync_event_fields f ON f.space_id = e.space_id AND f.generation = e.generation AND f.event_key = e.event_key
+JOIN sync_field_state s ON s.space_id = f.space_id AND s.generation = f.generation
+    AND s.object_key = f.object_key AND s.field = f.field
+LEFT JOIN sync_descriptions d ON d.space_id = f.space_id AND d.generation = f.generation
+    AND d.object_key = f.object_key
+WHERE c.run_id = :runId AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING'
+    AND s.status IN ('SOURCE', 'DESCRIPTION', 'IDENTITY') AND s.dirty = 0
+ORDER BY c.batch_id, e.event_key, f.object_key, f.field
+LIMIT :pageSize OFFSET :pageOffset;
+
+countFailureReportInvalidEvents:
+SELECT COUNT(*) FROM sync_runtime_confirmations c
+JOIN sync_events e ON e.space_id = :spaceId AND e.generation = :generation AND e.batch_id = c.batch_id
+JOIN sync_invalid_events i ON i.space_id = e.space_id AND i.generation = e.generation AND i.event_key = e.event_key
+WHERE c.run_id = :runId AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING';
+
+getFailureReportInvalidEvents:
+SELECT c.batch_id AS batch_id, e.event_key AS event_key, e.event_json AS event_json,
+    i.reason AS failure_reason
+FROM sync_runtime_confirmations c
+JOIN sync_events e ON e.space_id = :spaceId AND e.generation = :generation AND e.batch_id = c.batch_id
+JOIN sync_invalid_events i ON i.space_id = e.space_id AND i.generation = e.generation AND i.event_key = e.event_key
+WHERE c.run_id = :runId AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING'
+ORDER BY c.batch_id, e.event_key
+LIMIT :pageSize OFFSET :pageOffset;
+
 hasPendingRuntimeReceipt:
 SELECT 1 FROM sync_runtime_confirmations
 WHERE run_id = ? AND direction = 'DOWNLOAD' AND status = 'PENDING' LIMIT 1;

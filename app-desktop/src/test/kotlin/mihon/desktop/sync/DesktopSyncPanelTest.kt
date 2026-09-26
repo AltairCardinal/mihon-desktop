@@ -15,6 +15,8 @@ import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -24,6 +26,11 @@ import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelState
 import mihon.data.sync.runtime.SyncSetupStep
+import mihon.data.sync.runtime.SyncFailureLogStatus
+import mihon.data.sync.runtime.SyncRunSnapshot
+import mihon.data.sync.runtime.SyncRunState
+import mihon.data.sync.runtime.SyncRunPhase
+import mihon.domain.sync.runtime.SyncTrigger
 import mihon.domain.sync.auth.GitHubDeviceCode
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
@@ -136,6 +143,23 @@ class DesktopSyncPanelTest {
             scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(native))
             render()
             assertEquals(SyncPanelPage.MAIN, panel.state.value.page)
+            mockkObject(DesktopSyncFailureLogOpener)
+            try {
+                every { DesktopSyncFailureLogOpener.open(any(), any()) } returns true
+                panel.state.value = panel.state.value.copy(
+                    run = SyncRunSnapshot(
+                        "report-run", "space", 1, SyncTrigger.MANUAL, SyncRunState.PARTIAL, SyncRunPhase.MERGING,
+                        0, 1, 0, 0, 1, attemptId = 1, nextRetryAt = 0, lastProgressAt = 0,
+                        stopReason = "projection_pending", ownerSession = null, createdAt = 0, updatedAt = 1,
+                    ),
+                    failureLog = SyncFailureLogStatus.Ready("report-run", "/reports/failure.txt", 1),
+                )
+                render()
+                click("sync-failure-log-open")
+                verify(exactly = 1) { DesktopSyncFailureLogOpener.open("/reports/failure.txt", any()) }
+            } finally {
+                unmockkObject(DesktopSyncFailureLogOpener)
+            }
             click("sync-close")
             assertFalse(panel.state.value.visible)
         } finally {

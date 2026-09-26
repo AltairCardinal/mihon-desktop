@@ -9,6 +9,7 @@ import kotlinx.coroutines.withTimeout
 import mihon.data.sync.http.InMemorySyncMetrics
 import mihon.data.sync.http.NoopSyncMetrics
 import mihon.data.sync.http.SyncMetrics
+import mihon.data.sync.inbox.SyncInboxStore
 import mihon.data.sync.runtime.StoredSyncMaterial
 import mihon.data.sync.runtime.StoredSyncSetup
 import mihon.data.sync.runtime.SyncPanelAction
@@ -43,6 +44,7 @@ import mockwebserver3.RecordedRequest
 import okhttp3.Call
 import okhttp3.EventListener
 import okhttp3.OkHttpClient
+import okio.Path.Companion.toPath
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -60,6 +62,7 @@ import tachiyomi.data.JvmDatabaseHandler
 import tachiyomi.data.Mangas
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
+import java.nio.file.Files
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -68,12 +71,13 @@ import java.util.prefs.Preferences
 
 class SyncRuntimeWiringTest {
     @Test
-    fun `production upload transfers before ref and confirms after acknowledgement`() = runBlocking {
+    fun `production upload needs no installed source and confirms after acknowledgement`() = runBlocking {
         Fixture().use { fixture ->
             SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
                 setup.existing("")
                 setup.authorize()
                 setup.begin()
+                setup.sourceAvailable = { false }
                 val runtime = setup.runtime
                 fixture.storage.favorite("/progress-boundary")
                 val enteredRef = CountDownLatch(1)
@@ -115,13 +119,58 @@ class SyncRuntimeWiringTest {
                 }
                 assertEquals(SyncRunStatus.SUCCESS, exchange.await().status)
                 val afterAck = requireNotNull(runtime.liveProgress.value)
-                assertEquals(1L, afterAck.completedItems)
+                assertEquals(1L, requireNotNull(runtime.runStore.latest("space", 1)).confirmedItems)
+                assertEquals(1L, afterAck.confirmedThisRun)
                 assertEquals(
                     null,
                     fixture.storage.handler.await {
                         sync_journalQueries.getNextUploadBatch("space", 1).executeAsOneOrNull()
                     },
                 )
+            }
+        }
+    }
+
+    @Test
+    fun `production download confirms source-free projection once`() = runBlocking {
+        Fixture().use { sender ->
+            Fixture().use { receiver ->
+                SyncOnboardingFixture(sender.storage, sender.preferences, sender.client).use { setup ->
+                    val material = setup.existing("")
+                    setup.authorize()
+                    setup.begin()
+                    sender.storage.favorite("/source-free-download")
+                    assertEquals(
+                        SyncRunStatus.SUCCESS,
+                        setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL).status,
+                    )
+
+                    val runtime = receiver.runtime(
+                        setup.git.baseUrl,
+                        setup.endpoints.accessTokenUrl,
+                        sourceAvailable = { false },
+                    )
+                    try {
+                        runtime.credentials.replace(
+                            null,
+                            GitHubAccessToken("synthetic-token", null, "bearer", emptySet(), null, null),
+                        )
+                        val discovered = runtime.onboarding.discover()
+                        val space = (discovered as mihon.data.sync.auth.SyncSpaceDiscovery.Found).space
+                        runtime.onboarding.resume(runtime.onboarding.join(space, material))
+                        val result = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                        assertEquals(SyncRunStatus.SUCCESS, result.status)
+                        val run = requireNotNull(runtime.runStore.latest("space", 1))
+                        assertEquals(1, result.downloaded)
+                        assertEquals(1L, run.confirmedItems)
+                        val projected = receiver.storage.handler.await {
+                            sync_projectionQueries.getMangaByIdentity("/source-free-download", 1).executeAsOneOrNull()
+                        }
+                        assertEquals(true, projected?.favorite)
+                    } finally {
+                        runtime.stopPanel()
+                    }
+                }
             }
         }
     }
@@ -152,7 +201,9 @@ class SyncRuntimeWiringTest {
                 assertTrue(observedAtRef.size >= 2, observedAtRef.toString())
                 assertTrue(observedAtRef.all { it.stage == mihon.data.sync.runtime.SyncProgressStage.CONFIRMING })
                 assertTrue(observedAtRef[1].networkBytes > observedAtRef[0].networkBytes)
-                assertEquals(1L, setup.runtime.liveProgress.value?.completedItems)
+                val completed = requireNotNull(setup.runtime.runStore.latest("space", 1))
+                assertEquals(1L, completed.uploaded)
+                assertEquals(1L, completed.confirmedItems)
             }
         }
     }
@@ -678,9 +729,9 @@ class SyncRuntimeWiringTest {
                 assertEquals(1, result.uploaded)
                 val live = requireNotNull(runtime.liveProgress.value)
                 assertEquals(mihon.data.sync.runtime.SyncProgressStage.CONFIRMING, live.stage)
-                assertEquals(mihon.data.sync.runtime.SyncProgressDirection.UPLOAD, live.direction)
-                assertEquals(1L, live.completedItems)
                 val completedRun = requireNotNull(runtime.runStore.latest("space", 1))
+                assertEquals(SyncRunState.SUCCEEDED, completedRun.state)
+                assertEquals(1L, completedRun.confirmedItems)
                 val completedLogs = runtime.runStore.logs(completedRun.runId)
                 assertTrue(
                     completedLogs.any {
@@ -695,24 +746,25 @@ class SyncRuntimeWiringTest {
                 assertTrue(f.preferences.getAll().keys.all { Preference.isAppState(it) })
                 assertFalse(f.preferences.getAll().toString().contains("access-secret"))
                 val reopened = setup.runtime()
-                assertEquals("access-secret", reopened.accessToken())
-                val reopenedPanel = reopened.panel as mihon.data.sync.runtime.SyncPanelController
-                reopenedPanel.dispatch(SyncPanelAction.Open)
-                reopenedPanel.awaitIdle()
-                assertEquals(mihon.data.sync.runtime.SyncProgressHold.ACTIVE, reopenedPanel.state.value.progress?.hold)
-                assertEquals(
-                    completedRun.uploaded + completedRun.downloaded,
-                    reopenedPanel.state.value.progress?.completedItems,
-                )
-                assertEquals(0, reopened.coordinator.synchronize(SyncTrigger.STARTUP).uploaded)
-                f.storage.favorite("/runtime-next")
-                assertEquals(1, reopened.coordinator.synchronize(SyncTrigger.MANUAL).uploaded)
-                runtime.disconnect()
-                f.storage.favorite("/after-disconnect")
-                val before = f.networkCalls
-                assertEquals(SyncRunStatus.SKIPPED, reopened.coordinator.synchronize(SyncTrigger.MANUAL).status)
-                assertEquals(before, f.networkCalls)
-                assertNull(runtime.credentials.read())
+                try {
+                    assertEquals("access-secret", reopened.accessToken())
+                    val reopenedPanel = reopened.panel as mihon.data.sync.runtime.SyncPanelController
+                    reopenedPanel.dispatch(SyncPanelAction.Open)
+                    reopenedPanel.awaitIdle()
+                    assertEquals(SyncRunState.SUCCEEDED, reopenedPanel.state.value.run?.state)
+                    assertEquals(1L, reopenedPanel.state.value.run?.confirmedItems)
+                    assertEquals(0, reopened.coordinator.synchronize(SyncTrigger.STARTUP).uploaded)
+                    f.storage.favorite("/runtime-next")
+                    assertEquals(1, reopened.coordinator.synchronize(SyncTrigger.MANUAL).uploaded)
+                    runtime.disconnect()
+                    f.storage.favorite("/after-disconnect")
+                    val before = f.networkCalls
+                    assertEquals(SyncRunStatus.SKIPPED, reopened.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                    assertEquals(before, f.networkCalls)
+                    assertNull(runtime.credentials.read())
+                } finally {
+                    reopened.stopPanel()
+                }
             }
         }
     }
@@ -733,12 +785,16 @@ class SyncRuntimeWiringTest {
                 assertEquals(1L, run.confirmedItems, run.toString())
                 setup.runtime.runStore.finish(run.runId, SyncRunState.WAITING_SYSTEM, "process_restart")
                 val reopened = setup.runtime()
-                val panel = reopened.panel as mihon.data.sync.runtime.SyncPanelController
-                panel.dispatch(SyncPanelAction.Open)
-                panel.awaitIdle()
-                assertEquals(SyncRunState.WAITING_SYSTEM, panel.state.value.run?.state)
-                assertEquals(1L, panel.state.value.progress?.confirmedThisRun)
-                assertEquals(0L, panel.state.value.progress?.completedItems)
+                try {
+                    val panel = reopened.panel as mihon.data.sync.runtime.SyncPanelController
+                    panel.dispatch(SyncPanelAction.Open)
+                    panel.awaitIdle()
+                    assertEquals(SyncRunState.WAITING_SYSTEM, panel.state.value.run?.state)
+                    assertEquals(1L, panel.state.value.progress?.confirmedThisRun)
+                    assertEquals(0L, panel.state.value.progress?.completedItems)
+                } finally {
+                    reopened.stopPanel()
+                }
             }
         }
     }
@@ -810,19 +866,92 @@ class SyncRuntimeWiringTest {
                 assertEquals(1L, selected.terminalSummary?.sourceUnavailableFields)
 
                 val reopened = setup.runtime()
-                val panel = reopened.panel as mihon.data.sync.runtime.SyncPanelController
-                panel.dispatch(SyncPanelAction.Open)
-                panel.awaitIdle()
-                assertEquals(other.runId, panel.state.value.run?.runId)
-                assertEquals(1L, panel.state.value.terminalSummary?.pendingDownloadBatches)
-                assertEquals(9L, panel.state.value.terminalSummary?.pendingDownloadEvents)
-                assertEquals(1L, panel.state.value.terminalSummary?.sourceUnavailableFields)
+                try {
+                    val panel = reopened.panel as mihon.data.sync.runtime.SyncPanelController
+                    panel.dispatch(SyncPanelAction.Open)
+                    panel.awaitIdle()
+                    assertEquals(other.runId, panel.state.value.run?.runId)
+                    assertEquals(1L, panel.state.value.terminalSummary?.pendingDownloadBatches)
+                    assertEquals(9L, panel.state.value.terminalSummary?.pendingDownloadEvents)
+                    assertEquals(1L, panel.state.value.terminalSummary?.sourceUnavailableFields)
 
-                panel.act(SyncPanelAction.RetrySync)
-                withTimeout(5_000) { panel.state.first { it.run?.runId == other.runId && it.run.attemptId > 1 } }
-                assertEquals(other.runId, panel.state.value.run?.runId)
-                assertEquals(0L, runStore.get(other.runId)?.confirmedItems)
-                assertEquals(1L, runStore.terminalSummary(other.runId)?.pendingDownloadBatches)
+                    panel.act(SyncPanelAction.RetrySync)
+                    withTimeout(5_000) { panel.state.first { it.run?.runId == other.runId && it.run.attemptId > 1 } }
+                    assertEquals(other.runId, panel.state.value.run?.runId)
+                    assertEquals(0L, runStore.get(other.runId)?.confirmedItems)
+                    assertEquals(1L, runStore.terminalSummary(other.runId)?.pendingDownloadBatches)
+                } finally {
+                    reopened.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `partial runtime writes failure report and cold panel regenerates missing file`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val directory = Files.createTempDirectory("mihon-runtime-failures-")
+                val runtime = setup.runtime(failureLogDirectory = directory.toString().toPath())
+                var reopened: SyncRuntime? = null
+                try {
+                    val run = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+                    assertTrue(runtime.runStore.claim(run.runId, "failure-owner", 1))
+                    runtime.runStore.expectDownload(run.runId, "failure-owner", "missing-description", 1)
+                    val key = mihon.domain.sync.SyncObjectKey(
+                        mihon.domain.sync.SyncObjectType.MANGA,
+                        sourceId = "1",
+                        originalUrl = "/missing-description",
+                    )
+                    val event = SyncEventEnvelope(
+                        1,
+                        "space",
+                        1,
+                        "remote",
+                        1,
+                        1,
+                        SyncCategory.FAVORITE,
+                        listOf(SyncEffect("favorite", key, SyncField.FAVORITE, SyncEffectKind.ADD)),
+                        SyncOrigin.USER,
+                        batchId = "missing-description",
+                    )
+                    val reception = SyncInboxStore(fixture.storage.handler).ingest(
+                        SyncBatch(1, "space", 1, "missing-description", listOf(event)),
+                    )
+                    assertTrue(reception.accepted)
+                    runtime.projector.project("space", 1)
+                    val unresolved = fixture.storage.handler.await {
+                        sync_inboxQueries.getFieldState("space", 1, key.stableKey, "FAVORITE").executeAsOne()
+                    }
+                    assertEquals("DESCRIPTION", unresolved.status)
+                    runtime.runStore.finish(run.runId, SyncRunState.PARTIAL, "projection_pending", "failure-owner")
+                    assertEquals(SyncRunStatus.PARTIAL, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                    val files = Files.list(directory).use { it.toList() }
+                    assertEquals(1, files.size)
+                    assertTrue(Files.readString(files.single()).contains("DESCRIPTION"))
+
+                    val coldRuntime = setup.runtime(failureLogDirectory = directory.toString().toPath())
+                    reopened = coldRuntime
+                    val panel = coldRuntime.panel as mihon.data.sync.runtime.SyncPanelController
+                    panel.dispatch(SyncPanelAction.Open)
+                    panel.awaitIdle()
+                    val ready = panel.state.value.failureLog as mihon.data.sync.runtime.SyncFailureLogStatus.Ready
+                    assertEquals(files.single().toString(), ready.path)
+                    Files.delete(files.single())
+                    panel.dispatch(SyncPanelAction.Close)
+                    panel.awaitIdle()
+                    panel.dispatch(SyncPanelAction.Open)
+                    panel.awaitIdle()
+                    val regenerated = panel.state.value.failureLog as mihon.data.sync.runtime.SyncFailureLogStatus.Ready
+                    assertTrue(Files.exists(java.nio.file.Path.of(regenerated.path)))
+                } finally {
+                    reopened?.stopPanel()
+                    runtime.stopPanel()
+                    directory.toFile().deleteRecursively()
+                }
             }
         }
     }
@@ -1117,8 +1246,9 @@ class SyncRuntimeWiringTest {
             baseUrl: String,
             tokenUrl: String = "https://github.com/login/oauth/access_token",
             metrics: SyncMetrics = NoopSyncMetrics,
+            sourceAvailable: (Long) -> Boolean = { true },
         ) = SyncRuntime(
-            storage.handler, storage.bootstrap, storage.creators, storage.creators, { true }, secure,
+            storage.handler, storage.bootstrap, storage.creators, storage.creators, sourceAvailable, secure,
             preferences, client, GitHubAuthEndpoints(accessTokenUrl = tokenUrl, apiBaseUrl = baseUrl), { now },
             syncMetrics = metrics,
         )

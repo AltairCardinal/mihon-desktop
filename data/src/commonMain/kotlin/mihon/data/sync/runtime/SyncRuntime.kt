@@ -72,6 +72,7 @@ class SyncRuntime(
     private val endpoints: GitHubAuthEndpoints = GitHubAuthEndpoints(),
     private val clock: () -> Long = System::currentTimeMillis,
     internal val persistentObjectCacheDirectory: Path? = null,
+    internal val failureLogDirectory: Path? = null,
     private val syncMetrics: SyncMetrics = NoopSyncMetrics,
     private val progressTelemetryEnabled: Boolean = true,
 ) : SyncRunPort {
@@ -80,6 +81,9 @@ class SyncRuntime(
     val authorization = GitHubAuthClient(productionClient, endpoints, nowMillis = clock)
     val coordinator = SyncCoordinator(this)
     val runStore = SyncRunStore(handler, clock)
+    private val failureReportStore = failureLogDirectory?.let { SyncFailureReportStore(handler, it) }
+    private val failureReportMutex = Mutex()
+    private val failureReports = mutableMapOf<String, Pair<FailureReportVersion, SyncFailureLogStatus?>>()
     private val mutableLiveProgress = MutableStateFlow<SyncProgressFact?>(null)
     val liveProgress: StateFlow<SyncProgressFact?> = mutableLiveProgress
 
@@ -104,6 +108,42 @@ class SyncRuntime(
         )
     private val refresher = GitHubTokenRefresher(authorization, credentials, clock)
     private val connectionMutex = Mutex()
+    private data class FailureReportVersion(val state: SyncRunState, val attemptId: Long, val updatedAt: Long)
+
+    internal suspend fun failureLogFor(run: SyncRunSnapshot, force: Boolean = false): SyncFailureLogStatus? {
+        val store = failureReportStore ?: return null
+        if (run.state !in setOf(
+                SyncRunState.SUCCEEDED,
+                SyncRunState.PARTIAL,
+                SyncRunState.FAILED,
+                SyncRunState.BLOCKED,
+                SyncRunState.CANCELLED,
+            )
+        ) {
+            return null
+        }
+        val version = FailureReportVersion(run.state, run.attemptId, run.updatedAt)
+        return failureReportMutex.withLock {
+            val cached = failureReports[run.runId]
+            val readyExists = (cached?.second as? SyncFailureLogStatus.Ready)?.let { ready ->
+                runCatching { store.exists(ready.path) }.getOrDefault(false)
+            } != false
+            if (cached?.first == version && readyExists &&
+                (!force || cached.second !is SyncFailureLogStatus.SaveFailed)
+            ) {
+                return@withLock cached.second
+            }
+            val report = try {
+                store.generate(run)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                SyncFailureLogStatus.SaveFailed(run.runId, 0)
+            }
+            failureReports[run.runId] = version to report
+            report
+        }
+    }
     internal val onboarding =
         SyncOnboarding(
             this,
@@ -572,6 +612,7 @@ class SyncRuntime(
             },
             ownerSession,
         )
+        runStore.get(run.runId)?.let { failureLogFor(it) }
         if (result.status == SyncRunStatus.SUCCESS) completePendingSetupIfSettled()
         if (result.status == SyncRunStatus.SUCCESS) preferences.lastSuccess.set(clock())
         preferences.history.set(Json.encodeToString((records() + SyncRunRecord(clock(), trigger, result)).takeLast(20)))

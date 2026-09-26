@@ -28,6 +28,7 @@ import mihon.data.sync.inbox.SyncPendingItem
 import mihon.data.sync.runtime.SyncBulkConfirmation
 import mihon.data.sync.runtime.SyncBulkStatus
 import mihon.data.sync.runtime.SyncConnection
+import mihon.data.sync.runtime.SyncFailureLogStatus
 import mihon.data.sync.runtime.SyncPanel
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelNotice
@@ -331,14 +332,40 @@ class SyncPanelContentTest {
         assertTrue(texts().contains("本次已确认 26778 条"))
         assertTrue(texts().contains("2 个下载批次待确认，涉及 512 条变动"))
         assertTrue(texts().contains("批次内变动仍待核对，不代表这些变动都已失败"))
-        assertTrue(texts().contains("有 10 项核对内容因漫画源不可用，暂无法确认"))
-        assertTrue(texts().any { it.contains("恢复对应漫画源后再重试") })
+        assertTrue(texts().contains("上次有 10 项核对内容因漫画源不可用而未能恢复"))
+        assertTrue(texts().contains("请重试同步，重新检查并恢复已保存的数据"))
         assertTrue(texts().contains("已用 00:05"))
         assertFalse(hasTag("sync-progress"))
         assertFalse(texts().contains("正在接收并校验数据"))
         assertFalse(texts().any { it.contains("已确认 0 / 0") })
         click("sync-retry-run")
         assertEquals(SyncPanelAction.RetrySync, actions.last())
+    }
+
+    @Test
+    fun `failure report exposes complete file path and opens only selected run`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.CONFIRMING).copy(state = SyncRunState.PARTIAL),
+            failureLog = SyncFailureLogStatus.Ready("run-visual", "C:/reports/sync-run.txt", 521),
+        ),
+    ) {
+        awaitTag("sync-failure-log-open")
+        assertTrue(texts().any { it.contains("521") })
+        assertTrue(texts().contains("C:/reports/sync-run.txt"))
+        click("sync-failure-log-open")
+        assertEquals(listOf("C:/reports/sync-run.txt"), openedFailureLogs)
+        panel.state.value = panel.state.value.copy(
+            failureLog = SyncFailureLogStatus.Ready("another-run", "C:/reports/other.txt", 2),
+        )
+        render()
+        assertFalse(hasTag("sync-failure-log-open"))
+        assertFalse(texts().contains("C:/reports/other.txt"))
+        panel.state.value = panel.state.value.copy(
+            failureLog = SyncFailureLogStatus.SaveFailed("run-visual", 521),
+        )
+        render()
+        assertFalse(hasTag("sync-failure-log-open"))
+        assertTrue(texts().any { it.contains("失败日志保存失败") })
     }
 
     @Test
@@ -1617,6 +1644,7 @@ class SyncPanelContentTest {
     private class Fixture(initial: SyncPanelState, val scene: ImageComposeScene, private val fontScale: Float = 1f) {
         val actions = mutableListOf<SyncPanelAction>()
         val opened = mutableListOf<String>()
+        val openedFailureLogs = mutableListOf<String>()
         val copied = mutableListOf<String>()
         val panel = TestPanel(initial, actions)
         fun setContent() {
@@ -1632,6 +1660,7 @@ class SyncPanelContentTest {
                                     panel,
                                     onOpenBrowser = opened::add,
                                     onCopyCode = copied::add,
+                                    onOpenFailureLog = openedFailureLogs::add,
                                 )
                             }
                         }

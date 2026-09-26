@@ -67,6 +67,7 @@ internal class SyncOnboardingFixture(
     var description = ""
     var creationPosts = 0
     var rejectCreation = false
+    var sourceAvailable: (Long) -> Boolean = { true }
     var loseCreationResponse = false
     var creationEntered: java.util.concurrent.CountDownLatch? = null
     var creationRelease: java.util.concurrent.CountDownLatch? = null
@@ -134,10 +135,12 @@ internal class SyncOnboardingFixture(
         metrics: SyncMetrics = NoopSyncMetrics,
         persistentObjectCacheDirectory: Path? = null,
         progressTelemetryEnabled: Boolean = true,
+        failureLogDirectory: Path? = null,
     ): SyncRuntime = SyncRuntime(
-        storage.handler, storage.bootstrap, storage.creators, storage.creators, { true }, secure,
+        storage.handler, storage.bootstrap, storage.creators, storage.creators, { sourceAvailable(it) }, secure,
         preferences, client, endpoints, clock = { now },
         persistentObjectCacheDirectory = persistentObjectCacheDirectory,
+        failureLogDirectory = failureLogDirectory,
         syncMetrics = metrics,
         progressTelemetryEnabled = progressTelemetryEnabled,
     )

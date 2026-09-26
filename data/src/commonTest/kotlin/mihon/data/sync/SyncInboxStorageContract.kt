@@ -259,34 +259,66 @@ abstract class SyncInboxStorageContract {
     }
 
     @Test
-    fun `unavailable source remains in inbox and retries without upload echo`() = runBlocking {
+    fun `unavailable source applies complete remote favorite without upload echo`() = runBlocking {
         open().use { s ->
             s.connect(repository)
             s.sources.clear()
             s.inbox.ingest(membership(1, SyncEffectKind.ADD))
             s.projectAll()
-            assertEquals(null, s.writer.localMembership(manga))
-            assertEquals(1, s.inbox.status("space", 1).receivedBatches)
-            s.sources += 42L
-            s.projector.retryUnavailable("space", 1)
-            s.projectAll()
             assertEquals(true, s.writer.localMembership(manga))
+            assertTrue(s.inbox.canConfirmReceivedBatch("space", 1, "device-a-1"))
+            assertEquals(1, s.inbox.status("space", 1).receivedBatches)
             assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
         }
     }
 
     @Test
-    fun `batch projection isolates unavailable field and retries it independently`() = runBlocking {
+    fun `legacy source result retries without source and becomes confirmable`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            s.sources.clear()
+            assertTrue(s.inbox.ingest(membership(1, SyncEffectKind.ADD)).accepted)
+            s.driver.execute(
+                null,
+                "UPDATE sync_field_state SET status='SOURCE', dirty=0 WHERE space_id='space' AND generation=1",
+                0,
+            )
+            assertFalse(s.inbox.canConfirmReceivedBatch("space", 1, "device-a-1"))
+            s.projector.retryUnavailable("space", 1)
+            s.projectAll()
+            assertEquals(true, s.writer.localMembership(manga))
+            assertTrue(s.inbox.canConfirmReceivedBatch("space", 1, "device-a-1"))
+            val statuses = s.handler.await {
+                sync_inboxQueries.getFieldState("space", 1, manga.stableKey, "FAVORITE").executeAsOneOrNull()
+            }
+            assertEquals("APPLIED", statuses?.status)
+            assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
+        }
+    }
+
+    @Test
+    fun `batch projection isolates missing descriptor and retries it independently`() = runBlocking {
         open().use { s ->
             s.connect(repository)
             val good = manga.copy(originalUrl = "/good")
-            val unavailable = manga.copy(sourceId = "43", originalUrl = "/unavailable")
+            val unavailable = manga.copy(sourceId = "43", originalUrl = "/missing-description")
             assertTrue(s.inbox.ingest(membership(1, SyncEffectKind.ADD, key = good)).accepted)
-            assertTrue(s.inbox.ingest(membership(2, SyncEffectKind.ADD, key = unavailable)).accepted)
+            assertTrue(
+                s.inbox.ingest(
+                    membership(2, SyncEffectKind.ADD, key = unavailable).copy(objects = emptyList()),
+                ).accepted,
+            )
             s.projectAll()
             assertEquals(true, s.writer.localMembership(good))
             assertEquals(null, s.writer.localMembership(unavailable))
-            s.sources += 43L
+            s.handler.await {
+                sync_inboxQueries.insertDescription(
+                    "space",
+                    1,
+                    unavailable.stableKey,
+                    kotlinx.serialization.json.Json.encodeToString(SyncObjectDescriptor(unavailable, "补齐描述")),
+                )
+            }
             s.projector.retryUnavailable("space", 1)
             s.projectAll()
             assertEquals(true, s.writer.localMembership(unavailable))
@@ -301,16 +333,22 @@ abstract class SyncInboxStorageContract {
             val second = manga.copy(originalUrl = "/second")
             assertTrue(s.inbox.ingest(membership(1, SyncEffectKind.ADD, key = first)).accepted)
             assertTrue(s.inbox.ingest(membership(2, SyncEffectKind.ADD, key = second)).accepted)
-            var sourceChecks = 0
+            var indexed = 0
             val cancellingWriter = SyncRemoteProjectionWriter(
                 s.handler,
-                s.creators,
+                object : tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter by s.creators {
+                    override suspend fun indexLibraryMangaBatch(
+                        entries: List<tachiyomi.domain.creator.model.CreatorLibraryIndexEntry>,
+                    ) {
+                        if (entries.isNotEmpty() && ++indexed == 2) {
+                            throw CancellationException("cancel projection page")
+                        }
+                        s.creators.indexLibraryMangaBatch(entries)
+                    }
+                },
                 s.creators,
                 s.bootstrap,
-                sourceAvailable = {
-                    if (++sourceChecks == 2) throw CancellationException("cancel projection page")
-                    true
-                },
+                s.sources::contains,
             )
             val cancellingProjector = SyncInboxProjector(s.handler, cancellingWriter)
             try {

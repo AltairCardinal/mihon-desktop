@@ -36,6 +36,31 @@ Windows 验证日志保存在忽略目录 `.gradle-coordinator/` 中的 `sync-et
 
 本轮 Android 验收包：`app/build/outputs/apk/debug/mihon-sync-result-ui-20260926.apk`，实际包名 `app.mihon.dev`、版本 `0.19.4-9208`、SHA-256 `95087b480f591e88982a84a203e7a17b2193afb5592c369e6298e566c4004525`，已核对产物存在。本轮未重建 Windows/macOS；共享 UI 由 JVM 测试覆盖。新 APK 尚待用户安装后实机验收，上述修复前实机观察不能代替新包验收。
 
+## 缺源恢复与完整失败日志（2026-09-27）
+
+本轮目标是使现有同步类别在身份与描述完整时能够脱离图源扩展恢复本地数据，并为确实无法恢复的数据保存完整本地文本报告。图源是否安装、能否访问网站，不应成为写入已有同步数据的前提；网站浏览、刷新章节及图片下载仍依赖图源。本轮不扩大同步字段范围，不改变多设备冲突规则或批次安全确认条件。
+
+恢复部分 TDD：`sync-source-free-red` 的 4 项断言在旧图源门槛下失败；`sync-source-free-green-first` 的共用投影与收件合同通过，覆盖缺源新建漫画/章节、收藏/阅读字段、旧 SOURCE 状态重试、缺描述字段隔离及取消回滚。`sync-source-free-runtime-fix` 的真实 Git/HTTP 同步测试通过，覆盖无源上传的远端确认边界，以及无源接收端落地并确认一次。`sync-source-free-android` 通过 Android 数据库实现的投影、收件、出站共用合同。主代理已独立检查恢复代码与测试，确认身份、描述及原事务保护仍生效。
+
+失败日志 TDD：先运行缺失接口红测及共享 UI 断言红测，再实现日志存储、终态生成和平台打开。`sync-failure-core-final` 通过数据层 JVM/Android 投影、收件、历史合同，以及完整报告、真实 runtime、共享 UI 和对应模块格式检查。报告用真实 SQLite 数据覆盖 520 条失败字段（含 SOURCE/DESCRIPTION/IDENTITY）与 1 条无效事件，检查全文、运行/空间隔离、磁盘失败和重开后重建；真实同步测试覆盖终态自动生成、冷面板读取与文件丢失后重新生成。
+
+平台接线由实施代理独立只读审查，主代理独立审查共享恢复、查询范围、报告与缓存边界。Windows 上真实 AndroidX FileProvider 的路径判断与 Robolectric 反斜杠主机路径不兼容，三项真实 provider 用例限定 Unix 执行。Mac 隔离 worktree 的 `sync-failure-unix-provider-isolated` 实际 XML 为 8 tests、0 skipped、0 failures、0 errors，验证真实内容 URI 的中文读取、目录约束、原生面板回调和无查看器分享回退。测试清理 FileProvider 静态目录缓存，避免 Robolectric 每例创建不同 filesDir 时串用路径；未 mock FileProvider。Mac 缺失的 FlexibleAdapter AAR 和 Robolectric 运行包复用 Windows 缓存，未修改仓库依赖声明。
+
+本批涉及共享恢复、持久失败查询、报告、双端文件打开与 DI、共享界面、测试和维护文档，超过 8 文件/400 行仍属于一个可独立交付的能力。主要风险是误确认数据及跨目录文件读取，分别通过真实持久确认合同与原生文件打开边界测试覆盖；未新增数据库迁移或同步格式。
+
+最终测试：
+
+- `sync-source-final-suites` 执行 data 全模块 662 项，首次 3 失败、1 跳过；XML 定位为两处旧测试错误地把最后一个空进度范围当作终态，以及重开面板测试未停止后台刷新导致跨测试数据库关闭异常。修正断言和 finally 清理后，`sync-source-suite-regression-fix` 的 Runtime/S2 两类共 34 项通过，同时全仓 `spotlessCheck` 通过；未重复运行全数据模块。
+- `sync-source-android-ui-offline`：Android 全模块 598 项、0 失败、3 个 Windows 不兼容 provider 用例跳过（由上述 Mac 的 8 项真实宿主测试补足）；共享 UI 全模块 57 项、0 失败；APK 构建通过。初次配置阶段的依赖网络等待被取消，实际测试和构建使用本机缓存完成。
+- Mac `scripts/build-desktop.sh full-tests` 执行 Desktop 3165 项，首次 2 失败、9 跳过。一项为 DI 新增参数使 parity manifest 的两个源码行号偏移，已仅更新行号；另一项为现有真实 macOS 凭据后端测试在 SSH 会话无法访问钥匙串，`security show-keychain-info` 明确返回 `User interaction is not allowed`。不更改凭据逻辑或绕过钥匙串。
+- `sync-source-desktop-platform-final` 在 Windows 聚焦验证 parity 合同、真实系统凭据后端及同步面板、DI、报告打开器，共 42 项全部通过。完整 Desktop 测试仅执行一次；平台特定失败如上记录，不把 macOS 凭据访问说成已验收。
+
+Android 通用 APK：`app/build/outputs/apk/debug/mihon-source-independent-sync-20260927.apk`，包名 `app.mihon.dev`，版本 `0.19.4-9209`，SHA-256 `c5897164b63ccf9f63b695cfd8bece459cce9bb82889a1dd91f9c22376aeff57`。新产物尚待用户实机验收。
+
+桌面使用既定 `scripts/build-desktop.sh build-only`，版本 `0.11.19.59.d9999a3`，Windows/macOS 均构建成功。Windows 构建脚本的真实扩展安装与版本验收通过；按 `Final unpacked EXE:` 核对正式文件存在：`D:/Codex/worktrees/85be/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.59.d9999a3-unpacked/Mihon Desktop.exe`。macOS 隔离部署到 `/Users/altair/Applications/Mihon Sync Source Free.app`，未替换用户默认应用。两个正式产物均通过隔离配置的 Test Mode：HomeScreen → LibraryTab → shutdown，退出码 0。以上启动验证不等同于 macOS 钥匙串可访问性验证。
+
+过程日志：Windows `.gradle-coordinator/sync-source-*.log`；Mac 隔离 worktree `/Users/altair/github/mihon-source-free-20260927/.gradle-coordinator/` 下的 `sync-failure-unix-provider-isolated.log`、`sync-source-desktop-full.log`、`sync-source-macos-build.log`、`sync-source-macos-runtime.log`。仅文档保存必要结论，测试缓存与运行配置不入库。
+
 ## 同样本性能对照
 
 本机以本地 MockWebServer、文件数据库与真实 Git/HTTP/面板链路，使用 1,600 条书架事件加 8,700 条阅读事件，共 10,300 条、41 批、每次 794 个 HTTP 请求。关闭/开启显示遥测各运行三次，交替顺序为 OFF/ON、ON/OFF、OFF/ON；HTTP 请求及响应正文总字节在每对中相同。服务端条件为响应头约 50 ms、12,500 字节响应正文约 10 ms、上传按每 1,250 字节约 1 ms 模拟。OFF 只关闭内存时间线和展示观测，安全回执、投影检查及运行结果照常执行。

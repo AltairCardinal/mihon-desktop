@@ -158,6 +158,7 @@ class DomainModule : InjektModule {
                 preferenceStore = get(),
                 productionClient = get<NetworkHelper>().client,
                 persistentObjectCacheDirectory = get<Application>().cacheDir.resolve("mihon-sync-objects").toOkioPath(),
+                failureLogDirectory = get<Application>().filesDir.resolve("sync-failures").toOkioPath(),
             )
         }
         addSingletonFactory { AndroidSyncScheduler(get<Application>(), get()) }

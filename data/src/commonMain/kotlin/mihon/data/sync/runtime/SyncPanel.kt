@@ -61,6 +61,16 @@ data class SyncTerminalSummary(
     val sourceUnavailableFields: Long,
 )
 
+sealed interface SyncFailureLogStatus {
+    val runId: String
+    val failedEntries: Long
+
+    data class Ready(override val runId: String, val path: String, override val failedEntries: Long) :
+        SyncFailureLogStatus
+
+    data class SaveFailed(override val runId: String, override val failedEntries: Long) : SyncFailureLogStatus
+}
+
 data class SyncPanelState(
     val visible: Boolean = false,
     val page: SyncPanelPage = SyncPanelPage.MAIN,
@@ -95,6 +105,7 @@ data class SyncPanelState(
     /** Volatile observations for the active run; omitted after process recovery until remeasured. */
     val progress: SyncProgressFact? = null,
     val terminalSummary: SyncTerminalSummary? = null,
+    val failureLog: SyncFailureLogStatus? = null,
     val logs: List<SyncRunLog> = emptyList(),
     val logsHasMore: Boolean = false,
     val setupStep: SyncSetupStep = SyncSetupStep.SIGN_IN,

@@ -188,6 +188,10 @@ class AndroidSyncRuntimeWiringTest {
                 property(runtime, "persistentObjectCacheDirectory").toString(),
             )
             assertTrue(Injekt.get<SyncSecureStore>() is AndroidSyncSecureStore)
+            assertEquals(
+                context.filesDir.resolve("sync-failures").absolutePath,
+                property(runtime, "failureLogDirectory").toString(),
+            )
             val worker = TestListenableWorkerBuilder<SyncWorker>(context).build()
             assertEquals(ListenableWorker.Result.success(), worker.doWork())
             assertEquals(1L, runtime.coordinator.activity.value.completion)

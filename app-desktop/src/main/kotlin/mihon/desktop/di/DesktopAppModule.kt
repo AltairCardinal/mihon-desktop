@@ -991,6 +991,7 @@ internal fun initUILayer(
         preferenceStore = preferenceStore,
         productionClient = networkHelper.client,
         persistentObjectCacheDirectory = paths.networkCacheDir.resolve("mihon-sync-objects").toOkioPath(),
+        failureLogDirectory = paths.logsDir.resolve("sync-failures").toOkioPath(),
     )
     Injekt.addSingleton(syncRuntime)
     val syncScheduler = mihon.desktop.sync.DesktopSyncScheduler(

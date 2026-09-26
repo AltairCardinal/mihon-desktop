@@ -8,6 +8,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,15 +18,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Close
@@ -86,6 +90,7 @@ import kotlinx.coroutines.flow.filter
 import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.inbox.SyncPendingItem
 import mihon.data.sync.runtime.SyncDecisionScope
+import mihon.data.sync.runtime.SyncFailureLogStatus
 import mihon.data.sync.runtime.SyncPanel
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelPage
@@ -152,6 +157,7 @@ fun SyncPanelContent(
     modifier: Modifier = Modifier,
     onOpenBrowser: (String) -> Unit,
     onCopyCode: (String) -> Unit,
+    onOpenFailureLog: (String) -> Unit = {},
 ) {
     val state by panel.state.collectAsState()
     val listState = rememberLazyListState()
@@ -159,7 +165,7 @@ fun SyncPanelContent(
         PanelHeader(state, panel::dispatch)
         HorizontalDivider()
         when (state.page) {
-            SyncPanelPage.MAIN -> MainPage(state, panel::dispatch, listState, Modifier.weight(1f))
+            SyncPanelPage.MAIN -> MainPage(state, panel::dispatch, onOpenFailureLog, listState, Modifier.weight(1f))
             SyncPanelPage.SETTINGS -> SettingsPage(state, panel::dispatch, Modifier.weight(1f))
             SyncPanelPage.HISTORY -> RecordsPage(state, Modifier.weight(1f))
             SyncPanelPage.SETUP -> SetupPage(
@@ -168,6 +174,7 @@ fun SyncPanelContent(
                 onOpenBrowser,
                 onCopyCode,
                 panel::claimDeviceCodeBrowser,
+                onOpenFailureLog,
                 Modifier.weight(1f),
             )
         }
@@ -280,6 +287,7 @@ private fun PanelHeader(state: SyncPanelState, dispatch: (SyncPanelAction) -> Un
 private fun MainPage(
     state: SyncPanelState,
     dispatch: (SyncPanelAction) -> Unit,
+    onOpenFailureLog: (String) -> Unit,
     listState: LazyListState,
     modifier: Modifier,
 ) {
@@ -287,7 +295,7 @@ private fun MainPage(
     Column(modifier) {
         SyncStatusHeader(state, continuingSetup, dispatch)
         SyncQueueSummary(state)
-        state.run?.let { run -> SyncProgressCard(run, state, dispatch) }
+        state.run?.let { run -> SyncProgressCard(run, state, dispatch, onOpenFailureLog) }
         if (state.problem == SyncRunProblem.AUTHORIZATION) {
             Action("sync-reconnect", MR.strings.sync_reconnect) { dispatch(SyncPanelAction.Authorize) }
         }
@@ -763,6 +771,7 @@ private fun SetupPage(
     openBrowser: (String) -> Unit,
     copyCode: (String) -> Unit,
     claimBrowser: (GitHubDeviceCode) -> Boolean,
+    onOpenFailureLog: (String) -> Unit,
     modifier: Modifier,
 ) {
     val deviceCode = state.deviceCode
@@ -979,7 +988,7 @@ private fun SetupPage(
                     item { Text(syncString(MR.strings.sync_setup_merging)) }
                 }
                 state.run?.let { run ->
-                    item { SyncProgressCard(run, state, dispatch, horizontalPadding = 0.dp) }
+                    item { SyncProgressCard(run, state, dispatch, onOpenFailureLog, horizontalPadding = 0.dp) }
                 }
                 if (state.importRemaining > 0) {
                     item { Text(syncString(MR.strings.sync_import_remaining, state.importRemaining)) }
@@ -1028,6 +1037,7 @@ private fun SyncProgressCard(
     run: SyncRunSnapshot,
     state: SyncPanelState,
     dispatch: (SyncPanelAction) -> Unit,
+    onOpenFailureLog: (String) -> Unit,
     horizontalPadding: Dp = 24.dp,
 ) {
     Surface(
@@ -1037,8 +1047,11 @@ private fun SyncProgressCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         color = MaterialTheme.colorScheme.surface,
     ) {
+        val reportScroll = state.failureLog?.runId == run.runId && run.state.isTerminal()
         Column(
-            Modifier.fillMaxWidth().padding(18.dp),
+            Modifier.fillMaxWidth().then(
+                if (reportScroll) Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState()) else Modifier,
+            ).padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             val terminal = run.state.isTerminal()
@@ -1131,6 +1144,27 @@ private fun SyncProgressCard(
                         dispatch(SyncPanelAction.PauseSync)
                     }
                 }
+            }
+            when (val failureLog = state.failureLog?.takeIf { it.runId == run.runId && terminal }) {
+                is SyncFailureLogStatus.Ready -> {
+                    Text(syncString(MR.strings.sync_failure_log_count, failureLog.failedEntries))
+                    Text(
+                        failureLog.path,
+                        Modifier.testTag("sync-failure-log-path").clickable { onOpenFailureLog(failureLog.path) },
+                    )
+                    Action("sync-failure-log-open", MR.strings.sync_failure_log_open) {
+                        onOpenFailureLog(failureLog.path)
+                    }
+                }
+                is SyncFailureLogStatus.SaveFailed -> Text(
+                    if (failureLog.failedEntries > 0L) {
+                        syncString(MR.strings.sync_failure_log_save_failed, failureLog.failedEntries)
+                    } else {
+                        syncString(MR.strings.sync_failure_log_save_failed_unknown)
+                    },
+                    color = MaterialTheme.colorScheme.error,
+                )
+                null -> Unit
             }
             if (state.logs.isNotEmpty()) {
                 Text(syncString(MR.strings.sync_log_title), style = MaterialTheme.typography.titleSmall)

@@ -1857,8 +1857,13 @@
     <string name="sync_terminal_cancelled">This sync was cancelled</string>
     <string name="sync_terminal_pending_receipts">%1$d download batches await confirmation, containing %2$d changes</string>
     <string name="sync_terminal_pending_explanation">Changes in these batches still need checking; they have not all failed</string>
-    <string name="sync_terminal_source_fields">%1$d checks cannot be confirmed because a manga source is unavailable</string>
-    <string name="sync_terminal_source_retry">Restore the affected manga source before retrying; retrying alone cannot fix an unavailable source</string>
+    <string name="sync_terminal_source_fields">%1$d items could not be restored on the previous attempt because a manga source was unavailable</string>
+    <string name="sync_terminal_source_retry">Retry sync to check and restore the saved data again</string>
+    <string name="sync_failure_log_count">%1$d items could not be restored; details were saved to a failure log</string>
+    <string name="sync_failure_log_open">Open failure log</string>
+    <string name="sync_failure_log_save_failed">%1$d items could not be restored; the failure log could not be saved</string>
+    <string name="sync_failure_log_save_failed_unknown">The failure log could not be saved; the number of affected items is unknown</string>
+    <string name="sync_failure_log_open_failed">Could not open the failure log. Check the file or install a text viewer.</string>
     <string name="sync_eta_unknown_whole">Estimating total time remaining</string>
     <string name="sync_eta_unknown">Estimating…</string>
     <string name="sync_eta_unavailable">Remaining time cannot be estimated yet</string>
