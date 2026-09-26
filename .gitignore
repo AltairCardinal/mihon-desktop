@@ -12,6 +12,7 @@ __pycache__/
 /captures
 /app-desktop/artifacts/
 /app/artifacts/
+/testfile/
 
 # Configuration files
 local.properties
