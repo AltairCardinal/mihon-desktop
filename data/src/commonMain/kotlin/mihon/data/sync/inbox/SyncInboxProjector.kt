@@ -38,7 +38,13 @@ data class SyncBulkProgress(val total: Long, val queued: Long, val outcomes: Map
 
 class SyncInboxProjector(private val handler: DatabaseHandler, private val writer: SyncRemoteProjectionWriter) {
     /** Receipt is durable first; each field applies atomically in a bounded transaction. */
-    suspend fun project(spaceId: String, generation: Long, limit: Int = 50): Int {
+    suspend fun project(
+        spaceId: String,
+        generation: Long,
+        limit: Int = 50,
+        onStarted: () -> Unit = {},
+        onChecked: (count: Int, sourceUnavailable: Int) -> Unit = { _, _ -> },
+    ): Int {
         require(limit in 1..50)
         writer.prepare()
         val fields = handler.await {
@@ -46,7 +52,9 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
             sync_inboxQueries.getDirtyFields(spaceId, generation, limit.toLong()).executeAsList()
         }
         if (fields.isNotEmpty()) {
+            onStarted()
             writer.prepareBatch()
+            var committedChecks = 0
             val batchApplied = try {
                 handler.await(inTransaction = true) {
                     fields.forEach { entry ->
@@ -59,7 +67,10 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
                             entry.field_,
                         )
                             .executeAsOneOrNull()
-                        if (current?.dirty == true) projectField(current)
+                        if (current?.dirty == true) {
+                            projectField(current)
+                            committedChecks++
+                        }
                     }
                 }
                 true
@@ -68,26 +79,64 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
                 coroutineContext.ensureActive()
                 false
             }
-            if (!batchApplied) {
+            if (batchApplied) {
+                if (committedChecks > 0) onChecked(committedChecks, 0)
+            } else {
                 fields.forEach { entry ->
                     coroutineContext.ensureActive()
                     try {
-                        handler.await(inTransaction = true) {
-                            if (!active(spaceId, generation)) return@await
+                        val checked = handler.await(inTransaction = true) {
+                            if (!active(spaceId, generation)) return@await false
                             val current =
                                 sync_inboxQueries.getFieldState(spaceId, generation, entry.object_key, entry.field_)
-                                    .executeAsOneOrNull() ?: return@await
-                            if (current.dirty) projectField(current)
+                                    .executeAsOneOrNull() ?: return@await false
+                            if (!current.dirty) return@await false
+                            projectField(current)
+                            true
                         }
+                        if (checked) onChecked(1, 0)
                     } catch (failure: SyncProjectionUnavailable) {
-                        handler.await(inTransaction = true) {
-                            if (active(spaceId, generation)) finish(entry, failure.reason.name, entry.applied_heads)
+                        val recorded = recordUnavailableIfCurrent(entry, failure.reason)
+                        if (recorded) {
+                            onChecked(
+                                1,
+                                if (failure.reason ==
+                                    SyncProjectionUnavailableReason.SOURCE
+                                ) {
+                                    1
+                                } else {
+                                    0
+                                },
+                            )
                         }
                     }
                 }
             }
         }
         return fields.size
+    }
+
+    /** A failure from an older projection must not overwrite or count a newly dirtied revision. */
+    internal suspend fun recordUnavailableIfCurrent(
+        expected: Sync_field_state,
+        reason: SyncProjectionUnavailableReason,
+    ): Boolean = handler.await(inTransaction = true) {
+        if (!active(expected.space_id, expected.generation)) return@await false
+        val current = sync_inboxQueries.getFieldState(
+            expected.space_id,
+            expected.generation,
+            expected.object_key,
+            expected.field_,
+        ).executeAsOneOrNull() ?: return@await false
+        if (!current.dirty || current.revision != expected.revision) return@await false
+        finish(current, reason.name, current.applied_heads)
+        val recorded = sync_inboxQueries.getFieldState(
+            expected.space_id,
+            expected.generation,
+            expected.object_key,
+            expected.field_,
+        ).executeAsOneOrNull()
+        recorded?.revision == current.revision && recorded.status == reason.name && !recorded.dirty
     }
 
     suspend fun retryUnavailable(spaceId: String, generation: Long) = handler.await(inTransaction = true) {

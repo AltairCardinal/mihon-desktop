@@ -299,6 +299,100 @@ class SyncPanelContentTest {
     }
 
     @Test
+    fun `download confirmation shows receipts and idle warning`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.MERGING),
+            progress = SyncProgressFact(
+                scope = "run-visual:download",
+                stage = SyncProgressStage.CONFIRMING,
+                direction = SyncProgressDirection.DOWNLOAD,
+                completedItems = 0,
+                totalItems = 10,
+                effectiveBytes = 0,
+                networkBytes = 0,
+                totalBytes = null,
+                elapsedSeconds = 20,
+                hold = SyncProgressHold.ACTIVE,
+                stageEtaSeconds = 5,
+                wholeEtaSeconds = null,
+                receivedItems = 4,
+                receivedTotalItems = 10,
+                checkedFields = 3,
+                unavailableFields = 1,
+                mergingReceivedData = true,
+                secondsSinceLastProgress = 10,
+            ),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(texts().contains("已接收并校验 4 / 10 条"))
+        assertTrue(texts().contains("正在合并已接收的数据"))
+        assertTrue(texts().contains("已检查 3 项本地合并内容"))
+        assertTrue(texts().contains("部分数据因漫画源不可用，暂无法确认"))
+        assertTrue(texts().any { it.contains("正在等待当前步骤") })
+        assertFalse(texts().any { it.contains("预计还需") })
+        panel.state.value =
+            panel.state.value.copy(progress = panel.state.value.progress?.copy(secondsSinceLastProgress = 60))
+        render()
+        assertTrue(texts().any { it.contains("已有 1 分钟未收到新的处理进展") })
+        panel.state.value = panel.state.value.copy(
+            run = visualRun(SyncRunPhase.UPLOADING),
+            progress = panel.state.value.progress?.copy(
+                stage = SyncProgressStage.CONFIRMING,
+                direction = SyncProgressDirection.UPLOAD,
+                secondsSinceLastProgress = 0,
+            ),
+        )
+        render()
+        assertTrue(texts().contains("正在核对 GitHub 已保存的数据"))
+        assertTrue(texts().contains("部分数据因漫画源不可用，暂无法确认"))
+        panel.state.value = panel.state.value.copy(
+            run = visualRun(SyncRunPhase.UPLOADING).copy(state = SyncRunState.PAUSED_USER),
+            progress = panel.state.value.progress?.copy(
+                hold = SyncProgressHold.PAUSED,
+                secondsSinceLastProgress = 60,
+            ),
+        )
+        render()
+        assertFalse(texts().any { it.contains("已有 1 分钟未收到新的处理进展") })
+    }
+
+    @Test
+    fun `receiving more batches does not claim local merge and preparation wait has a generic explanation`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.MERGING),
+            progress = SyncProgressFact(
+                scope = "run-visual:download",
+                stage = SyncProgressStage.CONFIRMING,
+                direction = SyncProgressDirection.DOWNLOAD,
+                completedItems = 0,
+                totalItems = 10,
+                effectiveBytes = 0,
+                networkBytes = 0,
+                totalBytes = null,
+                elapsedSeconds = 12,
+                hold = SyncProgressHold.ACTIVE,
+                stageEtaSeconds = null,
+                wholeEtaSeconds = null,
+                receivedItems = 4,
+                secondsWithoutProgress = 10,
+            ),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(texts().contains("正在接收并校验数据"))
+        assertFalse(texts().contains("正在合并已接收的数据"))
+        assertFalse(texts().any { it.contains("最近一次实际进展") })
+        panel.state.value = panel.state.value.copy(
+            run = visualRun(SyncRunPhase.CHECKING),
+            progress = panel.state.value.progress?.copy(stage = SyncProgressStage.PREPARING),
+        )
+        render()
+        assertTrue(texts().contains("正在等待当前步骤返回"))
+        assertFalse(texts().any { it.contains("已确认数会在整批完成后更新") })
+    }
+
+    @Test
     fun `completed run freezes elapsed time at its durable finish`() = rendered(
         connected().copy(
             run = visualRun(SyncRunPhase.COMPLETE).copy(

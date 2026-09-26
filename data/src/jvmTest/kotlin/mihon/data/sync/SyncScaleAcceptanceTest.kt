@@ -564,11 +564,14 @@ class SyncScaleAcceptanceTest {
                 try {
                     withTimeout(15_000) { received.await() }
                     assertEquals(0L, sink.value?.confirmedThisRun)
+                    assertEquals(1L, progress.snapshot().receivedItems)
+                    assertEquals(0L, progress.snapshot().completedItems)
                 } finally {
                     release.complete(Unit)
                 }
                 assertExchange(pending.await(), downloaded = 1)
                 assertEquals(1L, sink.value?.confirmedThisRun)
+                assertTrue(progress.snapshot().checkedFields > 0L)
                 assertEquals(1L, runStore.get(run.runId)?.confirmedItems)
             }
         }

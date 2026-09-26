@@ -225,6 +225,12 @@ class SyncDatabaseExchange(
                     val result = inbox.receive(snapshot, entry, snapshotAlreadyObserved = true)
                     if (result.accepted) {
                         if (!result.duplicate) {
+                            liveProgress?.receivedBatch(
+                                entry.batchId,
+                                (entry.lastSeq - entry.firstSeq + 1).coerceAtLeast(0),
+                            )
+                        }
+                        if (!result.duplicate) {
                             acceptedBatches += entry.batchId to (entry.lastSeq - entry.firstSeq + 1)
                             receivedThisExchange += entry.batchId
                         }
@@ -250,7 +256,24 @@ class SyncDatabaseExchange(
                     }
                     yield()
                 }
-                while (projector.project(spaceId, generation) == 50) yield()
+                liveProgress?.begin(
+                    requireNotNull(downloadScope),
+                    SyncProgressStage.CONFIRMING,
+                    SyncProgressDirection.DOWNLOAD,
+                    downloadTotal,
+                )
+                while (
+                    projector.project(
+                        spaceId,
+                        generation,
+                        onStarted = { liveProgress?.projectionStarted() },
+                        onChecked = { count, sourceUnavailable ->
+                            liveProgress?.checkedFields(count, sourceUnavailable)
+                        },
+                    ) == 50
+                ) {
+                    yield()
+                }
                 val newlyConfirmed = if (progress == null) {
                     acceptedBatches.filter { (batchId, _) ->
                         store.canConfirmReceivedBatch(spaceId, generation, batchId)

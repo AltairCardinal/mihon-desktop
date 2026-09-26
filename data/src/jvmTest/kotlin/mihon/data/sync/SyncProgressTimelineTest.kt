@@ -13,6 +13,79 @@ class SyncProgressTimelineTest {
     private val second = 1_000_000_000L
 
     @Test
+    fun `committed download receipts advance separately from batch confirmation and reset idle age`() {
+        val timeline = SyncProgressTimeline()
+        timeline.begin("download", SyncProgressStage.TRANSFERRING, SyncProgressDirection.DOWNLOAD, 10, atNanos = 0)
+        timeline.begin("download", SyncProgressStage.CONFIRMING, SyncProgressDirection.DOWNLOAD, 10, atNanos = second)
+        timeline.receivedBatch("batch-1", 4, 2 * second)
+        timeline.receivedBatch("batch-1", 4, 3 * second)
+        val receiving = timeline.snapshot(11 * second)
+        assertEquals(4L, receiving.receivedItems)
+        assertEquals(0L, receiving.completedItems)
+        assertEquals(0L, receiving.confirmedThisRun)
+        assertEquals(9L, receiving.secondsSinceLastProgress)
+        assertEquals(10L, receiving.receivedTotalItems)
+        timeline.confirmBatch("batch-1", 4, 12 * second)
+        assertEquals(4L, timeline.snapshot(12 * second).completedItems)
+        assertEquals(0L, timeline.snapshot(12 * second).secondsSinceLastProgress)
+    }
+
+    @Test
+    fun `checked fields represent committed projection attempts and never confirm receipts`() {
+        val timeline = SyncProgressTimeline()
+        timeline.begin("download", SyncProgressStage.CONFIRMING, SyncProgressDirection.DOWNLOAD, 8, atNanos = 0)
+        timeline.checkedFields(3, 1, second)
+        val fact = timeline.snapshot(2 * second)
+        assertEquals(3L, fact.checkedFields)
+        assertEquals(1L, fact.unavailableFields)
+        assertEquals(0L, fact.completedItems)
+        assertEquals(0L, fact.confirmedThisRun)
+        timeline.begin("upload", SyncProgressStage.CONFIRMING, SyncProgressDirection.UPLOAD, 1, atNanos = 3 * second)
+        assertEquals(1L, timeline.snapshot(3 * second).unavailableFields)
+    }
+
+    @Test
+    fun `download action changes only when real projection starts`() {
+        val timeline = SyncProgressTimeline()
+        timeline.begin("download", SyncProgressStage.CONFIRMING, SyncProgressDirection.DOWNLOAD, 8, atNanos = 0)
+        timeline.receivedBatch("batch", 4, second)
+        assertEquals(false, timeline.snapshot(second).mergingReceivedData)
+        timeline.projectionStarted(2 * second)
+        assertEquals(true, timeline.snapshot(2 * second).mergingReceivedData)
+        timeline.begin(
+            "download",
+            SyncProgressStage.TRANSFERRING,
+            SyncProgressDirection.DOWNLOAD,
+            8,
+            atNanos =
+            3 * second,
+        )
+        assertEquals(false, timeline.snapshot(3 * second).mergingReceivedData)
+    }
+
+    @Test
+    fun `entering a stage starts waiting clock without claiming completed work`() {
+        val timeline = SyncProgressTimeline()
+        timeline.begin("download", SyncProgressStage.CONFIRMING, SyncProgressDirection.DOWNLOAD, 8, atNanos = 0)
+        val idle = timeline.snapshot(10 * second)
+        assertNull(idle.secondsSinceLastProgress)
+        assertEquals(10L, idle.secondsWithoutProgress)
+        timeline.receivedBatch("batch", 4, 11 * second)
+        assertEquals(0L, timeline.snapshot(11 * second).secondsWithoutProgress)
+        timeline.begin(
+            "download",
+            SyncProgressStage.TRANSFERRING,
+            SyncProgressDirection.DOWNLOAD,
+            8,
+            atNanos =
+            12 * second,
+        )
+        val nextStage = timeline.snapshot(12 * second)
+        assertEquals(1L, nextStage.secondsSinceLastProgress)
+        assertEquals(0L, nextStage.secondsWithoutProgress)
+    }
+
+    @Test
     fun `unknown total stays unknown and unique event count survives phase changes`() {
         val timeline = SyncProgressTimeline()
         timeline.begin(

@@ -1190,7 +1190,13 @@ private fun SyncStageProgress(run: SyncRunSnapshot, fact: SyncProgressFact, nowM
         } else {
             MR.strings.sync_phase_downloading
         }
-        SyncProgressStage.CONFIRMING -> MR.strings.sync_phase_confirming
+        SyncProgressStage.CONFIRMING -> if (fact.direction == SyncProgressDirection.UPLOAD) {
+            MR.strings.sync_checking_github_saved
+        } else if (fact.mergingReceivedData) {
+            MR.strings.sync_merging_received_data
+        } else {
+            MR.strings.sync_receiving_and_verifying
+        }
     }
     Text(syncString(action), style = MaterialTheme.typography.titleMedium)
     if (fact.stage == SyncProgressStage.PREPARING) {
@@ -1225,6 +1231,25 @@ private fun SyncStageProgress(run: SyncRunSnapshot, fact: SyncProgressFact, nowM
             if (run.state == SyncRunState.RUNNING) Text(syncString(MR.strings.sync_counting_data))
             Text(syncString(unknownResource, fact.completedItems), Modifier.testTag("sync-stage-count"))
         }
+    }
+    if (fact.direction == SyncProgressDirection.DOWNLOAD && fact.stage == SyncProgressStage.CONFIRMING) {
+        fact.receivedItems?.takeIf { it > 0L }?.let { received ->
+            val total = fact.receivedTotalItems
+            Text(
+                if (total != null) {
+                    syncString(MR.strings.sync_items_received, received, total)
+                } else {
+                    syncString(MR.strings.sync_items_received_unknown, received)
+                },
+                Modifier.testTag("sync-received-count"),
+            )
+        }
+        if (fact.checkedFields > 0L) {
+            Text(syncString(MR.strings.sync_fields_checked, fact.checkedFields), Modifier.testTag("sync-checked-count"))
+        }
+    }
+    if (fact.unavailableFields > 0L && run.state == SyncRunState.RUNNING) {
+        Text(syncString(MR.strings.sync_source_unavailable_progress))
     }
     val fraction = when (fact.stage) {
         SyncProgressStage.TRANSFERRING -> fact.totalBytes?.takeIf { it > 0L }
@@ -1284,11 +1309,40 @@ private fun SyncStageProgress(run: SyncRunSnapshot, fact: SyncProgressFact, nowM
     val elapsed = "${(elapsedSeconds / 60).toString().padStart(2, '0')}:" +
         (elapsedSeconds % 60).toString().padStart(2, '0')
     Text(syncString(MR.strings.sync_elapsed, elapsed))
+    val lastProgressSeconds = fact.secondsSinceLastProgress
+    val idleSeconds = (fact.secondsWithoutProgress ?: lastProgressSeconds)?.takeIf {
+        run.state == SyncRunState.RUNNING && fact.hold == SyncProgressHold.ACTIVE
+    }
+    if (idleSeconds != null && lastProgressSeconds != null) {
+        Text(
+            if (lastProgressSeconds < 10L) {
+                syncString(MR.strings.sync_recent_progress_now)
+            } else {
+                syncString(MR.strings.sync_recent_progress_seconds, lastProgressSeconds)
+            },
+        )
+    }
+    if (idleSeconds != null) {
+        if (idleSeconds >= 60L) {
+            Text(syncString(MR.strings.sync_no_progress_minute))
+        } else if (idleSeconds >= 10L) {
+            Text(
+                syncString(
+                    if (fact.stage == SyncProgressStage.CONFIRMING) {
+                        MR.strings.sync_waiting_current_step
+                    } else {
+                        MR.strings.sync_waiting_step_generic
+                    },
+                ),
+            )
+        }
+    }
     if (run.state == SyncRunState.RUNNING && fact.hold == SyncProgressHold.ACTIVE) {
         val wholeEtaSeconds = fact.wholeEtaSeconds
         val stageEtaSeconds = fact.stageEtaSeconds
         val bodyEtaSeconds = fact.activeBodyEtaSeconds
         when {
+            idleSeconds != null && idleSeconds >= 10L -> Text(syncString(MR.strings.sync_eta_unavailable))
             wholeEtaSeconds != null -> Text(
                 syncString(MR.strings.sync_eta_whole, syncEtaDuration(wholeEtaSeconds)),
             )

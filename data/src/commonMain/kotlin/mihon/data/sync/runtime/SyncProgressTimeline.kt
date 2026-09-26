@@ -29,6 +29,15 @@ data class SyncProgressFact(
     val importTotalItems: Long? = null,
     /** Null means prior confirmations have not been safely reconstructed. */
     val confirmedThisRun: Long? = null,
+    val receivedItems: Long? = null,
+    val receivedTotalItems: Long? = null,
+    /** Monotonic age of the last completed work observation. */
+    val secondsSinceLastProgress: Long? = null,
+    /** Includes time since entering a stage before its first completed work observation. */
+    val secondsWithoutProgress: Long? = null,
+    val checkedFields: Long = 0,
+    val unavailableFields: Long = 0,
+    val mergingReceivedData: Boolean = false,
 )
 
 /**
@@ -89,6 +98,13 @@ class SyncProgressTimeline {
     private val confirmedBatches = mutableMapOf<Pair<SyncProgressDirection, String>, Long>()
     private val confirmedEvents = mutableSetOf<Pair<SyncProgressDirection, String>>()
     private var confirmedRunItems = 0L
+    private val receivedBatches = mutableMapOf<String, Long>()
+    private var receivedItems = 0L
+    private var lastActualProgressNanos: Long? = null
+    private var stageEnteredNanos: Long? = null
+    private var checkedFields = 0L
+    private var unavailableFields = 0L
+    private var mergingReceivedData = false
 
     fun begin(
         scope: String,
@@ -114,12 +130,24 @@ class SyncProgressTimeline {
             importTotal = null
             importCompleted = 0L
             importPages.clear()
+            receivedBatches.clear()
+            receivedItems = 0L
+            lastActualProgressNanos = null
+            stageEnteredNanos = atNanos
+            checkedFields = 0L
+            mergingReceivedData = false
         }
         val nextLane = Lane(stage, direction)
         if (lane != nextLane) {
             leaveLane(atNanos)
             if (lane?.direction != null && lane?.direction != direction) resetRate()
             clearActiveBody()
+            stageEnteredNanos = atNanos
+            if (nextLane.direction == SyncProgressDirection.DOWNLOAD &&
+                nextLane.stage == SyncProgressStage.TRANSFERRING
+            ) {
+                mergingReceivedData = false
+            }
         }
         lane = nextLane
         if (hold == SyncProgressHold.ACTIVE) {
@@ -161,6 +189,7 @@ class SyncProgressTimeline {
         if (previous == null) {
             require(importCompleted + committedCount <= total)
             importCompleted += committedCount
+            lastActualProgressNanos = atNanos
         }
         this.importId = importId
         importTotal = total
@@ -168,6 +197,37 @@ class SyncProgressTimeline {
 
     fun transferBatch(batchKey: String, itemCount: Long, atNanos: Long) =
         completeBatch(SyncProgressStage.TRANSFERRING, batchKey, itemCount, atNanos)
+
+    /** The inbox has committed a decrypted and validated download batch. */
+    fun receivedBatch(batchKey: String, itemCount: Long, atNanos: Long) {
+        require(itemCount >= 0)
+        observeTime(atNanos)
+        require(checkNotNull(lane).direction == SyncProgressDirection.DOWNLOAD)
+        val previous = receivedBatches.putIfAbsent(batchKey, itemCount)
+        require(previous == null || previous == itemCount)
+        if (previous == null) {
+            receivedItems += itemCount
+            lastActualProgressNanos = atNanos
+        }
+    }
+
+    /** Count only fields whose projection attempt has committed, including recorded source failures. */
+    fun checkedFields(count: Int, sourceUnavailable: Int, atNanos: Long) {
+        require(count >= 0 && sourceUnavailable in 0..count)
+        observeTime(atNanos)
+        require(checkNotNull(lane).direction == SyncProgressDirection.DOWNLOAD)
+        if (count > 0) {
+            checkedFields += count
+            unavailableFields += sourceUnavailable
+            lastActualProgressNanos = atNanos
+        }
+    }
+
+    fun projectionStarted(atNanos: Long) {
+        current(SyncProgressStage.CONFIRMING, atNanos)
+        require(checkNotNull(lane).direction == SyncProgressDirection.DOWNLOAD)
+        mergingReceivedData = true
+    }
 
     /** An atomic or transactional confirmation advances only after the real confirmation succeeds. */
     fun confirmBatch(batchKey: String, itemCount: Long, atNanos: Long) =
@@ -253,6 +313,7 @@ class SyncProgressTimeline {
             if (value ==
                 SyncProgressHold.ACTIVE
             ) {
+                stageEnteredNanos = atNanos
                 lane?.let { rates.getOrPut(it, ::RateWindow).enteredAtNanos = atNanos }
             }
         }
@@ -319,6 +380,22 @@ class SyncProgressTimeline {
             importCompletedItems = importTotal?.let { importCompleted },
             importTotalItems = importTotal,
             confirmedThisRun = confirmedRunItems,
+            receivedItems = if (currentLane.direction == SyncProgressDirection.DOWNLOAD) receivedItems else null,
+            receivedTotalItems = if (currentLane.direction == SyncProgressDirection.DOWNLOAD) {
+                counters[Lane(SyncProgressStage.CONFIRMING, currentLane.direction)]?.totalItems
+                    ?: counters[Lane(SyncProgressStage.TRANSFERRING, currentLane.direction)]?.totalItems
+            } else {
+                null
+            },
+            secondsSinceLastProgress = lastActualProgressNanos?.let {
+                (atNanos - it).coerceAtLeast(0) / 1_000_000_000L
+            },
+            secondsWithoutProgress = stageEnteredNanos?.let { entered ->
+                (atNanos - maxOf(entered, lastActualProgressNanos ?: entered)).coerceAtLeast(0) / 1_000_000_000L
+            },
+            checkedFields = if (currentLane.direction == SyncProgressDirection.DOWNLOAD) checkedFields else 0,
+            unavailableFields = unavailableFields,
+            mergingReceivedData = currentLane.direction == SyncProgressDirection.DOWNLOAD && mergingReceivedData,
         )
     }
 
@@ -353,6 +430,7 @@ class SyncProgressTimeline {
 
     private fun recordIncrement(amount: Long, atNanos: Long) {
         if (amount <= 0) return
+        lastActualProgressNanos = atNanos
         val rate = rates.getOrPut(checkNotNull(lane), ::RateWindow)
         val activeNow = activeTime(rate, atNanos)
         rate.lastProgressNanos = atNanos
@@ -415,6 +493,7 @@ class SyncProgressTimeline {
 
     private fun recordBodyIncrement(amount: Long, atNanos: Long) {
         if (amount <= 0L) return
+        lastActualProgressNanos = atNanos
         val rate = activeBodyRate ?: return
         val activeNow = activeTime(rate, atNanos)
         rate.lastProgressNanos = atNanos

@@ -167,6 +167,36 @@ class SyncLiveProgressSession(
     }
 
     @Synchronized
+    fun receivedBatch(batchKey: String, itemCount: Long) {
+        try {
+            timeline.receivedBatch(batchKey, itemCount, nanos())
+            emit(force = false)
+        } catch (_: RuntimeException) {
+            // The durable inbox transaction remains authoritative.
+        }
+    }
+
+    @Synchronized
+    fun checkedFields(count: Int, sourceUnavailable: Int) {
+        try {
+            timeline.checkedFields(count, sourceUnavailable, nanos())
+            emit(force = false)
+        } catch (_: RuntimeException) {
+            // The committed projection result remains authoritative.
+        }
+    }
+
+    @Synchronized
+    fun projectionStarted() {
+        try {
+            timeline.projectionStarted(nanos())
+            emit(force = true)
+        } catch (_: RuntimeException) {
+            // Projection work remains independent of display observations.
+        }
+    }
+
+    @Synchronized
     fun importPage(importId: String, progress: SyncImportProgress) {
         val lastId = progress.lastCommittedEntryId ?: return
         try {
