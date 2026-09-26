@@ -1,11 +1,11 @@
 # 阅读器双页与继续阅读行为迭代 Roadmap
 
 - 制定日期：2026-09-24
-- 状态：PLANNED；尚未实施、审查或发布
+- 状态：COMPLETE；2026-09-25 在独立 worktree 启动，2026-09-26 完成 RD-01～04 实施、审查和验收
 - 行为权威：[完整迭代方案](../2026-09-24-reader-dual-page-and-continue-design.md)。本文只拆分执行、验证与交付；与方案冲突时先修正文档，不用本计划的简述替代行为表。
-- 上级路线：[Desktop 重构路线](./2026-06-30-mihon-desktop-refactor-roadmap.md)。该路线当前唯一 `active-child-plan` 指向作者页迭代且存在其他任务的未提交改动；本计划暂不切换指针。正式启动前先协调唯一活动计划，不能同时声明两个 active child。
+- 上级路线：[Desktop 重构路线](./2026-06-30-mihon-desktop-refactor-roadmap.md)。本分支已把唯一 `active-child-plan` 指向本计划；原主工作树的作者专项及其他未提交改动保持原样，不纳入本迭代提交。
 - 既有已完成记录：[Android 双页布局与跨端显示契约](./2026-09-16-android-dual-page-layout-parity.md)保留为历史证据；本计划修正其后发现的行为缺口，不回写已完成任务的勾选状态。
-- 本文是待启动的产品 child plan；进度从下文第一个未勾选的功能批次推导，不声明 `active-task`。checkbox 只在实现、必要独立审查、验证和提交全部完成后勾选。
+- 本文是活动产品 child plan；进度从下文第一个未勾选的功能批次推导，不声明 `active-task`。checkbox 只在实现、必要独立审查、验证和提交全部完成后勾选。
 
 ## 1. 用户结果与现状证据
 
@@ -42,7 +42,7 @@ R-01 与 R-03 是**不同页数、不同章节的两个复现用例**。在全�
 
 ### RD-01 · 双页可见页进度与自动已读
 
-- [ ] Android 双页报告真实可见页集合，并在共享 progress effect 中完成末页判定。
+- [x] Android 双页报告真实可见页集合，并在共享 progress effect 中完成末页判定。
 
 **实现边界**：复用 `ReaderProgressPolicy` 与 `ReaderSessionCore`。由 `DisplayPage.Double` 生产两个稳定 `ReaderPageId`，`DisplayPage.Single` 生产一个；`ReaderViewModel` 以当前激活章节/settlement sequence 接收整组，`firstPage` 继续只作显示锚点。对接既有布局重排的 `layoutOnly` 保护及 Android `RecordReadingProgress` 事务；不在 holder 或 Activity 新增 `chapter.read = true` 特例。
 
@@ -52,7 +52,7 @@ R-01 与 R-03 是**不同页数、不同章节的两个复现用例**。在全�
 
 ### RD-02 · 首页与末尾独占页按方向入槽
 
-- [ ] 已支持的双页方向按 RTL 左/右、LTR 右/左呈现首页/独占末页；保持中间配对和宽图行为。
+- [x] 已支持的双页方向按 RTL 左/右、LTR 右/左呈现首页/独占末页；保持中间配对和宽图行为。
 
 **实现边界**：优先复用 KMP `ReaderPagePairing` 与 Desktop `DualPagedPresentation` 现有分组；提取或增加仅依赖方向、组位置、页类型的纯物理槽决策，供 Android holder/adapter 与 Desktop presentation 消费。Android 在纵向边缘单页 holder 中建立固定左右半屏槽与空槽，不把纵向末页继续作为全屏 `CENTER`；一页章节则显式居中整屏。保持现有图片 fit、对齐、缩放/触摸及错误重试。Desktop 修改目前无条件首页左槽的规则；横向封面/跨页图确认前保留各平台既有呈现，条漫和普通单页模式不受影响。
 
@@ -62,7 +62,7 @@ R-01 与 R-03 是**不同页数、不同章节的两个复现用例**。在全�
 
 ### RD-03 · 最早未读章节与章内恢复
 
-- [ ] 双端书库/详情“继续阅读”先选最早未读章节，再恢复该章节的页码；同步位置不跨章抢占。
+- [x] 双端书库/详情“继续阅读”先选最早未读章节，再恢复该章节的页码；同步位置不跨章抢占。
 
 **实现边界**：复用 `resolveReaderEntry`、Android 原有 `applyFilters`、Desktop 现有排序/外部章节排除及 `resolveReaderChapterEntryPage`。把“章节选择”和“该章节页码/同步 snapshot”明确分两步；必要时扩展共享纯决策输入，Android/Desktop adapter 分别提供各自筛选后的候选，禁止另造平台特有排序。修复 Android `ReaderViewModel` 在普通继续入口 `resume=true` 下再次切换章节的链路；显式历史/恢复仍遵守自身入口语义。同步仓库只读，写入协议不变。
 
@@ -72,11 +72,13 @@ R-01 与 R-03 是**不同页数、不同章节的两个复现用例**。在全�
 
 ### RD-04 · 集成与正式运行验收
 
-- [ ] RD-01～03 的双端入口、进度事务、物理槽、正式产物及运行证据全部通过，按项目规则提交并完成迭代报告。
+- [x] RD-01～03 的双端入口、进度事务、物理槽、正式产物及运行证据全部通过，按项目规则提交并完成迭代报告。
 
 **验证顺序**：每批只跑受影响 focused 红绿测试，批次完成跑相关共享、Android、Desktop 集成与 `spotlessCheck`；阶段收口串行执行一次完整 Android/Desktop JVM 测试和格式检查。使用 `scripts/gradle-coordinator.py run` 协调同一 worktree 的重型 Gradle；超时先查状态，不启动第二份。若已有同一未提交 diff 的等价完整 Desktop 测试证据，Windows 用 `scripts/build-desktop.sh build-only`；否则用正式构建脚本的常规模式，不直接 Gradle 部署。检查日志 `Final unpacked EXE:` 指向的正式 `artifacts/windows` 文件确实存在，并用该发布产物的 production Reader/Test Mode 链路验收。Android 使用仓库现有 fork release/signing 流程构建签名包，确认包名、版本、证书与安装包一致，在可用实机/模拟器上原位安装并运行上述两个章节用例；不清数据。macOS 按最终收口要求先检查工具链并尝试构建运行，可用性不足则记录具体阻塞，不用 Windows 结果代称。
 
 **证据与边界**：保存红/绿命令、相关与全量结果、独立审查结论、发布产物链接及运行结果。历史/显式恢复、宽图、Webtoon、单页、下载和同步写入回归；`finalParityAudit` 只在对应 manifest 状态/证据需要变更或最终门禁要求时运行，不在每个批次重复。文档同步更新共享显示/进度契约和当前限制；manifest 只由真实能力和证据推进，不能从 tracker/report 反向覆盖。
+
+**实施记录与内聚性**：本批跨 Android 阅读器的 viewer/Activity/ViewModel/SQL 进度接线、Android 与 Desktop 双页 presentation、书库和详情两个继续入口、共享物理槽契约及各层行为测试，超过 8 文件和 400 行是同一组用户行为跨模块落地所需。未新增进度 schema 或同步格式。Android 发布版曾在五页末组真实显示后仍停在 `Page: 3`；挂载 SQL 红测定位邻章窗口重排使当前组被持续保护、以及 ViewPager 复用旧 holder 而重建项引用不同的双重门禁。修复后 10/10 定向 SQL 测试与独立修复复审通过；API 36 原位升级签名 fork APK `0.19.4-aex.13`（code 31）后，末组右第 4 页/左第 5 页、返回详情已读；四页章节首页左/末页右、一页章节全屏居中；标回未读的第 1 章从详情继续进入并恢复第 3 页，后续已读章节未抢占入口。跨章同步旧位置仍由 Android/Desktop 生产接线测试覆盖，不将这次无同步账号的设备检查冒充真实跨设备验收。
 
 ## 4. 执行组织、风险和停止条件
 

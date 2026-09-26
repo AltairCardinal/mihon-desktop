@@ -117,16 +117,17 @@ class DualPageCurrentPageWiringTest {
 
     @ParameterizedTest
     @EnumSource(value = ReadingMode::class, names = ["AUTO", "RTL", "LTR"])
-    fun `cover stays uniquely current in left slot and adjust has no effect`(mode: ReadingMode) = runTest {
+    fun `portrait cover stays uniquely current at its directional edge and adjust has no effect`(mode: ReadingMode) = runTest {
         Fixture(this, mode, initialPage = 0).use { fixture ->
             fixture.frames()
             fixture.dual(true)
             fixture.frames()
-            assertEquals(listOf(0, null), fixture.slotIndices())
+            val expectedSlots = if (mode == ReadingMode.LTR) listOf(null, 0) else listOf(0, null)
+            assertEquals(expectedSlots, fixture.slotIndices())
             assertEquals(0, fixture.state.currentPage)
             fixture.adjust()
             fixture.frames()
-            assertEquals(listOf(0, null), fixture.slotIndices())
+            assertEquals(expectedSlots, fixture.slotIndices())
             fixture.dual(false)
             fixture.frames()
             assertEquals(0, fixture.state.currentPage)

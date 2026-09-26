@@ -626,13 +626,10 @@ class MangaScreenModel(
         }
     }
 
-    /**
-     * Returns an available synchronized continuation, otherwise the usual next unread chapter.
-     */
+    /** Returns the earliest unread chapter within the current reader filters. */
     suspend fun getNextUnreadChapter(): Chapter? {
         val successState = successState ?: return null
-        return synchronizedResumeChapter(successState.manga, successState.chapters)
-            ?: successState.chapters.getNextUnread(successState.manga)
+        return successState.chapters.getNextUnread(successState.manga)
     }
 
     private suspend fun synchronizedResumeChapter(manga: Manga, chapters: List<ChapterList.Item>): Chapter? {

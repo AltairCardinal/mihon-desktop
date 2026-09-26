@@ -52,6 +52,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import mihon.domain.reader.ReaderPortraitSingleSlot
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -76,8 +77,11 @@ import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.registry.default.DefaultRegistrar
 import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import java.io.File
 import java.time.Duration
+import java.util.zip.CRC32
+import java.util.zip.DeflaterOutputStream
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 
@@ -197,7 +201,8 @@ class DualPagerPageHolderLayoutTest {
     fun `portrait cover keeps a left half slot while unique current remains the cover`() = runTest {
         val chapter = loadedChapter(11, 3)
         val page = requireNotNull(chapter.pages)[0]
-        val holder = DualPagerPageHolder(viewer.activity, viewer, DisplayPage.Single(page, coverSlot = true))
+        val holder =
+            DualPagerPageHolder(viewer.activity, viewer, DisplayPage.Single(page, ReaderPortraitSingleSlot.LEFT))
         load(holder, page, "CENTER")
         measure(holder, 1400, 1000)
         val image = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
@@ -206,6 +211,64 @@ class DualPagerPageHolderLayoutTest {
         assertEquals(500, image.width)
         assertEquals(700, image.right)
         assertEquals(page, holder.displayPage.firstPage)
+        detach(holder)
+    }
+
+    @Test
+    fun `four portrait pages mount first on left and trailing single on right`() = runTest {
+        val chapter = loadedChapter(11, 4)
+        viewer.adapter.setChapters(ViewerChapters(chapter, null, null), false)
+        for (page in requireNotNull(chapter.pages)) decodeForAdapter(page)
+        viewer.adapter.adjustPairing(0)
+        val units = viewer.adapter.items.filterIsInstance<DisplayPage>().sortedBy { it.firstPage.index }
+        assertEquals(listOf(0, 1, 3), units.map { it.firstPage.index })
+        assertTrue(units[1] is DisplayPage.Double)
+
+        for ((unit, expectedLeft) in listOf(units.first() to 0, units.last() to 700)) {
+            val single = unit as DisplayPage.Single
+            val holder = DualPagerPageHolder(viewer.activity, viewer, single)
+            load(holder, single.page, "CENTER")
+            measure(holder, 1400, 1000)
+            val image = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
+            val slot = image.parent as View
+            assertEquals(700, slot.width)
+            assertEquals(expectedLeft, slot.left)
+            detach(holder)
+        }
+    }
+
+    @Test
+    fun `one portrait page keeps a centered full viewport`() = runTest {
+        val chapter = loadedChapter(11, 1)
+        viewer.adapter.setChapters(ViewerChapters(chapter, null, null), false)
+        decodeForAdapter(requireNotNull(chapter.pages).single())
+        viewer.adapter.adjustPairing(0)
+        val single = viewer.adapter.items.filterIsInstance<DisplayPage>().single() as DisplayPage.Single
+        val holder = DualPagerPageHolder(viewer.activity, viewer, single)
+        load(holder, single.page, "CENTER")
+        measure(holder, 1400, 1000)
+        val image = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
+        assertEquals(1400, image.parent.let { it as View }.width)
+        detach(holder)
+    }
+
+    @Test
+    fun `decoded wide trailing page keeps its existing full viewport`() = runTest {
+        val chapter = loadedChapter(11, 4)
+        val wideBytes = ByteArrayOutputStream().also {
+            Bitmap.createBitmap(400, 200, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it)
+        }.toByteArray()
+        val lastPage = requireNotNull(chapter.pages)[3]
+        lastPage.stream = { wideBytes.inputStream() }
+        viewer.adapter.setChapters(ViewerChapters(chapter, null, null), false)
+        for (page in requireNotNull(chapter.pages)) decodeForAdapter(page)
+        val single = viewer.adapter.items.filterIsInstance<DisplayPage.Single>().single { it.page === lastPage }
+        assertEquals(ReaderPortraitSingleSlot.FULL, single.slot)
+        val holder = DualPagerPageHolder(viewer.activity, viewer, single)
+        load(holder, single.page, "CENTER")
+        measure(holder, 1400, 1000)
+        val image = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
+        assertEquals(1400, (image.parent as View).width)
         detach(holder)
     }
 
@@ -631,20 +694,25 @@ class DualPagerPageHolderLayoutTest {
             .map { line -> line.split(',').map(String::toInt) }
         for (v in vectors) {
             val (holder, right, left) = pair(v[2], v[3], v[4], v[5])
-            load(holder, right, "RIGHT")
-            load(holder, left, "LEFT")
-            measure(holder, v[0], v[1])
-            val images = descendants(holder).filterIsInstance<ReaderPageImageView>().toList()
-            assertEquals(2, images.size)
-            images.forEachIndexed { index, image ->
-                val offset = 6 + index * 4
-                val slot = image.parent as View
-                assertEquals(v[0] / 2, slot.width)
-                assertEquals(v[1], slot.height)
-                assertEquals(v[offset], slot.left + image.left)
-                assertEquals(v[offset + 1], slot.top + image.top)
-                assertEquals(v[offset + 2], image.width)
-                assertEquals(v[offset + 3], image.height)
+            try {
+                load(holder, right, "RIGHT")
+                load(holder, left, "LEFT")
+                measure(holder, v[0], v[1])
+                val images = descendants(holder).filterIsInstance<ReaderPageImageView>().toList()
+                assertEquals(2, images.size)
+                images.forEachIndexed { index, image ->
+                    val offset = 6 + index * 4
+                    val slot = image.parent as View
+                    assertEquals(v[0] / 2, slot.width)
+                    assertEquals(v[1], slot.height)
+                    assertEquals(v[offset], slot.left + image.left)
+                    assertEquals(v[offset + 1], slot.top + image.top)
+                    assertEquals(v[offset + 2], image.width)
+                    assertEquals(v[offset + 3], image.height)
+                }
+            } finally {
+                descendants(holder).filterIsInstance<ReaderPageImageView>().forEach { it.recycle() }
+                detach(holder)
             }
         }
     }
@@ -831,6 +899,8 @@ class DualPagerPageHolderLayoutTest {
             }
             shadowOf(Looper.getMainLooper()).idle()
             assertEquals(listOf(left), retried)
+            waitUntil { descendants(holder).filterIsInstance<ReaderPageImageView>().count() == 2 }
+            ReflectionHelpers.getField<ReaderPageImageView>(holder, "leftHolder").onImageLoaded()
             waitUntil { error.root.visibility == View.GONE }
             measure(holder, 1440, 3120)
             assertPair(holder, 1440, 3120, 720, 1024)
@@ -884,7 +954,9 @@ class DualPagerPageHolderLayoutTest {
         assertEquals("An error must not enable independent image gestures", 0, childTouches)
         assertEquals(2f, holder.getChildAt(0).scaleX, 0.001f)
         left.stream = originalStream
+        left.status = Page.State.Ready
         load(holder, left, "LEFT")
+        ReflectionHelpers.getField<ReaderPageImageView>(holder, "leftHolder").onImageLoaded()
         measure(holder, 1440, 3120)
         assertPair(holder, 1440, 3120, 720, 1024)
         assertEquals(error.errorMessage.text.toString(), View.GONE, error.root.visibility)
@@ -928,9 +1000,39 @@ class DualPagerPageHolderLayoutTest {
         rightHeight: Int = 1600,
     ): Triple<DualPagerPageHolder, ReaderPage, ReaderPage> {
         val chapter = ReaderChapter(Chapter.create().copy(id = 1, mangaId = 1))
-        fun bytes(w: Int, h: Int) = ByteArrayOutputStream().also {
-            Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it)
-        }.toByteArray()
+        fun bytes(w: Int, h: Int): ByteArray {
+            // Encode transparent scanlines without allocating a full bitmap for every vector.
+            val compressed = ByteArrayOutputStream()
+            DeflaterOutputStream(compressed).use { output ->
+                val row = ByteArray(1 + w * 4)
+                repeat(h) { output.write(row) }
+            }
+            val image = ByteArrayOutputStream()
+            DataOutputStream(image).use { output ->
+                output.write(byteArrayOf(137.toByte(), 80, 78, 71, 13, 10, 26, 10))
+                fun chunk(name: String, payload: ByteArray) {
+                    val type = name.toByteArray(Charsets.US_ASCII)
+                    val crc = CRC32().apply {
+                        update(type)
+                        update(payload)
+                    }
+                    output.writeInt(payload.size)
+                    output.write(type)
+                    output.write(payload)
+                    output.writeInt(crc.value.toInt())
+                }
+                val header = ByteArrayOutputStream()
+                DataOutputStream(header).use {
+                    it.writeInt(w)
+                    it.writeInt(h)
+                    it.write(byteArrayOf(8, 6, 0, 0, 0))
+                }
+                chunk("IHDR", header.toByteArray())
+                chunk("IDAT", compressed.toByteArray())
+                chunk("IEND", byteArrayOf())
+            }
+            return image.toByteArray()
+        }
         val rightBytes = bytes(rightWidth, rightHeight)
         val leftBytes = bytes(leftWidth, leftHeight)
         val right = ReaderPage(0, stream = { rightBytes.inputStream() }).apply { this.chapter = chapter }

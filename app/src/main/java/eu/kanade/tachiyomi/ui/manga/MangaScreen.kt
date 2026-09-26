@@ -88,14 +88,20 @@ class MangaScreen(
             return
         }
 
-        val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
-        val haptic = LocalHapticFeedback.current
-        val scope = rememberCoroutineScope()
         val lifecycleOwner = LocalLifecycleOwner.current
         val screenModel = rememberScreenModel {
             MangaScreenModel(context, lifecycleOwner.lifecycle, mangaId, fromSource)
         }
+        ContentWithModel(screenModel)
+    }
+
+    @Composable
+    internal fun ContentWithModel(screenModel: MangaScreenModel) {
+        val navigator = LocalNavigator.currentOrThrow
+        val context = LocalContext.current
+        val haptic = LocalHapticFeedback.current
+        val scope = rememberCoroutineScope()
 
         val state by screenModel.state.collectAsStateWithLifecycle()
 
@@ -333,7 +339,7 @@ class MangaScreen(
     private fun continueReading(context: Context, unreadChapter: Chapter?) {
         if (unreadChapter != null) {
             context.startActivity(
-                ReaderActivity.newIntent(context, unreadChapter.mangaId, unreadChapter.id, resume = true),
+                ReaderActivity.newContinueIntent(context, unreadChapter.mangaId, unreadChapter.id),
             )
         }
     }

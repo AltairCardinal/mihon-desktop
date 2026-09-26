@@ -24,7 +24,7 @@ import java.util.prefs.Preferences
 @Isolated
 class DesktopSyncWiringTest {
     @Test
-    fun `native continuation factories use the real shared sync candidate`(@TempDir folder: File) = runBlocking {
+    fun `ordinary continuation stops when all chapters are read while history retains sync candidate`(@TempDir folder: File) = runBlocking {
         val node = Preferences.userRoot().node("mihon-sync-resume-di-" + UUID.randomUUID())
         val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node))
         try {
@@ -62,14 +62,12 @@ class DesktopSyncWiringTest {
             val library = mihon.desktop.library.LibraryScreenModelFactory.create().continueReadingRequest(item)
             val detail = mihon.desktop.library.MangaDetailScreenModelFactory.create(manga.id)
                 .continueReadingRequest(manga, listOf(chapter))
-            assertEquals(2, library?.initialPage)
-            assertEquals(2, detail?.initialPage)
-            assertTrue(library?.resumeSnapshot?.heads?.isNotEmpty() == true)
-            assertEquals(library?.resumeSnapshot, detail?.resumeSnapshot)
+            assertEquals(null, library)
+            assertEquals(null, detail)
             val history = Injekt.get<tachiyomi.domain.history.interactor.GetHistory>().subscribe("").first().single()
             val request = mihon.desktop.history.HistoryScreenModelFactory.create().readerRequestFor(history)
             assertEquals(2, request?.initialPage)
-            assertEquals(library?.resumeSnapshot, request?.resumeSnapshot)
+            assertTrue(request?.resumeSnapshot?.heads?.isNotEmpty() == true)
         } finally {
             context.closeAndJoin()
             node.removeNode()

@@ -96,6 +96,16 @@ class MangaDetailActionsTest {
     }
 
     @Test
+    fun `continue action says resume when its selected unread chapter has a local or matching synchronized page`() {
+        val target = chapter(id = 1, sourceOrder = 0, read = false, lastPageRead = 3)
+        val fresh = target.copy(lastPageRead = 0)
+
+        assertTrue(continueActionResumes(listOf(target), target, null))
+        assertTrue(continueActionResumes(listOf(fresh), fresh, fresh.id))
+        assertFalse(continueActionResumes(listOf(fresh), fresh, 2L))
+    }
+
+    @Test
     fun `chapter display title can use chapter number`() {
         val chapter = chapter(id = 7, name = "Release title", chapterNumber = 12.5)
 

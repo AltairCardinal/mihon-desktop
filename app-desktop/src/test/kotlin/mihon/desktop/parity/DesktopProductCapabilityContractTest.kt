@@ -1893,8 +1893,8 @@ class DesktopProductCapabilityContractTest {
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt" to
                         mapOf(
-                            "cover occupies the physical left slot for both reading directions" to
-                                setOf("DualPagedPresentation", "assertNull"),
+                            "portrait first and trailing singles occupy opposite physical halves for each direction" to
+                                setOf("DualPagedPresentation", "assertEquals"),
                             "landscape cover remains whole in the physical left slot for one and many page chapters" to
                                 setOf("DualPagedPresentation", "splitPageIds", "assertNull"),
                             "portrait pairs follow physical LTR and RTL slots while reporting both pages" to
@@ -1910,7 +1910,7 @@ class DesktopProductCapabilityContractTest {
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt" to
                         mapOf(
-                            "mounted cover keeps a full viewport two-slot frame with the page in the physical left slot" to
+                            "mounted portrait edges keep direction aware halves independent of ambient layout" to
                                 setOf("DualPageDisplayUnitFrame", "assertCentered"),
                             "full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing" to
                                 setOf("DualPageDisplayUnitFrame", "ContentScale.Fit", "assertPixel"),

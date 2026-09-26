@@ -11,6 +11,9 @@ import eu.kanade.tachiyomi.util.system.createReaderThemeContext
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
 import mihon.domain.reader.PageLayout
 import mihon.domain.reader.ReaderChapterBoundary
+import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.ReaderPortraitSingleSlot
+import mihon.domain.reader.portraitSinglePageSlot
 import mihon.domain.reader.readerChapterBoundary
 import tachiyomi.core.common.util.system.logcat
 
@@ -153,9 +156,15 @@ class DualPageViewerAdapter(
     }
 
     private fun buildDisplayPages(pages: List<ReaderPage>, state: PairingState): List<DisplayPage> {
-        return state.pairings.map { unit ->
+        val groups = state.pairings
+        return groups.mapIndexed { groupIndex, unit ->
             if (unit.size == 1) {
-                DisplayPage.Single(pages[unit[0]], coverSlot = unit[0] == 0 && state.isPortrait(0))
+                val slot = if (state.isPortrait(unit[0])) {
+                    portraitSinglePageSlot(ReaderDirection.RTL, groupIndex, groups.size)
+                } else {
+                    ReaderPortraitSingleSlot.FULL
+                }
+                DisplayPage.Single(pages[unit[0]], slot)
             } else {
                 DisplayPage.Double(
                     rightPage = pages[unit[0]],

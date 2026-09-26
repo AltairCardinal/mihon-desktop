@@ -6,6 +6,8 @@
 
 - active-child-plan: [作者页体验迭代](./2026-09-18-author-experience-iteration-roadmap.md)（2026-09-18开始；旧作者身份专项保持完成）
 
+- 已完成专项：[阅读器双页与继续阅读行为迭代](./2026-09-24-reader-dual-page-and-continue-iteration-roadmap.md)（2026-09-26，COMPLETE；不改变当前作者页活动计划）。
+
 - 此前完成专项：[Android 新版扩展系统完整兼容 Roadmap](./2026-09-12-android-extension-v2-compatibility-roadmap.md)（2026-09-16，COMPLETE）。产品提交 `b3d81b34dc`；rc9正式Android/ARM业务及Windows/macOS限定回归已验收。MangaPlus live仍未验证成功，明确限制和证据以子计划为准。
 
 - 最近完成专项：[收藏缺失插件「建议安装」完整 Roadmap](./2026-09-16-extension-install-suggestions-roadmap.md)（2026-09-18，COMPLETE；EIS-01～05 及主干整合已完成）。保留主干作者功能/schema27，交付 Android aex.9 与 Windows/macOS x64 BUILD46；完整集合有效 5,414 通过、3 条件跳过，三端正式运行及 API36 覆盖升级验收通过，真机未连接。新产物、历史失败、定向修复和边界见子计划第 10 节，不恢复其他暂停计划。

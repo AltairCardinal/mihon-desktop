@@ -447,13 +447,12 @@ class MangaDetailScreenModel(
     }
 
     suspend fun continueReadingRequest(manga: Manga, chapters: List<Chapter>): MangaDetailReaderRequest? {
-        val resume = readingProgress?.resumePosition(manga.id)
-        val resumed = chapters.find { it.id == resume?.chapterId && it.url.externalChapterUrlOrNull() == null }
-        val target = resumed ?: nextUnreadChapter(chapters, manga) ?: return null
+        val target = nextUnreadChapter(chapters, manga) ?: return null
         val request = readerRequest(manga, chapters, target) ?: return null
-        return if (resumed != null) {
+        val resume = readingProgress?.resumePosition(manga.id)?.takeIf { it.chapterId == target.id }
+        return if (resume != null) {
             request.copy(
-                initialPage = requireNotNull(resume).pageIndex,
+                initialPage = resume.pageIndex,
                 resumeSnapshot = resume.snapshot,
             )
         } else {

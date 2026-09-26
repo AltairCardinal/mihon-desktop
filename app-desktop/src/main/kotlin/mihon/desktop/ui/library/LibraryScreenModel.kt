@@ -1015,18 +1015,19 @@ class LibraryScreenModel(
         val chapters = requireNotNull(getChaptersByMangaId) { "GetChaptersByMangaId is required" }
             .awaitOrThrow(item.manga.id, applyScanlatorFilter = true)
             .sortedBy { it.sourceOrder }
-        val resume = readingProgress?.resumePosition(item.manga.id)
-        val resumedChapter = chapters.find { it.id == resume?.chapterId && it.url.externalChapterUrlOrNull() == null }
-        val target = resumedChapter ?: nextUnreadChapter(chapters, item.manga) ?: run {
+        val target = nextUnreadChapter(chapters, item.manga) ?: run {
             setOperationFeedback(MR.strings.no_next_chapter.localized())
             return null
         }
+        val resume = readingProgress?.resumePosition(item.manga.id)?.takeIf { it.chapterId == target.id }
         setOperationFeedback(null)
-        val chapterRefs = chapters.toReaderChapterRefs(
-            currentChapterId = target.id,
-            manga = item.manga,
-            isChapterDownloaded = { chapter -> chapterIsDownloaded(item, chapter) },
-        )
+        val chapterRefs = chapters
+            .filterNot { it.url.externalChapterUrlOrNull() != null }
+            .toReaderChapterRefs(
+                currentChapterId = target.id,
+                manga = item.manga,
+                isChapterDownloaded = { chapter -> chapterIsDownloaded(item, chapter) },
+            )
         return LibraryReaderRequest(
             chapterTitle = target.name,
             mangaTitle = item.manga.title,
@@ -1037,12 +1038,8 @@ class LibraryScreenModel(
             mangaViewerFlags = item.manga.viewerFlags,
             chapters = chapterRefs,
             currentChapterIndex = ReaderNavigator.indexForId(chapterRefs, target.id),
-            initialPage = if (resumedChapter != null) {
-                requireNotNull(resume).pageIndex
-            } else {
-                target.lastPageRead.toInt().coerceAtLeast(0)
-            },
-            resumeSnapshot = resume?.snapshot.takeIf { resumedChapter != null },
+            initialPage = resume?.pageIndex ?: target.lastPageRead.toInt().coerceAtLeast(0),
+            resumeSnapshot = resume?.snapshot,
         )
     }
 

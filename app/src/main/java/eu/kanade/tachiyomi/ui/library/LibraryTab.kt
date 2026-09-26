@@ -82,13 +82,20 @@ data object LibraryTab : Tab {
 
     @Composable
     override fun Content() {
+        val screenModel = rememberScreenModel { LibraryScreenModel() }
+        val settingsScreenModel = rememberScreenModel { LibrarySettingsScreenModel() }
+        ContentWithModels(screenModel, settingsScreenModel)
+    }
+
+    @Composable
+    internal fun ContentWithModels(
+        screenModel: LibraryScreenModel,
+        settingsScreenModel: LibrarySettingsScreenModel,
+    ) {
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
         val haptic = LocalHapticFeedback.current
-
-        val screenModel = rememberScreenModel { LibraryScreenModel() }
-        val settingsScreenModel = rememberScreenModel { LibrarySettingsScreenModel() }
         val state by screenModel.state.collectAsState()
 
         val snackbarHostState = remember { SnackbarHostState() }
@@ -193,7 +200,7 @@ data object LibraryTab : Tab {
                                 val chapter = screenModel.getNextUnreadChapter(it.manga)
                                 if (chapter != null) {
                                     context.startActivity(
-                                        ReaderActivity.newIntent(context, chapter.mangaId, chapter.id, resume = true),
+                                        ReaderActivity.newContinueIntent(context, chapter.mangaId, chapter.id),
                                     )
                                 } else {
                                     snackbarHostState.showSnackbar(context.stringResource(MR.strings.no_next_chapter))

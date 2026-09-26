@@ -79,7 +79,7 @@ class MangaDetailLibraryEntryWiringTest {
     fun `real MangaDetailScreen chapter pointer opens the requested reader entry`() = readerEntry(false)
 
     @Test
-    fun `real MangaDetailScreen continue button opens synchronized rereading`() = readerEntry(true)
+    fun `real MangaDetailScreen continue button opens earliest unread before old synchronized chapter`() = readerEntry(true)
 
     private fun readerEntry(resume: Boolean) = runBlocking {
         val mangaRepository = FakeMangaRepository()
@@ -98,16 +98,25 @@ class MangaDetailLibraryEntryWiringTest {
             url = "/reader-manga/chapter-1",
             name = "Pointer chapter",
             lastPageRead = 4L,
-            read = resume,
+            read = false,
             sourceOrder = 1L,
         )
         chapterRepository.seed(chapter)
+        val synced = Chapter.create().copy(
+            id = 4_802L,
+            mangaId = manga.id,
+            url = "/reader-manga/chapter-2",
+            name = "Synced read chapter",
+            read = true,
+            sourceOrder = 2L,
+        )
+        chapterRepository.seed(synced)
         val snapshot = tachiyomi.domain.reader.model.ReadingSyncSnapshot()
         val progress = tachiyomi.domain.reader.interactor.RecordReadingProgress(
             object : tachiyomi.domain.reader.repository.ReadingProgressRepository {
                 override suspend fun record(event: tachiyomi.domain.reader.model.ReadingProgressEvent) = Unit
                 override suspend fun resumePosition(mangaId: Long) =
-                    tachiyomi.domain.reader.model.ReadingResumePosition(chapter.id, 2, snapshot)
+                    tachiyomi.domain.reader.model.ReadingResumePosition(synced.id, 2, snapshot)
             },
         )
         val model = MangaDetailScreenModel(
@@ -150,8 +159,8 @@ class MangaDetailLibraryEntryWiringTest {
             renderUntil(scene) { nodes(scene).any { it.hasText(chapter.name) } }
             val chapterTitle = nodes(scene).first { it.hasText(chapter.name) }
             if (resume) {
-                assertEquals(chapter.id, model.state.value.syncedResumeChapterId)
-                assertTrue(model.state.value.chapters.single().read)
+                assertEquals(synced.id, model.state.value.syncedResumeChapterId)
+                assertTrue(model.state.value.chapters.first { it.id == synced.id }.read)
                 // Material's separately placed FAB is rendered but absent from this scene's semantic subtree.
                 // Exercise the actual pointer target in the fixed 1200 x 1200 viewport.
                 scene.render()
@@ -166,8 +175,8 @@ class MangaDetailLibraryEntryWiringTest {
 
             val reader = navigator.lastItem as DesktopReaderScreen
             assertEquals(chapter.id, reader.chapterId)
-            assertEquals(if (resume) 2 else chapter.lastPageRead.toInt(), reader.initialPage)
-            if (resume) assertEquals(snapshot, reader.initialContext().resumeSnapshot)
+            assertEquals(chapter.lastPageRead.toInt(), reader.initialPage)
+            if (resume) assertEquals(null, reader.initialContext().resumeSnapshot)
         } finally {
             scene.close()
         }
@@ -508,6 +517,7 @@ class MangaDetailLibraryEntryWiringTest {
         )
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns DesktopAppPreferences(DesktopPreferenceStore())
+            every { libraryPreferences } returns null
             every { saveSourceMangaForDetails } returns SaveSourceMangaForDetails(
                 NetworkToLocalManga(mangaRepository),
                 mangaRepository,

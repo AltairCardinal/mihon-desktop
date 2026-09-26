@@ -18,15 +18,27 @@ import org.junit.jupiter.api.Test
 class DualPagedPresentationTest {
 
     @Test
-    fun `cover occupies the physical left slot for both reading directions`() {
-        val ltr = DualPagedPresentation.present(request(pageCount = 4, direction = ReaderDirection.LTR))
-        val rtl = DualPagedPresentation.present(request(pageCount = 4, direction = ReaderDirection.RTL))
+    fun `portrait first and trailing singles occupy opposite physical halves for each direction`() {
+        for (direction in listOf(ReaderDirection.LTR, ReaderDirection.RTL)) {
+            val snapshot = DualPagedPresentation.present(request(pageCount = 4, direction = direction))
+            assertEquals(listOf(listOf(0), listOf(1, 2), listOf(3)), snapshot.logicalGroups())
+            val first = snapshot.displayUnits.first().slots.map { it.page?.id }
+            val trailing = snapshot.displayUnits.last().slots.map { it.page?.id }
+            if (direction == ReaderDirection.RTL) {
+                assertEquals(listOf(pageId(0), null), first)
+                assertEquals(listOf(null, pageId(3)), trailing)
+            } else {
+                assertEquals(listOf(null, pageId(0)), first)
+                assertEquals(listOf(pageId(3), null), trailing)
+            }
+        }
+    }
 
-        listOf(ltr, rtl).forEach { snapshot ->
-            val cover = snapshot.displayUnits.first()
-            assertEquals(2, cover.slots.size)
-            assertEquals(pageId(0), cover.slots[0].page?.id)
-            assertNull(cover.slots[1].page)
+    @Test
+    fun `one portrait page fills the viewport in either direction`() {
+        for (direction in listOf(ReaderDirection.LTR, ReaderDirection.RTL)) {
+            val only = present(pageCount = 1, direction = direction).displayUnits.single()
+            assertEquals(listOf(pageId(0)), only.slots.map { it.page?.id })
         }
     }
 

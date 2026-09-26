@@ -3,7 +3,7 @@
 object AppVersion {
     const val STAGE = 11
     const val FEATURE = 19
-    const val BUILD = 58
+    const val BUILD = 60
 }
 
 val APP_VERSION: String =

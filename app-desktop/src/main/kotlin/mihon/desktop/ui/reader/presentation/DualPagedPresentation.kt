@@ -9,7 +9,9 @@ import mihon.domain.reader.PixelBounds
 import mihon.domain.reader.ReaderChapterBoundary
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderPagePairing
+import mihon.domain.reader.ReaderPortraitSingleSlot
 import mihon.domain.reader.ReaderTransitionDirection
+import mihon.domain.reader.portraitSinglePageSlot
 import mihon.domain.reader.readerChapterBoundary
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageSession
@@ -71,11 +73,8 @@ internal object DualPagedPresentation : ReaderPresentationStrategy {
         pages: List<ReaderPageSession>,
     ): DisplayUnit {
         val slots = when {
-            pages.singleOrNull()?.id?.sourcePageIndex == 0 -> singlePageSlots(
-                page = pages.single(),
-                groupIndex = groupIndex,
-                lastGroupIndex = lastGroupIndex,
-            )
+            pages.size == 1 && pages[0].id.sourcePageIndex == 0 && pages[0].id in dualPagedOptions.spreadPageIds ->
+                listOf(pageSlot(pages.single()), emptySlot())
 
             pages.size == 2 -> pages
                 .let { if (direction == ReaderDirection.RTL) it.asReversed() else it }
@@ -109,17 +108,10 @@ internal object DualPagedPresentation : ReaderPresentationStrategy {
         groupIndex: Int,
         lastGroupIndex: Int,
     ): List<DisplaySlot> {
-        if (page.id.sourcePageIndex == 0) return listOf(pageSlot(page), emptySlot())
-        val trailing = groupIndex < lastGroupIndex
-        val slotOnRight = if (trailing) {
-            direction == ReaderDirection.LTR
-        } else {
-            direction == ReaderDirection.RTL
-        }
-        return if (slotOnRight) {
-            listOf(emptySlot(), pageSlot(page))
-        } else {
-            listOf(pageSlot(page), emptySlot())
+        return when (portraitSinglePageSlot(direction, groupIndex, lastGroupIndex + 1)) {
+            ReaderPortraitSingleSlot.FULL -> listOf(pageSlot(page))
+            ReaderPortraitSingleSlot.LEFT -> listOf(pageSlot(page), emptySlot())
+            ReaderPortraitSingleSlot.RIGHT -> listOf(emptySlot(), pageSlot(page))
         }
     }
 

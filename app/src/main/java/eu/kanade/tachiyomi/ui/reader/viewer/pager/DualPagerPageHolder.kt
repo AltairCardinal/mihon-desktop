@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import logcat.LogPriority
+import mihon.domain.reader.ReaderPortraitSingleSlot
 import okio.Buffer
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.launchIO
@@ -40,7 +41,7 @@ import kotlin.math.min
 /**
  * ViewPager page holder for [DualPageR2LPagerViewer].
  *
- * Handles both [DisplayPage.Single] (one image, centred) and
+ * Handles both [DisplayPage.Single] (one image in a full or half viewport) and
  * [DisplayPage.Double] (two portrait images side-by-side, right image first in R2L order).
  *
  * Double pages have permanent physical half-screen slots. Each image fits its slot without
@@ -81,6 +82,19 @@ class DualPagerPageHolder(
     private var progressIndicator: ReaderProgressIndicator? = null
     private var errorLayout: ReaderErrorBinding? = null
     private var errorPage: ReaderPage? = null
+    private val renderedPages = mutableSetOf<ReaderPage>()
+    private val decodeGenerations = mutableMapOf<ReaderPage, Long>()
+
+    internal fun hasRenderedVisiblePages(): Boolean =
+        displayPage.visiblePages.all { it.status == Page.State.Ready && it in renderedPages } && errorPage == null
+
+    private fun clearRendered(page: ReaderPage): Long {
+        renderedPages.remove(page)
+        val generation = (decodeGenerations[page] ?: 0L) + 1L
+        decodeGenerations[page] = generation
+        viewer.onHolderDisplayStateChanged(this)
+        return generation
+    }
 
     // ── Coroutines ──────────────────────────────────────────────────────────
 
@@ -139,14 +153,26 @@ class DualPagerPageHolder(
                 pageContainer.addView(it, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
             }
         }
-        if ((displayPage as? DisplayPage.Single)?.coverSlot == true) {
-            leftSlot = PageSlot(readerThemedContext, alignRight = true).also {
-                pageContainer.addView(it, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+        when ((displayPage as? DisplayPage.Single)?.slot) {
+            ReaderPortraitSingleSlot.LEFT -> {
+                leftSlot = PageSlot(readerThemedContext, alignRight = true).also {
+                    pageContainer.addView(it, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+                }
+                pageContainer.addView(
+                    View(readerThemedContext),
+                    LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f),
+                )
             }
-            pageContainer.addView(
-                View(readerThemedContext),
-                LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f),
-            )
+            ReaderPortraitSingleSlot.RIGHT -> {
+                pageContainer.addView(
+                    View(readerThemedContext),
+                    LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f),
+                )
+                rightSlot = PageSlot(readerThemedContext, alignRight = false).also {
+                    pageContainer.addView(it, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+                }
+            }
+            ReaderPortraitSingleSlot.FULL, null -> Unit
         }
         loadJob = scope.launch { loadPages() }
     }
@@ -155,6 +181,11 @@ class DualPagerPageHolder(
         super.onDetachedFromWindow()
         loadJob?.cancel()
         loadJob = null
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        viewer.onHolderDisplayStateChanged(this)
     }
 
     // Receive gestures in the fixed viewport coordinates, never in the transformed image's
@@ -211,9 +242,16 @@ class DualPagerPageHolder(
             launchIO { loader.loadPage(page) }
             page.statusFlow.collectLatest { state ->
                 when (state) {
-                    Page.State.Queue -> setQueued(side)
-                    Page.State.LoadPage -> setLoading(side)
+                    Page.State.Queue -> {
+                        clearRendered(page)
+                        setQueued(side)
+                    }
+                    Page.State.LoadPage -> {
+                        clearRendered(page)
+                        setLoading(side)
+                    }
                     Page.State.DownloadImage -> {
+                        clearRendered(page)
                         setDownloading(side)
                         page.progressFlow.collectLatest { value ->
                             progressIndicator?.setProgress(value)
@@ -229,6 +267,7 @@ class DualPagerPageHolder(
     // ── Image display ────────────────────────────────────────────────────────
 
     private suspend fun setImage(page: ReaderPage, side: Side) {
+        val generation = clearRendered(page)
         val streamFn = page.stream ?: return
         try {
             val (source, isAnimated, background) = withIOContext {
@@ -262,12 +301,21 @@ class DualPagerPageHolder(
                 )
 
                 val holder = getOrCreateSubHolder(side, page)
+                holder.onImageLoaded = {
+                    if (decodeGenerations[page] == generation && page.status == Page.State.Ready) {
+                        if (errorPage === page) {
+                            errorLayout?.root?.isVisible = false
+                            errorPage = null
+                        }
+                        renderedPages.add(page)
+                        viewer.onHolderDisplayStateChanged(this@DualPagerPageHolder)
+                    }
+                }
+                holder.onImageLoadError = { error ->
+                    if (decodeGenerations[page] == generation) setError(error, page, side)
+                }
                 holder.setImage(source, isAnimated, config, page.index)
                 if (!isAnimated) holder.pageBackground = background
-                if (errorPage === page) {
-                    errorLayout?.root?.isVisible = false
-                    errorPage = null
-                }
                 removeProgressIndicator()
             }
         } catch (e: CancellationException) {
@@ -295,10 +343,14 @@ class DualPagerPageHolder(
 
         viewer.adapter.updatePageDimensions(page, width, height)
 
-        val slot = if (side == Side.LEFT || (displayPage as? DisplayPage.Single)?.coverSlot == true) {
-            leftSlot
-        } else {
-            rightSlot
+        val slot = when (side) {
+            Side.LEFT -> leftSlot
+            Side.RIGHT -> rightSlot
+            Side.CENTER -> when ((displayPage as DisplayPage.Single).slot) {
+                ReaderPortraitSingleSlot.LEFT -> leftSlot
+                ReaderPortraitSingleSlot.RIGHT -> rightSlot
+                ReaderPortraitSingleSlot.FULL -> null
+            }
         }
         slot?.setImageDimensions(width, height)
     }
@@ -331,16 +383,18 @@ class DualPagerPageHolder(
                             rightSlot!!.addView(holder)
                         }
                         is DisplayPage.Single -> {
-                            if (displayPage.coverSlot) {
-                                leftSlot!!.addView(holder)
-                            } else {
-                                pageContainer.addView(
-                                    holder,
-                                    LinearLayout.LayoutParams(
-                                        LayoutParams.MATCH_PARENT,
-                                        LayoutParams.MATCH_PARENT,
-                                    ),
-                                )
+                            when (displayPage.slot) {
+                                ReaderPortraitSingleSlot.LEFT -> leftSlot!!.addView(holder)
+                                ReaderPortraitSingleSlot.RIGHT -> rightSlot!!.addView(holder)
+                                ReaderPortraitSingleSlot.FULL -> {
+                                    pageContainer.addView(
+                                        holder,
+                                        LinearLayout.LayoutParams(
+                                            LayoutParams.MATCH_PARENT,
+                                            LayoutParams.MATCH_PARENT,
+                                        ),
+                                    )
+                                }
                             }
                         }
                     }
@@ -378,6 +432,7 @@ class DualPagerPageHolder(
     }
 
     private fun setError(error: Throwable?, page: ReaderPage, @Suppress("UNUSED_PARAMETER") side: Side) {
+        clearRendered(page)
         removeProgressIndicator()
         if (errorLayout == null) {
             errorLayout = ReaderErrorBinding.inflate(LayoutInflater.from(readerThemedContext), this, true)

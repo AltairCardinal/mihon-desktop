@@ -4,6 +4,7 @@ import mihon.domain.reader.progress.ReaderChapterDisplayOrder
 import mihon.domain.reader.progress.ReaderEntryCandidate
 import mihon.domain.reader.progress.resolveReaderEntry
 import mihon.domain.reader.session.ReaderChapterId
+import mihon.desktop.reader.externalChapterUrlOrNull
 import tachiyomi.domain.chapter.service.getChapterSort
 import tachiyomi.i18n.MR
 import java.util.Locale
@@ -77,7 +78,7 @@ internal fun chaptersForDownloadAction(
 }
 
 internal fun nextUnreadChapter(chapters: List<Chapter>, manga: Manga): Chapter? {
-    val sortedChapters = chapters.sortedWith(getChapterSort(manga))
+    val sortedChapters = chapters.filter { it.url.externalChapterUrlOrNull() == null }.sortedWith(getChapterSort(manga))
     val targetId = resolveReaderEntry(
         chapters = sortedChapters.map { chapter ->
             ReaderEntryCandidate(
@@ -93,6 +94,12 @@ internal fun nextUnreadChapter(chapters: List<Chapter>, manga: Manga): Chapter? 
     )
     return chapters.firstOrNull { it.id == targetId?.value }
 }
+
+internal fun continueActionResumes(
+    chapters: List<Chapter>,
+    target: Chapter,
+    synchronizedResumeChapterId: Long?,
+): Boolean = chapters.any { it.read } || target.lastPageRead > 0 || synchronizedResumeChapterId == target.id
 
 internal enum class ChapterReadIndicator {
     UNREAD_DOT,

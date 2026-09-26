@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
@@ -19,6 +20,7 @@ import androidx.compose.ui.test.printToString
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.chapter.interactor.GetAvailableScanlators
 import eu.kanade.domain.chapter.interactor.SetReadStatus
@@ -34,6 +36,7 @@ import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -65,6 +68,7 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.AndroidPreferenceStore
@@ -76,6 +80,7 @@ import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
@@ -107,23 +112,25 @@ class MangaScreenModelSharedMutationWiringTest {
 
     @Test
     @Config(qualifiers = "w1200dp-h800dp")
-    fun `continue reading can reopen the synchronized chapter when every chapter is read`() = runBlocking {
+    fun `continue reading chooses unread chapter and shows Resume in phone and tablet`() = runBlocking {
         Dispatchers.resetMain()
+        val earliestUnread = chapter(1).copy(read = false, lastPageRead = 4)
         val synced = chapter(2).copy(read = true, lastPageRead = 8)
         coEvery { readingRepository.resumePosition(MANGA_ID) } returns
             ReadingResumePosition(synced.id, 1, ReadingSyncSnapshot())
-        val model = screenModel(manga = manga(true), chapters = listOf(chapter(1).copy(read = true), synced))
+        val model = screenModel(manga = manga(true), chapters = listOf(earliestUnread, synced))
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         try {
             awaitSuccess(model)
             assertEquals(synced.id, (model.state.value as MangaScreenModel.State.Success).synchronizedResumeId)
-            assertEquals(synced.id, model.getNextUnreadChapter()?.id)
+            assertEquals(earliestUnread.id, model.getNextUnreadChapter()?.id)
             val tablet = mutableStateOf(false)
+            val presentationState = mutableStateOf(model.state.value as MangaScreenModel.State.Success)
             var clicks = 0
             activity.get().setContent {
                 MaterialTheme {
                     eu.kanade.presentation.manga.MangaScreen(
-                        state = model.state.value as MangaScreenModel.State.Success,
+                        state = presentationState.value,
                         snackbarHostState = model.snackbarHostState,
                         nextUpdate = null,
                         isTabletUi = tablet.value,
@@ -161,7 +168,127 @@ class MangaScreenModelSharedMutationWiringTest {
                 }
             }
             assertEquals(2, clicks)
-            assertEquals(synced.id, model.getNextUnreadChapter()?.id)
+            assertEquals(earliestUnread.id, model.getNextUnreadChapter()?.id)
+
+            val selectedItem = presentationState.value.chapters.single { it.chapter.id == earliestUnread.id }
+            val onlyTarget = presentationState.value.copy(chapters = listOf(selectedItem), synchronizedResumeId = null)
+            for (sameChapterSync in listOf(false, true)) {
+                compose.runOnIdle {
+                    presentationState.value = onlyTarget.copy(
+                        chapters = listOf(
+                            selectedItem.copy(
+                                chapter = selectedItem.chapter.copy(lastPageRead = if (sameChapterSync) 0 else 4),
+                            ),
+                        ),
+                        synchronizedResumeId = if (sameChapterSync) earliestUnread.id else null,
+                    )
+                }
+                for (isTablet in listOf(false, true)) {
+                    compose.runOnIdle { tablet.value = isTablet }
+                    compose.mainClock.advanceTimeBy(500)
+                    compose.onNode(
+                        hasClickAction() and
+                            hasAnyDescendant(hasText(activity.get().stringResource(MR.strings.action_resume))),
+                        useUnmergedTree = true,
+                    ).assertIsDisplayed()
+                }
+            }
+        } finally {
+            activity.pause().stop().destroy()
+            model.onDispose()
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w1200dp-h800dp")
+    fun `manga screen continue click starts selected unread chapter with within chapter resume`() = runBlocking {
+        Dispatchers.resetMain()
+        val target = chapter(1).copy(read = false, lastPageRead = 4)
+        val oldSynchronized = chapter(2).copy(read = true, lastPageRead = 8)
+        coEvery { readingRepository.resumePosition(MANGA_ID) } returns
+            ReadingResumePosition(oldSynchronized.id, 1, ReadingSyncSnapshot())
+        val model = screenModel(manga = manga(true), chapters = listOf(target, oldSynchronized))
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            awaitSuccess(model)
+            val route = MangaScreen(MANGA_ID)
+            activity.get().setContent {
+                MaterialTheme {
+                    Navigator(route) { route.ContentWithModel(model) }
+                }
+            }
+            compose.mainClock.advanceTimeBy(500)
+            compose.onNode(
+                hasClickAction() and hasAnyDescendant(hasText(activity.get().stringResource(MR.strings.action_resume))),
+                useUnmergedTree = true,
+            ).assertIsDisplayed().performTouchInput { click() }
+
+            val intent = withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    var started = shadowOf(activity.get()).nextStartedActivity
+                    while (started == null) {
+                        delay(10)
+                        started = shadowOf(activity.get()).nextStartedActivity
+                    }
+                    started
+                }
+            }
+            assertEquals(ReaderActivity::class.java.name, intent.component?.className)
+            assertEquals(MANGA_ID, intent.getLongExtra("manga", -1))
+            assertEquals(target.id, intent.getLongExtra("chapter", -1))
+            assertEquals(false, intent.getBooleanExtra("resume", false))
+            assertEquals(true, intent.getBooleanExtra("resumeWithinChapter", false))
+        } finally {
+            activity.pause().stop().destroy()
+            model.onDispose()
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w1200dp-h800dp")
+    fun `all read manga hides continue in phone and tablet despite sync`() = runBlocking {
+        Dispatchers.resetMain()
+        val synced = chapter(2).copy(read = true, lastPageRead = 8)
+        coEvery { readingRepository.resumePosition(MANGA_ID) } returns
+            ReadingResumePosition(synced.id, 1, ReadingSyncSnapshot())
+        val model = screenModel(manga = manga(true), chapters = listOf(chapter(1).copy(read = true), synced))
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            awaitSuccess(model)
+            assertEquals(null, model.getNextUnreadChapter())
+            val tablet = mutableStateOf(false)
+            activity.get().setContent {
+                MaterialTheme {
+                    eu.kanade.presentation.manga.MangaScreen(
+                        state = model.state.value as MangaScreenModel.State.Success,
+                        snackbarHostState = model.snackbarHostState,
+                        nextUpdate = null,
+                        isTabletUi = tablet.value,
+                        chapterSwipeStartAction = LibraryPreferences.ChapterSwipeAction.Disabled,
+                        chapterSwipeEndAction = LibraryPreferences.ChapterSwipeAction.Disabled,
+                        navigateUp = {}, onChapterClicked = {}, onDownloadChapter = null,
+                        onAddToLibraryClicked = {}, onWebViewClicked = null, onWebViewLongClicked = null,
+                        onTrackingClicked = {}, onTagSearch = {}, onFilterButtonClicked = {}, onRefresh = {},
+                        onContinueReading = {}, onSearch = { _, _ -> }, creatorMentions = emptyList(),
+                        onCreatorClick = {}, onCoverClicked = {}, onShareClicked = null, onDownloadActionClicked = null,
+                        onEditCategoryClicked = null, onEditFetchIntervalClicked = null, onMigrateClicked = null,
+                        onEditNotesClicked = {}, onMultiBookmarkClicked = { _, _ -> },
+                        onMultiMarkAsReadClicked = { _, _ -> }, onMarkPreviousAsReadClicked = {},
+                        onMultiDeleteClicked = {},
+                        onChapterSwipe = { _, _ -> }, onChapterSelected = { _, _, _ -> },
+                        onAllChapterSelected = {}, onInvertSelection = {},
+                    )
+                }
+            }
+            for (isTablet in listOf(false, true)) {
+                compose.runOnIdle { tablet.value = isTablet }
+                compose.mainClock.advanceTimeBy(500)
+                val resumeText = activity.get().stringResource(MR.strings.action_resume)
+                compose.onNode(
+                    hasClickAction() and hasAnyDescendant(hasText(resumeText)),
+                    useUnmergedTree = true,
+                ).assertIsNotDisplayed()
+            }
         } finally {
             activity.pause().stop().destroy()
             model.onDispose()
@@ -318,6 +445,7 @@ class MangaScreenModelSharedMutationWiringTest {
         Injekt.addSingleton(BasePreferences(application, preferenceStore))
         Injekt.addSingleton(UiPreferences(preferenceStore))
         Injekt.addSingleton(SourcePreferences(preferenceStore))
+        Injekt.addSingleton(mockk<ManageCreatorIdentity>(relaxed = true))
         lifecycleOwner = TestLifecycleOwner().also {
             it.registry.currentState = Lifecycle.State.RESUMED
         }
