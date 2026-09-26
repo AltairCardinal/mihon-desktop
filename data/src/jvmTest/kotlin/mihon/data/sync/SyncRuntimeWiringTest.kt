@@ -12,6 +12,7 @@ import mihon.data.sync.http.SyncMetrics
 import mihon.data.sync.runtime.StoredSyncMaterial
 import mihon.data.sync.runtime.StoredSyncSetup
 import mihon.data.sync.runtime.SyncPanelAction
+import mihon.data.sync.runtime.SyncProgressDirection
 import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.data.sync.transport.GitHubSyncTransport
@@ -738,6 +739,90 @@ class SyncRuntimeWiringTest {
                 assertEquals(SyncRunState.WAITING_SYSTEM, panel.state.value.run?.state)
                 assertEquals(1L, panel.state.value.progress?.confirmedThisRun)
                 assertEquals(0L, panel.state.value.progress?.completedItems)
+            }
+        }
+    }
+
+    @Test
+    fun `partial panel reloads only its pending receipt and related source blockers`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val runStore = setup.runtime.runStore
+                val run = runStore.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runStore.claim(run.runId, "terminal-owner", 1))
+                runStore.expectDownload(run.runId, "terminal-owner", "pending-a", 2)
+                runStore.expectDownload(run.runId, "terminal-owner", "pending-b", 3)
+                runStore.confirmed(run.runId, "terminal-owner", SyncProgressDirection.UPLOAD, "published", 7)
+                val other = runStore.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runStore.claim(other.runId, "other-owner", 1))
+                runStore.expectDownload(other.runId, "other-owner", "other-batch", 9)
+                listOf("pending-a" to "source-a", "other-batch" to "source-other").forEach { (batch, key) ->
+                    fixture.storage.driver.execute(
+                        null,
+                        "INSERT INTO sync_events(space_id, generation, actor_id, epoch, seq, category, origin, " +
+                            "batch_id, event_json, occurred_at, event_key, sync_indexed) VALUES " +
+                            "('space', 1, 'actor', 1, ${if (batch == "pending-a") 1 else 2}, " +
+                            "'FAVORITE', 'REMOTE', '$batch', '{}', 1, '$key', 1)",
+                        0,
+                    )
+                    fixture.storage.driver.execute(
+                        null,
+                        "INSERT INTO sync_event_fields(space_id, generation, event_key, " +
+                            "object_key, field, object_json) " +
+                            "VALUES ('space', 1, '$key', '$key', 'FAVORITE', '{}')",
+                        0,
+                    )
+                    fixture.storage.driver.execute(
+                        null,
+                        "INSERT INTO sync_field_state(space_id, generation, object_key, field, " +
+                            "object_json, status, dirty) " +
+                            "VALUES ('space', 1, '$key', 'FAVORITE', '{}', 'SOURCE', 0)",
+                        0,
+                    )
+                }
+                fixture.storage.driver.execute(
+                    null,
+                    "INSERT INTO sync_events(space_id, generation, actor_id, epoch, seq, category, origin, " +
+                        "batch_id, event_json, occurred_at, event_key, sync_indexed) VALUES " +
+                        "('space', 1, 'actor', 1, 3, 'FAVORITE', 'REMOTE', 'pending-a', '{}', 1, 'source-a-repeat', 1)",
+                    0,
+                )
+                fixture.storage.driver.execute(
+                    null,
+                    "INSERT INTO sync_event_fields(space_id, generation, event_key, object_key, field, object_json) " +
+                        "VALUES ('space', 1, 'source-a-repeat', 'source-a', 'FAVORITE', '{}')",
+                    0,
+                )
+                runStore.finish(run.runId, SyncRunState.PARTIAL, "projection_pending", "terminal-owner")
+                runStore.finish(other.runId, SyncRunState.PARTIAL, "projection_pending", "other-owner")
+                val firstSummary = requireNotNull(runStore.terminalSummary(run.runId))
+                assertEquals(2L, firstSummary.pendingDownloadBatches)
+                assertEquals(5L, firstSummary.pendingDownloadEvents)
+                assertEquals(1L, firstSummary.sourceUnavailableFields)
+                setup.panel.act(SyncPanelAction.Close)
+                setup.panel.act(SyncPanelAction.Open)
+                val selected = setup.panel.state.value
+                assertEquals(other.runId, selected.run?.runId)
+                assertEquals(9L, selected.terminalSummary?.pendingDownloadEvents)
+                assertEquals(1L, selected.terminalSummary?.sourceUnavailableFields)
+
+                val reopened = setup.runtime()
+                val panel = reopened.panel as mihon.data.sync.runtime.SyncPanelController
+                panel.dispatch(SyncPanelAction.Open)
+                panel.awaitIdle()
+                assertEquals(other.runId, panel.state.value.run?.runId)
+                assertEquals(1L, panel.state.value.terminalSummary?.pendingDownloadBatches)
+                assertEquals(9L, panel.state.value.terminalSummary?.pendingDownloadEvents)
+                assertEquals(1L, panel.state.value.terminalSummary?.sourceUnavailableFields)
+
+                panel.act(SyncPanelAction.RetrySync)
+                withTimeout(5_000) { panel.state.first { it.run?.runId == other.runId && it.run.attemptId > 1 } }
+                assertEquals(other.runId, panel.state.value.run?.runId)
+                assertEquals(0L, runStore.get(other.runId)?.confirmedItems)
+                assertEquals(1L, runStore.terminalSummary(other.runId)?.pendingDownloadBatches)
             }
         }
     }

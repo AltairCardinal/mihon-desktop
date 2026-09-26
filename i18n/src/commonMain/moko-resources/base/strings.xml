@@ -1853,6 +1853,12 @@
     <string name="sync_eta_stage">Current stage: about %1$s remaining</string>
     <string name="sync_eta_body">Current body: about %1$s remaining</string>
     <string name="sync_projection_pending">Some data has not been confirmed yet. Try syncing again later.</string>
+    <string name="sync_terminal_partial">This sync has ended with some data still pending</string>
+    <string name="sync_terminal_cancelled">This sync was cancelled</string>
+    <string name="sync_terminal_pending_receipts">%1$d download batches await confirmation, containing %2$d changes</string>
+    <string name="sync_terminal_pending_explanation">Changes in these batches still need checking; they have not all failed</string>
+    <string name="sync_terminal_source_fields">%1$d checks cannot be confirmed because a manga source is unavailable</string>
+    <string name="sync_terminal_source_retry">Restore the affected manga source before retrying; retrying alone cannot fix an unavailable source</string>
     <string name="sync_eta_unknown_whole">Estimating total time remaining</string>
     <string name="sync_eta_unknown">Estimating…</string>
     <string name="sync_eta_unavailable">Remaining time cannot be estimated yet</string>

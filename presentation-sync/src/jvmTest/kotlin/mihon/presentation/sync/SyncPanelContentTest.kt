@@ -45,6 +45,7 @@ import mihon.data.sync.runtime.SyncRunPhase
 import mihon.data.sync.runtime.SyncRunSnapshot
 import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncSetupStep
+import mihon.data.sync.runtime.SyncTerminalSummary
 import mihon.domain.sync.SyncCancellationDecision
 import mihon.domain.sync.SyncObjectKey
 import mihon.domain.sync.SyncObjectType
@@ -296,6 +297,94 @@ class SyncPanelContentTest {
         assertTrue(texts().contains("正在统计数据"))
         assertTrue(texts().contains("剩余时间暂无法估算"))
         assertFalse(texts().any { it.contains("0 / 0") || it.contains("NaN") })
+    }
+
+    @Test
+    fun `partial terminal run shows durable outcome instead of stale live stage`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.UPLOADING).copy(
+                state = SyncRunState.PARTIAL,
+                stopReason = "projection_pending",
+                confirmedItems = 26_778,
+                updatedAt = 6_000,
+            ),
+            progress = SyncProgressFact(
+                scope = "run-visual:empty-download",
+                stage = SyncProgressStage.CONFIRMING,
+                direction = SyncProgressDirection.DOWNLOAD,
+                completedItems = 0,
+                totalItems = 0,
+                effectiveBytes = 0,
+                networkBytes = 0,
+                totalBytes = null,
+                elapsedSeconds = 10,
+                hold = SyncProgressHold.ACTIVE,
+                stageEtaSeconds = null,
+                wholeEtaSeconds = null,
+            ),
+            terminalSummary = SyncTerminalSummary("run-visual", 2, 512, 10),
+            nowMillis = 600_000,
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(texts().contains("本次同步已结束，部分数据待处理"))
+        assertTrue(texts().contains("本次已确认 26778 条"))
+        assertTrue(texts().contains("2 个下载批次待确认，涉及 512 条变动"))
+        assertTrue(texts().contains("批次内变动仍待核对，不代表这些变动都已失败"))
+        assertTrue(texts().contains("有 10 项核对内容因漫画源不可用，暂无法确认"))
+        assertTrue(texts().any { it.contains("恢复对应漫画源后再重试") })
+        assertTrue(texts().contains("已用 00:05"))
+        assertFalse(hasTag("sync-progress"))
+        assertFalse(texts().contains("正在接收并校验数据"))
+        assertFalse(texts().any { it.contains("已确认 0 / 0") })
+        click("sync-retry-run")
+        assertEquals(SyncPanelAction.RetrySync, actions.last())
+    }
+
+    @Test
+    fun `setup and other terminal states do not retain progress animation`() = rendered(
+        connected().copy(
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.MERGING,
+            setupBusy = true,
+            run = visualRun(SyncRunPhase.CONFIRMING).copy(
+                state = SyncRunState.PARTIAL,
+                stopReason = "projection_pending",
+            ),
+            progress = SyncProgressFact(
+                scope = "run-visual:stale",
+                stage = SyncProgressStage.CONFIRMING,
+                direction = SyncProgressDirection.DOWNLOAD,
+                completedItems = 0,
+                totalItems = null,
+                effectiveBytes = 0,
+                networkBytes = 0,
+                totalBytes = null,
+                elapsedSeconds = 30,
+                hold = SyncProgressHold.ACTIVE,
+                stageEtaSeconds = null,
+                wholeEtaSeconds = null,
+            ),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertFalse(hasTag("sync-progress"))
+        assertFalse(texts().contains("正在合并数据"))
+        assertFalse(nodes().any { it.config.contains(SemanticsProperties.ProgressBarRangeInfo) })
+        for (terminal in listOf(
+            SyncRunState.SUCCEEDED,
+            SyncRunState.FAILED,
+            SyncRunState.BLOCKED,
+            SyncRunState.CANCELLED,
+        )) {
+            panel.state.value = panel.state.value.copy(
+                page = SyncPanelPage.MAIN,
+                run = panel.state.value.run?.copy(state = terminal),
+            )
+            render()
+            assertFalse(hasTag("sync-progress"), terminal.name)
+            assertFalse(texts().contains("正在接收并校验数据"), terminal.name)
+        }
     }
 
     @Test
@@ -552,7 +641,7 @@ class SyncPanelContentTest {
     }
 
     @Test
-    fun `large text keeps the stage count and pending status inside the Android panel`() = runBlocking {
+    fun `large text keeps the terminal result and pending status inside the Android panel`() = runBlocking {
         val state = connected().copy(
             run = visualRun(SyncRunPhase.CONFIRMING).copy(state = SyncRunState.PARTIAL),
             pendingTotal = 10_300,
@@ -575,8 +664,10 @@ class SyncPanelContentTest {
             Fixture(state, ImageComposeScene(400, 800, coroutineContext = coroutineContext) {}, fontScale = 2f)
         try {
             fixture.setContent()
-            fixture.awaitTag("sync-stage-count")
-            assertTrue(fixture.node("sync-stage-count").boundsInRoot.right <= 400f)
+            fixture.awaitTag("sync-progress-card")
+            assertTrue(fixture.node("sync-progress-card").boundsInRoot.right <= 400f)
+            assertFalse(fixture.hasTag("sync-stage-count"))
+            assertTrue(fixture.texts().contains("本次同步已结束，部分数据待处理"))
             assertTrue(fixture.texts().contains("仍有 10300 条待处理，请在下方决定如何保留"))
         } finally {
             fixture.scene.close()

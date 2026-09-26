@@ -53,6 +53,14 @@ data class SyncPanelNotice(
     val setupCompleted: Boolean = false,
 )
 
+/** Read-only durable outcome details for one selected run. */
+data class SyncTerminalSummary(
+    val runId: String,
+    val pendingDownloadBatches: Long,
+    val pendingDownloadEvents: Long,
+    val sourceUnavailableFields: Long,
+)
+
 data class SyncPanelState(
     val visible: Boolean = false,
     val page: SyncPanelPage = SyncPanelPage.MAIN,
@@ -86,6 +94,7 @@ data class SyncPanelState(
     val run: SyncRunSnapshot? = null,
     /** Volatile observations for the active run; omitted after process recovery until remeasured. */
     val progress: SyncProgressFact? = null,
+    val terminalSummary: SyncTerminalSummary? = null,
     val logs: List<SyncRunLog> = emptyList(),
     val logsHasMore: Boolean = false,
     val setupStep: SyncSetupStep = SyncSetupStep.SIGN_IN,

@@ -24,6 +24,18 @@ Windows 正式未打包产物：`D:\Codex\worktrees\85be\mihon\app-desktop\artif
 
 Windows 验证日志保存在忽略目录 `.gradle-coordinator/` 中的 `sync-eta-android-full.log`、`sync-eta-desktop-full.log`、`sync-eta-windows-build.log`、`sync-eta-final-module-gates.log`、`sync-eta-migration-fixture-green2.log`、`sync-eta-test-desktop-final.log`。macOS 构建日志位于 `/Users/altair/Library/Caches/mihon-sync-eta-build.log`。日志为过程产物，不纳入版本库。
 
+## 部分完成结果展示修复（2026-09-26）
+
+实机只读诊断发现，同步运行已持久化为 `PARTIAL / projection_pending`，最后更新后数据库没有继续变化；界面却仍显示最后一个空下载轮次的活动状态及 `0 / 0`。当时已确认 26,778 条，未确认下载回执为 2 批、共 512 条；这些批次关联的当前来源不可用字段共 10 项。512 是整批事件数，10 是字段数，二者不能相减，也不能据此认定 512 条都因漫画源不可用而失败。
+
+本次修复限定为结果展示和只读摘要查询。部分完成须明确本次执行已经结束，显示持久确认数、待确认批次数及其包含的条目数，并单独解释漫画源不可用的待处理内容；关闭重开或进程恢复后语义一致。同步终态不得沿用活动标题、不定进度条或空轮次 `0 / 0`。首次设置合并页和常规同步页使用相同规则，结束时间保持冻结。重试复用现有同步操作；来源恢复与批次确认条件保持原有行为。
+
+验证遵循红绿流程：`sync-terminal-assertion-red` 记录共享 Compose 界面两项断言失败；`sync-terminal-retry-red` 记录旧入口不执行部分完成重试。`sync-terminal-focused-verified` 通过真实 SQLite 摘要、字段去重、运行隔离、重开恢复及重试不虚增确认数的 wiring 测试，另通过 6 项终态/大字体/时间冻结相关 UI 测试，以及 data、presentation-sync、i18n 的 Spotless 检查。主代理独立审查已完成，确认待处理查询限定当前运行、空间与 generation，且不进入每秒计时路径。
+
+最终 `sync-terminal-final-gates` 通过 `:presentation-sync:jvmTest` 全模块 56 项测试及 `:app:testDebugUnitTest --tests eu.kanade.tachiyomi.data.sync.AndroidSyncPanelTest` 的 5 项宿主集成测试。`sync-terminal-apk` 通过 `:app:assembleDebug`。日志均位于忽略目录 `.gradle-coordinator/`。本批涉及 11 个文件，是同一结果展示能力所需的查询、状态、共享界面、双语文案、测试与文档；未拆分同步协议或引入数据库迁移。
+
+本轮 Android 验收包：`app/build/outputs/apk/debug/mihon-sync-result-ui-20260926.apk`，实际包名 `app.mihon.dev`、版本 `0.19.4-9208`、SHA-256 `95087b480f591e88982a84a203e7a17b2193afb5592c369e6298e566c4004525`，已核对产物存在。本轮未重建 Windows/macOS；共享 UI 由 JVM 测试覆盖。新 APK 尚待用户安装后实机验收，上述修复前实机观察不能代替新包验收。
+
 ## 同样本性能对照
 
 本机以本地 MockWebServer、文件数据库与真实 Git/HTTP/面板链路，使用 1,600 条书架事件加 8,700 条阅读事件，共 10,300 条、41 批、每次 794 个 HTTP 请求。关闭/开启显示遥测各运行三次，交替顺序为 OFF/ON、ON/OFF、OFF/ON；HTTP 请求及响应正文总字节在每对中相同。服务端条件为响应头约 50 ms、12,500 字节响应正文约 10 ms、上传按每 1,250 字节约 1 ms 模拟。OFF 只关闭内存时间线和展示观测，安全回执、投影检查及运行结果照常执行。

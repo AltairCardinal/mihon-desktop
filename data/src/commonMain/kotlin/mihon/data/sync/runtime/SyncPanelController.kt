@@ -303,6 +303,15 @@ class SyncPanelController(
                 }
         }
         val logs = run?.let { runtime.runStore.logs(it.runId, limit = logLimit) }.orEmpty()
+        val terminalSummary = run?.takeIf {
+            it.state in setOf(
+                SyncRunState.SUCCEEDED,
+                SyncRunState.PARTIAL,
+                SyncRunState.FAILED,
+                SyncRunState.BLOCKED,
+                SyncRunState.CANCELLED,
+            )
+        }?.let { runtime.runStore.terminalSummary(it.runId) }
         val persistedProblem = run?.takeIf { it.state in setOf(SyncRunState.FAILED, SyncRunState.BLOCKED) }
             ?.let(::persistedProblem)
         mutableState.update {
@@ -329,6 +338,7 @@ class SyncPanelController(
                 importPaused = prefs.importPaused.get(),
                 records = runtime.records().asReversed(),
                 run = run,
+                terminalSummary = terminalSummary,
                 progress = run?.let { runtime.progressFor(it.runId) ?: restoredProgress(it) },
                 logs = logs,
                 logsHasMore = run != null && logLimit < 500L && logs.size.toLong() == logLimit,
@@ -411,7 +421,9 @@ class SyncPanelController(
                     beginSetup()
                 }
             }
-            SyncPanelAction.RetrySync -> if (state.value.run?.state == SyncRunState.FAILED) {
+            SyncPanelAction.RetrySync -> if (state.value.run?.state in
+                setOf(SyncRunState.FAILED, SyncRunState.PARTIAL)
+            ) {
                 mutableState.update { it.copy(problem = null) }
                 scope.launch {
                     runtime.coordinator.synchronize(SyncTrigger.MANUAL)

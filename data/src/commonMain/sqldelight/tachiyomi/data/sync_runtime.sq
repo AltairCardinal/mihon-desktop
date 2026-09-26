@@ -68,6 +68,19 @@ VALUES (?, ?, ?, ?, ?);
 getPendingRuntimeReceipts:
 SELECT * FROM sync_runtime_confirmations WHERE run_id = ? AND direction = 'DOWNLOAD' AND status = 'PENDING';
 
+countSourceFieldsInPendingRuntimeReceipts:
+SELECT COUNT(*) FROM (
+    SELECT DISTINCT f.object_key, f.field
+    FROM sync_runtime_confirmations c
+    JOIN sync_events e ON e.space_id = :spaceId AND e.generation = :generation AND e.batch_id = c.batch_id
+    JOIN sync_event_fields f ON f.space_id = e.space_id AND f.generation = e.generation
+        AND f.event_key = e.event_key
+    JOIN sync_field_state s ON s.space_id = f.space_id AND s.generation = f.generation
+        AND s.object_key = f.object_key AND s.field = f.field
+    WHERE c.run_id = :runId AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING'
+        AND s.status = 'SOURCE' AND s.dirty = 0
+);
+
 hasPendingRuntimeReceipt:
 SELECT 1 FROM sync_runtime_confirmations
 WHERE run_id = ? AND direction = 'DOWNLOAD' AND status = 'PENDING' LIMIT 1;

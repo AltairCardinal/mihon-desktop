@@ -1840,6 +1840,12 @@
     <string name="sync_eta_stage">当前阶段预计还需约 %1$s</string>
     <string name="sync_eta_body">当前正文预计还需约 %1$s</string>
     <string name="sync_projection_pending">有数据尚未完成核对，请稍后重试同步</string>
+    <string name="sync_terminal_partial">本次同步已结束，部分数据待处理</string>
+    <string name="sync_terminal_cancelled">本次同步已取消</string>
+    <string name="sync_terminal_pending_receipts">%1$d 个下载批次待确认，涉及 %2$d 条变动</string>
+    <string name="sync_terminal_pending_explanation">批次内变动仍待核对，不代表这些变动都已失败</string>
+    <string name="sync_terminal_source_fields">有 %1$d 项核对内容因漫画源不可用，暂无法确认</string>
+    <string name="sync_terminal_source_retry">请先恢复对应漫画源后再重试；仅重试同步无法解决源不可用的问题</string>
     <string name="sync_eta_unknown_whole">全部剩余时间正在估算</string>
     <string name="sync_eta_unknown">正在估算</string>
     <string name="sync_eta_unavailable">剩余时间暂无法估算</string>

@@ -782,7 +782,9 @@ private fun SetupPage(
         modifier.fillMaxWidth().padding(24.dp).testTag("sync-setup-list"),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        if (state.setupBusy && state.setupStep != SyncSetupStep.SIGN_IN) {
+        if (state.setupBusy && state.setupStep != SyncSetupStep.SIGN_IN &&
+            !(state.setupStep == SyncSetupStep.MERGING && state.run?.state?.isTerminal() == true)
+        ) {
             item { CircularProgressIndicator(Modifier.size(24.dp)) }
         }
         state.setupProblem?.let { item { Text(setupProblemText(it), Modifier.testTag("sync-setup-error")) } }
@@ -973,7 +975,9 @@ private fun SetupPage(
             SyncSetupStep.DISCOVERING -> item { Text(syncString(MR.strings.sync_setup_discovering)) }
             SyncSetupStep.CREATING -> item { Text(syncString(MR.strings.sync_setup_creating)) }
             SyncSetupStep.MERGING -> {
-                item { Text(syncString(MR.strings.sync_setup_merging)) }
+                if (state.run?.state?.isTerminal() != true) {
+                    item { Text(syncString(MR.strings.sync_setup_merging)) }
+                }
                 state.run?.let { run ->
                     item { SyncProgressCard(run, state, dispatch, horizontalPadding = 0.dp) }
                 }
@@ -1037,13 +1041,16 @@ private fun SyncProgressCard(
             Modifier.fillMaxWidth().padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            val terminal = run.state.isTerminal()
             val progress = state.progress?.takeIf { it.scope == run.runId || it.scope.startsWith("${run.runId}:") }
-            if (progress != null) {
+            if (terminal) {
+                SyncTerminalProgress(run, state)
+            } else if (progress != null) {
                 SyncStageProgress(run, progress, state.nowMillis)
             } else {
                 Text(syncString(runPhaseLabel(run.phase)), style = MaterialTheme.typography.titleMedium)
             }
-            if (progress == null && run.total > 0) {
+            if (!terminal && progress == null && run.total > 0) {
                 Text(
                     syncString(MR.strings.sync_progress, run.processed, run.total),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1065,7 +1072,7 @@ private fun SyncProgressCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
-            } else if (progress == null) {
+            } else if (!terminal && progress == null) {
                 LinearProgressIndicator(Modifier.fillMaxWidth().testTag("sync-progress"))
             }
             when (run.state) {
@@ -1087,28 +1094,35 @@ private fun SyncProgressCard(
                     Text(retryLabel(run, state.nowMillis), Modifier.testTag("sync-retry-countdown"))
                 }
                 SyncRunState.FAILED -> {
-                    Text(syncString(MR.strings.sync_retry_exhausted))
                     Action("sync-retry-run", MR.strings.sync_retry_run) {
                         dispatch(SyncPanelAction.RetrySync)
                     }
                 }
                 SyncRunState.BLOCKED -> {
-                    Text(syncString(MR.strings.sync_blocked))
                     Text(
                         problemText(state.problem ?: SyncRunProblem.UNKNOWN),
                         Modifier.testTag("sync-blocked-reason"),
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
-                SyncRunState.PARTIAL -> Text(
-                    if (run.stopReason == "projection_pending") {
-                        syncString(MR.strings.sync_projection_pending)
-                    } else if (state.pendingTotal > 0) {
-                        syncString(MR.strings.sync_pending_decisions_count, state.pendingTotal)
-                    } else {
-                        syncString(MR.strings.sync_pending_decisions)
-                    },
-                )
+                SyncRunState.PARTIAL -> {
+                    if ((state.terminalSummary?.takeIf { it.runId == run.runId }?.sourceUnavailableFields ?: 0L) ==
+                        0L
+                    ) {
+                        Text(
+                            if (run.stopReason == "projection_pending") {
+                                syncString(MR.strings.sync_projection_pending)
+                            } else if (state.pendingTotal > 0) {
+                                syncString(MR.strings.sync_pending_decisions_count, state.pendingTotal)
+                            } else {
+                                syncString(MR.strings.sync_pending_decisions)
+                            },
+                        )
+                    }
+                    Action("sync-retry-run", MR.strings.sync_retry_run) {
+                        dispatch(SyncPanelAction.RetrySync)
+                    }
+                }
                 SyncRunState.SUCCEEDED,
                 SyncRunState.CANCELLED,
                 -> Unit
@@ -1140,6 +1154,47 @@ private fun SyncProgressCard(
             }
         }
     }
+}
+
+private fun SyncRunState.isTerminal(): Boolean = this in setOf(
+    SyncRunState.SUCCEEDED,
+    SyncRunState.PARTIAL,
+    SyncRunState.FAILED,
+    SyncRunState.BLOCKED,
+    SyncRunState.CANCELLED,
+)
+
+@Composable
+private fun SyncTerminalProgress(run: SyncRunSnapshot, state: SyncPanelState) {
+    val title = when (run.state) {
+        SyncRunState.SUCCEEDED -> MR.strings.sync_phase_complete
+        SyncRunState.PARTIAL -> MR.strings.sync_terminal_partial
+        SyncRunState.FAILED -> MR.strings.sync_retry_exhausted
+        SyncRunState.BLOCKED -> MR.strings.sync_blocked
+        SyncRunState.CANCELLED -> MR.strings.sync_terminal_cancelled
+        else -> error("A terminal result is required")
+    }
+    Text(syncString(title), style = MaterialTheme.typography.titleMedium)
+    Text(syncString(MR.strings.sync_items_confirmed_this_run, run.confirmedItems))
+    val summary = state.terminalSummary?.takeIf { it.runId == run.runId }
+    if (summary != null && summary.pendingDownloadBatches > 0L) {
+        Text(
+            syncString(
+                MR.strings.sync_terminal_pending_receipts,
+                summary.pendingDownloadBatches,
+                summary.pendingDownloadEvents,
+            ),
+        )
+        Text(syncString(MR.strings.sync_terminal_pending_explanation))
+    }
+    if (summary != null && summary.sourceUnavailableFields > 0L) {
+        Text(syncString(MR.strings.sync_terminal_source_fields, summary.sourceUnavailableFields))
+        Text(syncString(MR.strings.sync_terminal_source_retry))
+    }
+    val elapsedSeconds = ((run.updatedAt - run.createdAt).coerceAtLeast(0L) / 1_000L)
+    val elapsed = "${(elapsedSeconds / 60).toString().padStart(2, '0')}:" +
+        (elapsedSeconds % 60).toString().padStart(2, '0')
+    Text(syncString(MR.strings.sync_elapsed, elapsed))
 }
 
 @Composable

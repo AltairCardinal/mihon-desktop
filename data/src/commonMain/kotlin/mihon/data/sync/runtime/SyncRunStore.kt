@@ -381,6 +381,25 @@ class SyncRunStore(
         sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull()?.toSnapshot()
     }
 
+    suspend fun terminalSummary(runId: String): SyncTerminalSummary? = handler.await {
+        val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull() ?: return@await null
+        val pending = sync_runtimeQueries.getPendingRuntimeReceipts(runId).executeAsList()
+        SyncTerminalSummary(
+            runId = runId,
+            pendingDownloadBatches = pending.size.toLong(),
+            pendingDownloadEvents = pending.sumOf { it.item_count },
+            sourceUnavailableFields = if (pending.isEmpty()) {
+                0L
+            } else {
+                sync_runtimeQueries.countSourceFieldsInPendingRuntimeReceipts(
+                    spaceId = run.space_id,
+                    generation = run.generation,
+                    runId = runId,
+                ).executeAsOne()
+            },
+        )
+    }
+
     suspend fun active(spaceId: String, generation: Long): SyncRunSnapshot? = handler.await {
         sync_runtimeQueries.getActiveRuntimeRun(spaceId, generation).executeAsOneOrNull()?.toSnapshot()
     }
