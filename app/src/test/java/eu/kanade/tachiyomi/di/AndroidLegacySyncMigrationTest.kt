@@ -4,9 +4,11 @@ import android.app.Application
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import eu.kanade.tachiyomi.BuildConfig
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,8 +31,11 @@ class AndroidLegacySyncMigrationTest {
     @Before
     fun setup() {
         app = RuntimeEnvironment.getApplication()
-        app.deleteDatabase("tachiyomi.db")
         previous = Injekt
+        // Release uses Requery's Android-only native library, which cannot load in host Robolectric.
+        // Keep this production callback contract on the debug JVM; verify release migration on device.
+        assumeTrue("Release SQLite native driver requires Android", BuildConfig.DEBUG)
+        app.deleteDatabase("tachiyomi.db")
         Injekt = InjektScope(DefaultRegistrar())
     }
 

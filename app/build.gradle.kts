@@ -223,6 +223,12 @@ kotlin {
 // failOnPassedAfterRetry=false means a test that passes on retry is accepted;
 // a test that fails on every attempt still fails the task.
 tasks.withType<Test>().configureEach {
+    if (name == "testReleaseUnitTest") {
+        // Robolectric bitmap and activity fixtures retain native state across classes on host JVMs.
+        // Give heavy reader cases headroom and start each class with a fresh test process.
+        maxHeapSize = "1g"
+        forkEvery = 1
+    }
     retry {
         maxRetries.set(2)
         maxFailures.set(10)

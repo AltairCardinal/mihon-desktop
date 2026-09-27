@@ -12,8 +12,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
+import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.ui.reader.DualPageDisplayUnitIdKey
+import mihon.domain.reader.content.DownloadChapterIdentity
+import java.awt.image.BufferedImage
 import java.util.concurrent.ConcurrentHashMap
+import javax.imageio.ImageIO
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -31,6 +35,39 @@ import java.io.File
 @OptIn(ExperimentalComposeUiApi::class)
 class DesktopChapterPairingComposePersistenceTest {
     @TempDir lateinit var tempDir: File
+
+    @Test
+    fun `deleting a chapter download preserves its saved pairing and reading progress`() = runBlocking {
+        val databaseFile = tempDir.resolve("download-delete.sqlite")
+        openDatabase(databaseFile, create = true).use { (handler, driver) ->
+            seed(driver)
+            val repository = ChapterPairingRepositoryImpl(handler)
+            repository.replace(7, 10, 0, 8, setOf(3))
+            val provider = DesktopDownloadProvider(tempDir.resolve("downloads"))
+            val identity = DownloadChapterIdentity(
+                sourceDisplayName = "Source",
+                mangaTitle = "M",
+                chapterName = "C",
+                scanlator = null,
+                chapterUrl = "/current",
+                disallowNonAsciiFilenames = false,
+            )
+            val artifact = provider.canonicalChapterDownloadDir(identity).apply { mkdirs() }
+            assertTrue(ImageIO.write(BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB), "jpg", artifact.resolve("001.jpg")))
+            assertTrue(provider.isChapterDownloaded(42, identity))
+
+            assertTrue(provider.deleteChapterDownload(42, identity))
+
+            assertTrue(!artifact.exists())
+            assertTrue(!provider.isChapterDownloaded(42, identity))
+            assertEquals(setOf(3), repository.load(7, 10).record?.forcedSinglePages)
+            assertEquals(5L, queryLong(driver, "SELECT last_page_read FROM chapters WHERE _id=7"))
+        }
+        openDatabase(databaseFile).use { (handler, driver) ->
+            assertEquals(setOf(3), ChapterPairingRepositoryImpl(handler).load(7, 10).record?.forcedSinglePages)
+            assertEquals(5L, queryLong(driver, "SELECT last_page_read FROM chapters WHERE _id=7"))
+        }
+    }
 
     @Test
     fun `real reader adjustment button saves to file and reopened screen restores containing spread`() = runBlocking {
