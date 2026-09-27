@@ -987,6 +987,10 @@ internal fun initUILayer(
             extensionPackageForSource = Injekt.get<DesktopExtensionManager>()::getExtensionPackage,
         )
     Injekt.addSingleton(readerProgressTracker)
+    val pairingRepository = tachiyomi.data.chapter.ChapterPairingRepositoryImpl(handler)
+    val pairingCoordinator = mihon.desktop.reader.DesktopChapterPairingCoordinator(pairingRepository)
+    Injekt.addSingleton<mihon.domain.reader.ChapterPairingRepository>(pairingRepository)
+    Injekt.addSingleton(pairingCoordinator)
     Injekt.addSingleton(
         DesktopReaderRuntimeFactory(
             prefs = Injekt.get(),
@@ -997,6 +1001,7 @@ internal fun initUILayer(
             mangaRepository = mangaRepository,
             encodedCacheDirectory = paths.networkCacheDir.resolve("reader-encoded"),
             chapterRepository = chapterRepository,
+            pairingCoordinator = pairingCoordinator,
             readerIoProbe = mihon.desktop.test.http.ReaderIoTestModeBridge,
             disallowNonAsciiFilenames = {
                 Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get()
@@ -1052,6 +1057,7 @@ internal fun initUILayer(
         creatorDiscoveryScheduler = Injekt.get<mihon.desktop.domain.CreatorDiscoveryScheduler>(),
         creatorDiscoveryOutboxService = Injekt.get<mihon.desktop.domain.CreatorDiscoveryOutboxService>(),
         syncService = syncScheduler,
+        chapterPairingService = pairingCoordinator,
         appLock = appLock,
         scope = applicationScope,
         updateScreenModel = updateScreenModel,

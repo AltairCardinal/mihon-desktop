@@ -3,6 +3,7 @@ package mihon.desktop.ui.reader
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.reader.DesktopReaderChapterContext
+import mihon.desktop.reader.DesktopChapterPairingCoordinator
 import mihon.desktop.reader.DesktopReaderSessionState
 import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderColorFilter
@@ -20,6 +21,8 @@ import mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor
 import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
 import mihon.domain.error.AppError
 import mihon.domain.reader.PageSplitHalf
+import mihon.domain.reader.ChapterPairingRepository
+import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.ReaderChapterModel
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderChapterTransitionModel
@@ -44,6 +47,18 @@ import tachiyomi.i18n.MR
 import java.util.prefs.Preferences
 
 class ReaderScreenModelTest {
+    @Test
+    fun `manual pairing survives switching dual page mode off and on`() {
+        val reader = desktopReaderSessionState(chapterId = 7L, pageCount = 8)
+        val model = ReaderScreenModel(initialSessionState = reader, dualPageOverride = true)
+        model.setForcedSinglePages(setOf(1, 4))
+
+        model.setDualPageMode(false)
+        model.setDualPageMode(true)
+
+        assertEquals(setOf(1, 4), model.state.value.forcedSinglePages)
+    }
+
     @Test
     fun `invalid saved page resumes from chapter beginning with feedback`() {
         val reader = desktopReaderSessionState(chapterId = 7L, pageCount = 3, initialPage = 10)
@@ -116,6 +131,35 @@ class ReaderScreenModelTest {
                 ReaderScreenModel(initialSessionState = desktopReaderSessionState(pageCount = 0)).state.value,
             ),
         )
+    }
+
+    @Test
+    fun `pairing restore gate preserves chapter error and empty states before page list exists`() = runTest {
+        val repository = object : ChapterPairingRepository {
+            override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot =
+                error("Pairing cannot load before a page list exists")
+
+            override suspend fun replace(
+                chapterId: Long,
+                mangaId: Long,
+                expectedRevision: Long,
+                pageCount: Int,
+                forcedSinglePages: Set<Int>,
+            ): ChapterPairingSnapshot = error("No save expected")
+        }
+        val coordinator = DesktopChapterPairingCoordinator(repository, backgroundScope)
+        fun identified(state: DesktopReaderSessionState) = state.copy(context = state.context.copy(mangaId = 10L))
+        val empty = ReaderScreenModel(
+            initialSessionState = identified(desktopReaderSessionState(pageCount = 0)),
+            pairingCoordinator = coordinator,
+        )
+        assertEquals(ReaderViewportBody.EMPTY, readerViewportBody(empty.state.value))
+
+        val error = ReaderScreenModel(
+            initialSessionState = identified(nonLoadedState(1L, ReaderChapterLoadState.Error(AppError.Network()))),
+            pairingCoordinator = coordinator,
+        )
+        assertEquals(ReaderViewportBody.ERROR, readerViewportBody(error.state.value))
     }
 
     @Test
@@ -425,7 +469,7 @@ class ReaderScreenModelTest {
     }
 
     @Test
-    fun `webtoon mode is pinned and disabling dual page clears forced singles`() {
+    fun `webtoon mode is pinned and disabling dual page retains forced singles`() {
         val webtoon = ReaderScreenModel(isWebtoon = true)
         webtoon.setReadingMode(ReadingMode.LTR)
         assertEquals(ReadingMode.WEBTOON, webtoon.state.value.readingMode)
@@ -433,7 +477,7 @@ class ReaderScreenModelTest {
         val model = ReaderScreenModel(prefs = testPreferences { readingMode = ReadingMode.RTL })
         model.setForcedSinglePages(setOf(0, 2))
         model.setDualPageMode(false)
-        assertTrue(model.state.value.forcedSinglePages.isEmpty())
+        assertEquals(setOf(0, 2), model.state.value.forcedSinglePages)
     }
 
     @Test

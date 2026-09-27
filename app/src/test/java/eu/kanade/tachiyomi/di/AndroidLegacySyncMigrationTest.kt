@@ -117,7 +117,7 @@ class AndroidLegacySyncMigrationTest {
 
         Injekt.importModule(AppModule(app))
         Injekt.get<SqlDriver>().use { driver ->
-            assertEquals(39L, queryLong(driver, "PRAGMA user_version"))
+            assertEquals(40L, queryLong(driver, "PRAGMA user_version"))
             assertEquals(
                 200L,
                 queryLong(

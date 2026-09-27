@@ -134,12 +134,15 @@ class DesktopReaderRuntimeFactory internal constructor(
     private val partialPageReadLeaseSource: PartialPageReadLeaseSource = DirectPartialPageReadLeaseSource,
     private val partialDownloadIoProbe: DownloadIoProbe = DownloadIoProbe.None,
     private val chapterRepository: tachiyomi.domain.chapter.repository.ChapterRepository? = null,
+    private val pairingCoordinator: DesktopChapterPairingCoordinator? = null,
 ) {
     internal val configuredReaderIoProbe: ReaderIoProbe get() = readerIoProbe
     internal val configuredPartialDownloadSnapshotLookup: PartialDownloadSnapshotLookup
         get() = partialDownloadSnapshotLookup
     internal val configuredPartialPageReadLeaseSource: PartialPageReadLeaseSource
         get() = partialPageReadLeaseSource
+    internal val configuredPairingCoordinator: DesktopChapterPairingCoordinator?
+        get() = pairingCoordinator
     private val encodedPageStoreCoordinator = DesktopReaderEncodedPageStoreCoordinator(encodedCacheDirectory)
     private val partialPageFallbackCoordinator = DesktopReaderPartialPageFallbackCoordinator()
 
@@ -278,6 +281,7 @@ class DesktopReaderRuntimeFactory internal constructor(
         runtime = runtime,
         ownedRuntimeScope = ownedRuntimeScope,
         onProductionClosed = onProductionClosed,
+        pairingCoordinator = pairingCoordinator,
         persistViewerFlags = { targetMangaId, flags ->
             mangaRepository?.update(MangaUpdate(id = targetMangaId, viewerFlags = flags))
         },

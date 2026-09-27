@@ -37,6 +37,12 @@ data class ReaderState(
     val session: ReaderSessionSnapshot = ReaderSessionSnapshot.initial(ReaderChapterId(context.chapterId)),
     val currentPage: Int = 0,
     val resumePageUnavailable: Boolean = false,
+    val pairingLoad: PairingLoad = PairingLoad.READY,
+    val pairingSessionOnly: Boolean = false,
+    val pairingSaving: Boolean = false,
+    val pairingRevision: Long = 0L,
+    val pairingNotice: PairingNotice? = null,
+    val pairingNoticeSerial: Long = 0,
     val currentDisplayUnitId: DisplayUnitId? = null,
     val visiblePageIds: Set<ReaderPageId> = emptySet(),
     val webtoonScrollAnchor: WebtoonScrollAnchor? = null,
@@ -76,3 +82,7 @@ data class ReaderState(
     val showSettings: Boolean = false,
     val showUI: Boolean = false,
 )
+
+enum class PairingLoad { READY, LOADING, ERROR, DEFAULT_UNVERIFIED }
+
+enum class PairingNotice { INVALID, SAVE_FAILED, SESSION_ONLY }

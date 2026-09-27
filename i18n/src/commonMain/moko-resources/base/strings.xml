@@ -1445,6 +1445,12 @@
 
     <string name="desktop_ui_add_manga_from_browse_to_get_started">Add manga from Browse to get started</string>
     <string name="desktop_ui_adjust_spread">Adjust Spread</string>
+    <string name="desktop_reader_pairing_saving">Saving page pairing</string>
+    <string name="desktop_reader_pairing_save_failed">Could not save page pairing. Please retry.</string>
+    <string name="desktop_reader_pairing_invalid">The chapter pages changed or the saved pairing is unavailable. Using the default pairing this time.</string>
+    <string name="desktop_reader_pairing_session_only">Pairing changes for this file last only until you close it.</string>
+    <string name="desktop_reader_pairing_load_failed">Could not load the saved page pairing.</string>
+    <string name="desktop_reader_pairing_use_default">Use default pairing this time</string>
     <string name="desktop_ui_all_authors">All authors</string>
     <string name="desktop_ui_archived_works">Archived works</string>
     <string name="desktop_ui_authors">Authors</string>

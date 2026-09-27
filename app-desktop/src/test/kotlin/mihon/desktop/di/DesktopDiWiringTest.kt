@@ -70,6 +70,8 @@ import mihon.desktop.library.LibraryScreenModelFactory
 import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.DesktopReaderRuntimeFactory
+import mihon.desktop.reader.DesktopChapterPairingCoordinator
+import mihon.domain.reader.ChapterPairingRepository
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.more.StatsScreenModel
 import mihon.desktop.update.DesktopUpdateController
@@ -212,6 +214,11 @@ class DesktopDiWiringTest {
             assertNotNull(Injekt.get<DesktopExtensionApi>())
             assertNotNull(Injekt.get<DesktopDownloadIdentityResolver>())
             assertNotNull(Injekt.get<DesktopReaderRuntimeFactory>())
+            assertNotNull(Injekt.get<ChapterPairingRepository>())
+            assertSame(
+                Injekt.get<DesktopChapterPairingCoordinator>(),
+                Injekt.get<DesktopReaderRuntimeFactory>().configuredPairingCoordinator,
+            )
         } finally {
             context.closeAndJoin()
         }

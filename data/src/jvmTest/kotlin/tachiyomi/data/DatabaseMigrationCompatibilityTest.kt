@@ -10,6 +10,56 @@ import java.nio.file.Path
 
 class DatabaseMigrationCompatibilityTest {
     @Test
+    fun `schema 39 adds chapter pairing tables without changing chapter progress`() {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        Database.Schema.create(driver)
+        driver.execute(null, "PRAGMA foreign_keys=OFF", 0)
+        driver.execute(null, "DROP TABLE chapter_pairing_boundaries", 0)
+        driver.execute(null, "DROP TABLE chapter_pairings", 0)
+        driver.execute(null, "DROP TABLE chapter_pairing_revisions", 0)
+        driver.execute(null, "PRAGMA user_version=39", 0)
+        driver.execute(
+            null,
+            "INSERT INTO mangas(_id, source, url, title, status, favorite, initialized, viewer, " +
+                "chapter_flags, cover_last_modified, date_added) VALUES (10, 1, '/', 'M', 0, 0, 0, 0, 0, 0, 0)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO chapters(_id, manga_id, url, name, read, bookmark, last_page_read, " +
+                "chapter_number, source_order, date_fetch, date_upload) VALUES (11, 10, '/c', 'C', 0, 1, 5, 1, 0, 0, 0)",
+            0,
+        )
+
+        DatabaseMigration.migrateAtomically(driver, 39, Database.Schema.version)
+
+        queryLong(driver, "PRAGMA user_version") shouldBe 40L
+        queryLong(driver, "SELECT last_page_read FROM chapters WHERE _id=11") shouldBe 5L
+        queryLong(driver, "SELECT bookmark FROM chapters WHERE _id=11") shouldBe 1L
+        queryLong(driver, "SELECT COUNT(*) FROM sqlite_master WHERE name='chapter_pairings'") shouldBe 1L
+        queryLong(driver, "SELECT COUNT(*) FROM sqlite_master WHERE name='chapter_pairing_boundaries'") shouldBe 1L
+        queryLong(driver, "SELECT COUNT(*) FROM sqlite_master WHERE name='chapter_pairing_revisions'") shouldBe 1L
+    }
+
+    @Test
+    fun `schema 39 refuses incompatible preexisting chapter pairing table`() {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        Database.Schema.create(driver)
+        driver.execute(null, "DROP TABLE chapter_pairing_boundaries", 0)
+        driver.execute(null, "DROP TABLE chapter_pairings", 0)
+        driver.execute(null, "DROP TABLE chapter_pairing_revisions", 0)
+        driver.execute(null, "CREATE TABLE chapter_pairings(chapter_id INTEGER PRIMARY KEY, revision INTEGER)", 0)
+        driver.execute(null, "PRAGMA user_version=39", 0)
+
+        shouldThrow<IllegalArgumentException> {
+            DatabaseMigration.migrateAtomically(driver, 39, Database.Schema.version)
+        }
+
+        queryLong(driver, "PRAGMA user_version") shouldBe 39L
+        queryLong(driver, "SELECT COUNT(*) FROM sqlite_master WHERE name='chapter_pairing_boundaries'") shouldBe 0L
+    }
+
+    @Test
     fun `schema 32 without runtime family restores it before later migrations and preserves existing data`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         LegacySyncSchema32Contract.prepareWithoutRuntime(driver)
@@ -63,7 +113,7 @@ class DatabaseMigrationCompatibilityTest {
 
     @Test
     fun `current schema reserves compatibility migration after published sync schema`() {
-        Database.Schema.version shouldBe 39L
+        Database.Schema.version shouldBe 40L
     }
 
     @Test
@@ -82,7 +132,7 @@ class DatabaseMigrationCompatibilityTest {
 
         DatabaseMigration.migrateAtomically(driver, 38, Database.Schema.version)
 
-        queryLong(driver, "PRAGMA user_version") shouldBe 39L
+        queryLong(driver, "PRAGMA user_version") shouldBe 40L
         queryLong(
             driver,
             "SELECT COUNT(*) FROM pragma_table_info('author_archive_source_works') " +
@@ -119,7 +169,7 @@ class DatabaseMigrationCompatibilityTest {
 
         queryLong(driver, "SELECT confirmed_items FROM sync_runtime_runs WHERE run_id = 'SUCCEEDED'") shouldBe 5L
         queryLong(driver, "SELECT confirmed_items FROM sync_runtime_runs WHERE run_id = 'RUNNING'") shouldBe 2L
-        queryLong(driver, "PRAGMA user_version") shouldBe 39L
+        queryLong(driver, "PRAGMA user_version") shouldBe 40L
     }
 
     @Test
@@ -156,7 +206,7 @@ class DatabaseMigrationCompatibilityTest {
             driver,
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'sync_snapshot_manifest_entries'",
         ) shouldBe 1L
-        queryLong(driver, "PRAGMA user_version") shouldBe 39L
+        queryLong(driver, "PRAGMA user_version") shouldBe 40L
     }
 
     @Test
@@ -246,7 +296,7 @@ class DatabaseMigrationCompatibilityTest {
 
         DatabaseMigration.migrateAtomically(driver, 34, Database.Schema.version)
 
-        queryLong(driver, "PRAGMA user_version") shouldBe 39L
+        queryLong(driver, "PRAGMA user_version") shouldBe 40L
         queryLong(driver, "SELECT attempt_id FROM sync_runtime_runs WHERE run_id = 'legacy-run'") shouldBe 2L
         queryLong(driver, "SELECT network_failure_count FROM sync_runtime_runs WHERE run_id = 'legacy-run'") shouldBe 2L
         queryLong(
@@ -282,7 +332,7 @@ class DatabaseMigrationCompatibilityTest {
         queryLong(driver, "SELECT COUNT(*) FROM sync_runtime_runs") shouldBe 1L
         queryLong(driver, "SELECT COUNT(*) FROM author_archive_representative_work_cache") shouldBe 0L
         queryLong(driver, "SELECT COUNT(*) FROM author_archive_source_date_quality") shouldBe 0L
-        queryLong(driver, "PRAGMA user_version") shouldBe 39L
+        queryLong(driver, "PRAGMA user_version") shouldBe 40L
     }
 
     @Test
@@ -295,7 +345,7 @@ class DatabaseMigrationCompatibilityTest {
         queryLong(driver, "SELECT COUNT(*) FROM author_archive_creators") shouldBe 1L
         queryLong(driver, "SELECT COUNT(*) FROM sync_runtime_runs") shouldBe 0L
         queryLong(driver, "SELECT COUNT(*) FROM sync_runtime_logs") shouldBe 0L
-        queryLong(driver, "PRAGMA user_version") shouldBe 39L
+        queryLong(driver, "PRAGMA user_version") shouldBe 40L
     }
 
     @Test

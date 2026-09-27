@@ -334,6 +334,9 @@ object DatabaseMigration {
                 "latest_head",
             ),
             "sync_http_account_gates" to setOf("account_id", "not_before_ms", "updated_at"),
+            "chapter_pairings" to setOf("chapter_id", "format_version", "page_count", "revision"),
+            "chapter_pairing_boundaries" to setOf("chapter_id", "page_ordinal"),
+            "chapter_pairing_revisions" to setOf("chapter_id", "revision"),
         ).forEach { (table, columns) ->
             if (hasObject(driver, "table", table)) {
                 if (table == "sync_runtime_runs") {
@@ -345,7 +348,81 @@ object DatabaseMigration {
                 }
             }
         }
+        if (hasObject(driver, "table", "chapter_pairings")) requireChapterPairingShape(driver)
+        if (hasObject(driver, "table", "chapter_pairing_boundaries")) requireChapterPairingBoundaryShape(driver)
+        if (hasObject(driver, "table", "chapter_pairing_revisions")) requireChapterPairingRevisionShape(driver)
     }
+
+    private fun requireChapterPairingShape(driver: SqlDriver) {
+        requireTable(driver, "chapter_pairings", setOf("chapter_id", "format_version", "page_count", "revision"))
+        require(
+            queryCount(
+                driver,
+                "SELECT COUNT(*) FROM pragma_table_info('chapter_pairings') WHERE name='chapter_id' AND pk=1",
+            ) ==
+                1L,
+        )
+        require(
+            queryCount(
+                driver,
+                "SELECT COUNT(*) FROM pragma_foreign_key_list('chapter_pairings') " +
+                    "WHERE \"from\"='chapter_id' AND \"table\"='chapters' AND \"to\"='_id' AND on_delete='CASCADE'",
+            ) == 1L,
+        ) {
+            "Incompatible chapter_pairings key or chapter cascade"
+        }
+    }
+
+    private fun requireChapterPairingBoundaryShape(driver: SqlDriver) {
+        requireTable(driver, "chapter_pairing_boundaries", setOf("chapter_id", "page_ordinal"))
+        require(
+            queryCount(
+                driver,
+                "SELECT COUNT(*) FROM pragma_table_info('chapter_pairing_boundaries') " +
+                    "WHERE (name='chapter_id' AND pk=1) OR (name='page_ordinal' AND pk=2)",
+            ) == 2L,
+        )
+        require(
+            queryCount(
+                driver,
+                "SELECT COUNT(*) FROM pragma_foreign_key_list('chapter_pairing_boundaries') " +
+                    "WHERE \"from\"='chapter_id' AND \"table\"='chapter_pairings' AND \"to\"='chapter_id' " +
+                    "AND on_delete='CASCADE'",
+            ) == 1L,
+        ) {
+            "Incompatible chapter_pairing_boundaries key or pairing cascade"
+        }
+    }
+
+    private fun requireChapterPairingRevisionShape(driver: SqlDriver) {
+        requireTable(driver, "chapter_pairing_revisions", setOf("chapter_id", "revision"))
+        require(
+            queryCount(
+                driver,
+                "SELECT COUNT(*) FROM pragma_table_info('chapter_pairing_revisions') " +
+                    "WHERE name='chapter_id' AND pk=1",
+            ) == 1L,
+        )
+        require(
+            queryCount(
+                driver,
+                "SELECT COUNT(*) FROM pragma_foreign_key_list('chapter_pairing_revisions') " +
+                    "WHERE \"from\"='chapter_id' AND \"table\"='chapters' AND \"to\"='_id' AND on_delete='CASCADE'",
+            ) == 1L,
+        ) {
+            "Incompatible chapter_pairing_revisions key or chapter cascade"
+        }
+    }
+
+    private fun queryCount(driver: SqlDriver, sql: String): Long = driver.executeQuery(
+        identifier = null,
+        sql = sql,
+        parameters = 0,
+        mapper = { cursor ->
+            app.cash.sqldelight.db.QueryResult.Value(if (cursor.next().value) requireNotNull(cursor.getLong(0)) else 0L)
+        },
+        binders = null,
+    ).value
 
     private fun requireTableWithOneShape(
         driver: SqlDriver,

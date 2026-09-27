@@ -87,6 +87,8 @@ internal fun ReaderBottomBar(
     onPrevChapter: () -> Unit = {},
     onNextChapter: () -> Unit = {},
     onAdjustSpread: (() -> Unit)? = null,
+    adjustSaving: Boolean = false,
+    adjustEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val nav = chapterNavLayout(isRtl, hasPrevChapter, hasNextChapter)
@@ -135,11 +137,12 @@ internal fun ReaderBottomBar(
             if (isDualPage && onAdjustSpread != null) {
                 IconButton(
                     onClick = onAdjustSpread,
+                    enabled = adjustEnabled && !adjustSaving,
                     modifier = Modifier.size(36.dp),
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                        contentDescription = MR.strings.desktop_ui_adjust_spread.localized(),
+                        contentDescription = if (adjustSaving) MR.strings.desktop_reader_pairing_saving.localized() else MR.strings.desktop_ui_adjust_spread.localized(),
                         tint = Color.White,
                     )
                 }

@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS chapter_pairings (
+    chapter_id INTEGER NOT NULL PRIMARY KEY,
+    format_version INTEGER NOT NULL,
+    page_count INTEGER NOT NULL,
+    revision INTEGER NOT NULL,
+    FOREIGN KEY(chapter_id) REFERENCES chapters(_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS chapter_pairing_boundaries (
+    chapter_id INTEGER NOT NULL,
+    page_ordinal INTEGER NOT NULL,
+    PRIMARY KEY(chapter_id, page_ordinal),
+    FOREIGN KEY(chapter_id) REFERENCES chapter_pairings(chapter_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS chapter_pairing_revisions (
+    chapter_id INTEGER NOT NULL PRIMARY KEY,
+    revision INTEGER NOT NULL,
+    FOREIGN KEY(chapter_id) REFERENCES chapters(_id) ON DELETE CASCADE
+);

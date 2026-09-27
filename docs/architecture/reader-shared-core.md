@@ -145,6 +145,20 @@ Single、Webtoon 和 Dual 是 registry 中同级策略：
 - Dual：双槽 frame、adjacent pairing、cover-single、forced single、spread、edge matching 和 landscape
   parity。
 
+### 章节手动双页边界（CP-01 Desktop）
+
+`ChapterPairingRepository` 是手动 forced-single 边界的章级持久接口；SQLDelight 文件库保存格式版本、
+页数、边界及独立的单调 revision。读取和写入都核对真实章节与漫画归属；边界清空时删除配对状态及边界，
+但保留 revision 元数据以防旧会话在清空后重建时通过过期 CAS。删除章节由外键级联清除三张表。
+记录版本、页数或边界损坏时，Reader 不应用该记录，并提示用户；页数相同但内容变动无法自动识别。
+
+Desktop runtime 通过 Injekt 注入共享仓库和 `DesktopChapterPairingCoordinator`。协调器按章串行受理读取与
+写入，生命周期独立于 ScreenModel；正常应用退出等待已受理保存结束。Reader 首次显示双页和首次 settled
+viewport 前等待本章恢复，旧章节与旧 generation 的迟到结果不得改写当前状态。调整按钮先保存成功再更新
+当前排版；保存失败保留原排版并允许重试，读取失败可重试或仅在本次会话使用默认排版，且默认状态不能
+覆盖未知的持久记录。只有直接打开且没有数据库章节身份的临时文件使用会话限定调整并显示提示。
+该配对状态仅保存在本机数据库，不进入阅读进度、同步或备份链。Android 的生产接线由 CP-02 完成。
+
 Pairing、双槽、封面和屏幕宽度禁止进入 `ReaderSessionCore`。双页 settled 时必须上报实际可见的全部
 `PageId`；`firstPage` 仅作为导航与预加载锚点，只上报它会让末页 pair 的进度不完整。Android 双页
 任一可见成员错误时拒绝整组进度；显示模式或尺寸引发的纯布局重排不触发进度提交。

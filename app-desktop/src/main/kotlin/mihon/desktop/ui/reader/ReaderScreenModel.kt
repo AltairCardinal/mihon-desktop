@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.update
 import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.DesktopReaderRuntime
 import mihon.desktop.reader.DesktopReaderSessionState
+import mihon.desktop.reader.DesktopChapterPairingCoordinator
 import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ReaderPreferences
@@ -36,6 +37,7 @@ import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderChapterTransitionModel
 import mihon.domain.reader.ReaderNavigationCommand
 import mihon.domain.reader.ReaderTransitionDirection
+import mihon.domain.reader.StaleChapterPairingException
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderPageId
@@ -84,6 +86,7 @@ class ReaderScreenModel(
     internal val runtime: DesktopReaderRuntime? = null,
     private val ownedRuntimeScope: CoroutineScope? = null,
     private val onProductionClosed: () -> Unit = {},
+    private val pairingCoordinator: DesktopChapterPairingCoordinator? = null,
 ) : ScreenModel {
     private val globalPreferences = prefs
     private val _state = MutableStateFlow(buildInitialState(prefs, initialSessionState))
@@ -97,8 +100,14 @@ class ReaderScreenModel(
     private var manualDualPage = dualPageFromViewerFlags(mangaViewerFlags) ?: dualPageOverride ?: prefs.isDualPage
     private val productionRuntimeLifecycleLock = Any()
     private var retainedCompositionCount = 0
-    private var disposeRequested = false
+    @Volatile private var disposeRequested = false
     private var productionRuntimeClosed = false
+    @Volatile private var pairingEpoch = 0L
+    @Volatile private var pairingRequest: PairingRequest? = null
+
+    init {
+        beginPairingRestore(initialSessionState)
+    }
 
     private fun buildInitialState(
         prefs: ReaderPreferences,
@@ -137,15 +146,27 @@ class ReaderScreenModel(
             skipReadChapters = prefs.skipReadChapters,
             skipFilteredChapters = prefs.skipFilteredChapters,
             skipDuplicateChapters = prefs.skipDuplicateChapters,
+            pairingLoad = if (pairingCoordinator != null && !reader.context.isTemporaryReaderFile()) {
+                PairingLoad.LOADING
+            } else {
+                PairingLoad.READY
+            },
+            pairingSessionOnly = pairingCoordinator != null && reader.context.isTemporaryReaderFile(),
+            pairingNotice = if (pairingCoordinator != null && reader.context.isTemporaryReaderFile()) {
+                PairingNotice.SESSION_ONLY
+            } else {
+                null
+            },
         )
     }
 
     fun acceptSessionState(reader: DesktopReaderSessionState) {
-        if (_state.value.session.generation != reader.snapshot.generation || _state.value.context.chapterId != reader.context.chapterId) {
-            layoutProgressAnchor = null
-        }
+        var newIdentity = false
         _state.update { current ->
             val chapterChanged = current.context.chapterId != reader.context.chapterId
+            newIdentity = chapterChanged || current.context.mangaId != reader.context.mangaId ||
+                current.session.generation != reader.snapshot.generation ||
+                current.session.activeChapter.pages.size != reader.snapshot.activeChapter.pages.size
             val firstStablePageList = current.session.activeChapter.pages.isEmpty() &&
                 reader.snapshot.activeChapter.pages.isNotEmpty()
             val pageCount = reader.snapshot.activeChapter.pages.size
@@ -163,17 +184,114 @@ class ReaderScreenModel(
                 } else {
                     current.resumePageUnavailable
                 },
-                currentDisplayUnitId = if (chapterChanged) null else current.currentDisplayUnitId,
-                visiblePageIds = if (chapterChanged) emptySet() else current.visiblePageIds,
-                webtoonScrollAnchor = if (chapterChanged) null else current.webtoonScrollAnchor,
-                chapterTransition = if (chapterChanged) null else current.chapterTransition,
-                forcedSinglePages = if (chapterChanged) emptySet() else current.forcedSinglePages,
-                spreadPages = if (chapterChanged) emptySet() else current.spreadPages,
-                matchedPairs = if (chapterChanged) emptySet() else current.matchedPairs,
-                virtualPages = if (chapterChanged) null else current.virtualPages,
+                currentDisplayUnitId = if (newIdentity) null else current.currentDisplayUnitId,
+                visiblePageIds = if (newIdentity) emptySet() else current.visiblePageIds,
+                webtoonScrollAnchor = if (newIdentity) null else current.webtoonScrollAnchor,
+                chapterTransition = if (newIdentity) null else current.chapterTransition,
+                forcedSinglePages = if (newIdentity) emptySet() else current.forcedSinglePages,
+                pairingLoad = if (newIdentity) {
+                    if (pairingCoordinator != null && !reader.context.isTemporaryReaderFile()) PairingLoad.LOADING else PairingLoad.READY
+                } else {
+                    current.pairingLoad
+                },
+                pairingRevision = if (newIdentity) 0L else current.pairingRevision,
+                pairingSessionOnly = if (newIdentity) {
+                    pairingCoordinator != null && reader.context.isTemporaryReaderFile()
+                } else current.pairingSessionOnly,
+                pairingSaving = if (newIdentity) false else current.pairingSaving,
+                pairingNotice = if (newIdentity) null else current.pairingNotice,
+                spreadPages = if (newIdentity) emptySet() else current.spreadPages,
+                matchedPairs = if (newIdentity) emptySet() else current.matchedPairs,
+                virtualPages = if (newIdentity) null else current.virtualPages,
             )
         }
+        if (newIdentity) {
+            layoutProgressAnchor = null
+            pairingEpoch++
+            pairingRequest = null
+        }
+        beginPairingRestore(reader)
     }
+
+    private fun beginPairingRestore(reader: DesktopReaderSessionState) {
+        val coordinator = pairingCoordinator ?: return
+        val context = reader.context
+        if (context.isTemporaryReaderFile()) {
+            _state.update { state ->
+                state.copy(pairingLoad = PairingLoad.READY, pairingSessionOnly = true)
+                    .let { if (it.pairingNotice == PairingNotice.SESSION_ONLY) it else it.withPairingNotice(PairingNotice.SESSION_ONLY) }
+            }
+            return
+        }
+        if (context.chapterId <= 0L || context.mangaId <= 0L) {
+            _state.update { it.copy(pairingLoad = PairingLoad.ERROR) }
+            return
+        }
+        val pageCount = reader.snapshot.activeChapter.pages.size
+        if (pageCount == 0) return
+        val request = PairingRequest(context.chapterId, context.mangaId, reader.snapshot.generation, pageCount, pairingEpoch)
+        if (pairingRequest == request) return
+        pairingRequest = request
+        _state.update { it.copy(pairingLoad = PairingLoad.LOADING) }
+        coordinator.submit(context.chapterId) {
+            runCatching { load(context.chapterId, context.mangaId) }
+                .onSuccess { snapshot ->
+                    if (isCurrentPairingRequest(request)) {
+                        val record = snapshot.record
+                        val valid = record?.isValidFor(pageCount) != false
+                        changePresentation { state ->
+                            if (!isCurrentPairingRequest(request) || !state.matchesPairingRequest(request)) return@changePresentation state
+                            state.copy(
+                                forcedSinglePages = if (valid) record?.forcedSinglePages.orEmpty() else emptySet(),
+                                pairingRevision = snapshot.revision,
+                                pairingLoad = PairingLoad.READY,
+                                pairingSaving = false,
+                            ).let { updated ->
+                                if (valid) updated else updated.withPairingNotice(PairingNotice.INVALID)
+                            }
+                        }
+                    }
+                }
+                .onFailure {
+                    if (isCurrentPairingRequest(request)) _state.update { state ->
+                        if (isCurrentPairingRequest(request) && state.matchesPairingRequest(request)) {
+                            state.copy(pairingLoad = PairingLoad.ERROR)
+                        } else state
+                    }
+                }
+        }
+    }
+
+    fun retryPairingRestore() {
+        val current = _state.value
+        if (current.pairingLoad != PairingLoad.ERROR && current.pairingLoad != PairingLoad.DEFAULT_UNVERIFIED) return
+        pairingEpoch++
+        pairingRequest = null
+        _state.update { it.copy(pairingLoad = PairingLoad.LOADING) }
+        beginPairingRestore(DesktopReaderSessionState(current.context, current.session))
+    }
+
+    fun useDefaultPairingThisSession() {
+        _state.update { state ->
+            if (state.pairingLoad == PairingLoad.ERROR) state.copy(pairingLoad = PairingLoad.DEFAULT_UNVERIFIED) else state
+        }
+    }
+
+    private fun isCurrentPairingRequest(request: PairingRequest): Boolean =
+        pairingRequest == request &&
+            isCurrentPairingSession(request.chapterId, request.mangaId, request.generation, request.pageCount, request.epoch) &&
+            _state.value.matchesPairingRequest(request)
+
+    private fun isCurrentPairingSession(
+        chapterId: Long,
+        mangaId: Long,
+        generation: Long,
+        pageCount: Int,
+        epoch: Long,
+    ): Boolean =
+        !disposeRequested && pairingEpoch == epoch && _state.value.context.chapterId == chapterId &&
+            _state.value.context.mangaId == mangaId &&
+            _state.value.session.generation == generation && _state.value.session.activeChapter.pages.size == pageCount
 
     fun activateChapter(context: DesktopReaderChapterContext) {
         onChapterActivated(context)?.let(::acceptSessionState)
@@ -226,6 +344,7 @@ class ReaderScreenModel(
         visiblePages: VisiblePageSet,
         webtoonScrollAnchor: mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor?,
     ) {
+        if (_state.value.pairingLoad == PairingLoad.LOADING || _state.value.pairingLoad == PairingLoad.ERROR) return
         if (visiblePages.transitionDirection != null) {
             _state.update { state ->
                 state.copy(
@@ -378,8 +497,54 @@ class ReaderScreenModel(
     }
 
     fun adjustSpread() {
+        val current = _state.value
+        if (current.pairingSaving || current.pairingLoad != PairingLoad.READY) return
+        val adjustment = adjustedSpread(current)
+        if (adjustment.forcedSinglePages == current.forcedSinglePages) return
+        val coordinator = pairingCoordinator
+        val context = current.context
+        if (coordinator != null && !current.pairingSessionOnly && context.chapterId > 0L && context.mangaId > 0L) {
+            val epoch = pairingEpoch
+            val generation = current.session.generation
+            val pageCount = current.session.activeChapter.pages.size
+            _state.update { it.copy(pairingSaving = true) }
+            coordinator.submit(context.chapterId) {
+                runCatching {
+                    replace(context.chapterId, context.mangaId, current.pairingRevision, pageCount, adjustment.forcedSinglePages)
+                }.onSuccess { snapshot ->
+                    if (isCurrentPairingSession(context.chapterId, context.mangaId, generation, pageCount, epoch)) {
+                        changePresentation { state ->
+                            if (!isCurrentPairingSession(context.chapterId, context.mangaId, generation, pageCount, epoch) ||
+                                state.context.chapterId != context.chapterId || state.session.generation != generation ||
+                                state.context.mangaId != context.mangaId || state.session.activeChapter.pages.size != pageCount
+                            ) return@changePresentation state
+                            state.copy(
+                                forcedSinglePages = adjustment.forcedSinglePages,
+                                currentPage = adjustment.currentPage,
+                                pairingRevision = snapshot.revision,
+                                pairingSaving = false,
+                            )
+                        }
+                    }
+                }.onFailure { failure ->
+                    if (isCurrentPairingSession(context.chapterId, context.mangaId, generation, pageCount, epoch)) {
+                        _state.update { state ->
+                            if (isCurrentPairingSession(context.chapterId, context.mangaId, generation, pageCount, epoch) &&
+                                state.context.chapterId == context.chapterId && state.session.generation == generation &&
+                                state.context.mangaId == context.mangaId && state.session.activeChapter.pages.size == pageCount
+                            ) state.copy(pairingSaving = false).withPairingNotice(PairingNotice.SAVE_FAILED) else state
+                        }
+                        if (failure is StaleChapterPairingException) {
+                            pairingEpoch++
+                            pairingRequest = null
+                            beginPairingRestore(DesktopReaderSessionState(_state.value.context, _state.value.session))
+                        }
+                    }
+                }
+            }
+            return
+        }
         changePresentation { current ->
-            val adjustment = adjustedSpread(current)
             current.copy(forcedSinglePages = adjustment.forcedSinglePages, currentPage = adjustment.currentPage)
         }
     }
@@ -435,7 +600,7 @@ class ReaderScreenModel(
             state.copy(
                 dualPageMode = on,
                 followsGlobalReadingMode = false,
-                forcedSinglePages = if (!on) emptySet() else state.forcedSinglePages,
+                forcedSinglePages = state.forcedSinglePages,
                 currentDisplayUnitId = null,
                 visiblePageIds = emptySet(),
                 webtoonScrollAnchor = null,
@@ -598,6 +763,24 @@ class ReaderScreenModel(
         if (runtime != null) onProductionClosed()
     }
 }
+
+private data class PairingRequest(
+    val chapterId: Long,
+    val mangaId: Long,
+    val generation: Long,
+    val pageCount: Int,
+    val epoch: Long,
+)
+
+private fun ReaderState.matchesPairingRequest(request: PairingRequest): Boolean =
+    context.chapterId == request.chapterId && context.mangaId == request.mangaId &&
+        session.generation == request.generation && session.activeChapter.pages.size == request.pageCount
+
+private fun DesktopReaderChapterContext.isTemporaryReaderFile(): Boolean =
+    localChapterPath != null && mangaId == 0L
+
+private fun ReaderState.withPairingNotice(notice: PairingNotice): ReaderState =
+    copy(pairingNotice = notice, pairingNoticeSerial = pairingNoticeSerial + 1)
 
 private class ProductionRuntimeCompositionLease(
     private val release: () -> Unit,

@@ -1245,6 +1245,12 @@
 
     <string name="desktop_ui_add_manga_from_browse_to_get_started">請從瀏覽頁新增漫畫以開始使用</string>
     <string name="desktop_ui_adjust_spread">調整跨頁</string>
+    <string name="desktop_reader_pairing_saving">正在儲存雙頁調整</string>
+    <string name="desktop_reader_pairing_save_failed">無法儲存雙頁調整，請重試。</string>
+    <string name="desktop_reader_pairing_invalid">章節頁面已變更或調整紀錄無法使用，本次使用預設配對。</string>
+    <string name="desktop_reader_pairing_session_only">此檔案的雙頁調整僅本次有效。</string>
+    <string name="desktop_reader_pairing_load_failed">無法載入已儲存的雙頁調整。</string>
+    <string name="desktop_reader_pairing_use_default">本次使用預設配對</string>
     <string name="desktop_ui_all_authors">全部作者</string>
     <string name="desktop_ui_archived_works">已歸檔作品</string>
     <string name="desktop_ui_authors">作者</string>

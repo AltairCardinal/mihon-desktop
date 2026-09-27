@@ -81,11 +81,14 @@ internal class MountedReaderPresentationFixture(
     coroutineContext: CoroutineContext,
     val case: MountedReaderPresentationCase,
     pageImageDecoder: DesktopReaderPageImageDecoder = SkiaDesktopReaderPageImageDecoder(),
+    private val pageCount: Int = 4,
+    mangaId: Long = 0L,
+    pairingCoordinator: DesktopChapterPairingCoordinator? = null,
+    initialPage: Int = case.mode.initialPage,
 ) : AutoCloseable {
     private val productionFixture = ReaderProductionTestFixture(root, coroutineContext)
     private val previousInjekt = Injekt
     private val controller = ReaderTestModeController()
-    private val pageCount = 4
     private val source = if (case.route == MountedReaderContentRoute.ONLINE) {
         repeat(pageCount) {
             productionFixture.server.enqueue(
@@ -112,7 +115,8 @@ internal class MountedReaderPresentationFixture(
         sourceId = SOURCE_ID,
         chapterUrl = CHAPTER_URL,
         chapterId = CHAPTER_ID,
-        initialPage = case.mode.initialPage,
+        mangaId = mangaId,
+        initialPage = initialPage,
         isDualPage = case.mode.isDualPage,
         localChapterPath = localChapterPath,
     )
@@ -143,6 +147,7 @@ internal class MountedReaderPresentationFixture(
             readerMonotonicClock = ReaderMonotonicClock { ++now },
             readerIoGate = productionFixture.ioGate,
             pageImageDecoder = pageImageDecoder,
+            pairingCoordinator = pairingCoordinator,
         )
         patchInjekt()
         Injekt.addSingleton(runtimeFactory)
@@ -159,8 +164,8 @@ internal class MountedReaderPresentationFixture(
 
     fun events() = controller.snapshot()
 
-    fun releaseBackgroundGates() {
-        ReaderIoGatePoint.entries.forEach { productionFixture.gate(it).release() }
+    fun releaseBackgroundGates(excluding: Set<ReaderIoGatePoint> = emptySet()) {
+        ReaderIoGatePoint.entries.filterNot(excluding::contains).forEach { productionFixture.gate(it).release() }
     }
 
     override fun close() {

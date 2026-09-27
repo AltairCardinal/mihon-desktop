@@ -138,6 +138,17 @@ data class DesktopReaderScreen(
                 ),
             )
         }
+        LaunchedEffect(state.context.chapterId, state.pairingNoticeSerial) {
+            val message = when (state.pairingNotice) {
+                PairingNotice.INVALID -> MR.strings.desktop_reader_pairing_invalid.localized()
+                PairingNotice.SAVE_FAILED -> MR.strings.desktop_reader_pairing_save_failed.localized()
+                PairingNotice.SESSION_ONLY -> MR.strings.desktop_reader_pairing_session_only.localized()
+                null -> null
+            }
+            if (message != null) notifications.post(mihon.desktop.domain.DesktopNotification(
+                MR.strings.desktop_ui_adjust_spread.localized(), message,
+            ))
+        }
         val focusRequester = remember { FocusRequester() }
         ReaderLifecycleEffect(model)
         LaunchedEffect(runtime.session) {
@@ -540,6 +551,10 @@ internal fun ReaderViewport(
         ) {
             when (readerViewportBody(state)) {
                 ReaderViewportBody.LOADING -> LoadingState()
+                ReaderViewportBody.PAIRING_ERROR -> PairingRestoreError(
+                    onRetry = model::retryPairingRestore,
+                    onUseDefault = model::useDefaultPairingThisSession,
+                )
                 ReaderViewportBody.ERROR -> ErrorState(
                     desktopSourceErrorMessage(
                         (state.session.activeChapter.loadState as ReaderChapterLoadState.Error).error,
@@ -571,6 +586,8 @@ internal fun ReaderViewport(
                             hasNextChapter = readerNav?.nextToRead != null, onPrevChapter = onPrevChapter,
                             onNextChapter = onNextChapter,
                             onAdjustSpread = model::adjustSpread,
+                            adjustSaving = state.pairingSaving,
+                            adjustEnabled = state.pairingLoad == PairingLoad.READY,
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
                     }
@@ -640,18 +657,35 @@ internal fun readerWheelIntent(
 internal enum class ReaderViewportBody {
     CONTENT,
     LOADING,
+    PAIRING_ERROR,
     ERROR,
     EMPTY,
 }
 
 internal fun readerViewportBody(state: ReaderState): ReaderViewportBody {
     val chapter = state.session.activeChapter
+    if (chapter.pages.isEmpty()) {
+        return when (chapter.loadState) {
+            is ReaderChapterLoadState.Error -> ReaderViewportBody.ERROR
+            is ReaderChapterLoadState.LoadingPageList, ReaderChapterLoadState.Wait -> ReaderViewportBody.LOADING
+            else -> ReaderViewportBody.EMPTY
+        }
+    }
     return when {
-        chapter.pages.isNotEmpty() -> ReaderViewportBody.CONTENT
-        chapter.loadState is ReaderChapterLoadState.Error -> ReaderViewportBody.ERROR
-        chapter.loadState is ReaderChapterLoadState.LoadingPageList ||
-            chapter.loadState is ReaderChapterLoadState.Wait -> ReaderViewportBody.LOADING
-        else -> ReaderViewportBody.EMPTY
+        state.pairingLoad == PairingLoad.ERROR -> ReaderViewportBody.PAIRING_ERROR
+        state.pairingLoad == PairingLoad.LOADING -> ReaderViewportBody.LOADING
+        else -> ReaderViewportBody.CONTENT
+    }
+}
+
+@Composable
+private fun PairingRestoreError(onRetry: () -> Unit, onUseDefault: () -> Unit) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(MR.strings.desktop_reader_pairing_load_failed.localized(), color = Color.White)
+            Button(onClick = onRetry) { Text(MR.strings.action_retry.localized()) }
+            Button(onClick = onUseDefault) { Text(MR.strings.desktop_reader_pairing_use_default.localized()) }
+        }
     }
 }
 

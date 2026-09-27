@@ -1,0 +1,48 @@
+CREATE TABLE chapter_pairings (
+    chapter_id INTEGER NOT NULL PRIMARY KEY,
+    format_version INTEGER NOT NULL,
+    page_count INTEGER NOT NULL,
+    revision INTEGER NOT NULL,
+    FOREIGN KEY(chapter_id) REFERENCES chapters(_id) ON DELETE CASCADE
+);
+
+CREATE TABLE chapter_pairing_boundaries (
+    chapter_id INTEGER NOT NULL,
+    page_ordinal INTEGER NOT NULL,
+    PRIMARY KEY(chapter_id, page_ordinal),
+    FOREIGN KEY(chapter_id) REFERENCES chapter_pairings(chapter_id) ON DELETE CASCADE
+);
+
+CREATE TABLE chapter_pairing_revisions (
+    chapter_id INTEGER NOT NULL PRIMARY KEY,
+    revision INTEGER NOT NULL,
+    FOREIGN KEY(chapter_id) REFERENCES chapters(_id) ON DELETE CASCADE
+);
+
+chapterBelongsToManga:
+SELECT EXISTS(SELECT 1 FROM chapters WHERE _id = :chapterId AND manga_id = :mangaId);
+
+selectPairing:
+SELECT * FROM chapter_pairings WHERE chapter_id = :chapterId;
+
+selectRevision:
+SELECT revision FROM chapter_pairing_revisions WHERE chapter_id = :chapterId;
+
+selectBoundaries:
+SELECT page_ordinal FROM chapter_pairing_boundaries WHERE chapter_id = :chapterId ORDER BY page_ordinal;
+
+deletePairing:
+DELETE FROM chapter_pairings WHERE chapter_id = :chapterId;
+
+insertPairing:
+INSERT INTO chapter_pairings(chapter_id, format_version, page_count, revision)
+VALUES (:chapterId, :formatVersion, :pageCount, :revision);
+
+insertBoundary:
+INSERT INTO chapter_pairing_boundaries(chapter_id, page_ordinal) VALUES (:chapterId, :pageOrdinal);
+
+insertRevision:
+INSERT INTO chapter_pairing_revisions(chapter_id, revision) VALUES (:chapterId, :revision);
+
+updateRevision:
+UPDATE chapter_pairing_revisions SET revision = :revision WHERE chapter_id = :chapterId;
