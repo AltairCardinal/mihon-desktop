@@ -167,6 +167,8 @@ Test Mode 输入。
 
 ## 常用命令
 
+Android 构建身份、签名、产物和验收的统一目标流程见 [Android 构建与验收规范设计](docs/architecture/android-build-and-acceptance.md)。该文档目前是待实施设计；其中新入口尚不可执行。现阶段 aex fork 正式构建仍须加载 `scripts/android-fork-release.init.gradle`，随后使用 `scripts/sign-android-fork-release.ps1`；下列带遥测/更新器参数的通用 release 示例不适用于 fork 正式包。
+
 ```bash
 # 检查格式（CI 必须通过）
 ./gradlew spotlessCheck
