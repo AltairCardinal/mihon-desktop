@@ -1,3 +1,5 @@
+# Historical upstream workflow. Keep every job gated to mihonapp/mihon;
+# this fork has no authorized publishing/signing workflow yet. Do not remove the gates.
 name: Release
 on:
   push:

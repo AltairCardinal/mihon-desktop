@@ -2,7 +2,7 @@
 
 日期：2026-06-30
 
-Android 的构建身份、签名、验收及单一版本来源的目标流程见 [Android 构建与验收规范设计](android-build-and-acceptance.md)（2026-09-28，待实施）。该设计保留本页的跨平台产品版本目标；过渡期沿用 Android aex 显示版本，不代表三端版本已对齐。
+Android 的构建身份、签名、验收及单一版本来源见 [Android 构建与验收规范](android-build-and-acceptance.md)（2026-09-28）；实现及验证状态见 [实施记录](../evidence/android-build-workflow-2026-09-28.md)。该规范保留本页的跨平台产品版本目标；过渡期沿用 Android aex 显示版本，不代表三端版本已对齐。
 
 ## 产品版本
 

@@ -31,9 +31,8 @@ class AndroidReleaseContractTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, log)
             self.assertIn("ANDROID_RELEASE_CONTRACT_OK", log)
 
-    def test_default_and_compatibility(self):
+    def test_default_identity(self):
         self.run_contract("default")
-        self.run_contract("compat", ["-I", "scripts/android-fork-release.init.gradle"])
 
     def test_isolated_identities(self):
         for key, script, identity in [

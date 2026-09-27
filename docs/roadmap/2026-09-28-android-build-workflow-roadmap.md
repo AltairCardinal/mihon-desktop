@@ -2,7 +2,7 @@
 
 日期：2026-09-28。设计依据：[Android 构建、签名、交付与验收规范](../architecture/android-build-and-acceptance.md)。
 
-active-task: AB-03
+active-task: AB-04
 
 ## 范围与执行预算
 
@@ -21,7 +21,7 @@ active-task: AB-03
   - 薄 Python 入口复用协调器、Gradle 和外部签名，提供 check/debug/candidate/verify/install；候选输出 APK、mapping 及紧凑清单。
   - 测试未签名、错误身份/版本/证书、篡改、缺密钥、已占用任务、历史产物保护；无明确 install 动作不写设备。
   - 签名与安装边界独立审查；实际 SDK/APK 验证和模拟设备边界结合，不能只 mock 被验收的 APK parser/签名检查。
-- [ ] **AB-03：CI 与文档切换。**
+- [x] **AB-03：CI 与文档切换。**
   - 日常 CI 用同一候选路径，未签名产物明确标注；不启用 fork 外部自动发布，不访问生产密钥。
   - 迁完当前调用方再去除旧 fork init；历史验收记录保留原命令并标注历史边界。
   - 操作规范和 AGENTS 指向可用命令；静态/本地验证与远端实际 CI 分开记录。

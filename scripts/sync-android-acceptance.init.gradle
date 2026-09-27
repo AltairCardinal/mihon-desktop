@@ -4,8 +4,7 @@
 gradle.beforeProject { project ->
     project.pluginManager.withPlugin('com.android.application') {
         if (project.path == ':app') {
-            if (project.extensions.extraProperties.has('mihon.acceptanceIdentity') ||
-                project.extensions.extraProperties.has('mihon.forkCompatibility')) {
+            if (project.extensions.extraProperties.has('mihon.acceptanceIdentity')) {
                 throw new GradleException('Do not combine Android identity scripts')
             }
             project.extensions.extraProperties.set('mihon.acceptanceIdentity', 'sync')

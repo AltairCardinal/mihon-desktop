@@ -343,7 +343,7 @@ API26/33/35/36受影响分支按仓库支持范围覆盖，实际设备与模拟
 | presentation/controller测试 | `:presentation-sync:jvmTest --tests 'mihon.presentation.sync.SyncPanelContentTest'`、`SyncPanelOnboardingIntegrationTest` | focused部分已跑，P9待完整相关测试 |
 | 10k/100k scale和性能报告入口 | `:data:jvmTest --tests 'mihon.data.sync.SyncScaleAcceptanceTest'`；fixture实际10k/3 actor/120 pending、100k/10 actor/10k pending | 原失败及超时保留；P5 后原规模测试完整通过，见§9。该通过不替代 H=100/1000/9000 结构矩阵或正式大规模配对 |
 | 受影响全量与格式检查 | `:data:jvmTest`、Android/Desktop/presentation适用测试、`spotlessCheck` | 初次`:data:jvmTest` 307项中4项失败，仍待诊断与复跑 |
-| Android签名release / Windows发行 / macOS构建 | Android 通过 `--init-script scripts/android-fork-release.init.gradle :app:assembleRelease` 构建 fork，再用 `scripts/sign-android-fork-release.ps1` 外部签名；Desktop 用 `./scripts/build-desktop.sh` | 待P10运行；fork 配置要求 telemetry/updater 关闭，不能套用上游标准发布参数；macOS 已只读连通，构建未执行 |
+| Android签名release / Windows发行 / macOS构建 | Android 通过 `python scripts/build-android.py candidate` 构建、签名和验证 fork 候选，遵循[统一规范](../architecture/android-build-and-acceptance.md)；Desktop 用 `./scripts/build-desktop.sh` | 待P10运行；2026-09-28仅迁移构建入口，不改变P10验收状态；fork 配置要求 telemetry/updater 关闭，不能套用上游标准发布参数；macOS 已只读连通，构建未执行 |
 | 仓库构建协调器 | `python scripts/gradle-coordinator.py run/status`，同worktree重型Gradle串行 | 已核对并使用 |
 | 用户设备/隔离仓库授权范围与预算 | 用户明确最终真机/真实仓库验收由其执行；Agent 交付本地构建、步骤与判定标准 | `USER_VALIDATION_PENDING`；不阻塞本地工作，不代写真实仓库 |
 

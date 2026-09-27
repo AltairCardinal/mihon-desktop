@@ -1,8 +1,8 @@
 # Android 构建、签名、交付与验收规范设计
 
-日期：2026-09-28。状态：**设计已形成，目标流程尚未实现**。
+日期：2026-09-28。状态：**构建入口与 CI 迁移已实现；最终正式产物验收进行中**。
 
-本文定义整个下游项目的 Android 构建目标、责任边界、失败处理和迁移验收。标为“现状”的内容已核对仓库；其余为目标规范。完成文末迁移前，继续使用现有 fork init 脚本和外部签名脚本，不把本文提出的新入口当作可运行命令。本次设计不授权自动发布、真机安装或设备控制。
+本文定义整个下游项目的 Android 构建目标、责任边界、失败处理和迁移验收。实施进度见[执行计划](../roadmap/2026-09-28-android-build-workflow-roadmap.md)，验证结果见[验收记录](../evidence/android-build-workflow-2026-09-28.md)。默认 Gradle 已使用 fork 身份，旧 fork init 已删除。自动发布及实体设备操作仍需符合各自授权范围；命令可用不代表产品验收已全部通过。
 
 ## 1. 目的与决策
 
@@ -15,13 +15,15 @@
 5. 复用 Gradle wrapper、协调器、既有签名脚本、测试和产物目录。只增加薄的 Android 操作入口，不另建任务调度器、测试框架或发布服务。
 6. 构建、安装、设备操作、发布是独立动作。生成 APK 不隐式安装；安装不隐式操作用户阅读器；已有明确授权可持续使用，用户改为自行验收后停止代操作。
 
-## 2. 已核实的现状与来源
+## 2. 迁移前基线与来源
+
+下表是设计时的历史基线。当前身份与版本以 `gradle/android-release.properties` 为准；不要照历史命令重新启用遥测或更新器。
 
 | 内容 | 当前事实 | 来源 |
 | --- | --- | --- |
 | 默认身份 | `app.mihon`，code 18，name `0.19.4`；Debug 追加 `.dev` | [app/build.gradle.kts](../../app/build.gradle.kts) |
-| fork 身份 | init 脚本改成 `app.mihon.desktop.fork`；当前 code 32，name `0.19.4-aex.14` | [fork init](../../scripts/android-fork-release.init.gradle) |
-| Release 限制 | fork init 强制 R8、资源压缩、非调试、遥测/更新器关闭、Gradle 外签名 | [fork init](../../scripts/android-fork-release.init.gradle) |
+| fork 身份 | init 脚本改成 `app.mihon.desktop.fork`；迁移前 code 32，name `0.19.4-aex.14` | `b085025984:scripts/android-fork-release.init.gradle`，可用 `git show` 读取历史版本 |
+| Release 限制 | fork init 强制 R8、资源压缩、非调试、遥测/更新器关闭、Gradle 外签名 | 同上历史 init；现在由正常 Gradle 配置承担 |
 | 签名 | 现有 PowerShell 脚本检查版本、身份、zipalign 与证书；密钥在仓库外，密码通过本机 DPAPI 解密后临时传入环境变量 | [签名脚本](../../scripts/sign-android-fork-release.ps1)、[一次性建钥脚本](../../scripts/create-android-fork-release-key.ps1) |
 | 测试变体 | 默认 `mihon.testBuildType=debug`；显式 `release` 才加入 release 专用测试源集 | [app/build.gradle.kts](../../app/build.gradle.kts) |
 | 其他变体 | 还存在 foss、preview、benchmark；preview/benchmark 使用调试签名 | [app/build.gradle.kts](../../app/build.gradle.kts) |
@@ -52,7 +54,7 @@ Debug 迁移到新 ID 后，既有 `app.mihon.dev` 数据不会自动进入新�
 
 ### 4.1 唯一版本来源
 
-目标新增 `gradle/android-release.properties`，保存公开构建元数据：`applicationId`、`versionCode`、`versionName`、`releaseCertificateSha256`。这些字段由 Gradle 正常配置和签名/校验入口共同读取。默认 fork ID 和正式证书不可通过普通命令行参数改成任意值；改变它们属于独立身份迁移。
+`gradle/android-release.properties` 保存公开构建元数据：`applicationId`、`versionCode`、`versionName`、`releaseCertificateSha256`。这些字段由 Gradle 正常配置和签名/校验入口共同读取。默认 fork ID 和正式证书不可通过普通命令行参数改成任意值；改变它们属于独立身份迁移。
 
 - `versionCode` 是整数升级序列，与显示版本、提交计数、Desktop BUILD 均独立。现有已安装基线为 32；下一份不同的正式候选至少使用 33，并核对目标设备及已交付候选的最大值。
 - 过渡期 `versionName` 沿用 `0.19.4-aex.N`。不从 N 推导 code，不用 Git 提交数自动分配正式版本。
@@ -72,11 +74,11 @@ Windows 沿用 DPAPI。无密钥的 CI 只构建未签名产物；如以后启�
 
 ## 5. 构建入口与职责
 
-目标新增跨平台薄入口 `scripts/build-android.py`，复用 Python 标准库、Gradle wrapper、`gradle-coordinator.py`、已有签名逻辑与 Android SDK 工具。以下是**待实现的接口契约**，不是当前可用命令。
+跨平台薄入口 `scripts/build-android.py` 复用 Python 标准库、Gradle wrapper、`gradle-coordinator.py`、已有签名逻辑与 Android SDK 工具。Python 要求 3.11 或更高；正式签名当前使用 Windows PowerShell/DPAPI adapter，其他系统使用 `--unsigned`。
 
 | 子命令 | 行为 | 不隐式执行的后续动作 |
 | --- | --- | --- |
-| `check` | 核对工作树、工具链、配置、协调器；需要签名时验证签名可用性；传入设备时只读核对安装身份 | 不分配版本、不构建、不安装 |
+| `check [--signing] [--serial …]` | 核对工作树、工具链、配置、协调器；`--signing` 验证既有密钥和凭据能实际签名；传入设备时只读核对安装身份 | 不分配版本、不构建、不安装 |
 | `debug` | 构建 Debug，校验调试身份并输出 APK 路径 | 不占正式版本、不安装 |
 | `candidate` | preflight → 构建 Release → 签名 → 检查 → 保存候选；`--unsigned` 仅生成明确标注的 CI 产物 | 不隐藏运行全量测试、不安装、不发布 |
 | `verify --artifact …` | 重算给定 APK 哈希，读取 manifest/证书，与候选清单比对 | 不重建、不修改 APK |
@@ -84,7 +86,9 @@ Windows 沿用 DPAPI。无密钥的 CI 只构建未签名产物；如以后启�
 
 每个模式都说明所需前置证据与结果。`candidate` 完成只表示候选已生成，不能将测试缺失或运行未验收变成 PASS。`--unsigned` 的结果不能进入正式安装路径；调试安装只接受明确的 Debug/隔离测试身份。
 
-Gradle 仍支持直接 `:app:assembleRelease`，并强制输出 fork 配置；这是开发/CI 的底层任务，用户交付必须继续走签名与产物验证。没有建立“第二套 Release”。迁移后 fork init 先成为读取同一来源的兼容入口，不再覆盖身份；仓库调用方迁完后删除。底层任务成功不自动生成“验收已通过”的结论。
+从仓库根目录执行，完整命令示例见 [AGENTS](../../AGENTS.md#常用命令)。`debug` 与 `candidate` 可追加 `--offline`。安装入口当前接受本入口生成的 Debug/Release 清单及单 APK；专项隔离 instrumentation 仍使用原测试流程，已安装 split APK 明确拒绝自动升级。验证命令接收 APK 路径，并读取同目录的 `artifact.json`；不接受仅凭文件名推断身份的裸 APK。
+
+Gradle 仍支持直接 `:app:assembleRelease`，并强制输出 fork 配置；这是开发/CI 的底层任务，用户交付必须继续走签名与产物验证。旧 fork init 经兼容迁移后已删除，现行脚本与 CI 不再加载它。历史 roadmap 中带该 init 的命令仅表示当时证据，重跑当前代码应使用本规范。底层任务成功不自动生成“验收已通过”的结论。
 
 ### 5.1 工具链与环境
 
@@ -129,16 +133,18 @@ Release instrumentation 通过 `-Pmihon.testBuildType=release` 构建对应宿�
 
 ## 8. 产物与证据
 
-目标交付目录沿用被 Git 忽略的 `app/artifacts/android/`，新候选使用不可覆盖的子目录：
+交付目录沿用被 Git 忽略的 `app/artifacts/android/`，新候选使用不可覆盖的子目录：
 
 ```text
-app/artifacts/android/<versionName>-vc<versionCode>-<sourceShortSha>/
-  Mihon-Fork-<versionName>-vc<versionCode>-universal.apk
+app/artifacts/android/<versionName>-vc<versionCode>-<sourceShortSha>-release/
+  Mihon-Fork-<versionName>-vc<versionCode>-release-universal.apk
   artifact.json
   mapping/                 # 对应该次 R8 的映射，存在时保留
 ```
 
 同一目录已存在时校验并复用完全相同的产物，或拒绝覆盖；不得替换其中 APK 后沿用原验收结论。Debug/CI 未签名产物使用带 `debug`/`unsigned` 的独立名称，不进入“正式签名包”交付链接。`app/build/outputs/` 只作过程输入。
+
+Debug 目录追加唯一后缀，允许在同一提交上反复开发，不占用正式版本。正式候选按 versionCode 检查既有占用；失败构建可能留下没有 `artifact.json` 的目录，此类目录不是可交付产物。保留失败现场，排查日志后使用新版本继续；不能把旧目录中的文件补成新候选。工作树之间仍须按第 4 节串行确认版本分配，本机目录检查不能代替跨分支版本协调。
 
 `artifact.json` 只保存必要字段：源码 revision 与差异指纹、版本/ID、variant、构建时间、JDK/Gradle/SDK/Build Tools、R8/遥测/更新器配置、min/target SDK、实际 ABI、APK 相对路径和哈希、证书指纹/签名验证结果、mapping 引用。失败时不输出看似通过的清单；无签名 CI 清单明确为 unsigned。元数据是构建证据，不是功能 capability 的新权威；继续遵守既有 parity manifest 规则。
 
@@ -151,6 +157,7 @@ app/artifacts/android/<versionName>-vc<versionCode>-<sourceShortSha>/
 - 每条写入设备的命令明确 `adb -s <serial>`；serial 从本次连接确认，不从历史日志盲用。核对包名、版本、ABI和证书；不能只匹配桌面名称或用户口述版本。
 - 已安装 APK 与可信历史文件哈希完全一致时可复用该文件的证书证据，否则读取实际 APK 验签；`dumpsys` 的短签名标识不作为 SHA-256 指纹。
 - 对正式候选执行 `adb install -r`。新装与升级分别记录；不使用卸载、清数据、降级或换包名绕过不兼容。安装后核对实际 APK、版本和签名，不能只相信 `Success`。
+- 相同 APK 哈希已安装时直接报告无变更。正式 Release 的同 code 不同 APK 拒绝安装；Debug 可在同 code、同证书下覆盖以支持日常迭代，但仍拒绝降级和证书不一致。
 - 迁移风险先在隔离环境验证并明确恢复办法；用户同意时使用应用已有备份。不能承诺备份包含所有本地状态：例如当前章节配对不进入同步/备份，见 CP-03 边界。
 - 失败时保留现场与原数据。回滚优先修复后发布更高 code；降级 APK 不等于数据库可回滚。需要卸载或恢复旧库时另行说明数据影响，不作为普通重试步骤。
 - 安装授权不自动涵盖清库、账号操作或测试夹具注入。用户已授权的具体操作无需反复确认。用户自行验收时，交付后等待其结果，不主动点击、重启或反复追问。
@@ -179,7 +186,7 @@ app/artifacts/android/<versionName>-vc<versionCode>-<sourceShortSha>/
 | 正式候选 | 对已验证源码生成候选，授权签名环境签名、验签，再在指定环境验收 | 无凭据时保持 unsigned/阻塞，不用新证书替代 |
 | 对外发布 | 提升已验收的 APK，校验其哈希与版本，不重新编译替换 | 独立发布授权；上传到本 fork 的明确目标 |
 
-必须迁移 `.github/workflows/build.yml` 的上游参数与产物命名。现有 `release.yml` 保持不可作为本 fork 自动发布入口；不能只删除 `github.repository == 'mihonapp/mihon'` 就启用它。迁移时先明确本项目发布目标、凭据、tag/版本一致性与审批，再替换上游 release/FOSS 发布动作及文案。设计实施与外部发布授权分开，CI PR job 不获得写权限。
+`.github/workflows/build.yml` 已改用统一 `candidate --unsigned` 入口，并上传包含 APK、清单和 mapping 的完整 unsigned 目录；测试失败仍可保留已成功生成的候选，上传不代表允许交付。现有 `release.yml` 保持不可作为本 fork 自动发布入口；不能只删除 `github.repository == 'mihonapp/mihon'` 就启用它。未来启用前须明确本项目发布目标、凭据、tag/版本一致性与审批，再替换上游 release/FOSS 发布动作及文案。CI PR job 保持只读权限。
 
 跨平台共享改动继续执行仓库规定的 Desktop 验证。Android 构建入口不重复调度 Desktop，也不以 Android 单独通过宣布整个三端迭代完成。
 
@@ -200,6 +207,6 @@ AB-01 的身份迁移、AB-02 的签名/安装边界属于高风险，必须在�
 
 目标流程整体完成须同时满足：默认 Release 已是 fork、原正式安装可升级、Debug 隔离明确、单一版本来源、签名不可被调试路径替代、候选可追溯、CI 路径一致、故障有界处理、必需验收有结果。用户选择自行验收且未回复的场景保持待用户验收，不自动当作通过。
 
-## 13. 设计交付与当前边界
+## 13. 实施状态与当前边界
 
-本轮只新增本设计及文档入口，未修改 applicationId、版本分配、签名行为、CI 或 Gradle 调度，未创建目标 wrapper，未运行测试/构建或操作设备。当前可用正式构建仍是 `-I scripts/android-fork-release.init.gradle :app:assembleRelease` 后调用 `scripts/sign-android-fork-release.ps1`；当前用户设备上的 aex.14 及其手工验收责任保持 CP-03 记录中的状态。
+AB-01/02 已分别提交 `831f646fda`、`5ef02d8226`：默认 fork 身份、共享版本、Gradle 约束、统一入口与签名/安装校验已实现。日常 CI 与现行调用入口已迁移；真实 GitHub CI 尚未运行，本机静态检查不能代替远端执行结果。新候选签名与升级验收以执行计划和验收记录为准；用户设备上的 aex.14 及其手工验收责任保持 CP-03 记录中的状态。

@@ -24,6 +24,10 @@ jobs:
   build:
     name: Build & Test App
     runs-on: 'ubuntu-24.04'
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      PYTHONDONTWRITEBYTECODE: '1'
 
     steps:
       - name: Checkout
@@ -42,11 +46,23 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
 
+      - name: Check Python and install Android SDK baseline
+        run: |
+          python3 -c 'import sys; assert sys.version_info >= (3, 11), "Python 3.11 or newer is required"'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          python3 scripts/build-android.py check
+
       - name: Check code format
         run: ./gradlew spotlessCheck
 
-      - name: Build app
-        run: ./gradlew assembleRelease
+      - name: Check Android delivery contracts
+        run: |
+          python3 scripts/tests/build-android-test.py
+          python3 scripts/tests/gradle-coordinator-test.py
+
+      - name: Build unsigned Android candidate
+        id: candidate
+        run: python3 scripts/build-android.py candidate --unsigned
 
       - name: Run unit tests
         id: unit_tests
@@ -59,14 +75,11 @@ jobs:
           name: test-report-${{ github.sha }}
           path: app/build/reports/tests/testReleaseUnitTest
 
-      - name: Upload APK
+      - name: Upload unsigned universal candidate and evidence
+        if: always() && steps.candidate.outcome == 'success'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: arm64-v8a-${{ github.sha }}
-          path: app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk
-
-      - name: Upload mapping
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: mapping-${{ github.sha }}
-          path: app/build/outputs/mapping/release
+          name: android-unsigned-universal-${{ github.sha }}
+          # The immutable candidate directory contains APK, artifact.json and its R8 mapping.
+          path: app/artifacts/android/*-unsigned/
+          if-no-files-found: error

@@ -167,7 +167,9 @@ Test Mode 输入。
 
 ## 常用命令
 
-Android 构建身份、签名、产物和验收的统一目标流程见 [Android 构建与验收规范设计](docs/architecture/android-build-and-acceptance.md)。该文档目前是待实施设计；其中新入口尚不可执行。现阶段 aex fork 正式构建仍须加载 `scripts/android-fork-release.init.gradle`，随后使用 `scripts/sign-android-fork-release.ps1`；下列带遥测/更新器参数的通用 release 示例不适用于 fork 正式包。
+Android 构建身份、签名、产物及验收遵循 [Android 构建与验收规范](docs/architecture/android-build-and-acceptance.md)。正式身份和升级版本唯一来源是 `gradle/android-release.properties`；Release 默认属于本 fork，Debug 使用独立 `.dev` 身份。统一入口的验证进度见[实施记录](docs/evidence/android-build-workflow-2026-09-28.md)。
+
+用户交付走 `scripts/build-android.py candidate`，不能直接把 `app/build/outputs` 中的 APK 当成正式交付。构建不隐式安装，安装不隐式操作应用；用户自行验收时不代操作实体设备。不同正式候选递增 versionCode，普通 Debug/查询/测试不递增。原证书必须连续，凭据不可用时不创建替代密钥。
 
 ```bash
 # 检查格式（CI 必须通过）
@@ -176,11 +178,21 @@ Android 构建身份、签名、产物和验收的统一目标流程见 [Android
 # 自动修复格式
 ./gradlew spotlessApply
 
-# 构建 debug APK
-./gradlew assembleDebug
+# 环境与正式签名预检（不构建、不安装）
+python scripts/build-android.py check --signing
 
-# 构建 release APK（使用 CI 的遥测与更新器参数）
-./gradlew assembleRelease -Pinclude-telemetry -Penable-updater
+# 开发 APK；与正式安装隔离
+python scripts/build-android.py debug
+
+# 正式候选：R8、外部签名、校验及产物清单；不自动跑全量或安装
+python scripts/build-android.py candidate
+
+# 无密钥 CI 只生成明确标注的未签名候选
+python scripts/build-android.py candidate --unsigned
+
+# 核对既有候选；有安装授权时才执行独立的 install 命令
+python scripts/build-android.py verify --artifact "<APK绝对路径>"
+python scripts/build-android.py install --artifact "<APK绝对路径>" --serial "<本次确认的设备>"
 
 # 运行单元测试
 ./gradlew testReleaseUnitTest
@@ -189,11 +201,9 @@ Android 构建身份、签名、产物和验收的统一目标流程见 [Android
 ./gradlew :app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.SomeTest"
 ```
 
-构建参数：
+底层 `:app:assembleRelease` 仍可用于开发，但输出是未签名中间产物。重型 Gradle 验证继续经上文协调器串行执行；统一构建入口已调用协调器，不要再从外层嵌套同一协调器任务。
 
-- `-Pinclude-telemetry`：启用 Firebase Analytics / Crashlytics。
-- `-Penable-updater`：启用应用内更新检查。
-- `-Pdisable-code-shrink`：禁用 R8 / ProGuard 压缩。
+本 fork 禁止 `-Pinclude-telemetry`、`-Penable-updater`、`-Pdisable-code-shrink`；Gradle 配置会直接拒绝。专项 AEX/EIS/Sync init 脚本仅用于各自隔离验收，不能混用，也不能作为正式交付路径。
 
 ## 架构
 
