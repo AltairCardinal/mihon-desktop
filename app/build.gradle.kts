@@ -3,6 +3,7 @@ import mihon.buildlogic.getBuildTime
 import mihon.buildlogic.getCommitCount
 import mihon.buildlogic.getGitSha
 import org.gradle.api.tasks.Sync
+import java.util.Properties
 
 plugins {
     id("mihon.android.application")
@@ -11,6 +12,21 @@ plugins {
     kotlin("plugin.serialization")
     alias(libs.plugins.aboutLibraries)
     alias(libs.plugins.test.retry)
+}
+
+val androidRelease = Properties().apply {
+    rootProject.file("gradle/android-release.properties").inputStream().use(::load)
+}
+val releaseApplicationId = androidRelease.getProperty("applicationId")
+val releaseVersionCode = androidRelease.getProperty("versionCode").toInt()
+val releaseVersionName = androidRelease.getProperty("versionName")
+require(releaseApplicationId == "app.mihon.desktop.fork") { "Android identity migration requires an explicit design" }
+require(releaseVersionCode > 0 && releaseVersionName.isNotBlank()) { "Invalid Android release version" }
+require(androidRelease.getProperty("releaseCertificateSha256").matches(Regex("[0-9a-f]{64}"))) {
+    "Invalid Android release certificate fingerprint"
+}
+require(!Config.includeTelemetry && !Config.enableUpdater && Config.enableCodeShrink) {
+    "Fork baseline requires R8/resource shrinking and disables telemetry/updater"
 }
 
 aboutLibraries {
@@ -56,10 +72,10 @@ android {
     testOptions.unitTests.isIncludeAndroidResources = true
 
     defaultConfig {
-        applicationId = "app.mihon"
+        applicationId = releaseApplicationId
 
-        versionCode = 18
-        versionName = "0.19.4"
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")
@@ -79,6 +95,8 @@ android {
         val release by getting {
             isMinifyEnabled = Config.enableCodeShrink
             isShrinkResources = Config.enableCodeShrink
+            isDebuggable = false
+            signingConfig = null
 
             proguardFiles("proguard-android-optimize.txt", "proguard-rules.pro")
 
@@ -188,6 +206,42 @@ android {
     lint {
         abortOnError = false
         checkReleaseBuilds = false
+    }
+}
+
+androidComponents.finalizeDsl { configured ->
+    val isolation = if (extra.has("mihon.acceptanceIdentity")) extra["mihon.acceptanceIdentity"] as String else null
+    val expectedId = when (isolation) {
+        null -> releaseApplicationId
+        "aex05" -> "app.mihon.aex05"
+        "eis" -> "app.mihon.eis"
+        "sync" -> "app.mihon.syncacceptance"
+        else -> error("Unknown Android acceptance identity")
+    }
+    require(configured.defaultConfig.applicationId == expectedId) { "Unexpected Android application identity" }
+    require(
+        configured.defaultConfig.versionCode == releaseVersionCode &&
+            configured.defaultConfig.versionName == releaseVersionName,
+    ) {
+        "Android version must come from gradle/android-release.properties"
+    }
+    listOf("release", "foss").forEach { name ->
+        val type = configured.buildTypes.getByName(name)
+        require(type.isMinifyEnabled && type.isShrinkResources && !type.isDebuggable) {
+            "Fork release requires R8/resource shrinking and a non-debuggable app"
+        }
+        require(type.signingConfig == null || (isolation == "sync" && name == "release")) {
+            "Fork APK must be signed explicitly outside Gradle"
+        }
+    }
+}
+
+tasks.register("verifyForkReleaseConfiguration") {
+    doLast {
+        check(android.defaultConfig.applicationId == releaseApplicationId) { "Expected the formal fork identity" }
+        logger.lifecycle(
+            "FORK_RELEASE_CONFIG_OK id=$releaseApplicationId version=$releaseVersionName code=$releaseVersionCode",
+        )
     }
 }
 

@@ -3,12 +3,17 @@
 gradle.beforeProject { project ->
     project.pluginManager.withPlugin('com.android.application') {
         if (project.path == ':app') {
+            if (project.extensions.extraProperties.has('mihon.acceptanceIdentity') ||
+                project.extensions.extraProperties.has('mihon.forkCompatibility')) {
+                throw new GradleException('Do not combine Android identity scripts')
+            }
+            project.extensions.extraProperties.set('mihon.acceptanceIdentity', 'eis')
             def components = project.extensions.getByName('androidComponents')
             components.beforeVariants(components.selector().all()) { variant ->
                 if (variant.buildType != 'debug') variant.enable = false
             }
             components.finalizeDsl { android ->
-                if (android.defaultConfig.applicationId != 'app.mihon') {
+                if (android.defaultConfig.applicationId != 'app.mihon.desktop.fork') {
                     throw new GradleException('EIS acceptance identity requires the expected Mihon application')
                 }
                 android.defaultConfig.applicationId = 'app.mihon.eis'

@@ -4,8 +4,13 @@
 gradle.beforeProject { project ->
     project.pluginManager.withPlugin('com.android.application') {
         if (project.path == ':app') {
+            if (project.extensions.extraProperties.has('mihon.acceptanceIdentity') ||
+                project.extensions.extraProperties.has('mihon.forkCompatibility')) {
+                throw new GradleException('Do not combine Android identity scripts')
+            }
+            project.extensions.extraProperties.set('mihon.acceptanceIdentity', 'sync')
             project.extensions.getByName('androidComponents').finalizeDsl { android ->
-                if (android.defaultConfig.applicationId != 'app.mihon') {
+                if (android.defaultConfig.applicationId != 'app.mihon.desktop.fork') {
                     throw new GradleException('Sync acceptance requires the expected Mihon application')
                 }
                 def release = android.buildTypes.getByName('release')

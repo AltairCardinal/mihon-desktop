@@ -1,40 +1,10 @@
-// Opt-in fork release identity. Namespace and ordinary/debug build configuration stay upstream-compatible.
-// Sign the final unsigned APK outside Gradle; never put signing passwords in project properties/cache.
+// Compatibility entry point: normal Gradle configuration now owns fork identity/version.
+// Keep accepting old invocations without overriding any Android configuration.
 gradle.beforeProject { project ->
-    project.pluginManager.withPlugin('com.android.application') {
-        if (project.path == ':app') {
-            project.extensions.getByName('androidComponents').finalizeDsl { android ->
-                if (android.defaultConfig.applicationId != 'app.mihon') {
-                    throw new GradleException('Fork identity requires the expected upstream application ID')
-                }
-                android.defaultConfig.applicationId = 'app.mihon.desktop.fork'
-                android.defaultConfig.versionCode = 32
-                android.defaultConfig.versionName = '0.19.4-aex.14'
-                project.tasks.register('verifyForkReleaseConfiguration') {
-                    doLast {
-                        def release = android.buildTypes.getByName('release')
-                        if (!release.minifyEnabled || !release.shrinkResources || release.debuggable) {
-                            throw new GradleException('Fork release requires R8/resource shrinking and a non-debuggable app')
-                        }
-                        if (project.hasProperty('include-telemetry') || project.hasProperty('enable-updater')) {
-                            throw new GradleException('This fork release baseline keeps telemetry and updater disabled')
-                        }
-                        if (release.signingConfig != null) {
-                            throw new GradleException('Fork APK must be signed explicitly outside Gradle')
-                        }
-                        if (android.namespace != 'eu.kanade.tachiyomi' ||
-                            android.defaultConfig.applicationId != 'app.mihon.desktop.fork' ||
-                            android.defaultConfig.versionCode != 32 ||
-                            android.defaultConfig.versionName != '0.19.4-aex.14') {
-                            throw new GradleException('Unexpected fork release identity')
-                        }
-                        println('FORK_RELEASE_CONFIG_OK id=app.mihon.desktop.fork version=0.19.4-aex.14 code=32 R8=true telemetry=false updater=false')
-                    }
-                }
-                project.tasks.matching { it.name == 'preReleaseBuild' }.configureEach {
-                    dependsOn('verifyForkReleaseConfiguration')
-                }
-            }
+    if (project.path == ':app') {
+        if (project.extensions.extraProperties.has('mihon.acceptanceIdentity')) {
+            throw new GradleException('Do not combine Android identity scripts')
         }
+        project.extensions.extraProperties.set('mihon.forkCompatibility', true)
     }
 }

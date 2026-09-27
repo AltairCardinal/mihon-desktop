@@ -5,11 +5,25 @@ param(
     [Parameter(Mandatory)][string]$OutputApk,
     [switch]$Instrumentation,
     [string]$SigningDirectory = 'D:/Android/Signing/mihon-desktop-fork',
-    [string]$BuildTools = 'D:/Android/Sdk/build-tools/36.0.0',
-    [string]$ExpectedCertificate = 'bd8e3af75921fc4356deacabd44a3d491fda8439ffbc7d073c363974a648cae3'
+    [string]$BuildTools = 'D:/Android/Sdk/build-tools/36.0.0'
 )
 
 $ErrorActionPreference = 'Stop'
+$release = @{}
+$configPath = Join-Path $PSScriptRoot '../gradle/android-release.properties'
+foreach ($line in [IO.File]::ReadAllLines($configPath, [Text.Encoding]::UTF8)) {
+    if ($line.Trim() -eq '' -or $line.TrimStart().StartsWith('#')) { continue }
+    $parts = $line.Split('=', 2)
+    if ($parts.Count -ne 2 -or $release.ContainsKey($parts[0].Trim())) { throw 'Invalid Android release metadata' }
+    $release[$parts[0].Trim()] = $parts[1].Trim()
+}
+if ($release.applicationId -ne 'app.mihon.desktop.fork' -or
+    $release.versionCode -notmatch '^[1-9][0-9]*$' -or
+    [string]::IsNullOrWhiteSpace($release.versionName) -or
+    $release.releaseCertificateSha256 -notmatch '^[0-9a-f]{64}$') { throw 'Invalid Android release metadata' }
+$ExpectedCertificate = $release.releaseCertificateSha256
+$expectedIdPattern = [regex]::Escape($release.applicationId)
+$expectedVersionPattern = [regex]::Escape($release.versionName)
 $inputFile = (Resolve-Path -LiteralPath $InputApk).Path
 $outputFile = [IO.Path]::GetFullPath($OutputApk)
 if (Test-Path -LiteralPath $outputFile) { throw 'Refusing to overwrite an existing signed artifact' }
@@ -18,12 +32,12 @@ if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect input APK' }
 $packageLine = $badging | Where-Object { $_ -like 'package:*' }
 if ($Instrumentation) {
     $manifest = (& (Join-Path $BuildTools 'aapt2.exe') dump xmltree $inputFile --file AndroidManifest.xml) -join "`n"
-    if ($LASTEXITCODE -ne 0 -or $packageLine -notmatch "name='app\.mihon\.desktop\.fork\.test'" -or
-        $manifest -notmatch ':targetPackage[^=\r\n]*="app\.mihon\.desktop\.fork"') {
+    if ($LASTEXITCODE -ne 0 -or $packageLine -notmatch "name='$expectedIdPattern\.test'" -or
+        $manifest -notmatch (':targetPackage[^=\r\n]*="' + $expectedIdPattern + '"')) {
         throw 'Instrumentation APK must target only the fork release host'
     }
-} elseif ($packageLine -notmatch "name='app\.mihon\.desktop\.fork'" -or
-    $packageLine -notmatch "versionCode='32'" -or $packageLine -notmatch "versionName='0\.19\.4-aex\.14'" -or
+} elseif ($packageLine -notmatch "name='$expectedIdPattern'" -or
+    $packageLine -notmatch "versionCode='$($release.versionCode)'" -or $packageLine -notmatch "versionName='$expectedVersionPattern'" -or
     ($badging | Where-Object { $_ -like 'application-debuggable*' })) {
     throw 'Input APK does not match the non-debuggable fork release identity'
 }

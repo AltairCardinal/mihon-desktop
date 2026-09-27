@@ -1,0 +1,44 @@
+// Behavioral contract against the real Android Gradle Plugin configuration.
+// Run with -I scripts/android-release-contract.init.gradle :app:verifyAndroidReleaseContract.
+gradle.beforeProject { project ->
+    project.pluginManager.withPlugin('com.android.application') {
+        if (project.path != ':app') return
+        project.afterEvaluate {
+            def android = project.extensions.getByName('android')
+            def metadata = new Properties()
+            project.rootProject.file('gradle/android-release.properties').withInputStream { metadata.load(it) }
+            project.tasks.register('verifyAndroidReleaseContract') {
+                doLast {
+                    def expected = project.findProperty('contract.identity') ?: 'app.mihon.desktop.fork'
+                    assert android.defaultConfig.applicationId == expected : 'Default application identity must be the fork'
+                    assert android.namespace == 'eu.kanade.tachiyomi'
+                    assert android.defaultConfig.versionCode == metadata.versionCode.toInteger()
+                    assert android.defaultConfig.versionName == metadata.versionName
+                    assert android.buildTypes.debug.applicationIdSuffix == '.dev'
+                    assert android.buildTypes.debug.debuggable
+                    assert !android.buildTypes.debug.minifyEnabled
+                    assert !android.buildTypes.debug.shrinkResources
+                    ['release', 'foss'].each { name ->
+                        def type = android.buildTypes.getByName(name)
+                        assert type.minifyEnabled
+                        assert type.shrinkResources
+                        assert !type.debuggable
+                        if (expected != 'app.mihon.syncacceptance') assert type.signingConfig == null
+                    }
+                    assert android.defaultConfig.buildConfigFields.TELEMETRY_INCLUDED.value == 'false'
+                    assert android.defaultConfig.buildConfigFields.UPDATER_ENABLED.value == 'false'
+                    android.applicationVariants.each { variant ->
+                        assert variant.applicationId == expected + (variant.buildType.applicationIdSuffix ?: '')
+                        assert variant.versionCode == metadata.versionCode.toInteger()
+                        assert variant.versionName == metadata.versionName + (variant.buildType.versionNameSuffix ?: '')
+                    }
+                    android.testVariants.each { variant ->
+                        assert variant.testedVariant.applicationId == expected + (android.testBuildType == 'debug' ? '.dev' : '')
+                        assert variant.applicationId == variant.testedVariant.applicationId + '.test'
+                    }
+                    println("ANDROID_RELEASE_CONTRACT_OK identity=${expected}")
+                }
+            }
+        }
+    }
+}
