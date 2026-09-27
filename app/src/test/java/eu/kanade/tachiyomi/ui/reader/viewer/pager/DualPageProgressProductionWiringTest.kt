@@ -34,6 +34,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -100,6 +101,7 @@ class DualPageProgressProductionWiringTest {
     private lateinit var driver: JdbcSqliteDriver
     private lateinit var database: Database
     private var host: Activity? = null
+    private var releaseMiddleWrite: CompletableDeferred<Unit>? = null
 
     @Before
     fun setUp() = runBlocking {
@@ -185,6 +187,7 @@ class DualPageProgressProductionWiringTest {
             ): ReadingSyncSnapshot {
                 val updatedSnapshot = sqlRepository.record(event, snapshot)
                 events.send(event)
+                if (event.chapterId == 2L && event.lastPageRead == 2) releaseMiddleWrite?.await()
                 return updatedSnapshot
             }
         }
@@ -302,6 +305,98 @@ class DualPageProgressProductionWiringTest {
         assertTrue(requireNotNull(awaitRenderedEvent()).isRead)
         assertTrue(current.chapter.read)
         assertTrue(database.chaptersQueries.getChapterById(2).executeAsOne().read)
+    }
+
+    @Test
+    fun `rendered last pair queued behind earlier write survives immediate next chapter selection`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val release = CompletableDeferred<Unit>().also { releaseMiddleWrite = it }
+        try {
+            val next = prepareNextChapter()
+            mountReadyViewer(nextChapter = next)
+            assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+
+            // Keep the earlier transaction in flight while the actual mounted final pair settles.
+            selectGroup(requireNotNull(current.pages)[3])
+            val pending = ReflectionHelpers.getField<Any>(model, "pendingDualViewport")
+            assertTrue(ReflectionHelpers.getField<Boolean>(pending, "settled"))
+            assertPersistedProgress(2, false)
+
+            selectGroup(requireNotNull(next.pages)[0], decode = false)
+            withContext(Dispatchers.Default) {
+                withTimeout(10_000) { model.state.first { it.currentChapter === next } }
+            }
+            release.complete(Unit)
+            awaitNextChapterEvent()
+            model.onActivityFinish()
+
+            // Regression expectation: an accepted rendered final pair must not be discarded.
+            assertPersistedProgress(4, true)
+            assertEquals(2L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+        } finally {
+            release.complete(Unit)
+        }
+    }
+
+    @Test
+    fun `rendered last pair queued behind earlier write completes when next selection waits`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val release = CompletableDeferred<Unit>().also { releaseMiddleWrite = it }
+        try {
+            val next = prepareNextChapter()
+            mountReadyViewer(nextChapter = next)
+            assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+            selectGroup(requireNotNull(current.pages)[3])
+            val pending = ReflectionHelpers.getField<Any>(model, "pendingDualViewport")
+            assertTrue(ReflectionHelpers.getField<Boolean>(pending, "settled"))
+
+            release.complete(Unit)
+            val completion = requireNotNull(awaitRenderedEvent())
+            assertEquals(4, completion.lastPageRead)
+            assertTrue(completion.isRead)
+            selectGroup(requireNotNull(next.pages)[0], decode = false)
+            awaitNextChapterEvent()
+            model.onActivityFinish()
+
+            assertPersistedProgress(4, true)
+            assertEquals(2L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+        } finally {
+            release.complete(Unit)
+        }
+    }
+
+    @Test
+    fun `unrendered last pair followed by next chapter does not complete outgoing chapter`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val next = prepareNextChapter()
+        mountReadyViewer(nextChapter = next)
+        assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+
+        selectGroup(requireNotNull(current.pages)[3], decode = false)
+        val pending = ReflectionHelpers.getField<Any>(model, "pendingDualViewport")
+        assertFalse(ReflectionHelpers.getField<Boolean>(pending, "settled"))
+        selectGroup(requireNotNull(next.pages)[0], decode = false)
+        awaitNextChapterEvent()
+        model.onActivityFinish()
+
+        assertPersistedProgress(2, false)
+        assertEquals(1L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+    }
+
+    private fun prepareNextChapter(): ReaderChapter =
+        requireNotNull(model.state.value.viewerChapters?.nextChapter).also { next ->
+            next.publishLoadedPageListForTest(
+                (0..4).map { ReaderPage(it).apply { chapter = next } },
+            )
+        }
+
+    private suspend fun awaitNextChapterEvent() {
+        withContext(Dispatchers.Default) {
+            withTimeout(10_000) {
+                while (events.receive().chapterId != 3L) Unit
+            }
+        }
+        assertEquals(1L, database.reading_eventsQueries.countByChapter(3).executeAsOne())
     }
 
     @Test
