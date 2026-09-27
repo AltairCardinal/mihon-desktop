@@ -271,6 +271,7 @@ object TestNavigationController {
         initialPage: Int = 0,
         pageCount: Int = 20,
         localChapterPath: String? = null,
+        dualPage: Boolean = false,
     ) {
         ReaderIoTestModeBridge.beginScenario(initialPage)
         val readerGeneration = readerState.open(
@@ -290,12 +291,13 @@ object TestNavigationController {
             sourceId = sourceId,
             chapterUrl = chapterUrl,
             chapterId = chapterId,
+            mangaId = mangaId,
             chapters = emptyList(),
             currentChapterIndex = 0,
             initialPage = initialPage,
             mangaViewerFlags = 0L,
             isRtl = false,
-            isDualPage = false,
+            isDualPage = dualPage,
             localChapterPath = localChapterPath,
             progressTracker = syntheticReaderProgressTracker,
             onProductionClosed = { readerState.markProductionClosed(readerGeneration) },

@@ -132,6 +132,11 @@ curl -X POST http://localhost:8080/test/action/open_manga_detail \
 Reader 离线行为。partial fixture 使用独占 chapter identity；`/test/reset` 和 Reader 测试控制器关闭时只取消自己创建且
 identity 仍匹配的队列项。
 
+`dualPage: true` 可在隔离 Test Mode profile 中打开真实 Desktop 双页 Reader；默认仍是单页。请求中的
+`mangaId` 会传入 Reader 上下文。验证章级持久化时，先在该隔离 profile 的数据库中准备相同
+`mangaId`、`chapterId` 的真实章节记录；fixture 本身只准备页面内容，不替测试创建数据库章节。
+`dualPage` 只接受 JSON 布尔值，其他值返回 400。
+
 ## Reader
 
 ### `GET /reader/state`

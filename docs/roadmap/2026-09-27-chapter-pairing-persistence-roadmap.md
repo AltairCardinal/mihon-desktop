@@ -1,6 +1,6 @@
 # 章节双页调整持久化 Roadmap
 
-日期：2026-09-27。状态：实施中；CP-01/02 已完成，CP-03 待实施。本文最初作为纯规划交付，实施阶段按下述批次推进。
+日期：2026-09-27。状态：实施中；CP-01/02 已完成，CP-03 正式产物与部分运行验收已完成，收口仍未通过。本文最初作为纯规划交付，实施阶段按下述批次推进。
 
 需求权威：[按章节持久保存手动双页调整](../2026-09-27-chapter-pairing-persistence-requirements.md)。本计划为独立产品 child plan，进度从第一个未勾选批次推导，不声明 `active-task`，不切换其他父计划正在执行的 `active-child-plan`。勾选代表实现、独立审查、验证与提交全部完成；若纳入父 roadmap，只链接本计划并保留唯一 active child。若涉及 capability 登记，只更新现有 manifest 的对应项与真实证据，不新建平行状态权威。
 
@@ -46,3 +46,5 @@
 当前验证记录：CP-01 已完成实现、独立审查、focused 验证并随本次勾选提交。`cp01-final-suite` 通过 `spotlessCheck`、domain 1/1、真实 SQLite data 23/23、Desktop 97/97；Desktop Compose 用例执行实际调整按钮、文件数据库重开与新 Screen 的 `[5,6]` 显示单元。数据存储及 Compose 用例曾先绿后补做破坏行为红测，其余竞态/边界修复按红绿重构执行，不能把补红描述为先红。Compose 用例采用测试侧失败占位解码与单并发 scene dispatcher，验证配对链但不验证真实图像呈现；旧图像链在组合测试中曾出现锁顺序死锁，正式运行留待 CP-03 验收。Android legacy migration focused 因本机缺少 sqlite3x JNI 在测试 setup 阶段失败，未到版本断言；共享文件库迁移测试已通过。
 
 CP-02 已完成 Android 实际调整按钮→生产文件库→新 ViewModel/viewer 恢复，读失败的重试/本次默认、保存中/失败反馈、相邻章预取与 RTL 过渡页恢复、宽图回调、末页进度及旧 ViewModel 销毁后应用级写入排序。主链和错误反馈分别确认行为红测，临时断开 Activity 按钮生产接线时主链测试失败；过渡页修复经实际 pager 事件红测与复审。`cp02-android-related-final2` 为 Android 相关 10 类 57/57，`cp02-data-final` 为共享 SQLite 6/6，`cp02-desktop-related-final` 为 Desktop 4 类 30/30；复审修复后 `cp02-transition-related-final2` 再验 Android 配对链 16/16 与相邻 viewer 6/6，`cp02-spotless-final` 通过格式检查。前一次组合回归因测试先挂 viewer 而与近末页自动预取重叠，手工预取尚未完成便断言；夹具改为先执行生产预取再挂 viewer，继续验证 adapter 首次显示与进度。Android 正常返回/重建时已受理写入由应用级队列继续执行；系统结束进程前未提交的写入只保证上次成功记录，没有进程退出排空 hook。正式 Android/Desktop 产物与运行验收留待 CP-03。
+
+CP-03 当前证据见[统一报告](2026-09-27-chapter-pairing-persistence-evidence.md)。Windows/Android 正式应用已完成真实按钮写入、重启恢复、章隔离、清除与模式切换；macOS 正式应用完成有效记录的 production 恢复、隔离与清除后默认呈现，但远程会话无辅助功能事件权限，按钮写入/撤销未验。一次完整 Android/共享命令因 release JVM sqlite3x JNI、四项重负载 viewer 用例及一项旧 schema 常量断言失败；一次完整 Desktop 命令因九处过期 manifest 行号失败。确定的测试/证据问题已修正并 focused 复验，未在本轮预算内重跑全量。A5 的在线→下载与自动匹配正式运行、A6 的 Android 旧库发布版迁移及 A9 的下载删除正式运行也未逐项复核；CP-03 保持未勾选，不能把已构建产物视为全部验收通过。

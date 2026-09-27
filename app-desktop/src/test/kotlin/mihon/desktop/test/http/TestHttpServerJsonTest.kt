@@ -148,6 +148,7 @@ class TestHttpServerJsonTest {
                                   "chapterId": ${700 + index},
                                   "chapterTitle": "RUA-07B $source",
                                   "readerFixture": "$source",
+                                  "dualPage": true,
                                   "pageCount": 180,
                                   "width": 2400,
                                   "height": 3500,
@@ -173,6 +174,8 @@ class TestHttpServerJsonTest {
                     TestNavigationController.pushedScreens.value,
                     "$source must publish exactly one Reader navigation request",
                 )
+                assertEquals(42L, readerScreen.mangaId)
+                assertEquals(true, readerScreen.isDualPage)
 
                 val stateResponse = client.send(
                     HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port/test/reader/state")).GET().build(),
@@ -188,6 +191,15 @@ class TestHttpServerJsonTest {
                 assertEquals(3500, fixture.getValue("height").jsonPrimitive.content.toInt())
                 assertEquals("JPEG", fixture.getValue("format").jsonPrimitive.content)
             }
+            val invalidMode = client.send(
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port/test/action/read_chapter"))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString("""{"mangaId":42,"dualPage":"invalid"}"""))
+                    .build(),
+                HttpResponse.BodyHandlers.ofString(),
+            )
+            assertEquals(400, invalidMode.statusCode())
+            assertEquals(42L, (TestNavigationController.pendingScreenRequest.value?.screen as DesktopReaderScreen).mangaId)
         } finally {
             server.stop(0, 0)
             TestNavigationController.reset()

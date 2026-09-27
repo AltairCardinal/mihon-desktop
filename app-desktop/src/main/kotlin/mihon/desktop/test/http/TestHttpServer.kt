@@ -696,6 +696,15 @@ internal fun Application.testHttpServer(
                     if (mangaId > 0) {
                         val chapterId = params["chapterId"]?.toLongOrNull() ?: mangaId
                         val chapterTitle = params["chapterTitle"] ?: "Chapter ${params["chapterIndex"] ?: 0}"
+                        val dualPage = params["dualPage"]?.toBooleanStrictOrNull()
+                        if (params.containsKey("dualPage") && dualPage == null) {
+                            call.respondText(
+                                jsonText(actionJson(action, false, "INVALID_DUAL_PAGE")),
+                                ContentType.Application.Json,
+                                HttpStatusCode.BadRequest,
+                            )
+                            return@post
+                        }
                         val fixtureController = ReaderIoTestModeBridge.controller
                         val fixture = if (fixtureController != null) {
                             val spec = try {
@@ -727,6 +736,7 @@ internal fun Application.testHttpServer(
                             initialPage = params["chapterIndex"]?.toIntOrNull() ?: 0,
                             pageCount = fixture?.spec?.pageCount ?: params["pageCount"]?.toIntOrNull() ?: 20,
                             localChapterPath = fixture?.localChapterPath,
+                            dualPage = dualPage ?: false,
                         )
 
                         applicationState.setCurrentScreen("ReaderScreen")

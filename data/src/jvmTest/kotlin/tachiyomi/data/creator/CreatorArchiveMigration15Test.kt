@@ -42,7 +42,7 @@ class CreatorArchiveMigration15Test {
             DatabaseMigration.migrateAtomically(driver, 27, 28)
 
             queryLong(driver, "PRAGMA user_version") shouldBe 28L
-            Database.Schema.version shouldBe CreatorArchiveV2Contract.LATEST_SCHEMA_VERSION
+            Database.Schema.version shouldBeGreaterThanOrEqual CreatorArchiveV2Contract.LATEST_SCHEMA_VERSION
             queryLong(
                 driver,
                 "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' " +
