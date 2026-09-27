@@ -164,6 +164,8 @@ internal class MountedReaderPresentationFixture(
 
     fun events() = controller.snapshot()
 
+    fun httpRequestCount() = productionFixture.server.requestCount
+
     fun releaseBackgroundGates(excluding: Set<ReaderIoGatePoint> = emptySet()) {
         ReaderIoGatePoint.entries.filterNot(excluding::contains).forEach { productionFixture.gate(it).release() }
     }

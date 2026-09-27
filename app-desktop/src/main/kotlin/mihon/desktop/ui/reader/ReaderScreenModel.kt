@@ -79,6 +79,7 @@ class ReaderScreenModel(
     ),
     private val persistViewerFlags: suspend (mangaId: Long, flags: Long) -> Unit = { _, _ -> },
     private val onViewportSettled: (Set<ReaderPageId>, ReaderPageId) -> Unit = { _, _ -> },
+    private val onViewportLayoutSettled: (Set<ReaderPageId>, ReaderPageId) -> Unit = { _, _ -> },
     private val onPageRetry: (ReaderPageId) -> Unit = {},
     private val onChapterRetry: () -> Unit = {},
     private val onChapterActivated: (DesktopReaderChapterContext) -> DesktopReaderSessionState? = { null },
@@ -92,6 +93,7 @@ class ReaderScreenModel(
     private val _state = MutableStateFlow(buildInitialState(prefs, initialSessionState))
     val state: StateFlow<ReaderState> = _state.asStateFlow()
     private var lastSettledViewport: SettledViewportIdentity? = null
+    private var lastLayoutScheduledViewport: SettledViewportIdentity? = null
     private var viewportSize: Pair<Int, Int>? = null
     private var adaptiveInitialized = false
     private var pendingLayout: Boolean? = null
@@ -375,7 +377,12 @@ class ReaderScreenModel(
             pageIds = visiblePages.pageIds,
             activePageId = activePageId,
         )
-        if (!layoutOnly && lastSettledViewport != identity) {
+        if (layoutOnly) {
+            if (lastSettledViewport != identity && lastLayoutScheduledViewport != identity) {
+                lastLayoutScheduledViewport = identity
+                onViewportLayoutSettled(visiblePages.pageIds, activePageId)
+            }
+        } else if (lastSettledViewport != identity) {
             lastSettledViewport = identity
             onViewportSettled(visiblePages.pageIds, activePageId)
         }

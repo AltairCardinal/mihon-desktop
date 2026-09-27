@@ -8,10 +8,23 @@ import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ReaderSessionCoreTest {
+
+    @Test
+    fun `layout-only viewport schedules visible image without recording progress`() {
+        val chapterId = ReaderChapterId(91)
+        val core = loadedCore(chapterId, pageCount = 3)
+        val visible = ReaderPageId(chapterId, 1)
+
+        val update = core.settleViewport(setOf(visible), visible, wasRead = false, recordProgress = false)
+
+        assertNull(update.progressEffect)
+        assertEquals(visible, requireNotNull(core.pollNextPageRequest()).pageId)
+    }
 
     @Test
     fun `open publishes zero-page loading then stable page identities and per-page states`() {

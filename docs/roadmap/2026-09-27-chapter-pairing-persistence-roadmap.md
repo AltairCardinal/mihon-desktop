@@ -1,6 +1,6 @@
 # 章节双页调整持久化 Roadmap
 
-日期：2026-09-27。状态：实施中；CP-01/02 已完成，CP-03 正式产物、双端按钮与部分运行验收已完成，Android 全量复验及 A5 正式运行仍未通过。本文最初作为纯规划交付，实施阶段按下述批次推进。
+日期：2026-09-27。状态：CP-01/02/03 已完成，正式产物、Android/共享与 Desktop 全量验证、Windows/macOS 运行验收见[统一报告](2026-09-27-chapter-pairing-persistence-evidence.md)。本文最初作为纯规划交付，实施阶段按下述批次推进。
 
 需求权威：[按章节持久保存手动双页调整](../2026-09-27-chapter-pairing-persistence-requirements.md)。本计划为独立产品 child plan，进度从第一个未勾选批次推导，不声明 `active-task`，不切换其他父计划正在执行的 `active-child-plan`。勾选代表实现、独立审查、验证与提交全部完成；若纳入父 roadmap，只链接本计划并保留唯一 active child。若涉及 capability 登记，只更新现有 manifest 的对应项与真实证据，不新建平行状态权威。
 
@@ -32,7 +32,7 @@
   - 绿与重构：最小 adapter 接线，清除会抹掉已恢复手动边界的旧初始化路径；对 decode/viewport replacement 与首次视口报告执行实际事件。纯重排不得上报新阅读效果。
   - 验证/交付：Android focused JVM/适用 UI 集成、共享契约双平台接线、Desktop 受影响回归和格式检查；主代理独立检查 Android 增量与跨端一致性。提交包含测试、实现、`docs/architecture/reader-shared-core.md` 对权威/边界/故障处理的必要更新与批次勾选。不得把共享纯测试通过称为 Android 入口通过。
 
-- [ ] **CP-03：正式构建、运行与统一交付。**
+- [x] **CP-03：正式构建、运行与统一交付。**
   - 前置：CP-01/02 行为测试通过、审查阻塞已关闭，冻结本次产品 diff；不增加功能。
   - 验证：以仓库当前任务名执行一次完整 Android 单元/Desktop 测试及必要格式检查；使用协调器串行运行。先核验本机 Android SDK 三个必需文件，按现有构建流程生成 Android 产物。Desktop 必须使用 `scripts/build-desktop.sh`，禁止直接 Gradle 部署；仅在同一未提交 diff 已有等价完整 Desktop JVM 证据时使用 `build-only`，否则安排脚本承担唯一全量 Desktop 验证，避免重复。
   - 运行：Windows 和 macOS 正式产物上执行 Test Mode 及实际 production 持久链；隔离测试数据库，执行 A1 的退出/重启恢复、A2 章间隔离、A3 清除及 A4 模式切换。Android 正式产物完成同类恢复验收；无设备/主机时记录具体未验证项，不用系统 JVM、HTML 或独立客户端替代。视觉证据遵守仓库离屏限制，不从 Test Mode 读取桌面像素。
@@ -47,4 +47,4 @@
 
 CP-02 已完成 Android 实际调整按钮→生产文件库→新 ViewModel/viewer 恢复，读失败的重试/本次默认、保存中/失败反馈、相邻章预取与 RTL 过渡页恢复、宽图回调、末页进度及旧 ViewModel 销毁后应用级写入排序。主链和错误反馈分别确认行为红测，临时断开 Activity 按钮生产接线时主链测试失败；过渡页修复经实际 pager 事件红测与复审。`cp02-android-related-final2` 为 Android 相关 10 类 57/57，`cp02-data-final` 为共享 SQLite 6/6，`cp02-desktop-related-final` 为 Desktop 4 类 30/30；复审修复后 `cp02-transition-related-final2` 再验 Android 配对链 16/16 与相邻 viewer 6/6，`cp02-spotless-final` 通过格式检查。前一次组合回归因测试先挂 viewer 而与近末页自动预取重叠，手工预取尚未完成便断言；夹具改为先执行生产预取再挂 viewer，继续验证 adapter 首次显示与进度。Android 正常返回/重建时已受理写入由应用级队列继续执行；系统结束进程前未提交的写入只保证上次成功记录，没有进程退出排空 hook。正式 Android/Desktop 产物与运行验收留待 CP-03。
 
-CP-03 当前证据见[统一报告](2026-09-27-chapter-pairing-persistence-evidence.md)。Windows/Android/macOS 正式应用均已完成真实按钮写入、重启恢复及清除；Windows/Android 的章隔离与模式切换、Mac 的 production 隔离与模式重开也已验证。第二次完整 Desktop 测试通过；第二次 Android/共享全量中 domain/data/Desktop 通过，Android release JVM 的双页布局用例因超时与内存压力判失败，定向资源隔离后 focused 30/30 通过，仍待获准进行额外完整复验。Android 发布 APK 对含原漫画/章节/进度的 v39 旧库完成 39→40 迁移；下载删除保留配对由真实文件库及生产下载目录集成测试覆盖。A5 的在线→下载与自动匹配正式运行仍未验通：在线 Test Mode 图片请求未进入 production 读取链，不能以独立 HTTP 探活代替。CP-03 保持未勾选。
+CP-03 当前证据见[统一报告](2026-09-27-chapter-pairing-persistence-evidence.md)。Windows/Android/macOS 均已有真实按钮写入、重启恢复及清除证据；新版 Windows/macOS 又完成在线→下载 A5 production 图片请求、持久边界和重启恢复验收。首次可见页只到 `PAGE_LIST_READY` 的缺陷经红绿修复并通过独立聚焦审查；布局调度会请求可见图片，但不会把重排算成阅读进度。当前代码完整 Desktop 3211 项 0 失败；Android 652 项 0 失败、domain 568 项 0 失败、Test Mode 52 项 0 失败、data 追加全量 752 项 0 失败，格式检查通过。Windows/macOS 正式构建均为 `0.11.19.64.7c5320a`，Android 当前源码 release 构建及本机测试签名包的隔离 AVD 启动通过。Android 默认包名与先前 fork 验收包不同，签名/升级边界记录于统一报告。CP-03 随本功能批次提交勾选。

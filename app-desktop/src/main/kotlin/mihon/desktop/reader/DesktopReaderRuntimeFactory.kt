@@ -266,6 +266,7 @@ class DesktopReaderRuntimeFactory internal constructor(
         prefs = runtime.prefs,
         initialSessionState = runtime.session.state.value,
         onViewportSettled = runtime.session::settleViewport,
+        onViewportLayoutSettled = runtime.session::scheduleViewportWithoutProgress,
         onPageRetry = runtime.session::retryPage,
         onChapterRetry = runtime.session::retryChapter,
         onChapterActivated = { context ->

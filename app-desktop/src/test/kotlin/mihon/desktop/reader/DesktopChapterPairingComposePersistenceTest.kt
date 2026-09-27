@@ -9,14 +9,19 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.ui.reader.DualPageDisplayUnitIdKey
+import mihon.domain.reader.ChapterPairingRepository
+import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.content.DownloadChapterIdentity
 import java.awt.image.BufferedImage
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import javax.imageio.ImageIO
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -35,6 +40,48 @@ import java.io.File
 @OptIn(ExperimentalComposeUiApi::class)
 class DesktopChapterPairingComposePersistenceTest {
     @TempDir lateinit var tempDir: File
+
+    @Test
+    fun `online reader with saved chapter identity presents its first paired pages`() = runBlocking {
+        openDatabase(tempDir.resolve("online-pairing.sqlite"), create = true).use { (handler, driver) ->
+            seed(driver)
+            val repository = ChapterPairingRepositoryImpl(handler)
+            val saved = repository.replace(7, 10, 0, 8, setOf(3))
+            val loads = AtomicInteger()
+            val loaded = AtomicReference<ChapterPairingSnapshot?>()
+            val coordinator = DesktopChapterPairingCoordinator(object : ChapterPairingRepository by repository {
+                override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
+                    loads.incrementAndGet()
+                    return repository.load(chapterId, mangaId).also(loaded::set)
+                }
+            })
+            val decoded = ConcurrentHashMap.newKeySet<Int>()
+            val fixture = mounted(
+                tempDir.resolve("online"),
+                coordinator,
+                initialPage = 1,
+                completedDecodes = decoded,
+                route = MountedReaderContentRoute.ONLINE,
+            )
+            try {
+                fixture.releaseBackgroundGates(excluding = setOf(ReaderIoGatePoint.NON_CURRENT_PAGE))
+                withTimeout(20_000) {
+                    while (!setOf(1, 2).all(decoded::contains) || visibleFrames(fixture).isEmpty()) {
+                        fixture.scene.render().close()
+                        delay(10)
+                    }
+                }
+                assertEquals(1, loads.get())
+                assertEquals(saved, loaded.get())
+                assertTrue(fixture.httpRequestCount() > 0)
+                assertTrue(visibleFrames(fixture).isNotEmpty())
+            } finally {
+                fixture.close()
+                coordinator.stop()
+                coordinator.awaitStopped()
+            }
+        }
+    }
 
     @Test
     fun `deleting a chapter download preserves its saved pairing and reading progress`() = runBlocking {
@@ -128,14 +175,15 @@ class DesktopChapterPairingComposePersistenceTest {
 
     private fun mounted(
         root: File,
-        coordinator: DesktopChapterPairingCoordinator,
+        coordinator: DesktopChapterPairingCoordinator?,
         initialPage: Int,
         completedDecodes: MutableSet<Int>,
+        route: MountedReaderContentRoute = MountedReaderContentRoute.DIRECTORY,
     ) =
         MountedReaderPresentationFixture(
             root = root,
             coroutineContext = Dispatchers.Default.limitedParallelism(1),
-            case = MountedReaderPresentationCase(MountedReaderPresentationMode.DUAL, MountedReaderContentRoute.DIRECTORY),
+            case = MountedReaderPresentationCase(MountedReaderPresentationMode.DUAL, route),
             pageCount = 8,
             mangaId = 10,
             pairingCoordinator = coordinator,
@@ -180,7 +228,7 @@ class DesktopChapterPairingComposePersistenceTest {
                 if (pages.all(completedDecodes::contains) && visibleFrames(fixture).isNotEmpty()) return@withTimeout
                 yield()
             }
-            throw AssertionError("Visible pages $pages did not complete decode; completed=$completedDecodes")
+            throw AssertionError("Visible pages $pages did not complete decode; completed=$completedDecodes; text=${texts(fixture)}; events=${fixture.events()}")
         }
     }
 

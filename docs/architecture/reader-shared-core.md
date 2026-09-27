@@ -276,7 +276,9 @@ presentation/navigation adapter，不进入 core 文案或按钮决策。若相�
 包含末页时才完成。Android 双页 viewer 在 ViewPager 空闲且当前 holder 的两张图片均触发真实解码成功回调后，
 才将 `DisplayPage.Double` 的两张源页一起提交；`firstPage` 只作导航与预加载锚点。图片仍在加载、解码失败、
 拖动中途或同一显示单元的 holder 重建都不新增进度；单页显示单元沿用原有报告链。任一可见页加载出错、
-混入旧章节或重排标记为 `layoutOnly` 时，该显示单元不写进度。effect 携带 session、chapter、page 与 settlement sequence 组成的幂等 key，Android
+混入旧章节或重排标记为 `layoutOnly` 时，该显示单元不写进度。Desktop 的 `layoutOnly` 视口仍须进入
+可见页调度，尤其是配对恢复后第一次呈现在线章节；它只跳过进度 effect 与 settlement sequence 递增，
+不能跳过图片请求。effect 携带 session、chapter、page 与 settlement sequence 组成的幂等 key，Android
 `ReaderViewModel.onPageSelected` 通过 `ReaderViewportSettlementArbiter` 为每次 viewport settlement 分配单调
 token；相邻章加载完成后只有最新 token 可以提交 active window，UI/saved-page/事务写入也在同一串行仲裁中再次检查 token 与 active chapter。旧加载
 可以保留为相邻章 page-list 预取，但不能在用户返回当前章后反向激活或写进度。有效 settlement 再通过

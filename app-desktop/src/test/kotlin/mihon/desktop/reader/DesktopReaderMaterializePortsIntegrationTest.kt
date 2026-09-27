@@ -8,6 +8,8 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
+import io.ktor.server.cio.CIO
+import io.ktor.server.engine.embeddedServer
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -23,7 +25,15 @@ import kotlinx.coroutines.withTimeout
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.extension.ExtensionClassLoader
+import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.settings.GlobalNetworkMode
 import mihon.desktop.source.FakeDesktopSourceManager
+import mihon.desktop.test.http.ReaderIoTestModeBridge
+import mihon.desktop.test.http.ReaderTestFixtureSource
+import mihon.desktop.test.http.ReaderTestFixtureSpec
+import mihon.desktop.test.http.ReaderTestImageFormat
+import mihon.desktop.test.http.ReaderTestModeController
+import mihon.desktop.test.http.testHttpServer
 import mihon.domain.error.AppError
 import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.ReaderPageDecodeKey
@@ -504,6 +514,64 @@ class DesktopReaderMaterializePortsIntegrationTest {
             releaseOld.complete(Unit)
             releaseClosing.complete(Unit)
             runtime.close()
+        }
+    }
+
+    @Test
+    fun `online Test Mode source reaches local image route through production network client`() = runTest {
+        val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) { testHttpServer() }.start()
+        val port = server.resolvedConnectors().single().port
+        val controller = ReaderTestModeController(baseUrl = "http://127.0.0.1:$port")
+        ReaderIoTestModeBridge.install(controller)
+        val network = DesktopNetworkHelper(
+            cacheDir = tempDir.resolve("network-cache"),
+            cookieStorageFile = tempDir.resolve("cookies.json"),
+            globalMode = GlobalNetworkMode.SYSTEM,
+        )
+        try {
+            val fixture = controller.prepareFixture(
+                ReaderTestFixtureSpec(ReaderTestFixtureSource.ONLINE, 3, 600, 900, ReaderTestImageFormat.JPEG),
+                mangaId = 4201L,
+                chapterId = 420101L,
+                chapterTitle = "Chapter 1",
+            )
+            val sourceManager = FakeDesktopSourceManager(listOf(controller.onlineSource))
+            val context = context(chapterId = fixture.chapterId, sourceId = fixture.sourceId).copy(
+                chapterUrl = fixture.chapterUrl,
+                mangaTitle = fixture.mangaTitle,
+                mangaId = 4201L,
+            )
+            val descriptor = DesktopReaderChapterContentPort(
+                context,
+                DesktopDownloadProvider(tempDir.resolve("downloads-test-mode")),
+                sourceManager,
+            ).loadChapterContent(ReaderChapterContentRequest(ReaderChapterId(fixture.chapterId), 1L)).first()
+            val store = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-test-mode"), maxBytes = 1_000_000L)
+            store.beginSession(emptySet())
+            val result = CanonicalReaderMaterializeExecutor.materializePage(
+                ReaderPageFetchRequest(
+                    ReaderPageId(ReaderChapterId(fixture.chapterId), 0),
+                    generation = 1L,
+                    url = descriptor.url,
+                    imageUrl = descriptor.imageUrl,
+                ),
+                DesktopReaderPageFetchPort(
+                    context,
+                    descriptor,
+                    sourceManager,
+                    NetworkHelper(network.client, sourceClientProvider = network::clientForSource),
+                    store,
+                ),
+                publish = { true },
+            )
+
+            assertInstanceOf(ReaderPageMaterializeResult.Ready::class.java, result)
+            assertEquals(1, controller.onlineImageRequestCount())
+        } finally {
+            network.close()
+            ReaderIoTestModeBridge.clear(controller)
+            controller.close()
+            server.stop(0, 0)
         }
     }
 

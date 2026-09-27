@@ -78,6 +78,7 @@ class ReaderSessionCore(
         visiblePageIds: Set<ReaderPageId>,
         anchorPageId: ReaderPageId,
         wasRead: Boolean,
+        recordProgress: Boolean = true,
     ): ReaderSessionCoreUpdate {
         val chapter = snapshot.activeChapter
         require(chapter.loadState is ReaderChapterLoadState.Loaded) {
@@ -95,19 +96,23 @@ class ReaderSessionCore(
             anchorPage = anchorPageId.sourcePageIndex,
             pageIndicesInOrder = chapter.pages.map { page -> page.id.sourcePageIndex },
         )
-        settlementSequence++
-        val progressEffect = ReaderProgressPolicy.reduce(
-            ReaderProgressSignal.ViewportSettled(
-                activeChapterId = chapter.id,
-                chapterId = chapter.id,
-                visiblePageIds = visiblePageIds,
-                totalPages = chapter.pages.size,
-                wasRead = wasRead,
-                sessionId = sessionId,
-                settlementSequence = settlementSequence,
-                pageIdsInOrder = chapter.pages.map { page -> page.id },
-            ),
-        )
+        val progressEffect = if (recordProgress) {
+            settlementSequence++
+            ReaderProgressPolicy.reduce(
+                ReaderProgressSignal.ViewportSettled(
+                    activeChapterId = chapter.id,
+                    chapterId = chapter.id,
+                    visiblePageIds = visiblePageIds,
+                    totalPages = chapter.pages.size,
+                    wasRead = wasRead,
+                    sessionId = sessionId,
+                    settlementSequence = settlementSequence,
+                    pageIdsInOrder = chapter.pages.map { page -> page.id },
+                ),
+            )
+        } else {
+            null
+        }
         return ReaderSessionCoreUpdate(snapshot, schedulePlan = schedulePlan, progressEffect = progressEffect)
     }
 

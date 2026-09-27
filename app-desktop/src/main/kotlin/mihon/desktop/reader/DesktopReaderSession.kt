@@ -401,6 +401,17 @@ class DesktopReaderSession(
     fun settleViewport(
         visiblePageIds: Set<ReaderPageId>,
         anchorPageId: ReaderPageId,
+    ) = settleViewport(visiblePageIds, anchorPageId, recordProgress = true)
+
+    fun scheduleViewportWithoutProgress(
+        visiblePageIds: Set<ReaderPageId>,
+        anchorPageId: ReaderPageId,
+    ) = settleViewport(visiblePageIds, anchorPageId, recordProgress = false)
+
+    private fun settleViewport(
+        visiblePageIds: Set<ReaderPageId>,
+        anchorPageId: ReaderPageId,
+        recordProgress: Boolean,
     ) {
         val progressJob: Job?
         val adjacentPageListJob: Job?
@@ -410,6 +421,7 @@ class DesktopReaderSession(
                 visiblePageIds = visiblePageIds,
                 anchorPageId = anchorPageId,
                 wasRead = context.wasRead,
+                recordProgress = recordProgress,
             )
             applySchedulePlanLocked(update.schedulePlan)
             val progress = update.progressEffect
