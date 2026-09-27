@@ -1,6 +1,6 @@
 # 章节双页调整持久化 Roadmap
 
-日期：2026-09-27。状态：实施中；CP-01 已完成，CP-02/03 待实施。本文最初作为纯规划交付，实施阶段按下述批次推进。
+日期：2026-09-27。状态：实施中；CP-01/02 已完成，CP-03 待实施。本文最初作为纯规划交付，实施阶段按下述批次推进。
 
 需求权威：[按章节持久保存手动双页调整](../2026-09-27-chapter-pairing-persistence-requirements.md)。本计划为独立产品 child plan，进度从第一个未勾选批次推导，不声明 `active-task`，不切换其他父计划正在执行的 `active-child-plan`。勾选代表实现、独立审查、验证与提交全部完成；若纳入父 roadmap，只链接本计划并保留唯一 active child。若涉及 capability 登记，只更新现有 manifest 的对应项与真实证据，不新建平行状态权威。
 
@@ -25,7 +25,7 @@
   - 验证/交付：相关共享契约、SQLDelight 迁移与真实数据库重开、Desktop UI/DI/reader 集成和格式检查；主代理独立检查事务原子性、删除级联、不触发阅读/同步副作用与 stale result 防护。提供完成项、变更、红绿命令/结果、风险及结构化回执。独立检查通过才开放 CP-02；测试、实现、必要架构说明和本批次勾选合入一个提交。
   - 边界：不新增独立设置页或全章重置按钮；数据库表/接口命名可沿仓库调整，需求中的持久承诺不能降级。涉及多个模块超过估算文件/行数时记录内聚性和风险，不机械拆分。
 
-- [ ] **CP-02：Android 同契约接入与双端行为收口。**
+- [x] **CP-02：Android 同契约接入与双端行为收口。**
   - 前置：CP-01 共享接口、迁移和存储关键路径已通过独立检查；复用原实施者和已有 diff/测试证据，不重新发明存储。
   - 范围：`ReaderViewModel`、`DualPagePairingStore`、`PairingState`、现有 RTL 双页 viewer/调整入口及 Android DI。将对象身份缓存保留为会话优化，按稳定章节 ID 恢复与保存；覆盖 Activity/进程重建和相邻章节加载。补齐平台失败/进行中语义，沿用已有控件，不新增 Android LTR 模式。
   - 红测：Android 实际调整事件→生产 shared repository→新 ViewModel/viewer 恢复的集成测试；复用 CP-01 共享契约数据，不复制算法。覆盖 A1–A10 中适用项、Android RTL 末页已读、宽图与生命周期；Desktop A4/A5 作为受影响回归。
@@ -43,4 +43,6 @@
 
 实施者完成/阻塞先返回 `status`、`diff`、`tests`、`commit`、`process`、`next`，可用 `scripts/agent-handoff.py` 验证。主代理不重复执行仍适用且可核验的测试；有相关改动或证据不足时只补受影响范围。任何必做验收不得在实现后改成不适用；一轮复审仍失败时，列出未通过项、实际证据、未解决原因与下一步新增成本，再请求扩大预算。
 
-当前验证记录：CP-01 已完成实现、独立审查、focused 验证并随本次勾选提交。`cp01-final-suite` 通过 `spotlessCheck`、domain 1/1、真实 SQLite data 23/23、Desktop 97/97；Desktop Compose 用例执行实际调整按钮、文件数据库重开与新 Screen 的 `[5,6]` 显示单元。数据存储及 Compose 用例曾先绿后补做破坏行为红测，其余竞态/边界修复按红绿重构执行，不能把补红描述为先红。Compose 用例采用测试侧失败占位解码与单并发 scene dispatcher，验证配对链但不验证真实图像呈现；旧图像链在组合测试中曾出现锁顺序死锁，正式运行留待 CP-03 验收。Android legacy migration focused 因本机缺少 sqlite3x JNI 在测试 setup 阶段失败，未到版本断言；共享文件库迁移测试已通过。CP-02/03 和发布产物仍待实施。
+当前验证记录：CP-01 已完成实现、独立审查、focused 验证并随本次勾选提交。`cp01-final-suite` 通过 `spotlessCheck`、domain 1/1、真实 SQLite data 23/23、Desktop 97/97；Desktop Compose 用例执行实际调整按钮、文件数据库重开与新 Screen 的 `[5,6]` 显示单元。数据存储及 Compose 用例曾先绿后补做破坏行为红测，其余竞态/边界修复按红绿重构执行，不能把补红描述为先红。Compose 用例采用测试侧失败占位解码与单并发 scene dispatcher，验证配对链但不验证真实图像呈现；旧图像链在组合测试中曾出现锁顺序死锁，正式运行留待 CP-03 验收。Android legacy migration focused 因本机缺少 sqlite3x JNI 在测试 setup 阶段失败，未到版本断言；共享文件库迁移测试已通过。
+
+CP-02 已完成 Android 实际调整按钮→生产文件库→新 ViewModel/viewer 恢复，读失败的重试/本次默认、保存中/失败反馈、相邻章预取与 RTL 过渡页恢复、宽图回调、末页进度及旧 ViewModel 销毁后应用级写入排序。主链和错误反馈分别确认行为红测，临时断开 Activity 按钮生产接线时主链测试失败；过渡页修复经实际 pager 事件红测与复审。`cp02-android-related-final2` 为 Android 相关 10 类 57/57，`cp02-data-final` 为共享 SQLite 6/6，`cp02-desktop-related-final` 为 Desktop 4 类 30/30；复审修复后 `cp02-transition-related-final2` 再验 Android 配对链 16/16 与相邻 viewer 6/6，`cp02-spotless-final` 通过格式检查。前一次组合回归因测试先挂 viewer 而与近末页自动预取重叠，手工预取尚未完成便断言；夹具改为先执行生产预取再挂 viewer，继续验证 adapter 首次显示与进度。Android 正常返回/重建时已受理写入由应用级队列继续执行；系统结束进程前未提交的写入只保证上次成功记录，没有进程退出排空 hook。正式 Android/Desktop 产物与运行验收留待 CP-03。

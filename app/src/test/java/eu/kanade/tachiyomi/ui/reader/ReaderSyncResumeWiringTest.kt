@@ -293,6 +293,7 @@ class ReaderSyncResumeWiringTest {
             recordReadingProgress = RecordReadingProgress(repository),
             setMangaViewerFlags = mockk(relaxed = true),
             getIncognitoState = mockk(relaxed = true),
+            pairingCoordinator = emptyChapterPairingCoordinator(),
             libraryPreferences = mockk<LibraryPreferences>(relaxed = true) {
                 every { markDuplicateReadChapterAsRead().get() } returns emptySet()
             },

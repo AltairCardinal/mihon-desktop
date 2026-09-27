@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -14,6 +15,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
@@ -32,6 +35,9 @@ fun ReaderBottomBar(
     modifier: Modifier = Modifier,
     isDualPageMode: Boolean = false,
     isAutomaticMode: Boolean = false,
+    isPairingSaving: Boolean = false,
+    isPairingUnavailable: Boolean = false,
+    onRetryPairing: () -> Unit = {},
     onClickAdjustPairing: () -> Unit = {},
 ) {
     Row(
@@ -68,11 +74,28 @@ fun ReaderBottomBar(
         }
 
         if (isDualPageMode) {
-            IconButton(onClick = onClickAdjustPairing) {
+            val savingDescription = stringResource(MR.strings.desktop_reader_pairing_saving)
+            IconButton(
+                onClick = onClickAdjustPairing,
+                enabled = !isPairingSaving && !isPairingUnavailable,
+                modifier = if (isPairingSaving) {
+                    Modifier.semantics { stateDescription = savingDescription }
+                } else {
+                    Modifier
+                },
+            ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_adjust_pairing_24dp),
                     contentDescription = stringResource(MR.strings.action_adjust_page_pairing),
                 )
+            }
+            if (isPairingUnavailable) {
+                IconButton(onClick = onRetryPairing) {
+                    Icon(
+                        imageVector = Icons.Outlined.Refresh,
+                        contentDescription = stringResource(MR.strings.action_retry),
+                    )
+                }
             }
         }
 

@@ -251,6 +251,7 @@ class AndroidReaderCoreProductionContractTest {
             recordReadingProgress = recordReadingProgress,
             setMangaViewerFlags = mockk(relaxed = true),
             getIncognitoState = getIncognitoState,
+            pairingCoordinator = emptyChapterPairingCoordinator(),
             libraryPreferences = libraryPreferences,
         )
     }

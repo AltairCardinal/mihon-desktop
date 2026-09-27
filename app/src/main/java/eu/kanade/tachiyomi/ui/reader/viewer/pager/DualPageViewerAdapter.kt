@@ -9,9 +9,11 @@ import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.model.loadedEntryPage
 import eu.kanade.tachiyomi.util.system.createReaderThemeContext
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
+import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.PageLayout
 import mihon.domain.reader.ReaderChapterBoundary
 import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.ReaderPairingAdjustment
 import mihon.domain.reader.ReaderPortraitSingleSlot
 import mihon.domain.reader.portraitSinglePageSlot
 import mihon.domain.reader.readerChapterBoundary
@@ -29,7 +31,7 @@ import tachiyomi.core.common.util.system.logcat
  */
 class DualPageViewerAdapter(
     private val viewer: DualPageR2LPagerViewer,
-    store: DualPagePairingStore = DualPagePairingStore(),
+    private val store: DualPagePairingStore = DualPagePairingStore(),
 ) : ViewPagerAdapter() {
 
     /** All items in ViewPager order (DisplayPage + ChapterTransition). */
@@ -55,6 +57,10 @@ class DualPageViewerAdapter(
         for (chapter in window) {
             val pages = chapter.pages
             if (pages == null) {
+                chapterPairings.remove(chapter)
+                continue
+            }
+            if (store.requiresRestoration && chapterPairings[chapter]?.pages !== pages) {
                 chapterPairings.remove(chapter)
                 continue
             }
@@ -86,6 +92,24 @@ class DualPageViewerAdapter(
         val chapter = currentChapter ?: return
         val target = chapterPairings[chapter]?.state?.adjustPairing(currentFirstPageIndex) ?: return
         rebuildItems(chapter.pages?.getOrNull(target))
+    }
+
+    fun previewAdjustment(currentFirstPageIndex: Int): ReaderPairingAdjustment? {
+        val chapter = currentChapter ?: return null
+        return chapterPairings[chapter]?.state?.previewAdjustment(currentFirstPageIndex)
+    }
+
+    fun appliedForcedSinglePages(): Set<Int> =
+        currentChapter?.let(chapterPairings::get)?.state?.forcedSinglePages.orEmpty()
+
+    fun applySavedPairing(
+        chapter: ReaderChapter,
+        pages: List<ReaderPage>,
+        snapshot: ChapterPairingSnapshot,
+        targetPage: ReaderPage?,
+    ) {
+        if (!store.applySaved(chapter, pages, snapshot)) return
+        if (currentChapter === chapter) rebuildItems(targetPage)
     }
 
     fun refresh() {
@@ -128,7 +152,7 @@ class DualPageViewerAdapter(
             }
             if (readerChapterBoundary(
                     chapters.prevChapter != null,
-                    chapters.prevChapter?.state is ReaderChapter.State.Loaded,
+                    isReadyForDisplay(chapters.prevChapter),
                 ) != ReaderChapterBoundary.NONE
             ) {
                 add(ChapterTransition.Prev(chapters.currChapter, chapters.prevChapter))
@@ -137,7 +161,7 @@ class DualPageViewerAdapter(
             nextTransition = ChapterTransition.Next(chapters.currChapter, chapters.nextChapter)
             if (readerChapterBoundary(
                     chapters.nextChapter != null,
-                    chapters.nextChapter?.state is ReaderChapter.State.Loaded,
+                    isReadyForDisplay(chapters.nextChapter),
                 ) != ReaderChapterBoundary.NONE
             ) {
                 add(requireNotNull(nextTransition))
@@ -154,6 +178,10 @@ class DualPageViewerAdapter(
             notifyDataSetChanged()
         }
     }
+
+    private fun isReadyForDisplay(chapter: ReaderChapter?): Boolean =
+        chapter?.state is ReaderChapter.State.Loaded &&
+            (!store.requiresRestoration || chapterPairings[chapter]?.pages === chapter.pages)
 
     private fun buildDisplayPages(pages: List<ReaderPage>, state: PairingState): List<DisplayPage> {
         val groups = state.pairings

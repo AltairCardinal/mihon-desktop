@@ -92,6 +92,24 @@ class ChapterPairingRepositoryIntegrationTest {
     }
 
     @Test
+    fun `replacement explicitly removes old boundaries even when a connection lacks cascade pragma`() = runBlocking {
+        open(JdbcSqliteDriver.IN_MEMORY, create = true).use { handler ->
+            seed(handler)
+            val repository = ChapterPairingRepositoryImpl(handler)
+            repository.replace(11, 10, 0, 9, setOf(3))
+            val driver = handlerDriver(handler)
+            driver.execute(null, "PRAGMA foreign_keys=OFF", 0)
+
+            val replaced = repository.replace(11, 10, 1, 8, setOf(3))
+
+            assertEquals(2L, replaced.revision)
+            assertEquals(8, repository.load(11, 10).record?.pageCount)
+            assertEquals(setOf(3), repository.load(11, 10).record?.forcedSinglePages)
+            assertEquals(1L, queryLong(driver, "SELECT COUNT(*) FROM chapter_pairing_boundaries WHERE chapter_id=11"))
+        }
+    }
+
+    @Test
     fun `oversized database ordinals and page count cannot wrap into a valid record`() = runBlocking {
         open(JdbcSqliteDriver.IN_MEMORY, create = true).use { handler ->
             seed(handler)

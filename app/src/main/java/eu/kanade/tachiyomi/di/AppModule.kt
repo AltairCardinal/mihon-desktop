@@ -23,9 +23,11 @@ import eu.kanade.tachiyomi.network.AndroidNetworkResponseAdapter
 import eu.kanade.tachiyomi.network.JavaScriptEngine
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.AndroidSourceManager
+import eu.kanade.tachiyomi.ui.reader.AndroidChapterPairingCoordinator
 import io.requery.android.database.sqlite.RequerySQLiteOpenHelperFactory
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.protobuf.ProtoBuf
+import mihon.domain.reader.ChapterPairingRepository
 import nl.adaptivity.xmlutil.XmlDeclMode
 import nl.adaptivity.xmlutil.core.XmlVersion
 import nl.adaptivity.xmlutil.serialization.XML
@@ -39,6 +41,7 @@ import tachiyomi.data.History
 import tachiyomi.data.Mangas
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
+import tachiyomi.data.chapter.ChapterPairingRepositoryImpl
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.source.local.image.LocalCoverManager
@@ -110,6 +113,8 @@ class AppModule(val app: Application) : InjektModule {
             )
         }
         addSingletonFactory<DatabaseHandler> { AndroidDatabaseHandler(get(), get()) }
+        addSingletonFactory<ChapterPairingRepository> { ChapterPairingRepositoryImpl(get()) }
+        addSingletonFactory { AndroidChapterPairingCoordinator(get()) }
 
         addSingletonFactory {
             Json {

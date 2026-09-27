@@ -34,6 +34,9 @@ SELECT page_ordinal FROM chapter_pairing_boundaries WHERE chapter_id = :chapterI
 deletePairing:
 DELETE FROM chapter_pairings WHERE chapter_id = :chapterId;
 
+deleteBoundaries:
+DELETE FROM chapter_pairing_boundaries WHERE chapter_id = :chapterId;
+
 insertPairing:
 INSERT INTO chapter_pairings(chapter_id, format_version, page_count, revision)
 VALUES (:chapterId, :formatVersion, :pageCount, :revision);

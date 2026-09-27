@@ -108,6 +108,7 @@ import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.ByteArrayOutputStream
+import tachiyomi.presentation.core.i18n.stringResource as composeStringResource
 
 open class ReaderActivity : BaseActivity() {
 
@@ -245,6 +246,12 @@ open class ReaderActivity : BaseActivity() {
                     ReaderViewModel.Event.SyncResumePageUnavailable -> {
                         toast(MR.strings.sync_resume_page_unavailable)
                     }
+                    ReaderViewModel.Event.ChapterPairingSaveFailed -> {
+                        toast(MR.strings.desktop_reader_pairing_save_failed)
+                    }
+                    ReaderViewModel.Event.ChapterPairingInvalid -> {
+                        toast(MR.strings.desktop_reader_pairing_invalid)
+                    }
                     is ReaderViewModel.Event.SetOrientation -> {
                         setOrientation(event.orientation)
                     }
@@ -331,6 +338,9 @@ open class ReaderActivity : BaseActivity() {
                     },
                 )
             }
+            is ReaderViewModel.Dialog.PairingRestoreError -> {
+                PairingRestoreControls()
+            }
             is ReaderViewModel.Dialog.Settings -> {
                 ReaderSettingsDialog(
                     onDismissRequest = onDismissRequest,
@@ -373,13 +383,25 @@ open class ReaderActivity : BaseActivity() {
         }
     }
 
+    @Composable
+    internal fun PairingRestoreControls() {
+        PairingRestoreDialog(
+            onRetry = viewModel::retryPairingRestore,
+            onUseDefault = viewModel::useDefaultPairingThisSession,
+        )
+    }
+
     /**
      * Called when the activity is destroyed. Cleans up the viewer, configuration and any view.
      */
     override fun onDestroy() {
         super.onDestroy()
         adaptiveViewport?.close()
-        viewModel.state.value.viewer?.destroy()
+        installedViewer?.let { viewer ->
+            viewer.destroy()
+            viewModel.onViewerUnloaded(viewer)
+        }
+        installedViewer = null
         config = null
         menuToggleToast?.cancel()
         readingModeToast?.cancel()
@@ -553,8 +575,11 @@ open class ReaderActivity : BaseActivity() {
             onClickSettings = viewModel::openSettingsDialog,
             isDualPageMode = state.viewer is DualPageR2LPagerViewer,
             isAutomaticMode = viewModel.getMangaReadingMode() == ReadingMode.AUTO.flagValue,
+            isPairingSaving = state.pairingSaving,
+            isPairingUnavailable = state.pairingReadUnavailable,
+            onRetryPairing = viewModel::retryPairingRestore,
             onClickAdjustPairing = {
-                (state.viewer as? DualPageR2LPagerViewer)?.adjustPagePairing()
+                (state.viewer as? DualPageR2LPagerViewer)?.let(viewModel::adjustChapterPairing)
             },
         )
     }
@@ -854,6 +879,19 @@ open class ReaderActivity : BaseActivity() {
         lifecycleScope.launchIO { viewModel.consumeAdjacentChapterEffect(chapter, effect) }
     }
 
+    /** A selected RTL transition may need a foreground pairing retry after page-list prefetch. */
+    internal fun requestTransitionChapterPairing(
+        source: DualPageR2LPagerViewer,
+        chapter: ReaderChapter,
+        effect: ReaderAdjacentChapterEffect,
+    ) {
+        lifecycleScope.launchIO {
+            viewModel.consumeAdjacentChapterEffect(chapter, effect) {
+                viewModel.state.value.viewer === source && source.isTransitionSelected(chapter)
+            }
+        }
+    }
+
     /**
      * Called from the viewer to toggle the visibility of the menu. It's implemented on the
      * viewer because each one implements its own touch and key events.
@@ -1135,4 +1173,20 @@ internal class ReaderChapterErrorRetryHandler(
     fun retry(dialog: ReaderViewModel.Dialog.ChapterError) {
         retryChapter(dialog.state.retryCommand())
     }
+}
+
+@Composable
+internal fun PairingRestoreDialog(onRetry: () -> Unit, onUseDefault: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = {},
+        confirmButton = {
+            TextButton(onClick = onRetry) { Text(composeStringResource(MR.strings.action_retry)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onUseDefault) {
+                Text(composeStringResource(MR.strings.desktop_reader_pairing_use_default))
+            }
+        },
+        text = { Text(composeStringResource(MR.strings.desktop_reader_pairing_load_failed)) },
+    )
 }

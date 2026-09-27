@@ -83,6 +83,7 @@ class ReaderChapterErrorUiIntegrationTest {
                 recordReadingProgress = mockk(relaxed = true),
                 setMangaViewerFlags = mockk(relaxed = true),
                 getIncognitoState = mockk(relaxed = true),
+                pairingCoordinator = emptyChapterPairingCoordinator(),
                 libraryPreferences = mockk(relaxed = true),
                 chapterLoaderFactory = { _: Manga, _: Source -> chapterLoader },
             )

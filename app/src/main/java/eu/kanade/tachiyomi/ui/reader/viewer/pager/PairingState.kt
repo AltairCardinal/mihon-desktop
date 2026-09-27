@@ -10,10 +10,12 @@ class PairingState(
     val isR2L: Boolean,
     initialLayout: PageLayout = PageLayout.UNKNOWN,
     forceFirstPageSingle: Boolean = false,
+    forcedSinglePages: Set<Int> = emptySet(),
 ) {
     private var options = PagePairingOptions(
         pairAdjacentPortraitPages = true,
         forceFirstPageSingle = forceFirstPageSingle,
+        forcedSinglePages = forcedSinglePages,
     )
     private val shared = ReaderPairingState(
         pageCount = pageCount,
@@ -23,6 +25,18 @@ class PairingState(
     )
 
     val pairings: List<IntArray> get() = shared.pairings
+    val forcedSinglePages: Set<Int> get() = options.forcedSinglePages
+
+    fun previewAdjustment(currentPage: Int): mihon.domain.reader.ReaderPairingAdjustment {
+        val index = shared.findDisplayUnitIndexForPage(currentPage)
+        val visible = shared.pairings.getOrNull(index)?.toList().orEmpty()
+        return mihon.domain.reader.adjustReaderPairing(currentPage, visible, options.forcedSinglePages)
+    }
+
+    fun applyForcedSinglePages(forcedSinglePages: Set<Int>) {
+        options = options.copy(forcedSinglePages = forcedSinglePages)
+        shared.updateOptions(options)
+    }
 
     fun updateDimensions(pageIndex: Int, width: Int, height: Int) =
         shared.updateDimensions(pageIndex, width, height)
@@ -30,11 +44,8 @@ class PairingState(
     fun adjustPairing() = shared.adjustPairing()
 
     fun adjustPairing(currentPage: Int): Int {
-        val index = shared.findDisplayUnitIndexForPage(currentPage)
-        val visible = shared.pairings.getOrNull(index)?.toList().orEmpty()
-        val adjustment = mihon.domain.reader.adjustReaderPairing(currentPage, visible, options.forcedSinglePages)
-        options = options.copy(forcedSinglePages = adjustment.forcedSinglePages)
-        shared.updateOptions(options)
+        val adjustment = previewAdjustment(currentPage)
+        applyForcedSinglePages(adjustment.forcedSinglePages)
         return adjustment.currentPage
     }
 

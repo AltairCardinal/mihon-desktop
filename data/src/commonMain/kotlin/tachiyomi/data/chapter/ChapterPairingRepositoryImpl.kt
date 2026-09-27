@@ -46,6 +46,7 @@ class ChapterPairingRepositoryImpl(private val handler: DatabaseHandler) : Chapt
             if (actualRevision != expectedRevision) throw StaleChapterPairingException()
             check(actualRevision < Long.MAX_VALUE) { "Chapter pairing revision exhausted" }
             val revision = actualRevision + 1L
+            chapter_pairingsQueries.deleteBoundaries(chapterId)
             chapter_pairingsQueries.deletePairing(chapterId)
             if (actualRevision == 0L) {
                 chapter_pairingsQueries.insertRevision(chapterId, revision)

@@ -20,6 +20,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel
+import eu.kanade.tachiyomi.ui.reader.emptyChapterPairingCoordinator
 import eu.kanade.tachiyomi.ui.reader.loader.ChapterLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
@@ -206,6 +207,7 @@ class DualPageProgressProductionWiringTest {
             recordReadingProgress = RecordReadingProgress(repository),
             setMangaViewerFlags = mockk(relaxed = true),
             getIncognitoState = getIncognitoState,
+            pairingCoordinator = emptyChapterPairingCoordinator(),
             libraryPreferences = libraryPreferences,
             chapterLoaderFactory = { _: Manga, _: Source -> chapterLoader },
         )

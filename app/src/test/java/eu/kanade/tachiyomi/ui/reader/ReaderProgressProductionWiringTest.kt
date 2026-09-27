@@ -137,6 +137,7 @@ class ReaderProgressProductionWiringTest {
                 recordReadingProgress = recorder,
                 setMangaViewerFlags = mockk(relaxed = true),
                 getIncognitoState = getIncognitoState,
+                pairingCoordinator = emptyChapterPairingCoordinator(),
                 libraryPreferences = libraryPreferences,
                 chapterLoaderFactory = { _: Manga, _: Source -> chapterLoader },
             )

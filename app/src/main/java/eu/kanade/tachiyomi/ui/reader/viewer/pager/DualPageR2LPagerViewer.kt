@@ -14,13 +14,16 @@ import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
+import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.ReaderAdjacentChapterPolicy
+import mihon.domain.reader.ReaderPairingAdjustment
 import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.injectLazy
 import kotlin.math.min
@@ -37,7 +40,7 @@ import kotlin.math.min
 @Suppress("LeakingThis")
 class DualPageR2LPagerViewer(
     override val activity: ReaderActivity,
-    pairingStore: DualPagePairingStore = DualPagePairingStore(),
+    private val pairingStore: DualPagePairingStore = DualPagePairingStore(),
 ) : Viewer, ViewerWithPager {
 
     override val downloadManager: DownloadManager by injectLazy()
@@ -322,14 +325,20 @@ class DualPageR2LPagerViewer(
         logcat { "onTransitionSelected: $transition" }
         val toChapter = transition.to
         if (toChapter != null) {
-            activity.requestPreloadChapter(
-                toChapter,
-                ReaderAdjacentChapterPolicy.transitionPageEffect(),
-            )
+            val effect = ReaderAdjacentChapterPolicy.transitionPageEffect()
+            val pages = toChapter.pages
+            if (pages != null && pairingStore.requiresRestoration && !pairingStore.isRestored(toChapter, pages)) {
+                activity.requestTransitionChapterPairing(this, toChapter, effect)
+            } else {
+                activity.requestPreloadChapter(toChapter, effect)
+            }
         } else if (transition is ChapterTransition.Next) {
             activity.showMenu()
         }
     }
+
+    internal fun isTransitionSelected(chapter: ReaderChapter): Boolean =
+        !destroyed && (currentPage as? ChapterTransition)?.to === chapter
 
     // ── Adjust pairing ───────────────────────────────────────────────────────
 
@@ -340,6 +349,26 @@ class DualPageR2LPagerViewer(
     fun adjustPagePairing() {
         val currentFirstPageIndex = (currentPage as? DisplayPage)?.firstPage?.index ?: return
         adapter.adjustPairing(currentFirstPageIndex)
+    }
+
+    fun pairingAdjustmentRequest(): PairingAdjustmentRequest? {
+        val selected = currentPage as? DisplayPage ?: return null
+        val chapter = selected.firstPage.chapter
+        if (chapter !== adapter.currentChapter) return null
+        val pages = chapter.pages ?: return null
+        val adjustment = adapter.previewAdjustment(selected.firstPage.index) ?: return null
+        if (adjustment.forcedSinglePages == adapter.appliedForcedSinglePages()) return null
+        return PairingAdjustmentRequest(chapter, pages, selected.firstPage.index, adjustment)
+    }
+
+    fun applySavedPairing(request: PairingAdjustmentRequest, snapshot: ChapterPairingSnapshot) {
+        val selected = currentPage as? DisplayPage
+        val target = request.pages.getOrNull(request.adjustment.currentPage)
+            ?.takeIf {
+                selected?.firstPage?.chapter === request.chapter &&
+                    selected.firstPage.index == request.anchorIndex
+            }
+        adapter.applySavedPairing(request.chapter, request.pages, snapshot, target)
     }
 
     internal fun replacePairing(anchor: ReaderPage?, layoutOnly: Boolean, replace: () -> Unit) {
@@ -370,3 +399,10 @@ class DualPageR2LPagerViewer(
             .filterIsInstance<DualPagerPageHolder>()
             .firstOrNull { it.displayPage.firstPage == page }
 }
+
+data class PairingAdjustmentRequest(
+    val chapter: ReaderChapter,
+    val pages: List<ReaderPage>,
+    val anchorIndex: Int,
+    val adjustment: ReaderPairingAdjustment,
+)

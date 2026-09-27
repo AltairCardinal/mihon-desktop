@@ -37,6 +37,8 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.PairingAdjustmentRequest
 import eu.kanade.tachiyomi.util.chapter.filterDownloaded
 import eu.kanade.tachiyomi.util.chapter.removeDuplicates
 import eu.kanade.tachiyomi.util.editCover
@@ -44,6 +46,7 @@ import eu.kanade.tachiyomi.util.lang.byteSize
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.cacheImageDir
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -58,9 +61,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
 import mihon.domain.error.AppError
+import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.ChapterSkipPolicy
 import mihon.domain.reader.ReaderAdjacentChapterEffect
 import mihon.domain.reader.ReaderChapterEntry
@@ -134,12 +139,16 @@ class ReaderViewModel @JvmOverloads constructor(
     private val setMangaViewerFlags: SetMangaViewerFlags = Injekt.get(),
     private val getIncognitoState: GetIncognitoState = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
+    private val pairingCoordinator: AndroidChapterPairingCoordinator = Injekt.get(),
+    private val pairingCallbackDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
     private val chapterLoaderFactory: (Manga, Source) -> ChapterLoader = { manga, source ->
         ChapterLoader(Injekt.get<Application>(), downloadManager, downloadProvider, manga, source)
     },
 ) : ViewModel() {
 
-    val dualPagePairings = eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagePairingStore()
+    val dualPagePairings = eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagePairingStore(requiresRestoration = true)
+    private var pairingSaveSequence = 0L
+    private var pairingRetryChapter: ReaderChapter? = null
     var automaticDualPage: Boolean? = null
     var currentReaderPage: ReaderPage? = null
         private set
@@ -152,6 +161,42 @@ class ReaderViewModel @JvmOverloads constructor(
         chapterPageIndex = page.index
         mutableState.update { it.copy(currentPage = page.index + 1) }
     }
+
+    fun adjustChapterPairing(viewer: DualPageR2LPagerViewer) {
+        val request = viewer.pairingAdjustmentRequest() ?: return
+        val chapterId = request.chapter.chapter.id ?: return
+        val mangaId = manga?.id ?: return
+        val snapshot = dualPagePairings.snapshot(request.chapter, request.pages) ?: return
+        if (state.value.currentChapter !== request.chapter || state.value.pairingSaving) return
+        val sequence = ++pairingSaveSequence
+        mutableState.update { it.copy(pairingSaving = true) }
+        val accepted = pairingCoordinator.submit(chapterId) {
+            replace(chapterId, mangaId, snapshot.revision, request.pages.size, request.adjustment.forcedSinglePages)
+        }
+        viewModelScope.launch(pairingCallbackDispatcher) {
+            try {
+                val saved = accepted.await()
+                if (!isCurrentPairingRequest(request, mangaId, sequence)) return@launch
+                val currentViewer = state.value.viewer as? DualPageR2LPagerViewer
+                if (currentViewer == null) {
+                    dualPagePairings.applySaved(request.chapter, request.pages, saved)
+                } else {
+                    currentViewer.applySavedPairing(request, saved)
+                }
+                mutableState.update { it.copy(pairingSaving = false) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                if (!isCurrentPairingRequest(request, mangaId, sequence)) return@launch
+                mutableState.update { it.copy(pairingSaving = false) }
+                eventChannel.send(Event.ChapterPairingSaveFailed)
+            }
+        }
+    }
+
+    private fun isCurrentPairingRequest(request: PairingAdjustmentRequest, mangaId: Long, sequence: Long): Boolean =
+        pairingSaveSequence == sequence && manga?.id == mangaId &&
+            state.value.currentChapter === request.chapter && request.chapter.pages === request.pages
 
     private val mutableState = MutableStateFlow(State())
     val state = mutableState.asStateFlow()
@@ -398,6 +443,7 @@ class ReaderViewModel @JvmOverloads constructor(
         chapter: ReaderChapter,
         activationIntent: ReaderChapterWindowIntent.OpenAdjacent? = null,
         canActivate: () -> Boolean = { true },
+        useDefaultPairing: Boolean = false,
     ): ReadingActivation? {
         if (activationIntent == null) {
             loader.loadChapter(chapter)
@@ -418,6 +464,26 @@ class ReaderViewModel @JvmOverloads constructor(
             chapterList.getOrNull(chapterPos - 1),
             chapterList.getOrNull(chapterPos + 1),
         )
+
+        val pairingSnapshot = if (useDefaultPairing || chapter.pages.isNullOrEmpty()) {
+            ChapterPairingSnapshot(null, 0)
+        } else {
+            val chapterId = requireNotNull(chapter.chapter.id)
+            val mangaId = requireNotNull(manga?.id)
+            try {
+                pairingCoordinator.submit(chapterId) { load(chapterId, mangaId) }.await()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                withUIContext {
+                    if (canActivate()) {
+                        pairingRetryChapter = chapter
+                        mutableState.update { it.copy(dialog = Dialog.PairingRestoreError(chapter)) }
+                    }
+                }
+                return null
+            }
+        }
 
         return withUIContext {
             val expectedWindow = chapterWindowOwner.snapshot
@@ -450,6 +516,10 @@ class ReaderViewModel @JvmOverloads constructor(
             }
 
             val newChapters = requireNotNull(chapterWindowOwner.viewerChapters())
+            pairingSaveSequence++
+            newChapters.currChapter.pages?.let { pages ->
+                dualPagePairings.install(newChapters.currChapter, pages, pairingSnapshot, canSave = !useDefaultPairing)
+            }
             val window = requireNotNull(windowReduction.snapshot)
             val activation = ReadingActivation(newChapters.currChapter, window.activationSequence, session)
             val invalidResumePage = resume != null && resume.pageIndex !in chapter.pages.orEmpty().indices
@@ -465,7 +535,20 @@ class ReaderViewModel @JvmOverloads constructor(
                     viewerChapters = newChapters,
                     chapterWindow = window,
                     bookmarked = newChapters.currChapter.chapter.bookmark,
+                    pairingReadUnavailable = useDefaultPairing,
+                    pairingSaving = false,
+                    dialog = if (it.dialog is Dialog.PairingRestoreError ||
+                        it.dialog == Dialog.Loading
+                    ) {
+                        null
+                    } else {
+                        it.dialog
+                    },
                 )
+            }
+            if (!useDefaultPairing) pairingRetryChapter = null
+            if (pairingSnapshot.record?.isValidFor(chapter.pages.orEmpty().size) == false) {
+                eventChannel.trySend(Event.ChapterPairingInvalid)
             }
             if (invalidResumePage) eventChannel.send(Event.SyncResumePageUnavailable)
             activation
@@ -489,9 +572,9 @@ class ReaderViewModel @JvmOverloads constructor(
             if (!readerProgressSettlementArbiter.isLatest(settlementSequence)) return@async null
 
             try {
-                loadChapter(loader, chapter, activationIntent) {
+                loadChapter(loader, chapter, activationIntent, canActivate = {
                     readerProgressSettlementArbiter.isLatest(settlementSequence)
-                }
+                })
             } catch (e: Throwable) {
                 if (e is CancellationException) {
                     throw e
@@ -530,65 +613,112 @@ class ReaderViewModel @JvmOverloads constructor(
     internal suspend fun consumeAdjacentChapterEffect(
         chapter: ReaderChapter,
         effect: ReaderAdjacentChapterEffect,
+        shouldPromptPairingError: () -> Boolean = { false },
     ) {
         when (effect) {
-            ReaderAdjacentChapterEffect.LoadAdjacentChapterPageList -> preload(chapter)
+            ReaderAdjacentChapterEffect.LoadAdjacentChapterPageList -> preload(chapter, shouldPromptPairingError)
         }
     }
 
-    private suspend fun preload(chapter: ReaderChapter) {
+    private suspend fun preload(chapter: ReaderChapter, shouldPromptPairingError: () -> Boolean) {
         val purpose = when (chapter.sharedSessionStateFlow.value.activeChapter.loadState) {
             ReaderChapterLoadState.Wait -> ReaderChapterLoadPurpose.PREFETCH
             is ReaderChapterLoadState.Error -> ReaderChapterLoadPurpose.RETRY
-            ReaderChapterLoadState.LoadingPageList,
-            ReaderChapterLoadState.Loaded,
-            -> return
+            ReaderChapterLoadState.LoadingPageList -> return
+            ReaderChapterLoadState.Loaded -> {
+                val pages = chapter.pages ?: return
+                if (!withUIContext { shouldPromptPairingError() } || dualPagePairings.isRestored(chapter, pages)) return
+                null
+            }
         }
-        val pageListEffect = chapterWindowOwner.pageListEffect(chapter, purpose) ?: return
+        if (purpose != null) {
+            val pageListEffect = chapterWindowOwner.pageListEffect(chapter, purpose) ?: return
 
-        val storageResetToken = chapter.storageChangeResetToken()
-        if (storageResetToken != null) {
-            val manga = manga ?: return
-            val dbChapter = chapter.chapter
-            val isDownloaded = downloadManager.isChapterDownloaded(
-                dbChapter.name,
-                dbChapter.scanlator,
-                dbChapter.url,
-                manga.title,
-                manga.source,
-                skipCache = true,
-            )
-            if (isDownloaded && !chapter.resetPageListForStorageChange(storageResetToken)) {
+            val storageResetToken = chapter.storageChangeResetToken()
+            if (storageResetToken != null) {
+                val manga = manga ?: return
+                val dbChapter = chapter.chapter
+                val isDownloaded = downloadManager.isChapterDownloaded(
+                    dbChapter.name,
+                    dbChapter.scanlator,
+                    dbChapter.url,
+                    manga.title,
+                    manga.source,
+                    skipCache = true,
+                )
+                if (isDownloaded && !chapter.resetPageListForStorageChange(storageResetToken)) {
+                    return
+                }
+            }
+
+            when (chapter.sharedSessionStateFlow.value.activeChapter.loadState) {
+                ReaderChapterLoadState.Wait,
+                is ReaderChapterLoadState.Error,
+                -> Unit
+                ReaderChapterLoadState.LoadingPageList,
+                ReaderChapterLoadState.Loaded,
+                -> return
+            }
+
+            val loader = loader ?: return
+            try {
+                logcat { "Preloading ${chapter.chapter.url}" }
+                loader.loadChapter(chapter, pageListEffect)
+            } catch (e: Throwable) {
+                if (e is CancellationException) {
+                    throw e
+                }
                 return
             }
         }
-
-        when (chapter.sharedSessionStateFlow.value.activeChapter.loadState) {
-            ReaderChapterLoadState.Wait,
-            is ReaderChapterLoadState.Error,
-            -> Unit
-            ReaderChapterLoadState.LoadingPageList,
-            ReaderChapterLoadState.Loaded,
-            -> return
+        val pages = chapter.pages
+        if (pages.isNullOrEmpty()) {
+            eventChannel.trySend(Event.ReloadViewerChapters)
+            return
         }
-
-        val loader = loader ?: return
-        try {
-            logcat { "Preloading ${chapter.chapter.url}" }
-            loader.loadChapter(chapter, pageListEffect)
-        } catch (e: Throwable) {
-            if (e is CancellationException) {
-                throw e
+        val chapterId = requireNotNull(chapter.chapter.id)
+        val mangaId = requireNotNull(manga?.id)
+        val snapshot = try {
+            pairingCoordinator.submit(chapterId) { load(chapterId, mangaId) }.await()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            withUIContext {
+                val window = state.value.viewerChapters
+                if (
+                    shouldPromptPairingError() && manga?.id == mangaId && chapter.pages === pages &&
+                    chapter in listOfNotNull(window?.prevChapter, window?.nextChapter)
+                ) {
+                    pairingRetryChapter = chapter
+                    mutableState.update { it.copy(dialog = Dialog.PairingRestoreError(chapter)) }
+                }
             }
             return
         }
-        eventChannel.trySend(Event.ReloadViewerChapters)
+        withUIContext {
+            val window = state.value.viewerChapters
+            if (
+                manga?.id != mangaId || chapter.pages !== pages ||
+                chapter !in listOfNotNull(window?.prevChapter, window?.currChapter, window?.nextChapter)
+            ) {
+                return@withUIContext
+            }
+            dualPagePairings.install(chapter, pages, snapshot)
+            if (snapshot.record?.isValidFor(pages.size) == false) {
+                eventChannel.trySend(Event.ChapterPairingInvalid)
+            }
+            eventChannel.trySend(Event.ReloadViewerChapters)
+        }
     }
 
     fun onViewerLoaded(viewer: Viewer?) {
         mutableState.update {
             it.copy(viewer = viewer)
         }
+    }
+
+    fun onViewerUnloaded(viewer: Viewer) {
+        mutableState.update { if (it.viewer === viewer) it.copy(viewer = null) else it }
     }
 
     private fun createAdjacentActivationIntent(
@@ -1085,6 +1215,50 @@ class ReaderViewModel @JvmOverloads constructor(
         }
     }
 
+    fun retryPairingRestore() {
+        val chapter = (state.value.dialog as? Dialog.PairingRestoreError)?.chapter ?: pairingRetryChapter ?: return
+        val chapterLoader = loader ?: return
+        viewModelScope.launchIO {
+            mutableState.update { it.copy(dialog = Dialog.Loading) }
+            val current = state.value.currentChapter
+            val intent = if (current != null && current !== chapter) createAdjacentActivationIntent(chapter) else null
+            if (current != null && current !== chapter && intent == null) {
+                mutableState.update { it.copy(dialog = null) }
+                return@launchIO
+            }
+            try {
+                val activation = loadChapter(chapterLoader, chapter, intent)
+                if (activation != null) eventChannel.send(Event.ReloadViewerChapters)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                showChapterError(chapter, error)
+            }
+        }
+    }
+
+    fun useDefaultPairingThisSession() {
+        val chapter = (state.value.dialog as? Dialog.PairingRestoreError)?.chapter ?: return
+        val chapterLoader = loader ?: return
+        viewModelScope.launchIO {
+            mutableState.update { it.copy(dialog = Dialog.Loading) }
+            val current = state.value.currentChapter
+            val intent = if (current != null && current !== chapter) createAdjacentActivationIntent(chapter) else null
+            if (current != null && current !== chapter && intent == null) {
+                mutableState.update { it.copy(dialog = null) }
+                return@launchIO
+            }
+            try {
+                val activation = loadChapter(chapterLoader, chapter, intent, useDefaultPairing = true)
+                if (activation != null) eventChannel.send(Event.ReloadViewerChapters)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                showChapterError(chapter, error)
+            }
+        }
+    }
+
     private fun showChapterError(chapter: ReaderChapter, error: Throwable) {
         val sharedError = chapter.sharedStateFlow.value as? ReaderChapterState.Error
             ?: ReaderChapterState.Error(
@@ -1265,6 +1439,8 @@ class ReaderViewModel @JvmOverloads constructor(
          */
         val viewer: Viewer? = null,
         val dialog: Dialog? = null,
+        val pairingSaving: Boolean = false,
+        val pairingReadUnavailable: Boolean = false,
         val menuVisible: Boolean = false,
         @IntRange(from = -100, to = 100) val brightnessOverlayValue: Int = 0,
     ) {
@@ -1278,6 +1454,7 @@ class ReaderViewModel @JvmOverloads constructor(
     sealed interface Dialog {
         data object Loading : Dialog
         data class ChapterError(val state: ReaderChapterState.Error) : Dialog
+        data class PairingRestoreError(val chapter: ReaderChapter) : Dialog
         data object Settings : Dialog
         data object ReadingModeSelect : Dialog
         data object OrientationModeSelect : Dialog
@@ -1285,6 +1462,8 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     sealed interface Event {
+        data object ChapterPairingSaveFailed : Event
+        data object ChapterPairingInvalid : Event
         data object ReloadViewerChapters : Event
         data object PageChanged : Event
         data object SyncResumePageUnavailable : Event
