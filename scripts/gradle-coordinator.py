@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -34,7 +35,8 @@ def load_state(state_dir: Path, key: str) -> dict[str, object] | None:
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else None
     except (OSError, json.JSONDecodeError):
         return None
 
@@ -338,13 +340,20 @@ def command_start(args: argparse.Namespace) -> int:
         print("ERROR: start requires a command after --", file=sys.stderr)
         return 2
 
-    with state_lock(args.state_dir, args.key):
+    with state_lock(args.state_dir, "_launch"), state_lock(args.state_dir, args.key):
+        conflict = active_other_key(args.state_dir, args.key)
+        if conflict:
+            print(f"ERROR: coordinator is busy: {conflict}", file=sys.stderr)
+            return 2
         existing = load_state(args.state_dir, args.key)
         if (
             existing
             and existing.get("status") in ACTIVE
             and active_process_is_alive(existing)
         ):
+            if existing.get("command") != command or existing.get("cwd") != str(Path.cwd().resolve()):
+                print(f"ERROR: coordinator key is busy with a different command: {args.key}", file=sys.stderr)
+                return 2
             print(
                 f"ATTACHED key={args.key} status={existing['status']} "
                 f"workerPid={existing['workerPid']} processPid={existing.get('processPid')}"
@@ -380,6 +389,7 @@ def command_start(args: argparse.Namespace) -> int:
             args.key,
             {
                 "status": "STARTING",
+                "cwd": str(Path.cwd().resolve()),
                 "command": command,
                 "workerPid": worker.pid,
                 "workerIdentity": worker_identity,
@@ -398,6 +408,17 @@ def command_run(args: argparse.Namespace) -> int:
     if start_exit_code != 0:
         return start_exit_code
     return command_wait(args)
+
+
+def active_other_key(state_dir: Path, key: str) -> str | None:
+    """Called under the launch lock so competing starts cannot pass together."""
+    for path in state_dir.glob("*.json"):
+        if path.stem == key:
+            continue
+        state = load_state(state_dir, path.stem)
+        if state and state.get("status") in ACTIVE and active_process_is_alive(state):
+            return path.stem
+    return None
 
 
 def command_foreground(args: argparse.Namespace) -> int:
@@ -419,14 +440,18 @@ def command_foreground(args: argparse.Namespace) -> int:
     output = None
     process_identity_value: str | None = None
     quick_exit_code: int | None = None
-    with state_lock(args.state_dir, args.key):
+    with state_lock(args.state_dir, "_launch"), state_lock(args.state_dir, args.key):
+        conflict = active_other_key(args.state_dir, args.key)
+        if conflict:
+            print(f"ERROR: coordinator is busy: {conflict}", file=sys.stderr)
+            return 2
         existing = load_state(args.state_dir, args.key)
         if (
             existing
             and existing.get("status") in ACTIVE
             and active_process_is_alive(existing)
         ):
-            if existing.get("command") != command:
+            if existing.get("command") != command or existing.get("cwd") != str(Path.cwd().resolve()):
                 print(
                     f"ERROR: coordinator key is busy with a different command: {args.key}",
                     file=sys.stderr,
@@ -442,6 +467,7 @@ def command_foreground(args: argparse.Namespace) -> int:
             path.parent.mkdir(parents=True, exist_ok=True)
             state = {
                 "status": "STARTING",
+                "cwd": str(Path.cwd().resolve()),
                 "command": command,
                 "workerPid": owner_pid,
                 "workerIdentity": owner_identity,
@@ -843,6 +869,9 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = parser().parse_args()
+    if args.key.startswith("_") or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", args.key):
+        print("ERROR: invalid or reserved coordinator key", file=sys.stderr)
+        return 2
     actions = {
         "start": command_start,
         "run": command_run,

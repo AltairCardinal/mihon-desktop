@@ -134,6 +134,69 @@ class GradleCoordinatorTest(unittest.TestCase):
         self.assertEqual(7, waited.returncode)
         self.assertIn("FAILED", waited.stdout)
 
+    def test_other_key_cannot_start_while_managed_process_is_alive(self) -> None:
+        command = [sys.executable, "-c", "import time; time.sleep(3)"]
+        first = self.run_command("start", "--", *command)
+        self.assertEqual(0, first.returncode, first.stderr)
+        original_key = self.key
+        try:
+            self.key = "competing-build"
+            second = self.run_command("start", "--", *command)
+            self.assertNotEqual(0, second.returncode, second.stdout)
+            self.assertIn("busy", second.stderr)
+        finally:
+            self.run_command("stop")
+            self.key = original_key
+
+    def test_start_does_not_attach_to_different_command(self) -> None:
+        first = self.run_command("start", "--", sys.executable, "-c", "import time; time.sleep(3)")
+        self.assertEqual(0, first.returncode, first.stderr)
+        second = self.run_command("start", "--", sys.executable, "-c", "print('different')")
+        self.assertNotEqual(0, second.returncode)
+        self.assertIn("different command", second.stderr)
+
+    def test_simultaneous_keys_start_only_one_child(self) -> None:
+        original = self.key
+        processes = []
+        keys = ["race-a", "race-b"]
+        try:
+            for key in keys:
+                self.key = key
+                marker = self.state_dir / f"{key}.started"
+                code = "from pathlib import Path; import sys,time; Path(sys.argv[1]).write_text('started',encoding='utf-8'); time.sleep(3)"
+                processes.append(subprocess.Popen(self.coordinator_command("start", "--", sys.executable, "-c", code, str(marker)), cwd=REPO_ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", env=self.utf8_environment()))
+            results = [(process, process.communicate(timeout=10)) for process in processes]
+            self.assertEqual(sorted(process.returncode for process, _ in results), [0, 2])
+            deadline = time.monotonic() + 2
+            while not list(self.state_dir.glob("*.started")) and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertEqual(len(list(self.state_dir.glob("*.started"))), 1)
+        finally:
+            for key in keys:
+                self.key = key
+                self.run_command("stop")
+            self.key = original
+
+    def test_non_state_json_is_ignored_and_reserved_keys_are_rejected(self) -> None:
+        (self.state_dir / "report.json").write_text("[]", encoding="utf-8")
+        result = self.run_command("run", "--timeout-seconds", "5", "--", sys.executable, "-c", "print('done')")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        original = self.key
+        try:
+            self.key = "_launch"
+            result = self.run_command("start", "--", sys.executable, "-c", "print('must not run')")
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("reserved", result.stderr)
+        finally:
+            self.key = original
+
+    def test_same_key_and_command_cannot_attach_from_another_directory(self) -> None:
+        command = [sys.executable, "-c", "import time; time.sleep(3)"]
+        self.assertEqual(self.run_command("start", "--", *command).returncode, 0)
+        result = subprocess.run(self.coordinator_command("start", "--", *command), cwd=self.state_dir, capture_output=True, text=True, encoding="utf-8", env=self.utf8_environment())
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("different command", result.stderr)
+
     def test_run_starts_and_waits_for_one_managed_process(self) -> None:
         completed = self.run_command(
             "run",

@@ -1,14 +1,16 @@
 # Sign only the verified release identity, keeping secrets out of Gradle and process arguments.
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$InputApk,
-    [Parameter(Mandatory)][string]$OutputApk,
+    [string]$InputApk,
+    [string]$OutputApk,
+    [switch]$CheckOnly,
     [switch]$Instrumentation,
     [string]$SigningDirectory = 'D:/Android/Signing/mihon-desktop-fork',
     [string]$BuildTools = 'D:/Android/Sdk/build-tools/36.0.0'
 )
 
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $release = @{}
 $configPath = Join-Path $PSScriptRoot '../gradle/android-release.properties'
 foreach ($line in [IO.File]::ReadAllLines($configPath, [Text.Encoding]::UTF8)) {
@@ -24,6 +26,8 @@ if ($release.applicationId -ne 'app.mihon.desktop.fork' -or
 $ExpectedCertificate = $release.releaseCertificateSha256
 $expectedIdPattern = [regex]::Escape($release.applicationId)
 $expectedVersionPattern = [regex]::Escape($release.versionName)
+if (-not $CheckOnly) {
+if ([string]::IsNullOrWhiteSpace($InputApk) -or [string]::IsNullOrWhiteSpace($OutputApk)) { throw 'InputApk and OutputApk are required for signing' }
 $inputFile = (Resolve-Path -LiteralPath $InputApk).Path
 $outputFile = [IO.Path]::GetFullPath($OutputApk)
 if (Test-Path -LiteralPath $outputFile) { throw 'Refusing to overwrite an existing signed artifact' }
@@ -43,6 +47,7 @@ if ($Instrumentation) {
 }
 & (Join-Path $BuildTools 'zipalign.exe') -c -p 4 $inputFile
 if ($LASTEXITCODE -ne 0) { throw 'Input APK is not aligned' }
+}
 
 $keyFile = Join-Path $SigningDirectory 'release.p12'
 $passwordFile = Join-Path $SigningDirectory 'password.dpapi.xml'
@@ -54,6 +59,22 @@ $pointer = [IntPtr]::Zero
 try {
     $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
     $env:MIHON_RELEASE_STORE_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
+    $keytool = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin/keytool.exe' } else { 'keytool.exe' }
+    $certificateInfo = & $keytool '-J-Duser.language=en' '-J-Duser.country=US' -list -v `
+        -keystore $keyFile -alias mihon-desktop-fork -storepass:env MIHON_RELEASE_STORE_PASSWORD 2>&1
+    if ($LASTEXITCODE -ne 0) { throw 'Release key cannot be opened with the existing DPAPI credential' }
+    $fingerprint = ($certificateInfo | Select-String -Pattern '^\s*SHA256:\s*(.*)$').Matches.Groups[1].Value.Replace(':', '').ToLowerInvariant()
+    if ($fingerprint -ne $ExpectedCertificate) { throw 'Release key certificate differs from the established identity' }
+    # Producing a CSR exercises the actual private key; discard this public diagnostic output.
+    $request = & $keytool '-J-Duser.language=en' '-J-Duser.country=US' -certreq `
+        -keystore $keyFile -alias mihon-desktop-fork -storepass:env MIHON_RELEASE_STORE_PASSWORD `
+        -keypass:env MIHON_RELEASE_STORE_PASSWORD 2>&1
+    if ($LASTEXITCODE -ne 0) { throw 'Release private key cannot sign with the current credential' }
+    $request = $null
+    if ($CheckOnly) {
+        Write-Output "RELEASE_SIGNING_READY certificateSha256=$fingerprint"
+        return
+    }
     $directory = Split-Path -Parent $outputFile
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
     & (Join-Path $BuildTools 'apksigner.bat') sign --ks $keyFile --ks-key-alias mihon-desktop-fork `

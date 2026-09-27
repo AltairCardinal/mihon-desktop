@@ -2,7 +2,7 @@
 
 日期：2026-09-28。设计依据：[Android 构建、签名、交付与验收规范](../architecture/android-build-and-acceptance.md)。
 
-active-task: AB-02
+active-task: AB-03
 
 ## 范围与执行预算
 
@@ -17,7 +17,7 @@ active-task: AB-02
   - 迁移 Gradle 发布约束、签名脚本配置读取、专项隔离 init 前置断言和日常 CI 的不兼容参数；旧 fork init 暂作兼容入口。
   - 真实 AGP 配置/variant 红绿、merged manifest authority/test target、禁止参数负例；不以字符串扫描代替行为测试。
   - 身份与签名接口通过主代理独立检查后，AB-02 才消费。实际 APK/升级验证统一在 AB-04 完成，不提前把配置通过写成运行通过。
-- [ ] **AB-02：统一构建、验证和安装入口。**
+- [x] **AB-02：统一构建、验证和安装入口。**
   - 薄 Python 入口复用协调器、Gradle 和外部签名，提供 check/debug/candidate/verify/install；候选输出 APK、mapping 及紧凑清单。
   - 测试未签名、错误身份/版本/证书、篡改、缺密钥、已占用任务、历史产物保护；无明确 install 动作不写设备。
   - 签名与安装边界独立审查；实际 SDK/APK 验证和模拟设备边界结合，不能只 mock 被验收的 APK parser/签名检查。
@@ -43,3 +43,11 @@ active-task: AB-02
 - `:app:spotlessKotlinCheck`、PowerShell 语法检查与 `git diff --check` 通过；签名脚本在读取密钥前拒绝真实旧 code32 APK。
 - 主代理独立核对 Gradle 约束、签名元数据、隔离接线和测试，消除契约测试的版本硬编码后通过本里程碑审查。实际新 APK 的签名及运行证据仍归 AB-04。
 - 本批涉及 10 个实现/测试文件及本计划：修改集中于同一默认身份迁移，隔离脚本、签名和 CI 参数必须同步适配，未按文件拆开提交。
+
+## AB-02 验证记录
+
+- `scripts/tests/build-android-test.py` 16 项通过：真实 SDK 解析/签名 APK，错误身份/版本/证书、篡改、缺凭据、旧回执拒绝；安装测试仅替换 ADB 传输，实际解析拉取的 APK，覆盖升级、同版本 Release 拒绝、Debug 同版本覆盖及安装后哈希不符。
+- 协调器先复现跨 key 同时启动及同 key 错误附着，再通过修复后的 20 项回归；新增非状态 JSON、保留 key、工作目录及竞争边界的 3 项 focused 通过。
+- 主代理实际执行 `check --signing` 通过，确认原密钥/DPAPI 可签名；全量任务运行时仍可只读查询协调器状态。
+- 主代理独立检查源码指纹、APK/mapping 绑定、签名信任根与安装边界通过。实际 assemble→候选的回执集成统一由 AB-04 正式构建验证；当前不宣称新正式 APK 已交付。
+- 本批约千行包含入口、真实 APK 测试、协调器回归及必要文档，集中于同一构建到安装链路；复用原协调器、签名 adapter 与来源指纹筛选，不另建调度系统。

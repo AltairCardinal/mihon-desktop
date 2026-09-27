@@ -1,0 +1,44 @@
+// The wrapper accepts an APK only after the real assemble task has completed this invocation.
+import groovy.json.JsonOutput
+import java.security.MessageDigest
+
+gradle.beforeProject { project ->
+    if (project.path != ':app') return
+    project.pluginManager.withPlugin('com.android.application') {
+        project.afterEvaluate {
+            def variant = project.property('android.candidateVariant')
+            if (!(variant in ['debug', 'release'])) throw new GradleException('Invalid candidate variant')
+            def output = project.layout.buildDirectory.file('reports/android-candidate.json')
+            project.tasks.register('recordAndroidCandidate') {
+                dependsOn(variant == 'debug' ? 'assembleDebug' : 'assembleRelease')
+                inputs.property('requestId', project.property('android.candidateRequest'))
+                inputs.property('sourceInputs', project.property('android.candidateInputs'))
+                outputs.file(output)
+                doLast {
+                    def apk = project.layout.buildDirectory.file("outputs/apk/${variant}/app-universal-${variant}${variant == 'release' ? '-unsigned' : ''}.apk").get().asFile
+                    if (!apk.isFile()) throw new GradleException('Assemble produced no universal APK')
+                    def hash = { file ->
+                        def digest = MessageDigest.getInstance('SHA-256')
+                        file.withInputStream { stream ->
+                            byte[] buffer = new byte[1024 * 1024]
+                            int count
+                            while ((count = stream.read(buffer)) != -1) digest.update(buffer, 0, count)
+                        }
+                        digest.digest().encodeHex().toString()
+                    }
+                    def mapping = project.layout.buildDirectory.file('outputs/mapping/release/mapping.txt').get().asFile
+                    if (variant == 'release' && !mapping.isFile()) throw new GradleException('Release R8 mapping is missing')
+                    def report = output.get().asFile
+                    report.parentFile.mkdirs()
+                    report.setText(JsonOutput.toJson([
+                        requestId: project.property('android.candidateRequest'),
+                        sourceInputs: project.property('android.candidateInputs'),
+                        variant: variant,
+                        apkSha256: hash(apk),
+                        mappingSha256: variant == 'release' ? hash(mapping) : null,
+                    ]), 'UTF-8')
+                }
+            }
+        }
+    }
+}
