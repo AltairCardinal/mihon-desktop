@@ -38,28 +38,105 @@ data class SyncBulkProgress(val total: Long, val queued: Long, val outcomes: Map
 
 class SyncInboxProjector(private val handler: DatabaseHandler, private val writer: SyncRemoteProjectionWriter) {
     /** Receipt is durable first; each field applies atomically in a bounded transaction. */
-    suspend fun project(spaceId: String, generation: Long, limit: Int = 50): Int {
+    suspend fun project(
+        spaceId: String,
+        generation: Long,
+        limit: Int = 50,
+        onStarted: () -> Unit = {},
+        onChecked: (count: Int, sourceUnavailable: Int) -> Unit = { _, _ -> },
+    ): Int {
         require(limit in 1..50)
         writer.prepare()
         val fields = handler.await {
             if (!active(spaceId, generation)) return@await emptyList()
             sync_inboxQueries.getDirtyFields(spaceId, generation, limit.toLong()).executeAsList()
         }
-        fields.forEach { entry ->
-            try {
+        if (fields.isNotEmpty()) {
+            onStarted()
+            writer.prepareBatch()
+            var committedChecks = 0
+            val batchApplied = try {
                 handler.await(inTransaction = true) {
-                    if (!active(spaceId, generation)) return@await
-                    val current = sync_inboxQueries.getFieldState(spaceId, generation, entry.object_key, entry.field_)
-                        .executeAsOneOrNull() ?: return@await
-                    if (current.dirty) projectField(current)
+                    fields.forEach { entry ->
+                        coroutineContext.ensureActive()
+                        if (!active(spaceId, generation)) return@await
+                        val current = sync_inboxQueries.getFieldState(
+                            spaceId,
+                            generation,
+                            entry.object_key,
+                            entry.field_,
+                        )
+                            .executeAsOneOrNull()
+                        if (current?.dirty == true) {
+                            projectField(current)
+                            committedChecks++
+                        }
+                    }
                 }
-            } catch (failure: SyncProjectionUnavailable) {
-                handler.await(inTransaction = true) {
-                    if (active(spaceId, generation)) finish(entry, failure.reason.name, entry.applied_heads)
+                true
+            } catch (failure: Exception) {
+                if (failure is CancellationException) throw failure
+                coroutineContext.ensureActive()
+                false
+            }
+            if (batchApplied) {
+                if (committedChecks > 0) onChecked(committedChecks, 0)
+            } else {
+                fields.forEach { entry ->
+                    coroutineContext.ensureActive()
+                    try {
+                        val checked = handler.await(inTransaction = true) {
+                            if (!active(spaceId, generation)) return@await false
+                            val current =
+                                sync_inboxQueries.getFieldState(spaceId, generation, entry.object_key, entry.field_)
+                                    .executeAsOneOrNull() ?: return@await false
+                            if (!current.dirty) return@await false
+                            projectField(current)
+                            true
+                        }
+                        if (checked) onChecked(1, 0)
+                    } catch (failure: SyncProjectionUnavailable) {
+                        val recorded = recordUnavailableIfCurrent(entry, failure.reason)
+                        if (recorded) {
+                            onChecked(
+                                1,
+                                if (failure.reason ==
+                                    SyncProjectionUnavailableReason.SOURCE
+                                ) {
+                                    1
+                                } else {
+                                    0
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }
         return fields.size
+    }
+
+    /** A failure from an older projection must not overwrite or count a newly dirtied revision. */
+    internal suspend fun recordUnavailableIfCurrent(
+        expected: Sync_field_state,
+        reason: SyncProjectionUnavailableReason,
+    ): Boolean = handler.await(inTransaction = true) {
+        if (!active(expected.space_id, expected.generation)) return@await false
+        val current = sync_inboxQueries.getFieldState(
+            expected.space_id,
+            expected.generation,
+            expected.object_key,
+            expected.field_,
+        ).executeAsOneOrNull() ?: return@await false
+        if (!current.dirty || current.revision != expected.revision) return@await false
+        finish(current, reason.name, current.applied_heads)
+        val recorded = sync_inboxQueries.getFieldState(
+            expected.space_id,
+            expected.generation,
+            expected.object_key,
+            expected.field_,
+        ).executeAsOneOrNull()
+        recorded?.revision == current.revision && recorded.status == reason.name && !recorded.dirty
     }
 
     suspend fun retryUnavailable(spaceId: String, generation: Long) = handler.await(inTransaction = true) {
@@ -113,35 +190,68 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
     suspend fun processBulk(jobId: String, limit: Int = 50): SyncBulkProgress {
         require(limit in 1..50)
         writer.prepare()
-        repeat(limit) {
-            var itemId: Long? = null
-            try {
-                val processed = handler.await(inTransaction = true) {
-                    val job = sync_inboxQueries.getBulkJob(jobId).executeAsOne()
-                    if (!active(job.space_id, job.generation)) return@await false
-                    val item = sync_inboxQueries.getBulkItems(jobId, 1).executeAsOneOrNull() ?: return@await false
-                    itemId = item.pending_id
+        val hasPending = handler.await {
+            val job = sync_inboxQueries.getBulkJob(jobId).executeAsOne()
+            active(job.space_id, job.generation) &&
+                sync_inboxQueries.getBulkItems(jobId, 1).executeAsOneOrNull() != null
+        }
+        if (!hasPending) return bulkProgress(jobId)
+        // Complete author identity preparation outside the page transaction so a rollback
+        // cannot leave its in-memory ready flag ahead of the durable migration state.
+        writer.prepareBatch()
+        try {
+            handler.await(inTransaction = true) {
+                val job = sync_inboxQueries.getBulkJob(jobId).executeAsOne()
+                if (!active(job.space_id, job.generation)) return@await
+                val decision = SyncCancellationDecision.valueOf(job.decision)
+                sync_inboxQueries.getBulkItems(jobId, limit.toLong()).executeAsList().forEach { item ->
+                    coroutineContext.ensureActive()
+                    if (!active(job.space_id, job.generation)) return@await
                     val outcome = decideInTransaction(
                         job.space_id,
                         job.generation,
                         SyncPendingItem(item.pending_id, item.binding, Json.decodeFromString(item.object_json), ""),
-                        SyncCancellationDecision.valueOf(job.decision),
+                        decision,
                     )
                     sync_inboxQueries.finishBulkItem(outcome.name, jobId, item.pending_id)
-                    true
-                }
-                if (!processed) return bulkProgress(jobId)
-            } catch (failure: Exception) {
-                if (failure is CancellationException) throw failure
-                coroutineContext.ensureActive()
-                val failedId = itemId ?: throw failure
-                // The decision transaction has rolled back. Keep its pending row and report this item independently.
-                handler.await(inTransaction = true) {
-                    sync_inboxQueries.finishBulkItem("FAILED", jobId, failedId)
                 }
             }
+        } catch (failure: Exception) {
+            if (failure is CancellationException) throw failure
+            coroutineContext.ensureActive()
+            // A failed page is fully rolled back. Replay once with the original per-item
+            // transaction boundary so one bad decision does not hide the other outcomes.
+            repeat(limit) { if (!processBulkItem(jobId)) return bulkProgress(jobId) }
         }
         return bulkProgress(jobId)
+    }
+
+    private suspend fun processBulkItem(jobId: String): Boolean {
+        var itemId: Long? = null
+        return try {
+            handler.await(inTransaction = true) {
+                val job = sync_inboxQueries.getBulkJob(jobId).executeAsOne()
+                if (!active(job.space_id, job.generation)) return@await false
+                val item = sync_inboxQueries.getBulkItems(jobId, 1).executeAsOneOrNull() ?: return@await false
+                itemId = item.pending_id
+                val outcome = decideInTransaction(
+                    job.space_id,
+                    job.generation,
+                    SyncPendingItem(item.pending_id, item.binding, Json.decodeFromString(item.object_json), ""),
+                    SyncCancellationDecision.valueOf(job.decision),
+                )
+                sync_inboxQueries.finishBulkItem(outcome.name, jobId, item.pending_id)
+                true
+            }
+        } catch (failure: Exception) {
+            if (failure is CancellationException) throw failure
+            coroutineContext.ensureActive()
+            val failedId = itemId ?: throw failure
+            handler.await(inTransaction = true) {
+                sync_inboxQueries.finishBulkItem("FAILED", jobId, failedId)
+            }
+            true
+        }
     }
 
     suspend fun bulkProgress(job: String): SyncBulkProgress = handler.await {

@@ -11,6 +11,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.testing.WorkManagerTestInitHelper
+import androidx.work.workDataOf
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import eu.kanade.domain.DomainModule
 import eu.kanade.tachiyomi.App
@@ -20,6 +21,7 @@ import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.di.AppModule
 import eu.kanade.tachiyomi.di.PreferenceModule
 import eu.kanade.tachiyomi.network.NetworkHelper
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkConstructor
@@ -181,7 +183,15 @@ class AndroidSyncRuntimeWiringTest {
             Injekt.importModule(DomainModule())
             val runtime = Injekt.get<SyncRuntime>()
             assertSame(runtime, Injekt.get<SyncRuntime>())
+            assertEquals(
+                context.cacheDir.resolve("mihon-sync-objects").absolutePath,
+                property(runtime, "persistentObjectCacheDirectory").toString(),
+            )
             assertTrue(Injekt.get<SyncSecureStore>() is AndroidSyncSecureStore)
+            assertEquals(
+                context.filesDir.resolve("sync-failures").absolutePath,
+                property(runtime, "failureLogDirectory").toString(),
+            )
             val worker = TestListenableWorkerBuilder<SyncWorker>(context).build()
             assertEquals(ListenableWorker.Result.success(), worker.doWork())
             assertEquals(1L, runtime.coordinator.activity.value.completion)
@@ -302,7 +312,7 @@ class AndroidSyncRuntimeWiringTest {
     }
 
     @Test
-    fun `worker only retries transient network failure within a bounded budget`() = runBlocking {
+    fun `worker persists network retry state instead of adding a second WorkManager budget`() = runBlocking {
         var currentProblem = SyncRunProblem.NETWORK
         runtime { SyncRunResult(SyncRunStatus.FAILED, problem = currentProblem) }
         for (problem in SyncRunProblem.entries) {
@@ -312,19 +322,90 @@ class AndroidSyncRuntimeWiringTest {
                 .build()
                 .doWork()
             assertEquals(
-                if (problem ==
-                    SyncRunProblem.NETWORK
-                ) {
-                    ListenableWorker.Result.retry()
+                if (problem == SyncRunProblem.NETWORK) {
+                    ListenableWorker.Result.success()
                 } else {
                     ListenableWorker.Result.failure()
                 },
                 result,
             )
         }
-        currentProblem = SyncRunProblem.NETWORK
-        val exhausted = TestListenableWorkerBuilder<SyncWorker>(context).setRunAttemptCount(3).build()
-        assertEquals(ListenableWorker.Result.failure(), exhausted.doWork())
+    }
+
+    @Test
+    fun `worker treats persisted manual decisions as a completed scheduling attempt`() = runBlocking {
+        runtime { SyncRunResult(SyncRunStatus.PARTIAL, uploaded = 4, pending = 3) }
+        val worker = TestListenableWorkerBuilder<SyncWorker>(context).build()
+
+        assertEquals(ListenableWorker.Result.success(), worker.doWork())
+    }
+
+    @Test
+    fun `worker does not treat unresolved projection as a completed scheduling attempt`() = runBlocking {
+        runtime { SyncRunResult(SyncRunStatus.PARTIAL, downloaded = 1, pending = 0) }
+        val worker = TestListenableWorkerBuilder<SyncWorker>(context).build()
+
+        assertEquals(ListenableWorker.Result.failure(), worker.doWork())
+    }
+
+    @Test
+    fun `recovery worker does not execute the same run twice`() = runBlocking {
+        var calls = 0
+        val runtime = runtime {
+            calls++
+            SyncRunResult(SyncRunStatus.SKIPPED)
+        }
+        coEvery { runtime.hasResumableRun() } returns true
+        coEvery { runtime.isRecoveryDue() } returns true
+        coEvery { runtime.resumeIfNeeded() } returns true
+        val worker = TestListenableWorkerBuilder<SyncWorker>(context)
+            .setInputData(workDataOf(SyncWorker.RECOVERY_KEY to true))
+            .build()
+
+        assertEquals(ListenableWorker.Result.success(), worker.doWork())
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun `recovery worker leaves a delayed retry for its scheduled wake`() = runBlocking {
+        var calls = 0
+        val runtime = runtime {
+            calls++
+            SyncRunResult(SyncRunStatus.SKIPPED)
+        }
+        coEvery { runtime.hasResumableRun() } returns true
+        coEvery { runtime.isRecoveryDue() } returns false
+        val worker = TestListenableWorkerBuilder<SyncWorker>(context)
+            .setInputData(workDataOf(SyncWorker.RECOVERY_KEY to true))
+            .build()
+
+        assertEquals(ListenableWorker.Result.retry(), worker.doWork())
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun `manual network failure schedules a durable recovery wake`() = runBlocking {
+        val runtime = runtime { SyncRunResult(SyncRunStatus.FAILED, problem = SyncRunProblem.NETWORK) }
+        coEvery { runtime.recoveryDelayMillis() } returns 15_000L
+        runtime.preferences.startup.set(false)
+        AndroidSyncScheduler(context, runtime).start(scope)
+
+        assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.MANUAL).problem)
+        var recovery: WorkInfo? = null
+        withTimeout(5_000) {
+            while (recovery == null) {
+                recovery = manager.getWorkInfosForUniqueWork(AndroidSyncScheduler.RECOVERY_WORK_NAME).get()
+                    .firstOrNull { it.state == WorkInfo.State.ENQUEUED }
+                if (recovery == null) delay(20)
+            }
+        }
+        val recoveryInfo = requireNotNull(recovery)
+        assertEquals(
+            NetworkType.CONNECTED,
+            property(spec(recoveryInfo), "constraints").let {
+                it as androidx.work.Constraints
+            }.requiredNetworkType,
+        )
     }
 
     @Test
@@ -358,6 +439,10 @@ class AndroidSyncRuntimeWiringTest {
         return mockk<SyncRuntime> {
             every { this@mockk.coordinator } returns coordinator
             every { this@mockk.preferences } returns prefs
+            coEvery { this@mockk.hasResumableRun() } returns false
+            coEvery { this@mockk.isRecoveryDue() } returns false
+            coEvery { this@mockk.recoveryDelayMillis() } returns 0
+            coEvery { this@mockk.resumeIfNeeded() } returns false
         }.also { Injekt.addSingleton(it) }
     }
 

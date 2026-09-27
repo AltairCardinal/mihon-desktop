@@ -1,5 +1,6 @@
 package mihon.data.sync
 
+import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.runBlocking
 import mihon.data.sync.inbox.SyncInboxExchange
@@ -7,8 +8,11 @@ import mihon.data.sync.inbox.SyncInboxStore
 import mihon.data.sync.journal.SyncLocalJournal
 import mihon.data.sync.journal.SyncOutboxExchange
 import mihon.data.sync.journal.SyncOutboxStore
+import mihon.data.sync.runtime.SyncRunStore
 import mihon.data.sync.transport.SyncBatchSyncService
 import mihon.data.sync.transport.SyncRemoteSnapshotGuard
+import mihon.data.sync.transport.SyncRemoteSnapshotStaleCandidate
+import mihon.data.sync.transport.SyncSnapshotWriteOwner
 import mihon.domain.sync.SyncBatch
 import mihon.domain.sync.SyncCategory
 import mihon.domain.sync.SyncEffect
@@ -21,6 +25,7 @@ import mihon.domain.sync.SyncObjectKey
 import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.SyncOrigin
 import mihon.domain.sync.crypto.SyncSecret
+import mihon.domain.sync.runtime.SyncTrigger
 import mihon.domain.sync.transport.SyncPublishStatus
 import mihon.domain.sync.transport.SyncRepository
 import mihon.domain.sync.transport.SyncSnapshot
@@ -47,6 +52,67 @@ abstract class SyncRemoteSnapshotGuardContract {
     private val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
     private val secret = SyncSecret.fromBytes(ByteArray(32) { (it + 1).toByte() })
     private val key = SyncObjectKey(SyncObjectType.MANGA, sourceId = "42", originalUrl = "/remote")
+
+    @Test
+    fun `guard revision advances only when an accepted head changes`() = runBlocking {
+        remote().use { remote ->
+            open().use { storage ->
+                storage.connect(repository)
+
+                storage.guard.observe(remote.first)
+
+                assertEquals(1L, guardRevision(storage.driver))
+                storage.guard.observe(remote.first)
+                assertEquals(1L, guardRevision(storage.driver))
+                storage.guard.observe(remote.latest)
+                assertEquals(2L, guardRevision(storage.driver))
+            }
+        }
+    }
+
+    @Test
+    fun `stale guard revision cannot poison a newer accepted head`() = runBlocking {
+        remote().use { remote ->
+            open().use { storage ->
+                storage.connect(repository)
+                val beforeFirstRead = storage.guard.captureFence("space", 1)
+                storage.guard.observe(remote.first, beforeFirstRead)
+
+                val stale = runCatching { storage.guard.observe(remote.latest, beforeFirstRead) }.exceptionOrNull()
+                assertTrue(stale is SyncRemoteSnapshotStaleCandidate)
+                assertEquals(remote.first.head, guardHead(storage.driver))
+                assertEquals(false, guardBlocked(storage.driver))
+                assertEquals(1L, guardRevision(storage.driver))
+
+                storage.guard.observe(remote.latest, storage.guard.captureFence("space", 1))
+                assertEquals(remote.latest.head, guardHead(storage.driver))
+                assertEquals(2L, guardRevision(storage.driver))
+            }
+        }
+    }
+
+    @Test
+    fun `reclaimed run owner cannot commit a snapshot read by its stale attempt`() = runBlocking {
+        remote().use { remote ->
+            open().use { storage ->
+                storage.connect(repository)
+                val runs = SyncRunStore(storage.handler)
+                val run = runs.start("space", 1, SyncTrigger.MANUAL)
+                assertEquals(true, runs.claim(run.runId, "owner-a", 1))
+                val oldOwner = SyncSnapshotWriteOwner(run.runId, "owner-a", 1)
+                val stale = storage.guard.captureFence("space", 1, oldOwner)
+
+                assertEquals(true, runs.releaseForRecovery(run.runId))
+                assertEquals(true, runs.claim(run.runId, "owner-b", 2))
+                val failure = runCatching { storage.guard.observe(remote.first, stale) }.exceptionOrNull()
+
+                assertTrue(failure is SyncRemoteSnapshotStaleCandidate)
+                assertEquals(0L, guardCount(storage.driver))
+                assertEquals(2L, requireNotNull(runs.get(run.runId)).attemptId)
+                assertEquals("owner-b", requireNotNull(runs.get(run.runId)).ownerSession)
+            }
+        }
+    }
 
     @Test
     fun `growth and repeated heads are accepted without inventing an initial anchor`() = runBlocking {
@@ -358,6 +424,37 @@ abstract class SyncRemoteSnapshotGuardContract {
     ) : AutoCloseable {
         override fun close() = git.close()
     }
+
+    private fun guardRevision(driver: SqlDriver): Long = driver.executeQuery(
+        identifier = null,
+        sql = "SELECT revision FROM sync_remote_guards WHERE space_id = 'space' AND generation = 1",
+        parameters = 0,
+        mapper = { cursor ->
+            QueryResult.Value(if (cursor.next().value) cursor.getLong(0)!! else -1L)
+        },
+        binders = {},
+    ).value
+
+    private fun guardHead(driver: SqlDriver): String? = driver.executeQuery(
+        identifier = null,
+        sql = "SELECT latest_head FROM sync_remote_guards WHERE space_id = 'space' AND generation = 1",
+        parameters = 0,
+        mapper = { cursor -> QueryResult.Value(if (cursor.next().value) cursor.getString(0) else null) },
+    ).value
+
+    private fun guardBlocked(driver: SqlDriver): Boolean = driver.executeQuery(
+        identifier = null,
+        sql = "SELECT blocked FROM sync_remote_guards WHERE space_id = 'space' AND generation = 1",
+        parameters = 0,
+        mapper = { cursor -> QueryResult.Value(cursor.next().value && cursor.getLong(0) == 1L) },
+    ).value
+
+    private fun guardCount(driver: SqlDriver): Long = driver.executeQuery(
+        identifier = null,
+        sql = "SELECT COUNT(*) FROM sync_remote_guards",
+        parameters = 0,
+        mapper = { cursor -> QueryResult.Value(if (cursor.next().value) cursor.getLong(0) ?: 0L else 0L) },
+    ).value
 
     protected fun database(driver: SqlDriver, create: Boolean): Database {
         if (create) Database.Schema.create(driver)

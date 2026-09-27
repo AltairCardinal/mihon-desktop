@@ -19,6 +19,7 @@ object Notifications {
      * Common notification channel and ids used anywhere.
      */
     const val CHANNEL_COMMON = "common_channel"
+    const val ID_SYNC_PROGRESS = -801
     const val ID_DOWNLOAD_IMAGE = 2
 
     /**

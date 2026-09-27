@@ -11,6 +11,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 import mihon.data.sync.http.SyncHttpException
+import mihon.data.sync.http.SyncHttpRequestGate
 import mihon.data.sync.http.SyncHttpResponse
 import mihon.domain.sync.auth.GitHubAuthException
 import mihon.domain.sync.auth.GitHubAuthFailureReason
@@ -119,6 +120,7 @@ class GitHubSyncSpaceClient(
     private val productionClient: OkHttpClient,
     private val accessToken: suspend () -> String,
     private val apiBaseUrl: String = "https://api.github.com",
+    private val requestGate: SyncHttpRequestGate? = null,
 ) {
     suspend fun discover(expectedAccountId: Long? = null): SyncSpaceDiscovery = try {
         val scan = session().scan(expectedAccountId)
@@ -182,7 +184,7 @@ class GitHubSyncSpaceClient(
     }
 
     private inner class Session(token: String) {
-        val api = GitHubPrivateRepositorySelector(productionClient, { token }, apiBaseUrl)
+        val api = GitHubPrivateRepositorySelector(productionClient, { token }, apiBaseUrl, requestGate)
 
         suspend fun scan(expectedAccountId: Long?): Scan {
             val user = get("/user").checked().objectBody()

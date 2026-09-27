@@ -40,7 +40,7 @@ test('同步设置子页面：双端开关、返回、焦点与异步重绘', { 
       await page.getByTestId('periodic-setting').click();
       assert.equal(await page.getByTestId('periodic-setting').getAttribute('aria-checked'), 'false');
       await page.keyboard.press('Tab');
-      assert.equal(await page.evaluate(() => document.activeElement.dataset.testid), 'sync-settings-back');
+      assert.equal(await page.evaluate(() => document.activeElement.dataset.testid), 'ix-frequency');
       await page.keyboard.press('Escape');
       assert.equal(await sheet.count(), 0);
       assert.equal(await page.evaluate(() => document.activeElement.dataset.testid), 'sync-settings');

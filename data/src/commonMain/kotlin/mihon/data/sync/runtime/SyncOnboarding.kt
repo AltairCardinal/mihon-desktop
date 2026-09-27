@@ -15,8 +15,12 @@ import mihon.data.sync.auth.SyncGitHubAccount
 import mihon.data.sync.auth.SyncSpaceCreation
 import mihon.data.sync.auth.SyncSpaceDiscovery
 import mihon.data.sync.crypto.SyncSpaceCrypto
+import mihon.data.sync.http.SyncHttpBodyObserver
 import mihon.data.sync.http.SyncHttpException
+import mihon.data.sync.http.SyncHttpRequestGate
 import mihon.data.sync.transport.GitHubSyncTransport
+import mihon.data.sync.transport.SyncSnapshotManifestBinding
+import mihon.data.sync.transport.SyncSnapshotManifestStore
 import mihon.domain.sync.crypto.SyncSpaceMaterial
 import mihon.domain.sync.transport.SyncInitializationCheckpoint
 import mihon.domain.sync.transport.SyncInitializationIntent
@@ -24,6 +28,7 @@ import mihon.domain.sync.transport.SyncInitializationResult
 import mihon.domain.sync.transport.SyncInitializationStage
 import mihon.domain.sync.transport.SyncRepository
 import okhttp3.OkHttpClient
+import okio.Path
 import java.util.UUID
 
 internal class SyncSetupException(val problem: SyncDiscoveryProblem) : IllegalStateException("sync setup failed")
@@ -51,6 +56,7 @@ internal class SyncOnboarding(
     private val client: OkHttpClient,
     private val apiBaseUrl: String,
     val storage: SyncSetupStorage,
+    private val snapshotManifestStore: SyncSnapshotManifestStore,
 ) {
     suspend fun discover(): SyncSpaceDiscovery = spaces(runtime.accessToken()).discover()
 
@@ -188,9 +194,10 @@ internal class SyncOnboarding(
             ?.takeIf { it.attemptId == initial.attemptId } ?: throw IllegalStateException("sync setup changed")
         val session = session(setup.accountId)
         val material = setup.material.material()
+        val requestGate = runtime.accountHttpRequestGate(session.account.id)
         if (setup.newSpace) {
             if (setup.stage == SyncInitializationStage.VERIFIED_EMPTY) {
-                val rechecked = spaces(session.token).createOrResume(
+                val rechecked = spaces(session.token, requestGate).createOrResume(
                     SyncCreationAttempt(session.account, setup.attemptId, repositoryId = setup.repositoryId),
                 ) {}
                 when (rechecked) {
@@ -216,7 +223,13 @@ internal class SyncOnboarding(
                 }
             }
             verifyRepository(session, setup.repository(), setup.repositoryId)
-            val result = transport(session.token, material).initialize(
+            val result = transport(
+                session.token,
+                material,
+                repositoryId = setup.repositoryId,
+                persistentObjectCacheDirectory = runtime.persistentObjectCacheDirectory,
+                requestGate = requestGate,
+            ).initialize(
                 setup.repository(),
                 material.descriptor.spaceId,
                 material.descriptor.generation,
@@ -240,7 +253,7 @@ internal class SyncOnboarding(
                     }
                 }
                 else -> {
-                    val found = spaces(session.token).discover(setup.accountId)
+                    val found = spaces(session.token, requestGate).discover(setup.accountId)
                     if (found is SyncSpaceDiscovery.Found && found.space.descriptor != material.descriptor) {
                         if (!setup.matchesFixedRepository(found.space)) {
                             throw SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED)
@@ -252,8 +265,16 @@ internal class SyncOnboarding(
                 }
             }
         }
-        verifyRepository(session, setup.repository(), setup.repositoryId)
-        transport(session.token, material).readSnapshot(
+        verifyRepository(session, setup.repository(), requireNotNull(setup.repositoryId))
+        transport(
+            session.token,
+            material,
+            repositoryId = requireNotNull(setup.repositoryId),
+            manifestStore = snapshotManifestStore,
+            manifestBinding = setup.snapshotManifestBinding(),
+            persistentObjectCacheDirectory = runtime.persistentObjectCacheDirectory,
+            requestGate = requestGate,
+        ).readSnapshot(
             setup.repository(),
             material.descriptor.spaceId,
             material.descriptor.generation,
@@ -273,7 +294,12 @@ internal class SyncOnboarding(
 
     suspend fun session(expectedAccountId: Long? = null): Session {
         val token = runtime.accessToken()
-        val http = GitHubPrivateRepositorySelector(client, { token }, apiBaseUrl)
+        val http = GitHubPrivateRepositorySelector(
+            client,
+            { token },
+            apiBaseUrl,
+            expectedAccountId?.let(runtime::accountHttpRequestGate),
+        )
         val response = http.requestPath("/user")
         if (response.code !in 200..299) throw SyncHttpException(response.code, "GitHub account lookup failed", false)
         val user = Json.parseToJsonElement(response.body.decodeToString()).jsonObject
@@ -329,14 +355,32 @@ internal class SyncOnboarding(
             space.repository.owner.equals(owner, ignoreCase = true) &&
             space.repository.name.equals(repository, ignoreCase = true) && space.repository.branch == branch
 
-    fun transport(token: String, material: SyncSpaceMaterial) = GitHubSyncTransport(
+    fun transport(
+        token: String,
+        material: SyncSpaceMaterial,
+        repositoryId: Long? = null,
+        manifestStore: SyncSnapshotManifestStore? = null,
+        manifestBinding: SyncSnapshotManifestBinding? = null,
+        persistentObjectCacheDirectory: Path? = null,
+        requestGate: SyncHttpRequestGate? = null,
+        bodyObserver: SyncHttpBodyObserver? = null,
+    ): GitHubSyncTransport = GitHubSyncTransport(
         client,
         { token },
         apiBaseUrl,
         spaceMaterial = material,
-    )
+        repositoryId = repositoryId,
+        persistentObjectCacheDirectory = persistentObjectCacheDirectory,
+        requestGate = requestGate,
+        bodyObserver = bodyObserver,
+    ).also { transport ->
+        if (manifestStore != null && manifestBinding != null) {
+            transport.installSnapshotManifestStore(manifestStore, manifestBinding)
+        }
+    }
 
-    private fun spaces(token: String) = GitHubSyncSpaceClient(client, { token }, apiBaseUrl)
+    private fun spaces(token: String, requestGate: SyncHttpRequestGate? = null) =
+        GitHubSyncSpaceClient(client, { token }, apiBaseUrl, requestGate)
 
     class Session(val account: SyncGitHubAccount, val token: String, val http: GitHubPrivateRepositorySelector) {
         override fun toString(): String = "SyncSession(<redacted>)"

@@ -93,16 +93,11 @@ abstract class SyncRemoteProjectionContract {
     }
 
     @Test
-    fun `missing source and descriptions defer reconstruction and source arrival permits retry`() = runBlocking {
+    fun `missing source still restores favorite when identity and description are valid`() = runBlocking {
         open().use { s ->
             s.prepare()
             s.sources.clear()
             val describe = { key: SyncObjectKey -> SyncObjectDescriptor(key, "远端") }
-            s.assertUnavailable(SyncProjectionUnavailableReason.SOURCE) {
-                s.writer.applyMembership(mangaKey, true, describe)
-            }
-            assertNull(s.manga.getMangaByUrlAndSourceId("/manga", SOURCE))
-            s.sources += SOURCE
             s.assertUnavailable(SyncProjectionUnavailableReason.DESCRIPTION) {
                 s.writer.applyMembership(mangaKey, true) { null }
             }
@@ -113,7 +108,35 @@ abstract class SyncRemoteProjectionContract {
             assertNull(s.manga.getMangaByUrlAndSourceId("/manga", SOURCE))
             s.writer.applyMembership(mangaKey, true, describe)
             assertEquals(true, s.writer.localMembership(mangaKey))
+            assertEquals(SOURCE, s.manga.getMangaByUrlAndSourceId("/manga", SOURCE)?.source)
             assertNull(s.writer.localMembership(wrong))
+            s.assertNoOutbox()
+        }
+    }
+
+    @Test
+    fun `missing source restores chapter reading fields from descriptors`() = runBlocking {
+        open().use { s ->
+            s.prepare()
+            s.sources.clear()
+            val descriptors = mapOf(
+                mangaKey to SyncObjectDescriptor(mangaKey, "父漫画"),
+                chapterKey to SyncObjectDescriptor(chapterKey, "第 2 话", chapterNumber = 2.0),
+            )
+            s.writer.applyReadStatus(chapterKey, true, descriptors::get)
+            s.writer.applyResume(mangaKey, chapterKey, 7, descriptors::get)
+            s.writer.applyHistory(mangaKey, chapterKey, 4_000, descriptors::get)
+            val manga = requireNotNull(s.manga.getMangaByUrlAndSourceId("/manga", SOURCE))
+            val chapter = requireNotNull(s.chapters.getChapterByUrlAndMangaId("/chapter", manga.id))
+            assertTrue(chapter.read)
+            assertEquals(7L, chapter.lastPageRead)
+            assertEquals(2.0, chapter.chapterNumber)
+            assertEquals(
+                Date(4_000),
+                s.handler.await {
+                    historyQueries.getHistoryByMangaId(manga.id).executeAsOne().last_read
+                },
+            )
             s.assertNoOutbox()
         }
     }

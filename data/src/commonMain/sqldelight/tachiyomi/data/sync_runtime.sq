@@ -1,0 +1,248 @@
+CREATE TABLE sync_runtime_runs (
+    run_id TEXT NOT NULL PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    trigger TEXT NOT NULL,
+    state TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    processed INTEGER NOT NULL DEFAULT 0,
+    total INTEGER NOT NULL DEFAULT 0,
+    completed INTEGER NOT NULL DEFAULT 0,
+    skipped INTEGER NOT NULL DEFAULT 0,
+    failed INTEGER NOT NULL DEFAULT 0,
+    uploaded INTEGER NOT NULL DEFAULT 0,
+    downloaded INTEGER NOT NULL DEFAULT 0,
+    confirmed_items INTEGER NOT NULL DEFAULT 0,
+    uploaded_baseline INTEGER NOT NULL DEFAULT 0,
+    downloaded_baseline INTEGER NOT NULL DEFAULT 0,
+    attempt_id INTEGER NOT NULL DEFAULT 0,
+    network_failure_count INTEGER NOT NULL DEFAULT 0,
+    next_retry_at INTEGER NOT NULL DEFAULT 0,
+    last_progress_at INTEGER NOT NULL,
+    stop_reason TEXT,
+    owner_session TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX sync_runtime_active ON sync_runtime_runs(space_id, generation, state);
+
+CREATE TABLE sync_runtime_logs (
+    run_id TEXT NOT NULL REFERENCES sync_runtime_runs(run_id) ON DELETE CASCADE,
+    log_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (run_id, log_key)
+);
+
+CREATE INDEX sync_runtime_log_order ON sync_runtime_logs(run_id, created_at DESC);
+
+CREATE TABLE sync_runtime_confirmations (
+    run_id TEXT NOT NULL REFERENCES sync_runtime_runs(run_id) ON DELETE CASCADE,
+    direction TEXT NOT NULL,
+    batch_id TEXT NOT NULL,
+    item_count INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    PRIMARY KEY (run_id, direction, batch_id)
+);
+
+insertRuntimeRun:
+INSERT INTO sync_runtime_runs(
+    run_id, space_id, generation, trigger, state, phase, uploaded_baseline, downloaded_baseline,
+    last_progress_at, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getRuntimeRun:
+SELECT * FROM sync_runtime_runs WHERE run_id = ?;
+
+getRuntimeConfirmation:
+SELECT * FROM sync_runtime_confirmations
+WHERE run_id = ? AND direction = ? AND batch_id = ?;
+
+insertRuntimeConfirmation:
+INSERT INTO sync_runtime_confirmations(run_id, direction, batch_id, item_count, status)
+VALUES (?, ?, ?, ?, ?);
+
+getPendingRuntimeReceipts:
+SELECT * FROM sync_runtime_confirmations WHERE run_id = ? AND direction = 'DOWNLOAD' AND status = 'PENDING';
+
+countSourceFieldsInPendingRuntimeReceipts:
+SELECT COUNT(*) FROM (
+    SELECT DISTINCT f.object_key, f.field
+    FROM sync_runtime_confirmations c
+    JOIN sync_events e ON e.space_id = :spaceId AND e.generation = :generation AND e.batch_id = c.batch_id
+    JOIN sync_event_fields f ON f.space_id = e.space_id AND f.generation = e.generation
+        AND f.event_key = e.event_key
+    JOIN sync_field_state s ON s.space_id = f.space_id AND s.generation = f.generation
+        AND s.object_key = f.object_key AND s.field = f.field
+    WHERE c.run_id = :runId AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING'
+        AND s.status = 'SOURCE' AND s.dirty = 0
+);
+
+countFailureReportFields:
+SELECT COUNT(*) FROM sync_runtime_confirmations c
+JOIN sync_events e ON e.space_id = :spaceId AND e.generation = :generation AND e.batch_id = c.batch_id
+JOIN sync_event_fields f ON f.space_id = e.space_id AND f.generation = e.generation AND f.event_key = e.event_key
+JOIN sync_field_state s ON s.space_id = f.space_id AND s.generation = f.generation
+    AND s.object_key = f.object_key AND s.field = f.field
+WHERE c.run_id = :runId AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING'
+    AND s.status IN ('SOURCE', 'DESCRIPTION', 'IDENTITY') AND s.dirty = 0;
+
+getFailureReportFields:
+SELECT c.batch_id AS batch_id, e.event_key AS event_key, e.event_json AS event_json,
+    f.object_json AS object_json, f.field AS field_name, s.status AS failure_reason,
+    d.description_json AS description_json
+FROM sync_runtime_confirmations c
+JOIN sync_events e ON e.space_id = :spaceId AND e.generation = :generation AND e.batch_id = c.batch_id
+JOIN sync_event_fields f ON f.space_id = e.space_id AND f.generation = e.generation AND f.event_key = e.event_key
+JOIN sync_field_state s ON s.space_id = f.space_id AND s.generation = f.generation
+    AND s.object_key = f.object_key AND s.field = f.field
+LEFT JOIN sync_descriptions d ON d.space_id = f.space_id AND d.generation = f.generation
+    AND d.object_key = f.object_key
+WHERE c.run_id = :runId AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING'
+    AND s.status IN ('SOURCE', 'DESCRIPTION', 'IDENTITY') AND s.dirty = 0
+ORDER BY c.batch_id, e.event_key, f.object_key, f.field
+LIMIT :pageSize OFFSET :pageOffset;
+
+countFailureReportInvalidEvents:
+SELECT COUNT(*) FROM sync_runtime_confirmations c
+JOIN sync_events e ON e.space_id = :spaceId AND e.generation = :generation AND e.batch_id = c.batch_id
+JOIN sync_invalid_events i ON i.space_id = e.space_id AND i.generation = e.generation AND i.event_key = e.event_key
+WHERE c.run_id = :runId AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING';
+
+getFailureReportInvalidEvents:
+SELECT c.batch_id AS batch_id, e.event_key AS event_key, e.event_json AS event_json,
+    i.reason AS failure_reason
+FROM sync_runtime_confirmations c
+JOIN sync_events e ON e.space_id = :spaceId AND e.generation = :generation AND e.batch_id = c.batch_id
+JOIN sync_invalid_events i ON i.space_id = e.space_id AND i.generation = e.generation AND i.event_key = e.event_key
+WHERE c.run_id = :runId AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING'
+ORDER BY c.batch_id, e.event_key
+LIMIT :pageSize OFFSET :pageOffset;
+
+hasPendingRuntimeReceipt:
+SELECT 1 FROM sync_runtime_confirmations
+WHERE run_id = ? AND direction = 'DOWNLOAD' AND status = 'PENDING' LIMIT 1;
+
+markRuntimeConfirmation:
+UPDATE sync_runtime_confirmations SET status = 'CONFIRMED'
+WHERE run_id = ? AND direction = ? AND batch_id = ? AND status = 'PENDING';
+
+addRuntimeConfirmedItemsOwned:
+UPDATE sync_runtime_runs SET confirmed_items = confirmed_items + ?, updated_at = ?
+WHERE run_id = ? AND owner_session = ?;
+
+getActiveRuntimeRun:
+SELECT * FROM sync_runtime_runs
+WHERE space_id = ? AND generation = ?
+  AND (
+    state IN ('QUEUED', 'RUNNING', 'WAITING_NETWORK', 'WAITING_RETRY', 'WAITING_SYSTEM', 'BLOCKED', 'PAUSED_USER')
+    OR (state = 'PARTIAL' AND EXISTS (
+      SELECT 1 FROM sync_runtime_confirmations c
+      WHERE c.run_id = sync_runtime_runs.run_id AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING'
+    ))
+  )
+ORDER BY updated_at DESC, rowid DESC LIMIT 1;
+
+getLatestRuntimeRun:
+SELECT * FROM sync_runtime_runs
+WHERE space_id = ? AND generation = ?
+ORDER BY updated_at DESC, rowid DESC LIMIT 1;
+
+updateRuntimeProgress:
+UPDATE sync_runtime_runs SET
+    state = ?, phase = ?, processed = ?, total = ?, completed = ?, skipped = ?, failed = ?,
+    attempt_id = ?, next_retry_at = ?, last_progress_at = ?, stop_reason = ?, owner_session = ?, updated_at = ?
+WHERE run_id = ?;
+
+updateRuntimeProgressOwned:
+UPDATE sync_runtime_runs SET
+    state = ?, phase = ?, processed = ?, total = ?, completed = ?, skipped = ?, failed = ?,
+    attempt_id = ?, next_retry_at = ?, last_progress_at = ?, stop_reason = ?, owner_session = ?, updated_at = ?
+WHERE run_id = ? AND owner_session = ?;
+
+claimRuntimeRun:
+UPDATE sync_runtime_runs SET
+    state = 'RUNNING', attempt_id = ?, next_retry_at = 0, stop_reason = NULL, owner_session = ?, updated_at = ?
+WHERE run_id = ?
+  AND (
+    state IN ('QUEUED', 'RUNNING', 'WAITING_NETWORK', 'WAITING_RETRY', 'WAITING_SYSTEM')
+    OR (state = 'PARTIAL' AND EXISTS (
+      SELECT 1 FROM sync_runtime_confirmations c
+      WHERE c.run_id = sync_runtime_runs.run_id AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING'
+    ))
+  )
+  AND (owner_session IS NULL OR owner_session = ?);
+
+releaseRuntimeRunForRecovery:
+UPDATE sync_runtime_runs SET
+    state = 'WAITING_SYSTEM',
+    stop_reason = ?,
+    owner_session = NULL,
+    updated_at = ?
+WHERE run_id = ? AND state IN ('RUNNING', 'WAITING_NETWORK', 'WAITING_RETRY') AND owner_session IS NOT NULL;
+
+deferRuntimeRunUntilAccountGate:
+UPDATE sync_runtime_runs SET
+    state = 'WAITING_RETRY',
+    next_retry_at = MAX(next_retry_at, ?),
+    stop_reason = 'rate_limit',
+    updated_at = ?
+WHERE run_id = ? AND owner_session IS NULL
+  AND state IN ('QUEUED', 'WAITING_NETWORK', 'WAITING_RETRY', 'WAITING_SYSTEM');
+
+incrementRuntimeNetworkFailureOwned:
+UPDATE sync_runtime_runs SET network_failure_count = network_failure_count + 1, updated_at = ?
+WHERE run_id = ? AND owner_session = ?;
+
+updateRuntimeState:
+UPDATE sync_runtime_runs SET state = ?, stop_reason = ?, owner_session = ?, updated_at = ?
+WHERE run_id = ?;
+
+updateRuntimeStateOwned:
+UPDATE sync_runtime_runs SET state = ?, stop_reason = ?, owner_session = ?, updated_at = ?
+WHERE run_id = ? AND owner_session = ?;
+
+resumeRuntimeRun:
+UPDATE sync_runtime_runs SET state = 'RUNNING', stop_reason = NULL, owner_session = NULL, updated_at = ?
+WHERE run_id = ? AND state = 'PAUSED_USER';
+
+insertRuntimeLog:
+INSERT OR REPLACE INTO sync_runtime_logs(run_id, log_key, title, detail, status, created_at)
+VALUES (?, ?, ?, ?, ?, ?);
+
+insertRuntimeLogOwned:
+INSERT OR REPLACE INTO sync_runtime_logs(run_id, log_key, title, detail, status, created_at)
+SELECT ?, ?, ?, ?, ?, ?
+WHERE EXISTS (
+    SELECT 1 FROM sync_runtime_runs WHERE run_id = ? AND owner_session = ?
+);
+
+getRuntimeLogs:
+SELECT * FROM sync_runtime_logs WHERE run_id = ? ORDER BY created_at DESC, log_key DESC LIMIT ?;
+
+getRuntimeLogKeys:
+SELECT log_key FROM sync_runtime_logs WHERE run_id = ? ORDER BY created_at ASC, log_key ASC;
+
+deleteRuntimeLog:
+DELETE FROM sync_runtime_logs WHERE run_id = ? AND log_key = ?;
+
+trimRuntimeLogs:
+DELETE FROM sync_runtime_logs
+WHERE run_id = ?
+  AND log_key NOT IN (
+      SELECT log_key FROM sync_runtime_logs
+      WHERE run_id = ?
+      ORDER BY created_at DESC, log_key DESC
+      LIMIT ?
+  );
+
+updateRuntimeTotals:
+UPDATE sync_runtime_runs SET uploaded = ?, downloaded = ?, updated_at = ?
+WHERE run_id = ?;
+
+updateRuntimeTotalsOwned:
+UPDATE sync_runtime_runs SET uploaded = ?, downloaded = ?, updated_at = ?
+WHERE run_id = ? AND owner_session = ?;

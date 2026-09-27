@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="mihon.data.sync.SyncRuntimeWiringTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-09-25T12:57:41.726Z" hostname="G-BURST" time="1.221">
+  <properties/>
+  <testcase name="production runtime reopens a validated snapshot and falls back after cache context damage()[jvm]" classname="mihon.data.sync.SyncRuntimeWiringTest" time="1.221"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -36,12 +36,18 @@ class SyncRemoteProjectionWriter(
     private val creatorIndexWriter: CreatorLibraryIndexWriter,
     private val creatorRepository: CreatorRepository,
     private val bootstrap: CreatorArchiveBootstrap,
-    private val sourceAvailable: (Long) -> Boolean,
+    // Kept for existing platform wiring; remote records are restored from validated descriptors.
+    @Suppress("UNUSED_PARAMETER") sourceAvailable: (Long) -> Boolean,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val extractCreators = ExtractCreatorsFromManga()
 
     suspend fun prepare() = bootstrap.awaitReady()
+
+    /** Complete the creator identity migration before a projection page can roll back. */
+    suspend fun prepareBatch() {
+        creatorIndexWriter.indexLibraryMangaBatch(emptyList())
+    }
 
     suspend fun localMembership(key: SyncObjectKey): Boolean? = handler.await(inTransaction = true) {
         validateIdentity(key)
@@ -142,7 +148,6 @@ class SyncRemoteProjectionWriter(
         describe: (SyncObjectKey) -> SyncObjectDescriptor?,
     ): Mangas {
         findManga(key)?.let { return it }
-        requireSource(key)
         val description = description(key, describe)
         val manga = Manga.create().copy(
             source = requireNotNull(key.sourceId).toLong(),
@@ -173,7 +178,6 @@ class SyncRemoteProjectionWriter(
             requireNotNull(key.parentUrl),
             requireNotNull(key.sourceId).toLong(),
         ).executeAsOneOrNull()?.let { return it }
-        requireSource(key)
         val description = description(key, describe)
         val manga = ensureManga(parentKey(key), describe)
         val chapter = Chapter.create().copy(
@@ -245,10 +249,6 @@ class SyncRemoteProjectionWriter(
             unavailable(SyncProjectionUnavailableReason.DESCRIPTION)
         }
         return value
-    }
-
-    private fun requireSource(key: SyncObjectKey) {
-        if (!sourceAvailable(requireNotNull(key.sourceId).toLong())) unavailable(SyncProjectionUnavailableReason.SOURCE)
     }
 
     private fun validateRelation(mangaKey: SyncObjectKey, chapterKey: SyncObjectKey) {

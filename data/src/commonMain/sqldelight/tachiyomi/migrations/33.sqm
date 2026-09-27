@@ -1,0 +1,19 @@
+-- Keep only the current authenticated remote snapshot for each sync space generation.
+CREATE TABLE IF NOT EXISTS sync_snapshot_manifests (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    account_id INTEGER NOT NULL,
+    repository_id INTEGER NOT NULL,
+    repository_owner TEXT NOT NULL,
+    repository_name TEXT NOT NULL,
+    repository_branch TEXT NOT NULL,
+    api_origin TEXT NOT NULL,
+    validator_version TEXT NOT NULL,
+    validation_scope TEXT NOT NULL,
+    connection_revision TEXT NOT NULL,
+    head_sha TEXT NOT NULL,
+    head_fingerprint TEXT NOT NULL,
+    checksum TEXT NOT NULL,
+    manifest_json TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation)
+);

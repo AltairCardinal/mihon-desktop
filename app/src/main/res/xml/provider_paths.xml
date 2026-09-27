@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
+    <files-path
+        name="sync_failure_logs"
+        path="sync-failures/" />
     <cache-path
         name="cache_files"
         path="." />

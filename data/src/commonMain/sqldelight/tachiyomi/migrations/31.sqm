@@ -72,3 +72,6 @@ SET published_date_snapshot_reason = CASE
     ELSE NULL
 END
 WHERE published_date_snapshot_at IS NOT NULL;
+
+ALTER TABLE sync_runtime_runs ADD COLUMN uploaded INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sync_runtime_runs ADD COLUMN downloaded INTEGER NOT NULL DEFAULT 0;

@@ -5,7 +5,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
 import mihon.data.sync.auth.GitHubAuthClient
 import mihon.data.sync.auth.GitHubTokenRefresher
 import mihon.data.sync.auth.InMemoryGitHubCredentialStore
@@ -23,6 +25,7 @@ import okhttp3.EventListener
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.util.concurrent.CountDownLatch
@@ -204,6 +207,26 @@ class AuthProtocolContractTest {
     }
 
     @Test
+    fun `unresponsive device code request stops waiting and never displays an invalid code`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse.Builder().body(DEVICE).headersDelay(3, TimeUnit.SECONDS).build())
+            var displayed = false
+            val result = withTimeoutOrNull(1_000) {
+                auth(server, deviceCodeRequestTimeoutMillis = 100).authorize("public-client") {
+                    displayed = true
+                }
+            }
+            assertNotNull(result)
+            val failure = result as GitHubDeviceAuthResult.Failed
+            assertEquals(GitHubAuthFailureReason.HTTP, failure.failure.reason)
+            assertTrue(failure.failure.retryable)
+            assertFalse(displayed)
+            assertEquals(1, server.requestCount)
+        }
+    }
+
+    @Test
     fun `real concurrent refresh replaces the complete credential exactly once`() = runTest {
         MockWebServer().use { server ->
             server.start()
@@ -342,6 +365,7 @@ class AuthProtocolContractTest {
         client: OkHttpClient = OkHttpClient(),
         waiter: GitHubAuthWaiter = GitHubAuthWaiter {},
         now: () -> Long = { 1_000 },
+        deviceCodeRequestTimeoutMillis: Long = 30_000,
     ) = GitHubAuthClient(
         client,
         GitHubAuthEndpoints(
@@ -351,6 +375,7 @@ class AuthProtocolContractTest {
         ),
         waiter,
         now,
+        deviceCodeRequestTimeoutMillis,
     )
 
     private fun oldCredential() = GitHubStoredCredential(

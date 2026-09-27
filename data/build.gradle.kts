@@ -59,6 +59,7 @@ kotlin {
         }
         jvmTest {
             kotlin.srcDir("src/creatorEntryContract/kotlin")
+            kotlin.srcDir("src/testFixtures/kotlin/tachiyomi/data")
             dependencies {
                 implementation(libs.bundles.test)
                 implementation(kotlinx.coroutines.test)

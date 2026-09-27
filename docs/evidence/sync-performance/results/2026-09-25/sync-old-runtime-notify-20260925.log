@@ -1,0 +1,91 @@
+Starting a Gradle Daemon, 1 busy and 3 stopped Daemons could not be reused, use --status for details
+Configuration on demand is an incubating feature.
+Type-safe project accessors is an incubating feature.
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :buildSrc:generateExternalPluginSpecBuilders
+> Task :buildSrc:extractPrecompiledScriptPluginPlugins
+> Task :buildSrc:generateScriptPluginAdapters
+> Task :buildSrc:pluginDescriptors
+> Task :buildSrc:processResources
+> Task :buildSrc:compilePluginsBlocks
+> Task :buildSrc:generatePrecompiledScriptPluginAccessors
+> Task :buildSrc:compileKotlin
+> Task :buildSrc:compileJava NO-SOURCE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:classes
+> Task :buildSrc:jar
+> Task :source-api:kmpPartiallyResolvedDependenciesChecker
+> Task :domain:kmpPartiallyResolvedDependenciesChecker
+> Task :core:common:kmpPartiallyResolvedDependenciesChecker
+> Task :i18n:kmpPartiallyResolvedDependenciesChecker
+> Task :data:kmpPartiallyResolvedDependenciesChecker
+> Task :domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :source-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :i18n:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:common:jvmProcessResources NO-SOURCE
+> Task :domain:jvmProcessResources NO-SOURCE
+> Task :source-api:jvmProcessResources NO-SOURCE
+> Task :domain:processJvmMainResources SKIPPED
+> Task :core:common:processJvmMainResources SKIPPED
+> Task :source-api:processJvmMainResources SKIPPED
+> Task :data:jvmProcessResources NO-SOURCE
+> Task :data:processJvmMainResources SKIPPED
+> Task :data:jvmTestProcessResources
+> Task :data:processJvmTestResources SKIPPED
+> Task :i18n:generateMRcommonMain
+> Task :i18n:generateMRjvmMain
+> Task :i18n:jvmProcessResources
+> Task :i18n:processJvmMainResources SKIPPED
+> Task :i18n:compileKotlinJvm
+> Task :i18n:compileJvmMainJava NO-SOURCE
+> Task :i18n:jvmMainClasses
+> Task :i18n:jvmJar
+
+> Task :core:common:compileKotlinJvm
+w: file:///D:/Codex/worktrees/85be/mihon-sync-old-96db/core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/network/OkHttpExtensions.kt:80:34 'fun resume(value: Response, onCancellation: ((Throwable) -> Unit)?): Unit' is deprecated. Use the overload that also accepts the `value` and the coroutine context in lambda.
+
+> Task :core:common:compileJvmMainJava NO-SOURCE
+> Task :core:common:jvmMainClasses
+> Task :core:common:jvmJar
+> Task :source-api:compileKotlinJvm
+> Task :source-api:compileJvmMainJava NO-SOURCE
+> Task :source-api:jvmMainClasses
+> Task :source-api:jvmJar
+> Task :data:generateCommonMainDatabaseInterface
+
+> Task :domain:compileKotlinJvm
+w: file:///D:/Codex/worktrees/85be/mihon-sync-old-96db/domain/src/commonMain/kotlin/tachiyomi/domain/library/LibrarySelectionPolicy.kt:45:9 Condition is always 'true'.
+w: file:///D:/Codex/worktrees/85be/mihon-sync-old-96db/domain/src/commonMain/kotlin/tachiyomi/domain/track/interactor/SyncReadingProgressWithTrack.kt:87:44 The corresponding parameter in the supertype 'DelayedTrackerSyncPersistence' is named 'item'. This may cause problems when calling this function with named arguments.
+
+> Task :domain:compileJvmMainJava NO-SOURCE
+> Task :domain:jvmMainClasses
+> Task :domain:jvmJar
+
+> Task :data:compileKotlinJvm
+w: file:///D:/Codex/worktrees/85be/mihon-sync-old-96db/data/src/commonMain/kotlin/mihon/data/sync/crypto/SyncAeadEngineFactory.kt:5:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///D:/Codex/worktrees/85be/mihon-sync-old-96db/data/src/commonMain/kotlin/mihon/data/sync/crypto/SyncRecoveryFactory.kt:5:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///D:/Codex/worktrees/85be/mihon-sync-old-96db/data/src/commonMain/kotlin/mihon/data/sync/http/SyncHttpClient.kt:62:52 The corresponding parameter in the supertype 'Callback' is named 'e'. This may cause problems when calling this function with named arguments.
+w: file:///D:/Codex/worktrees/85be/mihon-sync-old-96db/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncPanelController.kt:268:57 Unnecessary safe call on a non-null receiver of type 'SyncConnection'.
+w: file:///D:/Codex/worktrees/85be/mihon-sync-old-96db/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:173:59 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon-sync-old-96db/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:174:55 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon-sync-old-96db/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:175:59 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon-sync-old-96db/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:176:57 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon-sync-old-96db/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRunStore.kt:177:56 Unnecessary non-null assertion (!!) on a non-null receiver of type 'Sync_runtime_runs'.
+w: file:///D:/Codex/worktrees/85be/mihon-sync-old-96db/data/src/jvmMain/kotlin/mihon/data/sync/crypto/SyncAeadEngineFactoryJvm.kt:18:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///D:/Codex/worktrees/85be/mihon-sync-old-96db/data/src/jvmMain/kotlin/mihon/data/sync/crypto/SyncAeadEngineFactoryJvm.kt:57:14 'fun <P : Any!> getPrimitive(targetClassObject: Class<P!>!): P!' is deprecated. Deprecated in Java.
+w: file:///D:/Codex/worktrees/85be/mihon-sync-old-96db/data/src/jvmMain/kotlin/mihon/data/sync/crypto/SyncRecoveryFactoryJvm.kt:9:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+
+> Task :data:compileJvmMainJava NO-SOURCE
+> Task :data:jvmMainClasses
+> Task :data:jvmJar
+> Task :data:compileTestKotlinJvm
+> Task :data:compileJvmTestJava NO-SOURCE
+> Task :data:jvmTestClasses
+> Task :data:jvmTest
+
+SyncScaleAcceptanceTest[jvm] > runtime baseline first import complete exchange warm increment and recovery()[jvm] PASSED
+
+BUILD SUCCESSFUL in 1m 37s
+31 actionable tasks: 31 executed

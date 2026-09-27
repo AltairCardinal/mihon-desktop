@@ -386,6 +386,8 @@ abstract class SyncBaselineStorageContract {
             val progress = s.baseline.process(import)
             assertEquals(3L, progress.total)
             assertEquals(0L, progress.remaining)
+            assertEquals(3L, progress.committedCount)
+            assertNotNull(progress.lastCommittedEntryId)
             val events = s.journal.pendingEvents("space", 1)
             val baseline = events.filter { it.origin == SyncOrigin.INITIAL_IMPORT }
             assertEquals(

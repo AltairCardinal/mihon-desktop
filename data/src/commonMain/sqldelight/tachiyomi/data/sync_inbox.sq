@@ -115,9 +115,50 @@ getReceivedBatch:
 SELECT body_json FROM sync_inbox_batches
 WHERE space_id = ? AND generation = ? AND batch_id = ? AND status = 'RECEIVED';
 
+canConfirmReceivedBatch:
+SELECT 1 FROM sync_inbox_batches b
+WHERE b.space_id = :spaceId AND b.generation = :generation AND b.batch_id = :batchId
+  AND b.status = 'RECEIVED'
+  AND NOT EXISTS (
+    SELECT 1 FROM sync_events e INDEXED BY sync_events_by_batch_confirmation
+    WHERE e.space_id = b.space_id AND e.generation = b.generation AND e.batch_id = b.batch_id
+      AND (
+        e.sync_indexed = 0
+        OR EXISTS (
+          SELECT 1 FROM sync_invalid_events i
+          WHERE i.space_id = e.space_id AND i.generation = e.generation AND i.event_key = e.event_key
+        )
+        OR EXISTS (
+          SELECT 1 FROM sync_event_fields f JOIN sync_field_state s
+            ON s.space_id = f.space_id AND s.generation = f.generation
+            AND s.object_key = f.object_key AND s.field = f.field
+          WHERE f.space_id = e.space_id AND f.generation = e.generation AND f.event_key = e.event_key
+            AND (s.dirty = 1 OR s.status NOT IN ('APPLIED', 'EMPTY'))
+        )
+      )
+  ) LIMIT 1;
+
 saveInboxBatch:
 INSERT INTO sync_inbox_batches(space_id, generation, batch_id, status, body_json, error) VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT(space_id, generation, batch_id, status) DO UPDATE SET body_json = excluded.body_json, error = excluded.error;
+
+insertDiscoveredBatch:
+INSERT INTO sync_inbox_batches(space_id, generation, batch_id, status, body_json, error)
+SELECT ?, ?, ?, 'DISCOVERED', ?, NULL
+WHERE NOT EXISTS (
+    SELECT 1 FROM sync_batches
+    WHERE space_id = ? AND generation = ? AND batch_id = ? AND status = 'PUBLISHED'
+)
+ON CONFLICT(space_id, generation, batch_id, status) DO UPDATE SET body_json = excluded.body_json;
+
+getDiscoveredBatches:
+SELECT body_json FROM sync_inbox_batches
+WHERE space_id = ? AND generation = ? AND status = 'DISCOVERED'
+ORDER BY batch_id LIMIT ?;
+
+deleteDiscoveredBatch:
+DELETE FROM sync_inbox_batches
+WHERE space_id = ? AND generation = ? AND batch_id = ? AND status = 'DISCOVERED';
 
 countInboxBatches:
 SELECT status, count(*) AS count FROM sync_inbox_batches WHERE space_id = ? AND generation = ? GROUP BY status;

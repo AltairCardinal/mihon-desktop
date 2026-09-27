@@ -6,7 +6,9 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,13 +18,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Close
@@ -41,6 +48,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -74,6 +82,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.icerock.moko.resources.StringResource
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -84,15 +93,25 @@ import mihon.data.sync.auth.SyncInstallationAccountType
 import mihon.data.sync.auth.SyncRepositorySelection
 import mihon.data.sync.inbox.SyncPendingItem
 import mihon.data.sync.runtime.SyncDecisionScope
+import mihon.data.sync.runtime.SyncFailureLogStatus
 import mihon.data.sync.runtime.SyncPanel
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelQuestion
 import mihon.data.sync.runtime.SyncPanelState
 import mihon.data.sync.runtime.SyncPasswordProblem
+import mihon.data.sync.runtime.SyncProgressDirection
+import mihon.data.sync.runtime.SyncProgressFact
+import mihon.data.sync.runtime.SyncProgressHold
+import mihon.data.sync.runtime.SyncProgressStage
+import mihon.data.sync.runtime.SyncRunPhase
+import mihon.data.sync.runtime.SyncRunSnapshot
+import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncSetupStep
 import mihon.domain.sync.SyncCancellationDecision
 import mihon.domain.sync.SyncObjectType
+import mihon.domain.sync.auth.GitHubAuthFailureReason
+import mihon.domain.sync.auth.GitHubDeviceCode
 import mihon.domain.sync.runtime.SyncRunProblem
 import mihon.domain.sync.runtime.SyncRunStatus
 import mihon.domain.sync.transport.SyncRepositoryTarget
@@ -142,6 +161,7 @@ fun SyncPanelContent(
     modifier: Modifier = Modifier,
     onOpenBrowser: (String) -> Unit,
     onCopyCode: (String) -> Unit,
+    onOpenFailureLog: (String) -> Unit = {},
 ) {
     val state by panel.state.collectAsState()
     val listState = rememberLazyListState()
@@ -149,7 +169,7 @@ fun SyncPanelContent(
         PanelHeader(state, panel::dispatch)
         HorizontalDivider()
         when (state.page) {
-            SyncPanelPage.MAIN -> MainPage(state, panel::dispatch, listState, Modifier.weight(1f))
+            SyncPanelPage.MAIN -> MainPage(state, panel::dispatch, onOpenFailureLog, listState, Modifier.weight(1f))
             SyncPanelPage.SETTINGS -> SettingsPage(state, panel::dispatch, Modifier.weight(1f))
             SyncPanelPage.HISTORY -> RecordsPage(state, Modifier.weight(1f))
             SyncPanelPage.SETUP -> SetupPage(
@@ -157,6 +177,8 @@ fun SyncPanelContent(
                 panel::dispatch,
                 onOpenBrowser,
                 onCopyCode,
+                panel::claimDeviceCodeBrowser,
+                onOpenFailureLog,
                 Modifier.weight(1f),
             )
         }
@@ -230,17 +252,26 @@ private fun PanelHeader(state: SyncPanelState, dispatch: (SyncPanelAction) -> Un
                 Icon(Icons.AutoMirrored.Outlined.ArrowBack, syncString(MR.strings.sync_back))
             }
         }
-        Text(
-            syncString(
-                when (state.page) {
-                    SyncPanelPage.SETTINGS -> MR.strings.sync_settings
-                    SyncPanelPage.HISTORY -> MR.strings.sync_records
-                    else -> MR.strings.sync_title
-                },
-            ),
-            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-            style = MaterialTheme.typography.titleLarge,
-        )
+        Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+            Text(
+                syncString(
+                    when (state.page) {
+                        SyncPanelPage.SETTINGS -> MR.strings.sync_settings
+                        SyncPanelPage.HISTORY -> MR.strings.sync_records
+                        else -> MR.strings.sync_title
+                    },
+                ),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            if (state.page == SyncPanelPage.MAIN && state.deviceName.isNotBlank()) {
+                Text(
+                    syncString(MR.strings.sync_space_subtitle, state.deviceName),
+                    Modifier.testTag("sync-space-subtitle"),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
         if (state.page == SyncPanelPage.MAIN) {
             IconButton(
                 { dispatch(SyncPanelAction.Navigate(SyncPanelPage.SETTINGS)) },
@@ -260,43 +291,15 @@ private fun PanelHeader(state: SyncPanelState, dispatch: (SyncPanelAction) -> Un
 private fun MainPage(
     state: SyncPanelState,
     dispatch: (SyncPanelAction) -> Unit,
+    onOpenFailureLog: (String) -> Unit,
     listState: LazyListState,
     modifier: Modifier,
 ) {
     val continuingSetup = state.setupStep !in setOf(SyncSetupStep.SIGN_IN, SyncSetupStep.COMPLETE)
     Column(modifier) {
-        Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(statusText(state), style = MaterialTheme.typography.titleMedium)
-                Text(
-                    syncString(MR.strings.sync_detail, state.queuedMembership, state.queuedReading),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Button(
-                onClick = {
-                    dispatch(
-                        if (state.connection?.enabled != true || continuingSetup) {
-                            SyncPanelAction.BeginSetup
-                        } else {
-                            SyncPanelAction.Synchronize
-                        },
-                    )
-                },
-                enabled = !state.busy || continuingSetup,
-                modifier = Modifier.padding(start = 8.dp).testTag("sync-now"),
-            ) {
-                Text(
-                    syncString(
-                        when {
-                            continuingSetup -> MR.strings.sync_setup_continue
-                            state.connection?.enabled != true -> MR.strings.sync_connect
-                            else -> MR.strings.sync_now
-                        },
-                    ),
-                )
-            }
-        }
+        SyncStatusHeader(state, continuingSetup, dispatch)
+        SyncQueueSummary(state)
+        state.run?.let { run -> SyncProgressCard(run, state, dispatch, onOpenFailureLog) }
         if (state.problem == SyncRunProblem.AUTHORIZATION) {
             Action("sync-reconnect", MR.strings.sync_reconnect) { dispatch(SyncPanelAction.Authorize) }
         }
@@ -323,7 +326,19 @@ private fun MainPage(
                                 Modifier.testTag("sync-notice-counts"),
                             )
                         }
-                        if (result.status == SyncRunStatus.FAILED || result.status == SyncRunStatus.PARTIAL) {
+                        if (result.status == SyncRunStatus.PARTIAL && result.pending > 0 && result.problem == null) {
+                            Text(
+                                syncString(MR.strings.sync_pending_decisions_count, result.pending),
+                                Modifier.testTag("sync-notice-pending"),
+                            )
+                        } else if (result.status == SyncRunStatus.PARTIAL && result.problem == null &&
+                            state.run?.stopReason == "projection_pending"
+                        ) {
+                            Text(
+                                syncString(MR.strings.sync_projection_pending),
+                                Modifier.testTag("sync-notice-projection"),
+                            )
+                        } else if (result.status == SyncRunStatus.FAILED || result.status == SyncRunStatus.PARTIAL) {
                             Text(
                                 problemText(result.problem ?: SyncRunProblem.UNKNOWN),
                                 Modifier.testTag("sync-notice-error"),
@@ -396,6 +411,95 @@ private fun MainPage(
             .filter { it >= state.pending.size - 3 }
             .collect { dispatch(SyncPanelAction.LoadMore) }
     }
+}
+
+@Composable
+private fun SyncStatusHeader(
+    state: SyncPanelState,
+    continuingSetup: Boolean,
+    dispatch: (SyncPanelAction) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            modifier = Modifier.size(48.dp).testTag("sync-status-icon"),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.Sync, syncString(MR.strings.sync_title), Modifier.size(28.dp))
+            }
+        }
+        Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+            Text(statusText(state), style = MaterialTheme.typography.titleMedium)
+            Text(
+                syncString(MR.strings.sync_detail, state.queuedMembership, state.queuedReading),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Button(
+            onClick = {
+                dispatch(
+                    if (state.connection?.enabled != true || continuingSetup) {
+                        SyncPanelAction.BeginSetup
+                    } else {
+                        SyncPanelAction.Synchronize
+                    },
+                )
+            },
+            enabled = (!state.busy && state.run?.state != SyncRunState.PAUSED_USER) || continuingSetup,
+            modifier = Modifier.testTag("sync-now"),
+        ) {
+            Text(
+                syncString(
+                    when {
+                        continuingSetup -> MR.strings.sync_setup_continue
+                        state.connection?.enabled != true -> MR.strings.sync_connect
+                        else -> MR.strings.sync_now
+                    },
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SyncQueueSummary(state: SyncPanelState) {
+    val classified = state.queuedFavorites + state.queuedFollows
+    val favorites = state.queuedFavorites + (state.queuedMembership - classified).coerceAtLeast(0)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).testTag("sync-queue-summary")) {
+        SyncQueueRow(
+            MR.strings.sync_queue_upload,
+            syncString(MR.strings.sync_queue_upload_value, state.queuedTotal),
+            "sync-queue-upload",
+        )
+        SyncQueueRow(
+            MR.strings.sync_queue_membership,
+            syncString(MR.strings.sync_queue_membership_value, favorites, state.queuedFollows),
+            "sync-queue-membership",
+        )
+        SyncQueueRow(
+            MR.strings.sync_queue_reading,
+            syncString(MR.strings.sync_queue_reading_value, state.queuedReading),
+            "sync-queue-reading",
+        )
+    }
+}
+
+@Composable
+private fun SyncQueueRow(label: StringResource, value: String, tag: String) {
+    Row(
+        Modifier.fillMaxWidth().height(58.dp).testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(syncString(label), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+        Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
 }
 
 @Composable
@@ -667,14 +771,32 @@ private fun SetupPage(
     dispatch: (SyncPanelAction) -> Unit,
     openBrowser: (String) -> Unit,
     copyCode: (String) -> Unit,
+    claimBrowser: (GitHubDeviceCode) -> Boolean,
+    onOpenFailureLog: (String) -> Unit,
     modifier: Modifier,
 ) {
+    val deviceCode = state.deviceCode
+    LaunchedEffect(state.visible, deviceCode?.deviceCode) {
+        if (state.visible && state.setupStep == SyncSetupStep.SIGN_IN && deviceCode != null &&
+            claimBrowser(deviceCode)
+        ) {
+            copyCode(deviceCode.userCode)
+            openBrowser(deviceCode.verificationUri)
+        }
+    }
     // Session-local text only: closing or leaving this step discards unsubmitted input.
     var password by remember(state.visible, state.setupStep, state.setupRepository) { mutableStateOf(TextFieldValue()) }
     var showPassword by remember(state.visible, state.setupStep) { mutableStateOf(false) }
     val passwordFocus = remember { FocusRequester() }
-    LazyColumn(modifier.padding(24.dp).testTag("sync-setup-list"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (state.setupBusy) item { CircularProgressIndicator(Modifier.size(24.dp)) }
+    LazyColumn(
+        modifier.fillMaxWidth().padding(24.dp).testTag("sync-setup-list"),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        if (state.setupBusy && state.setupStep != SyncSetupStep.SIGN_IN &&
+            !(state.setupStep == SyncSetupStep.MERGING && state.run?.state?.isTerminal() == true)
+        ) {
+            item { CircularProgressIndicator(Modifier.size(24.dp)) }
+        }
         state.setupProblem?.let { item { Text(setupProblemText(it), Modifier.testTag("sync-setup-error")) } }
         state.setupInstallation?.let(::installationScopeWarning)?.let { warning ->
             item {
@@ -683,7 +805,45 @@ private fun SetupPage(
         }
         when (state.setupStep) {
             SyncSetupStep.SIGN_IN -> {
-                item { Text(syncString(MR.strings.sync_auth_description)) }
+                if (state.setupBusy && state.authFailure == null) {
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().testTag(
+                                if (state.deviceCode == null) {
+                                    "sync-auth-getting-code"
+                                } else {
+                                    "sync-auth-waiting-browser"
+                                },
+                            ),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(Modifier.size(24.dp))
+                            Text(
+                                syncString(
+                                    if (state.deviceCode == null) {
+                                        MR.strings.sync_auth_getting_code
+                                    } else {
+                                        MR.strings.sync_auth_waiting_browser
+                                    },
+                                ),
+                                Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
+                if (state.setupBusy && state.deviceCode == null && state.authFailure == null) {
+                    val startedAt = state.authRequestStartedAtMillis
+                    if (startedAt != null && state.nowMillis >= startedAt && state.nowMillis - startedAt >= 5_000) {
+                        item {
+                            Text(
+                                syncString(MR.strings.sync_auth_check_network),
+                                Modifier.fillMaxWidth().testTag("sync-auth-network-hint"),
+                            )
+                        }
+                    }
+                }
+                item { Text(syncString(MR.strings.sync_auth_description), Modifier.fillMaxWidth()) }
                 state.deviceCode?.let { code ->
                     item { Text(code.userCode, style = MaterialTheme.typography.headlineMedium) }
                     item {
@@ -698,7 +858,19 @@ private fun SetupPage(
                         }
                     }
                 }
-                if (state.authFailure != null) item { Text(syncString(MR.strings.sync_auth_failed)) }
+                state.authFailure?.let { failure ->
+                    item {
+                        Text(
+                            syncString(
+                                if (failure == GitHubAuthFailureReason.HTTP) {
+                                    MR.strings.sync_auth_request_failed
+                                } else {
+                                    MR.strings.sync_auth_failed
+                                },
+                            ),
+                        )
+                    }
+                }
                 if (state.deviceCode == null || state.authFailure != null) {
                     item {
                         Action(
@@ -817,7 +989,12 @@ private fun SetupPage(
             SyncSetupStep.DISCOVERING -> item { Text(syncString(MR.strings.sync_setup_discovering)) }
             SyncSetupStep.CREATING -> item { Text(syncString(MR.strings.sync_setup_creating)) }
             SyncSetupStep.MERGING -> {
-                item { Text(syncString(MR.strings.sync_setup_merging)) }
+                if (state.run?.state?.isTerminal() != true) {
+                    item { Text(syncString(MR.strings.sync_setup_merging)) }
+                }
+                state.run?.let { run ->
+                    item { SyncProgressCard(run, state, dispatch, onOpenFailureLog, horizontalPadding = 0.dp) }
+                }
                 if (state.importRemaining > 0) {
                     item { Text(syncString(MR.strings.sync_import_remaining, state.importRemaining)) }
                     item {
@@ -929,6 +1106,433 @@ private fun SetupPage(
 }
 
 @Composable
+private fun SyncProgressCard(
+    run: SyncRunSnapshot,
+    state: SyncPanelState,
+    dispatch: (SyncPanelAction) -> Unit,
+    onOpenFailureLog: (String) -> Unit,
+    horizontalPadding: Dp = 24.dp,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = horizontalPadding, vertical = 16.dp)
+            .testTag("sync-progress-card"),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        val reportScroll = state.failureLog?.runId == run.runId && run.state.isTerminal()
+        Column(
+            Modifier.fillMaxWidth().then(
+                if (reportScroll) Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState()) else Modifier,
+            ).padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            val terminal = run.state.isTerminal()
+            val progress = state.progress?.takeIf { it.scope == run.runId || it.scope.startsWith("${run.runId}:") }
+            if (terminal) {
+                SyncTerminalProgress(run, state)
+            } else if (progress != null) {
+                SyncStageProgress(run, progress, state.nowMillis)
+            } else {
+                Text(syncString(runPhaseLabel(run.phase)), style = MaterialTheme.typography.titleMedium)
+            }
+            if (!terminal && progress == null && run.total > 0) {
+                Text(
+                    syncString(MR.strings.sync_progress, run.processed, run.total),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                LinearProgressIndicator(
+                    progress = { (run.processed.toFloat() / run.total).coerceIn(0f, 1f) },
+                    Modifier.fillMaxWidth().testTag("sync-progress"),
+                )
+                val remaining = (run.total - run.completed - run.skipped - run.failed).coerceAtLeast(0)
+                Text(
+                    syncString(
+                        MR.strings.sync_progress_detail,
+                        run.completed,
+                        run.skipped,
+                        run.failed,
+                        remaining,
+                    ),
+                    Modifier.testTag("sync-progress-detail"),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else if (!terminal && progress == null) {
+                LinearProgressIndicator(Modifier.fillMaxWidth().testTag("sync-progress"))
+            }
+            when (run.state) {
+                SyncRunState.PAUSED_USER -> {
+                    Text(syncString(MR.strings.sync_paused))
+                    Action("sync-resume-run", MR.strings.sync_resume_run) {
+                        dispatch(SyncPanelAction.ResumeSync)
+                    }
+                }
+                SyncRunState.WAITING_NETWORK -> Text(syncString(MR.strings.sync_waiting_network))
+                SyncRunState.WAITING_SYSTEM -> Text(syncString(MR.strings.sync_waiting_system))
+                SyncRunState.WAITING_RETRY -> {
+                    val waitingLabel = if (run.stopReason == "rate_limit") {
+                        MR.strings.sync_waiting_rate_limit
+                    } else {
+                        MR.strings.sync_waiting_retry
+                    }
+                    Text(syncString(waitingLabel))
+                    Text(retryLabel(run, state.nowMillis), Modifier.testTag("sync-retry-countdown"))
+                }
+                SyncRunState.FAILED -> {
+                    Action("sync-retry-run", MR.strings.sync_retry_run) {
+                        dispatch(SyncPanelAction.RetrySync)
+                    }
+                }
+                SyncRunState.BLOCKED -> {
+                    Text(
+                        problemText(state.problem ?: SyncRunProblem.UNKNOWN),
+                        Modifier.testTag("sync-blocked-reason"),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                SyncRunState.PARTIAL -> {
+                    if ((state.terminalSummary?.takeIf { it.runId == run.runId }?.sourceUnavailableFields ?: 0L) ==
+                        0L
+                    ) {
+                        Text(
+                            if (run.stopReason == "projection_pending") {
+                                syncString(MR.strings.sync_projection_pending)
+                            } else if (state.pendingTotal > 0) {
+                                syncString(MR.strings.sync_pending_decisions_count, state.pendingTotal)
+                            } else {
+                                syncString(MR.strings.sync_pending_decisions)
+                            },
+                        )
+                    }
+                    Action("sync-retry-run", MR.strings.sync_retry_run) {
+                        dispatch(SyncPanelAction.RetrySync)
+                    }
+                }
+                SyncRunState.SUCCEEDED,
+                SyncRunState.CANCELLED,
+                -> Unit
+                else -> if (progress?.hold != SyncProgressHold.PAUSING) {
+                    Action("sync-pause-run", MR.strings.sync_pause_run) {
+                        dispatch(SyncPanelAction.PauseSync)
+                    }
+                }
+            }
+            when (val failureLog = state.failureLog?.takeIf { it.runId == run.runId && terminal }) {
+                is SyncFailureLogStatus.Ready -> {
+                    Text(syncString(MR.strings.sync_failure_log_count, failureLog.failedEntries))
+                    Text(
+                        failureLog.path,
+                        Modifier.testTag("sync-failure-log-path").clickable { onOpenFailureLog(failureLog.path) },
+                    )
+                    Action("sync-failure-log-open", MR.strings.sync_failure_log_open) {
+                        onOpenFailureLog(failureLog.path)
+                    }
+                }
+                is SyncFailureLogStatus.SaveFailed -> Text(
+                    if (failureLog.failedEntries > 0L) {
+                        syncString(MR.strings.sync_failure_log_save_failed, failureLog.failedEntries)
+                    } else {
+                        syncString(MR.strings.sync_failure_log_save_failed_unknown)
+                    },
+                    color = MaterialTheme.colorScheme.error,
+                )
+                null -> Unit
+            }
+            if (state.logs.isNotEmpty()) {
+                Text(syncString(MR.strings.sync_log_title), style = MaterialTheme.typography.titleSmall)
+                state.logs.forEach { log ->
+                    Column(Modifier.fillMaxWidth().testTag("sync-log-${log.key}")) {
+                        Text(log.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            log.detail,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+                if (state.logsHasMore) {
+                    Action("sync-log-more", MR.strings.sync_load_more) {
+                        dispatch(SyncPanelAction.LoadMoreLogs)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun SyncRunState.isTerminal(): Boolean = this in setOf(
+    SyncRunState.SUCCEEDED,
+    SyncRunState.PARTIAL,
+    SyncRunState.FAILED,
+    SyncRunState.BLOCKED,
+    SyncRunState.CANCELLED,
+)
+
+@Composable
+private fun SyncTerminalProgress(run: SyncRunSnapshot, state: SyncPanelState) {
+    val title = when (run.state) {
+        SyncRunState.SUCCEEDED -> MR.strings.sync_phase_complete
+        SyncRunState.PARTIAL -> MR.strings.sync_terminal_partial
+        SyncRunState.FAILED -> MR.strings.sync_retry_exhausted
+        SyncRunState.BLOCKED -> MR.strings.sync_blocked
+        SyncRunState.CANCELLED -> MR.strings.sync_terminal_cancelled
+        else -> error("A terminal result is required")
+    }
+    Text(syncString(title), style = MaterialTheme.typography.titleMedium)
+    Text(syncString(MR.strings.sync_items_confirmed_this_run, run.confirmedItems))
+    val summary = state.terminalSummary?.takeIf { it.runId == run.runId }
+    if (summary != null && summary.pendingDownloadBatches > 0L) {
+        Text(
+            syncString(
+                MR.strings.sync_terminal_pending_receipts,
+                summary.pendingDownloadBatches,
+                summary.pendingDownloadEvents,
+            ),
+        )
+        Text(syncString(MR.strings.sync_terminal_pending_explanation))
+    }
+    if (summary != null && summary.sourceUnavailableFields > 0L) {
+        Text(syncString(MR.strings.sync_terminal_source_fields, summary.sourceUnavailableFields))
+        Text(syncString(MR.strings.sync_terminal_source_retry))
+    }
+    val elapsedSeconds = ((run.updatedAt - run.createdAt).coerceAtLeast(0L) / 1_000L)
+    val elapsed = "${(elapsedSeconds / 60).toString().padStart(2, '0')}:" +
+        (elapsedSeconds % 60).toString().padStart(2, '0')
+    Text(syncString(MR.strings.sync_elapsed, elapsed))
+}
+
+@Composable
+private fun SyncStageProgress(run: SyncRunSnapshot, fact: SyncProgressFact, nowMillis: Long) {
+    val stageResources = listOf(
+        MR.strings.sync_stage_prepare,
+        MR.strings.sync_stage_transfer,
+        MR.strings.sync_stage_confirm,
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        stageResources.forEachIndexed { index, label ->
+            val status = when {
+                run.state == SyncRunState.SUCCEEDED || index < fact.stage.ordinal -> MR.strings.sync_stage_done
+                index > fact.stage.ordinal -> MR.strings.sync_stage_waiting
+                run.state in setOf(SyncRunState.FAILED, SyncRunState.BLOCKED, SyncRunState.CANCELLED) ->
+                    MR.strings.sync_stage_failed
+                run.state in setOf(
+                    SyncRunState.PAUSED_USER,
+                    SyncRunState.WAITING_NETWORK,
+                    SyncRunState.WAITING_RETRY,
+                    SyncRunState.WAITING_SYSTEM,
+                    SyncRunState.PARTIAL,
+                ) -> MR.strings.sync_stage_waiting
+                else -> MR.strings.sync_stage_active
+            }
+            Text(
+                "${syncString(label)} · ${syncString(status)}",
+                style = if (index ==
+                    fact.stage.ordinal
+                ) {
+                    MaterialTheme.typography.titleSmall
+                } else {
+                    MaterialTheme.typography.bodySmall
+                },
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+    if (fact.additionalWork) Text(syncString(MR.strings.sync_additional_work))
+    val action = when (fact.stage) {
+        SyncProgressStage.PREPARING -> if (run.phase == SyncRunPhase.UPLOADING) {
+            MR.strings.sync_preparing_upload
+        } else {
+            runPhaseLabel(run.phase)
+        }
+        SyncProgressStage.TRANSFERRING -> if (fact.direction == SyncProgressDirection.UPLOAD) {
+            MR.strings.sync_phase_uploading
+        } else {
+            MR.strings.sync_phase_downloading
+        }
+        SyncProgressStage.CONFIRMING -> if (fact.direction == SyncProgressDirection.UPLOAD) {
+            MR.strings.sync_checking_github_saved
+        } else if (fact.mergingReceivedData) {
+            MR.strings.sync_merging_received_data
+        } else {
+            MR.strings.sync_receiving_and_verifying
+        }
+    }
+    Text(syncString(action), style = MaterialTheme.typography.titleMedium)
+    if (fact.stage == SyncProgressStage.PREPARING) {
+        val imported = fact.importCompletedItems
+        val importTotal = fact.importTotalItems
+        if (imported != null && importTotal != null) {
+            Text(syncString(MR.strings.sync_import_progress, imported, importTotal))
+        }
+    }
+    if (fact.hold == SyncProgressHold.RECOVERING) {
+        Text(syncString(MR.strings.sync_recovering_progress))
+    } else if (fact.hold == SyncProgressHold.PAUSING) {
+        Text(syncString(MR.strings.sync_pausing_save))
+    }
+    if (fact.totalItems == 0L && fact.completedItems == 0L && run.state == SyncRunState.SUCCEEDED) {
+        Text(syncString(MR.strings.sync_no_pending_data))
+    } else {
+        val countResource = when (fact.stage) {
+            SyncProgressStage.PREPARING -> MR.strings.sync_items_prepared
+            SyncProgressStage.TRANSFERRING -> MR.strings.sync_items_transferred
+            SyncProgressStage.CONFIRMING -> MR.strings.sync_items_confirmed
+        }
+        val unknownResource = when (fact.stage) {
+            SyncProgressStage.PREPARING -> MR.strings.sync_items_prepared_unknown
+            SyncProgressStage.TRANSFERRING -> MR.strings.sync_items_transferred_unknown
+            SyncProgressStage.CONFIRMING -> MR.strings.sync_items_confirmed_unknown
+        }
+        val totalItems = fact.totalItems
+        if (totalItems != null) {
+            Text(syncString(countResource, fact.completedItems, totalItems), Modifier.testTag("sync-stage-count"))
+        } else {
+            if (run.state == SyncRunState.RUNNING) Text(syncString(MR.strings.sync_counting_data))
+            Text(syncString(unknownResource, fact.completedItems), Modifier.testTag("sync-stage-count"))
+        }
+    }
+    if (fact.direction == SyncProgressDirection.DOWNLOAD && fact.stage == SyncProgressStage.CONFIRMING) {
+        fact.receivedItems?.takeIf { it > 0L }?.let { received ->
+            val total = fact.receivedTotalItems
+            Text(
+                if (total != null) {
+                    syncString(MR.strings.sync_items_received, received, total)
+                } else {
+                    syncString(MR.strings.sync_items_received_unknown, received)
+                },
+                Modifier.testTag("sync-received-count"),
+            )
+        }
+        if (fact.checkedFields > 0L) {
+            Text(syncString(MR.strings.sync_fields_checked, fact.checkedFields), Modifier.testTag("sync-checked-count"))
+        }
+    }
+    if (fact.unavailableFields > 0L && run.state == SyncRunState.RUNNING) {
+        Text(syncString(MR.strings.sync_source_unavailable_progress))
+    }
+    val fraction = when (fact.stage) {
+        SyncProgressStage.TRANSFERRING -> fact.totalBytes?.takeIf { it > 0L }
+            ?.let { (fact.effectiveBytes.toFloat() / it).coerceIn(0f, 1f) }
+        SyncProgressStage.PREPARING -> fact.totalItems?.takeIf { it > fact.completedItems }
+            ?.let { (fact.completedItems.toFloat() / it).coerceIn(0f, 1f) }
+        SyncProgressStage.CONFIRMING -> fact.totalItems?.takeIf { it > 0L && fact.completedItems > 0L }
+            ?.let { (fact.completedItems.toFloat() / it).coerceIn(0f, 1f) }
+    }
+    val progressDescription = if (fact.stage == SyncProgressStage.TRANSFERRING && fraction != null) {
+        syncString(MR.strings.sync_transfer_percent, (fraction * 100).toInt())
+    } else {
+        syncString(stageResources[fact.stage.ordinal])
+    }
+    val progressModifier = Modifier.fillMaxWidth().testTag("sync-progress").semantics {
+        stateDescription = progressDescription
+    }
+    if (fraction == null) {
+        LinearProgressIndicator(progressModifier)
+    } else {
+        LinearProgressIndicator(progress = { fraction }, modifier = progressModifier)
+    }
+    if (fact.stage == SyncProgressStage.TRANSFERRING && fraction != null) {
+        Text(progressDescription)
+    }
+    if (fact.stage == SyncProgressStage.TRANSFERRING) {
+        val bodyFraction = fact.activeBodyTotal?.takeIf { it > 0L }?.let { total ->
+            fact.activeBodyBytes?.let { (it.toFloat() / total).coerceIn(0f, 1f) }
+        }
+        if (bodyFraction != null && fact.totalBytes == null) {
+            val bodyDescription = syncString(MR.strings.sync_active_body_percent, (bodyFraction * 100).toInt())
+            Text(bodyDescription)
+            LinearProgressIndicator(
+                progress = { bodyFraction },
+                modifier = Modifier.fillMaxWidth().testTag("sync-active-body-progress").semantics {
+                    stateDescription = bodyDescription
+                },
+            )
+        }
+    }
+    fact.confirmedThisRun?.let { confirmed ->
+        Text(syncString(MR.strings.sync_items_confirmed_this_run, confirmed))
+    }
+    val elapsedEnd = if (run.state in setOf(
+            SyncRunState.SUCCEEDED,
+            SyncRunState.PARTIAL,
+            SyncRunState.FAILED,
+            SyncRunState.BLOCKED,
+            SyncRunState.CANCELLED,
+        )
+    ) {
+        run.updatedAt
+    } else {
+        nowMillis
+    }
+    val elapsedSeconds = ((elapsedEnd - run.createdAt).coerceAtLeast(0L) / 1_000L)
+    val elapsed = "${(elapsedSeconds / 60).toString().padStart(2, '0')}:" +
+        (elapsedSeconds % 60).toString().padStart(2, '0')
+    Text(syncString(MR.strings.sync_elapsed, elapsed))
+    val lastProgressSeconds = fact.secondsSinceLastProgress
+    val idleSeconds = (fact.secondsWithoutProgress ?: lastProgressSeconds)?.takeIf {
+        run.state == SyncRunState.RUNNING && fact.hold == SyncProgressHold.ACTIVE
+    }
+    if (idleSeconds != null && lastProgressSeconds != null) {
+        Text(
+            if (lastProgressSeconds < 10L) {
+                syncString(MR.strings.sync_recent_progress_now)
+            } else {
+                syncString(MR.strings.sync_recent_progress_seconds, lastProgressSeconds)
+            },
+        )
+    }
+    if (idleSeconds != null) {
+        if (idleSeconds >= 60L) {
+            Text(syncString(MR.strings.sync_no_progress_minute))
+        } else if (idleSeconds >= 10L) {
+            Text(
+                syncString(
+                    if (fact.stage == SyncProgressStage.CONFIRMING) {
+                        MR.strings.sync_waiting_current_step
+                    } else {
+                        MR.strings.sync_waiting_step_generic
+                    },
+                ),
+            )
+        }
+    }
+    if (run.state == SyncRunState.RUNNING && fact.hold == SyncProgressHold.ACTIVE) {
+        val wholeEtaSeconds = fact.wholeEtaSeconds
+        val stageEtaSeconds = fact.stageEtaSeconds
+        val bodyEtaSeconds = fact.activeBodyEtaSeconds
+        when {
+            idleSeconds != null && idleSeconds >= 10L -> Text(syncString(MR.strings.sync_eta_unavailable))
+            wholeEtaSeconds != null -> Text(
+                syncString(MR.strings.sync_eta_whole, syncEtaDuration(wholeEtaSeconds)),
+            )
+            stageEtaSeconds != null -> {
+                Text(syncString(MR.strings.sync_eta_stage, syncEtaDuration(stageEtaSeconds)))
+                Text(syncString(MR.strings.sync_eta_unknown_whole))
+            }
+            bodyEtaSeconds != null -> {
+                Text(syncString(MR.strings.sync_eta_body, syncEtaDuration(bodyEtaSeconds)))
+                Text(syncString(MR.strings.sync_eta_unknown_whole))
+            }
+            fact.stage == SyncProgressStage.CONFIRMING || fact.elapsedSeconds >= 10 ->
+                Text(syncString(MR.strings.sync_eta_unavailable))
+            else -> Text(syncString(MR.strings.sync_eta_unknown))
+        }
+    }
+}
+
+@Composable
+private fun syncEtaDuration(seconds: Long): String = when {
+    seconds <= 0 -> syncString(MR.strings.sync_eta_finishing)
+    seconds == 1L -> syncString(MR.strings.sync_duration_one_second)
+    seconds < 60 -> syncString(MR.strings.sync_duration_seconds, seconds)
+    seconds < 90 -> syncString(MR.strings.sync_duration_one_minute)
+    else -> syncString(MR.strings.sync_duration_minutes, (seconds + 30) / 60)
+}
+
+@Composable
 private fun setupProblemText(problem: SyncDiscoveryProblem): String = syncString(
     when (problem) {
         SyncDiscoveryProblem.NEEDS_INSTALLATION -> MR.strings.sync_setup_needs_installation
@@ -1012,6 +1616,26 @@ private fun statusText(state: SyncPanelState): String = when {
     state.queuedTotal > 0 -> syncString(MR.strings.sync_queued, state.queuedTotal)
     state.pendingTotal > 0 -> syncString(MR.strings.sync_exchanged)
     else -> syncString(MR.strings.sync_synced)
+}
+
+private fun runPhaseLabel(phase: SyncRunPhase): StringResource = when (phase) {
+    SyncRunPhase.CHECKING -> MR.strings.sync_phase_checking
+    SyncRunPhase.IMPORTING -> MR.strings.sync_phase_importing
+    SyncRunPhase.DOWNLOADING -> MR.strings.sync_phase_downloading
+    SyncRunPhase.MERGING -> MR.strings.sync_phase_merging
+    SyncRunPhase.UPLOADING -> MR.strings.sync_phase_uploading
+    SyncRunPhase.CONFIRMING -> MR.strings.sync_phase_confirming
+    SyncRunPhase.COMPLETE -> MR.strings.sync_phase_complete
+}
+
+@Composable
+private fun retryLabel(run: SyncRunSnapshot, nowMillis: Long): String {
+    val remainingSeconds = ((run.nextRetryAt - nowMillis).coerceAtLeast(0L) + 999L) / 1_000L
+    return when {
+        remainingSeconds == 0L -> syncString(MR.strings.sync_retry_ready)
+        remainingSeconds < 60L -> syncString(MR.strings.sync_retry_after_seconds, remainingSeconds)
+        else -> syncString(MR.strings.sync_retry_after_minutes, (remainingSeconds + 59L) / 60L)
+    }
 }
 
 @Composable

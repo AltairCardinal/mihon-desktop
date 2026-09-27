@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="mihon.data.sync.SyncScaleAcceptanceTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-09-25T04:43:00.211Z" hostname="G-BURST" time="16.52">
+  <properties/>
+  <testcase name="diagnose five hundred distinct projected fields with real inbox and file database()[jvm]" classname="mihon.data.sync.SyncScaleAcceptanceTest" time="16.52"/>
+  <system-out><![CDATA[SYNC_PROJECT_DIAGNOSTIC events=5000 uniqueFields=500 pages=11 ingestMs=1460 projectMs=11069 sqlCalls=11028 sqlMs=1621 dirtyQueryCalls=11 dirtyQueryMs=18 transactions=2003
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

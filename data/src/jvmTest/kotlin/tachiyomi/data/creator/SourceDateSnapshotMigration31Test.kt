@@ -19,6 +19,8 @@ class SourceDateSnapshotMigration31Test {
                 "published_date_snapshot_basis",
                 "published_date_snapshot_reason",
             ).forEach { driver.execute(null, "ALTER TABLE author_archive_source_works DROP COLUMN $it", 0) }
+            driver.execute(null, "ALTER TABLE sync_runtime_runs DROP COLUMN uploaded", 0)
+            driver.execute(null, "ALTER TABLE sync_runtime_runs DROP COLUMN downloaded", 0)
             driver.execute(null, "PRAGMA user_version = 31", 0)
             driver.execute(
                 null,
@@ -65,7 +67,7 @@ class SourceDateSnapshotMigration31Test {
                 0,
             )
 
-            DatabaseMigration.migrateAtomically(driver, 31, Database.Schema.version)
+            DatabaseMigration.migrateAtomically(driver, 31, 32)
 
             scalar(driver, "PRAGMA user_version") shouldBe 32L
             scalar(

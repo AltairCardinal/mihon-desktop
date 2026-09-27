@@ -1,0 +1,757 @@
+{
+  "schema": 1,
+  "date": "2026-09-25",
+  "baselineCommit": "0c153cb233",
+  "network": {
+    "latencyMillisPerResponse": 50,
+    "uploadMegabitsPerSecond": 10,
+    "downloadMegabitsPerSecond": 10,
+    "localControlledModel": true
+  },
+  "sample": {
+    "schema": 1,
+    "seed": 202609251600,
+    "original": {
+      "items": 424,
+      "publicReadingChapters": 2286,
+      "readingChaptersPerItem": {
+        "min": 0,
+        "median": 0.0,
+        "p95": 16,
+        "max": 293
+      },
+      "inputRecordUtf8Bytes": {
+        "min": 181,
+        "median": 309.0,
+        "p95": 3253,
+        "max": 54419
+      },
+      "mangaInputUtf8Bytes": {
+        "min": 157,
+        "median": 221.0,
+        "p95": 391,
+        "max": 650
+      },
+      "nullAuthor": 24,
+      "nullArtist": 290,
+      "nullThumbnail": 0,
+      "sources": 7
+    },
+    "generated": {
+      "items": 1600,
+      "publicReadingChapters": 8700,
+      "readingChaptersPerItem": {
+        "min": 0,
+        "median": 0.0,
+        "p95": 16,
+        "max": 293
+      },
+      "inputRecordUtf8Bytes": {
+        "min": 181,
+        "median": 310.0,
+        "p95": 3253,
+        "max": 54419
+      },
+      "mangaInputUtf8Bytes": {
+        "min": 157,
+        "median": 221.0,
+        "p95": 401,
+        "max": 650
+      },
+      "nullAuthor": 92,
+      "nullArtist": 1100,
+      "nullThumbnail": 0,
+      "sources": 7
+    },
+    "inputSha256": "e2cbcb9dad186f22a15615b374588f8b694e37b2f660e515c160b10ceea17458",
+    "inputBytes": 3321368,
+    "selection": "favorites and their PUBLIC reading states only",
+    "resampling": "original library plus shuffled balanced copies; mutate URLs/titles; preserve chapter profiles"
+  },
+  "runtimeAndRest": {
+    "inputRecords": 1600,
+    "inputChapters": 8700,
+    "inputReadingEntries": 8700,
+    "events": 10300,
+    "batches": 41,
+    "populateMillisExcluded": 1493,
+    "freezeMillisSinceAccepted": 603,
+    "importGeneratedMillisSinceAccepted": 34829,
+    "firstConfirmedMillisSinceAccepted": 53176,
+    "allConfirmedMillisSinceAccepted": 153592,
+    "runtimeHttpRequests": 794,
+    "runtimeRequestBodyBytes": 19338640,
+    "runtimeResponseBodyBytes": 19682529,
+    "runtimeRefUpdates": 41,
+    "frozenReplayMillis": 88516,
+    "frozenReplayInitialReadMillis": 549,
+    "frozenReplayHttpRequests": 788,
+    "frozenReplayRequestBodyBytes": 19338640,
+    "frozenReplayResponseBodyBytes": 19680533,
+    "frozenReplayRefUpdates": 41,
+    "initialHeadLength": 40,
+    "finalHeadLength": 40,
+    "initialTreeOid": "aacceda21fa52a5f052574fca8351468ce0e9b1a",
+    "finalTreeOid": "134c7517f70e6e8b12963ae9e0ec667fe11e107f",
+    "artifacts": [
+      {
+        "ordinal": 1,
+        "events": 256,
+        "batchBytes": 264016,
+        "indexBytes": 696,
+        "headBytes": 588
+      },
+      {
+        "ordinal": 2,
+        "events": 256,
+        "batchBytes": 247636,
+        "indexBytes": 852,
+        "headBytes": 588
+      },
+      {
+        "ordinal": 3,
+        "events": 256,
+        "batchBytes": 254432,
+        "indexBytes": 852,
+        "headBytes": 588
+      },
+      {
+        "ordinal": 4,
+        "events": 256,
+        "batchBytes": 257392,
+        "indexBytes": 852,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 5,
+        "events": 256,
+        "batchBytes": 255132,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 6,
+        "events": 256,
+        "batchBytes": 257352,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 7,
+        "events": 256,
+        "batchBytes": 272472,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 8,
+        "events": 256,
+        "batchBytes": 279140,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 9,
+        "events": 256,
+        "batchBytes": 275516,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 10,
+        "events": 256,
+        "batchBytes": 276500,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 11,
+        "events": 256,
+        "batchBytes": 280140,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 12,
+        "events": 256,
+        "batchBytes": 284364,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 13,
+        "events": 256,
+        "batchBytes": 281716,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 14,
+        "events": 256,
+        "batchBytes": 277560,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 15,
+        "events": 256,
+        "batchBytes": 279276,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 16,
+        "events": 256,
+        "batchBytes": 278588,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 17,
+        "events": 256,
+        "batchBytes": 278304,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 18,
+        "events": 256,
+        "batchBytes": 280812,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 19,
+        "events": 256,
+        "batchBytes": 280500,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 20,
+        "events": 256,
+        "batchBytes": 278928,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 21,
+        "events": 256,
+        "batchBytes": 282148,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 22,
+        "events": 256,
+        "batchBytes": 276924,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 23,
+        "events": 256,
+        "batchBytes": 278112,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 24,
+        "events": 256,
+        "batchBytes": 277280,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 25,
+        "events": 256,
+        "batchBytes": 276928,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 26,
+        "events": 256,
+        "batchBytes": 278404,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 27,
+        "events": 256,
+        "batchBytes": 282520,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 28,
+        "events": 256,
+        "batchBytes": 351644,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 29,
+        "events": 256,
+        "batchBytes": 574480,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 30,
+        "events": 256,
+        "batchBytes": 595352,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 31,
+        "events": 256,
+        "batchBytes": 604788,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 32,
+        "events": 256,
+        "batchBytes": 630660,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 33,
+        "events": 256,
+        "batchBytes": 628528,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 34,
+        "events": 256,
+        "batchBytes": 592632,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 35,
+        "events": 256,
+        "batchBytes": 476512,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 36,
+        "events": 256,
+        "batchBytes": 476712,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 37,
+        "events": 256,
+        "batchBytes": 478408,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 38,
+        "events": 256,
+        "batchBytes": 478232,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 39,
+        "events": 256,
+        "batchBytes": 530528,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 40,
+        "events": 256,
+        "batchBytes": 479144,
+        "indexBytes": 856,
+        "headBytes": 592
+      },
+      {
+        "ordinal": 41,
+        "events": 60,
+        "batchBytes": 133624,
+        "indexBytes": 856,
+        "headBytes": 592
+      }
+    ],
+    "frozenReplayBatches": [
+      {
+        "ordinal": 1,
+        "publishAndConfirmMillis": 1905,
+        "httpRequests": 19,
+        "requestBodyBytes": 354482,
+        "responseBodyBytes": 357012
+      },
+      {
+        "ordinal": 2,
+        "publishAndConfirmMillis": 1846,
+        "httpRequests": 19,
+        "requestBodyBytes": 332800,
+        "responseBodyBytes": 335618
+      },
+      {
+        "ordinal": 3,
+        "publishAndConfirmMillis": 1882,
+        "httpRequests": 19,
+        "requestBodyBytes": 341860,
+        "responseBodyBytes": 344966
+      },
+      {
+        "ordinal": 4,
+        "publishAndConfirmMillis": 1870,
+        "httpRequests": 19,
+        "requestBodyBytes": 345813,
+        "responseBodyBytes": 349207
+      },
+      {
+        "ordinal": 5,
+        "publishAndConfirmMillis": 1879,
+        "httpRequests": 19,
+        "requestBodyBytes": 342802,
+        "responseBodyBytes": 346484
+      },
+      {
+        "ordinal": 6,
+        "publishAndConfirmMillis": 1876,
+        "httpRequests": 19,
+        "requestBodyBytes": 345762,
+        "responseBodyBytes": 349732
+      },
+      {
+        "ordinal": 7,
+        "publishAndConfirmMillis": 1927,
+        "httpRequests": 19,
+        "requestBodyBytes": 365922,
+        "responseBodyBytes": 370180
+      },
+      {
+        "ordinal": 8,
+        "publishAndConfirmMillis": 1949,
+        "httpRequests": 19,
+        "requestBodyBytes": 374814,
+        "responseBodyBytes": 379360
+      },
+      {
+        "ordinal": 9,
+        "publishAndConfirmMillis": 1923,
+        "httpRequests": 19,
+        "requestBodyBytes": 369982,
+        "responseBodyBytes": 374816
+      },
+      {
+        "ordinal": 10,
+        "publishAndConfirmMillis": 1926,
+        "httpRequests": 19,
+        "requestBodyBytes": 371294,
+        "responseBodyBytes": 376416
+      },
+      {
+        "ordinal": 11,
+        "publishAndConfirmMillis": 1942,
+        "httpRequests": 19,
+        "requestBodyBytes": 376146,
+        "responseBodyBytes": 381556
+      },
+      {
+        "ordinal": 12,
+        "publishAndConfirmMillis": 1959,
+        "httpRequests": 19,
+        "requestBodyBytes": 381778,
+        "responseBodyBytes": 387476
+      },
+      {
+        "ordinal": 13,
+        "publishAndConfirmMillis": 1957,
+        "httpRequests": 19,
+        "requestBodyBytes": 378250,
+        "responseBodyBytes": 384236
+      },
+      {
+        "ordinal": 14,
+        "publishAndConfirmMillis": 1937,
+        "httpRequests": 19,
+        "requestBodyBytes": 372706,
+        "responseBodyBytes": 378980
+      },
+      {
+        "ordinal": 15,
+        "publishAndConfirmMillis": 1943,
+        "httpRequests": 19,
+        "requestBodyBytes": 374994,
+        "responseBodyBytes": 381556
+      },
+      {
+        "ordinal": 16,
+        "publishAndConfirmMillis": 1936,
+        "httpRequests": 19,
+        "requestBodyBytes": 374078,
+        "responseBodyBytes": 380928
+      },
+      {
+        "ordinal": 17,
+        "publishAndConfirmMillis": 1934,
+        "httpRequests": 19,
+        "requestBodyBytes": 373698,
+        "responseBodyBytes": 380836
+      },
+      {
+        "ordinal": 18,
+        "publishAndConfirmMillis": 1943,
+        "httpRequests": 19,
+        "requestBodyBytes": 377042,
+        "responseBodyBytes": 384468
+      },
+      {
+        "ordinal": 19,
+        "publishAndConfirmMillis": 1938,
+        "httpRequests": 19,
+        "requestBodyBytes": 376626,
+        "responseBodyBytes": 384340
+      },
+      {
+        "ordinal": 20,
+        "publishAndConfirmMillis": 1943,
+        "httpRequests": 19,
+        "requestBodyBytes": 374530,
+        "responseBodyBytes": 382532
+      },
+      {
+        "ordinal": 21,
+        "publishAndConfirmMillis": 1957,
+        "httpRequests": 19,
+        "requestBodyBytes": 378826,
+        "responseBodyBytes": 387116
+      },
+      {
+        "ordinal": 22,
+        "publishAndConfirmMillis": 1939,
+        "httpRequests": 19,
+        "requestBodyBytes": 371858,
+        "responseBodyBytes": 380436
+      },
+      {
+        "ordinal": 23,
+        "publishAndConfirmMillis": 1937,
+        "httpRequests": 19,
+        "requestBodyBytes": 373442,
+        "responseBodyBytes": 382308
+      },
+      {
+        "ordinal": 24,
+        "publishAndConfirmMillis": 1940,
+        "httpRequests": 19,
+        "requestBodyBytes": 372334,
+        "responseBodyBytes": 381488
+      },
+      {
+        "ordinal": 25,
+        "publishAndConfirmMillis": 1915,
+        "httpRequests": 19,
+        "requestBodyBytes": 371866,
+        "responseBodyBytes": 381308
+      },
+      {
+        "ordinal": 26,
+        "publishAndConfirmMillis": 1937,
+        "httpRequests": 19,
+        "requestBodyBytes": 373834,
+        "responseBodyBytes": 383564
+      },
+      {
+        "ordinal": 27,
+        "publishAndConfirmMillis": 1959,
+        "httpRequests": 19,
+        "requestBodyBytes": 379322,
+        "responseBodyBytes": 389340
+      },
+      {
+        "ordinal": 28,
+        "publishAndConfirmMillis": 2142,
+        "httpRequests": 19,
+        "requestBodyBytes": 471486,
+        "responseBodyBytes": 481792
+      },
+      {
+        "ordinal": 29,
+        "publishAndConfirmMillis": 2781,
+        "httpRequests": 19,
+        "requestBodyBytes": 768602,
+        "responseBodyBytes": 779196
+      },
+      {
+        "ordinal": 30,
+        "publishAndConfirmMillis": 2828,
+        "httpRequests": 19,
+        "requestBodyBytes": 796430,
+        "responseBodyBytes": 807312
+      },
+      {
+        "ordinal": 31,
+        "publishAndConfirmMillis": 2850,
+        "httpRequests": 19,
+        "requestBodyBytes": 809010,
+        "responseBodyBytes": 820180
+      },
+      {
+        "ordinal": 32,
+        "publishAndConfirmMillis": 2933,
+        "httpRequests": 19,
+        "requestBodyBytes": 843506,
+        "responseBodyBytes": 854964
+      },
+      {
+        "ordinal": 33,
+        "publishAndConfirmMillis": 2916,
+        "httpRequests": 19,
+        "requestBodyBytes": 840666,
+        "responseBodyBytes": 852412
+      },
+      {
+        "ordinal": 34,
+        "publishAndConfirmMillis": 2815,
+        "httpRequests": 19,
+        "requestBodyBytes": 792802,
+        "responseBodyBytes": 804836
+      },
+      {
+        "ordinal": 35,
+        "publishAndConfirmMillis": 2490,
+        "httpRequests": 19,
+        "requestBodyBytes": 637978,
+        "responseBodyBytes": 650300
+      },
+      {
+        "ordinal": 36,
+        "publishAndConfirmMillis": 2498,
+        "httpRequests": 19,
+        "requestBodyBytes": 638242,
+        "responseBodyBytes": 650852
+      },
+      {
+        "ordinal": 37,
+        "publishAndConfirmMillis": 2509,
+        "httpRequests": 19,
+        "requestBodyBytes": 640506,
+        "responseBodyBytes": 653404
+      },
+      {
+        "ordinal": 38,
+        "publishAndConfirmMillis": 2505,
+        "httpRequests": 19,
+        "requestBodyBytes": 640270,
+        "responseBodyBytes": 653456
+      },
+      {
+        "ordinal": 39,
+        "publishAndConfirmMillis": 2629,
+        "httpRequests": 19,
+        "requestBodyBytes": 709998,
+        "responseBodyBytes": 723472
+      },
+      {
+        "ordinal": 40,
+        "publishAndConfirmMillis": 2507,
+        "httpRequests": 19,
+        "requestBodyBytes": 641487,
+        "responseBodyBytes": 655249
+      },
+      {
+        "ordinal": 41,
+        "publishAndConfirmMillis": 1543,
+        "httpRequests": 19,
+        "requestBodyBytes": 180796,
+        "responseBodyBytes": 194846
+      }
+    ]
+  },
+  "nativeGit": {
+    "schema": 1,
+    "transport": "native-git-smart-http-loopback",
+    "gitVersion": "git version 2.54.0.windows.1",
+    "latencyMillisPerResponse": 50,
+    "megabitsPerSecond": 10,
+    "elapsedMillis": 14591.507,
+    "phases": {
+      "addMillis": 599.385,
+      "commitMillis": 181.236,
+      "pushMillis": 13513.743,
+      "confirmMillis": 296.793
+    },
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/remote.git/info/refs",
+        "status": 200,
+        "requestBytes": 0,
+        "responseBytes": 243,
+        "elapsedMillis": 114.193
+      },
+      {
+        "method": "POST",
+        "path": "/remote.git/git-receive-pack",
+        "status": 200,
+        "requestBytes": 13845096,
+        "responseBytes": 59,
+        "elapsedMillis": 12168.796
+      },
+      {
+        "method": "GET",
+        "path": "/remote.git/info/refs",
+        "status": 200,
+        "requestBytes": 0,
+        "responseBytes": 149,
+        "elapsedMillis": 100.677
+      },
+      {
+        "method": "POST",
+        "path": "/remote.git/git-upload-pack",
+        "status": 200,
+        "requestBytes": 120,
+        "responseBytes": 122,
+        "elapsedMillis": 99.845
+      }
+    ],
+    "requestBodyBytes": 13845216,
+    "responseBodyBytes": 573,
+    "initialTreeOid": "aacceda21fa52a5f052574fca8351468ce0e9b1a",
+    "finalTreeOid": "134c7517f70e6e8b12963ae9e0ec667fe11e107f",
+    "finalFileCount": 86,
+    "finalFileBytes": 19285180,
+    "allRemoteBytesVerified": true,
+    "timing": "frozen final files installed; git add + commit + push + ls-remote; exact byte audit afterward",
+    "history": "one final commit after initial tree; REST intermediate commits are not reproduced"
+  },
+  "comparison": {
+    "speedPercentOfGit": 16.484598264720503,
+    "gitSpeedFactor": 6.066268549232098,
+    "sameInitialAndFinalTreeOid": true,
+    "samplePairs": 1
+  },
+  "privateRuntimeSummarySha256": "1282301740dfc2d13e8d3f98ed5ab399ffd29e607e6a73fb9aa4a7b38848d036",
+  "validation": {
+    "formalFocused": {
+      "tests": 1,
+      "failures": 0,
+      "skipped": 0,
+      "testBodySeconds": 248.111
+    },
+    "withoutExplicitInput": {
+      "tests": 1,
+      "failures": 0,
+      "skipped": 1
+    },
+    "dataSpotlessCheck": "PASS",
+    "pythonAst": "PASS",
+    "independentInputHashManifestAndTreeVerification": "PASS",
+    "productionChanged": false,
+    "fullSuiteRun": false
+  }
+}

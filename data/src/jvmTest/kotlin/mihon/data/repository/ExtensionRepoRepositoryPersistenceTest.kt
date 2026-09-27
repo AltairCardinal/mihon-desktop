@@ -222,6 +222,13 @@ class ExtensionRepoRepositoryPersistenceTest {
         // v18 already contained the full author archive. Keep that history while removing only
         // additions from later migrations, so this test still exercises the complete upgrade.
         Database.Schema.create(driver)
+        driver.execute(null, "DROP TRIGGER IF EXISTS author_archive_source_work_first_seen_defaults", 0)
+        listOf(
+            "author_archive_source_date_quality_samples",
+            "author_archive_source_date_quality_current",
+            "author_archive_source_date_quality",
+            "author_archive_representative_work_cache",
+        ).forEach { table -> driver.execute(null, "DROP TABLE IF EXISTS $table", 0) }
         val laterObjects = driver.executeQuery(
             null,
             """SELECT type, name FROM sqlite_master

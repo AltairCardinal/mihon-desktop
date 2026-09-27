@@ -123,6 +123,32 @@ abstract class SyncJournalStorageContract {
     }
 
     @Test
+    fun `journal aggregate counts stay isolated by sync space and generation`() = runBlocking {
+        open().use { storage ->
+            storage.connect()
+            val manga = storage.insertManga("/scoped-count")
+            assertTrue(
+                UpdateLibraryMembership(storage.repository).await(manga, true) is LibraryMembershipResult.Success,
+            )
+            storage.handler.await {
+                sync_journalQueries.deactivateSpaces()
+                sync_journalQueries.insertSpace("other-space", 7, "owner", "other", "sync")
+                sync_journalQueries.insertActor("other-space", 7, "other-device", 1)
+                sync_journalQueries.insertBatch("other-space", 7, "other-batch", "other-device", 1, 1, 1, 0)
+                sync_journalQueries.insertEvent(
+                    "other-space", 7, "other-device", 1, 1, "FAVORITE", "USER", "other-batch",
+                    "{}", 1,
+                )
+                sync_journalQueries.insertOutbox("other-space", 7, "other-device", 1, 1, "other-batch")
+                assertEquals(1L, sync_journalQueries.countEventsForSpace("space", 1).executeAsOne())
+                assertEquals(1L, sync_journalQueries.countEventsForSpace("other-space", 7).executeAsOne())
+                assertEquals(1L, sync_journalQueries.countBatchesForSpace("space", 1).executeAsOne())
+                assertEquals(1L, sync_journalQueries.countBatchesForSpace("other-space", 7).executeAsOne())
+            }
+        }
+    }
+
+    @Test
     fun `batch update failure rolls back every favorite and journal entry`() = runBlocking {
         open().use { storage ->
             storage.connect()
@@ -347,7 +373,11 @@ abstract class SyncJournalStorageContract {
 /** Reconstruct the schema before synchronization when a test starts from the generated current schema. */
 internal fun removeSyncJournalSchema(driver: SqlDriver) {
     listOf(
-        "sync_restore_units", "sync_restore_runs", "sync_history_watermarks", "sync_history_clears",
+        "sync_snapshot_manifest_entries", "sync_snapshot_manifest_batches", "sync_snapshot_manifests",
+        "sync_http_account_gates",
+        "sync_runtime_logs", "sync_runtime_confirmations", "sync_runtime_runs",
+        "sync_restore_units", "sync_restore_runs",
+        "sync_history_watermarks", "sync_history_clears",
         "sync_private_reading", "sync_import_heads", "sync_import_entries", "sync_imports",
         "sync_remote_heads", "sync_remote_objects", "sync_remote_guards",
         "sync_bulk_items", "sync_bulk_jobs", "sync_decisions", "sync_projected_history", "sync_pending_decisions",

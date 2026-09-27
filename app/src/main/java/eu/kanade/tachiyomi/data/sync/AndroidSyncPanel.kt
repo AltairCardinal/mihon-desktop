@@ -1,8 +1,10 @@
 package eu.kanade.tachiyomi.data.sync
 
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.PersistableBundle
 import androidx.activity.compose.BackHandler
@@ -19,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.components.AdaptiveSheet
+import eu.kanade.tachiyomi.util.storage.getUriCompat
 import eu.kanade.tachiyomi.util.system.openInBrowser
 import eu.kanade.tachiyomi.util.system.toast
 import mihon.data.sync.runtime.SyncPanel
@@ -30,6 +33,7 @@ import mihon.presentation.sync.SyncToolbarButton
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.File
 
 @Composable
 internal fun AndroidLibrarySyncAction() {
@@ -58,11 +62,39 @@ private fun AndroidSyncPanelSheet(panel: SyncPanel) {
             panel,
             onOpenBrowser = actions::openBrowser,
             onCopyCode = actions::copyCode,
+            onOpenFailureLog = actions::openFailureLog,
         )
     }
 }
 
 internal class AndroidSyncPanelActions(private val context: Context) {
+    fun openFailureLog(path: String) {
+        try {
+            val file = File(path).canonicalFile
+            val directory = context.filesDir.resolve("sync-failures").canonicalFile
+            require(file.parentFile == directory && file.isFile && file.extension.equals("txt", ignoreCase = true))
+            val uri = file.getUriCompat(context)
+            val view = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "text/plain")
+                clipData = ClipData.newRawUri("Sync failure log", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                context.startActivity(view)
+            } catch (_: ActivityNotFoundException) {
+                val share = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    clipData = ClipData.newRawUri("Sync failure log", uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(share, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        } catch (_: Exception) {
+            context.toast(MR.strings.sync_failure_log_open_failed)
+        }
+    }
+
     fun openBrowser(url: String) {
         val uri = Uri.parse(url)
         if (uri.scheme != "https" || uri.host != "github.com") return

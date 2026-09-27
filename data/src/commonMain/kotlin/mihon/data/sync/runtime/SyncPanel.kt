@@ -54,6 +54,24 @@ data class SyncPanelNotice(
     val setupCompleted: Boolean = false,
 )
 
+/** Read-only durable outcome details for one selected run. */
+data class SyncTerminalSummary(
+    val runId: String,
+    val pendingDownloadBatches: Long,
+    val pendingDownloadEvents: Long,
+    val sourceUnavailableFields: Long,
+)
+
+sealed interface SyncFailureLogStatus {
+    val runId: String
+    val failedEntries: Long
+
+    data class Ready(override val runId: String, val path: String, override val failedEntries: Long) :
+        SyncFailureLogStatus
+
+    data class SaveFailed(override val runId: String, override val failedEntries: Long) : SyncFailureLogStatus
+}
+
 data class SyncPanelState(
     val visible: Boolean = false,
     val page: SyncPanelPage = SyncPanelPage.MAIN,
@@ -63,6 +81,8 @@ data class SyncPanelState(
     val problem: SyncRunProblem? = null,
     val notice: SyncPanelNotice? = null,
     val queuedMembership: Long = 0,
+    val queuedFavorites: Long = 0,
+    val queuedFollows: Long = 0,
     val queuedReading: Long = 0,
     val pendingTotal: Long = 0,
     val pending: List<SyncPendingItem> = emptyList(),
@@ -82,8 +102,16 @@ data class SyncPanelState(
     val importRemaining: Long = 0,
     val importPaused: Boolean = false,
     val records: List<SyncRunRecord> = emptyList(),
+    val run: SyncRunSnapshot? = null,
+    /** Volatile observations for the active run; omitted after process recovery until remeasured. */
+    val progress: SyncProgressFact? = null,
+    val terminalSummary: SyncTerminalSummary? = null,
+    val failureLog: SyncFailureLogStatus? = null,
+    val logs: List<SyncRunLog> = emptyList(),
+    val logsHasMore: Boolean = false,
     val setupStep: SyncSetupStep = SyncSetupStep.SIGN_IN,
     val setupBusy: Boolean = false,
+    val authRequestStartedAtMillis: Long? = null,
     val deviceCode: GitHubDeviceCode? = null,
     val authFailure: GitHubAuthFailureReason? = null,
     val setupProblem: SyncDiscoveryProblem? = null,
@@ -106,7 +134,10 @@ sealed interface SyncPanelAction {
     data object Back : SyncPanelAction
     data class Navigate(val page: SyncPanelPage) : SyncPanelAction
     data object Synchronize : SyncPanelAction
+    data object RetrySync : SyncPanelAction
     data object CancelSync : SyncPanelAction
+    data object PauseSync : SyncPanelAction
+    data object ResumeSync : SyncPanelAction
     data object PauseImport : SyncPanelAction
     data object ResumeImport : SyncPanelAction
     data class SetPeriod(val minutes: Int) : SyncPanelAction
@@ -138,6 +169,7 @@ sealed interface SyncPanelAction {
     data object PauseBulk : SyncPanelAction
     data object ResumeBulk : SyncPanelAction
     data object LoadMore : SyncPanelAction
+    data object LoadMoreLogs : SyncPanelAction
     data object DismissNotice : SyncPanelAction
 }
 
@@ -145,4 +177,7 @@ sealed interface SyncPanelAction {
 interface SyncPanel {
     val state: StateFlow<SyncPanelState>
     fun dispatch(action: SyncPanelAction)
+
+    /** Claims the one automatic browser launch for this authorization code across sheet remounts. */
+    fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean
 }

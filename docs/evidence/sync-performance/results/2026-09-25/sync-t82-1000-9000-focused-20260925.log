@@ -1,0 +1,502 @@
+Initialized native services in: C:\Users\feeli\.gradle\native
+Initialized jansi services in: C:\Users\feeli\.gradle\native
+The client will now receive all logging from the daemon (pid: 85996). The daemon log file: C:\Users\feeli\.gradle\daemon\8.14.4\daemon-85996.out.log
+Starting 7th build in daemon [uptime: 5 mins 21.534 secs, performance: 100%, GC rate: 0.00/s, heap usage: 0% of 4 GiB]
+Using 32 worker leases.
+Configuration on demand is an incubating feature.
+Now considering [D:\Codex\worktrees\85be\mihon, D:\Codex\worktrees\85be\mihon\buildSrc] as hierarchies to watch
+Now considering [D:\Codex\worktrees\85be\mihon\buildSrc, D:\Codex\worktrees\85be\mihon] as hierarchies to watch
+Watching the file system is configured to be enabled if available
+File system watching is active
+Starting Build
+Settings evaluated using settings file 'D:\Codex\worktrees\85be\mihon\settings.gradle.kts'.
+Using local directory build cache for the root build (location = C:\Users\feeli\.gradle\caches\build-cache-1, remove unused entries = after 7 days).
+Type-safe project accessors is an incubating feature.
+Projects loaded. Root project using build file 'D:\Codex\worktrees\85be\mihon\build.gradle.kts'.
+Included projects: [root project 'Mihon', project ':app', project ':app-desktop', project ':core', project ':core-metadata', project ':data', project ':domain', project ':i18n', project ':macrobenchmark', project ':presentation-core', project ':presentation-sync', project ':presentation-theme', project ':presentation-widget', project ':source-api', project ':source-local', project ':telemetry', project ':test-desktop', project ':core:archive', project ':core:common']
+
+> Configure project :buildSrc
+Evaluating project ':buildSrc' using build file 'D:\Codex\worktrees\85be\mihon\buildSrc\build.gradle.kts'.
+Resolved plugin [id: 'org.gradle.kotlin.kotlin-dsl', version: '5.2.0']
+Using Kotlin Gradle Plugin gradle85 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+file or directory 'D:\Codex\worktrees\85be\mihon\buildSrc\src\main\java', not found
+Resolve mutations for :buildSrc:checkKotlinGradlePluginConfigurationErrors (Thread[#2445,Execution worker,5,main]) started.
+:buildSrc:checkKotlinGradlePluginConfigurationErrors (Thread[#2445,Execution worker,5,main]) started.
+
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':buildSrc:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :buildSrc:generateExternalPluginSpecBuilders (Thread[#2445,Execution worker,5,main]) started.
+:buildSrc:generateExternalPluginSpecBuilders (Thread[#2452,Execution worker Thread 8,5,main]) started.
+
+> Task :buildSrc:generateExternalPluginSpecBuilders UP-TO-DATE
+Build cache key for task ':buildSrc:generateExternalPluginSpecBuilders' is a6e98e5f374fecdc327f657b1cd59c36
+Skipping task ':buildSrc:generateExternalPluginSpecBuilders' as it is up-to-date.
+Resolve mutations for :buildSrc:extractPrecompiledScriptPluginPlugins (Thread[#2452,Execution worker Thread 8,5,main]) started.
+:buildSrc:extractPrecompiledScriptPluginPlugins (Thread[#2455,Execution worker Thread 11,5,main]) started.
+
+> Task :buildSrc:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+Build cache key for task ':buildSrc:extractPrecompiledScriptPluginPlugins' is 4d5b1bfbd52065c2ad61e0af0d5e1e64
+Skipping task ':buildSrc:extractPrecompiledScriptPluginPlugins' as it is up-to-date.
+Resolve mutations for :buildSrc:compilePluginsBlocks (Thread[#2455,Execution worker Thread 11,5,main]) started.
+:buildSrc:compilePluginsBlocks (Thread[#2455,Execution worker Thread 11,5,main]) started.
+
+> Task :buildSrc:compilePluginsBlocks UP-TO-DATE
+Custom actions are attached to task ':buildSrc:compilePluginsBlocks'.
+Build cache key for task ':buildSrc:compilePluginsBlocks' is 611e325a6e1239a424a4c7e84f7807d2
+Skipping task ':buildSrc:compilePluginsBlocks' as it is up-to-date.
+Resolve mutations for :buildSrc:generatePrecompiledScriptPluginAccessors (Thread[#2455,Execution worker Thread 11,5,main]) started.
+:buildSrc:generatePrecompiledScriptPluginAccessors (Thread[#2455,Execution worker Thread 11,5,main]) started.
+
+> Task :buildSrc:generatePrecompiledScriptPluginAccessors UP-TO-DATE
+Build cache key for task ':buildSrc:generatePrecompiledScriptPluginAccessors' is e0de2576801605ed3795af7734766488
+Skipping task ':buildSrc:generatePrecompiledScriptPluginAccessors' as it is up-to-date.
+Resolve mutations for :buildSrc:generateScriptPluginAdapters (Thread[#2455,Execution worker Thread 11,5,main]) started.
+:buildSrc:generateScriptPluginAdapters (Thread[#2473,Execution worker Thread 28,5,main]) started.
+
+> Task :buildSrc:generateScriptPluginAdapters UP-TO-DATE
+Build cache key for task ':buildSrc:generateScriptPluginAdapters' is ac0b8b14f2f1c967a56923808cf6a1a5
+Skipping task ':buildSrc:generateScriptPluginAdapters' as it is up-to-date.
+Resolve mutations for :buildSrc:compileKotlin (Thread[#2473,Execution worker Thread 28,5,main]) started.
+:buildSrc:compileKotlin (Thread[#2473,Execution worker Thread 28,5,main]) started.
+
+> Task :buildSrc:compileKotlin UP-TO-DATE
+Custom actions are attached to task ':buildSrc:compileKotlin'.
+Build cache key for task ':buildSrc:compileKotlin' is d58942d04095262a1969eb69ac375e4a
+Skipping task ':buildSrc:compileKotlin' as it is up-to-date.
+Resolve mutations for :buildSrc:compileJava (Thread[#2473,Execution worker Thread 28,5,main]) started.
+:buildSrc:compileJava (Thread[#2473,Execution worker Thread 28,5,main]) started.
+
+> Task :buildSrc:compileJava NO-SOURCE
+Skipping task ':buildSrc:compileJava' as it has no source files and no previous output files.
+Resolve mutations for :buildSrc:compileGroovy (Thread[#2473,Execution worker Thread 28,5,main]) started.
+:buildSrc:compileGroovy (Thread[#2473,Execution worker Thread 28,5,main]) started.
+
+> Task :buildSrc:compileGroovy NO-SOURCE
+Skipping task ':buildSrc:compileGroovy' as it has no source files and no previous output files.
+Resolve mutations for :buildSrc:pluginDescriptors (Thread[#2473,Execution worker Thread 28,5,main]) started.
+:buildSrc:pluginDescriptors (Thread[#2467,Execution worker Thread 22,5,main]) started.
+
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+Caching disabled for task ':buildSrc:pluginDescriptors' because:
+  Not worth caching
+Skipping task ':buildSrc:pluginDescriptors' as it is up-to-date.
+Resolve mutations for :buildSrc:processResources (Thread[#2467,Execution worker Thread 22,5,main]) started.
+:buildSrc:processResources (Thread[#2452,Execution worker Thread 8,5,main]) started.
+
+> Task :buildSrc:processResources UP-TO-DATE
+Caching disabled for task ':buildSrc:processResources' because:
+  Not worth caching
+Skipping task ':buildSrc:processResources' as it is up-to-date.
+Resolve mutations for :buildSrc:classes (Thread[#2452,Execution worker Thread 8,5,main]) started.
+:buildSrc:classes (Thread[#2453,Execution worker Thread 9,5,main]) started.
+
+> Task :buildSrc:classes UP-TO-DATE
+Skipping task ':buildSrc:classes' as it has no actions.
+Resolve mutations for :buildSrc:jar (Thread[#2453,Execution worker Thread 9,5,main]) started.
+:buildSrc:jar (Thread[#2453,Execution worker Thread 9,5,main]) started.
+
+> Task :buildSrc:jar UP-TO-DATE
+Caching disabled for task ':buildSrc:jar' because:
+  Not worth caching
+Skipping task ':buildSrc:jar' as it is up-to-date.
+Task path ':data:jvmTest' matched project ':data'
+
+> Configure project :
+Evaluating root project 'Mihon' using build file 'D:\Codex\worktrees\85be\mihon\build.gradle.kts'.
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.serialization', version: '2.3.10', apply: false]
+Resolved plugin [id: 'com.mikepenz.aboutlibraries.plugin.android', version: '14.0.0', apply: false]
+Resolved plugin [id: 'com.google.firebase.crashlytics', version: '3.0.6', apply: false]
+Resolved plugin [id: 'com.google.gms.google-services', version: '4.4.4', apply: false]
+Resolved plugin [id: 'dev.icerock.mobile.multiplatform-resources', version: '0.26.0', apply: false]
+Resolved plugin [id: 'app.cash.sqldelight', version: '2.2.1', apply: false]
+Resolved plugin [id: 'org.jetbrains.compose', version: '1.10.2', apply: false]
+
+> Configure project :data
+Evaluating project ':data' using build file 'D:\Codex\worktrees\85be\mihon\data\build.gradle.kts'.
+Resolved plugin [id: 'mihon.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.multiplatform']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.serialization']
+Resolved plugin [id: 'app.cash.sqldelight', version: '2.2.1']
+Using default execution profile
+Build 0eda87b9-d549-4a1e-8695-76753c6e3e82 is started
+Using Kotlin Gradle Plugin gradle813 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+[:data] commonizeCInterop task registration disabled. cInteropCommonizationEnabled == false
+Task name matched 'jvmTest'
+Selected primary task 'jvmTest' from project :data
+
+> Configure project :source-api
+Evaluating project ':source-api' using build file 'D:\Codex\worktrees\85be\mihon\source-api\build.gradle.kts'.
+Resolved plugin [id: 'mihon.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.multiplatform']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.serialization']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+[:source-api] commonizeCInterop task registration disabled. cInteropCommonizationEnabled == false
+
+> Configure project :domain
+Evaluating project ':domain' using build file 'D:\Codex\worktrees\85be\mihon\domain\build.gradle.kts'.
+Resolved plugin [id: 'mihon.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.multiplatform']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.serialization']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+[:domain] commonizeCInterop task registration disabled. cInteropCommonizationEnabled == false
+
+> Configure project :core
+Evaluating project ':core' using build file 'D:\Codex\worktrees\85be\mihon\core\build.gradle'.
+
+> Configure project :core:common
+Evaluating project ':core:common' using build file 'D:\Codex\worktrees\85be\mihon\core\common\build.gradle.kts'.
+Resolved plugin [id: 'mihon.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.multiplatform']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.serialization']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+[:core:common] commonizeCInterop task registration disabled. cInteropCommonizationEnabled == false
+
+> Configure project :i18n
+Evaluating project ':i18n' using build file 'D:\Codex\worktrees\85be\mihon\i18n\build.gradle.kts'.
+Resolved plugin [id: 'mihon.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.multiplatform']
+Resolved plugin [id: 'dev.icerock.mobile.multiplatform-resources', version: '0.26.0']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+[:i18n] commonizeCInterop task registration disabled. cInteropCommonizationEnabled == false
+All projects evaluated.
+Tasks to be executed: [task ':data:kmpPartiallyResolvedDependenciesChecker', task ':data:checkKotlinGradlePluginConfigurationErrors', task ':data:generateCommonMainDatabaseInterface', task ':domain:kmpPartiallyResolvedDependenciesChecker', task ':domain:checkKotlinGradlePluginConfigurationErrors', task ':source-api:kmpPartiallyResolvedDependenciesChecker', task ':source-api:checkKotlinGradlePluginConfigurationErrors', task ':i18n:kmpPartiallyResolvedDependenciesChecker', task ':i18n:checkKotlinGradlePluginConfigurationErrors', task ':i18n:generateMRcommonMain', task ':i18n:generateMRjvmMain', task ':i18n:compileKotlinJvm', task ':i18n:compileJvmMainJava', task ':i18n:jvmProcessResources', task ':i18n:processJvmMainResources', task ':i18n:jvmMainClasses', task ':i18n:jvmJar', task ':core:common:kmpPartiallyResolvedDependenciesChecker', task ':core:common:checkKotlinGradlePluginConfigurationErrors', task ':core:common:compileKotlinJvm', task ':core:common:compileJvmMainJava', task ':core:common:jvmProcessResources', task ':core:common:processJvmMainResources', task ':core:common:jvmMainClasses', task ':core:common:jvmJar', task ':source-api:compileKotlinJvm', task ':source-api:compileJvmMainJava', task ':source-api:jvmProcessResources', task ':source-api:processJvmMainResources', task ':source-api:jvmMainClasses', task ':source-api:jvmJar', task ':domain:compileKotlinJvm', task ':domain:compileJvmMainJava', task ':domain:jvmProcessResources', task ':domain:processJvmMainResources', task ':domain:jvmMainClasses', task ':domain:jvmJar', task ':data:compileKotlinJvm', task ':data:compileJvmMainJava', task ':data:jvmProcessResources', task ':data:processJvmMainResources', task ':data:jvmMainClasses', task ':data:jvmJar', task ':data:compileTestKotlinJvm', task ':data:compileJvmTestJava', task ':data:jvmTestProcessResources', task ':data:processJvmTestResources', task ':data:jvmTestClasses', task ':data:jvmTest']
+Tasks that were excluded: []
+Resolve mutations for :data:kmpPartiallyResolvedDependenciesChecker (Thread[#2458,Execution worker Thread 14,5,main]) started.
+Resolve mutations for :domain:kmpPartiallyResolvedDependenciesChecker (Thread[#2453,Execution worker Thread 9,5,main]) started.
+Resolve mutations for :source-api:kmpPartiallyResolvedDependenciesChecker (Thread[#2449,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :i18n:kmpPartiallyResolvedDependenciesChecker (Thread[#2463,Execution worker Thread 19,5,main]) started.
+Resolve mutations for :core:common:kmpPartiallyResolvedDependenciesChecker (Thread[#2455,Execution worker Thread 11,5,main]) started.
+:data:kmpPartiallyResolvedDependenciesChecker (Thread[#2458,Execution worker Thread 14,5,main]) started.
+:domain:kmpPartiallyResolvedDependenciesChecker (Thread[#2475,Execution worker Thread 30,5,main]) started.
+:i18n:kmpPartiallyResolvedDependenciesChecker (Thread[#2455,Execution worker Thread 11,5,main]) started.
+:core:common:kmpPartiallyResolvedDependenciesChecker (Thread[#2476,Execution worker Thread 31,5,main]) started.
+:source-api:kmpPartiallyResolvedDependenciesChecker (Thread[#2449,Execution worker Thread 5,5,main]) started.
+
+> Task :i18n:kmpPartiallyResolvedDependenciesChecker
+Caching disabled for task ':i18n:kmpPartiallyResolvedDependenciesChecker' because:
+  This task is not intended for execution
+Task ':i18n:kmpPartiallyResolvedDependenciesChecker' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Execution stopped by some action with message: null
+
+> Task :domain:kmpPartiallyResolvedDependenciesChecker
+Caching disabled for task ':domain:kmpPartiallyResolvedDependenciesChecker' because:
+  This task is not intended for execution
+Task ':domain:kmpPartiallyResolvedDependenciesChecker' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Execution stopped by some action with message: null
+
+> Task :core:common:kmpPartiallyResolvedDependenciesChecker
+Caching disabled for task ':core:common:kmpPartiallyResolvedDependenciesChecker' because:
+  This task is not intended for execution
+Task ':core:common:kmpPartiallyResolvedDependenciesChecker' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Execution stopped by some action with message: null
+
+> Task :data:kmpPartiallyResolvedDependenciesChecker
+Caching disabled for task ':data:kmpPartiallyResolvedDependenciesChecker' because:
+  This task is not intended for execution
+Task ':data:kmpPartiallyResolvedDependenciesChecker' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Execution stopped by some action with message: null
+
+> Task :source-api:kmpPartiallyResolvedDependenciesChecker
+Caching disabled for task ':source-api:kmpPartiallyResolvedDependenciesChecker' because:
+  This task is not intended for execution
+Task ':source-api:kmpPartiallyResolvedDependenciesChecker' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Execution stopped by some action with message: null
+Resolve mutations for :domain:checkKotlinGradlePluginConfigurationErrors (Thread[#2455,Execution worker Thread 11,5,main]) started.
+Resolve mutations for :i18n:checkKotlinGradlePluginConfigurationErrors (Thread[#2476,Execution worker Thread 31,5,main]) started.
+Resolve mutations for :source-api:checkKotlinGradlePluginConfigurationErrors (Thread[#2449,Execution worker Thread 5,5,main]) started.
+:domain:checkKotlinGradlePluginConfigurationErrors (Thread[#2455,Execution worker Thread 11,5,main]) started.
+Resolve mutations for :core:common:checkKotlinGradlePluginConfigurationErrors (Thread[#2444,included builds,5,main]) started.
+:i18n:checkKotlinGradlePluginConfigurationErrors (Thread[#2476,Execution worker Thread 31,5,main]) started.
+:source-api:checkKotlinGradlePluginConfigurationErrors (Thread[#2449,Execution worker Thread 5,5,main]) started.
+:core:common:checkKotlinGradlePluginConfigurationErrors (Thread[#2444,included builds,5,main]) started.
+Resolve mutations for :data:checkKotlinGradlePluginConfigurationErrors (Thread[#2458,Execution worker Thread 14,5,main]) started.
+
+> Task :domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':domain:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+
+> Task :i18n:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':i18n:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+
+> Task :source-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':source-api:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+:data:checkKotlinGradlePluginConfigurationErrors (Thread[#2473,Execution worker Thread 28,5,main]) started.
+Resolve mutations for :source-api:jvmProcessResources (Thread[#2449,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :domain:jvmProcessResources (Thread[#2452,Execution worker Thread 8,5,main]) started.
+
+> Task :core:common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':core:common:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :i18n:generateMRcommonMain (Thread[#2476,Execution worker Thread 31,5,main]) started.
+
+> Task :data:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':data:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :core:common:jvmProcessResources (Thread[#2444,included builds,5,main]) started.
+Resolve mutations for :data:generateCommonMainDatabaseInterface (Thread[#2475,Execution worker Thread 30,5,main]) started.
+:source-api:jvmProcessResources (Thread[#2449,Execution worker Thread 5,5,main]) started.
+:core:common:jvmProcessResources (Thread[#2444,included builds,5,main]) started.
+:i18n:generateMRcommonMain (Thread[#2476,Execution worker Thread 31,5,main]) started.
+:domain:jvmProcessResources (Thread[#2473,Execution worker Thread 28,5,main]) started.
+:data:generateCommonMainDatabaseInterface (Thread[#2452,Execution worker Thread 8,5,main]) started.
+
+> Task :domain:jvmProcessResources NO-SOURCE
+Skipping task ':domain:jvmProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :domain:processJvmMainResources (Thread[#2473,Execution worker Thread 28,5,main]) started.
+
+> Task :source-api:jvmProcessResources NO-SOURCE
+Skipping task ':source-api:jvmProcessResources' as it has no source files and no previous output files.
+
+> Task :core:common:jvmProcessResources NO-SOURCE
+Skipping task ':core:common:jvmProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :core:common:processJvmMainResources (Thread[#2449,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :source-api:processJvmMainResources (Thread[#2444,included builds,5,main]) started.
+:domain:processJvmMainResources (Thread[#2473,Execution worker Thread 28,5,main]) started.
+
+> Task :domain:processJvmMainResources SKIPPED
+Skipping task ':domain:processJvmMainResources' as task onlyIf 'Task is enabled' is false.
+:core:common:processJvmMainResources (Thread[#2450,Execution worker Thread 6,5,main]) started.
+:source-api:processJvmMainResources (Thread[#2460,Execution worker Thread 16,5,main]) started.
+
+> Task :core:common:processJvmMainResources SKIPPED
+Skipping task ':core:common:processJvmMainResources' as task onlyIf 'Task is enabled' is false.
+
+> Task :source-api:processJvmMainResources SKIPPED
+Skipping task ':source-api:processJvmMainResources' as task onlyIf 'Task is enabled' is false.
+
+> Task :i18n:generateMRcommonMain UP-TO-DATE
+Build cache key for task ':i18n:generateMRcommonMain' is d394a514f1aa491c4fecd4144240f998
+Skipping task ':i18n:generateMRcommonMain' as it is up-to-date.
+Resolve mutations for :i18n:generateMRjvmMain (Thread[#2476,Execution worker Thread 31,5,main]) started.
+:i18n:generateMRjvmMain (Thread[#2461,Execution worker Thread 17,5,main]) started.
+
+> Task :i18n:generateMRjvmMain UP-TO-DATE
+Build cache key for task ':i18n:generateMRjvmMain' is 97005e74ffd751f5021d180d97ce6e98
+Skipping task ':i18n:generateMRjvmMain' as it is up-to-date.
+Resolve mutations for :i18n:compileKotlinJvm (Thread[#2461,Execution worker Thread 17,5,main]) started.
+:i18n:compileKotlinJvm (Thread[#2461,Execution worker Thread 17,5,main]) started.
+
+> Task :data:generateCommonMainDatabaseInterface UP-TO-DATE
+Build cache key for task ':data:generateCommonMainDatabaseInterface' is c5b236000c2248ff294e3bcfa3102557
+Skipping task ':data:generateCommonMainDatabaseInterface' as it is up-to-date.
+Resolve mutations for :data:jvmProcessResources (Thread[#2452,Execution worker Thread 8,5,main]) started.
+:data:jvmProcessResources (Thread[#2452,Execution worker Thread 8,5,main]) started.
+
+> Task :data:jvmProcessResources NO-SOURCE
+Skipping task ':data:jvmProcessResources' as it has no source files and no previous output files.
+Resolve mutations for :data:processJvmMainResources (Thread[#2452,Execution worker Thread 8,5,main]) started.
+:data:processJvmMainResources (Thread[#2447,Execution worker Thread 3,5,main]) started.
+
+> Task :data:processJvmMainResources SKIPPED
+Skipping task ':data:processJvmMainResources' as task onlyIf 'Task is enabled' is false.
+Resolve mutations for :data:jvmTestProcessResources (Thread[#2447,Execution worker Thread 3,5,main]) started.
+:data:jvmTestProcessResources (Thread[#2447,Execution worker Thread 3,5,main]) started.
+
+> Task :data:jvmTestProcessResources UP-TO-DATE
+Caching disabled for task ':data:jvmTestProcessResources' because:
+  Not worth caching
+Skipping task ':data:jvmTestProcessResources' as it is up-to-date.
+Resolve mutations for :data:processJvmTestResources (Thread[#2447,Execution worker Thread 3,5,main]) started.
+:data:processJvmTestResources (Thread[#2471,Execution worker Thread 26,5,main]) started.
+
+> Task :data:processJvmTestResources SKIPPED
+Skipping task ':data:processJvmTestResources' as task onlyIf 'Task is enabled' is false.
+
+> Task :i18n:compileKotlinJvm UP-TO-DATE
+Build cache key for task ':i18n:compileKotlinJvm' is 29567bdf4df914e7df1f994e42b6fca0
+Skipping task ':i18n:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :i18n:compileJvmMainJava (Thread[#2461,Execution worker Thread 17,5,main]) started.
+:i18n:compileJvmMainJava (Thread[#2461,Execution worker Thread 17,5,main]) started.
+
+> Task :i18n:compileJvmMainJava NO-SOURCE
+Skipping task ':i18n:compileJvmMainJava' as it has no source files and no previous output files.
+Resolve mutations for :i18n:jvmProcessResources (Thread[#2461,Execution worker Thread 17,5,main]) started.
+:i18n:jvmProcessResources (Thread[#2464,Execution worker Thread 20,5,main]) started.
+
+> Task :i18n:jvmProcessResources UP-TO-DATE
+Caching disabled for task ':i18n:jvmProcessResources' because:
+  Not worth caching
+Skipping task ':i18n:jvmProcessResources' as it is up-to-date.
+Resolve mutations for :i18n:processJvmMainResources (Thread[#2464,Execution worker Thread 20,5,main]) started.
+:i18n:processJvmMainResources (Thread[#2452,Execution worker Thread 8,5,main]) started.
+
+> Task :i18n:processJvmMainResources SKIPPED
+Skipping task ':i18n:processJvmMainResources' as task onlyIf 'Task is enabled' is false.
+Resolve mutations for :i18n:jvmMainClasses (Thread[#2459,Execution worker Thread 15,5,main]) started.
+:i18n:jvmMainClasses (Thread[#2450,Execution worker Thread 6,5,main]) started.
+
+> Task :i18n:jvmMainClasses UP-TO-DATE
+Skipping task ':i18n:jvmMainClasses' as it has no actions.
+Resolve mutations for :i18n:jvmJar (Thread[#2453,Execution worker Thread 9,5,main]) started.
+:i18n:jvmJar (Thread[#2459,Execution worker Thread 15,5,main]) started.
+
+> Task :i18n:jvmJar UP-TO-DATE
+Caching disabled for task ':i18n:jvmJar' because:
+  Not worth caching
+Skipping task ':i18n:jvmJar' as it is up-to-date.
+work action resolve i18n-jvm.jar (project :i18n) (Thread[#2459,Execution worker Thread 15,5,main]) started.
+Resolve mutations for :core:common:compileKotlinJvm (Thread[#2455,Execution worker Thread 11,5,main]) started.
+:core:common:compileKotlinJvm (Thread[#2455,Execution worker Thread 11,5,main]) started.
+
+> Task :core:common:compileKotlinJvm UP-TO-DATE
+Build cache key for task ':core:common:compileKotlinJvm' is 539a3fe97851747472e922a47cf3ca9e
+Skipping task ':core:common:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :core:common:compileJvmMainJava (Thread[#2455,Execution worker Thread 11,5,main]) started.
+:core:common:compileJvmMainJava (Thread[#2455,Execution worker Thread 11,5,main]) started.
+
+> Task :core:common:compileJvmMainJava NO-SOURCE
+Skipping task ':core:common:compileJvmMainJava' as it has no source files and no previous output files.
+Resolve mutations for :core:common:jvmMainClasses (Thread[#2455,Execution worker Thread 11,5,main]) started.
+:core:common:jvmMainClasses (Thread[#2455,Execution worker Thread 11,5,main]) started.
+
+> Task :core:common:jvmMainClasses UP-TO-DATE
+Skipping task ':core:common:jvmMainClasses' as it has no actions.
+Resolve mutations for :core:common:jvmJar (Thread[#2461,Execution worker Thread 17,5,main]) started.
+:core:common:jvmJar (Thread[#2461,Execution worker Thread 17,5,main]) started.
+
+> Task :core:common:jvmJar UP-TO-DATE
+Caching disabled for task ':core:common:jvmJar' because:
+  Not worth caching
+Skipping task ':core:common:jvmJar' as it is up-to-date.
+work action resolve common-jvm.jar (project :core:common) (Thread[#2461,Execution worker Thread 17,5,main]) started.
+Resolve mutations for :source-api:compileKotlinJvm (Thread[#2473,Execution worker Thread 28,5,main]) started.
+:source-api:compileKotlinJvm (Thread[#2473,Execution worker Thread 28,5,main]) started.
+
+> Task :source-api:compileKotlinJvm UP-TO-DATE
+Build cache key for task ':source-api:compileKotlinJvm' is cf2ca1e3765271dfe611a5a8f452d0a6
+Skipping task ':source-api:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :source-api:compileJvmMainJava (Thread[#2473,Execution worker Thread 28,5,main]) started.
+:source-api:compileJvmMainJava (Thread[#2473,Execution worker Thread 28,5,main]) started.
+
+> Task :source-api:compileJvmMainJava NO-SOURCE
+Skipping task ':source-api:compileJvmMainJava' as it has no source files and no previous output files.
+Resolve mutations for :source-api:jvmMainClasses (Thread[#2473,Execution worker Thread 28,5,main]) started.
+:source-api:jvmMainClasses (Thread[#2462,Execution worker Thread 18,5,main]) started.
+
+> Task :source-api:jvmMainClasses UP-TO-DATE
+Skipping task ':source-api:jvmMainClasses' as it has no actions.
+Resolve mutations for :source-api:jvmJar (Thread[#2462,Execution worker Thread 18,5,main]) started.
+:source-api:jvmJar (Thread[#2474,Execution worker Thread 29,5,main]) started.
+
+> Task :source-api:jvmJar UP-TO-DATE
+Caching disabled for task ':source-api:jvmJar' because:
+  Not worth caching
+Skipping task ':source-api:jvmJar' as it is up-to-date.
+work action resolve source-api-jvm.jar (project :source-api) (Thread[#2474,Execution worker Thread 29,5,main]) started.
+Resolve mutations for :domain:compileKotlinJvm (Thread[#2458,Execution worker Thread 14,5,main]) started.
+:domain:compileKotlinJvm (Thread[#2458,Execution worker Thread 14,5,main]) started.
+
+> Task :domain:compileKotlinJvm UP-TO-DATE
+Build cache key for task ':domain:compileKotlinJvm' is 07b92cd573d81d78e969f5741f22d05d
+Skipping task ':domain:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :domain:compileJvmMainJava (Thread[#2458,Execution worker Thread 14,5,main]) started.
+:domain:compileJvmMainJava (Thread[#2458,Execution worker Thread 14,5,main]) started.
+
+> Task :domain:compileJvmMainJava NO-SOURCE
+Skipping task ':domain:compileJvmMainJava' as it has no source files and no previous output files.
+Resolve mutations for :domain:jvmMainClasses (Thread[#2458,Execution worker Thread 14,5,main]) started.
+:domain:jvmMainClasses (Thread[#2465,Execution worker Thread 21,5,main]) started.
+
+> Task :domain:jvmMainClasses UP-TO-DATE
+Skipping task ':domain:jvmMainClasses' as it has no actions.
+Resolve mutations for :domain:jvmJar (Thread[#2465,Execution worker Thread 21,5,main]) started.
+:domain:jvmJar (Thread[#2449,Execution worker Thread 5,5,main]) started.
+
+> Task :domain:jvmJar UP-TO-DATE
+Caching disabled for task ':domain:jvmJar' because:
+  Not worth caching
+Skipping task ':domain:jvmJar' as it is up-to-date.
+work action resolve domain-jvm.jar (project :domain) (Thread[#2449,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :data:compileKotlinJvm (Thread[#2462,Execution worker Thread 18,5,main]) started.
+:data:compileKotlinJvm (Thread[#2462,Execution worker Thread 18,5,main]) started.
+
+> Task :data:compileKotlinJvm UP-TO-DATE
+Build cache key for task ':data:compileKotlinJvm' is 20855e11d442d10216b359df428bdade
+Skipping task ':data:compileKotlinJvm' as it is up-to-date.
+Resolve mutations for :data:compileJvmMainJava (Thread[#2462,Execution worker Thread 18,5,main]) started.
+:data:compileJvmMainJava (Thread[#2462,Execution worker Thread 18,5,main]) started.
+
+> Task :data:compileJvmMainJava NO-SOURCE
+Skipping task ':data:compileJvmMainJava' as it has no source files and no previous output files.
+Resolve mutations for :data:jvmMainClasses (Thread[#2462,Execution worker Thread 18,5,main]) started.
+:data:jvmMainClasses (Thread[#2444,included builds,5,main]) started.
+
+> Task :data:jvmMainClasses UP-TO-DATE
+Skipping task ':data:jvmMainClasses' as it has no actions.
+Resolve mutations for :data:jvmJar (Thread[#2444,included builds,5,main]) started.
+:data:jvmJar (Thread[#2444,included builds,5,main]) started.
+
+> Task :data:jvmJar UP-TO-DATE
+Caching disabled for task ':data:jvmJar' because:
+  Not worth caching
+Skipping task ':data:jvmJar' as it is up-to-date.
+Resolve mutations for :data:compileTestKotlinJvm (Thread[#2444,included builds,5,main]) started.
+:data:compileTestKotlinJvm (Thread[#2444,included builds,5,main]) started.
+
+> Task :data:compileTestKotlinJvm UP-TO-DATE
+Build cache key for task ':data:compileTestKotlinJvm' is 7c7b32d7ce9ae5004d141b2c598df7f2
+Skipping task ':data:compileTestKotlinJvm' as it is up-to-date.
+Resolve mutations for :data:compileJvmTestJava (Thread[#2444,included builds,5,main]) started.
+:data:compileJvmTestJava (Thread[#2444,included builds,5,main]) started.
+
+> Task :data:compileJvmTestJava NO-SOURCE
+Skipping task ':data:compileJvmTestJava' as it has no source files and no previous output files.
+Resolve mutations for :data:jvmTestClasses (Thread[#2444,included builds,5,main]) started.
+:data:jvmTestClasses (Thread[#2467,Execution worker Thread 22,5,main]) started.
+
+> Task :data:jvmTestClasses UP-TO-DATE
+Skipping task ':data:jvmTestClasses' as it has no actions.
+Resolve mutations for :data:jvmTest (Thread[#2467,Execution worker Thread 22,5,main]) started.
+:data:jvmTest (Thread[#2467,Execution worker Thread 22,5,main]) started.
+Gradle Test Executor 7 started executing tests.
+
+> Task :data:jvmTest
+Build cache key for task ':data:jvmTest' is adc7579faae24cdf3df6be2a9b0393b6
+Task ':data:jvmTest' is not up-to-date because:
+  Value of input property 'filter.commandLineIncludePatterns' has changed for task ':data:jvmTest'
+file or directory 'D:\Codex\worktrees\85be\mihon\data\build\classes\java\jvmTest', not found
+Starting process 'Gradle Test Executor 7'. Working directory: D:\Codex\worktrees\85be\mihon\data Command: C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot\bin\java.exe -Dorg.gradle.internal.worker.tmpdir=D:\Codex\worktrees\85be\mihon\data\build\tmp\jvmTest\work @C:\Users\feeli\.gradle\.tmp\gradle-worker-classpath7055380973230447939txt -Xmx512m -Dfile.encoding=UTF-8 -Duser.country=CN -Duser.language=zh -Duser.variant -ea worker.org.gradle.process.internal.worker.GradleWorkerMain 'Gradle Test Executor 7'
+Successfully started process 'Gradle Test Executor 7'
+
+SyncPersistentGitObjectCacheComplexityTest[jvm] > 1000 and 9000 objects stay within cold warm append and recreated cache budgets()[jvm] STANDARD_OUT
+    {"scenario":"cold-create","objects":1000,"listCalls":1,"listedEntries":0,"metadataCalls":2000,"metadataBytes":0,"markerWrites":1000,"returnedObjects":0}
+    {"scenario":"cold-ledger-rebuild","objects":1000,"listCalls":1,"listedEntries":2000,"metadataCalls":2002,"metadataBytes":247135,"markerWrites":1,"returnedObjects":1}
+    {"scenario":"warm-read","objects":1000,"listCalls":0,"listedEntries":0,"metadataCalls":2000,"metadataBytes":246890,"markerWrites":1000,"returnedObjects":1000}
+    {"scenario":"cache-instance-recreation","objects":1000,"listCalls":0,"listedEntries":0,"metadataCalls":2,"metadataBytes":245,"markerWrites":1,"returnedObjects":1}
+    {"scenario":"append","objects":1000,"listCalls":0,"listedEntries":0,"metadataCalls":2000,"metadataBytes":0,"markerWrites":1000,"returnedObjects":1000}
+    {"scenario":"cold-create","objects":9000,"listCalls":1,"listedEntries":0,"metadataCalls":18000,"metadataBytes":0,"markerWrites":9000,"returnedObjects":0}
+    {"scenario":"cold-ledger-rebuild","objects":9000,"listCalls":1,"listedEntries":18000,"metadataCalls":18002,"metadataBytes":2231135,"markerWrites":1,"returnedObjects":1}
+    {"scenario":"warm-read","objects":9000,"listCalls":0,"listedEntries":0,"metadataCalls":18000,"metadataBytes":2230890,"markerWrites":9000,"returnedObjects":9000}
+    {"scenario":"cache-instance-recreation","objects":9000,"listCalls":0,"listedEntries":0,"metadataCalls":2,"metadataBytes":245,"markerWrites":1,"returnedObjects":1}
+    {"scenario":"append","objects":9000,"listCalls":0,"listedEntries":0,"metadataCalls":18000,"metadataBytes":0,"markerWrites":9000,"returnedObjects":9000}
+
+Gradle Test Executor 7 finished executing tests.
+
+> Task :data:jvmTest
+Finished generating test XML results (0.001 secs) into: D:\Codex\worktrees\85be\mihon\data\build\test-results\jvmTest
+Generating HTML test report...
+Finished generating test html results (0.004 secs) into: D:\Codex\worktrees\85be\mihon\data\build\reports\tests\jvmTest
+Stored cache entry for task ':data:jvmTest' with cache key adc7579faae24cdf3df6be2a9b0393b6
+Build 0eda87b9-d549-4a1e-8695-76753c6e3e82 is closed
+
+BUILD SUCCESSFUL in 3m 37s
+31 actionable tasks: 6 executed, 25 up-to-date
+Watched directory hierarchies: [D:\Codex\worktrees\85be\mihon]

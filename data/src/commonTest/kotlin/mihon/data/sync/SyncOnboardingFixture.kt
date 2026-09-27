@@ -11,6 +11,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import mihon.data.sync.auth.GitHubSyncSpaceClient
 import mihon.data.sync.crypto.SyncSpaceCrypto
+import mihon.data.sync.http.NoopSyncMetrics
+import mihon.data.sync.http.SyncMetrics
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelController
 import mihon.data.sync.runtime.SyncRuntime
@@ -25,6 +27,7 @@ import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.RecordedRequest
 import okhttp3.OkHttpClient
+import okio.Path
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
@@ -64,6 +67,14 @@ internal class SyncOnboardingFixture(
     var userRepoPosts = 0
     var bootstrapPutEntered: java.util.concurrent.CountDownLatch? = null
     var bootstrapPutRelease: java.util.concurrent.CountDownLatch? = null
+    var now = 1_000L
+    var description = ""
+    var creationPosts = 0
+    var rejectCreation = false
+    var sourceAvailable: (Long) -> Boolean = { true }
+    var loseCreationResponse = false
+    var creationEntered: java.util.concurrent.CountDownLatch? = null
+    var creationRelease: java.util.concurrent.CountDownLatch? = null
     val repositoryTokens = java.util.Collections.synchronizedList(mutableListOf<String>())
     val endpoints = GitHubAuthEndpoints(
         git.server.url("/device").toString(),
@@ -122,9 +133,18 @@ internal class SyncOnboardingFixture(
         }
     }
 
-    fun runtime(): SyncRuntime = SyncRuntime(
-        storage.handler, storage.bootstrap, storage.creators, storage.creators, { true }, secure,
-        preferences, client, endpoints, clock = { 1000L },
+    fun runtime(
+        metrics: SyncMetrics = NoopSyncMetrics,
+        persistentObjectCacheDirectory: Path? = null,
+        progressTelemetryEnabled: Boolean = true,
+        failureLogDirectory: Path? = null,
+    ): SyncRuntime = SyncRuntime(
+        storage.handler, storage.bootstrap, storage.creators, storage.creators, { sourceAvailable(it) }, secure,
+        preferences, client, endpoints, clock = { now },
+        persistentObjectCacheDirectory = persistentObjectCacheDirectory,
+        failureLogDirectory = failureLogDirectory,
+        syncMetrics = metrics,
+        progressTelemetryEnabled = progressTelemetryEnabled,
     )
 
     suspend fun authorize(token: String = "synthetic-token") {

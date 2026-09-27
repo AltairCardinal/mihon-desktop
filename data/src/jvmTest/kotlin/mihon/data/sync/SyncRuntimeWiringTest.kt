@@ -1,8 +1,34 @@
 package mihon.data.sync
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import mihon.data.sync.http.InMemorySyncMetrics
+import mihon.data.sync.http.NoopSyncMetrics
+import mihon.data.sync.http.SyncMetrics
+import mihon.data.sync.inbox.SyncInboxStore
+import mihon.data.sync.runtime.StoredSyncMaterial
+import mihon.data.sync.runtime.StoredSyncSetup
+import mihon.data.sync.runtime.SyncPanelAction
+import mihon.data.sync.runtime.SyncProgressDirection
+import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncRuntime
+import mihon.data.sync.transport.GitHubSyncTransport
+import mihon.data.sync.transport.SyncBatchSyncService
+import mihon.data.sync.transport.SyncSnapshotManifestBinding
+import mihon.data.sync.transport.SyncSnapshotManifestStore
+import mihon.domain.sync.SyncBatch
+import mihon.domain.sync.SyncCategory
+import mihon.domain.sync.SyncEffect
+import mihon.domain.sync.SyncEffectKind
+import mihon.domain.sync.SyncEventEnvelope
+import mihon.domain.sync.SyncField
+import mihon.domain.sync.SyncObjectKey
+import mihon.domain.sync.SyncObjectType
+import mihon.domain.sync.SyncOrigin
 import mihon.domain.sync.auth.GitHubAccessToken
 import mihon.domain.sync.auth.GitHubAuthEndpoints
 import mihon.domain.sync.crypto.SyncRecoveryCodec
@@ -11,13 +37,19 @@ import mihon.domain.sync.runtime.SyncRunStatus
 import mihon.domain.sync.runtime.SyncTrigger
 import mihon.domain.sync.security.SyncSecureStore
 import mihon.domain.sync.security.SyncSecureStoreException
+import mihon.domain.sync.transport.SyncInitializationStage
 import mihon.domain.sync.transport.SyncRepository
+import mockwebserver3.Dispatcher
+import mockwebserver3.MockResponse
+import mockwebserver3.RecordedRequest
 import okhttp3.Call
 import okhttp3.EventListener
 import okhttp3.OkHttpClient
+import okio.Path.Companion.toPath
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -31,10 +63,611 @@ import tachiyomi.data.JvmDatabaseHandler
 import tachiyomi.data.Mangas
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
+import java.nio.file.Files
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.prefs.Preferences
 
 class SyncRuntimeWiringTest {
+    @Test
+    fun `production upload needs no installed source and confirms after acknowledgement`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                setup.sourceAvailable = { false }
+                val runtime = setup.runtime
+                fixture.storage.favorite("/progress-boundary")
+                val enteredRef = CountDownLatch(1)
+                val releaseRef = CountDownLatch(1)
+                val delegate = setup.git.server.dispatcher
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if ((request.method == "PATCH" && request.url.encodedPath.contains("/git/refs/heads/")) ||
+                            (request.method == "POST" && request.url.encodedPath.endsWith("/git/refs"))
+                        ) {
+                            enteredRef.countDown()
+                            check(releaseRef.await(10, TimeUnit.SECONDS))
+                        }
+                        return delegate.dispatch(request)
+                    }
+                }
+                val exchange = async(Dispatchers.IO) { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
+                try {
+                    assertTrue(enteredRef.await(10, TimeUnit.SECONDS))
+                    val beforeRef = requireNotNull(runtime.liveProgress.value)
+                    assertEquals(mihon.data.sync.runtime.SyncProgressStage.CONFIRMING, beforeRef.stage)
+                    assertEquals(0L, beforeRef.completedItems)
+                    assertTrue(beforeRef.effectiveBytes > 0L, beforeRef.toString())
+                    assertTrue(beforeRef.networkBytes >= beforeRef.effectiveBytes, beforeRef.toString())
+                    val panelFact = withTimeout(5_000) {
+                        setup.panel.state.first {
+                            it.progress?.stage == mihon.data.sync.runtime.SyncProgressStage.CONFIRMING &&
+                                it.progress.effectiveBytes > 0L
+                        }.progress
+                    }
+                    assertEquals(beforeRef.scope, panelFact?.scope)
+                    assertEquals(beforeRef.effectiveBytes, panelFact?.effectiveBytes)
+                    val stored = fixture.storage.handler.await {
+                        sync_journalQueries.getNextUploadBatch("space", 1).executeAsOneOrNull()
+                    }
+                    assertNotNull(stored)
+                } finally {
+                    releaseRef.countDown()
+                }
+                assertEquals(SyncRunStatus.SUCCESS, exchange.await().status)
+                val afterAck = requireNotNull(runtime.liveProgress.value)
+                assertEquals(1L, requireNotNull(runtime.runStore.latest("space", 1)).confirmedItems)
+                assertEquals(1L, afterAck.confirmedThisRun)
+                assertEquals(
+                    null,
+                    fixture.storage.handler.await {
+                        sync_journalQueries.getNextUploadBatch("space", 1).executeAsOneOrNull()
+                    },
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `production download confirms source-free projection once`() = runBlocking {
+        Fixture().use { sender ->
+            Fixture().use { receiver ->
+                SyncOnboardingFixture(sender.storage, sender.preferences, sender.client).use { setup ->
+                    val material = setup.existing("")
+                    setup.authorize()
+                    setup.begin()
+                    sender.storage.favorite("/source-free-download")
+                    assertEquals(
+                        SyncRunStatus.SUCCESS,
+                        setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL).status,
+                    )
+
+                    val runtime = receiver.runtime(
+                        setup.git.baseUrl,
+                        setup.endpoints.accessTokenUrl,
+                        sourceAvailable = { false },
+                    )
+                    try {
+                        runtime.credentials.replace(
+                            null,
+                            GitHubAccessToken("synthetic-token", null, "bearer", emptySet(), null, null),
+                        )
+                        val discovered = runtime.onboarding.discover()
+                        val space = (discovered as mihon.data.sync.auth.SyncSpaceDiscovery.Found).space
+                        runtime.onboarding.resume(runtime.onboarding.join(space, material))
+                        val result = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                        assertEquals(SyncRunStatus.SUCCESS, result.status)
+                        val run = requireNotNull(runtime.runStore.latest("space", 1))
+                        assertEquals(1, result.downloaded)
+                        assertEquals(1L, run.confirmedItems)
+                        val projected = receiver.storage.handler.await {
+                            sync_projectionQueries.getMangaByIdentity("/source-free-download", 1).executeAsOneOrNull()
+                        }
+                        assertEquals(true, projected?.favorite)
+                    } finally {
+                        runtime.stopPanel()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `same batch ref conflict resumes transfer before retry and still confirms once`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                fixture.storage.favorite("/ref-retry-progress")
+                setup.git.competingWrites = 1
+                val observedAtRef = java.util.Collections.synchronizedList(
+                    mutableListOf<mihon.data.sync.runtime.SyncProgressFact>(),
+                )
+                val delegate = setup.git.server.dispatcher
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.method == "PATCH" && request.url.encodedPath.contains("/git/refs/heads/")) {
+                            runtimeFact(setup.runtime)?.let(observedAtRef::add)
+                        }
+                        return delegate.dispatch(request)
+                    }
+                }
+                assertEquals(SyncRunStatus.SUCCESS, setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                assertTrue(setup.git.conflicts.get() > 0)
+                assertTrue(observedAtRef.size >= 2, observedAtRef.toString())
+                assertTrue(observedAtRef.all { it.stage == mihon.data.sync.runtime.SyncProgressStage.CONFIRMING })
+                assertTrue(observedAtRef[1].networkBytes > observedAtRef[0].networkBytes)
+                val completed = requireNotNull(setup.runtime.runStore.latest("space", 1))
+                assertEquals(1L, completed.uploaded)
+                assertEquals(1L, completed.confirmedItems)
+            }
+        }
+    }
+
+    private fun runtimeFact(runtime: SyncRuntime) = runtime.liveProgress.value
+
+    @Test
+    fun `new exchange transport reads changed head through direct subtree objects`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                val material = setup.existing("")
+                setup.authorize()
+                val runtime = setup.runtime()
+                try {
+                    val space = (runtime.onboarding.discover() as mihon.data.sync.auth.SyncSpaceDiscovery.Found).space
+                    runtime.onboarding.resume(runtime.onboarding.join(space, material))
+                    assertTrue(setup.git.recursiveTreeRequests >= 1)
+                    assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                    setup.git.replaceFile(setup.repository.branch, "unrelated-note.txt", "new head".encodeToByteArray())
+                    val beforeRecursive = setup.git.recursiveTreeRequests
+                    val beforeTrees = setup.git.treeRequests
+                    assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                    assertEquals(beforeRecursive, setup.git.recursiveTreeRequests)
+                    assertTrue(setup.git.treeRequests - beforeTrees >= 1)
+                } finally {
+                    runtime.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `cold recursive truncation and oversized success fall back to bounded direct traversal`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                val material = setup.existing("")
+                val root = setup.git.treeSha(setup.repository.branch)
+                fun transport() = GitHubSyncTransport(
+                    fixture.client,
+                    { "synthetic-token" },
+                    setup.git.baseUrl,
+                    spaceMaterial = material,
+                ).also {
+                    it.installSnapshotManifestStore(
+                        SyncSnapshotManifestStore(fixture.storage.handler),
+                        SyncSnapshotManifestBinding(1, 99, "cold-fallback-contract"),
+                    )
+                }
+                setup.git.overrideNextTreeResponse(root, """{"sha":"$root","truncated":true,"tree":[]}""")
+                val beforeTruncated = setup.git.treeRequests
+                assertTrue(transport().readSnapshot(setup.repository, "space", 1).isSuccess)
+                assertTrue(setup.git.treeRequests - beforeTruncated > 1)
+
+                val delegate = setup.git.server.dispatcher
+                val oversized = AtomicInteger()
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.url.encodedPath.contains("/git/trees/") &&
+                            request.url.queryParameter("recursive") == "1"
+                        ) {
+                            oversized.incrementAndGet()
+                            return MockResponse(body = "x".repeat(2 * 1024 * 1024 + 1))
+                        }
+                        return delegate.dispatch(request)
+                    }
+                }
+                val beforeOversized = setup.git.treeRequests
+                assertTrue(transport().readSnapshot(setup.repository, "space", 1).isSuccess)
+                assertEquals(1, oversized.get())
+                assertTrue(setup.git.treeRequests - beforeOversized > 0)
+            }
+        }
+    }
+
+    @Test
+    fun `cold recursive rate limit and server failures never fall back to direct tree reads`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                val material = setup.existing("")
+                val delegate = setup.git.server.dispatcher
+                val recursive = AtomicInteger()
+                var failureCode = 429
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.url.encodedPath.contains("/git/trees/") &&
+                            request.url.queryParameter("recursive") == "1"
+                        ) {
+                            recursive.incrementAndGet()
+                            return MockResponse(code = failureCode, body = "failed")
+                        }
+                        return delegate.dispatch(request)
+                    }
+                }
+                for (code in listOf(429, 500)) {
+                    failureCode = code
+                    val transport = GitHubSyncTransport(
+                        fixture.client,
+                        { "synthetic-token" },
+                        setup.git.baseUrl,
+                        spaceMaterial = material,
+                    )
+                    transport.installSnapshotManifestStore(
+                        SyncSnapshotManifestStore(fixture.storage.handler),
+                        SyncSnapshotManifestBinding(1, 99, "cold-failure-contract"),
+                    )
+                    val beforeDirect = setup.git.treeRequests
+                    assertTrue(transport.readSnapshot(setup.repository, "space", 1).isFailure)
+                    assertEquals(beforeDirect, setup.git.treeRequests)
+                }
+                assertEquals(2, recursive.get())
+            }
+        }
+    }
+
+    @Test
+    fun `cold recursive tree rejects depth directory and UTF8 boundary violations`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                val material = setup.existing("")
+                val root = setup.git.treeSha(setup.repository.branch)
+                val oid = "0".repeat(40)
+                val empty = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+                fun tree(path: String, sha: String = empty) =
+                    """{"path":"$path","mode":"040000","type":"tree","sha":"$sha"}"""
+                val cases = listOf(
+                    "tree depth" to "[${tree("d/".repeat(256) + "end")}]",
+                    "directory exceeds limit" to "[${tree("a")},${tree("b")},${tree("c")}]",
+                    "path is invalid" to "[${tree("\\uD800")}]",
+                    "parent is missing" to "[${tree("a/b")}]",
+                    "hash does not match" to "[${tree("a")},${tree("b")}]",
+                    "hash does not match" to "[${tree("a", oid)}]",
+                )
+                for ((reason, entries) in cases) {
+                    val transport = GitHubSyncTransport(
+                        fixture.client,
+                        { "synthetic-token" },
+                        setup.git.baseUrl,
+                        maxTreeEntries = 2,
+                        spaceMaterial = material,
+                    )
+                    transport.installSnapshotManifestStore(
+                        SyncSnapshotManifestStore(fixture.storage.handler),
+                        SyncSnapshotManifestBinding(1, 99, "cold-parser-contract"),
+                    )
+                    setup.git.overrideNextTreeResponse(
+                        root,
+                        """{"sha":"$root","truncated":false,"tree":$entries}""",
+                    )
+                    val failure = transport.readSnapshot(setup.repository, "space", 1).exceptionOrNull()
+                    assertTrue(failure?.message?.contains(reason) == true, "$reason: $failure")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `first production connection reads complete tree with one verified recursive request`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                val material = setup.existing("")
+                setup.authorize()
+                val runtime = setup.runtime()
+                try {
+                    val space = (runtime.onboarding.discover() as mihon.data.sync.auth.SyncSpaceDiscovery.Found).space
+                    val intent = runtime.onboarding.join(space, material)
+                    val beforeTrees = setup.git.treeRequests
+                    val beforeRecursive = setup.git.recursiveTreeRequests
+                    runtime.onboarding.resume(intent)
+                    assertEquals(1, setup.git.treeRequests - beforeTrees)
+                    assertEquals(1, setup.git.recursiveTreeRequests - beforeRecursive)
+                } finally {
+                    runtime.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `fresh run skips totals reconciliation and recovery reconciles durable progress once`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+
+                val metrics = InMemorySyncMetrics()
+                val runtime = setup.runtime(metrics)
+                setup.git.nextReadFailure = MockResponse(code = 500, body = "temporary outage")
+
+                val first = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+
+                assertEquals(SyncRunStatus.FAILED, first.status)
+                assertEquals(0, metrics.snapshot().totalsReconciliations)
+
+                setup.now += 10_000
+                val recovered = runtime.coordinator.synchronize(SyncTrigger.RECOVERY)
+
+                assertEquals(SyncRunStatus.SUCCESS, recovered.status)
+                assertEquals(1, metrics.snapshot().totalsReconciliations)
+            }
+        }
+    }
+
+    @Test
+    fun `production cold snapshot rolls guard manifest and discovery back together`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                val material = setup.existing("")
+                val transport = GitHubSyncTransport(
+                    f.client,
+                    { "synthetic-token" },
+                    setup.git.baseUrl,
+                    spaceMaterial = material,
+                )
+                val service = SyncBatchSyncService(transport, spaceMaterial = material)
+                val before = transport.readSnapshot(setup.repository, "space", 1).getOrThrow()
+                val batch = remoteBatch()
+                service.upload(
+                    setup.repository,
+                    before,
+                    batch,
+                    ".mihon-sync/batches/sender/1/${batch.batchId}.json",
+                    persist = {},
+                )
+                setup.authorize()
+                val storedSetup = StoredSyncSetup(
+                    accountId = setup.accountId,
+                    accountLogin = setup.accountLogin,
+                    attemptId = "manifest-atomicity-check",
+                    attemptNonce = "manifest-atomicity-check",
+                    newSpace = false,
+                    material = StoredSyncMaterial.from(material),
+                    stage = SyncInitializationStage.CONNECTED,
+                    repositoryId = 99,
+                    owner = setup.repository.owner,
+                    repository = setup.repository.name,
+                    branch = setup.repository.branch,
+                )
+                setup.runtime.bindSetup(storedSetup)
+                f.storage.driver.execute(
+                    null,
+                    """
+                    CREATE TRIGGER reject_snapshot_manifest BEFORE INSERT ON sync_snapshot_manifests
+                    BEGIN SELECT RAISE(ABORT, 'injected manifest commit failure'); END
+                    """.trimIndent(),
+                    0,
+                )
+
+                val failed = setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+
+                assertEquals(SyncRunStatus.FAILED, failed.status)
+                assertNull(
+                    f.storage.handler.await {
+                        sync_remote_guardQueries.getGuard("space", 1).executeAsOneOrNull()
+                    },
+                )
+                assertNull(
+                    f.storage.handler.await {
+                        sync_remote_guardQueries.getSnapshotManifest("space", 1).executeAsOneOrNull()
+                    },
+                )
+                assertTrue(
+                    f.storage.handler.await {
+                        sync_inboxQueries.getDiscoveredBatches("space", 1, 128).executeAsList().isEmpty()
+                    },
+                )
+
+                f.storage.driver.execute(null, "DROP TRIGGER reject_snapshot_manifest", 0)
+                assertEquals(SyncRunStatus.PARTIAL, setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                assertNotNull(
+                    f.storage.handler.await {
+                        sync_remote_guardQueries.getSnapshotManifest("space", 1).executeAsOneOrNull()
+                    },
+                )
+                assertEquals(
+                    1L,
+                    f.storage.handler.await {
+                        sync_inboxQueries.countInboxBatches("space", 1)
+                            .executeAsList().single { it.status == "RECEIVED" }.count
+                    },
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `production runtime rejects snapshot from a run whose owner expired during ref read`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val runtime = setup.runtime
+                val connection = requireNotNull(runtime.connection())
+                val guardBeforeRead = f.storage.handler.await {
+                    sync_remote_guardQueries.getGuard(connection.spaceId, connection.generation).executeAsOneOrNull()
+                }
+                val manifestBeforeRead = f.storage.handler.await {
+                    sync_remote_guardQueries.getSnapshotManifest(connection.spaceId, connection.generation)
+                        .executeAsOneOrNull()
+                }
+                val discoveryBeforeRead = f.storage.handler.await {
+                    sync_inboxQueries.getDiscoveredBatches(connection.spaceId, connection.generation, 128)
+                        .executeAsList()
+                }
+                val run = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                val refReadStarted = CountDownLatch(1)
+                val releaseRefRead = CountDownLatch(1)
+                setup.git.nextRefReadBarrier = refReadStarted to releaseRefRead
+
+                val expiredOwnerAttempt = async(Dispatchers.IO) {
+                    runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                }
+                try {
+                    assertTrue(refReadStarted.await(5, TimeUnit.SECONDS), "snapshot ref read did not reach the barrier")
+                    val ownerBeforeRecovery = requireNotNull(runtime.runStore.get(run.runId)?.ownerSession)
+                    assertTrue(runtime.runStore.releaseForRecovery(run.runId))
+                    releaseRefRead.countDown()
+
+                    val staleResult = expiredOwnerAttempt.await()
+
+                    assertEquals(SyncRunProblem.REMOTE_CHANGED, staleResult.problem)
+                    val afterStaleRead = requireNotNull(runtime.runStore.get(run.runId))
+                    assertEquals(SyncRunState.WAITING_SYSTEM, afterStaleRead.state)
+                    assertEquals(null, afterStaleRead.ownerSession)
+                    assertTrue(ownerBeforeRecovery.isNotBlank())
+                    assertEquals(
+                        guardBeforeRead,
+                        f.storage.handler.await {
+                            sync_remote_guardQueries.getGuard(
+                                connection.spaceId,
+                                connection.generation,
+                            ).executeAsOneOrNull()
+                        },
+                    )
+                    assertEquals(
+                        manifestBeforeRead,
+                        f.storage.handler.await {
+                            sync_remote_guardQueries.getSnapshotManifest(connection.spaceId, connection.generation)
+                                .executeAsOneOrNull()
+                        },
+                    )
+                    assertEquals(
+                        discoveryBeforeRead,
+                        f.storage.handler.await {
+                            sync_inboxQueries.getDiscoveredBatches(connection.spaceId, connection.generation, 128)
+                                .executeAsList()
+                        },
+                    )
+
+                    val recovered = setup.runtime()
+                    try {
+                        assertEquals(
+                            SyncRunStatus.SUCCESS,
+                            recovered.coordinator.synchronize(SyncTrigger.RECOVERY).status,
+                        )
+                        assertNotNull(
+                            f.storage.handler.await {
+                                sync_remote_guardQueries.getGuard(
+                                    connection.spaceId,
+                                    connection.generation,
+                                ).executeAsOneOrNull()
+                            },
+                        )
+                        assertNotNull(
+                            f.storage.handler.await {
+                                sync_remote_guardQueries.getSnapshotManifest(connection.spaceId, connection.generation)
+                                    .executeAsOneOrNull()
+                            },
+                        )
+                    } finally {
+                        recovered.stopPanel()
+                    }
+                } finally {
+                    releaseRefRead.countDown()
+                    if (!expiredOwnerAttempt.isCompleted) expiredOwnerAttempt.cancel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `production runtime reopens a validated snapshot and falls back after cache context damage`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val firstRuntime = setup.runtime
+
+                assertEquals(SyncRunStatus.SUCCESS, firstRuntime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                assertNotNull(
+                    f.storage.handler.await {
+                        sync_remote_guardQueries.getSnapshotManifest("space", 1).executeAsOneOrNull()
+                    },
+                )
+                firstRuntime.stopPanel()
+                val refsBeforeWarm = setup.git.snapshotReads
+                val commitsBeforeWarm = setup.git.commitReads
+                val treesBeforeWarm = setup.git.treeRequests
+                val blobsBeforeWarm = setup.git.blobReads
+                val reopened = setup.runtime()
+                try {
+                    assertEquals(SyncRunStatus.SUCCESS, reopened.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                    assertEquals(refsBeforeWarm + 1, setup.git.snapshotReads)
+                    assertEquals(commitsBeforeWarm, setup.git.commitReads)
+                    assertEquals(treesBeforeWarm, setup.git.treeRequests)
+                    assertEquals(blobsBeforeWarm, setup.git.blobReads)
+
+                    f.storage.driver.execute(
+                        null,
+                        "UPDATE sync_snapshot_manifests SET checksum = 'damaged' WHERE space_id = 'space' AND generation = 1",
+                        0,
+                    )
+                    val commitsBeforeFallback = setup.git.commitReads
+                    val treesBeforeFallback = setup.git.treeRequests
+                    val fallback = setup.runtime()
+                    try {
+                        assertEquals(SyncRunStatus.SUCCESS, fallback.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                    } finally {
+                        fallback.stopPanel()
+                    }
+                    assertTrue(setup.git.commitReads > commitsBeforeFallback)
+                    assertTrue(setup.git.treeRequests > treesBeforeFallback)
+                    assertFalse(
+                        f.storage.handler.await {
+                            sync_remote_guardQueries.getGuard("space", 1).executeAsOne().blocked
+                        },
+                    )
+
+                    for ((column, value) in listOf(
+                        "api_origin" to "'https://other.example'",
+                        "validator_version" to "'other-validator'",
+                        "validation_scope" to "'other-scope'",
+                        "connection_revision" to "'other-connection'",
+                        "account_id" to "2",
+                        "repository_id" to "100",
+                    )) {
+                        f.storage.driver.execute(
+                            null,
+                            "UPDATE sync_snapshot_manifests SET $column = $value " +
+                                "WHERE space_id = 'space' AND generation = 1",
+                            0,
+                        )
+                        val treesBeforeContextMiss = setup.git.treeRequests
+                        val isolated = setup.runtime()
+                        try {
+                            assertEquals(
+                                SyncRunStatus.SUCCESS,
+                                isolated.coordinator.synchronize(SyncTrigger.MANUAL).status,
+                            )
+                        } finally {
+                            isolated.stopPanel()
+                        }
+                        assertTrue(setup.git.treeRequests > treesBeforeContextMiss, "context mismatch: $column")
+                    }
+                } finally {
+                    reopened.stopPanel()
+                }
+            }
+        }
+    }
+
     @Test
     fun `temporary token refresh failures retain credentials and report retryable network failure`() = runBlocking {
         Fixture().use { f ->
@@ -55,7 +688,30 @@ class SyncRuntimeWiringTest {
                         assertEquals(SyncRunProblem.NETWORK, result.problem)
                         assertEquals(expiring, runtime.credentials.read())
                         assertFalse(runtime.preferences.history.get().contains("private diagnostic"))
+                        assertEquals(SyncRunState.WAITING_RETRY, runtime.runStore.active("space", 1)?.state)
+                        assertEquals(
+                            if (code == 500) 1L else 2L,
+                            runtime.runStore.active("space", 1)?.networkFailureCount,
+                        )
+                        if (code == 500) {
+                            assertEquals(
+                                SyncRunStatus.SKIPPED,
+                                runtime.coordinator.synchronize(SyncTrigger.PERIODIC).status,
+                            )
+                            assertEquals(1L, runtime.runStore.active("space", 1)?.networkFailureCount)
+                        }
+                        setup.now = if (code == 500) 11_000L else 41_000L
                     }
+                    auth.enqueue(mockwebserver3.MockResponse(code = 500, body = "private diagnostic"))
+                    assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).problem)
+                    assertEquals(3L, runtime.runStore.active("space", 1)?.networkFailureCount)
+                    setup.now = 161_000L
+                    auth.enqueue(mockwebserver3.MockResponse(code = 500, body = "private diagnostic"))
+                    assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).problem)
+                    assertEquals(SyncRunState.FAILED, runtime.runStore.latest("space", 1)?.state)
+                    assertEquals("retry_exhausted", runtime.runStore.latest("space", 1)?.stopReason)
+                    assertEquals(4L, runtime.runStore.latest("space", 1)?.networkFailureCount)
+                    assertEquals(null, runtime.runStore.active("space", 1))
                 }
             }
         }
@@ -69,24 +725,409 @@ class SyncRuntimeWiringTest {
                 setup.authorize("access-secret")
                 setup.begin()
                 val runtime = setup.runtime
+                setup.now = 2_000L
                 f.storage.favorite("/runtime")
                 val result = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
                 assertEquals(SyncRunStatus.SUCCESS, result.status)
                 assertEquals(1, result.uploaded)
+                val live = requireNotNull(runtime.liveProgress.value)
+                assertEquals(mihon.data.sync.runtime.SyncProgressStage.CONFIRMING, live.stage)
+                val completedRun = requireNotNull(runtime.runStore.latest("space", 1))
+                assertEquals(SyncRunState.SUCCEEDED, completedRun.state)
+                assertEquals(1L, completedRun.confirmedItems)
+                val completedLogs = runtime.runStore.logs(completedRun.runId)
+                assertTrue(
+                    completedLogs.any {
+                        it.title == "/runtime" && it.detail.contains("收藏") && it.detail.contains("已确认上传")
+                    },
+                    completedLogs.toString(),
+                )
+                assertFalse(completedLogs.any { it.detail.contains("已接收") }, completedLogs.toString())
                 assertTrue(f.networkCalls > 0)
-                assertEquals(1000L, runtime.preferences.lastSuccess.get())
+                assertEquals(2_000L, runtime.preferences.lastSuccess.get())
                 assertTrue(runtime.preferences.history.get().contains("SUCCESS"))
                 assertTrue(f.preferences.getAll().keys.all { Preference.isAppState(it) })
                 assertFalse(f.preferences.getAll().toString().contains("access-secret"))
                 val reopened = setup.runtime()
-                assertEquals("access-secret", reopened.accessToken())
-                assertEquals(0, reopened.coordinator.synchronize(SyncTrigger.STARTUP).uploaded)
-                runtime.disconnect()
-                f.storage.favorite("/after-disconnect")
-                val before = f.networkCalls
-                assertEquals(SyncRunStatus.SKIPPED, reopened.coordinator.synchronize(SyncTrigger.MANUAL).status)
-                assertEquals(before, f.networkCalls)
-                assertNull(runtime.credentials.read())
+                try {
+                    assertEquals("access-secret", reopened.accessToken())
+                    val reopenedPanel = reopened.panel as mihon.data.sync.runtime.SyncPanelController
+                    reopenedPanel.dispatch(SyncPanelAction.Open)
+                    reopenedPanel.awaitIdle()
+                    assertEquals(SyncRunState.SUCCEEDED, reopenedPanel.state.value.run?.state)
+                    assertEquals(1L, reopenedPanel.state.value.run?.confirmedItems)
+                    assertEquals(0, reopened.coordinator.synchronize(SyncTrigger.STARTUP).uploaded)
+                    f.storage.favorite("/runtime-next")
+                    assertEquals(1, reopened.coordinator.synchronize(SyncTrigger.MANUAL).uploaded)
+                    runtime.disconnect()
+                    f.storage.favorite("/after-disconnect")
+                    val before = f.networkCalls
+                    assertEquals(SyncRunStatus.SKIPPED, reopened.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                    assertEquals(before, f.networkCalls)
+                    assertNull(runtime.credentials.read())
+                } finally {
+                    reopened.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `reopened recovery panel preserves durable confirmations without trusting downloaded receipts`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                setup.now = 2_000L
+                fixture.storage.favorite("/durable-confirmed")
+                val exchange = setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                assertEquals(SyncRunStatus.SUCCESS, exchange.status)
+                assertEquals(1, exchange.uploaded, exchange.toString())
+                val run = requireNotNull(setup.runtime.runStore.latest("space", 1))
+                assertEquals(1L, run.confirmedItems, run.toString())
+                setup.runtime.runStore.finish(run.runId, SyncRunState.WAITING_SYSTEM, "process_restart")
+                val reopened = setup.runtime()
+                try {
+                    val panel = reopened.panel as mihon.data.sync.runtime.SyncPanelController
+                    panel.dispatch(SyncPanelAction.Open)
+                    panel.awaitIdle()
+                    assertEquals(SyncRunState.WAITING_SYSTEM, panel.state.value.run?.state)
+                    assertEquals(1L, panel.state.value.progress?.confirmedThisRun)
+                    assertEquals(0L, panel.state.value.progress?.completedItems)
+                } finally {
+                    reopened.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `partial panel reloads only its pending receipt and related source blockers`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val runStore = setup.runtime.runStore
+                val run = runStore.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runStore.claim(run.runId, "terminal-owner", 1))
+                runStore.expectDownload(run.runId, "terminal-owner", "pending-a", 2)
+                runStore.expectDownload(run.runId, "terminal-owner", "pending-b", 3)
+                runStore.confirmed(run.runId, "terminal-owner", SyncProgressDirection.UPLOAD, "published", 7)
+                val other = runStore.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runStore.claim(other.runId, "other-owner", 1))
+                runStore.expectDownload(other.runId, "other-owner", "other-batch", 9)
+                listOf("pending-a" to "source-a", "other-batch" to "source-other").forEach { (batch, key) ->
+                    fixture.storage.driver.execute(
+                        null,
+                        "INSERT INTO sync_events(space_id, generation, actor_id, epoch, seq, category, origin, " +
+                            "batch_id, event_json, occurred_at, event_key, sync_indexed) VALUES " +
+                            "('space', 1, 'actor', 1, ${if (batch == "pending-a") 1 else 2}, " +
+                            "'FAVORITE', 'REMOTE', '$batch', '{}', 1, '$key', 1)",
+                        0,
+                    )
+                    fixture.storage.driver.execute(
+                        null,
+                        "INSERT INTO sync_event_fields(space_id, generation, event_key, " +
+                            "object_key, field, object_json) " +
+                            "VALUES ('space', 1, '$key', '$key', 'FAVORITE', '{}')",
+                        0,
+                    )
+                    fixture.storage.driver.execute(
+                        null,
+                        "INSERT INTO sync_field_state(space_id, generation, object_key, field, " +
+                            "object_json, status, dirty) " +
+                            "VALUES ('space', 1, '$key', 'FAVORITE', '{}', 'SOURCE', 0)",
+                        0,
+                    )
+                }
+                fixture.storage.driver.execute(
+                    null,
+                    "INSERT INTO sync_events(space_id, generation, actor_id, epoch, seq, category, origin, " +
+                        "batch_id, event_json, occurred_at, event_key, sync_indexed) VALUES " +
+                        "('space', 1, 'actor', 1, 3, 'FAVORITE', 'REMOTE', 'pending-a', '{}', 1, 'source-a-repeat', 1)",
+                    0,
+                )
+                fixture.storage.driver.execute(
+                    null,
+                    "INSERT INTO sync_event_fields(space_id, generation, event_key, object_key, field, object_json) " +
+                        "VALUES ('space', 1, 'source-a-repeat', 'source-a', 'FAVORITE', '{}')",
+                    0,
+                )
+                runStore.finish(run.runId, SyncRunState.PARTIAL, "projection_pending", "terminal-owner")
+                runStore.finish(other.runId, SyncRunState.PARTIAL, "projection_pending", "other-owner")
+                val firstSummary = requireNotNull(runStore.terminalSummary(run.runId))
+                assertEquals(2L, firstSummary.pendingDownloadBatches)
+                assertEquals(5L, firstSummary.pendingDownloadEvents)
+                assertEquals(1L, firstSummary.sourceUnavailableFields)
+                setup.panel.act(SyncPanelAction.Close)
+                setup.panel.act(SyncPanelAction.Open)
+                val selected = setup.panel.state.value
+                assertEquals(other.runId, selected.run?.runId)
+                assertEquals(9L, selected.terminalSummary?.pendingDownloadEvents)
+                assertEquals(1L, selected.terminalSummary?.sourceUnavailableFields)
+
+                val reopened = setup.runtime()
+                try {
+                    val panel = reopened.panel as mihon.data.sync.runtime.SyncPanelController
+                    panel.dispatch(SyncPanelAction.Open)
+                    panel.awaitIdle()
+                    assertEquals(other.runId, panel.state.value.run?.runId)
+                    assertEquals(1L, panel.state.value.terminalSummary?.pendingDownloadBatches)
+                    assertEquals(9L, panel.state.value.terminalSummary?.pendingDownloadEvents)
+                    assertEquals(1L, panel.state.value.terminalSummary?.sourceUnavailableFields)
+
+                    panel.act(SyncPanelAction.RetrySync)
+                    withTimeout(5_000) { panel.state.first { it.run?.runId == other.runId && it.run.attemptId > 1 } }
+                    assertEquals(other.runId, panel.state.value.run?.runId)
+                    assertEquals(0L, runStore.get(other.runId)?.confirmedItems)
+                    assertEquals(1L, runStore.terminalSummary(other.runId)?.pendingDownloadBatches)
+                } finally {
+                    reopened.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `partial runtime writes failure report and cold panel regenerates missing file`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val directory = Files.createTempDirectory("mihon-runtime-failures-")
+                val runtime = setup.runtime(failureLogDirectory = directory.toString().toPath())
+                var reopened: SyncRuntime? = null
+                try {
+                    val run = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+                    assertTrue(runtime.runStore.claim(run.runId, "failure-owner", 1))
+                    runtime.runStore.expectDownload(run.runId, "failure-owner", "missing-description", 1)
+                    val key = mihon.domain.sync.SyncObjectKey(
+                        mihon.domain.sync.SyncObjectType.MANGA,
+                        sourceId = "1",
+                        originalUrl = "/missing-description",
+                    )
+                    val event = SyncEventEnvelope(
+                        1,
+                        "space",
+                        1,
+                        "remote",
+                        1,
+                        1,
+                        SyncCategory.FAVORITE,
+                        listOf(SyncEffect("favorite", key, SyncField.FAVORITE, SyncEffectKind.ADD)),
+                        SyncOrigin.USER,
+                        batchId = "missing-description",
+                    )
+                    val reception = SyncInboxStore(fixture.storage.handler).ingest(
+                        SyncBatch(1, "space", 1, "missing-description", listOf(event)),
+                    )
+                    assertTrue(reception.accepted)
+                    runtime.projector.project("space", 1)
+                    val unresolved = fixture.storage.handler.await {
+                        sync_inboxQueries.getFieldState("space", 1, key.stableKey, "FAVORITE").executeAsOne()
+                    }
+                    assertEquals("DESCRIPTION", unresolved.status)
+                    runtime.runStore.finish(run.runId, SyncRunState.PARTIAL, "projection_pending", "failure-owner")
+                    assertEquals(SyncRunStatus.PARTIAL, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                    val files = Files.list(directory).use { it.toList() }
+                    assertEquals(1, files.size)
+                    assertTrue(Files.readString(files.single()).contains("DESCRIPTION"))
+
+                    val coldRuntime = setup.runtime(failureLogDirectory = directory.toString().toPath())
+                    reopened = coldRuntime
+                    val panel = coldRuntime.panel as mihon.data.sync.runtime.SyncPanelController
+                    panel.dispatch(SyncPanelAction.Open)
+                    panel.awaitIdle()
+                    val ready = panel.state.value.failureLog as mihon.data.sync.runtime.SyncFailureLogStatus.Ready
+                    assertEquals(files.single().toString(), ready.path)
+                    Files.delete(files.single())
+                    panel.dispatch(SyncPanelAction.Close)
+                    panel.awaitIdle()
+                    panel.dispatch(SyncPanelAction.Open)
+                    panel.awaitIdle()
+                    val regenerated = panel.state.value.failureLog as mihon.data.sync.runtime.SyncFailureLogStatus.Ready
+                    assertTrue(Files.exists(java.nio.file.Path.of(regenerated.path)))
+                } finally {
+                    reopened?.stopPanel()
+                    runtime.stopPanel()
+                    directory.toFile().deleteRecursively()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `manual continuation reuses the resumed run instead of creating a second run`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+                val connection = requireNotNull(runtime.connection())
+                val run = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                runtime.runStore.pause(run.runId)
+                runtime.runStore.resumeIfAllowed(run.runId)
+
+                assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                assertEquals(SyncRunState.SUCCEEDED, runtime.runStore.get(run.runId)?.state)
+            }
+        }
+    }
+
+    @Test
+    fun `system recovery reclaims an orphaned run while user pause stays paused`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+                val connection = requireNotNull(runtime.connection())
+                val orphan = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.RECOVERY)
+                assertTrue(runtime.runStore.claim(orphan.runId, "dead-process", 1))
+                assertTrue(runtime.resumeIfNeeded())
+                assertEquals(SyncRunState.SUCCEEDED, runtime.runStore.get(orphan.runId)?.state)
+
+                val paused = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                runtime.runStore.pause(paused.runId)
+                assertFalse(runtime.resumeIfNeeded())
+                assertEquals(SyncRunState.PAUSED_USER, runtime.runStore.get(paused.runId)?.state)
+            }
+        }
+    }
+
+    @Test
+    fun `system recovery reclaims an owner left in waiting retry`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+                val connection = requireNotNull(runtime.connection())
+                val orphan = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.RECOVERY)
+                assertTrue(runtime.runStore.claim(orphan.runId, "dead-process", 1))
+                runtime.runStore.progress(
+                    orphan.runId,
+                    mihon.data.sync.runtime.SyncRunPhase.UPLOADING,
+                    processed = 1,
+                    total = 2,
+                    state = SyncRunState.WAITING_RETRY,
+                    ownerSession = "dead-process",
+                )
+
+                assertTrue(runtime.resumeIfNeeded())
+                assertEquals(SyncRunState.SUCCEEDED, runtime.runStore.get(orphan.runId)?.state)
+            }
+        }
+    }
+
+    @Test
+    fun `startup never replaces a user paused run`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+                val connection = requireNotNull(runtime.connection())
+                val paused = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                runtime.runStore.pause(paused.runId)
+
+                assertEquals(SyncRunStatus.SKIPPED, runtime.coordinator.synchronize(SyncTrigger.STARTUP).status)
+                assertEquals(
+                    SyncRunState.PAUSED_USER,
+                    runtime.runStore.active(connection.spaceId, connection.generation)?.state,
+                )
+                assertEquals(paused.runId, runtime.runStore.latest(connection.spaceId, connection.generation)?.runId)
+            }
+        }
+    }
+
+    @Test
+    fun `startup does not reset an exhausted automatic run`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+                val connection = requireNotNull(runtime.connection())
+                val exhausted = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.RECOVERY)
+                runtime.runStore.finish(exhausted.runId, SyncRunState.FAILED, "retry_exhausted")
+
+                assertEquals(SyncRunStatus.SKIPPED, runtime.coordinator.synchronize(SyncTrigger.STARTUP).status)
+                assertEquals(exhausted.runId, runtime.runStore.latest(connection.spaceId, connection.generation)?.runId)
+            }
+        }
+    }
+
+    @Test
+    fun `reopened panel restores retry exhausted and blocked runs`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+                val connection = requireNotNull(runtime.connection())
+
+                setup.panel.act(SyncPanelAction.Close)
+                val exhausted = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.RECOVERY)
+                runtime.runStore.finish(exhausted.runId, SyncRunState.FAILED, "retry_exhausted")
+                setup.panel.act(SyncPanelAction.Open)
+                assertEquals(SyncRunState.FAILED, setup.panel.state.value.run?.state)
+                assertEquals(SyncRunProblem.NETWORK, setup.panel.state.value.problem)
+
+                setup.panel.act(SyncPanelAction.Close)
+                val blocked = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                runtime.runStore.finish(blocked.runId, SyncRunState.BLOCKED, "AUTHORIZATION")
+                setup.panel.act(SyncPanelAction.Open)
+                assertEquals(SyncRunState.BLOCKED, setup.panel.state.value.run?.state)
+                assertEquals(SyncRunProblem.AUTHORIZATION, setup.panel.state.value.problem)
+            }
+        }
+    }
+
+    @Test
+    fun `reopened panel keeps the latest successful run available for review`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+
+                setup.panel.act(SyncPanelAction.Close)
+                assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                assertEquals(0L, runtime.liveProgress.value?.totalItems)
+                assertEquals(0L, runtime.liveProgress.value?.completedItems)
+                setup.panel.act(SyncPanelAction.Open)
+
+                assertEquals(SyncRunState.SUCCEEDED, setup.panel.state.value.run?.state)
+            }
+        }
+    }
+
+    @Test
+    fun `manual retry supersedes blocked run so periodic sync can continue`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+                val connection = requireNotNull(runtime.connection())
+                val blocked = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                runtime.runStore.finish(blocked.runId, SyncRunState.BLOCKED, "AUTHORIZATION")
+
+                assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                assertEquals(SyncRunState.CANCELLED, runtime.runStore.get(blocked.runId)?.state)
+                assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).status)
             }
         }
     }
@@ -101,6 +1142,7 @@ class SyncRuntimeWiringTest {
                 val runtime = setup.runtime
                 runtime.credentials.clear()
                 assertEquals(SyncRunProblem.AUTHORIZATION, runtime.coordinator.synchronize(SyncTrigger.MANUAL).problem)
+                assertEquals(SyncRunState.BLOCKED, runtime.runStore.active("space", 1)?.state)
                 setup.secure.fail = true
                 assertEquals(SyncRunProblem.STORAGE, runtime.coordinator.synchronize(SyncTrigger.MANUAL).problem)
             }
@@ -140,6 +1182,34 @@ class SyncRuntimeWiringTest {
 
     private fun token() = GitHubAccessToken("access-secret", null, "bearer", emptySet(), null, null)
 
+    private fun remoteBatch() = SyncBatch(
+        protocolVersion = 1,
+        spaceId = "space",
+        generation = 1,
+        batchId = "manifest-remote-batch",
+        events = listOf(
+            SyncEventEnvelope(
+                protocolVersion = 1,
+                spaceId = "space",
+                generation = 1,
+                actorId = "sender",
+                epoch = 1,
+                seq = 1,
+                category = SyncCategory.FAVORITE,
+                effects = listOf(
+                    SyncEffect(
+                        effectId = "favorite",
+                        objectKey = SyncObjectKey(SyncObjectType.MANGA, sourceId = "1", originalUrl = "/remote"),
+                        field = SyncField.FAVORITE,
+                        kind = SyncEffectKind.ADD,
+                    ),
+                ),
+                origin = SyncOrigin.USER,
+                batchId = "manifest-remote-batch",
+            ),
+        ),
+    )
+
     private class MemorySecureStore : SyncSecureStore {
         val values = mutableMapOf<String, String>()
         var fail = false
@@ -166,6 +1236,7 @@ class SyncRuntimeWiringTest {
         }
         val storage = SyncRuntimeStorageContract.Storage(driver, JvmDatabaseHandler(database, driver))
         val secure = MemorySecureStore()
+        var now = 1_000L
         private val node = Preferences.userRoot().node("mihon-sync-runtime-test-" + UUID.randomUUID())
         val preferences = DesktopPreferenceStore(node)
         var networkCalls = 0
@@ -174,9 +1245,15 @@ class SyncRuntimeWiringTest {
                 networkCalls++
             }
         }).build()
-        fun runtime(baseUrl: String, tokenUrl: String = "https://github.com/login/oauth/access_token") = SyncRuntime(
-            storage.handler, storage.bootstrap, storage.creators, storage.creators, { true }, secure,
-            preferences, client, GitHubAuthEndpoints(accessTokenUrl = tokenUrl, apiBaseUrl = baseUrl), { 1000L },
+        fun runtime(
+            baseUrl: String,
+            tokenUrl: String = "https://github.com/login/oauth/access_token",
+            metrics: SyncMetrics = NoopSyncMetrics,
+            sourceAvailable: (Long) -> Boolean = { true },
+        ) = SyncRuntime(
+            storage.handler, storage.bootstrap, storage.creators, storage.creators, sourceAvailable, secure,
+            preferences, client, GitHubAuthEndpoints(accessTokenUrl = tokenUrl, apiBaseUrl = baseUrl), { now },
+            syncMetrics = metrics,
         )
         override fun close() {
             storage.close()

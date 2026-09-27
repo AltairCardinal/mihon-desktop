@@ -50,6 +50,7 @@ import mihon.domain.extensionrepo.service.ExtensionRepoService
 import mihon.domain.migration.usecases.MigrateMangaUseCase
 import mihon.domain.sync.security.SyncSecureStore
 import mihon.domain.upcoming.interactor.GetUpcomingManga
+import okio.Path.Companion.toOkioPath
 import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
 import tachiyomi.data.creator.CreatorArchiveLegacyBootstrap
@@ -157,6 +158,8 @@ class DomainModule : InjektModule {
                 secureStore = get(),
                 preferenceStore = get(),
                 productionClient = get<NetworkHelper>().client,
+                persistentObjectCacheDirectory = get<Application>().cacheDir.resolve("mihon-sync-objects").toOkioPath(),
+                failureLogDirectory = get<Application>().filesDir.resolve("sync-failures").toOkioPath(),
             )
         }
         addSingletonFactory { AndroidSyncScheduler(get<Application>(), get()) }

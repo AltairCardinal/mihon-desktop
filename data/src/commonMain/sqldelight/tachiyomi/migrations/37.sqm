@@ -1,0 +1,16 @@
+ALTER TABLE sync_runtime_runs ADD COLUMN confirmed_items INTEGER NOT NULL DEFAULT 0;
+UPDATE sync_runtime_runs SET confirmed_items = uploaded + CASE WHEN state = 'SUCCEEDED' THEN downloaded ELSE 0 END;
+
+CREATE TABLE sync_runtime_confirmations (
+    run_id TEXT NOT NULL REFERENCES sync_runtime_runs(run_id) ON DELETE CASCADE,
+    direction TEXT NOT NULL,
+    batch_id TEXT NOT NULL,
+    item_count INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    PRIMARY KEY (run_id, direction, batch_id)
+);
+
+CREATE INDEX sync_events_by_batch_confirmation ON sync_events(space_id, generation, batch_id, event_key);
+CREATE INDEX sync_pending_upload_round ON sync_batches(
+    space_id, generation, actor_id, epoch, first_seq, batch_id, event_count
+) WHERE status != 'PUBLISHED';

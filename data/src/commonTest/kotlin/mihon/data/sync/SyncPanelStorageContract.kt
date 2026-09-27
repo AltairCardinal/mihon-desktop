@@ -60,6 +60,7 @@ import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.data.Database
+import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.History
 import tachiyomi.data.Mangas
@@ -808,6 +809,8 @@ abstract class SyncPanelStorageContract {
                 assertTrue(panel.state.value.visible)
                 assertTrue(panel.state.value.loaded)
                 assertEquals(1L, panel.state.value.queuedMembership)
+                assertEquals(1L, panel.state.value.queuedFavorites)
+                assertEquals(0L, panel.state.value.queuedFollows)
                 assertEquals(0L, panel.state.value.queuedReading)
                 assertEquals(1L, panel.state.value.importRemaining)
                 assertEquals(2, storage.manga.getLibraryManga().size)
@@ -934,17 +937,51 @@ abstract class SyncPanelStorageContract {
         MockWebServer().use { auth ->
             auth.start()
             auth.enqueue(deviceCode())
+            auth.enqueue(deviceCode("SECOND-CODE"))
             open().use { storage ->
-                withPanel(storage, endpoints = endpoints(auth)) { panel, runtime ->
+                var now = 1_000L
+                withPanel(storage, endpoints = endpoints(auth), clock = { now }) { panel, runtime ->
                     panel.act(SyncPanelAction.Open)
                     panel.act(SyncPanelAction.Authorize)
+                    assertEquals(1_000L, panel.state.value.authRequestStartedAtMillis)
                     withTimeout(3_000) { panel.state.first { it.deviceCode != null } }
+                    val code = requireNotNull(panel.state.value.deviceCode)
+                    assertTrue(panel.claimDeviceCodeBrowser(code))
+                    assertFalse(panel.claimDeviceCodeBrowser(code))
                     panel.act(SyncPanelAction.Close)
                     assertNull(panel.state.value.deviceCode)
+                    assertNull(panel.state.value.authRequestStartedAtMillis)
+                    assertFalse(panel.claimDeviceCodeBrowser(code))
                     assertFalse(panel.state.value.setupBusy)
                     assertNull(runtime.credentials.read())
                     panel.act(SyncPanelAction.Open)
                     assertNull(panel.state.value.deviceCode)
+                    now = 10_000L
+                    panel.act(SyncPanelAction.Authorize)
+                    assertEquals(10_000L, panel.state.value.authRequestStartedAtMillis)
+                    withTimeout(3_000) { panel.state.first { it.deviceCode?.userCode == "SECOND-CODE" } }
+                    assertTrue(panel.claimDeviceCodeBrowser(requireNotNull(panel.state.value.deviceCode)))
+                    panel.act(SyncPanelAction.CancelAuthorization)
+                    assertNull(panel.state.value.authRequestStartedAtMillis)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `failed device code request stops the spinner and leaves retry available`() = runBlocking {
+        MockWebServer().use { auth ->
+            auth.start()
+            auth.enqueue(MockResponse(code = 503, body = ""))
+            open().use { storage ->
+                withPanel(storage, endpoints = endpoints(auth)) { panel, runtime ->
+                    panel.act(SyncPanelAction.Open)
+                    panel.act(SyncPanelAction.Authorize)
+                    withTimeout(3_000) { panel.state.first { it.authFailure == GitHubAuthFailureReason.HTTP } }
+                    assertFalse(panel.state.value.setupBusy)
+                    assertNull(panel.state.value.deviceCode)
+                    assertNull(runtime.credentials.read())
+                    assertEquals(1, auth.requestCount)
                 }
             }
         }
@@ -1016,6 +1053,9 @@ abstract class SyncPanelStorageContract {
                     assertEquals(GitHubAuthFailureReason.EXPIRED, panel.state.value.authFailure)
                     panel.act(SyncPanelAction.Authorize)
                     withTimeout(3_000) { panel.state.first { it.deviceCode?.userCode == "NEXT-CODE" } }
+                    val nextCode = requireNotNull(panel.state.value.deviceCode)
+                    assertTrue(panel.claimDeviceCodeBrowser(nextCode))
+                    assertFalse(panel.claimDeviceCodeBrowser(nextCode))
                     assertNull(panel.state.value.authFailure)
                     panel.act(SyncPanelAction.CancelAuthorization)
                 }
@@ -1118,10 +1158,12 @@ abstract class SyncPanelStorageContract {
         awaitIdle()
     }
 
-    private suspend fun withPanel(
+    protected suspend fun withPanel(
         storage: SyncRuntimeStorageContract.Storage,
         endpoints: GitHubAuthEndpoints = GitHubAuthEndpoints(),
         bootstrap: tachiyomi.domain.creator.repository.CreatorArchiveBootstrap = storage.bootstrap,
+        handler: DatabaseHandler = storage.handler,
+        clock: () -> Long = { 1000L },
         block: suspend (SyncPanelController, SyncRuntime) -> Unit,
     ) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -1142,10 +1184,10 @@ abstract class SyncPanelStorageContract {
                 strings.computeIfAbsent(key) { defaults.getString(key, defaultValue) }
         }
         val runtime = SyncRuntime(
-            storage.handler, bootstrap, storage.creators, storage.creators, { true }, secure,
-            preferences, client, endpoints, clock = { 1000L },
+            handler, bootstrap, storage.creators, storage.creators, { true }, secure,
+            preferences, client, endpoints, clock = clock,
         )
-        val panel = SyncPanelController(runtime, storage.handler, scope) { 1000L }
+        val panel = SyncPanelController(runtime, handler, scope, clock)
         try {
             block(panel, runtime)
         } finally {

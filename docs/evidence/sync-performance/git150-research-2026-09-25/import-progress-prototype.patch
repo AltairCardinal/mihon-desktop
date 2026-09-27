@@ -1,0 +1,551 @@
+diff --git a/data/src/commonMain/kotlin/mihon/data/sync/http/SyncMetrics.kt b/data/src/commonMain/kotlin/mihon/data/sync/http/SyncMetrics.kt
+index 3ba7067a63..17aae244a5 100644
+--- a/data/src/commonMain/kotlin/mihon/data/sync/http/SyncMetrics.kt
++++ b/data/src/commonMain/kotlin/mihon/data/sync/http/SyncMetrics.kt
+@@ -6,6 +6,8 @@ data class SyncMetricSnapshot(
+     val httpBytes: Long = 0,
+     val httpFailures: Long = 0,
+     val totalsReconciliations: Long = 0,
++    val phaseNanos: Map<String, Long> = emptyMap(),
++    val phaseCalls: Map<String, Long> = emptyMap(),
+ )
+ 
+ interface SyncMetrics {
+@@ -13,6 +15,8 @@ interface SyncMetrics {
+ 
+     fun recordTotalsReconciliation()
+ 
++    fun recordPhase(phase: String, nanos: Long) = Unit
++
+     fun snapshot(): SyncMetricSnapshot
+ }
+ 
+@@ -29,6 +33,14 @@ class InMemorySyncMetrics : SyncMetrics {
+     private var bytes = 0L
+     private var failures = 0L
+     private var totalsReconciliations = 0L
++    private val phaseNanos = mutableMapOf<String, Long>()
++    private val phaseCalls = mutableMapOf<String, Long>()
++
++    @Synchronized
++    override fun recordPhase(phase: String, nanos: Long) {
++        phaseNanos[phase] = (phaseNanos[phase] ?: 0L) + nanos
++        phaseCalls[phase] = (phaseCalls[phase] ?: 0L) + 1L
++    }
+ 
+     @Synchronized
+     override fun recordHttp(callBytes: Long, failed: Boolean) {
+@@ -44,5 +56,5 @@ class InMemorySyncMetrics : SyncMetrics {
+ 
+     @Synchronized
+     override fun snapshot(): SyncMetricSnapshot =
+-        SyncMetricSnapshot(calls, bytes, failures, totalsReconciliations)
++        SyncMetricSnapshot(calls, bytes, failures, totalsReconciliations, phaseNanos.toMap(), phaseCalls.toMap())
+ }
+diff --git a/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncOutboxStore.kt b/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncOutboxStore.kt
+index 5a91faf6fc..7667ed599d 100644
+--- a/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncOutboxStore.kt
++++ b/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncOutboxStore.kt
+@@ -1,6 +1,8 @@
+ package mihon.data.sync.journal
+ 
+ import mihon.data.sync.crypto.SyncAeadEngineFactory
++import mihon.data.sync.http.NoopSyncMetrics
++import mihon.data.sync.http.SyncMetrics
+ import mihon.data.sync.transport.SyncBatchSyncService
+ import mihon.data.sync.transport.SyncRemoteSnapshotGuard
+ import mihon.data.sync.transport.SyncUploadArtifactCodec
+@@ -18,6 +20,7 @@ import mihon.domain.sync.transport.SyncUploadResult
+ import tachiyomi.data.Database
+ import tachiyomi.data.DatabaseHandler
+ import tachiyomi.data.Sync_batches
++import kotlin.time.TimeSource
+ 
+ class SyncOutboxStore(private val handler: DatabaseHandler) {
+     private val remoteGuard = SyncRemoteSnapshotGuard(handler)
+@@ -133,28 +136,50 @@ class SyncOutboxStore(private val handler: DatabaseHandler) {
+ }
+ 
+ /** One bounded upload; application scheduling and receiving are separate responsibilities. */
+-class SyncOutboxExchange(private val store: SyncOutboxStore, private val service: SyncBatchSyncService) {
++class SyncOutboxExchange(
++    private val store: SyncOutboxStore,
++    private val service: SyncBatchSyncService,
++    private val metrics: SyncMetrics = NoopSyncMetrics,
++) {
++    private suspend fun <T> phase(name: String, block: suspend () -> T): T {
++        val started = TimeSource.Monotonic.markNow()
++        try {
++            return block()
++        } finally {
++            metrics.recordPhase(name, started.elapsedNow().inWholeNanoseconds)
++        }
++    }
++
+     suspend fun uploadNext(
+         snapshot: SyncSnapshot,
+         observeSnapshot: suspend (SyncSnapshot, String?) -> Unit = { current, _ -> store.observeSnapshot(current) },
+     ): SyncUploadResult? {
+-        observeSnapshot(snapshot, null)
+-        val batch = store.nextBatch(snapshot.spaceId, snapshot.generation) ?: return null
+-        val upload = store.prepared(batch) ?: store.savePrepared(
+-            batch,
+-            service.prepare(
+-                snapshot,
+-                batch,
+-                ".mihon-sync/batches/${batch.events.first().actorId}/" +
+-                    "${batch.events.first().epoch}/${batch.batchId}.json",
+-            ),
+-        )
+-        val result = service.uploadPrepared(snapshot.repository, snapshot, upload) { confirmed ->
+-            // The snapshot can contain this upload before the outbox transaction marks it PUBLISHED.
+-            // Exclude only its known batch ID from discovery during that confirmation window.
+-            observeSnapshot(confirmed, batch.batchId)
++        phase("outbox.observeBefore") { observeSnapshot(snapshot, null) }
++        val batch = phase("outbox.claim") {
++            store.nextBatch(snapshot.spaceId, snapshot.generation)
++        } ?: return null
++        val upload = phase("outbox.loadPrepared") { store.prepared(batch) } ?: phase("outbox.persistPrepared") {
++            val prepared = phase("outbox.prepareAeadAndTree") {
++                service.prepare(
++                    snapshot,
++                    batch,
++                    ".mihon-sync/batches/${batch.events.first().actorId}/" +
++                        "${batch.events.first().epoch}/${batch.batchId}.json",
++                )
++            }
++            store.savePrepared(batch, prepared)
++        }
++        val result =
++            phase("outbox.publishWithConfirm") {
++                service.uploadPrepared(snapshot.repository, snapshot, upload) { confirmed ->
++                    // The snapshot can contain this upload before the outbox transaction marks it PUBLISHED.
++                    // Exclude only its known batch ID from discovery during that confirmation window.
++                    phase("outbox.confirmObserve") { observeSnapshot(confirmed, batch.batchId) }
++                }
++            }
++        if (result.publish.status == SyncPublishStatus.PUBLISHED) {
++            phase("outbox.ack") { store.acknowledge(upload, result.publish) }
+         }
+-        if (result.publish.status == SyncPublishStatus.PUBLISHED) store.acknowledge(upload, result.publish)
+         return result.copy(batch = batch)
+     }
+ }
+diff --git a/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncDatabaseExchange.kt b/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncDatabaseExchange.kt
+index 9b00fcfb90..a22467740a 100644
+--- a/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncDatabaseExchange.kt
++++ b/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncDatabaseExchange.kt
+@@ -36,6 +36,7 @@ import mihon.domain.sync.transport.SyncSnapshot
+ import mihon.domain.sync.transport.SyncTransportPort
+ import tachiyomi.data.DatabaseHandler
+ import java.io.IOException
++import kotlin.time.TimeSource
+ 
+ /** Drains durable queues in bounded transactions; confirmation decisions do not gate exchange. */
+ class SyncDatabaseExchange(
+@@ -58,6 +59,15 @@ class SyncDatabaseExchange(
+     private val inboxStore = SyncInboxStore(handler)
+     internal val snapshotEvidenceEvaluations: Long get() = inboxStore.remoteGuard.evidenceEvaluations
+ 
++    private suspend fun <T> phase(name: String, block: suspend () -> T): T {
++        val started = TimeSource.Monotonic.markNow()
++        try {
++            return block()
++        } finally {
++            metrics.recordPhase(name, started.elapsedNow().inWholeNanoseconds)
++        }
++    }
++
+     suspend fun exchange(spaceId: String, generation: Long, repository: SyncRepository): SyncRunResult {
+         var uploaded = 0
+         var downloaded = 0
+@@ -74,21 +84,28 @@ class SyncDatabaseExchange(
+             }
+             if (!enabled) return SyncRunResult(SyncRunStatus.SKIPPED)
+             progress?.phase(SyncRunPhase.CHECKING, processed = 0, total = 0)
++            var activeImportId: String? = null
+             while (allowImport()) {
+                 val importId = handler.await {
+                     sync_importQueries.getNextPendingImport(spaceId, generation).executeAsOneOrNull()
+                 } ?: break
+-                progress?.phase(SyncRunPhase.IMPORTING, processed = 0, total = 0)
+-                progress?.log(importId, "首次合并", "正在写入已保存的数据", SyncRunLogStatus.ACTIVE)
+-                baseline.process(importId)
+-                progress?.log(importId, "首次合并", "已写入已保存的数据", SyncRunLogStatus.COMPLETED)
++                if (activeImportId != importId) {
++                    progress?.phase(SyncRunPhase.IMPORTING, processed = 0, total = 0)
++                    progress?.log(importId, "首次合并", "正在写入已保存的数据", SyncRunLogStatus.ACTIVE)
++                    activeImportId = importId
++                }
++                val importProgress = phase("baseline.process") { baseline.process(importId) }
++                if (importProgress.remaining == 0L) {
++                    progress?.log(importId, "首次合并", "已写入已保存的数据", SyncRunLogStatus.COMPLETED)
++                    activeImportId = null
++                }
+                 yield()
+             }
+             val store = inboxStore
+             val discovery = SyncDiscoveryStore(handler)
+             val service = SyncBatchSyncService(transport, secret, spaceMaterial = spaceMaterial)
+             val inbox = SyncInboxExchange(store, service)
+-            val outbox = SyncOutboxExchange(SyncOutboxStore(handler), service)
++            val outbox = SyncOutboxExchange(SyncOutboxStore(handler), service, metrics)
+             val githubTransport = transport as? GitHubSyncTransport
+             githubTransport?.installSnapshotFenceProvider { candidateSpace, candidateGeneration ->
+                 store.remoteGuard.captureFence(candidateSpace, candidateGeneration, snapshotOwner)
+@@ -96,9 +113,16 @@ class SyncDatabaseExchange(
+             suspend fun observeSnapshot(snapshot: SyncSnapshot, excludedBatchId: String? = null) {
+                 val fence = githubTransport?.takeSnapshotFence(snapshot)
+                 val admission = githubTransport?.takeWarmAdmission(snapshot)
+-                if (admission != null && store.confirmWarmSnapshot(snapshot, admission, fence)) return
++                if (admission != null && phase("snapshot.warmConfirm") {
++                        store.confirmWarmSnapshot(snapshot, admission, fence)
++                    }
++                ) {
++                    return
++                }
+                 val manifest = githubTransport?.takeSnapshotManifest(snapshot)
+-                store.observeSnapshot(snapshot, discovery, manifest, setOfNotNull(excludedBatchId), fence)
++                phase("snapshot.observe") {
++                    store.observeSnapshot(snapshot, discovery, manifest, setOfNotNull(excludedBatchId), fence)
++                }
+             }
+             suspend fun reconcileTotals() {
+                 val published = handler.await {
+@@ -117,8 +141,10 @@ class SyncDatabaseExchange(
+             } else {
+                 progress?.totals(uploadedTotal, downloadedTotal)
+             }
+-            projector.retryUnavailable(spaceId, generation)
+-            var snapshot = transport.readSnapshot(repository, spaceId, generation).getOrThrow()
++            phase("projector.retryUnavailable") { projector.retryUnavailable(spaceId, generation) }
++            var snapshot = phase("snapshot.initialRead") {
++                transport.readSnapshot(repository, spaceId, generation).getOrThrow()
++            }
+             var catchUpSegments = 0
+             var performedExchangeWork = false
+             while (true) {
+@@ -151,7 +177,7 @@ class SyncDatabaseExchange(
+                     }
+                     yield()
+                 }
+-                while (projector.project(spaceId, generation) == 50) yield()
++                while (phase("projector.project") { projector.project(spaceId, generation) } == 50) yield()
+                 pending = store.status(spaceId, generation).pendingDecisions.toInt()
+                 // Discovery is paged to keep each durable query bounded. Drain every page before
+                 // reporting completion or switching to uploads so large snapshots converge fully.
+@@ -160,7 +186,7 @@ class SyncDatabaseExchange(
+                     continue
+                 }
+                 progress?.phase(SyncRunPhase.UPLOADING, uploadedTotal, 0, completed = uploadedTotal)
+-                val result = outbox.uploadNext(snapshot, ::observeSnapshot)
++                val result = phase("outbox.total") { outbox.uploadNext(snapshot, ::observeSnapshot) }
+                 if (result == null) {
+                     // No-op runs stop after their initial snapshot. When this exchange moved data,
+                     // probe only the ref first; parse a full snapshot only if another device advanced it.
+diff --git a/data/src/jvmTest/kotlin/mihon/data/sync/SyncGitCompareAcceptanceTest.kt b/data/src/jvmTest/kotlin/mihon/data/sync/SyncGitCompareAcceptanceTest.kt
+index e90fae67a2..862387326c 100644
+--- a/data/src/jvmTest/kotlin/mihon/data/sync/SyncGitCompareAcceptanceTest.kt
++++ b/data/src/jvmTest/kotlin/mihon/data/sync/SyncGitCompareAcceptanceTest.kt
+@@ -17,6 +17,7 @@ import kotlinx.serialization.json.jsonPrimitive
+ import kotlinx.serialization.json.long
+ import kotlinx.serialization.json.longOrNull
+ import kotlinx.serialization.json.put
++import mihon.data.sync.http.InMemorySyncMetrics
+ import mihon.data.sync.runtime.SyncRuntime
+ import mihon.data.sync.transport.GitHubSyncTransport
+ import mihon.data.sync.transport.SyncUploadArtifactCodec
+@@ -137,7 +138,9 @@ class SyncGitCompareAcceptanceTest {
+                 val initialTreeOid = setup.git.treeSha(setup.repository.branch)
+                 val initialFiles = setup.git.files(setup.repository.branch)
+                 writeFiles(output, "initial", initialFiles)
++                val metrics = InMemorySyncMetrics()
+                 val runtime = setup.runtime(
++                    metrics = metrics,
+                     persistentObjectCacheDirectory = output.resolve("l2-cache").toString().toPath(),
+                 )
+                 try {
+@@ -185,6 +188,7 @@ class SyncGitCompareAcceptanceTest {
+                     }
+                     val result = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                     val totalMs = elapsedMs(acceptedAt)
++                    val phaseMetrics = metrics.snapshot()
+                     assertEquals(SyncRunStatus.SUCCESS, result.status, result.toString())
+                     assertEquals(expectedCount + expectedReading, result.uploaded)
+                     val runtimeRequests = setup.git.server.requestCount - requestsBefore
+@@ -222,6 +226,50 @@ class SyncGitCompareAcceptanceTest {
+                             )
+                         }
+                     }
++                    if (System.getenv("SYNC_COMPARE_SKIP_REPLAY") == "1") {
++                        val summary = buildJsonObject {
++                            put("inputRecords", records.size)
++                            put("inputChapters", chapterInputs.size)
++                            put("inputReadingEntries", expectedReading)
++                            put("events", result.uploaded)
++                            put("batches", artifacts.size)
++                            put("populateMillisExcluded", populateMs)
++                            put("freezeMillisSinceAccepted", freezeMs)
++                            put("importGeneratedMillisSinceAccepted", importMs)
++                            put("firstConfirmedMillisSinceAccepted", firstMs)
++                            put("allConfirmedMillisSinceAccepted", totalMs)
++                            put("runtimeHttpRequests", runtimeRequests)
++                            put("runtimeRequestBodyBytes", runtimeRequestBytes)
++                            put("runtimeResponseBodyBytes", runtimeResponseBytes)
++                            put("runtimeRefUpdates", runtimeRefs)
++                            put("initialTreeOid", initialTreeOid)
++                            put("finalTreeOid", finalTreeOid)
++                            put("frozenReplaySkipped", true)
++                            put("artifacts", artifactStats)
++                            put(
++                                "phaseNanos",
++                                buildJsonObject {
++                                    phaseMetrics.phaseNanos.toSortedMap().forEach { (phase, nanos) ->
++                                        put(phase, nanos)
++                                    }
++                                },
++                            )
++                            put(
++                                "phaseCalls",
++                                buildJsonObject {
++                                    phaseMetrics.phaseCalls.toSortedMap().forEach { (phase, calls) ->
++                                        put(phase, calls)
++                                    }
++                                },
++                            )
++                        }
++                        Files.writeString(output.resolve("summary.json"), summary.toString(), StandardCharsets.UTF_8)
++                        println(
++                            "SYNC_GIT_COMPARE_LOCAL records=${records.size} events=${result.uploaded} " +
++                                "runtimeMs=$totalMs output=$output",
++                        )
++                        return@use
++                    }
+                     setup.git.resetRef(setup.repository.branch, initialHead)
+                     val replay = GitHubSyncTransport(
+                         setup.client,
+@@ -281,12 +329,29 @@ class SyncGitCompareAcceptanceTest {
+                         put("finalHeadLength", finalHead.length)
+                         put("initialTreeOid", initialTreeOid)
+                         put("finalTreeOid", finalTreeOid)
++                        put(
++                            "phaseNanos",
++                            buildJsonObject {
++                                phaseMetrics.phaseNanos.toSortedMap().forEach { (phase, nanos) ->
++                                    put(phase, nanos)
++                                }
++                            },
++                        )
++                        put(
++                            "phaseCalls",
++                            buildJsonObject {
++                                phaseMetrics.phaseCalls.toSortedMap().forEach { (phase, calls) ->
++                                    put(phase, calls)
++                                }
++                            },
++                        )
+                         put("artifacts", artifactStats)
+                         put("frozenReplayBatches", buildJsonArray { replayBatchStats.forEach(::add) })
+                     }
+                     Files.writeString(output.resolve("summary.json"), summary.toString(), StandardCharsets.UTF_8)
+                     println(
+-                        "SYNC_GIT_COMPARE records=${records.size} events=${result.uploaded} batches=${artifacts.size} runtimeMs=$totalMs replayMs=$replayMs output=$output",
++                        "SYNC_GIT_COMPARE records=${records.size} events=${result.uploaded} " +
++                            "batches=${artifacts.size} runtimeMs=$totalMs replayMs=$replayMs output=$output",
+                     )
+                 } finally {
+                     runtime.stopPanel()
+diff --git a/data/src/jvmTest/kotlin/mihon/data/sync/SyncImportProgressResearchTest.kt b/data/src/jvmTest/kotlin/mihon/data/sync/SyncImportProgressResearchTest.kt
+new file mode 100644
+index 0000000000..2cf54b0854
+--- /dev/null
++++ b/data/src/jvmTest/kotlin/mihon/data/sync/SyncImportProgressResearchTest.kt
+@@ -0,0 +1,188 @@
++package mihon.data.sync
++
++import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
++import kotlinx.coroutines.CancellationException
++import kotlinx.coroutines.runBlocking
++import kotlinx.coroutines.withTimeout
++import mihon.data.sync.runtime.SyncDatabaseExchange
++import mihon.data.sync.runtime.SyncProgressReporter
++import mihon.data.sync.runtime.SyncRunLogEntry
++import mihon.data.sync.runtime.SyncRunLogStatus
++import mihon.data.sync.runtime.SyncRunPhase
++import mihon.data.sync.runtime.SyncRunState
++import mihon.data.sync.runtime.SyncRunStore
++import mihon.data.sync.transport.GitHubSyncTransport
++import mihon.domain.sync.runtime.SyncRunStatus
++import mihon.domain.sync.runtime.SyncTrigger
++import org.junit.jupiter.api.Assertions.assertEquals
++import org.junit.jupiter.api.Assertions.assertTrue
++import org.junit.jupiter.api.Test
++import org.junit.jupiter.api.Timeout
++import tachiyomi.data.Database
++import tachiyomi.data.DateColumnAdapter
++import tachiyomi.data.History
++import tachiyomi.data.JvmDatabaseHandler
++import tachiyomi.data.Mangas
++import tachiyomi.data.StringListColumnAdapter
++import tachiyomi.data.UpdateStrategyColumnAdapter
++import tachiyomi.domain.manga.model.Manga
++import java.nio.file.Files
++import java.util.Properties
++import java.util.concurrent.TimeUnit
++
++/** Temporary research contract: real file SQL, exchange, run-store progress and Git fixture. */
++@Timeout(value = 2, unit = TimeUnit.MINUTES)
++class SyncImportProgressResearchTest {
++    @Test
++    fun `multi page import records only one active and one terminal completion`() = runBlocking {
++        withCase(cancelSecondPage = false) { case ->
++            assertEquals(SyncRunStatus.SUCCESS, case.status)
++            assertEquals(0, case.remainingEntries)
++            assertEquals(1, case.progress.importingPhases)
++            assertEquals(1, case.progress.activeLogs)
++            assertEquals(1, case.progress.completedLogs)
++            assertEquals(1, case.durableLogs.count { it.status == SyncRunLogStatus.COMPLETED })
++            assertEquals(0, case.durableLogs.count { it.status == SyncRunLogStatus.ACTIVE })
++        }
++    }
++
++    @Test
++    fun `cancelled import does not report completion for unfinished pages`() = runBlocking {
++        withCase(cancelSecondPage = true) { case ->
++            assertEquals(51, case.remainingEntries)
++            assertEquals(1, case.progress.importingPhases)
++            assertEquals(1, case.progress.activeLogs)
++            assertEquals(0, case.progress.completedLogs)
++            assertEquals(0, case.durableLogs.count { it.status == SyncRunLogStatus.COMPLETED })
++            assertEquals(1, case.durableLogs.count { it.status == SyncRunLogStatus.ACTIVE })
++        }
++    }
++
++    private suspend fun withCase(cancelSecondPage: Boolean, assertCase: suspend (CaseResult) -> Unit) {
++        val dbFile = Files.createTempFile("mihon-import-progress-research-", ".db")
++        val driver = JdbcSqliteDriver(
++            "jdbc:sqlite:$dbFile",
++            Properties().apply { setProperty("foreign_keys", "true") },
++        )
++        Database.Schema.create(driver)
++        val database = Database(
++            driver,
++            History.Adapter(DateColumnAdapter),
++            Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
++        )
++        val storage = SyncRuntimeStorageContract.Storage(driver, JvmDatabaseHandler(database, driver))
++        try {
++            storage.manga.insertNetworkManga(
++                (0 until 101).map {
++                    Manga.create().copy(source = 1, url = "/progress/$it", title = "entry $it", favorite = true)
++                },
++            )
++            SyncOnboardingFixture(storage).use { setup ->
++                val material = setup.existing("")
++                val importId = storage.connect("actor", setup.repository)
++                val store = SyncRunStore(storage.handler)
++                val run = store.start("space", 1, SyncTrigger.MANUAL)
++                assertTrue(store.claim(run.runId, "research-owner", 1))
++                val progress = CountingProgress(store.reporter(run.runId, "research-owner"))
++                val transport = GitHubSyncTransport(
++                    setup.client,
++                    { "synthetic-token" },
++                    setup.git.baseUrl,
++                    spaceMaterial = material,
++                )
++                var importChecks = 0
++                val exchange = SyncDatabaseExchange(
++                    storage.handler,
++                    storage.baseline,
++                    storage.projector,
++                    transport,
++                    spaceMaterial = material,
++                    progress = progress,
++                    allowImport = {
++                        importChecks++
++                        if (cancelSecondPage && importChecks == 2) {
++                            throw CancellationException("research cancellation after first page")
++                        }
++                        true
++                    },
++                )
++                val status = if (cancelSecondPage) {
++                    val failed = runCatching { withTimeout(30_000) { exchange.exchange("space", 1, setup.repository) } }
++                    assertTrue(failed.exceptionOrNull() is CancellationException, failed.toString())
++                    null
++                } else {
++                    withTimeout(30_000) { exchange.exchange("space", 1, setup.repository) }.status
++                }
++                val logs = store.logs(run.runId, 500).filter { it.key == importId }
++                val remainingEntries = storage.handler.await {
++                    sync_importQueries.getImportEntries(importId, 1000).executeAsList().size
++                }
++                println(
++                    "IMPORT_PROGRESS_RESEARCH cancel=$cancelSecondPage pages=${progress.importingPhases} " +
++                        "active=${progress.activeLogs} completed=${progress.completedLogs} " +
++                        "remaining=$remainingEntries phaseMillis=${progress.phaseNanos / 1_000_000} " +
++                        "logMillis=${progress.logNanos / 1_000_000}",
++                )
++                assertCase(CaseResult(status, progress, logs, remainingEntries))
++            }
++        } finally {
++            storage.close()
++            runCatching { Files.deleteIfExists(dbFile) }.onFailure { dbFile.toFile().deleteOnExit() }
++        }
++    }
++
++    private data class CaseResult(
++        val status: SyncRunStatus?,
++        val progress: CountingProgress,
++        val durableLogs: List<mihon.data.sync.runtime.SyncRunLog>,
++        val remainingEntries: Int,
++    )
++
++    private class CountingProgress(
++        private val delegate: SyncProgressReporter,
++    ) : SyncProgressReporter {
++        var importingPhases = 0
++        var activeLogs = 0
++        var completedLogs = 0
++        var phaseNanos = 0L
++        var logNanos = 0L
++
++        override suspend fun phase(
++            phase: SyncRunPhase,
++            processed: Long,
++            total: Long,
++            completed: Long,
++            skipped: Long,
++            failed: Long,
++            state: SyncRunState,
++            reason: String?,
++        ) {
++            if (phase == SyncRunPhase.IMPORTING) {
++                importingPhases++
++            }
++            val started = System.nanoTime()
++            try {
++                delegate.phase(phase, processed, total, completed, skipped, failed, state, reason)
++            } finally {
++                if (phase == SyncRunPhase.IMPORTING) phaseNanos += System.nanoTime() - started
++            }
++        }
++
++        override suspend fun log(key: String, title: String, detail: String, status: SyncRunLogStatus) {
++            if (title == "首次合并") {
++                if (status == SyncRunLogStatus.ACTIVE) activeLogs++
++                if (status == SyncRunLogStatus.COMPLETED) completedLogs++
++            }
++            val started = System.nanoTime()
++            try {
++                delegate.log(key, title, detail, status)
++            } finally {
++                if (title == "首次合并") logNanos += System.nanoTime() - started
++            }
++        }
++
++        override suspend fun logBatch(entries: List<SyncRunLogEntry>) = delegate.logBatch(entries)
++
++        override suspend fun totals(uploaded: Long, downloaded: Long) = delegate.totals(uploaded, downloaded)
++    }
++}

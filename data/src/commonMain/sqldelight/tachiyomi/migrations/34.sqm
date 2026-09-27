@@ -1,0 +1,12 @@
+ALTER TABLE sync_runtime_runs RENAME COLUMN attempt TO attempt_id;
+ALTER TABLE sync_runtime_runs
+    ADD COLUMN network_failure_count INTEGER NOT NULL DEFAULT 0;
+
+UPDATE sync_runtime_runs
+SET network_failure_count = CASE
+    WHEN state = 'WAITING_RETRY' THEN attempt_id
+    WHEN state = 'FAILED' AND stop_reason = 'retry_exhausted' THEN attempt_id
+    WHEN state = 'WAITING_SYSTEM' THEN attempt_id
+    WHEN state IN ('RUNNING', 'WAITING_NETWORK') THEN MAX(attempt_id - 1, 0)
+    ELSE 0
+END;

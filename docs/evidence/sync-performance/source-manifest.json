@@ -1,0 +1,37 @@
+{
+  "date": "2026-09-22",
+  "sources": [
+    {
+      "id": "R1",
+      "original_filename": "粘贴的 markdown (1)。md(1)",
+      "package_filename": "inputs/source-audit-report.md",
+      "sha256": "f8f667bd51c8a3a75cfd68fa04eec7296c8f3925722afc5c82c63182bc26f24c",
+      "bytes": 52359,
+      "note": "用户提供材料的原样副本；未核对实际仓库或执行其中的测试"
+    },
+    {
+      "id": "R2",
+      "original_filename": "2026-09-21-sync-repair-design.md",
+      "package_filename": "inputs/2026-09-21-sync-repair-design.md",
+      "sha256": "5d59ac7665353c888976f9ce8504560a6e3557201290c3461f9b61311dad7fea",
+      "bytes": 12010,
+      "note": "用户提供材料的原样副本；未核对实际仓库或执行其中的测试"
+    },
+    {
+      "id": "R3",
+      "original_filename": "2026-09-21-sync-repair-roadmap.md",
+      "package_filename": "inputs/2026-09-21-sync-repair-roadmap.md",
+      "sha256": "758838f10e2c1171914bab74697df8329e3b0a3f8389c4851628666469e2c162",
+      "bytes": 13563,
+      "note": "用户提供材料的原样副本；未核对实际仓库或执行其中的测试"
+    },
+    {
+      "id": "R4",
+      "original_filename": "粘贴的 markdown (1)。md",
+      "package_filename": "inputs/implementation-review.md",
+      "sha256": "2cb8d17142e2a6913727d909355f14216b2484bfadc84ce85e1ee4d6d57285e0",
+      "bytes": 19437,
+      "note": "用户提供材料的原样副本；未核对实际仓库或执行其中的测试"
+    }
+  ]
+}

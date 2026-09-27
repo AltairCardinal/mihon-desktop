@@ -8,6 +8,7 @@ CREATE TABLE sync_remote_guards (
     repository_branch TEXT NOT NULL,
     blocked INTEGER AS Boolean NOT NULL DEFAULT 0,
     latest_head TEXT,
+    revision INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (space_id, generation)
 );
 
@@ -27,6 +28,54 @@ CREATE TABLE sync_remote_heads (
     PRIMARY KEY (space_id, generation, head_sha)
 );
 
+CREATE TABLE sync_snapshot_manifests (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    account_id INTEGER NOT NULL,
+    repository_id INTEGER NOT NULL,
+    repository_owner TEXT NOT NULL,
+    repository_name TEXT NOT NULL,
+    repository_branch TEXT NOT NULL,
+    api_origin TEXT NOT NULL,
+    validator_version TEXT NOT NULL,
+    validation_scope TEXT NOT NULL,
+    connection_revision TEXT NOT NULL,
+    head_sha TEXT NOT NULL,
+    head_fingerprint TEXT NOT NULL,
+    checksum TEXT NOT NULL,
+    tree_sha TEXT NOT NULL,
+    truncated INTEGER AS Boolean NOT NULL DEFAULT 0,
+    manifest_json TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation)
+);
+
+CREATE TABLE sync_snapshot_manifest_entries (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    type TEXT NOT NULL,
+    sha TEXT NOT NULL,
+    size INTEGER,
+    content TEXT,
+    PRIMARY KEY (space_id, generation, path)
+);
+
+CREATE TABLE sync_snapshot_manifest_batches (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    batch_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    digest_hex TEXT NOT NULL,
+    first_seq INTEGER NOT NULL,
+    last_seq INTEGER NOT NULL,
+    actor_id TEXT NOT NULL,
+    epoch INTEGER NOT NULL,
+    index_path TEXT NOT NULL,
+    index_ciphertext_digest_hex TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, batch_id)
+);
+
 getGuard:
 SELECT * FROM sync_remote_guards WHERE space_id = ? AND generation = ?;
 
@@ -38,7 +87,16 @@ blockGuard:
 UPDATE sync_remote_guards SET blocked = 1 WHERE space_id = ? AND generation = ?;
 
 advanceHead:
-UPDATE sync_remote_guards SET latest_head = ? WHERE space_id = ? AND generation = ?;
+UPDATE sync_remote_guards SET latest_head = ?, revision = ?
+WHERE space_id = ? AND generation = ? AND revision = ? AND blocked = 0;
+
+advanceGuardRevision:
+UPDATE sync_remote_guards SET revision = revision + 1
+WHERE space_id = ? AND generation = ? AND revision = ?;
+
+blockGuardAtRevision:
+UPDATE sync_remote_guards SET blocked = 1, revision = revision + 1
+WHERE space_id = ? AND generation = ? AND revision = ? AND blocked = 0;
 
 getObjects:
 SELECT object_id, fingerprint FROM sync_remote_objects WHERE space_id = ? AND generation = ?;
@@ -48,6 +106,68 @@ INSERT OR IGNORE INTO sync_remote_objects(space_id, generation, object_id, finge
 
 getHead:
 SELECT snapshot_fingerprint FROM sync_remote_heads WHERE space_id = ? AND generation = ? AND head_sha = ?;
+
+getSnapshotManifest:
+SELECT * FROM sync_snapshot_manifests WHERE space_id = ? AND generation = ?;
+
+upsertSnapshotManifest:
+INSERT INTO sync_snapshot_manifests(
+    space_id, generation, account_id, repository_id, repository_owner, repository_name, repository_branch,
+    api_origin, validator_version, validation_scope, connection_revision, head_sha, head_fingerprint, checksum,
+    tree_sha, truncated, manifest_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(space_id, generation) DO UPDATE SET
+    account_id = excluded.account_id,
+    repository_id = excluded.repository_id,
+    repository_owner = excluded.repository_owner,
+    repository_name = excluded.repository_name,
+    repository_branch = excluded.repository_branch,
+    api_origin = excluded.api_origin,
+    validator_version = excluded.validator_version,
+    validation_scope = excluded.validation_scope,
+    connection_revision = excluded.connection_revision,
+    head_sha = excluded.head_sha,
+    head_fingerprint = excluded.head_fingerprint,
+    checksum = excluded.checksum,
+    tree_sha = excluded.tree_sha,
+    truncated = excluded.truncated,
+    manifest_json = excluded.manifest_json;
+
+getSnapshotManifestEntries:
+SELECT * FROM sync_snapshot_manifest_entries
+WHERE space_id = ? AND generation = ? ORDER BY path;
+
+upsertSnapshotManifestEntry:
+INSERT INTO sync_snapshot_manifest_entries(space_id, generation, path, mode, type, sha, size, content)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(space_id, generation, path) DO UPDATE SET
+    mode = excluded.mode, type = excluded.type, sha = excluded.sha,
+    size = excluded.size, content = excluded.content
+WHERE mode != excluded.mode OR type != excluded.type OR sha != excluded.sha OR
+    size IS NOT excluded.size OR content IS NOT excluded.content;
+
+deleteSnapshotManifestEntry:
+DELETE FROM sync_snapshot_manifest_entries WHERE space_id = ? AND generation = ? AND path = ?;
+
+getSnapshotManifestBatches:
+SELECT * FROM sync_snapshot_manifest_batches
+WHERE space_id = ? AND generation = ? ORDER BY batch_id;
+
+upsertSnapshotManifestBatch:
+INSERT INTO sync_snapshot_manifest_batches(
+    space_id, generation, batch_id, path, digest_hex, first_seq, last_seq, actor_id, epoch,
+    index_path, index_ciphertext_digest_hex
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(space_id, generation, batch_id) DO UPDATE SET
+    path = excluded.path, digest_hex = excluded.digest_hex, first_seq = excluded.first_seq,
+    last_seq = excluded.last_seq, actor_id = excluded.actor_id, epoch = excluded.epoch,
+    index_path = excluded.index_path, index_ciphertext_digest_hex = excluded.index_ciphertext_digest_hex
+WHERE path != excluded.path OR digest_hex != excluded.digest_hex OR first_seq != excluded.first_seq OR
+    last_seq != excluded.last_seq OR actor_id != excluded.actor_id OR epoch != excluded.epoch OR
+    index_path != excluded.index_path OR index_ciphertext_digest_hex != excluded.index_ciphertext_digest_hex;
+
+deleteSnapshotManifestBatch:
+DELETE FROM sync_snapshot_manifest_batches WHERE space_id = ? AND generation = ? AND batch_id = ?;
 
 insertHead:
 INSERT OR IGNORE INTO sync_remote_heads(space_id, generation, head_sha, snapshot_fingerprint) VALUES (?, ?, ?, ?);

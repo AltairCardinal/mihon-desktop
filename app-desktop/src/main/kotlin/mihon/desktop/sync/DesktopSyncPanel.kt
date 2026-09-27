@@ -72,6 +72,16 @@ fun DesktopLibrarySyncAction() {
                         dependencies.notificationService.post(result.toDesktopNotification())
                     }
                 },
+                onOpenFailureLog = { path ->
+                    if (!DesktopSyncFailureLogOpener.open(path)) {
+                        dependencies.notificationService.post(
+                            DesktopNotification(
+                                MR.strings.sync_title.localized(),
+                                MR.strings.sync_failure_log_open_failed.localized(),
+                            ),
+                        )
+                    }
+                },
             )
         }
     }

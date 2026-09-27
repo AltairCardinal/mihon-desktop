@@ -15,6 +15,8 @@ import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -24,6 +26,12 @@ import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelState
 import mihon.data.sync.runtime.SyncSetupStep
+import mihon.data.sync.runtime.SyncFailureLogStatus
+import mihon.data.sync.runtime.SyncRunSnapshot
+import mihon.data.sync.runtime.SyncRunState
+import mihon.data.sync.runtime.SyncRunPhase
+import mihon.domain.sync.runtime.SyncTrigger
+import mihon.domain.sync.auth.GitHubDeviceCode
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.fakes.FakeCategoryRepository
@@ -93,6 +101,19 @@ class DesktopSyncPanelTest {
             assertEquals(SyncPanelPage.MAIN, panel.state.value.page)
             panel.state.value = panel.state.value.copy(
                 page = SyncPanelPage.SETUP,
+                setupStep = SyncSetupStep.SIGN_IN,
+                setupBusy = true,
+                authRequestStartedAtMillis = 1_000,
+                nowMillis = 1_000,
+            )
+            render()
+            assertTrue(find("sync-auth-getting-code") != null)
+            assertTrue(find("sync-auth-network-hint") == null)
+            panel.state.value = panel.state.value.copy(nowMillis = 6_000)
+            render()
+            assertTrue(find("sync-auth-network-hint") != null)
+            panel.state.value = panel.state.value.copy(
+                page = SyncPanelPage.SETUP,
                 deviceCode = mihon.domain.sync.auth.GitHubDeviceCode(
                     "secret",
                     "ABCD-EFGH",
@@ -101,9 +122,16 @@ class DesktopSyncPanelTest {
                     5,
                 ),
             )
+            render()
+            assertTrue(find("sync-auth-waiting-browser") != null)
             click("sync-copy-open")
-            verify(exactly = 2) { dependencies.notificationService.post(any()) }
-            panel.state.value = panel.state.value.copy(setupStep = SyncSetupStep.NEW_PASSWORD, deviceCode = null)
+            verify(exactly = 2) { uriHandler.openUri("https://github.com/login/device") }
+            verify(exactly = 4) { dependencies.notificationService.post(any()) }
+            panel.state.value = panel.state.value.copy(
+                setupStep = SyncSetupStep.NEW_PASSWORD,
+                setupBusy = false,
+                deviceCode = null,
+            )
             withTimeout(2_000) { while (find("sync-password-input") == null) render() }
             requireNotNull(find("sync-password-input")!!.config[SemanticsActions.RequestFocus].action).invoke()
             render()
@@ -115,6 +143,23 @@ class DesktopSyncPanelTest {
             scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(native))
             render()
             assertEquals(SyncPanelPage.MAIN, panel.state.value.page)
+            mockkObject(DesktopSyncFailureLogOpener)
+            try {
+                every { DesktopSyncFailureLogOpener.open(any(), any()) } returns true
+                panel.state.value = panel.state.value.copy(
+                    run = SyncRunSnapshot(
+                        "report-run", "space", 1, SyncTrigger.MANUAL, SyncRunState.PARTIAL, SyncRunPhase.MERGING,
+                        0, 1, 0, 0, 1, attemptId = 1, nextRetryAt = 0, lastProgressAt = 0,
+                        stopReason = "projection_pending", ownerSession = null, createdAt = 0, updatedAt = 1,
+                    ),
+                    failureLog = SyncFailureLogStatus.Ready("report-run", "/reports/failure.txt", 1),
+                )
+                render()
+                click("sync-failure-log-open")
+                verify(exactly = 1) { DesktopSyncFailureLogOpener.open("/reports/failure.txt", any()) }
+            } finally {
+                unmockkObject(DesktopSyncFailureLogOpener)
+            }
             click("sync-close")
             assertFalse(panel.state.value.visible)
         } finally {
@@ -124,6 +169,8 @@ class DesktopSyncPanelTest {
 
     private class TestPanel : SyncPanel {
         override val state = MutableStateFlow(SyncPanelState(loaded = true))
+        private val openedDeviceCodes = mutableSetOf<String>()
+        override fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean = openedDeviceCodes.add(code.deviceCode)
         val actions = mutableListOf<SyncPanelAction>()
         override fun dispatch(action: SyncPanelAction) {
             actions += action

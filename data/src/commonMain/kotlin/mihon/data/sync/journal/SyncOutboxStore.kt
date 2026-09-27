@@ -19,19 +19,36 @@ import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.Sync_batches
 
+data class SyncFrozenUploadRound(val totalItems: Long, val batchIds: List<String>)
+
 class SyncOutboxStore(private val handler: DatabaseHandler) {
     private val remoteGuard = SyncRemoteSnapshotGuard(handler)
 
     suspend fun observeSnapshot(snapshot: SyncSnapshot) = remoteGuard.observe(snapshot)
 
-    suspend fun nextBatch(spaceId: String, generation: Long): SyncBatch? = handler.await(inTransaction = true) {
-        requireActive(spaceId, generation)
-        val stored = sync_journalQueries.getNextUploadBatch(spaceId, generation).executeAsOneOrNull()
-            ?: return@await null
-        val batch = readBatch(stored)
-        sync_journalQueries.sealBatch(spaceId, generation, stored.batch_id)
-        batch
-    }
+    /** Seals every currently open batch and records its identity in the same database transaction. */
+    suspend fun freezeRound(spaceId: String, generation: Long): SyncFrozenUploadRound =
+        handler.await(inTransaction = true) {
+            requireActive(spaceId, generation)
+            sync_journalQueries.sealSpaceBatches(spaceId, generation)
+            val batches = sync_journalQueries.getPendingUploadRoundBatches(spaceId, generation).executeAsList()
+            SyncFrozenUploadRound(batches.sumOf { it.event_count }, batches.map { it.batch_id })
+        }
+
+    suspend fun nextBatch(spaceId: String, generation: Long, frozenBatchId: String? = null): SyncBatch? =
+        handler.await(inTransaction = true) {
+            requireActive(spaceId, generation)
+            val stored = if (frozenBatchId == null) {
+                sync_journalQueries.getNextUploadBatch(spaceId, generation).executeAsOneOrNull()
+            } else {
+                sync_journalQueries.getBatch(spaceId, generation, frozenBatchId).executeAsOneOrNull()
+                    ?.takeIf { it.status == "SEALED" && it.event_count > 0 }
+            }
+                ?: return@await null
+            val batch = readBatch(stored)
+            sync_journalQueries.sealBatch(spaceId, generation, stored.batch_id)
+            batch
+        }
 
     suspend fun prepared(batch: SyncBatch): SyncPreparedUpload? = handler.await {
         requireActive(batch.spaceId, batch.generation)
@@ -134,9 +151,17 @@ class SyncOutboxStore(private val handler: DatabaseHandler) {
 
 /** One bounded upload; application scheduling and receiving are separate responsibilities. */
 class SyncOutboxExchange(private val store: SyncOutboxStore, private val service: SyncBatchSyncService) {
-    suspend fun uploadNext(snapshot: SyncSnapshot): SyncUploadResult? {
-        store.observeSnapshot(snapshot)
-        val batch = store.nextBatch(snapshot.spaceId, snapshot.generation) ?: return null
+    suspend fun uploadNext(
+        snapshot: SyncSnapshot,
+        observeSnapshot: suspend (SyncSnapshot, String?) -> Unit = { current, _ -> store.observeSnapshot(current) },
+        onPreparingBatch: (SyncBatch) -> Unit = {},
+        onPreparedBatch: (SyncBatch) -> Unit = {},
+        onConfirmedBatch: (SyncBatch) -> Unit = {},
+        frozenBatchId: String? = null,
+    ): SyncUploadResult? {
+        observeSnapshot(snapshot, null)
+        val batch = store.nextBatch(snapshot.spaceId, snapshot.generation, frozenBatchId) ?: return null
+        runCatching { onPreparingBatch(batch) }
         val upload = store.prepared(batch) ?: store.savePrepared(
             batch,
             service.prepare(
@@ -146,8 +171,16 @@ class SyncOutboxExchange(private val store: SyncOutboxStore, private val service
                     "${batch.events.first().epoch}/${batch.batchId}.json",
             ),
         )
-        val result = service.uploadPrepared(snapshot.repository, snapshot, upload, store::observeSnapshot)
-        if (result.publish.status == SyncPublishStatus.PUBLISHED) store.acknowledge(upload, result.publish)
-        return result
+        runCatching { onPreparedBatch(batch) }
+        val result = service.uploadPrepared(snapshot.repository, snapshot, upload) { confirmed ->
+            // The snapshot can contain this upload before the outbox transaction marks it PUBLISHED.
+            // Exclude only its known batch ID from discovery during that confirmation window.
+            observeSnapshot(confirmed, batch.batchId)
+        }
+        if (result.publish.status == SyncPublishStatus.PUBLISHED) {
+            store.acknowledge(upload, result.publish)
+            runCatching { onConfirmedBatch(batch) }
+        }
+        return result.copy(batch = batch)
     }
 }

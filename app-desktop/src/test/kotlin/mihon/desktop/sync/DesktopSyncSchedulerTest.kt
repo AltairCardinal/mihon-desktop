@@ -157,4 +157,72 @@ class DesktopSyncSchedulerTest {
         scheduler.stop()
         scheduler.awaitStopped()
     }
+
+    @Test
+    fun `startup and periodic scheduling use the shared recovery entry`() = runTest {
+        val preferences = SyncPreferences(InMemoryPreferenceStore())
+        preferences.setInterval(15)
+        val triggers = mutableListOf<SyncTrigger>()
+        var resumes = 0
+        val coordinator = SyncCoordinator(
+            SyncRunPort {
+                triggers += it
+                SyncRunResult(SyncRunStatus.SUCCESS)
+            },
+        )
+        val scheduler = DesktopSyncScheduler(
+            coordinator,
+            preferences,
+            backgroundScope,
+            clock = { testScheduler.currentTime + 1 },
+            resumeIfNeeded = {
+                resumes++
+                true
+            },
+        )
+
+        scheduler.start()
+        runCurrent()
+        assertEquals(1, resumes)
+        assertTrue(triggers.isEmpty())
+
+        advanceTimeBy(15 * 60_000L)
+        runCurrent()
+        assertEquals(2, resumes)
+        assertTrue(triggers.isEmpty())
+        scheduler.stop()
+        scheduler.awaitStopped()
+    }
+
+    @Test
+    fun `network failure gets a scheduled recovery attempt`() = runTest {
+        val preferences = SyncPreferences(InMemoryPreferenceStore())
+        preferences.startup.set(false)
+        val triggers = mutableListOf<SyncTrigger>()
+        var calls = 0
+        val coordinator = SyncCoordinator(
+            SyncRunPort {
+                triggers += it
+                if (++calls == 1) SyncRunResult(SyncRunStatus.FAILED, problem = mihon.domain.sync.runtime.SyncRunProblem.NETWORK)
+                else SyncRunResult(SyncRunStatus.SUCCESS)
+            },
+        )
+        val scheduler = DesktopSyncScheduler(
+            coordinator,
+            preferences,
+            backgroundScope,
+            recoveryDelayMillis = { 1_000L },
+            resumeIfNeeded = { false },
+        )
+        scheduler.start()
+        runCurrent()
+        coordinator.synchronize(SyncTrigger.MANUAL)
+        runCurrent()
+        advanceTimeBy(1_000L)
+        runCurrent()
+
+        assertEquals(listOf(SyncTrigger.MANUAL, SyncTrigger.RECOVERY), triggers)
+        scheduler.stop()
+        scheduler.awaitStopped()
+    }
 }

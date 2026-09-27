@@ -41,6 +41,7 @@ data class SyncGitTreeEntry(
     val type: String,
     val sha: String,
     val size: Long? = null,
+    val content: String? = null,
 )
 
 data class SyncGitTree(
@@ -87,12 +88,25 @@ enum class SyncPublishStatus {
     FAILED,
 }
 
+enum class SyncPublishFailureClass {
+    NETWORK,
+    AUTHORIZATION,
+    RATE_LIMITED,
+    CONFLICT,
+    INVALID_REQUEST,
+    UNKNOWN,
+}
+
 data class SyncPublishResult(
     val status: SyncPublishStatus,
     val batchId: String,
     val commitSha: String? = null,
     val error: String? = null,
     val attempts: Int = 0,
+    /** The live snapshot that authenticated a successful publication, when available. */
+    val confirmedSnapshot: SyncSnapshot? = null,
+    val failureClass: SyncPublishFailureClass? = null,
+    val retryAfterMillis: Long? = null,
 )
 
 sealed interface SyncInitializationResult {
@@ -131,6 +145,13 @@ data class SyncInitializationCheckpoint(
 interface SyncTransportPort {
     fun prepare(snapshot: SyncSnapshot, encryptedBatch: SyncEncryptedBatch): SyncPreparedUpload
 
+    /** Reads only the current branch ref when an exchange needs a terminal freshness probe. */
+    suspend fun readCurrentHead(
+        repository: SyncRepository,
+        expectedSpaceId: String,
+        expectedGeneration: Long,
+    ): Result<String> = readSnapshot(repository, expectedSpaceId, expectedGeneration).map { it.head }
+
     suspend fun readSnapshot(
         repository: SyncRepository,
         expectedSpaceId: String,
@@ -165,6 +186,7 @@ interface SyncTransportPort {
 data class SyncUploadResult(
     val artifact: SyncPreparedUpload,
     val publish: SyncPublishResult,
+    val batch: SyncBatch? = null,
 ) {
     val encryptedBatch: SyncEncryptedBatch get() = artifact.encryptedBatch
 }

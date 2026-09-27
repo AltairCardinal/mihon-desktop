@@ -1,0 +1,151 @@
+Configuration on demand is an incubating feature.
+Type-safe project accessors is an incubating feature.
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :buildSrc:generateExternalPluginSpecBuilders UP-TO-DATE
+> Task :buildSrc:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+> Task :buildSrc:compilePluginsBlocks UP-TO-DATE
+> Task :buildSrc:generatePrecompiledScriptPluginAccessors UP-TO-DATE
+> Task :buildSrc:generateScriptPluginAdapters UP-TO-DATE
+> Task :buildSrc:compileKotlin UP-TO-DATE
+> Task :buildSrc:compileJava NO-SOURCE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :domain:kmpPartiallyResolvedDependenciesChecker
+> Task :source-api:kmpPartiallyResolvedDependenciesChecker
+> Task :core:common:kmpPartiallyResolvedDependenciesChecker
+> Task :presentation-sync:kmpPartiallyResolvedDependenciesChecker
+> Task :data:kmpPartiallyResolvedDependenciesChecker
+> Task :domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :i18n:kmpPartiallyResolvedDependenciesChecker
+> Task :data:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :source-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :presentation-sync:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :i18n:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:common:jvmProcessResources NO-SOURCE
+> Task :core:common:processJvmMainResources SKIPPED
+> Task :domain:jvmProcessResources NO-SOURCE
+> Task :source-api:jvmProcessResources NO-SOURCE
+> Task :domain:processJvmMainResources SKIPPED
+> Task :presentation-sync:convertXmlValueResourcesForCommonMain NO-SOURCE
+> Task :source-api:processJvmMainResources SKIPPED
+> Task :presentation-sync:copyNonXmlValueResourcesForCommonMain NO-SOURCE
+> Task :i18n:generateMRcommonMain UP-TO-DATE
+> Task :presentation-sync:prepareComposeResourcesTaskForCommonMain NO-SOURCE
+> Task :presentation-sync:generateResourceAccessorsForCommonMain SKIPPED
+> Task :i18n:generateMRjvmMain UP-TO-DATE
+> Task :presentation-sync:convertXmlValueResourcesForJvmMain NO-SOURCE
+> Task :presentation-sync:copyNonXmlValueResourcesForJvmMain NO-SOURCE
+> Task :presentation-sync:prepareComposeResourcesTaskForJvmMain NO-SOURCE
+> Task :presentation-sync:generateResourceAccessorsForJvmMain SKIPPED
+> Task :presentation-sync:generateActualResourceCollectorsForJvmMain SKIPPED
+> Task :presentation-sync:generateComposeResClass SKIPPED
+> Task :presentation-sync:generateExpectResourceCollectorsForCommonMain SKIPPED
+> Task :presentation-sync:convertXmlValueResourcesForCommonTest NO-SOURCE
+> Task :presentation-sync:copyNonXmlValueResourcesForCommonTest NO-SOURCE
+> Task :presentation-sync:prepareComposeResourcesTaskForCommonTest NO-SOURCE
+> Task :presentation-sync:generateResourceAccessorsForCommonTest SKIPPED
+> Task :presentation-sync:convertXmlValueResourcesForJvmTest NO-SOURCE
+> Task :presentation-sync:copyNonXmlValueResourcesForJvmTest NO-SOURCE
+> Task :presentation-sync:prepareComposeResourcesTaskForJvmTest NO-SOURCE
+> Task :presentation-sync:generateResourceAccessorsForJvmTest SKIPPED
+> Task :presentation-sync:assembleJvmMainResources UP-TO-DATE
+> Task :presentation-sync:jvmProcessResources UP-TO-DATE
+> Task :presentation-sync:processJvmMainResources SKIPPED
+> Task :presentation-sync:assembleJvmTestResources UP-TO-DATE
+> Task :presentation-sync:jvmTestProcessResources UP-TO-DATE
+> Task :presentation-sync:processJvmTestResources SKIPPED
+> Task :data:generateCommonMainDatabaseInterface UP-TO-DATE
+> Task :data:jvmProcessResources NO-SOURCE
+> Task :data:processJvmMainResources SKIPPED
+> Task :i18n:compileKotlinJvm UP-TO-DATE
+> Task :i18n:compileJvmMainJava NO-SOURCE
+> Task :i18n:jvmProcessResources UP-TO-DATE
+> Task :i18n:processJvmMainResources SKIPPED
+> Task :i18n:jvmMainClasses UP-TO-DATE
+> Task :i18n:jvmJar UP-TO-DATE
+> Task :core:common:compileKotlinJvm UP-TO-DATE
+> Task :core:common:compileJvmMainJava NO-SOURCE
+> Task :core:common:jvmMainClasses UP-TO-DATE
+> Task :core:common:jvmJar UP-TO-DATE
+> Task :source-api:compileKotlinJvm UP-TO-DATE
+> Task :source-api:compileJvmMainJava NO-SOURCE
+> Task :source-api:jvmMainClasses UP-TO-DATE
+> Task :source-api:jvmJar UP-TO-DATE
+> Task :domain:compileKotlinJvm UP-TO-DATE
+> Task :domain:compileJvmMainJava NO-SOURCE
+> Task :domain:jvmMainClasses UP-TO-DATE
+> Task :domain:jvmJar UP-TO-DATE
+> Task :data:compileKotlinJvm UP-TO-DATE
+> Task :data:compileJvmMainJava NO-SOURCE
+> Task :data:jvmMainClasses UP-TO-DATE
+> Task :data:jvmJar UP-TO-DATE
+> Task :presentation-sync:compileKotlinJvm UP-TO-DATE
+> Task :presentation-sync:compileJvmMainJava NO-SOURCE
+> Task :presentation-sync:jvmMainClasses UP-TO-DATE
+> Task :presentation-sync:jvmJar UP-TO-DATE
+> Task :presentation-sync:compileTestKotlinJvm UP-TO-DATE
+> Task :presentation-sync:compileJvmTestJava NO-SOURCE
+> Task :presentation-sync:jvmTestClasses UP-TO-DATE
+
+> Task :presentation-sync:jvmTest
+
+SyncPanelContentTest[jvm] > existing password input cannot skip and close clears unsubmitted text()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > bulk confirmation and pause use frozen job actions()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > unfinished bulk disables replacement decisions while keeping resume available()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > empty pending list omits the selection toolbar()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > device authorization uses native copy and browser without sharing device secret()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > unsupported binding is clearly identified in the main panel before any exchange()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > disconnected retained space offers connection instead of synchronization()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > blocked run restores its concrete repair reason()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > retry exhausted run remains visible with retained progress and retry action()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > status keeps one synchronize action and long list selection stays above rows()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > unfinished setup offers continue and key problems offer verified reconnection()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > waiting retry shows the persisted backoff countdown()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > password errors stay editable and busy setup prevents duplicate submit()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > setup merge exposes the same progress card and item log()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > settings show actual password protection instead of recovery export()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > baseline pause and resume remain separate from an active exchange()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > settings and records remain in the panel and expose native actions()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > unconfigured settings disable space actions and show unavailable protection()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > rate limit wait explains why the persisted countdown is active()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > reconnection explicitly authorizes from status settings and failed discovery()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > active run exposes phase progress recent logs and pause action()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > main panel follows approved status queue and progress hierarchy()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > failed authorization offers installation and retry without manual repository creation()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > new password input changes action and visibility preserves selection()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > toolbar shows busy and bounded cancellation count together()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > setup completion is a dismissible session notice()[jvm] PASSED
+
+SyncPanelContentTest[jvm] > failed and partial notices report the failure without a false success()[jvm] PASSED
+
+BUILD SUCCESSFUL in 13s
+37 actionable tasks: 7 executed, 30 up-to-date

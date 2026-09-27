@@ -1,0 +1,1258 @@
+diff --git a/data/src/commonMain/kotlin/mihon/data/sync/http/SyncMetrics.kt b/data/src/commonMain/kotlin/mihon/data/sync/http/SyncMetrics.kt
+index 3ba7067a63..17aae244a5 100644
+--- a/data/src/commonMain/kotlin/mihon/data/sync/http/SyncMetrics.kt
++++ b/data/src/commonMain/kotlin/mihon/data/sync/http/SyncMetrics.kt
+@@ -6,6 +6,8 @@ data class SyncMetricSnapshot(
+     val httpBytes: Long = 0,
+     val httpFailures: Long = 0,
+     val totalsReconciliations: Long = 0,
++    val phaseNanos: Map<String, Long> = emptyMap(),
++    val phaseCalls: Map<String, Long> = emptyMap(),
+ )
+ 
+ interface SyncMetrics {
+@@ -13,6 +15,8 @@ interface SyncMetrics {
+ 
+     fun recordTotalsReconciliation()
+ 
++    fun recordPhase(phase: String, nanos: Long) = Unit
++
+     fun snapshot(): SyncMetricSnapshot
+ }
+ 
+@@ -29,6 +33,14 @@ class InMemorySyncMetrics : SyncMetrics {
+     private var bytes = 0L
+     private var failures = 0L
+     private var totalsReconciliations = 0L
++    private val phaseNanos = mutableMapOf<String, Long>()
++    private val phaseCalls = mutableMapOf<String, Long>()
++
++    @Synchronized
++    override fun recordPhase(phase: String, nanos: Long) {
++        phaseNanos[phase] = (phaseNanos[phase] ?: 0L) + nanos
++        phaseCalls[phase] = (phaseCalls[phase] ?: 0L) + 1L
++    }
+ 
+     @Synchronized
+     override fun recordHttp(callBytes: Long, failed: Boolean) {
+@@ -44,5 +56,5 @@ class InMemorySyncMetrics : SyncMetrics {
+ 
+     @Synchronized
+     override fun snapshot(): SyncMetricSnapshot =
+-        SyncMetricSnapshot(calls, bytes, failures, totalsReconciliations)
++        SyncMetricSnapshot(calls, bytes, failures, totalsReconciliations, phaseNanos.toMap(), phaseCalls.toMap())
+ }
+diff --git a/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncBaselineStore.kt b/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncBaselineStore.kt
+index bdc276731a..8fc8367c1a 100644
+--- a/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncBaselineStore.kt
++++ b/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncBaselineStore.kt
+@@ -3,6 +3,8 @@ package mihon.data.sync.journal
+ import kotlinx.serialization.json.Json
+ import kotlinx.serialization.json.buildJsonObject
+ import kotlinx.serialization.json.put
++import mihon.data.sync.http.NoopSyncMetrics
++import mihon.data.sync.http.SyncMetrics
+ import mihon.domain.sync.SyncCategory
+ import mihon.domain.sync.SyncEffect
+ import mihon.domain.sync.SyncEffectKind
+@@ -19,11 +21,17 @@ import tachiyomi.data.DatabaseHandler
+ import tachiyomi.data.Sync_import_entries
+ import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
+ import java.util.UUID
++import kotlin.time.TimeSource
+ 
+ data class SyncImportProgress(val total: Long, val remaining: Long)
+ 
+ /** A frozen local baseline is materialized separately from subsequent explicit user commands. */
+-class SyncBaselineStore(private val handler: DatabaseHandler, private val bootstrap: CreatorArchiveBootstrap) {
++class SyncBaselineStore(
++    private val handler: DatabaseHandler,
++    private val bootstrap: CreatorArchiveBootstrap,
++    private val onDescriptionCacheReuse: (() -> Unit)? = null,
++    private val enableDescriptionPageCache: Boolean = true,
++) {
+     suspend fun connectAndImport(
+         spaceId: String,
+         generation: Long,
+@@ -55,52 +63,81 @@ class SyncBaselineStore(private val handler: DatabaseHandler, private val bootst
+         }
+     }
+ 
+-    suspend fun process(importId: String, limit: Int = 50): SyncImportProgress {
++    suspend fun process(
++        importId: String,
++        limit: Int = 50,
++        metrics: SyncMetrics = NoopSyncMetrics,
++    ): SyncImportProgress {
+         require(limit in 1..256)
+         return handler.await(inTransaction = true) {
+-            val import = sync_importQueries.getImport(importId).executeAsOne()
+-            require(sync_journalQueries.getSpace(import.space_id, import.generation).executeAsOne().active) {
+-                "import space is inactive"
+-            }
+-            // Read one look-ahead row so a full final page can still report exact completion
+-            // without counting the entire remaining import queue.
+-            val page = sync_importQueries.getImportEntries(importId, limit.toLong() + 1L).executeAsList()
+-            page.take(limit).forEach { row ->
+-                val material = row.material()
+-                val parents = material.effects.associate { effect ->
+-                    SyncFieldKey(effect.objectKey, effect.field) to sync_importQueries.getImportHead(
+-                        importId,
+-                        effect.objectKey.stableKey,
+-                        effect.field.name,
+-                    ).executeAsOneOrNull()?.let { listOf(Json.decodeFromString<SyncEffectRef>(it)) }.orEmpty()
++            val bodyStarted = TimeSource.Monotonic.markNow()
++            try {
++                val descriptionPage = if (enableDescriptionPageCache) {
++                    SyncObjectDescriptions.PageAccumulator(onDescriptionCacheReuse)
++                } else {
++                    null
++                }
++                val import = sync_importQueries.getImport(importId).executeAsOne()
++                require(sync_journalQueries.getSpace(import.space_id, import.generation).executeAsOne().active) {
++                    "import space is inactive"
++                }
++                // Read one look-ahead row so a full final page can still report exact completion
++                // without counting the entire remaining import queue.
++                val page = sync_importQueries.getImportEntries(importId, limit.toLong() + 1L).executeAsList()
++                val entries = page.take(limit).map { it to it.material() }
++                val objectKeys = entries.flatMap { (_, material) ->
++                    material.effects.map { it.objectKey.stableKey }
++                }.distinct()
++                val heads: MutableMap<Pair<String, String>, SyncEffectRef> = if (objectKeys.isEmpty()) {
++                    mutableMapOf()
++                } else {
++                    sync_importQueries.getImportHeadsForObjects(importId, objectKeys).executeAsList().associate { row ->
++                        (row.object_key to row.field_) to Json.decodeFromString<SyncEffectRef>(row.ref_json)
++                    }.toMutableMap()
+                 }
+-                val event = requireNotNull(
+-                    appendSyncOperation(
+-                        SyncMutationContext(
+-                            SyncOrigin.valueOf(import.origin),
+-                            importId = importId,
+-                            observedHeads = parents,
+-                        ),
+-                        SyncCategory.valueOf(row.category),
+-                        material.effects,
+-                        row.read_at.coerceAtLeast(0),
+-                        frozenDescriptions = material.objects,
+-                    ),
+-                )
+-                event.effects.forEach { effect ->
+-                    sync_importQueries.setImportHead(
+-                        importId,
+-                        effect.objectKey.stableKey,
+-                        effect.field.name,
+-                        Json.encodeToString(effect.ref(event)),
+-                    )
++                val appendStarted = TimeSource.Monotonic.markNow()
++                try {
++                    entries.forEach { (row, material) ->
++                        val parents = material.effects.associate { effect ->
++                            SyncFieldKey(effect.objectKey, effect.field) to
++                                heads[effect.objectKey.stableKey to effect.field.name]?.let { listOf(it) }.orEmpty()
++                        }
++                        val event = requireNotNull(
++                            appendSyncOperation(
++                                SyncMutationContext(
++                                    SyncOrigin.valueOf(import.origin),
++                                    importId = importId,
++                                    observedHeads = parents,
++                                ),
++                                SyncCategory.valueOf(row.category),
++                                material.effects,
++                                row.read_at.coerceAtLeast(0),
++                                frozenDescriptions = material.objects,
++                                descriptionPage = descriptionPage,
++                            ),
++                        )
++                        event.effects.forEach { effect ->
++                            val ref = effect.ref(event)
++                            sync_importQueries.setImportHead(
++                                importId,
++                                effect.objectKey.stableKey,
++                                effect.field.name,
++                                Json.encodeToString(ref),
++                            )
++                            heads[effect.objectKey.stableKey to effect.field.name] = ref
++                        }
++                        sync_importQueries.removeImportEntry(row.id)
++                    }
++                } finally {
++                    metrics.recordPhase("baseline.appendLoop", appendStarted.elapsedNow().inWholeNanoseconds)
+                 }
+-                sync_importQueries.removeImportEntry(row.id)
++                // A full chunk proves that work remains without scanning the entire queue. Only the
++                // final short chunk performs the exact count needed for UI completion.
++                val remaining = if (page.size > limit) 1L else 0L
++                SyncImportProgress(import.total, remaining)
++            } finally {
++                metrics.recordPhase("baseline.transactionBody", bodyStarted.elapsedNow().inWholeNanoseconds)
+             }
+-            // A full chunk proves that work remains without scanning the entire queue. Only the
+-            // final short chunk performs the exact count needed for UI completion.
+-            val remaining = if (page.size > limit) 1L else 0L
+-            SyncImportProgress(import.total, remaining)
+         }
+     }
+ }
+diff --git a/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncObjectDescriptions.kt b/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncObjectDescriptions.kt
+index 5027e11adf..2f1f852f4c 100644
+--- a/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncObjectDescriptions.kt
++++ b/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncObjectDescriptions.kt
+@@ -16,6 +16,70 @@ internal object SyncObjectDescriptions {
+ 
+     // Empty descriptions retain the pre-descriptor wire format; a nonempty field also adds ,"objects":.
+     fun batchBytes(encoded: String): Int = if (encoded == "[]") 0 else encoded.encodeToByteArray().size + 11
++
++    /** Reused only by consecutive appends in one import page transaction. */
++    class PageAccumulator(private val onReuse: (() -> Unit)? = null) {
++        data class Scope(val spaceId: String, val generation: Long, val actorId: String, val epoch: Long)
++
++        data class Candidate(
++            val encoded: String,
++            val bytes: Int,
++            val deltaBytes: Int,
++            val additions: List<SyncObjectDescriptor>,
++        )
++
++        private var scope: Scope? = null
++        private var batchId: String? = null
++        private var expectedSeq = -1L
++        private var encoded = "[]"
++        private var bytes = 0
++        private val seen = mutableSetOf<SyncObjectKey>()
++
++        fun plan(
++            scope: Scope,
++            batchId: String?,
++            nextSeq: Long,
++            persistedEncoded: String,
++            descriptions: List<SyncObjectDescriptor>,
++        ): Candidate {
++            var previousBytes = bytes
++            if (this.scope == scope && this.batchId == batchId && expectedSeq == nextSeq &&
++                encoded == persistedEncoded
++            ) {
++                onReuse?.invoke()
++            } else {
++                this.scope = scope
++                this.batchId = batchId
++                expectedSeq = nextSeq
++                previousBytes = batchBytes(persistedEncoded)
++                val persistedObjects = decode(persistedEncoded).distinctBy { it.objectKey }
++                encoded = encode(persistedObjects)
++                bytes = batchBytes(encoded)
++                seen.clear()
++                seen.addAll(persistedObjects.map { it.objectKey })
++            }
++            val addedKeys = mutableSetOf<SyncObjectKey>()
++            val additions = descriptions.filter { it.objectKey !in seen && addedKeys.add(it.objectKey) }
++            if (additions.isEmpty()) return Candidate(encoded, bytes, bytes - previousBytes, emptyList())
++            val fragment = encode(additions)
++            val fragmentBytes = fragment.encodeToByteArray().size
++            return if (encoded == "[]") {
++                Candidate(fragment, fragmentBytes + 11, fragmentBytes + 11 - previousBytes, additions)
++            } else {
++                val nextBytes = bytes + fragmentBytes - 1
++                Candidate(encoded.dropLast(1) + "," + fragment.drop(1), nextBytes, nextBytes - previousBytes, additions)
++            }
++        }
++
++        fun committed(scope: Scope, batchId: String, nextSeq: Long, candidate: Candidate) {
++            this.scope = scope
++            this.batchId = batchId
++            expectedSeq = nextSeq + 1
++            encoded = candidate.encoded
++            bytes = candidate.bytes
++            seen.addAll(candidate.additions.map { it.objectKey })
++        }
++    }
+ }
+ 
+ /** Called inside the operation transaction, before source refresh or local deletion can change descriptions. */
+diff --git a/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncOutboxStore.kt b/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncOutboxStore.kt
+index 5a91faf6fc..7667ed599d 100644
+--- a/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncOutboxStore.kt
++++ b/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncOutboxStore.kt
+@@ -1,6 +1,8 @@
+ package mihon.data.sync.journal
+ 
+ import mihon.data.sync.crypto.SyncAeadEngineFactory
++import mihon.data.sync.http.NoopSyncMetrics
++import mihon.data.sync.http.SyncMetrics
+ import mihon.data.sync.transport.SyncBatchSyncService
+ import mihon.data.sync.transport.SyncRemoteSnapshotGuard
+ import mihon.data.sync.transport.SyncUploadArtifactCodec
+@@ -18,6 +20,7 @@ import mihon.domain.sync.transport.SyncUploadResult
+ import tachiyomi.data.Database
+ import tachiyomi.data.DatabaseHandler
+ import tachiyomi.data.Sync_batches
++import kotlin.time.TimeSource
+ 
+ class SyncOutboxStore(private val handler: DatabaseHandler) {
+     private val remoteGuard = SyncRemoteSnapshotGuard(handler)
+@@ -133,28 +136,50 @@ class SyncOutboxStore(private val handler: DatabaseHandler) {
+ }
+ 
+ /** One bounded upload; application scheduling and receiving are separate responsibilities. */
+-class SyncOutboxExchange(private val store: SyncOutboxStore, private val service: SyncBatchSyncService) {
++class SyncOutboxExchange(
++    private val store: SyncOutboxStore,
++    private val service: SyncBatchSyncService,
++    private val metrics: SyncMetrics = NoopSyncMetrics,
++) {
++    private suspend fun <T> phase(name: String, block: suspend () -> T): T {
++        val started = TimeSource.Monotonic.markNow()
++        try {
++            return block()
++        } finally {
++            metrics.recordPhase(name, started.elapsedNow().inWholeNanoseconds)
++        }
++    }
++
+     suspend fun uploadNext(
+         snapshot: SyncSnapshot,
+         observeSnapshot: suspend (SyncSnapshot, String?) -> Unit = { current, _ -> store.observeSnapshot(current) },
+     ): SyncUploadResult? {
+-        observeSnapshot(snapshot, null)
+-        val batch = store.nextBatch(snapshot.spaceId, snapshot.generation) ?: return null
+-        val upload = store.prepared(batch) ?: store.savePrepared(
+-            batch,
+-            service.prepare(
+-                snapshot,
+-                batch,
+-                ".mihon-sync/batches/${batch.events.first().actorId}/" +
+-                    "${batch.events.first().epoch}/${batch.batchId}.json",
+-            ),
+-        )
+-        val result = service.uploadPrepared(snapshot.repository, snapshot, upload) { confirmed ->
+-            // The snapshot can contain this upload before the outbox transaction marks it PUBLISHED.
+-            // Exclude only its known batch ID from discovery during that confirmation window.
+-            observeSnapshot(confirmed, batch.batchId)
++        phase("outbox.observeBefore") { observeSnapshot(snapshot, null) }
++        val batch = phase("outbox.claim") {
++            store.nextBatch(snapshot.spaceId, snapshot.generation)
++        } ?: return null
++        val upload = phase("outbox.loadPrepared") { store.prepared(batch) } ?: phase("outbox.persistPrepared") {
++            val prepared = phase("outbox.prepareAeadAndTree") {
++                service.prepare(
++                    snapshot,
++                    batch,
++                    ".mihon-sync/batches/${batch.events.first().actorId}/" +
++                        "${batch.events.first().epoch}/${batch.batchId}.json",
++                )
++            }
++            store.savePrepared(batch, prepared)
++        }
++        val result =
++            phase("outbox.publishWithConfirm") {
++                service.uploadPrepared(snapshot.repository, snapshot, upload) { confirmed ->
++                    // The snapshot can contain this upload before the outbox transaction marks it PUBLISHED.
++                    // Exclude only its known batch ID from discovery during that confirmation window.
++                    phase("outbox.confirmObserve") { observeSnapshot(confirmed, batch.batchId) }
++                }
++            }
++        if (result.publish.status == SyncPublishStatus.PUBLISHED) {
++            phase("outbox.ack") { store.acknowledge(upload, result.publish) }
+         }
+-        if (result.publish.status == SyncPublishStatus.PUBLISHED) store.acknowledge(upload, result.publish)
+         return result.copy(batch = batch)
+     }
+ }
+diff --git a/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncTransactionJournal.kt b/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncTransactionJournal.kt
+index 9abb5f5f64..35cef2e03c 100644
+--- a/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncTransactionJournal.kt
++++ b/data/src/commonMain/kotlin/mihon/data/sync/journal/SyncTransactionJournal.kt
+@@ -29,6 +29,7 @@ internal fun Database.appendSyncOperation(
+     occurredAt: Long = System.currentTimeMillis(),
+     relatedObjects: List<SyncObjectKey> = emptyList(),
+     frozenDescriptions: List<SyncObjectDescriptor>? = null,
++    descriptionPage: SyncObjectDescriptions.PageAccumulator? = null,
+ ): SyncEventEnvelope? {
+     val baseline =
+         frozenDescriptions != null && context.origin in setOf(SyncOrigin.INITIAL_IMPORT, SyncOrigin.BACKUP_RESTORE) &&
+@@ -50,11 +51,21 @@ internal fun Database.appendSyncOperation(
+     }
+     var open = queries.getOpenBatch(actor.space_id, actor.generation, actor.actor_id, actor.epoch).executeAsOneOrNull()
+     val descriptions = frozenDescriptions ?: describeSyncObjects(effects.map { it.objectKey } + relatedObjects)
++    val descriptionScope = descriptionPage?.let {
++        SyncObjectDescriptions.PageAccumulator.Scope(actor.space_id, actor.generation, actor.actor_id, actor.epoch)
++    }
+     var previousObjects = open?.objects_json ?: "[]"
+-    var objects = SyncObjectDescriptions.encode(
++    var candidate = descriptionPage?.plan(
++        requireNotNull(descriptionScope),
++        open?.batch_id,
++        actor.next_seq,
++        previousObjects,
++        descriptions,
++    )
++    var objects = candidate?.encoded ?: SyncObjectDescriptions.encode(
+         (SyncObjectDescriptions.decode(previousObjects) + descriptions).distinctBy { it.objectKey },
+     )
+-    fun descriptionBytes() = SyncObjectDescriptions.batchBytes(objects) -
++    fun descriptionBytes() = candidate?.deltaBytes ?: SyncObjectDescriptions.batchBytes(objects) -
+         SyncObjectDescriptions.batchBytes(previousObjects)
+     fun envelope(batchId: String) = SyncEventEnvelope(
+         protocolVersion = SyncProtocol.CURRENT_VERSION,
+@@ -84,7 +95,8 @@ internal fun Database.appendSyncOperation(
+         encoded = SyncCodec.encode(event)
+         eventBytes = encoded.encodeToByteArray().size.toLong()
+         previousObjects = "[]"
+-        objects = SyncObjectDescriptions.encode(descriptions)
++        candidate = descriptionPage?.plan(requireNotNull(descriptionScope), null, actor.next_seq, "[]", descriptions)
++        objects = candidate?.encoded ?: SyncObjectDescriptions.encode(descriptions)
+     }
+     val batchId = requireNotNull(event.batchId)
+     val previousBytes = open?.plaintext_bytes ?: SyncBatchCodec.rawEncode(
+@@ -128,6 +140,14 @@ internal fun Database.appendSyncOperation(
+     queries.updateBatch(actor.next_seq, totalBytes, objects, actor.space_id, actor.generation, batchId)
+     queries.advanceSequence(actor.space_id, actor.generation, actor.actor_id, actor.epoch)
+     indexSyncEvent(event, local = context.origin == SyncOrigin.USER)
++    if (candidate != null) {
++        requireNotNull(descriptionPage).committed(
++            requireNotNull(descriptionScope),
++            batchId,
++            actor.next_seq,
++            candidate,
++        )
++    }
+     return event
+ }
+ 
+diff --git a/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncDatabaseExchange.kt b/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncDatabaseExchange.kt
+index 9b00fcfb90..ff346c7b5d 100644
+--- a/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncDatabaseExchange.kt
++++ b/data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncDatabaseExchange.kt
+@@ -36,6 +36,7 @@ import mihon.domain.sync.transport.SyncSnapshot
+ import mihon.domain.sync.transport.SyncTransportPort
+ import tachiyomi.data.DatabaseHandler
+ import java.io.IOException
++import kotlin.time.TimeSource
+ 
+ /** Drains durable queues in bounded transactions; confirmation decisions do not gate exchange. */
+ class SyncDatabaseExchange(
+@@ -58,6 +59,15 @@ class SyncDatabaseExchange(
+     private val inboxStore = SyncInboxStore(handler)
+     internal val snapshotEvidenceEvaluations: Long get() = inboxStore.remoteGuard.evidenceEvaluations
+ 
++    private suspend fun <T> phase(name: String, block: suspend () -> T): T {
++        val started = TimeSource.Monotonic.markNow()
++        try {
++            return block()
++        } finally {
++            metrics.recordPhase(name, started.elapsedNow().inWholeNanoseconds)
++        }
++    }
++
+     suspend fun exchange(spaceId: String, generation: Long, repository: SyncRepository): SyncRunResult {
+         var uploaded = 0
+         var downloaded = 0
+@@ -74,21 +84,28 @@ class SyncDatabaseExchange(
+             }
+             if (!enabled) return SyncRunResult(SyncRunStatus.SKIPPED)
+             progress?.phase(SyncRunPhase.CHECKING, processed = 0, total = 0)
++            var activeImportId: String? = null
+             while (allowImport()) {
+                 val importId = handler.await {
+                     sync_importQueries.getNextPendingImport(spaceId, generation).executeAsOneOrNull()
+                 } ?: break
+-                progress?.phase(SyncRunPhase.IMPORTING, processed = 0, total = 0)
+-                progress?.log(importId, "首次合并", "正在写入已保存的数据", SyncRunLogStatus.ACTIVE)
+-                baseline.process(importId)
+-                progress?.log(importId, "首次合并", "已写入已保存的数据", SyncRunLogStatus.COMPLETED)
++                if (activeImportId != importId) {
++                    progress?.phase(SyncRunPhase.IMPORTING, processed = 0, total = 0)
++                    progress?.log(importId, "首次合并", "正在写入已保存的数据", SyncRunLogStatus.ACTIVE)
++                    activeImportId = importId
++                }
++                val importProgress = phase("baseline.process") { baseline.process(importId, metrics = metrics) }
++                if (importProgress.remaining == 0L) {
++                    progress?.log(importId, "首次合并", "已写入已保存的数据", SyncRunLogStatus.COMPLETED)
++                    activeImportId = null
++                }
+                 yield()
+             }
+             val store = inboxStore
+             val discovery = SyncDiscoveryStore(handler)
+             val service = SyncBatchSyncService(transport, secret, spaceMaterial = spaceMaterial)
+             val inbox = SyncInboxExchange(store, service)
+-            val outbox = SyncOutboxExchange(SyncOutboxStore(handler), service)
++            val outbox = SyncOutboxExchange(SyncOutboxStore(handler), service, metrics)
+             val githubTransport = transport as? GitHubSyncTransport
+             githubTransport?.installSnapshotFenceProvider { candidateSpace, candidateGeneration ->
+                 store.remoteGuard.captureFence(candidateSpace, candidateGeneration, snapshotOwner)
+@@ -96,9 +113,16 @@ class SyncDatabaseExchange(
+             suspend fun observeSnapshot(snapshot: SyncSnapshot, excludedBatchId: String? = null) {
+                 val fence = githubTransport?.takeSnapshotFence(snapshot)
+                 val admission = githubTransport?.takeWarmAdmission(snapshot)
+-                if (admission != null && store.confirmWarmSnapshot(snapshot, admission, fence)) return
++                if (admission != null && phase("snapshot.warmConfirm") {
++                        store.confirmWarmSnapshot(snapshot, admission, fence)
++                    }
++                ) {
++                    return
++                }
+                 val manifest = githubTransport?.takeSnapshotManifest(snapshot)
+-                store.observeSnapshot(snapshot, discovery, manifest, setOfNotNull(excludedBatchId), fence)
++                phase("snapshot.observe") {
++                    store.observeSnapshot(snapshot, discovery, manifest, setOfNotNull(excludedBatchId), fence)
++                }
+             }
+             suspend fun reconcileTotals() {
+                 val published = handler.await {
+@@ -117,8 +141,10 @@ class SyncDatabaseExchange(
+             } else {
+                 progress?.totals(uploadedTotal, downloadedTotal)
+             }
+-            projector.retryUnavailable(spaceId, generation)
+-            var snapshot = transport.readSnapshot(repository, spaceId, generation).getOrThrow()
++            phase("projector.retryUnavailable") { projector.retryUnavailable(spaceId, generation) }
++            var snapshot = phase("snapshot.initialRead") {
++                transport.readSnapshot(repository, spaceId, generation).getOrThrow()
++            }
+             var catchUpSegments = 0
+             var performedExchangeWork = false
+             while (true) {
+@@ -151,7 +177,7 @@ class SyncDatabaseExchange(
+                     }
+                     yield()
+                 }
+-                while (projector.project(spaceId, generation) == 50) yield()
++                while (phase("projector.project") { projector.project(spaceId, generation) } == 50) yield()
+                 pending = store.status(spaceId, generation).pendingDecisions.toInt()
+                 // Discovery is paged to keep each durable query bounded. Drain every page before
+                 // reporting completion or switching to uploads so large snapshots converge fully.
+@@ -160,7 +186,7 @@ class SyncDatabaseExchange(
+                     continue
+                 }
+                 progress?.phase(SyncRunPhase.UPLOADING, uploadedTotal, 0, completed = uploadedTotal)
+-                val result = outbox.uploadNext(snapshot, ::observeSnapshot)
++                val result = phase("outbox.total") { outbox.uploadNext(snapshot, ::observeSnapshot) }
+                 if (result == null) {
+                     // No-op runs stop after their initial snapshot. When this exchange moved data,
+                     // probe only the ref first; parse a full snapshot only if another device advanced it.
+diff --git a/data/src/commonMain/sqldelight/tachiyomi/data/sync_import.sq b/data/src/commonMain/sqldelight/tachiyomi/data/sync_import.sq
+index 87d0563c04..31e0af8efd 100644
+--- a/data/src/commonMain/sqldelight/tachiyomi/data/sync_import.sq
++++ b/data/src/commonMain/sqldelight/tachiyomi/data/sync_import.sq
+@@ -127,6 +127,10 @@ DELETE FROM sync_import_entries WHERE id = ?;
+ getImportHead:
+ SELECT ref_json FROM sync_import_heads WHERE import_id = ? AND object_key = ? AND field = ?;
+ 
++getImportHeadsForObjects:
++SELECT object_key, field, ref_json FROM sync_import_heads
++WHERE import_id = ? AND object_key IN :objectKeys;
++
+ setImportHead:
+ INSERT OR REPLACE INTO sync_import_heads(import_id, object_key, field, ref_json) VALUES (?, ?, ?, ?);
+ 
+diff --git a/data/src/jvmTest/kotlin/mihon/data/sync/JvmSyncBaselineStorageContractTest.kt b/data/src/jvmTest/kotlin/mihon/data/sync/JvmSyncBaselineStorageContractTest.kt
+index e0da2a3dcc..2749c7fbad 100644
+--- a/data/src/jvmTest/kotlin/mihon/data/sync/JvmSyncBaselineStorageContractTest.kt
++++ b/data/src/jvmTest/kotlin/mihon/data/sync/JvmSyncBaselineStorageContractTest.kt
+@@ -1,11 +1,302 @@
+ package mihon.data.sync
+ 
++import app.cash.sqldelight.db.SqlDriver
+ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
++import kotlinx.coroutines.runBlocking
++import mihon.data.sync.journal.SyncBaselineStore
++import mihon.data.sync.journal.SyncObjectDescriptions
++import mihon.domain.sync.SyncBatchCodec
++import mihon.domain.sync.SyncField
++import mihon.domain.sync.SyncProtocol
++import mihon.domain.sync.transport.SyncRepository
++import org.junit.jupiter.api.Assertions.assertEquals
++import org.junit.jupiter.api.Assertions.assertTrue
++import org.junit.jupiter.api.Test
+ import tachiyomi.data.JvmDatabaseHandler
++import tachiyomi.domain.chapter.model.Chapter
++import tachiyomi.domain.manga.model.Manga
++import java.io.File
++import java.lang.reflect.InvocationTargetException
++import java.lang.reflect.Proxy
++import java.util.Date
++import java.util.concurrent.atomic.AtomicInteger
+ 
+ class JvmSyncBaselineStorageContractTest : SyncBaselineStorageContract() {
+     override fun open(path: String?, create: Boolean): Storage {
+         val driver = JdbcSqliteDriver(path?.let { "jdbc:sqlite:$it" } ?: JdbcSqliteDriver.IN_MEMORY)
+         return Storage(driver, JvmDatabaseHandler(database(driver, create), driver))
+     }
++
++    @Test
++    fun `baseline append reuses page descriptions and preserves exact escaped batch bytes`() = runBlocking {
++        open().use { storage ->
++            val originalTitle = "漫😀\\\"\\line\nnext"
++            val manga = storage.mangas.insertNetworkManga(
++                listOf(Manga.create().copy(source = 42, url = "/unicode", title = originalTitle, favorite = true)),
++            ).single()
++            storage.chapters.addAll(
++                (1..60).map { index ->
++                    Chapter.create().copy(mangaId = manga.id, url = "/ch-$index", name = "第${index}话\\\"", read = true)
++                },
++            )
++            val reuses = AtomicInteger()
++            val baseline = SyncBaselineStore(
++                storage.handler,
++                storage.bootstrap,
++                onDescriptionCacheReuse = {
++                    reuses.incrementAndGet()
++                    Unit
++                },
++            )
++            val import = baseline.connectAndImport(
++                "space",
++                1,
++                SyncRepository("owner", "sync-data", "mihon-sync"),
++                "device",
++                1,
++            )
++            storage.driver.execute(
++                null,
++                "UPDATE sync_import_entries SET parent_title = 'later' WHERE import_id = '$import' AND category = 'READING'",
++                0,
++            )
++            assertEquals(1L, baseline.process(import).remaining)
++            val openBatchId = storage.handler.await {
++                sync_journalQueries.getOpenBatch("space", 1, "device", 1).executeAsOne().batch_id
++            }
++            // A valid but noncanonical stored JSON string must be normalized exactly as the old path did.
++            storage.driver.execute(
++                null,
++                "UPDATE sync_batches SET objects_json = ' ' || objects_json, " +
++                    "plaintext_bytes = plaintext_bytes + 1 WHERE batch_id = '$openBatchId'",
++                0,
++            )
++            assertEquals(0L, baseline.process(import).remaining)
++            val events = storage.journal.pendingEvents("space", 1)
++            val batch = storage.handler.await {
++                sync_journalQueries.getBatch("space", 1, requireNotNull(events.first().batchId)).executeAsOne()
++            }
++            val objects = SyncObjectDescriptions.decode(batch.objects_json)
++            assertEquals(originalTitle, objects.single { it.objectKey.originalUrl == "/unicode" }.title)
++            assertEquals(61, events.size)
++            assertEquals(61, objects.size)
++            assertEquals(
++                SyncBatchCodec.encode(events, batch.batch_id, "space", 1, objects = objects)
++                    .encodeToByteArray().size.toLong(),
++                batch.plaintext_bytes,
++            )
++            assertTrue(reuses.get() >= 58, "Real baseline append must reuse each page accumulator")
++        }
++    }
++
++    @Test
++    fun `baseline page descriptions keep event and byte rollover bounds`() = runBlocking {
++        for ((count, title) in listOf(257 to "short", 100 to "漫".repeat(4096))) {
++            open().use { storage ->
++                val manga = storage.manga("/boundary-$count", false)
++                storage.chapters.addAll(
++                    (1..count).map { index ->
++                        Chapter.create().copy(
++                            mangaId = manga.id,
++                            url = "/chapter-$index",
++                            name = "$title-$index",
++                            read = true,
++                        )
++                    },
++                )
++                val reuses = AtomicInteger()
++                val baseline = SyncBaselineStore(
++                    storage.handler,
++                    storage.bootstrap,
++                    onDescriptionCacheReuse = {
++                        reuses.incrementAndGet()
++                        Unit
++                    },
++                )
++                val import = baseline.connectAndImport(
++                    "space",
++                    1,
++                    SyncRepository("owner", "sync-data", "mihon-sync"),
++                    "device",
++                    1,
++                )
++                while (baseline.process(import).remaining > 0) Unit
++                val events = storage.journal.pendingEvents("space", 1) +
++                    storage.journal.pendingEvents("space", 1, offset = 256)
++                assertEquals(count, events.size)
++                val batches = events.groupBy { requireNotNull(it.batchId) }
++                assertTrue(batches.size >= 2)
++                for ((batchId, batchEvents) in batches) {
++                    val stored = storage.handler.await {
++                        sync_journalQueries.getBatch("space", 1, batchId).executeAsOne()
++                    }
++                    val encoded = SyncBatchCodec.encode(
++                        batchEvents,
++                        batchId,
++                        "space",
++                        1,
++                        objects = SyncObjectDescriptions.decode(stored.objects_json),
++                    )
++                    assertEquals(encoded.encodeToByteArray().size.toLong(), stored.plaintext_bytes)
++                    assertTrue(batchEvents.size <= SyncProtocol.MAX_EVENTS_PER_BATCH)
++                    assertTrue(stored.plaintext_bytes <= SyncProtocol.MAX_PLAINTEXT_BYTES_PER_BATCH)
++                }
++                if (count == 257) {
++                    assertEquals(256, batches.values.maxOf { it.size })
++                } else {
++                    assertTrue(batches.values.maxOf { it.size } < 256, "The byte bound must seal this batch")
++                }
++                assertTrue(reuses.get() > 0)
++            }
++        }
++    }
++
++    @Test
++    fun `twentieth cached baseline append rollback and reopen match uncached durable bytes`() = runBlocking {
++        suspend fun restoredBatches(cacheEnabled: Boolean): List<Pair<String, Long>> {
++            val file = File.createTempFile("sync-description-rollback-", ".db")
++            var import = ""
++            try {
++                open(file.absolutePath).use { storage ->
++                    val manga = storage.manga("/rollback", true)
++                    storage.chapters.addAll(
++                        (1..25).map { index ->
++                            Chapter.create().copy(
++                                mangaId = manga.id,
++                                url = "/chapter-$index",
++                                name = "话$index",
++                                read = true,
++                            )
++                        },
++                    )
++                    val baseline = SyncBaselineStore(
++                        storage.handler,
++                        storage.bootstrap,
++                        enableDescriptionPageCache = cacheEnabled,
++                    )
++                    import = baseline.connectAndImport(
++                        "space",
++                        1,
++                        SyncRepository("owner", "sync-data", "mihon-sync"),
++                        "device",
++                        1,
++                    )
++                    storage.driver.execute(
++                        null,
++                        "CREATE TRIGGER fail_twentieth BEFORE INSERT ON sync_events WHEN NEW.seq = 20 " +
++                            "BEGIN SELECT RAISE(ABORT, 'injected'); END",
++                        0,
++                    )
++                    assertTrue(runCatching { baseline.process(import) }.isFailure)
++                    assertTrue(storage.journal.pendingEvents("space", 1).isEmpty())
++                    assertEquals(
++                        26,
++                        storage.handler.await {
++                            sync_importQueries.getImportEntries(import, 100).executeAsList().size
++                        },
++                    )
++                    storage.driver.execute(null, "DROP TRIGGER fail_twentieth", 0)
++                }
++                open(file.absolutePath, false).use { storage ->
++                    val baseline = SyncBaselineStore(
++                        storage.handler,
++                        storage.bootstrap,
++                        enableDescriptionPageCache = cacheEnabled,
++                    )
++                    assertEquals(0L, baseline.process(import).remaining)
++                    val events = storage.journal.pendingEvents("space", 1)
++                    assertEquals(26, events.size)
++                    return events.groupBy { requireNotNull(it.batchId) }.map { (batchId, batchEvents) ->
++                        val stored = storage.handler.await {
++                            sync_journalQueries.getBatch("space", 1, batchId).executeAsOne()
++                        }
++                        val bytes = SyncBatchCodec.encode(
++                            batchEvents,
++                            batchId,
++                            "space",
++                            1,
++                            objects = SyncObjectDescriptions.decode(stored.objects_json),
++                        ).encodeToByteArray().size.toLong()
++                        assertEquals(bytes, stored.plaintext_bytes)
++                        stored.objects_json to bytes
++                    }
++                }
++            } finally {
++                assertTrue(file.delete())
++            }
++        }
++        assertEquals(restoredBatches(false), restoredBatches(true))
++    }
++
++    @Test
++    fun `page import heads are read once while repeated reading fields retain causal parents`() = runBlocking {
++        val file = File.createTempFile("sync-import-heads-", ".db")
++        val headReads = AtomicInteger()
++        fun countedStorage(create: Boolean): Storage {
++            val raw = JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}")
++            val counted = Proxy.newProxyInstance(
++                SqlDriver::class.java.classLoader,
++                arrayOf(SqlDriver::class.java),
++            ) { _, method, arguments ->
++                if (method.name == "executeQuery" &&
++                    (arguments?.getOrNull(1) as? String)?.contains("FROM sync_import_heads") == true
++                ) {
++                    headReads.incrementAndGet()
++                }
++                try {
++                    method.invoke(raw, *(arguments ?: emptyArray()))
++                } catch (failure: InvocationTargetException) {
++                    throw failure.targetException
++                }
++            } as SqlDriver
++            return Storage(counted, JvmDatabaseHandler(database(counted, create), counted))
++        }
++        try {
++            var import = ""
++            val started = System.nanoTime()
++            countedStorage(true).use { storage ->
++                val manga = storage.manga("/many", true)
++                val chapters = storage.chapters.addAll(
++                    (1..101).map { index ->
++                        Chapter.create().copy(
++                            mangaId = manga.id,
++                            url = "/chapter-$index",
++                            name = "Chapter $index",
++                            read = true,
++                        )
++                    },
++                )
++                storage.handler.await(inTransaction = true) {
++                    chapters.forEachIndexed { index, chapter ->
++                        historyQueries.upsert(chapter.id, Date(index.toLong() + 1), 0)
++                    }
++                }
++                import = storage.baseline.connectAndImport(
++                    "space",
++                    1,
++                    SyncRepository("owner", "sync-data", "mihon-sync"),
++                    "device",
++                    1,
++                )
++                assertEquals(1L, storage.baseline.process(import).remaining)
++            }
++            countedStorage(false).use { storage ->
++                while (storage.baseline.process(import).remaining > 0) Unit
++                println(
++                    "SYNC_IMPORT_HEADS calls=${headReads.get()} scenarioMs=${(System.nanoTime() - started) / 1_000_000}",
++                )
++                assertEquals(3, headReads.get(), "Each of three pages should preload import heads once")
++                val summaries = storage.journal.pendingEvents("space", 1).mapNotNull { event ->
++                    event.effects.singleOrNull { it.field == SyncField.READING_SUMMARY }?.let { event to it }
++                }
++                assertEquals(101, summaries.size)
++                assertTrue(summaries.first().second.parents.isEmpty())
++                summaries.zipWithNext().forEach { (previous, current) ->
++                    assertEquals(listOf(previous.second.ref(previous.first)), current.second.parents)
++                }
++            }
++        } finally {
++            assertTrue(file.delete())
++        }
++    }
+ }
+diff --git a/data/src/jvmTest/kotlin/mihon/data/sync/SyncGitCompareAcceptanceTest.kt b/data/src/jvmTest/kotlin/mihon/data/sync/SyncGitCompareAcceptanceTest.kt
+index e90fae67a2..857fe9b318 100644
+--- a/data/src/jvmTest/kotlin/mihon/data/sync/SyncGitCompareAcceptanceTest.kt
++++ b/data/src/jvmTest/kotlin/mihon/data/sync/SyncGitCompareAcceptanceTest.kt
+@@ -1,6 +1,8 @@
+ package mihon.data.sync
+ 
+ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
++import jdk.jfr.Configuration
++import jdk.jfr.Recording
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.async
+ import kotlinx.coroutines.flow.first
+@@ -9,6 +11,7 @@ import kotlinx.coroutines.withTimeout
+ import kotlinx.serialization.json.Json
+ import kotlinx.serialization.json.JsonNull
+ import kotlinx.serialization.json.JsonObject
++import kotlinx.serialization.json.add
+ import kotlinx.serialization.json.buildJsonArray
+ import kotlinx.serialization.json.buildJsonObject
+ import kotlinx.serialization.json.jsonArray
+@@ -17,6 +20,8 @@ import kotlinx.serialization.json.jsonPrimitive
+ import kotlinx.serialization.json.long
+ import kotlinx.serialization.json.longOrNull
+ import kotlinx.serialization.json.put
++import mihon.data.sync.http.InMemorySyncMetrics
++import mihon.data.sync.http.SyncMetrics
+ import mihon.data.sync.runtime.SyncRuntime
+ import mihon.data.sync.transport.GitHubSyncTransport
+ import mihon.data.sync.transport.SyncUploadArtifactCodec
+@@ -47,6 +52,7 @@ import java.nio.charset.StandardCharsets
+ import java.nio.file.Files
+ import java.nio.file.Path
+ import java.security.MessageDigest
++import java.util.Collections
+ import java.util.Date
+ import java.util.Properties
+ import java.util.concurrent.TimeUnit
+@@ -137,7 +143,18 @@ class SyncGitCompareAcceptanceTest {
+                 val initialTreeOid = setup.git.treeSha(setup.repository.branch)
+                 val initialFiles = setup.git.files(setup.repository.branch)
+                 writeFiles(output, "initial", initialFiles)
++                val metricDelegate = InMemorySyncMetrics()
++                val phaseStamps = Collections.synchronizedList(mutableListOf<Triple<String, Long, Long>>())
++                val metrics = object : SyncMetrics by metricDelegate {
++                    override fun recordPhase(phase: String, nanos: Long) {
++                        metricDelegate.recordPhase(phase, nanos)
++                        if (phase == "baseline.process" || phase == "projector.project") {
++                            phaseStamps.add(Triple(phase, System.nanoTime(), nanos))
++                        }
++                    }
++                }
+                 val runtime = setup.runtime(
++                    metrics = metrics,
+                     persistentObjectCacheDirectory = output.resolve("l2-cache").toString().toPath(),
+                 )
+                 try {
+@@ -164,6 +181,11 @@ class SyncGitCompareAcceptanceTest {
+                     }
+                     val requestsBefore = setup.git.server.requestCount
+                     val refsBefore = setup.git.forceFlags.size
++                    val recording = if (System.getenv("SYNC_COMPARE_JFR") == "1") {
++                        Recording(Configuration.getConfiguration("profile")).also { it.start() }
++                    } else {
++                        null
++                    }
+                     val acceptedAt = System.nanoTime()
+                     runtime.onboarding.resume(intent)
+                     val freezeMs = elapsedMs(acceptedAt)
+@@ -183,8 +205,27 @@ class SyncGitCompareAcceptanceTest {
+                             elapsedMs(acceptedAt)
+                         }
+                     }
+-                    val result = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+-                    val totalMs = elapsedMs(acceptedAt)
++                    var totalMs = -1L
++                    val result = try {
++                        runtime.coordinator.synchronize(SyncTrigger.MANUAL).also { totalMs = elapsedMs(acceptedAt) }
++                    } finally {
++                        recording?.let {
++                            it.stop()
++                            it.dump(output.resolve("runtime.jfr"))
++                            it.close()
++                        }
++                    }
++                    val phaseMetrics = metrics.snapshot()
++                    val stamps = phaseStamps.toList()
++                    val baselinePageEnds = stamps.filter { it.first == "baseline.process" }
++                        .map { TimeUnit.NANOSECONDS.toMillis(it.second - acceptedAt) }
++                    val firstProjector = stamps.firstOrNull { it.first == "projector.project" }
++                    val firstProjectorStartMs = firstProjector?.let {
++                        TimeUnit.NANOSECONDS.toMillis(it.second - it.third - acceptedAt)
++                    }
++                    val firstProjectorEndMs = firstProjector?.let {
++                        TimeUnit.NANOSECONDS.toMillis(it.second - acceptedAt)
++                    }
+                     assertEquals(SyncRunStatus.SUCCESS, result.status, result.toString())
+                     assertEquals(expectedCount + expectedReading, result.uploaded)
+                     val runtimeRequests = setup.git.server.requestCount - requestsBefore
+@@ -222,6 +263,59 @@ class SyncGitCompareAcceptanceTest {
+                             )
+                         }
+                     }
++                    if (System.getenv("SYNC_COMPARE_SKIP_REPLAY") == "1") {
++                        val summary = buildJsonObject {
++                            put("inputRecords", records.size)
++                            put("inputChapters", chapterInputs.size)
++                            put("inputReadingEntries", expectedReading)
++                            put("events", result.uploaded)
++                            put("batches", artifacts.size)
++                            put("populateMillisExcluded", populateMs)
++                            put("freezeMillisSinceAccepted", freezeMs)
++                            put("importGeneratedMillisSinceAccepted", importMs)
++                            put("firstConfirmedMillisSinceAccepted", firstMs)
++                            put("allConfirmedMillisSinceAccepted", totalMs)
++                            put(
++                                "baselineProcessEndMillisSinceAccepted",
++                                buildJsonArray {
++                                    baselinePageEnds.forEach { add(it) }
++                                },
++                            )
++                            put("firstProjectorStartMillisSinceAccepted", firstProjectorStartMs ?: -1L)
++                            put("firstProjectorEndMillisSinceAccepted", firstProjectorEndMs ?: -1L)
++                            put("runtimeJfrRecorded", recording != null)
++                            put("runtimeHttpRequests", runtimeRequests)
++                            put("runtimeRequestBodyBytes", runtimeRequestBytes)
++                            put("runtimeResponseBodyBytes", runtimeResponseBytes)
++                            put("runtimeRefUpdates", runtimeRefs)
++                            put("initialTreeOid", initialTreeOid)
++                            put("finalTreeOid", finalTreeOid)
++                            put("frozenReplaySkipped", true)
++                            put("artifacts", artifactStats)
++                            put(
++                                "phaseNanos",
++                                buildJsonObject {
++                                    phaseMetrics.phaseNanos.toSortedMap().forEach { (phase, nanos) ->
++                                        put(phase, nanos)
++                                    }
++                                },
++                            )
++                            put(
++                                "phaseCalls",
++                                buildJsonObject {
++                                    phaseMetrics.phaseCalls.toSortedMap().forEach { (phase, calls) ->
++                                        put(phase, calls)
++                                    }
++                                },
++                            )
++                        }
++                        Files.writeString(output.resolve("summary.json"), summary.toString(), StandardCharsets.UTF_8)
++                        println(
++                            "SYNC_GIT_COMPARE_LOCAL records=${records.size} events=${result.uploaded} " +
++                                "runtimeMs=$totalMs output=$output",
++                        )
++                        return@use
++                    }
+                     setup.git.resetRef(setup.repository.branch, initialHead)
+                     val replay = GitHubSyncTransport(
+                         setup.client,
+@@ -267,6 +361,15 @@ class SyncGitCompareAcceptanceTest {
+                         put("importGeneratedMillisSinceAccepted", importMs)
+                         put("firstConfirmedMillisSinceAccepted", firstMs)
+                         put("allConfirmedMillisSinceAccepted", totalMs)
++                        put(
++                            "baselineProcessEndMillisSinceAccepted",
++                            buildJsonArray {
++                                baselinePageEnds.forEach { add(it) }
++                            },
++                        )
++                        put("firstProjectorStartMillisSinceAccepted", firstProjectorStartMs ?: -1L)
++                        put("firstProjectorEndMillisSinceAccepted", firstProjectorEndMs ?: -1L)
++                        put("runtimeJfrRecorded", recording != null)
+                         put("runtimeHttpRequests", runtimeRequests)
+                         put("runtimeRequestBodyBytes", runtimeRequestBytes)
+                         put("runtimeResponseBodyBytes", runtimeResponseBytes)
+@@ -281,12 +384,29 @@ class SyncGitCompareAcceptanceTest {
+                         put("finalHeadLength", finalHead.length)
+                         put("initialTreeOid", initialTreeOid)
+                         put("finalTreeOid", finalTreeOid)
++                        put(
++                            "phaseNanos",
++                            buildJsonObject {
++                                phaseMetrics.phaseNanos.toSortedMap().forEach { (phase, nanos) ->
++                                    put(phase, nanos)
++                                }
++                            },
++                        )
++                        put(
++                            "phaseCalls",
++                            buildJsonObject {
++                                phaseMetrics.phaseCalls.toSortedMap().forEach { (phase, calls) ->
++                                    put(phase, calls)
++                                }
++                            },
++                        )
+                         put("artifacts", artifactStats)
+                         put("frozenReplayBatches", buildJsonArray { replayBatchStats.forEach(::add) })
+                     }
+                     Files.writeString(output.resolve("summary.json"), summary.toString(), StandardCharsets.UTF_8)
+                     println(
+-                        "SYNC_GIT_COMPARE records=${records.size} events=${result.uploaded} batches=${artifacts.size} runtimeMs=$totalMs replayMs=$replayMs output=$output",
++                        "SYNC_GIT_COMPARE records=${records.size} events=${result.uploaded} " +
++                            "batches=${artifacts.size} runtimeMs=$totalMs replayMs=$replayMs output=$output",
+                     )
+                 } finally {
+                     runtime.stopPanel()
+diff --git a/data/src/jvmTest/kotlin/mihon/data/sync/SyncImportProgressResearchTest.kt b/data/src/jvmTest/kotlin/mihon/data/sync/SyncImportProgressResearchTest.kt
+new file mode 100644
+index 0000000000..2cf54b0854
+--- /dev/null
++++ b/data/src/jvmTest/kotlin/mihon/data/sync/SyncImportProgressResearchTest.kt
+@@ -0,0 +1,188 @@
++package mihon.data.sync
++
++import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
++import kotlinx.coroutines.CancellationException
++import kotlinx.coroutines.runBlocking
++import kotlinx.coroutines.withTimeout
++import mihon.data.sync.runtime.SyncDatabaseExchange
++import mihon.data.sync.runtime.SyncProgressReporter
++import mihon.data.sync.runtime.SyncRunLogEntry
++import mihon.data.sync.runtime.SyncRunLogStatus
++import mihon.data.sync.runtime.SyncRunPhase
++import mihon.data.sync.runtime.SyncRunState
++import mihon.data.sync.runtime.SyncRunStore
++import mihon.data.sync.transport.GitHubSyncTransport
++import mihon.domain.sync.runtime.SyncRunStatus
++import mihon.domain.sync.runtime.SyncTrigger
++import org.junit.jupiter.api.Assertions.assertEquals
++import org.junit.jupiter.api.Assertions.assertTrue
++import org.junit.jupiter.api.Test
++import org.junit.jupiter.api.Timeout
++import tachiyomi.data.Database
++import tachiyomi.data.DateColumnAdapter
++import tachiyomi.data.History
++import tachiyomi.data.JvmDatabaseHandler
++import tachiyomi.data.Mangas
++import tachiyomi.data.StringListColumnAdapter
++import tachiyomi.data.UpdateStrategyColumnAdapter
++import tachiyomi.domain.manga.model.Manga
++import java.nio.file.Files
++import java.util.Properties
++import java.util.concurrent.TimeUnit
++
++/** Temporary research contract: real file SQL, exchange, run-store progress and Git fixture. */
++@Timeout(value = 2, unit = TimeUnit.MINUTES)
++class SyncImportProgressResearchTest {
++    @Test
++    fun `multi page import records only one active and one terminal completion`() = runBlocking {
++        withCase(cancelSecondPage = false) { case ->
++            assertEquals(SyncRunStatus.SUCCESS, case.status)
++            assertEquals(0, case.remainingEntries)
++            assertEquals(1, case.progress.importingPhases)
++            assertEquals(1, case.progress.activeLogs)
++            assertEquals(1, case.progress.completedLogs)
++            assertEquals(1, case.durableLogs.count { it.status == SyncRunLogStatus.COMPLETED })
++            assertEquals(0, case.durableLogs.count { it.status == SyncRunLogStatus.ACTIVE })
++        }
++    }
++
++    @Test
++    fun `cancelled import does not report completion for unfinished pages`() = runBlocking {
++        withCase(cancelSecondPage = true) { case ->
++            assertEquals(51, case.remainingEntries)
++            assertEquals(1, case.progress.importingPhases)
++            assertEquals(1, case.progress.activeLogs)
++            assertEquals(0, case.progress.completedLogs)
++            assertEquals(0, case.durableLogs.count { it.status == SyncRunLogStatus.COMPLETED })
++            assertEquals(1, case.durableLogs.count { it.status == SyncRunLogStatus.ACTIVE })
++        }
++    }
++
++    private suspend fun withCase(cancelSecondPage: Boolean, assertCase: suspend (CaseResult) -> Unit) {
++        val dbFile = Files.createTempFile("mihon-import-progress-research-", ".db")
++        val driver = JdbcSqliteDriver(
++            "jdbc:sqlite:$dbFile",
++            Properties().apply { setProperty("foreign_keys", "true") },
++        )
++        Database.Schema.create(driver)
++        val database = Database(
++            driver,
++            History.Adapter(DateColumnAdapter),
++            Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
++        )
++        val storage = SyncRuntimeStorageContract.Storage(driver, JvmDatabaseHandler(database, driver))
++        try {
++            storage.manga.insertNetworkManga(
++                (0 until 101).map {
++                    Manga.create().copy(source = 1, url = "/progress/$it", title = "entry $it", favorite = true)
++                },
++            )
++            SyncOnboardingFixture(storage).use { setup ->
++                val material = setup.existing("")
++                val importId = storage.connect("actor", setup.repository)
++                val store = SyncRunStore(storage.handler)
++                val run = store.start("space", 1, SyncTrigger.MANUAL)
++                assertTrue(store.claim(run.runId, "research-owner", 1))
++                val progress = CountingProgress(store.reporter(run.runId, "research-owner"))
++                val transport = GitHubSyncTransport(
++                    setup.client,
++                    { "synthetic-token" },
++                    setup.git.baseUrl,
++                    spaceMaterial = material,
++                )
++                var importChecks = 0
++                val exchange = SyncDatabaseExchange(
++                    storage.handler,
++                    storage.baseline,
++                    storage.projector,
++                    transport,
++                    spaceMaterial = material,
++                    progress = progress,
++                    allowImport = {
++                        importChecks++
++                        if (cancelSecondPage && importChecks == 2) {
++                            throw CancellationException("research cancellation after first page")
++                        }
++                        true
++                    },
++                )
++                val status = if (cancelSecondPage) {
++                    val failed = runCatching { withTimeout(30_000) { exchange.exchange("space", 1, setup.repository) } }
++                    assertTrue(failed.exceptionOrNull() is CancellationException, failed.toString())
++                    null
++                } else {
++                    withTimeout(30_000) { exchange.exchange("space", 1, setup.repository) }.status
++                }
++                val logs = store.logs(run.runId, 500).filter { it.key == importId }
++                val remainingEntries = storage.handler.await {
++                    sync_importQueries.getImportEntries(importId, 1000).executeAsList().size
++                }
++                println(
++                    "IMPORT_PROGRESS_RESEARCH cancel=$cancelSecondPage pages=${progress.importingPhases} " +
++                        "active=${progress.activeLogs} completed=${progress.completedLogs} " +
++                        "remaining=$remainingEntries phaseMillis=${progress.phaseNanos / 1_000_000} " +
++                        "logMillis=${progress.logNanos / 1_000_000}",
++                )
++                assertCase(CaseResult(status, progress, logs, remainingEntries))
++            }
++        } finally {
++            storage.close()
++            runCatching { Files.deleteIfExists(dbFile) }.onFailure { dbFile.toFile().deleteOnExit() }
++        }
++    }
++
++    private data class CaseResult(
++        val status: SyncRunStatus?,
++        val progress: CountingProgress,
++        val durableLogs: List<mihon.data.sync.runtime.SyncRunLog>,
++        val remainingEntries: Int,
++    )
++
++    private class CountingProgress(
++        private val delegate: SyncProgressReporter,
++    ) : SyncProgressReporter {
++        var importingPhases = 0
++        var activeLogs = 0
++        var completedLogs = 0
++        var phaseNanos = 0L
++        var logNanos = 0L
++
++        override suspend fun phase(
++            phase: SyncRunPhase,
++            processed: Long,
++            total: Long,
++            completed: Long,
++            skipped: Long,
++            failed: Long,
++            state: SyncRunState,
++            reason: String?,
++        ) {
++            if (phase == SyncRunPhase.IMPORTING) {
++                importingPhases++
++            }
++            val started = System.nanoTime()
++            try {
++                delegate.phase(phase, processed, total, completed, skipped, failed, state, reason)
++            } finally {
++                if (phase == SyncRunPhase.IMPORTING) phaseNanos += System.nanoTime() - started
++            }
++        }
++
++        override suspend fun log(key: String, title: String, detail: String, status: SyncRunLogStatus) {
++            if (title == "首次合并") {
++                if (status == SyncRunLogStatus.ACTIVE) activeLogs++
++                if (status == SyncRunLogStatus.COMPLETED) completedLogs++
++            }
++            val started = System.nanoTime()
++            try {
++                delegate.log(key, title, detail, status)
++            } finally {
++                if (title == "首次合并") logNanos += System.nanoTime() - started
++            }
++        }
++
++        override suspend fun logBatch(entries: List<SyncRunLogEntry>) = delegate.logBatch(entries)
++
++        override suspend fun totals(uploaded: Long, downloaded: Long) = delegate.totals(uploaded, downloaded)
++    }
++}

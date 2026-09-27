@@ -1,0 +1,12 @@
+-- The published sync schema family did not include device-local presentation exclusions.
+CREATE TABLE IF NOT EXISTS author_archive_presentation_exclusions(
+    creator_id INTEGER NOT NULL,
+    source_work_id INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY(creator_id, source_work_id),
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE,
+    FOREIGN KEY(source_work_id) REFERENCES author_archive_source_works(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_author_archive_presentation_exclusions_source_work
+ON author_archive_presentation_exclusions(source_work_id);

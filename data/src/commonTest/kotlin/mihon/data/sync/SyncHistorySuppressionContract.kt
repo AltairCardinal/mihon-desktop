@@ -84,11 +84,23 @@ abstract class SyncHistorySuppressionContract {
         open().use { s ->
             s.connect(repository)
             val existing = s.localChapter("/manga", "/existing")
-            s.sources.clear()
-            assertTrue(s.inbox.ingest(history(1)).accepted)
+            assertTrue(s.inbox.ingest(history(1).copy(objects = emptyList())).accepted)
             s.projectAll()
+            assertEquals(
+                null,
+                s.handler.await {
+                    sync_projectionQueries.getChapterByIdentity("/chapter", "/manga", 42).executeAsOneOrNull()
+                },
+            )
             s.history.resetHistoryByMangaId(existing.mangaId)
-            s.sources += 42L
+            s.handler.await {
+                sync_inboxQueries.insertDescription(
+                    "space",
+                    1,
+                    chapterKey.stableKey,
+                    kotlinx.serialization.json.Json.encodeToString(SyncObjectDescriptor(chapterKey, "章节")),
+                )
+            }
             s.projector.retryUnavailable("space", 1)
             s.projectAll()
             assertEquals(
@@ -141,14 +153,26 @@ abstract class SyncHistorySuppressionContract {
     }
 
     @Test
-    fun `all clear hides received missing source history before any business row exists`() = runBlocking {
+    fun `all clear hides received missing description history before any business row exists`() = runBlocking {
         open().use { s ->
             s.connect(repository)
-            s.sources.clear()
-            assertTrue(s.inbox.ingest(history(1)).accepted)
+            assertTrue(s.inbox.ingest(history(1).copy(objects = emptyList())).accepted)
             s.projectAll()
+            assertEquals(
+                null,
+                s.handler.await { mangasQueries.getMangaByUrlAndSource("/manga", 42).executeAsOneOrNull() },
+            )
             assertTrue(s.history.deleteAllHistory())
-            s.sources += 42L
+            s.handler.await {
+                listOf(mangaKey to "漫画", chapterKey to "章节").forEach { (key, title) ->
+                    sync_inboxQueries.insertDescription(
+                        "space",
+                        1,
+                        key.stableKey,
+                        kotlinx.serialization.json.Json.encodeToString(SyncObjectDescriptor(key, title)),
+                    )
+                }
+            }
             s.projector.retryUnavailable("space", 1)
             s.projectAll()
             assertEquals(null, s.history.getLastHistory())

@@ -1,6 +1,7 @@
 package mihon.data.sync
 
 import app.cash.sqldelight.db.SqlDriver
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -45,6 +46,7 @@ import tachiyomi.data.creator.CreatorArchiveLegacyBootstrap
 import tachiyomi.data.creator.CreatorArchiveLegacyBridge
 import tachiyomi.data.creator.CreatorRepositoryImpl
 import tachiyomi.data.manga.MangaRepositoryImpl
+import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import java.io.File
@@ -257,18 +259,147 @@ abstract class SyncInboxStorageContract {
     }
 
     @Test
-    fun `unavailable source remains in inbox and retries without upload echo`() = runBlocking {
+    fun `unavailable source applies complete remote favorite without upload echo`() = runBlocking {
         open().use { s ->
             s.connect(repository)
             s.sources.clear()
             s.inbox.ingest(membership(1, SyncEffectKind.ADD))
             s.projectAll()
-            assertEquals(null, s.writer.localMembership(manga))
+            assertEquals(true, s.writer.localMembership(manga))
+            assertTrue(s.inbox.canConfirmReceivedBatch("space", 1, "device-a-1"))
             assertEquals(1, s.inbox.status("space", 1).receivedBatches)
-            s.sources += 42L
+            assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
+        }
+    }
+
+    @Test
+    fun `legacy source result retries without source and becomes confirmable`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            s.sources.clear()
+            assertTrue(s.inbox.ingest(membership(1, SyncEffectKind.ADD)).accepted)
+            s.driver.execute(
+                null,
+                "UPDATE sync_field_state SET status='SOURCE', dirty=0 WHERE space_id='space' AND generation=1",
+                0,
+            )
+            assertFalse(s.inbox.canConfirmReceivedBatch("space", 1, "device-a-1"))
             s.projector.retryUnavailable("space", 1)
             s.projectAll()
             assertEquals(true, s.writer.localMembership(manga))
+            assertTrue(s.inbox.canConfirmReceivedBatch("space", 1, "device-a-1"))
+            val statuses = s.handler.await {
+                sync_inboxQueries.getFieldState("space", 1, manga.stableKey, "FAVORITE").executeAsOneOrNull()
+            }
+            assertEquals("APPLIED", statuses?.status)
+            assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
+        }
+    }
+
+    @Test
+    fun `batch projection isolates missing descriptor and retries it independently`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            val good = manga.copy(originalUrl = "/good")
+            val unavailable = manga.copy(sourceId = "43", originalUrl = "/missing-description")
+            assertTrue(s.inbox.ingest(membership(1, SyncEffectKind.ADD, key = good)).accepted)
+            assertTrue(
+                s.inbox.ingest(
+                    membership(2, SyncEffectKind.ADD, key = unavailable).copy(objects = emptyList()),
+                ).accepted,
+            )
+            s.projectAll()
+            assertEquals(true, s.writer.localMembership(good))
+            assertEquals(null, s.writer.localMembership(unavailable))
+            s.handler.await {
+                sync_inboxQueries.insertDescription(
+                    "space",
+                    1,
+                    unavailable.stableKey,
+                    kotlinx.serialization.json.Json.encodeToString(SyncObjectDescriptor(unavailable, "补齐描述")),
+                )
+            }
+            s.projector.retryUnavailable("space", 1)
+            s.projectAll()
+            assertEquals(true, s.writer.localMembership(unavailable))
+        }
+    }
+
+    @Test
+    fun `cancelled page rolls back all fields and preserves author migration readiness`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            val first = manga.copy(originalUrl = "/first")
+            val second = manga.copy(originalUrl = "/second")
+            assertTrue(s.inbox.ingest(membership(1, SyncEffectKind.ADD, key = first)).accepted)
+            assertTrue(s.inbox.ingest(membership(2, SyncEffectKind.ADD, key = second)).accepted)
+            var indexed = 0
+            val cancellingWriter = SyncRemoteProjectionWriter(
+                s.handler,
+                object : tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter by s.creators {
+                    override suspend fun indexLibraryMangaBatch(
+                        entries: List<tachiyomi.domain.creator.model.CreatorLibraryIndexEntry>,
+                    ) {
+                        if (entries.isNotEmpty() && ++indexed == 2) {
+                            throw CancellationException("cancel projection page")
+                        }
+                        s.creators.indexLibraryMangaBatch(entries)
+                    }
+                },
+                s.creators,
+                s.bootstrap,
+                s.sources::contains,
+            )
+            val cancellingProjector = SyncInboxProjector(s.handler, cancellingWriter)
+            try {
+                cancellingProjector.project("space", 1)
+                error("projection should have been cancelled")
+            } catch (_: CancellationException) {
+                // Both fields remain dirty; the next run must be able to apply them.
+            }
+            assertEquals(null, s.writer.localMembership(first))
+            assertEquals(null, s.writer.localMembership(second))
+            assertEquals(
+                "COMPLETED",
+                s.handler.await {
+                    author_archiveQueries.getArchiveIdentityMigrationState("global-exact-name-v1")
+                        .executeAsOneOrNull()
+                },
+            )
+            s.projectAll()
+            assertEquals(true, s.writer.localMembership(first))
+            assertEquals(true, s.writer.localMembership(second))
+        }
+    }
+
+    @Test
+    fun `unexpected field write failure replays once and preserves the received inbox`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            val first = manga.copy(originalUrl = "/first")
+            val second = manga.copy(originalUrl = "/second")
+            assertTrue(s.inbox.ingest(membership(1, SyncEffectKind.ADD, key = first)).accepted)
+            assertTrue(s.inbox.ingest(membership(2, SyncEffectKind.ADD, key = second)).accepted)
+            s.driver.execute(
+                null,
+                """CREATE TRIGGER block_second_sync_favorite BEFORE UPDATE OF favorite ON mangas
+                    WHEN NEW.url = '/second' BEGIN SELECT RAISE(ABORT, 'blocked second favorite'); END""",
+                0,
+            )
+            val failure = try {
+                s.projector.project("space", 1)
+                null
+            } catch (failure: Exception) {
+                failure
+            }
+            assertTrue(failure != null && failure !is CancellationException)
+            assertEquals(true, s.writer.localMembership(first))
+            assertEquals(null, s.writer.localMembership(second))
+            assertEquals(2, s.inbox.status("space", 1).receivedBatches)
+            assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
+            s.driver.execute(null, "DROP TRIGGER block_second_sync_favorite", 0)
+            s.projectAll()
+            assertEquals(true, s.writer.localMembership(second))
             assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
         }
     }
@@ -394,11 +525,12 @@ abstract class SyncInboxStorageContract {
                 s.inbox.ingest(membership(i * 2L + 1, SyncEffectKind.REMOVE, add.events.single(), key))
                 s.projectAll()
             }
-            val first = s.projector.pending("space", 1).first()
+            val items = s.projector.pending("space", 1)
+            val failed = items.last()
             s.driver.execute(
                 null,
                 "CREATE TRIGGER fail_decision BEFORE INSERT ON sync_decisions " +
-                    "WHEN NEW.binding = '${first.binding.replace("'", "''")}' " +
+                    "WHEN NEW.binding = '${failed.binding.replace("'", "''")}' " +
                     "BEGIN SELECT RAISE(ABORT, 'synthetic decision failure'); END",
                 0,
             )
@@ -406,12 +538,65 @@ abstract class SyncInboxStorageContract {
             val progress = s.projector.processBulk(job)
             assertEquals(1L, progress.outcomes["FAILED"])
             assertEquals(1L, progress.outcomes["APPLIED"])
-            assertEquals(true, s.writer.localMembership(first.objectKey))
+            assertEquals(false, s.writer.localMembership(items.first().objectKey))
+            assertEquals(true, s.writer.localMembership(failed.objectKey))
             assertEquals(1L, s.inbox.status("space", 1).pendingDecisions)
             s.driver.execute(null, "DROP TRIGGER fail_decision", 0)
             val retry = s.projector.startBulk("space", 1, SyncCancellationDecision.CONFIRM)
             assertEquals(1L, s.projector.processBulk(retry).outcomes["APPLIED"])
-            assertEquals(false, s.writer.localMembership(first.objectKey))
+            assertEquals(false, s.writer.localMembership(failed.objectKey))
+        }
+    }
+
+    @Test
+    fun `cancelled bulk page rolls back earlier decisions and can resume`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            s.sources += 43L
+            val first = manga.copy(originalUrl = "/bulk-cancel-first")
+            val second = manga.copy(sourceId = "43", originalUrl = "/bulk-cancel-second")
+            listOf(first, second).forEachIndexed { index, key ->
+                val add = membership(index * 2L + 1, SyncEffectKind.ADD, key = key)
+                s.inbox.ingest(add)
+                s.projectAll()
+                s.inbox.ingest(membership(index * 2L + 2, SyncEffectKind.REMOVE, add.events.single(), key))
+                s.projectAll()
+            }
+            val job = s.projector.startBulk("space", 1, SyncCancellationDecision.CONFIRM)
+            var removedIndexes = 0
+            val cancellingIndex = object : CreatorLibraryIndexWriter by s.creators {
+                override suspend fun removeLibraryMangaIndex(mangaId: Long) {
+                    if (++removedIndexes == 2) throw CancellationException("cancel second bulk decision")
+                    s.creators.removeLibraryMangaIndex(mangaId)
+                }
+            }
+            val cancellingWriter = SyncRemoteProjectionWriter(
+                s.handler,
+                cancellingIndex,
+                s.creators,
+                s.bootstrap,
+                s.sources::contains,
+            )
+            try {
+                SyncInboxProjector(s.handler, cancellingWriter).processBulk(job)
+                error("bulk page should have been cancelled")
+            } catch (_: CancellationException) {
+                // The whole in-flight page is rolled back before resuming.
+            }
+            assertEquals(2L, s.projector.bulkProgress(job).queued)
+            assertEquals(2L, s.inbox.status("space", 1).pendingDecisions)
+            assertEquals(true, s.writer.localMembership(first))
+            assertEquals(true, s.writer.localMembership(second))
+            assertEquals(
+                "COMPLETED",
+                s.handler.await {
+                    author_archiveQueries.getArchiveIdentityMigrationState("global-exact-name-v1")
+                        .executeAsOneOrNull()
+                },
+            )
+            assertEquals(2L, s.projector.processBulk(job).outcomes["APPLIED"])
+            assertEquals(false, s.writer.localMembership(first))
+            assertEquals(false, s.writer.localMembership(second))
         }
     }
 
@@ -666,6 +851,7 @@ abstract class SyncInboxStorageContract {
             ).forEach { s.driver.execute(null, "DROP TABLE $it", 0) }
             s.driver.execute(null, "DROP INDEX sync_event_key_index", 0)
             s.driver.execute(null, "DROP INDEX sync_unindexed_events", 0)
+            s.driver.execute(null, "DROP INDEX sync_events_by_batch_confirmation", 0)
             s.driver.execute(null, "ALTER TABLE sync_events DROP COLUMN event_key", 0)
             s.driver.execute(null, "ALTER TABLE sync_events DROP COLUMN sync_indexed", 0)
             s.driver.execute(null, "PRAGMA user_version = 22", 0)

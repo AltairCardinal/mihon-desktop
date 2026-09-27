@@ -1,0 +1,71 @@
+diff --git a/data/src/commonTest/kotlin/mihon/data/sync/SyncGitSafetyContractTest.kt b/data/src/commonTest/kotlin/mihon/data/sync/SyncGitSafetyContractTest.kt
+index 054aa5547b..2fa21396fb 100644
+--- a/data/src/commonTest/kotlin/mihon/data/sync/SyncGitSafetyContractTest.kt
++++ b/data/src/commonTest/kotlin/mihon/data/sync/SyncGitSafetyContractTest.kt
+@@ -950,6 +950,7 @@ class SyncGitSafetyContractTest {
+         var nextCreateBlobResponse: MockResponse? = null
+         var recursiveTreeRequests: Int = 0
+         var treeRequests: Int = 0
++        val recursiveTreePaths = mutableMapOf<String, String>()
+         private val treeRequestCounts = mutableMapOf<String, Int>()
+         private var delayedTreeResponse: Pair<String, Long>? = null
+         private var delayedTreeResponseStarted: CompletableDeferred<Unit>? = null
+@@ -1210,6 +1211,7 @@ class SyncGitSafetyContractTest {
+                 val tree = trees[id] ?: return error(404, "Tree not found")
+                 val recursive = url.queryParameter("recursive") != null
+                 if (recursive) recursiveTreeRequests++
++                if (recursive) recursiveTreePaths[id] = ""
+                 val directories = tree.keys.flatMap { file ->
+                     val parts = file.split('/')
+                     (1 until parts.size).map { count -> parts.take(count).joinToString("/") }
+@@ -1228,6 +1230,7 @@ class SyncGitSafetyContractTest {
+                                 val directorySha = subtrees.getOrPut(subtreeKey) {
+                                     storeTree(subtree)
+                                 }
++                                if (recursive) recursiveTreePaths[directorySha] = directory
+                                 add(
+                                     buildJsonObject {
+                                         put("path", directory)
+diff --git a/data/src/jvmTest/kotlin/mihon/data/sync/SyncScaleAcceptanceTest.kt b/data/src/jvmTest/kotlin/mihon/data/sync/SyncScaleAcceptanceTest.kt
+index fc16e2f265..b7e4cd70e8 100644
+--- a/data/src/jvmTest/kotlin/mihon/data/sync/SyncScaleAcceptanceTest.kt
++++ b/data/src/jvmTest/kotlin/mihon/data/sync/SyncScaleAcceptanceTest.kt
+@@ -430,11 +430,17 @@ class SyncScaleAcceptanceTest {
+                         val cold = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                         assertEquals(SyncRunStatus.SUCCESS, cold.status, cold.toString())
+                         assertEquals(100L, file.storage.eventCount())
++                        val coldTreePaths = setup.git.recursiveTreePaths.toMap()
+                         val delegate = setup.git.server.dispatcher
+                         val requestBytes = AtomicLong()
+                         val responseBytes = AtomicLong()
++                        val measuredPaths = java.util.concurrent.ConcurrentLinkedQueue<String>()
+                         setup.git.server.dispatcher = object : Dispatcher() {
+                             override fun dispatch(request: RecordedRequest): MockResponse {
++                                measuredPaths.add(
++                                    "${request.method} ${request.url.encodedPath}" +
++                                        (request.url.encodedQuery?.let { "?$it" } ?: ""),
++                                )
+                                 val response = delegate.dispatch(request)
+                                 val uploadBytes = request.body?.size?.toLong() ?: 0L
+                                 requestBytes.addAndGet(uploadBytes)
+@@ -459,6 +465,20 @@ class SyncScaleAcceptanceTest {
+                         }
+                         assertEquals(SyncRunStatus.SUCCESS, result.status, result.toString())
+                         assertEquals(1, result.uploaded)
++                        println("SYNC_H100_PATHS sample=${sample + 1} paths=${measuredPaths.joinToString("|")}")
++                        println(
++                            "SYNC_H100_COLD_TREE_GETS sample=${sample + 1} paths=" +
++                                measuredPaths.mapNotNull { path ->
++                                    coldTreePaths[path.substringAfterLast('/')]?.let { directory ->
++                                        "$directory:${path.substringAfterLast('/')}"
++                                    }
++                                }.joinToString("|"),
++                        )
++                        assertEquals(
++                            10,
++                            measuredPaths.count { it.startsWith("GET ") && "/git/trees/" in it },
++                            "verified cold tree direct children should avoid unchanged tree GETs",
++                        )
+                         println(
+                             "SYNC_SCALE " + buildJsonObject {
+                                 put("phase", "h100_wire_bytes_sample_${sample + 1}")

@@ -1,4 +1,4 @@
-﻿package mihon.desktop
+package mihon.desktop
 
 object AppVersion {
     const val STAGE = 11

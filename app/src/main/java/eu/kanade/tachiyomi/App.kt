@@ -53,6 +53,7 @@ import eu.kanade.tachiyomi.util.system.notify
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -74,6 +75,7 @@ import tachiyomi.presentation.widget.WidgetManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
+import java.io.File
 import java.security.Security
 
 class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factory {
@@ -93,12 +95,15 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
     private val basePreferences: BasePreferences by injectLazy()
     private val privacyPreferences: PrivacyPreferences by injectLazy()
     private val networkPreferences: NetworkPreferences by injectLazy()
+    private var syncForegroundResume: Job? = null
 
     private val disableIncognitoReceiver = DisableIncognitoReceiver()
 
     @SuppressLint("LaunchActivityFromNotification")
     override fun onCreate() {
         super<Application>.onCreate()
+        if (isErrorHandlerProcess(currentProcessName())) return
+
         patchInjekt()
         TelemetryConfig.init(applicationContext)
 
@@ -245,6 +250,9 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
     override fun onStart(owner: LifecycleOwner) {
         SecureActivityDelegate.onApplicationStart()
         owner.lifecycleScope.launch { Injekt.get<InstalledAppsPermissionController>().refresh() }
+        if (syncForegroundResume?.isActive != true) {
+            syncForegroundResume = Injekt.get<AndroidSyncScheduler>().resumeIfNeeded(owner.lifecycleScope)
+        }
     }
 
     override fun onStop(owner: LifecycleOwner) {
@@ -265,6 +273,13 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         }
 
         return super.getPackageName()
+    }
+
+    private fun currentProcessName(): String? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) return getProcessName()
+        return runCatching {
+            File("/proc/${android.os.Process.myPid()}/cmdline").readText().trim('\u0000', '\n', ' ')
+        }.getOrNull()
     }
 
     private fun setupNotificationChannels() {
@@ -304,3 +319,6 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
 }
 
 private const val ACTION_DISABLE_INCOGNITO_MODE = "tachi.action.DISABLE_INCOGNITO_MODE"
+
+internal fun isErrorHandlerProcess(processName: String?): Boolean =
+    processName?.endsWith(":error_handler") == true

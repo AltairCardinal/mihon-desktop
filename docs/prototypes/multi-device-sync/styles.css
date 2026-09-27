@@ -234,6 +234,26 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .ix-page progress, .ix-progress progress { width: 100%; height: 6px; accent-color: var(--primary); border: 0; border-radius: 4px; overflow: hidden; }
 .ix-page progress::-webkit-progress-bar, .ix-progress progress::-webkit-progress-bar { background: var(--outline-variant); }
 .ix-page progress::-webkit-progress-value, .ix-progress progress::-webkit-progress-value { background: var(--primary); border-radius: 4px; }
+.sync-recovery-state { margin: 0 0 16px; padding: 12px 14px; border-radius: 10px; color: var(--on-secondary-container); background: var(--secondary-container); font-size: 13px; line-height: 1.6; }
+.sync-import-progress { display: grid; gap: 12px; padding: 16px; margin: 16px 0; border: 1px solid var(--outline-variant); border-radius: 12px; background: color-mix(in srgb, var(--surface) 72%, transparent); }
+.sync-import-progress-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sync-import-progress-heading strong { font-size: 14px; font-weight: 600; }
+.sync-import-progress-heading span { color: var(--outline); font-size: 12px; white-space: nowrap; }
+.sync-item-log { margin: 18px 0 6px; border-top: 1px solid var(--outline-variant); }
+.sync-item-log-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0 8px; }
+.sync-item-log-heading strong { font-size: 13px; }
+.sync-item-log-heading span { color: var(--outline); font-size: 11px; }
+.sync-item-log ol { display: grid; gap: 0; padding: 0; margin: 0; list-style: none; }
+.sync-log-item { display: flex; align-items: center; gap: 9px; min-height: 52px; border-bottom: 1px solid color-mix(in srgb, var(--outline-variant) 42%, transparent); }
+.sync-log-status { width: 25px; height: 25px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; color: var(--outline); background: var(--surface-variant); }
+.sync-log-status .MihonIcon { width: 14px; height: 14px; }
+.sync-log-item.done .sync-log-status { color: var(--success); background: color-mix(in srgb, var(--success) 13%, var(--surface)); }
+.sync-log-item.active .sync-log-status { color: var(--primary); background: var(--secondary-container); animation: syncPulse 1s infinite; }
+.sync-log-item.pending .sync-log-status { color: var(--outline); }
+.sync-log-item > div { min-width: 0; flex: 1; display: grid; gap: 3px; }
+.sync-log-item strong { overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.sync-log-item small { overflow: hidden; color: var(--outline); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.sync-log-item em { flex: 0 0 auto; color: var(--outline); font-size: 10px; font-style: normal; }
 .ix-pending .m-button { min-height: 44px; flex-shrink: 0; }
 .ix-pending .row-copy small { white-space: normal; line-height: 1.5; }
 .ix-pending .row-leading { flex-shrink: 0; }

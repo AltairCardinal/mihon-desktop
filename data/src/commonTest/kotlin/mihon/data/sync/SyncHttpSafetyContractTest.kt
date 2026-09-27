@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.runTest
+import mihon.data.sync.http.InMemorySyncMetrics
 import mihon.data.sync.http.SyncHttpClient
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -47,6 +48,22 @@ class SyncHttpSafetyContractTest {
                 assertEquals(200, response.code)
                 assertEquals(body, response.body.decodeToString())
             }
+        }
+    }
+
+    @Test
+    fun `sync HTTP metrics count calls bytes and failures without payload details`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse(body = "payload"))
+            server.enqueue(MockResponse(code = 500, body = "private diagnostic"))
+            val metrics = InMemorySyncMetrics()
+            val http = SyncHttpClient(OkHttpClient(), setOf(server.url("/").host), metrics = metrics)
+            http.execute(http.request(server.url("/ok").toString(), "GET"))
+            http.execute(http.request(server.url("/error").toString(), "GET"))
+            assertEquals(2L, metrics.snapshot().httpCalls)
+            assertEquals(25L, metrics.snapshot().httpBytes)
+            assertEquals(1L, metrics.snapshot().httpFailures)
         }
     }
 

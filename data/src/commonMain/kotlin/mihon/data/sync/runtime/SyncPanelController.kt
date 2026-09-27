@@ -31,6 +31,7 @@ import mihon.data.sync.crypto.SyncSpaceCrypto
 import mihon.data.sync.inbox.SyncBulkProgress
 import mihon.domain.sync.SyncField
 import mihon.domain.sync.auth.GitHubDeviceAuthResult
+import mihon.domain.sync.auth.GitHubDeviceCode
 import mihon.domain.sync.crypto.SyncSpaceMaterial
 import mihon.domain.sync.crypto.SyncSpaceProtection
 import mihon.domain.sync.runtime.SyncRunProblem
@@ -51,10 +52,12 @@ class SyncPanelController(
     override val state: StateFlow<SyncPanelState> = mutableState
     private val commands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private val refreshQueued = AtomicBoolean(false)
+    private val deviceBrowserOpened = AtomicBoolean(false)
     private var references = linkedMapOf<Long, String>()
     private var selectedBindings = emptyMap<Long, String>()
     private var anchor: Long? = null
     private var loadedCount = 100
+    private var logLimit = 5L
     private var bulkJob: Job? = null
     private var authJob: Job? = null
     private var repositoryJob: Job? = null
@@ -122,6 +125,19 @@ class SyncPanelController(
             }
         }
         scope.launch {
+            runtime.liveProgress.collect { fact ->
+                mutableState.update { current ->
+                    if (current.visible && fact != null &&
+                        current.run?.runId?.let { fact.scope.startsWith("$it:") } == true
+                    ) {
+                        current.copy(progress = fact)
+                    } else {
+                        current
+                    }
+                }
+            }
+        }
+        scope.launch {
             val prefs = runtime.preferences
             merge(
                 prefs.startup.changes().map { Unit },
@@ -136,7 +152,8 @@ class SyncPanelController(
             state.map { it.visible }.distinctUntilChanged().collectLatest { visible ->
                 if (visible) {
                     while (true) {
-                        mutableState.update { it.copy(nowMillis = clock()) }
+                        val fact = state.value.run?.let { runtime.progressFor(it.runId) }
+                        mutableState.update { it.copy(nowMillis = clock(), progress = fact ?: it.progress) }
                         delay(1_000)
                     }
                 }
@@ -147,6 +164,13 @@ class SyncPanelController(
     override fun dispatch(action: SyncPanelAction) {
         enqueue { handle(action) }
     }
+
+    override fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean =
+        state.value.let { current ->
+            current.visible && current.page == SyncPanelPage.SETUP &&
+                current.setupStep == SyncSetupStep.SIGN_IN && current.deviceCode?.deviceCode == code.deviceCode &&
+                deviceBrowserOpened.compareAndSet(false, true)
+        }
 
     suspend fun stop() {
         lifetime.cancelAndJoin()
@@ -177,7 +201,7 @@ class SyncPanelController(
         }
     }
 
-    private suspend fun refresh() {
+    private suspend fun refresh(forceFailureLog: Boolean = false) {
         val connection = runtime.connection()
         if (connection?.unsupportedFormat == true) {
             mutableState.update {
@@ -214,8 +238,11 @@ class SyncPanelController(
             selectedBindings = emptyMap()
             anchor = null
             loadedCount = 100
+            logLimit = 5
         }
         var membership = 0L
+        var favorites = 0L
+        var follows = 0L
         var reading = 0L
         var imports = 0L
         references = linkedMapOf()
@@ -226,7 +253,18 @@ class SyncPanelController(
                     .executeAsList().forEach { references[it._id] = it.binding }
                 sync_journalQueries.getPendingCategoryCounts(connection.spaceId, connection.generation)
                     .executeAsList().forEach {
-                        if (it.category == "READING") reading += it.count else membership += it.count
+                        when (it.category) {
+                            "FAVORITE" -> {
+                                favorites += it.count
+                                membership += it.count
+                            }
+                            "FOLLOW" -> {
+                                follows += it.count
+                                membership += it.count
+                            }
+                            "READING" -> reading += it.count
+                            else -> membership += it.count
+                        }
                     }
                 imports = sync_importQueries.countPendingImports(connection.spaceId, connection.generation)
                     .executeAsOne()
@@ -256,11 +294,38 @@ class SyncPanelController(
                     ?.takeIf { it.space_id == connection?.spaceId && it.generation == connection.generation }
                     ?.let { runtime.projector.bulkProgress(id).toStatus(id, bulkJob?.isActive == true) }
             }
+        val run = connection?.let {
+            runtime.runStore.active(it.spaceId, it.generation)
+                ?: runtime.runStore.latest(it.spaceId, it.generation)?.takeIf { latest ->
+                    latest.state in setOf(
+                        SyncRunState.SUCCEEDED,
+                        SyncRunState.PARTIAL,
+                        SyncRunState.FAILED,
+                        SyncRunState.BLOCKED,
+                        SyncRunState.CANCELLED,
+                    )
+                }
+        }
+        val logs = run?.let { runtime.runStore.logs(it.runId, limit = logLimit) }.orEmpty()
+        val terminalSummary = run?.takeIf {
+            it.state in setOf(
+                SyncRunState.SUCCEEDED,
+                SyncRunState.PARTIAL,
+                SyncRunState.FAILED,
+                SyncRunState.BLOCKED,
+                SyncRunState.CANCELLED,
+            )
+        }?.let { runtime.runStore.terminalSummary(it.runId) }
+        val failureLog = run?.let { runtime.failureLogFor(it, forceFailureLog) }
+        val persistedProblem = run?.takeIf { it.state in setOf(SyncRunState.FAILED, SyncRunState.BLOCKED) }
+            ?.let(::persistedProblem)
         mutableState.update {
             it.copy(
                 loaded = true,
                 connection = connection,
                 queuedMembership = membership,
+                queuedFavorites = favorites,
+                queuedFollows = follows,
                 queuedReading = reading,
                 pendingTotal = references.size.toLong(),
                 pending = items,
@@ -277,15 +342,67 @@ class SyncPanelController(
                 importRemaining = imports,
                 importPaused = prefs.importPaused.get(),
                 records = runtime.records().asReversed(),
+                run = run,
+                terminalSummary = terminalSummary,
+                failureLog = failureLog,
+                progress = run?.let { runtime.progressFor(it.runId) ?: restoredProgress(it) },
+                logs = logs,
+                logsHasMore = run != null && logLimit < 500L && logs.size.toLong() == logLimit,
+                problem = persistedProblem ?: it.problem,
             )
         }
+    }
+
+    private fun restoredProgress(run: SyncRunSnapshot): SyncProgressFact {
+        val stage = when (run.phase) {
+            SyncRunPhase.CHECKING, SyncRunPhase.IMPORTING -> SyncProgressStage.PREPARING
+            SyncRunPhase.DOWNLOADING, SyncRunPhase.UPLOADING -> SyncProgressStage.TRANSFERRING
+            SyncRunPhase.MERGING, SyncRunPhase.CONFIRMING, SyncRunPhase.COMPLETE -> SyncProgressStage.CONFIRMING
+        }
+        val direction = if (run.phase in setOf(SyncRunPhase.DOWNLOADING, SyncRunPhase.MERGING) ||
+            (run.phase == SyncRunPhase.COMPLETE && run.uploaded == 0L)
+        ) {
+            SyncProgressDirection.DOWNLOAD
+        } else {
+            SyncProgressDirection.UPLOAD
+        }
+        val succeeded = run.state == SyncRunState.SUCCEEDED
+        val completed = if (succeeded && stage == SyncProgressStage.CONFIRMING) {
+            run.uploaded + run.downloaded
+        } else {
+            0L
+        }
+        return SyncProgressFact(
+            scope = "${run.runId}:restored",
+            stage = stage,
+            direction = direction,
+            completedItems = completed,
+            totalItems = if (succeeded) completed else null,
+            effectiveBytes = 0,
+            networkBytes = 0,
+            totalBytes = null,
+            elapsedSeconds = ((clock() - run.createdAt).coerceAtLeast(0) / 1_000),
+            hold = when (run.state) {
+                SyncRunState.PAUSED_USER -> SyncProgressHold.PAUSED
+                SyncRunState.WAITING_NETWORK -> SyncProgressHold.OFFLINE
+                SyncRunState.WAITING_RETRY, SyncRunState.WAITING_SYSTEM -> SyncProgressHold.WAITING
+                SyncRunState.SUCCEEDED, SyncRunState.PARTIAL, SyncRunState.FAILED,
+                SyncRunState.BLOCKED, SyncRunState.CANCELLED,
+                ->
+                    SyncProgressHold.ACTIVE
+                else -> SyncProgressHold.RECOVERING
+            },
+            stageEtaSeconds = null,
+            wholeEtaSeconds = null,
+            confirmedThisRun = run.confirmedItems.takeIf { it > 0L || run.downloaded == 0L || succeeded },
+        )
     }
 
     private suspend fun handle(action: SyncPanelAction) {
         when (action) {
             SyncPanelAction.Open -> {
                 mutableState.update { it.copy(visible = true, page = SyncPanelPage.MAIN, notice = null) }
-                refresh()
+                refresh(forceFailureLog = true)
             }
             SyncPanelAction.Close -> {
                 panelSession++
@@ -303,12 +420,35 @@ class SyncPanelController(
                 mutableState.update { it.copy(page = SyncPanelPage.MAIN) }
             }
             is SyncPanelAction.Navigate -> mutableState.update { it.copy(page = action.page) }
-            SyncPanelAction.Synchronize -> if (state.value.connection?.enabled == true) {
-                scope.launch { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
-            } else {
-                beginSetup()
+            SyncPanelAction.Synchronize -> if (state.value.run?.state != SyncRunState.PAUSED_USER) {
+                if (state.value.connection?.enabled == true) {
+                    scope.launch { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
+                } else {
+                    beginSetup()
+                }
             }
-            SyncPanelAction.CancelSync -> scope.launch { runtime.coordinator.cancelAndJoin() }
+            SyncPanelAction.RetrySync -> if (state.value.run?.state in
+                setOf(SyncRunState.FAILED, SyncRunState.PARTIAL)
+            ) {
+                mutableState.update { it.copy(problem = null) }
+                scope.launch {
+                    runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                    refresh()
+                }
+            }
+            SyncPanelAction.CancelSync -> scope.launch {
+                runtime.cancelSync()
+                refresh()
+            }
+            SyncPanelAction.PauseSync -> scope.launch {
+                runtime.pauseSync()
+                refresh()
+            }
+            SyncPanelAction.ResumeSync -> scope.launch {
+                val resumed = state.value.run?.let { runtime.runStore.resumeIfAllowed(it.runId) } == true
+                if (resumed) runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                refresh()
+            }
             SyncPanelAction.PauseImport -> {
                 runtime.preferences.importPaused.set(true)
                 refresh()
@@ -387,6 +527,10 @@ class SyncPanelController(
                 loadedCount += 100
                 refresh()
             }
+            SyncPanelAction.LoadMoreLogs -> {
+                logLimit = (logLimit + 20).coerceAtMost(500L)
+                refresh()
+            }
             SyncPanelAction.DismissNotice -> mutableState.update { it.copy(notice = null) }
             SyncPanelAction.BeginSetup -> beginSetup()
             SyncPanelAction.RetrySetup -> discover()
@@ -415,6 +559,15 @@ class SyncPanelController(
                 }
             }
         }
+    }
+
+    private fun persistedProblem(run: SyncRunSnapshot): SyncRunProblem = when (run.stopReason) {
+        "retry_exhausted",
+        "network",
+        -> SyncRunProblem.NETWORK
+        else -> run.stopReason?.let { reason ->
+            runCatching { SyncRunProblem.valueOf(reason) }.getOrNull()
+        } ?: SyncRunProblem.UNKNOWN
     }
 
     private suspend fun beginSetup() {
@@ -455,7 +608,10 @@ class SyncPanelController(
         authJob = null
         repositoryJob?.cancelAndJoin()
         repositoryJob = null
-        mutableState.update { it.copy(deviceCode = null, setupBusy = setupJob?.isActive == true) }
+        mutableState.update {
+            it.copy(deviceCode = null, setupBusy = setupJob?.isActive == true, authRequestStartedAtMillis = null)
+        }
+        deviceBrowserOpened.set(false)
     }
 
     private suspend fun authorize() {
@@ -466,8 +622,16 @@ class SyncPanelController(
         cancelAuthorization()
         val version = authVersion
         val previous = runtime.credentials.read()?.revision
+        val startedAt = clock()
         mutableState.update {
-            it.copy(page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.SIGN_IN, setupBusy = true, authFailure = null)
+            it.copy(
+                page = SyncPanelPage.SETUP,
+                setupStep = SyncSetupStep.SIGN_IN,
+                setupBusy = true,
+                authFailure = null,
+                authRequestStartedAtMillis = startedAt,
+                nowMillis = startedAt,
+            )
         }
         authJob = scope.launch {
             val result = runtime.authorization.authorize(SyncRuntime.CLIENT_ID) { code ->
@@ -483,12 +647,22 @@ class SyncPanelController(
                     is GitHubDeviceAuthResult.Authorized -> {
                         runtime.acceptAuthorization(previous, result.token)
                         mutableState.update {
-                            it.copy(deviceCode = null, setupStep = SyncSetupStep.DISCOVERING, setupBusy = false)
+                            it.copy(
+                                deviceCode = null,
+                                setupStep = SyncSetupStep.DISCOVERING,
+                                setupBusy = false,
+                                authRequestStartedAtMillis = null,
+                            )
                         }
                         discover()
                     }
                     is GitHubDeviceAuthResult.Failed -> mutableState.update {
-                        it.copy(deviceCode = null, setupBusy = false, authFailure = result.failure.reason)
+                        it.copy(
+                            deviceCode = null,
+                            setupBusy = false,
+                            authFailure = result.failure.reason,
+                            authRequestStartedAtMillis = null,
+                        )
                     }
                 }
             }

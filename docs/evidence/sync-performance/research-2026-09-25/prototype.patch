@@ -1,0 +1,104 @@
+diff --git a/data/src/commonMain/kotlin/mihon/data/sync/transport/GitHubGitDatabaseClient.kt b/data/src/commonMain/kotlin/mihon/data/sync/transport/GitHubGitDatabaseClient.kt
+index f6d9d6c3c7..544a38d5c2 100644
+--- a/data/src/commonMain/kotlin/mihon/data/sync/transport/GitHubGitDatabaseClient.kt
++++ b/data/src/commonMain/kotlin/mihon/data/sync/transport/GitHubGitDatabaseClient.kt
+@@ -1029,7 +1029,11 @@ class GitHubSyncTransport(
+     }
+ 
+     /** Recursive GitHub response is only a cold hint until every direct tree object hashes to its declared OID. */
+-    private suspend fun verifiedRecursiveTree(repository: SyncRepository, rootSha: String): SyncGitTree? {
++    private suspend fun verifiedRecursiveTree(
++        repository: SyncRepository,
++        rootSha: String,
++        validationScope: String,
++    ): SyncGitTree? {
+         val response = try {
+             call(repository, "GET", "/git/trees/$rootSha?recursive=1").requireSuccess()
+         } catch (failure: SyncHttpException) {
+@@ -1090,6 +1094,7 @@ class GitHubSyncTransport(
+         val directoryPaths = objects.values.filter { it.type == "tree" }.map { it.path }
+             .sortedByDescending { it.count { character -> character == '/' } } + ""
+         val resolved = mutableMapOf<String, String>()
++        val verifiedDirect = mutableMapOf<String, CachedRawTree>()
+         directoryPaths.forEach { directory ->
+             val direct = children[directory].orEmpty().map { entry ->
+                 val name = entry.path.substringAfterLast('/')
+@@ -1108,6 +1113,21 @@ class GitHubSyncTransport(
+             val declared = if (directory.isEmpty()) rootSha else requireNotNull(objects[directory]).sha
+             require(actual == declared) { "recursive sync tree object hash does not match declared id" }
+             resolved[directory] = actual
++            verifiedDirect[directory] = CachedRawTree(direct, truncated = false)
++        }
++        // Admit nothing until every descendant and the root have passed Git object hashing.
++        directoryPaths.forEach { directory ->
++            putVerifiedDirectTree(
++                SyncTreeCacheKey(
++                    apiOrigin,
++                    repository.fullName,
++                    repository.branch,
++                    resolved.getValue(directory),
++                    validationScope,
++                    connectionRevision,
++                ),
++                verifiedDirect.getValue(directory),
++            )
+         }
+         return SyncGitTree(rootSha, objects.values.filter { it.type == "blob" }, truncated = false)
+     }
+@@ -1119,7 +1139,7 @@ class GitHubSyncTransport(
+         allowVerifiedRecursive: Boolean = false,
+     ): SyncGitTree {
+         if (allowVerifiedRecursive) {
+-            verifiedRecursiveTree(repository, sha)?.let { return it }
++            verifiedRecursiveTree(repository, sha, validationScope)?.let { return it }
+         }
+         val activeTrees = mutableSetOf<String>()
+         val visitedTrees = linkedMapOf<SyncTreeCacheKey, SyncPersistentGitObjectKey?>()
+@@ -1209,10 +1229,32 @@ class GitHubSyncTransport(
+         return entry.copy(path = path)
+     }
+ 
+-    private suspend fun getCachedTree(key: SyncTreeCacheKey): CachedRawTree? = treeCacheMutex.withLock {
+-        treeCache[key]?.also {
+-            treeCacheOrder.remove(key)
+-            treeCacheOrder += key
++    private suspend fun getCachedTree(key: SyncTreeCacheKey): CachedRawTree? {
++        val (local, allowShared) = treeCacheMutex.withLock {
++            val cached = treeCache[key]?.also {
++                treeCacheOrder.remove(key)
++                treeCacheOrder += key
++            }
++            cached to hasValidatedSnapshot
++        }
++        if (local != null || !allowShared) return local
++        return verifiedDirectMutex.withLock {
++            verifiedDirectCache.remove(key)?.also { verifiedDirectCache[key] = it }?.first
++                ?.takeIf { it.entries.size <= maxTreeEntries }
++        }
++    }
++
++    private suspend fun putVerifiedDirectTree(key: SyncTreeCacheKey, tree: CachedRawTree) {
++        val weight = treeCacheWeight(key, tree)
++        if (weight > MAX_VERIFIED_DIRECT_BYTES) return
++        verifiedDirectMutex.withLock {
++            verifiedDirectCache.remove(key)?.let { verifiedDirectBytes -= it.second }
++            verifiedDirectCache[key] = tree to weight
++            verifiedDirectBytes += weight
++            while (verifiedDirectBytes > MAX_VERIFIED_DIRECT_BYTES) {
++                val oldest = verifiedDirectCache.keys.first()
++                verifiedDirectBytes -= verifiedDirectCache.remove(oldest)!!.second
++            }
+         }
+     }
+ 
+@@ -1726,6 +1768,10 @@ class GitHubSyncTransport(
+ 
+     private companion object {
+         const val MAX_PUBLISH_ATTEMPTS = 3
++        const val MAX_VERIFIED_DIRECT_BYTES = 4L * 1024 * 1024
++        val verifiedDirectMutex = Mutex()
++        val verifiedDirectCache = linkedMapOf<SyncTreeCacheKey, Pair<CachedRawTree, Long>>()
++        var verifiedDirectBytes = 0L
+     }
+ }
+ 
