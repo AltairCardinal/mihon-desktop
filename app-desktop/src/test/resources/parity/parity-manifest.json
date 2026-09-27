@@ -53665,7 +53665,7 @@
         {
           "path": "app/build.gradle.kts",
           "symbol": "implementation(projects.domain)",
-          "line": 247
+          "line": 301
         }
       ],
       "SHARED_OR_ADAPTER": [

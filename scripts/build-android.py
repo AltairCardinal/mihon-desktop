@@ -330,10 +330,16 @@ def adb_command(tools, serial, *args, check=True):
 
 
 def installed_apk(tools, serial, application_id, temporary):
+    listing = adb_command(tools, serial, "shell", "pm", "list", "packages", application_id)
+    packages = [line.strip() for line in listing.stdout.splitlines() if line.strip()]
+    if any(not re.fullmatch(r"package:[A-Za-z0-9_.]+", line) for line in packages):
+        raise ValueError("Package manager returned an invalid package listing")
+    if f"package:{application_id}" not in packages:
+        return None
     response = adb_command(tools, serial, "shell", "pm", "path", application_id)
     paths = [line[len("package:"):].strip() for line in response.stdout.splitlines() if line.startswith("package:")]
     if not paths:
-        return None
+        raise ValueError("Listed application has no readable APK path")
     if len(paths) != 1:
         raise ValueError("Installed split APKs require a separate verified upgrade path")
     destination = Path(temporary) / "installed.apk"

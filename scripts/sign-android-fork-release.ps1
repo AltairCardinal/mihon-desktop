@@ -95,4 +95,12 @@ if ($certificate -ne $ExpectedCertificate.ToLowerInvariant()) { throw 'Certifica
 $verification | Write-Output
 Write-Output $packageLine
 Write-Output "Final signed APK: $outputFile"
-Write-Output "SHA256: $((Get-FileHash -Algorithm SHA256 -LiteralPath $outputFile).Hash.ToLowerInvariant())"
+$hashStream = [IO.File]::OpenRead($outputFile)
+$sha256 = [Security.Cryptography.SHA256]::Create()
+try {
+    $artifactHash = [BitConverter]::ToString($sha256.ComputeHash($hashStream)).Replace('-', '').ToLowerInvariant()
+} finally {
+    $hashStream.Dispose()
+    $sha256.Dispose()
+}
+Write-Output "SHA256: $artifactHash"

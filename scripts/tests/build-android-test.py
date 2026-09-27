@@ -20,6 +20,36 @@ SPEC.loader.exec_module(ANDROID)
 
 
 class AndroidEntryTest(unittest.TestCase):
+    def test_uninstalled_package_with_pm_path_exit_one_is_a_safe_new_install(self):
+        tools = SimpleNamespace(adb=Path("unused-adb"))
+        calls = []
+
+        def transport(command, **kwargs):
+            calls.append(command[3:])
+            if command[3:6] == ["shell", "pm", "path"]:
+                raise ValueError("Command failed (1): pm path found no package")
+            self.assertEqual(command[3:], ["shell", "pm", "list", "packages", "app.mihon.desktop.fork"])
+            return subprocess.CompletedProcess(command, 0, "package:app.mihon.desktop.fork.dev\n", "")
+
+        with patch.object(ANDROID, "run", side_effect=transport):
+            self.assertIsNone(ANDROID.installed_apk(tools, "test-serial", "app.mihon.desktop.fork", Path("unused")))
+        self.assertEqual(len(calls), 1)
+
+    def test_package_query_failure_is_never_treated_as_uninstalled(self):
+        tools = SimpleNamespace(adb=Path("unused-adb"))
+        with patch.object(ANDROID, "run", side_effect=ValueError("Command failed (1): device offline")):
+            with self.assertRaisesRegex(ValueError, "device offline"):
+                ANDROID.installed_apk(tools, "test-serial", "app.mihon.desktop.fork", Path("unused"))
+        malformed = subprocess.CompletedProcess([], 0, "Error: package manager unavailable\n", "")
+        with patch.object(ANDROID, "run", return_value=malformed):
+            with self.assertRaisesRegex(ValueError, "invalid package listing"):
+                ANDROID.installed_apk(tools, "test-serial", "app.mihon.desktop.fork", Path("unused"))
+        listed = subprocess.CompletedProcess([], 0, "package:app.mihon.desktop.fork\n", "")
+        empty = subprocess.CompletedProcess([], 0, "", "")
+        with patch.object(ANDROID, "run", side_effect=[listed, empty]):
+            with self.assertRaisesRegex(ValueError, "no readable APK path"):
+                ANDROID.installed_apk(tools, "test-serial", "app.mihon.desktop.fork", Path("unused"))
+
     def test_help_exposes_explicit_actions(self):
         result = subprocess.run([sys.executable, str(ENTRY), "--help"], capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -174,8 +204,12 @@ class AndroidSdkArtifactTest(unittest.TestCase):
                 text = "device\n"
             elif args[:2] == ["shell", "getprop"]:
                 text = "36\n" if args[2].endswith("sdk") else "arm64-v8a\n"
+            elif args[:4] == ["shell", "pm", "list", "packages"]:
+                text = f"package:{args[4]}\n" if installed else ""
             elif args[:3] == ["shell", "pm", "path"]:
-                text = "package:/data/app/fixture/base.apk\n" if installed else ""
+                if not installed:
+                    raise ValueError("Command failed (1): pm path found no package")
+                text = "package:/data/app/fixture/base.apk\n"
             elif args[0] == "pull":
                 Path(args[2]).write_bytes(Path(installed).read_bytes())
                 text = "1 file pulled"
@@ -245,6 +279,39 @@ class AndroidSdkArtifactTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Release key is missing", result.stderr)
         self.assertFalse(absent.exists())
+
+    @unittest.skipUnless(os.name == "nt", "Windows DPAPI signing adapter")
+    def test_powershell_signing_finishes_without_get_file_hash(self):
+        signing = self.root / "ps-signing"
+        signing.mkdir()
+        ANDROID.run([self.keytool, "-J-Duser.language=en", "-J-Dfile.encoding=UTF-8", "-importkeystore", "-srckeystore", self.key,
+                     "-srcalias", "fixture", "-srcstorepass:env", "MIHON_TEST_KEY_PASSWORD",
+                     "-destkeystore", signing / "release.p12", "-deststoretype", "PKCS12",
+                     "-destalias", "mihon-desktop-fork", "-deststorepass:env", "MIHON_TEST_KEY_PASSWORD",
+                     "-noprompt"])
+        scripts = self.root / "scripts"
+        scripts.mkdir(exist_ok=True)
+        (scripts / "sign-android-fork-release.ps1").write_bytes((ROOT / "scripts/sign-android-fork-release.ps1").read_bytes())
+        launcher = self.root / "signing-probe.ps1"
+        launcher.write_text('''param([string]$BuildTools)
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+function Get-FileHash { throw 'Get-FileHash unavailable in this host' }
+$secret = [Security.SecureString]::new()
+foreach ($character in $env:MIHON_TEST_KEY_PASSWORD.ToCharArray()) { $secret.AppendChar($character) }
+$secret | Export-Clixml -LiteralPath (Join-Path $PSScriptRoot 'ps-signing/password.dpapi.xml')
+$secret.Dispose()
+& (Join-Path $PSScriptRoot 'scripts/sign-android-fork-release.ps1') `
+    -InputApk (Join-Path $PSScriptRoot 'fixture-unsigned.apk') `
+    -OutputApk (Join-Path $PSScriptRoot 'ps-signed.apk') `
+    -SigningDirectory (Join-Path $PSScriptRoot 'ps-signing') -BuildTools $BuildTools
+''', encoding="utf-8")
+        result = ANDROID.run(["powershell.exe", "-NoProfile", "-File", launcher,
+                              "-BuildTools", self.tools.build_tools])
+        output = self.root / "ps-signed.apk"
+        actual = ANDROID.inspect_apk(output, self.tools)
+        self.assertIn(f"SHA256: {actual['sha256']}", result.stdout)
+        self.assertEqual(actual["certificateSha256"], self.release["releaseCertificateSha256"])
 
     def test_successful_empty_build_does_not_adopt_stale_receipt(self):
         reports = self.root / "app/build/reports"
