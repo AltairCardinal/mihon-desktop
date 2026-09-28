@@ -379,6 +379,7 @@
     state.ui.selectedIds = previousSelected.filter(id => liveIds.has(id));
     if (previousSelected.length && !state.ui.selectedIds.length) state.ui.selecting = false;
     const previousSheet = root.querySelector('[role="dialog"]');
+    const passwordPage = !publish && interactions.screen() === 'password' ? root.querySelector('[data-ix-screen="password"]') : null;
     const wasSettings = previousSheet?.dataset.settings === 'true';
     const focusId = document.activeElement?.dataset.testid;
     const selection = document.activeElement instanceof HTMLInputElement ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
@@ -388,6 +389,7 @@
     const scroll = root.querySelector('.sync-panel-scroll');
     if (scroll) state.ui.syncScroll = scroll.scrollTop;
     root.innerHTML = `<div class="prototype-root platform-${state.ui.platform} theme-${state.ui.theme}">${renderPreviewTools()}${renderWindowShell(renderRoute())}<div class="prototype-notice ${state.ui.tone}">${view.icon(state.ui.tone === 'failure' ? 'info' : 'cloud')}<span data-testid="notice">${esc(state.ui.notice)}</span></div></div>`;
+    if (passwordPage) root.querySelector('[data-ix-screen="password"]')?.replaceWith(passwordPage);
     if (state.ui.syncOpen) {
       root.querySelectorAll('.app-window > .app-body, .app-window > .native-navigation, .app-window > .gesture-area').forEach(el => { el.inert = true; });
       const review = root.querySelector('[role="alertdialog"]');
@@ -396,10 +398,11 @@
       const batchFallback = review ? 'batch-cancel' : state.ui.selecting ? 'selection-cancel' : null;
       const fallback = batchFallback || (state.ui.syncSettingsOpen || interactions.screen() ? 'sync-settings-back' : wasSettings ? 'sync-settings' : 'sync-close');
       if (!preview || document.hasFocus()) {
-        const focused = controls.find(el => el.dataset.testid === focusId) || root.querySelector('[data-testid="' + fallback + '"]');
+        const focused = controls.find(el => el.dataset.testid === (state.ui.syncReturnFocus || focusId)) || root.querySelector('[data-testid="' + fallback + '"]');
         focused?.focus({ preventScroll: true });
         if (focused instanceof HTMLInputElement && selection && selection[0] !== null) focused.setSelectionRange(...selection);
       }
+      state.ui.syncReturnFocus = null;
       const panel = root.querySelector('.sync-panel-scroll');
       if (panel) panel.scrollTop = state.ui.syncScroll || 0;
     } else if (previousSheet && (!preview || document.hasFocus())) root.querySelector('[data-testid="library-sync"]')?.focus({ preventScroll: true });
@@ -518,6 +521,7 @@
     else if (target.dataset.ignore) { model.ignoreCancellation(state, state.selectedDevice, target.dataset.ignore); notice('已忽略本次取消；不反向恢复来源设备。'); }
     else if (target.dataset.conflict) { model.resolveConflict(state, state.selectedDevice, target.dataset.conflict, target.dataset.choice); notice('冲突已处理，新决定已进入待上传队列。', 'success'); }
     else if (target.dataset.action) handleAction(target.dataset.action, target);
+    if (target.dataset.action === 'ix-password-toggle') return;
     render();
   });
 

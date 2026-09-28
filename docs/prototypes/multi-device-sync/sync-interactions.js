@@ -25,9 +25,10 @@
     }, 1000);
     const screen = () => data().stack.at(-1);
     function go(name) { data().stack.push(name); data().message = ''; }
-    function back() { data().stack.pop(); data().message = ''; }
+    function clearPasswordDraft() { const d = data(); d.fields.password = ''; d.showPassword = false; d.passwordEnabled = false; d.passwordAcknowledged = false; d.message = ''; }
+    function back() { if (screen() === 'password-help') state.ui.syncReturnFocus = 'ix-password-help'; if (['password', 'password-help'].includes(screen())) clearPasswordDraft(); data().stack.pop(); data().message = ''; }
     function home(message = '') { data().stack = []; data().message = message; state.ui.syncSettingsOpen = false; }
-    function close() { data().stack = []; data().message = ''; data().fields.password = ''; data().showPassword = false; if (data().batch?.done === data().batch?.total) data().batch = null; }
+    function close() { data().stack = []; clearPasswordDraft(); if (data().batch?.done === data().batch?.total) data().batch = null; }
     const action = (label, name, primary = false, attrs = '') => button(label, `data-action="ix-${name}" data-testid="ix-${name}" ${attrs}`, primary ? 'm-button-primary' : 'm-button-text');
     const note = text => `<p class="ix-note">${text}</p>`;
     const section = text => `<p class="settings-section-label">${text}</p>`;
@@ -39,7 +40,7 @@
     const choice = (label, detail, name, attrs = '') => `<button class="ix-choice" data-action="ix-${name}" data-testid="ix-${name}" ${attrs}><strong>${label}</strong><small>${detail}</small>${view.icon('chevron')}</button>`;
     function settings() {
       const d = data();
-      return section('同步账号') + row(d.connected ? 'GitHub · reader' : '连接 GitHub', d.connected ? '已连接 · ' + d.fields.repo : '在浏览器中登录并授权', d.connected ? 'connection-info' : 'setup', 'cloud') + (d.connected ? row('检查连接', d.issue ? '上次连接未完成' : '本设备可以访问同步空间', 'test') + row('重新连接 GitHub', '更换账号或重新授权', 'reconnect') + pair('同步密码', d.passwordProtected ? '密码保护已开启' : '密码保护未开启') : '') + message() + section('此设备') + row('设备名称', d.fields.device, 'device');
+      return section('同步账号') + row(d.connected ? 'GitHub · reader' : '连接 GitHub', d.connected ? '已连接 · ' + d.fields.repo : '在浏览器中登录并授权', d.connected ? 'connection-info' : 'setup', 'cloud') + (d.connected ? row('检查连接', d.issue ? '上次连接未完成' : '本设备可以访问同步空间', 'test') + row('重新连接 GitHub', '更换账号或重新授权', 'reconnect') + pair('同步密码', d.passwordProtected ? '已设置' : '未设置') + note(d.passwordProtected ? '远端同步数据受同步密码保护；新设备连接时需要密码。本版本不支持找回或重置。' : '同步数据保存在 GitHub 私有空间，依靠账号与仓库访问权限保护，未设置额外的同步密码加密。') + (d.passwordProtected ? row('忘记同步密码？', '查看当前可采取的措施与保护边界', 'password-help', 'help') : '') : '') + message() + section('此设备') + row('设备名称', d.fields.device, 'device');
     }
     function settingsFooter() {
       const minutes = currentDevice().settings.periodMinutes;
@@ -181,7 +182,8 @@
         case 'lookup': body = '<h3>正在查找同步空间</h3>' + note('正在检查专用私有同步空间。可以收起面板，稍后继续。'); break;
         case 'creating': body = '<h3>正在创建同步空间</h3>' + note('正在准备专用私有同步空间。可以收起面板，稍后继续。'); break;
         case 'setup-error': body = `<h3>${d.setupFailure === 'find' ? '暂时无法查找同步空间' : '同步空间创建未完成'}</h3>` + note('本设备的数据已保留，未覆盖已有数据。重试会先检查同步空间是否已经存在。') + actions(action('重试', 'setup-retry', true)); break;
-        case 'password': body = `<h3>${d.mode === 'create' ? '设置同步密码' : '输入同步密码'}</h3>` + note(d.mode === 'create' ? '将创建同步空间，是否需要设置密码？设置后，其他设备必须输入正确密码才能连接这个同步空间。' : '已找到受密码保护的同步空间。请输入正确的同步密码，连接后将自动合并数据。') + field('password', d.mode === 'create' ? '同步密码（可选）' : '同步密码', d.showPassword ? 'text' : 'password') + actions(action(d.showPassword ? '隐藏密码' : '显示密码', 'password-toggle')) + message() + actions(action(d.mode === 'join' ? '连接同步空间' : d.fields.password === '' ? '不设置密码' : '确认密码', 'password-confirm', true, d.mode === 'join' && d.fields.password === '' ? 'disabled' : '')); break;
+        case 'password': body = passwordPage(); break;
+        case 'password-help': body = '<h3>忘记同步密码后怎么办</h3>' + note('先检查密码管理器、保存的密码记录或你曾安全保管的副本。同步密码不同于 GitHub 登录密码，重新登录 GitHub 无法解锁。') + note('保留仍能同步的设备，不要清除应用数据或卸载应用；妥善保存本地备份。本地现有内容不会因为忘记密码而被删除。独立备份只能恢复其中包含的内容，不能解锁远端加密数据。') + passwordWarning() + note('当前不提供找回或重设密码，也没有托管密钥或恢复码。已解锁的设备也没有重设密码入口。') + actions(action(d.stack.includes('password') ? '返回输入密码' : '返回同步设置', 'back', true)); break;
         case 'import': body = section('确认合并 · 3 / 3') + importPage(); break;
         case 'importing': body = progressPage(); break;
         case 'imported': body = `<div class="ix-hero-icon">${view.icon('check')}</div><h3>同步空间已就绪</h3>` + note('收藏、关注和阅读记录已完成合并。阅读模式保持本设备原有设置。') + note('如有取消收藏或关注，仍由你决定是否在此设备取消，其他数据已同步。') + actions(action('查看同步', 'import-done', true)); break;
@@ -194,6 +196,15 @@
         case 'privacy': body = `<h3>阅读记录的同步范围</h3>` + note('续读位置、章节已读与明确未读、阅读历史会参与同步。阅读模式与其他阅读器显示设置仅保存在本设备。') + section('无痕阅读') + note('在“更多 → 无痕模式”开启。无痕期间的阅读不加入上传队列，退出后也不会补上传。') + section('清除历史') + note('只清除此设备的历史，不删除其他设备的记录。已清除的历史不会因旧记录再次到达而立即出现。'); break;
       }
       return `<div class="sheet-settings-content sync-settings-page ix-page" data-ix-screen="${screen()}">${body}</div>`;
+    }
+    function passwordWarning() {
+      return `<aside class="ix-password-warning" data-testid="ix-password-warning" aria-labelledby="password-warning-title">${view.icon('warning')}<div><strong id="password-warning-title">请先保存密码，遗忘可能无法恢复数据</strong><p>同步密码不同于 GitHub 登录密码。本版本不提供找回或重置。若遗忘密码，且所有设备都失去解锁能力，将无法恢复远端加密数据；重新登录 GitHub 无效。本地现有内容不会因此删除。</p></div></aside>`;
+    }
+    function passwordBlocked() { const d = data(); return d.mode === 'join' ? d.fields.password === '' : d.passwordEnabled && (d.fields.password === '' || !d.passwordAcknowledged); }
+    function passwordPage() {
+      const d = data(); const creating = d.mode === 'create';
+      const input = field('password', '同步密码', d.showPassword ? 'text' : 'password') + actions(action(d.showPassword ? '隐藏密码' : '显示密码', 'password-toggle'));
+      return (creating ? note('同步数据保存在你的 GitHub 私有空间。未设置同步密码时，新设备登录同一账号并获得访问权限即可同步。') + note('未设置同步密码时，内容不额外加密；拥有此空间读取权限的人可以读取同步内容。') + `<button class="ix-password-switch" role="switch" aria-checked="${Boolean(d.passwordEnabled)}" data-action="ix-password-enable" data-testid="ix-password-enable"><span><strong>设置同步密码（可选）</strong><small>开启后，新设备还需输入同步密码</small></span><span class="ix-switch-track" aria-hidden="true"><span></span></span></button>` + (d.passwordEnabled ? passwordWarning() + input + `<label class="ix-check ix-password-acknowledge"><input type="checkbox" data-action="ix-password-acknowledge" data-testid="ix-password-acknowledge" ${d.passwordAcknowledged ? 'checked' : ''}>我已了解遗忘密码的后果</label>` : '') : '<h3>输入同步密码</h3>' + note('已找到受密码保护的同步空间。请输入正确的同步密码，连接后将自动合并数据。') + input + actions(action('忘记同步密码？', 'password-help'))) + message() + actions(action(creating ? d.passwordEnabled ? '设置密码并开启同步' : '创建并开启同步' : '连接同步空间', 'password-confirm', true, passwordBlocked() ? 'disabled' : ''));
     }
     function issuePage() {
       const kind = data().issue || 'network';
@@ -298,6 +309,7 @@
       state.ui.syncOpen = true; state.ui.syncSettingsOpen = false; state.ui.route = 'library'; state.ui.detail = null; state.ui.reader = false;
       state.ui.batchReview = null; state.ui.selecting = false; state.ui.syncResult = null; state.ui.batchResult = null;
       if (name.startsWith('setup')) { d.connected = false; d.spaceScenario = name === 'setup-existing' ? 'existing' : name === 'setup-protected' ? 'protected' : 'new'; d.setupFailure = name === 'setup-find-failed' ? 'find' : name === 'setup-create-failed' ? 'create' : null; }
+      if (name === 'setup-password-review') { d.mode = 'create'; d.authStatus = 'success'; setupPage('password'); }
       else if (name === 'mixed') d.automatic = true;
       else if (name === 'pending-upload') {
         d.changes = { membership: 3, reading: 2 };
@@ -402,6 +414,9 @@
       else if (actionName === 'setup' || actionName === 'reconnect') { if (actionName === 'setup' && d.setupStage) d.stack = [d.setupStage]; else startAuth(actionName === 'reconnect'); }
       else if (actionName === 'open-github') openAuthorization();
       else if (actionName === 'auth-restart') { d.authStatus = 'ready'; authWindow?.close(); authWindow = null; authRequest += 1; }
+      else if (actionName === 'password-enable') { const enabled = !d.passwordEnabled; clearPasswordDraft(); d.passwordEnabled = enabled; }
+      else if (actionName === 'password-acknowledge') { d.passwordAcknowledged = target.checked; d.message = ''; }
+      else if (actionName === 'password-help') { clearPasswordDraft(); go('password-help'); }
       else if (actionName === 'password-toggle') {
         d.showPassword = !d.showPassword;
         const input = document.querySelector('[data-ix-field="password"]');
@@ -411,9 +426,9 @@
       }
       else if (actionName === 'setup-retry') { d.retryCreation = d.setupFailure === 'create'; d.setupFailure = null; findSpace(); }
       else if (actionName === 'password-confirm') {
-        if (d.mode === 'join' && d.fields.password === '') d.message = '请输入同步密码。';
+        if (passwordBlocked()) d.message = d.mode === 'join' || d.fields.password === '' ? '请输入同步密码。' : '请先确认已了解遗忘密码的后果。';
         else if (d.mode === 'join' && d.fields.password !== 'mihon-demo') d.message = '密码不正确，请重试。';
-        else { d.passwordProtected = d.fields.password !== ''; d.fields.password = ''; d.showPassword = false; d.issue = null; if (d.mode === 'create') createSpace(); else beginImport(); }
+        else { d.passwordProtected = d.mode === 'join' || Boolean(d.passwordEnabled); clearPasswordDraft(); d.issue = null; if (d.mode === 'create') createSpace(); else beginImport(); }
       }
       else if (actionName === 'back') back();
       else if (actionName === 'home') home();
@@ -439,9 +454,14 @@
     function input(target) {
       if (!target.dataset.ixField) return;
       data().fields[target.dataset.ixField] = target.value;
-      if (target.dataset.ixField === 'password') { const submit = document.querySelector('[data-testid="ix-password-confirm"]'); if (submit) { submit.textContent = data().mode === 'join' ? '连接同步空间' : target.value === '' ? '不设置密码' : '确认密码'; submit.disabled = data().mode === 'join' && target.value === ''; } }
+      if (target.dataset.ixField === 'password') {
+        data().passwordAcknowledged = false; data().message = '';
+        const acknowledge = document.querySelector('[data-testid="ix-password-acknowledge"]'); if (acknowledge) acknowledge.checked = false;
+        const submit = document.querySelector('[data-testid="ix-password-confirm"]'); if (submit) submit.disabled = passwordBlocked();
+        document.querySelector('.ix-feedback')?.remove();
+      }
     }
-    return { screen, title: () => titles[screen()], back, close, settings, settingsFooter, renderScreen, unconfigured, connected: () => data().connected, status, didSync, resetCountdown, summary, handle, input, showScenario, networkChanged, startBatch, batchActive: () => data().batch && data().batch.done < data().batch.total,
+    return { screen, title: () => screen() === 'password-help' ? '忘记同步密码' : screen() === 'password' && data().mode === 'create' ? '创建同步空间' : titles[screen()], back, close, settings, settingsFooter, renderScreen, unconfigured, connected: () => data().connected, status, didSync, resetCountdown, summary, handle, input, showScenario, networkChanged, startBatch, batchActive: () => data().batch && data().batch.done < data().batch.total,
       importStatus: () => data().importProgress != null ? row(data().importReady ? '合并已完成' : data().importWaitingNetwork ? '等待网络连接' : data().importPaused ? '合并尚未完成' : '正在合并数据', '查看进度与继续操作', 'import-view') : '',
       busy: () => data().issue === 'unknown' || (data().importProgress != null && !data().importPaused && !data().importReady),
     };

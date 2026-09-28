@@ -86,5 +86,7 @@
       } : null);
     }
   });
-  mountFrames();
+  mountFrames(new URLSearchParams(window.location.search).get('review') === 'password' ? frame => {
+    frame.contentWindow.__mihonSyncDemo.showInteractionScenario('setup-password-review');
+  } : null);
 })();

@@ -88,7 +88,7 @@ for (const platform of ['windows', 'android']) {
       await click('frequency');
       await frame.locator('[data-minutes="360"]').click();
       assert.match(await frame.getByTestId('ix-frequency').innerText(), /6 小时/);
-      assert.match(await frame.getByRole('dialog').innerText(), /密码保护未开启/);
+      assert.match(await frame.getByRole('dialog').innerText(), /同步密码\s*未设置/);
       assert.equal(await frame.getByTestId('ix-recovery').count(), 0);
       await fits();
       await scene('network');
