@@ -478,6 +478,7 @@ class DesktopReaderSessionIntegrationTest {
                 override fun committedCount(): Int = if (writeCompleted.isCompleted) 1 else 0
             },
         )
+        assertTrue(writeCompleted.isCompleted)
     }
 
     @Test

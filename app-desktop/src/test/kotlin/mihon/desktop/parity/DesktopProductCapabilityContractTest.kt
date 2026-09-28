@@ -353,10 +353,11 @@ class DesktopProductCapabilityContractTest {
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt" to
                         setOf("newer current settlement rejects older adjacent activation and progress"),
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt" to
-                        setOf(
-                            "issuing a new token invalidates every older viewport settlement",
-                            "an in-flight write completes before the latest settlement enters the serialized transaction",
-                        ),
+                        setOf("issuing a new token invalidates every older unaccepted viewport"),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderProgressCoordinatorTest.kt" to
+                        setOf("accepted writes survive close and preserve same manga submission order"),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageProgressProductionWiringTest.kt" to
+                        setOf("rendered last pair queued behind earlier write survives immediate next chapter selection"),
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderDuplicateCompletionPolicyTest.kt" to
                         setOf(
                             "duplicate completion remains disabled independently of current chapter completion",
@@ -3955,7 +3956,7 @@ class DesktopProductCapabilityContractTest {
                         kotlinTestMethod(Files.readString(repositoryRoot.resolve(path)), method, "ID $id FIXTURE artifact $artifact")
                     assertTrue(
                         listOf("assert", " shouldBe ", ".shouldContain", "verify(", "coVerify(").any(methodSource::contains),
-                        "ID $id: FIXTURE artifact must execute assertions",
+                        "ID $id: FIXTURE artifact must execute assertions: $artifact",
                     )
                     val productionMarkers = entry["productionMarkers"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
                     assertTrue(productionMarkers.isNotEmpty(), "ID $id: FIXTURE artifact requires productionMarkers")

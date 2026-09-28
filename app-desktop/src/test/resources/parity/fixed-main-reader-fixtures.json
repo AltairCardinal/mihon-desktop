@@ -343,9 +343,11 @@
       "introductionRefs": ["6330c6198e827622a74dc48b1ac50f15e7470380"],
       "behaviorEvidenceRefs": [
         "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt#newer current settlement rejects older adjacent activation and progress",
-        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt#an in-flight write completes before the latest settlement enters the serialized transaction"
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt#issuing a new token invalidates every older unaccepted viewport",
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderProgressCoordinatorTest.kt#accepted writes survive close and preserve same manga submission order",
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageProgressProductionWiringTest.kt#rendered last pair queued behind earlier write survives immediate next chapter selection"
       ],
-      "description": "Shared settlement ordering serializes progress transactions and rejects older viewport results after a newer settlement is issued.",
+      "description": "Older viewport results are rejected before acceptance; accepted same-manga progress writes remain serialized and survive reader close.",
       "resolutionStatus": "ACTIVE"
     },
     {
