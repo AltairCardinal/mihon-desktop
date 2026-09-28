@@ -47,6 +47,7 @@ test("设置默认章节选项、只作用可见集的反选与批量前序已�
 
 test("迁移的复制与迁移分离，取消不修改当前作品", () => visit(async (page) => {
   await page.getByTestId("manga-A").click();
+  await page.getByTestId("detail-overflow").click();
   await page.getByTestId("detail-migrate").click();
   await page.getByTestId("detail-migrate-target").click();
   await page.getByTestId("migration-query").fill("新刊");
@@ -74,9 +75,12 @@ test("详情顶部两段滚动提示后刷新，失败保留章节并可重试",
   assert.equal(await page.getByTestId("chapter-row-A-1").count(), 1);
   assert.match(await page.getByTestId("detail-refresh-error").textContent(), /保留|重试/);
   await page.evaluate(() => window.demo.command("source-ok"));
+  await page.getByTestId("detail-overflow").click();
   await page.getByTestId("detail-refresh").click();
   await page.waitForFunction(() => window.demo.state.job?.status === "done" && window.demo.state.books[0].lastChecked);
-  assert.match(await page.getByTestId("detail-interval-status").textContent(), /上次检查/);
+  await page.getByTestId("detail-fetch-interval").click();
+  assert.match(await page.getByRole("dialog").textContent(), /上次检查/);
+  assert.doesNotMatch(await page.getByRole("dialog").textContent(), /尚未检查/);
 }));
 
 test("批量失败章节保留选择并可重试，手动已读可取消追踪同步", () => visit(async (page) => {
@@ -98,6 +102,7 @@ test("批量失败章节保留选择并可重试，手动已读可取消追踪�
 
 test("迁移中有进度；目标失败可重试且失败前不改原作品", () => visit(async (page) => {
   await page.getByTestId("manga-A").click();
+  await page.getByTestId("detail-overflow").click();
   await page.getByTestId("detail-migrate").click();
   await page.getByTestId("detail-migrate-target").click();
   await page.getByTestId("migration-query").fill("失败样本");
@@ -133,6 +138,7 @@ test("目录增删改后缺章提示、状态承接及新增章自动下载可�
   await page.getByTestId("pref-autoDownloadNew").check();
   await page.getByTestId("modal-close").click();
   await page.getByTestId("manga-A").click();
+  await page.getByTestId("detail-overflow").click();
   await page.getByTestId("detail-refresh").click();
   await page.waitForFunction(() => window.demo.state.job?.status === "done");
   assert.match(await page.getByTestId("chapter-count").textContent(), /缺 1 话/);
@@ -159,8 +165,12 @@ test("并列预览中详情筛选和追踪只影响操作设备", async () => {
     await windows.getByTestId("tracking-chapter-input").fill("75");
     await windows.locator(".sheet-body").evaluate((body) => { body.scrollTop = body.scrollHeight; });
     await windows.getByTestId("tracking-save").click();
-    assert.match(await windows.getByTestId("detail-tracking").textContent(), /75 章/);
-    assert.doesNotMatch(await android.getByTestId("detail-tracking").textContent(), /75 章/);
+    await windows.getByTestId("detail-tracking").click();
+    assert.equal(await windows.getByTestId("tracking-chapter-input").inputValue(), "75");
+    assert.match(await windows.getByTestId("tracking-remote-state").textContent(), /75 \/ 100 章/);
+    await android.getByTestId("detail-tracking").click();
+    assert.equal(await android.getByTestId("tracking-chapter-input").inputValue(), "0");
+    assert.match(await android.getByTestId("tracking-remote-state").textContent(), /0 \/ 100 章/);
     assert.equal(await android.getByTestId("detail-filter-menu").count(), 1);
   } finally {
     await browser.close();

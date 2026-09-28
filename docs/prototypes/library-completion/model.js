@@ -611,8 +611,29 @@
       s.notice = "原记录保留；无法确定旧更新范围";
     }
   }
+  function reorderCategory(s, id, targetIndex) {
+    const categories = s.categories.filter((c) => c.id !== 0);
+    const index = categories.findIndex((c) => c.id === id);
+    if (
+      index < 0 ||
+      !Number.isInteger(targetIndex) ||
+      targetIndex < 0 ||
+      targetIndex >= categories.length
+    ) return false;
+    if (s.failSave) {
+      s.failSave = false;
+      s.notice = "分类顺序保存失败，请重试";
+      return false;
+    }
+    const [category] = categories.splice(index, 1);
+    categories.splice(targetIndex, 0, category);
+    s.categories = [...s.categories.filter((c) => c.id === 0), ...categories];
+    s.notice = "分类顺序已保存";
+    return true;
+  }
   const api = {
     create,
+    reorderCategory,
     visible,
     select,
     scenario,

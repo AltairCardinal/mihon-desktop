@@ -1,3 +1,4 @@
+const { openCoverMenu } = require("./detail-test-helpers.cjs");
 // 独立审核：由主代理维护，直接驱动交付页面，不复制演示实现。
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -231,11 +232,13 @@ test('独立契约：分类排序方向隔离', () => review(async page => {
 
 test('独立契约：自定义封面可再次替换', () => review(async page => {
   await page.getByTestId('manga-A').click();
-  await page.getByTestId('detail-cover-menu').click();
+  await openCoverMenu(page);
   await page.getByTestId('cover-replace').click();
+  await page.getByTestId('modal-close').click();
   const first = await page.locator('.hero .cover').screenshot();
-  await page.getByTestId('detail-cover-menu').click();
+  await openCoverMenu(page);
   await page.getByTestId('cover-replace').click();
+  await page.getByTestId('modal-close').click();
   const second = await page.locator('.hero .cover').screenshot();
   assert.notDeepEqual(first, second, '重复替换应有可见新封面版本');
 }));
@@ -254,9 +257,11 @@ test('独立契约：刷新结束后任意方向滚轮都延续800ms静默冷却
   assert.equal(await page.getByTestId('wheel-hint').textContent(), '');
 }));
 
-test('独立详情契约：当前顶栏的全部已读是可读文字，取消收藏后书架不再列出作品', () => review(async page => {
+test('独立详情契约：更多菜单的全部已读是可读文字，取消收藏后书架不再列出作品', () => review(async page => {
   await page.getByTestId('manga-A').click();
+  await page.getByTestId('detail-overflow').click();
   assert.match(await page.getByTestId('detail-mark-all').textContent(), /全部标为已读/);
+  await page.keyboard.press('Escape');
   await page.getByTestId('detail-library').click();
   await page.getByTestId('confirm-yes').click();
   await page.getByTestId('detail-back').click();
@@ -284,7 +289,8 @@ test('独立叠加契约：目录已同步后开启作品信息刷新，下一�
   await page.evaluate(() => window.demo.scenario('chapter-change'));
   await page.getByTestId('manga-A').click();
   const before = await page.locator('.detail-description').textContent();
-  await page.getByTestId('detail-refresh').click();
+  await page.getByTestId("detail-overflow").click();
+  await page.getByTestId("detail-refresh").click();
   await page.waitForFunction(() => window.demo.state.job?.status === 'done');
   assert.equal(await page.locator('.detail-description').textContent(), before);
   await page.getByTestId('detail-back').click();
@@ -292,7 +298,8 @@ test('独立叠加契约：目录已同步后开启作品信息刷新，下一�
   await page.getByTestId('pref-metadata').check();
   await page.getByTestId('modal-close').click();
   await page.getByTestId('manga-A').click();
-  await page.getByTestId('detail-refresh').click();
+  await page.getByTestId("detail-overflow").click();
+  await page.getByTestId("detail-refresh").click();
   await page.waitForFunction(() => window.demo.state.job?.status === 'done');
   assert.match(await page.locator('.detail-description').textContent(), /已从图源刷新简介/);
   assert.match(await page.locator('.hero .cover').textContent(), /源封面 · 2/);
@@ -303,7 +310,8 @@ test('独立叠加契约：目录已同步后开启作品信息刷新，下一�
 test('独立叠加契约：章节源顺序与章节号排序可来回切换', () => review(async page => {
   await page.evaluate(() => window.demo.scenario('chapter-change'));
   await page.getByTestId('manga-A').click();
-  await page.getByTestId('detail-refresh').click();
+  await page.getByTestId("detail-overflow").click();
+  await page.getByTestId("detail-refresh").click();
   await page.waitForFunction(() => window.demo.state.job?.status === 'done');
   const order = () => page.locator('[data-testid^="chapter-row-"]').evaluateAll(rows => rows.map(row => row.dataset.chapterId));
   assert.deepEqual(await order(), ['A-3', 'A-4', 'A-1']);

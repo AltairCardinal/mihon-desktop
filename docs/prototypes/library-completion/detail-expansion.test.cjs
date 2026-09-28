@@ -1,3 +1,4 @@
+const { openCoverMenu } = require("./detail-test-helpers.cjs");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
@@ -22,15 +23,15 @@ test("详情作品信息：标题、作者画师、标签可搜索复制，来�
     await page.getByTestId("detail-title-search").click();
     assert.match(await page.getByTestId("detail-search-preview").textContent(), /星海手记/);
     await page.keyboard.press("Escape");
-    await page.getByTestId("detail-title-copy").click();
+    await page.getByTestId("detail-title-search").click({ button: "right" });
     assert.match(await page.getByTestId("notice").textContent(), /标题.*复制/);
-    await page.getByTestId("detail-author-menu").click();
+    await page.getByTestId("detail-author").click({ button: "right" });
     await page.getByTestId("detail-author-search").click();
     assert.match(await page.getByTestId("detail-search-preview").textContent(), /作者.*林舟/);
     await page.keyboard.press("Escape");
-    await page.getByTestId("detail-author-menu").click();
+    await page.getByTestId("detail-author").click({ button: "right" });
     await page.getByTestId("detail-author-copy").click();
-    await page.getByTestId("detail-artist-menu").click();
+    await page.getByTestId("detail-artist").click({ button: "right" });
     await page.getByTestId("detail-artist-copy").click();
     assert.match(await page.getByTestId("notice").textContent(), /画师.*复制/);
     assert.match(await page.getByTestId("detail-source-line").textContent(), /中文/);
@@ -38,10 +39,12 @@ test("详情作品信息：标题、作者画师、标签可搜索复制，来�
     assert.match(await page.getByTestId("notice").textContent(), /图源/);
     await page.keyboard.press("Escape");
     await page.getByTestId("detail-tag-0").click();
+    await page.getByTestId("detail-tag-search").click();
     await page.getByTestId("detail-tag-source").click();
     assert.match(await page.getByTestId("detail-search-preview").textContent(), /冒险/);
     await page.keyboard.press("Escape");
-    await page.getByTestId("detail-tag-0-copy").click();
+    await page.getByTestId("detail-tag-0").click();
+    await page.getByTestId("detail-tag-copy").click();
     assert.match(await page.getByTestId("notice").textContent(), /标签.*复制/);
     await page.evaluate(() => {
       window.demo.state.books[0].status = "已获授权";
@@ -69,7 +72,7 @@ test("详情简介：六行折叠可展开，Markdown 链接预览和复制保�
     await page.getByTestId("detail-description").locator("a").click();
     assert.match(await page.getByTestId("detail-information").textContent(), /本地.*链接/);
     await page.keyboard.press("Escape");
-    await page.getByTestId("detail-description-copy").click();
+    await page.getByTestId("detail-description").click({ button: "right" });
     assert.match(await page.getByTestId("notice").textContent(), /简介.*复制/);
     await page.getByTestId("detail-description-toggle").click();
     assert.equal(await page.getByTestId("detail-description").evaluate((e) => e.classList.contains("expanded")), false);
@@ -77,10 +80,9 @@ test("详情简介：六行折叠可展开，Markdown 链接预览和复制保�
 
 test("详情封面：点击全屏、缩放、保存分享模拟，删除按自定义封面状态可用", () =>
   run(async (page) => {
-    await page.getByTestId("detail-cover-menu").click();
+    await openCoverMenu(page);
     assert.equal(await page.getByTestId("cover-delete").isDisabled(), true);
     await page.keyboard.press("Escape");
-    await page.getByTestId("detail-cover-open").click();
     assert.equal(await page.getByTestId("detail-cover-viewer").isVisible(), true);
     await page.getByTestId("detail-cover-zoom-in").click();
     assert.match(await page.getByTestId("detail-cover-scale").textContent(), /125%/);
@@ -90,9 +92,10 @@ test("详情封面：点击全屏、缩放、保存分享模拟，删除按自�
     assert.match(await page.getByTestId("notice").textContent(), /本地.*分享/);
     await page.keyboard.press("Escape");
     assert.equal(await page.getByTestId("detail-cover-viewer").count(), 0);
-    await page.getByTestId("detail-cover-menu").click();
+    await openCoverMenu(page);
     await page.getByTestId("cover-replace").click();
-    await page.getByTestId("detail-cover-menu").click();
+    await page.getByTestId("modal-close").click();
+    await openCoverMenu(page);
     assert.equal(await page.getByTestId("cover-delete").isEnabled(), true);
   }));
 
@@ -101,7 +104,7 @@ test("详情收藏与分类：重复收藏有反馈，移出可选删下载，�
     await page.getByTestId("detail-library").click();
     assert.match(await page.locator(".sheet").textContent(), /取消收藏.*下载/);
     await page.getByTestId("modal-cancel").click();
-    assert.match(await page.getByTestId("detail-library").textContent(), /已加入书架/);
+    assert.match(await page.getByTestId("detail-library").textContent(), /已收藏/);
     await page.getByTestId("detail-library").click();
     await page.getByTestId("detail-remove-downloads").check();
     await page.getByTestId("confirm-yes").click();
@@ -113,10 +116,14 @@ test("详情收藏与分类：重复收藏有反馈，移出可选删下载，�
     await page.getByTestId("confirm-yes").click();
     await page.getByTestId("detail-library").click();
     assert.match(await page.getByTestId("notice").textContent(), /已加入书架/);
+    await page.getByTestId("detail-overflow").click();
     await page.getByTestId("detail-categories").click();
     await page.getByTestId("detail-category-manage").click();
-    await page.getByTestId("detail-category-name").fill("周末看");
-    await page.getByTestId("detail-category-add").click();
+    await page.locator("#category-name").fill("周末看");
+    await page.getByTestId("category-add").click();
+    await page.getByTestId("modal-close").click();
+    await page.getByTestId("detail-overflow").click();
+    await page.getByTestId("detail-categories").click();
     await page.getByTestId("detail-category-3").check();
     await page.getByTestId("detail-category-save").click();
     assert.match(await page.getByTestId("notice").textContent(), /分类.*更新/);
@@ -127,13 +134,15 @@ test("详情更新间隔和内联笔记：立即反馈、Markdown 工具、保�
     await page.getByTestId("detail-fetch-interval").click();
     await page.getByTestId("detail-interval-7").check();
     await page.getByTestId("detail-interval-save").click();
-    assert.match(await page.getByTestId("detail-interval-status").textContent(), /7 天/);
+    assert.match(await page.getByTestId("detail-fetch-interval").textContent(), /7 天/);
+    await page.getByTestId("detail-overflow").click();
     await page.getByTestId("detail-notes").click();
     await page.getByTestId("detail-notes-input").fill("记住这个角色");
     await page.getByTestId("detail-notes-bold").click();
     assert.match(await page.getByTestId("detail-notes-input").inputValue(), /\*\*/);
     await page.getByTestId("detail-notes-save").click();
     assert.match(await page.getByTestId("detail-notes-inline").textContent(), /记住这个角色/);
+    await page.getByTestId("detail-overflow").click();
     await page.getByTestId("detail-notes").click();
     await page.getByTestId("detail-notes-input").fill("会失败的新内容");
     await page.evaluate(() => window.demo.state.failSave = true);
@@ -176,10 +185,14 @@ test("详情重复收藏先展示已有作品，页面底导航真实切换且�
     assert.match(await page.locator(".sheet").textContent(), /已有同名/);
     await page.getByTestId("detail-duplicate-view").click();
     assert.equal(await page.getByTestId("detail-scroll").getAttribute("data-book-id"), "B");
+    await page.getByTestId("detail-overflow").click();
     await page.getByTestId("detail-categories").click();
     await page.getByTestId("detail-category-2").check();
     await page.getByTestId("detail-category-save").click();
-    assert.match(await page.getByTestId("detail-category-status").textContent(), /珍藏/);
+    await page.getByTestId("detail-overflow").click();
+    await page.getByTestId("detail-categories").click();
+    assert.equal(await page.getByTestId("detail-category-2").isChecked(), true);
+    await page.getByTestId("modal-close").click();
     await page.getByTestId("nav-updates").click();
     assert.match(await page.getByTestId("root-page").textContent(), /更新/);
     assert.equal(await page.getByTestId("detail-scroll").count(), 0);
@@ -189,7 +202,8 @@ test("详情重复收藏先展示已有作品，页面底导航真实切换且�
 
 test("详情笔记工具生成粗体斜体下划线与两类列表，取消和 Escape 丢弃草稿", () =>
   run(async (page) => {
-    await page.getByTestId("detail-notes-summary").click();
+    await page.getByTestId("detail-overflow").click();
+    await page.getByTestId("detail-notes").click();
     const formats = [
       ["bold", "**文字**"],
       ["italic", "*文字*"],

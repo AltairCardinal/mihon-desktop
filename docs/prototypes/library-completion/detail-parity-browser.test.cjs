@@ -90,6 +90,7 @@ test("追踪预填查询、服务章节上限及手动已读询问", () => run(a
 
 test("迁移搜索和复制拥有独立目标记录，取消不改当前作品", () => run(async (p) => {
   await p.getByTestId("manga-A").click();
+  await p.getByTestId("detail-overflow").click();
   await p.getByTestId("detail-migrate").click();
   await p.getByTestId("detail-migrate-target").click();
   await p.getByTestId("migration-query").fill("新刊");

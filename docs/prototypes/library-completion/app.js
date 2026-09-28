@@ -28,7 +28,6 @@
     detailNotesDraft = "",
     detailScroll = {},
     detailDescriptionExpanded = false,
-    detailNotesEditing = false,
     detailCoverScale = 100,
     detailSearchQuery = "",
     detailSearchScope = "",
@@ -51,7 +50,9 @@
     cooldownUntil = -Infinity;
   const CATEGORY_WHEEL_GAP_MS = 250;
   let categoryWheel = { last: -Infinity, direction: 0 },
-    composing = false;
+    composing = false,
+    categoryRenameId = null,
+    categoryRenameDraft = "";
   const categoryShortcut =
     s.platform === "windows"
       ? "Ctrl + 滚轮切换分类：向上上一类，向下下一类"
@@ -186,7 +187,7 @@
     else if (!cards.length)
       content =
         '<div class="empty">没有符合条件的作品<br><small>可以清除搜索或筛选，也可以添加本地示例收藏。</small></div>';
-    return `<header class="bar">${toolbar}<div class="actions">${button("sync-open", "同步", "sync")}${button("search-open", "搜索书架", "search")}${button("panel-open", "筛选、排序与显示", "filter")}${button("random-open", "随机打开", "random")}${button("category-open", "分类管理", "category")}${button("settings-open", "书架设置", "settings")}${button("refresh", "刷新当前分类", "refresh")}</div></header>${selection}${categories}${
+    return `<header class="bar">${toolbar}<div class="actions">${button("sync-open", "同步", "sync")}${button("search-open", "搜索书架", "search")}${button("panel-open", "筛选、排序与显示", "filter")}${button("random-open", "随机打开", "random")}${button("settings-open", "书架设置", "settings")}${button("refresh", "刷新当前分类", "refresh")}</div></header>${selection}${categories}${
       activeFilters()
         ? '<div class="filter-notice" data-testid="filter-active">筛选已生效 · ' +
           Object.entries(s.filters)
@@ -277,7 +278,6 @@
       detailBookId = b.id;
       chapterAnchor = null;
       detailDescriptionExpanded = false;
-      detailNotesEditing = false;
     }
     const o = detailOptions(b);
     const chapters = displayedChapters(b);
@@ -292,28 +292,30 @@
       .map(([id, label]) => `<button role="menuitem" data-testid="detail-download-${id}" data-action="detail-download-${id}">${label}</button>`).join("");
     const readingModes = [["default", "默认"], ["auto", "自动"], ["ltr", "从左到右"], ["rtl", "从右到左"], ["webtoon", "条漫"]]
       .map(([id, label]) => `<button role="menuitemradio" aria-checked="${b.readingMode === label}" data-action="detail-reading-${id}" data-testid="detail-reading-${id}">${label}</button>`).join("");
+    const overflow = `<button data-action="detail-refresh" data-testid="detail-refresh" role="menuitem">检查更新</button>${b.favorite ? `<button data-action="detail-categories" data-testid="detail-categories" role="menuitem">编辑分类</button>` : ""}${b.favorite && !b.local && !b.sourceMissing ? `<button data-action="detail-migrate" data-testid="detail-migrate" role="menuitem">迁移图源</button>` : ""}${!b.local && !b.sourceMissing ? `<button data-action="detail-share-link" data-testid="detail-share-link" role="menuitem">分享链接</button>` : ""}<button data-action="detail-notes" data-testid="detail-notes" role="menuitem">笔记</button><button data-action="detail-mark-all" data-testid="detail-mark-all" role="menuitem">全部标为已读</button>`;
     const toolbar = `<header class="bar detail-bar">
       ${button("detail-back", "返回书架", "back")}
       <h1 data-testid="detail-title">${esc(b.title)}</h1>
-      <div class="actions">
-        ${!detailSelected.length ? `<div class="detail-menu-anchor">${button("detail-download-menu", "下载章节", "download", b.local || b.sourceMissing ? "disabled" : "")}${detailMenuMarkup("download", downloading)}</div>${!b.local ? `${button("detail-open-link", "在浏览器打开", "link")}${button("detail-copy-link", "复制链接", "link")}${button("detail-share-link", "分享链接", "share")}` : ""}` : ""}
-        ${detailSelected.length ? `<strong class="detail-selected-title">已选 ${detailSelected.length} 章</strong>${button("detail-select-all", "全选当前可见章节", "selectAll")}${button("detail-select-invert", "反选当前可见章节", "swap")}${button("detail-select-close", "退出章节选择", "close")}` : `<button data-testid="detail-mark-all" data-action="detail-mark-all" class="detail-mark-all">全部标为已读</button>`}
+      <div class="actions" data-testid="detail-toolbar-primary">
+        ${detailSelected.length ? `<strong class="detail-selected-title">已选 ${detailSelected.length} 章</strong>${button("detail-select-all", "全选当前可见章节", "selectAll")}${button("detail-select-invert", "反选当前可见章节", "swap")}${button("detail-select-close", "退出章节选择", "close")}` : `<div class="detail-menu-anchor">${button("detail-download-menu", "下载章节", "download", b.local || b.sourceMissing ? "disabled" : "")}${detailMenuMarkup("download", downloading)}</div>`}
         ${button("detail-filter-menu", "筛选、排序和显示章节", "filter", chapterFilterActive ? 'aria-pressed="true"' : "")}
-        ${!detailSelected.length ? `${button("detail-refresh", "检查更新", "refresh")}${button("detail-migrate", "迁移图源", "swap")}${button("detail-notes", "笔记", "notes")}` : ""}
+        ${!detailSelected.length ? `<div class="detail-menu-anchor">${button("detail-overflow", "更多作品操作", "more", 'aria-haspopup="menu"')}${detailMenuMarkup("overflow", overflow)}</div>` : ""}
       </div>
     </header>`;
-    const creator = (role, name, id) => name ? `<span class="detail-creator">${role} ${button(`detail-${id}`, name)}<span class="detail-menu-anchor">${button(`detail-${id}-menu`, `${role}操作`, "more")}${detailMenuMarkup(`creator-${id}`, `<button data-action="detail-${id}-search" data-testid="detail-${id}-search">搜索${role}</button><button data-action="detail-${id}-copy" data-testid="detail-${id}-copy">复制${role}</button>`)}</span></span>` : "";
+    const creator = (role, name, id) => name ? `<span class="detail-creator detail-menu-anchor">${role} ${button(`detail-${id}`, name)}${detailMenuMarkup(`creator-${id}`, `<button data-action="detail-${id}-search" data-testid="detail-${id}-search">搜索${role}</button><button data-action="detail-${id}-copy" data-testid="detail-${id}-copy">复制${role}</button>`)}</span>` : "";
     const creators = `<div class="detail-creators" data-testid="detail-creators">${creator("作者", b.author, "author")}${creator("画师", b.artist, "artist")}</div>`;
-    const tags = `<div class="detail-tags" data-testid="detail-tags">${(b.genre || []).map((tag, i) => `<span class="detail-tag"><button data-action="detail-tag-search" data-id="${esc(tag)}" data-testid="detail-tag-${i}">${esc(tag)}</button><button class="tag-copy" data-action="detail-tag-copy" data-id="${esc(tag)}" data-testid="detail-tag-${i}-copy" aria-label="复制标签 ${esc(tag)}" title="复制标签 ${esc(tag)}">${icon("link")}</button></span>`).join("")}</div>`;
+    const tags = `<div class="detail-tags" data-testid="detail-tags">${(b.genre || []).map((tag, i) => `<span class="detail-tag detail-menu-anchor"><button data-action="detail-tag-menu" data-id="${i}" data-testid="detail-tag-${i}" aria-haspopup="menu">${esc(tag)}</button>${detailMenuMarkup(`tag-${i}`, `<button data-action="detail-tag-search" data-id="${esc(tag)}" data-testid="detail-tag-search">搜索标签</button><button data-action="detail-tag-copy" data-id="${esc(tag)}" data-testid="detail-tag-copy">复制标签</button>`)}</span>`).join("")}</div>`;
     const sourceLine = `<p class="detail-source" data-testid="detail-source-line"><span>${esc(b.status || (b.complete ? "已完结" : "连载中"))}</span> · <button data-action="detail-source-entry" data-testid="detail-source-entry">${b.sourceMissing ? "缺失图源" : `来源：${esc(b.source)}`}</button> · ${esc(b.language || "未知语言")}</p>`;
-    const description = b.description ? `<div class="detail-description-wrap"><div class="detail-description ${detailDescriptionExpanded ? "expanded" : ""}" data-testid="detail-description">${markdown(b.description)}</div><div class="detail-description-actions">${button("detail-description-toggle", detailDescriptionExpanded ? "收起简介" : "展开简介")}${button("detail-description-copy", "复制简介")}</div></div>` : "";
-    const hero = `<div class="hero"><div class="detail-cover-wrap"><button class="detail-cover-open" data-action="detail-cover-open" data-testid="detail-cover-open" aria-label="全屏查看封面">${cover(b)}</button><div class="detail-cover-edit detail-menu-anchor">${button("detail-cover-menu", "编辑封面", "edit")}${detailMenuMarkup("cover", `<button data-action="cover-replace" data-testid="cover-replace">编辑封面</button><button data-action="cover-delete" data-testid="cover-delete" ${b.custom ? "" : "disabled"}>删除自定义封面</button>`)}</div></div><div class="hero-info"><div class="detail-title-row"><h2><button data-action="detail-title-search" data-testid="detail-title-search" title="按标题搜索">${esc(b.title)}</button></h2>${button("detail-title-copy", "复制标题", "link")}</div>${creators}${sourceLine}${description}${tags}</div></div>`;
-    const trackSummary = b.tracks.length ? `${b.tracks.length} 个服务 · ${esc(b.tracks[0].status || "阅读中")} · ${b.tracks[0].progress || 0} 章 · ${M.score(b).toFixed(1)} / 10` : "未绑定";
-    const actionRow = `<div class="detail-action-row"><button data-testid="detail-library" data-action="detail-library" class="detail-library-action">${icon(b.favorite ? "heartFilled" : "heart")}<span>${b.favorite ? "已加入书架" : "加入书架"}</span></button>${b.favorite ? `${button("detail-categories", "编辑分类", "category")}${button("detail-fetch-interval", "编辑更新间隔", "history")}` : ""}<button data-action="detail-tracking" data-testid="detail-tracking">${icon("sync")}追踪：${trackSummary}</button></div>`;
+    const description = b.description ? `<div class="detail-description-wrap"><div class="detail-description ${detailDescriptionExpanded ? "expanded" : ""}" data-testid="detail-description">${markdown(b.description)}</div><div class="detail-description-actions">${button("detail-description-toggle", detailDescriptionExpanded ? "收起简介" : "展开简介")}</div></div>` : "";
+    const hero = `<div class="hero" data-testid="detail-hero"><div class="detail-cover-wrap"><button class="detail-cover-open" data-action="detail-cover-open" data-testid="detail-cover-open" aria-label="全屏查看封面">${cover(b)}</button></div><div class="hero-info"><div class="detail-title-row"><h2><button data-action="detail-title-search" data-testid="detail-title-search" title="按标题搜索，右键复制">${esc(b.title)}</button></h2></div>${creators}${sourceLine}</div></div>`;
+    const trackSummary = b.tracks.length ? `${b.tracks.length} 个追踪` : "追踪";
+    const trackDetail = b.tracks.length ? `，第 ${b.tracks[0].progress || 0} 章，${M.score(b).toFixed(1)} 分` : "";
+    const actionRow = `<div class="detail-action-row" data-testid="detail-action-row"><button data-testid="detail-library" data-action="detail-library" class="detail-primary-action">${icon(b.favorite ? "heartFilled" : "heart")}<span>${b.favorite ? "已收藏" : "加入书架"}</span></button><button data-testid="detail-fetch-interval" data-action="detail-fetch-interval" class="detail-primary-action" ${b.favorite ? "" : "disabled"}>${icon("history")}<span>${b.fetchInterval ? b.fetchInterval + " 天" : "不适用"}</span></button><button data-action="detail-tracking" data-testid="detail-tracking" class="detail-primary-action" aria-label="追踪：${trackSummary}${trackDetail}">${icon("sync")}<span>${trackSummary}</span></button>${!b.local && !b.sourceMissing ? `<button data-action="detail-open-link" data-testid="detail-open-link" class="detail-primary-action" title="右键复制作品链接">${icon("link")}<span>网页</span></button>` : ""}</div>`;
     const selection = V.batchBar(b, detailSelected, chapters);
-    const notes = `<section class="detail-notes" data-testid="detail-notes-inline"><h3>作品笔记</h3>${detailNotesEditing ? `<div class="detail-notes-tools">${button("detail-notes-bold", "加粗")}${button("detail-notes-italic", "斜体")}${button("detail-notes-underline", "下划线")}${button("detail-notes-bullet", "项目符号")}${button("detail-notes-numbered", "有序列表")}${button("detail-notes-link", "插入链接")}</div><textarea data-testid="detail-notes-input" aria-label="作品笔记" placeholder="支持 Markdown 的本地笔记样本" rows="6">${esc(detailNotesDraft)}</textarea><div class="choice">${button("detail-notes-save", "保存")}${button("detail-notes-cancel", "取消")}</div>` : `<button class="detail-notes-body" data-action="detail-notes" data-testid="detail-notes-summary">${b.notes ? markdown(b.notes) : "暂无笔记，点击添加。"}</button>`}</section>`;
+    const notes = b.notes ? `<section class="detail-notes" data-testid="detail-notes-inline"><button class="detail-notes-body" data-action="detail-notes-summary" data-testid="detail-notes-summary" aria-label="编辑作品笔记">${markdown(b.notes)}</button></section>` : "";
+    const detailSummary = `<section class="detail-summary" data-testid="detail-summary">${notes}${description}${tags}</section>`;
     const totalMissing = Math.max(0, Math.max(0, ...b.chapters.map((chapter) => chapter.number)) - b.chapters.length);
-    return `${toolbar}${summary()}<div class="detail" data-testid="detail-scroll" data-book-id="${esc(b.id)}"><div class="detail-pull-tip" data-testid="detail-pull-tip">${detailRefreshArmed ? "再次向上滚动检查更新" : ""}</div><div class="detail-layout" data-testid="detail-layout"><div class="detail-main" data-testid="detail-info-scroll">${hero}${actionRow}<p class="detail-category-status" data-testid="detail-category-status">分类：${esc(b.categories.map((id) => s.categories.find((c) => c.id === id)?.name || "默认").join("、"))}</p><p class="detail-interval-status" data-testid="detail-interval-status">上次检查：${b.lastChecked ? new Date(b.lastChecked).toLocaleString("zh-CN") : "尚未检查"} · 预计下次更新：${b.fetchInterval ? b.fetchInterval + " 天后" : "由默认周期决定"} · 检查周期：${b.fetchInterval ? b.fetchInterval + " 天" : "默认"}</p>${detailRefreshError ? `<p class="detail-error" data-testid="detail-refresh-error">${esc(detailRefreshError)} ${button("detail-refresh-retry", "重试")}</p>` : ""}${notes}<div class="detail-reading-mode"><span>阅读模式</span><div class="detail-menu-anchor"><button data-action="detail-reading-mode" data-testid="detail-reading-mode">${esc(b.readingMode || "默认")}</button>${detailMenuMarkup("reading", readingModes)}</div></div></div><div class="detail-chapters" data-testid="detail-chapter-scroll"><button class="detail-chapter-heading" data-action="detail-filter-menu" data-testid="chapter-count">章节 ${chapters.length}/${b.chapters.length}${s.prefs.showChapterGaps && totalMissing ? ` · 缺 ${totalMissing} 话` : ""}</button><div class="chapter-list">${chapterListMarkup(chapters, b)}</div>${b.detachedDownloads?.length ? `<p class="detail-detached">目录已移除，保留本地下载：${esc(b.detachedDownloads.join("、"))}</p>` : ""}</div></div></div>${unread && !detailSelected.length ? `<button class="detail-fab" data-action="detail-continue" data-testid="detail-continue" data-chapter-id="${esc(unread.id)}">${icon("play")}${b.chapters.some((c) => c.read) || unread.page > 0 ? "继续阅读" : "开始阅读"}</button>` : ""}${selection}`;
+    return `${toolbar}${summary()}<div class="detail" data-testid="detail-scroll" data-book-id="${esc(b.id)}"><div class="detail-pull-tip" data-testid="detail-pull-tip">${detailRefreshArmed ? "再次向上滚动检查更新" : ""}</div><div class="detail-layout" data-testid="detail-layout"><div class="detail-main" data-testid="detail-info-scroll">${hero}${actionRow}${detailRefreshError ? `<p class="detail-error" data-testid="detail-refresh-error">${esc(detailRefreshError)} ${button("detail-refresh-retry", "重试")}</p>` : ""}${detailSummary}<div class="detail-reading-mode"><span>阅读模式</span><div class="detail-menu-anchor"><button data-action="detail-reading-mode" data-testid="detail-reading-mode">${esc(b.readingMode || "默认")}</button>${detailMenuMarkup("reading", readingModes)}</div></div></div><div class="detail-chapters" data-testid="detail-chapter-scroll"><button class="detail-chapter-heading" data-action="detail-filter-menu" data-testid="chapter-count">章节 ${chapters.length}/${b.chapters.length}${s.prefs.showChapterGaps && totalMissing ? ` · 缺 ${totalMissing} 话` : ""}</button><div class="chapter-list">${chapterListMarkup(chapters, b)}</div>${b.detachedDownloads?.length ? `<p class="detail-detached">目录已移除，保留本地下载：${esc(b.detachedDownloads.join("、"))}</p>` : ""}</div></div></div>${unread && !detailSelected.length ? `<button class="detail-fab" data-action="detail-continue" data-testid="detail-continue" data-chapter-id="${esc(unread.id)}">${icon("play")}${b.chapters.some((c) => c.read) || unread.page > 0 ? "继续阅读" : "开始阅读"}</button>` : ""}${selection}`;
   }
   function rootPage() {
     const names = { updates: "更新", history: "历史", browse: "浏览", authors: "作者", more: "更多" };
@@ -487,7 +489,7 @@
   }
   let draftPolicy = {};
   function settings() {
-    return `<h3>分类</h3>${optionPref("defaultCategory", "新收藏默认分类", [[-1, "每次询问"], ...s.categories.map((c) => [c.id, c.name])])}${button("add-book", "添加示例收藏")}${button("policy-open", "更新分类：包含 / 排除")}${toggle("perCategory")}${s.pendingReset ? button("reset-retry", "重试完成分类排序清理") : ""}<h3>更新</h3>${optionPref(
+    return `<h3>分类</h3>${button("category-open", "分类管理", "category")}${optionPref("defaultCategory", "新收藏默认分类", [[-1, "每次询问"], ...s.categories.map((c) => [c.id, c.name])])}${button("add-book", "添加示例收藏")}${button("policy-open", "更新分类：包含 / 排除")}${toggle("perCategory")}${s.pendingReset ? button("reset-retry", "重试完成分类排序清理") : ""}<h3>更新</h3>${optionPref(
       "interval",
       "自动更新周期",
       [
@@ -524,12 +526,14 @@
     if (modal === "detail-scanlators") return V.scanlatorDialog(book(), scanlatorDraft);
     if (modal === "detail-chapter-defaults")
       return `<p>把当前作品的章节筛选、排序和显示保存为新作品默认值。</p><label class="setting"><span>同时应用到已有作品</span><input type="checkbox" data-testid="chapter-default-apply-existing" ${chapterDefaultApplyExisting ? "checked" : ""}></label>${button("chapter-default-save", "保存默认值")}${button("modal-cancel", "取消")}`;
-    if (modal === "detail-categories")
-      return `<p>为「${esc(book()?.title)}」选择所属分类。</p>${s.categories.map((c) => `<label class="setting"><span>${esc(c.name)}</span><input type="checkbox" data-detail-category="${c.id}" data-testid="detail-category-${c.id}" ${detailCategoryDraft.includes(c.id) ? "checked" : ""}></label>`).join("")}<div class="choice">${button("detail-category-manage", "管理分类")}${button("detail-category-save", "确定")}${button("modal-cancel", "取消")}</div>`;
-    if (modal === "detail-category-manage")
-      return `<p>在书架中新增分类，返回后可为这部作品勾选。</p>${s.categories.map((c) => `<div class="setting">${esc(c.name)}</div>`).join("")}<label class="setting"><span>新分类</span><input data-testid="detail-category-name" placeholder="分类名称"></label>${button("detail-category-add", "添加分类")}`;
+    if (modal === "detail-categories") {
+      const categories = s.categories.filter((c) => c.id !== 0);
+      if (!categories.length)
+        return `<p>尚未创建分类。可以先编辑分类，再为这部作品选择。</p>${button("detail-category-manage", "编辑分类")}`;
+      return `<p>为「${esc(book()?.title)}」选择所属分类。不勾选时归入默认分类。</p>${categories.map((c) => `<label class="setting"><span>${esc(c.name)}</span><input type="checkbox" data-detail-category="${c.id}" data-testid="detail-category-${c.id}" ${detailCategoryDraft.includes(c.id) ? "checked" : ""}></label>`).join("")}<div class="choice">${button("detail-category-manage", "编辑")}${button("modal-cancel", "取消")}${button("detail-category-save", "确定")}</div>`;
+    }
     if (modal === "detail-interval")
-      return `<p>预计下次更新随作品上次检查时间和此间隔计算；检查周期不是后台任务的启动频率。本地样本仅展示选择结果。</p>${[0, 1, 2, 7, 14, 30].map((n) => `<label class="setting"><span>${n ? n + " 天" : "默认"}</span><input type="radio" name="detail-interval" value="${n}" data-testid="detail-interval-${n}" ${detailIntervalDraft === n ? "checked" : ""}></label>`).join("")}<div class="choice">${button("detail-interval-save", "确定")}${button("modal-cancel", "取消")}</div>`;
+      return `<p>上次检查：${book().lastChecked ? new Date(book().lastChecked).toLocaleString("zh-CN") : "尚未检查"}。预计下次更新由上次检查时间和检查周期决定；这里仅展示本地样本。</p>${[0, 1, 2, 7, 14, 30].map((n) => `<label class="setting"><span>${n ? n + " 天" : "默认"}</span><input type="radio" name="detail-interval" value="${n}" data-testid="detail-interval-${n}" ${detailIntervalDraft === n ? "checked" : ""}></label>`).join("")}<div class="choice">${button("detail-interval-save", "确定")}${button("modal-cancel", "取消")}</div>`;
     if (modal === "detail-tracking") return V.tracking(book(), trackingDraft);
     if (modal === "detail-search") {
       const matches = s.books.filter((b) => b.title.includes(detailSearchQuery) || b.genre?.includes(detailSearchQuery));
@@ -540,7 +544,9 @@
     if (modal === "detail-duplicate")
       return `<p>书架已有同名且来自同一图源的作品。可先查看已有作品，或继续加入本地样本。</p><div class="choice">${button("detail-duplicate-view", "查看已有作品")}${button("detail-duplicate-continue", "仍然加入")}${button("detail-duplicate-migrate", "去迁移")}</div>`;
     if (modal === "detail-cover-viewer")
-      return `<div class="detail-cover-viewer" data-testid="detail-cover-viewer"><div class="detail-cover-image" style="transform:scale(${detailCoverScale / 100})">${cover(book())}</div><div class="detail-cover-controls">${button("detail-cover-zoom-out", "缩小")}${button("detail-cover-zoom-in", "放大")}<span data-testid="detail-cover-scale">${detailCoverScale}%</span>${button("detail-cover-save", "保存封面")}${button("detail-cover-share", "分享封面")}</div><p class="muted">本地生成封面样本；保存与分享不操作磁盘或系统应用。</p></div>`;
+      return `<div class="detail-cover-viewer" data-testid="detail-cover-viewer"><div class="detail-cover-image" style="transform:scale(${detailCoverScale / 100})">${cover(book())}</div><div class="detail-cover-controls">${button("detail-cover-zoom-out", "缩小")}${button("detail-cover-zoom-in", "放大")}<span data-testid="detail-cover-scale">${detailCoverScale}%</span>${button("detail-cover-save", "保存封面")}${button("detail-cover-share", "分享封面")}<div class="detail-menu-anchor">${button("detail-cover-menu", "编辑封面", "edit")}${detailMenuMarkup("cover", `<button data-action="cover-replace" data-testid="cover-replace">编辑封面</button><button data-action="cover-delete" data-testid="cover-delete" ${book().custom ? "" : "disabled"}>删除自定义封面</button>`)}</div></div><p class="muted">本地生成封面样本；保存与分享不操作磁盘或系统应用。</p></div>`;
+    if (modal === "detail-notes")
+      return `<p>编辑「${esc(book().title)}」的作品笔记。</p><div class="detail-notes-tools">${button("detail-notes-bold", "加粗")}${button("detail-notes-italic", "斜体")}${button("detail-notes-underline", "下划线")}${button("detail-notes-bullet", "项目符号")}${button("detail-notes-numbered", "有序列表")}${button("detail-notes-link", "插入链接")}</div><textarea data-testid="detail-notes-input" aria-label="作品笔记" placeholder="支持 Markdown 的本地笔记样本" rows="8">${esc(detailNotesDraft)}</textarea><div class="choice">${button("detail-notes-save", "保存")}${button("detail-notes-cancel", "取消")}</div>`;
     if (modal === "detail-migrate")
       return `<p>选择目标图源。本地样本不请求真实图源。</p>${button("detail-migrate-target", "示例备用图源 · 中文")}${button("modal-cancel", "取消")}`;
     if (modal === "detail-migrate-results") return V.migrationSearch(migrationDraft);
@@ -552,8 +558,12 @@
     if (modal === "results") return results();
     if (modal === "policy")
       return `<p>作品同时属于包含与排除分类时，排除优先。未指定包含时更新全部。</p>${s.categories.map((c) => `<button class="tri" data-action="policy-cycle" data-id="${c.id}" data-testid="policy-${c.id}"><span>${esc(c.name)}</span><em>${draftPolicy[c.id] === 1 ? "包含" : draftPolicy[c.id] === -1 ? "排除" : "不指定"}</em></button>`).join("")}<div class="choice">${button("policy-save", "确认保存")}${button("modal-cancel", "取消")}</div>`;
-    if (modal === "categories")
-      return `<p>默认分类不能删除。删除自定义分类会将无分类作品归入默认。</p>${s.categories.map((c) => `<div class="setting"><span>${esc(c.name)}</span>${c.id ? button("delete-category-" + c.id, "删除") : ""}</div>`).join("")}<label class="setting"><span>新分类名称</span><input id="category-name" placeholder="分类名称"></label>${button("category-add", "添加分类")}`;
+    if (modal === "categories") {
+      const categories = s.categories.filter((c) => c.id !== 0);
+      return `<p>拖动分类或使用上移、下移调整顺序。默认分类固定在最前，不参与排序。</p>${categories.map((c, index) => `<div class="category-manage-row" data-id="${c.id}" data-testid="category-manage-row-${c.id}"><span class="category-drag" draggable="true" data-category-drag="${c.id}" data-testid="category-drag-${c.id}" aria-label="拖动${esc(c.name)}">↕</span><span class="category-name">${esc(c.name)}</span><div class="category-order-actions"><button data-action="category-up-${c.id}" data-testid="category-up-${c.id}" aria-label="上移${esc(c.name)}" ${index === 0 ? "disabled" : ""}>上移</button><button data-action="category-down-${c.id}" data-testid="category-down-${c.id}" aria-label="下移${esc(c.name)}" ${index === categories.length - 1 ? "disabled" : ""}>下移</button>${button("category-rename-" + c.id, "重命名")}${button("delete-category-" + c.id, "删除")}</div></div>`).join("")}<label class="setting"><span>新分类名称</span><input id="category-name" placeholder="分类名称"></label>${button("category-add", "添加分类")}`;
+    }
+    if (modal === "category-rename")
+      return `<label class="setting"><span>分类名称</span><input data-testid="category-rename-input" aria-label="分类名称" value="${esc(categoryRenameDraft)}"></label><div class="choice">${button("category-rename-save", "保存")}${button("modal-cancel", "取消")}</div>`;
     if (modal === "choose-category")
       return `<p>选择本次收藏的分类</p>${s.categories.map((c) => button("add-to-" + c.id, c.name)).join("")}`;
     if (modal === "batch-category")
@@ -570,6 +580,7 @@
     results: "更新详情",
     policy: "更新分类",
     categories: "分类管理",
+    "category-rename": "重命名分类",
     "choose-category": "选择分类",
     "batch-category": "修改分类",
     confirm: "确认操作",
@@ -580,7 +591,6 @@
     authors: "作者",
     more: "更多",
     "detail-categories": "编辑分类",
-    "detail-category-manage": "管理分类",
     "detail-interval": "更新间隔",
     "detail-search": "搜索作品",
     "detail-tag-scope": "搜索标签",
@@ -654,6 +664,7 @@
     renderModal();
   }
   function closeModal(all = false) {
+    if (modal === "detail-cover-viewer") detailMenu = null;
     if (!all && modalStack.length) {
       modal = modalStack.pop();
       renderModal();
@@ -758,7 +769,6 @@
     detailSelected = [];
     detailMenu = null;
     detailBookId = null;
-    detailNotesEditing = false;
     render();
     document.querySelector(`[data-testid="manga-${s.bookId}"]`)?.focus({ preventScroll: true });
   }
@@ -832,6 +842,10 @@
     if (!el) return;
     const action = el.dataset.action,
       id = el.dataset.id;
+    if (el.closest('[data-testid="detail-menu-overflow"]')) {
+      detailMenu = null;
+      document.querySelector('[data-testid="detail-overflow"]')?.focus({ preventScroll: true });
+    }
     if (action === "overlay") {
       if (e.target === el) closeModal(true);
       return;
@@ -884,7 +898,7 @@
       return;
     }
     if (action === "category-open") {
-      openModal("categories");
+      openModal("categories", true);
       return;
     }
     if (action === "search-open") {
@@ -1002,11 +1016,17 @@
       render();
       return;
     }
-    if (action === "detail-cover-menu" || action === "detail-download-menu" ||
+    if (action === "detail-cover-menu" || action === "detail-download-menu" || action === "detail-overflow" ||
         action === "detail-reading-mode") {
       const name = action === "detail-cover-menu" ? "cover" :
-        action === "detail-download-menu" ? "download" : "reading";
+        action === "detail-download-menu" ? "download" :
+        action === "detail-overflow" ? "overflow" : "reading";
       detailMenu = detailMenu === name ? null : name;
+      render();
+      return;
+    }
+    if (action === "detail-tag-menu") {
+      detailMenu = detailMenu === `tag-${id}` ? null : `tag-${id}`;
       render();
       return;
     }
@@ -1157,7 +1177,9 @@
       return;
     }
     if (action === "detail-tag-search") {
+      detailMenu = null;
       detailTagDraft = id;
+      el.closest(".detail-tag")?.querySelector('[data-action="detail-tag-menu"]')?.focus();
       openModal("detail-tag-scope");
       return;
     }
@@ -1166,6 +1188,8 @@
       return;
     }
     if (action === "detail-tag-copy") {
+      detailMenu = null;
+      el.closest(".detail-tag")?.querySelector('[data-action="detail-tag-menu"]')?.focus();
       localCopy("标签", id);
       return;
     }
@@ -1259,29 +1283,16 @@
       return;
     }
     if (action === "detail-category-manage") {
-      openModal("detail-category-manage", true);
-      return;
-    }
-    if (action === "detail-category-add") {
-      const name = document.querySelector('[data-testid="detail-category-name"]')?.value.trim();
-      if (!name) {
-        s.notice = "请输入分类名称";
-        renderModal(false);
-        return;
-      }
-      if (s.categories.some((c) => c.name === name)) {
-        s.notice = "分类已存在";
-        renderModal(false);
-        return;
-      }
-      s.categories.push({ id: Math.max(...s.categories.map((c) => c.id)) + 1, name });
-      s.notice = `分类「${name}」已创建，可勾选后保存`;
-      closeModal();
+      // Upstream dismisses the chooser before navigating to CategoryScreen.
+      detailCategoryDraft = [];
+      closeModal(true);
+      openModal("categories");
       return;
     }
     if (action === "detail-category-save") {
       const b = book();
-      b.categories = detailCategoryDraft.length ? [...detailCategoryDraft] : [0];
+      const chosen = detailCategoryDraft.filter((id) => id !== 0 && s.categories.some((c) => c.id === id));
+      b.categories = chosen.length ? chosen : [0];
       closeModal();
       detailNotice("作品分类已更新");
       return;
@@ -1366,16 +1377,13 @@
     }
     if (action === "detail-notes" || action === "detail-notes-summary") {
       detailNotesDraft = book().notes || "";
-      detailNotesEditing = true;
-      render();
+      openModal("detail-notes");
       document.querySelector('[data-testid="detail-notes-input"]')?.focus();
       return;
     }
     if (action === "detail-notes-cancel") {
-      detailNotesEditing = false;
       detailNotesDraft = "";
-      render();
-      document.querySelector('[data-testid="detail-notes-summary"]')?.focus();
+      closeModal();
       return;
     }
     if (action.startsWith("detail-notes-") && !["detail-notes-save", "detail-notes-input"].includes(action)) {
@@ -1397,7 +1405,7 @@
         return;
       }
       book().notes = detailNotesDraft;
-      detailNotesEditing = false;
+      closeModal();
       detailNotice("作品笔记已保存");
       return;
     }
@@ -1741,16 +1749,47 @@
       addBook(Number(action.slice(7)));
       return;
     }
+    if (action.startsWith("category-up-") || action.startsWith("category-down-")) {
+      const id = Number(action.split("-").at(-1));
+      const categories = s.categories.filter((c) => c.id !== 0);
+      const index = categories.findIndex((c) => c.id === id);
+      M.reorderCategory(s, id, index + (action.startsWith("category-up-") ? -1 : 1));
+      render();
+      return;
+    }
+    if (action.startsWith("category-rename-") && action !== "category-rename-save") {
+      categoryRenameId = Number(action.slice("category-rename-".length));
+      categoryRenameDraft = s.categories.find((c) => c.id === categoryRenameId)?.name || "";
+      openModal("category-rename", true);
+      document.querySelector('[data-testid="category-rename-input"]')?.focus();
+      return;
+    }
+    if (action === "category-rename-save") {
+      categoryRenameDraft = document.querySelector('[data-testid="category-rename-input"]')?.value.trim() || "";
+      if (!categoryRenameDraft || s.categories.some((c) => c.id !== categoryRenameId && c.name === categoryRenameDraft)) {
+        s.notice = categoryRenameDraft ? "分类已存在" : "请输入分类名称";
+        renderModal(false);
+        return;
+      }
+      s.categories.find((c) => c.id === categoryRenameId).name = categoryRenameDraft;
+      closeModal();
+      s.notice = "分类名称已保存";
+      render();
+      return;
+    }
     if (action === "category-add") {
       const name = document.querySelector("#category-name").value.trim();
-      if (name) {
-        s.categories.push({
-          id: Math.max(...s.categories.map((c) => c.id)) + 1,
-          name,
-        });
-        s.notice = "分类已添加";
-        render();
+      if (!name || s.categories.some((c) => c.name === name)) {
+        s.notice = name ? "分类已存在" : "请输入分类名称";
+        renderModal(false);
+        return;
       }
+      s.categories.push({
+        id: Math.max(0, ...s.categories.map((c) => c.id)) + 1,
+        name,
+      });
+      s.notice = "分类已添加";
+      render();
       return;
     }
     if (action.startsWith("delete-category-")) {
@@ -1799,12 +1838,35 @@
       reader = null;
       detailSelected = [];
       detailMenu = null;
-      detailNotesEditing = false;
       render();
       document.querySelector(`[data-testid="${action}"]`)?.focus({ preventScroll: true });
       return;
     }
   });
+  app.addEventListener("dragstart", (event) => {
+    const handle = event.target.closest("[data-category-drag]");
+    if (modal !== "categories" || !handle) return;
+    event.dataTransfer.setData("text/plain", handle.dataset.categoryDrag);
+    event.dataTransfer.effectAllowed = "move";
+  });
+  app.addEventListener("dragover", (event) => {
+    if (modal !== "categories" || !event.target.closest(".category-manage-row")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  });
+  app.addEventListener("drop", (event) => {
+    const row = event.target.closest(".category-manage-row");
+    if (modal !== "categories" || !row) return;
+    event.preventDefault();
+    const categories = s.categories.filter((c) => c.id !== 0);
+    M.reorderCategory(
+      s,
+      Number(event.dataTransfer.getData("text/plain")),
+      categories.findIndex((c) => c.id === Number(row.dataset.id)),
+    );
+    render();
+  });
+
   app.addEventListener("input", (e) => {
     if (e.target.dataset.trackField && trackingDraft) {
       const key = e.target.dataset.trackField;
@@ -1936,6 +1998,32 @@
     }),
   );
   app.addEventListener("contextmenu", (e) => {
+    const title = e.target.closest('[data-action="detail-title-search"]');
+    if (title) {
+      e.preventDefault();
+      localCopy("标题", book().title);
+      return;
+    }
+    const web = e.target.closest('[data-action="detail-open-link"]');
+    if (web) {
+      e.preventDefault();
+      detailNotice("示例作品链接已复制（本地模拟）");
+      return;
+    }
+    const description = e.target.closest('[data-testid="detail-description"]');
+    if (description && !e.target.closest("a")) {
+      e.preventDefault();
+      localCopy("简介", book().description);
+      return;
+    }
+    const creator = e.target.closest('[data-action="detail-author"], [data-action="detail-artist"]');
+    if (creator) {
+      e.preventDefault();
+      const name = creator.dataset.action.slice(7);
+      detailMenu = `creator-${name}`;
+      render();
+      return;
+    }
     const chapter = e.target.closest('[data-action="chapter"]');
     if (chapter) {
       e.preventDefault();
@@ -1958,19 +2046,19 @@
     if (e.key === "Escape") {
       e.preventDefault();
       if (modal) {
+        if (modal === "detail-cover-viewer" && detailMenu === "cover") {
+          detailMenu = null;
+          renderModal(false);
+          document.querySelector('[data-testid="detail-cover-menu"]')?.focus({ preventScroll: true });
+          return;
+        }
+        if (modal === "detail-cover-viewer") detailMenu = null;
         closeModal();
         return;
       }
       if (s.route === "detail" && detailMenu) {
         detailMenu = null;
         render();
-        return;
-      }
-      if (s.route === "detail" && detailNotesEditing) {
-        detailNotesEditing = false;
-        detailNotesDraft = "";
-        render();
-        document.querySelector('[data-testid="detail-notes-summary"]')?.focus();
         return;
       }
       if (s.route === "detail" && detailSelected.length) {
