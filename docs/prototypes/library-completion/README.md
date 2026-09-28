@@ -6,6 +6,8 @@
 
 作品详情页保留单独的审阅基线：先按当前 Desktop 的 `MangaDetailScreen`、`MangaDetailComponents` 与章节列表组件核对页面层级和主要状态，再按[详情页验收清单](DETAIL-ACCEPTANCE.md)的 D21–D34 审核 L02、L08、S06 的叠加变化。[总验收清单](ACCEPTANCE.md)在原有操作步骤前新增了 19 项“现状基线 → roadmap 目标”对照，避免把目标行为当成现有产品能力。
 
+详情页宽窗口双栏滚动按原版 Mihon 的交互目标处理：左侧作品信息与右侧章节列表独立滚动，只有右侧显示滚动条；顶部两段滚动刷新由右侧章节列表触发。窄窗口改为单列整页滚动和整页顶部刷新。这里的 CSS 滚动容器与浏览器滚轮阈值属于 **HTML_ADAPTER**，不是 Compose 运行时的实现证据；完整操作见[详情完整差异验收 A1/A6/A7](DETAIL-PARITY-ACCEPTANCE.md)。
+
 ## 使用与审核顺序
 
 直接用 Chrome 打开 `index.html`。所有素材和脚本在本目录，无 CDN、账号或外网请求。应用外工具栏选择目标端和场景，加载后在对应设备内操作。Windows 未多选时单击打开，进入多选后单击增减选择；Ctrl 可进入或增减多选，Shift 选择范围。取消最后一项只退出多选，不打开作品；Escape／关闭选择栏也可退出。Android 保留长按及选择模式。

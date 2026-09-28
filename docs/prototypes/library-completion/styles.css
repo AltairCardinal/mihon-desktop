@@ -607,24 +607,35 @@ summary {
   color: var(--on-primary);
 }
 .detail {
-  padding: 0 0 16px;
-  overflow-y: scroll;
-  scrollbar-color: var(--primary) var(--container);
-  scrollbar-width: auto;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
   flex: 1;
 }
 .detail-layout {
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-  align-items: start;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
 }
 .detail-main,
 .detail-chapters {
   min-width: 0;
+  min-height: 0;
+  padding-bottom: 16px;
 }
 .detail-main {
   border-right: 1px solid var(--outline);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.detail-main::-webkit-scrollbar {
+  display: none;
+}
+.detail-chapters {
+  overflow-y: scroll;
+  scrollbar-color: var(--primary) var(--container);
+  scrollbar-width: auto;
 }
 .detail-bar {
   border-bottom: 1px solid var(--outline);
@@ -1057,14 +1068,17 @@ summary {
   white-space: nowrap;
 }
 .detail-pull-tip:not(:empty) {
-  position: sticky;
+  position: absolute;
   top: 0;
+  right: 0;
+  width: 51%;
   z-index: 3;
   display: block;
   padding: 8px 16px;
   background: var(--high);
   color: var(--primary);
   text-align: center;
+  pointer-events: none;
 }
 .detail-error {
   margin: 8px 16px;
@@ -1224,8 +1238,23 @@ button[aria-pressed="true"] {
   }
 }
 @media (max-width: 760px) {
+  .detail {
+    overflow-y: scroll;
+    scrollbar-color: var(--primary) var(--container);
+    scrollbar-width: auto;
+  }
+  .detail-pull-tip:not(:empty) {
+    position: sticky;
+    width: 100%;
+  }
   .detail-layout {
     grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    min-height: 100%;
+  }
+  .detail-main,
+  .detail-chapters {
+    overflow: visible;
   }
   .detail-main {
     border-right: 0;

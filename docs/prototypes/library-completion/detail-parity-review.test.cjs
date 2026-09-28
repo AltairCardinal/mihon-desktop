@@ -35,7 +35,7 @@ test("远端追踪刷新和切服务同步编辑草稿，保存不退回旧进�
 
 test("详情下拉刷新被反向滚动打断后必须重新两段触发", () => visit(async (page) => {
   await page.getByTestId("manga-A").click();
-  const scroll = page.getByTestId("detail-scroll");
+  const scroll = page.getByTestId("detail-chapter-scroll");
   await scroll.dispatchEvent("wheel", { deltaY: -90 });
   assert.match(await page.getByTestId("detail-pull-tip").textContent(), /再次/);
   await scroll.dispatchEvent("wheel", { deltaY: 24 });
@@ -47,7 +47,7 @@ test("详情下拉刷新被反向滚动打断后必须重新两段触发", () =>
 
 test("详情下拉刷新被面板打断后必须重新两段触发", () => visit(async (page) => {
   await page.getByTestId("manga-A").click();
-  const scroll = page.getByTestId("detail-scroll");
+  const scroll = page.getByTestId("detail-chapter-scroll");
   await scroll.dispatchEvent("wheel", { deltaY: -90 });
   await page.getByTestId("detail-filter-menu").click();
   await page.keyboard.press("Escape");
@@ -82,16 +82,16 @@ test("重复收藏提示的去迁移入口打开已有收藏的迁移流程", ()
 test("长章节与同步页码样本可以直接从场景入口执行", () => visit(async (page) => {
   await page.evaluate(() => window.demo.scenario("detail-long-chapters"));
   await page.getByTestId("manga-A").click();
-  const scroll = page.getByTestId("detail-scroll");
+  const scroll = page.getByTestId("detail-chapter-scroll");
   const rect = await scroll.boundingBox();
   await page.mouse.move(rect.x + rect.width - 8, rect.y + 30);
   await page.mouse.down();
-  await page.mouse.move(rect.x + rect.width - 8, rect.y + rect.height - 30, { steps: 15 });
+  await page.mouse.move(rect.x + rect.width - 8, rect.y + rect.height + 30, { steps: 15 });
   await page.mouse.up();
   const position = await scroll.evaluate((node) => ({ top: node.scrollTop, max: node.scrollHeight - node.clientHeight }));
-  assert.ok(position.top >= position.max * 0.98, `真实拖动应到末尾：${position.top}/${position.max}`);
+  assert.equal(position.top, position.max, `真实拖动应到末尾：${position.top}/${position.max}`);
   assert.equal(await page.getByTestId("chapter-row-A-200").evaluate((row) => {
-    const pane = document.querySelector('[data-testid="detail-scroll"]').getBoundingClientRect();
+    const pane = document.querySelector('[data-testid="detail-chapter-scroll"]').getBoundingClientRect();
     const target = row.getBoundingClientRect();
     return target.top < pane.bottom && target.bottom > pane.top;
   }), true);

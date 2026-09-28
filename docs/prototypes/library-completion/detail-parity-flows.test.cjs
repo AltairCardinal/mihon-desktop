@@ -64,7 +64,7 @@ test("迁移的复制与迁移分离，取消不修改当前作品", () => visit
 test("详情顶部两段滚动提示后刷新，失败保留章节并可重试", () => visit(async (page) => {
   await page.evaluate(() => window.demo.scenario("empty-source"));
   await page.getByTestId("manga-A").click();
-  const scroll = page.getByTestId("detail-scroll");
+  const scroll = page.getByTestId("detail-chapter-scroll");
   await scroll.dispatchEvent("wheel", { deltaY: -90 });
   assert.match(await page.getByTestId("detail-pull-tip").textContent(), /再次/);
   assert.equal(await page.evaluate(() => window.demo.state.job), null);

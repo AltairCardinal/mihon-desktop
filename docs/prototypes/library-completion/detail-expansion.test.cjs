@@ -151,7 +151,7 @@ test("详情布局与返回：宽屏双栏、窄屏单列、长列表滚动条�
       b.chapters = Array.from({ length: 80 }, (_, i) => ({ ...b.chapters[0], id: `A-long-${i}`, number: i + 1, name: `第 ${i + 1} 话` }));
       window.demo.command("noop");
     });
-    assert.equal(await page.getByTestId("detail-scroll").evaluate((e) => e.scrollHeight > e.clientHeight), true);
+    assert.equal(await page.getByTestId("detail-chapter-scroll").evaluate((e) => e.scrollHeight > e.clientHeight), true);
     assert.equal(await page.getByTestId("nav-library").isVisible(), true);
     await page.getByTestId("detail-cover-open").click();
     await page.keyboard.press("Escape");

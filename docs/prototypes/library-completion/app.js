@@ -313,7 +313,7 @@
     const selection = V.batchBar(b, detailSelected, chapters);
     const notes = `<section class="detail-notes" data-testid="detail-notes-inline"><h3>作品笔记</h3>${detailNotesEditing ? `<div class="detail-notes-tools">${button("detail-notes-bold", "加粗")}${button("detail-notes-italic", "斜体")}${button("detail-notes-underline", "下划线")}${button("detail-notes-bullet", "项目符号")}${button("detail-notes-numbered", "有序列表")}${button("detail-notes-link", "插入链接")}</div><textarea data-testid="detail-notes-input" aria-label="作品笔记" placeholder="支持 Markdown 的本地笔记样本" rows="6">${esc(detailNotesDraft)}</textarea><div class="choice">${button("detail-notes-save", "保存")}${button("detail-notes-cancel", "取消")}</div>` : `<button class="detail-notes-body" data-action="detail-notes" data-testid="detail-notes-summary">${b.notes ? markdown(b.notes) : "暂无笔记，点击添加。"}</button>`}</section>`;
     const totalMissing = Math.max(0, Math.max(0, ...b.chapters.map((chapter) => chapter.number)) - b.chapters.length);
-    return `${toolbar}${summary()}<div class="detail" data-testid="detail-scroll" data-book-id="${esc(b.id)}"><div class="detail-pull-tip" data-testid="detail-pull-tip">${detailRefreshArmed ? "再次向上滚动检查更新" : ""}</div><div class="detail-layout" data-testid="detail-layout"><div class="detail-main">${hero}${actionRow}<p class="detail-category-status" data-testid="detail-category-status">分类：${esc(b.categories.map((id) => s.categories.find((c) => c.id === id)?.name || "默认").join("、"))}</p><p class="detail-interval-status" data-testid="detail-interval-status">上次检查：${b.lastChecked ? new Date(b.lastChecked).toLocaleString("zh-CN") : "尚未检查"} · 预计下次更新：${b.fetchInterval ? b.fetchInterval + " 天后" : "由默认周期决定"} · 检查周期：${b.fetchInterval ? b.fetchInterval + " 天" : "默认"}</p>${detailRefreshError ? `<p class="detail-error" data-testid="detail-refresh-error">${esc(detailRefreshError)} ${button("detail-refresh-retry", "重试")}</p>` : ""}${notes}<div class="detail-reading-mode"><span>阅读模式</span><div class="detail-menu-anchor"><button data-action="detail-reading-mode" data-testid="detail-reading-mode">${esc(b.readingMode || "默认")}</button>${detailMenuMarkup("reading", readingModes)}</div></div></div><div class="detail-chapters"><button class="detail-chapter-heading" data-action="detail-filter-menu" data-testid="chapter-count">章节 ${chapters.length}/${b.chapters.length}${s.prefs.showChapterGaps && totalMissing ? ` · 缺 ${totalMissing} 话` : ""}</button><div class="chapter-list">${chapterListMarkup(chapters, b)}</div>${b.detachedDownloads?.length ? `<p class="detail-detached">目录已移除，保留本地下载：${esc(b.detachedDownloads.join("、"))}</p>` : ""}</div></div></div>${unread && !detailSelected.length ? `<button class="detail-fab" data-action="detail-continue" data-testid="detail-continue" data-chapter-id="${esc(unread.id)}">${icon("play")}${b.chapters.some((c) => c.read) || unread.page > 0 ? "继续阅读" : "开始阅读"}</button>` : ""}${selection}`;
+    return `${toolbar}${summary()}<div class="detail" data-testid="detail-scroll" data-book-id="${esc(b.id)}"><div class="detail-pull-tip" data-testid="detail-pull-tip">${detailRefreshArmed ? "再次向上滚动检查更新" : ""}</div><div class="detail-layout" data-testid="detail-layout"><div class="detail-main" data-testid="detail-info-scroll">${hero}${actionRow}<p class="detail-category-status" data-testid="detail-category-status">分类：${esc(b.categories.map((id) => s.categories.find((c) => c.id === id)?.name || "默认").join("、"))}</p><p class="detail-interval-status" data-testid="detail-interval-status">上次检查：${b.lastChecked ? new Date(b.lastChecked).toLocaleString("zh-CN") : "尚未检查"} · 预计下次更新：${b.fetchInterval ? b.fetchInterval + " 天后" : "由默认周期决定"} · 检查周期：${b.fetchInterval ? b.fetchInterval + " 天" : "默认"}</p>${detailRefreshError ? `<p class="detail-error" data-testid="detail-refresh-error">${esc(detailRefreshError)} ${button("detail-refresh-retry", "重试")}</p>` : ""}${notes}<div class="detail-reading-mode"><span>阅读模式</span><div class="detail-menu-anchor"><button data-action="detail-reading-mode" data-testid="detail-reading-mode">${esc(b.readingMode || "默认")}</button>${detailMenuMarkup("reading", readingModes)}</div></div></div><div class="detail-chapters" data-testid="detail-chapter-scroll"><button class="detail-chapter-heading" data-action="detail-filter-menu" data-testid="chapter-count">章节 ${chapters.length}/${b.chapters.length}${s.prefs.showChapterGaps && totalMissing ? ` · 缺 ${totalMissing} 话` : ""}</button><div class="chapter-list">${chapterListMarkup(chapters, b)}</div>${b.detachedDownloads?.length ? `<p class="detail-detached">目录已移除，保留本地下载：${esc(b.detachedDownloads.join("、"))}</p>` : ""}</div></div></div>${unread && !detailSelected.length ? `<button class="detail-fab" data-action="detail-continue" data-testid="detail-continue" data-chapter-id="${esc(unread.id)}">${icon("play")}${b.chapters.some((c) => c.read) || unread.page > 0 ? "继续阅读" : "开始阅读"}</button>` : ""}${selection}`;
   }
   function rootPage() {
     const names = { updates: "更新", history: "历史", browse: "浏览", authors: "作者", more: "更多" };
@@ -328,7 +328,11 @@
   function render() {
     const old = document.querySelector('[data-testid="library-scroll"]');
     const oldDetail = document.querySelector('[data-testid="detail-scroll"]');
-    if (oldDetail) detailScroll[oldDetail.dataset.bookId] = oldDetail.scrollTop;
+    if (oldDetail) detailScroll[oldDetail.dataset.bookId] = {
+      whole: oldDetail.scrollTop,
+      info: oldDetail.querySelector('[data-testid="detail-info-scroll"]')?.scrollTop || 0,
+      chapters: oldDetail.querySelector('[data-testid="detail-chapter-scroll"]')?.scrollTop || 0,
+    };
     s.positions ||= {};
     if (old) {
       s.scroll[old.dataset.scrollKey] = old.scrollTop;
@@ -348,8 +352,13 @@
     app.innerHTML = `<div class="platform-bar"><span>${s.platform === "windows" ? "Mihon Desktop" : "9:41"}</span><span>${s.platform === "windows" ? "—　□　×" : "●　▰"}</span></div><div class="app-content" id="content" ${modal ? "inert" : ""}>${s.route === "reader" ? readerView() : s.route === "detail" ? detail() : s.route === "library" ? library() : rootPage()}${s.route !== "reader" ? nav() : ""}<div class="status" role="status" data-testid="notice">${esc(s.notice)}</div></div><div id="modal-root"></div>`;
     const newDetail = document.querySelector('[data-testid="detail-scroll"]');
     if (newDetail) {
-      newDetail.scrollTop = detailScroll[newDetail.dataset.bookId] || 0;
+      const position = detailScroll[newDetail.dataset.bookId] || {};
+      newDetail.scrollTop = position.whole || 0;
+      newDetail.querySelector('[data-testid="detail-info-scroll"]').scrollTop = position.info || 0;
+      const chapters = newDetail.querySelector('[data-testid="detail-chapter-scroll"]');
+      chapters.scrollTop = position.chapters || 0;
       newDetail.addEventListener("wheel", onDetailWheel, { passive: false });
+      chapters.addEventListener("wheel", onDetailWheel, { passive: false });
     }
     const scroll = document.querySelector('[data-testid="library-scroll"]');
     if (scroll) {
@@ -2031,6 +2040,10 @@
   }
   function onDetailWheel(e) {
     const scroller = e.currentTarget;
+    const active = window.matchMedia("(max-width: 760px)").matches
+      ? document.querySelector('[data-testid="detail-scroll"]')
+      : document.querySelector('[data-testid="detail-chapter-scroll"]');
+    if (scroller !== active) return;
     if (e.ctrlKey || e.shiftKey || e.altKey || e.deltaY >= 0 || scroller.scrollTop > 0 ||
         detailSelected.length || modal || s.route !== "detail" || s.job?.status === "running") {
       cancelDetailPull();
