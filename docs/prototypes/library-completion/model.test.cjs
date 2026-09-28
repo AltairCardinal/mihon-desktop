@@ -64,7 +64,7 @@ test("未知范围旧更新保留，用户新请求不会伪称恢复", () => {
   assert.equal(s.job.type, "all");
 });
 
-test("固定锚点替换与追加、普通点击退出，隐藏选择保留", () => {
+test("固定锚点替换与追加、多选普通点击增减，隐藏选择保留", () => {
   const s = M.create();
   M.select(s, "B", { ctrl: true });
   M.select(s, "E", { shift: true });
@@ -79,8 +79,23 @@ test("固定锚点替换与追加、普通点击退出，隐藏选择保留", ()
   assert.ok(s.selected.includes("B"));
   assert.ok(s.selected.includes("F"));
   M.select(s, "F", {});
+  assert.equal(s.route, "library");
+  assert.deepEqual(new Set(s.selected), new Set(["B", "C", "D", "E"]));
+  assert.deepEqual(s.anchor, { id: "F", category: 2 });
+  M.select(s, "F", {});
+  assert.equal(s.selected.length, 5);
+});
+
+test("普通点击取消最后一项退出多选，下一次点击才打开", () => {
+  const s = M.create();
+  M.select(s, "B", { ctrl: true });
+  M.select(s, "B", {});
+  assert.equal(s.route, "library");
+  assert.deepEqual(s.selected, []);
+  assert.equal(s.anchor, null);
+  M.select(s, "B", {});
   assert.equal(s.route, "detail");
-  assert.equal(s.selected.length, 0);
+  assert.equal(s.bookId, "B");
 });
 test("更新逐本失败隔离、重试固定集合、取消与重启", () => {
   const s = M.create();

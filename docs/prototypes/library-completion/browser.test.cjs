@@ -186,13 +186,21 @@ async function run(fn, file = "device.html?platform=windows", width = 1000) {
     await browser.close();
   }
 }
-test("真实点击：Ctrl 与连续 Shift 收缩，普通单击清选择打开详情", () =>
+test("真实点击：Ctrl 与连续 Shift 收缩，多选普通单击增减，零选择后打开", () =>
   run(async (p) => {
     await p.getByTestId("manga-B").click({ modifiers: ["Control"] });
     await p.getByTestId("manga-E").click({ modifiers: ["Shift"] });
     assert.match(await p.getByTestId("selection-count").textContent(), /4/);
     await p.getByTestId("manga-C").click({ modifiers: ["Shift"] });
     assert.match(await p.getByTestId("selection-count").textContent(), /2/);
+    await p.getByTestId("manga-D").click();
+    assert.equal(await p.getByTestId("detail-back").count(), 0);
+    assert.match(await p.getByTestId("selection-count").textContent(), /3/);
+    await p.getByTestId("manga-B").click();
+    await p.getByTestId("manga-C").click();
+    await p.getByTestId("manga-D").click();
+    assert.equal(await p.getByTestId("selection-count").count(), 0);
+    assert.equal(await p.getByTestId("detail-back").count(), 0);
     await p.getByTestId("manga-D").click();
     assert.equal(await p.getByTestId("detail-back").count(), 1);
     await p.getByTestId("detail-back").click();

@@ -863,7 +863,9 @@
       e.preventDefault();
       if (hold) clearTimeout(hold.timer);
       hold = null;
-      s.notice = "使用 Ctrl 点击多选，普通单击打开作品";
+      s.notice = s.selected.length
+        ? "多选中：单击增减选择，Shift 选择范围"
+        : "单击打开作品，Ctrl 点击进入多选";
       document.querySelector('[data-testid="notice"]').textContent = s.notice;
     }
   });

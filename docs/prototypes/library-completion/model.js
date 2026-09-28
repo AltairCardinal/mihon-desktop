@@ -195,7 +195,7 @@
       ids
         .slice(Math.min(a, b), Math.max(a, b) + 1)
         .forEach((x) => selected.add(x));
-    } else if (event.ctrl || (s.platform === "android" && selected.size)) {
+    } else if (event.ctrl || selected.size) {
       if (selected.has(id)) selected.delete(id);
       else selected.add(id);
       s.anchor = { id, category: s.category };

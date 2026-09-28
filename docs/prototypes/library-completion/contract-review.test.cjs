@@ -48,6 +48,14 @@ test('独立契约：完整 Windows 选择示例、隐藏锚点、跨分类与�
     assert.deepEqual(await selected(page), ['A']);
     assert.match(await page.getByTestId('selection-count').textContent(), /6/);
     await page.getByTestId('manga-A').click();
+    assert.deepEqual(await selected(page), []);
+    assert.match(await page.getByTestId('selection-count').textContent(), /5/);
+    assert.equal(await page.getByTestId('detail-back').count(), 0);
+    await page.getByTestId('manga-A').click();
+    assert.deepEqual(await selected(page), ['A']);
+    assert.match(await page.getByTestId('selection-count').textContent(), /6/);
+    await page.keyboard.press('Escape');
+    await page.getByTestId('manga-A').click();
     await page.getByTestId('detail-back').click();
     assert.equal(await page.getByTestId('selection-count').count(), 0);
   }
