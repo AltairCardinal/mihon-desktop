@@ -19,7 +19,7 @@
     frame.id = 'preview-' + platform;
     frame.dataset.platform = platform;
     frame.title = label.textContent;
-    frame.srcdoc = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><base href="${sharedAssets}"><link rel="stylesheet" href="${sharedAssets}styles.css"><link rel="stylesheet" href="${ownAssets}permission.css"></head><body><div id="app" class="app-shell"></div><script src="${sharedAssets}ui-view.js"></script><script src="${sharedAssets}sync-interactions.js"></script><script src="${sharedAssets}extension-suggestions.js"></script><script src="${ownAssets}permission.js"></script><script src="${sharedAssets}app.js"></script></body></html>`;
+    frame.srcdoc = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><base href="${sharedAssets}"><link rel="stylesheet" href="${sharedAssets}styles.css"><link rel="stylesheet" href="${ownAssets}permission.css"></head><body><div id="app" class="app-shell"></div><script src="${sharedAssets}ui-view.js"></script><script src="${sharedAssets}sync-progress.js"></script><script src="${sharedAssets}sync-interactions.js"></script><script src="${sharedAssets}extension-suggestions.js"></script><script src="${ownAssets}permission.js"></script><script src="${sharedAssets}app.js"></script></body></html>`;
     frame.addEventListener('load', () => {
       const app = frame.contentWindow.__mihonSyncDemo;
       app.state.ui.route = 'browse';

@@ -30,6 +30,7 @@
       <div class="tool-group"><label for="trigger-device">触发设备</label><select id="trigger-device" aria-label="触发设备"><option value="windows">电脑 B</option><option value="android">手机 A</option></select><button class="m-button" data-trigger="startup" data-testid="startup-sync">模拟启动同步</button><button class="m-button" data-trigger="periodic" data-testid="periodic-sync">模拟定期到期</button></div>
       <div class="tool-group tool-actions"><button class="m-button" data-command="network" data-testid="network-toggle">切换离线</button><button class="m-button" data-command="many" data-testid="many-pending">120 项待处理</button><button class="m-button tool-reset" data-command="reset" data-testid="reset-demo">重置演示</button></div>
       <div class="tool-group"><label for="interaction-scene">交互场景</label><select id="interaction-scene" aria-label="交互场景"><option value="pending-upload">待确认期间继续同步</option><option value="mixed">自动处理分歧</option><option value="setup">首次创建同步空间</option><option value="setup-existing">已有同步空间 · 未设密码</option><option value="setup-protected">已有同步空间 · 密码 mihon-demo</option><option value="setup-find-failed">同步空间查找失败</option><option value="setup-create-failed">同步空间创建失败</option><option value="auth-expired">设备验证码过期</option><option value="import">已有数据首次合并</option><option value="empty-device">空设备加入</option><option value="interrupted">设备待机后恢复 · 进度与日志</option><option value="user-paused">用户主动暂停 · 手动继续</option><option value="waiting-network">等待网络后自动继续</option><option value="unknown-total">远端总量未知</option><option value="retry-exhausted">自动重试已耗尽</option><option value="auth-blocked">授权阻塞</option><option value="success">同步成功收口</option><option value="network">连接暂时中断</option><option value="access">需要重新连接 GitHub</option><option value="key">同步密码不匹配</option><option value="empty">同步空间待创建</option><option value="unknown">上传结果待核对</option><option value="batch">批量部分完成</option></select><button class="m-button" data-command="scene" data-testid="show-interaction-scene">显示场景</button></div>
+      <div class="tool-group progress-review-tools"><label for="progress-scene">进度审阅</label><select id="progress-scene" aria-label="同步进度场景"><option value="continuous">正常连续演示</option><option value="rapid">高频动作与新增数据</option><option value="whole-eta">可信整体剩余</option><option value="local-eta">仅局部／请求估算</option><option value="wait-10">10 秒没有新进展</option><option value="wait-60">60 秒没有新进展</option><option value="transfer-complete">传输 100% 后核对</option><option value="paused">暂停与恢复</option><option value="retry">限流倒计时与重试</option><option value="partial">部分完成与失败日志</option><option value="succeeded">成功终态</option><option value="latest">已是最新</option></select><button class="m-button" data-command="progress-scene" data-testid="show-progress-scene">显示在所选设备</button><button class="m-button m-button-primary" data-command="progress-both" data-testid="show-progress-both">双端显示进度</button></div>
       <div class="tool-group"><label for="extension-scene">插件建议</label><select id="extension-scene" aria-label="插件建议场景"><option value="sample">多源收藏样本</option><option value="incomplete">目录不完整</option><option value="private">Android 私有安装</option><option value="permission">Android 缺少安装权限</option><option value="failure">下一项安装失败</option><option value="reset">重置插件建议</option></select><button class="m-button" data-command="extension-scene" data-testid="show-extension-scene">显示插件场景</button></div>
       <small class="preview-boundary">场景显示在所选设备。GitHub 授权在本地模拟窗口完成，无需真实账号；已有密码空间的演示密码为 mihon-demo。仅供交互审阅。</small>
     </div>
@@ -52,7 +53,7 @@
       frame.id = 'preview-' + platform;
       frame.dataset.platform = platform;
       frame.title = label.textContent;
-      frame.srcdoc = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="./styles.css"></head><body><div id="app" class="app-shell"></div><script src="./ui-view.js"></script><script src="./sync-interactions.js"></script><script src="./extension-suggestions.js"></script><script src="./app.js"></script></body></html>';
+      frame.srcdoc = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="./styles.css"></head><body><div id="app" class="app-shell"></div><script src="./ui-view.js"></script><script src="./sync-progress.js"></script><script src="./sync-interactions.js"></script><script src="./extension-suggestions.js"></script><script src="./app.js"></script></body></html>';
       frame.addEventListener('load', () => { if (afterLoad) afterLoad(frame); }, { once: true });
       column.append(label, frame);
       pair.append(column);
@@ -73,6 +74,10 @@
       target.extensions.scene(root.querySelector('#extension-scene').value);
     } else if (button.dataset.command === 'scene' && target) {
       target.showInteractionScenario(root.querySelector('#interaction-scene').value);
+    } else if (button.dataset.command === 'progress-scene' && target) {
+      target.showInteractionScenario('progress-' + root.querySelector('#progress-scene').value);
+    } else if (button.dataset.command === 'progress-both') {
+      apps().forEach(app => app.showInteractionScenario('progress-' + root.querySelector('#progress-scene').value));
     } else if (button.dataset.command === 'network') {
       model.setOnline(sharedState, !sharedState.online);
       button.textContent = sharedState.online ? '切换离线' : '恢复在线';
@@ -86,5 +91,6 @@
       } : null);
     }
   });
-  mountFrames();
+  const progressScene = new URLSearchParams(location.search).get('progress');
+  mountFrames(progressScene ? frame => { frame.contentWindow.__mihonSyncDemo.showInteractionScenario('progress-' + progressScene); } : null);
 })();

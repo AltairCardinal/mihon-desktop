@@ -53,7 +53,6 @@ for (const platform of ['windows', 'android']) {
       await click('import-pause');
       await frame.getByTestId('sync-close').click();
       await frame.getByTestId('library-sync').click();
-      await click('import-view');
       await click('import-resume');
       await frame.getByTestId('ix-import-done').waitFor();
       await click('import-done');
@@ -67,7 +66,7 @@ for (const platform of ['windows', 'android']) {
       await frame.getByTestId('manual-sync').click();
       await frame.getByTestId('sync-result').waitFor();
       assert.equal(await frame.locator('[data-confirm]').count(), pending, '无需先确认取消就能同步');
-      assert.match(await frame.getByTestId('sync-status-row').innerText(), /取消操作待确认/);
+      assert.equal(await frame.getByTestId('sync-progress-title').innerText(), '同步完成');
       await fits();
       await frame.locator('[data-ignore]').first().click();
       assert.equal(await frame.locator('[data-ignore]').count(), pending - 1);
@@ -149,12 +148,13 @@ test('定时同步倒计时：双端格式、时间推进、开关与周期变�
       await frame.getByTestId('sync-settings-back').click();
       assert.equal(await title.innerText(), '1天后同步');
       await frame.getByTestId('manual-sync').click();
-      assert.equal(await title.innerText(), '正在同步');
+      assert.equal(await frame.getByTestId('sync-progress-title').innerText(), '同步中');
       await frame.getByTestId('sync-result').waitFor();
-      assert.equal(await title.innerText(), '1天后同步');
+      assert.match(await frame.getByTestId('sync-progress-title').innerText(), /^(同步完成|已是最新)$/);
+      assert.equal(await frame.locator('body').evaluate(() => window.__mihonSyncDemo.state.ui.interactions.nextSyncAt - Date.now()), 1440 * 60000);
       await frame.getByTestId('sync-close').click();
       await frame.getByTestId('library-sync').click();
-      assert.equal(await title.innerText(), '1天后同步');
+      assert.match(await frame.getByTestId('sync-progress-title').innerText(), /^(同步完成|已是最新)$/);
     }
   } finally { await browser.close(); }
 });

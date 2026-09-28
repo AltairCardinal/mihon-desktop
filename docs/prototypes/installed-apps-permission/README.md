@@ -20,7 +20,7 @@
 - `permission.css`：权限卡和模拟系统弹窗样式，沿用现有 Mihon 主题 token。
 - `permission.test.cjs`：真实浏览器页面测试，覆盖授权/拒绝/重启/撤权/失败/窄屏/键盘/设备隔离及无远端请求。
 
-直接复用 `../multi-device-sync/` 的 `styles.css`、`ui-view.js`、`app.js`、`sync-model.js`、`sync-interactions.js` 与 `extension-suggestions.js`，没有复制外壳。原 `app.js` 仅增加一个可选图源 renderer 接入点；原同步 DEMO 不加载本目录脚本，行为不变。
+直接复用 `../multi-device-sync/` 的 `styles.css`、`ui-view.js`、`app.js`、`sync-model.js`、`sync-progress.js`、`sync-interactions.js` 与 `extension-suggestions.js`，没有复制外壳。`sync-progress.js` 必须在 `sync-interactions.js` 之前加载。原 `app.js` 仅增加一个可选图源 renderer 接入点；原同步 DEMO 不加载本目录脚本，行为不变。
 
 新功能与同步无直接关系，因此建立同级目录；原同步 DEMO 继续用于原有交互审阅。两端平台导航差异以原外壳为准，不虚构 Windows 的授权需求。
 

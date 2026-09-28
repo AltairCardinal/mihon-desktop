@@ -59,7 +59,7 @@
   const button = (label, attrs, className) => `<button class="m-button ${className || ''}" ${attrs || ''}>${label}</button>`;
   const iconButton = (name, label, attrs, className) => `<button class="m-icon-button ${className || ''}" aria-label="${esc(label)}" title="${esc(label)}" ${attrs || ''}>${view.icon(name)}</button>`;
   const iconLabel = (name, label, attrs, className) => `<button class="m-icon-label ${className || ''}" ${attrs || ''}>${view.icon(name, label)}</button>`;
-  const interactions = window.MihonSyncInteractions.create({ state, currentDevice, isWindows, esc, view, button, render });
+  const interactions = window.MihonSyncInteractions.create({ state, currentDevice, isWindows, esc, view, button, render, queueStats });
 
   const extensions = window.MihonExtensionSuggestions.create({ state, currentDevice, isWindows, esc, render });
 
@@ -215,10 +215,8 @@
     else state.ui.syncOpen = false;
   }
 
-  function renderSyncPage() {
-    if (!interactions.connected()) return interactions.unconfigured();
+  function queueStats() {
     const current = currentDevice();
-    const pending = current.confirmations.length;
     const pendingIds = new Set(current.pendingOutgoing);
     const uploads = state.shared.operations.filter(op => op.sourceDevice === current.id && pendingIds.has(op.id));
     const membership = {
@@ -227,12 +225,20 @@
       authors: uploads.filter(op => op.kind.startsWith('author-')).length,
     };
     const reading = uploads.filter(op => op.kind === 'read-position').length;
+    return { total: current.pendingOutgoing.length, membership, reading };
+  }
+
+  function renderSyncPage() {
+    if (!interactions.connected()) return interactions.unconfigured();
+    const current = currentDevice();
+    const pending = current.confirmations.length;
+    const { membership, reading } = queueStats();
     const result = state.ui.syncResult;
     const batchResult = state.ui.batchResult;
     const busy = state.ui.busy && state.ui.busyDeviceId === current.id;
     return `<section class="sync-content" data-testid="sync-panel">
       ${interactions.status({ total: current.pendingOutgoing.length, membership, reading, pending, busy, online: state.online })}
-      ${result ? `<div class="snackbar-inline ${result.ok ? 'success' : 'failure'}" data-testid="sync-result">${view.icon(result.ok ? 'check' : 'info')}<span>${esc(result.message)}</span></div>` : ''}
+      ${result && !interactions.hasProgress() ? `<div class="snackbar-inline ${result.ok ? 'success' : 'failure'}" data-testid="sync-result">${view.icon(result.ok ? 'check' : 'info')}<span>${esc(result.message)}</span></div>` : ''}
       ${batchResult ? `<div class="snackbar-inline ${batchResult.ok ? 'success' : 'failure'}" data-testid="batch-result">${view.icon(batchResult.ok ? 'check' : 'info')}<span>${esc(batchResult.message)}</span></div>` : ''}
       ${interactions.summary()}${interactions.importStatus()}
       ${pending ? `<div class="sync-list pending-list">${renderPendingToolbar(pending)}${current.confirmations.map(renderConfirmation).join('')}</div>` : '<div class="sync-empty">当前没有待确认的操作</div>'}
@@ -387,6 +393,8 @@
     const suggestionScroll = root.querySelector('.ext-suggestion-scroll')?.scrollTop || 0;
     const scroll = root.querySelector('.sync-panel-scroll');
     if (scroll) state.ui.syncScroll = scroll.scrollTop;
+    const progressScroll = root.querySelector('[data-testid="sync-progress-details"]')?.scrollTop || 0;
+    const subpageScroll = root.querySelector('.ix-page')?.scrollTop || 0;
     root.innerHTML = `<div class="prototype-root platform-${state.ui.platform} theme-${state.ui.theme}">${renderPreviewTools()}${renderWindowShell(renderRoute())}<div class="prototype-notice ${state.ui.tone}">${view.icon(state.ui.tone === 'failure' ? 'info' : 'cloud')}<span data-testid="notice">${esc(state.ui.notice)}</span></div></div>`;
     if (state.ui.syncOpen) {
       root.querySelectorAll('.app-window > .app-body, .app-window > .native-navigation, .app-window > .gesture-area').forEach(el => { el.inert = true; });
@@ -413,16 +421,22 @@
     }
     if (root.querySelector('.browse-scroll')) root.querySelector('.browse-scroll').scrollTop = browseScroll;
     if (root.querySelector('.ext-suggestion-scroll')) root.querySelector('.ext-suggestion-scroll').scrollTop = suggestionScroll;
+    const progressDetails = root.querySelector('[data-testid="sync-progress-details"]');
+    if (progressDetails) progressDetails.scrollTop = progressScroll;
+    if (root.querySelector('.ix-page')) root.querySelector('.ix-page').scrollTop = subpageScroll;
+    interactions.paintProgress();
     if (preview && publish) preview.refreshOthers(window);
   }
 
   function scheduleSync(trigger) {
     if (state.ui.busy) { notice('同步正在进行，可以继续切换页面；请稍候查看本轮结果。'); render(); return; }
+    interactions.beginSync();
     const deviceId = state.selectedDevice; state.ui.busy = true; state.ui.busyDeviceId = deviceId; notice(`${model.TRIGGER_LABELS[trigger]}已开始；页面仍可继续操作。`); render();
     const timer = window.setTimeout(() => {
       if (state.ui.timerId !== timer) return;
       const result = model.triggerSync(state, deviceId, trigger);
       interactions.didSync(result.ok);
+      interactions.finishSync(result);
       if (result.ok && !result.skipped) {
         const count = model.getDevice(state, deviceId).confirmations.length;
         result.message = `${result.message}${count ? ` 还有 ${count} 项取消操作待确认。` : ''}`;
@@ -594,4 +608,6 @@
     document.body.classList.add('embedded-preview');
   }
   render();
+  const progressScene = new URLSearchParams(location.search).get('progress');
+  if (!preview && progressScene) interactions.showScenario('progress-' + progressScene);
 })();

@@ -188,7 +188,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .embedded-preview .prototype-root { min-height: 0; padding: 0; }
 .embedded-preview .preview-tools, .embedded-preview .prototype-notice { display: none; }
 .embedded-preview .windows-shell { width: 100%; height: 844px; max-width: none; border-radius: 8px; border: 1px solid #454750; }
-.embedded-preview .android-shell { width: 390px; height: 844px; border: 7px solid #373941; border-radius: 27px; }
+.embedded-preview .android-shell { width: min(390px, 100%); height: 844px; border: 7px solid #373941; border-radius: 27px; }
 .theme-light { color-scheme: light; }
 .theme-dark .desktop-windowbar { color: #c3c4ce; }
 /* Sync subpages reuse the existing native sheet, with one scroll area per page. */
@@ -315,3 +315,33 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .platform-android .ext-dialog { padding: 20px; }
 .platform-android .ext-row { padding: 12px; }
 .extension-layout-review .android-shell { width: min(1280px, 100%); border-radius: 8px; }
+
+/* HTML_ADAPTER: stable progress slots; measurements are browser review values. */
+.sync-progress-card { border: 1px solid var(--outline-variant); border-radius: 16px; background: var(--surface-container); margin: 8px 0 20px; min-width: 0; }
+.sync-progress-summary { display: grid; gap: 12px; padding: 16px; min-width: 0; }
+.sync-progress-heading { display: grid; grid-template-columns: minmax(0, 1fr) 108px; align-items: center; min-height: 44px; gap: 4px; }
+.sync-progress-heading h3 { margin: 0; font-size: 1.1em; line-height: 1.4; }
+.sync-progress-heading button { width: 108px; white-space: normal; }
+.sync-progress-confirmed { font-size: 1.2em; font-variant-numeric: tabular-nums; line-height: 1.5; min-height: 1.5em; }
+.sync-progress-action { line-height: 1.5; min-height: 3em; overflow-wrap: anywhere; }
+.sync-progress-track { position: relative; height: 4px; overflow: hidden; background: var(--outline-variant); border-radius: 4px; }
+.sync-progress-track span { display: block; height: 100%; background: var(--primary); }
+.sync-progress-track[data-active="true"][data-determinate="false"] span { animation: sync-progress-slide 1.7s ease-in-out infinite alternate; }
+.sync-progress-track[data-active="false"][data-determinate="false"] span { background: var(--outline); width: 100% !important; opacity: .35; }
+.sync-progress-track[data-terminal="true"] span { background: var(--primary); opacity: 1; }
+.sync-progress-time { display: grid; grid-template-columns: 1fr; gap: 4px; font-size: .85em; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.sync-progress-time b { font-weight: 400; }
+.sync-progress-explanation { margin: 0; line-height: 1.5; min-height: 3em; overflow-wrap: anywhere; }
+.progress-toggle { display: flex; justify-content: space-between; width: 100%; min-height: 44px; }
+.sync-progress-details { max-height: 300px; overflow-y: auto; overscroll-behavior: contain; padding: 0 16px 16px; border-top: 1px solid var(--outline-variant); }
+.sync-progress-details dl { margin: 12px 0; font-size: .85em; }
+.sync-progress-details dl > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 8px; padding: 7px 0; }
+.sync-progress-details dd { margin: 0; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.sync-progress-details .sync-item-log { margin: 8px 0 0; }
+.sync-progress-details .sync-log-item { align-items: start; }
+.sync-progress-details .sync-log-item strong, .sync-progress-details .sync-log-item small { white-space: normal; overflow-wrap: anywhere; }
+.sync-progress-problems, .sync-failure-log { padding: 12px 16px; line-height: 1.6; overflow-wrap: anywhere; }
+.sync-progress-card [hidden] { display: none !important; }
+.progress-review-tools { border-left: 3px solid var(--primary); padding-left: 12px; }
+@keyframes sync-progress-slide { from { transform: translateX(0); } to { transform: translateX(210%); } }
+@media (prefers-reduced-motion: reduce) { .sync-progress-track span { animation: none !important; } }

@@ -13,11 +13,12 @@ test('Android：系统中断返回应用后自动恢复，用户主动暂停才�
     await page.getByTestId('show-interaction-scene').click();
 
     const frame = page.frameLocator('#preview-android');
-    await frame.getByTestId('sync-import-progress').waitFor();
-    assert.match(await frame.getByRole('heading', { level: 3 }).innerText(), /正在恢复同步|正在继续同步/);
+    await frame.getByTestId('sync-progress-track').waitFor();
+    assert.match(await frame.getByRole('heading', { level: 3 }).innerText(), /正在核对进度|同步中/);
+    await frame.getByTestId('sync-progress-toggle').click();
     assert.match(await frame.getByTestId('sync-import-count').innerText(), /已处理 24 \/ 60 项/);
-    assert.equal(await frame.getByTestId('sync-import-progress').getAttribute('value'), '24');
-    assert.equal(await frame.getByTestId('sync-import-progress').getAttribute('max'), '60');
+    assert.equal(await frame.getByTestId('sync-progress-track').getAttribute('aria-valuenow'), null, '恢复核对不展示旧比例');
+    assert.equal(await frame.getByTestId('sync-progress-confirmed').innerText(), '本次已确认 24 条');
     assert.ok(await frame.getByTestId('sync-item-log').locator('li').count() >= 4);
     assert.match(await frame.getByTestId('sync-item-log').innerText(), /星海骑士|黎明邮局/);
     assert.equal(await frame.getByTestId('ix-import-resume').count(), 0, '系统中断恢复不要求点击继续');
@@ -25,11 +26,11 @@ test('Android：系统中断返回应用后自动恢复，用户主动暂停才�
 
     await page.selectOption('#interaction-scene', 'user-paused');
     await page.getByTestId('show-interaction-scene').click();
-    assert.match(await frame.getByRole('heading', { level: 3 }).innerText(), /同步已暂停/);
+    assert.match(await frame.getByRole('heading', { level: 3 }).innerText(), /已暂停/);
     assert.equal(await frame.getByTestId('ix-import-resume').count(), 1);
 
     await frame.getByTestId('ix-import-resume').click();
-    assert.match(await frame.getByRole('heading', { level: 3 }).innerText(), /正在恢复同步|正在合并数据/);
+    assert.match(await frame.getByRole('heading', { level: 3 }).innerText(), /正在核对进度|同步中/);
     await frame.getByTestId('ix-import-done').waitFor();
   } finally {
     await browser.close();
@@ -49,20 +50,22 @@ test('Android：等待网络、未知总量、重试耗尽和授权阻塞都保�
     }
 
     await scene('waiting-network');
-    assert.match(await frame.getByRole('heading', { level: 3 }).innerText(), /等待网络连接/);
+    assert.match(await frame.getByRole('heading', { level: 3 }).innerText(), /等待网络/);
+    await frame.getByTestId('sync-progress-toggle').click();
     assert.match(await frame.getByTestId('sync-import-count').innerText(), /已处理 24 \/ 60 项/);
     await page.getByTestId('network-toggle').click();
     await page.getByTestId('network-toggle').click();
     await frame.getByTestId('ix-import-done').waitFor();
 
     await scene('unknown-total');
-    assert.match(await frame.getByRole('heading', { level: 3 }).innerText(), /正在获取同步数据/);
+    assert.match(await frame.getByRole('heading', { level: 3 }).innerText(), /同步中/);
+    await frame.getByTestId('sync-progress-toggle').click();
     assert.match(await frame.getByTestId('sync-import-count').innerText(), /已处理 24 项/);
-    assert.equal(await frame.getByTestId('sync-import-progress').getAttribute('value'), null);
-    assert.equal(await frame.getByTestId('sync-import-progress').getAttribute('max'), null);
+    assert.equal(await frame.getByTestId('sync-progress-track').getAttribute('value'), null);
+    assert.equal(await frame.getByTestId('sync-progress-track').getAttribute('max'), null);
 
     await scene('retry-exhausted');
-    assert.match(await frame.getByRole('heading', { level: 3 }).innerText(), /连接失败，已保留进度/);
+    assert.match(await frame.getByRole('heading', { level: 3 }).innerText(), /同步未完成/);
     assert.equal(await frame.getByTestId('ix-import-retry').count(), 1);
 
     await scene('auth-blocked');
@@ -83,7 +86,7 @@ test('双端：同步进度只出现在触发设备，成功收口不留下继�
     const phone = page.frameLocator('#preview-android');
     const desktop = page.frameLocator('#preview-windows');
     assert.match(await phone.getByRole('dialog').innerText(), /同步空间已就绪/);
-    assert.equal(await phone.getByTestId('sync-import-progress').count(), 0);
+    assert.equal(await phone.getByTestId('sync-progress-track').count(), 0);
     assert.equal(await desktop.getByTestId('sync-recovery-state').count(), 0);
     await phone.getByTestId('ix-import-done').click();
     assert.equal(await phone.getByRole('dialog').count(), 1, '收口后保留同步面板，用户可自行关闭');

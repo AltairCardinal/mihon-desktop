@@ -3,7 +3,7 @@
 
   // UI storyboards only. Authorization, password protection, lookup and import do not call a service.
   window.MihonSyncInteractions = { create };
-  function create({ state, currentDevice, isWindows, esc, view, button, render }) {
+  function create({ state, currentDevice, isWindows, esc, view, button, render, queueStats }) {
     const titles = { authorize: '连接 GitHub', password: '同步密码', lookup: '查找同步空间', creating: '创建同步空间', 'setup-error': '同步空间未连接', import: '首次合并', importing: '合并进度', imported: '合并完成', frequency: '同步频率', device: '设备名称', disconnect: '断开同步', switch: '更换同步空间', issue: '同步详情', activity: '同步记录', privacy: '阅读与历史' };
     const cancellationExample = Object.values(state.devices).flatMap(device => device.confirmations)[0];
     function data() {
@@ -27,7 +27,7 @@
     function go(name) { data().stack.push(name); data().message = ''; }
     function back() { data().stack.pop(); data().message = ''; }
     function home(message = '') { data().stack = []; data().message = message; state.ui.syncSettingsOpen = false; }
-    function close() { data().stack = []; data().message = ''; data().fields.password = ''; data().showPassword = false; if (data().batch?.done === data().batch?.total) data().batch = null; }
+    function close() { display = window.MihonSyncProgress.createDisplay(); data().stack = []; data().message = ''; data().fields.password = ''; data().showPassword = false; if (data().batch?.done === data().batch?.total) data().batch = null; }
     const action = (label, name, primary = false, attrs = '') => button(label, `data-action="ix-${name}" data-testid="ix-${name}" ${attrs}`, primary ? 'm-button-primary' : 'm-button-text');
     const note = text => `<p class="ix-note">${text}</p>`;
     const section = text => `<p class="settings-section-label">${text}</p>`;
@@ -67,6 +67,7 @@
     }
     function status({ total, membership, reading, pending, busy, online }) {
       const d = data();
+      if (d.progress) return progressCard();
       if (d.changes) { membership = { total: d.changes.membership, favorites: d.changes.membership, authors: 0 }; reading = d.changes.reading; total = d.changes.membership + reading; }
       const membershipTotal = typeof membership === 'number' ? membership : membership.total;
       const favorites = typeof membership === 'number' ? membership : membership.favorites;
@@ -102,46 +103,105 @@
       const status = { done: ['已完成', 'check'], active: ['处理中', 'sync'], pending: ['待处理', 'more'] };
       return `<section class="sync-item-log" data-testid="sync-item-log" aria-label="同步条目日志"><div class="sync-item-log-heading"><strong>条目记录</strong><span>最近 ${entries.length} 项</span></div><ol>${entries.map(entry => { const [label, icon] = status[entry.status] || status.pending; return `<li class="sync-log-item ${entry.status}"><span class="sync-log-status" aria-label="${label}">${view.icon(icon)}</span><div><strong>${esc(entry.title)}</strong><small>${esc(entry.detail)}</small></div><em>${label}</em></li>`; }).join('')}</ol></section>`;
     }
-    function progressPage() {
-      const d = data();
-      const hasTotal = Number.isFinite(d.importTotal);
-      const total = hasTotal ? d.importTotal : null;
-      const processed = d.importProcessed ?? (hasTotal ? Math.round((d.importProgress || 0) / 100 * total) : 0);
-      const recovery = d.importRecovery === 'network'
-        ? '等待网络连接'
-        : d.importRecovery === 'unknown'
-          ? '正在获取同步数据'
-          : d.importRecovery === 'retry-exhausted'
-            ? '连接失败，已保留进度'
-            : d.importRecovery === 'resuming'
-              ? '正在恢复同步'
-              : d.importPaused
-                ? '同步已暂停'
-                : '正在合并数据';
-      const detail = recovery === '等待网络连接'
-        ? '本设备已保存当前进度。网络恢复后会自动继续，不需要重复点击同步。'
-        : recovery === '正在获取同步数据'
-          ? '同步空间正在返回数据，当前无法知道总量；仅显示已确认处理的条目。'
-          : recovery === '连接失败，已保留进度'
-            ? '已达到本次自动重试次数。已完成的条目会保留，重试后从未完成条目继续。'
-            : recovery === '正在恢复同步'
-              ? '系统中断后已恢复，从上次确认的进度继续处理。'
-              : d.importPaused
-                ? '这是你主动暂停的同步；回到页面或网络恢复后也不会自动继续。'
-                : '已完成的条目会保留，可以收起面板继续使用书架。';
-      const progress = hasTotal
-        ? `<progress aria-label="同步进度" data-testid="sync-import-progress" value="${processed}" max="${total}"></progress>`
-        : '<progress aria-label="同步进度" data-testid="sync-import-progress"></progress>';
-      const count = hasTotal ? `已处理 ${processed} / ${total} 项` : `已处理 ${processed} 项`;
-      const control = d.importWaitingNetwork
-        ? action('暂停同步', 'import-pause')
-        : d.importRecovery === 'retry-exhausted'
-          ? action('重试', 'import-retry', true)
-          : d.importPaused
-            ? action('继续同步', 'import-resume', true)
-            : action('暂停同步', 'import-pause');
-      return `<h3>${recovery}</h3><p class="sync-recovery-state" data-testid="sync-recovery-state">${detail}</p><div class="sync-import-progress" data-testid="sync-import-progress-card"><div class="sync-import-progress-heading"><strong>合并同步空间</strong><span data-testid="sync-import-count">${count}</span></div>${progress}</div>${importLog()}${actions(control)}`;
+    let display = window.MihonSyncProgress.createDisplay();
+    let progressTimer = null;
+    let lastPaint = 0;
+    function newProgress(fact = {}) {
+      display = window.MihonSyncProgress.createDisplay();
+      const now = Date.now();
+      data().progress = { state: 'running', action: '接收', direction: '本轮下载', scope: 'download-1', confirmed: 0, startedAt: now, lastProgressAt: now, ...fact };
+      data().progressDetails = false;
+      data().failureLogOpen = false;
+      return data().progress;
     }
+    function importFact() {
+      const d = data();
+      if (!d.progress || d.progress.source !== 'import') newProgress({ source: 'import', confirmed: d.importProcessed ?? null, direction: '首次合并', action: '合并' });
+      const f = d.progress;
+      const confirmed = d.importProcessed ?? null;
+      if (f.confirmed !== confirmed) f.lastProgressAt = Date.now();
+      Object.assign(f, { confirmed, state: d.importReady ? 'succeeded' : d.importWaitingNetwork ? 'network' : d.importRecovery === 'retry-exhausted' ? 'failed' : d.importPaused ? 'paused' : d.importRecovery === 'resuming' ? 'recovering' : 'running', exhausted: d.importRecovery === 'retry-exhausted', total: d.importTotal, prepared: d.importTotal, transferred: confirmed, checked: confirmed, received: confirmed, action: d.importUnknownTotal ? '接收' : '合并' });
+      if (f.state === 'succeeded' && !f.endedAt) f.endedAt = Date.now();
+      return f;
+    }
+    function progressPage() { importFact(); return progressCard(); }
+    function primary(f) {
+      if (f.source === 'import') return f.state === 'succeeded' ? ['查看同步', 'ix-import-done'] : f.state === 'paused' ? ['继续同步', 'ix-import-resume'] : f.state === 'failed' ? ['重试同步', 'ix-import-retry'] : ['暂停同步', 'ix-import-pause'];
+      return f.state === 'paused' ? ['继续同步', 'ix-progress-resume'] : f.state === 'blocked' ? ['重新连接', 'ix-reconnect'] : ['failed', 'partial'].includes(f.state) ? ['重试同步', 'ix-progress-retry'] : f.state === 'succeeded' || f.state === 'cancelled' ? ['立即同步', 'sync-manual'] : ['暂停同步', 'ix-progress-pause'];
+    }
+    function progressValues() {
+      const f = data().progress;
+      if (!f) return null;
+      if (f.source === 'import') importFact();
+      return display(f);
+    }
+    function progressCard() {
+      const f = progressValues(); if (!f) return '';
+      const [label, name] = primary(f);
+      return `<section class="sync-progress-card" data-testid="sync-progress-card"><div class="sync-progress-summary" data-testid="sync-progress-summary"><div class="sync-progress-heading"><h3 data-testid="sync-progress-title" aria-live="polite">${f.title}</h3><button class="m-button m-button-text" data-testid="sync-progress-primary" data-action="${name}"><span data-progress-control-label data-testid="${name === 'sync-manual' || f.source === 'manual' && f.state === 'failed' ? 'manual-sync' : name}">${label}</span></button></div><strong class="sync-progress-confirmed" data-testid="sync-progress-confirmed">${confirmedText(f)}</strong><div class="sync-progress-action" data-testid="sync-progress-action">${esc(f.action)}</div><div class="sync-progress-track" data-testid="sync-progress-track"><span></span></div><div class="sync-progress-time"><span>已用 <b data-testid="sync-progress-elapsed">${f.elapsed}</b></span><span>整体剩余：<b data-testid="sync-progress-eta">${f.eta}</b></span></div><p class="sync-progress-explanation" data-testid="sync-progress-explanation">${state.ui.syncResult ? `<span data-testid="sync-result">${esc(f.explanation)}</span>` : esc(f.explanation)}</p><button class="m-button m-button-text progress-toggle" data-testid="sync-progress-toggle" data-action="ix-progress-details" aria-expanded="${Boolean(data().progressDetails)}">${data().progressDetails ? '收起详情' : '查看详情'}${view.icon('chevron')}</button></div><div class="sync-progress-problems" data-testid="sync-progress-problems" ${f.state === 'partial' ? '' : 'hidden'}>待手动决定 ${f.decisions || 0} 项 · ${f.pendingBatches || 0} 个批次待核对（涉及 ${f.pendingChanges || 0} 条变动，不代表失败）<br>${f.failures || 0} 项无法还原 <button class="m-button m-button-text" data-action="ix-progress-failures" data-testid="sync-progress-failures">打开失败日志</button></div><div data-testid="sync-failure-log" class="sync-failure-log" ${data().failureLogOpen ? '' : 'hidden'}>失败日志 · 本地演示<br>《远山来信》阅读记录：无法还原，缺少作品身份与必要描述。<br>《夜行纪事》收藏：无法还原，记录未通过校验。</div><div class="sync-progress-details" data-testid="sync-progress-details" ${data().progressDetails ? '' : 'hidden'} tabindex="0" aria-label="同步详情">${progressDetails(f)}</div></section>`;
+    }
+    function confirmedText(f) { return f.confirmed == null ? '本次已确认：正在核对' : `本次已确认 ${f.confirmed.toLocaleString('zh-CN')} 条`; }
+    function progressDetails(f) {
+      const stats = queueStats();
+      const favorites = data().changes?.membership ?? stats.membership.favorites;
+      const authors = data().changes ? 0 : stats.membership.authors;
+      const reading = data().changes?.reading ?? stats.reading;
+      const total = data().changes ? favorites + reading : stats.total;
+      const rows = [['当前方向与范围', f.direction || '待统计'], ['当前动作', f.detail || f.action], ['本轮准备', f.prepared ?? '待统计'], ['本轮传输', f.transferred ?? '待统计'], ['本轮确认', f.confirmed ?? '待统计'], ['已接收并校验', f.received ?? '待统计'], ['本地合并检查', f.checked ?? '待统计'], ['本轮传输比例', Number.isFinite(f.percent) ? `${f.percent}%（仅当前范围）` : '暂无法统计'], ['当前请求传输比例', Number.isFinite(f.bodyPercent) ? `${f.bodyPercent}%（仅一个请求）` : '—'], ['当前阶段剩余', Number.isFinite(f.stageEta) && f.active && f.age < 10 ? window.MihonSyncProgress.duration(f.stageEta) : '暂无法估算'], ['当前请求剩余', Number.isFinite(f.bodyEta) && f.active && f.age < 10 ? window.MihonSyncProgress.duration(f.bodyEta) : '暂无法估算'], ['最近进展', `${f.age} 秒前`], ['待上传操作', `${total} 项`], ['收藏与关注', `${favorites} 条收藏 · ${authors} 条关注`], ['阅读记录', `${reading} 条阅读记录`]];
+      return `<dl>${rows.map(([key, value], index) => `<div${index >= 12 ? ' class="native-list-row"' : ''}><dt>${key}</dt><dd${index >= 12 ? ' class="row-value"' : ''}>${esc(value)}</dd></div>`).join('')}</dl>${note('待上传操作是排队数据，不等于本次任务总量；新增操作可能进入下一轮。')}${f.additionalWork ? note('发现新增数据，继续同步；累计确认量不重置。') : ''}${f.source === 'import' ? `<section class="progress-import-detail"><strong>首次合并</strong><p data-testid="sync-import-count">${Number.isFinite(f.total) ? `已处理 ${f.confirmed ?? 0} / ${f.total} 项` : `已处理 ${f.confirmed ?? 0} 项`}</p>${note('本地演示的合并与整次同步是同一任务；暂停入口控制该任务。')}</section>` : ''}${importLog()}`;
+    }
+    function paintProgress() {
+      const card = document.querySelector('[data-testid="sync-progress-card"]');
+      if (!card || !data().progress || !state.ui.syncOpen) return;
+      const f = progressValues();
+      const put = (id, value) => { const node = card.querySelector(`[data-testid="${id}"]`); if (node && node.textContent !== value) node.textContent = value; };
+      put('sync-progress-title', f.title); put('sync-progress-confirmed', confirmedText(f)); put('sync-progress-action', f.action); put('sync-progress-elapsed', f.elapsed); put('sync-progress-eta', f.eta);
+      const explanation = card.querySelector('[data-testid="sync-result"]') || card.querySelector('[data-testid="sync-progress-explanation"]'); if (explanation.textContent !== f.explanation) explanation.textContent = f.explanation;
+      const control = card.querySelector('[data-testid="sync-progress-primary"]');
+      const [label, name] = primary(f); const controlLabel = control.querySelector('[data-progress-control-label]'); controlLabel.textContent = label; controlLabel.dataset.testid = name === 'sync-manual' || f.source === 'manual' && f.state === 'failed' ? 'manual-sync' : name; control.dataset.action = name;
+      control.disabled = ['pausing', 'retry', 'network', 'system', 'recovering'].includes(f.state);
+      const track = card.querySelector('[data-testid="sync-progress-track"]');
+      track.dataset.active = String(f.active); track.dataset.determinate = String(f.percent !== null); track.dataset.terminal = String(f.terminal);
+      track.setAttribute('aria-label', f.terminal ? f.title : f.percent !== null ? '当前范围传输进度' : '正在处理，尚无可信总量');
+      if (f.terminal) { track.removeAttribute('role'); track.removeAttribute('aria-valuenow'); }
+      else { track.setAttribute('role', 'progressbar'); if (f.percent === null) track.removeAttribute('aria-valuenow'); else track.setAttribute('aria-valuenow', f.percent); }
+      track.firstElementChild.style.width = f.terminal ? '100%' : f.percent === null ? '32%' : `${f.percent}%`;
+      const detail = card.querySelector('[data-testid="sync-progress-details"]');
+      if (!detail.hidden && !detail.contains(document.activeElement)) { const scroll = detail.scrollTop; detail.innerHTML = progressDetails(f); detail.scrollTop = scroll; }
+    }
+    window.setInterval(() => { if (Date.now() - lastPaint >= 1000) { paintProgress(); lastPaint = Date.now(); } }, 250);
+    function progressScenario(name) {
+      clearTimeout(progressTimer);
+      const f = newProgress({ confirmed: 1280, prepared: 1600, received: 1320, checked: 960, transferred: 1320, action: '上传', direction: '本轮上传', scope: 'upload-1', percent: 64, startedAt: Date.now() - 102000 });
+      data().progressScenario = name;
+      const now = Date.now();
+      if (name === 'whole-eta') f.wholeEta = 18;
+      if (name === 'local-eta') { f.stageEta = 12; f.bodyEta = 4; f.bodyPercent = 72; f.percent = null; }
+      if (name === 'wait-10' || name === 'wait-60') { f.lastProgressAt = now - (name === 'wait-10' ? 10000 : 60000); f.wholeEta = 18; f.action = '核对'; f.percent = null; }
+      if (name === 'transfer-complete') { f.percent = 100; f.action = '上传'; }
+      if (name === 'paused') f.state = 'paused';
+      if (name === 'retry') { f.state = 'retry'; f.nextRetryAt = now + 15000; }
+      if (name === 'partial') Object.assign(f, { state: 'partial', confirmed: 0, decisions: currentDevice().confirmations.length, pendingBatches: 2, pendingChanges: 40, failures: 2, endedAt: now });
+      if (name === 'succeeded' || name === 'latest') Object.assign(f, { state: 'succeeded', noWork: name === 'latest', confirmed: name === 'latest' ? 0 : 1600, endedAt: now });
+      if (name === 'rapid') rapidTick(0);
+      if (name === 'continuous') continuousTick(0);
+      if (name === 'retry') progressTimer = setTimeout(() => { f.state = 'recovering'; paintProgress(); progressTimer = setTimeout(() => { f.state = 'running'; continuousTick(0); }, 1000); }, 15000);
+      if (name === 'transfer-complete') progressTimer = setTimeout(() => { f.action = '核对'; f.percent = null; f.lastProgressAt = Date.now(); paintProgress(); }, 3000);
+    }
+    function rapidTick(step) {
+      const f = data().progress; if (!f || f.state !== 'running') return;
+      f.demoStep = step; f.action = ['接收', '校验', '合并', '上传'][step % 4]; f.scope = `round-${step}`; f.direction = step % 4 === 3 ? '本轮上传' : '本轮下载'; f.detail = `正在${f.action}第 ${step + 1} 批数据`; f.confirmed = Math.max(f.confirmed ?? 0, 1280 + Math.floor(step / 4) * 20); f.checked = step * 30; f.received = step * 15; f.additionalWork = step >= 5; f.percent = step % 2 ? 30 : null; f.wholeEta = step % 3 ? null : 20; f.lastProgressAt = Date.now();
+      display(f); if (Date.now() - lastPaint >= 1000) { paintProgress(); lastPaint = Date.now(); }
+      if (step < 24) progressTimer = setTimeout(() => rapidTick(step + 1), 250);
+    }
+    function continuousTick(step) {
+      const f = data().progress; if (!f || f.state !== 'running') return;
+      f.demoStep = step; f.action = ['准备', '接收', '校验', '合并', '上传', '核对'][step % 6]; f.scope = `normal-${step}`; f.direction = step >= 4 ? '本轮上传' : '本轮下载'; f.lastProgressAt = Date.now(); f.percent = step === 4 ? 100 : null; f.wholeEta = Math.max(0, 24 - step * 4); f.confirmed = Math.max(f.confirmed ?? 0, step < 3 ? 1280 : 1440);
+      paintProgress();
+      progressTimer = setTimeout(() => { if (step >= 5) { f.state = 'succeeded'; f.confirmed = 1600; f.endedAt = Date.now(); paintProgress(); } else continuousTick(step + 1); }, 4000);
+    }
+    function beginSync() { clearTimeout(progressTimer); newProgress({ source: 'manual', confirmed: null, action: '准备' }); }
+    function finishSync(result) { const f = data().progress; if (f?.source !== 'manual') return; Object.assign(f, { state: result.ok ? 'succeeded' : 'failed', confirmed: result.ok ? (result.sent || 0) + (result.applied || 0) : null, noWork: result.ok && !result.skipped && result.sent === 0 && result.received === 0 && currentDevice().confirmations.length === 0, endedAt: Date.now(), reason: result.message }); }
     let authWindow = null;
     let authRequest = 0;
     function startAuth(reconnect = false) {
@@ -251,9 +311,9 @@
           const completed = Math.floor(d.importProcessed / total * d.importLog.length);
           d.importLog.forEach((entry, index) => { entry.status = index < completed ? 'done' : index === completed ? 'active' : 'pending'; });
         }
-        if (d.importProgress === 100) { d.connected = true; d.importReady = true; if (d.setupStage) { d.setupStage = null; d.importProgress = null; d.importReady = false; if (screen() === 'importing') home(state.ui.syncOpen ? '同步已开启' : ''); } else if (screen() === 'importing') d.stack[d.stack.length - 1] = 'imported'; }
+        if (d.importProgress === 100) { d.connected = true; d.importReady = true; if (d.setupStage) { d.progress = null; d.setupStage = null; d.importProgress = null; d.importReady = false; if (screen() === 'importing') home(state.ui.syncOpen ? '同步已开启' : ''); } else if (screen() === 'importing') d.stack[d.stack.length - 1] = 'imported'; }
         else advanceImport();
-        render();
+        if (d.importProgress === 100 || d.importProgress === null) render(); else paintProgress();
       }, 650);
     }
     function networkChanged(online) {
@@ -291,13 +351,15 @@
       }, 650);
     }
     function showScenario(name) {
-      clearTimeout(importTimer); clearTimeout(batchTimer); clearTimeout(setupTimer);
+      clearTimeout(importTimer); clearTimeout(batchTimer); clearTimeout(setupTimer); clearTimeout(progressTimer);
+      clearTimeout(state.ui.timerId); state.ui.busy = false; state.ui.timerId = null;
       authWindow?.close(); authWindow = null; authRequest += 1;
       batchStep = null;
       state.ui.interactions = null; const d = data();
       state.ui.syncOpen = true; state.ui.syncSettingsOpen = false; state.ui.route = 'library'; state.ui.detail = null; state.ui.reader = false;
       state.ui.batchReview = null; state.ui.selecting = false; state.ui.syncResult = null; state.ui.batchResult = null;
-      if (name.startsWith('setup')) { d.connected = false; d.spaceScenario = name === 'setup-existing' ? 'existing' : name === 'setup-protected' ? 'protected' : 'new'; d.setupFailure = name === 'setup-find-failed' ? 'find' : name === 'setup-create-failed' ? 'create' : null; }
+      if (name.startsWith('progress-')) progressScenario(name.slice(9));
+      else if (name.startsWith('setup')) { d.connected = false; d.spaceScenario = name === 'setup-existing' ? 'existing' : name === 'setup-protected' ? 'protected' : 'new'; d.setupFailure = name === 'setup-find-failed' ? 'find' : name === 'setup-create-failed' ? 'create' : null; }
       else if (name === 'mixed') d.automatic = true;
       else if (name === 'pending-upload') {
         d.changes = { membership: 3, reading: 2 };
@@ -398,7 +460,11 @@
     function handle(name, target) {
       if (!name.startsWith('ix-')) return false;
       const actionName = name.slice(3); const d = data();
-      if (['frequency', 'device', 'disconnect', 'switch', 'issue', 'activity', 'privacy'].includes(actionName)) { go(actionName); }
+      if (actionName === 'progress-details') { d.progressDetails = !d.progressDetails; }
+      else if (actionName === 'progress-failures') d.failureLogOpen = !d.failureLogOpen;
+      else if (actionName === 'progress-pause') { clearTimeout(progressTimer); clearTimeout(state.ui.timerId); state.ui.timerId = null; state.ui.busy = false; d.progress.state = 'paused'; }
+      else if (actionName === 'progress-resume' || actionName === 'progress-retry') { if (d.progress.source === 'manual') { window.__mihonSyncDemo.scheduleSync('manual'); } else { d.progress.state = 'recovering'; d.progress.percent = null; progressTimer = setTimeout(() => { d.progress.state = 'running'; if (d.progressScenario === 'rapid') rapidTick(d.progress.demoStep || 0); else continuousTick(d.progress.demoStep || 0); paintProgress(); }, 1000); } }
+      else if (['frequency', 'device', 'disconnect', 'switch', 'issue', 'activity', 'privacy'].includes(actionName)) { go(actionName); }
       else if (actionName === 'setup' || actionName === 'reconnect') { if (actionName === 'setup' && d.setupStage) d.stack = [d.setupStage]; else startAuth(actionName === 'reconnect'); }
       else if (actionName === 'open-github') openAuthorization();
       else if (actionName === 'auth-restart') { d.authStatus = 'ready'; authWindow?.close(); authWindow = null; authRequest += 1; }
@@ -423,7 +489,7 @@
       else if (actionName === 'import-resume') { d.importRecovery = 'resuming'; advanceImport(); }
       else if (actionName === 'import-pause') { clearTimeout(importTimer); d.importPaused = true; d.importRecovery = d.importRecovery === 'sleep' ? 'sleep' : 'manual'; }
       else if (actionName === 'import-retry') { d.importWaitingNetwork = false; d.importRecovery = 'resuming'; advanceImport(); }
-      else if (actionName === 'import-done') { d.automatic = true; d.importReady = false; d.importProgress = null; home(); }
+      else if (actionName === 'import-done') { d.progress = null; d.automatic = true; d.importReady = false; d.importProgress = null; home(); }
       else if (actionName === 'import-view') go(d.importReady ? 'imported' : 'importing');
       else if (actionName === 'period') { currentDevice().settings.periodMinutes = Number(target.dataset.minutes); resetCountdown(); back(); }
       else if (actionName === 'device-save') { if (!d.fields.device.trim()) d.fields.device = currentDevice().name; currentDevice().name = d.fields.device; back(); }
@@ -441,8 +507,8 @@
       data().fields[target.dataset.ixField] = target.value;
       if (target.dataset.ixField === 'password') { const submit = document.querySelector('[data-testid="ix-password-confirm"]'); if (submit) { submit.textContent = data().mode === 'join' ? '连接同步空间' : target.value === '' ? '不设置密码' : '确认密码'; submit.disabled = data().mode === 'join' && target.value === ''; } }
     }
-    return { screen, title: () => titles[screen()], back, close, settings, settingsFooter, renderScreen, unconfigured, connected: () => data().connected, status, didSync, resetCountdown, summary, handle, input, showScenario, networkChanged, startBatch, batchActive: () => data().batch && data().batch.done < data().batch.total,
-      importStatus: () => data().importProgress != null ? row(data().importReady ? '合并已完成' : data().importWaitingNetwork ? '等待网络连接' : data().importPaused ? '合并尚未完成' : '正在合并数据', '查看进度与继续操作', 'import-view') : '',
+    return { beginSync, finishSync, paintProgress, hasProgress: () => Boolean(data().progress), screen, title: () => titles[screen()], back, close, settings, settingsFooter, renderScreen, unconfigured, connected: () => data().connected, status, didSync, resetCountdown, summary, handle, input, showScenario, networkChanged, startBatch, batchActive: () => data().batch && data().batch.done < data().batch.total,
+      importStatus: () => data().importProgress != null && !data().progress ? row(data().importReady ? '合并已完成' : data().importWaitingNetwork ? '等待网络连接' : data().importPaused ? '合并尚未完成' : '正在合并数据', '查看进度与继续操作', 'import-view') : '',
       busy: () => data().issue === 'unknown' || (data().importProgress != null && !data().importPaused && !data().importReady),
     };
   }
