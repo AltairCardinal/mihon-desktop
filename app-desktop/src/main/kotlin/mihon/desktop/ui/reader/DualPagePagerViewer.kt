@@ -243,10 +243,14 @@ internal fun DualPagePagerViewer(
     val scope = rememberCoroutineScope()
     val animateTurns by rememberUpdatedState(pageTurnAnimation)
     val programmaticTarget = remember { mutableStateOf<Int?>(null) }
+    val userTurnTarget = remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(pagerState.interactionSource) {
         pagerState.interactionSource.interactions.collect { interaction ->
-            if (interaction is DragInteraction.Start) programmaticTarget.value = null
+            if (interaction is DragInteraction.Start) {
+                programmaticTarget.value = null
+                userTurnTarget.value = null
+            }
         }
     }
 
@@ -255,6 +259,7 @@ internal fun DualPagePagerViewer(
             .coerceAtLeast(0)
             .coerceIn(displayUnits.indices)
         val targetPager = unitToPager(targetUnit)
+        userTurnTarget.value = null
         programmaticTarget.value = targetPager
         pagerState.turnToPage(targetPager, animateTurns)
         programmaticTarget.value = null
@@ -272,20 +277,27 @@ internal fun DualPagePagerViewer(
     )
 
     fun executeTapCommand(command: ReaderNavigationCommand) {
-        when (val action = ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, displayUnits.size)) {
+        val basePage = userTurnTarget.value ?: if (programmaticTarget.value != null) pagerState.settledPage else pagerState.currentPage
+        when (val action = ReaderKeyboardAction.forPagerCommand(command, isRtl, basePage, displayUnits.size)) {
             is ReaderPageAction.GoToPage -> {
+                userTurnTarget.value = action.page
                 programmaticTarget.value = action.page
                 scope.launch {
                     pagerState.turnToPage(action.page, animateTurns)
-                    if (programmaticTarget.value == action.page) programmaticTarget.value = null
+                    if (programmaticTarget.value == action.page) {
+                        programmaticTarget.value = null
+                        userTurnTarget.value = null
+                    }
                 }
             }
             ReaderPageAction.NoPrevPage -> {
                 programmaticTarget.value = null
+                userTurnTarget.value = null
                 onPrevChapter?.invoke()
             }
             ReaderPageAction.NoNextPage -> {
                 programmaticTarget.value = null
+                userTurnTarget.value = null
                 onNextChapter?.invoke()
             }
         }
@@ -294,19 +306,17 @@ internal fun DualPagePagerViewer(
     HorizontalPager(
         state = pagerState,
         beyondViewportPageCount = if (allowAdjacentViewport) 1 else 0,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl) {
+            when (it) {
+                TapNavRegion.PREV -> executeTapCommand(ReaderNavigationCommand.Previous)
+                TapNavRegion.NEXT -> executeTapCommand(ReaderNavigationCommand.Next)
+                TapNavRegion.MENU -> onTapCenter?.invoke()
+            }
+        },
         key = { pagerIndex -> displayUnits[pagerToUnit(pagerIndex)].id },
     ) { pagerIndex ->
         val unit = displayUnits[pagerToUnit(pagerIndex)]
-        Box(
-            modifier = Modifier.fillMaxSize().readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl) {
-                when (it) {
-                    TapNavRegion.PREV -> executeTapCommand(ReaderNavigationCommand.Previous)
-                    TapNavRegion.NEXT -> executeTapCommand(ReaderNavigationCommand.Next)
-                    TapNavRegion.MENU -> onTapCenter?.invoke()
-                }
-            },
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
             DualPageDisplayUnitFrame(
                 unit = unit,
                 onRetry = onRetryPage,

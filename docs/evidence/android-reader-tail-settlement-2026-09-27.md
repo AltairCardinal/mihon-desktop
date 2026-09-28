@@ -79,3 +79,12 @@ python scripts/gradle-coordinator.py run --key reader-tail-settlement-diagnostic
 经用户批准的第二次完整 Desktop JVM 执行 3212 次，失败 3、跳过 3，日志 `.gradle-coordinator/rp02-desktop-full-final.log`。失败分别是能力证据测试仍引用旧方法名、下载目录遍历时文件被并发删除，以及 RTL 动画期间点击回退未生效；本次完整执行不能记为通过。
 
 针对前两类失败的后续修复：证据测试改查当前方法；下载图片签名探测在文件确已消失时返回不可读，保留文件仍存在时的异常；标记已读集成测试等待真实删除结果，不把数据库更新误当删除完成。下载消失路径先以 `FileNotFoundException` 得到稳定红测，再修复。相关 4 类定向测试合计 83 次执行、失败 0，日志 `.gradle-coordinator/rp02-desktop-repair-focused2.log`。RTL 用例在本次定向执行中通过，但此前两次失败的触发条件尚未证实；不能据此宣称 Desktop 全量门禁已恢复。上述 Desktop 修复不改变已交付 Android APK 的内容。
+
+## RTL 翻页复现及 Desktop 全量收口（2026-09-28）
+
+原测试把鼠标按下、松开放在同一帧；针对它重复执行 24 次均通过，不能解释全量时的偶发失败。改为在按下与松开之间推进真实 Compose 页面动画后，单页、双页各自的 LTR/RTL 四组均稳定失败：预期回到第 0 页，实际停在第 3 页；红测日志 `.gradle-coordinator/rp03-reader-turn-hold-red-dual.log`。这是动画中的页面容器移动导致跨帧手势失去监听目标的运行时缺陷。把监听移到稳定的 Pager 容器后，点击可被接收，但按瞬时页计算会落在第 1 或第 2 页；日志 `.gradle-coordinator/rp03-reader-turn-hold-green.log`。最终让外部动画期间的首次点击使用先前停稳页，连续用户点击使用最新用户目标；拖动或新外部请求清除该目标。双页第 0 页为半屏封面，离屏图确认另一半为背景；测试按该实际布局检查像素，不将背景误判为旧页。设计边界见 `docs/automation/TEST_GUIDE.md`。
+
+- `ReaderPageTurnPresentationTest` 40 次执行、0 失败，覆盖原翻页场景、新增跨帧点击及快速连续点击；日志 `.gradle-coordinator/rp03-reader-turn-green3.log`。
+- 用户批准的完整 Desktop JVM（含 integration tag）执行 3221 次、失败 0、错误 0、跳过 3，Gradle 退出码 0；日志 `.gradle-coordinator/rp03-desktop-full.log`。跳过的是 macOS 原生分享、Windows 隐私窗口环境条件和非 release 构建条件测试；不将其记为已通过。`spotlessCheck` 退出码 0，日志 `.gradle-coordinator/rp03-desktop-format.log`。
+- 依照同一未提交产品 diff 的全量测试证据，`scripts/build-desktop.sh build-only` 跳过重复全量，分配版本 `0.11.19.65.1a3246a`，完成 Windows 正式未打包应用构建、运行版本及 production 扩展 APK 安装验收，并发布 `app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.65.1a3246a-unpacked/Mihon Desktop.exe` 和同版本 ZIP。ZIP SHA-256 为 `ef96ce91ea36e6201c2cec7e5b8733d86a928e87427a3abfac1ed2b47b79a6be`，文件及 `.sha256` 一致；日志 `.gradle-coordinator/rp03-desktop-build.log`。
+- 正式发布 EXE 以独立 Test Mode profile 启动，`/test/health` 返回 `ok`，`/test/state` 返回状态字段；关闭接口成功且端口释放。此项只验收 HTTP 控制面，阅读器画面由真实 Compose 离屏测试覆盖。没有执行 macOS 正式构建或额外 Android APK 构建；原已交付 Android APK 内容不变。

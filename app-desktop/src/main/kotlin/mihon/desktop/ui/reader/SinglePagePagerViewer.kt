@@ -99,10 +99,14 @@ internal fun SinglePagePagerViewer(
     val scope = rememberCoroutineScope()
     val animateTurns by rememberUpdatedState(pageTurnAnimation)
     val programmaticTarget = remember { mutableStateOf<Int?>(null) }
+    val userTurnTarget = remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(pagerState.interactionSource) {
         pagerState.interactionSource.interactions.collect { interaction ->
-            if (interaction is DragInteraction.Start) programmaticTarget.value = null
+            if (interaction is DragInteraction.Start) {
+                programmaticTarget.value = null
+                userTurnTarget.value = null
+            }
         }
     }
 
@@ -112,6 +116,7 @@ internal fun SinglePagePagerViewer(
             .coerceAtLeast(0)
             .coerceIn(0, maxPageIndex)
         val targetPagerIndex = pageToPager(targetPage)
+        userTurnTarget.value = null
         programmaticTarget.value = targetPagerIndex
         pagerState.turnToPage(targetPagerIndex, animateTurns)
         programmaticTarget.value = null
@@ -128,20 +133,27 @@ internal fun SinglePagePagerViewer(
     )
 
     fun executeTapCommand(command: ReaderNavigationCommand) {
-        when (val action = ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, displayUnits.size)) {
+        val basePage = userTurnTarget.value ?: if (programmaticTarget.value != null) pagerState.settledPage else pagerState.currentPage
+        when (val action = ReaderKeyboardAction.forPagerCommand(command, isRtl, basePage, displayUnits.size)) {
             is ReaderPageAction.GoToPage -> {
+                userTurnTarget.value = action.page
                 programmaticTarget.value = action.page
                 scope.launch {
                     pagerState.turnToPage(action.page, animateTurns)
-                    if (programmaticTarget.value == action.page) programmaticTarget.value = null
+                    if (programmaticTarget.value == action.page) {
+                        programmaticTarget.value = null
+                        userTurnTarget.value = null
+                    }
                 }
             }
             ReaderPageAction.NoPrevPage -> {
                 programmaticTarget.value = null
+                userTurnTarget.value = null
                 onPrevChapter?.invoke()
             }
             ReaderPageAction.NoNextPage -> {
                 programmaticTarget.value = null
+                userTurnTarget.value = null
                 onNextChapter?.invoke()
             }
         }
@@ -151,19 +163,17 @@ internal fun SinglePagePagerViewer(
         state = pagerState,
         // Keep the neighboring viewports' image leases mounted so instant turns do not expose a decode gap.
         beyondViewportPageCount = if (allowAdjacentViewport) 1 else 0,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl) {
+            when (it) {
+                TapNavRegion.PREV -> executeTapCommand(ReaderNavigationCommand.Previous)
+                TapNavRegion.NEXT -> executeTapCommand(ReaderNavigationCommand.Next)
+                TapNavRegion.MENU -> onTapCenter?.invoke()
+            }
+        },
         key = { pagerIndex -> displayUnits[pagerToPage(pagerIndex)].id },
     ) { pagerIndex ->
         val unit = displayUnits[pagerToPage(pagerIndex)]
-        Box(
-            modifier = Modifier.fillMaxSize().readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl) {
-                when (it) {
-                    TapNavRegion.PREV -> executeTapCommand(ReaderNavigationCommand.Previous)
-                    TapNavRegion.NEXT -> executeTapCommand(ReaderNavigationCommand.Next)
-                    TapNavRegion.MENU -> onTapCenter?.invoke()
-                }
-            },
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
             SinglePageDisplayUnitContainer(
                 unit = unit,
                 onRetry = onRetryPage,

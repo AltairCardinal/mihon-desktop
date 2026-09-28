@@ -171,17 +171,54 @@ class ReaderPageTurnPresentationTest {
     @ParameterizedTest
     @CsvSource("false", "true")
     fun `user turn during external animation clears stale programmatic feedback`(rtl: Boolean) = runTest {
-        Fixture(this, dual = false, rtl).use { fixture ->
+        repeat(12) { trial ->
+            Fixture(this, dual = false, rtl).use { fixture ->
+                repeat(40) { fixture.frame(); runCurrent() }
+                fixture.page = 1
+                repeat(40) { fixture.frame(); runCurrent() }
+                fixture.page = 3
+                repeat(3) { fixture.frame(); runCurrent() }
+                val beforeTap = fixture.page
+                fixture.tap(forward = false, rtl = rtl)
+                repeat(80) { fixture.frame(); runCurrent() }
+
+                assertEquals(0, fixture.page, "RTL=$rtl trial=$trial beforeTap=$beforeTap")
+                assertEquals(setOf(RED), fixture.frame())
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource("false,false", "false,true", "true,false", "true,true")
+    fun `tap across animation frames still turns from the settled page`(dual: Boolean, rtl: Boolean) = runTest {
+        Fixture(this, dual, rtl).use { fixture ->
             repeat(40) { fixture.frame(); runCurrent() }
             fixture.page = 1
             repeat(40) { fixture.frame(); runCurrent() }
             fixture.page = 3
             repeat(3) { fixture.frame(); runCurrent() }
-            fixture.tap(forward = false, rtl = rtl)
+            fixture.press(forward = false, rtl = rtl)
+            repeat(3) { fixture.frame(); runCurrent() }
+            fixture.release(forward = false, rtl = rtl)
             repeat(80) { fixture.frame(); runCurrent() }
 
             assertEquals(0, fixture.page)
-            assertEquals(setOf(RED), fixture.frame())
+            assertEquals(if (dual) setOf(RED, 0) else setOf(RED), fixture.frame())
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource("false,false", "false,true", "true,false", "true,true")
+    fun `rapid taps advance from the latest user turn target`(dual: Boolean, rtl: Boolean) = runTest {
+        Fixture(this, dual, rtl).use { fixture ->
+            repeat(40) { fixture.frame(); runCurrent() }
+            fixture.tap(forward = true, rtl = rtl)
+            repeat(3) { fixture.frame(); runCurrent() }
+            fixture.tap(forward = true, rtl = rtl)
+            repeat(80) { fixture.frame(); runCurrent() }
+
+            assertEquals(if (dual) 5 else 2, fixture.page)
+            assertEquals(setOf(GREEN), fixture.frame())
         }
     }
 
@@ -234,8 +271,15 @@ class ReaderPageTurnPresentationTest {
             }
         }
         fun tap(forward: Boolean, rtl: Boolean) {
+            press(forward, rtl)
+            release(forward, rtl)
+        }
+        fun press(forward: Boolean, rtl: Boolean) {
             val position = Offset(if (forward != rtl) 380f else 20f, 200f)
             scene.sendPointerEvent(PointerEventType.Press, position, button = PointerButton.Primary)
+        }
+        fun release(forward: Boolean, rtl: Boolean) {
+            val position = Offset(if (forward != rtl) 380f else 20f, 200f)
             scene.sendPointerEvent(PointerEventType.Release, position, button = PointerButton.Primary)
         }
         fun wheel(forward: Boolean) {
