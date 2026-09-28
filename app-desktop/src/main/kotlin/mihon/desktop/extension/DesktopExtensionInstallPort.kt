@@ -235,6 +235,19 @@ internal class DesktopExtensionInstallPort(
         val candidate = File(install.transactionDirectory, "candidate.jar")
         when {
             content.hasJvmClasses -> {
+                val identity = try {
+                    ManifestClassExtractor.extractIdentityFromArchive(install.download)
+                } catch (error: Exception) {
+                    failMalformed("Invalid extension manifest", error)
+                }
+                if (identity != null) {
+                    if (identity.packageName != install.artifact.packageName) {
+                        failMalformed("Extension manifest package does not match ${install.artifact.packageName}")
+                    }
+                    if (install.artifact.sources.isEmpty()) failMalformed("Manifest extension requires declared Source identities")
+                    install.extensionClass = identity.extensionClass
+                    install.strictProvider = true
+                }
                 if (!DefaultJvmExtensionArtifactAdapter.adaptIfRequired(install.download, candidate)) {
                     fileSystem.copy(install.download, candidate)
                 }
@@ -286,6 +299,7 @@ internal class DesktopExtensionInstallPort(
                 language = install.artifact.language,
                 isNsfw = install.artifact.isNsfw,
                 extensionClass = install.extensionClass,
+                strictProvider = install.strictProvider,
             ),
         )
         install.stagedMetadata = File(install.transactionDirectory, "candidate.meta.json")
@@ -354,11 +368,14 @@ internal class DesktopExtensionInstallPort(
         try {
             if (loaded.isEmpty()) failMalformed("Extension runtime contains no loadable Source provider")
             val packagePrefix = "${install.artifact.packageName}."
-            if (loaded.any { it.source.javaClass.name != install.artifact.packageName && !it.source.javaClass.name.startsWith(packagePrefix) }) {
+            if (!install.strictProvider && loaded.any { it.source.javaClass.name != install.artifact.packageName && !it.source.javaClass.name.startsWith(packagePrefix) }) {
                 failMalformed("Extension Source provider does not match ${install.artifact.packageName}")
             }
             val expected = install.artifact.sources.map { it.id }.toSet()
             val actual = loaded.map { it.source.id }.toSet()
+            if (install.strictProvider && actual != expected) {
+                failMalformed("Extension runtime Source identities do not match the catalog")
+            }
             if (expected.isNotEmpty() && !actual.containsAll(expected)) {
                 failMalformed("Extension runtime is missing declared Source providers")
             }
@@ -479,6 +496,7 @@ internal class DesktopExtensionInstallPort(
         var jarExisted: Boolean = false,
         var metaExisted: Boolean = false,
         var extensionClass: String? = null,
+        var strictProvider: Boolean = false,
         var restoring: Boolean = false,
         var rollbackReady: Boolean = false,
         var windowHeld: Boolean = false,

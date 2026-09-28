@@ -4,6 +4,9 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.zip.ZipFile
+import javax.xml.XMLConstants
+import javax.xml.parsers.DocumentBuilderFactory
+import org.w3c.dom.Element
 
 /**
  * Extracts the Tachiyomi extension class name from an Android APK or from raw
@@ -23,6 +26,51 @@ import java.util.zip.ZipFile
  * encoding used by the Android resource system.
  */
 object ManifestClassExtractor {
+
+    internal data class Identity(val packageName: String, val extensionClass: String)
+
+    /** Null means absent; a present but invalid manifest must never enable scan fallback. */
+    internal fun extractIdentityFromArchive(file: File): Identity? = ZipFile(file).use { zip ->
+        val entry = zip.getEntry("AndroidManifest.xml") ?: return null
+        val bytes = zip.getInputStream(entry).use { it.readNBytes(1_048_577) }
+        require(bytes.size <= 1_048_576) { "Extension manifest is too large" }
+        require(!(bytes.size >= 2 && bytes[0] == 3.toByte() && bytes[1] == 0.toByte())) {
+            "Binary AXML manifests are not supported for native JAR identity validation"
+        }
+        parseXml(bytes)
+    }
+
+    private fun parseXml(bytes: ByteArray): Identity {
+        val factory = DocumentBuilderFactory.newInstance().apply {
+            isNamespaceAware = true
+            isXIncludeAware = false
+            isExpandEntityReferences = false
+            setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+            setFeature("http://xml.org/sax/features/external-general-entities", false)
+            setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+            setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
+            setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
+        }
+        val manifest = factory.newDocumentBuilder().parse(bytes.inputStream()).documentElement
+        require(manifest.tagName == "manifest") { "Missing manifest root" }
+        val packageName = manifest.getAttribute("package").also { require(it.isNotBlank()) }
+        val entries = manifest.getElementsByTagName("meta-data")
+        val classes = (0 until entries.length).map { entries.item(it) as Element }
+            .filter { it.parentNode.nodeName == "application" && it.parentNode.parentNode === manifest }
+            .filter { it.getAttributeNS(ANDROID_NAMESPACE, "name") == EXTENSION_CLASS_META_KEY }
+            .map { it.getAttributeNS(ANDROID_NAMESPACE, "value") }
+        require(classes.size == 1 && classes.single().isNotBlank()) { "Missing or ambiguous extension entry" }
+        return Identity(packageName, resolveClasses(packageName, classes.single()))
+    }
+
+    private fun resolveClasses(packageName: String, classes: String): String = classes.split(':').joinToString(":") {
+        val name = it.trim()
+        require(name.isNotBlank()) { "Empty extension entry" }
+        if (name.startsWith('.')) packageName + name else name
+    }
+
+    private const val ANDROID_NAMESPACE = "http://schemas.android.com/apk/res/android"
 
     private const val EXTENSION_CLASS_META_KEY = "tachiyomi.extension.class"
 

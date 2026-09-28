@@ -27,6 +27,18 @@ Keiyoushi 当前同时发布 APK 与签名 JAR；Desktop 的全量兼容调查�
   任一不一致都按 malformed/untrusted catalog 失败关闭。
 - 原生 JAR 的每个 payload entry 必须由同一 repository certificate 签名；未签名、部分
   签名或混用签名的 JAR 必须拒绝。
+- 原生 JAR 若包含 `AndroidManifest.xml`，认证原始包后再读取其中的 package 与
+  `tachiyomi.extension.class`。此新身份路径仅支持明文 XML；解析禁用 DTD、外部实体、外部
+  schema 和 XInclude，manifest 上限 1 MiB。存在但畸形、缺身份或 package 不匹配时失败关闭，
+  不允许退回类扫描。包含二进制 AXML manifest 的原生 JAR 明确拒绝安装，不复用旧 APK 的
+  宽松 AXML 提取器作为新身份认证依据。目录必须提供非空 source ID 集合，运行时集合必须
+  与其完全相同；既有 APK 安装及已安装转换 JAR 加载保持原行为。
+- manifest 声明的入口可以位于包名之外，SourceFactory 的产品也可以混淆；身份来自已认证的
+  manifest，不来自 Java 类名前缀。每个声明入口必须实际存在于候选 JAR、由该扩展 classloader
+  定义并成功产出 Source，产品也必须来自该 classloader。任一入口失败即整体拒绝。
+  sidecar 的 `strictProvider=true` 使安装校验与后续 reload 都只使用此入口，禁止
+  ServiceLoader/扫描兜底。旧 sidecar 默认 false；没有 manifest 的旧 JVM JAR 继续沿用
+  package-prefix 校验与原有发现流程，APK Legacy 安装边界保持不变。
 - 签名验证必须先在下载的原始 JAR 上完成。若 Desktop 为平台 ABI 兼容而生成本地运行时
   派生 JAR，只允许执行文档化的窄范围字节码适配，并移除已经失效的原始签名元数据；
   派生 JAR 不得被当作仓库签名制品再次传播或建立新信任。
@@ -81,3 +93,17 @@ Keiyoushi 当前同时发布 APK 与签名 JAR；Desktop 的全量兼容调查�
   制品只在显式本地/在线验收中使用其不可变 SHA-256。
 - Keiyoushi Windows survey 对当前 v2 index 中每个 JAR 执行 repository signer 验证和
   production loader 加载，不执行 APK→JAR。
+- `SignedManifestExtensionInstallTest` 使用固定签名 WNACG 1.6.0 JAR 验证完整 manager
+  安装和 reload，以及目录身份、签名、畸形/二进制 manifest、外部实体声明、
+  宿主/缺失/部分入口拒绝。
+  修改 manifest 的负例移除已失效签名元数据、仅旁路签名 gate 以单独测试身份边界；
+  正常安装和签名负例均使用真实认证。
+
+## WNACG 图片签名链接故障边界
+
+旧 WNACG 1.4.23 扩展解析图片 URL 时丢失 query，真实源请求会收到 HTTP 403“链接已失效”。
+上游 WNACG 1.6.0 已保留签名 query，但其混淆 Source 与公共 factory 不在目录 package 下，
+此前 Desktop 用 Java 类名前缀代替包身份，导致正常安装被拒绝。本项目修复的是新版安装身份
+校验，不修改第三方 parser、代理或阅读器。既有旧扩展需要通过正常更新/安装入口升级；只有
+新版正式 EXE 的 production manager 安装成功，并以全新图片缓存取得和解码签名图片，才算
+运行时故障验收，绕过安装验证的诊断性加载不能替代该验收。

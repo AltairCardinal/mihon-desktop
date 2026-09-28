@@ -26333,7 +26333,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",
           "symbol": "apkConverter.convert",
-          "line": 247
+          "line": 260
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt",
@@ -54324,12 +54324,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",
           "symbol": "apkConverter.convert",
-          "line": 247
+          "line": 260
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt",
           "symbol": "ServiceLoader.load(Source::class.java",
-          "line": 77
+          "line": 82
         }
       ],
       "FIXTURE": [

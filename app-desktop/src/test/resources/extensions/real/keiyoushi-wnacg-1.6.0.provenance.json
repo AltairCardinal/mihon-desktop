@@ -1,0 +1,21 @@
+{
+  "repository": "https://github.com/keiyoushi/extensions",
+  "sourceRepository": "https://github.com/keiyoushi/extensions-source",
+  "sourceCommit": "f303b9cfbddb1827a588de2937daa2ae85be9baf",
+  "sourceLicenseUrl": "https://raw.githubusercontent.com/keiyoushi/extensions-source/f303b9cfbddb1827a588de2937daa2ae85be9baf/LICENSE",
+  "license": "Apache-2.0",
+  "releaseTag": "f303b9c",
+  "jarFixturePath": "app-desktop/src/test/resources/extensions/real/keiyoushi-wnacg-1.6.0.jar",
+  "jarDownloadUrl": "https://github.com/keiyoushi/extensions/releases/download/f303b9c/tachiyomi-zh.wnacg-v1.6.0.jar",
+  "jarSha256": "be94cbb32f8e11be90e0c2dda79971b5da2a1330f6513d87ff75d031859ad9ad",
+  "jarSizeBytes": 81325,
+  "packageName": "eu.kanade.tachiyomi.extension.zh.wnacg",
+  "versionCode": 106000,
+  "versionName": "1.6.0",
+  "sourceIds": ["6551136894818591762"],
+  "manifestFormat": "XML",
+  "entryClass": "keiyoushi.source.Generated",
+  "signatureScheme": "JAR-v1",
+  "signerSha256": "9add655a78e96c4ec7a53ef89dccb557cb5d767489fac5e785d671a5a75d4da2",
+  "verification": "SignedManifestExtensionInstallTest verifies the fixed digest and authenticates the original JAR through the production manager before adaptation, installation and reload."
+}

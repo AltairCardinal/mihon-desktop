@@ -74,13 +74,18 @@ open class DesktopExtensionLoader(
             networkContext.register(classLoader, jarFile.nameWithoutExtension)
 
             // 1. Try ServiceLoader first (fast path for JVM-compiled extensions).
-            var sources = ServiceLoader.load(Source::class.java, classLoader).toList()
+            val meta = readExtensionMeta(jarFile)
+            val strict = meta?.strictProvider == true
+            var sources = if (strict) {
+                loadStrictManifestSources(jarFile, checkNotNull(meta.extensionClass), classLoader)
+            } else {
+                ServiceLoader.load(Source::class.java, classLoader).toList()
+            }
 
             // 2. Manifest class name (fast path for dex2jar-converted APK extensions).
             //    The exact class was extracted from AndroidManifest.xml at install time
             //    and stored in the .meta.json sidecar — no need to scan all classes.
-            if (sources.isEmpty()) {
-                val meta = readExtensionMeta(jarFile)
+            if (sources.isEmpty() && !strict) {
                 if (meta?.extensionClass != null) {
                     sources = loadByClassName(meta.extensionClass, classLoader)
                 }
@@ -88,7 +93,7 @@ open class DesktopExtensionLoader(
 
             // 3. Fallback: scan all class entries for concrete Source implementations.
             //    Needed for dex2jar-converted APKs without a meta sidecar (e.g. manually placed).
-            if (sources.isEmpty()) {
+            if (sources.isEmpty() && !strict) {
                 sources = scanJarForSources(jarFile, classLoader)
             }
 
@@ -115,6 +120,24 @@ open class DesktopExtensionLoader(
             emptyList()
         }
     }
+
+    private fun loadStrictManifestSources(jarFile: File, classes: String, loader: ClassLoader): List<Source> =
+        JarFile(jarFile).use { jar ->
+            classes.split(':').flatMap { name ->
+                require(jar.getJarEntry(name.replace('.', '/') + ".class") != null) { "Missing manifest provider: $name" }
+                val type = loader.loadClass(name)
+                require(type.classLoader === loader) { "Manifest provider must belong to the extension" }
+                val constructor = type.getDeclaredConstructor().apply { isAccessible = true }
+                val sources = when (val provider = constructor.newInstance()) {
+                    is Source -> listOf(provider)
+                    is SourceFactory -> provider.createSources()
+                    else -> error("Manifest entry is not a Source or SourceFactory")
+                }
+                require(sources.isNotEmpty()) { "Manifest provider has no sources" }
+                require(sources.all { it.javaClass.classLoader === loader }) { "Source must belong to the extension" }
+                sources
+            }
+        }
 
     private fun recordDiagnostic(jarFile: File, error: Throwable) {
         mutableDiagnostics += ExtensionLoadDiagnostic(

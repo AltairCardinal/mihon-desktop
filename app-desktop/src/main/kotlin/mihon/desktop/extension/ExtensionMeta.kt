@@ -39,10 +39,11 @@ data class ExtensionMeta(
      * Fully-qualified Source class name extracted from AndroidManifest.xml
      * (`tachiyomi.extension.class` meta-data).
      *
-     * Present for [ExtensionOrigin.CONVERTED_APK] extensions; null for
-     * JVM-compiled JARs (which use ServiceLoader instead).
+     * Present for APKs and manifest-bearing JVM JARs; legacy JVM JARs use ServiceLoader.
      */
     val extensionClass: String? = null,
+    /** Authenticated manifest entry is authoritative; never fall back to service discovery or scanning. */
+    val strictProvider: Boolean = false,
 )
 
 private val metaJson = Json { ignoreUnknownKeys = true }
