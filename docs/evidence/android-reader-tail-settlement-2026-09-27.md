@@ -2,7 +2,7 @@
 
 ## 范围
 
-用户已在调试 APK 复现《後日之舞》第四卷快速翻到下一卷后，212 页仍记录为第 210 页。本轮仅补充诊断测试，不修改产品代码、不重新构建 APK、不操作实机阅读数据。
+用户已在调试 APK 复现《後日之舞》第四卷快速翻到下一卷后，212 页仍记录为第 210 页。以下先保留诊断阶段的原始证据；修复实施和正式候选的后续结果见文末。原实机阅读数据始终由用户自行操作。
 
 此前实机数据库证据：第四卷最后事件为 `page_index=209`，下一卷随后已有进度事件；第四卷没有末页 `page_index=211` 或 `finished` 事件。实机未采集到逐次渲染/结算回调，因此不能从该记录直接判定缺失序号对应哪一页。
 
@@ -56,3 +56,18 @@ python scripts/gradle-coordinator.py run --key reader-tail-settlement-diagnostic
 1. 让本轮失败用例通过，且两个新增对照与原有阅读器保护测试继续通过。
 2. 对待提交的末页结算保留合法的章节/session 上下文，避免复用当前章节状态造成错误写入或副作用。
 3. 在同一实机、同一本书第四卷快速翻到下一卷后退出，核对第四卷 `last_page_read=211`、`read=1` 及完成事件；图片失败、回退和手动跳章不得误标已读。
+
+## 修复实施与自动化结果（2026-09-28）
+
+修复提交 `62510abce3` 将已经受理的末页结算放入应用级同书 FIFO，保存受理时的章节、事件和 session；正常关闭排空已受理事务，事务成功后才执行完成副作用。前一章失败时，后一章完成不会误删前一章下载。进度存储失败向仍活跃的阅读器发出一次提示。证据定位修复提交 `c762a68d58` 更新能力清单中移动的源码和测试引用，没有修改产品逻辑。
+
+- 原快速跨章挂载回归在产品修复前稳定失败；修复后相关组合测试 79 个不同用例通过、无重试，包括关闭排空、旧页面回收、数据库重开、存储失败和下载保护。
+- Android release JVM 672 次执行，失败 0、跳过 7、重试 0；domain JVM 568 次执行，失败 0；data JVM 752 次执行，失败 0、跳过 1、重试 0。联合命令 `:app:testReleaseUnitTest :domain:jvmTest :data:jvmTest` 退出码 0，日志 `.gradle-coordinator/rp02-android-full.log`。
+- 第一次完整 Desktop JVM（含 integration tag）3212 次执行，只有能力清单第 47 项的旧源码行号断言失败；它不代表阅读器行为用例失败。修正清单及其旧测试引用后，3 类、63 次定向执行通过、失败 0、跳过 0，日志 `.gradle-coordinator/rp01-parity-evidence-green-retry.log`。最终 Desktop 全量复跑尚待超出原计划测试次数的批准，不能记为全量通过。
+- 最终改动的 `spotlessCheck` 与 `git diff --check` 通过。共享 Android/Desktop 接受与排空契约的 production adapter 均已执行。
+
+## 正式 Android 候选与待验边界
+
+`python scripts/build-android.py candidate` 构建、R8、外部签名和产物清单成功；`verify --artifact` 再次验签并核对二进制。候选为 `app.mihon.desktop.fork`，`0.19.4-aex.17`、versionCode 35、minSdk 26、targetSdk 36、universal ABI，沿用证书 SHA-256 `bd8e3af75921fc4356deacabd44a3d491fda8439ffbc7d073c363974a648cae3`。APK：`app/artifacts/android/0.19.4-aex.17-vc35-c762a68d58-release/Mihon-Fork-0.19.4-aex.17-vc35-release-universal.apk`；文件 SHA-256：`74ac918fa1e0619a40b245550194fbf737de382ae22e78d711482d846411cf55`。构建日志 `.gradle-coordinator/android-candidate.log`；清单与 mapping 位于同一候选目录。
+
+此产物没有自动安装，也没有代用户操作设备。原实机 T12 仍待用户自行安装同证书升级包后验收：在《後日之舞》第四卷实际显示最后一组页面，快速进入下一章并正常退出，再重开核对第四卷已读和最后一页；数据库证据目标是 `last_page_read=211`、`read=1`，同时下一章进度仍正确。末页未渲染就手动跳章须保持未读。按 roadmap，两类快速时序各三次及负向对照未取得原机证据，不能声称原机 bug 已确认修复。Windows/macOS 正式构建、Test Mode 及最终 Desktop 全量门禁也仍待完成。
