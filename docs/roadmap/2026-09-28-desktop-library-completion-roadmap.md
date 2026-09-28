@@ -8,7 +8,7 @@ date: 2026-09-28
 
 ## 1. 目标、基准与执行边界
 
-本方案覆盖用户指定的 8 项书架直接能力、7 项关联设置，以及统一面板、Ctrl+方向键切换分类、顶部继续滚动刷新、长按范围选择，共 19 项需求。当前仅完成规划，未实施产品变更、运行产品测试或生成发布产物；所有任务保持未勾选。
+本方案覆盖用户指定的 8 项书架直接能力、7 项关联设置，以及统一面板、Ctrl+方向键切换分类、顶部继续滚动刷新、Ctrl多选/Shift及长按范围选择，共 19 项需求。当前仅完成规划，未实施产品变更、运行产品测试或生成发布产物；所有任务保持未勾选。2026-09-28 用户进一步确认：保留单击打开漫画，Ctrl进入或增减多选，Shift选择范围；不改为资源管理器式单击选择、双击打开。
 
 | 项目 | 固定依据 |
 | --- | --- |
@@ -50,7 +50,7 @@ SOURCE 指上述已读取的代码事实；PROJECT_POLICY 指用户需求及本�
 | S07 | 关闭按分类设置时清理旧分类排序，重开不会恢复旧值 | `ResetCategoryFlags`、`SetSortModeForCategory` | LC06 |
 | I01 | Windows 使用 Ctrl+Left/Right 切换相邻分类 | `LibraryRootScreen`、`setSelectedCategoryIndex` | LC04 |
 | I02 | 滚至顶部后继续向上滚动，先提示，再继续操作才刷新 | 原生滚动事件、现有当前分类刷新回调 | LC05 |
-| I03 | 长按与 Shift 共用范围选择，覆盖跨分类/反向/锚点失效 | `LibrarySelectionState.selectRange`、共享 `selectLibraryRange` | LC04 |
+| I03 | 单击打开，Ctrl多选，Shift替换可见范围，Ctrl+Shift/长按追加范围；覆盖固定锚点、跨分类/反向/失效 | `LibrarySelectionState`、`ShiftAwareClickModifier`、共享范围策略 | LC04 |
 | I04 | 筛选/排序/显示集中于一个面板；再次点击书架打开它 | `LibraryNavigationHost.registerReselectHandler`、现有 model/偏好 | LC03 |
 
 不重复开发已经存在的搜索、全局搜索、随机打开、全选/反选、批量分类/下载/删除/迁移。按分类设置当前作用于排序；显示布局、列数及角标仍按原有全局作用域保存，不能根据设置名称误改为分类独立布局。
@@ -67,15 +67,32 @@ SOURCE 指上述已读取的代码事实；PROJECT_POLICY 指用户需求及本�
 - Escape 一次只关闭最上层弹层；面板关闭后，下次 Escape 才退出选择，再下次退出搜索。入焦到当前标签或首个有效控件，Tab/Shift+Tab 限制在面板，背景不可交互；关闭还焦到触发按钮或书架导航项，触发器消失时回书架内容。
 - 选择模式保留已选 ID；通过重选书架打开面板时，只改变可见集合，不清空隐藏选择。普通模式与选择模式共用一个面板状态。详情/阅读器等子页在前台时不响应根书架的重选面板请求，遵守现有导航返回行为。
 
-### 3.2 滚动条、分类键盘与范围选择（L01、I01、I03）
+### 3.2 滚动条、分类键盘与 Windows 多选（L01、I01、I03）
 
 - 列表持有 `LazyListState`，三种网格持有 `LazyGridState`，使用适配当前 Compose Desktop 版本的滚动条。Android 的 `VerticalFastScroller` 依赖 Android API，不直接复制。优先调用现有 Compose scrollbar adapter；需要网格适配时只增加该适配，不另建滚动框架。
 - 分类视图位置以分类稳定 ID 及布局族（列表/网格）为键，在当前书架会话及详情返回中保存。数量/列数变化以第一可见作品 ID 和偏移恢复，目标消失则钳制；不承诺跨进程恢复精确像素位置。不得用一个可变 index 将分类 A 的位置误当分类 B。
 - `Ctrl+Left` 到前一分类，`Ctrl+Right` 到后一分类，按当前分类顺序，不循环；首/尾、0/1 分类不越界。只消费无 Alt/Shift 的 KeyDown，一次按压切一次，按住重复事件不连续翻页。快捷键说明出现在分类控件 tooltip/语义描述中。
 - 仅根书架有焦点、无模态弹层、焦点不在可编辑文本中时生效。搜索输入框中的 Ctrl+方向键保留系统按词移动光标；面板、菜单、输入法组合输入和子页面不被抢键。切分类保留搜索/过滤及跨分类选择，载入该分类排序并反馈分类名。
-- 四布局长按漫画主体统一调用 `selectRange(visibleIds, targetId, categoryId)`；Shift 点击保留。长按由既有 combinedClickable 手势识别，不另外自定延迟；不能再同时执行普通点击或单项 toggle。事件提交前目标若已从当前可见集合/数据源移除则忽略陈旧事件，不让共享 helper加入不存在的目标 ID。
-- 同分类按当前可见排序取包含两端的闭区间，加入已有选择；反向成立，完成后目标成为新锚点。跨分类、锚点不再可见或尚无锚点时，仅加入目标并重建锚点。普通选择点击仍切换单项，取消最后一项退出选择；隐藏已选项按现有策略保留。
-- 滚动、右键菜单及继续阅读小按钮不得误触发长按范围；四布局使用相同 ID 集合与门禁。
+
+SOURCE：当前 `ShiftAwareClickModifier` 只读取 `isShiftPressed`，`handlePrimaryClick` 只接收 Shift布尔值；Ctrl未传入实际选择链。`LibrarySelectionState` 的“Ctrl+Click”注释及其他文件的 Ctrl import均不是功能实现证据。当前 Shift策略是追加范围且每次移动锚点，不能原样充当下面的 Windows修饰键契约。
+
+以下为用户确认后的 PROJECT_POLICY，统一应用于四种布局的漫画主体：
+
+| 输入 | 动作 | 范围锚点 |
+| --- | --- | --- |
+| 无修饰键单击 | 打开该漫画；若正在多选，先退出选择再进入详情，返回不恢复这次已退出的选择 | 清除 |
+| Ctrl+单击 | 未选则加入，已选则取消；其余选择不变，不打开漫画 | 以本次目标建立锚点；取消最后一项时清除 |
+| Shift+单击 | 用锚点到目标的闭区间替换当前分类可见集合中的选择，允许扩大和缩小；其他分类/过滤隐藏的已选项保留 | 连续Shift操作保留同一起点，不随终点移动 |
+| Ctrl+Shift+单击 | 把闭区间追加到已有选择，不取消其他项，不打开漫画 | 保留同一起点 |
+| 长按 | 复用同一范围计算，按追加模式执行；无有效锚点时先选目标进入多选 | 有效锚点保留，无效则以目标重建 |
+| Escape/选择栏关闭 | 在无更高层弹层时退出选择；下一次Escape才处理搜索 | 清除 |
+
+- 修饰键处理优先级为 Ctrl+Shift → Shift → Ctrl → 普通单击。只有主键点击执行上述操作；右键、Alt修饰输入、面板控件及滚动不进入选择分派。Ctrl在本条仅代表 Windows Control，不能把 Meta键未经验证等同Ctrl。
+- 范围按当前可见排序计算，包含两端、反向成立。没有锚点、跨分类或锚点被筛选隐藏时，本次范围退化为目标单项并重建锚点：Shift仍执行可见集替换，Ctrl+Shift/长按执行追加。事件提交前目标已被移除则忽略陈旧事件。所有身份用漫画和分类稳定ID，不用位置充当身份。
+- 举例：可见顺序A–E，Ctrl点B→Shift点E得到B/C/D/E；继续Shift点C收缩为B/C；Ctrl点E得到B/C/E并把锚点设为E；Ctrl+Shift点D追加D得到B/C/D/E。不能保持旧实现中“每次范围都只追加、每次终点都变成起点”的行为。
+- 全选/反选继续使用已有可见集合规则并清除范围锚点；切分类保留已选ID但不得跨分类生成区间。取消最后一个选中项退出选择；选中数量包括此前保留的隐藏项，批量操作对象仍由既有确认快照确定。
+- 长按沿用既有 combinedClickable手势识别，不另设时长，抑制随后普通click，避免范围选择后又导航。继续阅读小按钮保留原有独立行为，不把它当漫画主体；右键菜单不因本次修改改变目标。选择模式下其现有选择动作也须与状态对象保持一致。
+- 提取当前闭区间计算并让共享策略显式支持“可见集替换/追加”和“保留/更新锚点”；默认参数保持Android原有选择语义，Windows由一个selection入口指定模式，长按与修饰键不得各复制一份算法。重命名仅感知Shift的输入helper以准确表达Ctrl/Shift支持，同时修正误导注释。
 
 ### 3.3 顶部继续滚动刷新（I02）
 
@@ -137,7 +154,7 @@ tracker 名称来自 `TrackerProfile`，ID 只用于身份键；登录状态、�
 | 能力 | 直接复用 | 必须补充的边界 |
 | --- | --- | --- |
 | 筛选/排序/分类 | `EvaluateLibrary`、分类投影、`SetSortModeForCategory`、`ResetCategoryFlags` | 页面接线、规范化评分输入、关闭设置的恢复 |
-| 选择 | `selectLibraryRange`、现有 selection state | 长按消费、真实键鼠集成测试 |
+| 选择 | 共享闭区间规则、现有 selection state | Ctrl/Shift事件贯通、显式替换/追加及固定锚点；保留Android默认策略；真实键鼠集成测试 |
 | 源请求 | `SourceMangaUpdateService`、现有 source/HTTP client | 不改代理/鉴权协议；使用源原始响应验证完整路径 |
 | 章节同步 | Android 既有同步规则、repository、SQLDelight | 共享 planner/executor、单作品事务、平台副作用恢复 |
 | 调度 | `LibraryUpdateScheduler`、`DesktopTaskScheduler`、现有 checkpoints | 请求范围持久化、逐本失败、周期及设备约束 |
@@ -221,7 +238,7 @@ Windows adapter优先复用已存在的 JNA/JNA-platform 依赖调用原生网�
 
 - [ ] **LC03 — 统一筛选/排序/显示面板（I04，承接 L05）**。前置：LC02。范围：书架顶栏、面板组件、reselect 接线及展示设置入口；无新导航层级。先挂载真实 Root 和导航宿主验证三标签、重选不叠加、即时偏好、随机重排、分类排序作用域、Escape/焦点；再复用现有回调实现面板。交付：替代分散菜单的统一面板、更新的设置入口和文案。禁止顺带重做分类管理/批量删除。退出：浅深主题、200% 字号、窄窗口可达及输入焦点行为通过。估算 1–2 人日。
 
-- [ ] **LC04 — 快速浏览、分类快捷键与长按范围（L01/I01/I03）**。前置：LC03 的弹层/焦点状态稳定。范围：书架滚动容器、页面级键盘分派、长按接线，复用共享 selection。先测真实滚动条拖动、Ctrl+Left/Right、输入框抢键防护及长按事件；再测跨分类、反向、排序变更、筛选隐藏锚点及目标被删除。交付：四布局滚动条、分类位置恢复、统一范围选择。禁止增加 Ctrl+A 等本次未请求快捷键。退出：千本夹具快速定位、真实事件不能误导航或刷新、共享范围规则保持一致。估算 1–2 人日。
+- [ ] **LC04 — 快速浏览、分类快捷键与 Windows 多选（L01/I01/I03）**。前置：LC03 的弹层/焦点状态稳定。范围：书架滚动容器、页面级键盘分派、Ctrl/Shift/长按事件链、共享范围策略的显式模式参数。先挂载四布局真实Root，执行Ctrl点选/取消、Shift替换与连续扩大/收缩、Ctrl+Shift追加、普通单击退出选择并导航、长按不误导航的红测；再测滚动条、Ctrl+Left/Right、输入框抢键防护、跨分类、反向、排序变更、筛选隐藏锚点和目标删除。事件必须走pointer modifier→卡片/列表→Root→selection→实际导航，不能仅直接传布尔参数测试helper。交付：四布局滚动条、分类位置恢复、准确修饰键与固定锚点选择。禁止增加Ctrl+A、框选或双击打开要求。退出：第3.2节操作表全部通过，Android默认策略共享回归通过，千本夹具快速定位，真实事件不误导航或刷新。估算 1–2 人日。
 
 - [ ] **LC05 — 顶部两段滚动刷新（I02）**。前置：LC04。范围：页面级状态机、原生 wheel adapter、顶端提示及当前分类刷新 wiring。先用可控时钟覆盖第 3.3 节所有状态转移，再通过真实 Root 注入滚动事件核对 scheduler 仅启动一次；至少覆盖惯性、超时、反向、分类切换、空库、多选、弹层和运行中重复。交付：可见提示→再次操作→真实刷新；按钮刷新仍可用。禁止新增另一套更新器或用定时器模拟进度。退出：Windows 鼠标和触控板实际验证，与 DPI 无关；缺硬件证据保持未完成。估算 1–2 人日。
 
@@ -266,7 +283,7 @@ flowchart LR
 | 层次 | 必做内容 | 复用/扩展位置 |
 | --- | --- | --- |
 | 共享行为契约 | 评分转换、范围选择、更新范围/限制、目录差异、元数据、取消/恢复不变量；同一数据集驱动两端真实 adapter | `domain/src/commonTest`、Android Library/Chapter tests、Desktop对应 tests |
-| 原生 Compose | 四布局、面板三页/焦点/Escape、Ctrl键、长按、滚动条及两段 wheel事件；断言真实导航和请求次数 | `LibraryPageCompositionTest`、`LibraryParityIntegrationTest`、`LibrarySortUiTest`及按功能新增的类 |
+| 原生 Compose | 四布局、面板三页/焦点/Escape、Ctrl单击/Shift范围/Ctrl+Shift追加、长按、滚动条及两段wheel事件；分别断言选择集合、固定锚点、是否导航及请求次数 | `LibraryPageCompositionTest`、`LibraryParityIntegrationTest`、`LibrarySortUiTest`及按功能新增的类 |
 | DI/导航 | 工厂解析新评分/设备/同步/偏好依赖，Root重选宿主与普通 Screen类型正确 | `LibraryScreenModelFactory`、已有 DI/导航测试；不以调用 helper替代页面接线 |
 | HTTP/源 | 原始响应至章节/评分/作品对象：成功、空/缺失、403/429/500、畸形、源异常；parser不得 mock | `MockWebServer`、`DesktopProviderTrackerServiceTest`、`LibraryUpdateCheckerTest`扩展 |
 | 数据/文件 | 真实 SQLDelight与临时目录、已读/书签/配对/历史、文件重名/权限失败、崩溃重入、旧偏好/任务 JSON | `data`集成测试、`LibraryPreferenceMigrationTest`、`DesktopTaskSchedulerIntegrationTest`、`LibraryUpdateRecoveryIntegrationTest` |
@@ -301,7 +318,7 @@ python scripts/gradle-coordinator.py run --key library-format -- .\gradlew.bat s
 | --- | --- |
 | 四布局和封面 | 替换/删除自定义封面后返回四种书架，显示正确；隐藏未读角标仍可进入下一可读章节；只有一个自定义分类仍见分类名 |
 | 面板和追踪 | 重点书架打开统一面板；三页切换即时生效；单独追踪筛选也有生效提示；混合评分得到规范化顺序；Escape关闭并还焦 |
-| 分类与选择 | Ctrl+Left/Right切分类且输入框不被抢键；长按和Shift正向/反向结果相同；过滤后锚点失效只加入目标 |
+| 分类与选择 | 普通单击打开；Ctrl单击增减多选且不导航；连续Shift可扩大/收缩；Ctrl+Shift和长按追加；跨分类/过滤后锚点失效退化单项；Ctrl+Left/Right切分类且输入框不被抢键；Android既有策略不变 |
 | 滚动 | 千本漫画拖动滚动条快速定位；滚动到顶本身不更新；顶部出现提示后再次操作只更新当前分类一次；反向/离页取消待触发状态 |
 | 分类设置 | 默认分类影响新收藏；包含/排除保存/取消正确且包含默认分类0；关闭分类排序后重开无旧值回弹，失败/重启有一致恢复 |
 | 更新目录 | 源改名/重排/换链/移除后，书架数量及目录正确，阅读/书签/下载/配对引用保持；空错误响应不清库 |
