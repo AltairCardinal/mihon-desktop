@@ -11,6 +11,7 @@ import mihon.domain.reader.content.DownloadChapterIdentity
 import mihon.domain.reader.content.ReaderImageCandidatePolicy
 import mihon.domain.reader.content.ReaderImageSortMode
 import java.io.File
+import java.io.FileNotFoundException
 
 private val ILLEGAL_CHARS = Regex("""[/\\:*?"<>|]""")
 private fun sanitize(name: String): String =
@@ -307,17 +308,22 @@ class DesktopDownloadProvider(
         if (ext !in setOf("jpg", "jpeg", "png", "webp", "gif", "avif")) return false
         if (!isFile || length() <= 0L) return false
 
-        return hasReadableImageSignature()
+        return hasReadableImageSignature(this)
     }
 
     private fun File.isReaderImageCandidate(): Boolean {
         if (!isFile) return false
-        return ReaderImageCandidatePolicy.accepts(name) { hasReadableImageSignature() }
+        return ReaderImageCandidatePolicy.accepts(name) { hasReadableImageSignature(this) }
     }
 
-    private fun File.hasReadableImageSignature(): Boolean {
-        val header = inputStream().use { input ->
-            ByteArray(32).also { bytes -> input.read(bytes) }
+    internal fun hasReadableImageSignature(file: File): Boolean {
+        val header = try {
+            file.inputStream().use { input ->
+                ByteArray(32).also { bytes -> input.read(bytes) }
+            }
+        } catch (error: FileNotFoundException) {
+            if (!file.exists()) return false
+            throw error
         }
 
         return header.startsWith(0xFF, 0xD8) ||

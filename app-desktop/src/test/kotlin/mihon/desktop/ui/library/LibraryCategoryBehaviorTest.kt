@@ -160,7 +160,8 @@ class LibraryCategoryBehaviorTest {
             withTimeout(5_000) {
                 while (
                     !Injekt.get<ChapterRepository>().getChapterById(targetUnread.id)!!.read ||
-                    manager.queue.value.any { it.chapterId == targetUnread.id }
+                    manager.queue.value.any { it.chapterId == targetUnread.id } ||
+                    provider.isChapterDownloaded(target.source, target.title, targetUnread.name)
                 ) {
                     render(scene)
                     delay(10)

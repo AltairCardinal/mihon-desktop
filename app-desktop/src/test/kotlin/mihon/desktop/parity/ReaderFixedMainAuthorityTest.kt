@@ -419,6 +419,12 @@ class ReaderFixedMainAuthorityTest {
             },
         )
         assertTrue(
+            progressItem.getValue("currentAndroidConsumerPaths").jsonArray.any {
+                it.jsonPrimitive.content ==
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderProgressCoordinator.kt"
+            },
+        )
+        assertTrue(
             progressItem.getValue("behaviorMethods").jsonObject
                 .getValue("app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt")
                 .jsonArray
@@ -433,7 +439,25 @@ class ReaderFixedMainAuthorityTest {
                 .jsonArray
                 .any {
                     it.jsonPrimitive.content ==
-                        "an in-flight write completes before the latest settlement enters the serialized transaction"
+                        "issuing a new token invalidates every older unaccepted viewport"
+                },
+        )
+        assertTrue(
+            progressItem.getValue("behaviorMethods").jsonObject
+                .getValue("app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderProgressCoordinatorTest.kt")
+                .jsonArray
+                .any {
+                    it.jsonPrimitive.content ==
+                        "accepted writes survive close and preserve same manga submission order"
+                },
+        )
+        assertTrue(
+            progressItem.getValue("behaviorMethods").jsonObject
+                .getValue("app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageProgressProductionWiringTest.kt")
+                .jsonArray
+                .any {
+                    it.jsonPrimitive.content ==
+                        "rendered last pair queued behind earlier write survives immediate next chapter selection"
                 },
         )
         assertTrue(progressItem.requiredText("verificationScope").contains("latest-settlement"))

@@ -71,3 +71,11 @@ python scripts/gradle-coordinator.py run --key reader-tail-settlement-diagnostic
 `python scripts/build-android.py candidate` 构建、R8、外部签名和产物清单成功；`verify --artifact` 再次验签并核对二进制。候选为 `app.mihon.desktop.fork`，`0.19.4-aex.17`、versionCode 35、minSdk 26、targetSdk 36、universal ABI，沿用证书 SHA-256 `bd8e3af75921fc4356deacabd44a3d491fda8439ffbc7d073c363974a648cae3`。APK：`app/artifacts/android/0.19.4-aex.17-vc35-c762a68d58-release/Mihon-Fork-0.19.4-aex.17-vc35-release-universal.apk`；文件 SHA-256：`74ac918fa1e0619a40b245550194fbf737de382ae22e78d711482d846411cf55`。构建日志 `.gradle-coordinator/android-candidate.log`；清单与 mapping 位于同一候选目录。
 
 此产物没有自动安装，也没有代用户操作设备。原实机 T12 仍待用户自行安装同证书升级包后验收：在《後日之舞》第四卷实际显示最后一组页面，快速进入下一章并正常退出，再重开核对第四卷已读和最后一页；数据库证据目标是 `last_page_read=211`、`read=1`，同时下一章进度仍正确。末页未渲染就手动跳章须保持未读。按 roadmap，两类快速时序各三次及负向对照未取得原机证据，不能声称原机 bug 已确认修复。Windows/macOS 正式构建、Test Mode 及最终 Desktop 全量门禁也仍待完成。
+
+## 后续验收与 Desktop 门禁诊断（2026-09-28）
+
+用户已在原 Android 实机安装上述正式候选，并报告原快速翻页场景未复现。未取得逐次数据库和负向对照记录，因此这是一项实机正向验收结果，不等同于 roadmap 全部实机用例完成。
+
+经用户批准的第二次完整 Desktop JVM 执行 3212 次，失败 3、跳过 3，日志 `.gradle-coordinator/rp02-desktop-full-final.log`。失败分别是能力证据测试仍引用旧方法名、下载目录遍历时文件被并发删除，以及 RTL 动画期间点击回退未生效；本次完整执行不能记为通过。
+
+针对前两类失败的后续修复：证据测试改查当前方法；下载图片签名探测在文件确已消失时返回不可读，保留文件仍存在时的异常；标记已读集成测试等待真实删除结果，不把数据库更新误当删除完成。下载消失路径先以 `FileNotFoundException` 得到稳定红测，再修复。相关 4 类定向测试合计 83 次执行、失败 0，日志 `.gradle-coordinator/rp02-desktop-repair-focused2.log`。RTL 用例在本次定向执行中通过，但此前两次失败的触发条件尚未证实；不能据此宣称 Desktop 全量门禁已恢复。上述 Desktop 修复不改变已交付 Android APK 的内容。

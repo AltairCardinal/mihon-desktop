@@ -97,6 +97,13 @@ class DownloadProviderTest {
     }
 
     @Test
+    fun `image signature probe returns false when a file disappears before opening`() {
+        val vanishedImage = File(tempDir, "vanished.png")
+
+        assertFalse(provider().hasReadableImageSignature(vanishedImage))
+    }
+
+    @Test
     fun `getDownloadedPages returns sorted image files`() {
         val dir = provider().chapterDownloadDir(1L, "Test", "Ch 1")
         dir.mkdirs()
