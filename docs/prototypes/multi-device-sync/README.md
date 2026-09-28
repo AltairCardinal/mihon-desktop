@@ -1,8 +1,8 @@
 # Mihon 双端原生界面同步演示
 
-## 2026-09-28：默认无密码与遗忘密码提示（待审阅）
+## 2026-09-28：默认无密码与遗忘密码提示（用户已通过）
 
-直接打开[本轮双端审阅入口](password-review.html)，Windows 和 Android 会进入新空间创建样本。入口跳过的只是本地模拟授权；原 [index.html](index.html) 保留原场景与完整模拟授权路径。完整变更方案、生产实施分批和固定验收见[同步密码与恢复边界设计](../../2026-09-28-sync-password-safety-design.md)。本轮只修改 HTML 原型，**不代表 Android/Desktop 产品已更新**。
+直接打开[本轮双端审阅入口](password-review.html)，Windows 和 Android 会进入新空间创建样本。入口跳过的只是本地模拟授权；原 [index.html](index.html) 保留原场景与完整模拟授权路径。完整变更方案、开发契约和固定验收见[同步密码与恢复边界设计](../../2026-09-28-sync-password-safety-design.md)，生产任务与验证门槛见[实施 roadmap](../../roadmap/2026-09-28-sync-password-safety-roadmap.md)。方案及本原型已获用户批准，**不代表 Android/Desktop 产品已更新**。
 
 本节替代下文 09-18 的“空输入/非空输入直接切换创建按钮”交互说明；历史验证记录按原日期保留。
 

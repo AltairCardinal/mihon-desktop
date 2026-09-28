@@ -1,6 +1,6 @@
 # 同步空间：默认无密码与遗忘密码风险提示
 
-日期：2026-09-28。状态：用户已确认产品方向；本轮交付完整改动方案与 HTML 交互 DEMO，具体交互待用户审阅。**生产功能尚未按本文修改或发布。**
+日期：2026-09-28。状态：用户已通过产品方案与 HTML 交互 DEMO；本文已补充开发契约，后续执行见[实施 roadmap](roadmap/2026-09-28-sync-password-safety-roadmap.md)。**生产功能尚未按本文修改或发布。**
 
 审阅入口：[Windows / Android 并列 DEMO](prototypes/multi-device-sync/password-review.html)。该文件转到 `index.html?review=password`；普通入口和模拟授权流程继续保留；新入口仅跳转到本地样本的创建步骤，不代表真实授权。
 
@@ -10,13 +10,13 @@
 
 GitHub 私有仓库的账号与访问控制，不等于 Mihon 对同步内容的客户端加密。无同步密码时，只要用户仍有权访问原空间，就无需额外秘密来读取同步内容；拥有仓库读取权限的人也能读取内容。密码保护面向所有希望把“读取仓库”和“读取同步内容”分开的人，不仅适用于共享账号。它不隔离同一账号使用者的仓库修改、删除权限，也不替代 GitHub 账号安全。
 
-本轮只交付本设计、更新后的既有双端原型及原型测试。后续生产实现范围为共享首次配置 UI、帮助页、密码选择的提交防护、两端接入与对应验证；不重做日常同步、GitHub 授权、专用仓库初始化或数据合并。
+已交付本设计、更新后的既有双端原型及原型测试，审阅提交为 `cdc1b9f1b3`。本次批准后的补充仅包含开发方案与 roadmap。后续生产实现范围为共享首次配置 UI、帮助页、密码选择的提交防护、两端接入与对应验证；不重做日常同步、GitHub 授权、专用仓库初始化或数据合并。
 
 不纳入：恢复码/恢复文件、密钥托管服务、可信联系人、修改或关闭既有空间密码、数据重加密迁移、删除/改名/重建远端空间。也不把“默认无密码”解释成自动解密已有空间。
 
 ## 2. 已有事实与复用边界
 
-源码核对基线：`b580c7c96e`。独立审阅工作区基于后续纯文档提交 `ab29714b7a`，相关 production 与原型基线相同。以下 SOURCE 为静态实现事实，不代表本轮运行过原生应用。
+源码核对基线：`b580c7c96e`。独立审阅工作区基于后续纯文档提交 `ab29714b7a`，相关 production 与原型基线相同；补充开发契约时在 `cdc1b9f1b3` 再次读取相关 production，未发现本方案已被实现。以下 SOURCE 为静态实现事实，不代表本轮运行过原生应用。
 
 | 来源 | 当前事实或本次决定 | 入口 |
 | --- | --- | --- |
@@ -135,11 +135,9 @@ GitHub 私有仓库的账号与访问控制，不等于 Mihon 对同步内容的
 
 ## 6. 实施分批与验证边界
 
-按独立功能批次交付，不按文件或行数拆微任务。以下生产批次是审阅后的实施方案，**本轮不执行 B/C**；复选框遵循实现、独立审查、验证、提交全部完成后才勾选。
+实施进度的唯一清单是[同步密码安全 roadmap](roadmap/2026-09-28-sync-password-safety-roadmap.md)，本文不维护第二套任务复选框。HTML 方案已经批准；生产按 S1“共享闭环及双端接线”、S2“双端发布与恢复验收”串行交付。S1 包含完整用户入口、事件防护、失败处理和平台接线，不按状态层、UI 文件或行数拆成无法独立使用的微任务。
 
-- [x] **A：方案与双端 HTML 审阅交付（本轮，交互待用户审阅）**。仅改本设计、相关文档入口和现有原型视图/会话状态/浏览器测试；复用同步模型，不增加加密模拟器。先写 P1–P9/P11 的浏览器红测，最小实现后转绿并整理；主代理独立核对关键路径及 P10 截图，最终完整 DEMO 套件一次，加脚本语法和 diff 检查。交付一个功能批次提交与可直接打开的入口。用户审阅通过不等于原生功能已交付。
-- [ ] **B：共享生产创建与帮助流程**。前置 A 用户审阅。范围限定 `presentation-sync`、共享 panel/controller action 与 i18n，按需要扩充已有集成测试；不改变数据库、v2 协议、加密算法或 GitHub 权限。先让真实 Compose 事件/共享 controller 测试因缺少显式模式与确认门禁失败；实现明确的创建提交语义和同面板帮助导航，保留既有 UNLOCK 行为。事件层拒绝“已选择加密但密码空/未确认”，已提交模式与 UI 清理分离；复用 onboarding 的安全创建/恢复身份，测试失败重试与并发重复点击。执行受影响单元、真实 wiring 和格式检查，独立审查秘密生命周期、意外明文降级及已有空间防覆盖路径。不得仅靠按钮禁用或纯 domain 测试验收。
-- [ ] **C：Android/Desktop 接入与正式收口**。前置 B 审查通过。验证两端共享组件、平台关闭/返回、键盘/IME、主题与帮助入口，并保留既有安全存储接入。按项目阶段要求执行相关模块完整测试；发布收口执行规定的 Android/Desktop、Test Mode、Windows/macOS 构建与运行验收，不在 focused 循环反复构建。Android 使用 `scripts/build-android.py candidate`；Desktop 使用 `scripts/build-desktop.sh`（仅有同 diff 等价全量证据才用 build-only）。真实空间写入、设备安装/操作需要对应授权；无环境或授权时如实记录未通过项，不宣称完整发布。交付正式产物及实际路径，本批次不承接恢复码、改密或数据迁移。
+本次仅编写方案，不启动 S1/S2。生产开发必须先红后绿；固定验收仍是 P1–P12，原型证据仅用于交互参考。各批次前置、修改范围、测试、审查门槛和交付物见 roadmap；第 10–12 节是开发时必须保持的具体契约。
 
 测试应沿用 `SyncPanelOnboardingIntegrationTest`、`SyncPanelContentTest` 及现有 runtime/onboarding tests。导航仅在共享面板内增加子页时，不为此新建 Voyager Screen 或 DI 绑定；若实际实现新增这些集成点，必须补对应真实 wiring 测试。
 
@@ -185,3 +183,102 @@ node --test --test-concurrency=1 docs/prototypes/multi-device-sync/*.test.cjs
 环境使用本机 Chrome 和已存在的 `playwright-core`，通过会话变量 `PLAYWRIGHT_CORE_PATH` 指定，无新增依赖安装。没有运行原生测试或产品构建，不据此宣称产品功能完成。
 
 完整回归后仅澄清新建页的静态说明：把无条件“无需额外密码”改成“未设置同步密码时……”；不改变脚本逻辑。对默认/开启两种状态做浏览器文案核验，并重新检查该脚本语法与 diff，不重复整套回归。
+
+## 10. 生产开发契约
+
+本节所有新增类型/字段/资源名均为**拟议接口**，不是已有能力。实现可以依项目命名惯例调整名称，但不得改变校验、生命周期和失败语义。复用现有公共逻辑，Android/Desktop 的差异仅保留在平台外壳。
+
+### 10.1 文件与责任分配
+
+以下路径均相对仓库根目录；同目录其他页面不在本次重构范围。
+
+| 现有入口 | 本次修改责任 | 必须保持 |
+| --- | --- | --- |
+| `data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncPanel.kt` | 显式创建动作、帮助子页与来源、必要的非秘密草稿上下文标识和输入错误类型 | 密码不进入 `SyncPanelState`，含密码动作的 `toString()` 脱敏 |
+| `data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncPanelController.kt` | 创建/解锁动作分流、当前会话校验、帮助返回、失效事件与重入防护 | 既有授权隔离、`setupVersion`/`panelSession`、后台完成不抢页、发现后恢复 pending |
+| `presentation-sync/src/commonMain/kotlin/mihon/presentation/sync/SyncPanelContent.kt` | 创建开关/风险卡/确认、解锁帮助、只读设置状态、焦点与滚动 | 共享 Compose 组件和原有布局，日常同步页不改版 |
+| `i18n/src/commonMain/moko-resources/base/strings.xml`、`i18n/src/commonMain/moko-resources/zh-rCN/strings.xml` | 同步增加英文基准和中文文案、无障碍描述 | 不把创建页新标题替换到已有空间解锁页，不删除仍被使用的旧资源 |
+| `app/src/main/java/eu/kanade/tachiyomi/data/sync/AndroidSyncPanel.kt` | 核验返回键、遮罩关闭、IME、窄屏与大字号接线；仅在必要时修正外壳 | 继续消费共享 controller，关闭派发 `Close`，返回派发 `Back` |
+| `app-desktop/src/main/kotlin/mihon/desktop/sync/DesktopSyncPanel.kt` | 核验 Escape、关闭、Tab 圈定、还焦和尺寸接线；仅在必要时修正外壳 | 不新增独立密码状态机、Voyager Screen 或 DI 容器 |
+
+`SyncOnboarding.kt`、`SyncSetupStorage.kt`、`crypto/SyncSpaceCrypto.kt` 和现有 transport 是复用依赖。默认只扩充调用链测试，不修改它们的算法或存储格式；只有新测试证明此次集成违反已有契约时，才作最小修复并审查。不能借本次提示改版重做恢复系统。
+
+### 10.2 创建与解锁分开提交
+
+拟增加 `SubmitCreateSpace(contextId, protection, password, riskAcknowledged)`，其中 `protection` 明确为 `NONE` / `PASSWORD`；沿用 `SubmitPassword` 作为**已有空间 UNLOCK 专用动作**。内部保留 `NEW_PASSWORD` 枚举名称亦可，无须为改标题重命名整个状态机。控制器须检查动作上下文，旧 `SubmitPassword` 在 NEW_PASSWORD 不再能创建空间。
+
+`contextId` 是控制器分配的本机临时标识，不含账号名、仓库地址或秘密。新创建会话、账号/仓库候选变化、重新开始配置时换新值；关闭或离开未提交创建步骤时失效。相同会话的重绘、主题和尺寸变化不换值。它只用于阻止排队的旧 UI 事件落入新会话，不持久化、不传到服务器。不要仅比较仓库显示名来判断同一候选。
+
+处理顺序固定为：
+
+1. 当前面板可见且位于 SETUP / NEW_PASSWORD；上下文仍有效；没有活动 `setupJob` 或 `setupBusy`；候选仍属于当前账号和已检查的 repository ID。失效/重复事件直接忽略，不启动请求，也不覆盖新页面的错误。
+2. `NONE` 只接受空密码和未确认状态；携带残留密码的矛盾动作拒绝并提示重新选择，不静默丢弃密码后创建。`PASSWORD` 只接受非空密码、风险已确认，并调用现有 `SyncSpaceCrypto.validatePassword`。不以 `isBlank()` 或 trim 改变密码语义；空格等输入继续按现有校验处理。
+3. UI 预先禁用不满足条件的按钮；控制器重复执行上述校验。空密码/未确认/选择矛盾使用可见输入错误，格式与超长复用现有 INVALID / TOO_LONG。此层校验失败不得调用 create、join、exchange 或执行远端写入。
+4. 捕获不可变动作快照后立即进入 busy 状态，再启动既有 `runSetup { onboarding.create(candidate, password) }`。`NONE` 传入空串，`PASSWORD` 传入原始有效值。回调不读取已清空的 Compose 草稿；派发后 UI 清掉密码、显隐和确认，避免重复事件复用输入。
+5. UNLOCK 动作仅在 SETUP / UNLOCK、有效所选空间且非 busy 时执行；空密码不得尝试连接加密空间，错误沿用 INCORRECT / TOO_LONG / INVALID。已有无密码空间仍由发现结果直接 join，无须提交新动作或确认创建风险。
+
+确认框是用户操作防误触机制，不是对恶意修改客户端的授权边界；确认本身不记入远端协议。必须测试真实 UI 修改输入会撤销确认，并验证绕过禁用按钮直接派发非法动作时控制器仍拒绝。
+
+### 10.3 草稿和秘密生命周期
+
+创建草稿用共享 UI 的会话内 `remember` 管理，保留 `TextFieldValue` 的选区及 composition；禁止 `rememberSaveable`、偏好存储、日志、导航参数或 URL 保存原始密码。以可见性、步骤和控制器上下文作为清理边界，不能以整个 `SyncPanelState` 对象为 key，否则同步状态刷新会清空正在输入的草稿。
+
+输入校验拒绝时保持 PASSWORD 选择、展示错误，要求重新输入并确认；不能自动关掉开关。离开创建页、关闭面板、切换账号/候选、关闭密码开关均清理。普通重绘与显隐切换不清理。解锁进入帮助时销毁输入草稿，返回后输入为空。
+
+含密码的动作不得使用自动生成的完整 `data class.toString()`；异常、诊断及测试失败消息不得输出密码、数据密钥、token。异步闭包只在派生/解锁必要期间持有原始输入，完成后不继续缓存。Kotlin/JVM 不可变字符串无法承诺物理内存立即擦除，文案及验收只承诺不持久化、不记录、及时释放引用；可清理的临时字节数组继续遵守既有 crypto 实现。
+
+### 10.4 帮助导航与设置状态
+
+拟增加 `SyncPanelPage.PASSWORD_HELP` 和 `ShowPasswordHelp` 动作，在 controller 内保存临时 `PasswordHelpSource`（UNLOCK 或 SETTINGS）及来源上下文。只允许当前非 busy 解锁页，或已连接且 descriptor 明确为 Password 的设置页进入。未知状态不开放假找回入口。不得让通用 `Navigate(PASSWORD_HELP)` 绕过来源校验。
+
+帮助页只展示第 3.4 节说明和一个对应来源的返回按钮；不发起授权、同步、初始化或断开。`Back`、Android 返回键及 Desktop Escape 在帮助页统一返回一层；来自 UNLOCK 时保持 chosenSpace 与有效配置上下文，不调用取消整个配置的逻辑。来源因账号/空间变更失效时退到 MAIN 并清除帮助来源，不能返回过期解锁目标。面板关闭始终关闭全部并清除来源。
+
+返回后还焦到来源页“忘记同步密码？”入口；若来源失效，交由主面板默认焦点规则处理。保持滚动位置使入口可达，UNLOCK 输入为空。该焦点请求只能在本次返回转换时执行一次，不能随任意刷新重复执行。
+
+设置页状态来自当前连接对应的真实 descriptor/protection，不能读上一次创建开关、密码框是否为空或账号登录状态。None → 未设置；Password → 已设置及帮助；缺失/不支持 → 既有错误/不可用展示。禁止加入能改变已有空间模式的设置开关。
+
+### 10.5 文案、语义和平台接线
+
+第 3 节中文为已批准产品文案，英文基准保持同义。新增资源至少覆盖：创建标题/说明/未加密边界、可选密码开关、风险标题/正文/确认、两种创建按钮、帮助入口/标题/四项说明/两种返回、密码只读状态/解释及选择错误。帮助不增加尚无真实实现的“备份”“重置”快捷按钮。
+
+保留既有 `sync-password-input`、`sync-password-visibility`、`sync-password-error`、`sync-password-status` 语义标签；新增开关、风险、确认、创建按钮、帮助入口和返回使用稳定独立 tag，例如 `sync-password-enabled`、`sync-password-risk`、`sync-password-ack`、`sync-create-space`、`sync-password-help`、`sync-password-help-back`。测试读真实 semantics 并触发动作，不扫描源码或只断言标签存在。
+
+确认行文本与 checkbox 同属一个可访问操作，不能一次点击切换两次。开关有名称与 checked 状态；密码显隐有准确描述，禁用提交按钮有 disabled 语义。风险卡使用主题语义色、图标与文本，不能只靠红色；输入错误可以被辅助技术读取。密码输入沿用平台密码键盘/遮罩，IME 提交必须经过同一个 handler，不得绕过确认。
+
+## 11. 重试、兼容和失败矩阵
+
+现有远端空间格式仍为 v2；本机 `StoredSyncSetup` 已是 version 3，包含 account、repository ID、attemptId、attemptNonce、初始化阶段和 material。**两者不是同一版本号。** 本次不升级任何格式。安全存储已有已验证的数据密钥及 descriptor，不保存原始密码或由密码派生的包装密钥；不新增明文恢复副本。
+
+已提交模式以 durable pending 中的 descriptor 为准。`discover()` 先检查 `pendingForCurrentAccount()`，Current 继续 `runSetup { pending.setup }`；不得先显示默认无密码创建页再覆盖该 pending。继续完成旧 pending 不要求凭空补一份历史风险确认，新风险确认只约束本次新创建动作。
+
+| 触发点 | UI 与用户动作 | 数据和请求边界 |
+| --- | --- | --- |
+| 输入不合法或风险未确认 | 保留密码选择，显示输入错误；重新输入/确认 | 零创建、零合并；不得转成空密码 |
+| 派生或安全存储失败，尚无有效 pending | 显示失败；重试先重新检查目标；确实仍为空时提示“尚未创建，请重新选择并提交” | 不自动重放空密码；重新创建是新的明确用户提交，即使新页默认无密码也不得自动执行 |
+| pending 已落盘，首次写入前失败 | 既有重试继续同一尝试 | 保留 account/repository/attempt/material，不生成另一把密钥或另一个空间 |
+| 远端响应丢失、进程重启或已发布后本机接入失败 | 重新进入时先恢复既有 pending，核对后继续合并 | 沿用初始化阶段、读回确认与非覆盖写规则；UI 清空不影响保护模式 |
+| 两设备竞争，远端已被另一设备创建 | 读取赢家真实 descriptor，按“已有空间”分流 | 赢家 Password 必须解锁；赢家 None 可按既有规则直接合并。这是连接真实既有空间，不是把自己的加密尝试改写为明文 |
+| 账号变化、仓库删除重建或 repository ID 不符 | 既有身份/目标错误；返回检查入口 | 不复用其他账号/仓库 pending，不覆盖远端，不用同名判断等价 |
+| 403/429/500、畸形响应、未知格式 | 复用真实类型化权限/限流/重试/格式错误，不标成密码错误或未设置 | 只走既有发现/恢复路径；错误不能触发新建或解除加密 |
+| 帮助打开期间上下文失效 | 返回 MAIN，不保留失效来源 | 不解锁、不重新授权、不删除数据 |
+| 已提交后关闭、返回其他页，后台完成 | 保留既有后台任务规则；不重新弹面板、不抢页面 | 只对当前有效会话显示完成反馈；密码草稿不恢复 |
+| 旧版 v2 pending 或现有已连接空间 | 沿用既有 legacy 提示/安全退出与正常交换 | 不重解释旧状态，不升级加密、不要求用户重新建库 |
+
+安全存储读取损坏或不可用时使用既有错误路径，不把“读不到保护状态”当成 None。任何需要修改密码格式、重新包装密钥、删除远端文件或迁移全部 payload 的方案均超出本任务，必须独立规划。
+
+## 12. 开发验证映射与完成判据
+
+所有测试在真实生产调用链上执行；fake 仅替代外部服务/系统存储边界，不复制 crypto、parser 或 controller。新增回归先证明正确红测原因，再提交最小实现及重构后绿测。测试用虚构密码，日志不打印秘密。
+
+| 验收 | 测试入口与关键断言 |
+| --- | --- |
+| P1–P4、P7 | `presentation-sync/src/jvmTest/kotlin/mihon/presentation/sync/SyncPanelOnboardingIntegrationTest.kt`：真实 Compose 操作 → controller → onboarding → MockWebServer；校验生成 descriptor 的模式、Password 可以正确解锁、错误密码失败、None payload 走原格式；非法动作零写入，连续点击仅一个尝试 |
+| P2/P5/P9 | `data/src/commonTest/kotlin/mihon/data/sync/SyncPanelStorageContract.kt`：旧动作不能创建、过期 context 被拒、关闭/重开旧事件无效、提交后清 UI 不变更 pending；失败/重启继续同一材料和尝试。由 JVM/Android 现有具体子类共用运行 |
+| P4–P6/P8/P10 | `presentation-sync/src/jvmTest/kotlin/mihon/presentation/sync/SyncPanelContentTest.kt`：编辑撤销确认、显隐保留选区、关闭清理、主题/重组保留、帮助来源/返回、按钮和错误 semantics。controller 帮助状态转换也纳入共享存储契约 |
+| P7/P9 | 复用 `SyncSpaceTransportContractTest`、`SyncSpaceContractTest`、`SyncCryptoSafetyContractTest` 及既有网络安全测试：两种模式、竞争赢家、响应丢失、不覆盖及异常映射；只补本次 UI 接线还未覆盖的组合，不重写已有底层测试 |
+| P5/P8/P10 | `AndroidSyncPanelTest`、`DesktopSyncPanelTest`：真实外壳派发返回/关闭，来源正确、每次退一层；Android IME/窄屏/字号、Desktop Tab/选区/Escape/还焦由平台可执行交互证据补足，不能把静态快照当点击接线测试 |
+| 生产 wiring | 沿用 `SyncRuntimeWiringTest`、`AndroidSyncRuntimeWiringTest`、`DesktopSyncWiringTest`；改了绑定/导航才扩充相应测试，不为此创造新 DI/Screen |
+| P11 | HTML 的双 iframe 隔离已有证据；原生补两个独立会话/设备实例的草稿隔离和同一空间两客户端恢复证据，不要求原生重建 iframe 机制 |
+| P12 | 已批准 HTML 的两类入口沿用第 9 节证据；不把本条移植成原生“跳过授权”入口。若生产实现反向修改原型，才运行受影响原型回归 |
+
+未通过场景不得在开发结束时删掉、改为可选或仅引用旧版原型结果。正式产品完成还需 roadmap S2 的平台全量、正式构建、Test Mode 和实际运行证据；环境/授权缺失记为未完成，不能通过修改文档状态代替验证。本文与 roadmap 的本次完善仅作 Markdown、链接、源码入口及一致性核验，不新增产品测试通过声明。
