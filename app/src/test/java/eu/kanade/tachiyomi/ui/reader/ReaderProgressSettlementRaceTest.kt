@@ -118,6 +118,7 @@ class ReaderProgressSettlementRaceTest {
                 setMangaViewerFlags = mockk(relaxed = true),
                 getIncognitoState = getIncognitoState,
                 pairingCoordinator = emptyChapterPairingCoordinator(),
+                progressCoordinator = emptyReaderProgressCoordinator(),
                 libraryPreferences = libraryPreferences,
                 chapterLoaderFactory = { _: Manga, _: Source -> chapterLoader },
             )

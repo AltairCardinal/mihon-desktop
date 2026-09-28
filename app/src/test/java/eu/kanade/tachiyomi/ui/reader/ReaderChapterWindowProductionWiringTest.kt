@@ -107,6 +107,7 @@ class ReaderChapterWindowProductionWiringTest {
                 setMangaViewerFlags = mockk(relaxed = true),
                 getIncognitoState = mockk(relaxed = true),
                 pairingCoordinator = emptyChapterPairingCoordinator(),
+                progressCoordinator = emptyReaderProgressCoordinator(),
                 libraryPreferences = mockk(relaxed = true),
                 chapterLoaderFactory = { _: Manga, _: Source -> chapterLoader },
             )

@@ -24,6 +24,8 @@ import eu.kanade.tachiyomi.network.JavaScriptEngine
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.AndroidSourceManager
 import eu.kanade.tachiyomi.ui.reader.AndroidChapterPairingCoordinator
+import eu.kanade.tachiyomi.ui.reader.AndroidReaderProgressCoordinator
+import eu.kanade.tachiyomi.ui.reader.AndroidReaderProgressEffects
 import io.requery.android.database.sqlite.RequerySQLiteOpenHelperFactory
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.protobuf.ProtoBuf
@@ -115,6 +117,11 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory<DatabaseHandler> { AndroidDatabaseHandler(get(), get()) }
         addSingletonFactory<ChapterPairingRepository> { ChapterPairingRepositoryImpl(get()) }
         addSingletonFactory { AndroidChapterPairingCoordinator(get()) }
+        addSingletonFactory {
+            val downloadManager = get<DownloadManager>()
+            val effects = AndroidReaderProgressEffects(app, get(), get(), get(), downloadManager)
+            AndroidReaderProgressCoordinator(effects::onCommitted, { downloadManager.deletePendingChapters() })
+        }
 
         addSingletonFactory {
             Json {

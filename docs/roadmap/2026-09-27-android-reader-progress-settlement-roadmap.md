@@ -1,8 +1,8 @@
 # Android 阅读进度结算可靠性修复 Roadmap
 
-日期：2026-09-27。状态：**READY_FOR_IMPLEMENTATION，尚未实施**。
+日期：2026-09-27。状态：**RP-01 已完成；RP-02 正在执行，原实机验收待用户完成**。
 
-行为权威：[修复设计](../2026-09-27-android-reader-progress-settlement-design.md)。既有红测及边界：[诊断证据](../evidence/android-reader-tail-settlement-2026-09-27.md)，提交 `723512708b`。本轮交付仅为文档，不代表授权构建、安装或实施已经完成。
+行为权威：[修复设计](../2026-09-27-android-reader-progress-settlement-design.md)。既有红测及边界：[诊断证据](../evidence/android-reader-tail-settlement-2026-09-27.md)，提交 `723512708b`。RP-01 的自动化修复证据见第 5 节；正式产物及原实机结果仍按 RP-02 记录。
 
 这是独立产品 child plan：从第一个未勾选批次推导进度，不另设 `active-task`，不切换其他父 roadmap 的 `active-child-plan`，不回写既有章节配对计划或 manifest 的完成状态。checkbox 表示该批实现/必要审查/验证/提交全部完成。既有失败测试可作为红测证据，但不能勾选产品修复。
 
@@ -33,7 +33,7 @@
 
 ### RP-01 · 受理后持久化、退出与完成副作用的完整修复
 
-- [ ] **已受理进度跨章/正常关闭不丢失，所有设计保护与失败处理通过，并完成独立审查及提交。**
+- [x] **已受理进度跨章/正常关闭不丢失，所有设计保护与失败处理通过，并完成独立审查及提交。**
 
 **前置与输入**
 
@@ -101,6 +101,6 @@ python scripts/gradle-coordinator.py run --key reader-progress-fix-sync -- .\gra
 
 日志和 JUnit/XML 是过程产物；记录实际运行的命令、退出状态、不同用例数与自动重试次数。未确认 coordinator 结束前不能启动下一份重型 Gradle。最终产物链接必须先检查文件存在。回归测试始终验证实际生产接线及存储，不用源码符号扫描、mock parser 或测试内复制策略取得通过。
 
-## 5. 本轮规划交付状态
+## 5. 执行状态
 
-本轮只新增设计和本 roadmap，做一次文档—源码对应、相对链接、任务范围/验收/依赖及 Git diff 核验，不运行构建或改产品行为。RP-01、RP-02 都保持未勾选。后续实施以当时最新 HEAD 与有效用户授权为准，不把本次规划提交当作已修复证据。
+RP-01 已完成 Android 阅读进度受理、同书串行持久化、正常关闭排空、失败反馈及提交后完成副作用。独立审查检查了数据完整性及 production wiring，并补充“前一章写入失败时，后一章完成不得删除前一章下载”的挂载 SQL 负向用例。相关组合测试 79 个不同用例通过、无重试；完整 Android/domain/data JVM 测试分别执行 672/568/752 次，失败 0、跳过 7/0/1、重试 0；`spotlessCheck` 与 `git diff --check` 通过。原实机 212 页章节、正式 APK 和 Desktop 最终门禁属于 RP-02，尚待完成；自动化通过不等于原实机已验收。

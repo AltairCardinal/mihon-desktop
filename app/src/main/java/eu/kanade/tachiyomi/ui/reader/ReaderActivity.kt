@@ -249,6 +249,9 @@ open class ReaderActivity : BaseActivity() {
                     ReaderViewModel.Event.ChapterPairingSaveFailed -> {
                         toast(MR.strings.desktop_reader_pairing_save_failed)
                     }
+                    ReaderViewModel.Event.ProgressSaveFailed -> {
+                        toast(MR.strings.reader_progress_save_failed)
+                    }
                     ReaderViewModel.Event.ChapterPairingInvalid -> {
                         toast(MR.strings.desktop_reader_pairing_invalid)
                     }

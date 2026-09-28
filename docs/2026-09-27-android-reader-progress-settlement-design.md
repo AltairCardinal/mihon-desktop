@@ -1,6 +1,6 @@
 # Android 快速跨章时的阅读进度结算修复设计
 
-日期：2026-09-27。状态：**设计完成，尚未实施**。本文件定义目标行为和实现约束，不表示缺陷已经修复。
+日期：2026-09-27。状态：**RP-01 实施中，待独立审查与正式包验收**。本文件定义目标行为和实现约束；自动化转绿不等于原实机问题已验收。
 
 执行计划：[修复 roadmap](roadmap/2026-09-27-android-reader-progress-settlement-roadmap.md)。证据：[诊断报告](evidence/android-reader-tail-settlement-2026-09-27.md)，诊断测试提交 `723512708b`。架构依据：[共享阅读器核心](architecture/reader-shared-core.md)、[阅读器权威与 Fork 偏差](architecture/reader-authority.md)。本修复属于跨平台可靠性在 Android 生命周期适配中的补全，不改写上游行为来源。
 
@@ -83,6 +83,7 @@ stateDiagram-v2
 `ReaderProgressPolicy.reduce()` 在受理时以当时真实 activeChapterId 执行。写入阶段直接使用 effect，不把当前章节伪造成旧章节，不重新读取旧 chapter 的 pages。
 
 同一 Reader 内维护受理后的逻辑 read 状态：末页被受理后，后续回翻产生的 effect 的 `wasRead` 必须为 true，避免排队期间捕获旧 false，随后把已读覆盖回未读。继续复用共享 effect 的 `isRead` 语义；**lastPageRead 不是最大值**，主动回翻仍保存实际位置。该内存投影不是持久化成功提示，也不得触发下载删除。
+`ReaderChapter.read` 的 UI 投影仅在该命令事务成功回执后更新；事务失败时仍保留未读展示，后续回翻的 `wasRead` 则继续取受理态，直到新的有效命令写入。
 
 ## 5. 写入通道、顺序与生命周期
 
@@ -116,6 +117,7 @@ UI：      可以提前进入 B；不会等待 A 的数据库写入才翻页
 
 - `onActivityFinish()` 同步停止该 Reader 接受新候选，并只登记一次关闭标记；标记排在已经接受的命令之后。Activity 正常返回无需在主线程阻塞等待。
 - `onCleared()` 先幂等封闭 Reader handle，再释放章节窗口；若没有显式 finish，仍让已经登记的工作排空。页面/loader 可按现有规则释放，命令不再读取它们。
+- 首次关闭时捕获当前已取消的排队下载对象。关闭标记在先前写入排空后读取已提交章节状态：仍未读（包括进度写入失败或状态查询失败）则恢复该下载，已读则不恢复；之后再执行已登记的下载删除清理。回调只保留下载身份及服务依赖，不持有 Reader/ViewModel/Activity。
 - 配置重建仅销毁旧 viewer 时，不等于关闭仍存活的 ViewModel handle；旧 viewer 回调不能继续受理，已登记命令仍继续执行。
 - 新 Reader 打开同一本书时，初始化读取章节进度前异步等待先前已接受工作的 barrier，避免用旧数据库状态覆盖刚退出的末页。等待走现有加载状态，不堵塞主线程；这仅用于新 Reader 初始化，不能用于阻塞同 Reader 的正常跨章。显式传入的同步 resume snapshot 仍保持既有观察语义。
 - `drain/awaitAccepted` 只用于测试、初始化 barrier 和生命周期收口；不能代替真实窗口关闭、数据库重开测试。
@@ -136,7 +138,7 @@ UI：      可以提前进入 B；不会等待 A 的数据库写入才翻页
 
 - 完成处理使用命令里的原漫画/章节身份及接受时偏好。执行时不得用 `getCurrentChapter()`、当前页或当前 `chapterToDownload` 代替旧章。
 - 延迟的 A 完成不得清掉 B 的 `chapterToDownload`、改变 B 页码或触发 B 的完成。相关 UI/下载状态投影必须核对所属章节及 Reader 实例。
-- 删除候选使用原有有序章节关系和 `removeAfterReadSlots` 语义；候选只有确认已读后才交现有持久删除队列。先 await 本地 enqueue，再运行关闭标记中的 `deletePendingChapters()`，避免退出清理先于新增删除任务。
+- 删除候选使用原有有序章节关系和 `removeAfterReadSlots` 语义；受理时可依据先前已受理的 read 投影固定候选身份，但事务成功后仍须从持久章节状态确认该候选已读，才交现有持久删除队列。这样 A/B 快速完成不会漏删 A，A 写入失败也不会误删。先 await 本地 enqueue，再运行关闭标记中的 `deletePendingChapters()`，避免退出清理先于新增删除任务。
 - Tracker 的网络调用继续交既有 use case 的后台执行，不把网络返回作为下一次阅读进度写入的前提。它的失败不能回滚已保存页码；按现有跟踪语义处理重试，不重复发“完成”。
 - 同一命令的重复结果通知不得重复副作用。后续重新阅读产生的新 settlement key 按现有完成语义处理；不引入全局“一个章节一生只能完成一次”的去重规则。
 
@@ -176,6 +178,8 @@ UI：      可以提前进入 B；不会等待 A 的数据库写入才翻页
 T12 另做未加载末页直接跳章的负向对照，记录实际 mode、分组和可见页，不以页数奇偶代替真实双页分组。应分别做连续快速翻页及末组显示后立即切章/返回，各三次；失败保留日志再定位，不通过人为长等待把竞态隐藏。用户数据仅按已授权范围操作，禁止清库或自动修改历史进度。
 
 ## 8. 实施落点与不采用的方案
+
+实施差异记录：重复章节的未过滤列表仍沿用旧实现，在进度事务成功后读取；命令在受理时固定漫画 ID、完成章身份和偏好，再由应用级完成适配器读取并执行更新。这样保留原同步会话测试所覆盖的读取时机，且不会把当前已切换章节当作完成目标。该查询的失败只属于完成副作用失败，不回滚已提交页码。
 
 预计修改 Android `ReaderViewModel`、仲裁器、新 progress coordinator/完成 adapter、`AppModule`、Activity 错误事件及 i18n；扩充已有 mounted/VM/同步 tests 和必要共享契约。公共接口/业务策略只有在现有能力不足且有失败契约证明时才调整，不碰正在并行修改的 `ReaderSessionCore` 或 Desktop runtime 以凑本修复。
 

@@ -1247,6 +1247,7 @@
     <string name="desktop_ui_adjust_spread">調整跨頁</string>
     <string name="desktop_reader_pairing_saving">正在儲存雙頁調整</string>
     <string name="desktop_reader_pairing_save_failed">無法儲存雙頁調整，請重試。</string>
+    <string name="reader_progress_save_failed">閱讀進度儲存失敗，請稍後重試。</string>
     <string name="desktop_reader_pairing_invalid">章節頁面已變更或調整紀錄無法使用，本次使用預設配對。</string>
     <string name="desktop_reader_pairing_session_only">此檔案的雙頁調整僅本次有效。</string>
     <string name="desktop_reader_pairing_load_failed">無法載入已儲存的雙頁調整。</string>

@@ -249,6 +249,20 @@ class ReaderSyncSessionWiringTest {
         private val chapters = (1L..3L).map { id ->
             Chapter.create().copy(id = id, mangaId = 1, name = "Chapter $id", chapterNumber = id.toDouble())
         }
+        private val getChapters = mockk<GetChaptersByMangaId> {
+            coEvery { await(1, true) } returns chapters
+            coEvery { await(1, false) } coAnswers {
+                beforeDuplicateLookup?.invoke()
+                chapters
+            }
+        }
+        private val effects = AndroidReaderProgressEffects(
+            application = mockk(relaxed = true),
+            trackChapter = mockk(relaxed = true),
+            updateChapter = mockk(relaxed = true),
+            getChaptersByMangaId = getChapters,
+            downloadManager = mockk(relaxed = true),
+        )
         private val source = mockk<Source>()
         private val loader = mockk<ChapterLoader> {
             coEvery { loadChapter(any()) } coAnswers { materialize(firstArg()) }
@@ -281,13 +295,7 @@ class ReaderSyncSessionWiringTest {
             },
             trackChapter = mockk(relaxed = true),
             getManga = mockk<GetManga> { coEvery { await(1) } returns manga },
-            getChaptersByMangaId = mockk<GetChaptersByMangaId> {
-                coEvery { await(1, true) } returns chapters
-                coEvery { await(1, false) } coAnswers {
-                    beforeDuplicateLookup?.invoke()
-                    chapters
-                }
-            },
+            getChaptersByMangaId = getChapters,
             getNextChapters = mockk(relaxed = true),
             upsertHistory = mockk(relaxed = true),
             updateChapter = mockk(relaxed = true),
@@ -295,6 +303,7 @@ class ReaderSyncSessionWiringTest {
             setMangaViewerFlags = mockk(relaxed = true),
             getIncognitoState = mockk<GetIncognitoState> { every { await(any()) } answers { incognitoState.get() } },
             pairingCoordinator = emptyChapterPairingCoordinator(),
+            progressCoordinator = AndroidReaderProgressCoordinator(effects::onCommitted, {}),
             libraryPreferences = mockk<LibraryPreferences>(relaxed = true) {
                 every { markDuplicateReadChapterAsRead().get() } returns if (beforeDuplicateLookup == null) {
                     emptySet()

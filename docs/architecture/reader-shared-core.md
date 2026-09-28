@@ -280,11 +280,29 @@ presentation/navigation adapter，不进入 core 文案或按钮决策。若相�
 可见页调度，尤其是配对恢复后第一次呈现在线章节；它只跳过进度 effect 与 settlement sequence 递增，
 不能跳过图片请求。effect 携带 session、chapter、page 与 settlement sequence 组成的幂等 key，Android
 `ReaderViewModel.onPageSelected` 通过 `ReaderViewportSettlementArbiter` 为每次 viewport settlement 分配单调
-token；相邻章加载完成后只有最新 token 可以提交 active window，UI/saved-page/事务写入也在同一串行仲裁中再次检查 token 与 active chapter。旧加载
-可以保留为相邻章 page-list 预取，但不能在用户返回当前章后反向激活或写进度。有效 settlement 再通过
-`RecordReadingProgress` 写入现有 SQLDelight 章节行；不新增 schema，不改变备份或 `last_page_read`。history 仍由 Android 原阅读计时链负责，
-该逐页事务设置 `recordHistory = false`，避免重复 history。已读章节被再次部分阅读时通过 `wasRead` 保留已读
-状态；同章节号 duplicate 更新仍只在独立 preference 开启时执行。
+token；相邻章加载完成后只有最新 token 可以提交 active window。尚未受理的旧回调仍须通过 token、activation、
+页面列表身份与图片错误门槛；已受理的 effect 不再因后续选页或切章失效。旧加载可以保留为相邻章 page-list
+预取，但不能在用户返回当前章后反向激活或写进度。Android 当前章在主线程同步捕获 effect、原
+`ReadingProgressSession`、隐私许可及完成处理所需的原章节身份，随后由 AppModule 单例
+`AndroidReaderProgressCoordinator` 按漫画 ID、受理顺序串行写入；邻章在激活成功后回到主线程重新核验再受理。
+同书旧章末页和新章首页不会因 IO 调度逆序，切章 UI 不等待旧章事务。队列命令不保留 Reader 页面、holder 或
+Activity；`onActivityFinish`/`onCleared` 同步封闭 handle 并把删除清理标记排在已受理命令后。新 Reader
+初始化读取续读位置前等待打开时捕获的旧队列 barrier，等待不阻塞主线程。保证限于进程仍存活且存储可用的
+正常退出；进程终止前未提交的内存命令没有持久保证。
+首次关闭还捕获已取消的当前章节下载，待先前写入排空后按 SQL 已读状态决定是否恢复；写入或状态查询失败时
+保守恢复，随后才运行删除清理。该关闭回调只持有下载快照与服务依赖，不持有 Reader/ViewModel/Activity。
+`AcceptedReaderProgressContract` 由 Android mounted Reader 和 Desktop 生产 session 共用：两端都验证完成后回翻的
+read/页码语义，也都在写入尚未完成时关闭，再释放受控写入并断言已受理命令恰好提交一次。
+
+`RecordReadingProgress` 继续写入现有 SQLDelight 章节行、reading_events 和同步 journal，不新增 schema 或
+同步格式；`recordHistory = false`，history 仍走原阅读计时链。受理后的同章 read 投影为后续回翻提供
+`wasRead = true`，实际 `last_page_read` 允许下降；该投影不代表 SQL 成功。事务提交后才执行原章节的跟踪、
+重复章节标已读和下载删除。重复章节列表继续按既有语义在提交后读取，但查询使用命令捕获的漫画与完成章，
+不会改取当前章；删除候选与偏好在受理时固定，先前受理的已读投影可保留快速 A→B 的 A 候选身份，
+但跨章候选在完成事务后还需经 SQL 确认为已读，才入持久删除队列；`ReaderChapter.read` 也仅在事务成功
+回执后更新。存储失败不执行这些
+副作用，活跃 Reader 通过现有 eventFlow/Toast 提示一次；已关闭 Reader 仅记录错误，下一次打开以数据库
+真实状态为准。网络 tracker 单独后台执行，不阻塞后续进度事务。
 
 RA-01 的 online→download route reset 只接受由同一 canonical Wait/Error generation 捕获的 token。token
 同时绑定原在线 `PageLoader` 身份；下载检查期间若 activation 安装了新 generation 或 local/download loader，

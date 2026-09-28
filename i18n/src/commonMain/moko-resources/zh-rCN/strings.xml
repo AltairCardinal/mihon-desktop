@@ -1303,6 +1303,7 @@
     <string name="desktop_ui_adjust_spread">调整跨页</string>
     <string name="desktop_reader_pairing_saving">正在保存双页调整</string>
     <string name="desktop_reader_pairing_save_failed">未能保存双页调整，请重试。</string>
+    <string name="reader_progress_save_failed">阅读进度保存失败，请稍后重试。</string>
     <string name="desktop_reader_pairing_invalid">章节页面已变化或调整记录不可用，本次使用默认配对。</string>
     <string name="desktop_reader_pairing_session_only">此文件的双页调整仅本次有效。</string>
     <string name="desktop_reader_pairing_load_failed">未能加载已保存的双页调整。</string>

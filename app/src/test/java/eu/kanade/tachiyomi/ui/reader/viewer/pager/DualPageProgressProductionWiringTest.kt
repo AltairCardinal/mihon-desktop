@@ -8,16 +8,21 @@ import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.core.view.children
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModelStore
 import androidx.viewpager.widget.ViewPager
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.data.download.DownloadManager
+import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.databinding.ReaderActivityBinding
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.ui.reader.AndroidReaderProgressCoordinator
+import eu.kanade.tachiyomi.ui.reader.AndroidReaderProgressEffects
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel
 import eu.kanade.tachiyomi.ui.reader.emptyChapterPairingCoordinator
@@ -34,8 +39,11 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
+import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,15 +52,18 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import mihon.data.reader.AcceptedReaderProgressContract
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -61,7 +72,9 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowToast
 import org.robolectric.util.ReflectionHelpers
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.util.system.ImageUtil
@@ -86,6 +99,7 @@ import uy.kohesive.injekt.api.InjektScope
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.registry.default.DefaultRegistrar
 import java.io.ByteArrayOutputStream
+import java.io.File
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 
@@ -97,21 +111,41 @@ class DualPageProgressProductionWiringTest {
     private lateinit var events: Channel<ReadingProgressEvent>
     private lateinit var current: ReaderChapter
     private lateinit var model: ReaderViewModel
+    private lateinit var newModel: () -> ReaderViewModel
+    private lateinit var getMangaUseCase: GetManga
+    private lateinit var getChaptersUseCase: GetChaptersByMangaId
+    private lateinit var readerActivity: ReaderActivity
+    private lateinit var readerController: ActivityController<ReaderActivity>
     private lateinit var chapterLoader: ChapterLoader
     private lateinit var driver: JdbcSqliteDriver
+    private lateinit var dbFile: File
     private lateinit var database: Database
+    private lateinit var sqlRepository: SqlDelightReadingProgressRepository
+    private lateinit var progressCoordinator: AndroidReaderProgressCoordinator
+    private lateinit var downloadManager: DownloadManager
     private var host: Activity? = null
     private var releaseMiddleWrite: CompletableDeferred<Unit>? = null
+    private var holdBeforeRecordPage: Int? = null
+    private var pendingWriteStarted: CompletableDeferred<Unit>? = null
+    private var releasePendingWrite: CompletableDeferred<Unit>? = null
+    private var failWritePage: Int? = null
+    private var failWriteChapterId: Long? = null
+    private var removeAfterReadSlots = -1
 
     @Before
     fun setUp() = runBlocking {
         previousInjekt = Injekt
         Injekt = InjektScope(DefaultRegistrar())
         val preferences = InMemoryPreferenceStore()
-        Injekt.addSingleton(ReaderPreferences(preferences))
+        val readerPreferences = ReaderPreferences(preferences).apply { skipFiltered().set(false) }
+        Injekt.addSingleton(readerPreferences)
         Injekt.addSingleton(UiPreferences(preferences))
         Injekt.addSingleton(BasePreferences(RuntimeEnvironment.getApplication() as Application, preferences))
-        Injekt.addSingleton(mockk<DownloadManager>(relaxed = true))
+        Injekt.addSingleton(SecurityPreferences(preferences))
+        Injekt.addSingleton(RuntimeEnvironment.getApplication() as Application)
+        downloadManager = mockk(relaxed = true)
+        every { downloadManager.getQueuedDownloadOrNull(any()) } returns null
+        Injekt.addSingleton(downloadManager)
         mockkObject(ImageUtil)
         every { ImageUtil.isAnimatedAndSupported(any()) } returns false
         Dispatchers.setMain(UnconfinedTestDispatcher())
@@ -125,7 +159,8 @@ class DualPageProgressProductionWiringTest {
         val chapters = (1L..3L).map { id ->
             Chapter.create().copy(id = id, mangaId = manga.id, name = "Chapter $id", chapterNumber = id.toDouble())
         }
-        driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        dbFile = File.createTempFile("reader-progress-", ".sqlite")
+        driver = JdbcSqliteDriver("jdbc:sqlite:${dbFile.absolutePath}")
         Database.Schema.create(driver)
         database = Database(
             driver,
@@ -144,15 +179,36 @@ class DualPageProgressProductionWiringTest {
                 0,
             )
         }
+        driver.execute(
+            null,
+            "INSERT INTO sync_spaces(space_id, generation, repository_owner, repository_name, " +
+                "repository_branch, active) VALUES ('reader-space', 1, 'owner', 'repo', 'main', 1)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO sync_actors(space_id, generation, actor_id, epoch, local_current) " +
+                "VALUES ('reader-space', 1, 'reader-device', 1, 1)",
+            0,
+        )
         val source = mockk<Source>()
         val sourceManager = mockk<SourceManager> {
             every { isInitialized } returns MutableStateFlow(true)
             every { getOrStub(manga.source) } returns source
         }
+        Injekt.addSingleton<SourceManager>(sourceManager)
         val getManga = mockk<GetManga>()
+        getMangaUseCase = getManga
         coEvery { getManga.await(manga.id) } returns manga
         val getChapters = mockk<GetChaptersByMangaId>()
-        coEvery { getChapters.await(manga.id, applyScanlatorFilter = true) } returns chapters
+        getChaptersUseCase = getChapters
+        fun persistedChapters() = chapters.map { chapter ->
+            val stored = database.chaptersQueries.getChapterById(chapter.id).executeAsOne()
+            chapter.copy(read = stored.read, lastPageRead = stored.last_page_read)
+        }
+        coEvery { getChapters.await(manga.id, applyScanlatorFilter = true) } coAnswers { persistedChapters() }
+        coEvery { getChapters.await(manga.id, applyScanlatorFilter = false) } coAnswers { persistedChapters() }
+        coEvery { getChapters.awaitOrThrow(manga.id, applyScanlatorFilter = false) } coAnswers { persistedChapters() }
         chapterLoader = mockk<ChapterLoader>()
         val load: (ReaderChapter) -> Unit = { chapter ->
             if (chapter.state !is ReaderChapter.State.Loaded) {
@@ -163,15 +219,11 @@ class DualPageProgressProductionWiringTest {
         }
         coEvery { chapterLoader.loadChapter(any()) } coAnswers { load(firstArg()) }
         coEvery { chapterLoader.loadChapter(any(), any()) } coAnswers { load(firstArg()) }
-        val readerPreferences = mockk<ReaderPreferences>(relaxed = true)
-        every { readerPreferences.skipRead().get() } returns false
-        every { readerPreferences.skipFiltered().get() } returns false
-        every { readerPreferences.skipDupe().get() } returns false
         val basePreferences = mockk<BasePreferences>(relaxed = true)
         every { basePreferences.downloadedOnly().get() } returns false
         val downloadPreferences = mockk<DownloadPreferences>(relaxed = true)
         every { downloadPreferences.autoDownloadWhileReading().get() } returns 0
-        every { downloadPreferences.removeAfterReadSlots().get() } returns -1
+        every { downloadPreferences.removeAfterReadSlots().get() } answers { removeAfterReadSlots }
         val trackPreferences = mockk<TrackPreferences>(relaxed = true)
         every { trackPreferences.autoUpdateTrack().get() } returns false
         val libraryPreferences = mockk<LibraryPreferences>(relaxed = true)
@@ -179,44 +231,69 @@ class DualPageProgressProductionWiringTest {
         val getIncognitoState = mockk<GetIncognitoState>()
         every { getIncognitoState.await(any()) } returns false
         events = Channel(Channel.UNLIMITED)
-        val sqlRepository = SqlDelightReadingProgressRepository(database)
+        sqlRepository = SqlDelightReadingProgressRepository(database)
         val repository = object : ReadingProgressRepository by sqlRepository {
             override suspend fun record(
                 event: ReadingProgressEvent,
                 snapshot: ReadingSyncSnapshot,
             ): ReadingSyncSnapshot {
+                if (event.lastPageRead == holdBeforeRecordPage) {
+                    pendingWriteStarted?.complete(Unit)
+                    releasePendingWrite?.await()
+                }
+                if (event.lastPageRead == failWritePage &&
+                    (failWriteChapterId == null || event.chapterId == failWriteChapterId)
+                ) {
+                    error("injected transaction failure")
+                }
                 val updatedSnapshot = sqlRepository.record(event, snapshot)
                 events.send(event)
                 if (event.chapterId == 2L && event.lastPageRead == 2) releaseMiddleWrite?.await()
                 return updatedSnapshot
             }
         }
-        model = ReaderViewModel(
-            savedState = SavedStateHandle(),
-            sourceManager = sourceManager,
-            downloadManager = mockk(relaxed = true),
-            downloadProvider = mockk(relaxed = true),
-            imageSaver = mockk(relaxed = true),
-            readerPreferences = readerPreferences,
-            basePreferences = basePreferences,
-            downloadPreferences = downloadPreferences,
-            trackPreferences = trackPreferences,
-            trackChapter = mockk(relaxed = true),
-            getManga = getManga,
-            getChaptersByMangaId = getChapters,
-            getNextChapters = mockk(relaxed = true),
-            upsertHistory = mockk(relaxed = true),
-            updateChapter = mockk(relaxed = true),
-            recordReadingProgress = RecordReadingProgress(repository),
-            setMangaViewerFlags = mockk(relaxed = true),
-            getIncognitoState = getIncognitoState,
-            pairingCoordinator = emptyChapterPairingCoordinator(),
-            libraryPreferences = libraryPreferences,
-            chapterLoaderFactory = { _: Manga, _: Source -> chapterLoader },
+        val effects = AndroidReaderProgressEffects(
+            RuntimeEnvironment.getApplication() as Application,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            getChapters,
+            downloadManager,
         )
+        progressCoordinator = AndroidReaderProgressCoordinator(effects::onCommitted, {
+            downloadManager.deletePendingChapters()
+        })
+        Injekt.addSingleton(progressCoordinator)
+        newModel = {
+            ReaderViewModel(
+                savedState = SavedStateHandle(),
+                sourceManager = sourceManager,
+                downloadManager = downloadManager,
+                downloadProvider = mockk(relaxed = true),
+                imageSaver = mockk(relaxed = true),
+                readerPreferences = readerPreferences,
+                basePreferences = basePreferences,
+                downloadPreferences = downloadPreferences,
+                trackPreferences = trackPreferences,
+                trackChapter = mockk(relaxed = true),
+                getManga = getManga,
+                getChaptersByMangaId = getChapters,
+                getNextChapters = mockk(relaxed = true),
+                upsertHistory = mockk(relaxed = true),
+                updateChapter = mockk(relaxed = true),
+                recordReadingProgress = RecordReadingProgress(repository),
+                setMangaViewerFlags = mockk(relaxed = true),
+                getIncognitoState = getIncognitoState,
+                pairingCoordinator = emptyChapterPairingCoordinator(),
+                libraryPreferences = libraryPreferences,
+                chapterLoaderFactory = { _: Manga, _: Source -> chapterLoader },
+            )
+        }
+        model = newModel()
         assertTrue(model.init(manga.id, initialChapterId = 2).isSuccess)
         current = requireNotNull(model.state.value.currentChapter)
-        val activity = Robolectric.buildActivity(ReaderActivity::class.java).get()
+        readerController = Robolectric.buildActivity(ReaderActivity::class.java)
+        val activity = readerController.get()
+        readerActivity = activity
         activity.binding = mockk<ReaderActivityBinding>(relaxed = true)
         ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
         viewer = DualPageR2LPagerViewer(activity)
@@ -228,6 +305,7 @@ class DualPageProgressProductionWiringTest {
         if (::viewer.isInitialized) viewer.destroy()
         host?.finish()
         if (::driver.isInitialized) driver.close()
+        if (::dbFile.isInitialized) dbFile.delete()
         Dispatchers.resetMain()
         Injekt = previousInjekt
         unmockkObject(ImageUtil)
@@ -360,6 +438,442 @@ class DualPageProgressProductionWiringTest {
 
             assertPersistedProgress(4, true)
             assertEquals(2L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+        } finally {
+            release.complete(Unit)
+        }
+    }
+
+    @Test
+    fun `accepted last pair followed by a real back turn keeps read while saving the lower position`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val release = CompletableDeferred<Unit>().also { releaseMiddleWrite = it }
+        try {
+            mountReadyViewer()
+            assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+
+            val pages = requireNotNull(current.pages)
+            selectGroup(pages[3])
+            assertTrue(
+                ReflectionHelpers.getField<Boolean>(
+                    ReflectionHelpers.getField<Any>(model, "pendingDualViewport"),
+                    "settled",
+                ),
+            )
+            selectGroup(pages[1])
+            release.complete(Unit)
+
+            val completion = requireNotNull(awaitRenderedEvent())
+            val backTurn = requireNotNull(awaitRenderedEvent())
+            assertEquals(4, completion.lastPageRead)
+            assertTrue(completion.isRead)
+            assertEquals(2, backTurn.lastPageRead)
+            assertTrue(backTurn.wasRead)
+            assertPersistedProgress(2, true)
+            assertEquals(3L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+        } finally {
+            release.complete(Unit)
+        }
+    }
+
+    @Test
+    fun `accepted last pair survives finish ViewModel clear page recycle and database reopen`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val release = CompletableDeferred<Unit>().also { releaseMiddleWrite = it }
+        try {
+            mountReadyViewer()
+            assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+            selectGroup(requireNotNull(current.pages)[3])
+            assertTrue(
+                ReflectionHelpers.getField<Boolean>(
+                    ReflectionHelpers.getField<Any>(model, "pendingDualViewport"),
+                    "settled",
+                ),
+            )
+
+            model.onActivityFinish()
+            ViewModelStore().also { store ->
+                store.put("reader", model)
+                store.clear()
+            }
+            assertNull(current.pages)
+            release.complete(Unit)
+            withContext(Dispatchers.Default) { withTimeout(10_000) { progressCoordinator.awaitAccepted(1) } }
+
+            driver.close()
+            driver = JdbcSqliteDriver("jdbc:sqlite:${dbFile.absolutePath}")
+            database = Database(
+                driver,
+                historyAdapter = tachiyomi.data.History.Adapter(DateColumnAdapter),
+                mangasAdapter = tachiyomi.data.Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+            )
+            assertPersistedProgress(4, true)
+            assertEquals(2L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+        } finally {
+            release.complete(Unit)
+        }
+    }
+
+    @Test
+    fun `new Reader initialization waits for the prior accepted write before reading the manga`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val release = CompletableDeferred<Unit>().also { releaseMiddleWrite = it }
+        try {
+            mountReadyViewer()
+            requireNotNull(awaitRenderedEvent())
+            selectGroup(requireNotNull(current.pages)[3])
+            model.onActivityFinish()
+            ViewModelStore().also { store ->
+                store.put("old-reader", model)
+                store.clear()
+            }
+            Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+
+            val reopened = newModel()
+            val opening = async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
+                reopened.init(1, 2)
+            }
+            assertFalse(opening.isCompleted)
+            coVerify(exactly = 1) { getMangaUseCase.await(1) }
+            coVerify(exactly = 1) { getChaptersUseCase.await(1, applyScanlatorFilter = true) }
+            release.complete(Unit)
+            withContext(Dispatchers.Default) {
+                withTimeout(10_000) { progressCoordinator.awaitAccepted(1) }
+            }
+            val deadline = System.nanoTime() + 10_000_000_000L
+            while (!opening.isCompleted && System.nanoTime() < deadline) {
+                runCurrent()
+                withContext(Dispatchers.Default) { delay(20) }
+            }
+            val completed = opening.isCompleted
+            if (!completed) opening.cancel()
+            assertTrue("The reopened Reader must finish after the accepted writer drains", completed)
+            opening.await().getOrThrow()
+            coVerify(exactly = 2) { getMangaUseCase.await(1) }
+            coVerify(exactly = 2) {
+                getChaptersUseCase.await(1, applyScanlatorFilter = true)
+            }
+            assertEquals(4L, database.chaptersQueries.getChapterById(2).executeAsOne().last_page_read)
+            assertTrue(requireNotNull(reopened.state.value.currentChapter).chapter.read)
+        } finally {
+            release.complete(Unit)
+        }
+    }
+
+    @Test
+    fun `transaction failure reports once without completing and a later back turn can save`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        mountReadyViewer()
+        assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+        failWritePage = 4
+        val failure = async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
+            withTimeout(10_000) { model.eventFlow.first { it == ReaderViewModel.Event.ProgressSaveFailed } }
+        }
+        selectGroup(requireNotNull(current.pages)[3])
+        assertEquals(ReaderViewModel.Event.ProgressSaveFailed, failure.await())
+        assertPersistedProgress(2, false)
+        assertFalse(current.chapter.read)
+        coVerify(exactly = 0) { downloadManager.enqueueChaptersToDelete(any(), any()) }
+
+        selectGroup(requireNotNull(current.pages)[1])
+        val recovered = requireNotNull(awaitRenderedEvent())
+        assertEquals(2, recovered.lastPageRead)
+        assertTrue(recovered.wasRead)
+        assertPersistedProgress(2, true)
+    }
+
+    @Test
+    fun `failed accepted completion restores its cancelled download after reader close`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val started = CompletableDeferred<Unit>().also { pendingWriteStarted = it }
+        val release = CompletableDeferred<Unit>().also { releasePendingWrite = it }
+        holdBeforeRecordPage = 4
+        failWritePage = 4
+        val queuedCurrent = mockk<Download>(relaxed = true) {
+            every { chapter } returns Chapter.create().copy(id = 2, mangaId = 1)
+        }
+        try {
+            mountReadyViewer()
+            assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+            ReflectionHelpers.setField(model, "chapterToDownload", queuedCurrent)
+            selectGroup(requireNotNull(current.pages)[3])
+            withContext(Dispatchers.Default) { withTimeout(10_000) { started.await() } }
+            assertSame(queuedCurrent, ReflectionHelpers.getField<Download?>(model, "chapterToDownload"))
+            model.onActivityFinish()
+            ViewModelStore().also { store ->
+                store.put("reader", model)
+                store.clear()
+            }
+            release.complete(Unit)
+            withContext(Dispatchers.Default) { withTimeout(10_000) { progressCoordinator.awaitAccepted(1) } }
+
+            assertPersistedProgress(2, false)
+            verify(exactly = 1) { downloadManager.addDownloadsToStartOfQueue(listOf(queuedCurrent)) }
+            coVerify(exactly = 0) { downloadManager.enqueueChaptersToDelete(any(), any()) }
+        } finally {
+            release.complete(Unit)
+        }
+    }
+
+    @Test
+    fun `successful accepted completion does not restore its cancelled download after reader close`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val started = CompletableDeferred<Unit>().also { pendingWriteStarted = it }
+        val release = CompletableDeferred<Unit>().also { releasePendingWrite = it }
+        holdBeforeRecordPage = 4
+        val queuedCurrent = mockk<Download>(relaxed = true) {
+            every { chapter } returns Chapter.create().copy(id = 2, mangaId = 1)
+        }
+        try {
+            mountReadyViewer()
+            assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+            ReflectionHelpers.setField(model, "chapterToDownload", queuedCurrent)
+            selectGroup(requireNotNull(current.pages)[3])
+            withContext(Dispatchers.Default) { withTimeout(10_000) { started.await() } }
+            assertSame(queuedCurrent, ReflectionHelpers.getField<Download?>(model, "chapterToDownload"))
+            model.onActivityFinish()
+            ViewModelStore().also { store ->
+                store.put("reader", model)
+                store.clear()
+            }
+            release.complete(Unit)
+            withContext(Dispatchers.Default) { withTimeout(10_000) { progressCoordinator.awaitAccepted(1) } }
+
+            assertPersistedProgress(4, true)
+            verify(exactly = 0) { downloadManager.addDownloadsToStartOfQueue(any()) }
+        } finally {
+            release.complete(Unit)
+        }
+    }
+
+    @Test
+    fun `active ReaderActivity consumes storage failure event and shows the save failure toast`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        ShadowToast.reset()
+        readerController.setup()
+        runCurrent()
+        failWritePage = 4
+        model.onPageSelected(requireNotNull(current.pages)[4])
+
+        val deadline = System.nanoTime() + 10_000_000_000L
+        while (ShadowToast.getTextOfLatestToast() == null && System.nanoTime() < deadline) {
+            runCurrent()
+            shadowOf(Looper.getMainLooper()).idle()
+            withContext(Dispatchers.Default) { delay(20) }
+        }
+        assertEquals(
+            "Could not save reading progress. Please try again later.",
+            ShadowToast.getTextOfLatestToast(),
+        )
+        assertFalse(database.chaptersQueries.getChapterById(2).executeAsOne().read)
+    }
+
+    @Test
+    fun `delayed A completion deletes A and preserves B download`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val release = CompletableDeferred<Unit>().also { releaseMiddleWrite = it }
+        val actions = mutableListOf<String>()
+        removeAfterReadSlots = 0
+        coEvery { downloadManager.enqueueChaptersToDelete(any(), any()) } coAnswers {
+            actions += "enqueue:${firstArg<List<Chapter>>().single().id}"
+        }
+        every { downloadManager.deletePendingChapters() } answers { actions += "close" }
+        val queuedNext = mockk<Download>(relaxed = true) {
+            every { chapter } returns Chapter.create().copy(id = 3, mangaId = 1)
+        }
+        every { downloadManager.getQueuedDownloadOrNull(3) } returns queuedNext
+        try {
+            val next = prepareNextChapter()
+            mountReadyViewer(nextChapter = next)
+            assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+            selectGroup(requireNotNull(current.pages)[3])
+            selectGroup(requireNotNull(next.pages)[0], decode = false)
+            withContext(Dispatchers.Default) {
+                withTimeout(10_000) { model.state.first { it.currentChapter === next } }
+            }
+            assertSame(queuedNext, ReflectionHelpers.getField<Download?>(model, "chapterToDownload"))
+            model.onActivityFinish()
+            release.complete(Unit)
+            withContext(Dispatchers.Default) { withTimeout(10_000) { progressCoordinator.awaitAccepted(1) } }
+
+            assertPersistedProgress(4, true)
+            assertEquals(listOf("enqueue:2", "close"), actions)
+            assertSame(queuedNext, ReflectionHelpers.getField<Download?>(model, "chapterToDownload"))
+            verify(exactly = 1) { downloadManager.addDownloadsToStartOfQueue(listOf(queuedNext)) }
+        } finally {
+            release.complete(Unit)
+        }
+    }
+
+    @Test
+    fun `B completion deletes already accepted A after both same manga writes commit`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val started = CompletableDeferred<Unit>().also { pendingWriteStarted = it }
+        val release = CompletableDeferred<Unit>().also { releasePendingWrite = it }
+        holdBeforeRecordPage = 4
+        removeAfterReadSlots = 1
+        try {
+            val next = prepareNextChapter()
+            mountReadyViewer(nextChapter = next)
+            assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+            selectGroup(requireNotNull(current.pages)[3])
+            withContext(Dispatchers.Default) { withTimeout(10_000) { started.await() } }
+            selectGroup(requireNotNull(next.pages)[0], decode = false)
+            withContext(Dispatchers.Default) {
+                withTimeout(10_000) { model.state.first { it.currentChapter === next } }
+            }
+            requireNotNull(next.pages).forEach { it.status = Page.State.Ready }
+            selectGroup(requireNotNull(next.pages)[3])
+            release.complete(Unit)
+            withContext(Dispatchers.Default) { withTimeout(10_000) { progressCoordinator.awaitAccepted(1) } }
+
+            assertPersistedProgress(4, true)
+            assertTrue(database.chaptersQueries.getChapterById(3).executeAsOne().read)
+            coVerify(exactly = 1) {
+                downloadManager.enqueueChaptersToDelete(match { it.single().id == 2L }, match { it.id == 1L })
+            }
+        } finally {
+            release.complete(Unit)
+        }
+    }
+
+    @Test
+    fun `B completion does not delete A when A accepted write fails`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val started = CompletableDeferred<Unit>().also { pendingWriteStarted = it }
+        val release = CompletableDeferred<Unit>().also { releasePendingWrite = it }
+        holdBeforeRecordPage = 4
+        failWritePage = 4
+        failWriteChapterId = 2
+        removeAfterReadSlots = 1
+        try {
+            val next = prepareNextChapter()
+            mountReadyViewer(nextChapter = next)
+            assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+            selectGroup(requireNotNull(current.pages)[3])
+            withContext(Dispatchers.Default) { withTimeout(10_000) { started.await() } }
+            selectGroup(requireNotNull(next.pages)[0], decode = false)
+            withContext(Dispatchers.Default) {
+                withTimeout(10_000) { model.state.first { it.currentChapter === next } }
+            }
+            requireNotNull(next.pages).forEach { it.status = Page.State.Ready }
+            selectGroup(requireNotNull(next.pages)[3])
+            release.complete(Unit)
+            withContext(Dispatchers.Default) { withTimeout(10_000) { progressCoordinator.awaitAccepted(1) } }
+
+            assertPersistedProgress(2, false)
+            assertTrue(database.chaptersQueries.getChapterById(3).executeAsOne().read)
+            coVerify(exactly = 0) { downloadManager.enqueueChaptersToDelete(any(), any()) }
+        } finally {
+            release.complete(Unit)
+        }
+    }
+
+    @Test
+    fun `Android mounted reader satisfies the shared accepted progress contract`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        mountReadyViewer()
+        requireNotNull(awaitRenderedEvent())
+        val committed = mutableListOf<AcceptedReaderProgressContract.Observation>()
+        AcceptedReaderProgressContract.verifyCompletionBackTurnAndClose(
+            object : AcceptedReaderProgressContract.Adapter {
+                override suspend fun settle(page: Int) {
+                    selectGroup(requireNotNull(current.pages)[if (page == 4) 3 else 1])
+                    val event = requireNotNull(awaitRenderedEvent())
+                    committed += AcceptedReaderProgressContract.Observation(
+                        event.lastPageRead,
+                        event.totalPages,
+                        event.wasRead,
+                        event.isRead,
+                        event.idempotencyKey,
+                    )
+                }
+
+                override suspend fun closeAndDrain() {
+                    model.onActivityFinish()
+                    withContext(Dispatchers.Default) {
+                        withTimeout(10_000) { progressCoordinator.awaitAccepted(1) }
+                    }
+                }
+
+                override fun committed() = committed.toList()
+            },
+        )
+        assertPersistedProgress(2, true)
+    }
+
+    @Test
+    fun `Android mounted reader drains an accepted blocked write after close through the shared contract`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val started = CompletableDeferred<Unit>().also { pendingWriteStarted = it }
+        val release = CompletableDeferred<Unit>().also { releasePendingWrite = it }
+        holdBeforeRecordPage = 4
+        try {
+            mountReadyViewer()
+            requireNotNull(awaitRenderedEvent())
+            AcceptedReaderProgressContract.verifyPendingWriteSurvivesClose(
+                object : AcceptedReaderProgressContract.PendingCloseAdapter {
+                    override suspend fun accept() {
+                        selectGroup(requireNotNull(current.pages)[3])
+                    }
+
+                    override suspend fun awaitWriterStarted() {
+                        withContext(Dispatchers.Default) { withTimeout(10_000) { started.await() } }
+                    }
+
+                    override suspend fun close() {
+                        model.onActivityFinish()
+                        ViewModelStore().also { store ->
+                            store.put("reader", model)
+                            store.clear()
+                        }
+                    }
+
+                    override suspend fun releaseWrite() {
+                        release.complete(Unit)
+                    }
+
+                    override suspend fun drain() {
+                        withContext(Dispatchers.Default) {
+                            withTimeout(10_000) { progressCoordinator.awaitAccepted(1) }
+                        }
+                    }
+
+                    override fun committedCount(): Int =
+                        database.reading_eventsQueries.countByChapter(2).executeAsOne().toInt() - 1
+                },
+            )
+            assertPersistedProgress(4, true)
+        } finally {
+            release.complete(Unit)
+        }
+    }
+
+    @Test
+    fun `same manga A completion then B viewport preserves B resume and both real sync journal operations`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val release = CompletableDeferred<Unit>().also { releaseMiddleWrite = it }
+        try {
+            val next = prepareNextChapter()
+            mountReadyViewer(nextChapter = next)
+            assertEquals(2, requireNotNull(awaitRenderedEvent()).lastPageRead)
+            selectGroup(requireNotNull(current.pages)[3])
+            selectGroup(requireNotNull(next.pages)[1], decode = false)
+            withContext(Dispatchers.Default) {
+                withTimeout(10_000) { model.state.first { it.currentChapter === next } }
+            }
+            release.complete(Unit)
+            assertEquals(4, requireNotNull(awaitRenderedEvent()).lastPageRead)
+            requireNotNull(next.pages).forEach { it.status = Page.State.Ready }
+            decodeAndSignal(requireNotNull(next.pages)[1])
+            awaitNextChapterEvent()
+            withContext(Dispatchers.Default) { withTimeout(10_000) { progressCoordinator.awaitAccepted(1) } }
+
+            assertPersistedProgress(4, true)
+            assertEquals(2L, database.chaptersQueries.getChapterById(3).executeAsOne().last_page_read)
+            assertFalse(database.chaptersQueries.getChapterById(3).executeAsOne().read)
+            assertEquals(3L, sqlRepository.resumePosition(1)?.chapterId)
+            assertEquals(2, sqlRepository.resumePosition(1)?.pageIndex)
+            assertEquals(4L, database.sync_journalQueries.getActiveActor().executeAsOne().next_seq)
         } finally {
             release.complete(Unit)
         }

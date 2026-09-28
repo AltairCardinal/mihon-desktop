@@ -895,6 +895,7 @@ class AndroidChapterPairingPersistenceWiringTest {
             recordReadingProgress = RecordReadingProgress(SqlDelightReadingProgressRepository(database.database)),
             setMangaViewerFlags = mockk(relaxed = true),
             getIncognitoState = incognito,
+            progressCoordinator = eu.kanade.tachiyomi.ui.reader.emptyReaderProgressCoordinator(),
             libraryPreferences = libraryPreferences,
             pairingCallbackDispatcher = pairingCallbackDispatcher,
             chapterLoaderFactory = { _: Manga, _: Source -> loader },

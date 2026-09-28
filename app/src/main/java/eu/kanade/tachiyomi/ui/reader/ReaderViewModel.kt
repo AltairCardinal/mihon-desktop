@@ -140,6 +140,7 @@ class ReaderViewModel @JvmOverloads constructor(
     private val getIncognitoState: GetIncognitoState = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val pairingCoordinator: AndroidChapterPairingCoordinator = Injekt.get(),
+    private val progressCoordinator: AndroidReaderProgressCoordinator = Injekt.get(),
     private val pairingCallbackDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
     private val chapterLoaderFactory: (Manga, Source) -> ChapterLoader = { manga, source ->
         ChapterLoader(Injekt.get<Application>(), downloadManager, downloadProvider, manga, source)
@@ -236,6 +237,8 @@ class ReaderViewModel @JvmOverloads constructor(
     private val chapterWindowOwner = ReaderChapterWindowOwner()
     private val readerProgressSessionId = UUID.randomUUID().toString()
     private val readerProgressSettlementArbiter = ReaderViewportSettlementArbiter()
+    private var progressHandle: AndroidReaderProgressCoordinator.ReaderHandle? = null
+    private val acceptedReadState = mutableMapOf<Long, Boolean>()
     private var readingActivation: ReadingActivation? = null
     private var pendingDualViewport: PendingDualViewport? = null
     private var pendingResumePosition: ReadingResumePosition? = null
@@ -248,10 +251,12 @@ class ReaderViewModel @JvmOverloads constructor(
 
     private data class PendingDualViewport(
         val page: ReaderPage,
+        val pageList: List<ReaderPage>,
         val settlementSequence: Long,
         val selectedActivation: ReadingActivation?,
         val activationJob: Deferred<ReadingActivation?>?,
         var settled: Boolean = false,
+        var settling: Boolean = false,
     )
 
     /**
@@ -260,15 +265,6 @@ class ReaderViewModel @JvmOverloads constructor(
     private var chapterReadStartTime: Long? = null
 
     private var chapterToDownload: Download? = null
-
-    private var unfilteredChapterListCache: List<tachiyomi.domain.chapter.model.Chapter>? = null
-    private suspend fun getUnfilteredChapterList(): List<tachiyomi.domain.chapter.model.Chapter> {
-        if (unfilteredChapterListCache == null) {
-            val manga = manga!!
-            unfilteredChapterListCache = getChaptersByMangaId.await(manga.id, applyScanlatorFilter = false)
-        }
-        return unfilteredChapterListCache!!
-    }
 
     /**
      * Chapter list for the active manga. It's retrieved lazily and should be accessed for the first
@@ -347,12 +343,8 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     override fun onCleared() {
+        closeProgressHandle()
         chapterWindowOwner.close()
-        if (state.value.viewerChapters != null) {
-            chapterToDownload?.let {
-                downloadManager.addDownloadsToStartOfQueue(listOf(it))
-            }
-        }
     }
 
     /**
@@ -360,7 +352,26 @@ class ReaderViewModel @JvmOverloads constructor(
      * trigger deletion of the downloaded chapters.
      */
     fun onActivityFinish() {
-        deletePendingChapters()
+        closeProgressHandle()
+    }
+
+    private fun closeProgressHandle() {
+        val handle = progressHandle ?: return
+        val canceledDownload = chapterToDownload.takeIf { state.value.viewerChapters != null }
+        val chapterReader = getChaptersByMangaId
+        val downloads = downloadManager
+        handle.close {
+            canceledDownload?.let { download ->
+                val storedRead = try {
+                    chapterReader.awaitOrThrow(handle.mangaId, applyScanlatorFilter = false)
+                        .any { it.id == download.chapter.id && it.read }
+                } catch (error: Throwable) {
+                    logcat(LogPriority.ERROR, error) { "Reader download restore check failed" }
+                    false
+                }
+                if (!storedRead) downloads.addDownloadsToStartOfQueue(listOf(download))
+            }
+        }
     }
 
     /**
@@ -376,8 +387,12 @@ class ReaderViewModel @JvmOverloads constructor(
      */
     suspend fun init(mangaId: Long, initialChapterId: Long): Result<Boolean> {
         if (!needsInit()) return Result.success(true)
+        val handle = progressHandle ?: progressCoordinator.openReader(mangaId).also { progressHandle = it }
         return withIOContext {
             try {
+                handle.awaitPrevious().forEach { error ->
+                    logcat(LogPriority.ERROR, error) { "Previous reader progress write failed" }
+                }
                 val manga = getManga.await(mangaId)
                 if (manga != null) {
                     sourceManager.isInitialized.first { it }
@@ -768,8 +783,6 @@ class ReaderViewModel @JvmOverloads constructor(
         val pages = selectedChapter.pages ?: return
         val settlementSequence = readerProgressSettlementArbiter.nextToken()
         val selectedActivation = readingActivation?.takeIf { it.chapter === selectedChapter }
-        val shouldRecordProgress = recordProgress && !incognitoMode && !getIncognitoState.await(manga?.source)
-
         val activationJob = if (selectedChapter != getCurrentChapter()) {
             logcat { "Setting ${selectedChapter.chapter.url} as active" }
             loadNewChapter(selectedChapter, settlementSequence)
@@ -777,22 +790,30 @@ class ReaderViewModel @JvmOverloads constructor(
             null
         }
         if (!recordProgress) {
-            pendingDualViewport = PendingDualViewport(page, settlementSequence, selectedActivation, activationJob)
+            pendingDualViewport =
+                PendingDualViewport(page, pages, settlementSequence, selectedActivation, activationJob)
         }
 
-        // Persist only after an adjacent chapter has become the canonical active chapter.
-        viewModelScope.launchNonCancellable {
-            val activation = if (activationJob == null) selectedActivation else activationJob.await()
-            if (activation == null) return@launchNonCancellable
-            readerProgressSettlementArbiter.runIfLatest(settlementSequence) {
-                updateChapterProgress(
-                    selectedChapter,
-                    page,
-                    visiblePages,
-                    settlementSequence,
-                    activation,
-                    shouldRecordProgress,
-                )
+        if (recordProgress) {
+            if (activationJob == null) {
+                selectedActivation?.let {
+                    acceptChapterProgress(selectedChapter, page, pages, visiblePages, settlementSequence, it)
+                }
+            } else {
+                val selectedPages = visiblePages.toList()
+                viewModelScope.launch(Dispatchers.Main.immediate) {
+                    val activation = activationJob.await() ?: return@launch
+                    if (readerProgressSettlementArbiter.isLatest(settlementSequence)) {
+                        acceptChapterProgress(
+                            selectedChapter,
+                            page,
+                            pages,
+                            selectedPages,
+                            settlementSequence,
+                            activation,
+                        )
+                    }
+                }
             }
         }
 
@@ -806,20 +827,35 @@ class ReaderViewModel @JvmOverloads constructor(
 
     /** Completes a selected dual viewport without replaying chapter activation or page side effects. */
     fun onDualViewportSettled(page: ReaderPage, visiblePages: List<ReaderPage>) {
-        val pending = pendingDualViewport?.takeIf { it.page === page && !it.settled } ?: return
-        pending.settled = true
-        val shouldRecordProgress = !incognitoMode && !getIncognitoState.await(manga?.source)
-        viewModelScope.launchNonCancellable {
-            val activation = pending.activationJob?.await() ?: pending.selectedActivation ?: return@launchNonCancellable
-            readerProgressSettlementArbiter.runIfLatest(pending.settlementSequence) {
-                updateChapterProgress(
+        val pending = pendingDualViewport?.takeIf { it.page === page && !it.settled && !it.settling } ?: return
+        pending.settling = true
+        if (pending.activationJob == null) {
+            pending.settled = pending.selectedActivation?.let { activation ->
+                acceptChapterProgress(
                     page.chapter,
                     page,
+                    pending.pageList,
                     visiblePages,
                     pending.settlementSequence,
                     activation,
-                    shouldRecordProgress,
                 )
+            } == true
+            pending.settling = false
+        } else {
+            val selectedPages = visiblePages.toList()
+            viewModelScope.launch(Dispatchers.Main.immediate) {
+                val activation = pending.activationJob.await()
+                if (activation != null && readerProgressSettlementArbiter.isLatest(pending.settlementSequence)) {
+                    pending.settled = acceptChapterProgress(
+                        page.chapter,
+                        page,
+                        pending.pageList,
+                        selectedPages,
+                        pending.settlementSequence,
+                        activation,
+                    )
+                }
+                pending.settling = false
             }
         }
     }
@@ -867,112 +903,105 @@ class ReaderViewModel @JvmOverloads constructor(
         }
     }
 
-    /**
-     * Determines if deleting option is enabled and nth to last chapter actually exists.
-     * If both conditions are satisfied enqueues chapter for delete
-     * @param currentChapter current chapter, which is going to be marked as read.
-     */
-    private suspend fun deleteChapterIfNeeded(currentChapter: ReaderChapter) {
-        val removeAfterReadSlots = downloadPreferences.removeAfterReadSlots().get()
-        if (removeAfterReadSlots == -1) return
-
-        // Determine which chapter should be deleted and enqueue
-        val chapterList = getChapterList()
-        val currentChapterPosition = chapterList.indexOf(currentChapter)
-        val chapterToDelete = chapterList.getOrNull(currentChapterPosition - removeAfterReadSlots)
-
-        // If chapter is completely read, no need to download it
-        chapterToDownload = null
-
-        if (chapterToDelete != null) {
-            enqueueDeleteReadChapters(chapterToDelete)
-        }
-    }
-
-    /**
-     * Saves the chapter progress (last read page and whether it's read)
-     * if incognito mode isn't on.
-     */
-    private suspend fun updateChapterProgress(
+    /** Checks a real settlement and registers its immutable write before another selection can invalidate it. */
+    private fun acceptChapterProgress(
         readerChapter: ReaderChapter,
-        page: Page,
+        page: ReaderPage,
+        selectedPageList: List<ReaderPage>,
         visiblePages: List<ReaderPage>,
         settlementSequence: Long,
         activation: ReadingActivation,
-        recordProgress: Boolean,
-    ) {
+    ): Boolean {
         val chapterId = readerChapter.sharedChapterId()
-        val activeChapterId = getCurrentChapter()?.sharedChapterId() ?: return
-        if (chapterId != activeChapterId) return
+        val activeChapterId = getCurrentChapter()?.sharedChapterId() ?: return false
+        if (chapterId != activeChapterId) return false
         if (readingActivation !== activation ||
             state.value.chapterWindow?.activationSequence != activation.windowSequence
         ) {
-            return
+            return false
         }
-
-        if (currentReaderPage?.chapter !== readerChapter && page is ReaderPage) onLayoutPageSelected(page)
-
-        val session = activation.session
-        if (recordProgress && session != null && page.status !is Page.State.Error) {
-            val chapterPages = readerChapter.pages ?: return
-            if (visiblePages.any { it.chapter !== readerChapter || it !in chapterPages }) return
-            if (visiblePages.any { it.status is Page.State.Error }) return
-            val totalPages = chapterPages.size
-            val visiblePageIds = visiblePages
-                .mapTo(linkedSetOf()) { ReaderPageId(chapterId, it.index) }
-            if (visiblePageIds.isEmpty() || visiblePageIds.any { it.sourcePageIndex !in 0 until totalPages }) return
-            val progress = ReaderProgressPolicy.reduce(
-                ReaderProgressSignal.ViewportSettled(
-                    activeChapterId = activeChapterId,
-                    chapterId = chapterId,
-                    visiblePageIds = visiblePageIds,
-                    totalPages = totalPages,
-                    wasRead = readerChapter.chapter.read,
-                    sessionId = readerProgressSessionId,
-                    settlementSequence = settlementSequence,
-                ),
-            ) ?: return
-            readerChapter.chapter.last_page_read = progress.lastPageRead
-
-            if (progress.reachedLastPage) {
-                updateChapterProgressOnComplete(readerChapter)
+        val handle = progressHandle?.takeIf { it.isOpen } ?: return false
+        val session = activation.session ?: return false
+        if (incognitoMode || getIncognitoState.await(manga?.source)) return false
+        if (page.status is Page.State.Error) return false
+        val chapterPages = readerChapter.pages ?: return false
+        if (chapterPages !== selectedPageList) return false
+        if (visiblePages.any { it.chapter !== readerChapter || it !in chapterPages }) return false
+        if (visiblePages.any { it.status is Page.State.Error }) return false
+        val visiblePageIds = visiblePages.mapTo(linkedSetOf()) { ReaderPageId(chapterId, it.index) }
+        if (visiblePageIds.isEmpty() || visiblePageIds.any { it.sourcePageIndex !in chapterPages.indices }) {
+            return false
+        }
+        val progress = ReaderProgressPolicy.reduce(
+            ReaderProgressSignal.ViewportSettled(
+                activeChapterId = activeChapterId,
+                chapterId = chapterId,
+                visiblePageIds = visiblePageIds,
+                totalPages = chapterPages.size,
+                wasRead = acceptedReadState[chapterId.value] ?: readerChapter.chapter.read,
+                sessionId = readerProgressSessionId,
+                settlementSequence = settlementSequence,
+            ),
+        ) ?: return false
+        val event = ReadingProgressEvent(
+            chapterId = progress.chapterId.value,
+            lastPageRead = progress.lastPageRead,
+            totalPages = progress.totalPages,
+            readAt = Date(),
+            sessionReadDuration = 0,
+            trackerEvent = if (progress.reachedLastPage) "finished" else "progress",
+            wasRead = progress.wasRead,
+            recordHistory = false,
+            idempotencyKey = progress.idempotencyKey,
+            syncContext = SyncMutationContext.User,
+        )
+        val completion = if (progress.reachedLastPage) completionPlan(readerChapter) else null
+        val submission = handle.submit(AcceptedReaderProgress(event, session, completion))
+        val receipt = submission.receipt ?: return false
+        if (currentReaderPage?.chapter !== readerChapter) onLayoutPageSelected(page)
+        acceptedReadState[chapterId.value] = progress.isRead
+        readerChapter.chapter.last_page_read = progress.lastPageRead
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            val result = receipt.await()
+            if (progressHandle !== handle || !handle.isOpen) return@launch
+            if (result.storageError != null) {
+                eventChannel.trySend(Event.ProgressSaveFailed)
+            } else {
+                if (progress.isRead) readerChapter.chapter.read = true
+                if (progress.reachedLastPage &&
+                    state.value.currentChapter?.sharedChapterId() == chapterId &&
+                    chapterToDownload?.chapter?.id == chapterId.value
+                ) {
+                    chapterToDownload = null
+                }
             }
-
-            session.await(
-                ReadingProgressEvent(
-                    chapterId = progress.chapterId.value,
-                    lastPageRead = progress.lastPageRead,
-                    totalPages = progress.totalPages,
-                    readAt = Date(),
-                    sessionReadDuration = 0,
-                    trackerEvent = if (progress.reachedLastPage) "finished" else "progress",
-                    wasRead = progress.wasRead,
-                    recordHistory = false,
-                    idempotencyKey = progress.idempotencyKey,
-                    syncContext = SyncMutationContext.User,
-                ),
-            )
         }
+        return true
     }
 
-    private suspend fun updateChapterProgressOnComplete(readerChapter: ReaderChapter) {
-        readerChapter.chapter.read = true
-        updateTrackChapterRead(readerChapter)
-        deleteChapterIfNeeded(readerChapter)
-
-        val markDuplicateAsRead = libraryPreferences.markDuplicateReadChapterAsRead().get()
+    private fun completionPlan(readerChapter: ReaderChapter): ReaderProgressCompletionPlan? {
+        val manga = manga ?: return null
+        val completed = readerChapter.chapter.toDomainChapter()?.copy(read = true) ?: return null
+        val markDuplicates = libraryPreferences.markDuplicateReadChapterAsRead().get()
             .contains(LibraryPreferences.MARK_DUPLICATE_CHAPTER_READ_EXISTING)
-        if (!markDuplicateAsRead) return
-
-        val completedChapter = readerChapter.chapter.toDomainChapter() ?: return
-        val duplicateUnreadChapters = duplicateChapterReadUpdates(
-            chapters = getUnfilteredChapterList(),
-            completedChapter = completedChapter,
-            enabled = true,
-        )
-        if (duplicateUnreadChapters.isNotEmpty()) {
-            updateChapter.awaitAll(duplicateUnreadChapters)
+        val slots = downloadPreferences.removeAfterReadSlots().get()
+        val chapterList = chapterListCache.orEmpty()
+        val candidate = if (slots >= 0) {
+            chapterList.getOrNull(chapterList.indexOf(readerChapter) - slots)
+        } else {
+            null
         }
+        val deleteCandidate = candidate?.takeIf {
+            it === readerChapter || it.chapter.read || acceptedReadState[it.chapter.id] == true
+        }
+            ?.chapter?.toDomainChapter()?.copy(read = true)
+        return ReaderProgressCompletionPlan(
+            manga = manga,
+            completedChapter = completed,
+            markDuplicates = markDuplicates,
+            deleteCandidate = deleteCandidate,
+            updateTracking = trackPreferences.autoUpdateTrack().get(),
+        )
     }
 
     fun restartReadTimer() {
@@ -1386,45 +1415,6 @@ class ReaderViewModel @JvmOverloads constructor(
         class Error(val error: Throwable) : SaveImageResult
     }
 
-    /**
-     * Starts the service that updates the last chapter read in sync services. This operation
-     * will run in a background thread and errors are ignored.
-     */
-    private fun updateTrackChapterRead(readerChapter: ReaderChapter) {
-        if (incognitoMode) return
-        if (!trackPreferences.autoUpdateTrack().get()) return
-
-        val manga = manga ?: return
-        val context = Injekt.get<Application>()
-
-        viewModelScope.launchNonCancellable {
-            trackChapter.await(context, manga.id, readerChapter.chapter.chapter_number.toDouble())
-        }
-    }
-
-    /**
-     * Enqueues this [chapter] to be deleted when [deletePendingChapters] is called. The download
-     * manager handles persisting it across process deaths.
-     */
-    private fun enqueueDeleteReadChapters(chapter: ReaderChapter) {
-        if (!chapter.chapter.read) return
-        val manga = manga ?: return
-
-        viewModelScope.launchNonCancellable {
-            downloadManager.enqueueChaptersToDelete(listOf(chapter.chapter.toDomainChapter()!!), manga)
-        }
-    }
-
-    /**
-     * Deletes all the pending chapters. This operation will run in a background thread and errors
-     * are ignored.
-     */
-    private fun deletePendingChapters() {
-        viewModelScope.launchNonCancellable {
-            downloadManager.deletePendingChapters()
-        }
-    }
-
     @Immutable
     data class State(
         val manga: Manga? = null,
@@ -1462,6 +1452,7 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     sealed interface Event {
+        data object ProgressSaveFailed : Event
         data object ChapterPairingSaveFailed : Event
         data object ChapterPairingInvalid : Event
         data object ReloadViewerChapters : Event

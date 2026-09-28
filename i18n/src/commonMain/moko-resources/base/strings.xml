@@ -1447,6 +1447,7 @@
     <string name="desktop_ui_adjust_spread">Adjust Spread</string>
     <string name="desktop_reader_pairing_saving">Saving page pairing</string>
     <string name="desktop_reader_pairing_save_failed">Could not save page pairing. Please retry.</string>
+    <string name="reader_progress_save_failed">Could not save reading progress. Please try again later.</string>
     <string name="desktop_reader_pairing_invalid">The chapter pages changed or the saved pairing is unavailable. Using the default pairing this time.</string>
     <string name="desktop_reader_pairing_session_only">Pairing changes for this file last only until you close it.</string>
     <string name="desktop_reader_pairing_load_failed">Could not load the saved page pairing.</string>

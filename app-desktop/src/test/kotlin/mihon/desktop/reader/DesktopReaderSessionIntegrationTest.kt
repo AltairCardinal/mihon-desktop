@@ -28,6 +28,7 @@ import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
 import mihon.domain.reader.progress.ReaderProgressEffect
+import mihon.data.reader.AcceptedReaderProgressContract
 import mihon.domain.reader.partial.PartialReaderPageCandidate
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
@@ -377,6 +378,56 @@ class DesktopReaderSessionIntegrationTest {
     }
 
     @Test
+    fun `Desktop production session satisfies the shared accepted progress contract`() = runTest {
+        val progress = mutableListOf<ReaderProgressEffect>()
+        val session = DesktopReaderSession(
+            initialContext = context(1L),
+            core = core(initialChapterId = 1L),
+            encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-shared-progress-contract")),
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { _, _ ->
+                ReaderChapterContentPort {
+                    List(5) { index ->
+                        ReaderPageDescriptor(index, url = "/page/$index", imageUrl = "https://example.test/$index")
+                    }
+                }
+            },
+            pageFetchPortFactory = DesktopReaderPageFetchPortFactory { _, descriptor -> readyPort(descriptor) },
+            progressPort = DesktopReaderProgressPort { _, effect -> progress += effect },
+            parentScope = this,
+        )
+        session.start()
+        advanceUntilIdle()
+        val pages = session.state.value.snapshot.activeChapter.pages
+        try {
+            AcceptedReaderProgressContract.verifyCompletionBackTurnAndClose(
+                object : AcceptedReaderProgressContract.Adapter {
+                    override suspend fun settle(page: Int) {
+                        session.settleViewport(setOf(pages[page].id), pages[page].id)
+                        advanceUntilIdle()
+                    }
+
+                    override suspend fun closeAndDrain() {
+                        session.close()
+                        advanceUntilIdle()
+                    }
+
+                    override fun committed() = progress.map { effect ->
+                        AcceptedReaderProgressContract.Observation(
+                            effect.lastPageRead,
+                            effect.totalPages,
+                            effect.wasRead,
+                            effect.isRead,
+                            effect.idempotencyKey,
+                        )
+                    }
+                },
+            )
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
     fun `closing immediately after settlement lets the final progress write finish`() = runTest {
         val writeStarted = CompletableDeferred<Unit>()
         val allowWrite = CompletableDeferred<Unit>()
@@ -402,13 +453,31 @@ class DesktopReaderSessionIntegrationTest {
         advanceUntilIdle()
         val page = session.state.value.snapshot.activeChapter.pages.single().id
 
-        session.settleViewport(setOf(page), page)
-        writeStarted.await()
-        session.close()
-        allowWrite.complete(Unit)
-        advanceUntilIdle()
+        AcceptedReaderProgressContract.verifyPendingWriteSurvivesClose(
+            object : AcceptedReaderProgressContract.PendingCloseAdapter {
+                override suspend fun accept() {
+                    session.settleViewport(setOf(page), page)
+                }
 
-        assertTrue(writeCompleted.isCompleted)
+                override suspend fun awaitWriterStarted() {
+                    writeStarted.await()
+                }
+
+                override suspend fun close() {
+                    session.close()
+                }
+
+                override suspend fun releaseWrite() {
+                    allowWrite.complete(Unit)
+                }
+
+                override suspend fun drain() {
+                    advanceUntilIdle()
+                }
+
+                override fun committedCount(): Int = if (writeCompleted.isCompleted) 1 else 0
+            },
+        )
     }
 
     @Test

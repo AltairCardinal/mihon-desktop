@@ -164,6 +164,7 @@ class ReaderSharedParityWiringTest {
                 setMangaViewerFlags = mockk(relaxed = true),
                 getIncognitoState = mockk(relaxed = true),
                 pairingCoordinator = emptyChapterPairingCoordinator(),
+                progressCoordinator = emptyReaderProgressCoordinator(),
                 libraryPreferences = mockk(relaxed = true),
             )
             val chapter = ReaderChapter(Chapter.create().copy(id = 7, mangaId = 1))
@@ -277,6 +278,7 @@ class ReaderSharedParityWiringTest {
                 setMangaViewerFlags = mockk(relaxed = true),
                 getIncognitoState = mockk(relaxed = true),
                 pairingCoordinator = emptyChapterPairingCoordinator(),
+                progressCoordinator = emptyReaderProgressCoordinator(),
                 libraryPreferences = mockk(relaxed = true),
                 chapterLoaderFactory = { _: Manga, _: Source -> chapterLoader },
             )
