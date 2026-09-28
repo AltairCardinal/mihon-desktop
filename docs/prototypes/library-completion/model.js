@@ -25,6 +25,24 @@
         categories: i < 5 ? [1] : [2],
         unread: i === 1 ? 0 : 2,
         source: "示例图源",
+        author: ["林舟", "秋原", "许禾", "青山", "云岚", "南风"][i],
+        artist: ["星野", "绘里", "夜灯", "木禾", "远山", "海音"][i],
+        genre: ["冒险", i % 2 ? "日常" : "奇幻", "成长"],
+        description: `${title} 的故事从一次意外相遇展开。主角在日常和未知之间寻找自己的方向，也逐渐发现同伴留下的线索。这里展示图源简介的本地样本。`,
+        favorite: true,
+        fetchInterval: 0,
+        readingMode: "默认",
+        notes: "",
+        chapterOptions: {
+          read: true,
+          unread: true,
+          bookmark: false,
+          download: false,
+          scanlators: {},
+          sort: "source",
+          ascending: false,
+          display: "name",
+        },
         started: i !== 2,
         complete: i === 3,
         due: i !== 4,
@@ -49,7 +67,10 @@
           read: i === 1 || n === 1,
           bookmark: n === 1,
           page: n === 1 ? 7 : 0,
-          download: `${String.fromCharCode(65 + i)}-file-${n}`,
+          download: n === 3 ? null : `${String.fromCharCode(65 + i)}-file-${n}`,
+          downloadStatus: n === 3 ? ({ 1: "error", 2: "queued", 3: "downloading" }[i] || null) : null,
+          scanlator: n === 2 ? "示例译制组" : "示例汉化组",
+          dateUpload: 1700000000000 + n * 86400000,
         })),
       })),
       selected: [],
@@ -109,6 +130,7 @@
   function visible(s) {
     let books = s.books.filter(
       (b) =>
+        b.favorite !== false &&
         b.categories.includes(s.category) &&
         (!s.query || b.title.toLowerCase().includes(s.query.toLowerCase())),
     );
@@ -236,18 +258,20 @@
   }
   function candidates(s, type) {
     if (type === "category")
-      return s.books.filter((b) => b.categories.includes(s.category));
+      return s.books.filter((b) => b.favorite !== false && b.categories.includes(s.category));
     const policy = s.prefs.categoryPolicy,
       included = Object.keys(policy)
         .filter((id) => policy[id] === 1)
         .map(Number);
     return s.books.filter(
       (b) =>
+        b.favorite !== false &&
         !b.categories.some((id) => policy[id] === -1) &&
         (!included.length || b.categories.some((id) => included.includes(id))),
     );
   }
   function reason(s, b, p = s.prefs) {
+    if (b.favorite === false) return "作品已取消收藏";
     if (b.local) return "本地作品不请求网络";
     if (p.ongoing && b.complete) return "已完结";
     if (p.caughtUp && b.unread > 0) return "尚未追平";

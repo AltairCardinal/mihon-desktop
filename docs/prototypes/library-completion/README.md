@@ -1,8 +1,10 @@
 # 书架完整 Roadmap · 双端交互 DEMO
 
-审核入口：[Windows / Android 并列演示](index.html) · [详细验收清单](ACCEPTANCE.md) · [产品实施 roadmap](../../roadmap/2026-09-28-desktop-library-completion-roadmap.md)
+审核入口：[Windows / Android 并列演示](index.html) · [书架 roadmap 验收清单](ACCEPTANCE.md) · [现有 Desktop 详情页还原验收](DETAIL-ACCEPTANCE.md) · [产品实施 roadmap](../../roadmap/2026-09-28-desktop-library-completion-roadmap.md)
 
 本原型展示 roadmap 全部 19 项需求的目标交互。它是设计审阅产物，**不代表 Mihon Desktop 产品代码已实现或修复**；产品 LC01–LC11 任务、manifest 与发布门禁保持原状态。
+
+作品详情页同时提供一条单独的审阅基线：按当前 Desktop 的 `MangaDetailScreen`、`MangaDetailComponents` 与章节列表组件还原页面层级和主要状态，供先核对现状。该页的来源、操作步骤和 HTML 边界见[详情页验收清单](DETAIL-ACCEPTANCE.md)；其中并未把 roadmap 的新需求当成现有产品能力。
 
 ## 使用与审核顺序
 
@@ -143,6 +145,14 @@ git diff --check
 
 验证记录：先修改事件契约，4 项因旧快捷键仍生效、Ctrl 滚轮未消费且不切分类而正确失败；移除旧绑定并接入非被动滚轮监听后 focused 4/4 通过。补充单分类、更新中切类及 Android 隔离用例，最终完整测试 **42/42 通过，0 失败、0 跳过，52.05 秒**。真实 Chrome 鼠标输入确认浏览器缩放值不变；当前 HTTP 并列预览也验证了往返切类、旧快捷键失效、Android 不受影响及没有误触刷新。语法和差异检查通过。
 
+## 现有 Desktop 作品详情页还原
+
+从书架单击作品后，详情页按当前 `MangaDetailScreen`、`MangaDetailComponents` 与章节列表组件显示顶栏、封面信息、作品动作、阅读模式、章节列表、选章底栏和继续阅读按钮。封面编辑改回封面右下菜单，顶栏“全部标为已读”恢复文字入口；章节筛选、排序、显示仍属于详情顶栏同一菜单。章节多选维持当前产品的点击切换、长按进入、可见章节全选与清除，不把 roadmap 提议的章节 Shift 范围或反选伪称为现状。完整人工核对路径见[详情页验收清单](DETAIL-ACCEPTANCE.md)。
+
+详情页的作者资料、标签搜索、外部链接、系统分享、追踪、图源迁移、文件选择、下载和阅读器均使用本地样本及明确反馈。封面替换会切换本地生成的图片版本；不调用系统文件选择器。Android 窄屏顶栏为 HTML 可达性改成多行，不能作为 Android 原生详情页视觉基准。窗口与主题、菜单层级及真实业务结果仍须产品端核验。
+
+先写六项真实浏览器详情测试，首轮四项因原 DEMO 缺少详情控件而正确失败；最小实现及增补下载/批量动作后 focused 六项转绿。独立审查又以真实 DOM 和截图发现“全部已读无文字、取消收藏仍留书架、Android 窄屏菜单被裁”三处，集中返修后独立 focused 2/2 通过。2026-09-28 本目录**完整 DEMO 测试 50/50 通过，0 失败、0 跳过，57.40 秒**；其中含先前书架、更新、设置与双端隔离回归。此数字仅是 HTML DEMO 验证结果，未执行原生 Desktop 测试或构建。
+
 ## 最终截图
 
 以下均由主代理在 Chrome headless、`zh-CN` 本地页面查看；保留浏览器原生滚动条。它们证明 HTML 当时的显示，不是 Compose 生产视觉基准。除明确标注字号 200% 的截图，其余为 100% 字号。
@@ -151,5 +161,9 @@ git diff --check
 - [浅色双端面板，外层 1600×1180](screenshots/light-dual-panels-1600.png)
 - [Android 320px 设置，实际字号 200%](screenshots/light-android-font200-320.png)
 - [Windows 更新失败明细，1000×800](screenshots/dark-update-results-1000.png)
+- [现有 Desktop 详情，深色 1000×800](screenshots/desktop-detail-dark-1000.png)
+- [现有 Desktop 详情，浅色 1000×800](screenshots/desktop-detail-light-1000.png)
+- [现有 Desktop 详情，章节多选 1000×800](screenshots/desktop-detail-selection-1000.png)
+- [Android 窄屏章节菜单，320×700](screenshots/android-detail-menu-320.png)
 
 目视检查了封面比例、导航与入口、模态层级、失败明细、窄屏文字换行和滚动可达。截图和浏览器验证仍不替代 roadmap 要求的 Windows 触控板、系统设备条件、Android/Desktop 共享实现与正式构建验收。

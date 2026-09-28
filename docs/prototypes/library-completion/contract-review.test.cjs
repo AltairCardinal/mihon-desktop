@@ -231,8 +231,10 @@ test('独立契约：分类排序方向隔离', () => review(async page => {
 
 test('独立契约：自定义封面可再次替换', () => review(async page => {
   await page.getByTestId('manga-A').click();
+  await page.getByTestId('detail-cover-menu').click();
   await page.getByTestId('cover-replace').click();
   const first = await page.locator('.hero .cover').screenshot();
+  await page.getByTestId('detail-cover-menu').click();
   await page.getByTestId('cover-replace').click();
   const second = await page.locator('.hero .cover').screenshot();
   assert.notDeepEqual(first, second, '重复替换应有可见新封面版本');
@@ -251,3 +253,26 @@ test('独立契约：刷新结束后任意方向滚轮都延续800ms静默冷却
   await scroll.dispatchEvent('wheel', { deltaY: -90 });
   assert.equal(await page.getByTestId('wheel-hint').textContent(), '');
 }));
+
+test('独立详情契约：当前顶栏的全部已读是可读文字，取消收藏后书架不再列出作品', () => review(async page => {
+  await page.getByTestId('manga-A').click();
+  assert.match(await page.getByTestId('detail-mark-all').textContent(), /全部标为已读/);
+  await page.getByTestId('detail-library').click();
+  await page.getByTestId('detail-back').click();
+  assert.equal(await page.getByTestId('manga-A').count(), 0);
+}));
+
+test('独立详情契约：Android 窄屏滚动到章节菜单后，每个菜单项均可实际点击', () => review(async page => {
+  await page.getByTestId('manga-A').click();
+  await page.getByTestId('detail-filter-menu').click();
+  const menuReachableWithoutAutoscroll = await page.getByTestId('chapter-filter-read').evaluate(node => {
+    const rect = node.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return hit === node || node.contains(hit);
+  });
+  assert.equal(menuReachableWithoutAutoscroll, true, '展开后首个筛选项应直接出现在可见顶层');
+  await page.getByTestId('chapter-filter-read').click();
+  assert.match(await page.getByTestId('chapter-count').textContent(), /2\/3/);
+  await page.getByTestId('chapter-display-number').click();
+  assert.match(await page.getByTestId('chapter-row-A-3').textContent(), /第 3 话/);
+}, 'device.html?platform=android', 320, 700));

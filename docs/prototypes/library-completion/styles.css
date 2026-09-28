@@ -183,6 +183,7 @@ summary {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 .bar {
   display: flex;
@@ -606,43 +607,290 @@ summary {
   color: var(--on-primary);
 }
 .detail {
-  padding: 16px;
+  padding: 0 0 16px;
   overflow: auto;
   flex: 1;
 }
+.detail-bar {
+  border-bottom: 1px solid var(--outline);
+  position: relative;
+  z-index: 10;
+}
+.detail-mark-all {
+  white-space: nowrap;
+  color: var(--primary);
+}
+.detail-bar h1 {
+  min-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail-bar .actions {
+  gap: 0;
+}
+.detail-menu-anchor {
+  position: relative;
+  flex: none;
+}
+.detail-popup {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  min-width: 210px;
+  width: max-content;
+  max-width: min(300px, calc(100vw - 22px));
+  max-height: min(420px, 70dvh);
+  overflow: auto;
+  z-index: 12;
+  border-radius: 12px;
+  padding: 7px 0;
+  background: var(--high);
+  box-shadow: 0 8px 25px #0006;
+  border: 1px solid var(--outline);
+}
+.detail-popup button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 40px;
+  border-radius: 0;
+  text-align: left;
+  white-space: nowrap;
+  padding: 8px 14px;
+}
+.detail-popup button span {
+  display: inline-block;
+  width: 22px;
+  color: var(--primary);
+}
+.detail-popup-heading {
+  padding: 8px 14px 4px;
+  color: var(--primary);
+  font-size: 0.86rem;
+  font-weight: 600;
+  border-top: 1px solid var(--outline);
+}
+.detail-popup-heading:first-child {
+  border-top: 0;
+}
 .hero {
   display: flex;
-  gap: 20px;
+  gap: 16px;
   align-items: flex-start;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  padding: 16px;
 }
-.hero .cover {
+.detail-cover-wrap {
   width: 120px;
   flex: none;
+  position: relative;
+}
+.hero .cover {
+  width: 100%;
+}
+.detail-cover-edit {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+}
+.detail-cover-edit > button {
+  color: white;
+  background: #0009;
 }
 .hero h2 {
   font-size: 1.4rem;
+  margin: 0;
 }
 .hero-info {
   flex: 1;
   min-width: 120px;
 }
-.chapter {
-  border-bottom: 1px solid var(--outline);
-  padding: 14px 0;
+.detail-creators {
   display: flex;
-  gap: 8px;
   flex-wrap: wrap;
+  gap: 0 12px;
+  margin-top: 3px;
 }
-.chapter button {
-  padding: 0;
-  text-align: left;
+.detail-creators button {
+  color: var(--primary);
+  padding: 2px 4px;
+  min-height: 28px;
+}
+.detail-source,
+.detail-description {
+  color: var(--muted);
+  font-size: 0.86rem;
+  margin: 5px 0 0;
+}
+.detail-description {
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 10px;
+}
+.detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.detail-tag {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  max-width: 100%;
+}
+.detail-tag button {
+  min-height: 30px;
+  padding: 4px 9px;
+}
+.detail-tag .tag-copy {
+  min-width: 30px;
+  padding: 4px;
+}
+.detail-tag .tag-copy svg {
+  width: 15px;
+  height: 15px;
+}
+.detail-action-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 16px;
+}
+.detail-action-row button {
+  min-width: 44px;
+}
+.detail-library-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.detail-reading-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 16px 8px;
+  border-bottom: 1px solid var(--outline);
+}
+.detail-reading-mode > .detail-menu-anchor > button {
+  color: var(--primary);
+}
+.detail-chapter-heading {
+  padding: 14px 16px 8px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--outline);
+}
+.chapter-row {
+  border-bottom: 1px solid var(--outline);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 64px;
+  cursor: pointer;
+}
+.chapter-row:hover,
+.chapter-row.selected {
+  background: var(--high);
+}
+.chapter-row.selected {
+  color: var(--primary);
+}
+.chapter-row input {
+  flex: none;
+}
+.chapter-main {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.chapter-title.read {
+  color: var(--muted);
+}
+.chapter-main small {
+  display: block;
+  font-size: 0.8rem;
+}
+.chapter-trailing {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+.chapter-trailing button {
+  width: 38px;
+  min-height: 38px;
+  padding: 8px;
+}
+.chapter-trailing button svg {
+  width: 20px;
+  height: 20px;
+}
+.chapter-progress-anchor .detail-popup {
   min-width: 100px;
 }
-.chapter small {
+.chapter-trailing .chapter-progress {
+  border: 3px solid var(--muted);
+  border-radius: 50%;
+  width: 36px;
+  min-height: 36px;
+  padding: 5px;
+}
+.chapter-trailing .chapter-progress svg {
+  width: 17px;
+  height: 17px;
+}
+.chapter-trailing [data-testid^="chapter-read-"] svg.filled {
+  fill: var(--primary);
+}
+.chapter-trailing [data-testid^="chapter-bookmark-"][aria-label="取消书签"] {
+  color: var(--primary);
+}
+.detail-fab {
+  position: absolute;
+  right: 20px;
+  bottom: 91px;
+  z-index: 4;
+  border-radius: 16px;
+  background: var(--primary);
+  color: var(--on-primary);
+  box-shadow: 0 4px 12px #0005;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.detail-selection {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--high);
+  padding: 8px 12px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.detail-selection strong {
+  margin-right: auto;
+}
+.detail-selection button {
+  width: 42px;
+  min-width: 42px;
+  padding: 9px;
+}
+.detail-detached {
+  color: var(--muted);
+  padding: 0 16px;
+}
+.sheet-body textarea {
   display: block;
-  overflow-wrap: anywhere;
+  width: 100%;
+  resize: vertical;
+  margin: 8px 0 16px;
 }
 .reader {
   flex: 1;
@@ -713,8 +961,30 @@ summary {
 .android .sheet-head {
   padding: 10px;
 }
-.android .hero .cover {
+.android .detail-cover-wrap {
   width: 100px;
+}
+.android .detail-bar .actions {
+  width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  overflow: visible;
+  margin-left: 0;
+}
+.android .detail-bar h1 {
+  width: calc(100% - 64px);
+  margin-left: 4px;
+}
+.android .chapter-row {
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+.android .chapter-trailing {
+  margin-left: auto;
+}
+.android .detail-fab {
+  right: 12px;
+  bottom: 84px;
 }
 button[aria-pressed="true"] {
   color: var(--primary);
