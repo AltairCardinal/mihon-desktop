@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Mihon · 书架功能审阅</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="preview theme-dark">
+    <header class="review">
+      <h1>书架 · 双端交互审阅</h1>
+      <p>
+        本地样本 · 无网络请求 · 不代表生产功能、系统任务或真实持久化已经实现。
+      </p>
+      <details open>
+        <summary>演示工具（应用外）</summary>
+        <div class="tools">
+          <label
+            >触发设备
+            <select id="target">
+              <option value="windows">Windows</option>
+              <option value="android">Android</option>
+            </select></label
+          >
+          <label
+            >审阅场景
+            <select id="scenario" data-testid="scenario"></select></label
+          ><button id="apply-scenario" data-testid="apply-scenario">
+            载入场景
+          </button>
+          <button id="theme-toggle" data-testid="theme-toggle">切换浅色</button
+          ><button id="font-toggle" data-testid="font-toggle">字号 200%</button>
+          <button data-command="advance-hour">时间 +1 小时</button
+          ><button data-command="advance-day">时间 +24 小时</button
+          ><button data-command="rewind">时间回拨 1 小时</button>
+          <button data-command="restart">模拟重新打开</button
+          ><button data-command="source-ok">恢复图源与记录</button
+          ><button data-command="source-cover">同地址源封面变化</button>
+          <label
+            >网络
+            <select data-device="online">
+              <option value="true">在线</option>
+              <option value="false">离线</option>
+              <option value="null">未知</option>
+            </select></label
+          >
+          <label
+            >Wi-Fi
+            <select data-device="wifi">
+              <option value="true">满足</option>
+              <option value="false">不满足</option>
+              <option value="null">未知</option>
+            </select></label
+          >
+          <label
+            >计费
+            <select data-device="unmetered">
+              <option value="true">非计量</option>
+              <option value="false">计量</option>
+              <option value="null">未知</option>
+            </select></label
+          >
+          <label
+            >供电
+            <select data-device="power">
+              <option value="true">接通电源</option>
+              <option value="false">未充电</option>
+              <option value="null">未知</option>
+            </select></label
+          >
+        </div>
+        <p id="tool-status" role="status">
+          场景只作用于所选设备；真实滚轮请在书架内容区操作。
+        </p>
+      </details>
+    </header>
+    <section class="devices">
+      <article>
+        <h2>Windows Desktop</h2>
+        <iframe
+          id="preview-windows"
+          title="Windows 书架"
+          src="device.html?platform=windows"
+        ></iframe>
+      </article>
+      <article class="phone">
+        <h2>Android · 320px</h2>
+        <iframe
+          id="preview-android"
+          title="Android 书架"
+          src="device.html?platform=android"
+        ></iframe>
+      </article>
+    </section>
+    <script src="preview.js"></script>
+  </body>
+</html>

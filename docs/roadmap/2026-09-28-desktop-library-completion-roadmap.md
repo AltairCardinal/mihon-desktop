@@ -19,7 +19,7 @@ date: 2026-09-28
 | 相关旧范围 | [非 Reader 计划](2026-08-02-mihon-desktop-non-reader-upstream-core-roadmap.md)中的书架与 LU-01 更新部分，仅在本方案范围内承接；不恢复其余暂停任务 |
 | 状态权威 | [parity-manifest.json](../../app-desktop/src/test/resources/parity/parity-manifest.json)继续是 capability 状态与证据的唯一机器权威 |
 
-SOURCE 指上述已读取的代码事实；PROJECT_POLICY 指用户需求及本方案冻结的目标行为。新增 Windows 手势阈值、键盘行为和布局属于 PROJECT_POLICY，不伪装成 Android 常量。本轮不创建 HTML 原型，没有 HTML_ADAPTER 交付。
+SOURCE 指上述已读取的代码事实；PROJECT_POLICY 指用户需求及本方案冻结的目标行为。新增 Windows 手势阈值、键盘行为和布局属于 PROJECT_POLICY，不伪装成 Android 常量。最初规划轮未创建 HTML 原型；后续依用户请求补充独立的 [完整交互 DEMO](../prototypes/library-completion/README.md) 与 [详细审核条目](../prototypes/library-completion/ACCEPTANCE.md)，作为 HTML_ADAPTER 审阅产物，不代表下面产品任务已完成。
 
 旧计划曾要求保留“继续阅读依赖未读角标”的耦合；本次固定官方版本在 `LibraryCompactGrid`、`LibraryList` 等处以真实 `LibraryItem.unreadCount` 控制按钮，角标独立使用 `LibraryItem.badges.unreadCount`。L03 以该版本及本次用户范围为准，明确覆盖旧要求；不改写历史测试结果。组件事实表关于同步恢复按钮的描述也不能代替当前 production 核对：当前 Desktop 控件仍判断 `badges.unreadCount`，状态中存在字段不等于接线已完成。
 
