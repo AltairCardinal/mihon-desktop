@@ -62,6 +62,7 @@
         chapters: [1, 2, 3].map((n) => ({
           id: `${String.fromCharCode(65 + i)}-${n}`,
           number: n,
+          sourceOrder: 3 - n,
           name: `第 ${n} 话`,
           url: `/chapter/${n}`,
           read: i === 1 || n === 1,
@@ -348,6 +349,13 @@
     if (
       ["chapter-change", "file-failure", "checkpoint-gap"].includes(s.source)
     ) {
+      if (s.source === "chapter-change" && b.chapters.some((c) => c.number === 4) && !b.chapters.some((c) => c.number === 2)) {
+        if (s.job.rules.metadata) {
+          b.description = "已从图源刷新简介";
+          b.cover++;
+        }
+        return "目录无变化：新增 0 · 改名 0 · 移除 0；可识别换链已承接原章节身份";
+      }
       const first = b.chapters.find((c) => c.number === 1);
       b.detachedDownloads = [
         ...new Set([
@@ -359,6 +367,15 @@
       ];
       b.chapters = [
         {
+          ...b.chapters.find((c) => c.number === 3),
+          name: "第 3 话 · 更名与重排",
+          url: "/chapter/3",
+          sourceOrder: 0,
+          scanlator: "新版译制组",
+          dateUpload: 1700600000000,
+          memo: "源目录重新发布",
+        },
+        {
           ...(b.chapters.find((c) => c.number === 4) || {
             id: b.id + "-4",
             number: 4,
@@ -369,13 +386,11 @@
           }),
           name: "第 4 话 · 新章节",
           url: "/new/4",
+          sourceOrder: 1,
+          scanlator: "新版译制组",
+          dateUpload: 1700700000000,
         },
-        {
-          ...b.chapters.find((c) => c.number === 3),
-          name: "第 3 话 · 更名与重排",
-          url: "/chapter/3",
-        },
-        { ...first, name: "第 1 话 · 新地址", url: "/new/1" },
+        { ...first, name: "第 1 话 · 新地址", url: "/new/1", sourceOrder: 2 },
       ];
     }
     if (s.job.rules.metadata) {
@@ -390,7 +405,7 @@
       throw Error("目录已更新，但下载文件关联失败；重试只补此步骤");
     }
     return s.source === "chapter-change"
-      ? "新增 1 · 改名 2 · 移除 1；阅读、书签和下载关联保留"
+      ? "新增 1 · 改名 2 · 移除 1 · 可识别换链 1 · 源顺序重排；阅读、书签和下载关联保留"
       : "目录检查完成";
   }
   function step(s) {
@@ -541,6 +556,9 @@
       ].includes(name)
     )
       s.source = name;
+    if (name === "chapter-change") {
+      s.books[0].chapters[2].page = 4;
+    }
     if (name === "empty-library") s.books = [];
     if (name === "loading") s.loading = true;
     if (name === "load-error") s.loadError = true;

@@ -304,6 +304,82 @@ test("现有详情章节下载状态：失败可重试，排队与下载中可�
     await p.getByTestId("chapter-cancel-D-3").click();
     assert.equal(await p.getByTestId("chapter-download-D-3").count(), 1);
   }));
+
+test("详情叠加 L08：更新显示源重排、改名换链与已读书签进度下载保留", () =>
+  run(async (p) => {
+    await p.evaluate(() => window.demo.scenario("chapter-change"));
+    await p.getByTestId("manga-A").click();
+    const ids = () => p.locator('[data-testid^="chapter-row-"]').evaluateAll((rows) => rows.map((row) => row.dataset.chapterId));
+    assert.deepEqual(await ids(), ["A-3", "A-2", "A-1"]);
+    await p.getByTestId("detail-refresh").click();
+    await p.waitForFunction(() => window.demo.state.job?.status === "done");
+    assert.deepEqual(await ids(), ["A-3", "A-4", "A-1"]);
+    assert.match(await p.getByTestId("chapter-row-A-3").textContent(), /更名与重排/);
+    assert.match(await p.getByTestId("chapter-row-A-3").textContent(), /新版译制组/);
+    assert.match(await p.getByTestId("chapter-row-A-3").textContent(), /第 5 页/);
+    assert.equal(await p.getByTestId("chapter-row-A-2").count(), 0);
+    assert.equal(await p.getByTestId("chapter-bookmark-A-1").getAttribute("aria-label"), "取消书签");
+    assert.equal(await p.getByTestId("chapter-delete-A-1").count(), 1);
+    await p.getByTestId("update-details").click();
+    assert.match(await p.getByTestId("update-results").textContent(), /新增 1.*改名 2.*移除 1/);
+    await p.getByTestId("modal-close").click();
+    await p.getByTestId("detail-refresh").click();
+    await p.waitForFunction(() => window.demo.state.job?.status === "done");
+    assert.deepEqual(await ids(), ["A-3", "A-4", "A-1"]);
+    await p.getByTestId("update-details").click();
+    assert.match(await p.getByTestId("update-results").textContent(), /无变化：新增 0/);
+  }));
+
+test("详情叠加 L02：四种书架布局共用自定义封面版本，删除后回到最新源封面", () =>
+  run(async (p) => {
+    await p.getByTestId("manga-A").click();
+    await p.getByTestId("detail-cover-menu").click();
+    await p.getByTestId("cover-replace").click();
+    const detailColor = await p.locator(".hero .cover").evaluate((e) => e.style.getPropertyValue("--cover-color"));
+    await p.getByTestId("detail-back").click();
+    await p.getByTestId("panel-open").click();
+    await p.getByTestId("panel-tab-display").click();
+    for (const layout of ["compact", "comfortable", "cover-only", "list"]) {
+      await p.getByTestId("layout-" + layout).click();
+      const cover = p.getByTestId("manga-A").locator(".cover");
+      assert.match(await cover.textContent(), /自定义封面/);
+      assert.equal(await cover.evaluate((e) => e.style.getPropertyValue("--cover-color")), detailColor);
+    }
+    await p.getByTestId("modal-close").click();
+    await p.evaluate(() => window.demo.command("source-cover"));
+    await p.getByTestId("manga-A").click();
+    assert.match(await p.locator(".hero .cover").textContent(), /自定义封面/);
+    await p.getByTestId("detail-cover-menu").click();
+    await p.getByTestId("cover-delete").click();
+    assert.match(await p.locator(".hero .cover").textContent(), /源封面 · 2/);
+    await p.getByTestId("detail-back").click();
+    assert.match(await p.getByTestId("manga-A").textContent(), /源封面 · 2/);
+  }));
+
+test("详情叠加 S06/L02：默认不改作品信息，开启后刷新简介源封面且自定义封面优先", () =>
+  run(async (p) => {
+    await p.getByTestId("manga-A").click();
+    const title = await p.getByTestId("detail-title").textContent();
+    const oldDescription = await p.locator(".detail-description").textContent();
+    await p.getByTestId("detail-cover-menu").click();
+    await p.getByTestId("cover-replace").click();
+    await p.getByTestId("detail-refresh").click();
+    await p.waitForFunction(() => window.demo.state.job?.status === "done");
+    assert.equal(await p.locator(".detail-description").textContent(), oldDescription);
+    await p.getByTestId("detail-back").click();
+    await p.getByTestId("settings-open").click();
+    await p.getByTestId("pref-metadata").check();
+    await p.getByTestId("modal-close").click();
+    await p.getByTestId("manga-A").click();
+    await p.getByTestId("detail-refresh").click();
+    await p.waitForFunction(() => window.demo.state.job?.status === "done");
+    assert.equal(await p.getByTestId("detail-title").textContent(), title);
+    assert.match(await p.locator(".detail-description").textContent(), /已从图源刷新简介/);
+    assert.match(await p.locator(".hero .cover").textContent(), /自定义封面/);
+    await p.getByTestId("detail-cover-menu").click();
+    await p.getByTestId("cover-delete").click();
+    assert.match(await p.locator(".hero .cover").textContent(), /源封面 · 2/);
+  }));
 test("真实点击：Ctrl 与连续 Shift 收缩，多选普通单击增减，零选择后打开", () =>
   run(async (p) => {
     await p.getByTestId("manga-B").click({ modifiers: ["Control"] });

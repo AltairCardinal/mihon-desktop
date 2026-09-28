@@ -169,7 +169,7 @@
       o.scanlators?.[c.scanlator || "未知"] !== false
     );
     const compare = {
-      source: (a, z) => a.number - z.number,
+      source: (a, z) => (z.sourceOrder ?? 0) - (a.sourceOrder ?? 0),
       number: (a, z) => a.number - z.number,
       date: (a, z) => (a.dateUpload || 0) - (z.dateUpload || 0),
       alphabet: (a, z) => a.name.localeCompare(z.name, "zh"),

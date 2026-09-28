@@ -140,6 +140,34 @@ test("目录变化保留章节状态、空响应不删库、元数据保护", ()
   assert.deepEqual(s.books[0].chapters, snapshot);
   assert.equal(s.job.results.A.status, "failed");
 });
+
+test("详情叠加 L08：源顺序不同于章节号，重复刷新显示无变化并保持身份", () => {
+  const s = M.create();
+  M.scenario(s, "chapter-change");
+  const initialDescription = s.books[0].description;
+  M.start(s, "category", ["A"]);
+  M.step(s);
+  const a = s.books.find((b) => b.id === "A");
+  assert.deepEqual(a.chapters.map((c) => c.id), ["A-3", "A-4", "A-1"]);
+  assert.deepEqual(a.chapters.map((c) => c.sourceOrder), [0, 1, 2]);
+  assert.equal(a.chapters[0].scanlator, "新版译制组");
+  assert.equal(a.chapters[0].memo, "源目录重新发布");
+  assert.equal(a.chapters[0].dateUpload, 1700600000000);
+  const after = structuredClone(a.chapters);
+  M.start(s, "category", ["A"]);
+  M.step(s);
+  assert.deepEqual(a.chapters, after);
+  assert.match(s.job.results.A.reason, /无变化/);
+  assert.equal(a.description, initialDescription);
+  assert.equal(a.cover, 0);
+  M.save(s, "metadata", true);
+  M.start(s, "category", ["A"]);
+  M.step(s);
+  assert.deepEqual(a.chapters, after);
+  assert.equal(a.description, "已从图源刷新简介");
+  assert.equal(a.cover, 1);
+  assert.match(s.job.results.A.reason, /目录无变化：新增 0/);
+});
 test("设置原子失败、分类排序恢复、更新排除优先", () => {
   const s = M.create();
   s.failSave = true;

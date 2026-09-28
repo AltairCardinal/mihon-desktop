@@ -1,10 +1,10 @@
 # 书架完整 Roadmap · 双端交互 DEMO
 
-审核入口：[Windows / Android 并列演示](index.html) · [书架 roadmap 验收清单](ACCEPTANCE.md) · [现有 Desktop 详情页还原验收](DETAIL-ACCEPTANCE.md) · [产品实施 roadmap](../../roadmap/2026-09-28-desktop-library-completion-roadmap.md)
+审核入口：[Windows / Android 并列演示](index.html) · [书架 19 项变化及验收](ACCEPTANCE.md) · [详情现状与叠加变化验收](DETAIL-ACCEPTANCE.md) · [产品实施 roadmap](../../roadmap/2026-09-28-desktop-library-completion-roadmap.md)
 
 本原型展示 roadmap 全部 19 项需求的目标交互。它是设计审阅产物，**不代表 Mihon Desktop 产品代码已实现或修复**；产品 LC01–LC11 任务、manifest 与发布门禁保持原状态。
 
-作品详情页同时提供一条单独的审阅基线：按当前 Desktop 的 `MangaDetailScreen`、`MangaDetailComponents` 与章节列表组件还原页面层级和主要状态，供先核对现状。该页的来源、操作步骤和 HTML 边界见[详情页验收清单](DETAIL-ACCEPTANCE.md)；其中并未把 roadmap 的新需求当成现有产品能力。
+作品详情页保留单独的审阅基线：先按当前 Desktop 的 `MangaDetailScreen`、`MangaDetailComponents` 与章节列表组件核对页面层级和主要状态，再按[详情页验收清单](DETAIL-ACCEPTANCE.md)的 D21–D34 审核 L02、L08、S06 的叠加变化。[总验收清单](ACCEPTANCE.md)在原有操作步骤前新增了 19 项“现状基线 → roadmap 目标”对照，避免把目标行为当成现有产品能力。
 
 ## 使用与审核顺序
 
@@ -153,6 +153,16 @@ git diff --check
 
 先写六项真实浏览器详情测试，首轮四项因原 DEMO 缺少详情控件而正确失败；最小实现及增补下载/批量动作后 focused 六项转绿。独立审查又以真实 DOM 和截图发现“全部已读无文字、取消收藏仍留书架、Android 窄屏菜单被裁”三处，集中返修后独立 focused 2/2 通过。2026-09-28 本目录**完整 DEMO 测试 50/50 通过，0 失败、0 跳过，57.40 秒**；其中含先前书架、更新、设置与双端隔离回归。此数字仅是 HTML DEMO 验证结果，未执行原生 Desktop 测试或构建。
 
+## Roadmap 变化叠加在现有详情页
+
+现状结构和操作仍以当前 Desktop 详情页为基线。此次在已有交互样本上补齐 L08 的可见差异：目录变化场景更新后，图源顺序为第 3→4→1 话，和章节号排序不同；第 3 话改名、译制组与阅读进度可见，第 1 话可识别换链后保留原 ID、已读、书签与下载，第 2 话从目录移除但其下载保留。更新结果写明新增、改名、移除、换链与重排；第二次检查不重复新增。L02 的封面优先级和四布局回显、S06 的默认关闭/开启后刷新简介与源封面也从详情路径进行了前后对照。目录无变化时仍可按新开启的 S06 设置刷新作品信息。
+
+[总验收清单](ACCEPTANCE.md)新增全部 19 项“现状基线 → 目标变化 → 操作编号”对照；[详情验收](DETAIL-ACCEPTANCE.md)把 D01–D20 保留为现状，把 D21–D34 单列为这次叠加的封面、目录和作品信息变化。章节 Shift 范围和反选不是本次详情叠加内容。下载文件、真实源响应、数据库事务、章节 URL/ID 的底层正确性只能在产品实施阶段用原生链路验收；HTML 中的源顺序、结果、封面和章节状态是本地模拟。
+
+L08 的源顺序和重复刷新先在模型及浏览器 focused 测试中因旧实现失败，再实现转绿。独立审查发现“先同步目录、再开启 S06，复刷被目录无变化提前返回”，真实浏览器红测确认后做最小修复；源顺序/章节号切换也经独立浏览器操作核对。**当前完整 DEMO 测试 56/56 通过，0 失败、0 跳过，82.11 秒**；此记录取代上方历史批次的 50/50 数字作为当前原型版本的回归结果，不代表原生 Desktop 验收。
+
+本轮 10 个文件均属于同一详情叠加：模型/交互、真实行为测试、两份验收说明、入口说明及两张截图。主要风险是章节源顺序与“目录无变化”提前返回影响作品信息刷新；对应独立契约和完整回归均已覆盖。没有改动 Kotlin 产品代码或其他原型目录。
+
 ## 最终截图
 
 以下均由主代理在 Chrome headless、`zh-CN` 本地页面查看；保留浏览器原生滚动条。它们证明 HTML 当时的显示，不是 Compose 生产视觉基准。除明确标注字号 200% 的截图，其余为 100% 字号。
@@ -165,5 +175,7 @@ git diff --check
 - [现有 Desktop 详情，浅色 1000×800](screenshots/desktop-detail-light-1000.png)
 - [现有 Desktop 详情，章节多选 1000×800](screenshots/desktop-detail-selection-1000.png)
 - [Android 窄屏章节菜单，320×700](screenshots/android-detail-menu-320.png)
+- [Desktop 目录变化叠加，1000×900](screenshots/desktop-detail-chapter-change-1000.png)
+- [Desktop 作品信息刷新叠加，1000×800](screenshots/desktop-detail-metadata-1000.png)
 
 目视检查了封面比例、导航与入口、模态层级、失败明细、窄屏文字换行和滚动可达。截图和浏览器验证仍不替代 roadmap 要求的 Windows 触控板、系统设备条件、Android/Desktop 共享实现与正式构建验收。

@@ -276,3 +276,38 @@ test('独立详情契约：Android 窄屏滚动到章节菜单后，每个菜单
   await page.getByTestId('chapter-display-number').click();
   assert.match(await page.getByTestId('chapter-row-A-3').textContent(), /第 3 话/);
 }, 'device.html?platform=android', 320, 700));
+
+test('独立叠加契约：目录已同步后开启作品信息刷新，下一次检查仍更新简介与源封面', () => review(async page => {
+  await page.evaluate(() => window.demo.scenario('chapter-change'));
+  await page.getByTestId('manga-A').click();
+  const before = await page.locator('.detail-description').textContent();
+  await page.getByTestId('detail-refresh').click();
+  await page.waitForFunction(() => window.demo.state.job?.status === 'done');
+  assert.equal(await page.locator('.detail-description').textContent(), before);
+  await page.getByTestId('detail-back').click();
+  await page.getByTestId('settings-open').click();
+  await page.getByTestId('pref-metadata').check();
+  await page.getByTestId('modal-close').click();
+  await page.getByTestId('manga-A').click();
+  await page.getByTestId('detail-refresh').click();
+  await page.waitForFunction(() => window.demo.state.job?.status === 'done');
+  assert.match(await page.locator('.detail-description').textContent(), /已从图源刷新简介/);
+  assert.match(await page.locator('.hero .cover').textContent(), /源封面 · 2/);
+  await page.getByTestId('update-details').click();
+  assert.match(await page.getByTestId('update-results').textContent(), /目录无变化：新增 0/);
+}));
+
+test('独立叠加契约：章节源顺序与章节号排序可来回切换', () => review(async page => {
+  await page.evaluate(() => window.demo.scenario('chapter-change'));
+  await page.getByTestId('manga-A').click();
+  await page.getByTestId('detail-refresh').click();
+  await page.waitForFunction(() => window.demo.state.job?.status === 'done');
+  const order = () => page.locator('[data-testid^="chapter-row-"]').evaluateAll(rows => rows.map(row => row.dataset.chapterId));
+  assert.deepEqual(await order(), ['A-3', 'A-4', 'A-1']);
+  await page.getByTestId('detail-filter-menu').click();
+  await page.getByTestId('chapter-sort-number').click();
+  assert.deepEqual(await order(), ['A-4', 'A-3', 'A-1']);
+  await page.getByTestId('detail-filter-menu').click();
+  await page.getByTestId('chapter-sort-source').click();
+  assert.deepEqual(await order(), ['A-3', 'A-4', 'A-1']);
+}));
