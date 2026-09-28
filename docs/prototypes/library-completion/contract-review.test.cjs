@@ -61,27 +61,98 @@ test('独立契约：完整 Windows 选择示例、隐藏锚点、跨分类与�
   }
 }));
 
-test('独立契约：分类键盘不循环、不连发、不抢输入或模态', () => review(async page => {
+test('独立契约：Ctrl滚轮分类不循环、同段不连跳，移除方向键', () => review(async page => {
   const active = () => page.locator('.categories button.active').getAttribute('data-testid');
-  await page.getByTestId('library-scroll').focus();
-  await page.keyboard.down('Control');
-  await page.keyboard.down('ArrowRight');
-  await page.keyboard.down('ArrowRight');
-  await page.keyboard.up('ArrowRight');
-  await page.keyboard.up('Control');
-  assert.equal(await active(), 'category-2');
+  const scroll = page.getByTestId('library-scroll');
+  await page.getByTestId('manga-B').click({ modifiers: ['Control'] });
+  await page.getByTestId('category-2').click();
+  const prevented = await scroll.evaluate(node => {
+    const event = new WheelEvent('wheel', { deltaY: -80, ctrlKey: true, bubbles: true, cancelable: true });
+    node.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  assert.equal(prevented, true, '分类滚轮必须阻止浏览器默认缩放');
+  assert.equal(await active(), 'category-1');
+  await scroll.dispatchEvent('wheel', { deltaY: -80, ctrlKey: true });
+  assert.equal(await active(), 'category-1');
+  await page.waitForTimeout(280);
+  await scroll.dispatchEvent('wheel', { deltaY: -80, ctrlKey: true });
+  assert.equal(await active(), 'category-0');
+  await page.waitForTimeout(280);
+  await scroll.dispatchEvent('wheel', { deltaY: -80, ctrlKey: true });
+  assert.equal(await active(), 'category-0');
+  await scroll.dispatchEvent('wheel', { deltaY: 80, ctrlKey: true });
+  assert.equal(await active(), 'category-1');
+  assert.match(await page.getByTestId('selection-count').textContent(), /1/);
   await page.keyboard.press('Control+ArrowRight');
-  assert.equal(await active(), 'category-2');
   await page.keyboard.press('Control+ArrowLeft');
   assert.equal(await active(), 'category-1');
+  assert.equal(await page.getByTestId('wheel-hint').textContent(), '');
+  assert.equal(await page.getByTestId('update-details').count(), 0);
+}));
+
+test('独立契约：Ctrl滚轮保留搜索焦点、弹层和输入法边界', () => review(async page => {
+  const scroll = page.getByTestId('library-scroll');
+  const active = () => page.locator('.categories button.active').getAttribute('data-testid');
   await page.getByTestId('search-open').click();
-  await page.getByTestId('library-query').fill('星海 手记');
-  await page.keyboard.press('Control+ArrowRight');
+  await page.getByTestId('library-query').fill('星海');
+  await scroll.dispatchEvent('wheel', { deltaY: 80, ctrlKey: true });
+  assert.equal(await active(), 'category-1');
+  await scroll.focus();
+  await page.evaluate(() => document.dispatchEvent(new CompositionEvent('compositionstart')));
+  await scroll.dispatchEvent('wheel', { deltaY: 80, ctrlKey: true });
+  assert.equal(await active(), 'category-1');
+  await page.evaluate(() => document.dispatchEvent(new CompositionEvent('compositionend')));
+  for (const event of [
+    { deltaY: 80, ctrlKey: true, altKey: true },
+    { deltaY: 80, ctrlKey: true, shiftKey: true },
+    { deltaY: 0, deltaX: 80, ctrlKey: true },
+  ]) await scroll.dispatchEvent('wheel', event);
   assert.equal(await active(), 'category-1');
   await page.getByTestId('panel-open').click();
-  await page.keyboard.press('Control+ArrowRight');
+  await scroll.dispatchEvent('wheel', { deltaY: 80, ctrlKey: true });
   assert.equal(await active(), 'category-1');
+  await page.keyboard.press('Escape');
+  await scroll.focus();
+  await scroll.dispatchEvent('wheel', { deltaY: 80, ctrlKey: true });
+  assert.equal(await active(), 'category-2');
+  assert.equal(await page.getByTestId('library-query').inputValue(), '星海');
 }));
+
+test('独立契约：真实Ctrl鼠标滚轮切分类且不缩放页面', () => review(async page => {
+  const scroll = page.getByTestId('library-scroll');
+  await scroll.focus();
+  const bounds = await scroll.boundingBox();
+  const before = await page.evaluate(() => [innerWidth, devicePixelRatio, visualViewport.scale]);
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, 100);
+  await page.waitForFunction(() => window.demo.state.category === 2);
+  await page.keyboard.up('Control');
+  assert.deepEqual(await page.evaluate(() => [innerWidth, devicePixelRatio, visualViewport.scale]), before);
+  assert.equal(await page.getByTestId('update-details').count(), 0);
+}));
+
+test('独立契约：Ctrl滚轮允许更新中切类，单分类与详情不越界', () => review(async page => {
+  await page.getByTestId('refresh').click();
+  await page.getByTestId('library-scroll').dispatchEvent('wheel', { deltaY: 80, ctrlKey: true });
+  assert.equal(await page.locator('.categories button.active').getAttribute('data-testid'), 'category-2');
+  await page.waitForFunction(() => window.demo.state.job?.status === 'done');
+  assert.deepEqual(await page.evaluate(() => window.demo.state.job.ids), ['A', 'B', 'C', 'D', 'E']);
+  await page.evaluate(() => window.demo.scenario('single-custom'));
+  await page.getByTestId('library-scroll').dispatchEvent('wheel', { deltaY: -80, ctrlKey: true });
+  assert.equal(await page.locator('.categories button.active').getAttribute('data-testid'), 'category-1');
+  await page.getByTestId('manga-A').click();
+  await page.locator('.detail').dispatchEvent('wheel', { deltaY: 80, ctrlKey: true });
+  assert.equal(await page.getByTestId('detail-back').count(), 1);
+  assert.equal(await page.evaluate(() => window.demo.state.category), 1);
+}));
+
+test('独立契约：Android不接入Windows的Ctrl滚轮分类', () => review(async page => {
+  await page.getByTestId('library-scroll').dispatchEvent('wheel', { deltaY: 80, ctrlKey: true });
+  assert.equal(await page.locator('.categories button.active').getAttribute('data-testid'), 'category-1');
+  assert.equal(await page.getByTestId('update-details').count(), 0);
+}, 'device.html?platform=android', 320));
 
 test('独立契约：真实鼠标滚轮分段才刷新且不按搜索裁剪工作集', () => review(async page => {
   await page.getByTestId('search-open').click();

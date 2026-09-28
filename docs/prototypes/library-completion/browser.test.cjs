@@ -145,18 +145,18 @@ test("键盘不抢搜索和弹层；滚轮修饰键及空库不刷新", () =>
     await sc.focus();
     await p.keyboard.press("Control+ArrowRight");
     assert.equal(
-      await p.getByTestId("category-2").getAttribute("class"),
+      await p.getByTestId("category-1").getAttribute("class"),
       "active",
     );
     await p.getByTestId("search-open").click();
     await p.keyboard.press("Control+ArrowLeft");
     assert.equal(
-      await p.getByTestId("category-2").getAttribute("class"),
+      await p.getByTestId("category-1").getAttribute("class"),
       "active",
     );
     await p.keyboard.press("Escape");
     await p.getByTestId("category-1").click();
-    for (const modifier of ["ctrlKey", "altKey", "shiftKey"]) {
+    for (const modifier of ["altKey", "shiftKey"]) {
       await sc.dispatchEvent("wheel", { deltaY: -100, [modifier]: true });
       assert.equal(await p.getByTestId("wheel-hint").textContent(), "");
     }

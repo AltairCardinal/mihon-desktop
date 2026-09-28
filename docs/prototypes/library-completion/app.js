@@ -18,6 +18,13 @@
     suppressClick = false;
   let wheel = { phase: "idle", distance: 0, last: 0, armed: 0, second: 0 },
     cooldownUntil = -Infinity;
+  const CATEGORY_WHEEL_GAP_MS = 250;
+  let categoryWheel = { last: -Infinity, direction: 0 },
+    composing = false;
+  const categoryShortcut =
+    s.platform === "windows"
+      ? "Ctrl + 滚轮切换分类：向上上一类，向下下一类"
+      : "切换分类";
   const esc = (x) =>
     String(x ?? "").replace(
       /[&<>"']/g,
@@ -85,7 +92,7 @@
         : `<h1>书架</h1>`;
     const categories =
       s.prefs.tabs && (s.categories.length > 1 || s.categories[0]?.id !== 0)
-        ? `<div class="categories" aria-label="分类，Ctrl 加左右方向键切换">${s.categories.map((c) => `<button data-testid="category-${c.id}" data-action="category" data-id="${c.id}" class="${c.id === s.category ? "active" : ""}" title="Ctrl+Left / Ctrl+Right 切换相邻分类">${esc(c.name)}${s.prefs.counts ? " " + s.books.filter((b) => b.categories.includes(c.id)).length : ""}</button>`).join("")}</div>`
+        ? `<div class="categories" aria-label="${categoryShortcut}">${s.categories.map((c) => `<button data-testid="category-${c.id}" data-action="category" data-id="${c.id}" class="${c.id === s.category ? "active" : ""}" title="${categoryShortcut}">${esc(c.name)}${s.prefs.counts ? " " + s.books.filter((b) => b.categories.includes(c.id)).length : ""}</button>`).join("")}</div>`
         : "";
     const selection = s.selected.length
       ? `<div class="selection"><strong data-testid="selection-count">已选 ${s.selected.length}</strong>${button("select-close", "退出选择", "close")}${button("select-all", "全选")}${button("select-invert", "反选")}${button("batch-category", "分类")}${button("batch-download", "下载")}${button("batch-delete", "取消收藏")}</div>`
@@ -163,7 +170,7 @@
         scroll.scrollTop +=
           box.top - scroll.getBoundingClientRect().top - offset;
       }
-      scroll.addEventListener("wheel", onWheel, { passive: true });
+      scroll.addEventListener("wheel", onWheel, { passive: false });
       scroll.addEventListener("scroll", () => {
         if (scroll.scrollTop > 0) resetWheel();
       });
@@ -915,24 +922,15 @@
       }
       return;
     }
-    if (
-      s.platform === "windows" &&
-      s.route === "library" &&
-      !modal &&
-      e.ctrlKey &&
-      !e.altKey &&
-      !e.shiftKey &&
-      !e.repeat &&
-      !e.isComposing &&
-      !["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) &&
-      ["ArrowLeft", "ArrowRight"].includes(e.key)
-    ) {
-      e.preventDefault();
-      const index = s.categories.findIndex((c) => c.id === s.category),
-        next = index + (e.key === "ArrowLeft" ? -1 : 1);
-      if (next >= 0 && next < s.categories.length)
-        changeCategory(s.categories[next].id);
-    }
+  });
+  document.addEventListener("compositionstart", () => {
+    composing = true;
+  });
+  document.addEventListener("compositionend", () => {
+    composing = false;
+  });
+  document.addEventListener("keyup", (e) => {
+    if (e.key === "Control") categoryWheel = { last: -Infinity, direction: 0 };
   });
   function resetWheel() {
     wheel = { phase: "idle", distance: 0, last: 0, armed: 0, second: 0 };
@@ -942,6 +940,33 @@
   function onWheel(e) {
     const now = performance.now(),
       scroll = e.currentTarget;
+    if (e.ctrlKey) {
+      if (["running", "waiting"].includes(s.job?.status) || now < cooldownUntil)
+        cooldownUntil = now + 800;
+      resetWheel();
+      const editing =
+        document.activeElement?.matches("input, textarea, select") ||
+        document.activeElement?.isContentEditable;
+      if (
+        s.platform !== "windows" || s.route !== "library" || modal ||
+        editing || composing || e.altKey || e.shiftKey || !e.deltaY ||
+        Math.abs(e.deltaX) > Math.abs(e.deltaY)
+      ) return;
+      // Consume only the library category gesture; other contexts retain browser behavior.
+      e.preventDefault();
+      const direction = Math.sign(e.deltaY);
+      const sameBurst =
+        categoryWheel.direction === direction &&
+        now - categoryWheel.last < CATEGORY_WHEEL_GAP_MS;
+      categoryWheel = { last: now, direction };
+      if (sameBurst) return;
+      const index = s.categories.findIndex((category) => category.id === s.category);
+      const next = index + direction;
+      if (index >= 0 && next >= 0 && next < s.categories.length)
+        changeCategory(s.categories[next].id);
+      return;
+    }
+    categoryWheel = { last: -Infinity, direction: 0 };
     // Cooldown belongs to the task, not to the cancellable gesture hint.
     // Every wheel direction extends the required quiet interval.
     if (s.job && ["running", "waiting"].includes(s.job.status)) {
@@ -1012,7 +1037,11 @@
       }
     }
   }
-  window.addEventListener("blur", resetWheel);
+  window.addEventListener("blur", () => {
+    resetWheel();
+    categoryWheel = { last: -Infinity, direction: 0 };
+    composing = false;
+  });
   setInterval(() => {
     if (
       ["hinting", "armed"].includes(wheel.phase) &&
@@ -1093,6 +1122,7 @@
       );
   }
   function scenario(name) {
+    categoryWheel = { last: -Infinity, direction: 0 };
     M.scenario(s, name);
     if (!["save-failure", "sort-interrupted", "broken-store"].includes(name)) {
       const scroll = document.querySelector('[data-testid="library-scroll"]');
