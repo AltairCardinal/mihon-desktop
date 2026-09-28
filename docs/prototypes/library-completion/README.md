@@ -1,6 +1,6 @@
 # 书架完整 Roadmap · 双端交互 DEMO
 
-审核入口：[Windows / Android 并列演示](index.html) · [书架 19 项变化及验收](ACCEPTANCE.md) · [详情现状与叠加变化验收](DETAIL-ACCEPTANCE.md) · [产品实施 roadmap](../../roadmap/2026-09-28-desktop-library-completion-roadmap.md)
+审核入口：[Windows / Android 并列演示](index.html) · [书架 19 项变化及验收](ACCEPTANCE.md) · [详情现状与叠加变化验收](DETAIL-ACCEPTANCE.md) · [详情完整差异 A1–I4 验收](DETAIL-PARITY-ACCEPTANCE.md) · [产品实施 roadmap](../../roadmap/2026-09-28-desktop-library-completion-roadmap.md)
 
 本原型展示 roadmap 全部 19 项需求的目标交互。它是设计审阅产物，**不代表 Mihon Desktop 产品代码已实现或修复**；产品 LC01–LC11 任务、manifest 与发布门禁保持原状态。
 
@@ -94,8 +94,10 @@
 | `styles.css` | Mihon 外观、四布局、响应式、深浅色与字号 |
 | `icons.js` | 从已提交的旧 DEMO 提取的本地 Material 图标子集，保留填充／描边区别 |
 | `model.js` | 本地样本及可测试的选择、偏好、更新、章节和设备规则 |
+| `detail-parity-model.js`、`detail-parity-view.js` | 详情章节筛选、选择、下载、迁移和追踪规则，以及章节与业务弹层的审阅视图 |
 | `*.test.cjs` | 本地模型及浏览器真实交互验证 |
 | `ACCEPTANCE.md` | 用户详细审核条目；不自动勾选 |
+| `DETAIL-PARITY-ACCEPTANCE.md` | 详情差异每一项的手动验收路径；不自动勾选 |
 
 ## 验证方式
 
@@ -179,3 +181,19 @@ L08 的源顺序和重复刷新先在模型及浏览器 focused 测试中因旧�
 - [Desktop 作品信息刷新叠加，1000×800](screenshots/desktop-detail-metadata-1000.png)
 
 目视检查了封面比例、导航与入口、模态层级、失败明细、窄屏文字换行和滚动可达。截图和浏览器验证仍不替代 roadmap 要求的 Windows 触控板、系统设备条件、Android/Desktop 共享实现与正式构建验收。
+
+## 详情差异处理方式交互审阅
+
+本轮在现有详情页上演示 [A1–I4 逐项验收](DETAIL-PARITY-ACCEPTANCE.md) 中建议的处理方式。**SOURCE**：原版 Android Mihon 的详情行为与本仓库 Desktop 当前页面；**PROJECT_POLICY**：保留 Desktop 7:10 封面、主导航、作者入口和 Windows 的 Ctrl/Shift 操作，同时对齐章节、下载、追踪、刷新与迁移的业务语义；**HTML_ADAPTER**：全部章节、文件、远端追踪、搜索与迁移结果都是当前设备 iframe 内的本地样本，不连接真实服务。
+
+详情默认宽屏为作品信息与章节双栏，窄屏上下排列。章节数量或顶栏筛选按钮打开“筛选／排序／显示”统一面板；三态筛选即时生效。Windows 未选择时单击章节进入阅读，Ctrl 单击进入或增减选择，Shift 与长按可选范围；选择中普通单击增减，顶栏可全选/反选，底部按适用集合分别显示下载与删除。鼠标右键章节提供已读、书签、立即下载/取消等动作。顶部继续向上滚动先出现提示，再滚动才启动刷新。全局“仅已下载”场景锁定局部下载筛选。
+
+追踪面板支持预填搜索、选择匹配、服务进度与总章节上限、评分和日期，以及本地远端刷新/链接操作；手动标已读遵循书架设置中的自动/询问/关闭偏好。迁移会先选目标源，再搜索、翻页、更换源、选择匹配和选项，最后复制或迁移成**独立目标作品与章节身份**；查询含“失败”的样本先显示失败与重试，取消不修改原作品。批量下载失败场景保留失败章节选择，便于重试。
+
+外层新增“详情长简介与作品资料”“详情缺失图源与外部章节”“详情图源登录验证”“详情重复作品”“详情追踪与未收藏作品”“详情远端追踪失败”“详情图源迁移”“详情批量下载失败与重试”“未收藏作品自动追踪”“详情二百章长列表”“同步阅读进度与页码”。原有“目录增删改与换链”“空目录响应”“畸形目录响应”“全局仅下载”等场景继续用于 G、D 组。每次切换场景会重建该设备的书架样本；“模拟重新打开”只保留内存快照，不写浏览器持久存储。
+
+新增浏览器验证覆盖统一面板、Ctrl/Shift 反向范围、筛选后锚点、混合下载集合、删除确认、追踪输入、独立迁移、缺源外部章节、顶部两段刷新、失败重试及手动已读询问。截图供比对： [Windows 详情](screenshots/detail-parity-desktop.png)、[Windows 章节面板](screenshots/detail-parity-panel-desktop.png)、[Windows 多选](screenshots/detail-parity-selection-desktop.png)、[Android 详情](screenshots/detail-parity-android.png)、[Android 章节面板](screenshots/detail-parity-panel-android.png)。浏览器通过只说明交互样本接线正确；生产 Kotlin、真实服务、文件和 Windows 构建仍要在产品实施时分别验收。
+
+本轮文件数与行数较多，是因为 A1–I4 作为同一详情审阅入口同时需要场景、界面、交互模型、真实点击测试与验收说明；并未扩张到 Kotlin 产品实现。主要集成风险是统一面板重绘后的焦点与选择锚点、异步迁移取消后不落地、目录变化后的下载身份，以及跨设备预览状态隔离，均作为本轮浏览器检查重点。
+
+2026-09-29 验证：新增章节模型 7 项先红后绿；首簇详情真实浏览器 8 项先红后绿。独立审查提出的追踪草稿回退、详情刷新打断、筛选误清选择、重复收藏迁移死路，以及二百章/同步页码夹具缺口，均以六条真实浏览器用例复现红灯，修复后 6/6 绿，独立修复复审通过。通过真实 Chrome 鼠标拖动详情原生滚动条，二百章场景滑到末尾（`12244/12244`，滚动位置/最大值，CSS px），第 200 话在视口内。原型 HTTP 入口 `http://127.0.0.1:50944/` 已核对能加载并列 Windows 章节面板。最终本目录完整套件 **92/92 通过，0 失败、0 跳过，98.09 秒**；模型、浏览器、历史详情和双端契约在同一轮完成。脚本语法与 `git diff --check` 通过。此结果不代表生产 Android/Desktop 已实现或通过原生构建。

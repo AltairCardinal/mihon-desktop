@@ -258,6 +258,7 @@ test('独立详情契约：当前顶栏的全部已读是可读文字，取消�
   await page.getByTestId('manga-A').click();
   assert.match(await page.getByTestId('detail-mark-all').textContent(), /全部标为已读/);
   await page.getByTestId('detail-library').click();
+  await page.getByTestId('confirm-yes').click();
   await page.getByTestId('detail-back').click();
   assert.equal(await page.getByTestId('manga-A').count(), 0);
 }));
@@ -265,15 +266,17 @@ test('独立详情契约：当前顶栏的全部已读是可读文字，取消�
 test('独立详情契约：Android 窄屏滚动到章节菜单后，每个菜单项均可实际点击', () => review(async page => {
   await page.getByTestId('manga-A').click();
   await page.getByTestId('detail-filter-menu').click();
-  const menuReachableWithoutAutoscroll = await page.getByTestId('chapter-filter-read').evaluate(node => {
+  const menuReachableWithoutAutoscroll = await page.getByTestId('chapter-filter-unread').evaluate(node => {
     const rect = node.getBoundingClientRect();
     const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
     return hit === node || node.contains(hit);
   });
   assert.equal(menuReachableWithoutAutoscroll, true, '展开后首个筛选项应直接出现在可见顶层');
-  await page.getByTestId('chapter-filter-read').click();
+  await page.getByTestId('chapter-filter-unread').click();
   assert.match(await page.getByTestId('chapter-count').textContent(), /2\/3/);
+  await page.getByTestId('chapter-settings-tab-display').click();
   await page.getByTestId('chapter-display-number').click();
+  await page.keyboard.press('Escape');
   assert.match(await page.getByTestId('chapter-row-A-3').textContent(), /第 3 话/);
 }, 'device.html?platform=android', 320, 700));
 
@@ -305,9 +308,9 @@ test('独立叠加契约：章节源顺序与章节号排序可来回切换', ()
   const order = () => page.locator('[data-testid^="chapter-row-"]').evaluateAll(rows => rows.map(row => row.dataset.chapterId));
   assert.deepEqual(await order(), ['A-3', 'A-4', 'A-1']);
   await page.getByTestId('detail-filter-menu').click();
+  await page.getByTestId('chapter-settings-tab-sort').click();
   await page.getByTestId('chapter-sort-number').click();
   assert.deepEqual(await order(), ['A-4', 'A-3', 'A-1']);
-  await page.getByTestId('detail-filter-menu').click();
   await page.getByTestId('chapter-sort-source').click();
   assert.deepEqual(await order(), ['A-3', 'A-4', 'A-1']);
 }));

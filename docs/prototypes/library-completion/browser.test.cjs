@@ -208,7 +208,7 @@ test("现有详情结构：顶栏、封面菜单、元信息、动作行和阅�
     assert.match(await p.getByTestId("detail-reading-mode").textContent(), /从右到左/);
   }));
 
-test("现有详情章节：筛选排序、阅读进度与独立下载书签动作", () =>
+test("目标详情章节：三态筛选排序、阅读进度与独立下载书签动作", () =>
   run(async (p) => {
     await p.getByTestId("manga-A").click();
     assert.match(await p.getByTestId("chapter-count").textContent(), /3/);
@@ -217,20 +217,22 @@ test("现有详情章节：筛选排序、阅读进度与独立下载书签动�
     await p.getByTestId("chapter-bookmark-A-1").click();
     assert.equal(await p.getByTestId("chapter-row-A-1").count(), 1);
     await p.getByTestId("detail-filter-menu").click();
-    await p.getByTestId("chapter-filter-read").click();
+    await p.getByTestId("chapter-filter-unread").click();
     assert.equal(await p.getByTestId("chapter-row-A-1").count(), 0);
     assert.match(await p.getByTestId("chapter-count").textContent(), /2\/3/);
+    await p.getByTestId("chapter-settings-tab-sort").click();
     await p.getByTestId("chapter-sort-number").click();
     const order = await p.locator('[data-testid^="chapter-row-"]').evaluateAll((rows) => rows.map((r) => r.dataset.chapterId));
     assert.deepEqual(order, ["A-3", "A-2"]);
-    await p.getByTestId("detail-filter-menu").click();
+    await p.getByTestId("chapter-settings-tab-display").click();
     await p.getByTestId("chapter-display-number").click();
     assert.match(await p.getByTestId("chapter-row-A-3").textContent(), /第 3 话/);
+    await p.keyboard.press("Escape");
     await p.getByTestId("chapter-download-A-3").click();
     assert.equal(await p.getByTestId("chapter-delete-A-3").count(), 1);
   }));
 
-test("现有详情章节选择：长按、普通点击、批量标记、逐层返回", () =>
+test("目标详情章节选择：长按、普通点击、批量标记、追踪询问与逐层返回", () =>
   run(async (p) => {
     await p.getByTestId("manga-A").click();
     await p.getByTestId("chapter-row-A-2").dispatchEvent("pointerdown", { button: 0, pointerId: 1, clientX: 60, clientY: 500 });
@@ -241,6 +243,7 @@ test("现有详情章节选择：长按、普通点击、批量标记、逐层�
     await p.getByTestId("chapter-row-A-3").click();
     assert.match(await p.getByTestId("detail-selection-count").textContent(), /2/);
     await p.getByTestId("detail-batch-read").click();
+    if (await p.getByTestId("modal-cancel").count()) await p.getByTestId("modal-cancel").click();
     assert.equal(await p.getByTestId("detail-selection-count").count(), 0);
     assert.match(await p.getByTestId("chapter-row-A-2").getAttribute("data-read"), /true/);
     await p.getByTestId("chapter-row-A-1").click();
@@ -276,13 +279,14 @@ test("现有详情辅助入口：下载菜单、分类、更新间隔、追踪�
     assert.equal(await p.getByTestId("detail-continue").count(), 1);
   }));
 
-test("现有详情所选及以下按当前排序从首个选中章节向下标记", () =>
+test("目标详情标记之前章节已读，不包含当前章节", () =>
   run(async (p) => {
     await p.getByTestId("manga-A").click();
-    await p.getByTestId("chapter-row-A-2").dispatchEvent("pointerdown", { button: 0, pointerId: 1, clientX: 60, clientY: 500 });
+    await p.getByTestId("chapter-row-A-3").dispatchEvent("pointerdown", { button: 0, pointerId: 1, clientX: 60, clientY: 500 });
     await p.waitForTimeout(550);
-    await p.getByTestId("chapter-row-A-2").dispatchEvent("pointerup", { button: 0, pointerId: 1 });
-    await p.getByTestId("detail-batch-below").click();
+    await p.getByTestId("chapter-row-A-3").dispatchEvent("pointerup", { button: 0, pointerId: 1 });
+    await p.getByTestId("detail-batch-previous").click();
+    if (await p.getByTestId("modal-cancel").count()) await p.getByTestId("modal-cancel").click();
     assert.equal(await p.getByTestId("chapter-row-A-3").getAttribute("data-read"), "false");
     assert.equal(await p.getByTestId("chapter-row-A-2").getAttribute("data-read"), "true");
   }));
