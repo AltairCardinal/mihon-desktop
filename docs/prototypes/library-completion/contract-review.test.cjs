@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { chromium } = require(process.env.PLAYWRIGHT_CORE_PATH);
+const { openMoreSettings, openLibraryMenuAction } = require("./detail-test-helpers.cjs");
 
 async function review(fn, entry = 'device.html?platform=windows', width = 1000, height = 800) {
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -145,7 +146,7 @@ test('独立契约：真实Ctrl鼠标滚轮切分类且不缩放页面', () => r
 }));
 
 test('独立契约：Ctrl滚轮允许更新中切类，单分类与详情不越界', () => review(async page => {
-  await page.getByTestId('refresh').click();
+  await openLibraryMenuAction(page, 'refresh');
   await page.getByTestId('library-scroll').dispatchEvent('wheel', { deltaY: 80, ctrlKey: true });
   assert.equal(await page.locator('.categories button.active').getAttribute('data-testid'), 'category-2');
   await page.waitForFunction(() => window.demo.state.job?.status === 'done');
@@ -203,7 +204,7 @@ test('独立契约：评分以十分制且排序方向与标签一致', () => re
 test('独立契约：双端焦点隔离、实际字号翻倍、320px弹层可达', () => review(async page => {
   const pc = page.frameLocator('#preview-windows');
   const phone = page.frameLocator('#preview-android');
-  await phone.getByTestId('settings-open').click();
+  await openMoreSettings(phone);
   const title = phone.getByRole('dialog').locator('h2');
   const before = await title.evaluate(node => parseFloat(getComputedStyle(node).fontSize));
   await pc.getByTestId('search-open').click();
@@ -233,7 +234,7 @@ test('独立契约：双端焦点隔离、实际字号翻倍、320px弹层可达
     taskStatus: window.demo.state.job?.status,
   }));
   assert.equal(restored.matched, true, JSON.stringify(restored));
-  await phone.getByTestId('settings-open').click();
+  await openMoreSettings(phone);
   assert.equal(await phone.getByTestId('pref-interval').inputValue(), '72');
 }, 'index.html', 1440, 1000));
 
@@ -313,9 +314,10 @@ test('独立叠加契约：目录已同步后开启作品信息刷新，下一�
   await page.waitForFunction(() => window.demo.state.job?.status === 'done');
   assert.equal(await page.locator('.detail-description').textContent(), before);
   await page.getByTestId('detail-back').click();
-  await page.getByTestId('settings-open').click();
+  await openMoreSettings(page);
   await page.getByTestId('pref-metadata').check();
   await page.getByTestId('modal-close').click();
+  await page.getByTestId('nav-library').click();
   await page.getByTestId('manga-A').click();
   await page.getByTestId("detail-overflow").click();
   await page.getByTestId("detail-refresh").click();

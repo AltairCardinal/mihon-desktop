@@ -125,6 +125,8 @@
       pendingReset: false,
       seed: 0,
       downloadOnly: false,
+      incognito: false,
+      browseTab: "sources",
       trackerNames: ["AniList", "MyAnimeList"],
       scroll: {},
     };

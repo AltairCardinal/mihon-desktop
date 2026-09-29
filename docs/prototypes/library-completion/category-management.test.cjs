@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { chromium } = require(process.env.PLAYWRIGHT_CORE_PATH);
+const { openMoreSettings } = require("./detail-test-helpers.cjs");
 const M = require("./model.js");
 
 async function visit(fn, platform = "windows", width = 1000, review = "") {
@@ -40,14 +41,13 @@ test("分类审核直达链接打开新管理页，返回更多仍保留原入�
 
 test("更多审核直达链接直接显示分类入口位置", () => visit(async p => {
   assert.equal(await p.getByTestId("category-open").isVisible(), true);
-  assert.deepEqual(await p.getByTestId("more-library-group").locator("button").allTextContents(), ["下载队列", "分类", "统计", "数据与存储"]);
+  assert.deepEqual(await p.locator(".more-link-group").first().locator("button").evaluateAll(items => items.map(item => item.innerText.trim())), ["下载队列", "分类", "统计", "数据与存储"]);
 }, "windows", 1000, "more"));
 
-test("更多页单一标题和原版同组顺序，邻项说明样本边界且分类真实进入", () => visit(async p => {
+test("更多页按 Mihon 分组排列并保留样本边界，分类真实进入", () => visit(async p => {
   await p.getByTestId("nav-more").click();
-  assert.equal(await p.getByRole("heading", { name: "更多", exact: true }).count(), 1);
-  assert.deepEqual(await p.getByTestId("more-library-group").locator("button").allTextContents(), ["下载队列", "分类", "统计", "数据与存储"]);
-  assert.equal(await p.getByTestId("more-library-group").getByRole("separator").count(), 2);
+  assert.equal(await p.getByTestId("more-logo").count(), 1);
+  assert.deepEqual(await p.locator(".more-content .more-list-item").evaluateAll(items => items.map(item => item.dataset.action)), ["more-download-only", "more-incognito", "more-downloads", "category-open", "more-stats", "more-storage", "settings-open", "more-about", "more-help", "more-donate"]);
   for (const [id, name] of [["downloads", "下载队列"], ["stats", "统计"], ["storage", "数据与存储"]]) {
     await p.getByTestId(`more-${id}`).click();
     assert.match(await p.getByRole("dialog").textContent(), new RegExp(name));
@@ -59,10 +59,12 @@ test("更多页单一标题和原版同组顺序，邻项说明样本边界且�
   assert.equal(await p.getByTestId("category-page").isVisible(), true);
 }));
 
-test("分类从更多进入独立子页，设置无入口，键盘排序返回后反映标签", () => visit(async p => {
+test("分类管理仅从更多进入独立子页，键盘排序返回后反映标签", () => visit(async p => {
   assert.equal(await p.getByTestId("category-open").count(), 0);
-  await p.getByTestId("settings-open").click();
-  assert.equal(await p.getByTestId("category-open").count(), 0);
+  await p.getByTestId("nav-more").click();
+  assert.equal(await p.getByTestId("category-open").count(), 1);
+  await openMoreSettings(p);
+  assert.equal(await p.getByRole("dialog", { name: "设置" }).count(), 1);
   await p.keyboard.press("Escape");
   await openManager(p);
   assert.equal(await p.getByRole("dialog").count(), 0);
@@ -76,7 +78,7 @@ test("分类从更多进入独立子页，设置无入口，键盘排序返回�
   assert.deepEqual(await rowIds(p), ["2", "1"]);
   assert.equal(await p.getByTestId("category-drag-2").evaluate(e => e === document.activeElement), true);
   await p.keyboard.press("Escape");
-  assert.equal(await p.getByRole("heading", { name: "更多", exact: true }).isVisible(), true);
+  assert.equal(await p.getByTestId("more-logo").isVisible(), true);
   assert.equal(await p.getByTestId("category-open").evaluate(e => e === document.activeElement), true);
   await p.getByTestId("nav-library").click();
   assert.deepEqual(await p.locator(".categories button").allTextContents(), ["默认 0", "珍藏 1", "追更中 5"]);

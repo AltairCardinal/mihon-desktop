@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { chromium } = require(process.env.PLAYWRIGHT_CORE_PATH);
+const { openMoreSettings } = require("./detail-test-helpers.cjs");
 
 async function visit(run) {
   const browser = await chromium.launch({ channel: "chrome", headless: true });
@@ -134,9 +135,10 @@ test("远端追踪失败可恢复，未收藏作品加入书架时自动匹配",
 
 test("目录增删改后缺章提示、状态承接及新增章自动下载可见", () => visit(async (page) => {
   await page.evaluate(() => window.demo.scenario("chapter-change"));
-  await page.getByTestId("settings-open").click();
+  await openMoreSettings(page);
   await page.getByTestId("pref-autoDownloadNew").check();
   await page.getByTestId("modal-close").click();
+  await page.getByTestId("nav-library").click();
   await page.getByTestId("manga-A").click();
   await page.getByTestId("detail-overflow").click();
   await page.getByTestId("detail-refresh").click();

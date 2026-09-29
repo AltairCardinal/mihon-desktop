@@ -215,7 +215,7 @@ test("书架多选采用 Mihon 顶栏、底部批量菜单和原版选择外观"
       await page.getByTestId("panel-open").click();
       await page.getByTestId("panel-tab-display").click();
       await page.getByTestId(`layout-${layout}`).click();
-      await page.getByTestId("modal-close").click();
+      await page.keyboard.press("Escape");
       await page.getByTestId("manga-A").click({ modifiers: ["Control"] });
       const selectedBackground = await page
         .locator(".book.selected")

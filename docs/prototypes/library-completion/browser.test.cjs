@@ -1,4 +1,4 @@
-const { openCoverMenu } = require("./detail-test-helpers.cjs");
+const { openCoverMenu, openMoreSettings, openLibraryMenuAction } = require("./detail-test-helpers.cjs");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { pathToFileURL } = require("node:url");
@@ -68,16 +68,17 @@ test("审查修复：真实排序控件使用相同方向状态，切分类与�
       (await scores()).filter((x) => /\d/.test(x)).map(parseFloat),
       [9, 8, 8],
     );
-    await p.getByTestId("modal-close").click();
+    await p.keyboard.press("Escape");
     await p.getByTestId("category-2").click();
     await p.getByTestId("panel-open").click();
     await p.getByTestId("panel-tab-sort").click();
     assert.match(await p.getByTestId("sort-title").textContent(), /升序/);
-    await p.getByTestId("modal-close").click();
-    await p.getByTestId("settings-open").click();
+    await p.keyboard.press("Escape");
+    await openMoreSettings(p);
     await p.getByTestId("pref-perCategory").uncheck();
     await p.getByTestId("pref-perCategory").check();
     await p.getByTestId("modal-close").click();
+    await p.getByTestId("nav-library").click();
     await p.getByTestId("category-1").click();
     await p.getByTestId("panel-open").click();
     await p.getByTestId("panel-tab-sort").click();
@@ -124,10 +125,11 @@ test("审查修复：任务结束后反向滚动持续阻止重新武装，静�
 
 test("元数据刷新完成立即更新书架封面，保留自定义封面", () =>
   run(async (p) => {
-    await p.getByTestId("settings-open").click();
+    await openMoreSettings(p);
     await p.getByTestId("pref-metadata").check();
     await p.getByTestId("modal-close").click();
-    await p.getByTestId("refresh").click();
+    await p.getByTestId("nav-library").click();
+    await openLibraryMenuAction(p, "refresh");
     await p.waitForTimeout(1700);
     assert.match(await p.getByTestId("manga-A").textContent(), /源封面 · 2/);
   }));
@@ -273,14 +275,14 @@ test("阅读模式审核链接直达阅读预览菜单且加载新样式", () =>
 test("并列预览使用新版设备资源地址", () =>
   run(async (p) => {
     for (const platform of ["windows", "android"]) {
-      assert.match(await p.locator(`#preview-${platform}`).getAttribute("src"), /[?&]v=shelf-selection-ui-20260930a/);
+      assert.match(await p.locator(`#preview-${platform}`).getAttribute("src"), /[?&]v=shelf-navigation-parity-20260930a/);
       const device = p.frameLocator(`#preview-${platform}`);
-      assert.match(await device.locator('link[rel="stylesheet"]').getAttribute("href"), /styles\.css\?v=shelf-selection-ui-20260930a/);
+      assert.match(await device.locator('link[rel="stylesheet"]').getAttribute("href"), /styles\.css\?v=shelf-navigation-parity-20260930a/);
       for (const script of ["model.js", "detail-parity-model.js", "detail-parity-view.js", "detail-icons.js", "app.js"]) {
-        assert.match(await device.locator(`script[src^="${script}"]`).getAttribute("src"), new RegExp(`${script.replaceAll(".", "\\.")}\\?v=shelf-selection-ui-20260930a`));
+        assert.match(await device.locator(`script[src^="${script}"]`).getAttribute("src"), new RegExp(`${script.replaceAll(".", "\\.")}\\?v=shelf-navigation-parity-20260930a`));
       }
     }
-  }, "index.html?v=shelf-selection-ui-20260930a", 1440));
+  }, "index.html?v=shelf-navigation-parity-20260930a", 1440));
 
 test("目标详情章节：三态筛选排序、阅读进度与独立下载书签动作", () =>
   run(async (p) => {
@@ -430,7 +432,7 @@ test("详情叠加 L02：四种书架布局共用自定义封面版本，删除�
       assert.match(await cover.textContent(), /自定义封面/);
       assert.equal(await cover.evaluate((e) => e.style.getPropertyValue("--cover-color")), detailColor);
     }
-    await p.getByTestId("modal-close").click();
+    await p.keyboard.press("Escape");
     await p.evaluate(() => window.demo.command("source-cover"));
     await p.getByTestId("manga-A").click();
     assert.match(await p.locator(".hero .cover").textContent(), /自定义封面/);
@@ -455,9 +457,10 @@ test("详情叠加 S06/L02：默认不改作品信息，开启后刷新简介源
     await p.waitForFunction(() => window.demo.state.job?.status === "done");
     assert.equal(await p.locator(".detail-description").textContent(), oldDescription);
     await p.getByTestId("detail-back").click();
-    await p.getByTestId("settings-open").click();
+    await openMoreSettings(p);
     await p.getByTestId("pref-metadata").check();
     await p.getByTestId("modal-close").click();
+    await p.getByTestId("nav-library").click();
     await p.getByTestId("manga-A").click();
     await p.getByTestId("detail-overflow").click();
     await p.getByTestId("detail-refresh").click();
@@ -537,7 +540,7 @@ test("双端 file 入口、设置隔离和 320px / 200% 字号可达", () =>
         phone = p.frameLocator("#preview-android");
       await pc.getByTestId("search-open").click();
       await pc.getByTestId("library-query").fill("星海");
-      await phone.getByTestId("settings-open").click();
+      await openMoreSettings(phone);
       await phone.getByTestId("pref-interval").selectOption("48");
       assert.equal(await pc.getByTestId("library-query").inputValue(), "星海");
       await p.getByTestId("font-toggle").click();
@@ -595,18 +598,20 @@ test("顶部滚轮：同段不确认、反向取消、超时清除、任务后�
   }));
 test("设置失败与草稿取消通过真实入口、默认分类影响新收藏", () =>
   run(async (p) => {
-    await p.getByTestId("settings-open").click();
+    await openMoreSettings(p);
     await p.getByTestId("pref-defaultCategory").selectOption("2");
     await p.getByTestId("add-book").click();
+    await p.getByTestId("nav-library").click();
     await p.getByTestId("category-2").click();
     assert.equal(await p.locator(".book").count(), 2);
-    await p.getByTestId("settings-open").click();
+    await openMoreSettings(p);
     await p.getByTestId("policy-open").click();
     await p.getByTestId("policy-0").click();
     await p.getByTestId("modal-back").click();
     await p.getByTestId("policy-open").click();
     assert.match(await p.getByTestId("policy-0").textContent(), /不指定/);
     await p.getByTestId("modal-close").click();
+    await p.getByTestId("nav-library").click();
     await p.evaluate(() => window.demo.scenario("save-failure"));
     await p.getByTestId("panel-open").click();
     await p.getByTestId("panel-tab-display").click();
@@ -640,7 +645,7 @@ test("周期发布门禁可打开，封面变化来自应用外指令", () =>
     await p.getByTestId("panel-open").click();
     await p.getByTestId("filter-custom").click();
     assert.equal(await p.locator(".book").count(), 1);
-    await p.getByTestId("modal-close").click();
+    await p.keyboard.press("Escape");
     await p.getByTestId("manga-A").click();
     await openCoverMenu(p);
     await p.getByTestId("cover-replace").click();
@@ -667,11 +672,11 @@ test("改变网格列数保持可见作品锚点，更新进度不夺走弹层�
     const id = await first();
     await p.getByTestId("panel-open").click();
     await p.getByTestId("panel-tab-display").click();
-    await p.getByTestId("pref-columns").selectOption("6");
-    await p.getByTestId("modal-close").click();
+    await p.getByTestId("pref-columns").fill("6");
+    await p.keyboard.press("Escape");
     assert.equal(await first(), id);
     await p.evaluate(() => window.demo.scenario("partial-failure"));
-    await p.getByTestId("refresh").click();
+    await openLibraryMenuAction(p, "refresh");
     await p.getByTestId("update-details").click();
     await p.getByTestId("update-cancel").focus();
     await p.waitForTimeout(350);

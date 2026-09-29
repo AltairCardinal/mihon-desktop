@@ -29,6 +29,7 @@
     hold = null,
     suppressClick = false;
   let batchMenu = null,
+    libraryMoreOpen = false,
     batchActionHold = null,
     suppressBatchActionId = null,
     batchCategoryDraft = {},
@@ -116,6 +117,15 @@
     const key = name === "random" ? "swap" : name;
     const mode = filledIcons.has(key) ? "filled" : "stroked";
     const detailPaths = {
+      cloudSync: "M6.4 18a4.4 4.4 0 0 1-.7-8.58A6.4 6.4 0 0 1 18 7.2a4.9 4.9 0 0 1-.5 9.8H6.4Zm3.2-4.8a2.8 2.8 0 0 1 4.9-1.8l.8.9m0 0 .1-1.9m-.1 1.9-1.9-.1m.6 2.5a2.8 2.8 0 0 1-4.9 1.8l-.8-.9m0 0-.1 1.9m.1-1.9 1.9.1",
+      cloudOff: "M3 3l18 18M6.4 18a4.4 4.4 0 0 1-.7-8.58A6.4 6.4 0 0 1 18 7.2a4.9 4.9 0 0 1 2.4 8.6",
+      incognito: "M3 10h18l-1.5 7a3 3 0 0 1-5.8-.3l-.7-2.7h-2l-.7 2.7a3 3 0 0 1-5.8.3L3 10zm3.4-3.2 1.2-2h8.8l1.2 2M4.5 10l1.5 2h3l1.2-2m9.3 0-1.5 2h-3l-1.2-2",
+      getApp: "M5 20h14v-2H5v2zM11 3h2v9l3.5-3.5 1.4 1.4L12 16l-5.9-6.1 1.4-1.4L11 12V3z",
+      queryStats: "M3 3h2v18H3V3zm4 12h3v6H7v-6zm5-5h3v11h-3V10zm5-6h3v17h-3V4z",
+      storage: "M4 5c0-1.7 3.6-3 8-3s8 1.3 8 3v14c0 1.7-3.6 3-8 3s-8-1.3-8-3V5zm0 0c0 1.7 3.6 3 8 3s8-1.3 8-3M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3",
+      info: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z",
+      helpOutline: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm0-14a3 3 0 0 0-3 3h2a1 1 0 1 1 2 0c0 1.5-2 1.4-2 4h2c0-1.5 2-1.7 2-4a3 3 0 0 0-3-3zm-1 9h2v2h-2z",
+      attachMoney: "M12 2v20m5-15a4 4 0 0 0-4-2h-2a3 3 0 0 0 0 6h2a3 3 0 0 1 0 6h-2a4 4 0 0 1-4-2",
       download: "M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4",
       downloadChapter: "M11.99,2C6.47,2 2,6.48 2,12C2,17.52 6.47,22 11.99,22C17.52,22 22,17.52 22,12C22,6.48 17.52,2 11.99,2zM12,4C16.42,4 20,7.58 20,12C20,16.42 16.42,20 12,20C7.58,20 4,16.42 4,12C4,7.58 7.58,4 12,4z M18.041,12 L16.976,10.935 12.755,15.149L12.755,5.959L11.245,5.959L11.245,15.149L7.031,10.928 5.959,12l6.041,6.041z",
       link: "M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1",
@@ -142,7 +152,7 @@
       heart: "M12 21 3.5 12.5a5.5 5.5 0 0 1 8.5-7 5.5 5.5 0 0 1 8.5 7L12 21z",
       heartFilled: "M12 21 3.5 12.5a5.5 5.5 0 0 1 8.5-7 5.5 5.5 0 0 1 8.5 7L12 21z",
     };
-    return `<svg class="${mode}" viewBox="0 0 24 24" aria-hidden="true"><path d="${detailPaths[key] || LibraryIcons[key] || LibraryIcons.more}"></path></svg>`;
+    return `<svg class="${mode}" data-mihon-icon="${key}" viewBox="0 0 24 24" aria-hidden="true"><path d="${detailPaths[key] || LibraryIcons[key] || LibraryIcons.more}"></path></svg>`;
   }
   const button = (id, label, ico, extra = "") =>
     `<button data-testid="${id}" data-action="${id}" class="${ico ? "icon" : ""}" aria-label="${esc(label)}" title="${esc(label)}" ${extra}>${ico ? icon(ico) : esc(label)}</button>`;
@@ -181,7 +191,12 @@
     return `<div class="cover ${b.custom ? "custom-cover" : ""}" style="--cover-color:${colors[(b.id.charCodeAt(0) + (b.custom ? b.customRevision : b.cover || 0)) % colors.length]}"><small>MIHON · LIBRARY</small><span class="cover-symbol">${esc(b.title.split(" · ")[1]?.slice(0, 2) || "故事")}</span><span class="cover-tag">${b.custom ? `自定义封面 · ${b.customRevision}` : `源封面 · ${b.cover + 1}`}</span></div>`;
   }
   function nav() {
-    return `<nav class="navigation" aria-label="主导航">${[["library", "书架"], ["updates", "更新"], ["history", "历史"], ["browse", "浏览"], ...(s.platform === "windows" ? [["authors", "作者"]] : []), ["more", "更多"]].map(([id, name]) => `<button data-action="nav-${id}" data-testid="nav-${id}" class="${(s.route === "detail" ? "library" : s.route) === id ? "active" : ""}">${icon(id)}<span>${name}</span></button>`).join("")}</nav>`;
+    const current = s.route === "detail" ? "library" : s.route;
+    return `<nav class="navigation" aria-label="主导航" data-testid="main-navigation">${[["library", "书架"], ["updates", "更新"], ["history", "历史"], ["browse", "浏览"], ["more", "更多"]].map(([id, name]) => `<button data-action="nav-${id}" data-testid="nav-${id}" class="${current === id ? "active" : ""}" ${current === id ? 'aria-current="page"' : ""}><span class="nav-icon">${icon(id)}</span><span>${name}</span></button>`).join("")}</nav>`;
+  }
+  function libraryMoreMenu() {
+    if (!libraryMoreOpen) return "";
+    return `<div class="library-more-menu detail-popup" role="menu" data-testid="library-more-menu"><button role="menuitem" data-action="refresh-all" data-testid="refresh-all">更新整个书架</button><button role="menuitem" data-action="refresh" data-testid="refresh">更新当前分类</button><button role="menuitem" data-action="random-open" data-testid="random-open">随机打开作品</button></div>`;
   }
   function summary() {
     if (!s.job)
@@ -209,7 +224,7 @@
     const selectionMode = s.selected.length > 0;
     const toolbar = selectionMode
       ? `<header class="bar library-action-mode" data-testid="library-action-mode">${button("select-close", "退出选择", "detail:Outlined.Close")}<span class="selection-count" data-testid="selection-count">${s.selected.length}</span><div class="selection-actions">${button("select-all", "全选", "detail:Outlined.SelectAll")}${button("select-invert", "反选", "detail:Outlined.FlipToBack")}</div></header>`
-      : `<header class="bar">${normalToolbar}<div class="actions">${button("sync-open", "同步", "sync")}${button("search-open", "搜索书架", "search")}${button("panel-open", "筛选、排序与显示", "filter")}${button("random-open", "随机打开", "random")}${button("settings-open", "书架设置", "settings")}${button("refresh", "刷新当前分类", "refresh")}</div></header>`;
+        : `<header class="bar">${normalToolbar}<div class="actions" data-testid="library-primary-actions">${button("sync-open", "同步", "cloudSync")}${button("search-open", "搜索书架", "search")}${button("panel-open", "筛选、排序与显示", "filter")}${`<div class="library-more-anchor">${button("more-open", "更多", "moreVert", `aria-haspopup="menu" aria-expanded="${libraryMoreOpen}"`)}${libraryMoreMenu()}</div>`}</div></header>`;
     const categories =
       s.prefs.tabs && (s.categories.length > 1 || s.categories[0]?.id !== 0)
         ? `<div class="categories" aria-label="${categoryShortcut}">${s.categories.map((c) => `<button data-testid="category-${c.id}" data-action="category" data-id="${c.id}" class="${c.id === s.category ? "active" : ""}" title="${categoryShortcut}">${esc(c.name)}${s.prefs.counts ? " " + s.books.filter((b) => b.favorite !== false && b.categories.includes(c.id)).length : ""}</button>`).join("")}</div>`
@@ -369,11 +384,32 @@
     return `${toolbar}${summary()}<div class="detail" data-testid="detail-scroll" data-book-id="${esc(b.id)}"><div class="detail-pull-tip" data-testid="detail-pull-tip">${detailRefreshArmed ? "再次向上滚动检查更新" : ""}</div><div class="detail-layout" data-testid="detail-layout"><div class="detail-main" data-testid="detail-info-scroll">${hero}${actionRow}${detailRefreshError ? `<p class="detail-error" data-testid="detail-refresh-error">${esc(detailRefreshError)} ${button("detail-refresh-retry", "重试")}</p>` : ""}${detailSummary}</div><div class="detail-chapters" data-testid="detail-chapter-scroll"><button class="detail-chapter-heading" data-action="detail-filter-menu" data-testid="chapter-count" ${detailSelected.length ? "disabled" : ""}>共 ${chapters.length} 章</button>${totalMissing ? `<p class="detail-missing-chapters" data-testid="detail-missing-chapters">缺少 ${totalMissing} 章</p>` : ""}<div class="chapter-list">${chapterListMarkup(chapters, b)}</div>${b.detachedDownloads?.length ? `<p class="detail-detached">目录已移除，保留本地下载：${esc(b.detachedDownloads.join("、"))}</p>` : ""}</div></div></div>${unread && !detailSelected.length ? `<button class="detail-fab" data-action="detail-continue" data-testid="detail-continue" data-chapter-id="${esc(unread.id)}">${icon("detail:Filled.PlayArrow")}${b.chapters.some((c) => c.read) || unread.page > 0 ? "继续阅读" : "开始阅读"}</button>` : ""}${selection}`;
   }
   function rootPage() {
-    const names = { updates: "更新", history: "历史", browse: "浏览", authors: "作者", more: "更多" };
+    const names = { updates: "更新", history: "历史", browse: "浏览", more: "更多" };
     const title = names[s.route] || "书架";
     if (s.route === "more") {
-      const entries = [["more-downloads", "下载队列", "download"], ["category-open", "分类", "category"], ["more-stats", "统计", "history"], ["more-storage", "数据与存储", "library"]];
-      return `<header class="bar"><h1>更多</h1></header><div class="root-page" data-testid="root-page"><section data-testid="more-library-group"><hr>${entries.map(([id, label, glyph]) => `<button class="more-category-entry" data-action="${id}" data-testid="${id}">${icon(glyph)}<span>${label}</span></button>`).join("")}<hr></section><p class="muted">本地交互样本：可编辑分类；其余条目仅展示原版入口位置。</p></div>`;
+      const itemTestIds = { downloads: "more-downloads", categories: "category-open", stats: "more-stats", storage: "more-storage", settings: "settings-open", about: "more-about", help: "more-help", donate: "more-donate" };
+      const item = (id, label, glyph, action, subtitle = "") =>
+        `<button class="more-list-item" data-testid="${itemTestIds[id] || `more-item-${id}`}" data-action="${action}"><span class="more-item-icon">${icon(glyph)}</span><span class="more-item-copy"><span>${label}</span>${subtitle ? `<small>${subtitle}</small>` : ""}</span></button>`;
+      const toggleItem = (id, label, glyph, checked, action, subtitle) =>
+        `<button class="more-list-item more-switch" role="switch" aria-checked="${checked}" data-testid="more-${id}" data-action="${action}"><span class="more-item-icon">${icon(glyph)}</span><span class="more-item-copy"><span>${label}</span><small>${subtitle}</small></span><span class="switch-track" aria-hidden="true"><span></span></span></button>`;
+      return `<div class="root-page more-content" data-testid="more-content"><header class="more-logo-header" data-testid="more-logo"><svg class="mihon-logo-vector" viewBox="0 0 148 141" aria-hidden="true"><path d="M20.3 27.59L19.22 2.63C22.47 3.25 26.35 3.41 35.18 3.41c10.69 0 24.79-.62 32.08-1.55 3.1-.31 4.34-.78 6.35-1.86l16.74 14.26c-1.55 2.17-2.01 3.1-3.72 7.44-1.39 3.41-7.75 23.09-10.23 31.46 11.47 2.32 17.82 4.03 26.5 7.59 1.09-7.59 1.24-11.62 1.24-25.42 0-3.56-.15-5.58-.62-8.83l26.97.93c-.78 3.72-.93 5.27-1.09 11.31-.62 14.57-1.24 21.54-2.79 32.08 10.7 5.43 10.7 5.43 16.12 8.37 2.79 1.55 3.41 1.86 5.27 2.48l-8.99 28.98c-4.34-3.87-10.38-8.06-19.22-13.02-7.74 18.44-20.61 31.93-40.13 42.62-6.51-8.68-11.47-13.95-19.38-20.14 11.47-5.43 16.74-8.84 22.79-14.57 5.89-5.74 9.76-11.32 13.48-19.68-9.92-4.5-16.27-6.51-27.28-8.84-6.35 18.91-11.46 31-15.96 38.28-6.04 9.76-14.26 14.88-23.71 14.88-7.28 0-14.72-3.26-20.15-8.83C3.25 121.35 0 112.52 0 95.93c0-15.19 7.28-28.36 19.99-36.58 8.22-5.26 16.89-7.59 30.69-8.36 2.79-9.15 5.11-18.05 7.28-25.88-6.82.62-15.34 1.08-25.73 1.55-5.57.15-7.43.31-11.93.93zM43.86 74.7c-7.29 1.24-11.63 3.56-15.5 8.52-2.94 3.41-4.34 7.44-4.34 11.78 0 4.8 2.33 8.37 5.27 8.37 3.56 0 7.59-8.06 14.57-28.67z"/></svg></header><section class="more-settings-group" aria-label="快捷设置">${toggleItem("downloaded-only", "仅显示已下载", "cloudOff", s.downloadOnly, "more-download-only", "只显示已下载的作品")}${toggleItem("incognito", "无痕模式", "incognito", s.incognito, "more-incognito", "暂停记录阅读历史")}</section><hr><section class="more-link-group" aria-label="下载与数据">${item("downloads", "下载队列", "getApp", "more-downloads")}${item("categories", "分类", "detail:AutoMirrored.Outlined.Label", "category-open")}${item("stats", "统计", "queryStats", "more-stats")}${item("storage", "数据与存储", "storage", "more-storage")}</section><hr><section class="more-link-group" aria-label="应用信息与帮助">${item("settings", "设置", "settings", "settings-open")}${item("about", "关于", "info", "more-about")}${item("help", "帮助", "helpOutline", "more-help")}${item("donate", "捐赠", "attachMoney", "more-donate")}</section></div>`;
+    }
+    if (s.route === "browse") {
+      const tabs = [["sources", "图源"], ["authors", "作者"], ["extensions", "扩展"], ["migration", "迁移"]];
+      const currentTab = tabs.some(([id]) => id === s.browseTab) ? s.browseTab : "sources";
+      let content = "";
+      if (currentTab === "authors") {
+        const authors = [...new Set(s.books.map((item) => item.author).filter(Boolean))];
+        content = `<div class="browse-child-page" data-testid="browse-authors-page"><h2>作者</h2><p class="muted">作者页签位于浏览之下。本地样本显示作品资料中可识别的作者。</p><div role="list">${authors.map((author) => `<div class="browse-author-row" role="listitem" data-testid="browse-author-${esc(author)}">${esc(author)}<span>${s.books.filter((item) => item.author === author).length} 部作品</span></div>`).join("")}</div></div>`;
+      } else {
+        const descriptions = {
+          sources: "浏览并搜索可用图源。",
+          extensions: "查看已安装图源扩展及其更新。",
+          migration: "查找可迁移到的其他图源。",
+        };
+        content = `<div class="browse-child-page" data-testid="browse-${currentTab}-page"><h2>${tabs.find(([id]) => id === currentTab)[1]}</h2><p class="muted">${descriptions[currentTab]}</p><p>本地交互样本保留 Mihon 浏览页签结构；图源和扩展业务不在本轮范围内。</p></div>`;
+      }
+      return `<header class="bar"><h1>浏览</h1></header><div class="root-page browse-content" data-testid="root-page"><div class="browse-tabs" role="tablist" aria-label="浏览页面" data-testid="browse-tabs">${tabs.map(([id, label]) => `<button role="tab" aria-selected="${currentTab === id}" class="${currentTab === id ? "active" : ""}" data-action="browse-tab" data-id="${id}" data-testid="browse-tab-${id}">${label}</button>`).join("")}</div>${content}</div>`;
     }
     return `<header class="bar"><h1>${title}</h1></header><div class="root-page" data-testid="root-page"><h2>${title}</h2><p>已切换到「${title}」页面。本地样本保留主导航；该页面的完整业务内容不在本次详情审阅范围内。</p></div>`;
   }
@@ -445,7 +481,9 @@
     if (modal === "panel") panelScroll[panelTab] = sheetScroll;
     const focus = document.activeElement?.getAttribute("data-testid");
     const wasDetailSelection = !!document.querySelector(".detail-bar.action-mode");
-    app.innerHTML = `<div class="platform-bar"><span>${s.platform === "windows" ? "Mihon Desktop" : "9:41"}</span><span>${s.platform === "windows" ? "—　□　×" : "●　▰"}</span></div><div class="app-content" id="content" ${modal ? "inert" : ""}>${s.route === "reader" ? readerView() : s.route === "detail" ? detail() : s.route === "library" ? library() : s.route === "categories" ? categoryPage() : rootPage()}${!["reader", "detail", "categories"].includes(s.route) ? nav() : ""}<div class="status" role="status" data-testid="notice">${esc(s.notice)}</div></div><div id="modal-root"></div>`;
+    const showNavigation = !["reader", "detail", "categories"].includes(s.route);
+    const page = s.route === "reader" ? readerView() : s.route === "detail" ? detail() : s.route === "library" ? library() : s.route === "categories" ? categoryPage() : rootPage();
+    app.innerHTML = `<div class="platform-bar"><span>${s.platform === "windows" ? "Mihon Desktop" : "9:41"}</span><span>${s.platform === "windows" ? "—　□　×" : "●　▰"}</span></div><div class="app-content" id="content" ${modal ? "inert" : ""}><main class="page-content">${page}<div class="status" role="status" data-testid="notice">${esc(s.notice)}</div></main>${showNavigation ? nav() : ""}</div><div id="modal-root"></div>`;
     const newDetail = document.querySelector('[data-testid="detail-scroll"]');
     if (newDetail) {
       const position = detailScroll[newDetail.dataset.bookId] || {};
@@ -502,7 +540,7 @@
     download: "已下载",
     unread: "未读",
     started: "已开始",
-    bookmark: "有书签",
+    bookmark: "已加书签",
     complete: "已完结",
     due: "预计更新期",
     custom: "自定义更新周期",
@@ -537,25 +575,28 @@
     return `<label class="setting"><span>${label}</span><select data-pref="${key}" data-testid="pref-${key}">${values.map(([value, text]) => `<option value="${value}" ${String(s.prefs[key]) === String(value) ? "selected" : ""}>${esc(text)}</option>`).join("")}</select></label>`;
   }
   function panel() {
-    if (panelTab === "filter")
-      return `<p class="muted">点击依次切换：不指定 → 包含 → 排除</p>${Object.keys(
-        filterNames,
-      )
-        .filter(
-          (k) =>
-            !["AniList", "MyAnimeList"].includes(k) &&
-            (k !== "custom" || s.customPeriod),
-        )
-        .concat(s.trackerNames)
-        .map(
-          (k) =>
-            `<button class="tri" data-action="filter" data-id="${k}" data-testid="filter-${k}" aria-pressed="${s.filters[k] === 1 ? "true" : s.filters[k] === -1 ? "mixed" : "false"}" ${s.downloadOnly && k === "download" ? "disabled" : ""}><span>${s.trackerNames.length === 1 && s.trackerNames.includes(k) ? "已追踪" : filterNames[k]}</span><em>${s.downloadOnly && k === "download" ? "包含 · 已锁定" : s.filters[k] === 1 ? "包含" : s.filters[k] === -1 ? "排除" : "不指定"}</em></button>`,
-        )
-        .join(
-          "",
-        )}<p>追踪服务只显示本地样本中已登录的服务。${s.customPeriod ? "自定义周期筛选已开放。" : "自定义周期筛选尚未开放。"}</p>${button("filter-reset", "清除筛选")}`;
+    if (panelTab === "filter") {
+      const stateLabel = (key) =>
+        s.downloadOnly && key === "download"
+          ? "包含 · 已锁定"
+          : s.filters[key] === 1
+            ? "包含"
+            : s.filters[key] === -1
+              ? "排除"
+              : "不指定";
+      const item = (key, label = filterNames[key]) =>
+        `<button class="tri" role="button" data-action="filter" data-id="${key}" data-testid="filter-${key}" aria-pressed="${s.filters[key] === 1 ? "true" : s.filters[key] === -1 ? "mixed" : "false"}" ${s.downloadOnly && key === "download" ? "disabled" : ""}><span>${label}</span><em>${stateLabel(key)}</em></button>`;
+      const filters = ["download", "unread", "started", "bookmark", "complete"]
+        .map((key) => item(key))
+        .join("");
+      const custom = s.customPeriod ? item("custom") : "";
+      const trackers = s.trackerNames.length === 1
+        ? item(s.trackerNames[0], "已追踪")
+        : `<h3 class="settings-subheading">已追踪</h3>${s.trackerNames.map((key) => item(key, filterNames[key] || key)).join("")}`;
+      return `${filters}${custom}${trackers}`;
+    }
     if (panelTab === "sort")
-      return `<p class="muted">${s.prefs.perCategory ? "当前分类：" + catName() : "全部分类共用排序"}</p>${[
+      return `${[
         ["title", "标题"],
         ["chapters", "章节数"],
         ["read", "最近阅读"],
@@ -564,33 +605,35 @@
         ["latest", "最新章节"],
         ["fetched", "获取时间"],
         ["added", "加入时间"],
-        ["score", "追踪评分"],
+        ...(s.trackerNames.length ? [["score", "追踪评分"]] : []),
         ["random", "随机"],
       ]
-        .map(
-          ([id, name]) =>
-            `<button class="tri" data-action="sort" data-id="${id}" data-testid="sort-${id}"><span>${name}</span><em>${currentSort() === id ? (id === "random" ? "再次点击重新排列" : M.sortState(s).reverse ? "↓ 降序" : "↑ 升序") : ""}</em></button>`,
-        )
+        .map(([id, name]) => {
+          const selected = currentSort() === id;
+          const stateIcon = selected
+            ? id === "random"
+              ? icon("refresh")
+              : icon(M.sortState(s).reverse ? "sortDown" : "sortUp")
+            : "";
+          const direction = selected
+            ? id === "random"
+              ? "再次点击重新排列"
+              : M.sortState(s).reverse ? "降序" : "升序"
+            : "";
+          return `<button class="tri sort-item" data-action="sort" data-id="${id}" data-testid="sort-${id}" ${direction ? `aria-label="${name}，${direction}"` : ""}><span>${name}${direction ? `<span class="visually-hidden">${direction}</span>` : ""}</span><span class="sort-indicator" aria-hidden="true">${stateIcon}</span></button>`;
+        })
         .join("")}`;
-    return `<h3>布局</h3><div class="choice">${[
+    const modes = [
       ["compact", "紧凑网格"],
       ["comfortable", "舒适网格"],
       ["cover-only", "仅封面"],
       ["list", "列表"],
-    ]
-      .map(
-        ([id, name]) =>
-          `<button class="${s.prefs.layout === id ? "active" : ""}" data-action="layout" data-id="${id}" data-testid="layout-${id}">${name}</button>`,
-      )
-      .join("")}</div>${optionPref(
-      "columns",
-      "横向列数",
-      Array.from({ length: 11 }, (_, i) => [i, i ? String(i) : "自动"]),
-    )}${optionPref(
-      "portrait",
-      "纵向列数",
-      Array.from({ length: 11 }, (_, i) => [i, i ? String(i) : "自动"]),
-    )}<h3>角标与操作</h3>${["downloadBadge", "unreadBadge", "localBadge", "languageBadge", "continueRead", "tabs", "counts"].map(toggle).join("")}`;
+    ];
+    const columns = innerWidth > innerHeight ? "columns" : "portrait";
+    const columnCount = s.prefs[columns];
+    const columnSlider = s.prefs.layout === "list" ? "" :
+      `<label class="slider-setting" data-testid="library-column-setting"><span>列数</span><input type="range" min="0" max="10" step="1" data-pref="${columns}" data-testid="pref-${columns}" value="${columnCount}" aria-label="列数"><output data-range-value="${columns}">${columnCount ? columnCount : "自动"}</output></label>`;
+    return `<h3 class="settings-subheading">显示模式</h3><div class="display-chip-row" role="group" aria-label="显示模式">${modes.map(([id, name]) => `<button class="display-chip ${s.prefs.layout === id ? "active" : ""}" data-action="layout" data-id="${id}" data-testid="layout-${id}" aria-pressed="${s.prefs.layout === id}">${name}</button>`).join("")}</div>${columnSlider}<h3 class="settings-subheading">封面角标</h3>${["downloadBadge", "unreadBadge", "localBadge", "languageBadge", "continueRead"].map(toggle).join("")}<h3 class="settings-subheading">分类标签</h3>${["tabs", "counts"].map(toggle).join("")}`;
   }
   let draftPolicy = {};
   function settings() {
@@ -628,7 +671,7 @@
     confirmExtra = "";
   function modalContent() {
     if (modal === "more-sample")
-      return `<p>${esc(moreSampleName)}：本地交互样本未提供此页面的业务操作，仅用于展示分类入口在「更多」中的位置。</p>`;
+      return `<p>${esc(moreSampleName)}：本地交互样本未提供该页面的完整业务操作；入口位置与 Mihon「更多」页一致。</p>`;
 
     if (modal === "detail-settings") return V.chapterSettings(book(), s, chapterSettingsTab);
     if (modal === "detail-scanlators") return V.scanlatorDialog(book(), scanlatorDraft);
@@ -693,8 +736,8 @@
     return `<p>${esc(modal === "browse" ? "从下方添加一本本地示例作品；不连接真实图源。" : "此入口保留导航上下文。完整内容不在书架交互审阅范围内。")}</p>${modal === "browse" ? button("add-book", "添加示例收藏") : ""}`;
   }
   const modalTitles = {
-    panel: "书架选项",
-    settings: "书架设置",
+    panel: "筛选、排序与显示",
+    settings: "设置",
     results: "更新详情",
     policy: "更新分类",
     "category-create": "添加分类",
@@ -709,7 +752,6 @@
     updates: "最近更新",
     history: "阅读历史",
     browse: "浏览",
-    authors: "作者",
     more: "更多",
     "detail-categories": "编辑分类",
     "detail-interval": "更新间隔",
@@ -739,7 +781,7 @@
     const prev = document.querySelector(".sheet-body");
     const oldScroll = prev?.scrollTop || 0;
     const compactDialog = modal === "batch-category" || modal === "batch-delete";
-    root.innerHTML = `<div class="overlay ${compactDialog ? "compact-dialog-overlay" : ""}" data-action="overlay"><section class="sheet ${modal === "detail-cover-viewer" ? "cover-sheet" : ""} ${compactDialog ? "action-dialog" : ""}" role="dialog" aria-modal="true" aria-label="${modalTitles[modal]}"><header class="sheet-head">${modalStack.length ? button("modal-back", "返回", "detail:AutoMirrored.Outlined.ArrowBack") : ""}<h2>${modalTitles[modal]}</h2>${button("modal-close", "关闭", "detail:Outlined.Close")}</header>${
+    root.innerHTML = `<div class="overlay ${compactDialog ? "compact-dialog-overlay" : ""} ${modal === "panel" ? "library-options-overlay" : ""}" data-action="overlay"><section class="sheet ${modal === "panel" ? "library-options-sheet" : ""} ${modal === "detail-cover-viewer" ? "cover-sheet" : ""} ${compactDialog ? "action-dialog" : ""}" role="dialog" aria-modal="true" aria-label="${modalTitles[modal]}">${modal === "panel" ? "" : `<header class="sheet-head">${modalStack.length ? button("modal-back", "返回", "detail:AutoMirrored.Outlined.ArrowBack") : ""}<h2>${modalTitles[modal]}</h2>${button("modal-close", "关闭", "detail:Outlined.Close")}</header>`}${
       modal === "panel" || modal === "detail-settings"
         ? `<div class="tabs" role="tablist" ${modal === "detail-settings" ? 'data-testid="chapter-settings-tabs"' : ""}>${[
             ["filter", "筛选"],
@@ -980,6 +1022,7 @@
     if (!el) return;
     const action = el.dataset.action,
       id = el.dataset.id;
+    if (libraryMoreOpen && !el.closest(".library-more-anchor")) libraryMoreOpen = false;
     if (batchMenu && !action.startsWith("batch-")) batchMenu = null;
     if (el.closest('[data-testid="detail-menu-overflow"]')) {
       detailMenu = null;
@@ -1014,6 +1057,29 @@
       }
       return;
     }
+    if (action === "more-open") {
+      libraryMoreOpen = !libraryMoreOpen;
+      render();
+      return;
+    }
+    if (action === "browse-tab") {
+      s.browseTab = id;
+      render();
+      document.querySelector(`[data-testid="browse-tab-${id}"]`)?.focus({ preventScroll: true });
+      return;
+    }
+    if (action === "more-download-only") {
+      s.downloadOnly = !s.downloadOnly;
+      render();
+      document.querySelector('[data-testid="more-downloaded-only"]')?.focus({ preventScroll: true });
+      return;
+    }
+    if (action === "more-incognito") {
+      s.incognito = !s.incognito;
+      render();
+      document.querySelector('[data-testid="more-incognito"]')?.focus({ preventScroll: true });
+      return;
+    }
     if (action === "panel-tab") {
       panelScroll[panelTab] = document.querySelector(".sheet-body").scrollTop;
       panelTab = id;
@@ -1036,8 +1102,8 @@
       openModal("sync");
       return;
     }
-    if (["more-downloads", "more-stats", "more-storage"].includes(action)) {
-      moreSampleName = { "more-downloads": "下载队列", "more-stats": "统计", "more-storage": "数据与存储" }[action];
+    if (["more-downloads", "more-stats", "more-storage", "more-about", "more-help", "more-donate"].includes(action)) {
+      moreSampleName = { "more-downloads": "下载队列", "more-stats": "统计", "more-storage": "数据与存储", "more-about": "关于", "more-help": "帮助", "more-donate": "捐赠" }[action];
       openModal("more-sample");
       return;
     }
@@ -1097,6 +1163,7 @@
       return;
     }
     if (action === "random-open") {
+      libraryMoreOpen = false;
       const list = M.visible(s);
       if (list.length) {
         s.bookId = list[Math.floor(Math.random() * list.length)].id;
@@ -1929,6 +1996,7 @@
       return;
     }
     if (action === "refresh" || action === "refresh-all") {
+      libraryMoreOpen = false;
       M.start(
         s,
         action === "refresh-all" ? "all" : "category",
@@ -2077,6 +2145,7 @@
       return;
     }
     if (action.startsWith("nav-")) {
+      libraryMoreOpen = false;
       s.route = action.slice(4);
       reader = null;
       detailSelected = [];
@@ -2135,6 +2204,12 @@
   });
 
   app.addEventListener("input", (e) => {
+    if (e.target.matches('input[type="range"][data-pref]')) {
+      const value = Number(e.target.value);
+      const label = document.querySelector(`[data-range-value="${e.target.dataset.pref}"]`);
+      if (label) label.value = value ? String(value) : "自动";
+      return;
+    }
     if (e.target.matches('#category-name, [data-testid="category-rename-input"]')) {
       const renaming = modal === "category-rename";
       const save = document.querySelector(`[data-testid="${renaming ? "category-rename-save" : "category-create-save"}"]`);
@@ -2434,6 +2509,12 @@
         batchMenu = null;
         render();
         document.querySelector(`[data-testid="${triggerId}"]`)?.focus({ preventScroll: true });
+        return;
+      }
+      if (libraryMoreOpen) {
+        libraryMoreOpen = false;
+        render();
+        document.querySelector('[data-testid="more-open"]')?.focus({ preventScroll: true });
         return;
       }
       if (s.selected.length) {
