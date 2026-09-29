@@ -217,6 +217,40 @@ test("现有详情结构：顶栏、封面菜单、元信息、动作行和阅�
     assert.match(await p.getByTestId("detail-reading-mode").textContent(), /从右到左/);
   }));
 
+for (const [label, platform, width] of [["windows", "windows", 1000], ["android", "android", 390], ["android 320px", "android", 320]]) {
+  test(`${label} 详情阅读模式菜单完整可见且末项可点击`, () =>
+    run(async (p) => {
+      await p.getByTestId("manga-A").click();
+      await p.getByTestId("detail-reading-mode").click();
+      const menu = p.getByTestId("detail-menu-reading");
+      assert.equal(await menu.isVisible(), true);
+      const bounds = await menu.boundingBox();
+      assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width,
+        "阅读模式菜单必须完整落在窗口的左右边界内");
+      const allItemsReachable = await menu.locator('[role="menuitemradio"]').evaluateAll((items) =>
+        items.every((item) => {
+          const rect = item.getBoundingClientRect();
+          const x = rect.left + rect.width / 2;
+          const y = rect.top + rect.height / 2;
+          const hit = document.elementFromPoint(x, y);
+          return rect.top >= 0 && rect.bottom <= innerHeight && (hit === item || item.contains(hit));
+        }));
+      assert.equal(allItemsReachable, true, "全部阅读模式选项都必须可见、可点");
+      const visible = await p.getByTestId("detail-reading-webtoon").evaluate((item) => {
+        const rect = item.getBoundingClientRect();
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+        const hit = document.elementFromPoint(x, y);
+        const nav = document.querySelector(".navigation")?.getBoundingClientRect();
+        return rect.top >= 0 && rect.bottom <= innerHeight && (!nav || rect.bottom <= nav.top) &&
+          (hit === item || item.contains(hit));
+      });
+      assert.equal(visible, true, "最后一个阅读模式选项不能被滚动容器或底部导航遮挡");
+      await p.getByTestId("detail-reading-webtoon").click();
+      assert.match(await p.getByTestId("detail-reading-mode").textContent(), /条漫/);
+    }, `device.html?platform=${platform}`, width));
+}
+
 test("目标详情章节：三态筛选排序、阅读进度与独立下载书签动作", () =>
   run(async (p) => {
     await p.getByTestId("manga-A").click();

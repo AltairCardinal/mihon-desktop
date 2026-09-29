@@ -949,6 +949,12 @@ summary {
 .detail-reading-mode > .detail-menu-anchor > button {
   color: var(--primary);
 }
+.detail-reading-mode .detail-popup {
+  top: auto;
+  bottom: calc(100% + 2px);
+  left: 0;
+  right: auto;
+}
 .detail-chapter-heading {
   padding: 14px 16px 8px;
   font-size: 1.1rem;
