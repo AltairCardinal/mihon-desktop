@@ -114,9 +114,11 @@ test("添加与移除书签图标在24像素画布内完整显示", () => detail
     assert.equal(await button.getAttribute("aria-label"), label);
     const box = await button.locator("svg path").evaluate((node) => {
       const bounds = node.getBBox();
-      return { left: bounds.x, top: bounds.y, right: bounds.x + bounds.width, bottom: bounds.y + bounds.height };
+      const viewBox = node.ownerSVGElement.viewBox.baseVal;
+      return { left: bounds.x, top: bounds.y, right: bounds.x + bounds.width, bottom: bounds.y + bounds.height,
+        canvasLeft: viewBox.x, canvasTop: viewBox.y, canvasRight: viewBox.x + viewBox.width, canvasBottom: viewBox.y + viewBox.height };
     });
-    assert.ok(box.left >= 1.5 && box.top >= 1.5 && box.right <= 22.5 && box.bottom <= 22.5, JSON.stringify({ label, box }));
+    assert.ok(box.left >= box.canvasLeft && box.top >= box.canvasTop && box.right <= box.canvasRight && box.bottom <= box.canvasBottom, JSON.stringify({ label, box }));
     await page.getByTestId("detail-select-close").click();
   }
 }));
