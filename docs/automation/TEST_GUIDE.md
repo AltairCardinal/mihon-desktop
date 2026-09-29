@@ -1,6 +1,6 @@
 # Mihon Desktop 自动化测试指南
 
-需要反复查看 Android 与 Windows 的真实 Compose 界面时，参见[双端原生 UI 审阅流程](NATIVE_UI_REVIEW.md)。
+双端原生 UI 审阅窗口的同步面板试点已[封存](archive/NATIVE_UI_REVIEW_EXPLORATION_2026-09-29.md)；历史启动方法保留在[试点指南](NATIVE_UI_REVIEW.md)，不作为全应用 UI 审阅的默认流程。
 
 ## 快速开始
 
