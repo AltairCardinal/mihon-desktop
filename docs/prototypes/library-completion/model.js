@@ -73,7 +73,7 @@
           page: n === 1 ? 7 : 0,
           download: n === 3 ? null : `${String.fromCharCode(65 + i)}-file-${n}`,
           downloadStatus: n === 3 ? ({ 1: "error", 2: "queued", 3: "downloading" }[i] || null) : null,
-          scanlator: n === 2 ? "示例译制组" : "示例汉化组",
+          scanlator: null,
           dateUpload: 1700000000000 + n * 86400000,
         })),
       })),

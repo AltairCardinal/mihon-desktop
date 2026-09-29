@@ -70,7 +70,7 @@ test("零章节场景保留章节头并显示共0章", async () => {
   } finally { await browser.close(); }
 });
 
-test("宽屏左栏上限450且封面居中占内容宽65%，标题在封面下方", () => detail("windows", 1200, async (page) => {
+test("宽屏审阅窗口左栏按450dp的0.8视觉比例适配且封面占内容宽65%", () => detail("windows", 1200, async (page) => {
   const boxes = await page.evaluate(() => {
     const rect = (testid) => document.querySelector(`[data-testid="${testid}"]`).getBoundingClientRect();
     const layout = rect("detail-layout");
@@ -79,7 +79,7 @@ test("宽屏左栏上限450且封面居中占内容宽65%，标题在封面下�
     const title = rect("detail-title-search");
     return { layout: layout.width, left: left.width, cover: cover.width, coverLeft: cover.left, leftEdge: left.left, titleTop: title.top, coverBottom: cover.bottom };
   });
-  assert.ok(Math.abs(boxes.left - Math.min(boxes.layout / 2, 450)) < 2, JSON.stringify(boxes));
+  assert.ok(Math.abs(boxes.left - Math.min(boxes.layout / 2, 360)) < 2, JSON.stringify(boxes));
   assert.ok(Math.abs(boxes.cover - (boxes.left - 32) * .65) < 3, JSON.stringify(boxes));
   assert.ok(Math.abs(boxes.coverLeft + boxes.cover / 2 - boxes.leftEdge - boxes.left / 2) < 3, JSON.stringify(boxes));
   assert.ok(boxes.titleTop >= boxes.coverBottom + 14, JSON.stringify(boxes));

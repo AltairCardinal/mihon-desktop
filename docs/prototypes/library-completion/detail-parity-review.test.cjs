@@ -57,17 +57,25 @@ test("详情下拉刷新被面板打断后必须重新两段触发", () => visit
   assert.equal(await page.evaluate(() => window.demo.state.job), null);
 }));
 
-test("筛选只移除隐藏的选章，保留仍可见章节并清理失效锚点", () => visit(async (page) => {
+test("选章时筛选状态变化只清理隐藏项与锚点，退出后筛选入口恢复", () => visit(async (page) => {
   await page.getByTestId("manga-A").click();
   await page.getByTestId("chapter-row-A-3").click({ modifiers: ["Control"] });
   await page.getByTestId("chapter-row-A-1").click({ modifiers: ["Control"] });
-  await page.getByTestId("detail-filter-menu").click();
-  await page.getByTestId("chapter-filter-unread").click();
-  await page.keyboard.press("Escape");
+  assert.equal(await page.getByTestId("detail-filter-menu").count(), 0);
+  await page.evaluate(() => {
+    window.demo.state.books[0].chapterOptions.unreadFilter = 1;
+    window.demo.command("noop");
+  });
   assert.match(await page.getByTestId("detail-selection-count").textContent(), /1/);
   assert.equal(await page.getByTestId("chapter-row-A-3").getAttribute("aria-pressed"), "true");
   await page.getByTestId("chapter-row-A-2").click({ modifiers: ["Shift"] });
   assert.match(await page.getByTestId("detail-selection-count").textContent(), /2/);
+  await page.getByTestId("detail-select-close").click();
+  await page.getByTestId("detail-filter-menu").click();
+  assert.match(await page.getByTestId("chapter-filter-unread").textContent(), /仅未读/);
+  await page.getByTestId("chapter-filter-unread").click();
+  await page.keyboard.press("Escape");
+  assert.match(await page.getByTestId("chapter-count").textContent(), /共 1 章/);
 }));
 
 test("重复收藏提示的去迁移入口打开已有收藏的迁移流程", () => visit(async (page) => {

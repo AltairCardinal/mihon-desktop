@@ -153,7 +153,7 @@ test("详情更新间隔和内联笔记：立即反馈、Markdown 工具、保�
     assert.doesNotMatch(await page.evaluate(() => window.demo.state.books[0].notes), /会失败/);
   }));
 
-test("详情布局与返回：宽屏双栏、窄屏单列、长列表滚动条、底导航和 Escape 一层一层退", () =>
+test("详情布局与返回：宽屏双栏、窄屏单列、长列表滚动条、子页导航和 Escape 一层一层退", () =>
   run(async (page) => {
     assert.equal(await page.getByTestId("detail-layout").evaluate((e) => getComputedStyle(e).gridTemplateColumns.split(" ").length), 2);
     await page.evaluate(() => {
@@ -162,18 +162,20 @@ test("详情布局与返回：宽屏双栏、窄屏单列、长列表滚动条�
       window.demo.command("noop");
     });
     assert.equal(await page.getByTestId("detail-chapter-scroll").evaluate((e) => e.scrollHeight > e.clientHeight), true);
-    assert.equal(await page.getByTestId("nav-library").isVisible(), true);
+    assert.equal(await page.getByTestId("nav-library").count(), 0);
     await page.getByTestId("detail-cover-open").click();
     await page.keyboard.press("Escape");
     assert.equal(await page.getByTestId("detail-back").count(), 1);
     await page.keyboard.press("Escape");
     assert.equal(await page.getByTestId("manga-A").count(), 1);
+    assert.equal(await page.getByTestId("nav-library").isVisible(), true);
     await page.getByTestId("manga-A").click();
+    assert.equal(await page.getByTestId("nav-library").count(), 0);
     await page.setViewportSize({ width: 360, height: 700 });
     assert.equal(await page.getByTestId("detail-layout").evaluate((e) => getComputedStyle(e).gridTemplateColumns.split(" ").length), 1);
   }));
 
-test("详情重复收藏先展示已有作品，页面底导航真实切换且分类回显", () =>
+test("详情重复收藏先展示已有作品，返回书架后底导航真实切换且分类回显", () =>
   run(async (page) => {
     await page.evaluate(() => {
       const s = window.demo.state;
@@ -194,6 +196,9 @@ test("详情重复收藏先展示已有作品，页面底导航真实切换且�
     await page.getByTestId("detail-categories").click();
     assert.equal(await page.getByTestId("detail-category-2").isChecked(), true);
     await page.getByTestId("modal-close").click();
+    assert.equal(await page.getByTestId("nav-updates").count(), 0);
+    await page.getByTestId("detail-back").click();
+    assert.equal(await page.getByTestId("nav-updates").isVisible(), true);
     await page.getByTestId("nav-updates").click();
     assert.match(await page.getByTestId("root-page").textContent(), /更新/);
     assert.equal(await page.getByTestId("detail-scroll").count(), 0);

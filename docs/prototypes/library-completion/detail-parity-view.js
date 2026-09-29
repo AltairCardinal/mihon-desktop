@@ -18,7 +18,7 @@
       ];
       return `${rows.map(([id, label, value, included, excluded]) =>
         `<button class="tri" data-action="chapter-filter-cycle" data-id="${id}" data-testid="chapter-filter-${id}" ${id === "download" && state.downloadOnly ? "disabled" : ""}><span>${label}</span><em>${triLabel(value, included, excluded)}</em></button>`,
-      ).join("")}${state.downloadOnly ? `<p class="muted">全局仅下载已开启，下载筛选由书架设置控制。</p>` : ""}${action("chapter-scanlator-open", "排除译制组")}${action("chapter-settings-default-open", "设为默认")}${action("chapter-settings-reset", "重置为默认")}`;
+      ).join("")}${state.downloadOnly ? `<p class="muted">全局仅下载已开启，下载筛选由书架设置控制。</p>` : ""}${book.chapters.some((chapter) => chapter.scanlator?.trim()) ? action("chapter-scanlator-open", "排除译制组") : ""}${action("chapter-settings-default-open", "设为默认")}${action("chapter-settings-reset", "重置为默认")}`;
     }
     if (tab === "sort") {
       return [["source", "源顺序"], ["number", "章节号"], ["date", "上传日期"], ["alphabet", "字母顺序"]]
@@ -29,28 +29,31 @@
   }
 
   function scanlatorDialog(book, draft) {
-    const names = [...new Set(book.chapters.map((chapter) => chapter.scanlator || "未知"))].sort();
+    const names = [...new Set(book.chapters.map((chapter) => chapter.scanlator?.trim()).filter(Boolean))].sort();
     return `<p>勾选要排除的译制组；确认后才改变章节列表。</p>${names.map((name) =>
       `<label class="setting"><span>${esc(name)}</span><input type="checkbox" data-scanlator-name="${esc(name)}" ${draft.has(name) ? "checked" : ""}></label>`,
     ).join("")}<div class="choice">${action("chapter-scanlator-all", "全选排除")}${action("chapter-scanlator-reset", "重置")}${action("chapter-scanlator-save", "确定")}${action("modal-cancel", "取消")}</div>`;
   }
 
-  function batchBar(book, selected, displayed) {
+  function batchBar(book, selected, displayed, icon) {
     if (!selected.length) return "";
     const visibleIds = new Set(displayed.map((chapter) => chapter.id));
     const included = book.chapters.filter((chapter) => selected.includes(chapter.id) && visibleIds.has(chapter.id));
     const anyUnbookmarked = included.some((chapter) => !chapter.bookmark);
     const anyUnread = included.some((chapter) => !chapter.read);
     const anyRead = included.some((chapter) => chapter.read || chapter.page > 0);
+    const showDownload = !book.local && !book.sourceMissing && included.some((chapter) =>
+      !chapter.download && chapter.downloadStatus !== "downloaded");
     const plan = root.DetailParityModel.batchPlan(book.chapters, selected, book);
-    return `<div class="detail-selection" data-testid="detail-selection">${action("detail-select-close", "退出选择")}
-      <strong data-testid="detail-selection-count">已选 ${included.length}</strong>
-      ${action("detail-batch-bookmark", anyUnbookmarked ? "添加书签" : "移除书签")}
-      ${anyUnread ? action("detail-batch-read", "标记已读") : ""}
-      ${anyRead ? action("detail-batch-unread", "标记未读") : ""}
-      ${included.length === 1 ? action("detail-batch-previous", "标记之前已读") : ""}
-      ${plan.toDownload.length ? action("detail-batch-download", `下载未下载项 (${plan.toDownload.length})`) : ""}
-      ${plan.toDelete.length ? action("detail-batch-delete", `删除已下载项 (${plan.toDelete.length})`) : ""}
+    const iconAction = (id, label, glyph) =>
+      `<button type="button" data-action="${id}" data-testid="${id}" aria-label="${esc(label)}" title="${esc(label)}">${icon(glyph)}<span class="detail-action-label" aria-hidden="true">${esc(label)}</span></button>`;
+    return `<div class="detail-selection" data-testid="detail-selection">
+      ${iconAction("detail-batch-bookmark", anyUnbookmarked ? "添加书签" : "移除书签", anyUnbookmarked ? "bookmarkAdd" : "bookmarkRemove")}
+      ${anyUnread ? iconAction("detail-batch-read", "标记已读", "doneAll") : ""}
+      ${anyRead ? iconAction("detail-batch-unread", "标记未读", "removeDone") : ""}
+      ${included.length === 1 ? iconAction("detail-batch-previous", "标记之前已读", "donePrevious") : ""}
+      ${showDownload ? iconAction("detail-batch-download", plan.toDownload.length ? `下载未下载项 (${plan.toDownload.length})` : "下载所选章节", "download") : ""}
+      ${plan.toDelete.length ? iconAction("detail-batch-delete", `删除已下载项 (${plan.toDelete.length})`, "trash") : ""}
       </div>`;
   }
 

@@ -31,7 +31,7 @@
       tri(options.unreadFilter, !chapter.read) &&
       tri(options.bookmarkFilter, !!chapter.bookmark) &&
       (state.downloadOnly || book.local ? !!chapter.download || !!book.local : tri(options.downloadFilter, !!chapter.download)) &&
-      options.scanlators[chapter.scanlator || "未知"] !== false,
+      (!chapter.scanlator?.trim() || options.scanlators[chapter.scanlator.trim()] !== false),
     ), options);
   }
 

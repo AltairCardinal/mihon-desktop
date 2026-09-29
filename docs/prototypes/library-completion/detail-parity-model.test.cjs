@@ -33,6 +33,14 @@ test("三态章节筛选、全局仅下载、译制组排除和当前顺序共�
   assert.deepEqual(P.displayedChapters(s, b).map((c) => c.id), []);
 });
 
+test("没有可获取译制组的章节不受历史未知占位筛选项影响", () => {
+  const b = book();
+  b.chapters[2].scanlator = null;
+  b.chapters[3].scanlator = "";
+  b.chapterOptions.scanlators = { 未知: false, 甲: false };
+  assert.deepEqual(P.displayedChapters({ downloadOnly: false, prefs: {} }, b).map((chapter) => chapter.id), ["A-3", "A-4"]);
+});
+
 test("下载接下来章节先排除已下载，书签包含已读，筛选偏好改变工作集", () => {
   const b = book();
   const s = { downloadOnly: false, prefs: { downloadUsesVisible: false } };

@@ -229,8 +229,18 @@ L08 的源顺序和重复刷新先在模型及浏览器 focused 测试中因旧�
 
 **PROJECT_POLICY**：详情页不显示阅读模式控件；进入阅读预览后仍可查看、切换单本阅读模式。详情顶栏“更多”移除“全部标记为已读”；选章模式保留全选和批量标记。Windows 封面保留本项目的 7:10，Android 为 2:3；本轮要求调整的是宽度及封面和标题的位置关系。
 
-**HTML_ADAPTER**：宽屏左栏的 450 CSS px 近似原版 450dp，不是原生物理像素证据；阅读器与章节状态只用本地内存场景演示，不连接真实漫画下载。详情宽屏左右独立滚动、左侧无可见滚动条的既有交互继续保留。完整可执行检查见 [DUI1–DUI12](DETAIL-UI-REFINEMENT-ACCEPTANCE.md)。
+**HTML_ADAPTER**：本段最初用 450 CSS px 近似原版 450dp；后续审阅反馈指出在约 1000px 的浏览器窗口里左栏显得过宽，当前版已改用 360 CSS px 上限作为审阅比例适配。原版仍是 450dp，并没有 360dp 常量。阅读器与章节状态只用本地内存场景演示，不连接真实漫画下载。详情宽屏左右独立滚动、左侧无可见滚动条的既有交互继续保留。完整可执行检查见 [DUI1–DUI14](DETAIL-UI-REFINEMENT-ACCEPTANCE.md)。
 
-已打开的并列预览不会自动热更新 iframe。请重新打开 [并列预览](index.html?v=detail-parity-20260929a)、[Windows 详情直达](device.html?platform=windows&review=detail-parity&v=detail-parity-20260929a)、[Android 详情直达](device.html?platform=android&review=detail-parity&v=detail-parity-20260929a)，或者打开 [Windows 阅读模式直达](device.html?platform=windows&review=reading-mode&v=detail-parity-20260929a) 检查入口已移至阅读预览。设备页脚本、样式和并列入口 iframe 都使用本轮资源版本参数，避免旧缓存掩盖修改；普通书架进入详情的路径保持不变。
+已打开的并列预览不会自动热更新 iframe。请重新打开 [并列预览](index.html?v=detail-action-20260929a)、[Windows 详情直达](device.html?platform=windows&review=detail-parity&v=detail-action-20260929a)、[Android 详情直达](device.html?platform=android&review=detail-parity&v=detail-action-20260929a)，或者打开 [Windows 阅读模式直达](device.html?platform=windows&review=reading-mode&v=detail-action-20260929a) 检查入口已移至阅读预览。设备页脚本、样式、数据模型和并列入口 iframe 都使用本轮资源版本参数，避免旧缓存掩盖修改；普通书架进入详情的路径保持不变。
 
-本轮先以真实 Chrome 测试复现布局和状态差异，再补最小实现。独立审查发现阅读菜单宽屏错位、返回后残留，以及下载图标和禁用态不符；同一实施批次修复后聚焦复审通过。最终本目录完整 DEMO 测试 **126/126 通过，0 失败、0 跳过**；还验证了 JS 语法和本任务差异格式。该结果只证明 HTML 原型，不能替代 Desktop Compose、真实下载或正式构建验收。
+上一详情批次先以真实 Chrome 测试复现布局和状态差异，再补最小实现。独立审查发现阅读菜单宽屏错位、返回后残留，以及下载图标和禁用态不符；同一实施批次修复后聚焦复审通过。当时本目录完整 DEMO 测试 **126/126 通过，0 失败、0 跳过**；该历史数字不是本次修订的最终回归结果。HTML 原型测试不能替代 Desktop Compose、真实下载或正式构建验收。
+
+## 宽屏尺寸、汉化组和章节多选再次校对
+
+**SOURCE**：原版 `TwoPanelBox` 计算左栏 `min(可用宽度/2, 450dp)`，`MangaAndSourceTitlesLarge` 的封面占左栏内容宽 65%；宽屏两栏之间及详情顶栏下方没有额外分割线。`MangaChapterListItem` 的副标题仅组合实际存在的上传日期、阅读进度、汉化／译制组；未取得组名时不生成文字或分隔点。章节进入选择模式时，`MangaToolbar` 切换为左侧关闭图标、纯数字计数与右侧全选／反选；章节行仅用选中背景。`SharedMangaBottomActionMenu` 在宽屏占全页右半宽，按选中章节状态显示书签、已读、未读、之前、下载、删除操作，默认只显示图标；排队中和下载中的章节仍可显示下载图标，长按图标短暂显示操作名。
+
+**PROJECT_POLICY**：据本轮审核，详情页不显示根 Tab 导航，返回书架后恢复；宽屏两栏没有分割线；无组名的本地样本不再编造“示例汉化组”或“未知译制组”。Windows 的 Ctrl／Shift 选章仍沿用已审核的桌面输入方式，进入选择模式后的页面状态按原版显示。详情章节刷新在选择模式中暂停触发。
+
+**HTML_ADAPTER**：浏览器审阅窗将 450dp 的上限按 0.8 视觉比例表达为 360 CSS px，保留“半宽且不超过上限”的算法和封面 65% 比例；这只是预览尺寸适配，不是上游像素规格，也不是原生 Desktop 约束。选章底栏图标用 `aria-label` 与鼠标提示保留操作名，鼠标或触摸长按 500ms 后显示约 1 秒的文字且松开不执行动作；排队／下载中章节执行批量下载时反馈跳过，不重复建任务。批量结果仍由内存样本模拟。手动核对见 [DUI3/DUI4/DUI9/DUI13/DUI14](DETAIL-UI-REFINEMENT-ACCEPTANCE.md)。
+
+本次先以真实浏览器和模型测试复现差异，再实现并复验。独立审查指出的书签图标裁切、排队／下载中按钮缺失与退出选择后失焦均已修复，详情顶栏横线和图标长按反馈也已补齐；修复复审的受影响测试 **20/20 通过**。完整 DEMO 首轮 **139 项中 136 项通过**，其余 3 项均为仍按旧 UI 在详情寻找根导航或在多选中点击已隐藏筛选按钮的测试；按当前原版交互改写操作路径后，受影响两文件聚焦测试 **14/14 通过**。本轮遵守一次完整回归预算，未再次运行全量；没有把首轮结果写成 139/139。这个验证只覆盖 HTML 原型，不代表原生 Desktop 已修改或构建通过。

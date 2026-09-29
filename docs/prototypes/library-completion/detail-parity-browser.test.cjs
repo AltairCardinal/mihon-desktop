@@ -35,7 +35,7 @@ test("章节统一面板三页即时生效，三态筛选和重开保留", () =>
   assert.match(await p.getByTestId("chapter-filter-unread").textContent(), /仅未读/);
 }));
 
-test("Ctrl 与反向 Shift 选章，反选和隐藏后锚点失效", () => run(async (p) => {
+test("Ctrl 与反向 Shift 选章，反选后退出选择才能筛选且锚点重置", () => run(async (p) => {
   await p.getByTestId("manga-A").click();
   await p.getByTestId("chapter-row-A-3").click({ modifiers: ["Control"] });
   await p.getByTestId("chapter-row-A-1").click({ modifiers: ["Shift"] });
@@ -43,6 +43,8 @@ test("Ctrl 与反向 Shift 选章，反选和隐藏后锚点失效", () => run(a
   await p.getByTestId("detail-select-invert").click();
   assert.equal(await p.getByTestId("detail-selection").count(), 0);
   await p.getByTestId("chapter-row-A-1").click({ modifiers: ["Control"] });
+  assert.equal(await p.getByTestId("detail-filter-menu").count(), 0);
+  await p.getByTestId("detail-select-close").click();
   await p.getByTestId("detail-filter-menu").click();
   await p.getByTestId("chapter-filter-unread").click();
   await p.keyboard.press("Escape");

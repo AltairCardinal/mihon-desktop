@@ -614,7 +614,8 @@ summary {
 }
 .detail-layout {
   display: grid;
-  grid-template-columns: minmax(0, min(50%, 450px)) minmax(0, 1fr);
+  /* HTML_ADAPTER: 450dp source cap at 0.8 visual scale in the review viewport. */
+  grid-template-columns: minmax(0, min(50%, 360px)) minmax(0, 1fr);
   height: 100%;
   min-height: 0;
 }
@@ -625,7 +626,6 @@ summary {
   padding-bottom: 16px;
 }
 .detail-main {
-  border-right: 1px solid var(--outline);
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -638,7 +638,6 @@ summary {
   scrollbar-width: auto;
 }
 .detail-bar {
-  border-bottom: 1px solid var(--outline);
   position: relative;
   z-index: 10;
   flex-wrap: nowrap;
@@ -968,7 +967,7 @@ summary {
   background: var(--high);
 }
 .chapter-row.selected {
-  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, var(--container));
 }
 .chapter-row input {
   flex: none;
@@ -1048,7 +1047,7 @@ summary {
 .detail-fab {
   position: absolute;
   right: 20px;
-  bottom: 91px;
+  bottom: 16px;
   z-index: 4;
   border-radius: 16px;
   background: var(--primary);
@@ -1062,35 +1061,61 @@ summary {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: space-around;
+  width: 50%;
+  align-self: flex-end;
+  gap: 0;
   background: var(--high);
-  padding: 8px 12px;
+  border-radius: 16px 16px 0 0;
+  padding: 12px 8px;
   overflow-x: auto;
   white-space: nowrap;
 }
-.detail-selection strong {
-  margin-right: auto;
-}
 .detail-selection button {
-  width: auto;
-  min-width: max-content;
-  padding: 9px;
+  flex: 1 1 48px;
+  min-width: 48px;
+  max-width: 72px;
+  width: 48px;
+  height: 48px;
+  padding: 12px;
+  border-radius: 50%;
 }
-.detail-selection {
-  scrollbar-width: auto;
-}
-.detail-selection button {
+.detail-selection button .detail-action-label {
+  display: none;
+  font-size: 10px;
+  line-height: 12px;
   white-space: nowrap;
 }
-.detail-selected-title {
-  color: var(--primary);
-  white-space: nowrap;
+.detail-selection button.show-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-grow: 2;
+  max-width: 120px;
+  height: 64px;
+  padding: 5px;
+  border-radius: 12px;
+}
+.detail-selection button.show-label .detail-action-label {
+  display: block;
+}
+.detail-selection:has(button.show-label) {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.detail-selection button svg {
+  width: 24px;
+  height: 24px;
+}
+.detail-bar.action-mode {
+  background: var(--high);
 }
 .detail-pull-tip:not(:empty) {
   position: absolute;
   top: 0;
   right: 0;
-  width: 51%;
+  width: calc(100% - min(50%, 360px));
   z-index: 3;
   display: block;
   padding: 8px 16px;
@@ -1231,7 +1256,10 @@ summary {
 }
 .android .detail-fab {
   right: 12px;
-  bottom: 84px;
+  bottom: 16px;
+}
+.android .detail-selection {
+  width: 100%;
 }
 button[aria-pressed="true"] {
   color: var(--primary);
@@ -1251,6 +1279,9 @@ button[aria-pressed="true"] {
   }
 }
 @media (max-width: 760px) {
+  .detail-selection {
+    width: 100%;
+  }
   .detail {
     overflow-y: scroll;
     scrollbar-color: var(--primary) var(--container);
