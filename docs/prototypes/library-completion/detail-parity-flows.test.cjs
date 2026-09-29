@@ -141,7 +141,7 @@ test("目录增删改后缺章提示、状态承接及新增章自动下载可�
   await page.getByTestId("detail-overflow").click();
   await page.getByTestId("detail-refresh").click();
   await page.waitForFunction(() => window.demo.state.job?.status === "done");
-  assert.match(await page.getByTestId("chapter-count").textContent(), /缺 1 话/);
+  assert.match(await page.getByTestId("detail-missing-chapters").textContent(), /缺少 1 章/);
   assert.match(await page.locator(".chapter-gap").first().textContent(), /第 2/);
   assert.equal(await page.getByTestId("chapter-delete-A-4").count(), 1);
   assert.equal(await page.evaluate(() => !!window.demo.state.books[0].chapters.find((c) => c.number === 1).download), true);
@@ -159,8 +159,8 @@ test("并列预览中详情筛选和追踪只影响操作设备", async () => {
     await windows.getByTestId("detail-filter-menu").click();
     await windows.getByTestId("chapter-filter-unread").click();
     await windows.getByTestId("modal-close").click();
-    assert.match(await windows.getByTestId("chapter-count").textContent(), /2\/3/);
-    assert.match(await android.getByTestId("chapter-count").textContent(), /3\/3/);
+    assert.match(await windows.getByTestId("chapter-count").textContent(), /共 2 章/);
+    assert.match(await android.getByTestId("chapter-count").textContent(), /共 3 章/);
     await windows.getByTestId("detail-tracking").click();
     await windows.getByTestId("tracking-chapter-input").fill("75");
     await windows.locator(".sheet-body").evaluate((body) => { body.scrollTop = body.scrollHeight; });

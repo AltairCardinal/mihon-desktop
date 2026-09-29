@@ -194,14 +194,16 @@ async function run(fn, file = "device.html?platform=windows", width = 1000) {
   }
 }
 
-test("现有详情结构：顶栏、封面菜单、元信息、动作行和阅读模式", () =>
+test("详情结构：顶栏、封面菜单、元信息和动作行；阅读模式在预览内", () =>
   run(async (p) => {
     await p.getByTestId("manga-A").click();
     assert.match(await p.getByTestId("detail-title").textContent(), /星海手记/);
     await p.getByTestId("detail-overflow").click();
-    for (const id of ["detail-download-menu", "detail-open-link", "detail-share-link", "detail-mark-all", "detail-filter-menu", "detail-refresh", "detail-migrate", "detail-notes", "detail-library", "detail-categories", "detail-fetch-interval", "detail-tracking", "detail-reading-mode"]) {
+    for (const id of ["detail-download-menu", "detail-open-link", "detail-share-link", "detail-filter-menu", "detail-refresh", "detail-migrate", "detail-notes", "detail-library", "detail-categories", "detail-fetch-interval", "detail-tracking"]) {
       assert.equal(await p.getByTestId(id).count(), 1, `${id} 缺失`);
     }
+    assert.equal(await p.getByTestId("detail-mark-all").count(), 0);
+    assert.equal(await p.getByTestId("detail-reading-mode").count(), 0);
     await p.keyboard.press("Escape");
     await p.getByTestId("detail-open-link").click({ button: "right" });
     assert.match(await p.getByTestId("notice").textContent(), /复制/);
@@ -212,17 +214,19 @@ test("现有详情结构：顶栏、封面菜单、元信息、动作行和阅�
     await p.getByTestId("cover-replace").click();
     await p.getByTestId("modal-close").click();
     assert.match(await p.locator(".hero .cover").textContent(), /自定义封面/);
-    await p.getByTestId("detail-reading-mode").click();
+    await p.getByTestId("chapter-row-A-3").click();
+    await p.getByTestId("reader-reading-mode").click();
     await p.getByTestId("detail-reading-rtl").click();
-    assert.match(await p.getByTestId("detail-reading-mode").textContent(), /从右到左/);
+    assert.match(await p.getByTestId("reader-reading-mode").textContent(), /从右到左/);
   }));
 
 for (const [label, platform, width] of [["windows", "windows", 1000], ["android", "android", 390], ["android 320px", "android", 320]]) {
-  test(`${label} 详情阅读模式菜单完整可见且末项可点击`, () =>
+  test(`${label} 阅读预览模式菜单完整可见且末项可点击`, () =>
     run(async (p) => {
       await p.getByTestId("manga-A").click();
-      await p.getByTestId("detail-reading-mode").click();
-      const menu = p.getByTestId("detail-menu-reading");
+      await p.getByTestId("chapter-row-A-3").click();
+      await p.getByTestId("reader-reading-mode").click();
+      const menu = p.getByTestId("detail-menu-reader-mode");
       assert.equal(await menu.isVisible(), true);
       const bounds = await menu.boundingBox();
       assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width,
@@ -247,15 +251,15 @@ for (const [label, platform, width] of [["windows", "windows", 1000], ["android"
       });
       assert.equal(visible, true, "最后一个阅读模式选项不能被滚动容器或底部导航遮挡");
       await p.getByTestId("detail-reading-webtoon").click();
-      assert.match(await p.getByTestId("detail-reading-mode").textContent(), /条漫/);
+      assert.match(await p.getByTestId("reader-reading-mode").textContent(), /条漫/);
     }, `device.html?platform=${platform}`, width));
 }
 
-test("阅读模式审核链接直接显示修复后的菜单并加载新样式", () =>
+test("阅读模式审核链接直达阅读预览菜单且加载新样式", () =>
   run(async (p) => {
-    assert.equal(await p.getByTestId("detail-menu-reading").isVisible(), true);
-    const menu = await p.getByTestId("detail-menu-reading").boundingBox();
-    assert.ok(menu.x >= 0 && menu.y >= 0 && menu.x + menu.width <= 1000);
+    assert.equal(await p.getByTestId("reader-preview").isVisible(), true);
+    assert.equal(await p.getByTestId("detail-reading-mode").count(), 0);
+    assert.equal(await p.getByTestId("detail-menu-reader-mode").isVisible(), true);
     const resources = await p.evaluate(() => ({
       stylesheet: document.querySelector('link[rel="stylesheet"]')?.href,
       app: document.querySelector('script[src^="app.js"]')?.src,
@@ -263,30 +267,31 @@ test("阅读模式审核链接直接显示修复后的菜单并加载新样式",
     assert.match(resources.stylesheet, /styles\.css\?v=/);
     assert.match(resources.app, /app\.js\?v=/);
     await p.getByTestId("detail-reading-webtoon").click();
-    assert.match(await p.getByTestId("detail-reading-mode").textContent(), /条漫/);
+    assert.match(await p.getByTestId("reader-reading-mode").textContent(), /条漫/);
   }, "device.html?platform=windows&review=reading-mode&v=menu-fix", 1000));
 
 test("并列预览使用新版设备资源地址", () =>
   run(async (p) => {
     for (const platform of ["windows", "android"]) {
-      assert.match(await p.locator(`#preview-${platform}`).getAttribute("src"), /[?&]v=reading-menu-20260929b/);
+      assert.match(await p.locator(`#preview-${platform}`).getAttribute("src"), /[?&]v=detail-parity-20260929a/);
       const device = p.frameLocator(`#preview-${platform}`);
-      assert.match(await device.locator('link[rel="stylesheet"]').getAttribute("href"), /styles\.css\?v=reading-menu-20260929b/);
+      assert.match(await device.locator('link[rel="stylesheet"]').getAttribute("href"), /styles\.css\?v=detail-parity-20260929a/);
+      assert.match(await device.locator('script[src^="app.js"]').getAttribute("src"), /app\.js\?v=detail-parity-20260929a/);
     }
-  }, "index.html?v=reading-menu-20260929b", 1440));
+  }, "index.html?v=detail-parity-20260929a", 1440));
 
 test("目标详情章节：三态筛选排序、阅读进度与独立下载书签动作", () =>
   run(async (p) => {
     await p.getByTestId("manga-A").click();
     assert.match(await p.getByTestId("chapter-count").textContent(), /3/);
     assert.equal(await p.getByTestId("chapter-row-A-1").count(), 1);
-    assert.equal(await p.getByTestId("chapter-bookmark-A-1").count(), 1);
-    await p.getByTestId("chapter-bookmark-A-1").click();
+    await p.getByTestId("chapter-row-A-1").click({ button: "right" });
+    await p.getByTestId("chapter-context-bookmark").click();
     assert.equal(await p.getByTestId("chapter-row-A-1").count(), 1);
     await p.getByTestId("detail-filter-menu").click();
     await p.getByTestId("chapter-filter-unread").click();
     assert.equal(await p.getByTestId("chapter-row-A-1").count(), 0);
-    assert.match(await p.getByTestId("chapter-count").textContent(), /2\/3/);
+    assert.match(await p.getByTestId("chapter-count").textContent(), /共 2 章/);
     await p.getByTestId("chapter-settings-tab-sort").click();
     await p.getByTestId("chapter-sort-number").click();
     const order = await p.locator('[data-testid^="chapter-row-"]').evaluateAll((rows) => rows.map((r) => r.dataset.chapterId));
@@ -342,11 +347,12 @@ test("现有详情辅助入口：下载菜单、分类、更新间隔、追踪�
     await p.getByTestId("detail-notes").click();
     await p.getByTestId("detail-notes-input").fill("审阅记录");
     await p.getByTestId("detail-notes-save").click();
-    await p.getByTestId("detail-overflow").click();
-    await p.getByTestId("detail-mark-all").click();
-    assert.match(await p.getByRole("dialog").textContent(), /3/);
-    await p.getByTestId("modal-cancel").click();
-    assert.equal(await p.getByTestId("detail-continue").count(), 1);
+    await p.getByTestId("chapter-row-A-3").click({ modifiers: ["Control"] });
+    await p.getByTestId("detail-select-all").click();
+    assert.match(await p.getByTestId("detail-selection-count").textContent(), /3/);
+    await p.getByTestId("detail-batch-read").click();
+    if (await p.getByTestId("modal-cancel").count()) await p.getByTestId("modal-cancel").click();
+    assert.equal(await p.getByTestId("detail-continue").count(), 0);
   }));
 
 test("目标详情标记之前章节已读，不包含当前章节", () =>
@@ -393,7 +399,7 @@ test("详情叠加 L08：更新显示源重排、改名换链与已读书签进�
     assert.match(await p.getByTestId("chapter-row-A-3").textContent(), /新版译制组/);
     assert.match(await p.getByTestId("chapter-row-A-3").textContent(), /第 5 页/);
     assert.equal(await p.getByTestId("chapter-row-A-2").count(), 0);
-    assert.equal(await p.getByTestId("chapter-bookmark-A-1").getAttribute("aria-label"), "取消书签");
+    assert.equal(await p.getByTestId("chapter-row-A-1").locator(".chapter-bookmark-mark").count(), 1);
     assert.equal(await p.getByTestId("chapter-delete-A-1").count(), 1);
     await p.getByTestId("update-details").click();
     assert.match(await p.getByTestId("update-results").textContent(), /新增 1.*改名 2.*移除 1/);

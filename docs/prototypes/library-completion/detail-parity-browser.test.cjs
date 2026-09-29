@@ -22,7 +22,7 @@ test("章节统一面板三页即时生效，三态筛选和重开保留", () =>
   assert.equal(await p.getByTestId("chapter-settings-tabs").count(), 1);
   await p.getByTestId("chapter-filter-unread").click();
   assert.match(await p.getByTestId("chapter-filter-unread").textContent(), /仅未读/);
-  assert.match(await p.getByTestId("chapter-count").textContent(), /2\/3/);
+  assert.match(await p.getByTestId("chapter-count").textContent(), /共 2 章/);
   await p.getByTestId("chapter-settings-tab-sort").click();
   await p.getByTestId("chapter-sort-number").click();
   await p.getByTestId("chapter-settings-tab-display").click();

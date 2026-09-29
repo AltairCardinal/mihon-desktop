@@ -266,10 +266,10 @@ test('独立契约：刷新结束后任意方向滚轮都延续800ms静默冷却
   assert.equal(await page.getByTestId('wheel-hint').textContent(), '');
 }));
 
-test('独立详情契约：更多菜单的全部已读是可读文字，取消收藏后书架不再列出作品', () => review(async page => {
+test('独立详情契约：更多菜单无全部已读，取消收藏后书架不再列出作品', () => review(async page => {
   await page.getByTestId('manga-A').click();
   await page.getByTestId('detail-overflow').click();
-  assert.match(await page.getByTestId('detail-mark-all').textContent(), /全部标为已读/);
+  assert.equal(await page.getByTestId('detail-mark-all').count(), 0);
   await page.keyboard.press('Escape');
   await page.getByTestId('detail-library').click();
   await page.getByTestId('confirm-yes').click();
@@ -287,7 +287,7 @@ test('独立详情契约：Android 窄屏滚动到章节菜单后，每个菜单
   });
   assert.equal(menuReachableWithoutAutoscroll, true, '展开后首个筛选项应直接出现在可见顶层');
   await page.getByTestId('chapter-filter-unread').click();
-  assert.match(await page.getByTestId('chapter-count').textContent(), /2\/3/);
+  assert.match(await page.getByTestId('chapter-count').textContent(), /共 2 章/);
   await page.getByTestId('chapter-settings-tab-display').click();
   await page.getByTestId('chapter-display-number').click();
   await page.keyboard.press('Escape');

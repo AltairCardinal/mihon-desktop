@@ -6,7 +6,7 @@
 
 作品详情页保留单独的审阅基线：先按当前 Desktop 的 `MangaDetailScreen`、`MangaDetailComponents` 与章节列表组件核对页面层级和主要状态，再按[详情页验收清单](DETAIL-ACCEPTANCE.md)的 D21–D34 审核 L02、L08、S06 的叠加变化。[总验收清单](ACCEPTANCE.md)在原有操作步骤前新增了 19 项“现状基线 → roadmap 目标”对照，避免把目标行为当成现有产品能力。
 
-当前交互以[分类与详情 UI 收敛验收](DETAIL-UI-REFINEMENT-ACCEPTANCE.md)为准：分类管理从底部导航【更多 → 分类】进入独立子页；书架设置只保留新收藏默认分类等偏好。作品详情从顶栏“更多 → 编辑分类”打开分类选择，再由对话框“编辑”进入同一分类页。详情顶栏收起刷新、迁移、笔记等次要动作，封面编辑放在封面查看器里，保留 Desktop 独有的单本阅读模式及全部标已读。下文旧截图和历史验证数字记录当时版本，不能作为当前版 UI 的完成证据。
+当前交互以[分类与详情 UI 收敛验收](DETAIL-UI-REFINEMENT-ACCEPTANCE.md)为准：分类管理从底部导航【更多 → 分类】进入独立子页；书架设置只保留新收藏默认分类等偏好。作品详情从顶栏“更多 → 编辑分类”打开分类选择，再由对话框“编辑”进入同一分类页。详情顶栏收起刷新、迁移、笔记等次要动作，封面编辑放在封面查看器里。当前详情不显示阅读模式设置，阅读模式在阅读预览内可切换；顶栏“更多”不含“全部标记为已读”，选章后仍可批量标记。下文旧截图和历史验证数字记录当时版本，不能作为当前版 UI 的完成证据。
 
 详情页宽窗口双栏滚动按原版 Mihon 的交互目标处理：左侧作品信息与右侧章节列表独立滚动，只有右侧显示滚动条；顶部两段滚动刷新由右侧章节列表触发。窄窗口改为单列整页滚动和整页顶部刷新。这里的 CSS 滚动容器与浏览器滚轮阈值属于 **HTML_ADAPTER**，不是 Compose 运行时的实现证据；完整操作见[详情完整差异验收 A1/A6/A7](DETAIL-PARITY-ACCEPTANCE.md)。
 
@@ -221,6 +221,16 @@ L08 的源顺序和重复刷新先在模型及浏览器 focused 测试中因旧�
 
 本次完整 DEMO 测试为 **108/109 通过**；唯一失败是既有双端设置弹层关闭后的焦点即时断言，单独重复 6 次均通过，尚未证实故障原因或宣称已修复。该断言保留严格判断并增加失败时的焦点状态信息；最终对 `contract-review.test.cjs` 和 `category-management.test.cjs` 的聚焦回归 **25/25 通过**。分类输入提示和删除后的焦点路径另经独立聚焦复审通过。浏览器验证只覆盖 HTML 原型，不代表原生 Desktop 构建验收。
 
-阅读模式菜单曾从信息区末尾向下展开，并按按钮右侧对齐，导致选项被左栏滚动边界、底部导航或窄窗口左边界截住。现在仅该菜单向上、向左端对齐展开；Windows 宽窗口及 Android 390px／320px 的真实浏览器测试均检查五个选项可见可点，选择结果继续按原有模型回显。菜单属于 HTML 审阅原型，原生 Desktop 仍需单独验收。
+阅读模式菜单曾从详情信息区末尾向下展开，并按按钮右侧对齐，导致选项被左栏滚动边界、底部导航或窄窗口左边界截住。此前仅修正菜单展开方向；本次进一步按用户要求移除详情入口，阅读模式改在阅读预览内设置。这段历史验证不能用作当前详情界面的验收证据。
 
-已打开的并列预览不会自动热更新 iframe。审核这项修复时，使用 [Windows 阅读模式直达入口](device.html?platform=windows&review=reading-mode&v=reading-menu-20260929b) 或 [Android 阅读模式直达入口](device.html?platform=android&review=reading-mode&v=reading-menu-20260929b)：页面直接打开作品详情及五项菜单。设备页的样式和脚本、并列入口的 iframe 均带有本轮资源版本参数，重新打开链接时可绕过之前的浏览器缓存；正常进入书架、详情的路径保持不变。
+## 作品详情与原版 Mihon 的布局和章节状态对齐
+
+**SOURCE**：原版 `MangaScreenLargeImpl` 和 `TwoPanelBox` 的宽屏左栏为可用宽度的一半、上限 450dp；`MangaAndSourceTitlesLarge` 将封面居中显示为左栏内容宽度的 65%，标题和作者等资料放在下方。小屏保持不超过 100dp 的封面与资料并排。`ChapterHeader` 用当前处理后的章节数显示“共 N 章”，缺章另行警示；`MangaChapterListItem` 在章节名前显示未读圆点与已书签图标，已读内容弱化，行尾由 `ChapterDownloadIndicator` 独占下载状态。本地作品和选章时下载指示仍占位但不可用。`MangaToolbar` 没有常驻的“全部标记为已读”溢出项。
+
+**PROJECT_POLICY**：详情页不显示阅读模式控件；进入阅读预览后仍可查看、切换单本阅读模式。详情顶栏“更多”移除“全部标记为已读”；选章模式保留全选和批量标记。Windows 封面保留本项目的 7:10，Android 为 2:3；本轮要求调整的是宽度及封面和标题的位置关系。
+
+**HTML_ADAPTER**：宽屏左栏的 450 CSS px 近似原版 450dp，不是原生物理像素证据；阅读器与章节状态只用本地内存场景演示，不连接真实漫画下载。详情宽屏左右独立滚动、左侧无可见滚动条的既有交互继续保留。完整可执行检查见 [DUI1–DUI12](DETAIL-UI-REFINEMENT-ACCEPTANCE.md)。
+
+已打开的并列预览不会自动热更新 iframe。请重新打开 [并列预览](index.html?v=detail-parity-20260929a)、[Windows 详情直达](device.html?platform=windows&review=detail-parity&v=detail-parity-20260929a)、[Android 详情直达](device.html?platform=android&review=detail-parity&v=detail-parity-20260929a)，或者打开 [Windows 阅读模式直达](device.html?platform=windows&review=reading-mode&v=detail-parity-20260929a) 检查入口已移至阅读预览。设备页脚本、样式和并列入口 iframe 都使用本轮资源版本参数，避免旧缓存掩盖修改；普通书架进入详情的路径保持不变。
+
+本轮先以真实 Chrome 测试复现布局和状态差异，再补最小实现。独立审查发现阅读菜单宽屏错位、返回后残留，以及下载图标和禁用态不符；同一实施批次修复后聚焦复审通过。最终本目录完整 DEMO 测试 **126/126 通过，0 失败、0 跳过**；还验证了 JS 语法和本任务差异格式。该结果只证明 HTML 原型，不能替代 Desktop Compose、真实下载或正式构建验收。

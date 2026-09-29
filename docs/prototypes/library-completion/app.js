@@ -11,8 +11,12 @@
       : "windows";
   const reviewTarget = new URLSearchParams(location.search).get("review");
   if (reviewTarget === "more" || reviewTarget === "categories") s.route = reviewTarget;
-  if (reviewTarget === "reading-mode") {
+  if (reviewTarget === "detail" || reviewTarget === "detail-parity") {
     s.route = "detail";
+    s.bookId = "A";
+  }
+  if (reviewTarget === "reading-mode") {
+    s.route = "reader";
     s.bookId = "A";
   }
   document.body.classList.add(s.platform);
@@ -21,7 +25,7 @@
     trigger = null,
     panelTab = "filter",
     panelScroll = {},
-    reader = null,
+    reader = reviewTarget === "reading-mode" ? "A-3" : null,
     hold = null,
     suppressClick = false;
   let detailMenu = null,
@@ -92,12 +96,15 @@
     "dot",
     "bookmarkFilled",
     "heartFilled",
+    "downloadChapter",
+    "checkCircle",
   ]);
   function icon(name) {
     const key = name === "random" ? "swap" : name;
     const mode = filledIcons.has(key) ? "filled" : "stroked";
     const detailPaths = {
       download: "M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4",
+      downloadChapter: "M11.99,2C6.47,2 2,6.48 2,12C2,17.52 6.47,22 11.99,22C17.52,22 22,17.52 22,12C22,6.48 17.52,2 11.99,2zM12,4C16.42,4 20,7.58 20,12C20,16.42 16.42,20 12,20C7.58,20 4,16.42 4,12C4,7.58 7.58,4 12,4z M18.041,12 L16.976,10.935 12.755,15.149L12.755,5.959L11.245,5.959L11.245,15.149L7.031,10.928 5.959,12l6.041,6.041z",
       link: "M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1",
       share: "M18 8a3 3 0 1 0-3-3 3 3 0 0 0 3 3ZM6 15a3 3 0 1 0-3-3 3 3 0 0 0 3 3Zm12 9a3 3 0 1 0-3-3 3 3 0 0 0 3 3ZM8.8 13.5l6.4 5M8.8 10.5l6.4-5",
       check: "M4 12l5 5L20 6",
@@ -106,6 +113,8 @@
       bookmark: "M6 3h12v18l-6-4-6 4V3z",
       notes: "M5 3h14v18H5zM8 8h8M8 12h8M8 16h5",
       downloadDone: "M4 16v5h16v-5M12 3v10m-4-4 4 4 4-4m-3 6 2 2 4-4",
+      checkCircle: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z",
+      errorCircle: "M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20m0 5v6m0 4v.1",
       dot: "M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6",
       ring: "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18",
       selectAll: "M3 7V3h4M17 3h4v4M21 17v4h-4M7 21H3v-4M7 7h10v10H7z",
@@ -243,24 +252,21 @@
     const o = detailOptions(b);
     const selected = detailSelected.includes(c.id);
     const title = o.display === "number" ? `第 ${c.number} 话` : c.name;
-    const progress = c.read ? "已读" : c.page > 0 ? `第 ${c.page + 1} 页，继续阅读` : "未读";
     const downloadState = c.downloadStatus || (c.download ? "downloaded" : "none");
     const download = {
-      downloaded: ["chapter-delete-", "删除下载", "downloadDone"],
-      error: ["chapter-retry-", "重试下载", "refresh"],
-      none: ["chapter-download-", "下载章节", "download"],
+      downloaded: ["chapter-delete-", "删除下载", "checkCircle"],
+      error: ["chapter-retry-", "重试下载", "errorCircle"],
+      none: ["chapter-download-", "下载章节", "downloadChapter"],
     }[downloadState];
-    const downloadControl = b.local || c.external ? ""
-      : ["queued", "downloading"].includes(downloadState)
-      ? `<div class="detail-menu-anchor chapter-progress-anchor"><button class="icon chapter-progress" data-action="chapter-progress" data-id="${esc(c.id)}" data-testid="chapter-progress-${esc(c.id)}" aria-label="${downloadState === "queued" ? "排队中" : "下载中"}" title="${downloadState === "queued" ? "排队中" : "下载中"}">${icon("download")}</button>${detailMenuMarkup("chapter-progress-" + c.id, `<button data-action="chapter-cancel-${esc(c.id)}" data-testid="chapter-cancel-${esc(c.id)}">取消</button>`)}</div>`
-      : button(download[0] + c.id, download[1], download[2]);
+    const downloadDisabled = b.local || c.external || detailSelected.length > 0;
+    const downloadControl = ["queued", "downloading"].includes(downloadState)
+      ? `<div class="detail-menu-anchor chapter-progress-anchor chapter-download-indicator" data-download-state="${downloadState}"><button class="icon chapter-progress" data-action="chapter-progress" data-id="${esc(c.id)}" data-testid="chapter-progress-${esc(c.id)}" aria-label="${downloadState === "queued" ? "排队中" : "下载中"}" title="${downloadState === "queued" ? "排队中" : "下载中"}" ${downloadDisabled ? "disabled" : ""}>${icon("down")}</button>${downloadDisabled ? "" : detailMenuMarkup("chapter-progress-" + c.id, `<button data-action="chapter-cancel-${esc(c.id)}" data-testid="chapter-cancel-${esc(c.id)}">取消</button>`)}</div>`
+      : `<span class="chapter-download-indicator" data-download-state="${downloadState}">${button(download[0] + c.id, download[1], download[2], downloadDisabled ? "disabled" : "")}</span>`;
     return `<div class="chapter-row ${selected ? "selected" : ""}" data-testid="chapter-row-${esc(c.id)}" data-chapter-id="${esc(c.id)}" data-read="${c.read}" data-action="chapter" data-id="${esc(c.id)}" role="button" tabindex="0" aria-pressed="${selected}">
       ${detailSelected.length ? `<input type="checkbox" tabindex="-1" aria-label="选择 ${esc(title)}" ${selected ? "checked" : ""}>` : ""}
-      <div class="chapter-main"><span class="chapter-title ${c.read ? "read" : ""}">${esc(title)}</span><small>${c.page && !c.read ? `${c.syncedProgress ? "同步至" : ""}第 ${c.page + 1} 页 · ` : ""}${esc(c.scanlator || "未知译制组")} · ${new Date(c.dateUpload || 0).toLocaleDateString("zh-CN")}${c.external ? " · 外部章节" : ""}</small></div>
+      <div class="chapter-main"><div class="chapter-title-line">${!c.read ? '<span class="chapter-unread-dot" role="img" aria-label="未读"></span>' : ""}${c.bookmark ? `<span class="chapter-bookmark-mark" role="img" aria-label="已加书签">${icon("bookmarkFilled")}</span>` : ""}<span class="chapter-title ${c.read ? "read" : ""}">${esc(title)}</span></div><small class="${c.read ? "read" : ""}">${c.page && !c.read ? `${c.syncedProgress ? "同步至" : ""}第 ${c.page + 1} 页 · ` : ""}${esc(c.scanlator || "未知译制组")} · ${new Date(c.dateUpload || 0).toLocaleDateString("zh-CN")}${c.external ? " · 外部章节" : ""}</small></div>
       <div class="chapter-trailing">
-        ${!detailSelected.length ? button("chapter-bookmark-" + c.id, c.bookmark ? "取消书签" : "添加书签", c.bookmark ? "bookmarkFilled" : "bookmark") : ""}
-        ${!detailSelected.length ? downloadControl : ""}
-        ${!detailSelected.length ? button("chapter-read-" + c.id, progress, c.read ? "check" : c.page > 0 ? "ring" : "dot") : ""}
+        ${downloadControl}
       </div>
       ${detailMenu === "chapter-context" && chapterContextId === c.id ? V.chapterContext(c, b) : ""}
     </div>`;
@@ -302,9 +308,7 @@
     const unread = P.nextReadable(s, b);
     const downloading = [["next-1", "接下来 1 话"], ["next-5", "接下来 5 话"], ["next-10", "接下来 10 话"], ["next-25", "接下来 25 话"], ["unread", "全部未读章节"], ["bookmarked", "全部书签章节"]]
       .map(([id, label]) => `<button role="menuitem" data-testid="detail-download-${id}" data-action="detail-download-${id}">${label}</button>`).join("");
-    const readingModes = [["default", "默认"], ["auto", "自动"], ["ltr", "从左到右"], ["rtl", "从右到左"], ["webtoon", "条漫"]]
-      .map(([id, label]) => `<button role="menuitemradio" aria-checked="${b.readingMode === label}" data-action="detail-reading-${id}" data-testid="detail-reading-${id}">${label}</button>`).join("");
-    const overflow = `<button data-action="detail-refresh" data-testid="detail-refresh" role="menuitem">检查更新</button>${b.favorite ? `<button data-action="detail-categories" data-testid="detail-categories" role="menuitem">编辑分类</button>` : ""}${b.favorite && !b.local && !b.sourceMissing ? `<button data-action="detail-migrate" data-testid="detail-migrate" role="menuitem">迁移图源</button>` : ""}${!b.local && !b.sourceMissing ? `<button data-action="detail-share-link" data-testid="detail-share-link" role="menuitem">分享链接</button>` : ""}<button data-action="detail-notes" data-testid="detail-notes" role="menuitem">笔记</button><button data-action="detail-mark-all" data-testid="detail-mark-all" role="menuitem">全部标为已读</button>`;
+    const overflow = `<button data-action="detail-refresh" data-testid="detail-refresh" role="menuitem">检查更新</button>${b.favorite ? `<button data-action="detail-categories" data-testid="detail-categories" role="menuitem">编辑分类</button>` : ""}${b.favorite && !b.local && !b.sourceMissing ? `<button data-action="detail-migrate" data-testid="detail-migrate" role="menuitem">迁移图源</button>` : ""}${!b.local && !b.sourceMissing ? `<button data-action="detail-share-link" data-testid="detail-share-link" role="menuitem">分享链接</button>` : ""}<button data-action="detail-notes" data-testid="detail-notes" role="menuitem">笔记</button>`;
     const toolbar = `<header class="bar detail-bar">
       ${button("detail-back", "返回书架", "back")}
       <h1 data-testid="detail-title">${esc(b.title)}</h1>
@@ -326,8 +330,9 @@
     const selection = V.batchBar(b, detailSelected, chapters);
     const notes = b.notes ? `<section class="detail-notes" data-testid="detail-notes-inline"><button class="detail-notes-body" data-action="detail-notes-summary" data-testid="detail-notes-summary" aria-label="编辑作品笔记">${markdown(b.notes)}</button></section>` : "";
     const detailSummary = `<section class="detail-summary" data-testid="detail-summary">${notes}${description}${tags}</section>`;
-    const totalMissing = Math.max(0, Math.max(0, ...b.chapters.map((chapter) => chapter.number)) - b.chapters.length);
-    return `${toolbar}${summary()}<div class="detail" data-testid="detail-scroll" data-book-id="${esc(b.id)}"><div class="detail-pull-tip" data-testid="detail-pull-tip">${detailRefreshArmed ? "再次向上滚动检查更新" : ""}</div><div class="detail-layout" data-testid="detail-layout"><div class="detail-main" data-testid="detail-info-scroll">${hero}${actionRow}${detailRefreshError ? `<p class="detail-error" data-testid="detail-refresh-error">${esc(detailRefreshError)} ${button("detail-refresh-retry", "重试")}</p>` : ""}${detailSummary}<div class="detail-reading-mode"><span>阅读模式</span><div class="detail-menu-anchor"><button data-action="detail-reading-mode" data-testid="detail-reading-mode">${esc(b.readingMode || "默认")}</button>${detailMenuMarkup("reading", readingModes)}</div></div></div><div class="detail-chapters" data-testid="detail-chapter-scroll"><button class="detail-chapter-heading" data-action="detail-filter-menu" data-testid="chapter-count">章节 ${chapters.length}/${b.chapters.length}${s.prefs.showChapterGaps && totalMissing ? ` · 缺 ${totalMissing} 话` : ""}</button><div class="chapter-list">${chapterListMarkup(chapters, b)}</div>${b.detachedDownloads?.length ? `<p class="detail-detached">目录已移除，保留本地下载：${esc(b.detachedDownloads.join("、"))}</p>` : ""}</div></div></div>${unread && !detailSelected.length ? `<button class="detail-fab" data-action="detail-continue" data-testid="detail-continue" data-chapter-id="${esc(unread.id)}">${icon("play")}${b.chapters.some((c) => c.read) || unread.page > 0 ? "继续阅读" : "开始阅读"}</button>` : ""}${selection}`;
+    const knownNumbers = new Set(chapters.map((chapter) => Math.trunc(chapter.number)).filter((number) => Number.isFinite(number) && number > 0));
+    const totalMissing = Math.max(0, ...knownNumbers) - knownNumbers.size;
+    return `${toolbar}${summary()}<div class="detail" data-testid="detail-scroll" data-book-id="${esc(b.id)}"><div class="detail-pull-tip" data-testid="detail-pull-tip">${detailRefreshArmed ? "再次向上滚动检查更新" : ""}</div><div class="detail-layout" data-testid="detail-layout"><div class="detail-main" data-testid="detail-info-scroll">${hero}${actionRow}${detailRefreshError ? `<p class="detail-error" data-testid="detail-refresh-error">${esc(detailRefreshError)} ${button("detail-refresh-retry", "重试")}</p>` : ""}${detailSummary}</div><div class="detail-chapters" data-testid="detail-chapter-scroll"><button class="detail-chapter-heading" data-action="detail-filter-menu" data-testid="chapter-count">共 ${chapters.length} 章</button>${totalMissing ? `<p class="detail-missing-chapters" data-testid="detail-missing-chapters">缺少 ${totalMissing} 章</p>` : ""}<div class="chapter-list">${chapterListMarkup(chapters, b)}</div>${b.detachedDownloads?.length ? `<p class="detail-detached">目录已移除，保留本地下载：${esc(b.detachedDownloads.join("、"))}</p>` : ""}</div></div></div>${unread && !detailSelected.length ? `<button class="detail-fab" data-action="detail-continue" data-testid="detail-continue" data-chapter-id="${esc(unread.id)}">${icon("play")}${b.chapters.some((c) => c.read) || unread.page > 0 ? "继续阅读" : "开始阅读"}</button>` : ""}${selection}`;
   }
   function rootPage() {
     const names = { updates: "更新", history: "历史", browse: "浏览", authors: "作者", more: "更多" };
@@ -376,7 +381,9 @@
   function readerView() {
     const b = book(),
       c = b.chapters.find((c) => c.id === reader);
-    return `<header class="bar">${button("reader-back", "返回详情", "back")}<h1>阅读预览</h1></header><div class="reader" data-testid="reader-preview"><h2>${esc(b.title)}</h2><p>${esc(c.name)} · 第 ${c.page + 1} 页 · ${esc(b.readingMode || "默认")}</p><div class="reader-page">${c.external ? "外部章节：在浏览器打开的本地预览" : "本地阅读预览"}<br><small>不连接真实漫画或阅读引擎</small></div>${!c.external ? `${button("reader-next", "下一页")}${button("reader-finish", "标记本话已读")}` : button("reader-back", "返回详情")}</div>`;
+    const readingModes = [["default", "默认"], ["auto", "自动"], ["ltr", "从左到右"], ["rtl", "从右到左"], ["webtoon", "条漫"]]
+      .map(([id, label]) => `<button role="menuitemradio" aria-checked="${b.readingMode === label}" data-action="detail-reading-${id}" data-testid="detail-reading-${id}">${label}</button>`).join("");
+    return `<header class="bar">${button("reader-back", "返回详情", "back")}<h1>阅读预览</h1></header><div class="reader" data-testid="reader-preview"><h2>${esc(b.title)}</h2><p>${esc(c.name)} · 第 ${c.page + 1} 页</p><div class="detail-menu-anchor reader-mode"><button data-action="reader-reading-mode" data-testid="reader-reading-mode" aria-haspopup="menu">阅读模式：${esc(b.readingMode || "默认")}</button>${detailMenuMarkup("reader-mode", readingModes)}</div><div class="reader-page">${c.external ? "外部章节：在浏览器打开的本地预览" : "本地阅读预览"}<br><small>不连接真实漫画或阅读引擎</small></div>${!c.external ? `${button("reader-next", "下一页")}${button("reader-finish", "标记本话已读")}` : button("reader-back", "返回详情")}</div>`;
   }
   function render() {
     const old = document.querySelector('[data-testid="library-scroll"]');
@@ -473,7 +480,7 @@
     expected: "仅在预计更新期更新",
     metadata: "更新时刷新作品信息",
     downloadUsesVisible: "下载动作遵守当前章节筛选",
-    showChapterGaps: "显示缺章提示",
+    showChapterGaps: "显示章节间缺章位置",
     autoDownloadNew: "更新后自动下载新增章节",
     protectTitle: "刷新时保留自定义标题",
   };
@@ -1078,10 +1085,10 @@
       return;
     }
     if (action === "detail-cover-menu" || action === "detail-download-menu" || action === "detail-overflow" ||
-        action === "detail-reading-mode") {
+        action === "reader-reading-mode") {
       const name = action === "detail-cover-menu" ? "cover" :
         action === "detail-download-menu" ? "download" :
-        action === "detail-overflow" ? "overflow" : "reading";
+        action === "detail-overflow" ? "overflow" : "reader-mode";
       detailMenu = detailMenu === name ? null : name;
       render();
       return;
@@ -1544,16 +1551,6 @@
       }, 350);
       return;
     }
-    if (action === "detail-mark-all") {
-      const target = book().id, ids = book().chapters.map((c) => c.id);
-      confirm(`将这部作品的 ${ids.length} 个章节全部标为已读？`, () => {
-        const b = s.books.find((x) => x.id === target);
-        b?.chapters.filter((c) => ids.includes(c.id)).forEach((c) => { c.read = true; c.page = 0; });
-        if (b) b.unread = b.chapters.filter((c) => !c.read).length;
-        s.notice = `已将 ${ids.length} 个章节标为已读`;
-      });
-      return;
-    }
     if (action === "detail-select-all") {
       detailSelected = displayedChapters(book()).map((c) => c.id);
       chapterAnchor = detailSelected[0] || null;
@@ -1688,6 +1685,7 @@
     if (action === "reader-back") {
       s.route = "detail";
       reader = null;
+      detailMenu = null;
       render();
       return;
     }
@@ -1714,6 +1712,7 @@
         c.read = true;
         book().unread = book().chapters.filter((x) => !x.read).length;
         s.route = "detail";
+        detailMenu = null;
         maybeSyncTracking(c.number);
       }
       render();
@@ -2198,6 +2197,8 @@
       }
       if (s.route === "reader") {
         s.route = "detail";
+        reader = null;
+        detailMenu = null;
         render();
         return;
       }
@@ -2594,8 +2595,7 @@
   });
   render();
   if (reviewTarget === "reading-mode") {
-    document.querySelector('[data-testid="detail-reading-mode"]')?.scrollIntoView({ block: "nearest" });
-    detailMenu = "reading";
+    detailMenu = "reader-mode";
     render();
   }
 })();

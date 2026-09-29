@@ -26,9 +26,10 @@ test("详情顶栏按原版分层，次要动作从更多可达而不重复常�
     assert.equal(await primary.getByTestId(id).isVisible(), false, `${id} 不应常驻顶栏`);
   }
   await page.getByTestId("detail-overflow").click();
-  for (const id of ["detail-refresh", "detail-categories", "detail-migrate", "detail-share-link", "detail-notes", "detail-mark-all"]) {
+  for (const id of ["detail-refresh", "detail-categories", "detail-migrate", "detail-share-link", "detail-notes"]) {
     assert.equal(await page.getByTestId(id).isVisible(), true, `${id} 应在更多菜单中`);
   }
+  assert.equal(await page.getByTestId("detail-mark-all").count(), 0);
   await page.getByTestId("detail-notes").click();
   assert.equal(await page.getByTestId("detail-notes-input").isVisible(), true);
 }));
@@ -59,7 +60,7 @@ test("标签只保留一个可见入口，搜索与复制在操作菜单里", ()
   assert.equal(await page.getByTestId("detail-tag-copy").isVisible(), true);
   await page.getByTestId("detail-tag-copy").click();
   assert.match(await page.getByTestId("notice").textContent(), /复制/);
-  assert.equal(await page.getByTestId("detail-reading-mode").isVisible(), true);
+  assert.equal(await page.getByTestId("detail-reading-mode").count(), 0);
 }));
 
 test("窄窗口详情更多菜单完整落在视口内", async () => {
