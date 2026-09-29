@@ -217,4 +217,6 @@ L08 的源顺序和重复刷新先在模型及浏览器 focused 测试中因旧�
 
 当前手动路径见 [CUI1–CUI8](DETAIL-UI-REFINEMENT-ACCEPTANCE.md)：底部【更多 → 分类】→ 独立页面 → 新建、重命名、删除、拖动排序；从详情“更多 → 编辑分类 → 编辑”进入后，返回作品详情且丢弃未保存的分类勾选。当前 DEMO 不连接原版数据库或原生导航，普通浏览器刷新会重建样本；排序与归属在本次审阅会话及“模拟重新打开”中保留。
 
+审核入口可直接打开 [Windows【更多】页](device.html?platform=windows&review=more)、[Windows 分类页](device.html?platform=windows&review=categories) 或 [Android 分类页](device.html?platform=android&review=categories)。`review` 只决定单端原型的初始页面，不改变普通入口和产品操作；从分类页返回仍显示【更多】页的分类入口。并列预览的正常入口仍为 `index.html`。
+
 本次完整 DEMO 测试为 **108/109 通过**；唯一失败是既有双端设置弹层关闭后的焦点即时断言，单独重复 6 次均通过，尚未证实故障原因或宣称已修复。该断言保留严格判断并增加失败时的焦点状态信息；最终对 `contract-review.test.cjs` 和 `category-management.test.cjs` 的聚焦回归 **25/25 通过**。分类输入提示和删除后的焦点路径另经独立聚焦复审通过。浏览器验证只覆盖 HTML 原型，不代表原生 Desktop 构建验收。

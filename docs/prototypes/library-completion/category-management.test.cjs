@@ -5,12 +5,12 @@ const { pathToFileURL } = require("node:url");
 const { chromium } = require(process.env.PLAYWRIGHT_CORE_PATH);
 const M = require("./model.js");
 
-async function visit(fn, platform = "windows", width = 1000) {
+async function visit(fn, platform = "windows", width = 1000, review = "") {
   const browser = await chromium.launch({ channel: "chrome", headless: true });
   try {
     const page = await browser.newPage({ viewport: { width, height: 800 } });
     page.setDefaultTimeout(2500);
-    await page.goto(pathToFileURL(path.join(__dirname, "device.html")).href + `?platform=${platform}`);
+    await page.goto(pathToFileURL(path.join(__dirname, "device.html")).href + `?platform=${platform}${review ? `&review=${review}` : ""}`);
     await fn(page);
   } finally { await browser.close(); }
 }
@@ -29,6 +29,19 @@ async function keyboardMove(p, id, key = "ArrowUp") {
   await p.keyboard.press(`Alt+${key}`);
 }
 const rowIds = p => p.locator(".category-manage-row").evaluateAll(rows => rows.map(row => row.dataset.id));
+
+test("分类审核直达链接打开新管理页，返回更多仍保留原入口", () => visit(async p => {
+  assert.equal(await p.getByTestId("category-page").isVisible(), true);
+  assert.equal(await p.locator("header.bar h1").textContent(), "编辑分类");
+  await p.getByTestId("category-back").click();
+  assert.equal(await p.getByTestId("category-open").isVisible(), true);
+  assert.equal(await p.getByTestId("category-open").evaluate(e => e === document.activeElement), true);
+}, "windows", 1000, "categories"));
+
+test("更多审核直达链接直接显示分类入口位置", () => visit(async p => {
+  assert.equal(await p.getByTestId("category-open").isVisible(), true);
+  assert.deepEqual(await p.getByTestId("more-library-group").locator("button").allTextContents(), ["下载队列", "分类", "统计", "数据与存储"]);
+}, "windows", 1000, "more"));
 
 test("更多页单一标题和原版同组顺序，邻项说明样本边界且分类真实进入", () => visit(async p => {
   await p.getByTestId("nav-more").click();

@@ -9,6 +9,8 @@
     new URLSearchParams(location.search).get("platform") === "android"
       ? "android"
       : "windows";
+  const reviewTarget = new URLSearchParams(location.search).get("review");
+  if (reviewTarget === "more" || reviewTarget === "categories") s.route = reviewTarget;
   document.body.classList.add(s.platform);
   let modal = null,
     modalStack = [],
