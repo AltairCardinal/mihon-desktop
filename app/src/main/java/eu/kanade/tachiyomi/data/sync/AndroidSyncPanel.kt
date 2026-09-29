@@ -49,8 +49,19 @@ internal fun AndroidLibrarySyncAction() {
 @Composable
 private fun AndroidSyncPanelSheet(panel: SyncPanel) {
     val context = LocalContext.current
-    val state by panel.state.collectAsState()
     val actions = remember(context) { AndroidSyncPanelActions(context) }
+    AndroidSyncPanelSheet(panel, actions::openBrowser, actions::copyCode, actions::openFailureLog)
+}
+
+/** Shared native container for the production entry and the debug review entry. */
+@Composable
+internal fun AndroidSyncPanelSheet(
+    panel: SyncPanel,
+    onOpenBrowser: (String) -> Unit,
+    onCopyCode: (String) -> Unit,
+    onOpenFailureLog: (String) -> Unit,
+) {
+    val state by panel.state.collectAsState()
     AdaptiveSheet(
         onDismissRequest = { panel.dispatch(SyncPanelAction.Close) },
         modifier = Modifier.fillMaxWidth().heightIn(max = 720.dp).fillMaxHeight(0.92f).imePadding(),
@@ -60,9 +71,9 @@ private fun AndroidSyncPanelSheet(panel: SyncPanel) {
         BackHandler(state.page != SyncPanelPage.MAIN) { panel.dispatch(SyncPanelAction.Back) }
         SyncPanelContent(
             panel,
-            onOpenBrowser = actions::openBrowser,
-            onCopyCode = actions::copyCode,
-            onOpenFailureLog = actions::openFailureLog,
+            onOpenBrowser = onOpenBrowser,
+            onCopyCode = onCopyCode,
+            onOpenFailureLog = onOpenFailureLog,
         )
     }
 }

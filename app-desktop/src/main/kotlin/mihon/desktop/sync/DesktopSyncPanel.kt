@@ -38,51 +38,65 @@ fun DesktopLibrarySyncAction() {
     }
     SyncToolbarButton(state) { panel.dispatch(SyncPanelAction.Open) }
     if (state.visible) {
-        ModalBottomSheet(
-            onDismissRequest = { panel.dispatch(SyncPanelAction.Close) },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            sheetMaxWidth = 560.dp,
-            modifier = Modifier.heightIn(max = 720.dp).onPreviewKeyEvent {
-                if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) {
-                    panel.dispatch(SyncPanelAction.Back)
-                    true
-                } else {
-                    false
+        DesktopSyncPanelSheet(
+            panel,
+            onOpenBrowser = {
+                try {
+                    uriHandler.openUri(it)
+                } catch (_: Exception) {
+                    dependencies.notificationService.post(
+                        DesktopNotification(MR.strings.sync_title.localized(), MR.strings.unknown_error.localized()),
+                    )
                 }
             },
-        ) {
-            SyncPanelContent(
-                panel,
-                modifier = Modifier.fillMaxWidth().heightIn(max = 680.dp),
-                onOpenBrowser = {
-                    try {
-                        uriHandler.openUri(it)
-                    } catch (_: Exception) {
-                        dependencies.notificationService.post(
-                            DesktopNotification(
-                                MR.strings.sync_title.localized(),
-                                MR.strings.unknown_error.localized(),
-                            ),
-                        )
-                    }
-                },
-                onCopyCode = {
-                    val result = dependencies.shareService.copyText(it)
-                    if (result is DesktopShareResult.Failed || result is DesktopShareResult.Unavailable) {
-                        dependencies.notificationService.post(result.toDesktopNotification())
-                    }
-                },
-                onOpenFailureLog = { path ->
-                    if (!DesktopSyncFailureLogOpener.open(path)) {
-                        dependencies.notificationService.post(
-                            DesktopNotification(
-                                MR.strings.sync_title.localized(),
-                                MR.strings.sync_failure_log_open_failed.localized(),
-                            ),
-                        )
-                    }
-                },
-            )
-        }
+            onCopyCode = {
+                val result = dependencies.shareService.copyText(it)
+                if (result is DesktopShareResult.Failed || result is DesktopShareResult.Unavailable) {
+                    dependencies.notificationService.post(result.toDesktopNotification())
+                }
+            },
+            onOpenFailureLog = { path ->
+                if (!DesktopSyncFailureLogOpener.open(path)) {
+                    dependencies.notificationService.post(
+                        DesktopNotification(
+                            MR.strings.sync_title.localized(),
+                            MR.strings.sync_failure_log_open_failed.localized(),
+                        ),
+                    )
+                }
+            },
+        )
+    }
+}
+
+/** Shared native container for the production entry and the UI review entry. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun DesktopSyncPanelSheet(
+    panel: mihon.data.sync.runtime.SyncPanel,
+    onOpenBrowser: (String) -> Unit,
+    onCopyCode: (String) -> Unit,
+    onOpenFailureLog: (String) -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = { panel.dispatch(SyncPanelAction.Close) },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetMaxWidth = 560.dp,
+        modifier = Modifier.heightIn(max = 720.dp).onPreviewKeyEvent {
+            if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) {
+                panel.dispatch(SyncPanelAction.Back)
+                true
+            } else {
+                false
+            }
+        },
+    ) {
+        SyncPanelContent(
+            panel,
+            modifier = Modifier.fillMaxWidth().heightIn(max = 680.dp),
+            onOpenBrowser = onOpenBrowser,
+            onCopyCode = onCopyCode,
+            onOpenFailureLog = onOpenFailureLog,
+        )
     }
 }

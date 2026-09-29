@@ -1,5 +1,7 @@
 # Mihon Desktop 自动化测试指南
 
+需要反复查看 Android 与 Windows 的真实 Compose 界面时，参见[双端原生 UI 审阅流程](NATIVE_UI_REVIEW.md)。
+
 ## 快速开始
 
 ### 阅读器翻页动画回归
