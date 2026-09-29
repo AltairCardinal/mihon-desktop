@@ -251,6 +251,30 @@ for (const [label, platform, width] of [["windows", "windows", 1000], ["android"
     }, `device.html?platform=${platform}`, width));
 }
 
+test("阅读模式审核链接直接显示修复后的菜单并加载新样式", () =>
+  run(async (p) => {
+    assert.equal(await p.getByTestId("detail-menu-reading").isVisible(), true);
+    const menu = await p.getByTestId("detail-menu-reading").boundingBox();
+    assert.ok(menu.x >= 0 && menu.y >= 0 && menu.x + menu.width <= 1000);
+    const resources = await p.evaluate(() => ({
+      stylesheet: document.querySelector('link[rel="stylesheet"]')?.href,
+      app: document.querySelector('script[src^="app.js"]')?.src,
+    }));
+    assert.match(resources.stylesheet, /styles\.css\?v=/);
+    assert.match(resources.app, /app\.js\?v=/);
+    await p.getByTestId("detail-reading-webtoon").click();
+    assert.match(await p.getByTestId("detail-reading-mode").textContent(), /条漫/);
+  }, "device.html?platform=windows&review=reading-mode&v=menu-fix", 1000));
+
+test("并列预览使用新版设备资源地址", () =>
+  run(async (p) => {
+    for (const platform of ["windows", "android"]) {
+      assert.match(await p.locator(`#preview-${platform}`).getAttribute("src"), /[?&]v=reading-menu-20260929b/);
+      const device = p.frameLocator(`#preview-${platform}`);
+      assert.match(await device.locator('link[rel="stylesheet"]').getAttribute("href"), /styles\.css\?v=reading-menu-20260929b/);
+    }
+  }, "index.html?v=reading-menu-20260929b", 1440));
+
 test("目标详情章节：三态筛选排序、阅读进度与独立下载书签动作", () =>
   run(async (p) => {
     await p.getByTestId("manga-A").click();

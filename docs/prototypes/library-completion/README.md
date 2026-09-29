@@ -222,3 +222,5 @@ L08 的源顺序和重复刷新先在模型及浏览器 focused 测试中因旧�
 本次完整 DEMO 测试为 **108/109 通过**；唯一失败是既有双端设置弹层关闭后的焦点即时断言，单独重复 6 次均通过，尚未证实故障原因或宣称已修复。该断言保留严格判断并增加失败时的焦点状态信息；最终对 `contract-review.test.cjs` 和 `category-management.test.cjs` 的聚焦回归 **25/25 通过**。分类输入提示和删除后的焦点路径另经独立聚焦复审通过。浏览器验证只覆盖 HTML 原型，不代表原生 Desktop 构建验收。
 
 阅读模式菜单曾从信息区末尾向下展开，并按按钮右侧对齐，导致选项被左栏滚动边界、底部导航或窄窗口左边界截住。现在仅该菜单向上、向左端对齐展开；Windows 宽窗口及 Android 390px／320px 的真实浏览器测试均检查五个选项可见可点，选择结果继续按原有模型回显。菜单属于 HTML 审阅原型，原生 Desktop 仍需单独验收。
+
+已打开的并列预览不会自动热更新 iframe。审核这项修复时，使用 [Windows 阅读模式直达入口](device.html?platform=windows&review=reading-mode&v=reading-menu-20260929b) 或 [Android 阅读模式直达入口](device.html?platform=android&review=reading-mode&v=reading-menu-20260929b)：页面直接打开作品详情及五项菜单。设备页的样式和脚本、并列入口的 iframe 均带有本轮资源版本参数，重新打开链接时可绕过之前的浏览器缓存；正常进入书架、详情的路径保持不变。

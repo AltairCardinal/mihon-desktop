@@ -11,6 +11,10 @@
       : "windows";
   const reviewTarget = new URLSearchParams(location.search).get("review");
   if (reviewTarget === "more" || reviewTarget === "categories") s.route = reviewTarget;
+  if (reviewTarget === "reading-mode") {
+    s.route = "detail";
+    s.bookId = "A";
+  }
   document.body.classList.add(s.platform);
   let modal = null,
     modalStack = [],
@@ -2589,4 +2593,9 @@
     if (d.requestDeviceState) reportDeviceState();
   });
   render();
+  if (reviewTarget === "reading-mode") {
+    document.querySelector('[data-testid="detail-reading-mode"]')?.scrollIntoView({ block: "nearest" });
+    detailMenu = "reading";
+    render();
+  }
 })();
