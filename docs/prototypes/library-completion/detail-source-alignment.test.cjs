@@ -140,8 +140,11 @@ test("下载尾部单一指示区分未下载、完成、进行中与失败", ()
     assert.equal(await trailing.locator("button").count(), 1);
     assert.equal(await trailing.locator(`.chapter-download-indicator[data-download-state="${state}"]`).count(), 1, `${bookId} ${state}`);
     if (state === "none") {
-      assert.equal(await trailing.locator("svg.filled").count(), 1, "未下载应为实心圆圈下箭头");
-      assert.match(await trailing.locator("svg path").getAttribute("d"), /M11\.99,2/);
+      const icon = trailing.locator('svg[data-mihon-icon="Drawable.ic_download_chapter_24dp"]');
+      assert.equal(await icon.count(), 1, "未下载应复用 Android 下载圆圈 drawable");
+      assert.equal(await icon.locator("path").count(), 2, "圆圈与箭头分别复用 drawable 原始两条路径");
+      assert.match(await icon.locator("path").first().getAttribute("d"), /M11\.99,2/);
+      assert.match(await icon.locator("path").last().getAttribute("d"), /M18\.041,12/);
     }
     if (state === "downloaded") assert.equal(await trailing.locator("svg.filled").count(), 1, "完成应为实心 CheckCircle");
     if (state === "queued" || state === "downloading") {

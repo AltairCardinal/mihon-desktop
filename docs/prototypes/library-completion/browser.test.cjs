@@ -273,14 +273,14 @@ test("阅读模式审核链接直达阅读预览菜单且加载新样式", () =>
 test("并列预览使用新版设备资源地址", () =>
   run(async (p) => {
     for (const platform of ["windows", "android"]) {
-      assert.match(await p.locator(`#preview-${platform}`).getAttribute("src"), /[?&]v=detail-icons-20260930a/);
+      assert.match(await p.locator(`#preview-${platform}`).getAttribute("src"), /[?&]v=detail-icons-android-20260930b/);
       const device = p.frameLocator(`#preview-${platform}`);
-      assert.match(await device.locator('link[rel="stylesheet"]').getAttribute("href"), /styles\.css\?v=detail-icons-20260930a/);
+      assert.match(await device.locator('link[rel="stylesheet"]').getAttribute("href"), /styles\.css\?v=detail-icons-android-20260930b/);
       for (const script of ["model.js", "detail-parity-model.js", "detail-parity-view.js", "detail-icons.js", "app.js"]) {
-        assert.match(await device.locator(`script[src^="${script}"]`).getAttribute("src"), new RegExp(`${script.replaceAll(".", "\\.")}\\?v=detail-icons-20260930a`));
+        assert.match(await device.locator(`script[src^="${script}"]`).getAttribute("src"), new RegExp(`${script.replaceAll(".", "\\.")}\\?v=detail-icons-android-20260930b`));
       }
     }
-  }, "index.html?v=detail-icons-20260930a", 1440));
+  }, "index.html?v=detail-icons-android-20260930b", 1440));
 
 test("目标详情章节：三态筛选排序、阅读进度与独立下载书签动作", () =>
   run(async (p) => {

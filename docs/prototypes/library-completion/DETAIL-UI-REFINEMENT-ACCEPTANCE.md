@@ -31,6 +31,19 @@
 - [ ] **DUI12** 未读章节在标题前显示主色小圆点；已读章节通过标题／副标题弱化表示，不在行尾常驻勾号；只有已书签章节在标题前显示实心书签，未书签章节不常驻空心书签。下载状态使用行尾单一指示：未下载为圆圈内向下箭头、排队／下载中为单一进度环、已下载为实心勾选圆、失败为错误标记；点击相关状态后原有下载、取消、重试和删除结果仍可达。本地作品或选章时，行尾标记保持可见但不可触发。
 - [ ] **DUI13** 无实际汉化／译制组字段的章节 → 副标题只显示可得日期与阅读进度，没有“示例汉化组”“未知译制组”或多余分隔点；章节筛选及排除组对话框不凭空造组名。有实际组名的更新场景 → 组名显示在副标题并可用于筛选。
 - [ ] **DUI14** 打开作品详情 → 根 Tab 导航不占页面底部，返回书架后恢复。宽屏选中章节 → 顶栏遵守 DUI3，章节行仅用原版选中背景而不加常驻复选框，章节计数入口不可用、继续阅读 FAB 隐藏、刷新不会在选择中触发；底部贴详情页底边的右半栏浮出圆角操作容器，默认只有图标而无横排文字；长按图标短暂显示操作名，键盘与鼠标仍可获取名称。书签、取消书签、标为已读、标为未读、标记之前、下载、删除按原版所选章节状态分别出现，排队中／下载中的章节仍显示下载图标但执行批量动作时不重复入队；窄屏底栏铺满可用宽度。改变选择数、切换已读／书签／下载状态、退出选择后，顶栏和底栏即时一致地更新，既有批量操作结果不丢失；关闭选择、反选至零或操作完成后的键盘焦点回到可见控件。
-- [ ] **DUI15** 打开详情，检查顶栏返回／下载／筛选／更多、收藏／更新间隔／追踪／网页和阅读按钮 → 对应原版图标形状清晰可见；按 Ctrl 选中一章，检查顶栏全选是 `SelectAll`、反选是层叠卡片状 `FlipToBack`，不再是双向箭头；检查底栏书签增减、标记已读／未读、标记之前、下载、删除与实际动作对应。点反选后选中数按可见章节集合变化。图标以原版当前 `MaterialSymbols.Rounded` 对应矢量与仓库 `ic_done_prev_24dp.xml` 为 **SOURCE**；浏览器内联 SVG 与 CSS 像素尺寸是 **HTML_ADAPTER**，不是原生 Compose 截图的像素验收。
+- [ ] **DUI15** 打开详情，检查顶栏返回／下载／筛选／更多、收藏／更新间隔／追踪／网页和阅读按钮 → 图形与 Android Mihon `AppBar`、`MangaToolbar`、`MangaInfoHeader` 的 `Icons.*` 对应；按 Ctrl 选中一章，检查全选 `Icons.Outlined.SelectAll`、反选 `Icons.Outlined.FlipToBack`，反选后数量按可见章节变化。检查章节未下载／进行中／已下载／失败标记，作品书签标记，选章底栏书签增减、已读／未读、之前已读、下载和删除，以及封面查看器关闭／分享／保存／编辑按钮，逐项对应 `MangaChapterListItem`、`ChapterDownloadIndicator`、`MangaBottomActionMenu`、`MangaCoverDialog` 与本地 drawable。所有详情 SVG 都应能追溯到这些 Android Material Icons 或 drawable；无未知近似路径。本地浏览器 SVG 是 **HTML_ADAPTER**，不以 CSS 像素尺寸声称原生截图像素一致。
+
+### DUI15 图标映射表
+
+| DEMO 位置 / 状态 | 本地 Mihon Android 图标来源 |
+| --- | --- |
+| 普通详情顶栏：返回、下载、筛选、更多 | `AutoMirrored.Outlined.ArrowBack`、`Outlined.Download`、`Outlined.FilterList`、`Outlined.MoreVert`（`AppBar` / `MangaToolbar`） |
+| 章节选择顶栏：关闭、全选、反选 | `Outlined.Close`、`Outlined.SelectAll`、`Outlined.FlipToBack`（`AppBar` / `MangaToolbar`） |
+| 作品动作：收藏／已收藏、更新间隔、追踪／已绑定追踪、网页 | `Outlined.FavoriteBorder` / `Filled.Favorite`、`Filled.HourglassEmpty`、`Outlined.Sync` / `Outlined.Done`、`Outlined.Public`（`MangaInfoHeader`） |
+| 继续阅读 | `Filled.PlayArrow`（`MangaScreen`） |
+| 章节标题标记：未读、书签 | `Filled.Circle` 的 CSS 等价小圆点、`Filled.Bookmark`（`MangaChapterListItem`） |
+| 章节下载状态：未下载、排队／下载中、已下载、失败 | `R.drawable.ic_download_chapter_24dp`、`Outlined.ArrowDownward` 加进度环、`Filled.CheckCircle`、`Outlined.ErrorOutline`（`ChapterDownloadIndicator`） |
+| 章节多选底栏：添加／移除书签、标记已读／未读、标记之前已读、下载、删除 | `Outlined.BookmarkAdd` / `Outlined.BookmarkRemove`、`Outlined.DoneAll`、`Outlined.RemoveDone`、`R.drawable.ic_done_prev_24dp`、`Outlined.Download`、`Outlined.Delete`（`MangaBottomActionMenu`） |
+| 封面查看器：返回／关闭、分享、保存、编辑 | `AutoMirrored.Outlined.ArrowBack`、`Outlined.Close`、`Outlined.Share`、`Outlined.Save`、`Outlined.Edit`（`AppBar` / `MangaCoverDialog`） |
 
 操作建议：在 [并列 DEMO](index.html) 选择 Windows，载入“基础书架 A–E”后打开 A；再分别载入“详情长简介与作品资料”“详情二百章长列表”“零章节与本地作品”等场景核对边界。勾选由人工审核完成，自动测试仅证明浏览器样本的行为。

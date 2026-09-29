@@ -10,30 +10,65 @@ test("详情按钮使用原版语义与轮廓，反选显示 FlipToBack 而非�
     const page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
     await page.goto(pathToFileURL(path.join(__dirname, "device.html")).href + "?platform=windows&review=detail-parity");
     const namedIcon = async (testid) => page.getByTestId(testid).locator("svg").getAttribute("data-mihon-icon");
-    for (const [testid, source] of [["detail-back", "arrow_back"], ["detail-download-menu", "download"], ["detail-filter-menu", "filter_list"], ["detail-overflow", "more_vert"], ["detail-continue", "play_arrow"]]) {
+    for (const [testid, source] of [["detail-back", "AutoMirrored.Outlined.ArrowBack"], ["detail-download-menu", "Outlined.Download"], ["detail-filter-menu", "Outlined.FilterList"], ["detail-overflow", "Outlined.MoreVert"], ["detail-continue", "Filled.PlayArrow"]]) {
       assert.equal(await namedIcon(testid), source);
     }
-    assert.equal(await namedIcon("detail-library"), "favorite_fill1");
-    assert.equal(await namedIcon("detail-fetch-interval"), "hourglass_empty");
-    assert.equal(await namedIcon("detail-tracking"), "done");
-    assert.equal(await namedIcon("detail-open-link"), "public");
+    assert.equal(await namedIcon("detail-library"), "Filled.Favorite");
+    assert.equal(await namedIcon("detail-fetch-interval"), "Filled.HourglassEmpty");
+    assert.equal(await namedIcon("detail-tracking"), "Outlined.Done");
+    assert.equal(await namedIcon("detail-open-link"), "Outlined.Public");
+    assert.equal(await namedIcon("chapter-delete-A-1"), "Filled.CheckCircle");
+    assert.equal(await namedIcon("chapter-download-A-3"), "Drawable.ic_download_chapter_24dp");
+    assert.equal(await page.locator("#app svg:not([data-mihon-icon])").count(), 0);
     await page.getByTestId("chapter-row-A-3").click({ modifiers: ["Control"] });
-    assert.equal(await namedIcon("detail-select-all"), "select_all");
-    assert.equal(await namedIcon("detail-select-invert"), "flip_to_back");
-    assert.equal(await namedIcon("detail-select-close"), "close");
-    assert.equal(await namedIcon("detail-batch-bookmark"), "bookmark_add");
-    assert.equal(await namedIcon("detail-batch-read"), "done_all");
-    assert.equal(await namedIcon("detail-batch-previous"), "done_previous");
-    assert.equal(await namedIcon("detail-batch-download"), "download");
+    assert.equal(await namedIcon("detail-select-all"), "Outlined.SelectAll");
+    assert.equal(await namedIcon("detail-select-invert"), "Outlined.FlipToBack");
+    assert.equal(await namedIcon("detail-select-close"), "Outlined.Close");
+    assert.equal(await namedIcon("detail-batch-bookmark"), "Outlined.BookmarkAdd");
+    assert.equal(await namedIcon("detail-batch-read"), "Outlined.DoneAll");
+    assert.equal(await namedIcon("detail-batch-previous"), "Drawable.ic_done_prev_24dp");
+    assert.equal(await namedIcon("detail-batch-download"), "Outlined.Download");
+    assert.equal(await page.locator("#app svg:not([data-mihon-icon])").count(), 0);
     const inversePath = await page.getByTestId("detail-select-invert").locator("svg path").getAttribute("d");
-    assert.match(inversePath, /^M200-120q-33 0-56\.5-23\.5/, "应使用原版 FlipToBack 路径而不是双向箭头");
+    assert.match(inversePath, /^M 9 7 L 7 7 v 2 h 2/, "应使用仓库 Android Icons.Outlined.FlipToBack 的路径");
     await page.getByTestId("detail-select-invert").click();
     assert.equal((await page.getByTestId("detail-selection-count").textContent()).trim(), "2");
     await page.getByTestId("detail-select-close").click();
     await page.getByTestId("chapter-row-A-1").click({ modifiers: ["Control"] });
-    assert.equal(await namedIcon("detail-batch-bookmark"), "bookmark_remove");
-    assert.equal(await namedIcon("detail-batch-unread"), "remove_done");
-    assert.equal(await namedIcon("detail-batch-delete"), "delete");
+    assert.equal(await namedIcon("detail-batch-bookmark"), "Outlined.BookmarkRemove");
+    assert.equal(await namedIcon("detail-batch-unread"), "Outlined.RemoveDone");
+    assert.equal(await namedIcon("detail-batch-delete"), "Outlined.Delete");
+    assert.equal(await page.locator("#app svg:not([data-mihon-icon])").count(), 0);
+    await page.getByTestId("detail-select-close").click();
+
+    await page.getByTestId("detail-cover-open").click();
+    for (const [testid, source] of [["modal-close", "Outlined.Close"], ["detail-cover-save", "Outlined.Save"], ["detail-cover-share", "Outlined.Share"], ["detail-cover-menu", "Outlined.Edit"]]) {
+      assert.equal(await namedIcon(testid), source);
+    }
+    assert.equal(await page.locator("#app svg:not([data-mihon-icon])").count(), 0);
+    await page.getByTestId("modal-close").click();
+
+    await page.evaluate(() => {
+      window.demo.state.books[0].favorite = false;
+      window.demo.state.books[0].chapters[2].downloadStatus = "error";
+      window.demo.command("noop");
+    });
+    assert.equal(await namedIcon("detail-library"), "Outlined.FavoriteBorder");
+    assert.equal(await namedIcon("chapter-retry-A-3"), "Outlined.ErrorOutline");
+    assert.equal(await page.locator("#app svg:not([data-mihon-icon])").count(), 0);
+    await page.evaluate(() => {
+      window.demo.state.books[0].tracks = [];
+      window.demo.command("noop");
+    });
+    assert.equal(await namedIcon("detail-tracking"), "Outlined.Sync");
+
+    await page.getByTestId("detail-back").click();
+    await page.getByTestId("manga-C").click();
+    assert.equal(await namedIcon("chapter-progress-C-3"), "Outlined.ArrowDownward");
+    await page.getByTestId("detail-back").click();
+    await page.getByTestId("manga-D").click();
+    assert.equal(await namedIcon("chapter-progress-D-3"), "Outlined.ArrowDownward");
+    assert.equal(await page.locator("#app svg:not([data-mihon-icon])").count(), 0);
   } finally {
     await browser.close();
   }

@@ -8,7 +8,7 @@
 
 当前交互以[分类与详情 UI 收敛验收](DETAIL-UI-REFINEMENT-ACCEPTANCE.md)为准：分类管理从底部导航【更多 → 分类】进入独立子页；书架设置只保留新收藏默认分类等偏好。作品详情从顶栏“更多 → 编辑分类”打开分类选择，再由对话框“编辑”进入同一分类页。详情顶栏收起刷新、迁移、笔记等次要动作，封面编辑放在封面查看器里。当前详情不显示阅读模式设置，阅读模式在阅读预览内可切换；顶栏“更多”不含“全部标记为已读”，选章后仍可批量标记。下文旧截图和历史验证数字记录当时版本，不能作为当前版 UI 的完成证据。
 
-详情页图标按原版 Mihon `MangaToolbar`、`MangaInfoHeader` 与 `MangaBottomActionMenu` 的动作映射审阅。顶栏反选使用 `FlipToBack`，不使用原 DEMO 的双向箭头 `swap`；顶栏、资料动作、阅读入口及选章底栏使用本地 `detail-icons.js` 中的 Material Symbols Rounded 矢量，标记之前已读使用本仓库 `ic_done_prev_24dp.xml` 的路径。**SOURCE** 是原版动作与图标映射及对应矢量；**HTML_ADAPTER** 是内联 SVG 显示。普通书架图标仍用原来的 `icons.js`，没有因详情审阅改变。手动检查见 DUI15，自动化证据见 `detail-icons.test.cjs`。
+详情页图标按本仓库 Android Mihon 的 `MangaToolbar`、`AppBar`、`MangaInfoHeader`、`MangaChapterListItem`、`ChapterDownloadIndicator`、`MangaBottomActionMenu` 与 `MangaCoverDialog` 逐项核对。顶栏反选使用同一 `Icons.Outlined.FlipToBack`；其他按钮使用 Android 源码对应的 Material Icons `Outlined`／`Filled` 矢量。章节下载、标记之前已读分别复用 `ic_download_chapter_24dp.xml`、`ic_done_prev_24dp.xml`。这些本地素材在 `detail-icons.js` 中随 DEMO 离线加载。**SOURCE** 是仓库 Android 组件引用的图标及 drawable；**HTML_ADAPTER** 是内联 SVG 显示。普通书架图标仍使用 `icons.js`。手动检查见 DUI15，自动化证据见 `detail-icons.test.cjs`。
 
 详情页宽窗口双栏滚动按原版 Mihon 的交互目标处理：左侧作品信息与右侧章节列表独立滚动，只有右侧显示滚动条；顶部两段滚动刷新由右侧章节列表触发。窄窗口改为单列整页滚动和整页顶部刷新。这里的 CSS 滚动容器与浏览器滚轮阈值属于 **HTML_ADAPTER**，不是 Compose 运行时的实现证据；完整操作见[详情完整差异验收 A1/A6/A7](DETAIL-PARITY-ACCEPTANCE.md)。
 
@@ -99,7 +99,7 @@
 | `device.html`、`app.js` | 单端页面、事件分派、面板、设置、更新结果和详情入口 |
 | `styles.css` | Mihon 外观、四布局、响应式、深浅色与字号 |
 | `icons.js` | 从已提交的旧 DEMO 提取的本地 Material 图标子集，保留填充／描边区别 |
-| `detail-icons.js` | 详情专用原版图标矢量；离线内联，不影响书架通用图标 |
+| `detail-icons.js` | 按 Android 源码引用映射的详情图标矢量和本地 drawable；离线内联，不影响书架通用图标 |
 | `model.js` | 本地样本及可测试的选择、偏好、更新、章节和设备规则 |
 | `detail-parity-model.js`、`detail-parity-view.js` | 详情章节筛选、选择、下载、迁移和追踪规则，以及章节与业务弹层的审阅视图 |
 | `*.test.cjs` | 本地模型及浏览器真实交互验证 |

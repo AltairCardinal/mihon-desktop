@@ -48,12 +48,12 @@
     const iconAction = (id, label, glyph) =>
       `<button type="button" data-action="${id}" data-testid="${id}" aria-label="${esc(label)}" title="${esc(label)}">${icon(glyph)}<span class="detail-action-label" aria-hidden="true">${esc(label)}</span></button>`;
     return `<div class="detail-selection" data-testid="detail-selection">
-      ${iconAction("detail-batch-bookmark", anyUnbookmarked ? "添加书签" : "移除书签", anyUnbookmarked ? "detail:bookmark_add" : "detail:bookmark_remove")}
-      ${anyUnread ? iconAction("detail-batch-read", "标记已读", "detail:done_all") : ""}
-      ${anyRead ? iconAction("detail-batch-unread", "标记未读", "detail:remove_done") : ""}
-      ${included.length === 1 ? iconAction("detail-batch-previous", "标记之前已读", "detail:done_previous") : ""}
-      ${showDownload ? iconAction("detail-batch-download", plan.toDownload.length ? `下载未下载项 (${plan.toDownload.length})` : "下载所选章节", "detail:download") : ""}
-      ${plan.toDelete.length ? iconAction("detail-batch-delete", `删除已下载项 (${plan.toDelete.length})`, "detail:delete") : ""}
+      ${iconAction("detail-batch-bookmark", anyUnbookmarked ? "添加书签" : "移除书签", anyUnbookmarked ? "detail:Outlined.BookmarkAdd" : "detail:Outlined.BookmarkRemove")}
+      ${anyUnread ? iconAction("detail-batch-read", "标记已读", "detail:Outlined.DoneAll") : ""}
+      ${anyRead ? iconAction("detail-batch-unread", "标记未读", "detail:Outlined.RemoveDone") : ""}
+      ${included.length === 1 ? iconAction("detail-batch-previous", "标记之前已读", "detail:Drawable.ic_done_prev_24dp") : ""}
+      ${showDownload ? iconAction("detail-batch-download", plan.toDownload.length ? `下载未下载项 (${plan.toDownload.length})` : "下载所选章节", "detail:Outlined.Download") : ""}
+      ${plan.toDelete.length ? iconAction("detail-batch-delete", `删除已下载项 (${plan.toDelete.length})`, "detail:Outlined.Delete") : ""}
       </div>`;
   }
 
