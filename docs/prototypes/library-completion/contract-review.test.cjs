@@ -213,7 +213,16 @@ test('独立契约：双端焦点隔离、实际字号翻倍、320px弹层可达
   await page.keyboard.press('Shift+Tab');
   assert.equal(await phone.getByRole('dialog').evaluate(node => node.contains(document.activeElement)), true);
   await phone.getByTestId('modal-close').click();
-  assert.equal(await phone.getByTestId('settings-open').evaluate(node => node === document.activeElement), true);
+  const restored = await phone.getByTestId('settings-open').evaluate(node => ({
+    matched: node === document.activeElement,
+    activeTestId: document.activeElement?.getAttribute('data-testid'),
+    activeTag: document.activeElement?.tagName,
+    documentFocused: document.hasFocus(),
+    contentInert: document.querySelector('#content').inert,
+    route: window.demo.state.route,
+    taskStatus: window.demo.state.job?.status,
+  }));
+  assert.equal(restored.matched, true, JSON.stringify(restored));
   await phone.getByTestId('settings-open').click();
   assert.equal(await phone.getByTestId('pref-interval').inputValue(), '72');
 }, 'index.html', 1440, 1000));

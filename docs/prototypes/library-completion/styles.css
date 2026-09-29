@@ -1260,14 +1260,40 @@ svg.stroked {
   stroke: currentColor;
   stroke-width: 1.8;
 }
+/* CategoryScreen: a full child page with elevated custom-category cards. */
+.bar.category-bar { flex-wrap: nowrap; }
+.bar.category-bar h1 { width: auto; min-width: 0; }
+.category-page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 16px 100px;
+}
 .category-manage-row {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 8px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--outline);
+  padding: 8px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: var(--high);
+  box-shadow: 0 2px 4px #0003;
+  cursor: pointer;
 }
-.category-name { flex: 1; min-width: 80px; overflow-wrap: anywhere; }
-.category-drag { cursor: grab; padding: 12px; user-select: none; }
-.category-order-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.category-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.category-name-hint { margin: 0 0 16px; color: var(--muted); font-size: 0.85rem; }
+.category-name-hint.invalid { color: var(--error, #d36b73); }
+.category-name-field input[aria-invalid="true"] { border-color: var(--error, #d36b73); }
+.category-drag { cursor: grab; user-select: none; touch-action: none; }
+.category-add-fab {
+  position: absolute;
+  right: 24px;
+  bottom: 44px;
+  padding: 16px 22px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--primary);
+  color: var(--surface);
+  box-shadow: 0 3px 8px #0005;
+}
+.more-category-entry { display: flex; align-items: center; gap: 20px; width: 100%; padding: 18px; }

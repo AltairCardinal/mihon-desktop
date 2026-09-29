@@ -52,7 +52,12 @@
   let categoryWheel = { last: -Infinity, direction: 0 },
     composing = false,
     categoryRenameId = null,
-    categoryRenameDraft = "";
+    categoryRenameDraft = "",
+    categoryCreateDraft = "",
+    categoryReturnRoute = "more",
+    categoryReturnTrigger = "category-open",
+    categoryTouch = null,
+    moreSampleName = "";
   const categoryShortcut =
     s.platform === "windows"
       ? "Ctrl + 滚轮切换分类：向上上一类，向下下一类"
@@ -90,6 +95,7 @@
       link: "M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1",
       share: "M18 8a3 3 0 1 0-3-3 3 3 0 0 0 3 3ZM6 15a3 3 0 1 0-3-3 3 3 0 0 0 3 3Zm12 9a3 3 0 1 0-3-3 3 3 0 0 0 3 3ZM8.8 13.5l6.4 5M8.8 10.5l6.4-5",
       check: "M4 12l5 5L20 6",
+      dragHandle: "M4 9h16M4 15h16",
       edit: "M4 20h4l11-11-4-4L4 16v4zM13 7l4 4",
       bookmark: "M6 3h12v18l-6-4-6 4V3z",
       notes: "M5 3h14v18H5zM8 8h8M8 12h8M8 16h5",
@@ -320,7 +326,46 @@
   function rootPage() {
     const names = { updates: "更新", history: "历史", browse: "浏览", authors: "作者", more: "更多" };
     const title = names[s.route] || "书架";
+    if (s.route === "more") {
+      const entries = [["more-downloads", "下载队列", "download"], ["category-open", "分类", "category"], ["more-stats", "统计", "history"], ["more-storage", "数据与存储", "library"]];
+      return `<header class="bar"><h1>更多</h1></header><div class="root-page" data-testid="root-page"><section data-testid="more-library-group"><hr>${entries.map(([id, label, glyph]) => `<button class="more-category-entry" data-action="${id}" data-testid="${id}">${icon(glyph)}<span>${label}</span></button>`).join("")}<hr></section><p class="muted">本地交互样本：可编辑分类；其余条目仅展示原版入口位置。</p></div>`;
+    }
     return `<header class="bar"><h1>${title}</h1></header><div class="root-page" data-testid="root-page"><h2>${title}</h2><p>已切换到「${title}」页面。本地样本保留主导航；该页面的完整业务内容不在本次详情审阅范围内。</p></div>`;
+  }
+  function categoryPage() {
+    const categories = s.categories.filter((category) => category.id !== 0);
+    const rows = categories.map((category) => `
+      <div class="category-manage-row" role="button" tabindex="0" aria-label="重命名${esc(category.name)}" data-action="category-rename-${category.id}" data-id="${category.id}" data-testid="category-manage-row-${category.id}">
+        <button class="icon category-drag" draggable="true" data-action="category-drag" data-category-drag="${category.id}" data-testid="category-drag-${category.id}" aria-label="拖动${esc(category.name)}调整顺序" title="拖动排序${s.platform === "windows" ? "；Alt + ↑ / ↓" : ""}">${icon("dragHandle")}</button>
+        <span class="category-name">${esc(category.name)}</span>
+        ${button("category-rename-" + category.id, "重命名" + category.name, "edit")}
+        ${button("delete-category-" + category.id, "删除" + category.name, "trash")}
+      </div>`).join("");
+    return `<header class="bar category-bar">${button("category-back", "返回", "back")}<h1>编辑分类</h1></header><main class="category-page" data-testid="category-page">${rows || '<div class="empty" data-testid="category-empty">尚未创建分类</div>'}</main><button class="category-add-fab" data-action="category-add" data-testid="category-add"><span aria-hidden="true">＋</span> 添加</button>`;
+  }
+  function openCategoryPage() {
+    categoryReturnRoute = s.route === "detail" ? "detail" : "more";
+    categoryReturnTrigger = categoryReturnRoute === "detail" ? "detail-overflow" : "category-open";
+    s.route = "categories";
+    s.notice = "";
+    render();
+    document.querySelector('[data-testid="category-back"]')?.focus();
+  }
+  function closeCategoryPage() {
+    s.route = categoryReturnRoute;
+    s.notice = "";
+    render();
+    document.querySelector(`[data-testid="${categoryReturnTrigger}"]`)?.focus({ preventScroll: true });
+  }
+  function validCategoryName(name, id = null) {
+    return !!name.trim() && !s.categories.some((category) => category.name === name.trim()) &&
+      (id === null || s.categories.find((category) => category.id === id)?.name !== name.trim());
+  }
+  function categoryNameField(renaming) {
+    const id = renaming ? categoryRenameId : null;
+    const name = renaming ? categoryRenameDraft : categoryCreateDraft;
+    const duplicate = !!name.trim() && s.categories.some((category) => category.id !== id && category.name === name.trim());
+    return `<div class="category-name-field"><label class="setting"><span>分类名称</span><input ${renaming ? "" : 'id="category-name"'} data-testid="${renaming ? "category-rename-input" : "category-create-input"}" aria-label="分类名称" value="${esc(name)}" aria-describedby="category-name-hint" aria-invalid="${duplicate}"></label><p id="category-name-hint" data-testid="category-name-hint" class="category-name-hint ${duplicate ? "invalid" : ""}">${duplicate ? "分类已存在" : "必填"}</p></div><div class="choice">${button("modal-cancel", "取消")}${button(renaming ? "category-rename-save" : "category-create-save", renaming ? "确定" : "添加", null, validCategoryName(name, id) ? "" : "disabled")}</div>`;
   }
   function readerView() {
     const b = book(),
@@ -351,7 +396,7 @@
     const sheetScroll = document.querySelector(".sheet-body")?.scrollTop || 0;
     if (modal === "panel") panelScroll[panelTab] = sheetScroll;
     const focus = document.activeElement?.getAttribute("data-testid");
-    app.innerHTML = `<div class="platform-bar"><span>${s.platform === "windows" ? "Mihon Desktop" : "9:41"}</span><span>${s.platform === "windows" ? "—　□　×" : "●　▰"}</span></div><div class="app-content" id="content" ${modal ? "inert" : ""}>${s.route === "reader" ? readerView() : s.route === "detail" ? detail() : s.route === "library" ? library() : rootPage()}${s.route !== "reader" ? nav() : ""}<div class="status" role="status" data-testid="notice">${esc(s.notice)}</div></div><div id="modal-root"></div>`;
+    app.innerHTML = `<div class="platform-bar"><span>${s.platform === "windows" ? "Mihon Desktop" : "9:41"}</span><span>${s.platform === "windows" ? "—　□　×" : "●　▰"}</span></div><div class="app-content" id="content" ${modal ? "inert" : ""}>${s.route === "reader" ? readerView() : s.route === "detail" ? detail() : s.route === "library" ? library() : s.route === "categories" ? categoryPage() : rootPage()}${!["reader", "categories"].includes(s.route) ? nav() : ""}<div class="status" role="status" data-testid="notice">${esc(s.notice)}</div></div><div id="modal-root"></div>`;
     const newDetail = document.querySelector('[data-testid="detail-scroll"]');
     if (newDetail) {
       const position = detailScroll[newDetail.dataset.bookId] || {};
@@ -489,7 +534,7 @@
   }
   let draftPolicy = {};
   function settings() {
-    return `<h3>分类</h3>${button("category-open", "分类管理", "category")}${optionPref("defaultCategory", "新收藏默认分类", [[-1, "每次询问"], ...s.categories.map((c) => [c.id, c.name])])}${button("add-book", "添加示例收藏")}${button("policy-open", "更新分类：包含 / 排除")}${toggle("perCategory")}${s.pendingReset ? button("reset-retry", "重试完成分类排序清理") : ""}<h3>更新</h3>${optionPref(
+    return `<h3>分类</h3>${optionPref("defaultCategory", "新收藏默认分类", [[-1, "每次询问"], ...s.categories.map((c) => [c.id, c.name])])}${button("add-book", "添加示例收藏")}${button("policy-open", "更新分类：包含 / 排除")}${toggle("perCategory")}${s.pendingReset ? button("reset-retry", "重试完成分类排序清理") : ""}<h3>更新</h3>${optionPref(
       "interval",
       "自动更新周期",
       [
@@ -522,6 +567,9 @@
     confirmSnapshot = [],
     confirmExtra = "";
   function modalContent() {
+    if (modal === "more-sample")
+      return `<p>${esc(moreSampleName)}：本地交互样本未提供此页面的业务操作，仅用于展示分类入口在「更多」中的位置。</p>`;
+
     if (modal === "detail-settings") return V.chapterSettings(book(), s, chapterSettingsTab);
     if (modal === "detail-scanlators") return V.scanlatorDialog(book(), scanlatorDraft);
     if (modal === "detail-chapter-defaults")
@@ -558,12 +606,8 @@
     if (modal === "results") return results();
     if (modal === "policy")
       return `<p>作品同时属于包含与排除分类时，排除优先。未指定包含时更新全部。</p>${s.categories.map((c) => `<button class="tri" data-action="policy-cycle" data-id="${c.id}" data-testid="policy-${c.id}"><span>${esc(c.name)}</span><em>${draftPolicy[c.id] === 1 ? "包含" : draftPolicy[c.id] === -1 ? "排除" : "不指定"}</em></button>`).join("")}<div class="choice">${button("policy-save", "确认保存")}${button("modal-cancel", "取消")}</div>`;
-    if (modal === "categories") {
-      const categories = s.categories.filter((c) => c.id !== 0);
-      return `<p>拖动分类或使用上移、下移调整顺序。默认分类固定在最前，不参与排序。</p>${categories.map((c, index) => `<div class="category-manage-row" data-id="${c.id}" data-testid="category-manage-row-${c.id}"><span class="category-drag" draggable="true" data-category-drag="${c.id}" data-testid="category-drag-${c.id}" aria-label="拖动${esc(c.name)}">↕</span><span class="category-name">${esc(c.name)}</span><div class="category-order-actions"><button data-action="category-up-${c.id}" data-testid="category-up-${c.id}" aria-label="上移${esc(c.name)}" ${index === 0 ? "disabled" : ""}>上移</button><button data-action="category-down-${c.id}" data-testid="category-down-${c.id}" aria-label="下移${esc(c.name)}" ${index === categories.length - 1 ? "disabled" : ""}>下移</button>${button("category-rename-" + c.id, "重命名")}${button("delete-category-" + c.id, "删除")}</div></div>`).join("")}<label class="setting"><span>新分类名称</span><input id="category-name" placeholder="分类名称"></label>${button("category-add", "添加分类")}`;
-    }
-    if (modal === "category-rename")
-      return `<label class="setting"><span>分类名称</span><input data-testid="category-rename-input" aria-label="分类名称" value="${esc(categoryRenameDraft)}"></label><div class="choice">${button("category-rename-save", "保存")}${button("modal-cancel", "取消")}</div>`;
+    if (modal === "category-create") return categoryNameField(false);
+    if (modal === "category-rename") return categoryNameField(true);
     if (modal === "choose-category")
       return `<p>选择本次收藏的分类</p>${s.categories.map((c) => button("add-to-" + c.id, c.name)).join("")}`;
     if (modal === "batch-category")
@@ -579,7 +623,8 @@
     settings: "书架设置",
     results: "更新详情",
     policy: "更新分类",
-    categories: "分类管理",
+    "category-create": "添加分类",
+    "more-sample": "本地样本说明",
     "category-rename": "重命名分类",
     "choose-category": "选择分类",
     "batch-category": "修改分类",
@@ -897,8 +942,18 @@
       openModal("sync");
       return;
     }
+    if (["more-downloads", "more-stats", "more-storage"].includes(action)) {
+      moreSampleName = { "more-downloads": "下载队列", "more-stats": "统计", "more-storage": "数据与存储" }[action];
+      openModal("more-sample");
+      return;
+    }
+    if (action === "category-back") {
+      closeCategoryPage();
+      return;
+    }
+    if (action === "category-drag") return;
     if (action === "category-open") {
-      openModal("categories", true);
+      openCategoryPage();
       return;
     }
     if (action === "search-open") {
@@ -1286,7 +1341,7 @@
       // Upstream dismisses the chooser before navigating to CategoryScreen.
       detailCategoryDraft = [];
       closeModal(true);
-      openModal("categories");
+      openCategoryPage();
       return;
     }
     if (action === "detail-category-save") {
@@ -1749,14 +1804,6 @@
       addBook(Number(action.slice(7)));
       return;
     }
-    if (action.startsWith("category-up-") || action.startsWith("category-down-")) {
-      const id = Number(action.split("-").at(-1));
-      const categories = s.categories.filter((c) => c.id !== 0);
-      const index = categories.findIndex((c) => c.id === id);
-      M.reorderCategory(s, id, index + (action.startsWith("category-up-") ? -1 : 1));
-      render();
-      return;
-    }
     if (action.startsWith("category-rename-") && action !== "category-rename-save") {
       categoryRenameId = Number(action.slice("category-rename-".length));
       categoryRenameDraft = s.categories.find((c) => c.id === categoryRenameId)?.name || "";
@@ -1766,7 +1813,7 @@
     }
     if (action === "category-rename-save") {
       categoryRenameDraft = document.querySelector('[data-testid="category-rename-input"]')?.value.trim() || "";
-      if (!categoryRenameDraft || s.categories.some((c) => c.id !== categoryRenameId && c.name === categoryRenameDraft)) {
+      if (!validCategoryName(categoryRenameDraft, categoryRenameId)) {
         s.notice = categoryRenameDraft ? "分类已存在" : "请输入分类名称";
         renderModal(false);
         return;
@@ -1778,8 +1825,14 @@
       return;
     }
     if (action === "category-add") {
+      categoryCreateDraft = "";
+      openModal("category-create");
+      document.querySelector("#category-name")?.focus();
+      return;
+    }
+    if (action === "category-create-save") {
       const name = document.querySelector("#category-name").value.trim();
-      if (!name || s.categories.some((c) => c.name === name)) {
+      if (!validCategoryName(name)) {
         s.notice = name ? "分类已存在" : "请输入分类名称";
         renderModal(false);
         return;
@@ -1788,13 +1841,17 @@
         id: Math.max(0, ...s.categories.map((c) => c.id)) + 1,
         name,
       });
+      closeModal();
       s.notice = "分类已添加";
       render();
       return;
     }
     if (action.startsWith("delete-category-")) {
       const c = Number(action.slice(16));
-      confirm("删除此分类？作品保留，无其他分类的作品移至默认分类。", () => {
+      const custom = s.categories.filter((category) => category.id !== 0);
+      const index = custom.findIndex((category) => category.id === c);
+      const neighbor = custom[index + 1] || custom[index - 1];
+      confirm(`删除分类「${s.categories.find((category) => category.id === c)?.name}」？作品保留，无其他分类的作品移至默认分类。`, () => {
         s.categories = s.categories.filter((x) => x.id !== c);
         if (!s.categories.some((x) => x.id === 0))
           s.categories.unshift({ id: 0, name: "默认" });
@@ -1808,6 +1865,7 @@
         delete s.categoryReverse[c];
         if (s.category === c) s.category = 0;
         s.notice = "分类已删除，默认收藏设置已回退";
+        return { focusTestId: neighbor ? `category-manage-row-${neighbor.id}` : "category-add" };
       });
       return;
     }
@@ -1815,8 +1873,9 @@
       const run = confirmAction;
       confirmAction = null;
       closeModal();
-      run?.();
+      const result = run?.();
       render();
+      if (result?.focusTestId) document.querySelector(`[data-testid="${result.focusTestId}"]`)?.focus({ preventScroll: true });
       return;
     }
     if (action === "sync-local") {
@@ -1843,20 +1902,44 @@
       return;
     }
   });
+  app.addEventListener("pointerdown", (event) => {
+    const handle = event.target.closest("[data-category-drag]");
+    if (s.route !== "categories" || modal || !handle || event.pointerType === "mouse") return;
+    event.preventDefault();
+    categoryTouch = { id: Number(handle.dataset.categoryDrag), target: Number(handle.dataset.categoryDrag) };
+    handle.setPointerCapture(event.pointerId);
+  });
+  app.addEventListener("pointermove", (event) => {
+    if (!categoryTouch) return;
+    const row = document.elementFromPoint(event.clientX, event.clientY)?.closest(".category-manage-row");
+    if (row) categoryTouch.target = Number(row.dataset.id);
+  });
+  app.addEventListener("pointerup", (event) => {
+    if (!categoryTouch) return;
+    event.preventDefault();
+    const { id, target } = categoryTouch;
+    categoryTouch = null;
+    if (id === target) return;
+    const categories = s.categories.filter((category) => category.id !== 0);
+    M.reorderCategory(s, id, categories.findIndex((category) => category.id === target));
+    render();
+    document.querySelector(`[data-testid="category-drag-${id}"]`)?.focus();
+  });
+  app.addEventListener("pointercancel", () => { categoryTouch = null; });
   app.addEventListener("dragstart", (event) => {
     const handle = event.target.closest("[data-category-drag]");
-    if (modal !== "categories" || !handle) return;
+    if (s.route !== "categories" || modal || !handle) return;
     event.dataTransfer.setData("text/plain", handle.dataset.categoryDrag);
     event.dataTransfer.effectAllowed = "move";
   });
   app.addEventListener("dragover", (event) => {
-    if (modal !== "categories" || !event.target.closest(".category-manage-row")) return;
+    if (s.route !== "categories" || modal || !event.target.closest(".category-manage-row")) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
   });
   app.addEventListener("drop", (event) => {
     const row = event.target.closest(".category-manage-row");
-    if (modal !== "categories" || !row) return;
+    if (s.route !== "categories" || modal || !row) return;
     event.preventDefault();
     const categories = s.categories.filter((c) => c.id !== 0);
     M.reorderCategory(
@@ -1868,6 +1951,20 @@
   });
 
   app.addEventListener("input", (e) => {
+    if (e.target.matches('#category-name, [data-testid="category-rename-input"]')) {
+      const renaming = modal === "category-rename";
+      const save = document.querySelector(`[data-testid="${renaming ? "category-rename-save" : "category-create-save"}"]`);
+      if (renaming) categoryRenameDraft = e.target.value;
+      else categoryCreateDraft = e.target.value;
+      const duplicate = !!e.target.value.trim() && s.categories.some((category) => category.id !== (renaming ? categoryRenameId : null) && category.name === e.target.value.trim());
+      e.target.setAttribute("aria-invalid", String(duplicate));
+      const hint = document.querySelector("#category-name-hint");
+      hint.textContent = duplicate ? "分类已存在" : "必填";
+      hint.classList.toggle("invalid", duplicate);
+      if (save) save.disabled = !validCategoryName(e.target.value, renaming ? categoryRenameId : null);
+      return;
+    }
+
     if (e.target.dataset.trackField && trackingDraft) {
       const key = e.target.dataset.trackField;
       trackingDraft[key] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
@@ -2043,6 +2140,22 @@
     }
   });
   document.addEventListener("keydown", (e) => {
+    if (s.route === "categories" && !modal && e.target.matches(".category-manage-row") && ["Enter", " "].includes(e.key)) {
+      e.preventDefault();
+      e.target.click();
+      return;
+    }
+    const categoryHandle = e.target.closest?.("[data-category-drag]");
+    if (s.route === "categories" && !modal && s.platform === "windows" && categoryHandle && e.altKey && ["ArrowUp", "ArrowDown"].includes(e.key)) {
+      e.preventDefault();
+      const id = Number(categoryHandle.dataset.categoryDrag);
+      const categories = s.categories.filter((category) => category.id !== 0);
+      M.reorderCategory(s, id, categories.findIndex((category) => category.id === id) + (e.key === "ArrowUp" ? -1 : 1));
+      render();
+      document.querySelector(`[data-testid="category-drag-${id}"]`)?.focus();
+      return;
+    }
+
     if (e.key === "Escape") {
       e.preventDefault();
       if (modal) {
@@ -2054,6 +2167,10 @@
         }
         if (modal === "detail-cover-viewer") detailMenu = null;
         closeModal();
+        return;
+      }
+      if (s.route === "categories") {
+        closeCategoryPage();
         return;
       }
       if (s.route === "detail" && detailMenu) {

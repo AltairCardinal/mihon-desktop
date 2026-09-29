@@ -119,9 +119,10 @@ test("详情收藏与分类：重复收藏有反馈，移出可选删下载，�
     await page.getByTestId("detail-overflow").click();
     await page.getByTestId("detail-categories").click();
     await page.getByTestId("detail-category-manage").click();
-    await page.locator("#category-name").fill("周末看");
     await page.getByTestId("category-add").click();
-    await page.getByTestId("modal-close").click();
+    await page.locator("#category-name").fill("周末看");
+    await page.getByTestId("category-create-save").click();
+    await page.getByTestId("category-back").click();
     await page.getByTestId("detail-overflow").click();
     await page.getByTestId("detail-categories").click();
     await page.getByTestId("detail-category-3").check();
