@@ -8,7 +8,15 @@
 
 当前交互以[分类与详情 UI 收敛验收](DETAIL-UI-REFINEMENT-ACCEPTANCE.md)为准：分类管理从底部导航【更多 → 分类】进入独立子页；书架设置只保留新收藏默认分类等偏好。作品详情从顶栏“更多 → 编辑分类”打开分类选择，再由对话框“编辑”进入同一分类页。详情顶栏收起刷新、迁移、笔记等次要动作，封面编辑放在封面查看器里。当前详情不显示阅读模式设置，阅读模式在阅读预览内可切换；顶栏“更多”不含“全部标记为已读”，选章后仍可批量标记。下文旧截图和历史验证数字记录当时版本，不能作为当前版 UI 的完成证据。
 
-详情页图标按本仓库 Android Mihon 的 `MangaToolbar`、`AppBar`、`MangaInfoHeader`、`MangaChapterListItem`、`ChapterDownloadIndicator`、`MangaBottomActionMenu` 与 `MangaCoverDialog` 逐项核对。顶栏反选使用同一 `Icons.Outlined.FlipToBack`；其他按钮使用 Android 源码对应的 Material Icons `Outlined`／`Filled` 矢量。章节下载、标记之前已读分别复用 `ic_download_chapter_24dp.xml`、`ic_done_prev_24dp.xml`。这些本地素材在 `detail-icons.js` 中随 DEMO 离线加载。**SOURCE** 是仓库 Android 组件引用的图标及 drawable；**HTML_ADAPTER** 是内联 SVG 显示。普通书架图标仍使用 `icons.js`。手动检查见 DUI15，自动化证据见 `detail-icons.test.cjs`。
+详情页图标按本仓库 Android Mihon 的 `MangaToolbar`、`AppBar`、`MangaInfoHeader`、`MangaChapterListItem`、`ChapterDownloadIndicator`、`MangaBottomActionMenu` 与 `MangaCoverDialog` 逐项核对。顶栏反选使用同一 `Icons.Outlined.FlipToBack`；其他按钮使用 Android 源码对应的 Material Icons `Outlined`／`Filled` 矢量。章节下载、标记之前已读分别复用 `ic_download_chapter_24dp.xml`、`ic_done_prev_24dp.xml`。这些本地素材在 `detail-icons.js` 中随 DEMO 离线加载。**SOURCE** 是仓库 Android 组件引用的图标及 drawable；**HTML_ADAPTER** 是内联 SVG 显示。书架常态工具栏图标仍使用 `icons.js`；书架多选和详情动作图标使用 `detail-icons.js`。手动检查见 DUI15，自动化证据见 `detail-icons.test.cjs` 与 `shelf-selection-ui.test.cjs`。
+
+## 书架多选 UI 对齐 Mihon
+
+多选外观和操作层级按 Android Mihon 的 `LibraryToolbar.LibrarySelectionToolbar`、`AppBar`、`LibraryBottomActionMenu` 与 `CommonMangaItem.GridItemSelectable` 对齐：顶栏隐藏普通书架动作，只显示取消、纯数字选中数、全选和反选；类别标签与书架内容保留；批量动作置于滚动内容和底部主导航之间。底部菜单按原版次序显示分类、标为已读、标为未读、下载、更多；全部选中作品均为本地作品时，按原版条件改为直接显示迁移和删除。下载菜单列出 1/5/10/25 章、未读章节和已加书签章节；“更多”提供迁移与删除，选择迁移／删除后先收起溢出菜单再显示页面或对话框。选择模式会隐藏搜索／筛选入口；若可见集合在后台变化，范围锚点必须在下次 Shift 选择时校验并重建，这条边界由 `model.test.cjs` 验证。
+
+分类操作按 `ChangeCategoryDialog` 的三态语义和简体中文资源处理：标题为“设置分类”，对话框隐藏默认分类，勾选表示全部作品属于该分类、空框表示都不属于、混合框表示只有部分选中；确认时混合项保留原归属，空框移除归属，勾选加入归属。“编辑”在左侧，进入已有【更多 → 分类】页面并按原版清空选择；返回书架显示普通工具栏。选择分类确认也会清空多选；取消保留选择。移除操作按 `DeleteLibraryMangaDialog` 标题“删除”、选项“书架中的作品／已下载的章节”及按钮“取消／确定”显示；至少选择一项才允许确认，本地作品不显示下载选项。选择更多菜单中的迁移／删除后先关闭 Popup 再显示页面或对话框；迁移会清空多选，删除取消保留、确认清空。批量修改仅作用本地样本，不会删除用户真实下载。
+
+网格选中使用 `secondary` 实色外框和 0.76 封面透明度；列表选中使用共享 `selectedBackground` 的 secondary 16% 深色／22% 浅色覆盖。底部操作保留原版图标、48px HTML 适配热区及长按显现操作名。**SOURCE** 对应 `LibraryToolbar.kt`、`AppBar.kt`、`MangaBottomActionMenu.kt`、`CommonMangaItem.kt`、`CategoryDialogs.kt`、`DeleteLibraryMangaDialog.kt` 和 `Modifier.selectedBackground`；下载动作集合复用 `DownloadDropdownMenu.kt`；Material 图标取自仓库锁定的 Compose Material Icons 1.7.8。**HTML_ADAPTER** 是浏览器定位、px 尺寸、Popup 菜单和 CSS 色彩混合；本 DEMO 保留已确认的 Windows Ctrl/Shift 选择语义，不把手势改回 Android 长按范围策略，也不把 HTML 截图宣称为原生 Compose 像素基准。手动验收见 [C15–C21](ACCEPTANCE.md#c-windows-分类切换和多选-i01-i03)，行为与图标路径测试见 `shelf-selection-ui.test.cjs`。
 
 详情页宽窗口双栏滚动按原版 Mihon 的交互目标处理：左侧作品信息与右侧章节列表独立滚动，只有右侧显示滚动条；顶部两段滚动刷新由右侧章节列表触发。窄窗口改为单列整页滚动和整页顶部刷新。这里的 CSS 滚动容器与浏览器滚轮阈值属于 **HTML_ADAPTER**，不是 Compose 运行时的实现证据；完整操作见[详情完整差异验收 A1/A6/A7](DETAIL-PARITY-ACCEPTANCE.md)。
 
@@ -99,7 +107,7 @@
 | `device.html`、`app.js` | 单端页面、事件分派、面板、设置、更新结果和详情入口 |
 | `styles.css` | Mihon 外观、四布局、响应式、深浅色与字号 |
 | `icons.js` | 从已提交的旧 DEMO 提取的本地 Material 图标子集，保留填充／描边区别 |
-| `detail-icons.js` | 按 Android 源码引用映射的详情图标矢量和本地 drawable；离线内联，不影响书架通用图标 |
+| `detail-icons.js` | 按 Android 源码引用映射的详情与书架多选图标矢量及本地 drawable；离线内联 |
 | `model.js` | 本地样本及可测试的选择、偏好、更新、章节和设备规则 |
 | `detail-parity-model.js`、`detail-parity-view.js` | 详情章节筛选、选择、下载、迁移和追踪规则，以及章节与业务弹层的审阅视图 |
 | `*.test.cjs` | 本地模型及浏览器真实交互验证 |
@@ -117,7 +125,8 @@ $env:PYTHONUTF8 = '1'
 $env:PYTHONIOENCODING = 'utf-8'
 $env:PYTHONDONTWRITEBYTECODE = '1'
 $env:PLAYWRIGHT_CORE_PATH = 'C:/Users/feeli/AppData/Local/OpenAI/Codex/runtimes/cua_node/b63ee7ee40c23b77/bin/node_modules/playwright-core'
-node --test --test-concurrency=1 docs/prototypes/library-completion/model.test.cjs docs/prototypes/library-completion/browser.test.cjs docs/prototypes/library-completion/contract-review.test.cjs
+$testFiles = Get-ChildItem docs/prototypes/library-completion -Filter '*.test.cjs' | Sort-Object FullName | ForEach-Object FullName
+node --test --test-concurrency=1 $testFiles
 node --check docs/prototypes/library-completion/model.js
 node --check docs/prototypes/library-completion/app.js
 node --check docs/prototypes/library-completion/preview.js
@@ -187,6 +196,8 @@ L08 的源顺序和重复刷新先在模型及浏览器 focused 测试中因旧�
 - [Android 窄屏章节菜单，320×700](screenshots/android-detail-menu-320.png)
 - [Desktop 目录变化叠加，1000×900](screenshots/desktop-detail-chapter-change-1000.png)
 - [Desktop 作品信息刷新叠加，1000×800](screenshots/desktop-detail-metadata-1000.png)
+- [Windows Mihon 多选态顶栏与底部动作菜单，1100×820](screenshots/shelf-selection-windows-1100.png)
+- [Android Mihon 多选态窄屏布局，320×790](screenshots/shelf-selection-android-320.png)
 
 目视检查了封面比例、导航与入口、模态层级、失败明细、窄屏文字换行和滚动可达。截图和浏览器验证仍不替代 roadmap 要求的 Windows 触控板、系统设备条件、Android/Desktop 共享实现与正式构建验收。
 
@@ -247,3 +258,9 @@ L08 的源顺序和重复刷新先在模型及浏览器 focused 测试中因旧�
 **HTML_ADAPTER**：浏览器审阅窗将 450dp 的上限按 0.8 视觉比例表达为 360 CSS px，保留“半宽且不超过上限”的算法和封面 65% 比例；这只是预览尺寸适配，不是上游像素规格，也不是原生 Desktop 约束。选章底栏图标用 `aria-label` 与鼠标提示保留操作名，鼠标或触摸长按 500ms 后显示约 1 秒的文字且松开不执行动作；排队／下载中章节执行批量下载时反馈跳过，不重复建任务。批量结果仍由内存样本模拟。手动核对见 [DUI3/DUI4/DUI9/DUI13/DUI14](DETAIL-UI-REFINEMENT-ACCEPTANCE.md)。
 
 本次先以真实浏览器和模型测试复现差异，再实现并复验。独立审查指出的书签图标裁切、排队／下载中按钮缺失与退出选择后失焦均已修复，详情顶栏横线和图标长按反馈也已补齐；修复复审的受影响测试 **20/20 通过**。完整 DEMO 首轮 **139 项中 136 项通过**，其余 3 项均为仍按旧 UI 在详情寻找根导航或在多选中点击已隐藏筛选按钮的测试；按当前原版交互改写操作路径后，受影响两文件聚焦测试 **14/14 通过**。本轮遵守一次完整回归预算，未再次运行全量；没有把首轮结果写成 139/139。这个验证只覆盖 HTML 原型，不代表原生 Desktop 已修改或构建通过。
+
+## 2026-09-30 书架多选 UI 对齐
+
+多选顶栏和底栏按 Android Mihon 的 selection mode 对齐；批量分类使用原版“设置分类”三态对话框，移除使用原版“删除”双选项确认框。点击迁移／删除先关闭溢出菜单；迁移、分类编辑和确认分类按上游接线清空选择，取消分类／删除保留选择。**PROJECT_POLICY**：已确认的 Windows Ctrl/Shift 语义不变。**HTML_ADAPTER**：选择样本、下载与移除只操作内存演示数据；不会触碰真实书架或文件。
+
+红绿验证先确认三态分类控件和弹窗收起断言能在旧 UI 失败，再以真实 Chrome 完成 Windows 与 Android 两项书架多选测试（**2/2**）。本目录全量首轮 **142 项中 140 项通过**；两条失败分别是资源版本断言滞后和选择模式下仍点击已隐藏搜索按钮。更新版本断言及操作路径后，`model.test.cjs`、`shelf-selection-ui.test.cjs`、`browser.test.cjs`、`contract-review.test.cjs` 聚焦回归 **64/64 通过**，含过滤后锚点模型契约。随后双选删除反馈的断言也先红后绿，最终 `shelf-selection-ui.test.cjs` 再次 **2/2 通过**。按本任务声明的预算没有第二次运行全目录。该验证仅覆盖 HTML DEMO，不代表 Compose 生产 UI 已实现。

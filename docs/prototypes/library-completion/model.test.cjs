@@ -86,6 +86,20 @@ test("固定锚点替换与追加、多选普通点击增减，隐藏选择保�
   assert.equal(s.selected.length, 5);
 });
 
+test("筛选隐藏范围锚点后 Shift 从可见目标重建范围", () => {
+  const s = M.create();
+  M.select(s, "B", { ctrl: true });
+  M.select(s, "D", { shift: true });
+  assert.deepEqual(s.selected, ["B", "C", "D"]);
+
+  s.filters.unread = 1;
+  assert.equal(M.visible(s).some((book) => book.id === "B"), false);
+  M.select(s, "D", { shift: true });
+
+  assert.deepEqual(s.selected, ["B", "D"]);
+  assert.deepEqual(s.anchor, { id: "D", category: 1 });
+});
+
 test("普通点击取消最后一项退出多选，下一次点击才打开", () => {
   const s = M.create();
   M.select(s, "B", { ctrl: true });

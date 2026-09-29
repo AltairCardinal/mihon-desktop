@@ -28,7 +28,12 @@
     reader = reviewTarget === "reading-mode" ? "A-3" : null,
     hold = null,
     suppressClick = false;
-  let detailMenu = null,
+  let batchMenu = null,
+    batchActionHold = null,
+    suppressBatchActionId = null,
+    batchCategoryDraft = {},
+    batchDeleteOptions = { library: false, downloads: false },
+    detailMenu = null,
     detailSelected = [],
     detailBookId = null,
     detailHold = null,
@@ -197,16 +202,35 @@
   function library() {
     const cards = M.visible(s),
       columns = innerWidth > innerHeight ? s.prefs.columns : s.prefs.portrait;
-    const toolbar =
+    const normalToolbar =
       s.query !== null
         ? `${button("search-close", "关闭搜索", "back")}<input aria-label="搜索书架" data-testid="library-query" id="query" placeholder="搜索书架" value="${esc(s.query)}">`
         : `<h1>书架</h1>`;
+    const selectionMode = s.selected.length > 0;
+    const toolbar = selectionMode
+      ? `<header class="bar library-action-mode" data-testid="library-action-mode">${button("select-close", "退出选择", "detail:Outlined.Close")}<span class="selection-count" data-testid="selection-count">${s.selected.length}</span><div class="selection-actions">${button("select-all", "全选", "detail:Outlined.SelectAll")}${button("select-invert", "反选", "detail:Outlined.FlipToBack")}</div></header>`
+      : `<header class="bar">${normalToolbar}<div class="actions">${button("sync-open", "同步", "sync")}${button("search-open", "搜索书架", "search")}${button("panel-open", "筛选、排序与显示", "filter")}${button("random-open", "随机打开", "random")}${button("settings-open", "书架设置", "settings")}${button("refresh", "刷新当前分类", "refresh")}</div></header>`;
     const categories =
       s.prefs.tabs && (s.categories.length > 1 || s.categories[0]?.id !== 0)
         ? `<div class="categories" aria-label="${categoryShortcut}">${s.categories.map((c) => `<button data-testid="category-${c.id}" data-action="category" data-id="${c.id}" class="${c.id === s.category ? "active" : ""}" title="${categoryShortcut}">${esc(c.name)}${s.prefs.counts ? " " + s.books.filter((b) => b.favorite !== false && b.categories.includes(c.id)).length : ""}</button>`).join("")}</div>`
         : "";
-    const selection = s.selected.length
-      ? `<div class="selection"><strong data-testid="selection-count">已选 ${s.selected.length}</strong>${button("select-close", "退出选择", "close")}${button("select-all", "全选")}${button("select-invert", "反选")}${button("batch-category", "分类")}${button("batch-download", "下载")}${button("batch-delete", "取消收藏")}</div>`
+    const selectedBooks = s.books.filter((b) => s.selected.includes(b.id));
+    const canDownloadSelection = selectedBooks.length > 0 && selectedBooks.every((b) => !b.local);
+    const selectionAction = (id, label, vector, menu = "") =>
+      `<div class="batch-action-anchor"><button class="icon batch-action" data-testid="${id}" data-action="${id}" aria-label="${esc(label)}" title="${esc(label)}">${icon(`detail:${vector}`)}<span class="batch-action-label" aria-hidden="true">${esc(label)}</span></button>${menu}</div>`;
+    const batchOverflow = batchMenu === "overflow"
+      ? `<div class="batch-popup batch-overflow-menu" role="menu" data-testid="batch-overflow-menu"><button role="menuitem" data-action="batch-migrate" data-testid="batch-migrate">迁移</button><button role="menuitem" data-action="batch-delete" data-testid="batch-delete">删除</button></div>`
+      : "";
+    const downloadOptions = [
+      ["1", "下载 1 章"], ["5", "下载 5 章"], ["10", "下载 10 章"],
+      ["25", "下载 25 章"], ["unread", "下载所有未读章节"],
+      ["bookmarked", "下载已加书签章节"],
+    ];
+    const downloadMenu = batchMenu === "download"
+      ? `<div class="batch-popup batch-download-menu" role="menu" data-testid="batch-download-menu">${downloadOptions.map(([id, label]) => `<button role="menuitem" data-action="batch-download-${id}" data-testid="batch-download-${id}">${label}</button>`).join("")}</div>`
+      : "";
+    const batchActions = selectionMode
+      ? `<div class="library-batch-actions" data-testid="library-batch-actions">${selectionAction("batch-category", "设置分类", "AutoMirrored.Outlined.Label")}${selectionAction("batch-read", "标记为已读", "Outlined.DoneAll")}${selectionAction("batch-unread", "标记为未读", "Outlined.RemoveDone")}${canDownloadSelection ? selectionAction("batch-download", "下载", "Outlined.Download", downloadMenu) : selectionAction("batch-migrate", "迁移", "Outlined.SwapCalls")}${canDownloadSelection ? selectionAction("batch-overflow", "更多", "Outlined.MoreVert", batchOverflow) : selectionAction("batch-delete", "删除", "Outlined.Delete")}</div>`
       : "";
     let content = cards
       .map(
@@ -220,7 +244,7 @@
     else if (!cards.length)
       content =
         '<div class="empty">没有符合条件的作品<br><small>可以清除搜索或筛选，也可以添加本地示例收藏。</small></div>';
-    return `<header class="bar">${toolbar}<div class="actions">${button("sync-open", "同步", "sync")}${button("search-open", "搜索书架", "search")}${button("panel-open", "筛选、排序与显示", "filter")}${button("random-open", "随机打开", "random")}${button("settings-open", "书架设置", "settings")}${button("refresh", "刷新当前分类", "refresh")}</div></header>${selection}${categories}${
+    return `${toolbar}${categories}${
       activeFilters()
         ? '<div class="filter-notice" data-testid="filter-active">筛选已生效 · ' +
           Object.entries(s.filters)
@@ -232,7 +256,7 @@
           (s.downloadOnly ? " · 仅下载" : "") +
           "</div>"
         : ""
-    }${summary()}<div class="scroll-wrap"><div class="wheel-hint" data-testid="wheel-hint"></div><div tabindex="0" class="scroll-content" data-scroll-key="${scrollKey()}" data-testid="library-scroll"><div class="books ${s.prefs.layout}" ${columns ? `style="--columns:${columns}"` : ""}>${content}</div></div></div>`;
+    }${summary()}<div class="scroll-wrap"><div class="wheel-hint" data-testid="wheel-hint"></div><div tabindex="0" class="scroll-content" data-scroll-key="${scrollKey()}" data-testid="library-scroll"><div class="books ${s.prefs.layout}" ${columns ? `style="--columns:${columns}"` : ""}>${content}</div></div></div>${batchActions}`;
   }
   function detailOptions(b) {
     return P.normalizeOptions(b.chapterOptions ||= {
@@ -364,9 +388,9 @@
       </div>`).join("");
     return `<header class="bar category-bar">${button("category-back", "返回", "back")}<h1>编辑分类</h1></header><main class="category-page" data-testid="category-page">${rows || '<div class="empty" data-testid="category-empty">尚未创建分类</div>'}</main><button class="category-add-fab" data-action="category-add" data-testid="category-add"><span aria-hidden="true">＋</span> 添加</button>`;
   }
-  function openCategoryPage() {
-    categoryReturnRoute = s.route === "detail" ? "detail" : "more";
-    categoryReturnTrigger = categoryReturnRoute === "detail" ? "detail-overflow" : "category-open";
+  function openCategoryPage(returnRoute = null, returnTrigger = null) {
+    categoryReturnRoute = returnRoute || (s.route === "detail" ? "detail" : "more");
+    categoryReturnTrigger = returnTrigger || (categoryReturnRoute === "detail" ? "detail-overflow" : "category-open");
     s.route = "categories";
     s.notice = "";
     render();
@@ -376,7 +400,8 @@
     s.route = categoryReturnRoute;
     s.notice = "";
     render();
-    document.querySelector(`[data-testid="${categoryReturnTrigger}"]`)?.focus({ preventScroll: true });
+    if (categoryReturnTrigger)
+      document.querySelector(`[data-testid="${categoryReturnTrigger}"]`)?.focus({ preventScroll: true });
   }
   function validCategoryName(name, id = null) {
     return !!name.trim() && !s.categories.some((category) => category.name === name.trim()) &&
@@ -461,6 +486,15 @@
       else if (wasDetailSelection && s.route === "detail" && !detailSelected.length)
         document.querySelector('[data-testid="detail-back"]')?.focus({ preventScroll: true });
     }
+  }
+  function dismissBatchOverflow(forceRender = false) {
+    const overflowOpen = !!document.querySelector(".batch-overflow-menu");
+    batchMenu = null;
+    if (!overflowOpen && !forceRender) return;
+    render();
+    document
+      .querySelector('[data-testid="batch-overflow"]')
+      ?.focus({ preventScroll: true });
   }
   const scrollKey = () =>
     `${s.category}:${s.prefs.layout === "list" ? "list" : "grid"}`;
@@ -636,8 +670,22 @@
     if (modal === "category-rename") return categoryNameField(true);
     if (modal === "choose-category")
       return `<p>选择本次收藏的分类</p>${s.categories.map((c) => button("add-to-" + c.id, c.name)).join("")}`;
-    if (modal === "batch-category")
-      return `<p>为所选 ${confirmSnapshot.length} 本作品添加分类</p>${s.categories.map((c) => button("batch-to-" + c.id, c.name)).join("")}`;
+    if (modal === "batch-category") {
+      const categories = s.categories.filter((c) => c.id !== 0);
+      if (!categories.length)
+        return `<p>还没有创建分类。</p><div class="choice">${button("batch-category-edit", "编辑分类")}</div>`;
+      return `<div class="batch-category-options" data-testid="batch-category-options">${categories.map((c) => {
+        const state = batchCategoryDraft[c.id] || "none";
+        const glyph = state === "include" ? "✓" : state === "exclude" ? "−" : "";
+        return `<button class="batch-category-option ${state}" role="checkbox" aria-checked="${state === "exclude" ? "mixed" : state === "include"}" data-action="batch-category-toggle" data-id="${c.id}" data-testid="batch-category-${c.id}"><span class="batch-category-check" aria-hidden="true">${glyph}</span><span>${esc(c.name)}</span></button>`;
+      }).join("")}</div><div class="choice">${button("batch-category-edit", "编辑")}${button("batch-category-cancel", "取消")}${button("batch-category-confirm", "确定")}</div>`;
+    }
+    if (modal === "batch-delete") {
+      const hasLocal = confirmSnapshot.some((id) => s.books.find((b) => b.id === id)?.local);
+      return `<div data-testid="batch-delete-dialog"><label class="setting batch-delete-option"><span>书架中的作品</span><input type="checkbox" data-batch-delete-option="library" data-testid="batch-delete-library" ${batchDeleteOptions.library ? "checked" : ""}></label>${hasLocal ? "" : `<label class="setting batch-delete-option"><span>已下载的章节</span><input type="checkbox" data-batch-delete-option="downloads" data-testid="batch-delete-files" ${batchDeleteOptions.downloads ? "checked" : ""}></label>`}<div class="choice">${button("batch-delete-cancel", "取消")}${button("batch-delete-confirm", "确定", null, batchDeleteOptions.library || batchDeleteOptions.downloads ? "" : "disabled")}</div></div>`;
+    }
+    if (modal === "batch-migrate")
+      return `<p>将所选 ${confirmSnapshot.length} 部作品迁移到其他图源。</p><p class="muted">这是本地交互样本；多选迁移的真实源匹配与状态搬迁不在此演示中。</p>${button("modal-cancel", "关闭")}`;
     if (modal === "confirm")
       return `<p data-testid="confirm-text">${esc(confirmText)}</p>${confirmExtra}<div class="choice">${button("confirm-yes", "确认")}${button("modal-cancel", "取消")}</div>`;
     if (modal === "sync")
@@ -653,7 +701,9 @@
     "more-sample": "本地样本说明",
     "category-rename": "重命名分类",
     "choose-category": "选择分类",
-    "batch-category": "修改分类",
+    "batch-category": "设置分类",
+    "batch-delete": "删除",
+    "batch-migrate": "迁移作品",
     confirm: "确认操作",
     sync: "同步",
     updates: "最近更新",
@@ -688,7 +738,8 @@
       : null;
     const prev = document.querySelector(".sheet-body");
     const oldScroll = prev?.scrollTop || 0;
-    root.innerHTML = `<div class="overlay" data-action="overlay"><section class="sheet ${modal === "detail-cover-viewer" ? "cover-sheet" : ""}" role="dialog" aria-modal="true" aria-label="${modalTitles[modal]}"><header class="sheet-head">${modalStack.length ? button("modal-back", "返回", "detail:AutoMirrored.Outlined.ArrowBack") : ""}<h2>${modalTitles[modal]}</h2>${button("modal-close", "关闭", "detail:Outlined.Close")}</header>${
+    const compactDialog = modal === "batch-category" || modal === "batch-delete";
+    root.innerHTML = `<div class="overlay ${compactDialog ? "compact-dialog-overlay" : ""}" data-action="overlay"><section class="sheet ${modal === "detail-cover-viewer" ? "cover-sheet" : ""} ${compactDialog ? "action-dialog" : ""}" role="dialog" aria-modal="true" aria-label="${modalTitles[modal]}"><header class="sheet-head">${modalStack.length ? button("modal-back", "返回", "detail:AutoMirrored.Outlined.ArrowBack") : ""}<h2>${modalTitles[modal]}</h2>${button("modal-close", "关闭", "detail:Outlined.Close")}</header>${
       modal === "panel" || modal === "detail-settings"
         ? `<div class="tabs" role="tablist" ${modal === "detail-settings" ? 'data-testid="chapter-settings-tabs"' : ""}>${[
             ["filter", "筛选"],
@@ -917,10 +968,19 @@
     }
   }, true);
   app.addEventListener("click", (e) => {
+    const actionButton = e.target.closest(".library-batch-actions .batch-action");
+    if (actionButton && actionButton.dataset.action === suppressBatchActionId) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      suppressBatchActionId = null;
+    }
+  }, true);
+  app.addEventListener("click", (e) => {
     const el = e.target.closest("[data-action]");
     if (!el) return;
     const action = el.dataset.action,
       id = el.dataset.id;
+    if (batchMenu && !action.startsWith("batch-")) batchMenu = null;
     if (el.closest('[data-testid="detail-menu-overflow"]')) {
       detailMenu = null;
       document.querySelector('[data-testid="detail-overflow"]')?.focus({ preventScroll: true });
@@ -1050,6 +1110,7 @@
     if (action === "select-close") {
       s.selected = [];
       s.anchor = null;
+      batchMenu = null;
       render();
       return;
     }
@@ -1062,46 +1123,143 @@
       );
       s.selected = [...set];
       s.anchor = null;
+      batchMenu = null;
       render();
+      return;
+    }
+    if (action === "batch-overflow" || action === "batch-download") {
+      batchMenu = batchMenu === (action === "batch-overflow" ? "overflow" : "download")
+        ? null
+        : action === "batch-overflow" ? "overflow" : "download";
+      render();
+      return;
+    }
+    if (action === "batch-read" || action === "batch-unread") {
+      const read = action === "batch-read";
+      const selected = s.books.filter((b) => s.selected.includes(b.id));
+      selected.forEach((b) => {
+        b.chapters.forEach((c) => {
+          c.read = read;
+          if (read) c.page = 0;
+        });
+        b.unread = b.chapters.filter((c) => !c.read).length;
+      });
+      s.selected = [];
+      s.anchor = null;
+      batchMenu = null;
+      s.notice = `已将 ${selected.length} 部作品标记为${read ? "已读" : "未读"}`;
+      render();
+      return;
+    }
+    if (action.startsWith("batch-download-")) {
+      const mode = action.slice("batch-download-".length);
+      const count = Number(mode);
+      let queued = 0;
+      s.books.filter((b) => s.selected.includes(b.id)).forEach((b) => {
+        let candidates = [...b.chapters]
+          .filter((c) => !c.download && !["queued", "downloading"].includes(c.downloadStatus))
+          .sort((a, b) => a.number - b.number);
+        if (mode === "unread") candidates = candidates.filter((c) => !c.read);
+        else if (mode === "bookmarked") candidates = candidates.filter((c) => c.bookmark);
+        else candidates = candidates.filter((c) => !c.read).slice(0, count);
+        candidates.forEach((c) => {
+          c.downloadStatus = "queued";
+          queued++;
+        });
+      });
+      s.selected = [];
+      s.anchor = null;
+      batchMenu = null;
+      s.notice = `已将 ${queued} 个章节加入本地下载队列样本`;
+      render();
+      return;
+    }
+    if (action === "batch-migrate") {
+      confirmSnapshot = [...s.selected];
+      s.selected = [];
+      s.anchor = null;
+      dismissBatchOverflow(true);
+      openModal("batch-migrate");
       return;
     }
     if (action === "batch-delete") {
+      dismissBatchOverflow();
       confirmSnapshot = [...s.selected];
-      confirm(
-        `取消收藏所选 ${confirmSnapshot.length} 本作品？不会删除已下载文件。`,
-        () => {
-          s.books = s.books.filter((b) => !confirmSnapshot.includes(b.id));
-          s.selected = [];
-          s.anchor = null;
-          s.notice = "已取消收藏";
-        },
-      );
+      batchDeleteOptions = { library: false, downloads: false };
+      openModal("batch-delete");
       return;
     }
     if (action === "batch-category") {
+      batchMenu = null;
       confirmSnapshot = [...s.selected];
+      const selected = s.books.filter((b) => confirmSnapshot.includes(b.id));
+      batchCategoryDraft = Object.fromEntries(
+        s.categories.filter((c) => c.id !== 0).map((category) => {
+          const count = selected.filter((b) => b.categories.includes(category.id)).length;
+          return [category.id, count === 0 ? "none" : count === selected.length ? "include" : "exclude"];
+        }),
+      );
       openModal("batch-category");
       return;
     }
-    if (action.startsWith("batch-to-")) {
-      const c = Number(action.slice(9));
-      s.books
-        .filter((b) => confirmSnapshot.includes(b.id))
-        .forEach((b) => (b.categories = [...new Set([...b.categories, c])]));
+    if (action === "batch-category-toggle") {
+      const current = batchCategoryDraft[Number(id)] || "none";
+      batchCategoryDraft[Number(id)] =
+        current === "exclude" ? "none" : current === "none" ? "include" : "exclude";
+      renderModal();
+      return;
+    }
+    if (action === "batch-category-edit") {
+      s.selected = [];
+      s.anchor = null;
+      batchMenu = null;
+      closeModal(true);
+      openCategoryPage("library", "nav-library");
+      return;
+    }
+    if (action === "batch-category-cancel" || action === "batch-delete-cancel") {
       closeModal();
-      s.notice = "已添加分类";
+      return;
+    }
+    if (action === "batch-category-confirm") {
+      const selected = s.books.filter((b) => confirmSnapshot.includes(b.id));
+      selected.forEach((b) => {
+        const categories = new Set(b.categories.filter((categoryId) => categoryId !== 0));
+        Object.entries(batchCategoryDraft).forEach(([categoryId, state]) => {
+          const numericId = Number(categoryId);
+          if (state === "include") categories.add(numericId);
+          else if (state === "none") categories.delete(numericId);
+        });
+        b.categories = categories.size ? [...categories] : [0];
+      });
+      s.selected = [];
+      s.anchor = null;
+      batchMenu = null;
+      closeModal();
+      s.notice = `已更新 ${selected.length} 部作品的分类`;
       render();
       return;
     }
-    if (action === "batch-download") {
-      s.books
-        .filter((b) => s.selected.includes(b.id))
-        .forEach((b) =>
-          b.chapters.forEach(
-            (c) => (c.download ||= b.id + "-file-" + c.number),
-          ),
-        );
-      s.notice = "所选作品已加入本地下载样本";
+    if (action === "batch-delete-confirm") {
+      if (!batchDeleteOptions.library && !batchDeleteOptions.downloads) return;
+      const selected = s.books.filter((b) => confirmSnapshot.includes(b.id));
+      selected.forEach((b) => {
+        if (batchDeleteOptions.library) b.favorite = false;
+        if (batchDeleteOptions.downloads)
+          b.chapters.forEach((chapter) => {
+            chapter.download = null;
+            chapter.downloadStatus = null;
+          });
+      });
+      s.selected = [];
+      s.anchor = null;
+      batchMenu = null;
+      closeModal();
+      s.notice = batchDeleteOptions.library && batchDeleteOptions.downloads
+        ? `已将 ${selected.length} 部作品移出书架并删除已下载章节`
+        : batchDeleteOptions.library
+          ? `已将 ${selected.length} 部作品移出书架`
+          : `已删除 ${selected.length} 部作品的已下载章节`;
       render();
       return;
     }
@@ -2014,6 +2172,11 @@
     }
   });
   app.addEventListener("change", (e) => {
+    if (e.target.dataset.batchDeleteOption !== undefined) {
+      batchDeleteOptions[e.target.dataset.batchDeleteOption] = e.target.checked;
+      renderModal(false);
+      return;
+    }
     if (e.target.dataset.trackField && trackingDraft) {
       const field = e.target.dataset.trackField;
       trackingDraft[field] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
@@ -2073,6 +2236,22 @@
     document.querySelector(`[data-testid="${focus}"]`)?.focus();
   });
   app.addEventListener("pointerdown", (e) => {
+    const batchAction = e.target.closest(".library-batch-actions .batch-action");
+    if (batchAction && e.button === 0) {
+      batchActionHold = {
+        button: batchAction,
+        x: e.clientX,
+        y: e.clientY,
+        fired: false,
+        timer: setTimeout(() => {
+          if (!batchActionHold || batchActionHold.button !== batchAction) return;
+          batchActionHold.fired = true;
+          batchAction.classList.add("show-label");
+          setTimeout(() => batchAction.classList.remove("show-label"), 1000);
+        }, 500),
+      };
+      return;
+    }
     const actionButton = e.target.closest(".detail-selection button");
     if (actionButton && e.button === 0) {
       detailActionHold = {
@@ -2119,6 +2298,10 @@
     };
   });
   app.addEventListener("pointermove", (e) => {
+    if (batchActionHold && Math.hypot(e.clientX - batchActionHold.x, e.clientY - batchActionHold.y) > 8 && !batchActionHold.fired) {
+      clearTimeout(batchActionHold.timer);
+      batchActionHold = null;
+    }
     if (detailActionHold && Math.hypot(e.clientX - detailActionHold.x, e.clientY - detailActionHold.y) > 8 && !detailActionHold.fired) {
       clearTimeout(detailActionHold.timer);
       detailActionHold = null;
@@ -2134,6 +2317,14 @@
   });
   ["pointerup", "pointercancel"].forEach((type) =>
     app.addEventListener(type, () => {
+      if (batchActionHold) {
+        clearTimeout(batchActionHold.timer);
+        if (type === "pointerup" && batchActionHold.fired) {
+          suppressBatchActionId = batchActionHold.button.dataset.action;
+          setTimeout(() => { suppressBatchActionId = null; }, 500);
+        }
+      }
+      batchActionHold = null;
       if (detailActionHold) {
         clearTimeout(detailActionHold.timer);
         if (type === "pointerup" && detailActionHold.fired) {
@@ -2238,9 +2429,17 @@
         render();
         return;
       }
+      if (batchMenu) {
+        const triggerId = batchMenu === "overflow" ? "batch-overflow" : "batch-download";
+        batchMenu = null;
+        render();
+        document.querySelector(`[data-testid="${triggerId}"]`)?.focus({ preventScroll: true });
+        return;
+      }
       if (s.selected.length) {
         s.selected = [];
         s.anchor = null;
+        batchMenu = null;
         render();
         return;
       }
@@ -2606,6 +2805,7 @@
     }
     modal = null;
     modalStack = [];
+    batchMenu = null;
     reader = null;
     detailSelected = [];
     chapterAnchor = null;

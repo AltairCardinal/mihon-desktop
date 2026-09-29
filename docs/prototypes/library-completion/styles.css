@@ -19,6 +19,9 @@ body {
   --muted: #c7c6ca;
   --primary: #b0c6ff;
   --on-primary: #002d6e;
+  --secondary: #b0c6ff;
+  --on-secondary: #002d6e;
+  --selection-tint: color-mix(in srgb, var(--secondary) 16%, transparent);
   --outline: #49454f;
 }
 .theme-light {
@@ -30,6 +33,9 @@ body {
   --muted: #45464f;
   --primary: #0058ca;
   --on-primary: white;
+  --secondary: #0058ca;
+  --on-secondary: white;
+  --selection-tint: color-mix(in srgb, var(--secondary) 22%, transparent);
   --outline: #c8c5cc;
 }
 button,
@@ -224,16 +230,191 @@ summary {
   color: var(--primary);
   border-color: var(--primary);
 }
-.selection {
-  padding: 4px 10px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  background: var(--high);
-  gap: 4px;
+.library-action-mode {
+  flex-wrap: nowrap;
+  gap: 0;
+  min-height: 56px;
+  padding: 4px;
+  background: color-mix(in srgb, var(--surface) 92%, var(--primary));
 }
-.selection strong {
+.library-action-mode .icon {
+  width: 48px;
+  height: 48px;
+  min-height: 48px;
+  padding: 12px;
+}
+.selection-count {
+  flex: 1;
+  margin-left: 8px;
+  font-size: 1.25rem;
+  font-weight: 400;
+}
+.selection-actions {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+.library-batch-actions {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: stretch;
+  gap: 0;
+  padding: 12px 8px;
+  background: var(--high);
+  border-radius: 18px 18px 0 0;
+}
+.batch-action-anchor {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
+  transition: flex-grow 120ms ease-out;
+}
+.batch-action-anchor:has(.batch-action.show-label) {
+  flex-grow: 2;
+}
+.batch-action {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: 48px;
+  height: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: 50%;
+}
+.batch-action-label {
+  display: none;
+  font-size: 0.6875rem;
+  line-height: 14px;
+  white-space: nowrap;
+}
+.batch-action.show-label {
+  gap: 1px;
+}
+.batch-action.show-label .batch-action-label {
+  display: block;
+}
+.batch-popup {
+  position: absolute;
+  z-index: 20;
+  right: 0;
+  bottom: calc(100% + 4px);
+  min-width: 196px;
+  max-height: min(320px, 60vh);
+  overflow: auto;
+  padding: 4px 0;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: var(--high);
+  box-shadow: 0 4px 14px #0005;
+}
+.batch-popup button {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 0;
+  text-align: left;
+}
+.compact-dialog-overlay {
+  align-items: center;
+  padding: 24px;
+}
+.sheet.action-dialog {
+  width: min(420px, 100%);
+  max-height: min(640px, 90dvh);
+  min-height: 0;
+  border-radius: 28px;
+}
+.action-dialog .sheet-head {
+  padding: 24px 24px 12px;
+}
+.action-dialog .sheet-head h2 {
+  font-size: 1.5rem;
+}
+.action-dialog .sheet-head [data-testid="modal-close"] {
+  display: none;
+}
+.action-dialog .sheet-body {
+  padding: 0 24px 24px;
+}
+.action-dialog .choice {
+  justify-content: flex-end;
+  margin: 20px -8px -8px;
+}
+.action-dialog .choice button {
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 20px;
+  color: var(--primary);
+}
+.action-dialog .choice button:hover {
+  background: var(--selection-tint);
+}
+.action-dialog .batch-category-options + .choice button:first-child {
   margin-right: auto;
+}
+.batch-category-options {
+  margin-top: 8px;
+}
+.batch-category-option {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 0;
+  border-radius: 8px;
+  text-align: left;
+}
+.batch-category-option:hover {
+  background: var(--selection-tint);
+}
+.batch-category-check {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--muted);
+  border-radius: 2px;
+  flex: none;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+}
+.batch-category-option.include .batch-category-check,
+.batch-category-option.exclude .batch-category-check {
+  color: var(--on-primary);
+  border-color: var(--primary);
+  background: var(--primary);
+}
+.batch-delete-option {
+  min-height: 52px;
+  padding: 8px 0;
+}
+.batch-delete-option span {
+  min-width: 0;
+}
+.books:not(.list) .book.selected {
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--secondary);
+  color: var(--on-secondary);
+}
+.books:not(.list) .book.selected .cover {
+  opacity: 0.76;
+}
+.books.list .book.selected {
+  border-color: transparent;
+  background: var(--selection-tint);
 }
 .filter-notice {
   padding: 4px 16px;
@@ -265,9 +446,8 @@ summary {
   background: var(--container);
   align-self: start;
 }
-.book.selected {
-  border-color: var(--primary);
-  background: var(--high);
+.book.selected .manga-hit {
+  background: transparent;
 }
 .manga-hit {
   display: block;

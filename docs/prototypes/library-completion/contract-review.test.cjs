@@ -24,13 +24,25 @@ async function selected(page) {
     nodes.map(node => node.getAttribute('data-id')).sort());
 }
 
-test('独立契约：完整 Windows 选择示例、隐藏锚点、跨分类与四布局', () => review(async page => {
+test('独立契约：完整 Windows 选择示例、跨分类与四布局', () => review(async page => {
   for (const layout of ['compact', 'comfortable', 'cover-only', 'list']) {
     await page.evaluate(() => window.demo.scenario('baseline'));
     await page.getByTestId('panel-open').click();
     await page.getByTestId('panel-tab-display').click();
     await page.getByTestId(`layout-${layout}`).click();
     await page.keyboard.press('Escape');
+
+    await page.getByTestId('search-open').click();
+    await page.getByTestId('library-query').fill('星海');
+    await page.getByTestId('manga-A').click({ modifiers: ['Control'] });
+    assert.deepEqual(await selected(page), ['A']);
+    assert.equal(await page.getByTestId('search-open').count(), 0);
+    assert.equal(await page.getByTestId('library-query').count(), 0);
+    await page.keyboard.press('Escape');
+    assert.deepEqual(await selected(page), []);
+    assert.equal(await page.getByTestId('library-query').inputValue(), '星海');
+    await page.getByTestId('search-close').click();
+
     await page.getByTestId('manga-B').click({ modifiers: ['Control'] });
     await page.getByTestId('manga-E').click({ modifiers: ['Shift'] });
     assert.deepEqual(await selected(page), ['B', 'C', 'D', 'E']);
@@ -43,20 +55,18 @@ test('独立契约：完整 Windows 选择示例、隐藏锚点、跨分类与�
     await page.getByTestId('manga-F').click({ modifiers: ['Shift'] });
     assert.match(await page.getByTestId('selection-count').textContent(), /5/);
     await page.getByTestId('category-1').click();
-    await page.getByTestId('search-open').click();
-    await page.getByTestId('library-query').fill('星海');
     await page.getByTestId('manga-A').click({ modifiers: ['Shift'] });
     assert.deepEqual(await selected(page), ['A']);
-    assert.match(await page.getByTestId('selection-count').textContent(), /6/);
+    assert.match(await page.getByTestId('selection-count').textContent(), /2/);
     await page.getByTestId('manga-A').click();
     assert.deepEqual(await selected(page), []);
-    assert.match(await page.getByTestId('selection-count').textContent(), /5/);
+    assert.match(await page.getByTestId('selection-count').textContent(), /1/);
     assert.equal(await page.getByTestId('detail-back').count(), 0);
-    await page.getByTestId('manga-A').click();
-    assert.deepEqual(await selected(page), ['A']);
-    assert.match(await page.getByTestId('selection-count').textContent(), /6/);
-    await page.keyboard.press('Escape');
-    await page.getByTestId('manga-A').click();
+    await page.getByTestId('category-2').click();
+    assert.deepEqual(await selected(page), ['F']);
+    await page.getByTestId('manga-F').click();
+    assert.equal(await page.getByTestId('selection-count').count(), 0);
+    await page.getByTestId('manga-F').click();
     await page.getByTestId('detail-back').click();
     assert.equal(await page.getByTestId('selection-count').count(), 0);
   }
