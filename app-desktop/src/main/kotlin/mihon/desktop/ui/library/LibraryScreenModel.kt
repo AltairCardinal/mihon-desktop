@@ -934,7 +934,7 @@ class LibraryScreenModel(
         }
     }
 
-    suspend fun markMangaRead(mangaIds: Iterable<Long>, read: Boolean) {
+    suspend fun markMangaRead(mangaIds: Iterable<Long>, read: Boolean): Boolean {
         val targets = mangaIds.toList().distinct()
         var updated = 0
         var failures = 0
@@ -953,13 +953,14 @@ class LibraryScreenModel(
                 MR.strings.desktop_ui_items_updated_failed.localized(Locale.getDefault(), updated, failures),
             )
         }
+        return failures == 0
     }
 
     suspend fun removeFromLibrary(
         mangaIds: Iterable<Long>,
         deleteDownloads: Boolean = false,
         removeFromLibrary: Boolean = true,
-    ) {
+    ): Boolean {
         val updater = updateManga
         if (removeFromLibrary) requireNotNull(updater) { "UpdateManga is required" }
         val targets = mangaIds.toList().distinct()
@@ -1023,6 +1024,7 @@ class LibraryScreenModel(
                 },
             )
         }
+        return failures == 0
     }
 
     suspend fun enqueueNextUnreadDownload(item: LibraryManga): Boolean {
@@ -1167,10 +1169,10 @@ class LibraryScreenModel(
         mangaIds: List<Long>,
         addCategoryIds: Set<Long>,
         removeCategoryIds: Set<Long>,
-    ) {
+    ): SetMangaCategories.BatchResult {
         if (mangaIds.isEmpty()) {
             publishCategoryBatchResult(SetMangaCategories.BatchResult.Empty)
-            return
+            return SetMangaCategories.BatchResult.Empty
         }
         val getCategories = getCategoryIdsForManga
         val setter = requireNotNull(setMangaCategories) { "SetMangaCategories is required" }
@@ -1200,7 +1202,7 @@ class LibraryScreenModel(
                 failures += SetMangaCategories.BatchFailure(mangaId, error)
             }
         }
-        publishCategoryBatchResult(SetMangaCategories.BatchResult(succeeded, failures))
+        return SetMangaCategories.BatchResult(succeeded, failures).also(::publishCategoryBatchResult)
     }
 
     private fun publishCategoryBatchResult(result: SetMangaCategories.BatchResult) {

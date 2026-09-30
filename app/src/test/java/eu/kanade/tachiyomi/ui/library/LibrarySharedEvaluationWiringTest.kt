@@ -148,6 +148,17 @@ class LibrarySharedEvaluationWiringTest {
             assertEquals(setOf(1L), model.state.value.selection)
             model.toggleRangeSelection(category, second.libraryManga)
             assertEquals(setOf(1L, 2L), model.state.value.selection)
+            assertEquals(
+                2L,
+                LibraryScreenModel::class.java.getDeclaredField("lastSelectionId")
+                    .apply { isAccessible = true }.get(model),
+            )
+            assertEquals(
+                category.id,
+                LibraryScreenModel::class.java.getDeclaredField("lastSelectionCategory")
+                    .apply { isAccessible = true }.get(model),
+            )
+
             model.invertSelection()
             assertEquals(emptySet<Long>(), model.state.value.selection)
             model.selectAll()

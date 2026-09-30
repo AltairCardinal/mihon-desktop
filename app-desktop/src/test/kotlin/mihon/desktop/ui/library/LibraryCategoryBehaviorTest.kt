@@ -156,7 +156,7 @@ class LibraryCategoryBehaviorTest {
             }
             longClick(scene, target.title)
             render(scene)
-            click(scene, MR.strings.desktop_ui_mark_read.localized())
+            click(scene, MR.strings.action_mark_as_read.localized())
             withTimeout(5_000) {
                 while (
                     !Injekt.get<ChapterRepository>().getChapterById(targetUnread.id)!!.read ||
@@ -414,7 +414,7 @@ class LibraryCategoryBehaviorTest {
 
             longClick(scene, manga.title)
             render(scene)
-            click(scene, MR.strings.action_remove.localized())
+            openSelectionDelete(scene)
             render(scene)
             clickToggle(scene, ToggleableState.Off, index = 1)
             click(scene, MR.strings.action_ok.localized())
@@ -636,39 +636,29 @@ class LibraryCategoryBehaviorTest {
             render(scene)
             click(scene, MR.strings.action_select_all.localized())
             render(scene)
-            assertTrue(
-                nodes(scene).flatMap { it.semanticLabels() }
-                    .contains(MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), 2)),
-            )
+            assertEquals(2, selectionCount(scene))
             click(scene, MR.strings.desktop_ui_invert_selection.localized())
             render(scene)
-            assertTrue(
-                nodes(scene).flatMap { it.semanticLabels() }
-                    .contains(MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), 1)),
-            )
+            assertEquals(1, selectionCount(scene))
             click(scene, MR.strings.action_select_all.localized())
             render(scene)
-            assertTrue(
-                nodes(scene).flatMap { it.semanticLabels() }
-                    .contains(MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), 2)),
-            )
-            click(scene, MR.strings.action_remove.localized())
+            assertEquals(2, selectionCount(scene))
+            openSelectionDelete(scene)
             render(scene)
             assertEquals(1, toggleNodes(scene).size)
             assertFalse(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.downloaded_chapters.localized()))
-            clickToggle(scene, ToggleableState.Off)
+            clickToggle(scene, ToggleableState.Off, index = 0)
             render(scene)
             scene.sendKeyEvent(composeKeyEvent(Key.Escape, KeyEventType.KeyDown))
             render(scene)
-            assertTrue(
-                nodes(scene).flatMap { it.semanticLabels() }
-                    .contains(MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), 2)),
-            )
+            assertEquals(2, selectionCount(scene))
             assertTrue(repository.getMangaById(remote.id).favorite)
             assertTrue(repository.getMangaById(local.id).favorite)
             assertTrue(provider.hasMangaDownloads(remote.source, remote.title))
             assertTrue(provider.hasMangaDownloads(local.source, local.title))
-            click(scene, MR.strings.action_migrate.localized())
+            click(scene, MR.strings.action_menu.localized())
+            render(scene)
+            click(scene, MR.strings.migrate.localized())
             render(scene)
 
             val config = destination as LibraryBatchMigrationConfigScreen
@@ -734,7 +724,7 @@ class LibraryCategoryBehaviorTest {
                 render(scene)
                 longClick(scene, title)
                 render(scene)
-                click(scene, MR.strings.action_remove.localized())
+                openSelectionDelete(scene)
                 render(scene)
             }
 
@@ -898,7 +888,7 @@ class LibraryCategoryBehaviorTest {
             render(scene)
             click(scene, second.title)
             render(scene)
-            click(scene, MR.strings.categories.localized())
+            click(scene, MR.strings.action_move_category.localized())
             withTimeout(5_000) {
                 while (toggleNodes(scene).size != 3) {
                     render(scene)
@@ -925,7 +915,7 @@ class LibraryCategoryBehaviorTest {
             assertEquals(setOf(1L), rootModel.categoryIdsForManga(first.id))
             assertEquals(setOf(1L, 2L), rootModel.categoryIdsForManga(second.id))
             render(scene)
-            click(scene, MR.strings.categories.localized())
+            click(scene, MR.strings.action_move_category.localized())
             withTimeout(5_000) {
                 while (toggleNodes(scene).size != 4) {
                     render(scene)
@@ -948,7 +938,7 @@ class LibraryCategoryBehaviorTest {
 
             longClick(scene, first.title)
             render(scene)
-            click(scene, MR.strings.categories.localized())
+            click(scene, MR.strings.action_move_category.localized())
             withTimeout(5_000) {
                 while (toggleNodes(scene).size != 4) {
                     render(scene)
@@ -1454,6 +1444,24 @@ class LibraryCategoryBehaviorTest {
     @OptIn(ExperimentalComposeUiApi::class)
     private fun nodes(scene: ImageComposeScene): List<SemanticsNode> =
         scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private suspend fun openSelectionDelete(scene: ImageComposeScene) {
+        if (nodes(scene).any { it.config.contains(SemanticsActions.OnClick) && MR.strings.action_menu.localized() in it.semanticLabels() }) {
+            click(scene, MR.strings.action_menu.localized())
+            render(scene)
+        }
+        click(scene, MR.strings.action_delete.localized())
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun selectionCount(scene: ImageComposeScene): Int {
+        val bar = nodes(scene).single {
+            it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "library-selection-top-bar"
+        }
+        return flatten(bar).filter { it.config.contains(SemanticsProperties.Text) }
+            .flatMap { it.semanticLabels() }.single().toInt()
+    }
 
     private fun flatten(node: SemanticsNode): List<SemanticsNode> =
         listOf(node) + node.children.flatMap(::flatten)

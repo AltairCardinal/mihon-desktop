@@ -134,7 +134,7 @@ class LibraryPageCompositionTest {
             }
             assertTrue(requireNotNull(item.config[androidx.compose.ui.semantics.SemanticsActions.OnLongClick].action).invoke())
             render(scene)
-            click(scene, MR.strings.desktop_ui_mark_read.localized())
+            click(scene, MR.strings.action_mark_as_read.localized())
             entered.await()
 
             scene.close()
@@ -348,7 +348,7 @@ class LibraryPageCompositionTest {
             assertTrue(requireNotNull(item.config[androidx.compose.ui.semantics.SemanticsActions.OnLongClick].action).invoke())
             render(scene)
 
-            assertTrue(semanticLabels(scene).contains(MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), 1)))
+            assertEquals(1, selectionCount(scene))
             assertTrue(!semanticLabels(scene).contains(MR.strings.action_sort.localized()))
         } finally {
             scene.close()
@@ -370,11 +370,14 @@ class LibraryPageCompositionTest {
             render(scene)
 
             val labels = semanticLabels(scene)
-            assertEquals(1, labels.count { it == MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), 1) })
+            assertEquals(1, selectionCount(scene))
             assertEquals(1, labels.count { it == MR.strings.action_select_all.localized() })
             assertEquals(1, labels.count { it == MR.strings.desktop_ui_invert_selection.localized() })
             assertTrue(labels.contains(MR.strings.action_download.localized()))
-            assertTrue(labels.contains(MR.strings.action_remove.localized()))
+            assertTrue(labels.contains(MR.strings.action_menu.localized()))
+            click(scene, MR.strings.action_menu.localized())
+            render(scene)
+            assertTrue(semanticLabels(scene).contains(MR.strings.action_delete.localized()))
         } finally {
             scene.close()
         }
@@ -978,6 +981,15 @@ class LibraryPageCompositionTest {
     @OptIn(ExperimentalComposeUiApi::class)
     private fun nodes(scene: ImageComposeScene): List<androidx.compose.ui.semantics.SemanticsNode> =
         scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun selectionCount(scene: ImageComposeScene): Int {
+        val bar = nodes(scene).single {
+            it.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.TestTag) { "" } == "library-selection-top-bar"
+        }
+        return flatten(bar).filter { it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Text) }
+            .flatMap(::semanticLabels).single().toInt()
+    }
 
     private fun flatten(node: androidx.compose.ui.semantics.SemanticsNode): List<androidx.compose.ui.semantics.SemanticsNode> =
         listOf(node) + node.children.flatMap(::flatten)

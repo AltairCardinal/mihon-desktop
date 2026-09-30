@@ -12,6 +12,10 @@ data class LibrarySelectionResult(
     val anchor: LibrarySelectionAnchor = LibrarySelectionAnchor(),
 )
 
+enum class LibraryRangeSelectionMode { APPEND, REPLACE_VISIBLE }
+
+enum class LibraryRangeAnchorPolicy { MOVE_TO_TARGET, KEEP_START }
+
 fun toggleLibraryItem(
     state: LibrarySelectionResult,
     id: Long,
@@ -34,34 +38,30 @@ fun selectLibraryRange(
     visibleIds: List<Long>,
     targetId: Long,
     categoryId: Long?,
+    mode: LibraryRangeSelectionMode = LibraryRangeSelectionMode.APPEND,
+    anchorPolicy: LibraryRangeAnchorPolicy = LibraryRangeAnchorPolicy.MOVE_TO_TARGET,
 ): LibrarySelectionResult {
     val anchor = state.anchor
-    if (anchor.id == null) {
-        return LibrarySelectionResult(
-            selectedIds = state.selectedIds + targetId,
-            anchor = LibrarySelectionAnchor(targetId, categoryId),
-        )
-    }
-    if (anchor.id != null && anchor.categoryId != categoryId) {
-        return LibrarySelectionResult(
-            selectedIds = state.selectedIds + targetId,
-            anchor = LibrarySelectionAnchor(targetId, categoryId),
-        )
-    }
-
     val anchorIndex = visibleIds.indexOf(anchor.id)
     val targetIndex = visibleIds.indexOf(targetId)
-    if (anchorIndex < 0 || targetIndex < 0) {
-        return LibrarySelectionResult(
-            selectedIds = state.selectedIds + targetId,
-            anchor = LibrarySelectionAnchor(targetId, categoryId),
-        )
+    val validAnchor = anchor.id != null && anchor.categoryId == categoryId && anchorIndex >= 0 && targetIndex >= 0
+    val rangeIds = if (validAnchor) {
+        val range = if (anchorIndex <= targetIndex) anchorIndex..targetIndex else targetIndex..anchorIndex
+        range.map { visibleIds[it] }
+    } else {
+        listOf(targetId)
     }
-
-    val range = if (anchorIndex <= targetIndex) anchorIndex..targetIndex else targetIndex..anchorIndex
+    val retained = when (mode) {
+        LibraryRangeSelectionMode.APPEND -> state.selectedIds
+        LibraryRangeSelectionMode.REPLACE_VISIBLE -> state.selectedIds - visibleIds.toSet()
+    }
     return LibrarySelectionResult(
-        selectedIds = state.selectedIds + range.map { visibleIds[it] },
-        anchor = LibrarySelectionAnchor(targetId, categoryId),
+        selectedIds = retained + rangeIds,
+        anchor = if (validAnchor && anchorPolicy == LibraryRangeAnchorPolicy.KEEP_START) {
+            anchor
+        } else {
+            LibrarySelectionAnchor(targetId, categoryId)
+        },
     )
 }
 

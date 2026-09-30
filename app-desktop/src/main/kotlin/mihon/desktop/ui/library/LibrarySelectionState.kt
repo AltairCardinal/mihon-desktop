@@ -3,6 +3,8 @@ package mihon.desktop.ui.library
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import tachiyomi.domain.library.LibraryRangeAnchorPolicy
+import tachiyomi.domain.library.LibraryRangeSelectionMode
 import tachiyomi.domain.library.LibrarySelectionResult
 import tachiyomi.domain.library.invertLibraryItems
 import tachiyomi.domain.library.selectAllLibraryItems
@@ -16,6 +18,7 @@ import tachiyomi.domain.library.toggleLibraryItem
 class LibrarySelectionState {
 
     private var selection = LibrarySelectionResult()
+    private var revision = 0L
 
     /** Observable snapshot — recompose when this changes via the delegated state. */
     var selectedIds: Set<Long> by mutableStateOf(emptySet())
@@ -27,8 +30,23 @@ class LibrarySelectionState {
         publish(toggleLibraryItem(selection, id, categoryId))
     }
 
-    fun selectRange(visibleIds: List<Long>, targetId: Long, categoryId: Long? = null) {
-        publish(selectLibraryRange(selection, visibleIds, targetId, categoryId))
+    fun selectRange(
+        visibleIds: List<Long>,
+        targetId: Long,
+        categoryId: Long? = null,
+        mode: LibraryRangeSelectionMode = LibraryRangeSelectionMode.APPEND,
+    ) {
+        if (targetId !in visibleIds) return
+        publish(
+            selectLibraryRange(
+                selection,
+                visibleIds,
+                targetId,
+                categoryId,
+                mode = mode,
+                anchorPolicy = LibraryRangeAnchorPolicy.KEEP_START,
+            ),
+        )
     }
 
     fun handlePrimaryClick(
@@ -36,10 +54,18 @@ class LibrarySelectionState {
         targetId: Long,
         shiftPressed: Boolean,
         categoryId: Long? = null,
+        ctrlPressed: Boolean = false,
         onOpen: (Long) -> Unit,
     ) {
+        if (targetId !in visibleIds) return
         when {
-            shiftPressed -> selectRange(visibleIds, targetId, categoryId)
+            shiftPressed -> selectRange(
+                visibleIds,
+                targetId,
+                categoryId,
+                if (ctrlPressed) LibraryRangeSelectionMode.APPEND else LibraryRangeSelectionMode.REPLACE_VISIBLE,
+            )
+            ctrlPressed -> toggle(targetId, categoryId)
             isInSelectionMode -> toggle(targetId, categoryId)
             else -> onOpen(targetId)
         }
@@ -59,7 +85,26 @@ class LibrarySelectionState {
         publish(LibrarySelectionResult())
     }
 
+    fun captureClear(): () -> Unit {
+        val acceptedRevision = revision
+        return { if (revision == acceptedRevision) clear() }
+    }
+
+    fun retainExistingIds(validIds: Set<Long>) {
+        val retained = selection.selectedIds.intersect(validIds)
+        if (retained == selection.selectedIds) return
+        publish(
+            if (retained.isNotEmpty() && selection.anchor.id in validIds) {
+                selection.copy(selectedIds = retained)
+            } else {
+                LibrarySelectionResult(selectedIds = retained)
+            },
+        )
+    }
+
     private fun publish(next: LibrarySelectionResult) {
+        if (selection == next) return
+        revision++
         selection = next
         selectedIds = next.selectedIds
     }

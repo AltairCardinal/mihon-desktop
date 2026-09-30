@@ -291,6 +291,48 @@ RI05初审边界`interaction-ri05-review-boundaries-green`于03:24:16–03:25:11
 
 原版CommonMangaItem的网格选择为secondary实色外框、内padding4dp、封面alpha0.76；列表selectedBackground为secondary浅色alpha0.22／深色0.16，封面不降低透明度。Desktop目前网格primaryContainer、列表primaryContainer0.4与定稿不符，RI06须用实际绘制像素及真实四布局事件闭合，不以字符串或图标名扫描代替。Ctrl滚轮250ms分段、输入／IME／模态／子页及修饰键排除属于Windows adapter；真实物理设备／DPI门禁仍在RI18，不把离屏事件冒充硬件证据。这里只定位下一批复用接口，无实施或验收结论。
 
+## RI06：Windows选择、分类滚轮与批量动作
+
+2026-10-01 RI05提交为`06c15f0480a2b0873ea5ff50155c2d892683324e`，提交后工作树干净。继续复用原实施代理，主代理固定共享范围／Windows输入及数据结果边界、独立初审1轮及必要修复复审1轮；预计6–8簇focused红绿、1组明确受影响集成／格式，预计4–6小时。全量、模块完整、正式构建0次，交付同一功能批production／tests／必要契约和证据／索引／提交，不新增技能、代理、报告或逐任务快照。真实硬件输入在RI18统一验收。失败追加仅直接影响路径的诊断和复验，不自动扩大到全量。
+
+`interaction-ri06-selection-red`于04:00:04–04:00:28 +08终态FAILED／exit1，仅LibrarySelectionStateTest三项且三项正确失败：Shift收缩仍残留旧可见选择、隐藏或跨分类锚点未按目标重建替换集、陈旧主点击仍打开已删除目标。先修同一共享闭区间策略，Android默认Append＋Move保持；Windows显式Replace／Append＋Keep，陈旧目标由当前有效可见集守卫。真实pointer／滚轮／批量动作尚未验证，没有本批绿、独立验收或完成结论。
+
+RI06第一、二簇：`interaction-ri06-selection-green`于04:03:44–04:04:09 +08终态PASSED／exit0，Desktop状态3＋共享策略5＝8项／0失败／0跳过。`interaction-ri06-pointer-red`于04:08:01–04:08:18 +08终态FAILED／exit1，仅两个实际事件方法，分别在Compact布局Ctrl点击和Alt点击错误推入Detail处正确失败；普通主点击已经打开详情，证明目标定位有效。接线修正后`interaction-ri06-pointer-green`因实验API opt-in编译失败，不计业务红或绿；`interaction-ri06-pointer-green-valid`于04:12:51–04:14:00 +08终态PASSED／exit0，两个四布局真实Press／Release方法＋状态3，共5项／0失败／0跳过。覆盖Ctrl／Shift扩大收缩／Ctrl+Shift／多选普通点击清零、Alt／次键及700ms长按释放抑制click。原exec已消费、对应进程结束，第一组共享默认Append＋Move保持；Ctrl滚轮、批量动作、SOURCE选择绘制及整体独立审查尚未闭合。
+
+RI06滚轮首切组保留失败过程：`interaction-ri06-wheel-red`为1项正确业务失败；最小根内容adapter后`interaction-ri06-wheel-green`已越过换类后续段／相邻事件更新时间／精确250ms／反向，却在释放再按Ctrl、没有中间滚轮事件处失败。`interaction-ri06-wheel-green-location`于04:30:58–04:31:16 +08仍FAILED／exit1，1项仍为期望Wheel A、实际Wheel B；nativeKeyLocation及真实RequestFocus／frame校正不足以解释或解决全部失败，不能称仅夹具问题。沿现LocalWindowInfo.keyboardModifiers及窗口焦点重置段后，`interaction-ri06-wheel-green-window`于04:33:18–04:33:52 +08终态PASSED／exit0，原同方法1项／0失败／0跳过，保按键身份、无中间滚轮及消费边界断言。这里只闭合根owner分段、首尾不循环、不触更新任务；输入／IME／模态／子页排除及其他RI06能力仍待验证。Windows真实硬件及发布runtime仍在RI18，不以NativeScene窗口信号夹具代替实机。
+
+RI06分类契约来源核对：Android ChangeCategoryDialog及共享CheckboxState对初始全选／空使用State二态，对初始混合使用TriState的混合→空→勾选→混合；C21明确验证混合循环，C18验证三个初始状态及混合确认保成员。page-contract将先前简写“全选／空／混合循环”明确为这套实际来源，保全部原定验收，不为实现结果降低要求，也不新增初始二态强制产生混合的行为。整行可点击和纵向滚动同为SOURCE当前组件能力，继续在本批真实Dialog事件中验收。
+
+RI06滚轮排除及快速释放：`interaction-ri06-wheel-guards-red`为缺TestTag helper的编译失败，不计业务红。`interaction-ri06-wheel-guards-red-valid`于04:37:45附近至04:38:09 +08整条FAILED，2项中模态路径1通过、修饰键1因Ctrl＋Alt分类0→1正确失败。`interaction-ri06-wheel-guards-green`于04:40:48–04:41:37 +08整条FAILED，3项中模态及分段2通过，搜索失焦后切类1失败；`interaction-ri06-wheel-focus-release`于04:44:52–04:45:16 +08 FAILED，2项失败，严格Focused断言确认搜索实际上未失焦，不能将该夹具失败归为生产guard故障；另Rail焦点下keyup→keydown没有中间render时，期望Wheel C实际Wheel B是正确业务红，证实仅LaunchedEffect窗口状态会合并瞬态释放。
+
+沿现HomeNavigationHost可选Modifier、HomeScreen父preview key及LibraryNavigationHost注册／注销模式同步转发Ctrl不再按住的KeyUp，回调只重置当前Root段且return false；原WindowInfo失焦及有帧补偿保持，不建OS全局监听。Search夹具改真实Tab并保严格Focused=false断言。`interaction-ri06-wheel-focus-release-green`于04:48:06–04:48:48 +08终态PASSED／exit0，原两个方法／0失败／0跳过；无帧快速释放、Rail真实焦点、真实搜索编辑排除及失焦后保query切类、Alt／Shift／横向／工具栏／Rail均通过。此前模态方法的绿色证据复用，完整批次稳定后再做明确受影响检查。SOURCE选择绘制、原版多选UI及批量结果仍未完成。
+
+RI06选择绘制与上下栏：`interaction-ri06-selection-ui-red`于05:01:17–05:01:37 +08 FAILED／exit1，三项正确失败分别为网格选框没有固定4dp内边距、选择栏没有纯数字计数、全本地仍显示不可用下载占位。随后一次实验API缺opt-in的编译失败不计行为证据；`selection-ui-green-valid`及`selection-ui-green-final`仍整条FAILED，先后闭合全本地／混合动作分支和More→Escape还焦→第二次Escape退选择，剩余严格像素失败保留。静态Surface替换及额外等待都没有消除选框8%交互叠层，不能据此声称旧Card或短暂ripple是已证实原因。将真实pointer移到空区域后选框角色、封面alpha及固定padding通过；剩余浮点比例夹具改为实际整数测量height＝round(width／0.7)，保7:10来源算法、颜色和alpha严格断言。`interaction-ri06-batch-red`于05:14:49–05:15:31 +08整条FAILED，但其中四布局×显式LIGHT／DARK方法完整通过，包括系统DARK下应用LIGHT、网格仅封面降alpha和List48dp／浅深选底；不是原版截图基准或发布runtime证据。
+
+RI06真实批量失败／重试：上述`batch-red`的分类与删除是正确保选失败，标记测试首次全scene文本“1”误匹配角标，不作业务红。`interaction-ri06-mark-red-valid`于05:16:17–05:16:34 +08在实际选择栏／Close入口证明保选失败；数据和错误反馈断言保持。`interaction-ri06-batch-green`于05:19:21–05:19:49 +08 PASSED／exit0，三个实际Root＋SQLite方法／0失败／0跳过：SQL拒绝后数据保持、可见错误和有效选择保留，移除故障后重试真实数据库成功才清选。复用既有分类BatchResult／下载结果，标记与删除最小返回成功值，不靠提示文案推断结果；下载深队列和文件生命周期仍交RI10。
+
+RI06异步所有权及全库有效集：`interaction-ri06-owner-red`于05:22:33–05:22:54 +08 FAILED／exit1，两项正确失败为旧标记操作完成后清掉后来新选择，以及真实作品退出书架后保留失效ID。真实ChapterRepository门闩固定旧工作集，已先确认旧章节标记／新章节不动；跨分类、隐藏选择及反选此前断言保留。`interaction-ri06-owner-green`于05:24:48–05:25:22 +08 PASSED／exit0，两项／0失败／0跳过。局部selection revision仅保护这次异步完成的清选，当前加载的全库ID裁除实际失效目标，无变化裁剪不增加revision；不按当前可见分类误裁隐藏选择，不新增任务系统。分类Dialog整行／循环、陈旧卡片回调、删除快照及本批最终受影响检查仍待闭合，整体独立审查未开始。
+
+RI06分类加载夹具与整行红测：`category-stale-red`及`category-stale-red-valid`分别保留NoSuch／加载未完成的失败；后者旧body回调实际将选择1变2为正确陈旧目标业务红。`interaction-ri06-category-stale-boundary`于05:34:50–05:35:31 +08整条FAILED，两项中旧body／long／continue对过滤和删除的守卫方法通过，分类仍没有行。后续有界诊断确认model及Dialog真实repository两目标读取均start／done，仍只有Progress和禁用OK，不归因为SQL阻塞或缺tag；补Snapshot通知未解决，相关FAILED终态保留，不写成已证实通知丢失。改NativeScene从Unconfined使用当前runBlocking事件循环后，`interaction-ri06-category-load-mainloop`于05:43:28–05:43:45 +08 FAILED／exit1，匹配XML时间21:43:38 UTC；已越过加载断言且真实checkbox pointer完整循环通过，分类文字整行点击期望Off、实际Indeterminate为正确业务红。该夹具上下文修正不修改production状态或算法，继续最小整行／滚动实现，分类整体尚未绿。
+
+RI06整行及陈旧类别补验：`interaction-ri06-category-boundaries`于05:53:51–05:54:48 +08整条FAILED／exit1，匹配XML21:54:08 UTC三项中整行／混合循环方法1通过，长列表方法已越过真实ScrollBy、末项bounds及双向Tab后，关闭焦点全scene single定位到多个owner而夹具失败；不计该异常为生产焦点故障。主代理同一初审指出旧body／long／continue回调虽按最新有效集合守卫，仍捕获旧categoryId；扩展既有stale方法为目标仍属于新分类后执行Shift，实际范围与当前分类锚点不符，是正确业务红。继续让分类ID与有序集合来自同一份最新model状态，保持同一局部选择owner与共享策略，不新增事件系统。C21沿原验收补first归属A＋B、second归属B，使开框同时出现混合与全选，Escape保归属／选择并还焦，重新确认混合保持；下载菜单必须执行Root→真实队列→清选，不能只以入口存在或helper回调代替。整体初审及剩余绿测仍未闭合。
+
+`interaction-ri06-category-focus-red`于05:57:02–05:58:00 +08 FAILED／exit1，匹配XML21:57:26 UTC，三项中旧有效目标跨分类回调方法已通过；C21混合＋全选及长列表两个方法均在实际“设置分类”触发器Focused=false处正确失败，已不是旧全scene多owner定位异常。沿现局部FocusRequester／关闭请求补最小还焦接线，保Escape只退一层、取消不写与选择保留；本批同一初审的焦点项尚未闭合，不把此前列表和循环绿测外推为整个弹窗通过。
+
+RI06原生下载／无帧滚轮：`interaction-ri06-native-final-red`于06:01:25–06:02:25 +08 FAILED／exit1，XML22:01:51 UTC四项均失败。滚轮同方法补向下后立即反向向上、无中间render，期望Wheel B实际Wheel A，正确复现composition旧index；回调改读最新model类别与index。新增下载方法通过实际Root六个菜单／SQLite章节／production factory与manager队列，失败对照临时恢复旧clear-before边界验证读取异常丢选，不伪记为未经改动的初始源码首红；没有更改下载算法。正式clear-after恢复后，`interaction-ri06-native-final-green`于06:04:01–06:05:07 +08整条FAILED／exit1，XML22:04:18 UTC四项2通过（真实下载失败保混合有效对象、六种工作集及成功清选；无帧反向及原分段边界）＋2分类关闭／还焦失败。诊断没有关闭后的return-focus日志，长列表仍有旧modal Cancel焦点，尚未证实单纯FocusRequester时序原因；继续先核实际关闭回调／show标志和owner，再核还焦，不能盲加延时通过。所有原FAILED终态保持。
+
+`interaction-ri06-native-close-green`于06:09:04–06:10:30 +08整条FAILED／exit1，匹配XML22:09:23 UTC，六项5通过：C21实际跨类混合＋全选、三态／二态及混合确认保成员，22分类／320dp／fontScale2真实滚动末项与双向Tab、Escape实际关闭owner／还焦，六个Root下载菜单到持久队列，滚轮无帧反向与原分段，打开删除固定ID集合及真实文件拒删＋第二作品SQL拒绝后的失效裁剪／隐藏有效重试／新作品保护。分类沿RI02显式Escape→onDismiss→consume及Cancel真实初焦点完成关闭、还焦，不以加延时解释旧失败。仅删下载方法1失败为点击遮罩正常关闭后继续读取旧modal空列表的NoSuch夹具错误，继续保背景不导航／数据不变、取消不写、只删下载保收藏断言修正路径，仅复验这一项。真实文件故障建立位置收紧到SQL触发器创建后的try紧邻处，保证建立即finally恢复，不扩大文件引擎。整条失败不改写为通过，Android及最终明确受影响／格式仍待完成。
+
+RI06删除及Android接线：`interaction-ri06-delete-android-green`于06:13:48–06:14:22 +08 PASSED／exit0，Desktop原生只删下载1项和Android实际LibraryScreenModel包装1项均通过。Android方法实际执行toggleSelection／toggleRangeSelection，并验证默认追加及锚点移动，没有只测共享函数或改变Android生产语义。删除资格复核SOURCE containsLocalManga：含任一本地作品时隐藏删下载项，混合下载仍只入队远端子集；不把两种适用性混为一谈。
+
+RI06锚点与格式：`interaction-ri06-anchor-red`于06:16:26–06:17:01 +08整条FAILED，状态方法正确复现取消勾选的有效锚点被其他失效ID裁剪误清（期望3／4、实际4）；同时原生绘制方法通过并生成本批图片。最小修正为非空保留集＋锚点仍在全库有效ID，最终受影响组该状态4项全通过。格式先有scoped失败和max-line-length定位过程；临时格式物化不计完整规则通过，规则恢复后`interaction-ri06-format-clean`于06:28:02–06:28:06 +08 PASSED／exit0。保留原失败，不将机械格式诊断计为行为红。
+
+RI06稳定受影响组：`interaction-ri06-affected`于06:31:01–06:37:42 +08终态FAILED／exit1；Desktop明确9类116项中111通过、4失败、1既有非Release条件跳过，domain共享范围策略5项通过。四失败均为旧标记／删除入口或旧数量文案定位，保SQLite数据、导航owner、作用域、焦点和生命周期断言，只迁移操作路径。`interaction-ri06-affected-repair`于06:48:53–06:49:45 +08 PASSED／exit0，仅复验四失败方法（Category1、Options2、Page1），匹配XML时间22:49:10／13／41 UTC，0失败／0跳过；完整scoped格式规则及root／domain／app／Desktop的spotlessCheck通过，其余绿色方法复用，不重跑整组。合并有效去重证据为Desktop116＝115通过＋1既有条件跳过，共享5通过、Android实际包装1通过，总122＝121通过＋1跳过；不是全量证据。
+
+RI06视觉为[四布局选择浅深色离屏图](ri06-selection-layouts.png)，主代理实际打开检查。Windows／Temurin JDK21.0.11、Compose1.10.2／Skiko0.9.37.4，density1／fontScale1／English，八幅1200×900真实Root场景按半尺寸排成2400×900，列Compact／Comfortable／List／CoverOnly，上LIGHT下DARK；包含系统DARK下应用LIGHT的反向信号。真实像素断言独立覆盖secondary实框、padding4、仅封面alpha0.76和列表48dp／浅深选底，不将当前图片作为上游像素基准、硬件输入或正式发布证明。
+
+本批超过8文件／400行仍是同一Root交互与数据结果边界：共享范围策略、四布局pointer、根owner滚轮、上下选择栏、批量Dialog／异步结果及Android包装保护须一起编译验收。风险集中在输入抢占、陈旧目标、异步清选和部分数据／文件失败；主代理同一独立初审及必要修正核验逐项检查实际production、真实事件与SQLite／文件证据，没有增加第二个实现代理、独立审查轮次或全量运行。当前roleEvidence只修本批5处唯一符号定位漂移，历史fixedOriginal和actionInventory来源保留；索引只用于可定位性治理，不作为行为验收。
+
 ### RI13 目录同步前置核对（只读，不代表实施完成）
 
 共享 SourceMangaUpdateService 已提供 getMangaUpdate网络入口，不能重建第二份 source更新协议。当前 Desktop LibraryUpdateChecker主要追加新 URL并更新章号／memo，分次更新 manga／chapter，尚无完整改名、重排和移除事务。Android实际复用入口是 `app/src/main/java/eu/kanade/domain/chapter/interactor/SyncChaptersWithSource.kt`，不是 domain中的同名文件；其非本地空响应抛 NoChaptersException，包含去重／名称规范化、recognition、sourceOrder、重复已读与换链接数值状态、dateFetch保护、下载目录重命名。RI13须保持characterization并抽取可共享计划／事务边界，保Desktop作者观察与同步身份；网络／文件不冒充SQL原子，不以当前Desktop标记 COMPLETE作为响应完整性证明。这里只定位复用边界，未实施或验收RI13。
@@ -309,4 +351,4 @@ Android只读预检 `python scripts/build-android.py check --signing` 返回0／
 
 ## 未完成与限制
 
-RI00／RI01 的实现、focused、唯一独立审查及必要修复复审已完成，代码、测试、索引修复和必要 checkoff 随本功能批同一提交。首簇提交为 `14a8ce15695cf69ab2e468b825e88ec91641e08a`。用户继续要求完成剩余 roadmap，现复用原实施代理串行推进后续批次，每批按既有审查与必要修复复审流程执行；完整验证仍只在 RI18。RI02 实现、focused、唯一修复复审和格式／索引检查均通过，必要 checkoff 与代码／测试在本批同一提交；RI03 实现、唯一修复复审、140项有效focused证据、格式与索引检查已闭合，必要checkoff随本批同一提交；RI04实现、140项有效focused、唯一独立初审及必要修正核验、格式及索引已闭合，必要checkoff随本批同一提交；RI05实现、唯一独立初审及必要修复核验、132项去重focused证据、格式及索引检查已闭合，必要checkoff随本批同一提交；RI06–RI18 未完成；最终全量、正式构建及运行验收尚未执行。本轮没有 Android正式候选／macOS正式构建、真实鼠标／触控板／硬件条件验收，没有交付 EXE/APK，没有把 HTML 勾选更新为 native 完成。
+RI00／RI01 的实现、focused、唯一独立审查及必要修复复审已完成，代码、测试、索引修复和必要 checkoff 随本功能批同一提交。首簇提交为 `14a8ce15695cf69ab2e468b825e88ec91641e08a`。用户继续要求完成剩余 roadmap，现复用原实施代理串行推进后续批次，每批按既有审查与必要修复复审流程执行；完整验证仍只在 RI18。RI02 实现、focused、唯一修复复审和格式／索引检查均通过，必要 checkoff 与代码／测试在本批同一提交；RI03 实现、唯一修复复审、140项有效focused证据、格式与索引检查已闭合，必要checkoff随本批同一提交；RI04实现、140项有效focused、唯一独立初审及必要修正核验、格式及索引已闭合，必要checkoff随本批同一提交；RI05实现、唯一独立初审及必要修复核验、132项去重focused证据、格式及索引检查已闭合，必要checkoff随本批同一提交；RI06实现、同一独立初审及必要修正核验、122项有效去重focused证据、scoped格式与273条当前索引检查已闭合，实施代理已回执停写、无存活Gradle进程，必要checkoff随本批同一提交；RI07–RI18 未完成；最终全量、正式构建及运行验收尚未执行。本轮没有 Android正式候选／macOS正式构建、真实鼠标／触控板／硬件条件验收，没有交付 EXE/APK，没有把 HTML 勾选更新为 native 完成。

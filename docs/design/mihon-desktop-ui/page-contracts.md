@@ -125,8 +125,21 @@ V1初稿统一写2:3，后在实现期间经源码独立复核发现Desktop `Lib
 
 - SOURCE：复用共享LibrarySelectionPolicy闭区间计算和Android现默认追加／锚点移动行为；Windows通过显式策略参数配置替换／追加及固定起点，不能改变Android默认值。书架与章节拥有独立选择状态，章节裁剪及长按规则仍由RI09实现。
 - PROJECT_POLICY：未选择普通主点击打开详情；已选择普通点击及Ctrl点击增减目标，取消最后一项只退选择。Shift替换当前可见集并保留隐藏／其他分类选择，Ctrl+Shift及长按追加；有效锚点固定，无锚点、跨分类、锚点隐藏时按目标重建。全选／反选只改当前可见集并清锚点；陈旧目标事件忽略。真实四布局pointer事件覆盖修饰键优先级、Alt／右键不误触及长按后不再click。
-- SOURCE：网格secondary实色外框、内padding4dp、封面alpha0.76；列表secondary浅色alpha0.22／深色0.16整行底色、封面alpha不变。使用真实绘制像素及对应组件尺寸核验，不用字符串或HTML图片代替。
+- SOURCE：网格secondary实色外框、内padding4dp、封面alpha0.76；列表secondary浅色alpha0.22／深色0.16整行底色、封面alpha不变；网格alpha只作用封面图片，不一起降低角标／文字／续读控件。Android selectedBackground与BaseTachiyomiTheme同取isSystemInDarkTheme；Desktop adapter按DesktopTheme的实际LIGHT／DARK／SYSTEM方案选alpha，不能仅读OS或猜surface亮度。使用真实绘制像素及对应组件尺寸核验，不用字符串或HTML图片代替。
 - PROJECT_POLICY：普通顶栏与动作隐藏后保分类标签；选择顶栏为Close、纯数量、SelectAll、FlipToBack，底栏分类、DoneAll、RemoveDone、下载、更多，位于内容与主导航之间。全本地作品不显示下载／更多，迁移／删除直接显示。下载六项沿既有manager，迁移沿普通Screen；不新增下载算法或迁移协议。
-- PROJECT_POLICY：分类对话框只列自定义分类，全选／空／混合循环；确认混合保持原成员，取消保选择与归属，编辑丢草稿并清选进入同一管理Screen。删除两项固定打开时ID快照，空勾选禁确认，本地无删下载项；取消无副作用、只删下载不移收藏。批量失败保留有效可重试对象与结果反馈，成功按定稿清选；不以当前不断变化的选择重新取已确认工作集。
+- PROJECT_POLICY：分类对话框只列自定义分类，SOURCE初始全选／空沿State二态，初始混合沿TriState按混合→空→勾选→混合循环（C18／C21）；确认混合保持原成员，取消保选择与归属，编辑丢草稿并清选进入同一管理Screen。删除两项固定打开时ID快照，空勾选禁确认；SOURCE沿containsLocalManga／LibraryRemovalPolicy，只要含任一本地作品（包括混合选择）就不提供删下载项。下载菜单则对混合选择执行远端适用子集，两者资格不同。取消无副作用、只删下载不移收藏。批量失败保留有效可重试对象与结果反馈，成功按定稿清选；不以当前不断变化的选择重新取已确认工作集。
+- PROJECT_POLICY：当前加载的全库ID只裁实际失效作品，不裁隐藏／其他分类选择；非空选择中的有效锚点即使已取消勾选仍保留，选择清零才清锚点。旧卡片body／long／continue回调从最新model读取分类与有序集合，失效目标不复活。异步动作固定接受时的对象与局部selection revision，旧完成不得清掉后来选择。批量归属及删除复用RI02显式Escape关闭和真实Cancel初焦点，关闭回触发器；部分数据库／文件失败有真实结果反馈，不承诺跨存储原子性。
 - PROJECT_POLICY：Windows根书架漫画内容区Ctrl滚轮上下切相邻分类，首尾不循环。相邻同向事件间隔小于250ms为同段且每事件更新段时间；反向、至少250ms停顿或Ctrl释放重开。保查询／筛选／隐藏选择及RI04位置，恢复目标排序，不更新任务范围；移除旧Ctrl方向键。输入焦点／IME、模态、Detail／Reader、Alt／Shift或横向事件不接管，不触发顶部刷新。Android不绑定，平台条件限制在Desktop adapter。
-- 验证边界：focused红绿执行真实事件→Root→共享策略／导航及真实DB／队列／删除对象，保Android共享契约；主代理审查批量数据边界。物理鼠标、触控板及DPI发布运行证据由RI18补齐，不能称离屏事件已满足硬件验收。
+- 验证边界：focused红绿执行真实事件→Root→共享策略／导航及真实DB／队列／删除对象，保Android共享契约；主代理审查批量数据边界。物理鼠标、触控板及DPI发布运行证据由RI18补齐，不能称离屏事件已满足硬件验收。 Ctrl释放由Home真实祖先preview key同步转发给当前Root注册回调，事件仍不消费；Root离页注销，WindowInfo只补偿失焦及状态变化。不能只依赖逐帧窗口状态，否则无中间帧的快速释放／按下会合并丢失；不引入OS全局监听。
+
+## 2026-10-01 章节设置与实时投影契约（RI07，实施前固定）
+
+本节固定最终设计D-D1–D-D6／D-D9及D-D7／D-D8处理模型、D-D10列表响应。当前RI06尚未收口，本节不声明RI07已实施；章节头资料与完整布局由RI08、选择完整交互由RI09、真实下载／删除动作由RI10闭环。
+
+- SOURCE：Manga.chapterFlags、SetMangaChapterFlags、LibraryPreferences六项章节默认值和SetMangaDefaultChapterFlags是唯一权威。Android ChapterFilter使用共享applyFilter／getChapterSort，本地作品按已下载处理；全局仅下载覆盖有效downloadedFilter而不改局部原值。Desktop复用同一过滤／排序核心，平台仅提供真实下载状态，不保留已读／未读两个相斥布尔开关或另造默认值存储。
+- PROJECT_POLICY：普通详情章节设置入口打开单一模态筛选／排序／显示三页，新会话默认筛选，会话内滚动独立。已读、下载、书签三态不指定→包含→排除；已读显示语义与共享unreadFilter字段转换明确。四种现有排序及升降方向、名称／章节号显示即时持久化，作品间隔离，外部同作品flags变化和重新owner均消费权威数据。写入失败显示原因并恢复真实值，不能仅将UI切回而留下已写数据库。
+- PROJECT_POLICY：全局仅下载强制有效包含并禁局部修改，提示约束，解除恢复局部原值；本地／远端／外部章节的既有适用边界保持。真实repository、download queue或文件状态变化驱动mounted列表立即重算，不以重新进入详情或只更新图标代替筛选消费；不得重写下载器。
+- SOURCE／PROJECT_POLICY：设为默认只提交当前六项默认偏好；只有用户显式勾选应用到已有收藏才调用现SetMangaDefaultChapterFlags.awaitAll。重置为默认只作用当前作品，取消无写入；默认不自动覆盖其他已有作品。跨偏好与数据库失败明确结果及可重试边界，不声称跨存储原子性。
+- PROJECT_POLICY：扫描组来自实际章节组名，排除列表以现repository维护；对话框草稿有全选／重置／确认／取消，只有确认保存且立即重算，Escape／取消不写。空组名不伪造业务组，作品切换不串草稿。
+- SOURCE／PROJECT_POLICY：缺章使用真实章节号、共享missingChaptersCount／calculateChapterGap，不用可见列表长度截断。升降序与重复／小数／未知章节、最低章之前的缺口有一致总量及插入位置；隐藏缺章同一偏好控制总量与列表提示。筛选／扫描组变化按当前可见有效章节裁剪选择并使失效锚点清除，区别于书架保留隐藏选择；RI09继续消费此接口，不共享书架所有者。
+- PROJECT_POLICY：活动筛选与显示模型向RI08提供统一结果，日期沿RI03同一外观／locale链。设置模态入焦、Tab／Shift+Tab留在面板、Escape只关一层并回真实入口，320dp／200%字号各页及默认动作可达；主题与尺寸变化不重建作品owner或丢已提交值。实际UI事件→repository→flow→列表、factory／DI和Android实际包装共享契约均须有测试，截图不替代行为证据。

@@ -66,11 +66,12 @@ internal fun HomeNavigationHost(
     showNavigation: Boolean,
     badgeCount: Int,
     snackbar: @Composable () -> Unit = {},
+    modifier: Modifier = Modifier,
     tabs: List<Tab> = desktopRootTabs,
     content: @Composable () -> Unit,
 ) {
     val state = remember { HomeNavigationState() }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
         val layout = DesktopWindowLayout(maxWidth, maxHeight, mihon.desktop.LocalDesktopUiDependencies.current.layoutSnapshot.tabletUiMode)
         val visible = showNavigation && !state.hasChild
         CompositionLocalProvider(LocalDesktopWindowLayout provides layout, LocalHomeNavigationState provides state) {

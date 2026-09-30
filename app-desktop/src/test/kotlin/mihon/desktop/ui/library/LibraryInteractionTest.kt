@@ -5,6 +5,9 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.InternalComposeUiApi
+import androidx.compose.ui.LocalSystemTheme
+import androidx.compose.ui.SystemTheme
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -14,6 +17,7 @@ import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerButtons
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerKeyboardModifiers
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -95,9 +99,195 @@ import javax.imageio.ImageIO
 import kotlin.math.roundToInt
 import coil3.PlatformContext as CoilPlatformContext
 
-@OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 @Isolated
 class LibraryInteractionTest {
+    @Test
+    fun `source selection frame alpha and list background use actual light dark cover pixels`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withLibrary(root, systemTheme = SystemTheme.Dark) { scene, _, preferences, _, dependencies ->
+            val manga = seed(1).single()
+            assertTrue(dependencies.coverUpdater(manga.id, png(0xFFFF0000.toInt())) is TaskState.Success)
+            preferences.unreadBadge().set(false)
+            preferences.downloadBadge().set(false)
+            preferences.localBadge().set(false)
+            preferences.showContinueReadingButton().set(false)
+            val app = Injekt.get<mihon.desktop.settings.DesktopAppPreferences>()
+            app.appTheme.set(eu.kanade.domain.ui.model.AppTheme.DEFAULT)
+            val screenshots = mutableListOf<BufferedImage>()
+            for (theme in listOf(ThemeMode.LIGHT, ThemeMode.DARK)) {
+                app.themeMode.set(theme)
+                val secondary = if (theme == ThemeMode.LIGHT) 0xFF0058CA.toInt() else 0xFFB0C6FF.toInt()
+                for (mode in LibraryDisplayMode.values) {
+                    preferences.displayMode().set(mode)
+                    render(scene)
+                    assertCover(scene, manga.title, 0xFFFF0000.toInt())
+                    val beforeCover = coverBounds(scene, manga.title)
+                    val beforeCard = nodes(scene).first {
+                        it.config.contains(SemanticsActions.OnLongClick)
+                    }.boundsInRoot
+                    val before = scene.render(System.nanoTime()).toComposeImageBitmap().asSkiaBitmap()
+                    val unselectedBackground = before.getColor(
+                        (beforeCard.right - 12).toInt(),
+                        beforeCard.center.y.toInt(),
+                    )
+                    mouseClick(scene, manga.title, PointerKeyboardModifiers(isCtrlPressed = true))
+                    // Observe resting selection colors without the pointer hover state layer.
+                    scene.sendPointerEvent(PointerEventType.Move, Offset(1100f, 500f))
+                    repeat(4) { render(scene) }
+                    val cover = coverBounds(scene, manga.title)
+                    val card = nodes(scene).first { it.config.contains(SemanticsActions.OnLongClick) }.boundsInRoot
+                    val pixels = scene.render(System.nanoTime()).toComposeImageBitmap().asSkiaBitmap()
+                    if (mode == LibraryDisplayMode.List) {
+                        assertEquals(48f, cover.width)
+                        assertEquals(48f, cover.height)
+                        assertEquals(beforeCover, cover, "selection must not resize or fade the list cover")
+                        assertEquals(
+                            0xFFFF0000.toInt(),
+                            pixels.getColor((cover.left + 2).toInt(), (cover.top + 2).toInt()),
+                        )
+                        assertPixelNear(
+                            blend(secondary, unselectedBackground, if (theme == ThemeMode.LIGHT) 0.22f else 0.16f),
+                            pixels.getColor((card.right - 12).toInt(), card.center.y.toInt()),
+                            "$theme list uses SOURCE secondary selection alpha over its real background",
+                        )
+                    } else {
+                        assertEquals(4f, cover.left - card.left, "SOURCE selection inner padding is 4dp")
+                        assertEquals(4f, cover.top - card.top)
+                        assertEquals(secondary, pixels.getColor(card.center.x.toInt(), card.top.toInt() + 1))
+                        assertPixelNear(
+                            blend(0xFFFF0000.toInt(), secondary, 0.76f),
+                            pixels.getColor(cover.center.x.toInt(), cover.top.toInt()),
+                            "$theme $mode must draw the real source image with SOURCE alpha .76",
+                        )
+                        assertEquals(
+                            (cover.width / 0.7f).roundToInt().toFloat(),
+                            cover.height,
+                            "7:10 uses actual pixel-rounded constraints",
+                        )
+                    }
+                    screenshots += ImageIO.read(
+                        java.io.ByteArrayInputStream(
+                            requireNotNull(scene.render(System.nanoTime()).encodeToData()).bytes,
+                        ),
+                    )
+                    clickLabel(scene, MR.strings.desktop_ui_clear_selection.localized())
+                    render(scene)
+                }
+            }
+            val sheet = BufferedImage(2400, 900, BufferedImage.TYPE_INT_RGB)
+            val graphics = sheet.createGraphics()
+            try {
+                screenshots.forEachIndexed { index, image ->
+                    graphics.drawImage(image, (index % 4) * 600, (index / 4) * 450, 600, 450, null)
+                }
+            } finally {
+                graphics.dispose()
+            }
+            val directory = File(System.getenv("MIHON_RI06_VISUAL_DIR") ?: File(root, "visual").absolutePath)
+            directory.mkdirs()
+            ImageIO.write(sheet, "png", File(directory, "ri06-selection-layouts.png"))
+        }
+    }
+
+    private fun blend(foreground: Int, background: Int, alpha: Float): Int =
+        (0..2).fold(0xFF000000.toInt()) { result, channel ->
+            val shift = channel * 8
+            val sourceChannel = (foreground ushr shift) and 255
+            val backgroundChannel = (background ushr shift) and 255
+            val value = (sourceChannel * alpha + backgroundChannel * (1 - alpha)).roundToInt()
+            result or (value shl shift)
+        }
+
+    private fun assertPixelNear(expected: Int, actual: Int, message: String) {
+        for (shift in listOf(0, 8, 16)) {
+            assertTrue(
+                kotlin.math.abs(((expected ushr shift) and 255) - ((actual ushr shift) and 255)) <= 1,
+                "$message expected=${expected.toUInt().toString(16)} actual=${actual.toUInt().toString(16)}",
+            )
+        }
+    }
+
+    @Test
+    fun `real four layout mouse modifiers select shrink append and never navigate while selecting`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withLibrary(root) { scene, navigator, preferences, _, _ ->
+            val manga = seed(5)
+            preferences.showContinueReadingButton().set(false)
+            val ctrl = PointerKeyboardModifiers(isCtrlPressed = true)
+            val shift = PointerKeyboardModifiers(isShiftPressed = true)
+            val both = PointerKeyboardModifiers(isCtrlPressed = true, isShiftPressed = true)
+            for (mode in LibraryDisplayMode.values) {
+                preferences.displayMode().set(mode)
+                render(scene)
+                mouseClick(scene, manga[1].title)
+                render(scene)
+                assertTrue(navigator().lastItem is MangaDetailScreen, "$mode ordinary click opens detail")
+                navigator().pop()
+                render(scene)
+
+                mouseClick(scene, manga[1].title, ctrl)
+                render(scene)
+                assertTrue(navigator().lastItem is LibraryRootScreen, "$mode Ctrl must select without navigating")
+                assertSelection(scene, setOf(manga[1].title))
+                mouseClick(scene, manga[4].title, shift)
+                render(scene)
+                assertSelection(scene, manga.subList(1, 5).mapTo(mutableSetOf()) { it.title })
+                mouseClick(scene, manga[2].title, shift)
+                render(scene)
+                assertSelection(scene, setOf(manga[1].title, manga[2].title))
+                mouseClick(scene, manga[4].title, ctrl)
+                render(scene)
+                mouseClick(scene, manga[3].title, both)
+                render(scene)
+                assertSelection(scene, manga.subList(1, 5).mapTo(mutableSetOf()) { it.title })
+                mouseClick(scene, manga[0].title)
+                render(scene)
+                assertSelection(scene, manga.mapTo(mutableSetOf()) { it.title })
+                manga.forEach { item ->
+                    mouseClick(scene, item.title)
+                    render(scene)
+                }
+                assertTrue(navigator().lastItem is LibraryRootScreen, "last deselection never opens detail")
+                assertFalse(MR.strings.desktop_ui_clear_selection.localized() in labels(scene))
+            }
+        }
+    }
+
+    @Test
+    fun `real alt secondary and long presses do not navigate or leak a release click`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withLibrary(root) { scene, navigator, preferences, model, _ ->
+            val manga = seed(4)
+            preferences.showContinueReadingButton().set(false)
+            for (mode in LibraryDisplayMode.values) {
+                preferences.displayMode().set(mode)
+                render(scene)
+                mouseClick(scene, manga[0].title, PointerKeyboardModifiers(isAltPressed = true))
+                render(scene)
+                assertTrue(navigator().lastItem is LibraryRootScreen, "$mode Alt must not navigate")
+                assertFalse(MR.strings.desktop_ui_clear_selection.localized() in labels(scene))
+                mouseClick(scene, manga[0].title, button = PointerButton.Secondary)
+                render(scene)
+                assertTrue(navigator().lastItem is LibraryRootScreen)
+                model().setContextMenuManga(null)
+                render(scene)
+                mouseClick(scene, manga[1].title, holdMillis = 700)
+                render(scene)
+                assertTrue(navigator().lastItem is LibraryRootScreen, "long-press release must not open detail")
+                assertSelection(scene, setOf(manga[1].title))
+                mouseClick(scene, manga[3].title, holdMillis = 700)
+                render(scene)
+                assertSelection(scene, manga.subList(1, 4).mapTo(mutableSetOf()) { it.title })
+                clickLabel(scene, MR.strings.desktop_ui_clear_selection.localized())
+                render(scene)
+            }
+        }
+    }
+
     @Test
     fun `partial real cover writes keep old bytes database version and leave no staging files`(
         @TempDir root: File,
@@ -723,6 +913,7 @@ class LibraryInteractionTest {
 
     private suspend fun withLibrary(
         root: File,
+        systemTheme: SystemTheme? = null,
         block: suspend (
             ImageComposeScene,
             () -> Navigator,
@@ -740,7 +931,10 @@ class LibraryInteractionTest {
         lateinit var model: LibraryScreenModel
         try {
             scene.setContent {
-                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides dependencies,
+                    LocalSystemTheme provides (systemTheme ?: LocalSystemTheme.current),
+                ) {
                     ProvideLibraryScreenModelFactory({ LibraryScreenModelFactory.create().also { model = it } }) {
                         DesktopTheme {
                             Navigator(LibraryRootScreen()) {
@@ -873,6 +1067,42 @@ class LibraryInteractionTest {
     }
 
     private fun click(node: SemanticsNode) = requireNotNull(node.config[SemanticsActions.OnClick].action).invoke()
+
+    private suspend fun mouseClick(
+        scene: ImageComposeScene,
+        title: String,
+        modifiers: PointerKeyboardModifiers = PointerKeyboardModifiers(),
+        button: PointerButton = PointerButton.Primary,
+        holdMillis: Long = 0,
+    ) {
+        val target = nodes(scene).first {
+            it.config.contains(SemanticsActions.OnLongClick) && title in copy(it)
+        }.boundsInRoot
+        val point = Offset(target.left + target.width / 3, target.top + target.height / 3)
+        scene.sendPointerEvent(
+            PointerEventType.Press,
+            point,
+            buttons = PointerButtons(
+                isPrimaryPressed = button == PointerButton.Primary,
+                isSecondaryPressed = button == PointerButton.Secondary,
+            ),
+            keyboardModifiers = modifiers,
+            button = button,
+        )
+        if (holdMillis > 0) {
+            delay(holdMillis)
+            render(scene)
+        }
+        scene.sendPointerEvent(PointerEventType.Release, point, keyboardModifiers = modifiers, button = button)
+    }
+
+    private fun assertSelection(scene: ImageComposeScene, expectedTitles: Set<String>) {
+        val selectedTitles = nodes(scene).filter {
+            it.config.getOrElse(SemanticsProperties.Selected) { false } &&
+                it.config.contains(SemanticsActions.OnLongClick)
+        }.flatMap(::copy).filter { it.startsWith("Work ") }.toSet()
+        assertEquals(expectedTitles, selectedTitles, "the real card selection must match the mouse range")
+    }
     private fun clickLabel(scene: ImageComposeScene, label: String) = click(
         nodes(scene).first {
             it.config.contains(SemanticsActions.OnClick) && label in copy(it)

@@ -16,6 +16,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
@@ -155,6 +160,12 @@ class HomeScreen : Screen {
                 }
 
                 HomeNavigationHost(
+                    modifier = Modifier.onPreviewKeyEvent { event ->
+                        if (tabNavigator.current == LibraryTab && event.type == KeyEventType.KeyUp && !event.isCtrlPressed) {
+                            libraryNavigationHost.onCtrlReleased()
+                        }
+                        false
+                    },
                     current = tabNavigator.current,
                     onSelect = { tab ->
                         if (tabNavigator.current == tab) {

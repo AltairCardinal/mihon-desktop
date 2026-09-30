@@ -9833,17 +9833,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryTab.kt",
           "symbol": "internal fun librarySelectionActions(",
-          "line": 143
+          "line": 144
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "internal suspend fun enqueueDownloads(",
-          "line": 1051
+          "line": 1053
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1160
+          "line": 1162
         }
       ],
       "FIXTURE": [
@@ -9865,6 +9865,27 @@
           "productionMarkers": [
             "MigrationBatchQueueScreen",
             "MigrationSearchScreen"
+          ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryOptionsInteractionTest.kt#accepted mark completion never clears a later mouse selection and its actual SQL target stays frozen",
+          "productionMarkers": [
+            "ChapterRepository",
+            "LibraryMembershipUpdate"
+          ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryOptionsInteractionTest.kt#opened deletion freezes IDs and partial real file failure prunes removed IDs but keeps hidden valid retries",
+          "productionMarkers": [
+            "DesktopCustomCoverStore",
+            "LibraryMembershipUpdate"
+          ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt#real four layout mouse modifiers select shrink append and never navigate while selecting",
+          "productionMarkers": [
+            "LibraryRootScreen",
+            "MangaDetailScreen"
           ]
         }
       ]
@@ -11250,7 +11271,9 @@
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/NavigationContractTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/NavigationContractTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryOptionsInteractionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt"
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt": [
@@ -11266,12 +11289,22 @@
       ],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/NavigationContractTest.kt": [
         "library migration queue and item search use the nested Screen navigator"
+      ],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryOptionsInteractionTest.kt": [
+        "accepted mark completion never clears a later mouse selection and its actual SQL target stays frozen",
+        "root six download choices enqueue real remote chapter snapshots and failure keeps mixed retry selection",
+        "native batch category whole rows preserve mixed membership and discard canceled drafts",
+        "opened deletion freezes IDs and partial real file failure prunes removed IDs but keeps hidden valid retries",
+        "root ctrl wheel retains a burst across category composition and consumes boundaries without refresh"
+      ],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt": [
+        "real four layout mouse modifiers select shrink append and never navigate while selecting"
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD",
-    "verificationScope": "Confirmation transactions are reviewed and tested in be44ddd6e through real Root -> dialogs -> production DI/SQLDelight and the existing persistent migration controller. The migration entry is verified only through supported options and confirm/cancel; the full configuration/search port remains PARTIAL under MG-01 by explicit user scope decision. Action provenance remains the immutable 95b82fc inventory baseline. Download retirement and navigation lifetime are reviewed in 6b204c085 with real Root/Home -> factory -> SQLDelight, existing producer/lease regressions, persistence failure and actual file fixtures. A production worker/MockWebServer PNG test also verifies the visible downloaded-filter and numeric-badge result before and after confirmed download-only deletion. The final Root mark-read fixture executes the production per-chapter download deletion port and preserves already-read and unrelated chapter files. Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted."
+    "verificationScope": "Confirmation transactions are reviewed and tested in be44ddd6e through real Root -> dialogs -> production DI/SQLDelight and the existing persistent migration controller. The migration entry is verified only through supported options and confirm/cancel; the full configuration/search port remains PARTIAL under MG-01 by explicit user scope decision. Action provenance remains the immutable 95b82fc inventory baseline. Download retirement and navigation lifetime are reviewed in 6b204c085 with real Root/Home -> factory -> SQLDelight, existing producer/lease regressions, persistence failure and actual file fixtures. A production worker/MockWebServer PNG test also verifies the visible downloaded-filter and numeric-badge result before and after confirmed download-only deletion. The final Root mark-read fixture executes the production per-chapter download deletion port and preserves already-read and unrelated chapter files. Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI06 native Root mouse/range, category-wheel ownership, source selection UI and frozen batch SQL/file actions are covered by focused production tests; asynchronous completion preserves later selection and partial failures retain valid retries. Physical input and final release runtime remain RI18 acceptance requirements; this evidence does not claim those checks passed."
   },
   {
     "id": 22,
@@ -11385,7 +11418,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1160
+          "line": 1162
         }
       ],
       "FIXTURE": [
@@ -48970,7 +49003,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/theme/DesktopTheme.kt",
           "symbol": "AppThemeColorScheme.colorScheme",
-          "line": 43
+          "line": 44
         }
       ],
       "FIXTURE": [

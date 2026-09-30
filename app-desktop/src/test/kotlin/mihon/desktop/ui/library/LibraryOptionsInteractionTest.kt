@@ -2,6 +2,7 @@ package mihon.desktop.ui.library
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudSync
@@ -26,9 +27,17 @@ import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.InputModeManager
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.nativeKeyLocation
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerButtons
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerKeyboardModifiers
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.PlatformContext
 import androidx.compose.ui.platform.WindowInfo
@@ -38,6 +47,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsOwner
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpSize
@@ -49,6 +59,7 @@ import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.tab.CurrentTab
 import cafe.adriel.voyager.navigator.tab.TabNavigator
 import eu.kanade.domain.ui.model.ThemeMode
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -56,12 +67,14 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.SortMode
 import mihon.desktop.library.LibraryScreenModelFactory
+import mihon.desktop.platform.OperatingSystem
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.home.HomeNavigationHost
 import mihon.desktop.ui.home.HomeScreen
@@ -79,6 +92,9 @@ import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.category.model.CategoryUpdate
 import tachiyomi.domain.category.repository.CategoryRepository
+import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.model.ChapterUpdate
+import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.library.model.LibrarySort
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.model.Manga
@@ -101,6 +117,1302 @@ import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 @OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 @Isolated
 class LibraryOptionsInteractionTest {
+    @Test
+    fun `native twenty category modal scrolls bounded rows traps keys and restores category focus`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withRoot(root) { scene, _, _, model ->
+            val manga = model().state.value.allItems.single().manga
+            val categories = Injekt.get<CategoryRepository>()
+            repeat(22) { categories.insert(Category(0, "Category ${it.toString().padStart(2, '0')}", it.toLong(), 0)) }
+            val last = categories.getAll().last()
+            scene.resize(320, 680)
+            scene.fontScale = 2f
+            render(scene)
+            selectWithMouse(scene, manga.title)
+            click(scene, MR.strings.action_move_category.localized())
+            render(scene)
+            fun modalNodes() = flatten(scene.semanticsOwners.last().rootSemanticsNode)
+            assertFalse(
+                modalNodes().any {
+                    MR.strings.label_default.localized() in labels(it)
+                },
+                "system default is not a batch choice",
+            )
+            val scroll = modalNodes().firstOrNull { it.config.contains(SemanticsActions.ScrollBy) }
+            assertTrue(scroll != null, "actual long category dialog must expose a working native scroll container")
+            requireNotNull(requireNotNull(scroll).config[SemanticsActions.ScrollBy].action).invoke(0f, 10_000f)
+            repeat(3) { render(scene) }
+            val lastRow = modalNodes().first {
+                last.name in labels(it) &&
+                    it.config.contains(SemanticsProperties.ToggleableState)
+            }
+            val cancel = modalNodes().single {
+                it.config.contains(SemanticsActions.OnClick) &&
+                    MR.strings.action_cancel.localized() in labels(it)
+            }
+            assertTrue(lastRow.boundsInRoot.top >= 0f)
+            assertTrue(
+                lastRow.boundsInRoot.bottom <= cancel.boundsInRoot.top,
+                "last row must stay inside the actual dialog body",
+            )
+            assertTrue(cancel.boundsInRoot.bottom <= 680f)
+            requireNotNull(lastRow.config[SemanticsActions.RequestFocus].action).invoke()
+            key(scene, Key.Spacebar)
+            render(scene)
+            assertEquals(
+                ToggleableState.On,
+                modalNodes().single {
+                    last.name in labels(it) && it.config.contains(SemanticsProperties.ToggleableState)
+                }.config[SemanticsProperties.ToggleableState],
+                "Space changes only the current dialog draft",
+            )
+            key(scene, Key.Spacebar)
+            render(scene)
+            assertEquals(emptySet<Long>(), model().categoryIdsForManga(manga.id))
+            requireNotNull(cancel.config[SemanticsActions.RequestFocus].action).invoke()
+            val cancelId = cancel.id
+            for (backward in listOf(false, true)) {
+                val visited = mutableSetOf<Int>()
+                var wrapped = false
+                for (step in 0 until 70) {
+                    key(scene, Key.Tab, shift = backward)
+                    render(scene)
+                    val focus = modalNodes().single { it.config.getOrElse(SemanticsProperties.Focused) { false } }
+                    visited += focus.id
+                    assertFalse(MR.strings.desktop_ui_clear_selection.localized() in labels(focus))
+                    if (focus.id == cancelId) {
+                        wrapped = true
+                        break
+                    }
+                }
+                assertTrue(wrapped, "real modal focus must wrap in both directions")
+                assertTrue(visited.size >= 3)
+            }
+            key(scene, Key.Escape)
+            render(scene)
+            assertFalse(model().state.value.showBatchCategoryDialog, "Escape closes only the actual category dialog")
+            assertEquals(1, scene.semanticsOwners.size, "the category dialog owner is removed")
+            assertTrue(nodes(scene).any { MR.strings.desktop_ui_clear_selection.localized() in labels(it) })
+            assertTrue(
+                nodes(scene).any {
+                    MR.strings.action_move_category.localized() in labels(it) &&
+                        it.config.getOrElse(SemanticsProperties.Focused) { false }
+                },
+                "Escape returns to the real category trigger: " +
+                    nodes(scene).filter {
+                        it.config.getOrElse(SemanticsProperties.Focused) { false }
+                    }.map { flatten(it).flatMap(::labels) },
+            )
+            assertEquals(emptySet<Long>(), model().categoryIdsForManga(manga.id))
+            click(scene, MR.strings.action_move_category.localized())
+            render(scene)
+            val reopenedScroll = modalNodes().single { it.config.contains(SemanticsActions.ScrollBy) }
+            requireNotNull(reopenedScroll.config[SemanticsActions.ScrollBy].action).invoke(0f, 10_000f)
+            repeat(3) { render(scene) }
+            val target = modalNodes().first {
+                last.name in labels(it) &&
+                    it.config.contains(SemanticsProperties.ToggleableState)
+            }
+            click(target)
+            click(scene, MR.strings.action_ok.localized())
+            render(scene)
+            assertEquals(
+                setOf(last.id),
+                model().categoryIdsForManga(manga.id),
+                "the reachable last row writes the actual SQL membership",
+            )
+        }
+    }
+
+    @Test
+    fun `native batch category whole rows preserve mixed membership and discard canceled drafts`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withRoot(root) { scene, _, _, model ->
+            val repository = Injekt.get<MangaRepository>()
+            val first = model().state.value.allItems.single().manga
+            val second = repository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 0, url = "/mixed", title = "Mixed work", initialized = true)),
+            ).single()
+            val categories = Injekt.get<CategoryRepository>()
+            categories.insert(Category(0, "Mixed A", 0, 0))
+            categories.insert(Category(0, "Mixed B", 1, 0))
+            val custom = categories.getAll().filterNot(Category::isSystemCategory)
+            repository.updateMembershipsAtomically(
+                listOf(
+                    LibraryMembershipUpdate(first.id, true, 1, custom.map { it.id }),
+                    LibraryMembershipUpdate(second.id, true, 1, listOf(custom[1].id)),
+                ),
+            )
+            render(scene)
+            selectWithMouse(scene, first.title)
+            click(scene, "Mixed B")
+            render(scene)
+            selectWithMouse(scene, second.title)
+            assertEquals(custom.map { it.id }.toSet(), model().categoryIdsForManga(first.id))
+            assertEquals(setOf(custom[1].id), model().categoryIdsForManga(second.id))
+            click(scene, MR.strings.action_move_category.localized())
+            render(scene)
+            repeat(20) {
+                if (nodes(scene).none { it.config.contains(SemanticsProperties.ToggleableState) }) render(scene)
+            }
+            assertTrue(
+                nodes(scene).any { it.config.contains(SemanticsProperties.ToggleableState) },
+                "the actual dialog loads its current category memberships",
+            )
+            fun firstState() = nodes(scene).first { it.config.contains(SemanticsProperties.ToggleableState) }
+                .config[SemanticsProperties.ToggleableState]
+            suspend fun rowClick() {
+                val text = flatten(scene.semanticsOwners.last().rootSemanticsNode).first {
+                    it.config.contains(SemanticsProperties.Text) && "Mixed A" in labels(it)
+                }
+                val point = text.boundsInRoot.center
+                scene.pointer(PointerEventType.Press, point, true, PointerButton.Primary)
+                scene.pointer(PointerEventType.Release, point, false, PointerButton.Primary)
+                render(scene)
+            }
+            assertEquals(ToggleableState.Indeterminate, firstState())
+            assertEquals(
+                ToggleableState.On,
+                nodes(scene).single {
+                    it.config.contains(SemanticsProperties.ToggleableState) && "Mixed B" in labels(it)
+                }.config[SemanticsProperties.ToggleableState],
+            )
+            key(scene, Key.Escape)
+            render(scene)
+            assertFalse(model().state.value.showBatchCategoryDialog, "C21 Escape closes the actual dialog")
+            assertEquals(1, scene.semanticsOwners.size)
+            assertTrue(nodes(scene).any { MR.strings.desktop_ui_clear_selection.localized() in labels(it) })
+            assertTrue(
+                nodes(scene).any {
+                    MR.strings.action_move_category.localized() in labels(it) &&
+                        it.config.getOrElse(SemanticsProperties.Focused) { false }
+                },
+                "C21 Escape restores the category trigger: " +
+                    nodes(scene).filter {
+                        it.config.getOrElse(SemanticsProperties.Focused) { false }
+                    }.map { flatten(it).flatMap(::labels) },
+            )
+            assertEquals(custom.map { it.id }.toSet(), model().categoryIdsForManga(first.id))
+            assertEquals(setOf(custom[1].id), model().categoryIdsForManga(second.id))
+            click(scene, MR.strings.action_move_category.localized())
+            render(scene)
+
+            for (expected in listOf(ToggleableState.Off, ToggleableState.On, ToggleableState.Indeterminate)) {
+                val checkbox = nodes(scene).first { it.config.contains(SemanticsProperties.ToggleableState) }
+                scene.pointer(PointerEventType.Press, checkbox.boundsInRoot.center, true, PointerButton.Primary)
+                scene.pointer(PointerEventType.Release, checkbox.boundsInRoot.center, false, PointerButton.Primary)
+                render(scene)
+                assertEquals(
+                    expected,
+                    firstState(),
+                    "real native checkbox pointer establishes the dialog coordinate fixture",
+                )
+            }
+            for (expected in listOf(ToggleableState.Off, ToggleableState.On, ToggleableState.Indeterminate)) {
+                rowClick()
+                assertEquals(expected, firstState(), "the actual category label row uses the SOURCE mixed cycle")
+            }
+            click(scene, MR.strings.action_ok.localized())
+            render(scene)
+            assertEquals(custom.map { it.id }.toSet(), model().categoryIdsForManga(first.id))
+            assertEquals(
+                setOf(custom[1].id),
+                model().categoryIdsForManga(second.id),
+                "mixed confirmation preserves each actual member",
+            )
+            selectWithMouse(scene, second.title)
+            click(scene, "Mixed A")
+            render(scene)
+            selectWithMouse(scene, first.title)
+            click(scene, MR.strings.action_move_category.localized())
+            render(scene)
+            rowClick()
+            click(scene, MR.strings.action_cancel.localized())
+            render(scene)
+            assertTrue(nodes(scene).any { MR.strings.desktop_ui_clear_selection.localized() in labels(it) })
+            assertEquals(custom.map { it.id }.toSet(), model().categoryIdsForManga(first.id))
+            assertEquals(setOf(custom[1].id), model().categoryIdsForManga(second.id))
+            click(scene, MR.strings.action_move_category.localized())
+            render(scene)
+            rowClick()
+            click(scene, MR.strings.action_edit_categories.localized())
+            render(scene)
+            assertTrue(scene.stack.items.last() is CategoryManagementScreen)
+            click(scene, MR.strings.action_bar_up_description.localized())
+            render(scene)
+            assertTrue(scene.stack.items.last() is LibraryRootScreen)
+            assertTrue(nodes(scene).any { MR.strings.action_search.localized() in labels(it) })
+            assertFalse(nodes(scene).any { it.config.contains(SemanticsProperties.ToggleableState) })
+            assertEquals(custom.map { it.id }.toSet(), model().categoryIdsForManga(first.id))
+            assertEquals(setOf(custom[1].id), model().categoryIdsForManga(second.id))
+        }
+    }
+
+    @Test
+    fun `stale root body long and continue callbacks cannot revive filtered or removed targets`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withRoot(root) { scene, _, preferences, model ->
+            preferences.unreadBadge().set(false)
+            preferences.showContinueReadingButton().set(true)
+            val repository = Injekt.get<MangaRepository>()
+            val first = model().state.value.allItems.single().manga
+            val second = repository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 0, url = "/valid", title = "Valid work", initialized = true)),
+            ).single()
+            repository.updateMembershipsAtomically(listOf(LibraryMembershipUpdate(second.id, true, 1, emptyList())))
+            Injekt.get<ChapterRepository>().addAll(
+                listOf(first, second).map { Chapter.create().copy(mangaId = it.id, name = "Unread", url = "/unread") },
+            )
+            render(scene)
+            val staleBody = nodes(scene).first {
+                it.config.contains(SemanticsActions.OnLongClick) &&
+                    first.title in labels(it)
+            }
+            val bodyClick = requireNotNull(staleBody.config[SemanticsActions.OnClick].action)
+            val longClick = requireNotNull(staleBody.config[SemanticsActions.OnLongClick].action)
+            val resumeClick = requireNotNull(
+                nodes(scene).first {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        MR.strings.desktop_ui_continue_reading.localized() in labels(it)
+                }
+                    .config[SemanticsActions.OnClick].action,
+            )
+            selectWithMouse(scene, second.title)
+            model().setSearchQuery(second.title)
+            render(scene)
+            for (callback in listOf(bodyClick, longClick, resumeClick)) {
+                callback()
+                render(scene)
+                assertTrue(scene.stack.items.last() is LibraryRootScreen)
+                val bar = nodes(scene).single {
+                    it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                        "library-selection-top-bar"
+                }
+                assertTrue(
+                    flatten(bar).any {
+                        "1" in labels(it)
+                    },
+                    "a stale callback must preserve only the one valid selection",
+                )
+            }
+            click(scene, MR.strings.desktop_ui_clear_selection.localized())
+            render(scene)
+            model().setSearchQuery(null)
+            render(scene)
+            val selected = nodes(scene).filter {
+                it.config.contains(SemanticsActions.OnLongClick) &&
+                    it.config.getOrElse(SemanticsProperties.Selected) { false }
+            }.flatMap(::labels)
+            assertFalse(first.title in selected, "stale filter callbacks must not select a now-hidden target")
+            repository.updateMembershipsAtomically(listOf(LibraryMembershipUpdate(first.id, false, 1, emptyList())))
+            render(scene)
+            for (callback in listOf(bodyClick, longClick, resumeClick)) {
+                callback()
+                render(scene)
+                assertTrue(
+                    scene.stack.items.last() is LibraryRootScreen,
+                    "a removed object can neither select nor open detail or Reader",
+                )
+            }
+            assertTrue(nodes(scene).any { MR.strings.action_search.localized() in labels(it) })
+            val end = repository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 0, url = "/end", title = "Zulu end", initialized = true)),
+            ).single()
+            val categories = Injekt.get<CategoryRepository>()
+            categories.insert(Category(0, "Stale A", 0, 0))
+            categories.insert(Category(0, "Stale B", 1, 0))
+            val custom = categories.getAll().filterNot(Category::isSystemCategory)
+            repository.updateMembershipsAtomically(
+                listOf(
+                    LibraryMembershipUpdate(first.id, true, 1, custom.map { it.id }),
+                    LibraryMembershipUpdate(second.id, true, 1, listOf(custom[1].id)),
+                    LibraryMembershipUpdate(end.id, true, 1, listOf(custom[1].id)),
+                ),
+            )
+            render(scene)
+            click(scene, "Stale B")
+            render(scene)
+            selectWithMouse(scene, second.title)
+            bodyClick()
+            render(scene)
+            mouseSelect(scene, end.title, PointerKeyboardModifiers(isShiftPressed = true))
+            val currentSelection = nodes(scene).filter {
+                it.config.contains(SemanticsActions.OnLongClick) &&
+                    it.config.getOrElse(SemanticsProperties.Selected) { false }
+            }.flatMap(::labels)
+            assertTrue(
+                listOf(first.title, second.title, end.title).all { it in currentSelection },
+                "an old valid callback must use the current category anchor and real sorted visible range",
+            )
+        }
+    }
+
+    @Test
+    fun `accepted mark completion never clears a later mouse selection and its actual SQL target stays frozen`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        withRoot(
+            root,
+            chapterRepositoryOverride = { delegate ->
+                object : ChapterRepository by delegate {
+                    override suspend fun updateAll(chapterUpdates: List<ChapterUpdate>) {
+                        entered.complete(Unit)
+                        release.await()
+                        delegate.updateAll(chapterUpdates)
+                    }
+                }
+            },
+        ) { scene, _, _, model ->
+            val repository = Injekt.get<MangaRepository>()
+            val first = model().state.value.allItems.single().manga
+            val second = repository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 0, url = "/later", title = "Later selection", initialized = true)),
+            ).single()
+            repository.updateMembershipsAtomically(listOf(LibraryMembershipUpdate(second.id, true, 1, emptyList())))
+            val chapters = Injekt.get<ChapterRepository>()
+            chapters.addAll(
+                listOf(first, second).map { Chapter.create().copy(mangaId = it.id, name = "Unread", url = "/unread") },
+            )
+            render(scene)
+            selectWithMouse(scene, first.title)
+            click(scene, MR.strings.action_mark_as_read.localized())
+            try {
+                withTimeout(5_000) { entered.await() }
+                click(scene, MR.strings.desktop_ui_clear_selection.localized())
+                render(scene)
+                selectWithMouse(scene, second.title)
+            } finally {
+                release.complete(Unit)
+            }
+            repeat(3) { render(scene) }
+            assertTrue(chapters.getChapterByMangaId(first.id).single().read)
+            assertFalse(
+                chapters.getChapterByMangaId(second.id).single().read,
+                "completion never broadens its frozen DB working set",
+            )
+            val selected = nodes(scene).filter {
+                it.config.contains(SemanticsActions.OnLongClick) &&
+                    it.config.getOrElse(SemanticsProperties.Selected) { false }
+            }.flatMap(::labels)
+            assertTrue(second.title in selected, "old successful completion must retain the later selection session")
+            assertTrue(nodes(scene).any { MR.strings.desktop_ui_clear_selection.localized() in labels(it) })
+        }
+    }
+
+    @Test
+    fun `root cross category ranges preserve hidden members and real removal prunes only invalid library IDs`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withRoot(root) { scene, _, preferences, model ->
+            val repository = Injekt.get<MangaRepository>()
+            val original = model().state.value.allItems.single().manga
+            val extra = repository.insertNetworkManga(
+                (1..3).map {
+                    Manga.create().copy(source = 0, url = "/range-$it", title = "Range $it", initialized = true)
+                },
+            )
+            val mangas = listOf(original) + extra
+            val categories = Injekt.get<CategoryRepository>()
+            categories.insert(Category(0, "Range A", 0, 0))
+            categories.insert(Category(0, "Range B", 1, 0))
+            val custom = categories.getAll().filterNot(Category::isSystemCategory)
+            repository.updateMembershipsAtomically(
+                mangas.mapIndexed { index, manga ->
+                    LibraryMembershipUpdate(manga.id, true, 1, listOf(custom[if (index < 2) 0 else 1].id))
+                },
+            )
+            preferences.displayMode().set(tachiyomi.domain.library.model.LibraryDisplayMode.List)
+            render(scene)
+            selectWithMouse(scene, original.title)
+            mouseSelect(scene, extra[0].title, PointerKeyboardModifiers(isShiftPressed = true))
+            click(scene, "Range B")
+            render(scene)
+            mouseSelect(scene, extra[2].title, PointerKeyboardModifiers(isShiftPressed = true))
+            fun selectedTitles() = nodes(scene).filter {
+                it.config.contains(SemanticsActions.OnLongClick) &&
+                    it.config.getOrElse(SemanticsProperties.Selected) { false }
+            }.flatMap(::labels).toSet()
+            assertTrue(extra[2].title in selectedTitles())
+            assertFalse(extra[1].title in selectedTitles(), "cross category anchor rebuilds at the target")
+            mouseSelect(scene, extra[1].title, PointerKeyboardModifiers(isShiftPressed = true))
+            assertTrue(extra[1].title in selectedTitles() && extra[2].title in selectedTitles())
+            click(scene, MR.strings.desktop_ui_invert_selection.localized())
+            render(scene)
+            assertTrue(
+                nodes(scene).any {
+                    MR.strings.desktop_ui_clear_selection.localized() in labels(it)
+                },
+                "hidden A selection survives inversion of B",
+            )
+            assertFalse(extra[1].title in selectedTitles() || extra[2].title in selectedTitles())
+            click(scene, "Range A")
+            render(scene)
+            assertTrue(original.title in selectedTitles() && extra[0].title in selectedTitles())
+            repository.updateMembershipsAtomically(listOf(LibraryMembershipUpdate(original.id, false, 1, emptyList())))
+            render(scene)
+            assertFalse(original.title in selectedTitles())
+            click(scene, "Range B")
+            render(scene)
+            assertTrue(
+                nodes(scene).any {
+                    MR.strings.desktop_ui_clear_selection.localized() in labels(it)
+                },
+                "hidden valid A selection is not pruned by B visibility",
+            )
+            repository.updateMembershipsAtomically(listOf(LibraryMembershipUpdate(extra[0].id, false, 1, emptyList())))
+            render(scene)
+            assertTrue(
+                nodes(scene).any {
+                    MR.strings.action_search.localized() in labels(it)
+                },
+                "removing the last actual favorite leaves no invalid selection",
+            )
+            assertFalse(model().state.value.isUpdating)
+        }
+    }
+
+    @Test
+    fun `root six download choices enqueue real remote chapter snapshots and failure keeps mixed retry selection`(
+        @TempDir root: File,
+    ) = runBlocking {
+        var rejectRead = false
+        withRoot(root, mangaSource = 99, chapterRepositoryOverride = { delegate ->
+            object : ChapterRepository by delegate {
+                override suspend fun getChapterByMangaId(mangaId: Long, applyScanlatorFilter: Boolean): List<Chapter> {
+                    val actual = delegate.getChapterByMangaId(mangaId, applyScanlatorFilter)
+                    if (rejectRead) throw java.io.IOException("chapter read refused")
+                    return actual
+                }
+            }
+        }) { scene, _, _, model ->
+            val repository = Injekt.get<MangaRepository>()
+            val remote = model().state.value.allItems.single().manga
+            val local = repository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 0, url = "/local", title = "Local selected", initialized = true)),
+            ).single()
+            repository.updateMembershipsAtomically(listOf(LibraryMembershipUpdate(local.id, true, 1, emptyList())))
+            val chapters = Injekt.get<ChapterRepository>()
+            chapters.addAll(
+                listOf(remote, local).flatMap { manga ->
+                    (1..30).map { number ->
+                        Chapter.create().copy(
+                            mangaId = manga.id,
+                            name = "Chapter $number",
+                            url = "/chapter/$number",
+                            chapterNumber = number.toDouble(),
+                            sourceOrder = (30 - number).toLong(),
+                            bookmark = number > 27,
+                        )
+                    }
+                },
+            )
+            val manager = Injekt.get<mihon.desktop.download.DesktopDownloadManager>()
+            render(scene)
+            selectWithMouse(scene, remote.title)
+            selectWithMouse(scene, local.title)
+            click(scene, MR.strings.action_download.localized())
+            render(scene)
+            rejectRead = true
+            try {
+                click(scene, MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 1))
+                render(scene)
+                assertTrue(manager.queue.value.isEmpty())
+                assertTrue(model().state.value.batchCategoryResultMessage != null)
+                assertTrue(
+                    nodes(scene).any { MR.strings.desktop_ui_clear_selection.localized() in labels(it) },
+                    "real chapter read failure retains the complete valid mixed retry selection",
+                )
+            } finally {
+                rejectRead = false
+            }
+            val choices = listOf(
+                MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 1) to 1,
+                MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 5) to 5,
+                MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 10) to 10,
+                MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 25) to 25,
+                MR.strings.desktop_ui_all_unread_chapters.localized() to 30,
+                MR.strings.desktop_ui_bookmarked_chapters.localized() to 3,
+            )
+            for ((index, choice) in choices.withIndex()) {
+                if (index > 0) {
+                    selectWithMouse(scene, remote.title)
+                    selectWithMouse(scene, local.title)
+                }
+                click(scene, MR.strings.action_download.localized())
+                render(scene)
+                assertEquals(
+                    6,
+                    nodes(scene).count {
+                        it.config.contains(SemanticsActions.OnClick) &&
+                            choices.any { choice -> choice.first in labels(it) }
+                    },
+                )
+                click(scene, choice.first)
+                render(scene)
+                val queued = manager.queue.value
+                assertEquals(choice.second, queued.size, "actual Root choice $index reaches the real manager")
+                val persisted = tachiyomi.data.download.PersistentDownloadStore(
+                    Injekt.get<tachiyomi.data.Database>(),
+                ).entries()
+                assertEquals(queued.map { it.chapterId }.toSet(), persisted.map { it.chapterId }.toSet())
+                assertTrue(queued.all { it.mangaId == remote.id && it.sourceId == 99L })
+                assertTrue(queued.all { it.chapterId in chapters.getChapterByMangaId(remote.id).map { it.id } })
+                if (index == choices.lastIndex) {
+                    assertTrue(
+                        queued.all {
+                            it.chapterId in
+                                chapters.getChapterByMangaId(remote.id).filter { it.bookmark }.map { it.id }
+                        },
+                    )
+                }
+                assertTrue(
+                    nodes(scene).any { MR.strings.action_search.localized() in labels(it) },
+                    "accepted enqueue clears selection",
+                )
+                assertTrue(manager.cancelAndAwaitRetirements(queued.map { it.chapterId }))
+                render(scene)
+            }
+        }
+    }
+
+    @Test
+    fun `delete downloads only is a bounded native modal cancel is inert and Escape restores the actual More trigger`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withRoot(root, mangaSource = 99) { scene, _, _, model ->
+            val manga = model().state.value.allItems.single().manga
+            val chapter = Injekt.get<ChapterRepository>().addAll(
+                listOf(Chapter.create().copy(mangaId = manga.id, name = "Downloaded", url = "/downloaded")),
+            ).single()
+            val provider = Injekt.get<mihon.desktop.download.DesktopDownloadProvider>()
+            val directory = provider.chapterDownloadDir(manga.source, manga.title, chapter.name)
+            directory.mkdirs()
+            ImageIO.write(
+                java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_RGB),
+                "png",
+                File(directory, "001.png"),
+            )
+            render(scene)
+            selectWithMouse(scene, manga.title)
+            suspend fun openDelete() {
+                click(scene, MR.strings.action_menu.localized())
+                render(scene)
+                click(scene, MR.strings.action_delete.localized())
+                render(scene)
+            }
+            openDelete()
+            fun modal() = flatten(scene.semanticsOwners.last().rootSemanticsNode)
+            assertEquals(2, modal().count { it.config.contains(SemanticsProperties.ToggleableState) })
+            val cancel = modal().single {
+                it.config.contains(SemanticsActions.OnClick) &&
+                    MR.strings.action_cancel.localized() in labels(it)
+            }
+            requireNotNull(cancel.config[SemanticsActions.RequestFocus].action).invoke()
+            for (backward in listOf(false, true)) {
+                val visited = mutableSetOf<Int>()
+                var wrapped = false
+                repeat(8) {
+                    if (!wrapped) {
+                        key(scene, Key.Tab, shift = backward)
+                        render(scene)
+                        val focus = modal().single { it.config.getOrElse(SemanticsProperties.Focused) { false } }
+                        visited += focus.id
+                        wrapped = focus.id == cancel.id
+                    }
+                }
+                assertTrue(wrapped)
+                assertTrue(visited.size >= 3)
+            }
+            val background = nodes(scene).first {
+                it.config.contains(SemanticsActions.OnLongClick) &&
+                    manga.title in labels(it)
+            }
+            scene.pointer(PointerEventType.Press, background.boundsInRoot.center, true, PointerButton.Primary)
+            scene.pointer(PointerEventType.Release, background.boundsInRoot.center, false, PointerButton.Primary)
+            render(scene)
+            assertTrue(scene.stack.items.last() is LibraryRootScreen, "a modal blocks the real background card")
+            assertEquals(1, scene.semanticsOwners.size, "outside click dismisses without operating the background")
+            assertTrue(Injekt.get<MangaRepository>().getMangaById(manga.id).favorite)
+            assertTrue(provider.isChapterDownloaded(manga.source, manga.title, chapter.name))
+            assertTrue(nodes(scene).any { MR.strings.desktop_ui_clear_selection.localized() in labels(it) })
+            openDelete()
+            val downloads = modal().filter { it.config.contains(SemanticsProperties.ToggleableState) }.last()
+            requireNotNull(downloads.config[SemanticsActions.RequestFocus].action).invoke()
+            key(scene, Key.Spacebar)
+            render(scene)
+            assertEquals(
+                ToggleableState.On,
+                modal().filter {
+                    it.config.contains(SemanticsProperties.ToggleableState)
+                }.last().config[SemanticsProperties.ToggleableState],
+            )
+            key(scene, Key.Escape)
+            render(scene)
+            assertEquals(1, scene.semanticsOwners.size, "Escape closes just the removal dialog")
+            assertTrue(
+                nodes(scene).any {
+                    MR.strings.action_menu.localized() in labels(it) &&
+                        it.config.getOrElse(SemanticsProperties.Focused) { false }
+                },
+            )
+            assertTrue(Injekt.get<MangaRepository>().getMangaById(manga.id).favorite)
+            assertTrue(provider.isChapterDownloaded(manga.source, manga.title, chapter.name))
+            openDelete()
+            click(modal().filter { it.config.contains(SemanticsProperties.ToggleableState) }.last())
+            click(scene, MR.strings.action_cancel.localized())
+            render(scene)
+            assertTrue(
+                provider.isChapterDownloaded(manga.source, manga.title, chapter.name),
+                "Cancel discards the draft",
+            )
+            openDelete()
+            click(modal().filter { it.config.contains(SemanticsProperties.ToggleableState) }.last())
+            click(scene, MR.strings.action_ok.localized())
+            render(scene)
+            assertFalse(provider.isChapterDownloaded(manga.source, manga.title, chapter.name))
+            assertTrue(
+                Injekt.get<MangaRepository>().getMangaById(manga.id).favorite,
+                "downloads-only keeps actual membership",
+            )
+            assertTrue(nodes(scene).any { MR.strings.action_search.localized() in labels(it) })
+        }
+    }
+
+    @Test
+    fun `opened deletion freezes IDs and partial real file failure prunes removed IDs but keeps hidden valid retries`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withRoot(root) { scene, _, _, model ->
+            val repository = Injekt.get<MangaRepository>()
+            val first = model().state.value.allItems.single().manga
+            val second = repository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 0, url = "/retry", title = "Retry hidden", initialized = true)),
+            ).single()
+            repository.updateMembershipsAtomically(listOf(LibraryMembershipUpdate(second.id, true, 1, emptyList())))
+            val covers = Injekt.get<mihon.desktop.domain.DesktopCustomCoverStore>()
+            val image = java.io.ByteArrayOutputStream()
+            ImageIO.write(java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", image)
+            covers.write(first.id, image.toByteArray())
+            val oldCover = covers.getCustomCoverFile(first.id)
+            render(scene)
+            selectWithMouse(scene, first.title)
+            selectWithMouse(scene, second.title)
+            click(scene, MR.strings.action_delete.localized())
+            render(scene)
+            val newcomer = repository.insertNetworkManga(
+                listOf(
+                    Manga.create().copy(
+                        source = 0,
+                        url = "/new",
+                        title = "New after confirmation opens",
+                        initialized = true,
+                    ),
+                ),
+            ).single()
+            repository.updateMembershipsAtomically(listOf(LibraryMembershipUpdate(newcomer.id, true, 1, emptyList())))
+            model().setSearchQuery(first.title)
+            render(scene)
+            val driver = Injekt.get<SqlDriver>()
+            driver.execute(
+                null,
+                """CREATE TRIGGER reject_one_delete BEFORE UPDATE OF favorite ON mangas
+                WHEN NEW._id = ${second.id} AND NEW.favorite = 0
+                BEGIN SELECT RAISE(ABORT, 'retry membership refused'); END""",
+                0,
+            )
+            val restoreFile = denyCoverDeletion(oldCover)
+            try {
+                click(nodes(scene).single { it.config.contains(SemanticsProperties.ToggleableState) })
+                click(scene, MR.strings.action_ok.localized())
+                render(scene)
+                assertFalse(
+                    repository.getMangaById(first.id).favorite,
+                    "membership committed before the real file failure",
+                )
+                assertTrue(oldCover.exists(), "the actual locked custom file refused deletion")
+                assertTrue(repository.getMangaById(second.id).favorite)
+                assertTrue(
+                    repository.getMangaById(newcomer.id).favorite,
+                    "an opened confirmation never broadens its frozen ID set",
+                )
+                assertTrue(model().state.value.operationFeedback != null)
+                val bar = nodes(scene).single {
+                    it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                        "library-selection-top-bar"
+                }
+                assertEquals(
+                    listOf("1"),
+                    flatten(bar).filter { it.config.contains(SemanticsProperties.Text) }.flatMap(::labels),
+                    "only the hidden but still-favorite retry survives; removed objects are not restored",
+                )
+            } finally {
+                driver.execute(null, "DROP TRIGGER reject_one_delete", 0)
+                restoreFile()
+            }
+            model().setSearchQuery(null)
+            render(scene)
+            val selected = nodes(scene).filter {
+                it.config.contains(SemanticsActions.OnLongClick) &&
+                    it.config.getOrElse(SemanticsProperties.Selected) { false }
+            }.flatMap(::labels)
+            assertTrue(second.title in selected)
+            assertFalse(first.title in selected || newcomer.title in selected)
+            click(scene, MR.strings.action_delete.localized())
+            render(scene)
+            click(nodes(scene).single { it.config.contains(SemanticsProperties.ToggleableState) })
+            click(scene, MR.strings.action_ok.localized())
+            render(scene)
+            assertFalse(repository.getMangaById(second.id).favorite)
+            assertTrue(repository.getMangaById(newcomer.id).favorite)
+            assertTrue(nodes(scene).any { MR.strings.action_search.localized() in labels(it) })
+        }
+    }
+
+    private fun denyCoverDeletion(file: File): () -> Unit {
+        val path = file.toPath()
+        if (OperatingSystem.detect() == OperatingSystem.WINDOWS) {
+            val handle = java.nio.channels.FileChannel.open(
+                path,
+                java.nio.file.StandardOpenOption.READ,
+                com.sun.nio.file.ExtendedOpenOption.NOSHARE_WRITE,
+                com.sun.nio.file.ExtendedOpenOption.NOSHARE_DELETE,
+            )
+            return { handle.close() }
+        }
+        val parent = path.parent
+        val original = java.nio.file.Files.getPosixFilePermissions(parent)
+        val writes = setOf(
+            java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+            java.nio.file.attribute.PosixFilePermission.GROUP_WRITE,
+            java.nio.file.attribute.PosixFilePermission.OTHERS_WRITE,
+        )
+        java.nio.file.Files.setPosixFilePermissions(parent, original - writes)
+        return { java.nio.file.Files.setPosixFilePermissions(parent, original) }
+    }
+
+    @Test
+    fun `batch mark SQLite refusal keeps valid selection feedback and retry uses the same production action`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withRoot(root) { scene, _, _, model ->
+            val manga = model().state.value.allItems.single().manga
+            val chapters = Injekt.get<ChapterRepository>()
+            chapters.addAll(listOf(Chapter.create().copy(mangaId = manga.id, name = "Unread", url = "/unread")))
+            render(scene)
+            selectWithMouse(scene, manga.title)
+            val driver = Injekt.get<SqlDriver>()
+            driver.execute(
+                null,
+                """CREATE TRIGGER reject_batch_read BEFORE UPDATE OF read ON chapters
+                BEGIN SELECT RAISE(ABORT, 'read refused'); END""",
+                0,
+            )
+            try {
+                click(scene, MR.strings.action_mark_as_read.localized())
+                render(scene)
+                assertFalse(chapters.getChapterByMangaId(manga.id).single().read)
+                assertTrue(model().state.value.operationFeedback != null)
+                assertTrue(
+                    nodes(scene).any {
+                        it.config.contains(SemanticsActions.OnClick) &&
+                            MR.strings.desktop_ui_clear_selection.localized() in labels(it)
+                    },
+                    "failed real DB write must retain retry selection",
+                )
+            } finally {
+                driver.execute(null, "DROP TRIGGER reject_batch_read", 0)
+            }
+            click(scene, MR.strings.action_mark_as_read.localized())
+            render(scene)
+            assertTrue(chapters.getChapterByMangaId(manga.id).single().read)
+            assertTrue(nodes(scene).any { MR.strings.action_search.localized() in labels(it) })
+        }
+    }
+
+    @Test
+    fun `batch categories SQLite refusal preserves assignment selection and successful retry clears it`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withRoot(root) { scene, _, _, model ->
+            val manga = model().state.value.allItems.single().manga
+            val repository = Injekt.get<CategoryRepository>()
+            repository.insert(Category(0, "Retry category", 0, 0))
+            val category = repository.getAll().single { !it.isSystemCategory }
+            render(scene)
+            selectWithMouse(scene, manga.title)
+            val driver = Injekt.get<SqlDriver>()
+            driver.execute(
+                null,
+                """CREATE TRIGGER reject_batch_category BEFORE INSERT ON mangas_categories
+                BEGIN SELECT RAISE(ABORT, 'category refused'); END""",
+                0,
+            )
+            try {
+                click(scene, MR.strings.action_move_category.localized())
+                render(scene)
+                click(nodes(scene).single { it.config.contains(SemanticsProperties.ToggleableState) })
+                click(scene, MR.strings.action_ok.localized())
+                render(scene)
+                assertEquals(emptySet<Long>(), model().categoryIdsForManga(manga.id))
+                assertTrue(model().state.value.batchCategoryResultMessage != null)
+                assertTrue(
+                    nodes(scene).any {
+                        it.config.contains(SemanticsActions.OnClick) &&
+                            MR.strings.desktop_ui_clear_selection.localized() in labels(it)
+                    },
+                    "category rejection must not clear retry selection",
+                )
+            } finally {
+                driver.execute(null, "DROP TRIGGER reject_batch_category", 0)
+            }
+            click(scene, MR.strings.action_move_category.localized())
+            render(scene)
+            click(nodes(scene).single { it.config.contains(SemanticsProperties.ToggleableState) })
+            click(scene, MR.strings.action_ok.localized())
+            render(scene)
+            assertEquals(setOf(category.id), model().categoryIdsForManga(manga.id))
+            assertTrue(nodes(scene).any { MR.strings.action_search.localized() in labels(it) })
+        }
+    }
+
+    @Test
+    fun `batch delete SQLite refusal retains favorite and selection then confirmation retry removes only its target`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withRoot(root) { scene, _, _, model ->
+            val manga = model().state.value.allItems.single().manga
+            val repository = Injekt.get<MangaRepository>()
+            selectWithMouse(scene, manga.title)
+            val driver = Injekt.get<SqlDriver>()
+            driver.execute(
+                null,
+                """CREATE TRIGGER reject_batch_delete BEFORE UPDATE OF favorite ON mangas
+                WHEN NEW.favorite = 0 BEGIN SELECT RAISE(ABORT, 'membership refused'); END""",
+                0,
+            )
+            try {
+                click(scene, MR.strings.action_delete.localized())
+                render(scene)
+                val confirm = nodes(scene).single {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        MR.strings.action_ok.localized() in labels(it)
+                }
+                assertTrue(confirm.config.contains(SemanticsProperties.Disabled), "no removal choice means no confirm")
+                assertFalse(nodes(scene).any { MR.strings.downloaded_chapters.localized() in labels(it) })
+                click(nodes(scene).single { it.config.contains(SemanticsProperties.ToggleableState) })
+                click(scene, MR.strings.action_ok.localized())
+                render(scene)
+                assertTrue(repository.getMangaById(manga.id).favorite)
+                assertTrue(model().state.value.operationFeedback != null)
+                assertTrue(
+                    nodes(scene).any {
+                        it.config.contains(SemanticsActions.OnClick) &&
+                            MR.strings.desktop_ui_clear_selection.localized() in labels(it)
+                    },
+                    "membership refusal must keep the valid retry object",
+                )
+            } finally {
+                driver.execute(null, "DROP TRIGGER reject_batch_delete", 0)
+            }
+            click(scene, MR.strings.action_delete.localized())
+            render(scene)
+            click(nodes(scene).single { it.config.contains(SemanticsProperties.ToggleableState) })
+            click(scene, MR.strings.action_ok.localized())
+            render(scene)
+            assertFalse(repository.getMangaById(manga.id).favorite)
+            assertTrue(nodes(scene).any { MR.strings.action_search.localized() in labels(it) })
+        }
+    }
+
+    @Test
+    fun `native source selection bars show pure count ordered actions and More escapes before selection`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withRoot(root, mangaSource = 99) { scene, _, _, _ ->
+            scene.resize(320, 680)
+            scene.fontScale = 2f
+            render(scene)
+            selectWithMouse(scene, "Options work")
+            val bar = nodes(scene).single {
+                it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "library-selection-top-bar"
+            }
+            assertEquals(
+                listOf("1"),
+                flatten(bar).filter {
+                    it.config.contains(SemanticsProperties.Text)
+                }.flatMap(::labels),
+            )
+            val titles = listOf(
+                MR.strings.action_move_category,
+                MR.strings.action_mark_as_read,
+                MR.strings.action_mark_as_unread,
+                MR.strings.action_download,
+                MR.strings.action_menu,
+            ).map { it.localized() }
+            val buttons = titles.map { title ->
+                nodes(scene).single { it.config.contains(SemanticsActions.OnClick) && title in labels(it) }
+            }
+            assertTrue(
+                buttons.zipWithNext().all { (first, second) ->
+                    first.boundsInRoot.right <=
+                        second.boundsInRoot.left
+                },
+            )
+            val navigation = nodes(scene).single {
+                it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                    "desktop-root-bar"
+            }
+            assertTrue(buttons.all { it.boundsInRoot.bottom <= navigation.boundsInRoot.top })
+            assertFalse(
+                nodes(scene).any {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        MR.strings.action_search.localized() in labels(it)
+                },
+            )
+            assertFalse(
+                nodes(scene).any {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        MR.strings.action_filter.localized() in labels(it)
+                },
+            )
+            assertFalse(
+                nodes(scene).any {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        MR.strings.sync_title.localized() in labels(it)
+                },
+            )
+            click(buttons.last())
+            render(scene)
+            assertTrue(
+                nodes(scene).any {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        MR.strings.migrate.localized() in labels(it)
+                },
+            )
+            assertTrue(
+                nodes(scene).any {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        MR.strings.action_delete.localized() in labels(it)
+                },
+            )
+            key(scene, Key.Escape)
+            render(scene)
+            assertTrue(nodes(scene).any { "1" in labels(it) })
+            assertTrue(MR.strings.action_menu.localized() in labels(focused(scene)))
+            key(scene, Key.Escape)
+            render(scene)
+            assertTrue(
+                nodes(scene).any {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        MR.strings.action_search.localized() in labels(it)
+                },
+            )
+        }
+    }
+
+    @Test
+    fun `all local selection exposes migrate delete directly and mixed selection keeps remote download`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withRoot(root) { scene, _, _, _ ->
+            val repository = Injekt.get<MangaRepository>()
+            val remote = repository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 99, url = "/remote", title = "Remote work", initialized = true)),
+            ).single()
+            repository.updateMembershipsAtomically(listOf(LibraryMembershipUpdate(remote.id, true, 1, emptyList())))
+            render(scene)
+            selectWithMouse(scene, "Options work")
+            assertFalse(
+                nodes(scene).any {
+                    MR.strings.action_download.localized() in labels(it)
+                },
+                "all local has no disabled download placeholder",
+            )
+            assertFalse(nodes(scene).any { MR.strings.action_menu.localized() in labels(it) })
+            assertTrue(nodes(scene).any { MR.strings.migrate.localized() in labels(it) })
+            assertTrue(nodes(scene).any { MR.strings.action_delete.localized() in labels(it) })
+            selectWithMouse(scene, "Remote work")
+            assertTrue(
+                nodes(scene).any {
+                    MR.strings.action_download.localized() in labels(it)
+                },
+                "mixed selection keeps the applicable remote action",
+            )
+            assertTrue(nodes(scene).any { MR.strings.action_menu.localized() in labels(it) })
+            assertTrue(nodes(scene).any { "2" in labels(it) })
+        }
+    }
+
+    private suspend fun selectWithMouse(scene: NativeScene, title: String) =
+        mouseSelect(scene, title, PointerKeyboardModifiers(isCtrlPressed = true))
+
+    private suspend fun mouseSelect(scene: NativeScene, title: String, modifiers: PointerKeyboardModifiers) {
+        val point = nodes(scene).first {
+            it.config.contains(SemanticsActions.OnLongClick) && title in labels(it)
+        }.boundsInRoot.center
+        scene.pointer(PointerEventType.Press, point, true, PointerButton.Primary, modifiers)
+        scene.pointer(PointerEventType.Release, point, false, PointerButton.Primary, modifiers)
+        render(scene)
+    }
+
+    @Test
+    fun `root wheel excludes modifiers horizontal toolbar rail and actual focused search editing`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withRoot(root) { scene, _, _, model ->
+            prepareWheelCategories(scene, model())
+            val point = nodes(scene).first { it.config.contains(SemanticsActions.ScrollToIndex) }.boundsInRoot.center
+            var time = 10_000L
+            suspend fun excluded(
+                message: String,
+                modifiers: PointerKeyboardModifiers,
+                delta: Offset = Offset(0f, 1f),
+                position: Offset = point,
+            ) {
+                val old = model().state.value.selectedCategoryIndex
+                scene.wheel(position, delta, time, modifiers)
+                time += 500
+                render(scene)
+                assertEquals(old, model().state.value.selectedCategoryIndex, message)
+            }
+            excluded(
+                "Ctrl+Alt never changes category",
+                PointerKeyboardModifiers(isCtrlPressed = true, isAltPressed = true),
+            )
+            excluded(
+                "Ctrl+Shift never changes category",
+                PointerKeyboardModifiers(isCtrlPressed = true, isShiftPressed = true),
+            )
+            excluded(
+                "horizontal wheel never changes category",
+                PointerKeyboardModifiers(isCtrlPressed = true),
+                Offset(1f, 1f),
+            )
+            val rootButton = nodes(scene).single {
+                it.config.contains(SemanticsActions.OnClick) &&
+                    it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "desktop-root-${LibraryTab.key}"
+            }
+            excluded(
+                "navigation rail is outside the content area",
+                PointerKeyboardModifiers(isCtrlPressed = true),
+                position = rootButton.boundsInRoot.center,
+            )
+            val search = nodes(scene).first {
+                it.config.contains(SemanticsActions.OnClick) &&
+                    MR.strings.action_search.localized() in labels(it)
+            }
+            excluded(
+                "toolbar is outside the content area",
+                PointerKeyboardModifiers(isCtrlPressed = true),
+                position = search.boundsInRoot.center,
+            )
+            click(search)
+            render(scene)
+            val input = nodes(scene).single { it.config.contains(SemanticsActions.SetText) }
+            assertTrue(input.config[SemanticsProperties.Focused], "guard observes the actual editing focus chain")
+            input.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString("Options"))
+            render(scene)
+            excluded(
+                "focused search including IME editing must retain category",
+                PointerKeyboardModifiers(isCtrlPressed = true),
+            )
+            assertEquals("Options", model().state.value.searchQuery)
+            assertTrue(
+                nodes(scene).single {
+                    it.config.contains(SemanticsActions.SetText)
+                }.config[SemanticsProperties.Focused],
+            )
+            key(scene, Key.Tab)
+            render(scene)
+            assertFalse(
+                nodes(scene).single {
+                    it.config.contains(SemanticsActions.SetText)
+                }.config[SemanticsProperties.Focused],
+                "search must actually lose editing focus before testing an expanded query",
+            )
+            val old = model().state.value.selectedCategoryIndex
+            scene.wheel(point, Offset(0f, 1f), time, PointerKeyboardModifiers(isCtrlPressed = true))
+            render(scene)
+            assertEquals(
+                old + if (OperatingSystem.detect() == OperatingSystem.WINDOWS) 1 else 0,
+                model().state.value.selectedCategoryIndex,
+                "expanded search alone does not block a non-editing root",
+            )
+            assertEquals("Options", model().state.value.searchQuery)
+        }
+    }
+
+    @Test
+    fun `root wheel excludes More options sync category removal context and detail foreground`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withRoot(root) { scene, _, _, model ->
+            prepareWheelCategories(scene, model())
+            val point = nodes(scene).first { it.config.contains(SemanticsActions.ScrollToIndex) }.boundsInRoot.center
+            var time = 20_000L
+            suspend fun excluded(name: String) {
+                val old = model().state.value.selectedCategoryIndex
+                scene.wheel(point, Offset(0f, 1f), time, PointerKeyboardModifiers(isCtrlPressed = true))
+                time += 500
+                render(scene)
+                assertEquals(old, model().state.value.selectedCategoryIndex, "$name foreground blocks root wheel")
+            }
+            click(scene, MR.strings.action_menu.localized())
+            render(scene)
+            excluded("More")
+            key(scene, Key.Escape)
+            render(scene)
+            click(scene, MR.strings.action_filter.localized())
+            render(scene)
+            excluded("Options")
+            click(scene, MR.strings.action_close.localized())
+            render(scene)
+            click(scene, MR.strings.sync_title.localized())
+            render(scene)
+            assertTrue(Injekt.get<mihon.data.sync.runtime.SyncRuntime>().panel.state.value.visible)
+            excluded("Sync")
+            click(scene, MR.strings.sync_close.localized())
+            render(scene)
+            val card = nodes(scene).first { it.config.contains(SemanticsActions.OnLongClick) }
+            card.config[SemanticsActions.OnLongClick].action!!.invoke()
+            render(scene)
+            click(scene, MR.strings.action_move_category.localized())
+            render(scene)
+            excluded("Categories")
+            click(scene, MR.strings.action_cancel.localized())
+            render(scene)
+            click(scene, MR.strings.action_delete.localized())
+            render(scene)
+            excluded("Removal")
+            click(scene, MR.strings.action_cancel.localized())
+            render(scene)
+            click(scene, MR.strings.desktop_ui_clear_selection.localized())
+            render(scene)
+            model().setContextMenuManga(model().state.value.allItems.single())
+            render(scene)
+            excluded("Context menu")
+            model().setContextMenuManga(null)
+            render(scene)
+            click(nodes(scene).first { it.config.contains(SemanticsActions.OnLongClick) })
+            render(scene)
+            assertTrue(scene.stack.items.last() is MangaDetailScreen)
+            excluded("Detail")
+        }
+    }
+
+    private suspend fun prepareWheelCategories(scene: NativeScene, model: LibraryScreenModel) {
+        val repository = Injekt.get<CategoryRepository>()
+        repeat(3) { repository.insert(Category(0, "Guard ${'A' + it}", it.toLong(), 0)) }
+        val custom = repository.getAll().filterNot { it.isSystemCategory }
+        Injekt.get<MangaRepository>().setMangaCategories(model.state.value.allItems.single().id, custom.map { it.id })
+        render(scene)
+        model.setSelectedCategoryIndex(model.state.value.categories.indexOfFirst { it.name == "Guard A" })
+        render(scene)
+    }
+
+    @Test
+    fun `root ctrl wheel retains a burst across category composition and consumes boundaries without refresh`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withRoot(root) { scene, _, _, model ->
+            val categories = Injekt.get<CategoryRepository>()
+            repeat(5) { categories.insert(Category(0, "Wheel ${'A' + it}", it.toLong(), 0)) }
+            val custom = categories.getAll().filterNot { it.isSystemCategory }
+            val manga = model().state.value.allItems.single().manga
+            Injekt.get<MangaRepository>().setMangaCategories(manga.id, custom.map { it.id })
+            render(scene)
+            val owner = model()
+            owner.setSelectedCategoryIndex(owner.state.value.categories.indexOfFirst { it.name == "Wheel A" })
+            render(scene)
+            val point = nodes(scene).first { it.config.contains(SemanticsActions.OnLongClick) }.boundsInRoot.center
+            fun current() = owner.state.value.categories[owner.state.value.selectedCategoryIndex].name
+            suspend fun wheel(time: Long, dy: Float = 1f, ctrl: Boolean = true) {
+                scene.wheel(point, Offset(0f, dy), time, PointerKeyboardModifiers(isCtrlPressed = ctrl))
+                render(scene)
+            }
+            wheel(1_000)
+            if (OperatingSystem.detect() != OperatingSystem.WINDOWS) {
+                assertEquals("Wheel A", current(), "this root binding is Windows only")
+                assertFalse(scene.lastWheelConsumed)
+                return@withRoot
+            }
+            assertEquals("Wheel B", current(), "the first native Ctrl wheel must move one adjacent category")
+            assertTrue(scene.lastWheelConsumed)
+            for (time in listOf(1_100L, 1_200L, 1_300L, 1_400L)) {
+                wheel(time)
+                assertEquals("Wheel B", current(), "every event extends one burst even after keyed content rebuild")
+                assertTrue(scene.lastWheelConsumed)
+            }
+            wheel(1_650)
+            assertEquals("Wheel C", current(), "exactly 250ms starts a new burst")
+            wheel(1_700, -1f)
+            assertEquals("Wheel B", current(), "reverse direction starts a new burst")
+            scene.wheel(point, Offset(0f, 1f), 1_701, PointerKeyboardModifiers(isCtrlPressed = true))
+            assertTrue(scene.lastWheelConsumed)
+            scene.wheel(point, Offset(0f, -1f), 1_702, PointerKeyboardModifiers(isCtrlPressed = true))
+            assertTrue(scene.lastWheelConsumed)
+            render(scene)
+            assertEquals(
+                "Wheel B",
+                current(),
+                "two opposite valid wheel events need no composition frame between category writes",
+            )
+
+            assertTrue(
+                nodes(scene).single {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "desktop-root-${LibraryTab.key}"
+                }
+                    .config[SemanticsActions.RequestFocus].action!!.invoke(),
+                "the keyboard release can occur with navigation focused outside the library content",
+            )
+            render(scene)
+            val release = keyEvent(Key.CtrlLeft, KeyEventType.KeyUp, false)
+            val press = keyEvent(Key.CtrlLeft, KeyEventType.KeyDown, false, ctrl = true)
+            assertEquals(Key.CtrlLeft, release.key, "the native fixture retains the actual Ctrl key identity")
+            assertTrue(press.isCtrlPressed)
+            scene.sendKeyEvent(release)
+            render(scene)
+            scene.sendKeyEvent(press)
+            render(scene)
+            wheel(1_705, -1f)
+            assertEquals("Wheel A", current(), "release then press Ctrl resets a burst with no intervening scroll")
+            wheel(1_710, ctrl = false)
+            wheel(1_720)
+            assertEquals("Wheel B", current(), "a scroll with Ctrl released also resets a burst")
+            scene.sendKeyEvent(release)
+            scene.sendKeyEvent(press)
+            wheel(1_730)
+            assertEquals("Wheel C", current(), "release and press need no forced frame to start a new segment")
+            owner.setSelectedCategoryIndex(owner.state.value.categories.indexOfFirst { it.name == "Wheel E" })
+            render(scene)
+            wheel(2_000)
+            assertEquals("Wheel E", current(), "last category never wraps")
+            assertTrue(scene.lastWheelConsumed, "valid boundary events are consumed")
+            wheel(2_010, -1f)
+            assertEquals("Wheel D", current())
+            owner.setSelectedCategoryIndex(owner.state.value.categories.indexOfFirst { it.name == "Wheel A" })
+            render(scene)
+            wheel(2_300, -1f)
+            assertEquals("Wheel A", current(), "first category never wraps")
+            assertTrue(scene.lastWheelConsumed)
+            for (arrow in listOf(Key.DirectionLeft, Key.DirectionRight)) {
+                scene.sendKeyEvent(keyEvent(arrow, KeyEventType.KeyDown, false, ctrl = true))
+                scene.sendKeyEvent(keyEvent(arrow, KeyEventType.KeyUp, false, ctrl = true))
+                render(scene)
+                assertEquals("Wheel A", current(), "Ctrl arrows must not switch library categories")
+            }
+            assertTrue(model() === owner, "wheel must retain the actual root ScreenModel")
+            assertFalse(owner.state.value.isUpdating)
+            assertEquals(null, Injekt.get<mihon.desktop.domain.LibraryUpdateScheduler>().taskSnapshot())
+        }
+    }
+
     @Test
     fun `ordinary toolbar removes independent settings sort display and random buttons`(
         @TempDir root: File,
@@ -455,9 +1767,12 @@ class LibraryOptionsInteractionTest {
                 MR.strings.desktop_ui_clear_selection.localized() in nodes(scene).flatMap(::labels),
                 "hidden selection remains after the panel closes",
             )
-            assertTrue(
-                nodes(scene).flatMap(::labels)
-                    .contains(MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), 1)),
+            val bar = nodes(scene).single {
+                it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "library-selection-top-bar"
+            }
+            assertEquals(
+                listOf("1"),
+                flatten(bar).filter { it.config.contains(SemanticsProperties.Text) }.flatMap(::labels),
             )
             key(scene, Key.Escape)
             render(scene)
@@ -982,6 +2297,7 @@ class LibraryOptionsInteractionTest {
         root: File,
         backendFactory: (Preferences) -> Preferences = { it },
         categoryRepositoryOverride: ((CategoryRepository) -> CategoryRepository)? = null,
+        chapterRepositoryOverride: ((ChapterRepository) -> ChapterRepository)? = null,
         mangaSource: Long = 0,
         updateManga: (suspend (Manga) -> LibraryUpdateChecker.UpdateResult)? = null,
         block: suspend (NativeScene, VoyagerLibraryNavigationHost, LibraryPreferences, () -> LibraryScreenModel) ->
@@ -993,6 +2309,7 @@ class LibraryOptionsInteractionTest {
             DesktopPreferenceStore(backendFactory(node)),
             startDownloadWorker = false,
             categoryRepositoryOverride = categoryRepositoryOverride,
+            chapterRepositoryOverride = chapterRepositoryOverride,
             updateManga = updateManga,
         )
         Dispatchers.setMain(UnconfinedTestDispatcher())
@@ -1009,19 +2326,40 @@ class LibraryOptionsInteractionTest {
             ),
         ).single()
         repository.updateMembershipsAtomically(listOf(LibraryMembershipUpdate(manga.id, true, 1, emptyList())))
-        val scene = NativeScene(Dispatchers.Unconfined)
+        val scene = NativeScene(kotlin.coroutines.coroutineContext)
         val host = VoyagerLibraryNavigationHost(onStackAttached = { scene.stack = it })
         lateinit var model: LibraryScreenModel
+        var rootModelCaptured = false
         try {
             scene.setContent {
                 CompositionLocalProvider(
                     LocalDesktopUiDependencies provides dependencies,
                     LocalDensity provides Density(1f, scene.fontScale),
                 ) {
-                    ProvideLibraryScreenModelFactory({ LibraryScreenModelFactory.create().also { model = it } }) {
+                    ProvideLibraryScreenModelFactory({
+                        LibraryScreenModelFactory.create().also {
+                            if (!rootModelCaptured) {
+                                model = it
+                                rootModelCaptured = true
+                            }
+                        }
+                    }) {
                         ProvideLibraryNavigationHost(host) {
                             DesktopTheme {
-                                Navigator(HomeScreen()) { CurrentScreen() }
+                                Box(
+                                    Modifier.fillMaxSize().pointerInput(Unit) {
+                                        awaitPointerEventScope {
+                                            while (true) {
+                                                val event = awaitPointerEvent(PointerEventPass.Final)
+                                                if (event.type == PointerEventType.Scroll) {
+                                                    scene.lastWheelConsumed = event.changes.all { it.isConsumed }
+                                                }
+                                            }
+                                        }
+                                    },
+                                ) {
+                                    Navigator(HomeScreen()) { CurrentScreen() }
+                                }
                             }
                         }
                     }
@@ -1102,7 +2440,7 @@ class LibraryOptionsInteractionTest {
         scene.sendKeyEvent(keyEvent(key, KeyEventType.KeyDown, shift))
         scene.sendKeyEvent(keyEvent(key, KeyEventType.KeyUp, shift))
     }
-    private fun keyEvent(key: Key, type: KeyEventType, shift: Boolean): ComposeKeyEvent {
+    private fun keyEvent(key: Key, type: KeyEventType, shift: Boolean, ctrl: Boolean = false): ComposeKeyEvent {
         val events = Class.forName("androidx.compose.ui.input.key.KeyEvent_desktopKt")
         val eventType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
             .getMethod(if (type == KeyEventType.KeyDown) "access\$getKeyDown\$cp" else "access\$getKeyUp\$cp")
@@ -1111,7 +2449,9 @@ class LibraryOptionsInteractionTest {
             it.name.startsWith("KeyEvent-") &&
                 !it.name.endsWith("\$default")
         }
-        return ComposeKeyEvent(factory.invoke(null, key.keyCode, eventType, 0, false, false, false, shift, null))
+        return ComposeKeyEvent(
+            factory.invoke(null, key.keyCode, eventType, key.nativeKeyLocation, ctrl, false, false, shift, null),
+        )
     }
     private fun focused(scene: NativeScene): SemanticsNode {
         val modal = scene.semanticsOwners.lastOrNull { owner ->
@@ -1138,7 +2478,9 @@ class LibraryOptionsInteractionTest {
     private class NativeScene(context: CoroutineContext) : AutoCloseable {
         val semanticsOwners = linkedSetOf<SemanticsOwner>()
         lateinit var stack: LibraryScreenStack
+        var lastWheelConsumed = false
         private var windowSize by mutableStateOf(IntSize(1200, 900))
+        private var keyboardModifiers by mutableStateOf(PointerKeyboardModifiers())
         var fontScale by mutableFloatStateOf(1f)
         private val bitmap = ImageBitmap(1400, 1000)
         private val canvas = Canvas(bitmap)
@@ -1148,6 +2490,7 @@ class LibraryOptionsInteractionTest {
             platformContext = object : PlatformContext {
                 override val windowInfo = object : WindowInfo {
                     override val isWindowFocused = true
+                    override val keyboardModifiers get() = this@NativeScene.keyboardModifiers
                     override val containerSize get() = windowSize
                     override val containerDpSize get() = DpSize(windowSize.width.dp, windowSize.height.dp)
                 }
@@ -1170,19 +2513,49 @@ class LibraryOptionsInteractionTest {
             invalidate = {},
         )
         fun setContent(content: @Composable () -> Unit) = scene.setContent(content)
-        fun render() = scene.render(canvas, System.nanoTime())
-        fun sendKeyEvent(event: ComposeKeyEvent) = scene.sendKeyEvent(event)
+        fun render() {
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+            scene.render(canvas, System.nanoTime())
+        }
+        fun sendKeyEvent(event: ComposeKeyEvent): Boolean {
+            keyboardModifiers = PointerKeyboardModifiers(
+                isCtrlPressed = event.isCtrlPressed,
+                isAltPressed = event.isAltPressed,
+                isShiftPressed = event.isShiftPressed,
+            )
+            return scene.sendKeyEvent(event)
+        }
         fun resize(width: Int, height: Int) {
             windowSize = IntSize(width, height)
             scene.size = windowSize
         }
-        fun pointer(type: PointerEventType, position: Offset, pressed: Boolean, button: PointerButton? = null) =
+        fun pointer(
+            type: PointerEventType,
+            position: Offset,
+            pressed: Boolean,
+            button: PointerButton? = null,
+            modifiers: PointerKeyboardModifiers = PointerKeyboardModifiers(),
+        ) {
+            keyboardModifiers = modifiers
             scene.sendPointerEvent(
                 type,
                 position,
                 buttons = PointerButtons(isPrimaryPressed = pressed),
                 button = button,
+                keyboardModifiers = modifiers,
             )
+        }
+        fun wheel(position: Offset, delta: Offset, time: Long, modifiers: PointerKeyboardModifiers) {
+            lastWheelConsumed = false
+            keyboardModifiers = modifiers
+            scene.sendPointerEvent(
+                PointerEventType.Scroll,
+                position,
+                scrollDelta = delta,
+                timeMillis = time,
+                keyboardModifiers = modifiers,
+            )
+        }
         fun snapshot(): java.awt.image.BufferedImage {
             Image.makeFromBitmap(bitmap.asSkiaBitmap()).use { image ->
                 return ImageIO.read(ByteArrayInputStream(requireNotNull(image.encodeToData()).bytes))

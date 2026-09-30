@@ -53,10 +53,26 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.foundation.selection.triStateToggleable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.platform.testTag
+import androidx.compose.material.icons.automirrored.outlined.Label
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.DoneAll
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.FlipToBack
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.RemoveDone
+import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.SwapCalls
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.foundation.shape.ZeroCornerSize
+import androidx.compose.material3.Surface
+import mihon.desktop.ui.theme.LocalDesktopDarkTheme
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.SortByAlpha
@@ -73,6 +89,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -93,8 +110,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -108,6 +127,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import cafe.adriel.voyager.core.model.rememberScreenModel
@@ -160,6 +180,8 @@ internal fun LibraryToolbar(
     showFilterMenu: Boolean = false,
     onShowFilterMenuChange: (Boolean) -> Unit = {},
     optionsFocusRequester: FocusRequester? = null,
+    onSearchFocusChange: (Boolean) -> Unit = {},
+    onPopupVisibilityChange: (Boolean) -> Unit = {},
     toolbarTitle: String = MR.strings.label_library.localized(),
     onRandomManga: () -> Unit,
     onRefresh: () -> Unit,
@@ -175,6 +197,15 @@ internal fun LibraryToolbar(
     val moreFirstFocus = remember { FocusRequester() }
     var showCategoryMenu by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
+    LaunchedEffect(showCategoryMenu, showMoreMenu) {
+        onPopupVisibilityChange(showCategoryMenu || showMoreMenu)
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            onSearchFocusChange(false)
+            onPopupVisibilityChange(false)
+        }
+    }
     LaunchedEffect(showMoreMenu) {
         if (showMoreMenu) {
             androidx.compose.runtime.withFrameNanos { }
@@ -224,7 +255,8 @@ internal fun LibraryToolbar(
                     onValueChange = onSearchChange,
                     singleLine = true,
                     placeholder = { Text(MR.strings.desktop_ui_search_library.localized()) },
-                    modifier = Modifier.weight(1f).focusRequester(searchFocusRequester),
+                    modifier = Modifier.weight(1f).focusRequester(searchFocusRequester)
+                        .onFocusChanged { onSearchFocusChange(it.isFocused) },
                     trailingIcon = if (searchQuery.isNotEmpty()) {
                         {
                             IconButton(onClick = { onSearchChange("") }) {
@@ -379,46 +411,164 @@ internal fun SelectionActionBar(
     onMarkRead: () -> Unit,
     onMarkUnread: () -> Unit,
     onRemoveFromLibrary: () -> Unit,
+    onPopupVisibilityChange: (Boolean) -> Unit = {},
+    onExitSelection: () -> Unit = {},
+    categoryFocusRequester: FocusRequester? = null,
+    removalFocusRequester: FocusRequester? = null,
 ) {
     var downloadExpanded by remember { mutableStateOf(false) }
-    BottomAppBar(
-        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+    var moreExpanded by remember { mutableStateOf(false) }
+    val downloadFocus = remember { FocusRequester() }
+    val localMoreFocus = remember { FocusRequester() }
+    val moreFocus = removalFocusRequester ?: localMoreFocus
+    val downloadFirstFocus = remember { FocusRequester() }
+    val moreFirstFocus = remember { FocusRequester() }
+    var restoreDownloadFocus by remember { mutableIntStateOf(0) }
+    var restoreMoreFocus by remember { mutableIntStateOf(0) }
+    LaunchedEffect(downloadExpanded, moreExpanded) {
+        onPopupVisibilityChange(downloadExpanded || moreExpanded)
+        if (downloadExpanded || moreExpanded) {
+            androidx.compose.runtime.withFrameNanos { }
+            if (downloadExpanded) downloadFirstFocus.requestFocus() else moreFirstFocus.requestFocus()
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { onPopupVisibilityChange(false) }
+    }
+    LaunchedEffect(restoreDownloadFocus) {
+        if (restoreDownloadFocus > 0) {
+            androidx.compose.runtime.withFrameNanos { }
+            runCatching { downloadFocus.requestFocus() }
+        }
+    }
+    LaunchedEffect(restoreMoreFocus) {
+        if (restoreMoreFocus > 0) {
+            androidx.compose.runtime.withFrameNanos { }
+            runCatching { moreFocus.requestFocus() }
+        }
+    }
+    val dismissDownload: () -> Unit = {
+        downloadExpanded = false
+        restoreDownloadFocus++
+    }
+    val dismissMore: () -> Unit = {
+        moreExpanded = false
+        restoreMoreFocus++
+    }
+    Surface(
+        modifier = Modifier.onPreviewKeyEvent {
+            if (it.key == Key.Escape && it.type == KeyEventType.KeyDown && !downloadExpanded && !moreExpanded) {
+                onExitSelection()
+                true
+            } else false
+        },
+        shape = MaterialTheme.shapes.large.copy(bottomEnd = ZeroCornerSize, bottomStart = ZeroCornerSize),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
-        Spacer(Modifier.weight(1f))
-        Box {
-            TextButton(
-                onClick = { downloadExpanded = true },
-                enabled = canDownload,
-            ) { Text(MR.strings.action_download.localized()) }
-            DropdownMenu(expanded = downloadExpanded, onDismissRequest = { downloadExpanded = false }) {
-                listOf(
-                    MangaDetailDownloadAction.NEXT_1_CHAPTER to
-                        MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 1),
-                    MangaDetailDownloadAction.NEXT_5_CHAPTERS to
-                        MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 5),
-                    MangaDetailDownloadAction.NEXT_10_CHAPTERS to
-                        MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 10),
-                    MangaDetailDownloadAction.NEXT_25_CHAPTERS to
-                        MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 25),
-                    MangaDetailDownloadAction.UNREAD_CHAPTERS to MR.strings.desktop_ui_all_unread_chapters.localized(),
-                    MangaDetailDownloadAction.BOOKMARKED_CHAPTERS to MR.strings.desktop_ui_bookmarked_chapters.localized(),
-                ).forEach { (action, label) ->
-                    DropdownMenuItem(
-                        text = { Text(label) },
-                        onClick = {
-                            downloadExpanded = false
-                            actions.download(action)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp)) {
+            IconButton(
+                onClick = onSetCategories,
+                modifier = Modifier
+                    .weight(1f)
+                    .then(categoryFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier),
+            ) {
+                Icon(Icons.AutoMirrored.Outlined.Label, MR.strings.action_move_category.localized())
+            }
+            IconButton(onClick = onMarkRead, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Outlined.DoneAll, MR.strings.action_mark_as_read.localized())
+            }
+            IconButton(onClick = onMarkUnread, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Outlined.RemoveDone, MR.strings.action_mark_as_unread.localized())
+            }
+            if (canDownload) {
+                Box(Modifier.weight(1f)) {
+                    IconButton(
+                        onClick = { downloadExpanded = true },
+                        modifier = Modifier.fillMaxWidth().focusRequester(downloadFocus),
+                    ) {
+                        Icon(Icons.Outlined.Download, MR.strings.action_download.localized())
+                    }
+                    DropdownMenu(
+                        expanded = downloadExpanded,
+                        onDismissRequest = dismissDownload,
+                        modifier = Modifier.onPreviewKeyEvent {
+                            if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) {
+                                dismissDownload()
+                                true
+                            } else false
                         },
-                    )
+                    ) {
+                        listOf(
+                            MangaDetailDownloadAction.NEXT_1_CHAPTER to
+                                MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 1),
+                            MangaDetailDownloadAction.NEXT_5_CHAPTERS to
+                                MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 5),
+                            MangaDetailDownloadAction.NEXT_10_CHAPTERS to
+                                MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 10),
+                            MangaDetailDownloadAction.NEXT_25_CHAPTERS to
+                                MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 25),
+                            MangaDetailDownloadAction.UNREAD_CHAPTERS to MR.strings.desktop_ui_all_unread_chapters.localized(),
+                            MangaDetailDownloadAction.BOOKMARKED_CHAPTERS to MR.strings.desktop_ui_bookmarked_chapters.localized(),
+                        ).forEachIndexed { index, (action, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                modifier = if (index == 0) Modifier.focusRequester(downloadFirstFocus) else Modifier,
+                                onClick = {
+                                    dismissDownload()
+                                    actions.download(action)
+                                },
+                            )
+                        }
+                    }
+                }
+                Box(Modifier.weight(1f)) {
+                    IconButton(
+                        onClick = { moreExpanded = true },
+                        modifier = Modifier.fillMaxWidth().focusRequester(moreFocus),
+                    ) {
+                        Icon(Icons.Outlined.MoreVert, MR.strings.action_menu.localized())
+                    }
+                    DropdownMenu(
+                        expanded = moreExpanded,
+                        onDismissRequest = dismissMore,
+                        modifier = Modifier.onPreviewKeyEvent {
+                            if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) {
+                                dismissMore()
+                                true
+                            } else false
+                        },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(MR.strings.migrate.localized()) },
+                            enabled = canMigrate,
+                            modifier = Modifier.focusRequester(moreFirstFocus),
+                            onClick = {
+                                dismissMore()
+                                actions.migrate()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(MR.strings.action_delete.localized()) },
+                            onClick = {
+                                dismissMore()
+                                onRemoveFromLibrary()
+                            },
+                        )
+                    }
+                }
+            } else {
+                IconButton(onClick = actions.migrate, enabled = canMigrate, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Outlined.SwapCalls, MR.strings.migrate.localized())
+                }
+                IconButton(
+                    onClick = onRemoveFromLibrary,
+                    modifier = Modifier
+                    .weight(1f)
+                    .then(removalFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier),
+                ) {
+                    Icon(Icons.Outlined.Delete, MR.strings.action_delete.localized())
                 }
             }
-        }
-        TextButton(onClick = actions.migrate, enabled = canMigrate) { Text(MR.strings.action_migrate.localized()) }
-        TextButton(onClick = onSetCategories) { Text(MR.strings.categories.localized()) }
-        TextButton(onClick = onMarkRead) { Text(MR.strings.desktop_ui_mark_read.localized()) }
-        TextButton(onClick = onMarkUnread) { Text(MR.strings.desktop_ui_mark_unread.localized()) }
-        TextButton(onClick = onRemoveFromLibrary) {
-            Text(MR.strings.action_remove.localized(), color = MaterialTheme.colorScheme.error)
         }
     }
 }
@@ -432,7 +582,8 @@ internal fun LibrarySelectionTopBar(
     onInvertSelection: () -> Unit,
 ) {
     TopAppBar(
-        title = { Text(MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), selectedCount)) },
+        modifier = Modifier.testTag("library-selection-top-bar"),
+        title = { Text(selectedCount.toString()) },
         navigationIcon = {
             IconButton(onClick = onClose) {
                 Icon(Icons.Default.Close, contentDescription = MR.strings.desktop_ui_clear_selection.localized())
@@ -440,10 +591,10 @@ internal fun LibrarySelectionTopBar(
         },
         actions = {
             IconButton(onClick = onSelectAll) {
-                Icon(Icons.Default.SelectAll, contentDescription = MR.strings.action_select_all.localized())
+                Icon(Icons.Outlined.SelectAll, contentDescription = MR.strings.action_select_all.localized())
             }
             IconButton(onClick = onInvertSelection) {
-                Icon(Icons.Default.SelectAll, contentDescription = MR.strings.desktop_ui_invert_selection.localized())
+                Icon(Icons.Outlined.FlipToBack, contentDescription = MR.strings.desktop_ui_invert_selection.localized())
             }
         },
     )
@@ -477,7 +628,7 @@ internal fun LibraryGrid(
     scrollState: LazyGridState = rememberLazyGridState(),
     resolveCoverModel: (Long, String?) -> String? = { _, url -> url },
     onContextMenu: (LibraryManga) -> Unit,
-    onItemClick: (LibraryManga, shiftPressed: Boolean) -> Unit,
+    onItemClick: (LibraryManga, LibraryClickModifiers) -> Unit,
     onItemLongClick: (LibraryManga) -> Unit,
     onContinueReading: (LibraryManga) -> Unit,
 ) {
@@ -549,7 +700,7 @@ internal fun LibraryList(
     scrollState: LazyListState = rememberLazyListState(),
     resolveCoverModel: (Long, String?) -> String? = { _, url -> url },
     onContextMenu: (LibraryManga) -> Unit,
-    onItemClick: (LibraryManga, shiftPressed: Boolean) -> Unit,
+    onItemClick: (LibraryManga, LibraryClickModifiers) -> Unit,
     onItemLongClick: (LibraryManga) -> Unit,
     onContinueReading: (LibraryManga) -> Unit = {},
 ) {
@@ -569,7 +720,13 @@ internal fun LibraryList(
                         showLanguageIndicator
                 val showContinueReading = showContinueReadingButton &&
                     (continueReadingMangaIds?.contains(item.id) ?: (item.unreadCount > 0))
+                val selectionAlpha = if (LocalDesktopDarkTheme.current) 0.16f else 0.22f
                 ListItem(
+                    colors = ListItemDefaults.colors(
+                        containerColor = if (isSelected) {
+                            MaterialTheme.colorScheme.secondary.copy(alpha = selectionAlpha)
+                        } else Color.Transparent,
+                    ),
                     headlineContent = {
                         Text(
                             item.manga.title,
@@ -588,20 +745,7 @@ internal fun LibraryList(
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.size(48.dp),
                             )
-                            if (isSelected) {
-                                Box(
-                                    Modifier.size(48.dp).background(
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                    ),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        Icons.Default.CheckCircle,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                    )
-                                }
-                            }
+
                         }
                     },
                     supportingContent = if (badges.unreadCount > 0L || showTrackerScore) {
@@ -657,6 +801,7 @@ internal fun LibraryList(
                             onClick = { onItemClick(item, it) },
                             onLongClick = { onItemLongClick(item) },
                         )
+                        .semantics { selected = isSelected }
                         .pointerInput(item.manga.id) {
                             awaitPointerEventScope {
                                 while (true) {
@@ -668,11 +813,7 @@ internal fun LibraryList(
                                     }
                                 }
                             }
-                        }
-                        .background(
-                            if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                            else Color.Transparent,
-                        ),
+                        },
                 )
             }
         }
@@ -706,7 +847,7 @@ internal fun MangaCoverCard(
     syncedResumeMangaIds: Set<Long> = emptySet(),
     canContinueReading: Boolean = item.unreadCount > 0,
     coverModel: String? = item.manga.thumbnailUrl,
-    onClick: (shiftPressed: Boolean) -> Unit,
+    onClick: (LibraryClickModifiers) -> Unit,
     onLongClick: () -> Unit,
     onContinueReading: () -> Unit,
     onContextMenu: () -> Unit,
@@ -715,10 +856,11 @@ internal fun MangaCoverCard(
         { downloadCount }, { item.unreadCount }, { isLocal }, { sourceLanguage },
         showDownloadBadge, showUnreadBadge, showLocalBadge, showLanguageBadge,
     )
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .shiftAwareCombinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .semantics { selected = isSelected }
             .pointerInput(item.manga.id) {
                 awaitPointerEventScope {
                     while (true) {
@@ -731,13 +873,11 @@ internal fun MangaCoverCard(
                     }
                 }
             },
-        colors = if (isSelected) {
-            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-        } else {
-            CardDefaults.cardColors()
-        },
+        shape = MaterialTheme.shapes.small,
+        color = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = if (isSelected) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurface,
     ) {
-        Column {
+        Column(Modifier.padding(4.dp)) {
             Box {
                 AsyncImage(
                     model = rememberMangaCoverRequestState(
@@ -747,7 +887,8 @@ internal fun MangaCoverCard(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(0.7f),
+                        .aspectRatio(0.7f)
+                        .alpha(if (isSelected) 0.76f else 1f),
                 )
                 if (showTrackerScore) {
                     Text(
@@ -865,23 +1006,7 @@ internal fun MangaCoverCard(
                     }
                 }
 
-                // Selection indicator
-                if (isSelected) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(0.7f)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = MR.strings.selected.localized(),
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp),
-                        )
-                    }
-                }
+
             }
 
             // Title below cover in comfortable mode
@@ -987,8 +1112,14 @@ internal fun LibraryRemovalDialog(
     var removeFromLibrary by remember(items) { mutableStateOf(false) }
     var deleteDownloads by remember(items) { mutableStateOf(false) }
     val policy = libraryRemovalPolicy(items)
+    val cancelFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        androidx.compose.runtime.withFrameNanos { }
+        cancelFocus.requestFocus()
+    }
 
     AlertDialog(
+        modifier = Modifier.categoryDialogEscape(true, onDismiss),
         onDismissRequest = onDismiss,
         title = { Text(MR.strings.action_remove.localized()) },
         text = {
@@ -1024,7 +1155,9 @@ internal fun LibraryRemovalDialog(
             ) { Text(MR.strings.action_ok.localized()) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
+            TextButton(onClick = onDismiss, modifier = Modifier.focusRequester(cancelFocus)) {
+                Text(MR.strings.action_cancel.localized())
+            }
         },
     )
 }
@@ -1045,6 +1178,11 @@ internal fun BatchCategoryDialog(
     var currentCategoryIdsByManga by remember { mutableStateOf<Map<Long, Set<Long>>?>(null) }
     var desiredStates by remember { mutableStateOf<List<CheckboxState<Category>>>(emptyList()) }
     var loadFailed by remember { mutableStateOf(false) }
+    val cancelFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        androidx.compose.runtime.withFrameNanos { }
+        cancelFocus.requestFocus()
+    }
 
     LaunchedEffect(Unit) {
         try {
@@ -1066,6 +1204,7 @@ internal fun BatchCategoryDialog(
     }
 
     AlertDialog(
+        modifier = Modifier.categoryDialogEscape(true, onDismiss),
         onDismissRequest = onDismiss,
         title = { Text(MR.strings.action_move_category.localized()) },
         text = {
@@ -1075,30 +1214,33 @@ internal fun BatchCategoryDialog(
                 selectableCategories.isEmpty() -> {
                     Text(MR.strings.desktop_ui_no_categories_create_categories_first.localized())
                 }
-                else -> Column {
+                else -> Column(Modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState())) {
                     desiredStates.forEach { checkbox ->
+                        val checkboxState = when (checkbox) {
+                            is CheckboxState.State.Checked,
+                            is CheckboxState.TriState.Include,
+                            -> ToggleableState.On
+                            is CheckboxState.State.None,
+                            is CheckboxState.TriState.None,
+                            -> ToggleableState.Off
+                            is CheckboxState.TriState.Exclude -> ToggleableState.Indeterminate
+                        }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .triStateToggleable(
+                                    state = checkboxState,
+                                    role = Role.Checkbox,
+                                    onClick = {
+                                        desiredStates = desiredStates.map { current ->
+                                            if (current.value.id == checkbox.value.id) current.next() else current
+                                        }
+                                    },
+                                )
                                 .padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            TriStateCheckbox(
-                                state = when (checkbox) {
-                                    is CheckboxState.State.Checked,
-                                    is CheckboxState.TriState.Include,
-                                    -> ToggleableState.On
-                                    is CheckboxState.State.None,
-                                    is CheckboxState.TriState.None,
-                                    -> ToggleableState.Off
-                                    is CheckboxState.TriState.Exclude -> ToggleableState.Indeterminate
-                                },
-                                onClick = {
-                                    desiredStates = desiredStates.map { current ->
-                                        if (current.value.id == checkbox.value.id) current.next() else current
-                                    }
-                                },
-                            )
+                            TriStateCheckbox(state = checkboxState, onClick = null)
                             Text(checkbox.value.name, modifier = Modifier.padding(start = 8.dp))
                         }
                     }
@@ -1125,7 +1267,9 @@ internal fun BatchCategoryDialog(
                     onDismiss()
                     onEditCategories()
                 }) { Text(MR.strings.action_edit_categories.localized()) }
-                TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
+                TextButton(onClick = onDismiss, modifier = Modifier.focusRequester(cancelFocus)) {
+                    Text(MR.strings.action_cancel.localized())
+                }
             }
         },
     )
