@@ -124,7 +124,7 @@ python scripts/gradle-coordinator.py run --key password-android-panel -- .\gradl
 | HTML 基线 | `cdc1b9f1b3`；完整 DEMO 42/42、0 跳过，独立检查及修复见设计第 9 节 | 不代表真实加密、GitHub 服务或原生构建验收 |
 | 本次文档补全 | 第 10–12 节明确接口、状态、存储/兼容、失败矩阵与测试映射；本 roadmap 明确两个交付批次。4 份 UTF-8 文档、19 处本地链接/锚点、13 处完整源码路径、6 个 focused 测试类入口、两项未开始任务及 `git diff --check` 核验通过 | 不把静态源码核对记为运行测试；本次未运行 DEMO/原生测试或构建 |
 | S1 | 2026-09-30 在 `codex/sync-password-review`、起始 `dfd991567c` 实施；完成共享功能、双端接线、有效红绿与独立审查，并按用户批准追加一次作用域修复的小范围复审；本批提交包含 checkoff、production、测试及必要文档 | 不代表 S2 远端/正式运行验收完成；完整测试首轮失败与 focused 修复证据均保留如下 |
-| S2 | 未开始；暂无本次正式产物/运行证据 | 不引用历史产物作为本次交付 |
+| S2 | Android 完整测试及正式签名候选校验通过；Windows 经批准的完整复验、正式产物及真实发布运行时验收通过；macOS 正式候选已构建，但真实发布运行时安全存储失败。详见下方记录 | 不代表 macOS 可发布、实体设备升级或真实远端双端验收通过 |
 
 执行时直接补充本表下的批次证据，保留失败和环境限制；不要为每次命令创建新报告，也不要只改 checkbox 另开提交。
 
@@ -153,3 +153,37 @@ python scripts/gradle-coordinator.py run --key password-android-panel -- .\gradl
 `password-s1-stage-remaining` 退出码 0、2 分 9 秒：`:data:testDebugUnitTest :presentation-sync:jvmTest spotlessCheck --continue --max-workers=2`，无 init/测试过滤、不重复 data JVM 全量。Android data 354/354、Compose 69/69，0 失败、0 跳过；项目 `spotlessCheck` 通过。这补齐首轮未执行任务，作用域修复同时由两平台共享 storage 契约及真实 Compose/controller/onboarding 集成验证。两份文档 UTF-8、本地 13 链接与 `git diff --check` 检查通过。最终约 20 个文件仍是同一功能批次，包含测试专用桥接、资源、两端 shell、必要生命周期修复与文档，没有新增生产依赖、Screen、导航或持久格式。
 
 S1 的三个审查节点：一次批次独立审查、原预算内的一次修复复审、用户明确批准追加的一次仅 controller 作用域复审。未新增代理；所有重型 Gradle 串行由同一实施者协调。S1 在此提交中交付，S2 保持未勾选，正式产物/运行与真实远端双端验收不得复用 HTML 或本地 Mock 代替。
+
+
+### S2 执行证据（2026-09-30）
+
+S1 提交为 `412248cdae21c5728bda13a50b29eec7bc6181b7`。S2 只推进本次正式候选、版本与证据；不安装 Android 应用，不操作实体设备或未经授权的真实 GitHub 账号/空间。
+
+| 范围 | 实际结果与限制 |
+| --- | --- |
+| Android 完整测试与 E2E 客户端 | `password-s2-android-full` 执行 `:app:testReleaseUnitTest :test-desktop:test spotlessCheck -Pmihon.testBuildType=release --continue --max-workers=2`，退出码 0，16 分 51 秒。app 673 项、0 失败、7 跳过；test-desktop 52/52；格式通过。跳过为 3 项既有 Unix FileProvider 限制及 4 项 Release JVM 无 Android SQLite native driver 的迁移测试，不计为运行通过。 |
+| Android 正式候选 | `check --signing`、`candidate`、`verify --artifact` 均退出码 0；candidate 2 分 42 秒。版本 `0.19.4-aex.18` / versionCode 36，沿用正式身份与原证书，R8/资源收缩启用、telemetry/updater 禁用，v2/v3 签名校验通过。冻结 production 输入来自 S1 加正常 Android 版本递增；未安装，候选校验不代表运行或升级验收。 |
+| Windows 首轮完整测试 | 官方 `scripts/build-desktop.sh` 经 `password-s2-windows-build` 串行协调，启用本地 integration、max-workers 2；Desktop 3237 项、2 失败、3 跳过，退出码 1，6 分 10 秒。脚本在构建之前停止，没有可交付 EXE。首轮正常版本分配 BUILD 67→68，批准重试再分配为 69，STAGE 11 / FEATURE 19 不变。 |
+| Windows 失败与 focused 补验 | `DesktopTestProfileTest` 的真实 main 隔离子进程在 30 秒内未结束；`DesktopSourcesScreenModelTest` 启动前收到 `UncaughtExceptionsBeforeTest`，suppressed 为作者归档查询 `stmt pointer is closed`。首轮作者 wiring 日志包含相同取消协程；尚未证实具体用例或因果，不宣称无关基线或本次密码功能导致。`password-s2-desktop-diagnostic` 对 profile（8）、AuthorsProductionWiring（22）、sources（3）共 33/33、0 跳过，46 秒、退出码 0；没有修改源码或出现闭库诊断。focused 使用忽略目录中的临时 init，仅在失败时保留 JUnit 临时目录。该结果不冒充第二次完整套件通过。用户随后批准一次完整复验及后续构建（增加 10–20 分钟，不增加代理/审查；若再失败则保留阻塞、不扩大修复范围），`password-s2-windows-retry` 完整复验与后续构建通过，结果如下。 |
+| macOS 隔离环境与 focused | `mbp-lan`，macOS 14.8.4 / JDK 21.0.10+7；在 `/private/tmp/mihon-password-s2-412248c` 检出 S1，不改日常仓库、应用或钥匙串设置。`password-s2-mac-focused` 离线、max-workers 1，Panel/Wiring/SecureStore 共 7 项、1 失败，2 分 30 秒：真实 OS secure store roundtrip 报安全存储不可用，其余 6 项通过。只读 `SecKeychainCopyDefault`/`GetStatus` 返回成功、statusBits 2；本机 SDK 常量为 unlock 1/read 2/write 4，即未报告解锁/写入状态。该观察不单独证明测试失败原因。需用户自行解锁后才能补验，未索取密码或改变设置；正式 macOS 构建未开始。 |
+
+Android 正式产物为 [Mihon Fork 0.19.4-aex.18 APK](../../app/artifacts/android/0.19.4-aex.18-vc36-412248cdae-release/Mihon-Fork-0.19.4-aex.18-vc36-release-universal.apk)，SHA-256 `d5f2f8f29712bf1fd63e79b1cfaad8d8faf3174e2617b8248726c4c13df5aa7d`。完整候选目录保存 mapping、签名/产物元数据；正式产物是忽略的本地产物，不写入 Git。
+
+本次真实 GitHub 双端、实体 Android 的运行/升级及 macOS 完整运行验收尚未完成，S2 复选框保持未勾选。S1 原生离屏 UI/真实事件、production controller 与本地 HTTP 恢复/竞争证据仍适用，但不代替上述运行层级。
+
+
+用户回复 macOS 已解锁后，`password-s2-mac-unlocked` 仅补跑 `DesktopSyncSecureStoreTest`，15 秒、退出码 1，4 项中 1 失败，其余 3 项通过；真实 OS roundtrip 仍报不可用。再次只读核对 default keychain 为 `login.keychain-db`、statusBits 仍 2。该状态与用户操作不一致，原因未证实，不擅自变更钥匙串或把其余平台测试通过记为 macOS 可发布。macOS 随后生成隔离正式候选，以应用包内程序核对生产链路；安全存储运行验收仍失败，结果如下。
+
+
+用户批准的 Windows 追加完整复验与后续构建：`password-s2-windows-retry` 调用官方 `scripts/build-desktop.sh`，协调器退出码 0，总计 7 分 8 秒。Desktop 完整 3237 项、0 失败、0 error、3 跳过，4 分 52 秒；跳过分别为 macOS JXA 专项、Windows 原生窗口 affinity 环境项及明确 non-release 的 library 配置项。首轮两项失败本轮未复现，未修改作者或 profile/sources 源码，故不宣称已修复它们或已证实首轮原因。正式打包 2 分 2 秒、退出码 0，脚本验证真实未打包应用版本与 production 扩展 APK 安装通过；随后发布正式目录与 ZIP。
+
+| 正式候选/运行 | 实际产物及证据 |
+| --- | --- |
+| Windows `0.11.19.69.412248c` | 日志 `Final unpacked EXE:` 的文件为 [Mihon Desktop.exe](../../app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.69.412248c-unpacked/Mihon%20Desktop.exe)，已核实存在。[Windows ZIP](../../app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.69.412248c-windows.zip) SHA-256 `a75d969d21d8aac4ba152f5e0c9fe86a004e071b8917b2c64e9c9c4cf6666103`。 |
+| Windows 真实 Test Mode | 使用上述正式 EXE，在新建隔离 profile 两次启动；真实 production controller 打开/进入设置 SIGN_IN/关闭、OS-backed store 写入/读回、重启后读回并移除保留前缀的虚构 probe 记录均通过。进程 4048/50172 均经 `/test/shutdown` 正常退出码 0，验收脚本退出码 0。没有授权 GitHub、真实同步、读取屏幕像素或触碰日常 profile。 |
+| macOS `0.11.19.68.412248c`，未验收候选 | 官方 `scripts/build-desktop.sh build-only` 经 remote `password-s2-mac-build` 串行协调，退出码 0、34 秒；复用 Windows 相同 Desktop 功能代码的完整测试证据，remote 仅正常递增 BUILD 67→68，Android 版本差异不进入 Desktop 生产实现。最终 app 为 `/private/tmp/mihon-password-s2-deploy-412248c/Mihon Desktop.app`，完全独立于日常 `/Applications` 应用。保留 [macOS 未验收候选 ZIP](../../app-desktop/artifacts/macos/Mihon-Desktop-0.11.19.68.412248c-macos-unverified.zip)，SHA-256 `67d87adaa1b7283fd8cf775b832c6fd41b620bb3e595ddf5513d05583e4cff45`，仅供核查，不能称为可发布。 |
+| macOS 真实 Test Mode 阻塞 | 使用最终 app 内 `Contents/MacOS/Mihon Desktop`，新建隔离 profile；health、production controller 打开/设置 SIGN_IN/关闭通过。真实 `/test/sync/probe/write` 返回 503，stage `WRITE` / failureType `SyncSecureStoreException`；未进入重启读回，验收脚本退出码 1。应用经 shutdown 正常退出码 0。这是正式发布运行链路的实际失败；未把系统 JDK 测试或单独 security 命令成功当作产品验收。未改变 OS 后端、解锁机制或安全降级路径，后续需要单独定位默认钥匙串与 SSH 会话访问状态。 |
+
+S2 正式构建及 runtime 过程日志仍在忽略的 `.gradle-coordinator/` 与 macOS 隔离工作区；没有另建过程报告。签名 Android 候选与 Windows 正式产物可供用户按“书架 → 同步”手动验收；实体设备安装/升级、获授权隔离 GitHub 空间的真实双端创建/解锁/恢复与 macOS 安全存储仍为未完成门槛，S2 保持未勾选。P1–P11 的共享与两平台本地 production/Compose 行为证据见 S1；P12 沿用已有 HTML 基线，不重跑或改演示资产。
+
+最终 `password-s2-final-format`：`spotlessCheck --max-workers=2` 退出码 0、34 秒；版本分配后的全部格式检查通过。roadmap UTF-8 与 10 处本地链接、三个正式/未验收候选归档的 SHA-256、日志 Final unpacked EXE 的实际文件存在性及 `git diff --check` 均核验通过。S2 验收提交只包含 Android/Desktop 正常版本信息与本文证据，未混入其他用户改动或新增生产修复。
