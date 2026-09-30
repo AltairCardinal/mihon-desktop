@@ -482,6 +482,13 @@ Mihon Desktop 包含完整 E2E 自动化测试系统。
 ./scripts/build-desktop.sh
 ```
 
+### macOS 验收经验入口
+
+执行 macOS 正式应用、安全存储、窗口或原生交互验收前，必须阅读
+[macOS 验收经验与维护约束](docs/automation/MACOS_ACCEPTANCE.md)，并核对本次环境与产物。
+采用该文档经验的 Agent 若发现新经验、适用边界变化或旧结论失效，
+必须在本次任务收口或交接前按文档约束更新，不得只留在聊天或临时日志中。
+
 ### 测试文档
 
 - 用户指南：`docs/automation/TEST_GUIDE.md`
