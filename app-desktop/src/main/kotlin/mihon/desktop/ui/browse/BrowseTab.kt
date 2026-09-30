@@ -155,7 +155,8 @@ object BrowseTab : Tab {
         @Composable
         get() {
             val icon = rememberVectorPainter(Icons.Default.Explore)
-            return remember {
+            val localeTag = mihon.desktop.platform.LocalDesktopLocaleTag.current
+            return remember(localeTag) {
                 TabOptions(
                     index = 1u,
                     title = MR.strings.browse.localized(),

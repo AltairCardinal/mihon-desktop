@@ -78,8 +78,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -238,13 +238,9 @@ internal fun MangaHeader(
             )
             manga.description?.let { desc ->
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    text = desc,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 6,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                val preference = LocalDesktopUiDependencies.current.appPreferences.imagesInDescription
+                val loadImages by preference.changes().collectAsState(initial = preference.get())
+                DesktopMarkdownDescription(desc, manga.source, loadImages)
             }
             val tags = manga.genre.orEmpty().filter { it.isNotBlank() }
             if (tags.isNotEmpty()) {
@@ -594,7 +590,21 @@ internal fun ChapterRow(
     val readProgress = readPresentation.pageNumber?.let {
         MR.strings.chapter_progress.localized(Locale.getDefault(), it)
     }
+    val appearance = LocalDesktopUiDependencies.current.appPreferences
+    val datePattern by appearance.dateFormat.changes().collectAsState(initial = appearance.dateFormat.get())
+    val relativeTime by appearance.relativeTime.changes().collectAsState(initial = appearance.relativeTime.get())
+    val dateClock = mihon.desktop.platform.LocalDesktopDateClock.current
+    val uploadDate = chapter.dateUpload.takeIf { it > 0 }?.let {
+        val day = java.time.Instant.ofEpochMilli(it).atZone(dateClock.zone).toLocalDate()
+        when (val difference = eu.kanade.domain.ui.model.UiDateFormat.relativeDays(day, java.time.LocalDate.now(dateClock), relativeTime)) {
+            null -> eu.kanade.domain.ui.model.UiDateFormat.formatter(datePattern).format(day)
+            0 -> MR.strings.relative_time_today.localized()
+            in -7..-1 -> MR.plurals.upcoming_relative_time.localized(Locale.getDefault(), -difference, -difference)
+            else -> MR.plurals.relative_time.localized(Locale.getDefault(), difference, difference)
+        }
+    }
     val supportingText = listOfNotNull(
+        uploadDate,
         readProgress,
         chapter.scanlator?.takeIf { it.isNotBlank() },
     ).joinToString(" · ")

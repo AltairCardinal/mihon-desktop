@@ -91,9 +91,8 @@ import eu.kanade.presentation.components.DropdownMenu
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.system.copyToClipboard
-import org.intellij.markdown.MarkdownElementTypes
-import org.intellij.markdown.MarkdownTokenTypes
-import org.intellij.markdown.ast.findChildOfType
+import tachiyomi.core.common.util.lang.DescriptionMarkdownFragment
+import tachiyomi.core.common.util.lang.descriptionMarkdownFragment
 import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
@@ -577,37 +576,26 @@ private fun ColumnScope.MangaContentInfo(
 private fun descriptionAnnotator(loadImages: Boolean, linkStyle: SpanStyle) = remember(loadImages, linkStyle) {
     markdownAnnotator(
         annotate = { content, child ->
-            if (!loadImages && child.type == MarkdownElementTypes.IMAGE) {
-                val inlineLink = child.findChildOfType(MarkdownElementTypes.INLINE_LINK)
-
-                val url = inlineLink?.findChildOfType(MarkdownElementTypes.LINK_DESTINATION)
-                    ?.getUnescapedTextInNode(content)
-                    ?: inlineLink?.findChildOfType(MarkdownElementTypes.AUTOLINK)
-                        ?.findChildOfType(MarkdownTokenTypes.AUTOLINK)
-                        ?.getUnescapedTextInNode(content)
-                    ?: return@markdownAnnotator false
-
-                val textNode = inlineLink?.findChildOfType(MarkdownElementTypes.LINK_TITLE)
-                    ?: inlineLink?.findChildOfType(MarkdownElementTypes.LINK_TEXT)
-                val altText = textNode?.findChildOfType(MarkdownTokenTypes.TEXT)
-                    ?.getUnescapedTextInNode(content).orEmpty()
-
-                withLink(LinkAnnotation.Url(url = url)) {
-                    pushStyle(linkStyle)
-                    appendInlineContent(MARKDOWN_INLINE_IMAGE_TAG)
-                    append(altText)
-                    pop()
+            when (
+                val fragment = descriptionMarkdownFragment(content, child, loadImages) {
+                    it.getUnescapedTextInNode(content)
                 }
-
-                return@markdownAnnotator true
+            ) {
+                is DescriptionMarkdownFragment.ImageLink -> {
+                    withLink(LinkAnnotation.Url(url = fragment.url)) {
+                        pushStyle(linkStyle)
+                        appendInlineContent(MARKDOWN_INLINE_IMAGE_TAG)
+                        append(fragment.altText)
+                        pop()
+                    }
+                    true
+                }
+                is DescriptionMarkdownFragment.Literal -> {
+                    append(fragment.text)
+                    true
+                }
+                null -> false
             }
-
-            if (child.type in DISALLOWED_MARKDOWN_TYPES) {
-                append(content.substring(child.startOffset, child.endOffset))
-                return@markdownAnnotator true
-            }
-
-            false
         },
         config = markdownAnnotatorConfig(
             eolAsNewLine = true,

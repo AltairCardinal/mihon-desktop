@@ -85,7 +85,8 @@ object UpdatesTab : Tab {
         @Composable
         get() {
             val icon = rememberVectorPainter(Icons.Default.NewReleases)
-            return remember {
+            val localeTag = mihon.desktop.platform.LocalDesktopLocaleTag.current
+            return remember(localeTag) {
                 TabOptions(
                     index = 1u,
                     title = MR.strings.label_recent_updates.localized(),

@@ -51,7 +51,8 @@ class SettingsSearchScreen : Screen {
         val focusRequester = remember { FocusRequester() }
         var query by remember { mutableStateOf("") }
         val direction = if (LocalLayoutDirection.current == LayoutDirection.Ltr) SettingsLayoutDirection.Ltr else SettingsLayoutDirection.Rtl
-        val results = remember(query, direction) { DesktopSettingsCatalog.search(query, direction) }
+        val localeTag = mihon.desktop.platform.LocalDesktopLocaleTag.current
+        val results = remember(query, direction, localeTag) { DesktopSettingsCatalog.search(query, direction) }
         LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
         Scaffold(

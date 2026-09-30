@@ -13,7 +13,7 @@ class ThemeDefaultsTest {
         assertEquals(
             "DEFAULT,MONET,CATPPUCCIN,GREEN_APPLE,LAVENDER,MIDNIGHT_DUSK,NORD," +
                 "STRAWBERRY_DAIQUIRI,TAKO,TEALTURQUOISE,TIDAL_WAVE,YINYANG,YOTSUBA," +
-                "MONOCHROME,DARK_BLUE,HOT_PINK,BLUE",
+                "TOKYONIGHT,MONOCHROME,DARK_BLUE,HOT_PINK,BLUE",
             AppTheme.entries.joinToString(",") { it.name },
         )
     }

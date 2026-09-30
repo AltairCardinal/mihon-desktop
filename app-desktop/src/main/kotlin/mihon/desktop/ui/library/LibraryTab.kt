@@ -199,7 +199,8 @@ object LibraryTab : Tab {
         @Composable
         get() {
             val icon = rememberVectorPainter(Icons.Default.CollectionsBookmark)
-            return remember {
+            val localeTag = mihon.desktop.platform.LocalDesktopLocaleTag.current
+            return remember(localeTag) {
                 TabOptions(
                     index = 0u,
                     title = MR.strings.label_library.localized(),

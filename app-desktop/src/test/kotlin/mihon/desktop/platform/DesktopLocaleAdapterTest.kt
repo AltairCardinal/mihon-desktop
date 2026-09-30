@@ -27,6 +27,19 @@ class DesktopLocaleAdapterTest {
     }
 
     @Test
+    fun `packaged resource locales include all nonempty translations and Indonesian legacy alias`() {
+        val preference = DesktopAppPreferences(InMemoryPreferenceStore()).appLanguage
+        val adapter = DesktopLocaleAdapter(preference, Locale.US, Locale::setDefault)
+        assertEquals(68, adapter.authoritativeLanguageTags.size)
+        assertFalse("tt" in adapter.authoritativeLanguageTags)
+        assertTrue("kmr" in adapter.authoritativeLanguageTags)
+        assertInstanceOf(DesktopLocaleApplyResult.Applied::class.java, adapter.select("in"))
+        assertEquals("id", preference.get())
+        assertInstanceOf(DesktopLocaleApplyResult.Applied::class.java, adapter.select("fr"))
+        assertEquals("fr", preference.get())
+    }
+
+    @Test
     fun `empty application language follows supported system locale and defaults to simplified Chinese`() {
         val preference = DesktopAppPreferences(InMemoryPreferenceStore()).appLanguage
         val applied = mutableListOf<Locale>()
@@ -40,7 +53,7 @@ class DesktopLocaleAdapterTest {
         assertFalse(preference.isSet())
 
         val unsupportedSystemApplied = mutableListOf<Locale>()
-        DesktopLocaleAdapter(preference, Locale.CANADA_FRENCH, unsupportedSystemApplied::add).applyPersisted()
+        DesktopLocaleAdapter(preference, Locale.forLanguageTag("zz"), unsupportedSystemApplied::add).applyPersisted()
         assertEquals(listOf(Locale.forLanguageTag("zh-CN")), unsupportedSystemApplied)
     }
 
@@ -89,7 +102,7 @@ class DesktopLocaleAdapterTest {
             val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
             preferences.appLanguage.set(stored)
             val applied = mutableListOf<Locale>()
-            val adapter = DesktopLocaleAdapter(preferences.appLanguage, Locale.JAPAN, applied::add)
+            val adapter = DesktopLocaleAdapter(preferences.appLanguage, Locale.forLanguageTag("zz"), applied::add)
 
             val result = adapter.applyPersisted()
 
@@ -195,20 +208,21 @@ class DesktopLocaleAdapterTest {
     }
 
     @Test
-    fun `language list exposes simplified Chinese traditional Chinese and English in priority order`() {
+    fun `language list exposes resource-derived locales in native name order`() {
         val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
         val adapter = DesktopLocaleAdapter(preferences.appLanguage, Locale.US, Locale::setDefault)
-        val expected = listOf("zh-CN", "zh-TW", "en")
+        val expected = tachiyomi.i18n.ApplicationLocales.languageTags
 
         assertEquals(expected, adapter.authoritativeLanguageTags)
-        assertEquals(expected, adapter.availableLanguages().map { it.languageTag })
+        assertEquals(expected.toSet(), adapter.availableLanguages().map { it.languageTag }.toSet())
+        assertEquals(adapter.availableLanguages().map { it.displayName }.sorted(), adapter.availableLanguages().map { it.displayName })
         assertFalse(adapter.availableLanguages().any { it.languageTag.isEmpty() })
         assertFalse(adapter.availableLanguages().any { it.languageTag == "all" })
         assertFalse(adapter.availableLanguages().any { it.languageTag == "other" })
 
         adapter.select("id")
-        assertFalse(preferences.appLanguage.isSet())
-        assertEquals("", adapter.activeLanguageTag.value)
+        assertTrue(preferences.appLanguage.isSet())
+        assertEquals("id", adapter.activeLanguageTag.value)
     }
 
     @Test
@@ -227,25 +241,30 @@ class DesktopLocaleAdapterTest {
 
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
-    fun `localized desktop root recreates remembered resources immediately after selection`() = runBlocking {
+    fun `locale dependent remembered copy refreshes while preserving business memory`() = runBlocking {
         val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
         val adapter = DesktopLocaleAdapter(preferences.appLanguage, Locale.US, Locale::setDefault)
         adapter.applyPersisted()
         var rememberedCopy = ""
+        var owner: Any? = null
+        var originalOwner: Any? = null
         val scene = ImageComposeScene(200, 200, coroutineContext = coroutineContext) {}
         try {
             scene.setContent {
                 adapter.Provide {
-                    rememberedCopy = remember { MR.strings.pref_app_language.localized() }
+                    owner = remember { Any() }
+                    rememberedCopy = remember(LocalDesktopLocaleTag.current) { MR.strings.pref_app_language.localized() }
                 }
             }
             repeat(2) { scene.render(); yield() }
             assertEquals(MR.strings.pref_app_language.localized(Locale.US), rememberedCopy)
+            originalOwner = owner
 
             adapter.select("zh-CN")
             repeat(3) { scene.render(); yield() }
 
             assertEquals(MR.strings.pref_app_language.localized(Locale.forLanguageTag("zh-CN")), rememberedCopy)
+            org.junit.jupiter.api.Assertions.assertSame(originalOwner, owner)
         } finally {
             scene.close()
         }

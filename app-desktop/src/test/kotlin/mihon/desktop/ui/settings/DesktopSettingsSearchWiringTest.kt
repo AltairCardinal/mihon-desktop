@@ -656,7 +656,20 @@ class DesktopSettingsSearchWiringTest {
                 currentPreferences.libraryUpdateInterval.set(mihon.desktop.settings.LibraryUpdateInterval.OFF)
                 setText(scene, anchorTitle)
                 render(scene)
-                click(scene, anchorTitle)
+                val results = DesktopSettingsCatalog.search(anchorTitle)
+                val libraryIndex = results.indexOfFirst {
+                    it.route is LibrarySettingsScreen && it.title == anchorTitle
+                }
+                assertTrue(libraryIndex >= 0, "the production catalog must retain the Library Display anchor")
+                val resultList = nodes(scene).single { it.config.contains(SemanticsActions.ScrollToIndex) }
+                requireNotNull(resultList.config[SemanticsActions.ScrollToIndex].action).invoke(libraryIndex)
+                render(scene)
+                val expectedResult = results[libraryIndex]
+                val libraryResult = nodes(scene).single {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        expectedResult.title in text(it) && expectedResult.breadcrumb in text(it)
+                }
+                requireNotNull(libraryResult.config[SemanticsActions.OnClick].action).invoke()
                 render(scene)
                 assertTrue(navigator.lastItem is LibrarySettingsScreen)
                 val highlighted = nodes(scene, true).single { it.config.contains(DesktopSettingsAnchorHighlighted) && it.config[DesktopSettingsAnchorHighlighted] }
@@ -782,16 +795,24 @@ class DesktopSettingsSearchWiringTest {
             Locale.setDefault(Locale.US)
             withSearchScene(AppearanceSettingsScreen(), height = 2_000) { scene ->
                 render(scene)
-                val rendered = text(scene)
-                selectableAppThemes(dynamicColorAvailable = false).forEach { theme ->
-                    assertTrue(requireNotNull(theme.titleRes).localized(Locale.US) in rendered)
+                val themes = selectableAppThemes(dynamicColorAvailable = false)
+                themes.forEachIndexed { index, theme ->
+                    val strip = nodes(scene, true).single { it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == "appearance-theme-cards" }
+                    requireNotNull(strip.config[SemanticsActions.ScrollToIndex].action).invoke(index)
+                    render(scene)
+                    assertTrue(requireNotNull(theme.titleRes).localized(Locale.US) in text(scene))
                 }
+                val rendered = text(scene)
                 assertFalse(MR.strings.theme_monet.localized(Locale.US) in rendered)
                 listOf(AppTheme.DARK_BLUE, AppTheme.HOT_PINK, AppTheme.BLUE).forEach { deprecated ->
                     assertFalse(deprecated.name in rendered)
                 }
 
-                click(scene, MR.strings.theme_yinyang.localized(Locale.US))
+                val strip = nodes(scene, true).single { it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == "appearance-theme-cards" }
+                requireNotNull(strip.config[SemanticsActions.ScrollToIndex].action).invoke(themes.indexOf(AppTheme.YINYANG))
+                render(scene)
+                val card = nodes(scene, true).single { it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == "theme-card-YINYANG" }
+                requireNotNull(flatten(card).single { it.config.contains(SemanticsActions.OnClick) }.config[SemanticsActions.OnClick].action).invoke()
                 assertEquals(AppTheme.YINYANG, currentPreferences.appTheme.get())
                 click(scene, MR.strings.pref_dark_theme_pure_black.localized(Locale.US))
                 assertTrue(currentPreferences.themeDarkAmoled.get())
@@ -820,7 +841,11 @@ class DesktopSettingsSearchWiringTest {
                     val highlighted = nodes(scene, true).single {
                         it.config.contains(DesktopSettingsAnchorHighlighted) && it.config[DesktopSettingsAnchorHighlighted]
                     }
-                    assertTrue(flatten(highlighted).any { title in text(it) })
+                    if (resource == MR.strings.pref_app_theme) {
+                        assertTrue(flatten(highlighted).any { it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == "appearance-theme-cards" })
+                    } else {
+                        assertTrue(flatten(highlighted).any { title in text(it) })
+                    }
                     val scroll = nodes(scene, true).first { it.config.contains(SemanticsProperties.VerticalScrollAxisRange) }
                         .config[SemanticsProperties.VerticalScrollAxisRange]
                     assertTrue(scroll.value() > 0f)

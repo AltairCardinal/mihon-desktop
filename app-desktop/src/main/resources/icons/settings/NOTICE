@@ -9,3 +9,10 @@ explore, storage, security, code, info.
 
 Licensed under the Apache License, Version 2.0. The upstream LICENSE from
 the same commit is included in this directory.
+
+The additional unmodified check_circle.svg is the frozen filled Rounded asset
+from docs/prototypes/library-completion/upstream-appearance/check_circle.svg.
+Original upstream path: symbols/web/check_circle/materialsymbolsrounded/check_circle_fill1_24px.svg
+Original source: https://raw.githubusercontent.com/google/material-design-icons/master/symbols/web/check_circle/materialsymbolsrounded/check_circle_fill1_24px.svg
+Frozen SHA-256: d13fdbc7bbbcf696b792411c8cb5a74915b95d4bb6d4c62f5b09c70d7ade6052
+It is covered by the same Apache License, Version 2.0, included here.

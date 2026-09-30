@@ -13,6 +13,7 @@ ktlint-core = "1.8.0"
 test-retry = "1.6.5"
 firebase-bom = "34.10.0"
 markdown = "0.39.2"
+markdown-parser = "0.7.3"
 junit = "6.0.3"
 materialKolor = "5.0.0-alpha07"
 compose-multiplatform = "1.10.2"
@@ -116,6 +117,7 @@ voyager-transitions = { module = "cafe.adriel.voyager:voyager-transitions", vers
 spotless-gradle = { group = "com.diffplug.spotless", name = "spotless-plugin-gradle", version.ref = "spotless" }
 ktlint-core = { module = "com.pinterest.ktlint:ktlint-cli", version.ref = "ktlint-core" }
 
+markdown-parser = { module = "org.jetbrains:markdown", version.ref = "markdown-parser" }
 markdown-core = { module = "com.mikepenz:multiplatform-markdown-renderer", version.ref = "markdown" }
 markdown-coil = { module = "com.mikepenz:multiplatform-markdown-renderer-coil3", version.ref = "markdown" }
 

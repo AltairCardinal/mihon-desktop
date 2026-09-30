@@ -2156,4 +2156,7 @@
     <string name="desktop_backup_preview_authors">Author archive: %1$d authors</string>
     <string name="desktop_category_name_unchanged">The name has not changed</string>
     <string name="desktop_categories_saved">Categories saved</string>
+    <string name="theme_tokyonight">Tokyo Night</string>
+    <string name="desktop_dynamic_theme_unavailable">Dynamic wallpaper colors are unavailable on this platform. The default theme is used; your saved theme remains unchanged.</string>
+    <string name="desktop_appearance_save_failed">Could not save this setting. Check its current value and try again.</string>
 </resources>

@@ -71,7 +71,7 @@ internal fun HomeNavigationHost(
 ) {
     val state = remember { HomeNavigationState() }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val layout = DesktopWindowLayout(maxWidth, maxHeight)
+        val layout = DesktopWindowLayout(maxWidth, maxHeight, mihon.desktop.LocalDesktopUiDependencies.current.layoutSnapshot.tabletUiMode)
         val visible = showNavigation && !state.hasChild
         CompositionLocalProvider(LocalDesktopWindowLayout provides layout, LocalHomeNavigationState provides state) {
             Scaffold(

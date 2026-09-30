@@ -1,4 +1,5 @@
 import mihon.buildlogic.generatedBuildDir
+import mihon.buildlogic.tasks.getLocaleCatalogTask
 import mihon.buildlogic.tasks.getLocalesConfigTask
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 
@@ -55,4 +56,11 @@ tasks {
     preBuild {
         dependsOn(localesConfigTask)
     }
+}
+
+val generatedLocaleCatalogDir = generatedBuildDir.resolve("common/localeCatalog")
+val localeCatalogTask = project.getLocaleCatalogTask(generatedLocaleCatalogDir)
+kotlin.sourceSets.commonMain { kotlin.srcDir(generatedLocaleCatalogDir) }
+tasks.configureEach {
+    if (name.startsWith("compile") && name.contains("Kotlin")) dependsOn(localeCatalogTask)
 }

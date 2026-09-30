@@ -168,6 +168,7 @@ data class DesktopUiDependencies(
     val libraryPreferences: LibraryPreferences? = null,
     val creatorDiscoveryPreferences: tachiyomi.domain.creator.service.CreatorDiscoveryPreferences? = null,
     val syncPanel: mihon.data.sync.runtime.SyncPanel? = null,
+    val layoutSnapshot: mihon.desktop.platform.DesktopLayoutSnapshot = mihon.desktop.platform.DesktopLayoutSnapshot(appPreferences.tabletUiMode.get()),
 ) {
     suspend fun getMangaTitle(mangaId: Long): String {
         return mangaRepository.getMangaById(mangaId).title

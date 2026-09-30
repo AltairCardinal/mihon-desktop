@@ -1,5 +1,7 @@
 package mihon.desktop.settings
 
+import eu.kanade.domain.ui.model.TabletUiMode
+import tachiyomi.core.common.preference.getEnum
 import eu.kanade.domain.ui.model.AppTheme
 import eu.kanade.domain.ui.model.ThemeDefaults
 import eu.kanade.domain.ui.model.ThemePreferenceCodec
@@ -113,6 +115,11 @@ class DesktopAppPreferences(
     val appLanguage: Preference<String> by lazy {
         string(key = "app_language", default = "")
     }
+
+    val tabletUiMode by lazy { store.getEnum("tablet_ui_mode", TabletUiMode.AUTOMATIC) }
+    val dateFormat by lazy { store.getString("app_date_format", "") }
+    val relativeTime by lazy { store.getBoolean("relative_time_v2", true) }
+    val imagesInDescription by lazy { store.getBoolean("pref_render_images_description", true) }
 
     val defaultReaderMode: Preference<ReaderDefaultMode> by lazy {
         store.getObjectFromString(

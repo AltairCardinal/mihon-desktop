@@ -9,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -21,6 +23,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -862,10 +866,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 return@Scaffold
             }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(bottom = 16.dp),
-            ) {
+            val informationState = rememberLazyListState()
+            val chapterState = rememberLazyListState()
+            val informationItems: LazyListScope.() -> Unit = {
                 item {
                     MangaHeader(
                         manga = manga!!,
@@ -998,6 +1001,8 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     HorizontalDivider()
                 }
 
+            }
+            val chapterItems: LazyListScope.() -> Unit = {
                 sourceRefreshFailure?.let { failure ->
                     item(key = "source-refresh-failure") {
                         Column(
@@ -1082,7 +1087,37 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             }
                         },
                     )
+                }            }
+            BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
+                val layout = mihon.desktop.ui.home.LocalDesktopWindowLayout.current
+                    ?: mihon.desktop.ui.home.DesktopWindowLayout(maxWidth, maxHeight, dependencies.layoutSnapshot.tabletUiMode)
+                if (layout.expanded) {
+                    val informationWidth = minOf(maxWidth / 2, 450.dp)
+                    Row(Modifier.fillMaxSize()) {
+                        LazyColumn(
+                            modifier = Modifier.width(informationWidth).fillMaxHeight().testTag("manga-detail-information"),
+                            state = informationState,
+                            contentPadding = PaddingValues(bottom = 16.dp),
+                            content = informationItems,
+                        )
+                        LazyColumn(
+                            modifier = Modifier.weight(1f).fillMaxHeight().testTag("manga-detail-chapters"),
+                            state = chapterState,
+                            contentPadding = PaddingValues(bottom = 16.dp),
+                            content = chapterItems,
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().testTag("manga-detail-content"),
+                        state = informationState,
+                        contentPadding = PaddingValues(bottom = 16.dp),
+                    ) {
+                        informationItems()
+                        chapterItems()
+                    }
                 }
+
             }
         }
     }

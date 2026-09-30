@@ -69,6 +69,7 @@ object NordColorScheme : BaseColorScheme() {
         surfaceTint = Color(0xFF5E81AC),
         inverseSurface = Color(0xFF3B4252),
         inverseOnSurface = Color(0xFFECEFF4),
+        outlineVariant = Color(0xFFD8DEE9),
         outline = Color(0xFF2E3440),
         onError = Color(0xFFECEFF4),
         errorContainer = Color(0xFFBF616A),

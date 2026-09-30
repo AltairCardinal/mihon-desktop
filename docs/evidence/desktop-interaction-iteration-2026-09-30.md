@@ -155,6 +155,72 @@ python scripts/gradle-coordinator.py run --key interaction-ri00-baseline -- .\gr
 
 当前 i18n 有68个 strings.xml 目录，其中 tt 为空；实际非空及生成的 JVM mokoBundle 均为67种，缺定稿目录中的 kmr。已通过会话 HTTP 代理取得固定上游的 `i18n/src/commonMain/moko-resources/kmr/strings.xml`，18579字节，SHA-256 `e8e2a784862367489ba4ed75f93ac57ca34e7d8300213fd075dd0b95b9fab8bd`，与归档 manifest 的 kmr 记录一致。该只读前置文件暂存忽略的 `.gradle-coordinator/interaction-ri03-source/kmr-strings.xml`；尚未写入 production，补齐资源与真实语言／复数接线须随 RI03 红绿实施。
 
+## RI03：上游主题与外观完整闭环（完成）
+
+RI02 同批提交为 `d0e58ee8a695acfe5755ab881a34359ce11f18c2`。本批复用原实施代理，主代理负责接口、来源与独立验收；一轮初审及必要修复复审，focused 红绿／受影响集成／原生离屏视觉，完整测试和发布构建0次，预计1–3小时。共享迁移或网络边界出现具体新增风险时才追加相应专项，不扩张产品范围。
+
+固定验收沿最终设计 AP01–AP15／T01–T08：14个平台可用 static 主题及完整浅／深／纯黑角色、三段模式、114dp横卡、LIGHT隐藏纯黑但保值，Windows MONET旧值只安全回退且解释；资源派生语言普通子页与全应用即时消费；平板四项统一启动时快照及安全手动重启提示；六日期格式、LocalDate相对时间和真实章节消费；简介 Markdown 图片开关复用已认证 Coil 链，保文字链接；单选新值即存、当前不关闭、取消无写入和还焦；320dp与200%字号可达性及原生视觉来源。
+
+稳定接口：现 AppTheme／AppThemeColorScheme 仍是两端唯一色表；i18n 构建阶段从实际非空 moko 资源派生最小语言目录；LocaleAdapter 保留失败回滚／协调反馈，语言改变不得因 keyed composition 销毁 Voyager 子导航或业务 owner。TabletUiMode 沿已有 enum 身份共享，DesktopUiDependencies 保存本次启动唯一模式，Home／设置／详情共用 DesktopWindowLayout。日期按本地日历日政策，Markdown 复用现 parser／Coil transformer并映射 DesktopSourceImage，不复制 HTTP 或网络策略。旧 Desktop 列数持久值保留交 RI05，不中途删除。
+
+主代理只读核对 RI02 提交的共享 literal 角色与固定上游：Catppuccin dark secondary／tertiary分别应为 `FFB4BEFE`／`FFA6E3A1`，light为 `FF7287FD`／`FF40A02B`；现沿用紫色主色。Nord light缺 `outlineVariant=FFD8DEE9`。已交原实施者纳入正确红绿角色测试；其余现有 static 色表显式颜色与冻结来源一致，尚不能由此声称隐式 Material3角色或实际渲染已经验收。TOKYONIGHT及上述两处需共享修正，不能只新增卡片后宣称全部主题完成。
+
+SOURCE 尺寸补充：主题预览 card114dp／9:16，border4dp、outer17dp／inner13dp；其虚拟 Cover 沿冻结 AppThemePreferenceWidget 的 Android Book比例2:3。这是主题示意组件，Desktop真实书架／详情封面仍为7:10，两者不混为平台常量。三段沿冻结 MultiChoiceSegmentedButtonRow／SegmentedButton，以唯一 value约束模式；选中图标消费匹配的 RoundedFilled.CheckCircle。相对日期冻结边界为未来1–7日、今天、过去1–6日，其余绝对，所有差值基于本地日历日。
+
+详情布局起点纠正：实施者核对实际 MangaDetailScreen 仍为全页 LazyColumn，没有消费统一窗口 adapter；RI01仅 Home／Settings 已接线。RI03须增加最小真实宽／窄详情宿主，宽时分区资料与章节、窄时保单栏，四种模式均消费同一启动 snapshot；不能以未消费的 expanded变量作为平板完成证据。相关真实 Screen红绿固定为当前启动改偏好不改变布局、新 owner启动才应用，与Home／Settings资格一致且不修改物理窗口。RI08仍负责其完整450dp／65%资料栏、独立滚动、精简工具栏及其余DUI出口，本批不提前勾选RI08。此为既有整体范围内的接口补接，不增加任务、代理或审查轮次。
+
+阶段实现回执（不代表本批完整）：`interaction-ri03-foundation-red` shared2项与locale1项分别因static目录14／13、Catppuccin辅助色、语言68／3正确失败；`foundation-green`3项／0失败／0跳过，资源及下游重编译5m5s。`appearance-red`4项真实交互红；`appearance-green-valid`3绿、1项选语言后Main keyed重建退出子页仍红，不将该轮记全绿。`locale-owner-green-valid` 20s／PASSED，AppearanceInteractionTest4＋DesktopLocaleAdapterTest12，共16项／0失败／0跳过。真实Main→Home更多→Settings→Language选择留页，返回目录／根后根Library文字英语刷新；真实LibraryFactory创建数不增加、原SearchQuery保留。回执说明Provide使用locale composition通知而非Nav key，五根options和History日期缓存以locale更新，业务remember未重建；旧回滚／协调12项保持绿。主代理整体独立审查尚未进行。
+
+`interaction-ri03-consumers-red` 保存日期／平板真实消费缺口；`consumers-green` 2026-09-30 11:48:53–11:50:16 UTC退出0／PASSED，AppearanceInteractionTest过滤 `six saved*`／`saved tablet*`，XML2项／0失败／0错误／0跳过。单纯支持六格式或写偏好不替代上述Screen消费证据；日历日边界、所有模式矩阵与新owner应用仍须最终相关回归核对。
+
+用户更新AGENTS明确「当前 roadmap 全部实施任务完成后，在最终收口执行全量测试1次；全量测试额度不构成提前执行的授权」。已同步原实施代理，继续既有RI00–17 focused／受影响集成／格式、RI18统一完整矩阵与发布的时机，不因阶段结束提前模块完整或构建。
+
+命令范围失误保留：`interaction-ri03-calendar-red`／`calendar-green` 把两个task先列、--tests放最后，Gradle只将filter应用末task，意外执行presentation-theme当前31项，违背本轮不提前模块完整的时机。原共享日差3场景＋真实Detail相对日期1场景均有正确业务红，green的4目标通过，但旧ThemeDefaults／SharedPaletteExact三处固定期望失败，整轮不记全绿、不作为最终完整矩阵证据。后续每task后紧跟专属filter，受影响旧期望按冻结SOURCE核对后仅focused修复；不重复模块完整，RI18最终矩阵仍待全部实施完成。具体旧期望：ThemeDefaultsTest目录新增TOKYONIGHT且置YOTSUBA后；SharedPaletteExactTest.catppuccin仅四个辅助色字面量按冻结SOURCE修正，其余完整角色保留；nord仅light outlineVariant从隐式 `FFCAC4D0`改SOURCE显式`FFD8DEE9`，其余角色不改。`calendar-green-focused` 各task后专属filter，shared UiDate3＋ThemeDefaults1＋SharedPaletteExact相关2＋实际Detail相对日期1，共7项／0失败／0跳过。没有随运行实际值批量重写Golden。
+
+详情布局阶段：`detail-layout-red` 因真实Screen资格未消费正确失败；`detail-layout-green-valid` 四模式／六宽高组合、当前snapshot不即时应用以及绝对／相对日期相关3项全绿。临时详情分区左宽为min(width/2,450dp)，资格复用唯一adapter；RI08仍须落实最终65%公式、完整独立滚动与其余DUI，不把该初步分区称最终详情完成。Android日期wrapper已最小委托共享日差且新增实际wrapper契约，focused待完成。
+
+Markdown阶段正确红验证真实详情仍显示原始Markdown语法；`interaction-ri03-markdown-green-render` 2026-09-30 12:18:33–12:18:54 UTC退出0／PASSED，真实详情图片开关场景1项，包含源typed路由／Referer以及关闭后零图片请求。此前`markdown-green`因PowerShell拆分代理JVM参数而找不到`.proxyHost=127.0.0.1` task，属于命令错误，不计行为红。presentation-core现为Android模块，不能直接导入整个Android renderer；纯Kotlin的SimpleMarkdownFlavourDescriptor及marker processor必须提取到现core/common共享，Android/Desktop调用同一flavour，Material样式与typed Coil转换留平台adapter，不能复制第二份解析语义。共享提取及Android包装的focused仍待完成。
+
+Android日期包装、完整主题角色和离屏视觉、弹窗焦点仍在实施。独立审查及提交待稳定产物，RI03保持未勾选。
+
+### RI03 独立初审与唯一修复轮（完成）
+
+`interaction-ri03-native-visual-red`首轮因截图编码API编译失败，不算行为红；`native-visual-red-valid`退出0／PASSED，Desktop三个场景与共享Markdown AST两个场景共5项／0失败／0跳过。4张原生离屏contact图记录14个static主题×浅／深／纯黑、窄320dp／fontScale2；主代理已实际查看浅／深及窄窗图，不将同production factory的角色对照称独立上游颜色oracle。自查发现三段模式System换行造成高度不一致；`segment-height-red`按实际三个按钮bounds正确红，`segment-height-green`1项全绿，已更新窄窗图。共享AST早先一次失败因夹具用IElementType.toString比较，不算业务缺口；改成真实类型常量后通过。
+
+`interaction-ri03-android-date-focused`以`:app:testReleaseUnitTest --tests *RelativeDateContractTest --offline`实际运行Android包装，2026-09-30 12:42:21–12:48:38 UTC，退出0／PASSED，1项／0失败／0跳过；6m15s包含受影响Android release资源、主与测试编译。其参数没有无filter的测试task，不计全量；SDK文件已核对，Android真实wrapper消费共享日差及现moko翻译／复数。
+
+主代理同一轮初审核对真实Screen／偏好／locale owner、共享flavour与typed Coil、日期包装、窗口快照及事件测试。Tokyo production与冻结源码SHA-256同为`9f20f48e87898aea74922d955b9ef39e13eaef05e5a1dda2674a34a296855ba0`，源码字面量一致；新增主题仍缺独立全部角色golden。初审合并6项：直接偏好set及choice写后flush失败缺回滚／反馈；焦点测试未完整覆盖Shift+Tab及所有背景；Tokyo角色独立oracle缺口；三段icon={}抑制SOURCE默认checked图标；实际系统主题信号及owner状态保留覆盖缺口；Markdown测试只有请求而没有成功显示、每次重建Screen且失败图片／mounted切换缺证据。统一交原实施者唯一修复轮，预计追加30–60分钟focused及相关复验，不新增代理、审查轮次、全量或构建；局部写入边界不得扩成通用事务系统。尚未通过修复复审，RI03保持未勾选。
+
+修复阶段的失败归因明确区分：`review-description-red`中共享disabled IMAGE片段返回null是正确业务红；Desktop仅缺新增ready语义标签不能证明旧图片解码或绘制失败，不将其记作产品缺陷。随后`review-description-red-wiring`在真实源图片成功解码、已知像素已绘制之后，暂撤描述annotator接线，真实换行／HTML字面保留断言正确失败；恢复production接线后的`review-description-green-valid`于2026-09-30 13:29:18–13:30:01 UTC退出0／PASSED，Desktop mounted描述、rollback再次失败及320dp可达3项，加共享Markdown契约3项，共6项／0失败／0跳过。成功图以4×4洋红源图在真实渲染区域的中心像素断言，不以tag存在代替绘制；同一mounted详情开关后owner不重建，disabled图片URL／alt及普通链接通过实际pointer事件，typed源client和Referer保持。最终受影响回归及主代理修复复审仍待完成。
+
+最终相关回归保留真实终态：`interaction-ri03-final-affected`于2026-09-30 21:51:25–21:57:47 +08运行6m20s，整条FAILED／exit1；共享主题／日期四个明确受影响类32项、共享Markdown3项和Android RelativeDateContractTest1项XML均0失败／0跳过。失败来自Desktop格式整理漏显式withFrameNanos／heightIn import，以及i18n/core具体格式，不是业务红；运行期间未改输入。Android当前主代码和测试代码真实编译通过，新MangaInfoHeader共用AST接线已包含。只读诊断观察到Android现forkEvery=1造成focused方法过滤后仍启动大量空worker，后续focused可用忽略init限定测试class发现范围并保方法filter，不修改永久fork策略。
+
+最小import／UTF-8-LF和排序修复后，只运行Desktop七个明确相关类＋格式：`interaction-ri03-final-desktop-green`于22:00:17–22:03:31 +08终态FAILED／exit1，104项中103通过、1失败；Appearance18、Locale12、Category12、Detail2、Image3、manifest34均0失败／0跳过，SettingsSearch23中22通过。root spotlessCheck和临时scoped Desktop五文件格式检查通过；此前共享／Android绿色不重复运行。唯一未闭合失败是早先已有的library search anchor测试，需保真实Library路由／锚点／滚动／interval写入断言修复fixture，不能以新Appearance绿替代。
+
+主代理已实际查看最后生成的ri03-themes-light／dark／amoled及ri03-320dp-font200四张PNG。前者是逐主题选中预览的原生离屏拼接，14个static主题×浅／深／纯黑，不是同时选中14主题的产品页面；后者为浅／深／纯黑3列、每列320×800dp及fontScale2的页面／日期弹层拼接。默认checked图标恢复，三段同高、LIGHT无整行纯黑、末项和Cancel实际可达；SOURCE参数和语义色表对照而非像素级上游截图基准。唯一修复复审六项已核对production与真实事件／绘制证据，最终旧搜索fixture修复、索引稳定核验和提交仍待完成；当前不勾RI03。
+
+RI03最终闭合：`interaction-ri03-library-search-green`于2026-09-30 14:06:37–14:07:23 UTC退出0／PASSED，SettingsSearch23项／0失败／0错误／0跳过；同条命令root spotlessCheck及Desktop新增五文件scoped格式通过。旧fixture用真实production catalog定位Library Display索引、ScrollToIndex滚至可见结果，并在merged row匹配完整title＋breadcrumb后点击；原Library导航、锚点高亮、滚动与6h更新偏好写入及再打开无旧锚点断言全部保留。修复仅测试定位，无production行为放宽。有效去重结果为Desktop104（81项沿上一轮有效结果＋SettingsSearch23）、共享主题／日期32、共享Markdown3、Android真实包装1，共140项／0失败／0跳过；所有失败命令的原终态仍保留，不改写成整条成功。
+
+主代理完成本批唯一修复复审：六项反馈已闭合，按实际调用链核对局部保存边界、双向modal事件、独立Tokyo oracle、SOURCE默认模式图标、真实LocalSystemTheme消费及owner／焦点／滚动保留、mounted描述的typed请求／已知像素绘制／失败和disabled链接。最终四张原生图环境为Windows、Temurin JDK21.0.11、Compose1.10.2／Skiko0.9.37.4、density1、fontScale1／2；14主题拼接与320×800dp页面来源清楚。check_circle SVG／Tokyo Night／官方kmr SHA均实核且与冻结值相同；NOTICE保原来源及Apache许可证。主代理重核5处current roleEvidence行号，无剩余漂移，不改变capability状态／历史ref；git diff --check退出0。实现、测试、源资产、必要契约与checkoff随本批同一提交，不建立额外报告或推进提交。
+
+本批文件数／行数超过Estimated scope，原因是同一个外观能力的共享主题与资源目录、Desktop页面和locale／布局／日期／简介真实消费者、Android共享包装及集成测试必须一起闭合；依赖及owner接口内聚，不按文件拆开不可独立验收的链路。边界保持：14个平台可用static主题，Windows无MONET provider；默认＋68种实际非空资源语言；平板保存仅下一启动owner应用并提示手动重启；旧列数2–6仍保留RI05迁移；详情最小分区不代替RI08完整布局。全量及正式发布本批0次，RI04–RI18继续串行推进。
+
+### RI04 展示与续读前置核对（只读，不代表实施完成）
+
+LibraryGrid／LibraryList当前没有显式共享Lazy状态和右侧滚动条；LibraryTab标签限定分类数大于一。两种布局的续读资格仍消费badges.unreadCount，隐藏角标会隐藏入口；已有syncedResumeMangaIds已验证恢复章节存在且非外链，但UI未消费，continueReadingRequest仍先选nextUnreadChapter再仅对相同目标附恢复页码。RI04须按稳定分类ID／有效作品锚点保护四布局位置，真实点击验证普通续读的有效未读目标、匹配目标的同步页码及过滤／陈旧目标回退，复用现Reader请求与恢复身份，不重写Reader算法。进一步核对既有LibraryPageCompositionTest和Detail实际nextUnreadChapter，二者保护最早适用未读优先于旧已读同步章、全已读隐藏普通续读；详情syncedResumeChapterId只影响匹配目标的Resume文案，不能误推为任意同步目标优先。RI04保留这些既有边界。封面应接现DesktopCustomCoverStore.resolveModel与rememberMangaCoverRequestState的typed源模型、memory／disk版本键，保持真实Desktop7:10和列表48dp独立小封面。这里仅核对入口，无本批实现或测试通过结论。
+
+### RI05 评分前置核对（只读，不代表实施完成）
+
+当前 LibraryScreenModel 从已登录 tracker 的原始 track.score 直接 average；Desktop registry 的 AniList请求与解析存 POINT_100，MAL等为10分，Kitsu解析 ratingTwenty／2已为10分。Android现有 Tracker.get10PointScore／Anilist.get10PointScore明确 AniList除10。RI05应复用并共享这个投影契约，保持存储及远端回写原始分数不变，验证混合 provider真实HTTP→数据库→平均分排序，不在UI随意按最大值猜尺度。这里只确认当前链路与复用入口，尚无本批红绿或修复结论。
+
+### RI13 目录同步前置核对（只读，不代表实施完成）
+
+共享 SourceMangaUpdateService 已提供 getMangaUpdate网络入口，不能重建第二份 source更新协议。当前 Desktop LibraryUpdateChecker主要追加新 URL并更新章号／memo，分次更新 manga／chapter，尚无完整改名、重排和移除事务。Android实际复用入口是 `app/src/main/java/eu/kanade/domain/chapter/interactor/SyncChaptersWithSource.kt`，不是 domain中的同名文件；其非本地空响应抛 NoChaptersException，包含去重／名称规范化、recognition、sourceOrder、重复已读与换链接数值状态、dateFetch保护、下载目录重命名。RI13须保持characterization并抽取可共享计划／事务边界，保Desktop作者观察与同步身份；网络／文件不冒充SQL原子，不以当前Desktop标记 COMPLETE作为响应完整性证明。这里只定位复用边界，未实施或验收RI13。
+
+### RI14 恢复前置核对（只读，不代表实施完成）
+
+现 DesktopTaskScheduler 已有持久 workset／worksetInitialized／completedUnitIds／failedUnits 与 checkpoint，不应重建调度器或通用outbox。当前 LibraryUpdateScheduler虽然保留stableIds，恢复时仍从重新按分类策略过滤的byId取目标；一次错误后break且没有区分跳过／未处理／失败全工作集。RI14在现有store及任务生命周期内补书架专用范围／结果恢复，保作者独立任务触发与CancellationException语义；只删除break不足以证明恢复完成。RI12文本误写S03–S06由RI15／16验收，已按已有总映射纠正：周期／智能／元数据RI14，设备限制RI16，不改变产品范围。
+
 ### RI18 macOS 环境前置（只读，不代表构建验收）
 
 收口顺序按用户“全部功能实现后再全量”统一：先完成RI00–RI17实现、focused专项及独立审查；RI16／RI17必须依赖最终发布runtime的设备／键鼠证据在RI18构建后取得，相关checkbox保留未勾选，所有原定门禁仍须通过。修正此前“RI18前置包含尚未生成的发布产物证据”的顺序循环，不提前重复全量或发布、不改变验收范围。
@@ -165,4 +231,4 @@ Android只读预检 `python scripts/build-android.py check --signing` 返回0／
 
 ## 未完成与限制
 
-RI00／RI01 的实现、focused、唯一独立审查及必要修复复审已完成，代码、测试、索引修复和必要 checkoff 随本功能批同一提交。首簇提交为 `14a8ce15695cf69ab2e468b825e88ec91641e08a`。用户继续要求完成剩余 roadmap，现复用原实施代理串行推进后续批次，每批按既有审查与必要修复复审流程执行；完整验证仍只在 RI18。RI02 实现、focused、唯一修复复审和格式／索引检查均通过，必要 checkoff 与代码／测试在本批同一提交；RI03–RI18 未完成；最终全量、正式构建及运行验收尚未执行。本轮没有 Android／macOS 构建、真实鼠标／触控板／硬件条件验收，没有交付 EXE/APK，没有把 HTML 勾选更新为 native 完成。
+RI00／RI01 的实现、focused、唯一独立审查及必要修复复审已完成，代码、测试、索引修复和必要 checkoff 随本功能批同一提交。首簇提交为 `14a8ce15695cf69ab2e468b825e88ec91641e08a`。用户继续要求完成剩余 roadmap，现复用原实施代理串行推进后续批次，每批按既有审查与必要修复复审流程执行；完整验证仍只在 RI18。RI02 实现、focused、唯一修复复审和格式／索引检查均通过，必要 checkoff 与代码／测试在本批同一提交；RI03 实现、唯一修复复审、140项有效focused证据、格式与索引检查已闭合，必要checkoff随本批同一提交；RI04–RI18 未完成；最终全量、正式构建及运行验收尚未执行。本轮没有 Android正式候选／macOS正式构建、真实鼠标／触控板／硬件条件验收，没有交付 EXE/APK，没有把 HTML 勾选更新为 native 完成。

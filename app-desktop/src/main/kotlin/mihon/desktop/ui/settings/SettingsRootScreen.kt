@@ -64,7 +64,7 @@ class SettingsRootScreen : Screen {
         val entries = DesktopSettingsCatalog.directoryItems()
         val directoryState = rememberLazyListState()
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val layout = LocalDesktopWindowLayout.current ?: DesktopWindowLayout(maxWidth, maxHeight)
+            val layout = LocalDesktopWindowLayout.current ?: DesktopWindowLayout(maxWidth, maxHeight, mihon.desktop.LocalDesktopUiDependencies.current.layoutSnapshot.tabletUiMode)
             var childSelected by remember { mutableStateOf(layout.expanded) }
             LaunchedEffect(layout.expanded) { if (layout.expanded) childSelected = true }
             Navigator(AppearanceSettingsScreen()) { child ->
