@@ -47,7 +47,7 @@ test("更多审核直达链接直接显示分类入口位置", () => visit(async
 test("更多页按 Mihon 分组排列并保留样本边界，分类真实进入", () => visit(async p => {
   await p.getByTestId("nav-more").click();
   assert.equal(await p.getByTestId("more-logo").count(), 1);
-  assert.deepEqual(await p.locator(".more-content .more-list-item").evaluateAll(items => items.map(item => item.dataset.action)), ["more-download-only", "more-incognito", "more-downloads", "category-open", "more-stats", "more-storage", "settings-open", "more-about", "more-help", "more-donate"]);
+  assert.deepEqual(await p.locator(".more-content .more-list-item").evaluateAll(items => items.map(item => item.dataset.action)), ["more-download-only", "more-incognito", "more-downloads", "category-open", "more-stats", "more-storage", "settings-open", "more-about", "more-help"]);
   for (const [id, name] of [["downloads", "下载队列"], ["stats", "统计"], ["storage", "数据与存储"]]) {
     await p.getByTestId(`more-${id}`).click();
     assert.match(await p.getByRole("dialog").textContent(), new RegExp(name));

@@ -27,7 +27,7 @@ test("书架顶栏将同步保留在更多菜单之前，更新和随机操作�
         .evaluateAll((items) => items.map((item) =>
           item.dataset.testid || item.querySelector("[data-testid]")?.dataset.testid,
         )),
-      ["sync-open", "search-open", "panel-open", "more-open"],
+      ["search-open", "panel-open", "sync-open", "more-open"],
     );
     assert.equal(
       await page.getByTestId("sync-open").locator("svg").getAttribute("data-mihon-icon"),
@@ -38,6 +38,18 @@ test("书架顶栏将同步保留在更多菜单之前，更新和随机操作�
     assert.equal(await page.getByTestId("random-open").count(), 0);
 
     await page.getByTestId("more-open").click();
+    const menuWidth = await page.getByTestId("library-more-menu").evaluate((menu) => {
+      const range = document.createRange();
+      const labels = [...menu.querySelectorAll('[role="menuitem"]')].map((item) => {
+        range.selectNodeContents(item);
+        return range.getBoundingClientRect().width;
+      });
+      return {
+        panel: menu.getBoundingClientRect().width,
+        widestText: Math.max(...labels),
+      };
+    });
+    assert.ok(menuWidth.panel <= menuWidth.widestText + 50, JSON.stringify(menuWidth));
     assert.deepEqual(
       await page
         .locator('[data-testid="library-more-menu"] [role="menuitem"]')
@@ -50,6 +62,16 @@ test("书架顶栏将同步保留在更多菜单之前，更新和随机操作�
       await page.getByTestId("more-open").evaluate((item) => item === document.activeElement),
       true,
     );
+    await page.setViewportSize({ width: 390, height: 820 });
+    await page.getByTestId("more-open").click();
+    const narrowMenu = await page.getByTestId("library-more-menu").evaluate((menu) => {
+      const rect = menu.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, width: rect.width };
+    });
+    assert.ok(narrowMenu.left >= 0 && narrowMenu.right <= 390, JSON.stringify(narrowMenu));
+    assert.ok(narrowMenu.width <= menuWidth.widestText + 50, JSON.stringify(narrowMenu));
+    await page.keyboard.press("Escape");
+    await page.setViewportSize({ width: 1100, height: 820 });
     await page.getByTestId("more-open").click();
     await page.getByTestId("refresh-all").click();
     assert.equal(await page.evaluate(() => window.demo.state.job?.type), "all");
@@ -114,14 +136,44 @@ test("宽屏改用 Mihon 左侧导航栏，窄屏保留底部导航", () =>
     const wide = await page.locator(".navigation").evaluate((nav) => {
       const rect = nav.getBoundingClientRect();
       const page = document.querySelector(".page-content").getBoundingClientRect();
+      const style = getComputedStyle(nav);
+      const firstItem = nav.querySelector("button");
+      const firstRect = firstItem.getBoundingClientRect();
+      const lastRect = nav.querySelector("button:last-child").getBoundingClientRect();
+      const itemStyle = getComputedStyle(firstItem);
+      const iconRect = firstItem.querySelector(".nav-icon").getBoundingClientRect();
       return {
-        direction: getComputedStyle(nav).flexDirection,
+        direction: style.flexDirection,
+        width: rect.width,
+        justify: style.justifyContent,
+        gap: style.rowGap,
+        paddingTop: style.paddingTop,
+        borderRight: style.borderRightWidth,
         navRight: rect.right,
         pageLeft: page.left,
+        itemWidth: firstRect.width,
+        itemMinHeight: itemStyle.minHeight,
+        labelSize: getComputedStyle(firstItem.querySelector("span:last-child")).fontSize,
+        indicatorWidth: iconRect.width,
+        indicatorHeight: iconRect.height,
+        centerOffset: Math.abs(
+          (firstRect.top + lastRect.bottom) / 2 - (rect.top + rect.bottom) / 2,
+        ),
       };
     });
     assert.equal(wide.direction, "column");
     assert.ok(wide.navRight <= wide.pageLeft);
+    assert.equal(wide.width, 80);
+    assert.equal(wide.justify, "center");
+    assert.equal(wide.gap, "4px");
+    assert.equal(wide.paddingTop, "4px");
+    assert.equal(wide.borderRight, "0px");
+    assert.equal(wide.itemWidth, 80);
+    assert.equal(wide.itemMinHeight, "56px");
+    assert.equal(wide.labelSize, "14px");
+    assert.equal(wide.indicatorWidth, 56);
+    assert.equal(wide.indicatorHeight, 32);
+    assert.ok(wide.centerOffset <= 8, JSON.stringify(wide));
     assert.deepEqual(
       await page.locator(".navigation [data-testid^='nav-']").evaluateAll((items) =>
         items.map((item) => item.dataset.testid),
@@ -158,9 +210,9 @@ test("更多页按 Mihon 分组排列，作者作为浏览页签而非主导航"
         "settings-open",
         "more-about",
         "more-help",
-        "more-donate",
       ],
     );
+    assert.equal(await page.getByTestId("more-donate").count(), 0);
     assert.equal(await page.getByTestId("more-downloaded-only").getAttribute("aria-checked"), "false");
     await page.getByTestId("more-downloaded-only").click();
     assert.equal(await page.getByTestId("more-downloaded-only").getAttribute("aria-checked"), "true");

@@ -21,6 +21,7 @@ body {
   --on-primary: #002d6e;
   --secondary: #b0c6ff;
   --on-secondary: #002d6e;
+  --nav-indicator: color-mix(in srgb, var(--primary) 20%, var(--container));
   --selection-tint: color-mix(in srgb, var(--secondary) 16%, transparent);
   --outline: #49454f;
 }
@@ -35,6 +36,7 @@ body {
   --on-primary: white;
   --secondary: #0058ca;
   --on-secondary: white;
+  --nav-indicator: color-mix(in srgb, var(--primary) 15%, var(--container));
   --selection-tint: color-mix(in srgb, var(--secondary) 22%, transparent);
   --outline: #c8c5cc;
 }
@@ -948,6 +950,11 @@ summary {
   box-shadow: 0 8px 25px #0006;
   border: 1px solid var(--outline);
 }
+.library-more-menu.detail-popup {
+  width: max-content;
+  min-width: 128px;
+  max-width: min(190px, calc(100vw - 22px));
+}
 .detail-popup button {
   display: flex;
   align-items: center;
@@ -1759,25 +1766,32 @@ svg.stroked {
   }
   .navigation {
     order: 0;
-    width: 88px;
+    width: 80px;
     flex-direction: column;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: center;
     gap: 4px;
-    padding: 12px 4px;
+    padding: 4px 0;
     border-top: 0;
-    border-right: 1px solid var(--outline);
-    background: var(--surface);
+    border-right: 0;
+    background: var(--container);
+    box-shadow: 2px 0 4px #0002;
   }
   .navigation button {
     width: 80px;
-    min-height: 72px;
+    min-height: 56px;
     flex-direction: column;
     gap: 4px;
-    padding: 8px 4px;
-    font-size: 0.75rem;
+    padding: 4px 0;
+    border-radius: 16px;
+    font-size: 1rem;
+    line-height: 20px;
+    font-weight: 500;
   }
   .navigation .nav-icon {
     width: 56px;
+  }
+  .navigation .active .nav-icon {
+    background: var(--nav-indicator);
   }
 }
