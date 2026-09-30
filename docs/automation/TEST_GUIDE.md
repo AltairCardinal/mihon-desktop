@@ -291,3 +291,32 @@ Desktop 自动标记保存于 viewerFlags 第 34 位，低 8 位仍为 Android R
 以及 `ReaderPageTurnPresentationTest` 的动画与快速翻页回归、设置搜索和漫画详情 persistence 测试。
 手工验收：选择默认，拖动内容比例跨过 1.35／1.25，确认方向、单双页、当前页与阅读进度；
 打开／关闭设置和工具栏不切换；选择手动方向后拉伸窗口不再自动切换；重开漫画仍保留选择。
+
+
+## Android 原生同步导航与隔离远端验收
+
+使用官方 `scripts/build-android.py debug` 产物及独立 `.dev` 身份，安装仍用官方 `install` 命令。先核对设备和两个包的身份，不降级或覆盖设备上更高的正式版本。用户处理系统权限弹窗、解锁并置 Debug 于前台后，在**新装且没有旧 GitHub 授权凭据**的 Debug 实例运行：
+
+```powershell
+python scripts/android-sync-native-acceptance.py --serial <本次确认设备> --fresh-debug
+```
+
+`--fresh-debug` 是调用者核验前置，不是脚本清数据或判定账号的手段。MAIN 未连接不能证明不存在旧凭据；已有凭据时 BeginSetup 可能访问远端，所以不能默认在既有安装上重跑。普通只读检查使用 `--inspect`；正式包仅允许只读检查。工具路径限于入口、MAIN、设置、系统 Back、登录说明页、Back、关闭；不点击授权、密码或同步。输出只含固定导航语义和几何信息，不保留层级、文本、密码或设备标识。
+
+每次输入前须重新确认锁屏、真实前台窗口、控件唯一性及启用状态。Huawei 等设备的系统权限倒计时窗口不是应用界面，必须停止并由用户处理。`uiautomator dump` 退出码 0 仍可能伴随 null-root ERROR；工具要求精确成功标记、随机新文件、大小上限和有效 XML，读后删除，禁止读取旧固定文件回退。临时窄屏/大字号验收必须先保存原 wm override、density、font_scale 与旋转配置，在 finally 恢复并逐项核对。已有 override 不代表本轮脚本设置，不得直接 reset 丢失用户配置。导航通过不能证明密码页布局通过。
+
+真实远端验收应使用用户授权的新私有空仓库，禁止使用已有非空 `mihon-sync`。仅测试版本可选择固定前缀 `mihon-sync-acceptance-...` 的专用仓库：
+
+```powershell
+python scripts/build-android.py debug --sync-acceptance-repository mihon-sync-acceptance-<本次隔离目标>
+```
+
+构建记录必须包含实际目标及配置摘要，安装前用官方 `verify` 核对该候选。正式构建不允许此参数。Desktop 使用包含同一配置能力的候选，并同时传 `--test-mode --test-profile=<安全绝对目录> --test-sync-repository=<同一目标>`；旧 `--test-profile-dir` 不足以隔离凭据，不能用于启用覆盖。不得以旧候选支持新参数为假设。共享生产链只发现指定隔离库，已有连接或 pending 指向其他仓库时安全拒绝；不会替调用者清旧记录或改连接。切目标前通过正常产品路径处理本地连接，不伪造凭据或写内部状态。
+
+CLI GitHub 登录态不代替应用 OAuth 或 GitHub App 授权；核对实际账号及隔离目标后才继续创建和跨端验收。浏览器自动操作被拒绝时保留拒绝并请求用户完成网页确认，不采集 cookie、不向应用注入 CLI token，也不换入口绕过拒绝。两端实际提交、模式 descriptor、重启恢复和解锁都须各自验证，MockWebServer 或导航成功不能代替真实远端证据。
+
+
+当前限制：测试仓库覆盖配置不改业务页面的固定帮助文案，安装访问权限页仍可能写默认 `mihon-sync`。隔离验收以 candidate manifest 的 `syncAcceptanceRepository` 为目标，不按默认文案创建或改动既有仓库；测试负责人应向值守用户明确两个隔离名称。登录授权完成后仍须 GitHub App installation 获得测试库访问权，看到“App 已安装但无法看到仓库”后先通过正常权限管理页补充指定库，再回应用重新检查，不能据此判断仓库不存在或密码功能失败。
+
+
+官方 API 路径须分开核验认证类型：安装列表接口的 403 不等于增加库接口也不可用。用户已授权增加测试库、公开 installation ID 来源可靠且精确库 ID/所有者/私有/admin 条件核对后，才可按 [GitHub add-repository 官方接口](https://docs.github.com/en/rest/apps/installations#add-a-repository-to-an-app-installation) 最小增加；403 时停止，不提取应用 token 或浏览器 cookie。API 成功仍要回真实应用重新检查目标可见性，接口请求不代替生产创建/同步验收。

@@ -182,6 +182,9 @@ class AndroidSyncRuntimeWiringTest {
             Injekt.addSingleton(sources)
             Injekt.importModule(DomainModule())
             val runtime = Injekt.get<SyncRuntime>()
+            val configuredRepository = eu.kanade.tachiyomi.BuildConfig.SYNC_ACCEPTANCE_REPOSITORY
+            assertEquals(configuredRepository.ifEmpty { "mihon-sync" }, runtime.repositoryScope.repositoryName)
+            assertEquals(configuredRepository.isNotEmpty(), runtime.repositoryScope.isolated)
             assertSame(runtime, Injekt.get<SyncRuntime>())
             assertEquals(
                 context.cacheDir.resolve("mihon-sync-objects").absolutePath,

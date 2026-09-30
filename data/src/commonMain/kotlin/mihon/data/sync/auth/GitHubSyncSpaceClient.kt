@@ -121,6 +121,7 @@ class GitHubSyncSpaceClient(
     private val accessToken: suspend () -> String,
     private val apiBaseUrl: String = "https://api.github.com",
     private val requestGate: SyncHttpRequestGate? = null,
+    private val repositoryScope: SyncRepositoryScope = SyncRepositoryScope.Default,
 ) {
     suspend fun discover(expectedAccountId: Long? = null): SyncSpaceDiscovery = try {
         val scan = session().scan(expectedAccountId)
@@ -191,7 +192,7 @@ class GitHubSyncSpaceClient(
             require(user.string("type") == "User")
             val account = SyncGitHubAccount(user.number("id"), user.string("login"))
             require(account.id > 0)
-            SyncRepository(account.login, REPOSITORY_NAME, BRANCH)
+            SyncRepository(account.login, repositoryScope.repositoryName, BRANCH)
             if (expectedAccountId != null && expectedAccountId != account.id) fail(SyncDiscoveryProblem.ACCOUNT_CHANGED)
             val installs = api.objects("/user/installations?per_page=100&page=1", "installations")
                 .filter {
@@ -236,20 +237,26 @@ class GitHubSyncSpaceClient(
                 "repositories",
             )
             val appInstallation = initialInstallation.copy(authorizedRepositoryCount = repositories.size)
-            val owned = repositories.filter {
+            val visible = if (repositoryScope.isolated) {
+                repositories.filter { it.string("name") == repositoryScope.repositoryName }
+            } else {
+                repositories
+            }
+            val owned = visible.filter {
                 it.obj("owner").number("id") == account.id && it.obj("owner").string("type") == "User"
             }
             val candidates = linkedMapOf<Long, Repository>()
             for (item in owned) {
                 val name = item.string("name")
+                if (!repositoryScope.accepts(name)) continue
                 if (!item.boolean("private")) {
-                    if (name == REPOSITORY_NAME) {
+                    if (name == repositoryScope.repositoryName) {
                         fail(SyncDiscoveryProblem.REPOSITORY_NOT_PRIVATE, account, appInstallation)
                     }
                     continue
                 }
                 if (!writable(item)) {
-                    if (name == REPOSITORY_NAME) {
+                    if (name == repositoryScope.repositoryName) {
                         fail(SyncDiscoveryProblem.REPOSITORY_NOT_WRITABLE, account, appInstallation)
                     }
                     continue
@@ -258,13 +265,13 @@ class GitHubSyncSpaceClient(
                 if (repo.archived || repo.disabled) continue
                 require(candidates.put(repo.id, repo) == null)
             }
-            val listedTarget = candidates.values.any { it.repository.name == REPOSITORY_NAME }
+            val listedTarget = candidates.values.any { it.repository.name == repositoryScope.repositoryName }
             // A direct 404 is ambiguous only when installation listing omitted the fixed target.
-            val targetResponse = get("/repos/${account.login}/$REPOSITORY_NAME")
+            val targetResponse = get("/repos/${account.login}/${repositoryScope.repositoryName}")
             val target = when (targetResponse.code) {
                 404 -> if (listedTarget) fail(SyncDiscoveryProblem.RETRYABLE, account, appInstallation) else null
                 200 -> repository(targetResponse.objectBody(), account, appInstallation).also {
-                    if (it.repository.name != REPOSITORY_NAME) {
+                    if (it.repository.name != repositoryScope.repositoryName) {
                         fail(SyncDiscoveryProblem.MALFORMED, account, appInstallation)
                     }
                     if (candidates[it.id] == null) {
@@ -305,7 +312,7 @@ class GitHubSyncSpaceClient(
             val repo = SyncRepository(account.login, value.string("name"), BRANCH)
             val archived = value.boolean("archived")
             val disabled = value.boolean("disabled")
-            if (repo.name == REPOSITORY_NAME && (archived || disabled)) {
+            if (repo.name == repositoryScope.repositoryName && (archived || disabled)) {
                 fail(SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE, account, installation)
             }
             require(value.string("full_name").equals(repo.fullName, ignoreCase = true))
@@ -322,7 +329,7 @@ class GitHubSyncSpaceClient(
             account: SyncGitHubAccount,
             installation: SyncAppInstallation,
         ): EmptySyncRepositoryCandidate? {
-            if (repository.repository.name != REPOSITORY_NAME || repository.size != 0L) return null
+            if (repository.repository.name != repositoryScope.repositoryName || repository.size != 0L) return null
             val base = "/repos/${repository.repository.fullName}"
 
             // GitHub's matching-refs endpoint without a prefix includes every namespace, including notes and stashes.

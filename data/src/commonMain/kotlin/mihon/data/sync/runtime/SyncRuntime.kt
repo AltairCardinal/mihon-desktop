@@ -77,6 +77,7 @@ class SyncRuntime(
     internal val failureLogDirectory: Path? = null,
     private val syncMetrics: SyncMetrics = NoopSyncMetrics,
     private val progressTelemetryEnabled: Boolean = true,
+    val repositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
 ) : SyncRunPort {
     val preferences = SyncPreferences(preferenceStore)
     val credentials = PersistentGitHubCredentialStore(secureStore)
@@ -170,6 +171,7 @@ class SyncRuntime(
     }
 
     internal suspend fun bindSetup(setup: StoredSyncSetup) {
+        require(repositoryScope.accepts(setup.repository)) { "sync repository is outside the configured scope" }
         coordinator.cancelAndJoin()
         connectionMutex.withLock {
             val material = setup.material.material()
@@ -339,7 +341,7 @@ class SyncRuntime(
             active.space_id,
             active.generation,
             SyncRepository(active.repository_owner, active.repository_name, active.repository_branch),
-            active.exchange_enabled && !unsupported,
+            active.exchange_enabled && !unsupported && repositoryScope.accepts(active.repository_name),
             stored?.material?.material()?.descriptor?.mode,
             stored?.accountLogin,
             unsupportedFormat = unsupported && active.exchange_enabled,

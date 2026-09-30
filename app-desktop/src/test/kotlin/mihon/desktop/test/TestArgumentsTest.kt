@@ -3,8 +3,27 @@ package mihon.desktop.test
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import java.io.File
 
 class TestArgumentsTest {
+
+    @Test
+    fun `acceptance repository requires test mode and isolated profile before DI`(@TempDir directory: File) {
+        val flag = "--test-sync-repository=mihon-sync-acceptance-fixture-none"
+        val profile = "--test-profile=${directory.absolutePath}"
+        listOf(
+            arrayOf(flag),
+            arrayOf("--test-mode", flag),
+            arrayOf("--test-mode", "--test-profile-dir=/tmp/fixture", flag),
+            arrayOf("--test-mode", profile, "--test-sync-repository=mihon-sync"),
+            arrayOf("--test-mode", profile, flag, flag),
+        ).forEach { args -> assertThrows(IllegalArgumentException::class.java) { TestArguments.parse(args) } }
+        assertEquals(
+            "mihon-sync-acceptance-fixture-none",
+            TestArguments.parse(arrayOf("--test-mode", profile, flag)).syncRepository,
+        )
+    }
 
     @Test
     fun `isolated profile requires explicit test mode and an absolute nonempty path`() {

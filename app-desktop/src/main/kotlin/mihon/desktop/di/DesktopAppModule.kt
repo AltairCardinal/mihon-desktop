@@ -203,15 +203,18 @@ import java.util.Properties
  * Initializes all desktop DI bindings.
  * Call once at application startup before showing any UI.
  */
-fun initDesktopDI() {
+fun initDesktopDI(
+    syncRepositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
+) {
     val paths = DesktopPlatformPaths.current(createDirectories = false)
     val preferenceStore = DesktopPreferenceStore()
-    initDesktopDI(paths, preferenceStore)
+    initDesktopDI(paths, preferenceStore, syncRepositoryScope)
 }
 
 internal fun initDesktopDI(
     paths: DesktopPlatformPaths,
     preferenceStore: DesktopPreferenceStore,
+    syncRepositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
 ) {
     initAndroidCompatApplication()
     prepareDesktopProfile(paths, preferenceStore)
@@ -220,7 +223,7 @@ internal fun initDesktopDI(
     val handler = initDataLayer(paths)
     initExtensionLayer(paths, networkHelper, handler)
     initDomainLayer(handler)
-    initUILayer(paths, preferenceStore, networkHelper, handler)
+    initUILayer(paths, preferenceStore, networkHelper, handler, syncRepositoryScope = syncRepositoryScope)
 }
 
 internal fun initDesktopConfigurationForTest(appDir: File, preferenceStore: PreferenceStore) {
@@ -255,6 +258,7 @@ internal suspend fun initDesktopDIForTest(
     trackerConnectivity: mihon.desktop.tracking.DesktopNetworkConnectivity =
         mihon.desktop.tracking.JvmDesktopNetworkConnectivity,
     chapterRepositoryOverride: ((ChapterRepository) -> ChapterRepository)? = null,
+    syncRepositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
 ): DesktopTestDIContext {
     activeDesktopTestDIContext?.closeAndJoin()
     patchInjekt()
@@ -279,6 +283,7 @@ internal suspend fun initDesktopDIForTest(
         profileDirectoryOpener,
         nativeSharePort,
         trackerConnectivity,
+        syncRepositoryScope,
     )
     return DesktopTestDIContext(
         handler = handler as JvmDatabaseHandler,
@@ -801,6 +806,7 @@ internal fun initUILayer(
     nativeSharePort: DesktopNativeSharePort = defaultDesktopNativeSharePort(),
     trackerConnectivity: mihon.desktop.tracking.DesktopNetworkConnectivity =
         mihon.desktop.tracking.JvmDesktopNetworkConnectivity,
+    syncRepositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
 ) {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val passphraseVerifier = DesktopPassphraseVerifier(
@@ -1028,6 +1034,7 @@ internal fun initUILayer(
         productionClient = networkHelper.client,
         persistentObjectCacheDirectory = paths.networkCacheDir.resolve("mihon-sync-objects").toOkioPath(),
         failureLogDirectory = paths.logsDir.resolve("sync-failures").toOkioPath(),
+        repositoryScope = syncRepositoryScope,
     )
     Injekt.addSingleton(syncRuntime)
     val syncScheduler = mihon.desktop.sync.DesktopSyncScheduler(

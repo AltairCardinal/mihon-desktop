@@ -39,8 +39,9 @@ internal class SyncOnboardingFixture(
     preferenceStore: PreferenceStore? = null,
     val client: OkHttpClient = OkHttpClient(),
     tokenUrl: String? = null,
+    val repositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
 ) : AutoCloseable {
-    val repository = SyncRepository("fixture-owner", "mihon-sync", GitHubSyncSpaceClient.BRANCH)
+    val repository = SyncRepository("fixture-owner", repositoryScope.repositoryName, GitHubSyncSpaceClient.BRANCH)
     val git = SyncGitSafetyContractTest().GitFixture(empty = true, repositoryOverride = repository)
     val secure = MemorySyncSecureStore()
     private val defaults = InMemoryPreferenceStore()
@@ -151,6 +152,7 @@ internal class SyncOnboardingFixture(
         failureLogDirectory = failureLogDirectory,
         syncMetrics = metrics,
         progressTelemetryEnabled = progressTelemetryEnabled,
+        repositoryScope = repositoryScope,
     )
 
     suspend fun authorize(token: String = "synthetic-token") {

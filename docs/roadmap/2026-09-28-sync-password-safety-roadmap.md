@@ -1,6 +1,6 @@
 # 同步空间默认无密码与遗忘风险提示 Roadmap
 
-日期：2026-09-28；生产执行启动：2026-09-30。状态：S1 共享生产闭环、双端接线、必要红绿回归与独立审查已完成，随本批提交交付；S2 正式候选及平台运行验收待执行。完成状态由下列复选框及第 4 节证据共同约束，接口存在不等于已完成发布验收。
+日期：2026-09-28；生产执行启动：2026-09-30。状态：S1 共享生产闭环、双端接线、必要红绿回归与独立审查已完成，随本批提交交付；S2 已完成先前正式候选及部分平台运行验收，当前续验 Android 真机与测试仓库隔离；真实双端及密码页等门槛仍未完成。完成状态由下列复选框及第 4 节证据共同约束，接口存在不等于已完成发布验收。
 
 设计权威：[同步密码安全设计](../2026-09-28-sync-password-safety-design.md)，尤其第 3–5 节产品交互和第 10–12 节开发/失败/验证契约。审阅基线：`cdc1b9f1b3`；[并列 HTML DEMO](../prototypes/multi-device-sync/password-review.html)与[原型说明](../prototypes/multi-device-sync/README.md)。本文件是产品 child plan，从第一个未勾选项推导进度，不声明 active-task，不切换其他专项父计划的 active-child-plan。
 
@@ -241,3 +241,44 @@ Mac 首次输入前置明确读取到锁屏标记，未发送输入；用户自�
 本轮补齐的是未登录 MAIN 同步面板的原生输入、圈定与还焦门槛。密码页视觉/真实密码交互、Android 真机安装升级、真实远端双端创建/解锁/恢复仍未验收，S2 保持未勾选；此前桌面启动上下文安全存储跨进程成功证据仍保留。本批过程日志保存在忽略的 `.gradle-coordinator/` 及 Mac 隔离工作区，不新增过程报告。
 
 收口核验：本轮最终 `/test/shutdown` 返回 202，实际应用 PID 35849 和 LaunchServices 包装器 PID 35848 均退出，无本次实例遗留。四份新增/更新文档与脚本的 UTF-8、Python 语法、本地文档链接、正式 EXE 文件存在性及 `git diff --check` 通过；两端归档 SHA-256 一致。未修改用户级 AGENTS，也未混入其他 worktree 的改动。
+
+
+### Android 真机与隔离测试空间续验（2026-09-30）
+
+用户连接真机并授权完成可独立验收项。只读核对发现设备已有正式 `0.19.4-aex.19`（versionCode 37），高于本任务候选 code 36；用户确认保留该安装并要求另建 Debug fork。未降级、未覆盖正式应用、未清正式数据，也不把来源未核对的 code 37 当作本任务正式候选验收证据。
+
+本轮复用一个实施代理，主代理规划接口、独立审查及真实设备验收；预算为一轮独立审查、必要一轮修复复审、受影响 focused 红绿及官方 Debug 构建，不运行全量或正式发布构建。首次预计 30–90 分钟；用户随后明确允许测试版本改用其他仓库名称，增加仅测试的隔离目标 adapter，预计增加 40–65 分钟。保持既有同步协议、保护模式、分支和正式仓库发现语义。
+
+官方 `scripts/build-android.py debug` 首次完成（协调器 `android-candidate`、退出码 0、1 分 39 秒）；基于 clean `9967e556cf`，包名 `app.mihon.desktop.fork.dev`、code 36、versionName `0.19.4-aex.18-9286`，Debug 证书、无 R8。候选 [Debug APK](../../app/artifacts/android/0.19.4-aex.18-vc36-9967e556cf-debug-322d4bd9b03e/Mihon-Fork-0.19.4-aex.18-vc36-debug-universal.apk) SHA-256 为 `48486244b77215157e1aa30f5330dfb64111a572c0e2b3d9198cb02d19daa813`。官方 `install` 与安装后核验退出码 0；Debug 与正式包并存。此 APK 尚不包含下述测试仓库隔离配置，不能用于真实 GitHub 登录后自动发现验收。
+
+新增外部原生工具使用真实 UI hierarchy 与 Android 输入，不用 controller 动作代替点击。完整 XML 仅在内存处理，本次随机临时文件读后删除；只输出白名单导航、场景及几何信息。每次输入前核对设备、锁屏、前台窗口身份、控件唯一性、启用状态和遮挡；系统权限弹窗由用户处理。`uiautomator` 曾返回 exit 0 且 null-root ERROR，因此必须同时检查明确成功标记、文件大小和 XML；旧固定文件不能作为新采集证据。该失败保留，具体 null-root 原因未证实。
+
+有效工具红绿及真实夹具回归最初 18/18 通过；随后补充 Release 仅只读及显式 fresh-debug 前置，两项负向断言保证零 adb 调用，最终 20/20 通过并由主代理复跑。两项工具判定已修复：忽略含其他点击子节点的外层容器，避免把整个 sheet 当按钮；设置页仅凭固定导航语义允许普通设备名输入框，始终拒绝密码输入框且不读取设备名文本。真实正常尺寸路径 `ENTRY → MAIN → SETTINGS → Android Back → MAIN → SIGN_IN → Android Back → MAIN → 关闭 → ENTRY` 退出码 0；未点授权、未连接、未同步。其前提为本次新装且没有旧授权凭据的 Debug 实例，通用 MAIN 不能推导无网络。冷启动后出现华为权限倒计时页时脚本停止；用户处理后真实 ENTRY 检查通过。
+
+GitHub CLI 当前账号已有非空私有 `mihon-sync`，因此不能以原仓库初始化本次验收。用户授权改用测试仓库后，创建了两个新私有空库：`mihon-sync-acceptance-20260930-none-732f7942` 与 `mihon-sync-acceptance-20260930-password-732f7942`，核对 private=true、size=0、无初始提交；原仓库未改。CLI 身份不等于应用身份，后续仍须真实应用 OAuth 与 GitHub App 安装授权，且只对隔离目标操作。浏览器自动操作被自动审批拒绝（返回 blocked by policy，未说明具体原因）；不绕过拒绝。CLI 安装列表接口实际 403，不能代替应用授权。
+
+隔离 adapter 的验收边界：Android 只允许 Debug 静态目标，官方 Debug 入口记录目标及构建配置摘要；正式构建拒绝目标覆盖。Desktop 只允许 `--test-mode` 与明确的 `--test-profile=<absolute-directory>` 同时存在；旧 `--test-profile-dir` 不能单独启用覆盖。共享生产发现只检查指定隔离库，旧 binding/pending 与目标不匹配时安全拒绝，不清理旧数据、不连接其他库。上述实现与验证尚在进行，不能先记为通过或勾选 S2。
+
+
+真机追加结果：临时 `640×1280`、density 320（320dp 宽度）、font_scale 2.0 下同一完整导航退出码 0。原设备已有 `1920×2880` override；首次严格前置因此安全停止、未改配置，读取实际设置后保留并恢复该 override。最终 `DISPLAY_RESTORED=true`，原尺寸、density、字号及旋转配置逐项一致。此证据仅覆盖导航，不证明密码页、双主题或真实远端同步验收。维护操作及失败边界已补入 [Test Guide](../automation/TEST_GUIDE.md#android-原生同步导航与隔离远端验收)。
+
+
+本轮初审补齐 Desktop 真实启动链：参数 parser 与 test DI 工厂单独通过不能证明 Main 透传目标；改用既有独立 JVM probe 调用真实 `main`，严格 profile bootstrap、fallback 用户目录及独立 PreferencesFactory，避免普通偏好/凭据污染。在 Main 尚未透传目标时，`sync-acceptance-real-main-red` 退出码 1、45 秒，健康服务启动后同子进程生产 runtime 断言准确失败（仍为默认 `mihon-sync`），不是启动超时。恢复最小接线后再运行绿测。Main 增加 7 行导致 ID81 consumer evidence 从 631 移到 638，manifest 仅局部更新该行号，capability 状态未改；消费契约随 focused 补验，不重复全量。
+
+
+最后 focused `sync-acceptance-repository-final` 退出码 1、2 分 23 秒：共享 data 39/39（隔离发现 2、onboarding 3、默认发现 34）、Desktop 产品相关 5/5（参数 3、DI 1、真实 Main 1）、Android 完整 `AndroidSyncRuntimeWiringTest` 14/14，均零失败/跳过；实际 Debug 属性贯通 BuildConfig → DomainModule → 同一 production runtime，根 `spotlessCheck` 通过。唯一失败是 parity 的 ID4 consumer 仍定位 `initDesktopDI()`/101；真实调用已变为 `initDesktopDI(syncScope)`/105，随后局部更新 symbol/line 并单独复验，不宣称该次整条命令退出码为 0。Python 官方构建入口及 artifact focused 23/23、外部工具 20/20 通过。Release 门禁及新增非 Debug 类型 `acceptanceOther`（继承 Debug）均实际 dry-run 被拒绝，exit 1 为预期门禁，不能写作构建通过。
+
+
+机械证据收口：限定本批改动路径，一次核对 current roleEvidence 的 symbol/line；除 ID4、ID81 外更新 taskNotifier 1094、filterChaptersForDownload 1137、AndroidCompat.initialize/startApp 238/240，以及当前 Android 构建依赖 320。历史 inventory locator 与 FIXED_ORIGINAL 定位保持原记录。`sync-acceptance-manifest-fixed` 对同一消费契约补验 1/1、退出码 0、26 秒；前次失败日志保留。主代理完成一轮独立初审：目标名字/平台门禁、真实启动/profile/凭据命名空间、发现与旧连接/pending/create/join/resume/bind/run 防护、默认语义兼容及官方配置证据，未发现阻塞。
+
+新版隔离候选经官方 `debug --sync-acceptance-repository mihon-sync-acceptance-20260930-none-732f7942` 构建通过（协调器 `android-candidate`、50 秒、退出码 0），随后官方 `install` 与安装后核验通过。当前 [隔离 Debug APK](../../app/artifacts/android/0.19.4-aex.18-vc36-9967e556cf-debug-ab32ac0f009f/Mihon-Fork-0.19.4-aex.18-vc36-debug-universal.apk) SHA-256 `481ce574ce0000fa49eacde483626907deba32a6ffaf1e97a38b60f4d4c41d82`，package `.dev`、code 36、versionName `0.19.4-aex.18-9286`。基于 `9967e556cf` 加本批冻结 diff；productionInputsSha256 为 `8802f2b8c3d1314607bafd451b2490c3574b1636b5079e6b71f5de0ddf767811`，配置摘要为 `4e9cb6894a4753f557d91400e6c56ac091e490f67fefce55902ef6e1c59db020`，artifact 记录精确目标。再次只读核对正式包仍为 code 37 / `0.19.4-aex.19`。用户解锁后，真实原生点击打开 MAIN、进入 SIGN_IN，停止于网页授权前；未创建远端空间。
+
+用户明确选择本轮只继续 Android，Desktop 完整测试及新 Windows/macOS 官方构建留待后续。因此旧正式 Desktop 候选不作为新测试仓库参数的运行证据，真实双端仍待验收。用户再次明确要求代办 GitHub 授权后，重试原 Windows Firefox 打开设备授权页操作仍被自动审批拒绝，返回仅 `blocked by policy`，未提供具体原因；未执行浏览器操作，不提取凭据或换入口绕过。现请求用户在 Debug 内发起并完成网页确认；未收到成功反馈前，真实无密码/有密码创建、解锁、帮助与远端恢复均不记通过，S2 保持未勾选。
+
+本批共 24 个文件贯通同一测试隔离安全边界与原生验收工具，跨共享链、双端 DI、正式产物配置证据、真实行为测试和维护文档；内聚性来自旧空间保护与真实配置贯通，不引入第二套同步服务、加密协议或业务页面。过程日志仅保留在忽略的 `.gradle-coordinator/`，未新增计划或报告。
+
+
+授权接力更新：用户随后回复已完成网页授权。真实应用已进入 `sync_setup_needs_repository_access`（App 已安装、当前安装无法看到目标）及管理权限/重新检查页；主代理真实点击重新检查，先观察 discovering，随后返回同一访问权限引导，未创建远端数据。说明该阶段仍缺目标访问，不能把用户的登录成功当作仓库授权齐备，也不能从界面未显示账号推断账号不同。页面帮助仍使用默认 `mihon-sync` 文案，这是测试配置覆盖的已知限制；已明确提醒用户只为本次两个隔离目标补充权限、保留原授权，并请求更新后继续。
+
+
+用户再次授权代办 installation 访问权限后，主代理核对官方 REST 认证要求，未把列表接口 403 推导为所有接口不可用。应用原生“管理 GitHub App 访问权限”入口正常打开手机 Firefox；仅从其公开管理 URL 观察 installation ID，未发送浏览器输入、不读密码、cookie 或 token。随后以现有 CLI 身份核对当前账号、两个测试库精确 ID/私有/空/admin 条件，实际调用官方 add-repository PUT。首个测试目标返回 403（当前凭据无该 installation 修改权限），停止第二次写入，没有库被添加，没有移除已有授权。公开 URL 及 installation ID 只留在忽略过程文件，不进入长期文档。手机管理页只读层级未暴露已知仓库勾选或保存控件，未发送浏览器输入；不把管理页打开等同权限已修改。真实创建/密码验收仍以该访问权限为前置阻塞，不能伪造授权或扩展到凭据获取。

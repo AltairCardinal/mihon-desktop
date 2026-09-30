@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import uy.kohesive.injekt.api.get
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.Proxy
@@ -23,6 +24,10 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.prefs.Preferences
 
 class DesktopTestProfileTest {
+    @Test
+    fun `acceptance repository reaches isolated real main production runtime`(@TempDir dir: File) {
+        probe(dir, File(dir, "acceptance-profile"), "acceptance")
+    }
     @Test
     fun `real main bootstraps isolated production DI and Test Mode server`(@TempDir dir: File) {
         probe(dir, File(dir, "entry-profile"), "entry")
@@ -64,7 +69,7 @@ class DesktopTestProfileTest {
         val arguments = File(dir, "probe-$mode.args")
         val output = File(dir, "probe-$mode.log")
         fun quote(value: String) = "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
-        val options = if (mode == "entry" || mode == "authors") {
+        val options = if (mode in setOf("entry", "authors", "acceptance")) {
             // If main forgets bootstrap, refuse preference construction rather than touching a user's registry.
             listOf(
                 "-Djava.util.prefs.PreferencesFactory=${IsolatedDesktopPreferencesFactory::class.java.name}",
@@ -100,8 +105,8 @@ object DesktopTestProfileProbe {
     fun main(args: Array<String>) {
         val profile = File(args[0]).canonicalFile
         val mode = args[1]
-        if (mode == "entry" || mode == "authors") {
-            verifyRealEntry(profile, mode == "authors")
+        if (mode in setOf("entry", "authors", "acceptance")) {
+            verifyRealEntry(profile, mode == "authors", mode == "acceptance")
             return
         }
         val originalHome = System.getProperty("user.home")
@@ -185,15 +190,19 @@ object DesktopTestProfileProbe {
         if (mode == "read") check(File(profile, "services.txt").readLines(Charsets.UTF_8) == services)
     }
 
-    private fun verifyRealEntry(profile: File, authors: Boolean = false) {
+    private fun verifyRealEntry(profile: File, authors: Boolean = false, acceptance: Boolean = false) {
         val port = ServerSocket(0).use { it.localPort }
         val failure = AtomicReference<Throwable?>()
         val application = Thread {
             try {
                 runBlocking {
-                    mihon.desktop.main(
-                        arrayOf("--test-mode", "--headless", "--test-profile=$profile", "--test-http-port=$port"),
-                    )
+                    val acceptanceArgs = if (acceptance) {
+                        arrayOf("--test-sync-repository=mihon-sync-acceptance-fixture-none")
+                    } else {
+                        emptyArray()
+                    }
+                    val args = arrayOf("--test-mode", "--headless", "--test-profile=$profile", "--test-http-port=$port") + acceptanceArgs
+                    mihon.desktop.main(args)
                 }
             } catch (error: Throwable) {
                 failure.set(error)
@@ -223,6 +232,24 @@ object DesktopTestProfileProbe {
             check(paths.databaseFile.isFile && paths.databaseFile.toPath().startsWith(profile.toPath()))
             check(paths.instanceStateFile.isFile && paths.instanceStateFile.toPath().startsWith(profile.toPath()))
             check(Preferences.userRoot() is IsolatedDesktopPreferences)
+            if (acceptance) {
+                val runtime = uy.kohesive.injekt.Injekt.get<mihon.data.sync.runtime.SyncRuntime>()
+                check(
+                    runtime.repositoryScope.isolated &&
+                        runtime.repositoryScope.repositoryName == "mihon-sync-acceptance-fixture-none",
+                ) {
+                    "Production main did not consume the isolated acceptance repository"
+                }
+                val services = mutableListOf<String>()
+                val runner = object : CommandRunner {
+                    override fun run(arguments: List<String>, stdin: CharArray?): CommandResult {
+                        services += arguments[arguments.indexOf("-s") + 1]
+                        return CommandResult(44, "", "")
+                    }
+                }
+                OsCredentialBackend("Mac OS X", runner, CredentialNamespace.SYNC_V1).load("fixture")
+                check(services.single().startsWith("${CredentialNamespace.SYNC_V1.service}.test-"))
+            }
             if (authors) {
                 fun action(name: String, body: String, expectedCode: Int = 200): String {
                     val connection = URI("http://127.0.0.1:$port/test/action/$name").toURL()

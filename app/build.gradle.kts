@@ -29,6 +29,13 @@ require(!Config.includeTelemetry && !Config.enableUpdater && Config.enableCodeSh
     "Fork baseline requires R8/resource shrinking and disables telemetry/updater"
 }
 
+val syncAcceptanceRepository = providers.gradleProperty("mihon.syncAcceptanceRepository").orNull
+syncAcceptanceRepository?.let { name ->
+    require(name.matches(Regex("mihon-sync-acceptance-[a-z0-9][a-z0-9-]{0,76}"))) {
+        "Acceptance requires a dedicated mihon-sync-acceptance repository name"
+    }
+}
+
 aboutLibraries {
     collect {
         configPath.set(layout.projectDirectory.dir("license-metadata"))
@@ -82,12 +89,14 @@ android {
         buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = false)}\"")
         buildConfigField("boolean", "TELEMETRY_INCLUDED", "${Config.includeTelemetry}")
         buildConfigField("boolean", "UPDATER_ENABLED", "${Config.enableUpdater}")
+        buildConfigField("String", "SYNC_ACCEPTANCE_REPOSITORY", "\"\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         val debug by getting {
+            buildConfigField("String", "SYNC_ACCEPTANCE_REPOSITORY", "\"${syncAcceptanceRepository.orEmpty()}\"")
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-${getCommitCount()}"
             isPseudoLocalesEnabled = true
@@ -210,6 +219,16 @@ android {
 }
 
 androidComponents.finalizeDsl { configured ->
+    if (syncAcceptanceRepository != null) {
+        val nonDebugTypes = configured.buildTypes.names.filter { it != "debug" }
+        gradle.taskGraph.whenReady {
+            require(
+                allTasks.none { task ->
+                    task.project.path == ":app" && nonDebugTypes.any { task.name.contains(it, ignoreCase = true) }
+                },
+            ) { "mihon.syncAcceptanceRepository is only allowed for Debug tasks" }
+        }
+    }
     val isolation = if (extra.has("mihon.acceptanceIdentity")) extra["mihon.acceptanceIdentity"] as String else null
     val expectedId = when (isolation) {
         null -> releaseApplicationId

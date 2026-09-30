@@ -160,6 +160,10 @@ class DomainModule : InjektModule {
                 productionClient = get<NetworkHelper>().client,
                 persistentObjectCacheDirectory = get<Application>().cacheDir.resolve("mihon-sync-objects").toOkioPath(),
                 failureLogDirectory = get<Application>().filesDir.resolve("sync-failures").toOkioPath(),
+                repositoryScope = eu.kanade.tachiyomi.BuildConfig.SYNC_ACCEPTANCE_REPOSITORY
+                    .takeIf { it.isNotEmpty() }
+                    ?.let(mihon.data.sync.auth.SyncRepositoryScope::acceptance)
+                    ?: mihon.data.sync.auth.SyncRepositoryScope.Default,
             )
         }
         addSingletonFactory { AndroidSyncScheduler(get<Application>(), get()) }

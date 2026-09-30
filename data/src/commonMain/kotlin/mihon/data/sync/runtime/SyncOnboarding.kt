@@ -58,19 +58,47 @@ internal class SyncOnboarding(
     val storage: SyncSetupStorage,
     private val snapshotManifestStore: SyncSnapshotManifestStore,
 ) {
-    suspend fun discover(): SyncSpaceDiscovery = spaces(runtime.accessToken()).discover()
+    private fun requireRepository(name: String) {
+        if (!runtime.repositoryScope.accepts(
+                name,
+            )
+        ) {
+            throw SyncSetupException(SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE)
+        }
+    }
 
-    suspend fun pending(): StoredSyncSetup? = storage.pending(session().account.id)
+    private suspend fun requireLocalScope() {
+        if (!runtime.repositoryScope.isolated) return
+        runtime.connection()?.let { requireRepository(it.repository.name) }
+    }
+
+    suspend fun discover(): SyncSpaceDiscovery {
+        requireLocalScope()
+        return spaces(runtime.accessToken()).discover()
+    }
+
+    suspend fun pending(): StoredSyncSetup? {
+        requireLocalScope()
+        return storage.pending(session().account.id)?.also { requireRepository(it.repository) }
+    }
 
     suspend fun pendingForCurrentAccount(): SyncPendingSetup {
+        requireLocalScope()
         val current = session().account.id
-        storage.legacyPending(current)?.let { return SyncPendingSetup.Legacy(it) }
-        storage.pending(current)?.let { return SyncPendingSetup.Current(it) }
+        storage.legacyPending(current)?.let {
+            requireRepository(it.repository)
+            return SyncPendingSetup.Legacy(it)
+        }
+        storage.pending(current)?.let {
+            requireRepository(it.repository)
+            return SyncPendingSetup.Current(it)
+        }
         return SyncPendingSetup.None
     }
 
     /** Reads the fixed repository and valid v2 descriptors without changing the legacy local record. */
     suspend fun recheckLegacyPending(setup: StoredLegacySyncSetup): LegacySyncSetupRecheck {
+        requireRepository(setup.repository)
         val current = session(setup.accountId)
         require(storage.legacyPending(setup.accountId) == setup) { "legacy sync setup changed" }
         val discovery = spaces(current.token).discover(setup.accountId)
@@ -90,6 +118,7 @@ internal class SyncOnboarding(
     /** Migrates an old join intent only after read-only discovery identifies its exact existing v2 space. */
     suspend fun migrateLegacyJoin(recheck: LegacySyncSetupRecheck): StoredSyncSetup {
         val legacy = recheck.setup
+        requireRepository(legacy.repository)
         if (legacy.newSpace) throw SyncSetupException(SyncDiscoveryProblem.CREATION_UNCONFIRMED)
         require(storage.legacyPending(legacy.accountId) == legacy) { "legacy sync setup changed" }
         val space = recheck.matchingSpace ?: throw SyncSetupException(SyncDiscoveryProblem.RETRYABLE)
@@ -126,9 +155,14 @@ internal class SyncOnboarding(
         return upgraded
     }
 
-    suspend fun abandonLegacyPending(setup: StoredLegacySyncSetup) = storage.abandonLegacy(setup)
+    suspend fun abandonLegacyPending(setup: StoredLegacySyncSetup) {
+        requireRepository(setup.repository)
+        storage.abandonLegacy(setup)
+    }
 
     suspend fun create(candidate: EmptySyncRepositoryCandidate, password: String): StoredSyncSetup {
+        requireLocalScope()
+        requireRepository(candidate.repository.name)
         SyncSpaceCrypto.validatePassword(password)
         val account = candidate.account
         session(account.id)
@@ -137,8 +171,11 @@ internal class SyncOnboarding(
         ) {
             throw SyncSetupException(SyncDiscoveryProblem.CREATION_UNCONFIRMED)
         }
-        storage.pending(account.id)?.let { return it }
-        require(candidate.repository.name == GitHubSyncSpaceClient.REPOSITORY_NAME)
+        storage.pending(account.id)?.let {
+            requireRepository(it.repository)
+            return it
+        }
+        require(candidate.repository.name == runtime.repositoryScope.repositoryName)
         require(candidate.repository.owner.equals(account.login, ignoreCase = true))
         require(candidate.repositoryId > 0 && candidate.defaultBranch.isNotBlank())
         val material = SyncSpaceCrypto.create(UUID.randomUUID().toString(), 1, password)
@@ -159,6 +196,8 @@ internal class SyncOnboarding(
     }
 
     suspend fun join(space: DiscoveredSyncSpace, material: SyncSpaceMaterial): StoredSyncSetup {
+        requireLocalScope()
+        requireRepository(space.repository.name)
         require(material.descriptor == space.descriptor)
         session(space.account.id)
         if (storage.legacyPending(space.account.id) != null) {
@@ -166,6 +205,7 @@ internal class SyncOnboarding(
         }
         val pending = storage.pending(space.account.id)
         if (pending != null) {
+            requireRepository(pending.repository)
             if (pending.material == StoredSyncMaterial.from(material) && pending.repositoryId == space.repositoryId) {
                 return pending
             }
@@ -190,8 +230,11 @@ internal class SyncOnboarding(
     }
 
     suspend fun resume(initial: StoredSyncSetup): SyncSetupOutcome {
+        requireLocalScope()
+        requireRepository(initial.repository)
         var setup = storage.pending(initial.accountId)
             ?.takeIf { it.attemptId == initial.attemptId } ?: throw IllegalStateException("sync setup changed")
+        requireRepository(setup.repository)
         val session = session(setup.accountId)
         val material = setup.material.material()
         val requestGate = runtime.accountHttpRequestGate(session.account.id)
@@ -286,6 +329,7 @@ internal class SyncOnboarding(
     }
 
     suspend fun complete(setup: StoredSyncSetup) {
+        requireRepository(setup.repository)
         storage.clear(setup)
         storage.legacyPending(setup.accountId)?.let { legacy ->
             if (!legacy.newSpace) storage.clearMigratedLegacyJoin(legacy, setup)
@@ -315,6 +359,7 @@ internal class SyncOnboarding(
     }
 
     suspend fun verifyRepository(session: Session, repository: SyncRepository, repositoryId: Long) {
+        requireRepository(repository.name)
         val response = session.http.requestPath("/repos/${repository.fullName}")
         if (response.code !in 200..299) throw SyncHttpException(response.code, "GitHub repository lookup failed", false)
         val json = Json.parseToJsonElement(response.body.decodeToString()).jsonObject
@@ -380,7 +425,7 @@ internal class SyncOnboarding(
     }
 
     private fun spaces(token: String, requestGate: SyncHttpRequestGate? = null) =
-        GitHubSyncSpaceClient(client, { token }, apiBaseUrl, requestGate)
+        GitHubSyncSpaceClient(client, { token }, apiBaseUrl, requestGate, runtime.repositoryScope)
 
     class Session(val account: SyncGitHubAccount, val token: String, val http: GitHubPrivateRepositorySelector) {
         override fun toString(): String = "SyncSession(<redacted>)"

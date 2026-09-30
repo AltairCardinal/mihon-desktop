@@ -98,7 +98,14 @@ internal suspend fun startProductionDesktopApplication(
     openUriEventPort: DesktopOpenUriEventPort = AwtDesktopOpenUriEventPort(),
     ownerIngressDependencies: (DesktopOwnerTransaction) -> DesktopOwnerIngressDependencies = { transaction ->
         val profile = mihon.desktop.test.desktopTestProfile(args)
-        if (profile == null) initDesktopDI() else initDesktopDI(profile.paths, profile.preferences())
+        val syncRepository = TestArguments.parse(args).syncRepository
+        val syncScope = syncRepository?.let(mihon.data.sync.auth.SyncRepositoryScope::acceptance)
+            ?: mihon.data.sync.auth.SyncRepositoryScope.Default
+        if (profile == null) {
+            initDesktopDI(syncScope)
+        } else {
+            initDesktopDI(profile.paths, profile.preferences(), syncScope)
+        }
         val runtime = Injekt.get<DesktopAppRuntime>()
         transaction.registerRuntime(runtime)
         DesktopOwnerIngressDependencies(runtime, DesktopUiDependencies.fromInjekt())

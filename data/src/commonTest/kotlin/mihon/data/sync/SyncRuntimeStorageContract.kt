@@ -2,12 +2,16 @@ package mihon.data.sync
 
 import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.runBlocking
+import mihon.data.sync.auth.SyncRepositoryScope
+import mihon.data.sync.auth.SyncSpaceDiscovery
 import mihon.data.sync.inbox.SyncInboxProjector
 import mihon.data.sync.inbox.SyncInboxStore
 import mihon.data.sync.journal.SyncBaselineStore
 import mihon.data.sync.journal.SyncLocalJournal
 import mihon.data.sync.projection.SyncRemoteProjectionWriter
 import mihon.data.sync.runtime.SyncDatabaseExchange
+import mihon.data.sync.runtime.SyncRuntime
+import mihon.data.sync.runtime.SyncSetupOutcome
 import mihon.data.sync.transport.SyncBatchSyncService
 import mihon.domain.sync.SyncBatch
 import mihon.domain.sync.SyncCategory
@@ -21,6 +25,7 @@ import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.SyncOrigin
 import mihon.domain.sync.crypto.SyncSecret
 import mihon.domain.sync.runtime.SyncRunStatus
+import mihon.domain.sync.runtime.SyncTrigger
 import mihon.domain.sync.transport.SyncPreparedUpload
 import mihon.domain.sync.transport.SyncPublishResult
 import mihon.domain.sync.transport.SyncPublishStatus
@@ -49,6 +54,85 @@ abstract class SyncRuntimeStorageContract {
     protected abstract fun open(): Storage
     protected val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
     protected val secret = SyncSecret.fromBytes(ByteArray(32) { (it + 1).toByte() })
+
+    @Test
+    fun `acceptance onboarding discovers initializes and binds its repository`() = runBlocking {
+        open().use { storage ->
+            val scope = SyncRepositoryScope.acceptance("mihon-sync-acceptance-fixture-none")
+            SyncOnboardingFixture(storage, repositoryScope = scope).use { fixture ->
+                fixture.authorize()
+                val discovery = fixture.runtime.onboarding.discover()
+                assertTrue(discovery is SyncSpaceDiscovery.EmptyRepository, discovery.toString())
+                val candidate = (discovery as SyncSpaceDiscovery.EmptyRepository).candidate
+                val pending = fixture.runtime.onboarding.create(candidate, "")
+                assertEquals(scope.repositoryName, pending.repository)
+                val result = fixture.runtime.onboarding.resume(pending)
+                assertTrue(result is SyncSetupOutcome.Connected)
+                assertEquals(fixture.repository, fixture.runtime.connection()?.repository)
+                assertTrue(fixture.repositoryWrites > 0)
+            }
+        }
+    }
+
+    @Test
+    fun `acceptance rejects old binding and pending without remote access or deleting local data`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { fixture ->
+                fixture.authorize()
+                val candidate = (fixture.runtime.onboarding.discover() as SyncSpaceDiscovery.EmptyRepository).candidate
+                val pending = fixture.runtime.onboarding.create(candidate, "")
+                storage.connect("old", fixture.repository)
+                val isolated = SyncRuntime(
+                    storage.handler, storage.bootstrap, storage.creators, storage.creators, { true }, fixture.secure,
+                    fixture.preferences, fixture.client, fixture.endpoints,
+                    repositoryScope = SyncRepositoryScope.acceptance("mihon-sync-acceptance-fixture-new"),
+                )
+                val before = fixture.git.server.requestCount
+                assertTrue(runCatching { isolated.onboarding.resume(pending) }.isFailure)
+                assertTrue(runCatching { isolated.onboarding.create(candidate, "") }.isFailure)
+                assertTrue(runCatching { isolated.onboarding.pendingForCurrentAccount() }.isFailure)
+                assertEquals(SyncRunStatus.SKIPPED, isolated.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                assertEquals(before, fixture.git.server.requestCount)
+                assertEquals(pending, isolated.onboarding.storage.pending(pending.accountId))
+                assertEquals(fixture.repository, isolated.connection()?.repository)
+                isolated.stopPanel()
+            }
+        }
+    }
+
+    @Test
+    fun `acceptance rejects unbound pending from a different target and retains it`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { fixture ->
+                fixture.authorize()
+                val candidate = (fixture.runtime.onboarding.discover() as SyncSpaceDiscovery.EmptyRepository).candidate
+                val pending = fixture.runtime.onboarding.create(candidate, "")
+                val scope = SyncRepositoryScope.acceptance("mihon-sync-acceptance-fixture-new")
+                val isolated = SyncRuntime(
+                    storage.handler, storage.bootstrap, storage.creators, storage.creators, { true }, fixture.secure,
+                    fixture.preferences, fixture.client, fixture.endpoints, repositoryScope = scope,
+                )
+                val before = fixture.git.server.requestCount
+                assertTrue(runCatching { isolated.onboarding.pendingForCurrentAccount() }.isFailure)
+                assertTrue(
+                    runCatching {
+                        isolated.onboarding.create(
+                            candidate.copy(repository = candidate.repository.copy(name = scope.repositoryName)),
+                            "",
+                        )
+                    }.isFailure,
+                )
+                val count = fixture.git.server.requestCount
+                repeat(count) { index ->
+                    val request = fixture.git.server.takeRequest()
+                    if (index >= before) assertEquals("/user", request.url.encodedPath)
+                }
+                assertEquals(pending, isolated.onboarding.storage.pending(pending.accountId))
+                assertEquals(null, isolated.connection())
+                isolated.stopPanel()
+            }
+        }
+    }
 
     @Test
     fun `one exchange drains frozen baseline and multiple batches into another real database`() = runBlocking {
