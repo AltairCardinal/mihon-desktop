@@ -1,0 +1,4 @@
+# Preserve downloaded upstream bytes so manifest SHA256 survives checkout.
+*.kt -text -eol whitespace=cr-at-eol
+*.toml -text -eol whitespace=cr-at-eol
+*.pom -text -eol whitespace=cr-at-eol

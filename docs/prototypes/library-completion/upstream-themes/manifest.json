@@ -1,0 +1,134 @@
+{
+  "repository": "mihonapp/mihon",
+  "branch": "main",
+  "commit": "866d045c7aba343fd739c57d15c81ff6df59e796",
+  "date": "2026-09-28T21:33:54Z",
+  "url": "https://github.com/mihonapp/mihon/commit/866d045c7aba343fd739c57d15c81ff6df59e796",
+  "files": [
+    {
+      "local": "AppTheme.kt",
+      "path": "app/src/main/java/eu/kanade/domain/ui/model/AppTheme.kt",
+      "sha256": "9193db99eb7699899079bd78bdce7d696c9f66b5e508d746844ca25eb7b16b3d"
+    },
+    {
+      "local": "BaseColorScheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/BaseColorScheme.kt",
+      "sha256": "7d4b8ee1fa968526c781d32b441b1f77de3ffd1d60e501c3a234b01ca6ef48ed"
+    },
+    {
+      "local": "CatppuccinColorScheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/CatppuccinColorScheme.kt",
+      "sha256": "050c1b872676a7a0d59bf6541fbac22fd695fa4dc233e47dc8899a731de8c495"
+    },
+    {
+      "local": "GreenAppleColorScheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/GreenAppleColorScheme.kt",
+      "sha256": "64fa4d8e8c9415df7ab299c5a5bcadac96b3f0c319e03089d0452aa855159b4d"
+    },
+    {
+      "local": "LavenderColorScheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/LavenderColorScheme.kt",
+      "sha256": "3ee8c488c7c86b2a9ffcb6b41c9cc37eb353ddf3260f632a5720fc1ec15b989a"
+    },
+    {
+      "local": "MidnightDuskColorScheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/MidnightDuskColorScheme.kt",
+      "sha256": "82fbee2f630dacb4e506b4c9e986ba41781c16d2c9ca59707a4a41864e817c78"
+    },
+    {
+      "local": "MonetColorScheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/MonetColorScheme.kt",
+      "sha256": "1099cee79c3863f124632b07b42ae5f454ac8b03e804973005548e2869d22714"
+    },
+    {
+      "local": "MonochromeColorScheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/MonochromeColorScheme.kt",
+      "sha256": "349d7a8b6c1c7ae39a8a0726aafc0300e0582c95d765193d02fe730a3466d0fb"
+    },
+    {
+      "local": "NordColorScheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/NordColorScheme.kt",
+      "sha256": "a1e0893e2c38137c39a93bb8a238936bcba08a0cda7ac0622f63d9caf5b490ea"
+    },
+    {
+      "local": "StrawberryColorScheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/StrawberryColorScheme.kt",
+      "sha256": "91d00de324a4eadc306e67a94cc5fc000bc7be39184f7b1991428419b38bb8db"
+    },
+    {
+      "local": "TachiyomiColorScheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/TachiyomiColorScheme.kt",
+      "sha256": "327a24c43fc9d34421d64f155100725181f710313abb324d8c9e3a2391ca6863"
+    },
+    {
+      "local": "TakoColorScheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/TakoColorScheme.kt",
+      "sha256": "4cc9a9d2d3906e2a4c09c0f0476a4b12fb4f73e1817e416e36e49f34d902e6da"
+    },
+    {
+      "local": "TealTurqoiseColorScheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/TealTurqoiseColorScheme.kt",
+      "sha256": "e47f1696ea2c23c398fde28fb0fbc51bf9c154b442faeb2ed239c3baf641ab98"
+    },
+    {
+      "local": "TidalWaveColorScheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/TidalWaveColorScheme.kt",
+      "sha256": "8ece6128bd4fdae610ea4eaaeabb37f8936d0dd256950a2ecec9c4af278206f5"
+    },
+    {
+      "local": "TokyoNightColorScheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/TokyoNightColorScheme.kt",
+      "sha256": "9f20f48e87898aea74922d955b9ef39e13eaef05e5a1dda2674a34a296855ba0"
+    },
+    {
+      "local": "YinYangColorScheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/YinYangColorScheme.kt",
+      "sha256": "e8eb117242279c9d74a3c380bc105fd0fca659fba3e3be42174013e19a136ae6"
+    },
+    {
+      "local": "YotsubaColorScheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/YotsubaColorScheme.kt",
+      "sha256": "081e6e62bbdd43d69376ceead666a4342fbeba49ae5fcd6f009eb548d49d775c"
+    },
+    {
+      "local": "TachiyomiTheme.kt",
+      "path": "app/src/main/java/eu/kanade/presentation/theme/TachiyomiTheme.kt",
+      "sha256": "d41675563228490b530ff417a465441a0bef9e16529040b96bccef1dc1cb29e0"
+    },
+    {
+      "local": "material3/bom.pom",
+      "path": "bom.pom",
+      "sha256": "c9c223cd2f5588ac19ccef93a18fc26a43e453f0dacf8a9659b47f2c80095b50"
+    },
+    {
+      "local": "libs.versions.toml",
+      "path": "gradle/libs.versions.toml",
+      "sha256": "23ca0ece6130be92053964bb5ba5e9f3a25a5b45f977793fb410a386663914e8"
+    },
+    {
+      "local": "material3/ColorScheme.kt",
+      "path": "material3-source/commonMain/androidx/compose/material3/ColorScheme.kt",
+      "sha256": "2cae5584a44f5b6ffd15203f75b67138d386642589359a047bccdc31b046fd91"
+    },
+    {
+      "local": "material3/ColorDarkTokens.kt",
+      "path": "material3-source/commonMain/androidx/compose/material3/tokens/ColorDarkTokens.kt",
+      "sha256": "2da1ca902e19448f2c6a9807b859984bd70c5ed563e4f4ccaf3606ce0c6e1668"
+    },
+    {
+      "local": "material3/ColorLightTokens.kt",
+      "path": "material3-source/commonMain/androidx/compose/material3/tokens/ColorLightTokens.kt",
+      "sha256": "28903596b271fa6822ffc6d14edd24554befd7cd1227261e72d0643fad808007"
+    },
+    {
+      "local": "material3/PaletteTokens.kt",
+      "path": "material3-source/commonMain/androidx/compose/material3/tokens/PaletteTokens.kt",
+      "sha256": "e0ddff484f0fd99e7d522afcfc7cd0eb0b38e35afac49711bda5f66ae1ef8bc2"
+    }
+  ],
+  "material3": {
+    "version": "1.5.0-alpha29",
+    "bom": "2026.09.01",
+    "sources": "https://dl.google.com/dl/android/maven2/androidx/compose/material3/material3/1.5.0-alpha29/material3-1.5.0-alpha29-sources.jar"
+  }
+}

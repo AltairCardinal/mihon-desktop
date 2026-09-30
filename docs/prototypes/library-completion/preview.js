@@ -69,22 +69,39 @@
         control.value = JSON.stringify(value);
     });
   });
+  let themeSelection = MihonThemes.apply(document);
+  let big = false;
+  const themeSelect = document.querySelector("#theme-select");
+  MihonThemes.catalog.forEach(({ id, name }) => themeSelect.add(new Option(name, id)));
+  function updateTheme() {
+    themeSelection = MihonThemes.apply(document, themeSelection);
+    document.querySelector("#theme-note").hidden = themeSelection.theme !== "MONET";
+    document.querySelector("#theme-toggle").textContent = themeSelection.mode === "light" ? "切换深色" : "切换浅色";
+    send({ themeSelection }, true);
+  }
+  themeSelect.onchange = () => {
+    themeSelection.theme = themeSelect.value;
+    updateTheme();
+  };
+  document.querySelector("#amoled-toggle").onchange = (e) => {
+    themeSelection.amoled = e.target.checked;
+    updateTheme();
+  };
+  document.querySelector("#theme-toggle").onclick = () => {
+    themeSelection.mode = themeSelection.mode === "light" ? "dark" : "light";
+    updateTheme();
+  };
   document.querySelectorAll("iframe").forEach((frame) => {
-    frame.addEventListener("load", () => send({ requestDeviceState: true }));
+    frame.addEventListener("load", () => {
+      frame.contentWindow.postMessage({ libraryDemo: true, themeSelection, font: big ? 2 : 1 }, "*");
+      send({ requestDeviceState: true });
+    });
   });
   document.querySelector("#apply-scenario").onclick = () => {
     send({ scenario: select.value });
-    document.querySelector("#tool-status").textContent =
-      "已载入：" + scenes[select.value];
+    document.querySelector("#tool-status").textContent = "已载入：" + scenes[select.value];
   };
-  let light = false,
-    big = false;
-  document.querySelector("#theme-toggle").onclick = (e) => {
-    light = !light;
-    document.body.classList.toggle("theme-light", light);
-    send({ theme: light ? "light" : "dark" }, true);
-    e.target.textContent = light ? "切换深色" : "切换浅色";
-  };
+  updateTheme();
   document.querySelector("#font-toggle").onclick = (e) => {
     big = !big;
     send({ font: big ? 2 : 1 }, true);

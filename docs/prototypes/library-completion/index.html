@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Mihon · 书架功能审阅</title>
-    <link rel="stylesheet" href="styles.css?v=shelf-rail-refine-20260930a" />
+    <link rel="stylesheet" href="styles.css?v=upstream-themes-20260930a" />
   </head>
   <body class="preview theme-dark">
     <header class="review">
@@ -28,6 +28,8 @@
           ><button id="apply-scenario" data-testid="apply-scenario">
             载入场景
           </button>
+          <label>主题 <select id="theme-select" data-testid="theme-select"></select></label>
+          <label><input type="checkbox" id="amoled-toggle" data-testid="amoled-toggle" />纯黑深色模式</label>
           <button id="theme-toggle" data-testid="theme-toggle">切换浅色</button
           ><button id="font-toggle" data-testid="font-toggle">字号 200%</button>
           <button data-command="advance-hour">时间 +1 小时</button
@@ -69,6 +71,7 @@
             </select></label
           >
         </div>
+        <p id="theme-note" data-testid="theme-note" hidden>动态取色：当前使用上游默认回退。HTML 无法读取 Android 系统壁纸配色。</p>
         <p id="tool-status" role="status">
           场景只作用于所选设备；真实滚轮请在书架内容区操作。
         </p>
@@ -80,7 +83,7 @@
         <iframe
           id="preview-windows"
           title="Windows 书架"
-          src="device.html?platform=windows&v=shelf-rail-refine-20260930a"
+          src="device.html?platform=windows&v=upstream-themes-20260930a"
         ></iframe>
       </article>
       <article class="phone">
@@ -88,10 +91,11 @@
         <iframe
           id="preview-android"
           title="Android 书架"
-          src="device.html?platform=android&v=shelf-rail-refine-20260930a"
+          src="device.html?platform=android&v=upstream-themes-20260930a"
         ></iframe>
       </article>
     </section>
-    <script src="preview.js"></script>
+    <script src="themes.js?v=upstream-themes-20260930a"></script>
+    <script src="preview.js?v=upstream-themes-20260930a"></script>
   </body>
 </html>

@@ -4,6 +4,8 @@
     P = DetailParityModel,
     V = DetailParityView,
     app = document.querySelector("#app");
+  const themeQuery = new URLSearchParams(location.search);
+  let themeSelection = MihonThemes.apply(document, { theme: themeQuery.get("theme")?.toUpperCase(), mode: themeQuery.get("mode"), amoled: themeQuery.get("amoled") === "true" });
   let s = M.create();
   s.platform =
     new URLSearchParams(location.search).get("platform") === "android"
@@ -250,7 +252,7 @@
     let content = cards
       .map(
         (b) =>
-          `<article class="book ${s.selected.includes(b.id) ? "selected" : ""}" data-book="${b.id}"><button class="manga-hit" data-action="manga" data-id="${b.id}" data-testid="manga-${b.id}" aria-label="${esc(b.title)}" aria-pressed="${s.selected.includes(b.id)}">${cover(b)}<span class="book-title">${esc(b.title)}</span></button><div class="badges">${s.prefs.unreadBadge && b.unread ? `<span class="badge" data-testid="unread-${b.id}">${b.unread}</span>` : ""}${s.prefs.downloadBadge ? `<span class="badge">↓${b.chapters.filter((c) => c.download).length}</span>` : ""}${s.prefs.localBadge && b.local ? '<span class="badge">本地</span>' : ""}${s.prefs.languageBadge ? '<span class="badge">中</span>' : ""}</div>${s.prefs.continueRead && b.unread ? `<button class="continue" data-action="continue" data-id="${b.id}" data-testid="continue-${b.id}" aria-label="继续阅读 ${esc(b.title)}">${icon("play")}</button>` : ""}<div class="score">${b.tracks.length ? M.score(b).toFixed(1) + " / 10" : "未评分"}</div></article>`,
+          `<article class="book ${s.selected.includes(b.id) ? "selected" : ""}" data-book="${b.id}"><button class="manga-hit" data-action="manga" data-id="${b.id}" data-testid="manga-${b.id}" aria-label="${esc(b.title)}" aria-pressed="${s.selected.includes(b.id)}">${cover(b)}<span class="book-title">${esc(b.title)}</span></button><div class="badges">${s.prefs.unreadBadge && b.unread ? `<span class="badge" data-testid="unread-${b.id}">${b.unread}</span>` : ""}${s.prefs.downloadBadge ? `<span class="badge downloaded">↓${b.chapters.filter((c) => c.download).length}</span>` : ""}${s.prefs.localBadge && b.local ? '<span class="badge">本地</span>' : ""}${s.prefs.languageBadge ? '<span class="badge">中</span>' : ""}</div>${s.prefs.continueRead && b.unread ? `<button class="continue" data-action="continue" data-id="${b.id}" data-testid="continue-${b.id}" aria-label="继续阅读 ${esc(b.title)}">${icon("play")}</button>` : ""}<div class="score">${b.tracks.length ? M.score(b).toFixed(1) + " / 10" : "未评分"}</div></article>`,
       )
       .join("");
     if (s.loading) content = '<div class="empty">正在载入书架…</div>';
@@ -2908,9 +2910,8 @@
   window.addEventListener("message", (e) => {
     const d = e.data;
     if (!d?.libraryDemo || e.source !== parent) return;
-    if (d.theme) {
-      document.body.classList.toggle("theme-light", d.theme === "light");
-      document.body.classList.toggle("theme-dark", d.theme !== "light");
+    if (d.themeSelection || d.theme) {
+      themeSelection = MihonThemes.apply(document, d.themeSelection || { ...themeSelection, mode: d.theme });
     }
     if (d.font) document.documentElement.style.fontSize = 14 * d.font + "px";
     if (d.scenario) scenario(d.scenario);
