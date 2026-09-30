@@ -125,7 +125,13 @@ internal class SyncOnboardingFixture(
                         """.trimIndent(),
                     )
                     path == "/token" -> response(
-                        """{"access_token":"synthetic-token","token_type":"bearer","scope":""}""",
+                        if (request.body?.utf8()?.contains("grant_type=refresh_token") == true) {
+                            """{"access_token":"synthetic-refreshed-token","token_type":"bearer","scope":"",
+                                "refresh_token":"synthetic-refreshed-refresh","expires_in":3600,
+                                "refresh_token_expires_in":86400}"""
+                        } else {
+                            """{"access_token":"synthetic-token","token_type":"bearer","scope":""}"""
+                        },
                     )
                     else -> delegate.dispatch(request)
                 }
@@ -208,12 +214,13 @@ internal class MemorySyncSecureStore : SyncSecureStore {
     val values = ConcurrentHashMap<String, String>()
     var fail = false
     var rejectConnectedSetup = false
+    var rejectInitialSetup = false
     override suspend fun read(key: String): String? {
         if (fail) throw mihon.domain.sync.security.SyncSecureStoreException()
         return values[key]
     }
     override suspend fun compareAndSet(key: String, expected: String?, value: String?): Boolean = synchronized(values) {
-        if (fail || (
+        if (fail || (rejectInitialSetup && key.startsWith("sync-setup-v3-") && value != null) || (
                 rejectConnectedSetup && key.startsWith("sync-setup-v3-") && value != null &&
                     Json.parseToJsonElement(value).jsonObject["stage"]?.jsonPrimitive?.content == "CONNECTED"
                 )

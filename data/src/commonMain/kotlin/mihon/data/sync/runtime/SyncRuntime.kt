@@ -22,10 +22,12 @@ import mihon.data.sync.journal.SyncLocalJournal
 import mihon.data.sync.projection.SyncRemoteProjectionWriter
 import mihon.data.sync.transport.SyncSnapshotManifestStore
 import mihon.data.sync.transport.SyncSnapshotWriteOwner
+import mihon.domain.sync.auth.GitHubAccessToken
 import mihon.domain.sync.auth.GitHubAuthEndpoints
 import mihon.domain.sync.auth.GitHubAuthException
 import mihon.domain.sync.auth.GitHubAuthFailure
 import mihon.domain.sync.auth.GitHubAuthFailureReason
+import mihon.domain.sync.auth.GitHubCredentialStore
 import mihon.domain.sync.runtime.SyncCoordinator
 import mihon.domain.sync.runtime.SyncPreferences
 import mihon.domain.sync.runtime.SyncRunPort
@@ -106,7 +108,14 @@ class SyncRuntime(
                 clock,
             ),
         )
-    private val refresher = GitHubTokenRefresher(authorization, credentials, clock)
+    private val refresher = GitHubTokenRefresher(
+        authorization,
+        object : GitHubCredentialStore by credentials {
+            override suspend fun replace(expectedRevision: Long?, value: GitHubAccessToken) =
+                credentials.replaceRefreshed(expectedRevision, value)
+        },
+        clock,
+    )
     private val connectionMutex = Mutex()
     private data class FailureReportVersion(val state: SyncRunState, val attemptId: Long, val updatedAt: Long)
 

@@ -5,9 +5,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
@@ -15,6 +17,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.Density
@@ -31,6 +34,7 @@ import mihon.data.sync.inbox.SyncPendingItem
 import mihon.data.sync.runtime.SyncBulkConfirmation
 import mihon.data.sync.runtime.SyncBulkStatus
 import mihon.data.sync.runtime.SyncConnection
+import mihon.data.sync.runtime.SyncCreateProtection
 import mihon.data.sync.runtime.SyncFailureLogStatus
 import mihon.data.sync.runtime.SyncPanel
 import mihon.data.sync.runtime.SyncPanelAction
@@ -38,6 +42,7 @@ import mihon.data.sync.runtime.SyncPanelNotice
 import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelQuestion
 import mihon.data.sync.runtime.SyncPanelState
+import mihon.data.sync.runtime.SyncPasswordHelpSource
 import mihon.data.sync.runtime.SyncPasswordProblem
 import mihon.data.sync.runtime.SyncProgressDirection
 import mihon.data.sync.runtime.SyncProgressFact
@@ -822,7 +827,7 @@ class SyncPanelContentTest {
             problem = SyncRunProblem.REMOTE_CHANGED,
         ),
     ) {
-        awaitTag("sync-password-input")
+        awaitTag("sync-create-space")
         assertFalse(hasTag("sync-setup-target"))
         assertFalse(texts().contains(MR.strings.sync_problem_remote.localized(Locale.getDefault())))
     }
@@ -864,17 +869,194 @@ class SyncPanelContentTest {
     }
 
     @Test
-    fun `new password input changes action and visibility preserves selection`() = rendered(
+    fun `new space defaults to no password with no secret input`() = rendered(
         SyncPanelState(visible = true, page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.NEW_PASSWORD),
     ) {
-        awaitTag("sync-password-input")
-        captureVisuals("password")
-        assertTrue(texts().contains(MR.strings.sync_password_skip.localized(Locale.getDefault())))
-        assertFalse(node("sync-password-submit").config.contains(SemanticsProperties.Disabled))
-        click("sync-password-submit")
-        assertEquals(SyncPanelAction.SubmitPassword(""), actions.last())
+        render()
+        assertFalse(hasTag("sync-password-input"))
+        assertTrue(hasTag("sync-password-enabled"))
+        assertTrue(hasTag("sync-create-space"))
+    }
+
+    @Test
+    fun `password edits revoke acknowledgement and help leaves no secret draft`() = rendered(
+        SyncPanelState(
+            visible = true,
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.NEW_PASSWORD,
+            createContextId = 7,
+        ),
+    ) {
+        render()
+        click("sync-password-enabled")
+        render()
+        enterPassword("first-value")
+        scroll("sync-setup-list", 5)
+        click("sync-password-ack")
+        render()
+        assertEquals(ToggleableState.On, node("sync-password-ack").config[SemanticsProperties.ToggleableState])
+        scroll("sync-setup-list", 3)
+        enterPassword("changed-value")
+        scroll("sync-setup-list", 5)
+        assertEquals(ToggleableState.Off, node("sync-password-ack").config[SemanticsProperties.ToggleableState])
+        assertTrue(node("sync-create-space").config.contains(SemanticsProperties.Disabled))
+        panel.state.value = panel.state.value.copy(page = SyncPanelPage.MAIN)
+        render()
+        panel.state.value = panel.state.value.copy(page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.UNLOCK)
+        render()
+        enterPassword("discard-on-help")
+        click("sync-password-help")
+        assertEquals(SyncPanelAction.ShowPasswordHelp, actions.last())
+        panel.state.value = panel.state.value.copy(page = SyncPanelPage.PASSWORD_HELP)
+        render()
+        assertTrue(node("sync-back").config[SemanticsProperties.Focused])
+        panel.state.value = panel.state.value.copy(page = SyncPanelPage.SETUP, passwordHelpReturn = 1)
+        render()
+        assertEquals("", node("sync-password-input").config[SemanticsProperties.EditableText].text)
+        assertTrue(node("sync-password-help").config[SemanticsProperties.Focused])
+    }
+
+    @Test
+    fun `password acknowledgement draft selection and focus survive theme and ordinary refresh`() = rendered(
+        SyncPanelState(
+            visible = true,
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.NEW_PASSWORD,
+            createContextId = 12,
+        ),
+    ) {
+        render()
+        click("sync-password-enabled")
+        enterPassword("session-draft")
+        requireNotNull(node("sync-password-input").config[SemanticsActions.RequestFocus].action).invoke()
+        requireNotNull(node("sync-password-input").config[SemanticsActions.SetSelection].action).invoke(1, 4, true)
+        render()
+        scroll("sync-setup-list", 5)
+        click("sync-password-ack")
+        render()
+        dark.value = false
+        saveVisual("native-desktop-light-password-risk")
+        panel.state.value = panel.state.value.copy(nowMillis = 999)
+        render()
+        assertEquals(ToggleableState.On, node("sync-password-ack").config[SemanticsProperties.ToggleableState])
+        scroll("sync-setup-list", 3)
+        click("sync-password-visibility")
+        render()
+        assertEquals("session-draft", node("sync-password-input").config[SemanticsProperties.EditableText].text)
+        assertEquals(TextRange(1, 4), node("sync-password-input").config[SemanticsProperties.TextSelectionRange])
+        panel.state.value = panel.state.value.copy(createContextId = 13)
+        render()
+        assertFalse(hasTag("sync-password-input"))
+    }
+
+    @Test
+    fun `two native sessions keep independent password drafts acknowledgements and navigation`() = runBlocking {
+        val state = SyncPanelState(
+            visible = true,
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.NEW_PASSWORD,
+            createContextId = 1,
+        )
+        val first = Fixture(state, ImageComposeScene(560, 720, coroutineContext = coroutineContext) {})
+        val second = Fixture(state, ImageComposeScene(560, 720, coroutineContext = coroutineContext) {})
+        try {
+            for (f in listOf(first, second)) {
+                f.setContent()
+                f.render()
+                f.click("sync-password-enabled")
+                f.enterPassword("independent-draft")
+            }
+            second.scroll("sync-setup-list", 5)
+            second.click("sync-password-ack")
+            second.render()
+            first.panel.state.value = first.panel.state.value.copy(page = SyncPanelPage.MAIN)
+            first.render()
+            second.render()
+            assertEquals(
+                ToggleableState.On,
+                second.node("sync-password-ack").config[SemanticsProperties.ToggleableState],
+            )
+            second.scroll("sync-setup-list", 3)
+            second.click("sync-password-visibility")
+            second.render()
+            assertEquals(
+                "independent-draft",
+                second.node("sync-password-input").config[SemanticsProperties.EditableText].text,
+            )
+            assertEquals(SyncPanelPage.SETUP, second.panel.state.value.page)
+            assertTrue(second.actions.isEmpty())
+        } finally {
+            first.scene.close()
+            second.scene.close()
+        }
+    }
+
+    @Test
+    fun `native 320dp double font scale reaches password and help actions in both themes`() = runBlocking {
+        for (dark in listOf(false, true)) {
+            val f = Fixture(
+                SyncPanelState(
+                    visible = true,
+                    page = SyncPanelPage.SETUP,
+                    setupStep = SyncSetupStep.NEW_PASSWORD,
+                    createContextId = 1,
+                ),
+                ImageComposeScene(320, 900, coroutineContext = coroutineContext) {},
+                fontScale = 2f,
+            )
+            try {
+                f.dark.value = dark
+                f.setContent()
+                f.render()
+                f.scroll("sync-setup-list", 2)
+                f.click("sync-password-enabled")
+                f.scroll("sync-setup-list", 3)
+                f.enterPassword("font-scale-password")
+                f.scroll("sync-setup-list", 4)
+                assertTrue(f.node("sync-password-risk").boundsInRoot.right <= 320f)
+                f.saveVisual("native-320-font200-${if (dark) "dark" else "light"}-risk")
+                f.scroll("sync-setup-list", 5)
+                f.click("sync-password-ack")
+                f.render()
+                f.scroll("sync-setup-list", 6)
+                assertFalse(f.node("sync-create-space").config.contains(SemanticsProperties.Disabled))
+                assertTrue(f.node("sync-create-space").boundsInRoot.bottom <= 900f)
+                f.click("sync-create-space")
+                assertTrue(f.actions.last() is SyncPanelAction.SubmitCreateSpace)
+                f.panel.state.value = f.panel.state.value.copy(
+                    page = SyncPanelPage.PASSWORD_HELP,
+                    passwordHelpSource = SyncPasswordHelpSource.UNLOCK,
+                )
+                f.render()
+                f.scroll("sync-password-help-list", 0)
+                f.saveVisual("native-320-font200-${if (dark) "dark" else "light"}-help")
+                f.scroll("sync-password-help-list", 5)
+                f.click("sync-password-help-back")
+                assertEquals(SyncPanelAction.Back, f.actions.last())
+                f.click("sync-close")
+                assertEquals(SyncPanelAction.Close, f.actions.last())
+            } finally {
+                f.scene.close()
+            }
+        }
+    }
+
+    @Test
+    fun `new password input changes action and visibility preserves selection`() = rendered(
+        SyncPanelState(
+            visible = true,
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.NEW_PASSWORD,
+            createContextId = 8,
+        ),
+    ) {
+        render()
+        assertFalse(hasTag("sync-password-input"))
+        click("sync-create-space")
+        assertEquals(SyncPanelAction.SubmitCreateSpace(8, SyncCreateProtection.NONE, "", false), actions.last())
+        click("sync-password-enabled")
+        render()
         enterPassword(" 密碼 🔒 ")
-        assertTrue(texts().contains(MR.strings.sync_password_confirm.localized(Locale.getDefault())))
         val input = node("sync-password-input")
         assertTrue(requireNotNull(input.config[SemanticsActions.RequestFocus].action).invoke())
         render()
@@ -883,19 +1065,28 @@ class SyncPanelContentTest {
             requireNotNull(node("sync-password-input").config[SemanticsActions.SetSelection].action).invoke(1, 3, true),
         )
         render()
-        assertEquals(TextRange(1, 3), node("sync-password-input").config[SemanticsProperties.TextSelectionRange])
         click("sync-password-visibility")
         render()
         assertEquals(TextRange(1, 3), node("sync-password-input").config[SemanticsProperties.TextSelectionRange])
         assertTrue(node("sync-password-input").config[SemanticsProperties.Focused])
-        click("sync-password-submit")
-        assertEquals(SyncPanelAction.SubmitPassword(" 密碼 🔒 "), actions.last())
+        scroll("sync-setup-list", 5)
+        click("sync-password-ack")
         render()
-        enterPassword("temporary")
-        enterPassword("")
-        assertTrue(texts().contains(MR.strings.sync_password_skip.localized(Locale.getDefault())))
-        click("sync-password-submit")
-        assertEquals(SyncPanelAction.SubmitPassword(""), actions.last())
+        click("sync-create-space")
+        assertEquals(
+            SyncPanelAction.SubmitCreateSpace(8, SyncCreateProtection.PASSWORD, " 密碼 🔒 ", true),
+            actions.last(),
+        )
+        render()
+        scroll("sync-setup-list", 3)
+        assertEquals("", node("sync-password-input").config[SemanticsProperties.EditableText].text)
+        scroll("sync-setup-list", 2)
+        click("sync-password-enabled")
+        render()
+        click("sync-password-enabled")
+        render()
+        scroll("sync-setup-list", 3)
+        assertEquals("", node("sync-password-input").config[SemanticsProperties.EditableText].text)
         assertFalse(hasTag("sync-save-recovery"))
         assertFalse(hasTag("sync-confirm-merge"))
     }
@@ -1744,6 +1935,7 @@ class SyncPanelContentTest {
     }
 
     private class Fixture(initial: SyncPanelState, val scene: ImageComposeScene, private val fontScale: Float = 1f) {
+        val dark = mutableStateOf(true)
         val actions = mutableListOf<SyncPanelAction>()
         val opened = mutableListOf<String>()
         val openedFailureLogs = mutableListOf<String>()
@@ -1753,7 +1945,7 @@ class SyncPanelContentTest {
             scene.setContent {
                 val density = LocalDensity.current
                 CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
-                    MaterialTheme(colorScheme = darkColorScheme()) {
+                    MaterialTheme(colorScheme = if (dark.value) darkColorScheme() else lightColorScheme()) {
                         val state by panel.state.collectAsState()
                         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
                             Column {
@@ -1767,6 +1959,16 @@ class SyncPanelContentTest {
                             }
                         }
                     }
+                }
+            }
+        }
+        suspend fun saveVisual(name: String) {
+            val directory = System.getProperty("mihon.sync.visualDir")?.let(::File) ?: return
+            directory.mkdirs()
+            render()
+            scene.render().use { image ->
+                requireNotNull(image.encodeToData(EncodedImageFormat.PNG)).use { data ->
+                    File(directory, "$name.png").writeBytes(data.bytes)
                 }
             }
         }
@@ -1817,6 +2019,7 @@ class SyncPanelContentTest {
             assertTrue(requireNotNull(node(value).config[SemanticsActions.OnClick].action).invoke())
         }
         suspend fun enterPassword(value: String) {
+            awaitTag("sync-password-input")
             requireNotNull(node("sync-password-input").config[SemanticsActions.SetText].action)
                 .invoke(AnnotatedString(value))
             render()

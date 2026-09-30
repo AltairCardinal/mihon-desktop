@@ -9,7 +9,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -32,11 +38,22 @@ fun DesktopLibrarySyncAction() {
     val dependencies = LocalDesktopUiDependencies.current
     val panel = dependencies.syncPanel ?: return
     val state by panel.state.collectAsState()
+    val toolbarFocus = remember { FocusRequester() }
+    var openedFromToolbar by remember { mutableStateOf(false) }
+    LaunchedEffect(state.visible) {
+        if (!state.visible && openedFromToolbar) {
+            toolbarFocus.requestFocus()
+            openedFromToolbar = false
+        }
+    }
     val uriHandler = LocalUriHandler.current
     DisposableEffect(panel) {
         onDispose { panel.dispatch(SyncPanelAction.Close) }
     }
-    SyncToolbarButton(state) { panel.dispatch(SyncPanelAction.Open) }
+    SyncToolbarButton(state, Modifier.focusRequester(toolbarFocus)) {
+        openedFromToolbar = true
+        panel.dispatch(SyncPanelAction.Open)
+    }
     if (state.visible) {
         ModalBottomSheet(
             onDismissRequest = { panel.dispatch(SyncPanelAction.Close) },

@@ -1,6 +1,6 @@
 # 同步空间：默认无密码与遗忘密码风险提示
 
-日期：2026-09-28。状态：用户已通过产品方案与 HTML 交互 DEMO；本文已补充开发契约，后续执行见[实施 roadmap](roadmap/2026-09-28-sync-password-safety-roadmap.md)。**生产功能尚未按本文修改或发布。**
+日期：2026-09-28；生产执行启动：2026-09-30。状态：用户已通过产品方案与 HTML 交互 DEMO，并要求实施；生产实现已落地，当前验证与提交状态见[实施 roadmap](roadmap/2026-09-28-sync-password-safety-roadmap.md)。本设计不代替正式构建及平台验收。
 
 审阅入口：[Windows / Android 并列 DEMO](prototypes/multi-device-sync/password-review.html)。该文件转到 `index.html?review=password`；普通入口和模拟授权流程继续保留；新入口仅跳转到本地样本的创建步骤，不代表真实授权。
 
@@ -10,15 +10,15 @@
 
 GitHub 私有仓库的账号与访问控制，不等于 Mihon 对同步内容的客户端加密。无同步密码时，只要用户仍有权访问原空间，就无需额外秘密来读取同步内容；拥有仓库读取权限的人也能读取内容。密码保护面向所有希望把“读取仓库”和“读取同步内容”分开的人，不仅适用于共享账号。它不隔离同一账号使用者的仓库修改、删除权限，也不替代 GitHub 账号安全。
 
-已交付本设计、更新后的既有双端原型及原型测试，审阅提交为 `cdc1b9f1b3`。本次批准后的补充仅包含开发方案与 roadmap。后续生产实现范围为共享首次配置 UI、帮助页、密码选择的提交防护、两端接入与对应验证；不重做日常同步、GitHub 授权、专用仓库初始化或数据合并。
+已交付本设计、更新后的既有双端原型及原型测试，审阅提交为 `cdc1b9f1b3`。批准后的首次补充仅包含开发方案与 roadmap；2026-09-30 启动的生产实现范围为共享首次配置 UI、帮助页、密码选择的提交防护、两端接入与对应验证；不重做日常同步、GitHub 授权、专用仓库初始化或数据合并。
 
 不纳入：恢复码/恢复文件、密钥托管服务、可信联系人、修改或关闭既有空间密码、数据重加密迁移、删除/改名/重建远端空间。也不把“默认无密码”解释成自动解密已有空间。
 
 ## 2. 已有事实与复用边界
 
-源码核对基线：`b580c7c96e`。独立审阅工作区基于后续纯文档提交 `ab29714b7a`，相关 production 与原型基线相同；补充开发契约时在 `cdc1b9f1b3` 再次读取相关 production，未发现本方案已被实现。以下 SOURCE 为静态实现事实，不代表本轮运行过原生应用。
+源码核对基线：`b580c7c96e`。独立审阅工作区基于后续纯文档提交 `ab29714b7a`，相关 production 与原型基线相同；补充开发契约时在 `cdc1b9f1b3` 再次读取相关 production，未发现本方案已被实现。下表 SOURCE 保存审阅基线的静态事实，不代表修改后的现状或运行证据；实际生产接口见第 10 节，运行证据见 roadmap 第 4 节。
 
-| 来源 | 当前事实或本次决定 | 入口 |
+| 来源 | 审阅基线事实或产品决定 | 入口 |
 | --- | --- | --- |
 | SOURCE | 新空间密码框默认空白，空输入与非空输入分别选择无密码/密码空间；现有标题为“设置同步密码”，没有遗忘后果警告。 | `presentation-sync/.../SyncPanelContent.kt` 的 `SetupPage`；`i18n/.../zh-rCN/strings.xml` 的 `sync_password_*` |
 | SOURCE | 两端使用共享 `SyncPanelContent`，无需各建一套配置向导。 | `AndroidSyncPanel.kt`、`DesktopSyncPanel.kt` |
@@ -186,7 +186,7 @@ node --test --test-concurrency=1 docs/prototypes/multi-device-sync/*.test.cjs
 
 ## 10. 生产开发契约
 
-本节所有新增类型/字段/资源名均为**拟议接口**，不是已有能力。实现可以依项目命名惯例调整名称，但不得改变校验、生命周期和失败语义。复用现有公共逻辑，Android/Desktop 的差异仅保留在平台外壳。
+本节记录生产实现的接口、生命周期和失败语义；验证与提交状态以 [roadmap](roadmap/2026-09-28-sync-password-safety-roadmap.md) 第 4 节为准。复用现有公共逻辑，Android/Desktop 的差异仅保留在平台外壳，不以接口已存在代替完成验收。
 
 ### 10.1 文件与责任分配
 
@@ -205,7 +205,7 @@ node --test --test-concurrency=1 docs/prototypes/multi-device-sync/*.test.cjs
 
 ### 10.2 创建与解锁分开提交
 
-拟增加 `SubmitCreateSpace(contextId, protection, password, riskAcknowledged)`，其中 `protection` 明确为 `NONE` / `PASSWORD`；沿用 `SubmitPassword` 作为**已有空间 UNLOCK 专用动作**。内部保留 `NEW_PASSWORD` 枚举名称亦可，无须为改标题重命名整个状态机。控制器须检查动作上下文，旧 `SubmitPassword` 在 NEW_PASSWORD 不再能创建空间。
+新建动作为 `SubmitCreateSpace(contextId, protection, password, riskAcknowledged)`，其中 `SyncCreateProtection` 明确为 `NONE` / `PASSWORD`；沿用 `SubmitPassword` 作为**已有空间 UNLOCK 专用动作**。内部保留 `NEW_PASSWORD` 枚举名称亦可，无须为改标题重命名整个状态机。控制器须检查动作上下文，旧 `SubmitPassword` 在 NEW_PASSWORD 不再能创建空间。
 
 `contextId` 是控制器分配的本机临时标识，不含账号名、仓库地址或秘密。新创建会话、账号/仓库候选变化、重新开始配置时换新值；关闭或离开未提交创建步骤时失效。相同会话的重绘、主题和尺寸变化不换值。它只用于阻止排队的旧 UI 事件落入新会话，不持久化、不传到服务器。不要仅比较仓库显示名来判断同一候选。
 
@@ -217,6 +217,10 @@ node --test --test-concurrency=1 docs/prototypes/multi-device-sync/*.test.cjs
 4. 捕获不可变动作快照后立即进入 busy 状态，再启动既有 `runSetup { onboarding.create(candidate, password) }`。`NONE` 传入空串，`PASSWORD` 传入原始有效值。回调不读取已清空的 Compose 草稿；派发后 UI 清掉密码、显隐和确认，避免重复事件复用输入。
 5. UNLOCK 动作仅在 SETUP / UNLOCK、有效所选空间且非 busy 时执行；空密码不得尝试连接加密空间，错误沿用 INCORRECT / TOO_LONG / INVALID。已有无密码空间仍由发现结果直接 join，无须提交新动作或确认创建风险。
 
+账号身份使用 `PersistentGitHubCredentialStore.authorizationEpoch` 的会话内标记：显式替换授权或成功清除后递增，创建与帮助拒绝旧标记；正常 token 刷新经 `replaceRefreshed` 保留既有 revision CAS 校验而不递增，避免刷新使正在输入的有效草稿失效。此标记不持久化、不改变凭据记录格式。控制器丢弃已过期的排队标记通知；请求失败沿用现有错误处理，不靠标记推断账号名称或仓库等价。
+
+控制器的面板观察任务必须显式由私有 `panelScope` 启动，归属其 `lifetime`；构造参数 `scope` 仅提供父上下文，不直接承载面板观察者。`stop()` 取消并等待面板 lifetime 后才允许测试/宿主释放数据库，调用方 scope 不应随面板停止被取消。共享确定性契约验证这条退出边界，防止授权或数据库观察者在关闭后继续查询。该最小修复的当前复审状态见 roadmap。
+
 确认框是用户操作防误触机制，不是对恶意修改客户端的授权边界；确认本身不记入远端协议。必须测试真实 UI 修改输入会撤销确认，并验证绕过禁用按钮直接派发非法动作时控制器仍拒绝。
 
 ### 10.3 草稿和秘密生命周期
@@ -225,15 +229,15 @@ node --test --test-concurrency=1 docs/prototypes/multi-device-sync/*.test.cjs
 
 输入校验拒绝时保持 PASSWORD 选择、展示错误，要求重新输入并确认；不能自动关掉开关。离开创建页、关闭面板、切换账号/候选、关闭密码开关均清理。普通重绘与显隐切换不清理。解锁进入帮助时销毁输入草稿，返回后输入为空。
 
-含密码的动作不得使用自动生成的完整 `data class.toString()`；异常、诊断及测试失败消息不得输出密码、数据密钥、token。异步闭包只在派生/解锁必要期间持有原始输入，完成后不继续缓存。Kotlin/JVM 不可变字符串无法承诺物理内存立即擦除，文案及验收只承诺不持久化、不记录、及时释放引用；可清理的临时字节数组继续遵守既有 crypto 实现。
+含密码的动作不得使用自动生成的完整 `data class.toString()`；异常、诊断及测试失败消息不得输出密码、数据密钥、token。异步闭包只在派生/解锁必要期间持有原始输入，完成后不继续缓存。`SetupPreparation` 在调用前取出并清空一次性操作引用，后续合并任务只持有空容器，避免原始密码随网络任务长期存活。Kotlin/JVM 不可变字符串无法承诺物理内存立即擦除，文案及验收只承诺不持久化、不记录、及时释放引用；可清理的临时字节数组继续遵守既有 crypto 实现。
 
 ### 10.4 帮助导航与设置状态
 
-拟增加 `SyncPanelPage.PASSWORD_HELP` 和 `ShowPasswordHelp` 动作，在 controller 内保存临时 `PasswordHelpSource`（UNLOCK 或 SETTINGS）及来源上下文。只允许当前非 busy 解锁页，或已连接且 descriptor 明确为 Password 的设置页进入。未知状态不开放假找回入口。不得让通用 `Navigate(PASSWORD_HELP)` 绕过来源校验。
+使用 `SyncPanelPage.PASSWORD_HELP` 和 `ShowPasswordHelp` 动作，在 controller 内保存临时 `SyncPasswordHelpSource`（UNLOCK 或 SETTINGS）及来源上下文。只允许当前非 busy 解锁页，或已连接且 descriptor 明确为 Password 的设置页进入。未知状态不开放假找回入口。不得让通用 `Navigate(PASSWORD_HELP)` 绕过来源校验。
 
 帮助页只展示第 3.4 节说明和一个对应来源的返回按钮；不发起授权、同步、初始化或断开。`Back`、Android 返回键及 Desktop Escape 在帮助页统一返回一层；来自 UNLOCK 时保持 chosenSpace 与有效配置上下文，不调用取消整个配置的逻辑。来源因账号/空间变更失效时退到 MAIN 并清除帮助来源，不能返回过期解锁目标。面板关闭始终关闭全部并清除来源。
 
-返回后还焦到来源页“忘记同步密码？”入口；若来源失效，交由主面板默认焦点规则处理。保持滚动位置使入口可达，UNLOCK 输入为空。该焦点请求只能在本次返回转换时执行一次，不能随任意刷新重复执行。
+返回后还焦到来源页“忘记同步密码？”入口；若来源失效，交由主面板默认焦点规则处理。保持滚动位置使入口可达，UNLOCK 输入为空。该焦点请求由 `passwordHelpReturn` 的一次性递增标记触发，只能在本次返回转换时执行一次，不能随任意刷新重复执行；关闭与离开清除可见标记。帮助页进入时把焦点交给返回按钮，保证原入口卸载后键盘 Escape 仍可工作。平台外壳在从工具栏打开的面板关闭后还焦到原工具栏入口。
 
 设置页状态来自当前连接对应的真实 descriptor/protection，不能读上一次创建开关、密码框是否为空或账号登录状态。None → 未设置；Password → 已设置及帮助；缺失/不支持 → 既有错误/不可用展示。禁止加入能改变已有空间模式的设置开关。
 
@@ -267,6 +271,8 @@ node --test --test-concurrency=1 docs/prototypes/multi-device-sync/*.test.cjs
 安全存储读取损坏或不可用时使用既有错误路径，不把“读不到保护状态”当成 None。任何需要修改密码格式、重新包装密钥、删除远端文件或迁移全部 payload 的方案均超出本任务，必须独立规划。
 
 ## 12. 开发验证映射与完成判据
+
+Compose 与 onboarding 集成通过 JVM 专用 `SyncPanelUiFixture` 复用已有 `SyncOnboardingFixture` 和 MockWebServer。`data` 的 `syncTestSupportJar` 只作为 `presentation-sync` 的 JVM 测试依赖，不进入应用或共享 production 依赖；不得把夹具升级为第二套生产同步实现。
 
 所有测试在真实生产调用链上执行；fake 仅替代外部服务/系统存储边界，不复制 crypto、parser 或 controller。新增回归先证明正确红测原因，再提交最小实现及重构后绿测。测试用虚构密码，日志不打印秘密。
 

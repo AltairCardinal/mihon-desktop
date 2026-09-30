@@ -1,6 +1,6 @@
 # 同步空间默认无密码与遗忘风险提示 Roadmap
 
-日期：2026-09-28。状态：产品方案及 HTML DEMO 已获用户批准，开发契约已细化，**生产实施尚未开始**。批准本方案不表示已完成产品验证，也不启动本清单的实施。
+日期：2026-09-28；生产执行启动：2026-09-30。状态：S1 共享生产闭环、双端接线、必要红绿回归与独立审查已完成，随本批提交交付；S2 正式候选及平台运行验收待执行。完成状态由下列复选框及第 4 节证据共同约束，接口存在不等于已完成发布验收。
 
 设计权威：[同步密码安全设计](../2026-09-28-sync-password-safety-design.md)，尤其第 3–5 节产品交互和第 10–12 节开发/失败/验证契约。审阅基线：`cdc1b9f1b3`；[并列 HTML DEMO](../prototypes/multi-device-sync/password-review.html)与[原型说明](../prototypes/multi-device-sync/README.md)。本文件是产品 child plan，从第一个未勾选项推导进度，不声明 active-task，不切换其他专项父计划的 active-child-plan。
 
@@ -16,14 +16,14 @@
 
 ## 2. 交付清单与依赖
 
-- [ ] S1：交付默认无密码、主动加密确认、遗忘帮助及设置状态的共享生产闭环，完成双端接线、相关测试和独立审查。
+- [x] S1：交付默认无密码、主动加密确认、遗忘帮助及设置状态的共享生产闭环，完成双端接线、相关测试和独立审查。
 - [ ] S2：完成双端正式候选、恢复与平台运行验收，记录可用产物和剩余环境限制。
 
 严格依赖 S1 → S2。S1 是一个可独立使用的完整功能批次，UI、动作防护、秘密清理及恢复接线不能拆开交付。S2 以已审查实现为输入，不承接新功能。复选框只在该项实现/审查/验证/提交全部完成时勾选；测试绿但审查未过、产物不可用或必要环境缺失时保持未勾选。
 
 ### S1：共享生产闭环及双端接线
 
-**前置输入**：已批准设计 P1–P12、开发契约第 10–12 节、现有 Desktop UI 规范及共享组件事实；核对实际源码后冻结验收。所有拟议接口仍待实现，不能以文档描述当作已有代码。
+**前置输入**：已批准设计 P1–P12、开发契约第 10–12 节、现有 Desktop UI 规范及共享组件事实；核对实际源码后冻结验收。实施入口最初是拟议接口；实际实现与命名见设计第 10 节，不能以文档描述代替生产行为验证。
 
 **修改边界**：
 
@@ -101,7 +101,7 @@ python scripts/gradle-coordinator.py run --key password-android-panel -- .\gradl
 
 ## 3. 执行预算与协调约束
 
-本次文档完善由主代理直接完成，不调用实施代理、不运行产品构建。以下是后续用户启动实施后的预算，不是本次执行记录：
+此前文档完善由主代理直接完成；用户于 2026-09-30 启动生产实施，采用以下预算。实际执行与限制记录于第 4 节：
 
 | 项目 | 计划上限与用途 |
 | --- | --- |
@@ -123,7 +123,33 @@ python scripts/gradle-coordinator.py run --key password-android-panel -- .\gradl
 | 产品审阅 | 用户已通过默认无密码、可选密码风险提示、遗忘帮助及双端 HTML 方案 | 不代表生产已修改，不授权任意远端删除/重建 |
 | HTML 基线 | `cdc1b9f1b3`；完整 DEMO 42/42、0 跳过，独立检查及修复见设计第 9 节 | 不代表真实加密、GitHub 服务或原生构建验收 |
 | 本次文档补全 | 第 10–12 节明确接口、状态、存储/兼容、失败矩阵与测试映射；本 roadmap 明确两个交付批次。4 份 UTF-8 文档、19 处本地链接/锚点、13 处完整源码路径、6 个 focused 测试类入口、两项未开始任务及 `git diff --check` 核验通过 | 不把静态源码核对记为运行测试；本次未运行 DEMO/原生测试或构建 |
-| S1 | 未开始；暂无生产红绿/审查/提交证据 | 不勾选 |
+| S1 | 2026-09-30 在 `codex/sync-password-review`、起始 `dfd991567c` 实施；完成共享功能、双端接线、有效红绿与独立审查，并按用户批准追加一次作用域修复的小范围复审；本批提交包含 checkoff、production、测试及必要文档 | 不代表 S2 远端/正式运行验收完成；完整测试首轮失败与 focused 修复证据均保留如下 |
 | S2 | 未开始；暂无本次正式产物/运行证据 | 不引用历史产物作为本次交付 |
 
 执行时直接补充本表下的批次证据，保留失败和环境限制；不要为每次命令创建新报告，也不要只改 checkbox 另开提交。
+
+### S1 执行证据（2026-09-30）
+
+主代理冻结原 P1–P12 契约并读取 Desktop UI 规范；唯一实施代理承担 production、红绿测试和串行 Gradle，主代理独立审查安全/恢复/真实 UI 接线及离屏视觉。原仓库并发未提交文件未被编辑或提交。生产实现复用既有 onboarding、crypto、transport 与 v2/v3 格式；凭据 store 的新增会话标记仅区分正常刷新与显式换授权，不改变持久记录或 CAS 边界。
+
+有效红测包括：旧 SubmitPassword 仍创建、默认新建仍显示密码框、缺少创建上下文/帮助动作、pending 前失败不要求重新提交、关闭残留返回标记、正常刷新误拒创建/显式换账号未失效，以及真实键盘进入帮助后 Escape 无焦点无法返回。测试编译错误、夹具响应缺字段和 Compose 场景初始化异常均单独诊断，不计作产品红测。修复复审聚焦这些有效失败、原始密码闭包引用及时释放与真实键盘判据，没有扩大到新功能。
+
+| 范围 | 有效证据与边界 |
+| --- | --- |
+| 共享 storage/controller | `JvmSyncPanelStorageContractTest` 45/45 通过；真实 credential refresh CAS、旧 context/换账号/关闭事件、两种保护选择、非法动作零写入、pending 恢复与帮助无副作用。竞争测试同时覆盖 Password 赢家和 None 赢家，不覆盖赢家空间。阶段全量还将运行 Android 同一共享契约。 |
+| Compose → production → HTTP | `password-s1-focused-complete` 退出码 0，42 秒：Content 64/64、onboarding integration 5/5。真实 Compose 动作驱动 controller/onboarding/MockWebServer；覆盖默认 None 与主动 Password、原密码解锁、门禁/草稿及帮助。 |
+| 平台外壳与键盘 | 同轮 DesktopPanel 1/1；AndroidPanel 9 项中 6 通过、3 既有 Unix FileProvider 限制跳过。Desktop 真实正反 Tab 在 modal owner 内遍历至少四控件、完整循环且互逆，Enter/Space 不触发背景入口、帮助后真实 Escape 退一层、关闭还焦；不以背景独立 focus owner 的保留标志推断泄焦。Android 真实 IME、系统返回及窄屏大字号门禁通过。相关 runtime wiring 前轮 14 项通过。 |
+| 原生离屏视觉 P10 | 共享 Compose `syncVisuals=true` 生成深浅主题 320×900、density 1、fontScale 2 的风险/帮助图及 560×720、fontScale 1 的 Desktop 风险图，位于 `presentation-sync/build/sync-visual/`。主代理查看主题语义色、图标和正文；滚动/确认/提交/关闭/返回可达由真实事件断言补足。来源是 Windows JVM 上的共享 Compose 测试，未读取系统桌面像素，不代表实体 Android 或正式应用截图。 |
+| 静态/范围 | `password-s1-format-complete` 退出码 0，28 秒；`git diff --check` 通过。超过 8 文件/400 行仍属同一个创建/帮助能力，风险集中于错误降级、身份与秘密生命周期、恢复、焦点；不作无关重构。 |
+
+红绿及 focused 命令/退出码由本工作区 `.gradle-coordinator/password-s1-*.json` 与同名日志保存；这些是忽略的过程产物，不进入应用交付或仓库。完整阶段结果与修复证据如下；S1 checkoff 与 production、测试和必要文档同批提交。
+
+阶段首轮 `password-s1-stage`：`:data:jvmTest :data:testDebugUnitTest :presentation-sync:jvmTest spotlessCheck --max-workers=2`，退出码 1，16 分 5 秒。data JVM 762 项中 760 通过、1 失败、1 跳过；其余任务因前序失败未执行，不记为通过。失败在 `SyncAuthorizationSafetyContractTest` 启动前收到 `UncaughtExceptionsBeforeTest`，suppressed 为 `CountPendingImportsQuery` 的数据库已关闭异常；不是该用例业务断言失败。跳过项为既有 `SyncGitCompareAcceptanceTest` prepared-artifacts replay。
+
+实施者进一步用 JVM 字节码核验：controller 初始化中的七个 `scope.launch` 使用构造参数 scope，而 `stop()` 只取消/等待私有 lifetime；这些观察协程可能在数据库关闭后仍执行。此问题同时影响原有数据库观察者与本次授权标记观察者，不能当作无关基线忽略。必要修复限定为显式面板作用域及确定性 stop 回归；不改同步协议或数据库格式。已用完原声明的一轮修复复审，额外安全 production 修复的独立复审需用户批准，未获批准前不提交功能或发布。原轮未执行模块与受影响 focused 可继续；不重跑整个 data 全量冒充首轮成功。
+
+用户随后明确批准一次仅针对 controller 作用域修复的新增独立复审（预计增加 10–20 分钟，无新增代理/全量轮次）。`password-s1-stop-red` 退出码 1：确定性共享测试在 stop 后发现 6 个观察者残留，调用方 parent 仍 active，finally 等待清理避免跨用例污染；`password-s1-stop-green` 退出码 0、53 秒：storage 46/46 与 AuthorizationSafety 5/5，无跳过，XML 不再记录闭库异常。修复只把私有作用域命名为 `panelScope` 并显式用于全部 launch，构造参数和公共接口不变。主代理独立核对源码、stop 的 cancelAndJoin 顺序及真实生产测试，另执行 javap 确认七个初始化 receiver 均为 `getfield panelScope`；此新增小范围复审通过，无新增阻塞。首轮其他 data JVM 成功证据保留，不把 focused 补验表述为第二轮完整 data JVM 全绿。
+
+`password-s1-stage-remaining` 退出码 0、2 分 9 秒：`:data:testDebugUnitTest :presentation-sync:jvmTest spotlessCheck --continue --max-workers=2`，无 init/测试过滤、不重复 data JVM 全量。Android data 354/354、Compose 69/69，0 失败、0 跳过；项目 `spotlessCheck` 通过。这补齐首轮未执行任务，作用域修复同时由两平台共享 storage 契约及真实 Compose/controller/onboarding 集成验证。两份文档 UTF-8、本地 13 链接与 `git diff --check` 检查通过。最终约 20 个文件仍是同一功能批次，包含测试专用桥接、资源、两端 shell、必要生命周期修复与文档，没有新增生产依赖、Screen、导航或持久格式。
+
+S1 的三个审查节点：一次批次独立审查、原预算内的一次修复复审、用户明确批准追加的一次仅 controller 作用域复审。未新增代理；所有重型 Gradle 串行由同一实施者协调。S1 在此提交中交付，S2 保持未勾选，正式产物/运行与真实远端双端验收不得复用 HTML 或本地 Mock 代替。

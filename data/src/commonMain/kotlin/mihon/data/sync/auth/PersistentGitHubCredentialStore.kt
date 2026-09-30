@@ -1,6 +1,9 @@
 package mihon.data.sync.auth
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -11,13 +14,28 @@ import mihon.domain.sync.security.SyncSecureStore
 import mihon.domain.sync.security.SyncSecureStoreException
 
 class PersistentGitHubCredentialStore(private val store: SyncSecureStore) : GitHubCredentialStore {
+    private val mutableAuthorizationEpoch = MutableStateFlow(0L)
+
+    /** Process-local authorization identity, independent of token-refresh revisions. */
+    val authorizationEpoch: StateFlow<Long> = mutableAuthorizationEpoch
     override suspend fun read(): GitHubStoredCredential? = safe {
         store.read(KEY)?.let(::decode)?.let { record ->
             record.token?.let { GitHubStoredCredential(it.value(), record.revision) }
         }
     }
 
-    override suspend fun replace(expectedRevision: Long?, value: GitHubAccessToken): GitHubStoredCredential = safe {
+    override suspend fun replace(expectedRevision: Long?, value: GitHubAccessToken): GitHubStoredCredential =
+        replace(expectedRevision, value, explicitAuthorization = true)
+
+    /** Only the runtime's refresher adapter uses this; the persistent revision/CAS remain identical. */
+    internal suspend fun replaceRefreshed(expectedRevision: Long?, value: GitHubAccessToken): GitHubStoredCredential =
+        replace(expectedRevision, value, explicitAuthorization = false)
+
+    private suspend fun replace(
+        expectedRevision: Long?,
+        value: GitHubAccessToken,
+        explicitAuthorization: Boolean,
+    ): GitHubStoredCredential = safe {
         val encoded = store.read(KEY)
         val current = encoded?.let(::decode)
         check(
@@ -33,6 +51,7 @@ class PersistentGitHubCredentialStore(private val store: SyncSecureStore) : GitH
         val replacement = Record(revision = revision, token = Token(value))
         validate(replacement)
         check(store.compareAndSet(KEY, encoded, json.encodeToString(replacement)))
+        if (explicitAuthorization) mutableAuthorizationEpoch.update { it + 1 }
         GitHubStoredCredential(value, revision)
     }
 
@@ -43,7 +62,10 @@ class PersistentGitHubCredentialStore(private val store: SyncSecureStore) : GitH
             val current = decode(encoded)
             if (current.token == null) return@safe
             val tombstone = Record(revision = nextRevision(current), token = null)
-            if (store.compareAndSet(KEY, encoded, json.encodeToString(tombstone))) return@safe
+            if (store.compareAndSet(KEY, encoded, json.encodeToString(tombstone))) {
+                mutableAuthorizationEpoch.update { it + 1 }
+                return@safe
+            }
         }
         throw SyncSecureStoreException()
     }

@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -17,10 +18,13 @@ import mihon.data.sync.crypto.SyncSpaceCrypto
 import mihon.data.sync.inbox.SyncInboxStore
 import mihon.data.sync.runtime.StoredSyncMaterial
 import mihon.data.sync.runtime.StoredSyncSetup
+import mihon.data.sync.runtime.SyncCreateProtection
 import mihon.data.sync.runtime.SyncDecisionScope
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelController
 import mihon.data.sync.runtime.SyncPanelPage
+import mihon.data.sync.runtime.SyncPasswordHelpSource
+import mihon.data.sync.runtime.SyncPasswordProblem
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.data.sync.runtime.SyncSetupStep
 import mihon.domain.sync.SyncBatch
@@ -75,6 +79,40 @@ abstract class SyncPanelStorageContract {
     private val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync-v1")
 
     @Test
+    fun `stop joins database and authorization observers without cancelling the caller scope`() = runBlocking {
+        open().use { storage ->
+            storage.connect("actor", repository)
+            val parent = SupervisorJob()
+            val callerScope = CoroutineScope(parent + Dispatchers.Default)
+            val client = OkHttpClient()
+            val runtime = SyncRuntime(
+                storage.handler,
+                storage.bootstrap,
+                storage.creators,
+                storage.creators,
+                { true },
+                MemorySyncSecureStore(),
+                InMemoryPreferenceStore(),
+                client,
+            )
+            val panel = SyncPanelController(runtime, storage.handler, callerScope)
+            try {
+                panel.act(SyncPanelAction.Open)
+                val attached = parent.children.toList()
+                panel.stop()
+                assertTrue(parent.isActive, "Stopping a panel must preserve its caller scope")
+                assertEquals(0, parent.children.count(), "All panel observers must be cancelled and joined")
+                assertEquals(1, attached.size, "All observers must belong to the one panel lifetime")
+            } finally {
+                panel.stop()
+                parent.cancelAndJoin()
+                client.connectionPool.evictAll()
+                client.dispatcher.executorService.shutdown()
+            }
+        }
+    }
+
+    @Test
     fun `pre-created empty repository onboarding completes without a password`() = runBlocking {
         createsSpace("")
     }
@@ -84,6 +122,332 @@ abstract class SyncPanelStorageContract {
         createsSpace("private-test-password")
     }
 
+    @Test
+    fun `legacy password action cannot create a new space`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.authorize()
+                f.begin()
+                f.panel.act(SyncPanelAction.SubmitPassword(""))
+                kotlinx.coroutines.delay(300)
+                assertEquals(0, f.repositoryWrites)
+                assertEquals(SyncSetupStep.NEW_PASSWORD, f.panel.state.value.setupStep)
+                assertNull(f.runtime.connection())
+            }
+        }
+    }
+
+    @Test
+    fun `unlock help returns one layer without requests or losing selected space`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("private-test-password")
+                f.authorize()
+                f.begin()
+                val requests = f.git.server.requestCount
+                f.panel.act(SyncPanelAction.ShowPasswordHelp)
+                assertEquals(SyncPanelPage.PASSWORD_HELP, f.panel.state.value.page)
+                assertEquals(SyncPasswordHelpSource.UNLOCK, f.panel.state.value.passwordHelpSource)
+                f.panel.act(SyncPanelAction.Back)
+                assertEquals(SyncPanelPage.SETUP, f.panel.state.value.page)
+                assertEquals(SyncSetupStep.UNLOCK, f.panel.state.value.setupStep)
+                assertEquals(1L, f.panel.state.value.passwordHelpReturn)
+                assertEquals(requests, f.git.server.requestCount)
+                f.panel.act(SyncPanelAction.SubmitPassword("private-test-password"))
+                withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
+                assertEquals("password", f.runtime.connection()?.protectionMode)
+            }
+        }
+    }
+
+    @Test
+    fun `explicit create validates choice and rejects stale hidden or repeated events`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.authorize()
+                f.begin()
+                val context = requireNotNull(f.panel.state.value.createContextId)
+                val requests = f.git.server.requestCount
+                for ((protection, password, ack, problem) in listOf(
+                    CreateCase(
+                        SyncCreateProtection.NONE,
+                        "residual",
+                        false,
+                        SyncPasswordProblem.INCONSISTENT_SELECTION,
+                    ),
+                    CreateCase(SyncCreateProtection.NONE, "", true, SyncPasswordProblem.INCONSISTENT_SELECTION),
+                    CreateCase(SyncCreateProtection.PASSWORD, "", true, SyncPasswordProblem.EMPTY),
+                    CreateCase(
+                        SyncCreateProtection.PASSWORD,
+                        "valid",
+                        false,
+                        SyncPasswordProblem.ACKNOWLEDGEMENT_REQUIRED,
+                    ),
+                    CreateCase(SyncCreateProtection.PASSWORD, "界".repeat(342), true, SyncPasswordProblem.TOO_LONG),
+                    CreateCase(SyncCreateProtection.PASSWORD, "\uD800", true, SyncPasswordProblem.INVALID),
+                )) {
+                    f.panel.act(SyncPanelAction.SubmitCreateSpace(context, protection, password, ack))
+                    assertEquals(problem, f.panel.state.value.passwordProblem)
+                    assertEquals(SyncSetupStep.NEW_PASSWORD, f.panel.state.value.setupStep)
+                    assertEquals(requests, f.git.server.requestCount)
+                    assertEquals(0, f.repositoryWrites)
+                }
+                val error = f.panel.state.value.passwordProblem
+                f.panel.act(SyncPanelAction.SubmitCreateSpace(context - 1, SyncCreateProtection.NONE, "", false))
+                assertEquals(error, f.panel.state.value.passwordProblem)
+                f.panel.act(SyncPanelAction.Close)
+                f.panel.act(SyncPanelAction.Open)
+                f.panel.act(SyncPanelAction.BeginSetup)
+                withTimeout(5_000) { f.panel.state.first { !it.setupBusy } }
+                assertTrue(f.panel.state.value.createContextId != context)
+                f.panel.act(SyncPanelAction.SubmitCreateSpace(context, SyncCreateProtection.NONE, "", false))
+                assertEquals(0, f.repositoryWrites)
+                f.bootstrapPutEntered = java.util.concurrent.CountDownLatch(1)
+                f.bootstrapPutRelease = java.util.concurrent.CountDownLatch(1)
+                val active = requireNotNull(f.panel.state.value.createContextId)
+                f.panel.act(
+                    SyncPanelAction.SubmitCreateSpace(active, SyncCreateProtection.PASSWORD, "explicit-password", true),
+                )
+                assertTrue(f.bootstrapPutEntered!!.await(3, java.util.concurrent.TimeUnit.SECONDS))
+                f.panel.act(SyncPanelAction.SubmitCreateSpace(active, SyncCreateProtection.NONE, "", false))
+                f.bootstrapPutRelease!!.countDown()
+                withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
+                assertEquals("password", f.runtime.connection()?.protectionMode)
+                assertEquals(1, f.git.contentsPutBodies.size)
+            }
+        }
+    }
+
+    private data class CreateCase(
+        val protection: SyncCreateProtection,
+        val password: String,
+        val ack: Boolean,
+        val problem: SyncPasswordProblem,
+    ) {
+        override fun toString() = "CreateCase(<redacted>)"
+    }
+
+    @Test
+    fun `failed initial secure save retries discovery but requires a new explicit submission`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.authorize()
+                f.begin()
+                val previous = f.panel.state.value.createContextId
+                f.secure.rejectInitialSetup = true
+                f.panel.create("failure-before-pending")
+                withTimeout(5_000) { f.panel.state.first { it.setupStep == SyncSetupStep.ERROR } }
+                assertEquals(0, f.repositoryWrites)
+                assertFalse(f.secure.values.keys.any { it.startsWith("sync-setup-v3-") })
+                f.secure.rejectInitialSetup = false
+                f.panel.act(SyncPanelAction.RetrySetup)
+                withTimeout(5_000) { f.panel.state.first { !it.setupBusy } }
+                assertEquals(SyncSetupStep.NEW_PASSWORD, f.panel.state.value.setupStep)
+                assertTrue(f.panel.state.value.createContextId != previous)
+                assertTrue(f.panel.state.value.createResubmissionRequired)
+                assertEquals(0, f.repositoryWrites)
+                f.panel.create("failure-before-pending")
+                withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
+                assertEquals("password", f.runtime.connection()?.protectionMode)
+            }
+        }
+    }
+
+    @Test
+    fun `help return focus is not replayed after close and invalid sources return main`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("focus-password")
+                f.authorize()
+                f.begin()
+                f.panel.act(SyncPanelAction.ShowPasswordHelp)
+                f.panel.act(SyncPanelAction.Back)
+                assertEquals(1L, f.panel.state.value.passwordHelpReturn)
+                f.panel.act(SyncPanelAction.Close)
+                assertEquals(0L, f.panel.state.value.passwordHelpReturn)
+                f.panel.act(SyncPanelAction.Open)
+                f.panel.act(SyncPanelAction.Navigate(SyncPanelPage.PASSWORD_HELP))
+                assertEquals(SyncPanelPage.MAIN, f.panel.state.value.page)
+                f.panel.act(SyncPanelAction.BeginSetup)
+                withTimeout(5_000) { f.panel.state.first { !it.setupBusy } }
+                f.panel.act(SyncPanelAction.ShowPasswordHelp)
+                f.authorize("new-account-credential")
+                f.panel.act(SyncPanelAction.Back)
+                assertEquals(SyncPanelPage.MAIN, f.panel.state.value.page)
+                assertEquals(0L, f.panel.state.value.passwordHelpReturn)
+                assertNull(f.panel.state.value.passwordHelpSource)
+            }
+        }
+    }
+
+    @Test
+    fun `same account token refresh before discovery permits explicit creation`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.runtime.credentials.replace(
+                    null,
+                    GitHubAccessToken("expired-fixture", "refresh-fixture", "bearer", emptySet(), 0, null),
+                )
+                f.begin()
+                assertEquals(SyncSetupStep.NEW_PASSWORD, f.panel.state.value.setupStep)
+                f.panel.create("")
+                withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
+                assertEquals("none", f.runtime.connection()?.protectionMode)
+            }
+        }
+    }
+
+    @Test
+    fun `normal token refresh while editing does not invalidate the current creation session`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.runtime.credentials.replace(
+                    null,
+                    GitHubAccessToken("expiring-fixture", "refresh-fixture", "bearer", emptySet(), 70_000, null),
+                )
+                f.begin()
+                val context = f.panel.state.value.createContextId
+                f.now = 20_000
+                f.runtime.accessToken()
+                f.panel.create("")
+                kotlinx.coroutines.delay(300)
+                assertTrue(f.panel.state.value.setupStep != SyncSetupStep.NEW_PASSWORD)
+                withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
+                assertEquals("none", f.runtime.connection()?.protectionMode)
+                assertNotNull(context)
+            }
+        }
+    }
+
+    @Test
+    fun `completion from a closed creation session does not navigate a reopened setup page`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.authorize()
+                f.begin()
+                f.bootstrapPutEntered = java.util.concurrent.CountDownLatch(1)
+                f.bootstrapPutRelease = java.util.concurrent.CountDownLatch(1)
+                f.panel.create("")
+                assertTrue(f.bootstrapPutEntered!!.await(3, java.util.concurrent.TimeUnit.SECONDS))
+                f.panel.act(SyncPanelAction.Close)
+                f.panel.act(SyncPanelAction.Open)
+                f.panel.act(SyncPanelAction.Navigate(SyncPanelPage.SETUP))
+                f.bootstrapPutRelease!!.countDown()
+                withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
+                assertEquals(SyncPanelPage.SETUP, f.panel.state.value.page)
+                assertNull(f.panel.state.value.notice)
+            }
+        }
+    }
+
+    @Test
+    fun `explicit account replacement invalidates old create and both help sources without requests`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.authorize()
+                assertEquals(1L, f.runtime.credentials.authorizationEpoch.value)
+                f.begin()
+                val old = requireNotNull(f.panel.state.value.createContextId)
+                val requests = f.git.server.requestCount
+                f.accountId = 2
+                f.authorize("replacement-account")
+                f.panel.act(SyncPanelAction.SubmitCreateSpace(old, SyncCreateProtection.NONE, "", false))
+                withTimeout(5_000) { f.panel.state.first { it.createContextId == null } }
+                assertEquals(0, f.repositoryWrites)
+                assertEquals(requests, f.git.server.requestCount)
+                f.accountId = 1
+                f.existing("help-account-password")
+                f.authorize()
+                f.begin()
+                f.panel.act(SyncPanelAction.ShowPasswordHelp)
+                val helpRequests = f.git.server.requestCount
+                f.runtime.credentials.clear()
+                withTimeout(5_000) { f.panel.state.first { it.page == SyncPanelPage.MAIN } }
+                assertNull(f.panel.state.value.passwordHelpSource)
+                assertEquals(helpRequests, f.git.server.requestCount)
+                f.authorize()
+                f.begin()
+                f.panel.act(SyncPanelAction.SubmitPassword("help-account-password"))
+                withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
+                f.panel.act(SyncPanelAction.Navigate(SyncPanelPage.SETTINGS))
+                f.panel.act(SyncPanelAction.ShowPasswordHelp)
+                val settingsRequests = f.git.server.requestCount
+                f.accountId = 2
+                f.authorize("another-account")
+                withTimeout(5_000) { f.panel.state.first { it.page == SyncPanelPage.MAIN } }
+                assertNull(f.panel.state.value.passwordHelpSource)
+                assertEquals(settingsRequests, f.git.server.requestCount)
+            }
+        }
+    }
+
+    @Test
+    fun `refresh epoch preserves both help sources and stale refresh cannot replace new authorization`() = runBlocking {
+        for (settings in listOf(false, true)) {
+            open().use { storage ->
+                SyncOnboardingFixture(storage).use { f ->
+                    f.existing("epoch-help-password")
+                    val original = f.runtime.credentials.replace(
+                        null,
+                        GitHubAccessToken("expiring-fixture", "refresh-fixture", "bearer", emptySet(), 70_000, null),
+                    )
+                    f.begin()
+                    if (settings) {
+                        f.panel.act(SyncPanelAction.SubmitPassword("epoch-help-password"))
+                        withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
+                        f.panel.act(SyncPanelAction.Navigate(SyncPanelPage.SETTINGS))
+                    }
+                    f.panel.act(SyncPanelAction.ShowPasswordHelp)
+                    val epoch = f.runtime.credentials.authorizationEpoch.value
+                    f.now = 20_000
+                    f.runtime.accessToken()
+                    assertEquals(epoch, f.runtime.credentials.authorizationEpoch.value)
+                    assertTrue(f.runtime.credentials.read()!!.revision > original.revision)
+                    f.panel.awaitIdle()
+                    assertEquals(SyncPanelPage.PASSWORD_HELP, f.panel.state.value.page)
+                    val requests = f.git.server.requestCount
+                    f.panel.act(SyncPanelAction.Back)
+                    assertEquals(
+                        if (settings) SyncPanelPage.SETTINGS else SyncPanelPage.SETUP,
+                        f.panel.state.value.page,
+                    )
+                    assertEquals(requests, f.git.server.requestCount)
+                    val stale = f.runtime.credentials.read()!!.revision
+                    f.authorize("fresh-explicit-authorization")
+                    val latest = f.runtime.credentials.read()!!.revision
+                    val changedEpoch = f.runtime.credentials.authorizationEpoch.value
+                    val rejected = runCatching {
+                        f.runtime.credentials.replaceRefreshed(
+                            stale,
+                            GitHubAccessToken(
+                                "stale-refresh",
+                                "stale-refresh-token",
+                                "bearer",
+                                emptySet(),
+                                999_999,
+                                9_999_999,
+                            ),
+                        )
+                    }
+                    assertTrue(rejected.isFailure)
+                    assertEquals(latest, f.runtime.credentials.read()!!.revision)
+                    assertEquals(changedEpoch, f.runtime.credentials.authorizationEpoch.value)
+                    f.runtime.credentials.clear()
+                    assertEquals(changedEpoch + 1, f.runtime.credentials.authorizationEpoch.value)
+                }
+            }
+        }
+    }
+
+    private suspend fun SyncPanelController.create(password: String) = act(
+        SyncPanelAction.SubmitCreateSpace(
+            requireNotNull(state.value.createContextId),
+            if (password.isEmpty()) SyncCreateProtection.NONE else SyncCreateProtection.PASSWORD,
+            password,
+            password.isNotEmpty(),
+        ),
+    )
+
     private suspend fun createsSpace(password: String) {
         open().use { storage ->
             storage.favorite("/first-book")
@@ -91,7 +455,7 @@ abstract class SyncPanelStorageContract {
                 fixture.authorize()
                 fixture.begin()
                 assertEquals(SyncSetupStep.NEW_PASSWORD, fixture.panel.state.value.setupStep)
-                fixture.panel.act(SyncPanelAction.SubmitPassword(password))
+                fixture.panel.create(password)
                 withTimeout(10_000) { fixture.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
                 assertEquals(0, fixture.userRepoPosts)
                 assertEquals(0, fixture.repositorySettingsWrites)
@@ -147,7 +511,7 @@ abstract class SyncPanelStorageContract {
             SyncOnboardingFixture(storage).use { f ->
                 f.authorize()
                 f.begin()
-                f.panel.act(SyncPanelAction.SubmitPassword(""))
+                f.panel.create("")
                 withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
                 assertTrue(f.panel.state.value.notice?.setupCompleted == true)
                 f.panel.act(SyncPanelAction.Close)
@@ -165,7 +529,7 @@ abstract class SyncPanelStorageContract {
                 f.begin()
                 f.bootstrapPutEntered = java.util.concurrent.CountDownLatch(1)
                 f.bootstrapPutRelease = java.util.concurrent.CountDownLatch(1)
-                f.panel.act(SyncPanelAction.SubmitPassword(""))
+                f.panel.create("")
                 assertTrue(f.bootstrapPutEntered!!.await(3, java.util.concurrent.TimeUnit.SECONDS))
                 f.panel.act(SyncPanelAction.SubmitPassword("second-click"))
                 f.panel.act(SyncPanelAction.Close)
@@ -188,7 +552,7 @@ abstract class SyncPanelStorageContract {
                 f.authorize()
                 f.runtime.preferences.importPaused.set(true)
                 f.begin()
-                f.panel.act(SyncPanelAction.SubmitPassword("restart-password"))
+                f.panel.create("restart-password")
                 withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.MERGING && !it.setupBusy } }
                 assertEquals(1L, f.panel.state.value.importRemaining)
                 assertTrue(f.secure.values.keys.any { it.startsWith("sync-setup-v3-") })
@@ -223,7 +587,7 @@ abstract class SyncPanelStorageContract {
                 f.authorize()
                 f.git.loseNextBootstrapResponse = true
                 f.begin()
-                f.panel.act(SyncPanelAction.SubmitPassword(""))
+                f.panel.create("")
                 withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.ERROR } }
 
                 val pendingBeforeRestart = f.secure.values.entries.single { it.key.startsWith("sync-setup-v3-") }.value
@@ -477,7 +841,7 @@ abstract class SyncPanelStorageContract {
                 f.panel.act(SyncPanelAction.Synchronize)
                 withTimeout(5_000) { f.panel.state.first { !it.setupBusy } }
                 assertEquals(SyncSetupStep.NEW_PASSWORD, f.panel.state.value.setupStep)
-                f.panel.act(SyncPanelAction.SubmitPassword(""))
+                f.panel.create("")
                 withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
                 assertTrue(f.runtime.connection()!!.spaceId != "space")
                 assertEquals("none", f.runtime.connection()!!.protectionMode)
@@ -500,7 +864,7 @@ abstract class SyncPanelStorageContract {
                 f.runtime.preferences.importPaused.set(true)
                 f.secure.rejectConnectedSetup = true
                 f.begin()
-                f.panel.act(SyncPanelAction.SubmitPassword("crash-window-password"))
+                f.panel.create("crash-window-password")
                 withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.ERROR } }
                 assertEquals("password", f.runtime.connection()!!.protectionMode)
                 val before = f.secure.values.entries.single { it.key.startsWith("sync-setup-v3-") }.value
@@ -538,7 +902,7 @@ abstract class SyncPanelStorageContract {
                 f.created = true
                 f.authorize()
                 f.begin()
-                f.panel.act(SyncPanelAction.SubmitPassword(""))
+                f.panel.create("")
                 withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
 
                 val remoteDescriptor = SyncSpaceDescriptorCodec.decode(
@@ -604,75 +968,84 @@ abstract class SyncPanelStorageContract {
 
     @Test
     fun `losing bootstrap attempt joins a verified winner in the same repository`() = runBlocking {
-        open().use { storage ->
-            SyncOnboardingFixture(storage).use { f ->
-                val winnerMaterial = SyncSpaceCrypto.create("winning-space", 1, "winner-password")
-                val winnerIntent = SyncInitializationIntent(
-                    accountId = f.accountId,
-                    repositoryId = 99,
-                    defaultBranch = "main",
-                    attemptNonce = "winner-attempt-nonce-0001",
-                    stage = SyncInitializationStage.VERIFIED_EMPTY,
-                )
-                val winnerResult = f.runtime.onboarding.transport("synthetic-token", winnerMaterial).initialize(
-                    f.repository,
-                    winnerMaterial.descriptor.spaceId,
-                    winnerMaterial.descriptor.generation,
-                    winnerIntent,
-                ) {}
-                assertTrue(winnerResult is mihon.domain.sync.transport.SyncInitializationResult.Initialized)
+        for (winnerPassword in listOf("", "winner-password")) {
+            open().use { storage ->
+                SyncOnboardingFixture(storage).use { f ->
+                    val winnerMaterial = SyncSpaceCrypto.create("winning-space", 1, winnerPassword)
+                    val winnerIntent = SyncInitializationIntent(
+                        accountId = f.accountId,
+                        repositoryId = 99,
+                        defaultBranch = "main",
+                        attemptNonce = "winner-attempt-nonce-0001",
+                        stage = SyncInitializationStage.VERIFIED_EMPTY,
+                    )
+                    val winnerResult = f.runtime.onboarding.transport("synthetic-token", winnerMaterial).initialize(
+                        f.repository,
+                        winnerMaterial.descriptor.spaceId,
+                        winnerMaterial.descriptor.generation,
+                        winnerIntent,
+                    ) {}
+                    assertTrue(winnerResult is mihon.domain.sync.transport.SyncInitializationResult.Initialized)
 
-                val loserMaterial = SyncSpaceCrypto.create("losing-space", 1, "loser-password")
-                val loserSetup = StoredSyncSetup(
-                    accountId = f.accountId,
-                    accountLogin = f.accountLogin,
-                    attemptId = "loser-attempt-id-0001",
-                    attemptNonce = "loser-attempt-nonce-0001",
-                    newSpace = true,
-                    material = StoredSyncMaterial.from(loserMaterial),
-                    stage = SyncInitializationStage.BOOTSTRAP_SUBMITTING,
-                    repositoryId = 99,
-                    owner = f.repository.owner,
-                    repository = f.repository.name,
-                    branch = f.repository.branch,
-                    defaultBranch = "main",
-                )
-                f.runtime.onboarding.storage.save(loserSetup, null)
-                f.authorize()
-                storage.favorite("/queued-during-losing-attempt")
-                val requestsBefore = f.git.server.requestCount
+                    val loserMaterial = SyncSpaceCrypto.create("losing-space", 1, "loser-password")
+                    val loserSetup = StoredSyncSetup(
+                        accountId = f.accountId,
+                        accountLogin = f.accountLogin,
+                        attemptId = "loser-attempt-id-0001",
+                        attemptNonce = "loser-attempt-nonce-0001",
+                        newSpace = true,
+                        material = StoredSyncMaterial.from(loserMaterial),
+                        stage = SyncInitializationStage.BOOTSTRAP_SUBMITTING,
+                        repositoryId = 99,
+                        owner = f.repository.owner,
+                        repository = f.repository.name,
+                        branch = f.repository.branch,
+                        defaultBranch = "main",
+                    )
+                    f.runtime.onboarding.storage.save(loserSetup, null)
+                    f.authorize()
+                    storage.favorite("/queued-during-losing-attempt")
+                    val requestsBefore = f.git.server.requestCount
 
-                f.panel.act(SyncPanelAction.Open)
-                f.panel.act(SyncPanelAction.BeginSetup)
-                val discoveredWinner = withTimeout(10_000) {
-                    f.panel.state.first {
-                        !it.setupBusy && it.setupStep in setOf(SyncSetupStep.ERROR, SyncSetupStep.UNLOCK)
+                    f.panel.act(SyncPanelAction.Open)
+                    f.panel.act(SyncPanelAction.BeginSetup)
+                    val discoveredWinner = withTimeout(10_000) {
+                        f.panel.state.first {
+                            !it.setupBusy &&
+                                it.setupStep in setOf(SyncSetupStep.ERROR, SyncSetupStep.UNLOCK, SyncSetupStep.COMPLETE)
+                        }
                     }
-                }
-                assertEquals(SyncSetupStep.UNLOCK, discoveredWinner.setupStep)
-                assertNull(f.runtime.onboarding.pending())
-                assertFalse(f.secure.values.values.any { "losing-space" in it })
-                assertFalse(f.secure.values.values.any { "loser-attempt-nonce-0001" in it })
+                    assertEquals(
+                        if (winnerPassword.isEmpty()) SyncSetupStep.COMPLETE else SyncSetupStep.UNLOCK,
+                        discoveredWinner.setupStep,
+                    )
+                    assertNull(f.runtime.onboarding.pending())
+                    assertFalse(f.secure.values.values.any { "losing-space" in it })
+                    assertFalse(f.secure.values.values.any { "loser-attempt-nonce-0001" in it })
 
-                f.panel.act(SyncPanelAction.SubmitPassword("winner-password"))
-                val completed = withTimeout(10_000) {
-                    f.panel.state.first {
-                        !it.setupBusy && it.setupStep in setOf(SyncSetupStep.ERROR, SyncSetupStep.COMPLETE)
+                    if (winnerPassword.isNotEmpty()) {
+                        f.panel.act(SyncPanelAction.SubmitPassword(winnerPassword))
                     }
-                }
+                    val completed = withTimeout(10_000) {
+                        f.panel.state.first {
+                            !it.setupBusy && it.setupStep in setOf(SyncSetupStep.ERROR, SyncSetupStep.COMPLETE)
+                        }
+                    }
 
-                assertEquals(SyncSetupStep.COMPLETE, completed.setupStep)
-                assertEquals(winnerMaterial.descriptor.spaceId, f.runtime.connection()?.spaceId)
-                assertNull(f.runtime.onboarding.pending())
-                assertEquals(1, f.git.contentsPutBodies.size, "the losing attempt must not issue another PUT")
-                assertEquals(0, f.userRepoPosts)
-                assertEquals(0, f.repositorySettingsWrites)
-                assertTrue(f.git.server.requestCount > requestsBefore)
-                assertTrue(
-                    mihon.data.sync.journal.SyncLocalJournal(storage.handler)
-                        .pendingEvents("winning-space", 1).isEmpty(),
-                    "joining the winner must resume the queued local work",
-                )
+                    assertEquals(SyncSetupStep.COMPLETE, completed.setupStep)
+                    assertEquals(winnerMaterial.descriptor.spaceId, f.runtime.connection()?.spaceId)
+                    assertEquals(winnerMaterial.descriptor.mode, f.runtime.connection()?.protectionMode)
+                    assertNull(f.runtime.onboarding.pending())
+                    assertEquals(1, f.git.contentsPutBodies.size, "the losing attempt must not issue another PUT")
+                    assertEquals(0, f.userRepoPosts)
+                    assertEquals(0, f.repositorySettingsWrites)
+                    assertTrue(f.git.server.requestCount > requestsBefore)
+                    assertTrue(
+                        mihon.data.sync.journal.SyncLocalJournal(storage.handler)
+                            .pendingEvents("winning-space", 1).isEmpty(),
+                        "joining the winner must resume the queued local work",
+                    )
+                }
             }
         }
     }
@@ -687,7 +1060,7 @@ abstract class SyncPanelStorageContract {
                     "界".repeat(342) to mihon.data.sync.runtime.SyncPasswordProblem.TOO_LONG,
                     "\uD800" to mihon.data.sync.runtime.SyncPasswordProblem.INVALID,
                 )) {
-                    f.panel.act(SyncPanelAction.SubmitPassword(password))
+                    f.panel.create(password)
                     assertEquals(problem, f.panel.state.value.passwordProblem)
                     assertEquals(SyncSetupStep.NEW_PASSWORD, f.panel.state.value.setupStep)
                     assertEquals(0, f.userRepoPosts)

@@ -12,7 +12,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
+import mihon.data.sync.SyncPanelUiFixture
+import mihon.data.sync.crypto.SyncSpaceCrypto
+import mihon.data.sync.runtime.SyncCreateProtection
 import mihon.data.sync.runtime.SyncPanelAction
+import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPasswordProblem
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.data.sync.runtime.SyncSetupStep
@@ -131,6 +135,7 @@ class SyncPanelOnboardingIntegrationTest {
                 }
                 panel.dispatch(SyncPanelAction.Open)
                 requireNotNull(awaitNode("sync-now").config[SemanticsActions.OnClick].action).invoke()
+                requireNotNull(awaitNode("sync-password-enabled").config[SemanticsActions.OnClick].action).invoke()
                 val input = awaitNode("sync-password-input")
                 val password = "界".repeat(342)
                 requireNotNull(input.config[SemanticsActions.SetText].action).invoke(AnnotatedString(password))
@@ -138,7 +143,11 @@ class SyncPanelOnboardingIntegrationTest {
                     scene.render()
                     yield()
                 }
-                requireNotNull(awaitNode("sync-password-submit").config[SemanticsActions.OnClick].action).invoke()
+                awaitNode("sync-password-error")
+                val context = requireNotNull(panel.state.value.createContextId)
+                panel.dispatch(
+                    SyncPanelAction.SubmitCreateSpace(context, SyncCreateProtection.PASSWORD, password, true),
+                )
                 withTimeout(5_000) { panel.state.first { it.passwordProblem == SyncPasswordProblem.TOO_LONG } }
                 awaitNode("sync-password-error")
                 assertEquals(SyncSetupStep.NEW_PASSWORD, panel.state.value.setupStep)
@@ -155,6 +164,128 @@ class SyncPanelOnboardingIntegrationTest {
                 client.connectionPool.evictAll()
                 client.dispatcher.executorService.shutdown()
             }
+        }
+    }
+
+    @Test
+    fun `real compose creates an unprotected descriptor and merges local work`() = runBlocking {
+        SyncPanelUiFixture().use { f ->
+            f.authorize()
+            f.favorite()
+            withScene(f) {
+                click("sync-now")
+                awaitNode("sync-create-space")
+                assertNull(find("sync-password-input"))
+                click("sync-create-space")
+                withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
+                assertEquals("none", f.descriptor().mode)
+                assertEquals("none", f.runtime.connection()?.protectionMode)
+                assertEquals(0L, f.panel.state.value.queuedTotal)
+                assertEquals(1, f.bootstrapWrites)
+                assertEquals(null, SyncSpaceCrypto.unlock(f.descriptor(), "").getOrThrow().secret)
+            }
+        }
+    }
+
+    @Test
+    fun `real compose confirms protected creation and descriptor verifies the submitted password`() = runBlocking {
+        SyncPanelUiFixture().use { f ->
+            f.authorize()
+            f.favorite()
+            withScene(f) {
+                click("sync-now")
+                click("sync-password-enabled")
+                text("ui-private-password")
+                scroll("sync-setup-list", 5)
+                assertTrue(awaitNode("sync-create-space").config.contains(SemanticsProperties.Disabled))
+                click("sync-password-ack")
+                click("sync-create-space")
+                withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
+                assertEquals("password", f.descriptor().mode)
+                assertEquals("password", f.runtime.connection()?.protectionMode)
+                assertTrue(SyncSpaceCrypto.unlock(f.descriptor(), "ui-private-password").isSuccess)
+                assertTrue(SyncSpaceCrypto.unlock(f.descriptor(), "wrong").isFailure)
+                assertEquals(1, f.bootstrapWrites)
+                assertEquals(0L, f.panel.state.value.queuedTotal)
+                f.panel.dispatch(SyncPanelAction.Navigate(SyncPanelPage.SETTINGS))
+                scroll("sync-settings-list", 5)
+                click("sync-password-help")
+                val requests = f.requestCount
+                awaitNode("sync-password-help-back")
+                click("sync-password-help-back")
+                awaitNode("sync-password-help")
+                assertEquals(SyncPanelPage.SETTINGS, f.panel.state.value.page)
+                assertEquals(requests, f.requestCount)
+            }
+        }
+    }
+
+    @Test
+    fun `real compose unlock help clears draft and returns to the same encrypted space`() = runBlocking {
+        SyncPanelUiFixture().use { f ->
+            f.existing("existing-ui-password")
+            f.authorize()
+            withScene(f) {
+                click("sync-now")
+                text("discarded-ui-password")
+                click("sync-password-help")
+                awaitNode("sync-password-help-back")
+                val requests = f.requestCount
+                click("sync-password-help-back")
+                assertEquals("", awaitNode("sync-password-input").config[SemanticsProperties.EditableText].text)
+                assertTrue(awaitNode("sync-password-help").config[SemanticsProperties.Focused])
+                assertEquals(requests, f.requestCount)
+                text("wrong")
+                click("sync-password-submit")
+                withTimeout(5_000) { f.panel.state.first { it.passwordProblem == SyncPasswordProblem.INCORRECT } }
+                assertNull(f.runtime.connection())
+                text("existing-ui-password")
+                click("sync-password-submit")
+                withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
+                assertEquals("password", f.runtime.connection()?.protectionMode)
+            }
+        }
+    }
+
+    private suspend fun withScene(f: SyncPanelUiFixture, action: suspend Ui.() -> Unit) {
+        val scene = ImageComposeScene(560, 800, coroutineContext = kotlinx.coroutines.currentCoroutineContext()) {}
+        try {
+            scene.setContent { MaterialTheme { SyncPanelContent(f.panel, onOpenBrowser = {}, onCopyCode = {}) } }
+            f.panel.dispatch(SyncPanelAction.Open)
+            Ui(scene).action()
+        } finally {
+            scene.close()
+        }
+    }
+
+    private class Ui(private val scene: ImageComposeScene) {
+        private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+        fun find(tag: String) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.firstOrNull {
+            it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == tag
+        }
+        suspend fun render() {
+            repeat(4) {
+                scene.render()
+                yield()
+            }
+        }
+        suspend fun awaitNode(tag: String): SemanticsNode = withTimeout(5_000) {
+            while (find(tag) == null) render()
+            render()
+            requireNotNull(find(tag))
+        }
+        suspend fun click(tag: String) {
+            requireNotNull(awaitNode(tag).config[SemanticsActions.OnClick].action).invoke()
+            render()
+        }
+        suspend fun text(value: String) {
+            requireNotNull(awaitNode("sync-password-input").config[SemanticsActions.SetText].action)
+                .invoke(AnnotatedString(value))
+            render()
+        }
+        suspend fun scroll(tag: String, index: Int) {
+            requireNotNull(awaitNode(tag).config[SemanticsActions.ScrollToIndex].action).invoke(index)
+            render()
         }
     }
 

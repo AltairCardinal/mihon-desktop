@@ -9,15 +9,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.ComponentDialog
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.Density
 import eu.kanade.presentation.library.components.LibraryToolbar
 import eu.kanade.presentation.library.components.LibraryToolbarTitle
 import eu.kanade.tachiyomi.util.storage.getUriCompat
@@ -30,6 +35,7 @@ import mihon.data.sync.runtime.SyncPanel
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelState
+import mihon.data.sync.runtime.SyncPasswordHelpSource
 import mihon.data.sync.runtime.SyncRunPhase
 import mihon.data.sync.runtime.SyncRunSnapshot
 import mihon.data.sync.runtime.SyncRunState
@@ -116,6 +122,7 @@ class AndroidSyncPanelTest {
         )
         showToolbar()
         compose.onNodeWithTag("sync-open").performClick()
+        compose.onNodeWithTag("sync-password-enabled").performClick()
         compose.onNodeWithTag("sync-password-input").assertIsDisplayed().performTextInput("temporary")
         compose.runOnUiThread {
             (ShadowDialog.getLatestDialog() as ComponentDialog).onBackPressedDispatcher.onBackPressed()
@@ -126,6 +133,73 @@ class AndroidSyncPanelTest {
             assertTrue(panel.state.value.visible)
             assertFalse(panel.actions.any { it is SyncPanelAction.SubmitPassword })
         }
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h900dp-mdpi")
+    fun `native narrow large text creation gates IME and help system back returns one layer`() {
+        panel.state.value =
+            panel.state.value.copy(
+                page = SyncPanelPage.SETUP,
+                setupStep = SyncSetupStep.NEW_PASSWORD,
+                createContextId = 4,
+            )
+        showToolbar(fontScale = 2f)
+        compose.onNodeWithTag("sync-open").performClick()
+        compose.onNodeWithTag(
+            "sync-setup-list",
+            useUnmergedTree = true,
+        ).performScrollToNode(hasTestTag("sync-password-enabled"))
+        compose.onNodeWithTag("sync-password-enabled").performClick()
+        compose.onNodeWithTag(
+            "sync-setup-list",
+            useUnmergedTree = true,
+        ).performScrollToNode(hasTestTag("sync-password-input"))
+        compose.onNodeWithTag("sync-password-input").performTextInput("native-ime-password")
+        compose.onNodeWithTag("sync-password-input").performImeAction()
+        compose.runOnIdle { assertFalse(panel.actions.any { it is SyncPanelAction.SubmitCreateSpace }) }
+        compose.onNodeWithTag(
+            "sync-setup-list",
+            useUnmergedTree = true,
+        ).performScrollToNode(hasTestTag("sync-create-space"))
+        compose.onNodeWithTag("sync-create-space").assertIsNotEnabled()
+        compose.onNodeWithTag(
+            "sync-setup-list",
+            useUnmergedTree = true,
+        ).performScrollToNode(hasTestTag("sync-password-risk"))
+        compose.onNodeWithTag("sync-password-risk", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag(
+            "sync-setup-list",
+            useUnmergedTree = true,
+        ).performScrollToNode(hasTestTag("sync-password-ack"))
+        compose.onNodeWithTag("sync-password-ack").performClick()
+        compose.onNodeWithTag(
+            "sync-setup-list",
+            useUnmergedTree = true,
+        ).performScrollToNode(hasTestTag("sync-password-input"))
+        compose.onNodeWithTag("sync-password-input").performImeAction()
+        compose.runOnIdle { assertEquals(1, panel.actions.count { it is SyncPanelAction.SubmitCreateSpace }) }
+        compose.runOnIdle { panel.state.value = panel.state.value.copy(setupStep = SyncSetupStep.UNLOCK) }
+        compose.onNodeWithTag(
+            "sync-setup-list",
+            useUnmergedTree = true,
+        ).performScrollToNode(hasTestTag("sync-password-help"))
+        compose.onNodeWithTag("sync-password-help").performClick()
+        compose.onNodeWithTag(
+            "sync-password-help-list",
+            useUnmergedTree = true,
+        ).performScrollToNode(hasTestTag("sync-password-help-back"))
+        compose.onNodeWithTag("sync-password-help-back").assertIsDisplayed()
+        compose.runOnUiThread {
+            (ShadowDialog.getLatestDialog() as ComponentDialog).onBackPressedDispatcher.onBackPressed()
+        }
+        compose.onNodeWithTag("sync-password-help").assertIsDisplayed()
+        compose.runOnIdle {
+            assertEquals(SyncPanelPage.SETUP, panel.state.value.page)
+            assertTrue(panel.state.value.visible)
+        }
+        compose.onNodeWithTag("sync-close").performClick()
+        compose.runOnIdle { assertFalse(panel.state.value.visible) }
     }
 
     @Test
@@ -260,13 +334,15 @@ class AndroidSyncPanelTest {
         compose.onNodeWithTag("sync-auth-network-hint", useUnmergedTree = true).assertIsDisplayed()
     }
 
-    private fun showToolbar() {
+    private fun showToolbar(fontScale: Float = 1f) {
         activity.get().setContent {
-            MaterialTheme {
-                LibraryToolbar(
-                    false, 0, LibraryToolbarTitle("Library"), {}, {}, {}, {}, {}, {}, {},
-                    null, {}, null,
-                )
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale)) {
+                MaterialTheme {
+                    LibraryToolbar(
+                        false, 0, LibraryToolbarTitle("Library"), {}, {}, {}, {}, {}, {}, {},
+                        null, {}, null,
+                    )
+                }
             }
         }
     }
@@ -302,7 +378,18 @@ class AndroidSyncPanelTest {
                 SyncPanelAction.Open -> state.value.copy(visible = true)
                 SyncPanelAction.Close -> state.value.copy(visible = false)
                 is SyncPanelAction.Navigate -> state.value.copy(page = action.page)
-                SyncPanelAction.Back -> state.value.copy(page = SyncPanelPage.MAIN)
+                SyncPanelAction.ShowPasswordHelp -> state.value.copy(
+                    page = SyncPanelPage.PASSWORD_HELP,
+                    passwordHelpSource = SyncPasswordHelpSource.UNLOCK,
+                )
+                SyncPanelAction.Back -> if (state.value.page == SyncPanelPage.PASSWORD_HELP) {
+                    state.value.copy(
+                        page = SyncPanelPage.SETUP,
+                        passwordHelpReturn = state.value.passwordHelpReturn + 1,
+                    )
+                } else {
+                    state.value.copy(page = SyncPanelPage.MAIN)
+                }
                 else -> state.value
             }
         }
