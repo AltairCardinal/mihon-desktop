@@ -252,63 +252,46 @@ class LibraryScreenModel(
             .collect(::setCategories)
     }
 
-    suspend fun createCategory(name: String) {
-        when (val result = requireNotNull(createCategory) { "CreateCategoryWithName is required" }.await(name.trim())) {
-            CreateCategoryWithName.Result.Success -> {
-                setOperationFeedback(null)
-                refreshCategoriesAfterCategoryOperation()
-            }
-            is CreateCategoryWithName.Result.InternalError -> setCategoryOperationFailure()
+    suspend fun createCategory(name: String): Boolean = categoryOperation {
+        requireNotNull(createCategory) { "CreateCategoryWithName is required" }.await(name.trim()) ==
+            CreateCategoryWithName.Result.Success
+    }
+
+    suspend fun renameCategory(categoryId: Long, name: String): Boolean = categoryOperation {
+        requireNotNull(renameCategory) { "RenameCategory is required" }.await(categoryId, name.trim()) ==
+            RenameCategory.Result.Success
+    }
+
+    suspend fun deleteCategory(categoryId: Long): Boolean = categoryOperation {
+        requireNotNull(deleteCategory) { "DeleteCategory is required" }.await(categoryId) == DeleteCategory.Result.Success
+    }
+
+    suspend fun reorderCategory(categoryId: Long, newIndex: Int): Boolean = categoryOperation {
+        val category = state.value.allCategories.firstOrNull { it.id == categoryId && !it.isSystemCategory } ?: return@categoryOperation false
+        when (requireNotNull(reorderCategory) { "ReorderCategory is required" }.await(category, newIndex)) {
+            ReorderCategory.Result.Success, ReorderCategory.Result.Unchanged -> true
+            is ReorderCategory.Result.InternalError -> false
         }
     }
 
-    suspend fun renameCategory(categoryId: Long, name: String) {
-        when (
-            val result = requireNotNull(renameCategory) {
-                "RenameCategory is required"
-            }.await(categoryId, name.trim())
-        ) {
-            RenameCategory.Result.Success -> {
-                setOperationFeedback(null)
-                refreshCategoriesAfterCategoryOperation()
-            }
-            is RenameCategory.Result.InternalError -> setCategoryOperationFailure()
+    /** Reports the existing use case's write outcome; the observed repository remains authoritative. */
+    private suspend fun categoryOperation(operation: suspend () -> Boolean): Boolean {
+        val saved = try {
+            operation()
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            false
         }
-    }
-
-    suspend fun deleteCategory(categoryId: Long) {
-        when (val result = requireNotNull(deleteCategory) { "DeleteCategory is required" }.await(categoryId)) {
-            DeleteCategory.Result.Success -> {
-                setOperationFeedback(null)
-                refreshCategoriesAfterCategoryOperation()
-            }
-            is DeleteCategory.Result.InternalError -> setCategoryOperationFailure()
+        setOperationFeedback(if (saved) null else MR.strings.internal_error.localized())
+        try {
+            refreshCategories()
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            setOperationFeedback(MR.strings.internal_error.localized())
         }
-    }
-
-    suspend fun reorderCategory(categoryId: Long, newIndex: Int) {
-        val category = state.value.categories.firstOrNull { it.id == categoryId } ?: return
-        when (
-            val result = requireNotNull(reorderCategory) {
-                "ReorderCategory is required"
-            }.await(category, newIndex)
-        ) {
-            ReorderCategory.Result.Success -> {
-                setOperationFeedback(null)
-                refreshCategoriesAfterCategoryOperation()
-            }
-            ReorderCategory.Result.Unchanged -> Unit
-            is ReorderCategory.Result.InternalError -> setCategoryOperationFailure()
-        }
-    }
-
-    private suspend fun refreshCategoriesAfterCategoryOperation() {
-        runCatching { refreshCategories() }
-            .onFailure { setCategoryOperationFailure() }
-    }
-
-    private fun setCategoryOperationFailure() {
-        setOperationFeedback(MR.strings.internal_error.localized())
+        return saved
     }
 
     fun setAllItems(items: List<LibraryManga>) {

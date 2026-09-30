@@ -14,7 +14,6 @@ import tachiyomi.domain.manga.model.Manga
 
 internal enum class MangaDetailPrimaryActionType {
     TOGGLE_LIBRARY,
-    EDIT_CATEGORIES,
     EDIT_FETCH_INTERVAL,
     TRACKING,
     OPEN_IN_BROWSER,
@@ -40,7 +39,6 @@ internal fun mangaDetailPrimaryActionTypes(
     return buildList {
         add(MangaDetailPrimaryActionType.TOGGLE_LIBRARY)
         if (isFavorite) {
-            add(MangaDetailPrimaryActionType.EDIT_CATEGORIES)
             add(MangaDetailPrimaryActionType.EDIT_FETCH_INTERVAL)
         }
         add(MangaDetailPrimaryActionType.TRACKING)

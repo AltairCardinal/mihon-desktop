@@ -65,6 +65,9 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -75,6 +78,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -166,6 +173,17 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val availableScanlators = state.availableScanlators
         val excludedScanlators = state.excludedScanlators
         var categoryDialogMode by remember { mutableStateOf<MangaCategoryDialogMode?>(null) }
+        var categoryMenuExpanded by remember { mutableStateOf(false) }
+        var restoreCategoryMenuFocus by rememberSaveable { mutableStateOf(false) }
+        val categoryMenuFocus = remember { FocusRequester() }
+        val categorySnackbar = remember { SnackbarHostState() }
+        LaunchedEffect(restoreCategoryMenuFocus) {
+            if (restoreCategoryMenuFocus && navigator.lastItem == this@MangaDetailScreen) {
+                androidx.compose.runtime.withFrameNanos { }
+                categoryMenuFocus.requestFocus()
+                restoreCategoryMenuFocus = false
+            }
+        }
         var showFetchIntervalDialog by remember { mutableStateOf(false) }
         var downloadMenuExpanded by remember { mutableStateOf(false) }
         var creatorIdentityLoading by remember { mutableStateOf(false) }
@@ -258,6 +276,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         }
 
         Scaffold(
+            snackbarHost = { SnackbarHost(categorySnackbar) },
             topBar = {
                 TopAppBar(
                     title = { Text(manga?.title ?: "…", maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -267,6 +286,20 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         }
                     },
                     actions = {
+                        if (manga?.favorite == true) {
+                            Box {
+                                IconButton(
+                                    modifier = Modifier.focusRequester(categoryMenuFocus).testTag("manga-category-menu"),
+                                    onClick = { categoryMenuExpanded = true },
+                                ) { Icon(Icons.Default.MoreVert, MR.strings.label_more.localized()) }
+                                DropdownMenu(expanded = categoryMenuExpanded, onDismissRequest = { categoryMenuExpanded = false }) {
+                                    DropdownMenuItem(
+                                        text = { Text(MR.strings.action_edit_categories.localized()) },
+                                        onClick = { categoryMenuExpanded = false; categoryDialogMode = MangaCategoryDialogMode.EDIT_CATEGORIES },
+                                    )
+                                }
+                            }
+                        }
                         if (manga != null) {
                             Box {
                                 IconButton(onClick = { downloadMenuExpanded = true }) {
@@ -643,7 +676,16 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     manga = categoryManga,
                     mode = activeCategoryDialogMode,
                     model = model,
-                    onDismiss = { categoryDialogMode = null },
+                    onDismiss = {
+                        categoryDialogMode = null
+                        if (categoryManga.favorite) restoreCategoryMenuFocus = true
+                    },
+                    onEditCategories = {
+                        categoryDialogMode = null
+                        restoreCategoryMenuFocus = categoryManga.favorite
+                        navigator.push(CategoryManagementScreen())
+                    },
+                    onSaved = { scope.launch { categorySnackbar.showSnackbar(MR.strings.desktop_categories_saved.localized()) } },
                 )
             }
 
@@ -882,9 +924,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     }
                                 }
                             }
-                        },
-                        onEditCategories = {
-                            categoryDialogMode = MangaCategoryDialogMode.EDIT_CATEGORIES
                         },
                         onEditFetchInterval = { showFetchIntervalDialog = true },
                         onTracking = {

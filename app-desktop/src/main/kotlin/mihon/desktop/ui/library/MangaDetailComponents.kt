@@ -12,6 +12,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +26,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -33,7 +36,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Close
@@ -86,6 +88,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
@@ -323,58 +328,72 @@ internal fun MangaCategoryDialog(
     title: String = MR.strings.action_edit_categories.localized(),
     loadCategories: suspend () -> List<Category>,
     loadCategoryIds: suspend (Long) -> Set<Long>,
-    onConfirm: suspend (List<Long>) -> Unit,
+    onConfirm: suspend (List<Long>) -> Boolean,
     onDismiss: () -> Unit,
+    onEditCategories: (() -> Unit)? = null,
 ) {
     var categories by remember { mutableStateOf<List<Category>>(emptyList()) }
     var checkedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var loaded by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(mangaId) {
-        categories = loadCategories()
-        checkedIds = loadCategoryIds(mangaId)
+        categories = loadCategories().filterNot(Category::isSystemCategory).sortedBy { it.order }
+        checkedIds = loadCategoryIds(mangaId).intersect(categories.map { it.id }.toSet())
         loaded = true
     }
 
     if (!loaded) return
+    val dialogFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        androidx.compose.runtime.withFrameNanos { }
+        dialogFocus.requestFocus()
+    }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        modifier = Modifier.categoryDialogEscape(!busy, onDismiss).focusRequester(dialogFocus).focusable(),
+        onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(title) },
         text = {
-            if (categories.isEmpty()) {
-                Text(MR.strings.desktop_ui_no_categories_create_categories_from_library_first.localized())
-            } else {
-                Column {
-                    categories.forEach { category ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    checkedIds = if (category.id in checkedIds) checkedIds - category.id else checkedIds + category.id
-                                }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(
-                                checked = category.id in checkedIds,
-                                onCheckedChange = { checked ->
-                                    checkedIds = if (checked) checkedIds + category.id else checkedIds - category.id
-                                },
-                            )
-                            Text(category.name, modifier = Modifier.padding(start = 8.dp))
+            Column {
+                if (categories.isEmpty()) {
+                    Text(MR.strings.information_empty_category_dialog.localized())
+                } else {
+                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp).testTag("manga-category-list")) {
+                        items(categories, key = { it.id }) { category ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("manga-category-${category.id}")
+                                    .toggleable(value = category.id in checkedIds, enabled = !busy, role = androidx.compose.ui.semantics.Role.Checkbox) { checked ->
+                                        checkedIds = if (checked) checkedIds + category.id else checkedIds - category.id
+                                    }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Checkbox(
+                                    checked = category.id in checkedIds,
+                                    onCheckedChange = null,
+                                )
+                                Text(category.name, modifier = Modifier.padding(start = 8.dp))
+                            }
                         }
                     }
                 }
+                if (failed) Text(MR.strings.internal_error.localized(), color = MaterialTheme.colorScheme.error)
             }
         },
         confirmButton = {
             TextButton(
+                enabled = !busy,
                 onClick = {
+                    busy = true
                     scope.launch {
-                        onConfirm(checkedIds.toList())
-                        onDismiss()
+                        failed = !onConfirm(checkedIds.toList())
+                        busy = false
+                        if (!failed) onDismiss()
                     }
                 },
             ) {
@@ -382,7 +401,12 @@ internal fun MangaCategoryDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
+            Row {
+                onEditCategories?.let { edit ->
+                    TextButton(enabled = !busy, onClick = edit) { Text(MR.strings.action_edit.localized()) }
+                }
+                TextButton(enabled = !busy, onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
+            }
         },
     )
 }
@@ -398,6 +422,8 @@ internal fun MangaDetailLibraryCategoryDialog(
     mode: MangaCategoryDialogMode,
     model: MangaDetailScreenModel,
     onDismiss: () -> Unit,
+    onEditCategories: (() -> Unit)? = null,
+    onSaved: (() -> Unit)? = null,
 ) {
     MangaCategoryDialog(
         mangaId = manga.id,
@@ -408,18 +434,21 @@ internal fun MangaDetailLibraryCategoryDialog(
         loadCategories = model::categories,
         loadCategoryIds = model::categoryIdsForManga,
         onConfirm = { categoryIds ->
-            when (mode) {
+            val saved = when (mode) {
                 MangaCategoryDialogMode.ADD_TO_LIBRARY -> model.toggleLibrary(
                     manga = manga,
                     categoryIds = categoryIds,
-                )
+                ) is tachiyomi.domain.manga.interactor.LibraryMembershipResult.Success
                 MangaCategoryDialogMode.EDIT_CATEGORIES -> model.setCategoriesForManga(
                     mangaId = manga.id,
                     categoryIds = categoryIds,
-                )
+                ) == tachiyomi.domain.category.interactor.SetMangaCategories.Result.Success
             }
+            if (saved) onSaved?.invoke()
+            saved
         },
         onDismiss = onDismiss,
+        onEditCategories = onEditCategories,
     )
 }
 
@@ -488,7 +517,6 @@ internal fun MangaDetailActionRow(
     mangaUrl: String?,
     hasUnreadChapters: Boolean,
     onToggleLibrary: () -> Unit,
-    onEditCategories: () -> Unit,
     onEditFetchInterval: () -> Unit,
     onTracking: () -> Unit,
     onOpenInBrowser: () -> Unit,
@@ -516,10 +544,6 @@ internal fun MangaDetailActionRow(
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(if (manga.favorite) MR.strings.in_library.localized() else MR.strings.add_to_library.localized())
-                    }
-                MangaDetailPrimaryActionType.EDIT_CATEGORIES ->
-                    IconButton(onClick = onEditCategories) {
-                        Icon(Icons.Default.Category, contentDescription = MR.strings.action_edit_categories.localized())
                     }
                 MangaDetailPrimaryActionType.EDIT_FETCH_INTERVAL ->
                     IconButton(onClick = onEditFetchInterval) {

@@ -67,3 +67,12 @@ L1–L4、D1–D6、S1–S4、V1–V4全部有实际证据；可由一个行为�
 ## 基准纠正记录
 
 V1初稿统一写2:3，后在实现期间经源码独立复核发现Desktop `LibraryComponents.kt`和`MangaDetailComponents.kt`显式使用0.7f，Android `MangaCover.Book`才2/3。故按SOURCE纠正为分平台比例；没有把成品偏差反向写成要求，也未减少覆盖项。当前Desktop视觉差异是否将来统一需另行产品决策，本轮不修改生产外观。
+
+
+## 2026-09-30 分类管理子页契约（RI02）
+
+- PROJECT_POLICY：更多 → 分类是直接管理入口；已收藏作品详情 → 更多 → 编辑分类 → 编辑复用普通 `CategoryManagementScreen`。编辑跳转丢弃未确认归属草稿，返回原详情。书架及书架设置不新增管理按钮；分类0由默认投影管理，不显示为自定义分类卡片或归属复选框。
+- SOURCE（本轮同批提交）：每次管理页面持有独立 Voyager key 和现有 LibraryScreenModelFactory 创建的 ScreenModel；离页销毁 owner。分类列表来自 GetCategories，拖动投影为会话临时状态，停止拖动只提交一次，失败清投影并回权威值。手柄聚焦后 Alt＋↑／↓调用同一持久化排序动作；这是 Desktop adapter 的键盘选择，不把 HTML 键位提升为上游唯一要求。
+- 名称规则沿用上游 trim 与区分大小写的精确重复比较，重命名排除自身。空、重复及未变名称禁止确认并解释；写入失败保留草稿供重试。删除确认显示分类名称，取消不写；正常删除清既有偏好引用并使无归属作品回默认，保留作品。跨 DB／Preference 部分失败恢复由 RI12负责，不声称本批跨存储原子化。
+- Escape 每次消费一层：弹窗关闭并还焦，管理子页回上一页，详情归属编辑返回后还焦 More。归属弹窗自定义分类使用受父约束的最多320dp滚动区，末项及编辑／取消／确认保持可达；管理列表留出 FAB 底部空间。
+- 验收：`CategoryManagementScreenTest` 的真实 More／详情导航、pointer 拖动、键盘事件、12项原生离屏与 SQLite 测试；相关旧动作、设置搜索和 DI CRUD保护合计73项通过。正式发布运行及硬件证据统一 RI18，不以离屏或 HTML 通过替代。

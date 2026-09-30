@@ -246,7 +246,6 @@ class LibraryRootScreen : Screen {
         val selectedCategoryId = categories.getOrNull(selectedCategoryIndex)?.id
         val isUpdating = state.isUpdating
         val updateStatusText = state.updateStatusText
-        val showCategoryDialog = state.showCategoryDialog
         val displayMode = state.displayMode
         val contextMenuManga = state.contextMenuManga
         val showBatchCategoryDialog = state.showBatchCategoryDialog
@@ -336,19 +335,6 @@ class LibraryRootScreen : Screen {
             navigate = navigator::push,
             clear = selectionState::clear,
         )
-
-        if (showCategoryDialog) {
-            CategoryManagementDialog(
-                categories = categories,
-                onCreate = model::createCategory,
-                onRename = model::renameCategory,
-                onDelete = model::deleteCategory,
-                onReorder = model::reorderCategory,
-                onDismiss = {
-                    model.setShowCategoryDialog(false)
-                },
-            )
-        }
 
         removalTarget?.let { items ->
             LibraryRemovalDialog(
@@ -449,7 +435,7 @@ class LibraryRootScreen : Screen {
                 },
                 onEditCategories = {
                     selectionState.clear()
-                    model.setShowCategoryDialog(true)
+                    navigator.push(CategoryManagementScreen())
                 },
             )
         }
@@ -567,7 +553,6 @@ class LibraryRootScreen : Screen {
                         val cat = categoryTabs.getOrNull(selectedCategoryIndex)
                         model.setDisplayModeForCategory(cat?.id, it)
                     },
-                    onManageCategories = { model.setShowCategoryDialog(true) },
                     onOpenGlobalSearch = { navigator.push(GlobalSearchScreen(requireNotNull(searchQuery))) },
                     onOpenSettings = { navigator.push(LibrarySettingsScreen()) },
                     categories = categoryTabs,

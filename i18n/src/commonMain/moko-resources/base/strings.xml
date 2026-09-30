@@ -2154,4 +2154,6 @@
     <string name="creator_frequency_monthly">Monthly</string>
     <string name="creator_settings_saved">Author settings saved</string>
     <string name="desktop_backup_preview_authors">Author archive: %1$d authors</string>
+    <string name="desktop_category_name_unchanged">The name has not changed</string>
+    <string name="desktop_categories_saved">Categories saved</string>
 </resources>

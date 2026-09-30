@@ -1943,4 +1943,6 @@
     <string name="sync_setup_abandon_legacy">放弃旧初始化并重新检查</string>
     <string name="sync_setup_account_changed">GitHub 账号已更换，请重新连接后继续</string>
     <string name="sync_problem_not_private">同步仓库已变为公开，请在 GitHub 恢复为私有后重试。上传已暂停；恢复私有不能撤回此前可能公开的数据。</string>
+    <string name="desktop_category_name_unchanged">名称未改变</string>
+    <string name="desktop_categories_saved">分类已保存</string>
 </resources>

@@ -95,7 +95,6 @@ class MangaShareWiringTest {
                         mangaUrl = "https://example.com/manga",
                         hasUnreadChapters = false,
                         onToggleLibrary = {},
-                        onEditCategories = {},
                         onEditFetchInterval = {},
                         onTracking = {},
                         onOpenInBrowser = {},

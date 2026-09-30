@@ -22,7 +22,6 @@ class MangaDetailActionsTest {
         assertEquals(
             listOf(
                 MangaDetailPrimaryActionType.TOGGLE_LIBRARY,
-                MangaDetailPrimaryActionType.EDIT_CATEGORIES,
                 MangaDetailPrimaryActionType.EDIT_FETCH_INTERVAL,
                 MangaDetailPrimaryActionType.TRACKING,
                 MangaDetailPrimaryActionType.OPEN_IN_BROWSER,
@@ -43,7 +42,6 @@ class MangaDetailActionsTest {
         )
 
         assertTrue(MangaDetailPrimaryActionType.TOGGLE_LIBRARY in actions)
-        assertFalse(MangaDetailPrimaryActionType.EDIT_CATEGORIES in actions)
         assertFalse(MangaDetailPrimaryActionType.EDIT_FETCH_INTERVAL in actions)
         assertFalse(MangaDetailPrimaryActionType.CONTINUE_READING in actions)
     }

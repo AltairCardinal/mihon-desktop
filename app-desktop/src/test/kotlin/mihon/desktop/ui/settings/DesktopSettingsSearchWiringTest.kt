@@ -96,13 +96,18 @@ class DesktopSettingsSearchWiringTest {
             render(scene)
             click(scene, MR.strings.categories.localized())
             render(scene)
-            assertTrue(MR.strings.desktop_ui_manage_categories.localized() in text(scene))
+            assertTrue(navigator.lastItem is mihon.desktop.ui.library.CategoryManagementScreen)
+            assertTrue(MR.strings.action_edit_categories.localized() in text(scene))
+            val add = nodes(scene, true).single { it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == "category-add" }
+            requireNotNull(add.config[SemanticsActions.OnClick].action).invoke()
+            render(scene)
             setText(scene, "Research")
             render(scene)
-            clickDescription(scene, MR.strings.action_add.localized())
+            val confirm = nodes(scene).last { it.config.contains(SemanticsActions.OnClick) && MR.strings.action_add.localized() in flatten(it).flatMap(::text) }
+            requireNotNull(confirm.config[SemanticsActions.OnClick].action).invoke()
             render(scene)
             io.mockk.coVerify { create.await("Research") }
-            click(scene, MR.strings.desktop_ui_done.localized())
+            clickDescription(scene, MR.strings.action_bar_up_description.localized())
             render(scene)
             click(scene, MR.strings.label_data_storage.localized())
             assertTrue(navigator.lastItem is BackupSettingsScreen)

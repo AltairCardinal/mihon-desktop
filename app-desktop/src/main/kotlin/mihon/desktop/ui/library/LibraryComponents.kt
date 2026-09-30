@@ -31,7 +31,6 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CollectionsBookmark
-import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.GridView
@@ -133,7 +132,6 @@ internal fun LibraryToolbar(
     isUpdating: Boolean,
     displayMode: LibraryDisplayMode,
     onDisplayModeChange: (LibraryDisplayMode) -> Unit,
-    onManageCategories: () -> Unit,
     onOpenGlobalSearch: () -> Unit,
     onOpenSettings: () -> Unit,
     categories: List<Category> = emptyList(),
@@ -302,10 +300,6 @@ internal fun LibraryToolbar(
 
             IconButton(onClick = onRandomManga) {
                 Icon(Icons.Default.Shuffle, contentDescription = MR.strings.desktop_ui_random_manga.localized())
-            }
-
-            IconButton(onClick = onManageCategories) {
-                Icon(Icons.Default.CreateNewFolder, contentDescription = MR.strings.desktop_ui_manage_categories_eceede45.localized())
             }
 
             if (!showCategoryTabs && categories.size > 1) {

@@ -7,8 +7,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -38,9 +36,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.GetApp
@@ -50,9 +45,6 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
-import cafe.adriel.voyager.core.model.rememberScreenModel
-import mihon.desktop.ui.library.LocalLibraryScreenModelFactory
-import mihon.desktop.ui.library.CategoryManagementDialog
 import tachiyomi.core.common.Constants
 
 class MoreRootScreen : Screen {
@@ -81,21 +73,6 @@ class MoreRootScreen : Screen {
         val uriHandler = LocalUriHandler.current
         val libraryPreferences = requireNotNull(LocalDesktopUiDependencies.current.libraryPreferences)
         val downloadedOnly by libraryPreferences.downloadedOnly().changes().collectAsState(initial = libraryPreferences.downloadedOnly().get())
-        var showCategories by remember { mutableStateOf(false) }
-        if (showCategories) {
-            val factory = LocalLibraryScreenModelFactory.current
-            val model = rememberScreenModel { factory() }
-            val state by model.state.collectAsState()
-            LaunchedEffect(model) { model.observeCategories() }
-            CategoryManagementDialog(
-                categories = state.categories,
-                onCreate = model::createCategory,
-                onRename = model::renameCategory,
-                onDelete = model::deleteCategory,
-                onReorder = model::reorderCategory,
-                onDismiss = { showCategories = false },
-            )
-        }
         val downloadQueuePort = LocalDesktopUiDependencies.current.downloadQueuePort
         val preferences = LocalDesktopUiDependencies.current.appPreferences
         val downloadQueue by downloadQueuePort.queue.collectAsState()
@@ -169,7 +146,7 @@ class MoreRootScreen : Screen {
                         icon = Icons.AutoMirrored.Outlined.Label,
                         title = MR.strings.categories.localized(),
                         subtitle = null,
-                        onClick = { showCategories = true },
+                        onClick = { navigator.push(mihon.desktop.ui.library.CategoryManagementScreen()) },
                     )
                 }
                 item {

@@ -123,6 +123,46 @@ python scripts/gradle-coordinator.py run --key interaction-ri00-baseline -- .\gr
 
 流程纠正（2026-09-30）：用户要求全部任务完成后再做全量。前次在 RI01 后提前执行完整 Desktop 测试不符合本迭代的收口时机，保留其真实失败及修复证据；撤回首簇追加全量请求，不再因此阻断后续实现。RI00–RI17 只执行行为红绿和明确受影响的集成／wiring、格式与风险专项；完整 Android／Desktop 矩阵、正式构建及运行交付统一在 RI18 的最终冻结 diff 上执行。当前 focused 结果证明首簇变更，不能外推整份 roadmap 已完成或构建已通过。
 
+## RI02：共用分类管理与详情归属
+
+起点为 RI00／RI01 的提交 `14a8ce1569`，工作树开始时干净。固定验收 CUI1–CUI8 和 D-C3，HTML 的 Alt+↑／↓仅为 adapter 参照，不强制复制到 native。
+
+- 复用真实 LibraryScreenModelFactory、GetCategories、CreateCategoryWithName、RenameCategory、ReorderCategory、DeleteCategory 和详情 SetMangaCategories 链；不新建分类 repository 或第二份持久分类列表。临时拖动顺序只属于视图投影，失败恢复真实权威。
+- 主代理已核对 commonMain categories.sq 的系统分类删除保护，以及 mangas_categories.sq 的关联 ON DELETE CASCADE。删除分类不删除漫画；libraryView 使用默认分类投影。需由本批真实 SQLite／repository／Compose 测试验证，源码事实不替代通过证据。
+- DeleteCategory 正常路径清理默认分类、更新包含／排除及下载三个引用集合并重排；其 DB 删除、偏好写入、后续重排不是跨存储事务。后两阶段失败与精确恢复是 RI12 的边界，本批不能宣称原子清理完成。
+- 更多 push 共用普通 Screen，详情对话框编辑抛弃未确认草稿后 push 同页，返回保留原详情；管理页只列自定义分类，添加／重命名明确校验，删除具名确认，Escape 每次只退一层并还焦。
+- 对原4个 category action 返回最小 Boolean 以区分实际 usecase 结果；原调用可忽略，不通过翻译后的反馈文字判断成功。不改变 Android domain 用例语义。
+
+有效红测依次为 `interaction-ri02-entry-red`、`name-red-valid`、`cards-reorder-red-valid`、`detail-fab-red`、`library-entry-red`（均带 interaction-ri02 前缀）：分别证明真实导航、独立名称弹窗、卡片动作／手柄、窄窗 FAB 遮挡与详情入口、旧入口及原生 Escape 的缺口。不可用组件的编译错误和系统分类夹具错误不作为行为红证据。
+
+最终 `interaction-ri02-final-focused-valid` 退出0／PASSED，2026-09-30 10:54:05–10:54:59 UTC，73项／0失败／0跳过。命令为协调器执行 `:app-desktop:jvmTest --offline -PincludeIntegrationTests=true`，过滤 CategoryManagementScreenTest（12）、DesktopSettingsSearchWiringTest（23）、LibraryParityIntegrationTest（16）、MangaDetailActionsTest（7）、MangaShareWiringTest（3）、MangaDetailLibraryEntryWiringTest（10）及 LibraryCategoryBehaviorTest 的真实 DI 分类 CRUD／创建失败两项。真实 pointer 拖动、聚焦 Alt+Down、SQLite 故障回滚／重试／重启、删除5组偏好引用及默认归属、详情草稿丢弃和 Screen owner Job 销毁均有实际事件证据。
+
+本批超过8个文件／400行是同一分类管理能力在共用 Screen、More／详情导航、分类用例结果和真实 Compose／SQLite 契约中的内聚改动。保留原 repository、DI factory 及共享用例，没有为拆分估算复制生产实现。
+
+### 独立初审与修复范围
+
+主代理同一轮初审核对新Screen／More及详情接线、真实SQLite归属／删除、正常偏好引用清理、排序失败回权威、拖动事件、页面实例键和model销毁。`interaction-ri02-library-escape-green` 的9项新分类事件测试通过，但四相关类共58项中More旧夹具1项失败，不将该轮记为全绿。
+
+初审三项需补齐：详情旧primary分类按钮仍与新的More入口并存；归属弹窗仍使用无滚动Column，多分类末项缺可达性证据；CustomAccessibilityAction验证不能单独证明普通键盘触发排序。交原实施者合并为唯一修复轮，补真实详情入口、24分类窄窗滚动及实际聚焦手柄键盘事件测试，预计约15–20分钟；不新增代理、审查轮次、全量或构建。旧factory/model CRUD保护仍适用，不改写为另一套实现；`interaction-ri02-review-red` 3项／3失败均为正确业务原因；最终73项 focused绿证据包含三项回归。主代理唯一修复复审核对：移除旧 primary enum／回调，保留收藏、间隔、追踪和分享断言；归属使用受父约束的 max320dp LazyColumn，360×600窗口24分类末项严格实体 bounds 与真实保存；手柄 RequestFocus 后原生 Alt+Down KeyDown／KeyUp 驱动 SQLite 顺序。三项已通过复审。
+
+新增 Escape 断言还发现归属弹窗无焦点宿主，已显式初始化原生 focus owner；离屏夹具 WindowInfo 补真实 containerSize／containerDpSize，避免未提供尺寸造成无意义坐标，没有放宽 bounds 容差。名称空／重复／未变禁止确认、保存失败保留草稿；删除正常引用清理通过，跨存储部分失败仍由 RI12 闭环。
+
+格式首检仅发现本批 XML 的 CRLF，已规范为 UTF-8／LF；`interaction-ri02-final-format-index` 的 spotlessCheck 与 DesktopProductCapabilityContractTest（34项／0失败／0跳过）均通过；6处 current roleEvidence 行号已机械更新，不修改 capability 状态或历史来源。
+
+### RI03 前置来源核验（只读，不代表实施完成）
+
+主代理核验固定提交 `866d045c7aba343fd739c57d15c81ff6df59e796` 的归档：upstream-themes manifest 的25个文件、upstream-appearance manifest 的29个 files 均与记录的 SHA-256 一致。appearance 的133个 translation_sources XML 未随归档保留，不能声称已全量核验；实现须消费仓库实际 moko 资源及共享色表，不复制 HTML JSON。
+
+当前 i18n 有68个 strings.xml 目录，其中 tt 为空；实际非空及生成的 JVM mokoBundle 均为67种，缺定稿目录中的 kmr。已通过会话 HTTP 代理取得固定上游的 `i18n/src/commonMain/moko-resources/kmr/strings.xml`，18579字节，SHA-256 `e8e2a784862367489ba4ed75f93ac57ca34e7d8300213fd075dd0b95b9fab8bd`，与归档 manifest 的 kmr 记录一致。该只读前置文件暂存忽略的 `.gradle-coordinator/interaction-ri03-source/kmr-strings.xml`；尚未写入 production，补齐资源与真实语言／复数接线须随 RI03 红绿实施。
+
+### RI18 macOS 环境前置（只读，不代表构建验收）
+
+收口顺序按用户“全部功能实现后再全量”统一：先完成RI00–RI17实现、focused专项及独立审查；RI16／RI17必须依赖最终发布runtime的设备／键鼠证据在RI18构建后取得，相关checkbox保留未勾选，所有原定门禁仍须通过。修正此前“RI18前置包含尚未生成的发布产物证据”的顺序循环，不提前重复全量或发布、不改变验收范围。
+
+2026-09-30 只读 SSH 预检：`mbp` 的连接在5秒上限超时，按已配置的 `mbp-lan` 有界追加一次后成功。实际系统 Darwin／x86_64／macOS 14.8.4，既有 Temurin 21.0.10+7 可执行。记录中的旧同步隔离 checkout 存在，HEAD `d9999a3e5807b27242c2b239233fc029969d4495`，工作树有未提交改动；本轮未修改、清理、构建或部署该目录。RI18 须另建本任务隔离 checkout，开始前再次核对身份、进程和配置。连通及 JDK 证据不能代替 macOS 构建、UI、钥匙串或正式运行验收。
+
+Android只读预检 `python scripts/build-android.py check --signing` 返回0／signing verified，SDK36、build-tools36.0.0及JDK21.0.11可用，原发布证书身份验证通过。未分配候选版本、未构建／安装APK，不能作为最终候选验收；收口时在冻结源码上重新按规范核对。
+
 ## 未完成与限制
 
-RI00／RI01 的实现、focused、唯一独立审查及必要修复复审已完成，代码、测试、索引修复和必要 checkoff 随本功能批同一提交。下一项为 RI02；完整计划的逐批追加审查预算仍另有待答请求。RI02–RI18 尚未实施；最终全量、正式构建及运行验收尚未执行。本轮没有 Android／macOS 构建、真实鼠标／触控板／硬件条件验收，没有交付 EXE/APK，没有把 HTML 勾选更新为 native 完成。
+RI00／RI01 的实现、focused、唯一独立审查及必要修复复审已完成，代码、测试、索引修复和必要 checkoff 随本功能批同一提交。首簇提交为 `14a8ce15695cf69ab2e468b825e88ec91641e08a`。用户继续要求完成剩余 roadmap，现复用原实施代理串行推进后续批次，每批按既有审查与必要修复复审流程执行；完整验证仍只在 RI18。RI02 实现、focused、唯一修复复审和格式／索引检查均通过，必要 checkoff 与代码／测试在本批同一提交；RI03–RI18 未完成；最终全量、正式构建及运行验收尚未执行。本轮没有 Android／macOS 构建、真实鼠标／触控板／硬件条件验收，没有交付 EXE/APK，没有把 HTML 勾选更新为 native 完成。

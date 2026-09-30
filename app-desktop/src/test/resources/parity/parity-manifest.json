@@ -9838,12 +9838,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "internal suspend fun enqueueDownloads(",
-          "line": 937
+          "line": 920
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1046
+          "line": 1029
         }
       ],
       "FIXTURE": [
@@ -11370,7 +11370,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
           "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY",
-          "line": 881
+          "line": 923
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
@@ -11380,12 +11380,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
           "symbol": "MangaCategoryDialogMode.ADD_TO_LIBRARY -> model.toggleLibrary",
-          "line": 412
+          "line": 438
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1046
+          "line": 1029
         }
       ],
       "FIXTURE": [
@@ -30471,7 +30471,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailActions.kt",
           "symbol": "internal fun nextUnreadChapter",
-          "line": 80
+          "line": 78
         }
       ],
       "FIXTURE": [
