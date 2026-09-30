@@ -211,3 +211,33 @@ macOS 的 production controller 与系统安全存储运行门槛在桌面应用
 本轮重新用同一正式 app、新隔离 profile 启动非 headless Test Mode。核对 macOS 控制台与 SSH 用户一致、GUI domain 存在。目标实际应用 PID 为 29116；CoreGraphics 窗口元数据报告该 PID 的 layer 0 窗口位于 (97,73)，尺寸 1024×768。随后 `open -a <同一 app>` 激活，目标 PID 在 on-screen 窗口列表中有 1 个窗口；未读取系统屏幕像素或申请录屏权限。用户随后明确回复“现在看见了”，并在交互问题中再次确认。至此本轮真实窗口可见通过；Tab、Escape、布局及入口重开仍需独立反馈，不能由“看到了”推导。
 
 Test Guide 同步补充窗口证据、激活和现场等待规则，原生窗口显示与 HTTP 面板状态明确分开；用户级 AGENTS 草稿尚未获准写入，未改用户级文件。本轮窗口继续保留供用户检查，未自动关闭；不启动其他实例或发起 GitHub 授权。
+
+### macOS 原生交互自动化补齐（2026-09-30）
+
+用户授权完成 Mac 原生交互部分。本批复用原实施代理承担只读观测与红绿验证，主代理承担独立审查、外部原生事件驱动、正式运行与文档；无新增代理。预算为独立审查一轮、必要修复复审一轮、Desktop 完整测试一次、相关 focused 红绿与格式检查，以及两平台官方发布脚本。预计 1–2 小时，主要成本为编译、完整测试、正式构建和 Mac 原生事件诊断；超过上述次数或新增产品范围前申请批准。
+
+固定验收：正式 Mac 应用经 LaunchServices 在隔离 profile 显示；原生鼠标点击实际同步入口；Tab 完整遍历当前面板并圈定在其 owner 内，Shift+Tab 逆向回环；真实 Escape 关闭并还焦到同步入口；真实 Enter、Space 从该入口重开。观测只提供实际已挂载白名单控件的 tag、启用/焦点状态、owner 状态与屏幕几何信息，来自 Compose/AWT，不从 controller visible 推造焦点；不读取文本、密码、令牌或屏幕像素，不提供任意控件选择、注入状态或输入操作。
+
+原生事件驱动只观测 HTTP，不用 `/test/sync/open` 等 domain 动作替代鼠标入口。未登录场景足以检验面板圈定及还焦；密码页的共享 Compose 契约证据继续适用，但本轮未登录 Mac 原生验收不冒充真实密码页、远端 GitHub 双端或 Android 真机验收。S2 保持未勾选，待本批实际证据补入后再说明各门槛状态。
+
+实现和逐任务验证：HTTP 初红为预期 200 实际 404；真实 Compose 入口初红为预期一次 `sync-open` 观测实际零次；registry 初红为白名单未实现；真实 MAIN Tab 后续走过 close/now/history，再进入未标记的 32×48 默认把手，证明必须观测其外层焦点。默认 `BottomSheetDefaults.DragHandle` 继续复用，仅增加内层稳定 tag；因 Material 外层接收焦点，内层 focus modifier 无法报告父焦点。Compose 的 `SemanticsInfo` Kotlin 声明为 internal，编译证实不可调用，未使用抑制或反射绕过。最终 Desktop 只在把手已挂载时，从本次应用实际拥有的聚焦窗口读取公共 AWT Accessibility `FOCUSED` 与几何信息匹配；普通控件仍由真实 Compose focus 事件观测。遍历迭代、身份去环、最多 4096 项；owner 链最多 64 步；不访问 name/role/text/value。closed accessible getter 初红报 `IllegalStateException`，修复后跳过失效记录；深度 5000 检查前置通过，仅作为回归，不声称有效红。
+
+`sync-ui-final-focused` 退出码 0、44 秒：Desktop Panel 2、Registry 4、Accessibility 3、HTTP 1，共 10/10；共享 Content 64/64，零失败、零跳过；Android `compileDebugKotlinAndroid` 和根 `spotlessCheck` 通过。移动窗口时读最新 owner 坐标、未激活但已挂载可观测、无窗口不 ready、卸载清记录、旧 observer/binding 不影响新 generation、POST 不修改、无效/已销毁几何不返回均有相应行为证据。主代理另核对真实 production Main/TestMode/HTTP 接线、固定白名单及显式 JSON 字段、坐标按各 owner density 换算、默认控件保留、窗口归属和停止清理；独立审查未发现阻塞。Mac 发布运行中的实际焦点、把手桥接及原生事件仍须后续通过，不用此审查或 adapter 单测替代。
+
+本批共 18 个文件属于同一验收能力：共享只读挂载事件、Desktop 生命周期/HTTP/平台桥接、真实行为测试、外部原生事件驱动与必要文档。跨模块边界与较多代码来自实际窗口、默认把手父焦点和停止隔离要求，不拆开无法独立验收的接线；无新依赖、持久格式、同步协议或产品导航变更。当前冻结输入以小型传输归档复制到新 Mac 隔离工作区，两端 Desktop 生产源码相同；归档仅为构建传输，不是额外计划或报告。
+
+
+本批完整验证与正式发布：官方 `scripts/build-desktop.sh` 经 `sync-native-windows-build` 执行唯一一次 Desktop 全量，退出码 1、5 分 5 秒；3246 项、1 失败、0 error、3 跳过。唯一失败为 `DesktopProductCapabilityContractTest` 的 ID81 evidence 指向 `Main.kt:629`，新增只读 provider 包装后真实 wiring 已移至 631；没有 production 行为断言失败。仅将 manifest 的该 evidence 行号改为 631，未改变 capability 状态或 production 实现。`sync-native-manifest-focused` 对五个直接消费 manifest 的契约类补验，共 62/62、零失败/跳过，退出码 0、1 分 24 秒；根格式检查通过。保留首次全量失败记录，其余完整结果与这次机械元数据修正后的受影响契约补验构成等价完整覆盖，不宣称追加完整套件全绿。生产源码冻结，两平台随后均使用官方 `build-only`，没有额外全量。
+
+| 正式候选 | 实际结果 |
+| --- | --- |
+| Windows `0.11.19.71.ecd7d4c` | `sync-native-windows-package` 退出码 0；正式运行版本及 production 扩展 APK 安装验收通过。日志 `Final unpacked EXE:` 为 [Mihon Desktop.exe](../../app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.71.ecd7d4c-unpacked/Mihon%20Desktop.exe)，已核对文件存在；[Windows ZIP](../../app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.71.ecd7d4c-windows.zip) SHA-256 `174a97468b338538c2dfd46e4a55bbbf04cb0363e0a04774a49dde804cff0533`。 |
+| macOS `0.11.19.71.ecd7d4c` | `sync-native-mac-package` 退出码 0；独立应用包 `/private/tmp/mihon-sync-native-deploy-ecd7d4c/Mihon Desktop.app`，Info.plist 版本 `11.19.71`。经 LaunchServices 启动并完成下述原生验收；[macOS ZIP](../../app-desktop/artifacts/macos/Mihon-Desktop-0.11.19.71.ecd7d4c-macos.zip) SHA-256 `c2480dd9d577bfef53d7251caf6020294e7a07ea61d5a8ae60806f18326077bf`。 |
+
+Mac 首次输入前置明确读取到锁屏标记，未发送输入；用户自行解锁并置前台后，复核为未锁屏且实际主窗口聚焦。Dock 的全屏 layer 20 矩形曾令过严的遮挡前置拒绝输入；窗口矩形不等于鼠标实际命中，改用公共系统辅助功能坐标命中接口只核对 PID，确认目标为实际应用 35849 后发送输入。未改系统权限、不读名称、文本或像素。首次鼠标已打开面板后，同一 AWT 窗口的底层工具栏局部 Focus 与默认把手真实焦点同时存在；外部脚本改为检查当前挂载面板作用域，卸载后检查工具栏，未改产品焦点或把焦点状态写回应用。这两项仅涉及外部验收工具，不改变已经冻结的应用候选。
+
+最终外部脚本退出码 0，使用实际应用 PID 35849、新隔离 profile、非 headless 正式候选。真实鼠标点击打开；Tab 完整回环为 `sync-drag-handle → sync-settings → sync-close → sync-now → sync-history → sync-drag-handle`，Shift+Tab 完整逆向回环；默认把手 AWT Accessibility 桥接在本次真实 Mac 发布运行中得到验证。Escape 两次关闭并还焦至 `sync-open`，分别用原生 Enter、Space 重开；最后 Escape 关闭且入口聚焦。只读 HTTP 用于断言，不调用业务动作模拟入口，不登录 GitHub、不创建远端空间。
+
+本轮补齐的是未登录 MAIN 同步面板的原生输入、圈定与还焦门槛。密码页视觉/真实密码交互、Android 真机安装升级、真实远端双端创建/解锁/恢复仍未验收，S2 保持未勾选；此前桌面启动上下文安全存储跨进程成功证据仍保留。本批过程日志保存在忽略的 `.gradle-coordinator/` 及 Mac 隔离工作区，不新增过程报告。
+
+收口核验：本轮最终 `/test/shutdown` 返回 202，实际应用 PID 35849 和 LaunchServices 包装器 PID 35848 均退出，无本次实例遗留。四份新增/更新文档与脚本的 UTF-8、Python 语法、本地文档链接、正式 EXE 文件存在性及 `git diff --check` 通过；两端归档 SHA-256 一致。未修改用户级 AGENTS，也未混入其他 worktree 的改动。

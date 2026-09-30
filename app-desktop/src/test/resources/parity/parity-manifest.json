@@ -44725,7 +44725,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "internal fun wireDesktopOpenUriEvents",
-          "line": 629
+          "line": 631
         }
       ],
       "FIXTURE": [

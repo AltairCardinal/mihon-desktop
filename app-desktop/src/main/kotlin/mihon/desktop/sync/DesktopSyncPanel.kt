@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -30,6 +31,7 @@ import mihon.desktop.platform.DesktopShareResult
 import mihon.desktop.platform.toDesktopNotification
 import mihon.presentation.sync.SyncPanelContent
 import mihon.presentation.sync.SyncToolbarButton
+import mihon.presentation.sync.syncUiTag
 import tachiyomi.i18n.MR
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,6 +61,7 @@ fun DesktopLibrarySyncAction() {
             onDismissRequest = { panel.dispatch(SyncPanelAction.Close) },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             sheetMaxWidth = 560.dp,
+            dragHandle = { BottomSheetDefaults.DragHandle(Modifier.syncUiTag("sync-drag-handle")) },
             modifier = Modifier.heightIn(max = 720.dp).onPreviewKeyEvent {
                 if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) {
                     panel.dispatch(SyncPanelAction.Back)

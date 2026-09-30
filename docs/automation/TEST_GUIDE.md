@@ -135,6 +135,28 @@ open -n -W -a "$MIHON_ACCEPTANCE_APP" --args \
 若有系统访问提示，由值守用户核对程序并决定授权；没有提示也不能代替真实读写断言。
 `--headless` 的证据仅覆盖 HTTP/production controller/系统安全存储，不代表原生窗口、键盘或视觉验收。
 
+### macOS 同步面板原生交互自动化
+
+本轮正式应用必须包含只读 `GET /test/sync/ui` 接口。通过上述 LaunchServices 命令启动可见窗口（去掉 `--headless`），
+使用全新隔离 profile，使同步面板初始关闭且未连接；随后在同一 Mac 执行：
+
+```bash
+python3 scripts/mac-sync-native-acceptance.py \
+  --base http://127.0.0.1:49163 \
+  --app "$MIHON_ACCEPTANCE_APP" \
+  --profile "$MIHON_ACCEPTANCE_PROFILE"
+```
+
+脚本核对实际应用 PID、应用包路径、profile、窗口激活与控件坐标，并检查图形会话未锁屏。
+CoreGraphics 窗口矩形仅用于确认目标窗口存在；Dock 等窗口可能报告覆盖全屏的矩形，不能单凭矩形顺序推导鼠标命中。
+外部工具通过系统辅助功能的坐标命中接口只读取目标 PID，确认属于本次应用后才发送 CoreGraphics HID 鼠标事件；键盘事件发送给核对后的应用 PID。
+它通过只读接口验证鼠标打开同步面板、Tab/Shift+Tab 完整正反回环、Escape 关闭与同步入口还焦、Enter/Space 重开。
+HTTP 控制动作不能代替这些原生事件。同一 AWT 窗口中的底层 Compose owner 可能在弹层挂载后保留工具栏局部 Focus 标记。
+面板挂载时只核对面板作用域，卸载后核对工具栏；同时要求 `ownerFocused` 和实际 `focusedWindow`，不把背景标记算作当前焦点。
+脚本不读取屏幕像素，不登录 GitHub，不创建空间或读取输入内容；只验未登录 MAIN 场景，不覆盖密码页视觉或真实远端同步。
+若屏幕锁定、系统拒绝原生输入或辅助功能命中权限，或场景发生变化，脚本立即失败；记录真实失败并由值守用户处理系统授权，不更改权限绕过验证。
+运行结束仍保留应用供现场观察；调用 `/test/shutdown` 后核对实际应用 PID 与 `open -W` 包装器均退出。
+
 ### 隔离验收配置
 
 在个人电脑验收时始终显式传 `--test-mode --test-profile=<绝对目录>`。Windows 使用本轮正式未打包 EXE，

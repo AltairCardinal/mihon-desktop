@@ -136,7 +136,7 @@ fun SyncToolbarButton(state: SyncPanelState, modifier: Modifier = Modifier, onOp
     Box(Modifier.size(48.dp)) {
         IconButton(
             onClick = onOpen,
-            modifier = modifier.fillMaxSize().testTag("sync-open").semantics {
+            modifier = modifier.fillMaxSize().syncUiTag("sync-open").semantics {
                 stateDescription = busyDescription
             },
         ) {
@@ -283,7 +283,7 @@ private fun PanelHeader(state: SyncPanelState, dispatch: (SyncPanelAction) -> Un
         if (state.page != SyncPanelPage.MAIN) {
             IconButton(
                 { dispatch(SyncPanelAction.Back) },
-                Modifier.focusRequester(helpBackFocus).testTag("sync-back"),
+                Modifier.focusRequester(helpBackFocus).syncUiTag("sync-back"),
             ) {
                 Icon(Icons.AutoMirrored.Outlined.ArrowBack, syncString(MR.strings.sync_back))
             }
@@ -312,12 +312,12 @@ private fun PanelHeader(state: SyncPanelState, dispatch: (SyncPanelAction) -> Un
         if (state.page == SyncPanelPage.MAIN) {
             IconButton(
                 { dispatch(SyncPanelAction.Navigate(SyncPanelPage.SETTINGS)) },
-                Modifier.testTag("sync-settings"),
+                Modifier.syncUiTag("sync-settings"),
             ) {
                 Icon(Icons.Outlined.Settings, syncString(MR.strings.sync_settings))
             }
         }
-        IconButton({ dispatch(SyncPanelAction.Close) }, Modifier.testTag("sync-close")) {
+        IconButton({ dispatch(SyncPanelAction.Close) }, Modifier.syncUiTag("sync-close")) {
             Icon(Icons.Outlined.Close, syncString(MR.strings.sync_close))
         }
     }
@@ -489,7 +489,10 @@ private fun SyncStatusHeader(
                 )
             },
             enabled = (!state.busy && state.run?.state != SyncRunState.PAUSED_USER) || continuingSetup,
-            modifier = Modifier.testTag("sync-now"),
+            modifier = Modifier.syncUiTag(
+                "sync-now",
+                (!state.busy && state.run?.state != SyncRunState.PAUSED_USER) || continuingSetup,
+            ),
         ) {
             Text(
                 syncString(
@@ -785,7 +788,7 @@ private fun SettingsPage(
             if (passwordProtected) {
                 TextButton(
                     { dispatch(SyncPanelAction.ShowPasswordHelp) },
-                    Modifier.focusRequester(helpFocus).testTag("sync-password-help"),
+                    Modifier.focusRequester(helpFocus).syncUiTag("sync-password-help"),
                 ) { Text(syncString(MR.strings.sync_password_help)) }
             }
         }
@@ -1194,7 +1197,7 @@ private fun SetupPage(
                                 showPassword = false
                                 dispatch(SyncPanelAction.ShowPasswordHelp)
                             },
-                            Modifier.focusRequester(helpFocus).testTag("sync-password-help"),
+                            Modifier.focusRequester(helpFocus).syncUiTag("sync-password-help", !state.setupBusy),
                             enabled = !state.setupBusy,
                         ) { Text(syncString(MR.strings.sync_password_help)) }
                     }
@@ -1890,5 +1893,5 @@ private val SyncPanelState.decisionsEnabled: Boolean
 
 @Composable
 private fun Action(tag: String, label: StringResource, enabled: Boolean = true, onClick: () -> Unit) {
-    TextButton(onClick, Modifier.testTag(tag), enabled = enabled) { Text(syncString(label)) }
+    TextButton(onClick, Modifier.syncUiTag(tag, enabled), enabled = enabled) { Text(syncString(label)) }
 }

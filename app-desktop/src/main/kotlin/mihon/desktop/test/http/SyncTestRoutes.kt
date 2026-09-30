@@ -20,6 +20,9 @@ import java.util.UUID
 
 /** Test Mode only: observe the native controller without serializing credentials or recovery material. */
 internal fun Route.syncTestRoutes(panel: SyncPanel?, secureStore: SyncSecureStore?) {
+    get("/test/sync/ui") {
+        call.respondText(mihon.desktop.test.syncUiRegistry.liveSnapshot().toString(), ContentType.Application.Json)
+    }
     get("/test/sync") {
         val state = panel?.state?.value
         if (state == null) {

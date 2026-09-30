@@ -51,6 +51,75 @@ import tachiyomi.domain.manga.interactor.GetLibraryManga
 @OptIn(ExperimentalComposeUiApi::class)
 class DesktopSyncPanelTest {
     @Test
+    fun `read only sync observer receives actual layout focus and unmount events`() = runBlocking {
+        val entries = mutableMapOf<Any, mihon.presentation.sync.SyncUiControl>()
+        val observer = object : mihon.presentation.sync.SyncUiObserver {
+            override fun observes(tag: String) = tag in setOf("sync-open", "sync-close", "sync-settings", "sync-now", "sync-history", "sync-drag-handle")
+            override fun update(token: Any, control: mihon.presentation.sync.SyncUiControl) { entries[token] = control }
+            override fun remove(token: Any) { entries.remove(token) }
+        }
+        val panel = TestPanel()
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) { every { syncPanel } returns panel }
+        val scene = ImageComposeScene(1_200, 900, coroutineContext = coroutineContext) {}
+        scene.setContent {
+            MaterialTheme {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies,
+                    mihon.presentation.sync.LocalSyncUiObserver provides observer) {
+                    DesktopLibrarySyncAction()
+                }
+            }
+        }
+        suspend fun render() { repeat(4) { scene.render(); yield() } }
+        fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+        fun node(tag: String) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.first {
+            it.config.getOrElse(SemanticsProperties.TestTag) { "" } == tag
+        }
+        try {
+            render()
+            assertEquals(1, entries.values.count { it.tag == "sync-open" })
+            assertTrue(entries.values.single().width > 0)
+            node("sync-open").config[SemanticsActions.RequestFocus].action!!.invoke()
+            render()
+            assertTrue(entries.values.single().focused)
+            node("sync-open").config[SemanticsActions.OnClick].action!!.invoke()
+            render()
+            assertTrue(entries.values.any { it.tag == "sync-close" })
+            node("sync-close").config[SemanticsActions.RequestFocus].action!!.invoke()
+            render()
+            assertTrue(entries.values.single { it.tag == "sync-close" }.focused)
+            val factory = Class.forName("androidx.compose.ui.input.key.KeyEvent_desktopKt").methods.single {
+                it.name.startsWith("KeyEvent") && it.parameterCount == 8
+            }
+            val eventType = Class.forName("androidx.compose.ui.input.key.KeyEventType").getMethod("access\$getKeyDown\$cp").invoke(null)
+            val tab = androidx.compose.ui.input.key.KeyEvent(factory.invoke(null, Key.Tab.keyCode, eventType, 0, false, false, false, false, null))
+            val seen = mutableSetOf<String>()
+            repeat(8) {
+                val owner = scene.semanticsOwners.map { flatten(it.unmergedRootSemanticsNode) }.single { nodes ->
+                    nodes.any { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "sync-close" }
+                }
+                val focused = owner.single { it.config.getOrElse(SemanticsProperties.Focused) { false } }
+                val tag = flatten(focused).firstNotNullOfOrNull { it.config.getOrElse(SemanticsProperties.TestTag) { "" }.takeIf { tag -> tag.isNotEmpty() } }.orEmpty()
+                assertTrue(tag in entries.values.map { it.tag }, "Focused MAIN control is not observable: $tag, visited=$seen, parentTags=${generateSequence(focused.parent) { it.parent }.map { it.config.getOrElse(SemanticsProperties.TestTag) { "" } }.toList()}, bounds=${focused.boundsInRoot}")
+                val observed = entries.values.single { it.tag == tag }
+                if (tag == "sync-drag-handle") {
+                    assertTrue(focused.boundsInRoot.contains(flatten(focused).first { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == tag }.boundsInRoot.center))
+                } else assertTrue(observed.focused)
+                seen += tag
+                scene.sendKeyEvent(tab)
+                render()
+            }
+            assertTrue(seen.size >= 3)
+            node("sync-close").config[SemanticsActions.RequestFocus].action!!.invoke()
+            render()
+            node("sync-close").config[SemanticsActions.OnClick].action!!.invoke()
+            render()
+            assertFalse(entries.values.any { it.tag == "sync-close" })
+            assertTrue(entries.values.single { it.tag == "sync-open" }.focused)
+        } finally { scene.close() }
+        assertTrue(entries.isEmpty())
+    }
+
+    @Test
     fun `actual library root exposes the sync sheet and nested settings without changing navigator`() = runBlocking {
         val panel = TestPanel()
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) { every { syncPanel } returns panel }

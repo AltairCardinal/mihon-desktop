@@ -272,6 +272,7 @@ object TestMode {
             ),
         )
 
+        syncUiRegistry.start()
         // Start HTTP server
         startHttpServer(args, run, updates, history, authors)
 
@@ -340,6 +341,7 @@ object TestMode {
      * Stop test mode and release resources.
      */
     fun stop() {
+        syncUiRegistry.stop()
         if (!isStarted) {
             logger.warn("Test mode not started")
             return

@@ -261,11 +261,13 @@ private suspend fun runDesktopComposeWindowEventLoop(
             state = rememberWindowState(width = 1024.dp, height = 768.dp),
         ) {
             BindDesktopWindowLifecycle(window, owner.appLock, owner.windowPrivacyController)
-            OwnerUiDependencies(owner.ingress) {
-                DesktopTheme {
-                    DesktopProtectedRoot(owner.appLock) {
-                        Navigator(HomeScreen()) { navigator ->
-                            DesktopLocalizedNavigatorContent(owner.ingress.uiDependencies.localeAdapter, navigator)
+            mihon.desktop.test.ProvideDesktopSyncUiObservation(window) {
+                OwnerUiDependencies(owner.ingress) {
+                    DesktopTheme {
+                        DesktopProtectedRoot(owner.appLock) {
+                            Navigator(HomeScreen()) { navigator ->
+                                DesktopLocalizedNavigatorContent(owner.ingress.uiDependencies.localeAdapter, navigator)
+                            }
                         }
                     }
                 }
