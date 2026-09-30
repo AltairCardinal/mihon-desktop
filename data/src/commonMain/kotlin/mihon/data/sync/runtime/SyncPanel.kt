@@ -12,7 +12,17 @@ import mihon.domain.sync.runtime.SyncRunProblem
 import mihon.domain.sync.runtime.SyncRunResult
 import mihon.domain.sync.transport.SyncRepository
 
-enum class SyncPanelPage { MAIN, SETTINGS, HISTORY, SETUP }
+enum class SyncPanelPage { MAIN, SETTINGS, HISTORY, SETUP, DIAGNOSTICS }
+enum class SyncDiagnosticFeedback {
+    CAPTURED,
+    READ_FAILED,
+    INCONSISTENT,
+    EXPORTED,
+    SAVE_FAILED,
+    SESSION_STARTED,
+    SESSION_ENDED,
+}
+enum class SyncPanelRunSource { ACTIVE, LATEST }
 enum class SyncSetupStep {
     SIGN_IN,
     DISCOVERING,
@@ -103,6 +113,8 @@ data class SyncPanelState(
     val importPaused: Boolean = false,
     val records: List<SyncRunRecord> = emptyList(),
     val run: SyncRunSnapshot? = null,
+    /** Selection source, independent of a run state that may still have recoverable work. */
+    val runSource: SyncPanelRunSource? = null,
     /** Volatile observations for the active run; omitted after process recovery until remeasured. */
     val progress: SyncProgressFact? = null,
     val terminalSummary: SyncTerminalSummary? = null,
@@ -121,6 +133,10 @@ data class SyncPanelState(
     val setupInstallation: SyncAppInstallation? = null,
     val setupRepository: SyncRepository? = null,
     val legacyRecoveryAvailable: Boolean = false,
+    val diagnosticBusy: Boolean = false,
+    val diagnosticSnapshot: SyncDiagnosticSnapshot? = null,
+    val diagnosticPath: String? = null,
+    val diagnosticFeedback: SyncDiagnosticFeedback? = null,
 ) {
     val queuedTotal: Long get() = queuedMembership + queuedReading
 
@@ -133,6 +149,10 @@ sealed interface SyncPanelAction {
     data object Close : SyncPanelAction
     data object Back : SyncPanelAction
     data class Navigate(val page: SyncPanelPage) : SyncPanelAction
+    data object CaptureDiagnostics : SyncPanelAction
+    data object ExportDiagnostics : SyncPanelAction
+    data object BeginDiagnosticSession : SyncPanelAction
+    data object EndDiagnosticSession : SyncPanelAction
     data object Synchronize : SyncPanelAction
     data object RetrySync : SyncPanelAction
     data object CancelSync : SyncPanelAction
@@ -176,6 +196,7 @@ sealed interface SyncPanelAction {
 /** The application owns work; a sheet only observes state and dispatches user intent. */
 interface SyncPanel {
     val state: StateFlow<SyncPanelState>
+    val diagnosticDirectory: String? get() = null
     fun dispatch(action: SyncPanelAction)
 
     /** Claims the one automatic browser launch for this authorization code across sheet remounts. */

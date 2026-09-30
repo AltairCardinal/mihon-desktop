@@ -50,6 +50,7 @@ class SyncPanelController(
     private val scope = CoroutineScope(scope.coroutineContext + lifetime)
     private val mutableState = MutableStateFlow(SyncPanelState())
     override val state: StateFlow<SyncPanelState> = mutableState
+    override val diagnosticDirectory: String? get() = runtime.diagnosticDirectory?.toString()
     private val commands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private val refreshQueued = AtomicBoolean(false)
     private val deviceBrowserOpened = AtomicBoolean(false)
@@ -104,6 +105,7 @@ class SyncPanelController(
         }
         scope.launch {
             runtime.coordinator.activity.collect { activity ->
+                runtime.diagnostics.recordCoordinator(activity)
                 enqueue {
                     val completed = activity.completion != observedCompletion
                     observedCompletion = activity.completion
@@ -120,7 +122,7 @@ class SyncPanelController(
                             },
                         )
                     }
-                    refresh()
+                    refresh(source = SyncDiagnosticRefreshSource.COORDINATOR)
                 }
             }
         }
@@ -196,13 +198,32 @@ class SyncPanelController(
         if (refreshQueued.compareAndSet(false, true)) {
             enqueue {
                 refreshQueued.set(false)
-                refresh()
+                refresh(source = SyncDiagnosticRefreshSource.SUBSCRIPTION)
             }
         }
     }
 
-    private suspend fun refresh(forceFailureLog: Boolean = false) {
-        val connection = runtime.connection()
+    private suspend fun refresh(
+        forceFailureLog: Boolean = false,
+        source: SyncDiagnosticRefreshSource = SyncDiagnosticRefreshSource.ACTION,
+    ) {
+        runtime.diagnostics.record(SyncDiagnosticEventKind.REFRESH_BEGIN, source)
+        try {
+            refreshFacts(forceFailureLog)
+            runtime.diagnostics.observe(lastDiagnosticConnection, state.value.run)
+            runtime.diagnostics.record(SyncDiagnosticEventKind.REFRESH_END, source)
+        } catch (failure: Exception) {
+            runtime.diagnostics.record(SyncDiagnosticEventKind.REFRESH_END, source, failed = true)
+            throw failure
+        }
+    }
+
+    private var lastDiagnosticConnection = SyncConnectionFacts(null, null, SyncBindingDecode.UNKNOWN)
+
+    private suspend fun refreshFacts(forceFailureLog: Boolean) {
+        val connectionFacts = runtime.connectionFacts()
+        lastDiagnosticConnection = connectionFacts
+        val connection = connectionFacts.projection
         if (connection?.unsupportedFormat == true) {
             mutableState.update {
                 it.copy(
@@ -294,17 +315,17 @@ class SyncPanelController(
                     ?.takeIf { it.space_id == connection?.spaceId && it.generation == connection.generation }
                     ?.let { runtime.projector.bulkProgress(id).toStatus(id, bulkJob?.isActive == true) }
             }
-        val run = connection?.let {
-            runtime.runStore.active(it.spaceId, it.generation)
-                ?: runtime.runStore.latest(it.spaceId, it.generation)?.takeIf { latest ->
-                    latest.state in setOf(
-                        SyncRunState.SUCCEEDED,
-                        SyncRunState.PARTIAL,
-                        SyncRunState.FAILED,
-                        SyncRunState.BLOCKED,
-                        SyncRunState.CANCELLED,
-                    )
-                }
+        val activeRun = connection?.let { runtime.runStore.active(it.spaceId, it.generation) }
+        val run = activeRun ?: connection?.let {
+            runtime.runStore.latest(it.spaceId, it.generation)?.takeIf { latest ->
+                latest.state in setOf(
+                    SyncRunState.SUCCEEDED,
+                    SyncRunState.PARTIAL,
+                    SyncRunState.FAILED,
+                    SyncRunState.BLOCKED,
+                    SyncRunState.CANCELLED,
+                )
+            }
         }
         val logs = run?.let { runtime.runStore.logs(it.runId, limit = logLimit) }.orEmpty()
         val terminalSummary = run?.takeIf {
@@ -343,6 +364,11 @@ class SyncPanelController(
                 importPaused = prefs.importPaused.get(),
                 records = runtime.records().asReversed(),
                 run = run,
+                runSource = when {
+                    activeRun != null -> SyncPanelRunSource.ACTIVE
+                    run != null -> SyncPanelRunSource.LATEST
+                    else -> null
+                },
                 terminalSummary = terminalSummary,
                 failureLog = failureLog,
                 progress = run?.let { runtime.progressFor(it.runId) ?: restoredProgress(it) },
@@ -398,26 +424,97 @@ class SyncPanelController(
         )
     }
 
+    private suspend fun captureDiagnostics() {
+        mutableState.update { it.copy(diagnosticBusy = true, diagnosticFeedback = null, diagnosticPath = null) }
+        val snapshot = runtime.diagnostics.capture { state.value }
+        mutableState.update {
+            it.copy(
+                diagnosticBusy = false,
+                diagnosticSnapshot = snapshot,
+                diagnosticFeedback = when (snapshot.status) {
+                    SyncDiagnosticStatus.OK -> SyncDiagnosticFeedback.CAPTURED
+                    SyncDiagnosticStatus.INCONSISTENT -> SyncDiagnosticFeedback.INCONSISTENT
+                    else -> SyncDiagnosticFeedback.READ_FAILED
+                },
+            )
+        }
+    }
+
     private suspend fun handle(action: SyncPanelAction) {
         when (action) {
             SyncPanelAction.Open -> {
+                runtime.diagnostics.record(SyncDiagnosticEventKind.OPEN)
                 mutableState.update { it.copy(visible = true, page = SyncPanelPage.MAIN, notice = null) }
-                refresh(forceFailureLog = true)
+                refresh(forceFailureLog = true, source = SyncDiagnosticRefreshSource.OPEN)
             }
             SyncPanelAction.Close -> {
+                runtime.diagnostics.record(SyncDiagnosticEventKind.CLOSE)
                 panelSession++
                 cancelAuthorization()
                 cancelConfirmation()
                 clearSelection()
                 mutableState.update {
-                    it.copy(visible = false, notice = null, question = null, deviceCode = null)
+                    it.copy(
+                        visible = false,
+                        notice = null,
+                        question = null,
+                        deviceCode = null,
+                        diagnosticSnapshot = null,
+                        diagnosticPath = null,
+                        diagnosticFeedback = null,
+                    )
                 }
             }
             SyncPanelAction.Back -> if (state.value.page == SyncPanelPage.MAIN) {
                 handle(SyncPanelAction.Close)
             } else {
                 if (state.value.page == SyncPanelPage.SETUP) cancelAuthorization()
-                mutableState.update { it.copy(page = SyncPanelPage.MAIN) }
+                mutableState.update {
+                    it.copy(
+                        page = if (it.page == SyncPanelPage.DIAGNOSTICS) {
+                            SyncPanelPage.SETTINGS
+                        } else {
+                            SyncPanelPage.MAIN
+                        },
+                    )
+                }
+            }
+            SyncPanelAction.CaptureDiagnostics -> captureDiagnostics()
+            SyncPanelAction.ExportDiagnostics -> {
+                val snapshot = state.value.diagnosticSnapshot
+                if (snapshot != null) {
+                    mutableState.update { it.copy(diagnosticBusy = true, diagnosticFeedback = null) }
+                    val path = runtime.diagnostics.export(snapshot)
+                    mutableState.update {
+                        it.copy(
+                            diagnosticBusy = false,
+                            diagnosticPath = path,
+                            diagnosticFeedback = if (path == null) {
+                                SyncDiagnosticFeedback.SAVE_FAILED
+                            } else {
+                                SyncDiagnosticFeedback.EXPORTED
+                            },
+                        )
+                    }
+                }
+            }
+            SyncPanelAction.BeginDiagnosticSession, SyncPanelAction.EndDiagnosticSession -> {
+                val started = action == SyncPanelAction.BeginDiagnosticSession
+                mutableState.update { it.copy(diagnosticBusy = true, diagnosticFeedback = null) }
+                val success = if (started) runtime.diagnostics.beginSession() else runtime.diagnostics.endSession()
+                if (success) captureDiagnostics()
+                mutableState.update {
+                    it.copy(
+                        diagnosticBusy = false,
+                        diagnosticFeedback = if (!success) {
+                            SyncDiagnosticFeedback.SAVE_FAILED
+                        } else if (started) {
+                            SyncDiagnosticFeedback.SESSION_STARTED
+                        } else {
+                            SyncDiagnosticFeedback.SESSION_ENDED
+                        },
+                    )
+                }
             }
             is SyncPanelAction.Navigate -> mutableState.update { it.copy(page = action.page) }
             SyncPanelAction.Synchronize -> if (state.value.run?.state != SyncRunState.PAUSED_USER) {

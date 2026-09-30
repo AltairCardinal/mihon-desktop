@@ -1,5 +1,6 @@
 package mihon.data.sync
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -39,6 +40,7 @@ internal class SyncOnboardingFixture(
     preferenceStore: PreferenceStore? = null,
     val client: OkHttpClient = OkHttpClient(),
     tokenUrl: String? = null,
+    val diagnosticDirectory: Path? = null,
 ) : AutoCloseable {
     val repository = SyncRepository("fixture-owner", "mihon-sync", GitHubSyncSpaceClient.BRANCH)
     val git = SyncGitSafetyContractTest().GitFixture(empty = true, repositoryOverride = repository)
@@ -143,6 +145,7 @@ internal class SyncOnboardingFixture(
         preferences, client, endpoints, clock = { now },
         persistentObjectCacheDirectory = persistentObjectCacheDirectory,
         failureLogDirectory = failureLogDirectory,
+        diagnosticDirectory = diagnosticDirectory,
         syncMetrics = metrics,
         progressTelemetryEnabled = progressTelemetryEnabled,
     )
@@ -205,11 +208,18 @@ internal suspend fun SyncPanelController.act(action: SyncPanelAction) {
 }
 
 internal class MemorySyncSecureStore : SyncSecureStore {
+    var readFailure = false
+    var nextSpaceRead: Pair<CompletableDeferred<Unit>, CompletableDeferred<Unit>>? = null
     val values = ConcurrentHashMap<String, String>()
     var fail = false
     var rejectConnectedSetup = false
     override suspend fun read(key: String): String? {
-        if (fail) throw mihon.domain.sync.security.SyncSecureStoreException()
+        if (fail || readFailure) throw mihon.domain.sync.security.SyncSecureStoreException()
+        nextSpaceRead?.takeIf { key.startsWith("space-") }?.let { gate ->
+            nextSpaceRead = null
+            gate.first.complete(Unit)
+            gate.second.await()
+        }
         return values[key]
     }
     override suspend fun compareAndSet(key: String, expected: String?, value: String?): Boolean = synchronized(values) {

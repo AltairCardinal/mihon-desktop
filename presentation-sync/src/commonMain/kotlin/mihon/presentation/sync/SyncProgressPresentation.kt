@@ -1,6 +1,7 @@
 package mihon.presentation.sync
 
 import dev.icerock.moko.resources.StringResource
+import mihon.data.sync.runtime.SyncPanelRunSource
 import mihon.data.sync.runtime.SyncPanelState
 import mihon.data.sync.runtime.SyncProgressDirection
 import mihon.data.sync.runtime.SyncProgressFact
@@ -99,6 +100,7 @@ class SyncProgressDisplaySession {
         }
         lastFact = fact
         val terminal = run?.state in TERMINAL_STATES
+        val historical = state.showingHistoricalResult
         val active = run?.state == SyncRunState.RUNNING && (fact == null || fact.hold == SyncProgressHold.ACTIVE)
         val age = fact?.secondsWithoutProgress?.let { it + (monotonicMillis - factSince).coerceAtLeast(0) / 1000 }
         val etaValid = active && fact?.wholeEtaSeconds?.let { it >= 0 } == true && age != null && age < 10
@@ -138,11 +140,15 @@ class SyncProgressDisplaySession {
         if (fact != null && !terminal) stages[fact.stage] = fact.completedItems to fact.totalItems
         val status = when {
             terminal -> when (run?.state) {
-                SyncRunState.SUCCEEDED -> MR.strings.sync_phase_complete
-                SyncRunState.PARTIAL -> MR.strings.sync_terminal_partial
-                SyncRunState.FAILED -> MR.strings.sync_not_completed
-                SyncRunState.BLOCKED -> MR.strings.sync_blocked
-                else -> MR.strings.sync_terminal_cancelled
+                SyncRunState.SUCCEEDED -> MR.strings.sync_last_succeeded
+                SyncRunState.PARTIAL -> if (historical) {
+                    MR.strings.sync_last_partial
+                } else {
+                    MR.strings.sync_terminal_partial
+                }
+                SyncRunState.FAILED -> MR.strings.sync_last_failed
+                SyncRunState.BLOCKED -> if (historical) MR.strings.sync_last_blocked else MR.strings.sync_blocked
+                else -> MR.strings.sync_last_cancelled
             }
             run?.state == SyncRunState.PAUSED_USER -> MR.strings.sync_paused
             run?.state == SyncRunState.WAITING_NETWORK -> MR.strings.sync_waiting_network
@@ -160,13 +166,7 @@ class SyncProgressDisplaySession {
             else -> MR.strings.sync_busy
         }
         val action = when {
-            terminal -> when (run?.state) {
-                SyncRunState.SUCCEEDED -> MR.strings.sync_phase_complete
-                SyncRunState.PARTIAL -> MR.strings.sync_terminal_partial
-                SyncRunState.FAILED -> MR.strings.sync_not_completed
-                SyncRunState.BLOCKED -> MR.strings.sync_blocked
-                else -> MR.strings.sync_terminal_cancelled
-            }
+            terminal -> if (historical) MR.strings.sync_confirmed_retained else status
             run?.state == SyncRunState.PAUSED_USER -> MR.strings.sync_paused
             run?.state == SyncRunState.WAITING_NETWORK -> MR.strings.sync_waiting_network
             run?.state == SyncRunState.WAITING_SYSTEM -> MR.strings.sync_waiting_system
@@ -238,3 +238,14 @@ internal val TERMINAL_STATES = setOf(
     SyncRunState.BLOCKED,
     SyncRunState.CANCELLED,
 )
+
+/** ACTIVE BLOCKED and unresolved PARTIAL still belong to the current recovery task. */
+internal val SyncPanelState.showingHistoricalResult: Boolean
+    get() {
+        val selectedRun = run ?: return false
+        return when (runSource) {
+            SyncPanelRunSource.ACTIVE -> false
+            SyncPanelRunSource.LATEST -> true
+            null -> selectedRun.state in setOf(SyncRunState.SUCCEEDED, SyncRunState.FAILED, SyncRunState.CANCELLED)
+        }
+    }

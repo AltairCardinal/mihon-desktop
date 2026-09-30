@@ -142,6 +142,7 @@ import uy.kohesive.injekt.api.InjektRegistrar
 import uy.kohesive.injekt.api.addFactory
 import uy.kohesive.injekt.api.addSingletonFactory
 import uy.kohesive.injekt.api.get
+import eu.kanade.tachiyomi.BuildConfig as AndroidBuildConfig
 
 class DomainModule : InjektModule {
 
@@ -160,6 +161,15 @@ class DomainModule : InjektModule {
                 productionClient = get<NetworkHelper>().client,
                 persistentObjectCacheDirectory = get<Application>().cacheDir.resolve("mihon-sync-objects").toOkioPath(),
                 failureLogDirectory = get<Application>().filesDir.resolve("sync-failures").toOkioPath(),
+                diagnosticDirectory = get<Application>().cacheDir.resolve("sync-diagnostics").toOkioPath(),
+                diagnosticEnvironment = mihon.data.sync.runtime.SyncDiagnosticEnvironment(
+                    platform = "ANDROID",
+                    appVersion = AndroidBuildConfig.VERSION_NAME,
+                    sourceRevision = AndroidBuildConfig.COMMIT_SHA,
+                    releaseIdentity = AndroidBuildConfig.APPLICATION_ID,
+                    build = AndroidBuildConfig.VERSION_CODE.toString(),
+                    releaseBuild = !AndroidBuildConfig.DEBUG,
+                ),
             )
         }
         addSingletonFactory { AndroidSyncScheduler(get<Application>(), get()) }

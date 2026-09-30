@@ -1217,7 +1217,7 @@
         {
           "path": "app/src/main/java/eu/kanade/domain/DomainModule.kt",
           "symbol": "override fun InjektRegistrar.registerInjectables",
-          "line": 148
+          "line": 149
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -4216,7 +4216,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 1087
+          "line": 1093
         }
       ],
       "FIXTURE": [
@@ -33150,7 +33150,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "filterChaptersForDownload.await(manga, chapters)",
-          "line": 1130
+          "line": 1136
         }
       ],
       "FIXTURE": [

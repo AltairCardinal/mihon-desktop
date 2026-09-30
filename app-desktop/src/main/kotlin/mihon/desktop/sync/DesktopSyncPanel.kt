@@ -55,6 +55,12 @@ fun DesktopLibrarySyncAction() {
                     dependencies.notificationService.post(result.toDesktopNotification())
                 }
             },
+            onOpenDiagnostic = { path ->
+                if (!DesktopSyncDiagnosticOpener.open(path, panel.diagnosticDirectory)) {
+                    dependencies.notificationService.post(DesktopNotification(
+                        MR.strings.sync_title.localized(), MR.strings.sync_diagnostic_open_failed.localized()))
+                }
+            },
             onOpenFailureLog = { path ->
                 if (!DesktopSyncFailureLogOpener.open(path)) {
                     dependencies.notificationService.post(
@@ -77,6 +83,7 @@ internal fun DesktopSyncPanelSheet(
     onOpenBrowser: (String) -> Unit,
     onCopyCode: (String) -> Unit,
     onOpenFailureLog: (String) -> Unit,
+    onOpenDiagnostic: (String) -> Unit = {},
 ) {
     ModalBottomSheet(
         onDismissRequest = { panel.dispatch(SyncPanelAction.Close) },
@@ -97,6 +104,7 @@ internal fun DesktopSyncPanelSheet(
             onOpenBrowser = onOpenBrowser,
             onCopyCode = onCopyCode,
             onOpenFailureLog = onOpenFailureLog,
+            onOpenDiagnostic = onOpenDiagnostic,
         )
     }
 }

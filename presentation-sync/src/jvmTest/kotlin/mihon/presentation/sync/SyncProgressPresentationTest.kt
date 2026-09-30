@@ -103,7 +103,7 @@ class SyncProgressPresentationTest {
         assertTrue(p.active)
         assertNotEquals(tachiyomi.i18n.MR.strings.sync_phase_complete, p.status)
         val success = session.project(state().copy(run = run.copy(state = SyncRunState.SUCCEEDED)), 801)
-        assertEquals(tachiyomi.i18n.MR.strings.sync_phase_complete, success.status)
+        assertEquals(tachiyomi.i18n.MR.strings.sync_last_succeeded, success.status)
         assertEquals(0L, success.confirmed)
     }
 }

@@ -95,8 +95,42 @@ class DesktopSyncPanelTest {
         try {
             click("sync-open")
             assertTrue(panel.state.value.visible)
+            panel.state.value = panel.state.value.copy(
+                connection = mihon.data.sync.runtime.SyncConnection(
+                    "space", 1, mihon.domain.sync.transport.SyncRepository("owner", "repo", "sync"), false,
+                ),
+                run = SyncRunSnapshot(
+                    "cancelled-run", "space", 1, SyncTrigger.MANUAL, SyncRunState.CANCELLED, SyncRunPhase.COMPLETE,
+                    0, 0, 0, 0, 0, attemptId = 1, nextRetryAt = 0, lastProgressAt = 1000,
+                    stopReason = "user", ownerSession = null, createdAt = 1000, updatedAt = 17_515_000,
+                    confirmedItems = 1536,
+                ),
+            )
+            render()
+            click("sync-now")
+            assertEquals(SyncPanelPage.SETUP, panel.state.value.page)
+            assertFalse(panel.state.value.connection!!.enabled)
+            assertEquals(1536L, panel.state.value.run!!.confirmedItems)
+            assertTrue(panel.actions.contains(SyncPanelAction.BeginSetup))
+            assertFalse(panel.actions.contains(SyncPanelAction.Synchronize))
+            click("sync-back")
+            panel.state.value = panel.state.value.copy(connection = null, run = null)
+            render()
             click("sync-settings")
             assertEquals(SyncPanelPage.SETTINGS, panel.state.value.page)
+            click("sync-settings-diagnostics")
+            click("sync-diagnostic-capture")
+            requireNotNull(find("sync-diagnostic-capture")!!.config[SemanticsActions.RequestFocus].action).invoke()
+            render()
+            val escapeType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
+                .getMethod("access\$getKeyDown\$cp").invoke(null)
+            val escapeFactory = Class.forName("androidx.compose.ui.input.key.KeyEvent_desktopKt").declaredMethods
+                .single { it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default") }
+            scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(
+                escapeFactory.invoke(null, Key.Escape.keyCode, escapeType, 0, false, false, false, false, null)))
+            render()
+            assertEquals(SyncPanelPage.SETTINGS, panel.state.value.page)
+            assertTrue(panel.actions.contains(SyncPanelAction.CaptureDiagnostics))
             click("sync-back")
             assertEquals(SyncPanelPage.MAIN, panel.state.value.page)
             panel.state.value = panel.state.value.copy(
@@ -162,6 +196,22 @@ class DesktopSyncPanelTest {
             }
             click("sync-close")
             assertFalse(panel.state.value.visible)
+            mockkObject(DesktopSyncDiagnosticOpener)
+            try {
+                every { DesktopSyncDiagnosticOpener.open(any(), any(), any()) } returns true
+                panel.state.value = panel.state.value.copy(visible = true, page = SyncPanelPage.DIAGNOSTICS,
+                    diagnosticSnapshot = mihon.data.sync.runtime.SyncDiagnosticSnapshot(
+                        status = mihon.data.sync.runtime.SyncDiagnosticStatus.OK),
+                    diagnosticPath = "sync-diagnostic-fixture.json")
+                render()
+                val list = find("sync-diagnostics-list")!!
+                requireNotNull(list.config[SemanticsActions.ScrollToIndex].action).invoke(4)
+                render()
+                click("sync-diagnostic-open")
+                verify(exactly = 1) { DesktopSyncDiagnosticOpener.open("sync-diagnostic-fixture.json", any(), any()) }
+            } finally {
+                unmockkObject(DesktopSyncDiagnosticOpener)
+            }
         } finally {
             scene.close()
         }
@@ -178,7 +228,9 @@ class DesktopSyncPanelTest {
                 SyncPanelAction.Open -> state.value.copy(visible = true)
                 SyncPanelAction.Close -> state.value.copy(visible = false)
                 is SyncPanelAction.Navigate -> state.value.copy(page = action.page)
-                SyncPanelAction.Back -> state.value.copy(page = SyncPanelPage.MAIN)
+                SyncPanelAction.Back -> state.value.copy(page = if (state.value.page == SyncPanelPage.DIAGNOSTICS)
+                    SyncPanelPage.SETTINGS else SyncPanelPage.MAIN)
+                SyncPanelAction.BeginSetup -> state.value.copy(page = SyncPanelPage.SETUP)
                 else -> state.value
             }
         }

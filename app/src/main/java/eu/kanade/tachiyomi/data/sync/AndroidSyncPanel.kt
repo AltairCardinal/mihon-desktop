@@ -50,7 +50,13 @@ internal fun AndroidLibrarySyncAction() {
 private fun AndroidSyncPanelSheet(panel: SyncPanel) {
     val context = LocalContext.current
     val actions = remember(context) { AndroidSyncPanelActions(context) }
-    AndroidSyncPanelSheet(panel, actions::openBrowser, actions::copyCode, actions::openFailureLog)
+    AndroidSyncPanelSheet(
+        panel,
+        actions::openBrowser,
+        actions::copyCode,
+        actions::openFailureLog,
+        actions::openDiagnostics,
+    )
 }
 
 /** Shared native container for the production entry and the debug review entry. */
@@ -60,6 +66,7 @@ internal fun AndroidSyncPanelSheet(
     onOpenBrowser: (String) -> Unit,
     onCopyCode: (String) -> Unit,
     onOpenFailureLog: (String) -> Unit,
+    onOpenDiagnostic: (String) -> Unit = {},
 ) {
     val state by panel.state.collectAsState()
     AdaptiveSheet(
@@ -74,11 +81,37 @@ internal fun AndroidSyncPanelSheet(
             onOpenBrowser = onOpenBrowser,
             onCopyCode = onCopyCode,
             onOpenFailureLog = onOpenFailureLog,
+            onOpenDiagnostic = onOpenDiagnostic,
         )
     }
 }
 
-internal class AndroidSyncPanelActions(private val context: Context) {
+internal class AndroidSyncPanelActions(
+    private val context: Context,
+    private val diagnosticUri: (File) -> Uri = { it.getUriCompat(context) },
+) {
+    fun openDiagnostics(path: String) {
+        try {
+            val file =
+                requireNotNull(
+                    mihon.data.sync.runtime.SyncDiagnosticFiles.exportFile(
+                        path,
+                        context.cacheDir.resolve("sync-diagnostics").path,
+                    ),
+                )
+            val uri = diagnosticUri(file)
+            val share = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                clipData = ClipData.newRawUri("Sync diagnostic", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(share, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: Exception) {
+            context.toast(MR.strings.sync_diagnostic_open_failed)
+        }
+    }
+
     fun openFailureLog(path: String) {
         try {
             val file = File(path).canonicalFile

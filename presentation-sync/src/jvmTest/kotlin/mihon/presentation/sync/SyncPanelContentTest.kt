@@ -579,7 +579,7 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
-        assertTrue(texts().contains("已用 00:30"))
+        assertTrue(texts().contains("上次历时 00:30"))
         assertFalse(texts().contains("已用 01:59"))
     }
 
@@ -1156,6 +1156,111 @@ class SyncPanelContentTest {
         panel.state.value = panel.state.value.copy(connection = null)
         render()
         assertEquals(disconnectedText, texts())
+    }
+
+    @Test
+    fun `R01 R03 disconnected terminal results retain an executable connection route`() = rendered(
+        connected().copy(
+            connection = connected().connection!!.copy(enabled = false),
+            run = visualRun(SyncRunPhase.COMPLETE).copy(state = SyncRunState.CANCELLED, confirmedItems = 1536),
+        ),
+    ) {
+        for (terminal in listOf(
+            SyncRunState.CANCELLED,
+            SyncRunState.SUCCEEDED,
+            SyncRunState.FAILED,
+            SyncRunState.PARTIAL,
+            SyncRunState.BLOCKED,
+        )) {
+            panel.state.value = panel.state.value.copy(run = panel.state.value.run!!.copy(state = terminal))
+            render()
+            awaitTag("sync-now")
+            assertFalse(node("sync-now").config.contains(SemanticsProperties.Disabled), terminal.name)
+            assertTrue(texts().contains("连接同步空间"), terminal.name)
+            click("sync-now")
+            assertEquals(SyncPanelAction.BeginSetup, actions.last(), terminal.name)
+        }
+        panel.state.value = panel.state.value.copy(connection = null)
+        render()
+        click("sync-now")
+        assertEquals(SyncPanelAction.BeginSetup, actions.last())
+        assertFalse(actions.contains(SyncPanelAction.Synchronize))
+        assertFalse(actions.contains(SyncPanelAction.RetrySync))
+    }
+
+    @Test
+    fun `R04 unsupported connection with cancelled history opens the guarded reason`() = rendered(
+        connected().copy(
+            connection = connected().connection!!.copy(enabled = false, unsupportedFormat = true),
+            run = visualRun(SyncRunPhase.COMPLETE).copy(state = SyncRunState.CANCELLED),
+            setupProblem = SyncDiscoveryProblem.INCOMPATIBLE,
+            problem = SyncRunProblem.INVALID_DATA,
+        ),
+    ) {
+        awaitTag("sync-view-reason")
+        click("sync-view-reason")
+        assertEquals(SyncPanelAction.BeginSetup, actions.last())
+        assertFalse(actions.contains(SyncPanelAction.Synchronize))
+        assertFalse(actions.contains(SyncPanelAction.Authorize))
+    }
+
+    @Test
+    fun `R05 connection changes do not replace the owned pause retry or recovery operation`() = rendered(
+        connected().copy(
+            connection = connected().connection!!.copy(enabled = false),
+            run = visualRun(SyncRunPhase.CHECKING).copy(state = SyncRunState.PAUSED_USER),
+        ),
+    ) {
+        awaitTag("sync-resume-run")
+        assertFalse(hasTag("sync-now"))
+        assertTrue(node("sync-resume-run").config.contains(SemanticsProperties.Disabled))
+        for (owned in listOf(SyncRunState.WAITING_RETRY, SyncRunState.RUNNING)) {
+            panel.state.value = panel.state.value.copy(run = panel.state.value.run!!.copy(state = owned))
+            render()
+            assertFalse(hasTag("sync-now"))
+            assertFalse(hasTag("sync-retry-run"))
+        }
+        assertTrue(actions.isEmpty())
+    }
+
+    @Test
+    fun `R06 historical cancelled result freezes elapsed and has no active eta`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.COMPLETE).copy(
+                state = SyncRunState.CANCELLED,
+                confirmedItems = 1536,
+                updatedAt = 17_515_000,
+            ),
+            nowMillis = 20_000_000,
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(texts().contains("上次同步已取消"))
+        assertTrue(texts().contains("已确认结果会保留"))
+        assertTrue(texts().contains("上次历时 291:54"))
+        assertTrue(node("sync-whole-eta-value").config[SemanticsProperties.Text].any { it.text.contains("—") })
+        assertEquals("", node("sync-progress").config[SemanticsProperties.StateDescription])
+        panel.state.value = panel.state.value.copy(nowMillis = 20_060_000)
+        displayMillis = 60_000
+        render()
+        assertTrue(texts().contains("上次历时 291:54"))
+        assertFalse(texts().contains("已用 291:54"))
+    }
+
+    @Test
+    fun `unknown connection waits for checking and a failed check has an explicit retry`() = rendered(
+        connected().copy(loaded = false, connection = null),
+    ) {
+        awaitTag("sync-now")
+        assertTrue(node("sync-now").config.contains(SemanticsProperties.Disabled))
+        assertTrue(texts().contains("正在检查连接"))
+        panel.state.value = panel.state.value.copy(problem = SyncRunProblem.STORAGE)
+        render()
+        assertFalse(node("sync-now").config.contains(SemanticsProperties.Disabled))
+        assertTrue(texts().contains("重试检查连接"))
+        click("sync-now")
+        assertEquals(SyncPanelAction.Open, actions.last())
+        assertFalse(actions.contains(SyncPanelAction.BeginSetup))
     }
 
     @Test
@@ -1937,7 +2042,7 @@ class SyncPanelContentTest {
             run = panel.state.value.run!!.copy(state = SyncRunState.SUCCEEDED, confirmedItems = 7),
         )
         render()
-        assertTrue(texts().contains("同步完成"))
+        assertTrue(texts().contains("上次同步已完成"))
         assertFalse(texts().contains("正在上传变动"))
     }
 
@@ -1968,8 +2073,8 @@ class SyncPanelContentTest {
                 run = panel.state.value.run!!.copy(state = SyncRunState.SUCCEEDED, confirmedItems = 7),
             )
         render()
-        assertTrue(texts().contains("同步完成"))
-        assertTrue(texts().contains("本次已确认 7 条"))
+        assertTrue(texts().contains("上次同步已完成"))
+        assertTrue(texts().contains("上次已确认 7 条"))
         assertFalse(hasTag("sync-progress-details"))
     }
 
@@ -2168,6 +2273,96 @@ class SyncPanelContentTest {
             }
         } finally {
             Locale.setDefault(originalLocale)
+        }
+    }
+
+    @Test
+    fun `R08 terminal recovery labels fit a stable native operation slot at 200 percent`() = runBlocking {
+        val previous = Locale.getDefault()
+        val directory = System.getProperty("mihon.sync.visualDir")?.let(::File)
+        try {
+            for (width in listOf(320, 560)) {
+                for (languageTheme in listOf("zh-light", "zh-dark", "en-light", "en-dark")) {
+                    Locale.setDefault(if (languageTheme.startsWith("zh")) Locale.SIMPLIFIED_CHINESE else Locale.ENGLISH)
+                    val state = connected().copy(
+                        connection = connected().connection!!.copy(enabled = false),
+                        run = visualRun(SyncRunPhase.COMPLETE).copy(
+                            state = SyncRunState.CANCELLED,
+                            confirmedItems = 1536,
+                            updatedAt = 17_515_000,
+                        ),
+                        nowMillis = 20_000_000,
+                    )
+                    val fixture = Fixture(
+                        state,
+                        ImageComposeScene(width, 900, coroutineContext = coroutineContext) {},
+                        fontScale = 2f,
+                        dark = languageTheme.endsWith("dark"),
+                    )
+                    try {
+                        fixture.setContent()
+                        fixture.awaitTag("sync-now")
+                        val original = fixture.geometry("sync-now")
+                        assertTrue(original.height >= 48f)
+                        assertTrue(original.right <= width)
+                        fun readable(tag: String) {
+                            fun descendants(node: SemanticsNode): List<SemanticsNode> =
+                                listOf(node) + node.children.flatMap(::descendants)
+                            val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+                            descendants(fixture.node(tag)).forEach { node ->
+                                if (node.config.contains(SemanticsActions.GetTextLayoutResult)) {
+                                    requireNotNull(
+                                        node.config[SemanticsActions.GetTextLayoutResult].action,
+                                    ).invoke(layouts)
+                                }
+                            }
+                            assertTrue(layouts.isNotEmpty())
+                            assertTrue(
+                                layouts.none { it.hasVisualOverflow },
+                                "$width $languageTheme $tag " +
+                                    layouts.map {
+                                        "${it.layoutInput.text} ${it.size} overflow=${it.hasVisualOverflow}"
+                                    },
+                            )
+                        }
+                        readable("sync-now")
+                        if (directory != null && width == 320 && languageTheme in listOf("zh-light", "en-dark")) {
+                            directory.mkdirs()
+                            fixture.scene.render().use { image ->
+                                requireNotNull(image.encodeToData(EncodedImageFormat.PNG)).use {
+                                    File(
+                                        directory,
+                                        "terminal-connect-$width-2.0-$languageTheme.png",
+                                    ).writeBytes(it.bytes)
+                                }
+                            }
+                        }
+                        fixture.panel.state.value = state.copy(
+                            connection = state.connection!!.copy(unsupportedFormat = true),
+                            setupProblem = SyncDiscoveryProblem.INCOMPATIBLE,
+                        )
+                        fixture.render()
+                        fixture.awaitTag("sync-view-reason")
+                        readable("sync-view-reason")
+                        assertEquals(original, fixture.geometry("sync-view-reason"))
+                        if (directory != null && languageTheme in listOf("zh-light", "en-dark")) {
+                            directory.mkdirs()
+                            fixture.scene.render().use { image ->
+                                requireNotNull(image.encodeToData(EncodedImageFormat.PNG)).use {
+                                    File(
+                                        directory,
+                                        "terminal-recovery-$width-2.0-$languageTheme.png",
+                                    ).writeBytes(it.bytes)
+                                }
+                            }
+                        }
+                    } finally {
+                        fixture.scene.close()
+                    }
+                }
+            }
+        } finally {
+            Locale.setDefault(previous)
         }
     }
 

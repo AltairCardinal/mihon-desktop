@@ -1028,6 +1028,12 @@ internal fun initUILayer(
         productionClient = networkHelper.client,
         persistentObjectCacheDirectory = paths.networkCacheDir.resolve("mihon-sync-objects").toOkioPath(),
         failureLogDirectory = paths.logsDir.resolve("sync-failures").toOkioPath(),
+        diagnosticDirectory = paths.networkCacheDir.resolve("sync-diagnostics").toOkioPath(),
+        diagnosticEnvironment = mihon.data.sync.runtime.SyncDiagnosticEnvironment(
+            platform = "DESKTOP", appVersion = mihon.desktop.APP_VERSION,
+            sourceRevision = BuildInfo.GIT_HASH, releaseIdentity = "mihon.desktop",
+            build = mihon.desktop.AppVersion.BUILD.toString(), releaseBuild = !BuildInfo.IS_NON_RELEASE_BUILD,
+        ),
     )
     Injekt.addSingleton(syncRuntime)
     val syncScheduler = mihon.desktop.sync.DesktopSyncScheduler(

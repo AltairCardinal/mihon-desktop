@@ -93,12 +93,26 @@ class SyncTestModeIntegrationTest {
         try {
             val panel = Injekt.get<SyncRuntime>().panel
             assertSame(panel, DesktopUiDependencies.fromInjekt().syncPanel)
+            assertEquals(Injekt.get<SyncRuntime>().diagnosticDirectory.toString(), panel.diagnosticDirectory)
             val base = "http://127.0.0.1:$port/test/sync"
             withTimeout(10_000) {
                 while (runCatching { request(base).statusCode() }.getOrNull() != 200) delay(25)
             }
             assertEquals(202, request("$base/open", post = true).statusCode())
             withTimeout(5_000) { panel.state.first { it.visible && it.loaded } }
+            assertEquals(202, request("$base/diagnostics", post = true).statusCode())
+            withTimeout(5_000) { panel.state.first { it.page == mihon.data.sync.runtime.SyncPanelPage.DIAGNOSTICS } }
+            assertEquals(202, request("$base/capture_diagnostics", post = true).statusCode())
+            withTimeout(5_000) { panel.state.first { it.diagnosticSnapshot != null } }
+            val diagnostic = request("$base/diagnostics")
+            assertEquals(200, diagnostic.statusCode())
+            val details = Json.parseToJsonElement(diagnostic.body()).jsonObject
+            assertEquals("OK", details.getValue("status").jsonPrimitive.content)
+            assertEquals(mihon.desktop.APP_VERSION,
+                details.getValue("environment").jsonObject.getValue("appVersion").jsonPrimitive.content)
+            assertEquals(mihon.desktop.BuildInfo.GIT_HASH,
+                details.getValue("environment").jsonObject.getValue("sourceRevision").jsonPrimitive.content)
+            assertFalse(diagnostic.body().contains(folder.canonicalPath))
             val response = request(base)
             assertEquals(200, response.statusCode())
             val snapshot = Json.parseToJsonElement(response.body()).jsonObject

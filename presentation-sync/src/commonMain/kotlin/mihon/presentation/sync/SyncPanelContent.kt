@@ -44,6 +44,7 @@ import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -76,11 +77,13 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -106,6 +109,8 @@ import mihon.data.sync.auth.SyncInstallationAccountType
 import mihon.data.sync.auth.SyncRepositorySelection
 import mihon.data.sync.inbox.SyncPendingItem
 import mihon.data.sync.runtime.SyncDecisionScope
+import mihon.data.sync.runtime.SyncDiagnosticFeedback
+import mihon.data.sync.runtime.SyncDiagnosticStatus
 import mihon.data.sync.runtime.SyncFailureLogStatus
 import mihon.data.sync.runtime.SyncPanel
 import mihon.data.sync.runtime.SyncPanelAction
@@ -176,6 +181,7 @@ fun SyncPanelContent(
     onOpenBrowser: (String) -> Unit,
     onCopyCode: (String) -> Unit,
     onOpenFailureLog: (String) -> Unit = {},
+    onOpenDiagnostic: (String) -> Unit = {},
     displayMonotonicMillis: (() -> Long)? = null,
 ) {
     val state by panel.state.collectAsState()
@@ -211,6 +217,7 @@ fun SyncPanelContent(
                 detailsExpanded = !detailsExpanded
             }, detailScroll, panel::dispatch, onOpenFailureLog, listState, Modifier.weight(1f))
             SyncPanelPage.SETTINGS -> SettingsPage(state, panel::dispatch, Modifier.weight(1f))
+            SyncPanelPage.DIAGNOSTICS -> DiagnosticPage(state, panel::dispatch, onOpenDiagnostic, Modifier.weight(1f))
             SyncPanelPage.HISTORY -> RecordsPage(state, Modifier.weight(1f))
             SyncPanelPage.SETUP -> SetupPage(
                 state,
@@ -302,6 +309,7 @@ private fun PanelHeader(state: SyncPanelState, dispatch: (SyncPanelAction) -> Un
                     when (state.page) {
                         SyncPanelPage.SETTINGS -> MR.strings.sync_settings
                         SyncPanelPage.HISTORY -> MR.strings.sync_records
+                        SyncPanelPage.DIAGNOSTICS -> MR.strings.sync_diagnostics
                         else -> MR.strings.sync_title
                     },
                 ),
@@ -487,12 +495,34 @@ private fun MainPage(
     }
 }
 
+private data class SyncConnectionOperation(
+    val label: StringResource,
+    val action: SyncPanelAction,
+    val enabled: Boolean = true,
+)
+
+/** Connection recovery is shared by the empty header and a historical result card. */
+private fun connectionOperation(state: SyncPanelState): SyncConnectionOperation? = when {
+    !state.loaded -> SyncConnectionOperation(
+        if (state.problem == null) MR.strings.sync_checking_connection else MR.strings.sync_retry_connection_check,
+        SyncPanelAction.Open,
+        enabled = state.problem != null,
+    )
+    state.connection?.unsupportedFormat == true ||
+        (state.connection?.enabled != true && state.setupProblem == SyncDiscoveryProblem.INCOMPATIBLE) ->
+        SyncConnectionOperation(MR.strings.sync_connection_problem, SyncPanelAction.BeginSetup)
+    state.connection?.enabled != true ->
+        SyncConnectionOperation(MR.strings.sync_connect_space, SyncPanelAction.BeginSetup)
+    else -> null
+}
+
 @Composable
 private fun SyncStatusHeader(
     state: SyncPanelState,
     continuingSetup: Boolean,
     dispatch: (SyncPanelAction) -> Unit,
 ) {
+    val operation = connectionOperation(state)
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -518,21 +548,27 @@ private fun SyncStatusHeader(
         Button(
             onClick = {
                 dispatch(
-                    if (state.connection?.enabled != true || continuingSetup) {
+                    operation?.action ?: if (continuingSetup) {
                         SyncPanelAction.BeginSetup
                     } else {
                         SyncPanelAction.Synchronize
                     },
                 )
             },
-            enabled = (!state.busy && state.run?.state != SyncRunState.PAUSED_USER) || continuingSetup,
+            enabled = operation?.enabled ?: (
+                (!state.busy && state.run?.state != SyncRunState.PAUSED_USER) || continuingSetup
+                ),
             modifier = Modifier.testTag("sync-now"),
         ) {
             Text(
                 syncString(
                     when {
+                        operation != null && (
+                            !state.loaded || state.setupProblem == SyncDiscoveryProblem.INCOMPATIBLE ||
+                                state.connection?.unsupportedFormat == true
+                            ) -> operation.label
                         continuingSetup -> MR.strings.sync_setup_continue
-                        state.connection?.enabled != true -> MR.strings.sync_connect
+                        operation != null -> operation.label
                         else -> MR.strings.sync_now
                     },
                 ),
@@ -749,6 +785,11 @@ private fun SettingsPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> U
     ) {
         item { Spacer(Modifier.height(4.dp)) }
         item {
+            Action("sync-settings-diagnostics", MR.strings.sync_diagnostics) {
+                dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+            }
+        }
+        item {
             Text(syncString(MR.strings.sync_account), style = MaterialTheme.typography.titleMedium)
             state.connection?.let { Text("${it.repository.owner}/${it.repository.name}") }
             Action("sync-settings-connect", MR.strings.sync_reconnect) { dispatch(SyncPanelAction.Authorize) }
@@ -810,6 +851,99 @@ private fun SettingsPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> U
         item {
             Action("sync-switch", MR.strings.sync_switch, state.connection != null) {
                 dispatch(SyncPanelAction.Ask(SyncPanelQuestion.SWITCH_SPACE))
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticPage(
+    state: SyncPanelState,
+    dispatch: (SyncPanelAction) -> Unit,
+    onOpenDiagnostic: (String) -> Unit,
+    modifier: Modifier,
+) {
+    LazyColumn(
+        modifier.padding(24.dp).testTag("sync-diagnostics-list"),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item { Text(syncString(MR.strings.sync_diagnostic_description)) }
+        item {
+            Action("sync-diagnostic-capture", MR.strings.sync_diagnostic_capture, !state.diagnosticBusy) {
+                dispatch(SyncPanelAction.CaptureDiagnostics)
+            }
+            if (state.diagnosticBusy) Text(syncString(MR.strings.sync_diagnostic_busy))
+            state.diagnosticFeedback?.let { feedback ->
+                Text(
+                    syncString(
+                        when (feedback) {
+                            SyncDiagnosticFeedback.CAPTURED -> MR.strings.sync_diagnostic_captured
+                            SyncDiagnosticFeedback.READ_FAILED -> MR.strings.sync_diagnostic_read_failed
+                            SyncDiagnosticFeedback.INCONSISTENT -> MR.strings.sync_diagnostic_inconsistent
+                            SyncDiagnosticFeedback.EXPORTED -> MR.strings.sync_diagnostic_exported
+                            SyncDiagnosticFeedback.SAVE_FAILED -> MR.strings.sync_diagnostic_save_failed
+                            SyncDiagnosticFeedback.SESSION_STARTED -> MR.strings.sync_diagnostic_session_started
+                            SyncDiagnosticFeedback.SESSION_ENDED -> MR.strings.sync_diagnostic_session_ended
+                        },
+                    ),
+                    Modifier.testTag("sync-diagnostic-feedback"),
+                )
+            }
+        }
+        item {
+            Text(syncString(MR.strings.sync_diagnostic_session_description))
+            val comparable = state.diagnosticSnapshot?.crossProcessComparable == true
+            Action(
+                "sync-diagnostic-session",
+                if (comparable) {
+                    MR.strings.sync_diagnostic_session_end
+                } else {
+                    MR.strings.sync_diagnostic_session_start
+                },
+                !state.diagnosticBusy,
+            ) {
+                dispatch(
+                    if (comparable) SyncPanelAction.EndDiagnosticSession else SyncPanelAction.BeginDiagnosticSession,
+                )
+            }
+        }
+        state.diagnosticSnapshot?.let { snapshot ->
+            item {
+                Text(
+                    syncString(
+                        when {
+                            snapshot.status != SyncDiagnosticStatus.OK -> MR.strings.sync_diagnostic_unknown
+                            snapshot.connection.panelConnectionEnabled == true -> MR.strings.sync_diagnostic_connected
+                            else -> MR.strings.sync_diagnostic_disconnected
+                        },
+                    ),
+                )
+                Text(
+                    syncString(
+                        if (snapshot.coordinatorRunning) {
+                            MR.strings.sync_diagnostic_running
+                        } else {
+                            MR.strings.sync_diagnostic_idle
+                        },
+                    ),
+                )
+            }
+            item {
+                Action("sync-diagnostic-export", MR.strings.sync_diagnostic_export, !state.diagnosticBusy) {
+                    dispatch(SyncPanelAction.ExportDiagnostics)
+                }
+                state.diagnosticPath?.let { path ->
+                    Action("sync-diagnostic-open", MR.strings.sync_diagnostic_open, !state.diagnosticBusy) {
+                        onOpenDiagnostic(path)
+                    }
+                }
+            }
+            item {
+                Text(
+                    snapshot.json(),
+                    Modifier.testTag("sync-diagnostic-details"),
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
     }
@@ -1191,6 +1325,13 @@ private fun SyncProgressCard(
     val run = state.run
     val fact = presentation.fact
     val terminal = run?.state in TERMINAL_STATES
+    val historical = state.showingHistoricalResult
+    val confirmedLabel = if (historical) {
+        MR.strings.sync_last_confirmed
+    } else {
+        MR.strings.sync_items_confirmed_this_run
+    }
+    val operationHeight = syncMainOperationHeight()
     val triggerFocus = remember { FocusRequester() }
     var detailsHaveFocus by remember { mutableStateOf(false) }
     val reducedMotion = rememberCoroutineScope().coroutineContext[MotionDurationScale]?.scaleFactor == 0f
@@ -1204,6 +1345,7 @@ private fun SyncProgressCard(
             val confirmedHeight = reservedTextHeight(
                 listOf(
                     syncString(MR.strings.sync_items_confirmed_this_run, Long.MAX_VALUE),
+                    syncString(MR.strings.sync_last_confirmed, Long.MAX_VALUE),
                     syncString(MR.strings.sync_confirmed_checking),
                 ),
                 constraints.maxWidth,
@@ -1219,6 +1361,7 @@ private fun SyncProgressCard(
                     MR.strings.sync_waiting_rate_limit, MR.strings.sync_paused, MR.strings.sync_wait_start,
                     MR.strings.sync_terminal_partial, MR.strings.sync_not_completed, MR.strings.sync_blocked,
                     MR.strings.sync_phase_complete, MR.strings.sync_terminal_cancelled,
+                    MR.strings.sync_confirmed_retained,
                 ).map { syncString(it) },
                 constraints.maxWidth,
                 MaterialTheme.typography.bodyMedium,
@@ -1230,7 +1373,10 @@ private fun SyncProgressCard(
                 syncString(MR.strings.sync_eta_unavailable),
             )
             val elapsedHeight = reservedTextHeight(
-                listOf(syncString(MR.strings.sync_elapsed, "153722867280912:59")),
+                listOf(
+                    syncString(MR.strings.sync_elapsed, "153722867280912:59"),
+                    syncString(MR.strings.sync_last_elapsed, "153722867280912:59"),
+                ),
                 constraints.maxWidth,
                 MaterialTheme.typography.bodyLarge,
             )
@@ -1255,6 +1401,8 @@ private fun SyncProgressCard(
                     MR.strings.sync_retry_exhausted, MR.strings.sync_projection_pending,
                     MR.strings.sync_pending_decisions, MR.strings.sync_additional_work,
                     MR.strings.sync_running_explanation, MR.strings.sync_retry_ready,
+                    MR.strings.sync_connection_disconnected, MR.strings.sync_connection_owned_run,
+                    MR.strings.sync_setup_incompatible,
                 ).map { syncString(it) } + listOf(
                     syncString(MR.strings.sync_pending_decisions_count, Int.MAX_VALUE),
                     syncString(MR.strings.sync_retry_after_seconds, 59),
@@ -1277,13 +1425,16 @@ private fun SyncProgressCard(
                                 },
                                 style = MaterialTheme.typography.titleMedium,
                             )
-                            Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.CenterEnd) {
+                            Box(
+                                Modifier.fillMaxWidth().height(operationHeight),
+                                contentAlignment = Alignment.CenterEnd,
+                            ) {
                                 SyncMainOperation(state, presentation, detailsExpanded, toggleDetails, dispatch)
                             }
                         }
                     } else {
                         Row(
-                            Modifier.fillMaxWidth().height((64 * fontScale).dp),
+                            Modifier.fillMaxWidth().height(maxOf((64 * fontScale).dp, operationHeight)),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
@@ -1299,7 +1450,9 @@ private fun SyncProgressCard(
                     }
                 }
                 Text(
-                    presentation.confirmed?.let { syncString(MR.strings.sync_items_confirmed_this_run, it) }
+                    presentation.confirmed?.let {
+                        syncString(confirmedLabel, it)
+                    }
                         ?: syncString(MR.strings.sync_confirmed_checking),
                     Modifier.fillMaxWidth().height(confirmedHeight).testTag("sync-confirmed-count"),
                 )
@@ -1346,12 +1499,13 @@ private fun SyncProgressCard(
                     '0',
                 )}:${(elapsedSeconds % 60).toString().padStart(2, '0')}"
                 val etaValue = when {
+                    terminal -> syncString(MR.strings.sync_eta_none)
                     presentation.wholeEta != null -> syncEtaDuration(presentation.wholeEta)
                     presentation.estimating -> syncString(MR.strings.sync_eta_unknown)
                     else -> syncString(MR.strings.sync_eta_unavailable)
                 }
                 Column(Modifier.fillMaxWidth().height(elapsedHeight + etaHeight)) {
-                    Text(syncString(MR.strings.sync_elapsed, elapsed))
+                    Text(syncString(if (historical) MR.strings.sync_last_elapsed else MR.strings.sync_elapsed, elapsed))
                     if (fontScale > 1.4f) {
                         Text(syncString(MR.strings.sync_eta_remaining))
                         Text(etaValue, Modifier.fillMaxWidth().testTag("sync-whole-eta-value"))
@@ -1365,9 +1519,21 @@ private fun SyncProgressCard(
                 Column(Modifier.fillMaxWidth().height(explanationHeight)) {
                     androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodySmall) {
                         when {
+                            state.connection?.unsupportedFormat == true ||
+                                state.setupProblem == SyncDiscoveryProblem.INCOMPATIBLE ->
+                                Text(syncString(MR.strings.sync_setup_incompatible))
                             run?.state == SyncRunState.WAITING_RETRY -> Text(
                                 retryLabel(run, state.nowMillis),
                                 Modifier.testTag("sync-retry-countdown"),
+                            )
+                            state.connection?.enabled != true -> Text(
+                                syncString(
+                                    if (terminal) {
+                                        MR.strings.sync_connection_disconnected
+                                    } else {
+                                        MR.strings.sync_connection_owned_run
+                                    },
+                                ),
                             )
                             presentation.idleSeconds?.let {
                                 it >= 60
@@ -1588,6 +1754,28 @@ private fun reservedTextHeight(texts: List<String>, width: Int, style: TextStyle
     }
 }
 
+/** All operation labels reserve one stable slot for this width, font scale and locale. */
+@Composable
+private fun syncMainOperationHeight(): Dp {
+    val padding = ButtonDefaults.TextButtonContentPadding
+    val direction = LocalLayoutDirection.current
+    val width = with(LocalDensity.current) {
+        (168.dp - padding.calculateLeftPadding(direction) - padding.calculateRightPadding(direction)).roundToPx()
+    }
+    val labels = listOf(
+        MR.strings.sync_resume_run, MR.strings.sync_retry_run, MR.strings.sync_reconnect,
+        MR.strings.sync_password_connect, MR.strings.sync_view_reason, MR.strings.sync_now,
+        MR.strings.sync_pause_run, MR.strings.sync_pausing_save, MR.strings.sync_wait_start,
+        MR.strings.sync_connect_space, MR.strings.sync_connection_problem,
+        MR.strings.sync_checking_connection, MR.strings.sync_retry_connection_check,
+    ).map { syncString(it) }
+    return maxOf(
+        48.dp,
+        reservedTextHeight(labels, width, MaterialTheme.typography.labelLarge) +
+            padding.calculateTopPadding() + padding.calculateBottomPadding(),
+    )
+}
+
 @Composable
 private fun SyncMainOperation(
     state: SyncPanelState,
@@ -1599,19 +1787,41 @@ private fun SyncMainOperation(
     val run = state.run
     val fact = presentation.fact
     val terminal = run?.state in TERMINAL_STATES
-    Box(Modifier.width(168.dp).height(48.dp), contentAlignment = Alignment.CenterEnd) {
+    val operation = connectionOperation(state)
+    val operationHeight = syncMainOperationHeight()
+    val operationShape = MaterialTheme.shapes.small
+    Box(Modifier.width(168.dp).height(operationHeight), contentAlignment = Alignment.CenterEnd) {
         when {
+            terminal && state.busy -> Action(
+                "sync-wait",
+                MR.strings.sync_wait_start,
+                false,
+                shape = operationShape,
+                modifier = Modifier.fillMaxWidth().height(operationHeight),
+            ) {}
+            terminal && operation != null -> Action(
+                if (state.connection?.unsupportedFormat == true) "sync-view-reason" else "sync-now",
+                operation.label,
+                operation.enabled,
+                shape = operationShape,
+                modifier = Modifier.fillMaxWidth().height(operationHeight),
+            ) {
+                dispatch(operation.action)
+            }
             run?.state == SyncRunState.PAUSED_USER -> Action(
                 "sync-resume-run",
                 MR.strings.sync_resume_run,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
+                state.connection?.enabled == true,
+                shape = operationShape,
+                modifier = Modifier.fillMaxWidth().height(operationHeight),
             ) {
                 dispatch(SyncPanelAction.ResumeSync)
             }
             run?.state == SyncRunState.FAILED || run?.state == SyncRunState.PARTIAL -> Action(
                 "sync-retry-run",
                 MR.strings.sync_retry_run,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = operationShape,
+                modifier = Modifier.fillMaxWidth().height(operationHeight),
             ) {
                 dispatch(SyncPanelAction.RetrySync)
             }
@@ -1619,7 +1829,8 @@ private fun SyncMainOperation(
                 SyncRunProblem.AUTHORIZATION -> Action(
                     "sync-reconnect",
                     MR.strings.sync_reconnect,
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = operationShape,
+                    modifier = Modifier.fillMaxWidth().height(operationHeight),
                 ) {
                     dispatch(SyncPanelAction.Authorize)
                 }
@@ -1629,7 +1840,8 @@ private fun SyncMainOperation(
                     Action(
                         "sync-reenter-password",
                         MR.strings.sync_password_connect,
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = operationShape,
+                        modifier = Modifier.fillMaxWidth().height(operationHeight),
                     ) {
                         dispatch(SyncPanelAction.BeginSetup)
                     }
@@ -1637,7 +1849,8 @@ private fun SyncMainOperation(
                     Action(
                         "sync-view-reason",
                         MR.strings.sync_view_reason,
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = operationShape,
+                        modifier = Modifier.fillMaxWidth().height(operationHeight),
                     ) {
                         if (!detailsExpanded) toggleDetails()
                     }
@@ -1645,7 +1858,8 @@ private fun SyncMainOperation(
                 else -> Action(
                     "sync-view-reason",
                     MR.strings.sync_view_reason,
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = operationShape,
+                    modifier = Modifier.fillMaxWidth().height(operationHeight),
                 ) {
                     if (!detailsExpanded) toggleDetails()
                 }
@@ -1654,14 +1868,16 @@ private fun SyncMainOperation(
                 "sync-now",
                 MR.strings.sync_now,
                 state.connection?.enabled == true,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = operationShape,
+                modifier = Modifier.fillMaxWidth().height(operationHeight),
             ) {
                 dispatch(SyncPanelAction.Synchronize)
             }
             presentation.active -> Action(
                 "sync-pause-run",
                 MR.strings.sync_pause_run,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = operationShape,
+                modifier = Modifier.fillMaxWidth().height(operationHeight),
             ) {
                 dispatch(SyncPanelAction.PauseSync)
             }
@@ -1675,7 +1891,8 @@ private fun SyncMainOperation(
                     MR.strings.sync_wait_start
                 },
                 false,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = operationShape,
+                modifier = Modifier.fillMaxWidth().height(operationHeight),
             ) {}
         }
     }
@@ -1996,7 +2213,12 @@ private fun Action(
     label: StringResource,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
+    shape: Shape? = null,
     onClick: () -> Unit,
 ) {
-    TextButton(onClick, modifier.testTag(tag), enabled = enabled) { Text(syncString(label)) }
+    if (shape == null) {
+        TextButton(onClick, modifier.testTag(tag), enabled = enabled) { Text(syncString(label)) }
+    } else {
+        TextButton(onClick, modifier.testTag(tag), enabled = enabled, shape = shape) { Text(syncString(label)) }
+    }
 }

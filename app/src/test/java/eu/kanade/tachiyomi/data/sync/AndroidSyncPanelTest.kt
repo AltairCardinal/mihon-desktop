@@ -110,6 +110,30 @@ class AndroidSyncPanelTest {
     }
 
     @Test
+    fun `native wrapper routes disconnected cancelled history to shared setup`() {
+        panel.state.value = panel.state.value.copy(
+            connection = panel.state.value.connection!!.copy(enabled = false),
+            run = SyncRunSnapshot(
+                "cancelled-run", "space", 1, SyncTrigger.MANUAL, SyncRunState.CANCELLED, SyncRunPhase.COMPLETE,
+                0, 0, 0, 0, 0, attemptId = 1, nextRetryAt = 0, lastProgressAt = 1000,
+                stopReason = "user", ownerSession = null, createdAt = 1000, updatedAt = 17_515_000,
+                confirmedItems = 1536,
+            ),
+        )
+        showToolbar()
+        compose.onNodeWithTag("sync-open").performClick()
+        compose.onNodeWithTag("sync-now").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("sync-authorize").assertIsDisplayed()
+        compose.runOnIdle {
+            assertEquals(SyncPanelPage.SETUP, panel.state.value.page)
+            assertFalse(panel.state.value.connection!!.enabled)
+            assertEquals(1536L, panel.state.value.run!!.confirmedItems)
+            assertTrue(panel.actions.contains(SyncPanelAction.BeginSetup))
+            assertFalse(panel.actions.contains(SyncPanelAction.Synchronize))
+        }
+    }
+
+    @Test
     fun `native password entry handles system back inside the existing sheet`() {
         panel.state.value = panel.state.value.copy(
             page = SyncPanelPage.SETUP,
@@ -272,6 +296,79 @@ class AndroidSyncPanelTest {
         }
     }
 
+    @Test
+    fun `diagnostic adapter shares generated JSON and blocks private or unrelated files`() {
+        val context = activity.get()
+        val directory = context.cacheDir.resolve("sync-diagnostics").apply { mkdirs() }
+        val file = directory.resolve("sync-diagnostic-01234567-0123-0123-0123-012345678901.json")
+        file.writeText("{}", Charsets.UTF_8)
+        val uri = android.net.Uri.parse("content://synthetic-test/diagnostic.json")
+        val actions = AndroidSyncPanelActions(context, diagnosticUri = { uri })
+        actions.openDiagnostics(file.path)
+        val chooser = requireNotNull(shadowOf(context).nextStartedActivity)
+        assertEquals(Intent.ACTION_CHOOSER, chooser.action)
+        val share = chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+        assertEquals(Intent.ACTION_SEND, share.action)
+        assertEquals("application/json", share.type)
+        assertEquals(uri, share.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM))
+        assertEquals(uri, share.clipData!!.getItemAt(0).uri)
+        assertTrue(share.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+        for (invalid in listOf(
+            context.filesDir.resolve(file.name),
+            directory.resolve("private/session.json"),
+            directory.resolve("arbitrary.json"),
+            directory.resolve("sync-diagnostic-private.txt"),
+        )) {
+            invalid.parentFile!!.mkdirs()
+            invalid.writeText("private", Charsets.UTF_8)
+            actions.openDiagnostics(invalid.path)
+            assertEquals(null, shadowOf(context).nextStartedActivity)
+        }
+    }
+
+    @Test
+    fun `native diagnostics open dispatches to platform JSON adapter`() {
+        val path = activity.get().cacheDir.resolve("sync-diagnostics/sync-diagnostic-fixture.json").path
+        panel.state.value = panel.state.value.copy(
+            page = SyncPanelPage.DIAGNOSTICS,
+            diagnosticSnapshot = mihon.data.sync.runtime.SyncDiagnosticSnapshot(
+                status = mihon.data.sync.runtime.SyncDiagnosticStatus.OK,
+            ),
+            diagnosticPath = path,
+        )
+        io.mockk.mockkConstructor(AndroidSyncPanelActions::class)
+        try {
+            every { anyConstructed<AndroidSyncPanelActions>().openDiagnostics(path) } returns Unit
+            showToolbar()
+            compose.onNodeWithTag("sync-open").performClick()
+            compose.onNodeWithTag("sync-diagnostics-list", useUnmergedTree = true)
+                .performScrollToNode(hasTestTag("sync-diagnostic-open"))
+            compose.onNodeWithTag("sync-diagnostic-open").performClick()
+            io.mockk.verify(exactly = 1) { anyConstructed<AndroidSyncPanelActions>().openDiagnostics(path) }
+        } finally {
+            io.mockk.unmockkConstructor(AndroidSyncPanelActions::class)
+        }
+    }
+
+    @Test
+    fun `native diagnostics entry returns via system back to settings`() {
+        showToolbar()
+        compose.onNodeWithTag("sync-open").performClick()
+        compose.onNodeWithTag("sync-settings").performClick()
+        compose.onNodeWithTag("sync-settings-diagnostics").performClick()
+        compose.onNodeWithTag("sync-diagnostic-capture").assertIsDisplayed().performClick()
+        compose.runOnUiThread {
+            (ShadowDialog.getLatestDialog() as ComponentDialog).onBackPressedDispatcher.onBackPressed()
+        }
+        compose.runOnIdle { assertEquals(SyncPanelPage.SETTINGS, panel.state.value.page) }
+        compose.onNodeWithTag("sync-settings-diagnostics").assertIsDisplayed()
+        compose.onNodeWithTag("sync-back").performClick()
+        compose.runOnIdle {
+            assertEquals(SyncPanelPage.MAIN, panel.state.value.page)
+            assertTrue(panel.actions.contains(SyncPanelAction.CaptureDiagnostics))
+        }
+    }
+
     private fun requireUnixFileProviderHost() {
         // AndroidX FileProvider compares canonical paths with a literal '/', while Robolectric
         // uses the host filesystem. Run these real-provider integration tests on a Unix host.
@@ -303,7 +400,14 @@ class AndroidSyncPanelTest {
                 SyncPanelAction.Open -> state.value.copy(visible = true)
                 SyncPanelAction.Close -> state.value.copy(visible = false)
                 is SyncPanelAction.Navigate -> state.value.copy(page = action.page)
-                SyncPanelAction.Back -> state.value.copy(page = SyncPanelPage.MAIN)
+                SyncPanelAction.Back -> state.value.copy(
+                    page = if (state.value.page == SyncPanelPage.DIAGNOSTICS) {
+                        SyncPanelPage.SETTINGS
+                    } else {
+                        SyncPanelPage.MAIN
+                    },
+                )
+                SyncPanelAction.BeginSetup -> state.value.copy(page = SyncPanelPage.SETUP)
                 else -> state.value
             }
         }

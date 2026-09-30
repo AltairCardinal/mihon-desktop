@@ -52,6 +52,11 @@ internal fun Route.syncTestRoutes(panel: SyncPanel?, secureStore: SyncSecureStor
         }
         call.respondText(snapshot.toString(), ContentType.Application.Json)
     }
+    get("/test/sync/diagnostics") {
+        val snapshot = panel?.state?.value?.diagnosticSnapshot
+        call.respondText(snapshot?.json() ?: "{}", ContentType.Application.Json,
+            if (snapshot == null) HttpStatusCode.NoContent else HttpStatusCode.OK)
+    }
     // Explicit transient handoff only. Never return the device secret used for token polling.
     get("/test/sync/authorization") {
         val code = panel?.state?.value?.deviceCode
@@ -69,6 +74,8 @@ internal fun Route.syncTestRoutes(panel: SyncPanel?, secureStore: SyncSecureStor
     }
     post("/test/sync/{action}") {
         val action = when (call.parameters["action"]) {
+            "diagnostics" -> SyncPanelAction.Navigate(mihon.data.sync.runtime.SyncPanelPage.DIAGNOSTICS)
+            "capture_diagnostics" -> SyncPanelAction.CaptureDiagnostics
             "open" -> SyncPanelAction.Open
             "close" -> SyncPanelAction.Close
             "setup" -> SyncPanelAction.BeginSetup

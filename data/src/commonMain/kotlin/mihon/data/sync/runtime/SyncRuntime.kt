@@ -75,12 +75,15 @@ class SyncRuntime(
     internal val failureLogDirectory: Path? = null,
     private val syncMetrics: SyncMetrics = NoopSyncMetrics,
     private val progressTelemetryEnabled: Boolean = true,
+    val diagnosticDirectory: Path? = null,
+    diagnosticEnvironment: SyncDiagnosticEnvironment = SyncDiagnosticEnvironment(),
 ) : SyncRunPort {
     val preferences = SyncPreferences(preferenceStore)
     val credentials = PersistentGitHubCredentialStore(secureStore)
     val authorization = GitHubAuthClient(productionClient, endpoints, nowMillis = clock)
     val coordinator = SyncCoordinator(this)
     val runStore = SyncRunStore(handler, clock)
+    val diagnostics = SyncDiagnostics(this, diagnosticDirectory, diagnosticEnvironment, clock)
     private val failureReportStore = failureLogDirectory?.let { SyncFailureReportStore(handler, it) }
     private val failureReportMutex = Mutex()
     private val failureReports = mutableMapOf<String, Pair<FailureReportVersion, SyncFailureLogStatus?>>()
@@ -313,20 +316,26 @@ class SyncRuntime(
         }.credential.accessToken
     }
 
-    suspend fun connection(): SyncConnection? {
-        val active = handler.await { sync_journalQueries.getActiveSpace().executeAsOneOrNull() } ?: return null
-        var unsupported = false
+    suspend fun connection(): SyncConnection? = connectionFacts().projection
+
+    /** Shares the production raw lookup and decoder without reading authorization credentials. */
+    internal suspend fun connectionFacts(): SyncConnectionFacts {
+        val active = handler.await { sync_journalQueries.getActiveSpace().executeAsOneOrNull() }
+            ?: return SyncConnectionFacts(null, null, SyncBindingDecode.MISSING)
+        var decode = SyncBindingDecode.MISSING
         val stored = try {
-            onboarding.storage.connection(active.space_id, active.generation)
+            onboarding.storage.connection(active.space_id, active.generation)?.also { decode = SyncBindingDecode.OK }
         } catch (_: UnsupportedSyncSpace) {
-            unsupported = true
+            decode = SyncBindingDecode.UNSUPPORTED
             null
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
+            decode = SyncBindingDecode.READ_FAILED
             null
         }
-        return SyncConnection(
+        val unsupported = decode == SyncBindingDecode.UNSUPPORTED
+        val projection = SyncConnection(
             active.space_id,
             active.generation,
             SyncRepository(active.repository_owner, active.repository_name, active.repository_branch),
@@ -335,6 +344,12 @@ class SyncRuntime(
             stored?.accountLogin,
             unsupportedFormat = unsupported && active.exchange_enabled,
         )
+        return SyncConnectionFacts(projection, active.exchange_enabled, decode)
+    }
+
+    internal suspend fun diagnosticPending(connection: SyncConnection): Pair<Long, Long> = handler.await {
+        sync_inboxQueries.countPendingDecisions(connection.spaceId, connection.generation).executeAsOne() to
+            sync_importQueries.countPendingImports(connection.spaceId, connection.generation).executeAsOne()
     }
 
     /** Reads local durable facts only; network authorization is rechecked when work resumes. */
