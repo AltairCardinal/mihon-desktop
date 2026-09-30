@@ -2159,4 +2159,6 @@
     <string name="theme_tokyonight">Tokyo Night</string>
     <string name="desktop_dynamic_theme_unavailable">Dynamic wallpaper colors are unavailable on this platform. The default theme is used; your saved theme remains unchanged.</string>
     <string name="desktop_appearance_save_failed">Could not save this setting. Check its current value and try again.</string>
+    <string name="desktop_library_interval_requires_restriction">Enable “Outside expected release period” in library update restrictions to use this filter.</string>
+    <string name="desktop_library_unrated">Unrated</string>
 </resources>

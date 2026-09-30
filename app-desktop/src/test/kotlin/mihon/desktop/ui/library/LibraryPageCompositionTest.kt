@@ -35,6 +35,7 @@ import kotlinx.coroutines.withContext
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.core.screen.Screen
+import mihon.desktop.domain.SortMode
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.BuildInfo
 import mihon.desktop.LocalDesktopUiDependencies
@@ -115,6 +116,7 @@ class LibraryPageCompositionTest {
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { notificationService } returns notifications
             every { syncPanel } returns null
+                        every { libraryPreferences } returns null
         }
         val scene = ImageComposeScene(1_200, 900, coroutineContext = coroutineContext) {}
         scene.setContent {
@@ -321,7 +323,7 @@ class LibraryPageCompositionTest {
             scene.sendKeyEvent(composeKeyEvent(Key.Escape, KeyEventType.KeyDown))
             render(scene)
             assertTrue(nodes(scene).any { it.config.contains(androidx.compose.ui.semantics.SemanticsActions.SetText) })
-            assertTrue(semanticLabels(scene).contains(MR.strings.action_sort.localized()))
+            assertTrue(semanticLabels(scene).contains(MR.strings.action_filter.localized()))
 
             scene.sendKeyEvent(composeKeyEvent(Key.Escape, KeyEventType.KeyDown))
             render(scene)
@@ -421,6 +423,52 @@ class LibraryPageCompositionTest {
         } finally {
             scene.close()
             preferencesNode.removeNode()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `local empty library filters preserve source NoMatch and inactive conditions allow guide`() = runTest {
+        for (kind in listOf("unread", "downloaded", "tracking", "interval")) {
+            val node = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
+            val preferences = LibraryPreferences(DesktopPreferenceStore(node))
+            val sessions = kotlinx.coroutines.flow.MutableStateFlow(setOf(2L))
+            preferences.downloadedOnly().set(true)
+            when (kind) {
+                "unread" -> preferences.filterUnread().set(TriState.ENABLED_IS)
+                "downloaded" -> preferences.filterDownloaded().set(TriState.ENABLED_NOT)
+                "tracking" -> preferences.filterTracking(2).set(TriState.ENABLED_IS)
+                else -> {
+                    preferences.filterIntervalCustom().set(TriState.ENABLED_IS)
+                    preferences.autoUpdateMangaRestrictions().set(setOf(LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD))
+                }
+            }
+            val model = LibraryScreenModel(
+                getLibraryManga = GetLibraryManga(FakeMangaRepository()),
+                getCategories = GetCategories(FakeCategoryRepository()),
+                libraryPreferences = preferences,
+                trackerSessionProvider = TrackerSessionProvider { sessions },
+            )
+            val scene = rootScene(model)
+            try {
+                render(scene)
+                assertTrue(semanticLabels(scene).contains(MR.strings.error_no_match.localized()), "$kind is an effective local condition")
+                assertTrue(!semanticLabels(scene).contains(MR.strings.getting_started_guide.localized()))
+                when (kind) {
+                    "unread" -> preferences.filterUnread().set(TriState.DISABLED)
+                    "downloaded" -> preferences.filterDownloaded().set(TriState.DISABLED)
+                    "tracking" -> sessions.value = emptySet()
+                    else -> preferences.autoUpdateMangaRestrictions().set(emptySet())
+                }
+                render(scene)
+                assertTrue(semanticLabels(scene).contains(MR.strings.getting_started_guide.localized()), "inactive $kind must permit the genuine empty-library guide")
+                assertTrue(model.state.value.hasActiveFilters, "global downloaded-only remains effective")
+                if (kind == "tracking") assertEquals(TriState.ENABLED_IS, preferences.filterTracking(2).get())
+                if (kind == "interval") assertEquals(TriState.ENABLED_IS, preferences.filterIntervalCustom().get())
+            } finally {
+                scene.close()
+                node.removeNode()
+            }
         }
     }
 
@@ -568,14 +616,31 @@ class LibraryPageCompositionTest {
                 MR.strings.label_downloaded.localized(),
                 MR.strings.desktop_ui_filter_include.localized(),
             )
-            val downloadedNode = nodes(scene).first { semanticLabels(it).contains(downloaded) }
+            val downloadedNode = nodes(scene).first {
+                it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Role) &&
+                    it.config[androidx.compose.ui.semantics.SemanticsProperties.Role] == androidx.compose.ui.semantics.Role.Checkbox &&
+                    semanticLabels(it).contains(MR.strings.label_downloaded.localized())
+            }
             assertTrue(downloadedNode.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled))
+            assertEquals(MR.strings.desktop_ui_filter_include.localized(), downloadedNode.config[androidx.compose.ui.semantics.SemanticsProperties.StateDescription])
             assertTrue(labels.none { it.startsWith(MR.strings.desktop_ui_global_downloaded_only.localized(Locale.getDefault(), "")) })
-            assertTrue(labels.none { it.contains(MR.strings.desktop_ui_custom_interval.localized()) })
+            val interval = nodes(scene).first {
+                it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Role) &&
+                    it.config[androidx.compose.ui.semantics.SemanticsProperties.Role] == androidx.compose.ui.semantics.Role.Checkbox &&
+                    semanticLabels(it).contains(MR.strings.desktop_ui_custom_interval.localized())
+            }
+            assertTrue(interval.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled))
+            assertTrue(labels.contains(MR.strings.desktop_library_interval_requires_restriction.localized()))
 
             click(scene, MR.strings.action_sort.localized())
             render(scene)
-            assertTrue(!semanticLabels(scene).any { it.startsWith(MR.strings.action_sort_tracker_score.localized()) })
+            assertTrue(semanticLabels(scene).contains(MR.strings.action_sort_tracker_score.localized()))
+            click(scene, MR.strings.action_sort_tracker_score.localized())
+            render(scene)
+            assertEquals(SortMode.TRACKER_MEAN, model.state.value.sortMode)
+            preferences.downloadedOnly().set(false)
+            render(scene)
+            assertTrue(semanticLabels(scene).contains(MR.strings.desktop_library_unrated.localized()))
         } finally {
             scene.close()
             preferencesNode.removeNode()

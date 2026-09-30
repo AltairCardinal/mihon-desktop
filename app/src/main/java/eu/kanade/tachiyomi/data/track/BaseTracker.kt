@@ -39,9 +39,8 @@ abstract class BaseTracker(
 
     override val supportsPrivateTracking: Boolean = false
 
-    // TODO: Store all scores as 10 point in the future maybe?
     override fun get10PointScore(track: DomainTrack): Double {
-        return track.score
+        return tachiyomi.domain.track.service.TrackerProviderContracts.tenPointScore(id, track.score)
     }
 
     override fun indexToScore(index: Int): Double {

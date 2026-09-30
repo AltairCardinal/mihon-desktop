@@ -121,9 +121,15 @@ object DesktopSettingsCatalog {
             MR.strings.pref_date_format,
             MR.strings.pref_relative_format,
             MR.strings.pref_display_images_description,
-            MR.strings.desktop_appearance_library_grid,
         ),
-        screen(route(LibrarySettingsScreen::class), MR.strings.pref_category_library, MR.strings.pref_category_display, MR.strings.pref_category_library_update),
+        screen(
+            route(LibrarySettingsScreen::class),
+            MR.strings.pref_category_library,
+            MR.strings.pref_category_display,
+            MR.strings.pref_category_library_update,
+            MR.strings.desktop_appearance_library_grid,
+            MR.strings.pref_library_columns,
+        ),
         screen(
             route(ReaderSettingsScreen::class),
             MR.strings.pref_category_reader,

@@ -1,5 +1,6 @@
 package mihon.desktop.settings
 
+import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.model.LibrarySort
@@ -16,20 +17,35 @@ import tachiyomi.domain.library.service.LibraryPreferences
 class LibraryPreferenceMigration(
     private val store: PreferenceStore,
     private val preferences: LibraryPreferences,
+    private val legacyColumns: () -> Preference<Int> = { store.getInt(LEGACY_COLUMNS_KEY, 3) },
 ) {
 
     fun migrate(): Boolean {
         val marker = store.getInt(MARKER_KEY, 0)
         if (marker.get() >= VERSION) return false
 
+        val previousMarker = marker.get() to marker.isSet()
         return try {
             migrateDisplay()
             migrateSort()
+            migrateColumns()
             marker.set(VERSION)
             true
         } catch (_: Exception) {
+            runCatching { if (previousMarker.second) marker.set(previousMarker.first) else marker.delete() }
             false
         }
+    }
+
+    private fun migrateColumns() {
+        val columns = listOf(preferences.portraitColumns(), preferences.landscapeColumns())
+        val raw = store.getAll()
+        fun valid(preference: Preference<Int>) = raw[preference.key()]?.toString()?.toIntOrNull()?.let { it in 0..10 } == true
+        if (columns.all(::valid)) return
+        val legacy = legacyColumns()
+        if (!legacy.isSet()) return
+        val value = store.getAll()[legacy.key()]?.toString()?.toIntOrNull()?.takeIf { it in 0..10 } ?: return
+        columns.filterNot(::valid).forEach { it.set(value) }
     }
 
     private fun migrateDisplay() {
@@ -98,8 +114,9 @@ class LibraryPreferenceMigration(
     }
 
     companion object {
-        const val VERSION = 1
+        const val VERSION = 2
         const val MARKER_KEY = "library_interaction_parity_migration_version"
+        private const val LEGACY_COLUMNS_KEY = "library_grid_columns"
         private const val LEGACY_ALL_DISPLAY_KEY = "lib_cat_-1_display"
         private const val LEGACY_ALL_SORT_KEY = "lib_cat_-1_sort"
         private const val LEGACY_ALL_SORT_ASC_KEY = "lib_cat_-1_sort_asc"

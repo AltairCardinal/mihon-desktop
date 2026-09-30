@@ -55,6 +55,7 @@ import mihon.desktop.platform.DesktopLocaleAdapter
 import mihon.desktop.platform.DesktopLocaleApplyResult
 import mihon.desktop.ui.library.categoryDialogEscape
 import tachiyomi.i18n.MR
+import mihon.desktop.settings.saveDesktopPreference
 import java.time.LocalDate
 import java.util.Locale
 
@@ -72,7 +73,6 @@ class AppearanceSettingsScreen : Screen {
         val date by prefs.dateFormat.changes().collectAsState(initial = prefs.dateFormat.get())
         val relative by prefs.relativeTime.changes().collectAsState(initial = prefs.relativeTime.get())
         val images by prefs.imagesInDescription.changes().collectAsState(initial = prefs.imagesInDescription.get())
-        val columns by prefs.libraryGridColumns.changes().collectAsState(initial = prefs.libraryGridColumns.get())
         val activeLanguage by dependencies.localeAdapter.activeLanguageTag.collectAsState()
         val systemDark = isSystemInDarkTheme()
         val isDark = mode == ThemeMode.DARK || (mode == ThemeMode.SYSTEM && systemDark)
@@ -223,31 +223,7 @@ class AppearanceSettingsScreen : Screen {
                     onCheckedChange = { save(prefs.imagesInDescription, it) },
                     modifier = Modifier.desktopSettingsAnchor(MR.strings.pref_display_images_description.localized()),
                 )
-                // Existing Desktop preference remains available until RI05's display-panel migration.
-                SectionTitle(MR.strings.desktop_appearance_library_grid.localized())
-                Text(
-                    MR.strings.desktop_appearance_grid_columns.localized(
-                        Locale.getDefault(),
-                        columns,
-                    ),
-                    Modifier.padding(
-                        horizontal = 16.dp,
-                    ),
-                )
-                Slider(
-                    value = columns.toFloat(),
-                    onValueChange = {
-                        save(
-                            prefs.libraryGridColumns,
-                            it.toInt(),
-                        )
-                    },
-                    valueRange = 2f..6f,
-                    steps = 3,
-                    modifier = Modifier.padding(
-                        horizontal = 16.dp,
-                    ),
-                )
+
             }
         }
         when (dialog) {
@@ -380,24 +356,5 @@ internal fun DesktopLocaleFeedbackHost(
     SnackbarHost(hostState = snackbar, modifier = modifier)
 }
 
-/** A local UI write boundary: restore the exact unset/value state and always report a failed save. */
-private fun <T> saveAppearancePreference(
-    preference: tachiyomi.core.common.preference.Preference<T>,
-    value: T,
-): Boolean {
-    val previous =
-        try {
-            preference.get() to preference.isSet()
-        } catch (_: Exception) {
-            return false
-        }
-    if (previous.first == value) return true
-    return try {
-        preference.set(value)
-        true
-    } catch (_: Exception) {
-        // If restoration also fails, the preference flow remains authoritative. Feedback asks the user to check it.
-        runCatching { if (previous.second) preference.set(previous.first) else preference.delete() }
-        false
-    }
-}
+private fun <T> saveAppearancePreference(preference: tachiyomi.core.common.preference.Preference<T>, value: T): Boolean =
+    saveDesktopPreference(preference, value)

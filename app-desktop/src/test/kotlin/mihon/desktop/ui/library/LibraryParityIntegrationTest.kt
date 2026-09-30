@@ -1,5 +1,10 @@
 package mihon.desktop.ui.library
 
+import androidx.compose.runtime.CompositionLocalProvider
+import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.LocalDesktopUiDependencies
+import io.mockk.mockk
+import io.mockk.every
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
@@ -274,36 +279,40 @@ class LibraryParityIntegrationTest {
         var fullRefreshes = 0
         val scene = ImageComposeScene(1_400, 240) {}
         scene.setContent {
-            LibraryToolbar(
-                searchQuery = "",
-                onSearchChange = {},
-                sortMode = SortMode.TITLE,
-                sortAscending = true,
-                onSortChange = { _, _ -> },
-                filter = LibraryFilter(),
-                availableTrackerIds = emptySet(),
-                onToggleFilter = {},
-                onToggleTracking = {},
-                isUpdating = false,
-                displayMode = LibraryDisplayMode.COMPACT_GRID,
-                onDisplayModeChange = {},
-                onOpenGlobalSearch = {},
-                onOpenSettings = {},
-                categories = listOf(Category(1L, "Action", 0L, 0L)),
-                onRandomManga = {},
-                onRefresh = { currentRefreshes++ },
-                onRefreshAll = { fullRefreshes++ },
-            )
+            CompositionLocalProvider(LocalDesktopUiDependencies provides mockk<DesktopUiDependencies>(relaxed = true) {
+                every { syncPanel } returns null
+            }) {
+                LibraryToolbar(
+                    searchQuery = "",
+                    onSearchChange = {},
+                    sortMode = SortMode.TITLE,
+                    sortAscending = true,
+                    onSortChange = { _, _ -> },
+                    filter = LibraryFilter(),
+                    availableTrackerIds = emptySet(),
+                    onToggleFilter = {},
+                    onToggleTracking = {},
+                    isUpdating = false,
+                    displayMode = LibraryDisplayMode.COMPACT_GRID,
+                    onDisplayModeChange = {},
+                    onOpenGlobalSearch = {},
+                    onOpenSettings = {},
+                    categories = listOf(Category(1L, "Action", 0L, 0L)),
+                    onRandomManga = {},
+                    onRefresh = { currentRefreshes++ },
+                    onRefreshAll = { fullRefreshes++ },
+                )
+            }
         }
         scene.render()
 
-        click(scene, MR.strings.check_for_updates.localized())
+        click(scene, MR.strings.action_menu.localized())
+        scene.render()
+        click(scene, MR.strings.action_update_category.localized())
+        scene.render()
+        click(scene, MR.strings.action_menu.localized())
         scene.render()
         click(scene, MR.strings.action_update_library.localized())
-        scene.render()
-        click(scene, MR.strings.check_for_updates.localized())
-        scene.render()
-        click(scene, MR.strings.ext_update_all.localized())
 
         assertEquals(1, currentRefreshes)
         assertEquals(1, fullRefreshes)
@@ -316,30 +325,36 @@ class LibraryParityIntegrationTest {
         var refreshes = 0
         val scene = ImageComposeScene(1_400, 240) {}
         scene.setContent {
-            LibraryToolbar(
-                searchQuery = "",
-                onSearchChange = {},
-                sortMode = SortMode.TITLE,
-                sortAscending = true,
-                onSortChange = { _, _ -> },
-                filter = LibraryFilter(),
-                availableTrackerIds = emptySet(),
-                onToggleFilter = {},
-                onToggleTracking = {},
-                isUpdating = true,
-                displayMode = LibraryDisplayMode.COMPACT_GRID,
-                onDisplayModeChange = {},
-                onOpenGlobalSearch = {},
-                onOpenSettings = {},
-                categories = listOf(Category(1L, "Action", 0L, 0L)),
-                onRandomManga = {},
-                onRefresh = { refreshes++ },
-                onRefreshAll = {},
-            )
+            CompositionLocalProvider(LocalDesktopUiDependencies provides mockk<DesktopUiDependencies>(relaxed = true) {
+                every { syncPanel } returns null
+            }) {
+                LibraryToolbar(
+                    searchQuery = "",
+                    onSearchChange = {},
+                    sortMode = SortMode.TITLE,
+                    sortAscending = true,
+                    onSortChange = { _, _ -> },
+                    filter = LibraryFilter(),
+                    availableTrackerIds = emptySet(),
+                    onToggleFilter = {},
+                    onToggleTracking = {},
+                    isUpdating = true,
+                    displayMode = LibraryDisplayMode.COMPACT_GRID,
+                    onDisplayModeChange = {},
+                    onOpenGlobalSearch = {},
+                    onOpenSettings = {},
+                    categories = listOf(Category(1L, "Action", 0L, 0L)),
+                    onRandomManga = {},
+                    onRefresh = { refreshes++ },
+                    onRefreshAll = {},
+                )
+            }
         }
         scene.render()
 
-        click(scene, MR.strings.check_for_updates.localized())
+        click(scene, MR.strings.action_menu.localized())
+        scene.render(System.nanoTime())
+        click(scene, MR.strings.action_update_category.localized())
 
         assertEquals(1, refreshes)
         scene.close()

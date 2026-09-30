@@ -2,6 +2,8 @@ package mihon.desktop.sync
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -36,7 +38,7 @@ fun DesktopLibrarySyncAction() {
     DisposableEffect(panel) {
         onDispose { panel.dispatch(SyncPanelAction.Close) }
     }
-    SyncToolbarButton(state) { panel.dispatch(SyncPanelAction.Open) }
+    SyncToolbarButton(state, icon = Icons.Outlined.CloudSync) { panel.dispatch(SyncPanelAction.Open) }
     if (state.visible) {
         DesktopSyncPanelSheet(
             panel,

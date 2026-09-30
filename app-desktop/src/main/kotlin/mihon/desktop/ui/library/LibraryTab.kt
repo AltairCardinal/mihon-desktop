@@ -71,6 +71,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberCoroutineScope
@@ -224,12 +225,25 @@ class LibraryRootScreen : Screen {
     override fun Content() {
         val scope = rememberCoroutineScope()
         val rootFocusRequester = remember { FocusRequester() }
+        val optionsFocusRequester = remember { FocusRequester() }
+        var restoreOptionsFocus by remember { mutableIntStateOf(0) }
+        LaunchedEffect(restoreOptionsFocus) {
+            if (restoreOptionsFocus > 0) {
+                withFrameNanos { }
+                runCatching { optionsFocusRequester.requestFocus() }
+                    .onFailure { rootFocusRequester.requestFocus() }
+            }
+        }
         val navigator = LocalNavigator.currentOrThrow
         val desktopDependencies = LocalDesktopUiDependencies.current
         val libraryNavigationHost = LocalLibraryNavigationHost.current
         var showFilterMenu by remember { mutableStateOf(false) }
+        var optionsFocusRequest by remember { mutableIntStateOf(0) }
         DisposableEffect(libraryNavigationHost) {
-            val unregister = libraryNavigationHost.registerReselectHandler { showFilterMenu = true }
+            val unregister = libraryNavigationHost.registerReselectHandler {
+                showFilterMenu = true
+                optionsFocusRequest++
+            }
             onDispose(unregister)
         }
 
@@ -277,7 +291,7 @@ class LibraryRootScreen : Screen {
         val downloadedMangaIds = state.downloadedMangaIds
 
         val displayedItems = remember(
-            allItems, searchQuery, sortMode, sortAscending,
+            allItems, searchQuery, sortMode, sortAscending, state.randomSortSeed,
             filter, state.downloadedMangaIds, state.localMangaIds,
             state.downloadCountsByManga, state.trackerIdsByManga, state.trackerMeansByManga,
             state.sourceLanguagesByManga,
@@ -443,6 +457,19 @@ class LibraryRootScreen : Screen {
             )
         }
 
+        if (showFilterMenu) {
+            LibraryOptionsPanel(
+                model = model,
+                preferences = desktopDependencies.libraryPreferences,
+                categoryId = selectedCategoryId,
+                focusRequest = optionsFocusRequest,
+                onDismiss = {
+                    showFilterMenu = false
+                    restoreOptionsFocus++
+                },
+            )
+        }
+
         Scaffold(
             contentWindowInsets = WindowInsets(0),
             // ── Selection action bar ───────────────────────────────────────
@@ -525,18 +552,6 @@ class LibraryRootScreen : Screen {
                         onSelectAll = { selectionState.selectAll(displayedItems.map { it.manga.id }, selectedCategoryId) },
                         onInvertSelection = { selectionState.invertVisible(displayedItems.map { it.manga.id }, selectedCategoryId) },
                     )
-                    LibraryFilterDropdown(
-                        expanded = showFilterMenu,
-                        onDismissRequest = { showFilterMenu = false },
-                        filter = filter,
-                        availableTrackerIds = pageSnapshot.availableTrackerIds,
-                        showIntervalCustomFilter = showIntervalCustomFilter(
-                            BuildInfo.IS_NON_RELEASE_BUILD,
-                            state.filter.skipOutsideReleasePeriod,
-                        ),
-                        onToggleFilter = model::toggleFilter,
-                        onToggleTracking = model::toggleTrackingFilter,
-                    )
                 } else LibraryToolbar(
                     searchQuery = searchQuery,
                     onSearchChange = { model.setSearchQuery(it) },
@@ -548,6 +563,7 @@ class LibraryRootScreen : Screen {
                     },
                     filter = filter,
                     availableTrackerIds = pageSnapshot.availableTrackerIds,
+                    trackerNamesById = state.trackerNamesById,
                     onToggleFilter = model::toggleFilter,
                     onToggleTracking = model::toggleTrackingFilter,
                     isUpdating = isUpdating,
@@ -569,6 +585,7 @@ class LibraryRootScreen : Screen {
                     ),
                     showFilterMenu = showFilterMenu,
                     onShowFilterMenuChange = { showFilterMenu = it },
+                    optionsFocusRequester = optionsFocusRequester,
                     toolbarTitle = toolbarTitle,
                     onRandomManga = {
                         val randomId = pickRandomMangaId(displayedItems.map { it.manga.id })
@@ -653,7 +670,7 @@ class LibraryRootScreen : Screen {
                             color = MaterialTheme.colorScheme.error,
                         )
                     }
-                } else if (allItems.isEmpty() && searchQuery.isNullOrEmpty() && !state.hasActiveFilters) {
+                } else if (allItems.isEmpty() && searchQuery.isNullOrEmpty() && !state.hasActiveLocalFilters) {
                     val uriHandler = LocalUriHandler.current
                     EmptyLibrary(onGettingStarted = { uriHandler.openUri(GETTING_STARTED_URL) })
                 } else if (displayedItems.isEmpty()) {
@@ -686,6 +703,8 @@ class LibraryRootScreen : Screen {
                                     downloadedMangaIds = downloadedMangaIds,
                                     downloadCountsByManga = state.downloadCountsByManga,
                                     sourceLanguagesByManga = state.sourceLanguagesByManga,
+                                    trackerMeansByManga = state.trackerMeansByManga,
+                                    showTrackerScore = state.sortMode == SortMode.TRACKER_MEAN,
                                     showDownloadBadge = state.showDownloadBadge,
                                     showUnreadBadge = state.showUnreadBadge,
                                     showLocalBadge = state.showLocalBadge,
@@ -712,6 +731,8 @@ class LibraryRootScreen : Screen {
                                     downloadedMangaIds = downloadedMangaIds,
                                     downloadCountsByManga = state.downloadCountsByManga,
                                     sourceLanguagesByManga = state.sourceLanguagesByManga,
+                                    trackerMeansByManga = state.trackerMeansByManga,
+                                    showTrackerScore = state.sortMode == SortMode.TRACKER_MEAN,
                                     showDownloadBadge = state.showDownloadBadge,
                                     showUnreadBadge = state.showUnreadBadge,
                                     showLocalBadge = state.showLocalBadge,
@@ -734,6 +755,8 @@ class LibraryRootScreen : Screen {
                                     downloadedMangaIds = downloadedMangaIds,
                                     downloadCountsByManga = state.downloadCountsByManga,
                                     sourceLanguagesByManga = state.sourceLanguagesByManga,
+                                    trackerMeansByManga = state.trackerMeansByManga,
+                                    showTrackerScore = state.sortMode == SortMode.TRACKER_MEAN,
                                     showDownloadBadge = state.showDownloadBadge,
                                     showUnreadBadge = state.showUnreadBadge,
                                     showLocalBadge = state.showLocalBadge,
@@ -760,6 +783,8 @@ class LibraryRootScreen : Screen {
                                     downloadedMangaIds = downloadedMangaIds,
                                     downloadCountsByManga = state.downloadCountsByManga,
                                     sourceLanguagesByManga = state.sourceLanguagesByManga,
+                                    trackerMeansByManga = state.trackerMeansByManga,
+                                    showTrackerScore = state.sortMode == SortMode.TRACKER_MEAN,
                                     showDownloadBadge = state.showDownloadBadge,
                                     showUnreadBadge = state.showUnreadBadge,
                                     showLocalBadge = state.showLocalBadge,

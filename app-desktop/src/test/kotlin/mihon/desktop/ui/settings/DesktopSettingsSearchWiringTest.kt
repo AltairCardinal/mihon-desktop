@@ -71,6 +71,36 @@ import kotlin.coroutines.CoroutineContext
 @org.junit.jupiter.api.parallel.Isolated
 class DesktopSettingsSearchWiringTest {
     @Test
+    fun `legacy column search navigates to shared library controls and keeps both orientation authorities`() = runBlocking {
+        withRestoredLocale {
+            Locale.setDefault(Locale.US)
+            withSearchScene(height = 420) { scene ->
+                lateinit var navigator: Navigator
+                scene.setContent { dependencies { Navigator(SettingsSearchScreen()) { nav -> navigator = nav; CurrentScreen() } } }
+                render(scene)
+                val title = MR.strings.desktop_appearance_library_grid.localized()
+                setText(scene, title)
+                render(scene)
+                click(scene, title)
+                render(scene)
+                assertTrue(navigator.lastItem is LibrarySettingsScreen, "legacy column search must enter the actual shared library controls")
+                assertEquals(1, navigator.size)
+                val highlighted = nodes(scene, true).single {
+                    it.config.contains(DesktopSettingsAnchorHighlighted) && it.config[DesktopSettingsAnchorHighlighted]
+                }
+                assertTrue(title in text(highlighted))
+                val sliders = nodes(scene, true).filter { it.config.contains(SemanticsActions.SetProgress) }
+                assertEquals(2, sliders.size)
+                requireNotNull(sliders[0].config[SemanticsActions.SetProgress].action).invoke(0f)
+                requireNotNull(sliders[1].config[SemanticsActions.SetProgress].action).invoke(10f)
+                assertEquals(0, currentLibraryPreferences.portraitColumns().get())
+                assertEquals(10, currentLibraryPreferences.landscapeColumns().get())
+                assertFalse(currentPreferences.libraryGridColumns.isSet(), "shared controls must not dual-write the legacy preference")
+            }
+        }
+    }
+
+    @Test
     fun `More public entries execute existing category creation storage navigation and Help`() = runBlocking {
         val categories = mockk<tachiyomi.domain.category.interactor.GetCategories> {
             every { subscribe() } returns kotlinx.coroutines.flow.flowOf(emptyList())
@@ -251,7 +281,7 @@ class DesktopSettingsSearchWiringTest {
             render(scene)
             scene.resize(320, 900)
             render(scene)
-            assertTrue(nodes(scene, true).any { it.config.contains(SemanticsActions.SetProgress) }, "current Appearance must survive resizing")
+            assertTrue(nodes(scene, true).any { it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == "appearance-theme-cards" }, "current Appearance must survive resizing")
             assertFalse(nodes(scene, true).any { it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == "desktop-settings-directory" })
         }
         withSearchScene(SettingsRootScreen(), width = 1400, height = 900) { scene ->
@@ -368,7 +398,7 @@ class DesktopSettingsSearchWiringTest {
     fun `wide settings directory opens appearance alongside the directory with one back action`() = runBlocking {
         withSearchScene(SettingsRootScreen(), width = 1400, height = 900) { scene ->
             render(scene)
-            assertTrue(nodes(scene, true).any { it.config.contains(SemanticsActions.SetProgress) }, "default Appearance must be mounted")
+            assertTrue(nodes(scene, true).any { it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == "appearance-theme-cards" }, "default Appearance must be mounted")
             val backs = nodes(scene, true).filter {
                 it.config.contains(SemanticsActions.OnClick) &&
                     flatten(it).any { child -> child.config.contains(SemanticsProperties.ContentDescription) &&
@@ -498,16 +528,20 @@ class DesktopSettingsSearchWiringTest {
                 assertEquals(1, flatten(result).count { it.config.contains(SemanticsActions.OnClick) })
                 click(scene, anchorTitle)
                 render(scene)
-                assertTrue(navigator.lastItem is AppearanceSettingsScreen)
+                assertTrue(navigator.lastItem is LibrarySettingsScreen)
                 assertEquals(1, navigator.items.size)
                 val highlighted = nodes(scene, true).single { it.config.contains(DesktopSettingsAnchorHighlighted) && it.config[DesktopSettingsAnchorHighlighted] }
                 assertTrue(anchorTitle in text(highlighted))
                 val scroll = nodes(scene, true).first { it.config.contains(SemanticsProperties.VerticalScrollAxisRange) }
                     .config[SemanticsProperties.VerticalScrollAxisRange]
                 assertTrue(scroll.value() > 0f, "scroll=${scroll.value()} highlighted=${highlighted.boundsInRoot}")
-                requireNotNull(nodes(scene, true).single { it.config.contains(SemanticsActions.SetProgress) }
+                requireNotNull(nodes(scene, true).filter { it.config.contains(SemanticsActions.SetProgress) }.first()
                     .config[SemanticsActions.SetProgress].action).invoke(6f)
-                assertEquals(6, currentPreferences.libraryGridColumns.get())
+                assertEquals(6, currentLibraryPreferences.portraitColumns().get())
+                val landscape = nodes(scene, true).filter { it.config.contains(SemanticsActions.SetProgress) }.last()
+                requireNotNull(landscape.config[SemanticsActions.SetProgress].action).invoke(0f)
+                assertEquals(0, currentLibraryPreferences.landscapeColumns().get())
+                assertFalse(currentPreferences.libraryGridColumns.isSet())
             }
             withSearchScene { scene ->
                 lateinit var navigator: Navigator
@@ -816,9 +850,8 @@ class DesktopSettingsSearchWiringTest {
                 assertEquals(AppTheme.YINYANG, currentPreferences.appTheme.get())
                 click(scene, MR.strings.pref_dark_theme_pure_black.localized(Locale.US))
                 assertTrue(currentPreferences.themeDarkAmoled.get())
-                requireNotNull(nodes(scene, true).single { it.config.contains(SemanticsActions.SetProgress) }
-                    .config[SemanticsActions.SetProgress].action).invoke(6f)
-                assertEquals(6, currentPreferences.libraryGridColumns.get())
+                assertFalse(nodes(scene, true).any { it.config.contains(SemanticsActions.SetProgress) })
+                assertFalse(currentPreferences.libraryGridColumns.isSet(), "appearance must leave the legacy grid authority unchanged")
             }
         }
     }

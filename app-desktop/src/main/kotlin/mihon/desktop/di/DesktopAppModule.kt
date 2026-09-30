@@ -255,6 +255,7 @@ internal suspend fun initDesktopDIForTest(
     trackerConnectivity: mihon.desktop.tracking.DesktopNetworkConnectivity =
         mihon.desktop.tracking.JvmDesktopNetworkConnectivity,
     chapterRepositoryOverride: ((ChapterRepository) -> ChapterRepository)? = null,
+    categoryRepositoryOverride: ((CategoryRepository) -> CategoryRepository)? = null,
 ): DesktopTestDIContext {
     activeDesktopTestDIContext?.closeAndJoin()
     patchInjekt()
@@ -263,7 +264,7 @@ internal suspend fun initDesktopDIForTest(
     prepareDesktopProfile(paths, preferenceStore)
     initDesktopConfigurationForTest(appDir, preferenceStore)
     val networkHelper = initNetworkLayer(paths, preferenceStore, browserOpener)
-    val handler = initDataLayer(paths, chapterRepositoryOverride)
+    val handler = initDataLayer(paths, chapterRepositoryOverride, categoryRepositoryOverride)
     initExtensionLayer(paths, networkHelper, handler, artifactAuthenticator, trackerServiceRegistry)
     initDomainLayer(handler)
     initUILayer(
@@ -480,12 +481,15 @@ private fun registerDesktopNetwork(
 internal fun initDataLayer(
     paths: DesktopPlatformPaths,
     chapterRepositoryOverride: ((ChapterRepository) -> ChapterRepository)? = null,
+    categoryRepositoryOverride: ((CategoryRepository) -> CategoryRepository)? = null,
 ): DatabaseHandler {
     val handler = initDatabase(paths.databaseFile)
     val chapterRepository: ChapterRepository = ChapterRepositoryImpl(handler).let { repository ->
         chapterRepositoryOverride?.invoke(repository) ?: repository
     }
-    val categoryRepository: CategoryRepository = CategoryRepositoryImpl(handler)
+    val categoryRepository: CategoryRepository = CategoryRepositoryImpl(handler).let { repository ->
+        categoryRepositoryOverride?.invoke(repository) ?: repository
+    }
     val historyRepository: HistoryRepository = HistoryRepositoryImpl(handler)
     val updatesRepository: UpdatesRepository = UpdatesRepositoryImpl(handler)
     val creatorArchiveBootstrap: CreatorArchiveBootstrap = CreatorArchiveLegacyBootstrap(
@@ -871,7 +875,10 @@ internal fun initUILayer(
     val database = (handler as JvmDatabaseHandler).db
     val libraryPreferences = LibraryPreferences(preferenceStore)
     Injekt.addSingleton(libraryPreferences)
-    LibraryPreferenceMigration(preferenceStore, libraryPreferences).migrate()
+    LibraryPreferenceMigration(
+        preferenceStore, libraryPreferences,
+        legacyColumns = { Injekt.get<DesktopAppPreferences>().libraryGridColumns },
+    ).migrate()
     val downloadPreferences = DesktopDownloadPreferences(preferenceStore)
     val downloadDirectoryPreference = downloadPreferences.downloadDirectory(paths.downloadsDir)
     val downloadDirectoryState = downloadDirectoryPreference.state()

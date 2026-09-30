@@ -24,6 +24,7 @@ data class LibraryState(
     // ── Sort state ────────────────────────────────────────────────────────────
     val sortMode: SortMode = SortMode.TITLE,
     val sortAscending: Boolean = true,
+    val randomSortSeed: Int = 0,
 
     // ── Filter state ──────────────────────────────────────────────────────────
     val filter: LibraryFilter = LibraryFilter(),
@@ -34,6 +35,7 @@ data class LibraryState(
     val trackerIdsByManga: Map<Long, Set<Long>> = emptyMap(),
     val trackerMeansByManga: Map<Long, Double> = emptyMap(),
     val availableTrackerIds: Set<Long> = emptySet(),
+    val trackerNamesById: Map<Long, String> = emptyMap(),
 
     // ── Category tab ──────────────────────────────────────────────────────────
     val selectedCategoryIndex: Int = 0,
@@ -68,12 +70,14 @@ data class LibraryState(
     val filterStarted get() = filter.started == TriState.ENABLED_IS
     val filterCompleted get() = filter.completed == TriState.ENABLED_IS
     val filterDownloaded get() = filter.downloaded == TriState.ENABLED_IS
-    val hasActiveFilters get() =
+    val hasActiveLocalFilters get() =
         filter.downloaded != TriState.DISABLED ||
             filter.unread != TriState.DISABLED ||
             filter.started != TriState.DISABLED ||
             filter.bookmarked != TriState.DISABLED ||
             filter.completed != TriState.DISABLED ||
-            filter.intervalCustom != TriState.DISABLED ||
+            (filter.skipOutsideReleasePeriod && filter.intervalCustom != TriState.DISABLED) ||
             filter.tracking.any { (trackerId, value) -> trackerId in availableTrackerIds && value != TriState.DISABLED }
+
+    val hasActiveFilters get() = filter.globalDownloadedOnly || hasActiveLocalFilters
 }

@@ -241,9 +241,55 @@ RI04首组真实红绿：`interaction-ri04-root-red`于22:38:12–22:38:55 +08�
 
 本批9个内聚代码／测试文件加原生图，超过估算400行主要来自10个真实DB／UI／文件集成场景及同一Lazy宿主重排，保正常格式与同一owner上下文，不机械拆批。主代理仅定点修5条当前roleEvidence行号，manifest历史来源、状态和原排版保留；必要checkoff与production／测试／文档／索引同批提交。最终全量及正式交付仍未执行，继续RI05。
 
-### RI05 评分前置核对（只读，不代表实施完成）
+## RI05：追踪评分、书架顶栏与统一面板
+
+2026-10-01 RI04同批提交为`0b04ea6b49dc341dbf6f1b66886f4f37e53e471a`，提交后工作树干净。RI05继续复用原实施代理，主代理固定评分／偏好／导航接口、独立初审1轮及必要修复复审1轮；五组focused红绿及清理、稳定后1组明确受影响集成／格式，完整测试、模块完整与发布构建0次，预计2–3小时。无需额外技能或新报告／快照；失败只追加直接影响路径的诊断和复验。验收已固定到page-contracts的RI05节，尚无实施或测试完成结论。
 
 当前 LibraryScreenModel 从已登录 tracker 的原始 track.score 直接 average；Desktop registry 的 AniList请求与解析存 POINT_100，MAL等为10分，Kitsu解析 ratingTwenty／2已为10分。Android现有 Tracker.get10PointScore／Anilist.get10PointScore明确 AniList除10。RI05应复用并共享这个投影契约，保持存储及远端回写原始分数不变，验证混合 provider真实HTTP→数据库→平均分排序，不在UI随意按最大值猜尺度。Android当前平均值对已登录有效tracker的get10PointScore结果做average，含0分；不能凭分数大小猜provider格式或随意改变0分语义。Desktop当前LibraryComponents只有评分排序名称，没有每本评分或无评分显示，RI05须核定稿A07的可见反馈。旧列数为DesktopAppPreferences的library_grid_columns，lazy首次访问才迁移旧desktop/app节点；共享横／纵键为pref_library_columns_portrait_key／landscape_key，当前LibraryPreferenceMigration仅迁移display／sort。RI05需要复用已注册AppPreferences的旧值读取和现marker迁移，保护各共享显式值（包括0自动），不因删除旧外观入口而漏掉尚未触发lazy迁移的旧值；这里是只读事实，不声明具体实现已完成。这里只确认当前链路与复用入口，尚无本批红绿或修复结论。
+
+RI05搜索接口已只读核定：当前LibrarySettingsScreen已有共享portrait／landscape0–10控件，Appearance是legacy单控件；catalog只把旧desktop_appearance_library_grid条目挂Appearance，Library目前只有display／update区域标题。计划复用现LibrarySettings真实列数区，与面板Display抽共用控件，将旧搜索记录／锚点迁到LibrarySettings并保Title／alias／滚动／高亮；沿现普通Screen／anchor链，不新增Root跳转或默认页特例。这里固定接口，不声明修改或验证已完成。
+
+RI05自定义周期边界已在实现前固定：共享showLibraryIntervalFilter要求非Release且MANGA_OUTSIDE_RELEASE_PERIOD限制启用，当前Release因此隐藏；共享EvaluateLibrary还以该限制决定真实过滤。默认限制集合已包含此项。Desktop新面板按定稿七项覆盖呈现门控，始终列出该行，限制关闭时禁用并说明条件，活动提示只计实际生效的偏好；保留Android可见性及共享执行算法。该呈现扩展记为PROJECT_POLICY，不冒称SOURCE已无门控；现有条件测试须保留共享／Android契约，新Desktop事件测试验证启用与禁用两条链路。此处是接口决定，尚无实现通过结论。
+
+RI05评分首轮`interaction-ri05-score-migration-red`终态FAILED，迁移断言为正确业务红，评分方法首次等待活动服务超时只是夹具问题。`interaction-ri05-score-red-valid`于00:51:25–00:51:56 +08仍因DI缓存夹具超时而FAILED，不能计作评分业务红。使用既有initDesktopDIForTest的trackerServiceRegistry参数修正实际注册入口后，`interaction-ri05-score-red-di`于00:54:24–00:54:50 +08终态FAILED／exit1，真实AniList POINT_100的80及Kitsu十分制8经SQLite与实际factory得到44，期望8，已确认评分尺度错误的正确业务红。主代理曾把后来覆盖的共享test-results XML误关联到00:51记录，已按实施者与对应日志纠正，不将该归属错误作为新产品故障。此时评分及迁移尚未绿，面板仍待实施。
+
+RI05首个基础绿`interaction-ri05-foundation-green-jvm`于01:07:27–01:07:42 +08终态PASSED／exit0，共共享评分契约1、真实HTTP→SQLite→factory评分1、迁移4，六项／0失败／0跳过。先前`interaction-ri05-foundation-green`因commonTest误用未配置的kotlin.test编译失败，按既有jvmTest／JUnit模式修正夹具，不计行为红。共享投影已接Android Base／Anilist与Desktop实际平均值，存储80／8和回写语义保留；主代理只读核接口未发现下游阻断。Android实际包装、旧列数lazy及故障重试、Root面板仍待实现／验证，不代表RI05完成。
+
+RI05第二组`interaction-ri05-options-migration-red`于01:13:27–01:13:44 +08终态FAILED／exit1，10项中6通过、4正确失败：实际Root仍有独立Settings入口，顶栏筛选和Home书架重选均没有三页统一面板（期望3、实际0），畸形legacy列数BROKEN被getInt默认3误导入。真实旧desktop/app lazy读取、各共享显式0优先、横纵／marker写前写后六种失败的重试与旧值保护已有绿色证据；面板接线及畸形值修复继续，不将整条FAILED改写为通过。
+
+RI05保存故障组`interaction-ri05-options-write-red`于01:26:41–01:27:03 +08终态FAILED，实际筛选点击抛SecurityException及畸形shared列数BROKEN回默认0而未导入旧6是正确失败。复用RI03单Preference恢复边界并按原始值校验共享列数后，`interaction-ri05-options-write-green`于01:30:53–01:31:56 +08终态PASSED／exit0；写前／写后故障仍按权威旧值、原unset状态和可见错误反馈检验，不宣称跨DB／偏好多存储原子。自定义分类SQLite排序失败与提交后错误仍待补证。
+
+RI05服务名／搜索组`interaction-ri05-rating-search-red-valid`于01:37:28–01:37:52 +08终态FAILED／exit1，2项正确失败：实际Root面板仍显示数字Tracker而非AniList／Kitsu名称，旧列数搜索仍到Appearance而非共享Library设置区域。前`interaction-ri05-rating-root-red`仅因Kitsu夹具缺必需included失败，不计业务红。重选场景已换真实Navigator(HomeScreen())，不再在测试lambda复制production onSelect；新真实宿主基础绿色对应`interaction-ri05-options-migration-green-valid`（01:21:56–01:22:25 +08，PASSED／exit0），此前同组lambda类型编译失败不计行为红。命名、评分可见投影及搜索接线继续实施。
+
+RI05评分／搜索`interaction-ri05-rating-search-green-valid`于01:45:26–01:46:11 +08终态PASSED／exit0，两项／0失败／0跳过：14个真实形状HTTP响应及账号格式经production parser／SQLite／实际factory／Root，在四布局显示8.0／10、0.0／10与明确未评分，实际评分排序、服务名、单服务“已追踪”、注销及活动筛选提示；旧列数搜索进入LibrarySettings的两个共用滑块，实际写共享0／10而未双写legacy。前同组重复supportingContent编译错误保留为夹具／代码编译修正，不计业务红或测试绿。排序SQLite及原生键盘／菜单范围仍待验证，Android包装和稳定后受影响检查尚未执行。
+
+RI05随机／还焦组`interaction-ri05-focus-random-red`于02:08:05–02:08:36 +08终态FAILED／exit1，正确失败分别是持久随机seed变化未重组真实Root卡片、无障碍点击关闭面板后仍回旧Search。实际seed已接Preference→LibraryState→Root remember依赖，Options FocusRequester由Root持有、关闭次帧恢复入口或仍存在的Root后，`interaction-ri05-focus-random-green`于02:25:55–02:26:49 +08终态PASSED／exit0，命令限定原生模态与随机重选两个方法。双向Tab限制在当前Dialog owner内验证，不把多个原生owner各自Focused误认为焦点逃逸；真实SQLite拒绝／提交后抛错恢复局部排序位及保留并发非排序位的场景已由实施者报告通过，稳定后证据仍待最终核对。原生菜单、尺寸／主题／200%字体、Android包装及受影响格式尚未收口，本批保持未完成。
+
+RI05原生补证`interaction-ri05-native-menu-green`于02:38:18–02:38:52 +08整条仍FAILED／exit1，三项中两项通过：320dp／200%字体、三页独立滚动、窗口／主题变化下焦点与末控件可达；Desktop真实CloudSync绘制。共享SyncToolbarButton保留Android默认Sync图标，仅Desktop传组合图标。更多方法已越过Escape还焦及真实完整分类／全库scheduler范围断言，后段因夹具未先聚焦同步sheet内控件便发Escape失败，实施者正在按实际sync-close的RequestFocus修正夹具，不扩同步算法。先前PNG输出IOException及节点定位NoSuchElementException不计新增行为红；组合图标差异是实际像素红。主代理已查看当前320／font2的Filter及Display原生图，两图实际呈深色且会话内滚到末端，不能因文件名无dark后缀称浅色；正式发布、硬件及最终整个批次验收仍未完成。
+
+RI05明确受影响`interaction-ri05-affected`于02:58:40–03:04:32 +08终态FAILED／exit1。Desktop九个限定类127项，8失败、1既有条件跳过；同命令共享评分、共享同步工具栏及Android实际Anilist／Kitsu包装各1项通过，root spotless与scoped新文件格式通过。主代理读取对应XML并核timestamp全部在同key时窗内，共130项＝121通过／8失败／1跳过，不把整条失败改成全绿。新增Options12、Migration8、Score1、Appearance18、SearchWiring24均通过；Category17中1失败、Interaction10中1失败、PageComposition21中4失败1跳过、Parity16中2失败。
+
+本批同一独立初审发现搜索行为回归：重写Toolbar误删action_reset清空文本并保持搜索展开，该能力与定稿移除“清除筛选”不同，要求恢复实际输入清空链，不能以关闭搜索替代原断言。另要求区分allItems真空库的getting_started_guide与非空库经有效globalDownloadedOnly筛后NoMatch；后者实际约束／局部偏好锁定的新事件测试继续保留，不从hasActiveFilters删除全局条件以通过旧夹具。其余失败按定稿将Root直接Sort／Refresh旧入口迁到Panel／More，保原数据、任务范围、owner及位置断言。待原实施者完成必要修复，仅复验失败及直接影响方法，未改动绿色组复用；未增加代理、审查轮次、全量或构建。
+
+RI05原8失败修复`interaction-ri05-repair-affected`于03:11:38–03:12:45 +08终态PASSED／exit0，命令以12个选择器限定失败及直接影响方法＋格式，实际14项通过。主代理随后核当前Root真空库修正删掉整个旧hasActiveFilters门控，会连真实局部未读／追踪筛选也错误显示guide；SOURCE Android LibraryTab:173和LibraryScreenModel:172–185区分局部活动条件、全局下载另行约束。要求复用局部有效谓词，guide仅无搜索、真空库且无有效局部条件；总提示仍global OR local，保非空99源NoMatch。`interaction-ri05-local-empty-red`于03:17:35–03:17:49 +08终态FAILED／exit1，一项正确复现局部空库NoMatch被guide替代，正在最小修复。另原生图审阅发现普通Row中的三Tab缺独立当前页指示器，键盘focus停Filter而正文Display时易混淆；要求核SOURCE TabbedDialog并复用原生选中页反馈，补直接可见状态红绿与原滚动／200%可达验证，未扩大业务或测试范围。以上均为本批同一初审及必要修复核验，尚未独立验收闭合。
+
+RI05初审边界`interaction-ri05-review-boundaries-green`于03:24:16–03:25:11 +08终态PASSED／exit0，7项／0失败／0跳过：原生5及空态2。局部谓词hasActiveLocalFilters复用有效周期／活跃tracker条件，总hasActiveFilters为global OR local，guide门控保SOURCE局部语义；共享PrimaryTabRow提供当前页颜色及indicator，键盘focus可独立停其他页。前`interaction-ri05-tab-indicator-red`实际primary指示器像素期望FF0058CA而旧背景FFE3…正确失败，不用源码字符串代替可见反馈。主代理已重看更新后的Display320／200%浅色原生图及320深色More图：当前Display蓝色文字／下划线与焦点区别清晰、末选项及Close可达；紧凑More边界、搜索／面板／CloudSync／More次序可见。图是测试原生离屏场景，空占位封面及短任务提示不作为正式网络图片、最终更新流程或发布runtime证据。格式后原7方法必要复验及结构化交付仍待结束，尚未checkoff或提交。
+
+### RI05 最终闭合与独立验收
+
+原实施者六字段回执确认停止写入、未提交、全部协调器无STARTING／RUNNING，原session52740已消费、PID8980结束。格式后`interaction-ri05-final-boundaries`于03:36:41–03:37:37 +08终态PASSED／exit0，原生Options5及PageComposition2共7项／0失败／0跳过，同命令root与scoped spotlessCheck通过。主代理核实际产物及对应证据，完成本批唯一初审和必要修复复审：共享原始评分尺度、实际registry／factory／DI、Root与Home重选、三页原生事件、真实SQLite及Preference故障／恢复、列数旧值与搜索、随机卡片、菜单范围及还焦、空态局部门控、选中页像素与200%可达均闭合。没有以源码索引检查代替行为验证。
+
+最终去重有效证据Desktop129项＝128通过＋1既有non-release假设跳过，共享Domain／Sync／Android实际包装各1通过，总132项＝131通过＋1跳过。跳过仅既有explicit non-release build exposes custom interval方法，Release的IS_NON_RELEASE_BUILD不满足；新Desktop面板门控由真实事件验证，Android共享可见性仍保SOURCE。初次affected及各失败命令保持原FAILED，不称一次全量通过；未改动绿色结果按影响复用，只复验修复及直接路径。全量、模块完整、正式构建与运行仍0次。
+
+五张原生离屏产物：[Filter浅色320／font2](ri05-options-filter-320-font200.png)、[Display浅色320／font2](ri05-options-display-320-font200.png)、[Display深色320／font2](ri05-options-display-dark-320-font200.png)、[Sort深色](ri05-options-sort-dark.png)、[More窄窗](ri05-toolbar-more-320.png)。Windows／JDK21.0.11／Compose1.10.2／Skiko0.9.37.4、English、density1；前3张320×680／fontScale2，Sort1200×900／font1，More320×680／font1／SYSTEM实际深色。Filter／Display在会话末端滚动状态；主代理实际查看最终Display浅色及More深色，结合真实像素／bounds／事件核验，不作为正式发布、远端封面或硬件证据。
+
+本批跨共享评分、Desktop统一面板及列数迁移／搜索、Android包装保护等内聚上下文，超过8文件／400行，保完整测试和正常格式，不机械拆分或另建路由、列数、客户端、调度器。列数迁移逐键幂等可重试，不称多键原子；排序恢复只补偿本次sort mask，保并发非排序flags。RI04位置／封面／续读继续保护。主代理仅定点修7条当前roleEvidence行号，273条当前symbol索引核对通过，保历史来源／状态／原排版；必要checkoff与production／测试／文档／原生图同批提交。继续RI06，物理输入及最终发布门禁仍在RI18。
+
+### RI06 选择前置核对（只读，不代表实施完成）
+
+现共享LibrarySelectionPolicy被Android LibraryScreenModel.toggleRangeSelection真实调用，默认追加范围且把锚点移动到目标；Desktop LibrarySelectionState也调用相同方法，现handlePrimaryClick只有Shift参数，ShiftAwareClickModifier只记录Press时Shift，不能覆盖Ctrl／Alt／主按钮与长按后click规则。RI06应在同一共享闭区间计算中显式传Desktop替换／追加及固定起点策略，保Android现默认行为；陈旧目标须在真实事件进入选择前按当前有效可见集验证，隐藏书架选择与章节裁剪接口不能混为一套策略。现ChapterSelectionState无锚点，RI09再消费共享范围计算，不提前改其用户行为。
+
+原版CommonMangaItem的网格选择为secondary实色外框、内padding4dp、封面alpha0.76；列表selectedBackground为secondary浅色alpha0.22／深色0.16，封面不降低透明度。Desktop目前网格primaryContainer、列表primaryContainer0.4与定稿不符，RI06须用实际绘制像素及真实四布局事件闭合，不以字符串或图标名扫描代替。Ctrl滚轮250ms分段、输入／IME／模态／子页及修饰键排除属于Windows adapter；真实物理设备／DPI门禁仍在RI18，不把离屏事件冒充硬件证据。这里只定位下一批复用接口，无实施或验收结论。
 
 ### RI13 目录同步前置核对（只读，不代表实施完成）
 
@@ -263,4 +309,4 @@ Android只读预检 `python scripts/build-android.py check --signing` 返回0／
 
 ## 未完成与限制
 
-RI00／RI01 的实现、focused、唯一独立审查及必要修复复审已完成，代码、测试、索引修复和必要 checkoff 随本功能批同一提交。首簇提交为 `14a8ce15695cf69ab2e468b825e88ec91641e08a`。用户继续要求完成剩余 roadmap，现复用原实施代理串行推进后续批次，每批按既有审查与必要修复复审流程执行；完整验证仍只在 RI18。RI02 实现、focused、唯一修复复审和格式／索引检查均通过，必要 checkoff 与代码／测试在本批同一提交；RI03 实现、唯一修复复审、140项有效focused证据、格式与索引检查已闭合，必要checkoff随本批同一提交；RI04实现、140项有效focused、唯一独立初审及必要修正核验、格式及索引已闭合，必要checkoff随本批同一提交；RI05–RI18 未完成；最终全量、正式构建及运行验收尚未执行。本轮没有 Android正式候选／macOS正式构建、真实鼠标／触控板／硬件条件验收，没有交付 EXE/APK，没有把 HTML 勾选更新为 native 完成。
+RI00／RI01 的实现、focused、唯一独立审查及必要修复复审已完成，代码、测试、索引修复和必要 checkoff 随本功能批同一提交。首簇提交为 `14a8ce15695cf69ab2e468b825e88ec91641e08a`。用户继续要求完成剩余 roadmap，现复用原实施代理串行推进后续批次，每批按既有审查与必要修复复审流程执行；完整验证仍只在 RI18。RI02 实现、focused、唯一修复复审和格式／索引检查均通过，必要 checkoff 与代码／测试在本批同一提交；RI03 实现、唯一修复复审、140项有效focused证据、格式与索引检查已闭合，必要checkoff随本批同一提交；RI04实现、140项有效focused、唯一独立初审及必要修正核验、格式及索引已闭合，必要checkoff随本批同一提交；RI05实现、唯一独立初审及必要修复核验、132项去重focused证据、格式及索引检查已闭合，必要checkoff随本批同一提交；RI06–RI18 未完成；最终全量、正式构建及运行验收尚未执行。本轮没有 Android正式候选／macOS正式构建、真实鼠标／触控板／硬件条件验收，没有交付 EXE/APK，没有把 HTML 勾选更新为 native 完成。

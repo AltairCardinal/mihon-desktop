@@ -660,7 +660,7 @@ class AppearanceInteractionTest {
                 deps.localeAdapter.select("en")
                 for (failure in listOf("before", "after")) {
                     for (
-                    action in listOf("mode", "theme", "amoled", "relative", "images", "columns", "date", "tablet")
+                    action in listOf("mode", "theme", "amoled", "relative", "images", "date", "tablet")
                     ) {
                         scene.setContent { }
                         render(scene)
@@ -674,7 +674,6 @@ class AppearanceInteractionTest {
                                 "amoled" -> preferences.themeDarkAmoled
                                 "relative" -> preferences.relativeTime
                                 "images" -> preferences.imagesInDescription
-                                "columns" -> preferences.libraryGridColumns
                                 "date" -> preferences.dateFormat
                                 else -> preferences.tabletUiMode
                             }
@@ -724,11 +723,6 @@ class AppearanceInteractionTest {
                                 "amoled" -> click(scene, MR.strings.pref_dark_theme_pure_black.localized())
                                 "relative" -> click(scene, MR.strings.pref_relative_format.localized())
                                 "images" -> click(scene, MR.strings.pref_display_images_description.localized())
-                                "columns" -> requireNotNull(
-                                    nodes(scene).single {
-                                        it.config.contains(SemanticsActions.SetProgress)
-                                    }.config[SemanticsActions.SetProgress].action,
-                                ).invoke(6f)
                                 else -> requireNotNull(
                                     flatten(
                                         nodes(scene).single {

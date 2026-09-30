@@ -256,11 +256,11 @@ class LibraryCategoryBehaviorTest {
             rootModel.setSelectedCategoryIndex(rootModel.state.value.categories.indexOfFirst { it.id == 1L })
             rootModel.setSearchQuery("Target")
             render(scene)
-            click(scene, MR.strings.check_for_updates.localized())
+            click(scene, MR.strings.action_menu.localized())
             render(scene)
-            click(scene, MR.strings.action_update_library.localized())
+            click(scene, MR.strings.action_update_category.localized())
             withTimeout(5_000) { entered.await() }
-            click(scene, MR.strings.check_for_updates.localized())
+            click(scene, MR.strings.action_menu.localized())
             assertEquals(1, updated.size)
             click(scene, MR.strings.desktop_ui_random_manga.localized())
             render(scene)
@@ -287,9 +287,9 @@ class LibraryCategoryBehaviorTest {
                 updateCategoryExcludes.set("2")
             }
             val beforeAll = updated.size
-            click(scene, MR.strings.check_for_updates.localized())
+            click(scene, MR.strings.action_menu.localized())
             render(scene)
-            click(scene, MR.strings.ext_update_all.localized())
+            click(scene, MR.strings.action_update_library.localized())
             withTimeout(5_000) {
                 while (updated.size == beforeAll || returnedModel.state.value.isUpdating) {
                     render(scene)
@@ -300,6 +300,8 @@ class LibraryCategoryBehaviorTest {
 
             returnedModel.setSelectedCategoryIndex(returnedModel.state.value.categories.indexOfFirst { it.id == 3L })
             returnedModel.setSearchQuery(null)
+            render(scene)
+            click(scene, MR.strings.action_menu.localized())
             render(scene)
             click(scene, MR.strings.desktop_ui_random_manga.localized())
             render(scene)
@@ -361,14 +363,9 @@ class LibraryCategoryBehaviorTest {
             }
             click(scene, MR.strings.action_filter.localized())
             render(scene)
-            click(
-                scene,
-                MR.strings.desktop_ui_filter_value.localized(
-                    Locale.getDefault(),
-                    MR.strings.label_downloaded.localized(),
-                    tachiyomi.core.common.preference.TriState.DISABLED.label(),
-                ),
-            )
+            click(scene, MR.strings.label_downloaded.localized())
+            render(scene)
+            click(scene, MR.strings.action_close.localized())
             render(scene)
             assertFalse(nodes(scene).flatMap { it.semanticLabels() }.contains(manga.title))
 
@@ -411,7 +408,9 @@ class LibraryCategoryBehaviorTest {
             val visibleLabels = nodes(scene).flatMap { it.semanticLabels() }
             assertTrue(visibleLabels.contains(manga.title))
             assertTrue(visibleLabels.contains("1"))
-            assertTrue(visibleLabels.contains(MR.strings.label_downloaded.localized()))
+            assertTrue(visibleLabels.contains(MR.strings.desktop_ui_filter_value.localized(
+                Locale.getDefault(), MR.strings.label_downloaded.localized(), MR.strings.desktop_ui_filter_include.localized(),
+            )))
 
             longClick(scene, manga.title)
             render(scene)
@@ -945,7 +944,7 @@ class LibraryCategoryBehaviorTest {
                 }
             }
             render(scene)
-            assertTrue(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_sort.localized()))
+            assertTrue(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_filter.localized()))
 
             longClick(scene, first.title)
             render(scene)
@@ -961,7 +960,7 @@ class LibraryCategoryBehaviorTest {
             assertTrue(navigator?.lastItem is CategoryManagementScreen)
             assertTrue(childModel != null && childModel !== rootModel)
             assertTrue(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_edit_categories.localized()))
-            assertFalse(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_sort.localized()))
+            assertFalse(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_filter.localized()))
 
             click(scene, MR.strings.action_delete.localized())
             render(scene)
@@ -979,7 +978,7 @@ class LibraryCategoryBehaviorTest {
             render(scene)
             assertTrue(navigator?.lastItem is LibraryRootScreen)
             assertTrue(rootModel.screenModelScope.coroutineContext[Job]?.isActive == true)
-            assertTrue(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_sort.localized()))
+            assertTrue(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_filter.localized()))
         } finally {
             val modelJob = model?.screenModelScope?.coroutineContext?.get(Job)
             scene?.close()
@@ -1295,6 +1294,8 @@ class LibraryCategoryBehaviorTest {
             render(scene)
             val titles = setOf(alpha.title, zulu.title)
             assertEquals(listOf(alpha.title, zulu.title), renderedTitleOrder(scene, titles))
+            click(scene, MR.strings.action_filter.localized())
+            render(scene)
             click(scene, MR.strings.action_sort.localized())
             render(scene)
             click(scene, MR.strings.action_sort_unread_count.localized())

@@ -6,6 +6,7 @@ import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -58,6 +59,8 @@ import tachiyomi.domain.track.interactor.GetTracksPerManga
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.service.TrackerSessionProvider
 import tachiyomi.i18n.MR
+import mihon.desktop.settings.saveDesktopPreference
+import tachiyomi.core.common.preference.Preference
 import java.util.Locale
 import kotlin.random.Random
 import tachiyomi.domain.library.model.LibraryDisplayMode as SharedLibraryDisplayMode
@@ -98,6 +101,7 @@ internal data class LibraryBrowsePosition(val mangaId: Long, val index: Int, val
 class LibraryScreenModel(
     private val getLibraryManga: GetLibraryManga? = null,
     private val getCategories: GetCategories? = null,
+    private val categoryRepository: tachiyomi.domain.category.repository.CategoryRepository? = null,
     private val createCategory: CreateCategoryWithName? = null,
     private val renameCategory: RenameCategory? = null,
     private val deleteCategory: DeleteCategory? = null,
@@ -117,6 +121,7 @@ class LibraryScreenModel(
     private val categoryPrefs: LibraryCategoryPrefs? = null,
     private val getTracksPerManga: GetTracksPerManga? = null,
     private val trackerSessionProvider: TrackerSessionProvider? = null,
+    private val trackerServiceRegistry: tachiyomi.domain.track.service.TrackerServiceRegistry? = null,
     private val startBackgroundUpdate: (() -> Job)? = null,
     private val startScopedBackgroundUpdate: ((Long?) -> Job)? = null,
     private val cancelBackgroundUpdate: (() -> Boolean)? = null,
@@ -184,10 +189,12 @@ class LibraryScreenModel(
     fun libraryMangaFlow(propagateErrors: Boolean = false): Flow<List<LibraryManga>> = combine(
         requireNotNull(getLibraryManga) { "GetLibraryManga is required" }.subscribe(),
         getTracksPerManga?.subscribe() ?: flowOf(emptyMap()),
-        trackerSessionProvider?.loggedInTrackerIds() ?: flowOf(emptySet()),
+        activeTrackerProfiles(),
         downloadQueueChanges,
         libraryPreferences?.showContinueReadingButton()?.changes() ?: flowOf(false),
-    ) { items, tracksByManga, loggedInTrackerIds, _, showContinue ->
+    ) { items, tracksByManga, trackerProfiles, _, showContinue ->
+        val (loggedInTrackerIds, trackerNames) = trackerProfiles
+        _state.update { it.copy(trackerNamesById = trackerNames) }
         val eligible = if (showContinue) {
             items.distinctBy { it.id }.filter { item ->
                 getChaptersByMangaId?.awaitOrThrow(item.id, applyScanlatorFilter = true)
@@ -216,6 +223,18 @@ class LibraryScreenModel(
         emit(emptyList())
     }
 
+    private fun activeTrackerProfiles(): Flow<Pair<Set<Long>, Map<Long, String>>> {
+        val sessions = trackerSessionProvider?.loggedInTrackerIds() ?: flowOf(emptySet())
+        val registry = trackerServiceRegistry ?: return sessions.map { it to emptyMap() }
+        val profiles = if (registry.services.isEmpty()) flowOf(emptyList()) else {
+            combine(registry.services.map { it.profile }) { it.toList() }
+        }
+        return combine(sessions, profiles) { ids, current ->
+            val active = current.filter { it.id in ids && it.loggedIn && it.unavailableReason == null }
+            active.mapTo(mutableSetOf()) { it.id } to active.associate { it.id to it.name }
+        }
+    }
+
     private fun updateLibrarySnapshot(
         items: List<LibraryManga>,
         tracksByManga: Map<Long, List<Track>>,
@@ -232,7 +251,7 @@ class LibraryScreenModel(
             mangaTracks.mapTo(mutableSetOf()) { track -> track.trackerId }
         }
         val trackerMeansByManga = activeTracksByManga.mapValues { (_, mangaTracks) ->
-            mangaTracks.map { it.score }.average()
+            mangaTracks.map { tachiyomi.domain.track.service.TrackerProviderContracts.tenPointScore(it.trackerId, it.score) }.average()
         }
         val pendingCategoryIndex = pendingInitialCategoryIndex
         _state.update {
@@ -393,12 +412,28 @@ class LibraryScreenModel(
     }
 
     fun setSortModeAndDirection(mode: SortMode, ascending: Boolean) {
-        _state.update { it.copy(sortMode = mode, sortAscending = ascending) }
-        libraryPreferences?.let { preferences ->
-            val sort = LibrarySearchFilter.toSharedSort(mode, ascending)
-            preferences.sortingMode().set(sort)
-            if (sort.type == LibrarySort.Type.Random) preferences.randomSortSeed().set(Random.nextInt())
+        val preferences = libraryPreferences
+        if (preferences == null) {
+            _state.update { it.copy(sortMode = mode, sortAscending = ascending) }
+            return
         }
+        val sort = LibrarySearchFilter.toSharedSort(mode, ascending)
+        if (!saveDesktopPreference(preferences.sortingMode(), sort)) reportPreferenceFailure()
+        if (sort.type == LibrarySort.Type.Random && !saveDesktopPreference(preferences.randomSortSeed(), Random.nextInt())) {
+            reportPreferenceFailure()
+        }
+        applySharedPreferences(state.value.categories.getOrNull(state.value.selectedCategoryIndex)?.id)
+    }
+
+    internal fun <T> writeLibraryPreference(preference: Preference<T>, value: T): Boolean {
+        val saved = saveDesktopPreference(preference, value)
+        if (!saved) reportPreferenceFailure()
+        applySharedPreferences(state.value.categories.getOrNull(state.value.selectedCategoryIndex)?.id)
+        return saved
+    }
+
+    private fun reportPreferenceFailure() {
+        setOperationFeedback(MR.strings.desktop_appearance_save_failed.localized())
     }
 
     private fun applySharedPreferences(categoryId: Long?) {
@@ -428,6 +463,7 @@ class LibraryScreenModel(
             it.copy(
                 sortMode = sharedSort.toDesktopSortMode(),
                 sortAscending = sharedSort.isAscending,
+                randomSortSeed = preferences.randomSortSeed().get(),
                 filter = filter,
                 displayMode = preferences.displayMode().get().toDesktopDisplayMode(),
                 portraitColumns = preferences.portraitColumns().get().coerceIn(0, 10),
@@ -460,17 +496,62 @@ class LibraryScreenModel(
     }
 
     fun setSortModeAndDirectionForCategory(categoryId: Long?, mode: SortMode, ascending: Boolean) {
-        _state.update { it.copy(sortMode = mode, sortAscending = ascending) }
         val sharedSort = LibrarySearchFilter.toSharedSort(mode, ascending)
-        if (setSortModeForCategory != null) {
+        val preferences = libraryPreferences
+        if (setSortModeForCategory != null && preferences != null) {
             screenModelScope.launch {
-                setSortModeForCategory.await(
-                    categoryId = categoryId,
-                    type = sharedSort.type,
-                    direction = sharedSort.direction,
-                )
+                val oldSort = preferences.sortingMode().get() to preferences.sortingMode().isSet()
+                val oldSeed = preferences.randomSortSeed().get() to preferences.randomSortSeed().isSet()
+                val previousFlags = try {
+                    categoryRepository?.getAll()?.associate { it.id to it.flags }.orEmpty()
+                } catch (_: Exception) {
+                    reportPreferenceFailure()
+                    return@launch
+                }
+                val local = categoryId?.takeIf { preferences.categorizedDisplaySettings().get() && it in previousFlags }
+                val affected = if (local != null) previousFlags.filterKeys { it == local } else previousFlags
+                try {
+                    setSortModeForCategory.await(categoryId, sharedSort.type, sharedSort.direction)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    runCatching {
+                        val repository = categoryRepository ?: return@runCatching
+                        val current = repository.getAll().associateBy { it.id }
+                        val mask = sharedSort.mask
+                        val updates = affected.mapNotNull { (id, previous) ->
+                            val actual = current[id] ?: return@mapNotNull null
+                            if (actual.flags and mask != sharedSort.flag) return@mapNotNull null
+                            tachiyomi.domain.category.model.CategoryUpdate(
+                                id = id,
+                                flags = (actual.flags and mask.inv()) or (previous and mask),
+                            )
+                        }
+                        repository.updatePartial(updates)
+                        setCategories(repository.getAll())
+                    }
+                    runCatching {
+                        if (oldSort.second) {
+                            preferences.sortingMode().set(oldSort.first)
+                        } else {
+                            preferences.sortingMode().delete()
+                        }
+                    }
+                    runCatching {
+                        if (oldSeed.second) {
+                            preferences.randomSortSeed().set(oldSeed.first)
+                        } else {
+                            preferences.randomSortSeed().delete()
+                        }
+                    }
+                    reportPreferenceFailure()
+                }
+                applySharedPreferences(categoryId)
             }
-        } else if (libraryPreferences == null) {
+        } else if (preferences != null) {
+            setSortModeAndDirection(mode, ascending)
+        } else {
+            _state.update { it.copy(sortMode = mode, sortAscending = ascending) }
             categoryPrefs?.setSortMode(categoryId, mode)
             categoryPrefs?.setSortAscending(categoryId, ascending)
         }
@@ -504,26 +585,44 @@ class LibraryScreenModel(
     }
 
     fun toggleFilter(field: LibraryFilterField) {
-        val filter = state.value.filter
-        setFilter(
-            when (field) {
+        val preferences = libraryPreferences
+        if (preferences == null) {
+            val filter = state.value.filter
+            setFilter(when (field) {
                 LibraryFilterField.DOWNLOADED -> filter.copy(downloaded = filter.downloaded.next())
                 LibraryFilterField.UNREAD -> filter.copy(unread = filter.unread.next())
                 LibraryFilterField.STARTED -> filter.copy(started = filter.started.next())
                 LibraryFilterField.BOOKMARKED -> filter.copy(bookmarked = filter.bookmarked.next())
                 LibraryFilterField.COMPLETED -> filter.copy(completed = filter.completed.next())
                 LibraryFilterField.INTERVAL_CUSTOM -> filter.copy(intervalCustom = filter.intervalCustom.next())
-            },
-        )
+            })
+            return
+        }
+        val preference = when (field) {
+            LibraryFilterField.DOWNLOADED -> preferences.filterDownloaded()
+            LibraryFilterField.UNREAD -> preferences.filterUnread()
+            LibraryFilterField.STARTED -> preferences.filterStarted()
+            LibraryFilterField.BOOKMARKED -> preferences.filterBookmarked()
+            LibraryFilterField.COMPLETED -> preferences.filterCompleted()
+            LibraryFilterField.INTERVAL_CUSTOM -> preferences.filterIntervalCustom()
+        }
+        if (field == LibraryFilterField.DOWNLOADED && state.value.filter.globalDownloadedOnly) return
+        if (field == LibraryFilterField.INTERVAL_CUSTOM && !state.value.filter.skipOutsideReleasePeriod) return
+        writeLibraryPreference(preference, preference.get().next())
     }
 
     fun toggleTrackingFilter(trackerId: Long) {
         val next = state.value.filter.tracking[trackerId].orDisabled().next()
-        setFilter(state.value.filter.copy(tracking = state.value.filter.tracking + (trackerId to next)))
+        val preferences = libraryPreferences
+        if (preferences == null) {
+            setFilter(state.value.filter.copy(tracking = state.value.filter.tracking + (trackerId to next)))
+        } else writeLibraryPreference(preferences.filterTracking(trackerId.toInt()), next)
     }
 
     fun toggleGlobalDownloadedOnly() {
-        setFilter(state.value.filter.copy(globalDownloadedOnly = !state.value.filter.globalDownloadedOnly))
+        val preferences = libraryPreferences
+        if (preferences == null) setFilter(state.value.filter.copy(globalDownloadedOnly = !state.value.filter.globalDownloadedOnly))
+        else writeLibraryPreference(preferences.downloadedOnly(), !preferences.downloadedOnly().get())
     }
 
     fun toggleSkipOutsideReleasePeriod() {
@@ -560,6 +659,7 @@ class LibraryScreenModel(
             preferences.portraitColumns().changes(),
             preferences.landscapeColumns().changes(),
             preferences.sortingMode().changes(),
+            preferences.randomSortSeed().changes(),
             preferences.filterDownloaded().changes(),
             preferences.filterUnread().changes(),
             preferences.filterStarted().changes(),
@@ -575,6 +675,7 @@ class LibraryScreenModel(
             preferences.categoryTabs().changes(),
             preferences.categoryNumberOfItems().changes(),
             preferences.categorizedDisplaySettings().changes(),
+            preferences.autoUpdateMangaRestrictions().changes(),
         ).collect {
             applySharedPreferences(state.value.categories.getOrNull(state.value.selectedCategoryIndex)?.id)
         }
@@ -637,9 +738,16 @@ class LibraryScreenModel(
     // ── Display mode ──────────────────────────────────────────────────────────
 
     fun setDisplayMode(mode: LibraryDisplayMode) {
-        _state.update { it.copy(displayMode = mode) }
-        setDisplayModeInteractor?.await(mode.toShared())
-            ?: libraryPreferences?.displayMode()?.set(mode.toShared())
+        val preferences = libraryPreferences
+        if (preferences == null) {
+            _state.update { it.copy(displayMode = mode) }
+            return
+        }
+        val saved = saveDesktopPreference(preferences.displayMode(), mode.toShared()) {
+            setDisplayModeInteractor?.await(it) ?: preferences.displayMode().set(it)
+        }
+        if (!saved) reportPreferenceFailure()
+        applySharedPreferences(state.value.categories.getOrNull(state.value.selectedCategoryIndex)?.id)
     }
 
     fun setDisplayModeForCategory(categoryId: Long?, mode: LibraryDisplayMode) {

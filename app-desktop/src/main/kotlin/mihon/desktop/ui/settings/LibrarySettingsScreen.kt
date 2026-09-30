@@ -73,10 +73,6 @@ class LibrarySettingsScreen : Screen {
         var categorizedDisplaySettings by remember {
             mutableStateOf(libraryPreferences?.categorizedDisplaySettings()?.get() ?: false)
         }
-        var portraitColumns by remember { mutableStateOf(libraryPreferences?.portraitColumns()?.get()?.coerceIn(0, 10) ?: 0) }
-        var landscapeColumns by remember {
-            mutableStateOf(libraryPreferences?.landscapeColumns()?.get()?.coerceIn(0, 10) ?: 0)
-        }
         val updateTitle = MR.strings.pref_category_library_update.localized()
         val displayTitle = MR.strings.pref_category_display.localized()
 
@@ -165,36 +161,7 @@ class LibrarySettingsScreen : Screen {
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
-                Text(
-                    text = "${MR.strings.pref_library_columns.localized()} (portrait): " +
-                        (portraitColumns.takeIf { it > 0 }?.toString() ?: MR.strings.label_auto.localized()),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
-                Slider(
-                    value = portraitColumns.toFloat(),
-                    onValueChange = { value ->
-                        portraitColumns = value.toInt()
-                        libraryPreferences?.portraitColumns()?.set(portraitColumns)
-                    },
-                    valueRange = 0f..10f,
-                    steps = 9,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-                Text(
-                    text = "${MR.strings.pref_library_columns.localized()} (landscape): " +
-                        (landscapeColumns.takeIf { it > 0 }?.toString() ?: MR.strings.label_auto.localized()),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
-                Slider(
-                    value = landscapeColumns.toFloat(),
-                    onValueChange = { value ->
-                        landscapeColumns = value.toInt()
-                        libraryPreferences?.landscapeColumns()?.set(landscapeColumns)
-                    },
-                    valueRange = 0f..10f,
-                    steps = 9,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
+                libraryPreferences?.let { LibraryColumnControls(it) }
                 listOf(
                     Triple(MR.strings.action_display_download_badge.localized(), showDownloadBadge) { checked: Boolean ->
                         showDownloadBadge = checked
