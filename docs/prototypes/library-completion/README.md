@@ -1,6 +1,8 @@
 # 书架完整 Roadmap · 双端交互 DEMO
 
-审核入口：[Windows / Android 并列演示](index.html) · [书架 19 项变化及验收](ACCEPTANCE.md) · [详情现状与叠加变化验收](DETAIL-ACCEPTANCE.md) · [详情完整差异 A1–I4 验收](DETAIL-PARITY-ACCEPTANCE.md) · [分类与详情 UI 收敛验收](DETAIL-UI-REFINEMENT-ACCEPTANCE.md) · [产品实施 roadmap](../../roadmap/2026-09-28-desktop-library-completion-roadmap.md)
+本次会话的实机实施定稿见[最终交互设计](../../design/mihon-desktop-ui/2026-09-30-interaction-final-design.md)与[完整实机 roadmap](../../roadmap/2026-09-30-desktop-interaction-iteration-roadmap.md)。这两份文档统一后续入口、布局与行为，并明确覆盖下方历史记录中的旧方案；本目录仍是 HTML 审阅资产，不代表原生任务完成。
+
+审核入口：[Windows / Android 并列演示](index.html) · [书架 19 项变化及验收](ACCEPTANCE.md) · [详情现状与叠加变化验收](DETAIL-ACCEPTANCE.md) · [详情完整差异 A1–I4 验收](DETAIL-PARITY-ACCEPTANCE.md) · [分类与详情 UI 收敛验收](DETAIL-UI-REFINEMENT-ACCEPTANCE.md) · [最终实机 roadmap](../../roadmap/2026-09-30-desktop-interaction-iteration-roadmap.md)
 
 本轮新增 [原版外观页验收 AP01–AP15](APPEARANCE-ACCEPTANCE.md)：从【更多 → 设置 → 外观】审核；宽屏设置采用目录与当前设置的双栏结构，默认进入外观，窄屏从目录进入。既有书架偏好入口调整为【更多 → 设置 → 书架】，沿用原功能。
 

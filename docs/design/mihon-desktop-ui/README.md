@@ -2,6 +2,8 @@
 
 版本：2026-09-25。适用：新增或修改 Desktop 用户界面，以及用于审阅这些界面的 HTML 原型。此入口补充现有仓库架构、TDD、复用和原生验证要求，不替代它们。原始 Android 规范仍作为[参考输入](../mihon-ui-kit-evaluation/input/mihon-ui-kit/docs/ui/README.md)，不直接安装其中 AGENTS 或 overlay。
 
+2026-09-30 本次交互迭代的业务定稿见[最终设计](2026-09-30-interaction-final-design.md)与[实机 roadmap](../../roadmap/2026-09-30-desktop-interaction-iteration-roadmap.md)。两者承接书架、详情、分类、导航、主题和外观的最终要求；本文的复用、焦点、测试和原生验证约束继续适用。
+
 ## 先读哪些内容
 
 1. 读取本页和[Desktop 事实与组件表](desktop-reference.md)。按页面任务读取原规范适用章节，不必每次阅读全部128条。
