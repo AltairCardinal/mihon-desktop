@@ -75,6 +75,8 @@ SP01 → SP02 → SP03 串行；它们共享同一面板和 controller，不安�
 
 - [ ] **SP03 完成：必做平台验收与证据完整，正式产物及最终提交可追溯。**
 
+2026-09-30自动化收口：完整Android及受影响模块、完整Desktop与格式通过；Windows/macOS正式构建及隔离TestMode通过，Android原证书code36正式候选已生成并verify。真实账号、原生Tab/系统读屏、实体Android运行与升级仍待用户验收，因此本项保持未勾选，不降低必做门禁。命令结果、正式产物与来源统一见[聚合验收记录](../evidence/sync-progress-display-2026-09-28.md)。
+
 **前提**：SP01/SP02 focused 测试和独立审查通过，已冻结本轮产品 diff。实际执行前报告可用 Windows/macOS/Android 环境、预计构建耗时和签名状态；不要将历史环境记录视为当前可用。
 
 **执行范围**：
