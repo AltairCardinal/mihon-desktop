@@ -10,6 +10,7 @@ import androidx.activity.ComponentDialog
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -93,14 +94,14 @@ class AndroidSyncPanelTest {
         showToolbar()
         compose.onNodeWithTag("sync-open").assertIsDisplayed().performClick()
         compose.onNodeWithText("99+").assertIsDisplayed()
-        compose.onNodeWithTag("sync-now").assertIsDisplayed()
+        compose.onNodeWithTag("sync-wait").assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithTag("sync-settings").performClick()
         compose.onNodeWithTag("sync-settings-list", useUnmergedTree = true)
             .performScrollToNode(hasTestTag("sync-password-status"))
         compose.onNodeWithTag("sync-password-status", useUnmergedTree = true).performScrollTo()
         compose.onNodeWithTag("sync-password-status", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithTag("sync-back").performClick()
-        compose.onNodeWithTag("sync-now").assertIsDisplayed()
+        compose.onNodeWithTag("sync-wait").assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithTag("sync-close").performClick()
         compose.runOnIdle {
             assertFalse(panel.state.value.visible)

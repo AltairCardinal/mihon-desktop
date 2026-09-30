@@ -2154,4 +2154,16 @@
     <string name="creator_frequency_monthly">Monthly</string>
     <string name="creator_settings_saved">Author settings saved</string>
     <string name="desktop_backup_preview_authors">Author archive: %1$d authors</string>
+    <string name="sync_exchanging_data">Exchanging data</string>
+    <string name="sync_not_completed">Sync incomplete</string>
+    <string name="sync_confirmed_checking">Confirmed this run: checking</string>
+    <string name="sync_details_expand">Show details</string>
+    <string name="sync_details_collapse">Hide details</string>
+    <string name="sync_eta_remaining">Total remaining</string>
+    <string name="sync_wait_start">Waiting to start</string>
+    <string name="sync_view_reason">View reason</string>
+    <string name="sync_running_explanation">Confirmed entries have been saved safely. Results update after each batch.</string>
+    <string name="sync_import_paused_summary">Initial merge is paused</string>
+    <string name="sync_bulk_paused_summary">Processing selected items is paused</string>
+    <string name="sync_view_processing">View processing progress</string>
 </resources>

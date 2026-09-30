@@ -456,10 +456,16 @@ class SyncPanelController(
             SyncPanelAction.ResumeImport -> {
                 runtime.preferences.importPaused.set(false)
                 refresh()
-                if (state.value.setupStep == SyncSetupStep.MERGING) {
-                    discover()
-                } else {
-                    scope.launch { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
+                // A subtask preference must not create another round over a durable user pause.
+                val userPaused = runtime.connection()?.let { connection ->
+                    runtime.runStore.active(connection.spaceId, connection.generation)?.state
+                } == SyncRunState.PAUSED_USER
+                if (!userPaused) {
+                    if (state.value.setupStep == SyncSetupStep.MERGING) {
+                        discover()
+                    } else {
+                        scope.launch { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
+                    }
                 }
             }
             is SyncPanelAction.SetPeriod -> {

@@ -1140,6 +1140,30 @@ abstract class SyncPanelStorageContract {
         }
     }
 
+    @Test
+    fun `resuming import never bypasses the durable user pause or creates another run`() = runBlocking {
+        open().use { storage ->
+            storage.favorite("/baseline")
+            storage.connect("actor", repository)
+            withPanel(storage) { panel, runtime ->
+                runtime.preferences.importPaused.set(true)
+                val run = runtime.runStore.start("space", 1, mihon.domain.sync.runtime.SyncTrigger.MANUAL)
+                runtime.runStore.pause(run.runId)
+                panel.act(SyncPanelAction.Open)
+                panel.act(SyncPanelAction.ResumeImport)
+                assertFalse(runtime.preferences.importPaused.get())
+                repeat(10) {
+                    kotlinx.coroutines.delay(20)
+                    assertEquals(run.runId, runtime.runStore.latest("space", 1)!!.runId)
+                    assertEquals(
+                        mihon.data.sync.runtime.SyncRunState.PAUSED_USER,
+                        runtime.runStore.get(run.runId)!!.state,
+                    )
+                }
+            }
+        }
+    }
+
     private fun deviceCode(code: String = "FIRST-CODE") = MockResponse(
         body = """
             {"device_code":"fixture-secret","user_code":"$code",

@@ -1943,4 +1943,16 @@
     <string name="sync_setup_abandon_legacy">放弃旧初始化并重新检查</string>
     <string name="sync_setup_account_changed">GitHub 账号已更换，请重新连接后继续</string>
     <string name="sync_problem_not_private">同步仓库已变为公开，请在 GitHub 恢复为私有后重试。上传已暂停；恢复私有不能撤回此前可能公开的数据。</string>
+    <string name="sync_exchanging_data">正在交换数据</string>
+    <string name="sync_not_completed">同步未完成</string>
+    <string name="sync_confirmed_checking">本次已确认：正在核对</string>
+    <string name="sync_details_expand">查看详情</string>
+    <string name="sync_details_collapse">收起详情</string>
+    <string name="sync_eta_remaining">整体剩余</string>
+    <string name="sync_wait_start">等待开始</string>
+    <string name="sync_view_reason">查看原因</string>
+    <string name="sync_running_explanation">已确认的数据已安全保存，结果会在每批完成后更新。</string>
+    <string name="sync_import_paused_summary">首次合并已暂停</string>
+    <string name="sync_bulk_paused_summary">已选事项处理已暂停</string>
+    <string name="sync_view_processing">查看处理进度</string>
 </resources>

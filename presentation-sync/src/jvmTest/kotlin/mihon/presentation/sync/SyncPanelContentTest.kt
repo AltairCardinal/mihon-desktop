@@ -5,9 +5,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MonotonicFrameClock
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
@@ -19,8 +23,10 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.Density
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import mihon.data.sync.auth.SyncAppInstallation
@@ -62,6 +68,7 @@ import mihon.domain.sync.transport.SyncRepository
 import org.jetbrains.skia.EncodedImageFormat
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.i18n.MR
@@ -93,6 +100,8 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
         assertTrue(texts().contains("正在写入已保存的数据 50 / 10300 条"))
         assertTrue(texts().contains("已准备 0 条"))
         assertFalse(texts().contains("已准备 50 / 10300 条"))
@@ -120,11 +129,20 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
         assertTrue(texts().any { it.contains("准备数据") })
         assertTrue(texts().any { it.contains("传输数据") })
         assertTrue(texts().any { it.contains("确认结果") })
         assertTrue(texts().contains("已传输 6144 / 10300 条"))
         assertTrue(texts().contains("传输进度 62%"))
+        displayMillis = 800
+        withTimeout(3000) {
+            while (!node("sync-progress").config[SemanticsProperties.StateDescription].contains("传输进度 62%")) {
+                render()
+                delay(10)
+            }
+        }
         assertTrue(node("sync-progress").config[SemanticsProperties.StateDescription].contains("传输进度 62%"))
         assertTrue(texts().contains("已用 00:38"))
         assertTrue(texts().contains("当前阶段预计还需约 12 秒"))
@@ -153,6 +171,8 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
         assertTrue(texts().contains("已传输 6 / 10 条"))
         assertTrue(texts().contains("本次已确认 4 条"))
     }
@@ -205,8 +225,10 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
         assertTrue(texts().contains("已传输 5 / 10 条"))
-        assertFalse(texts().any { it.startsWith("本次已确认") })
+        assertTrue(texts().contains("本次已确认：正在核对"))
     }
 
     @Test
@@ -233,9 +255,11 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
         assertTrue(texts().contains("当前正文传输 50%"))
         assertTrue(texts().contains("当前正文预计还需约 7 秒"))
-        assertTrue(hasTag("sync-active-body-progress"))
+        assertFalse(hasTag("sync-active-body-progress"))
         assertFalse(texts().any { it.startsWith("传输进度 ") })
         assertFalse(texts().any { it.startsWith("当前阶段预计还需") })
     }
@@ -261,11 +285,22 @@ class SyncPanelContentTest {
                         hold = SyncProgressHold.ACTIVE,
                         stageEtaSeconds = 1,
                         wholeEtaSeconds = 60,
+                        secondsWithoutProgress = 0,
                     ),
                 ),
             ) {
                 awaitTag("sync-progress-card")
-                assertTrue(texts().contains("Estimated time remaining: about 1 minute"))
+                displayMillis = 2000
+                withTimeout(3000) {
+                    while (texts().none { it.contains("1 minute") }) {
+                        render()
+                        delay(10)
+                    }
+                }
+                click("sync-progress-details-toggle")
+                render()
+                assertTrue(texts().any { it.contains("Total remaining") })
+                assertTrue(texts().any { it.contains("1 minute") })
                 panel.state.value = panel.state.value.copy(
                     progress = panel.state.value.progress?.copy(wholeEtaSeconds = null),
                 )
@@ -298,6 +333,8 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
         assertTrue(texts().contains("正在统计数据"))
         assertTrue(texts().contains("剩余时间暂无法估算"))
         assertFalse(texts().any { it.contains("0 / 0") || it.contains("NaN") })
@@ -338,7 +375,7 @@ class SyncPanelContentTest {
         assertTrue(texts().contains("上次有 10 项核对内容因漫画源不可用而未能恢复"))
         assertTrue(texts().contains("请重试同步，重新检查并恢复已保存的数据"))
         assertTrue(texts().contains("已用 00:05"))
-        assertFalse(hasTag("sync-progress"))
+        assertTrue(hasTag("sync-progress"))
         assertFalse(texts().contains("正在接收并校验数据"))
         assertFalse(texts().any { it.contains("已确认 0 / 0") })
         click("sync-retry-run")
@@ -353,6 +390,8 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-failure-log-open")
+        click("sync-progress-details-toggle")
+        render()
         assertTrue(texts().any { it.contains("521") })
         assertTrue(texts().contains("C:/reports/sync-run.txt"))
         click("sync-failure-log-open")
@@ -398,9 +437,9 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
-        assertFalse(hasTag("sync-progress"))
+        assertTrue(hasTag("sync-progress"))
         assertFalse(texts().contains("正在合并数据"))
-        assertFalse(nodes().any { it.config.contains(SemanticsProperties.ProgressBarRangeInfo) })
+        assertEquals(1, nodes().count { it.config.contains(SemanticsProperties.ProgressBarRangeInfo) })
         for (terminal in listOf(
             SyncRunState.SUCCEEDED,
             SyncRunState.FAILED,
@@ -412,7 +451,7 @@ class SyncPanelContentTest {
                 run = panel.state.value.run?.copy(state = terminal),
             )
             render()
-            assertFalse(hasTag("sync-progress"), terminal.name)
+            assertTrue(hasTag("sync-progress"), terminal.name)
             assertFalse(texts().contains("正在接收并校验数据"), terminal.name)
         }
     }
@@ -444,6 +483,8 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
         assertTrue(texts().contains("已接收并校验 4 / 10 条"))
         assertTrue(texts().contains("正在合并已接收的数据"))
         assertTrue(texts().contains("已检查 3 项本地合并内容"))
@@ -499,6 +540,8 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
         assertTrue(texts().contains("正在接收并校验数据"))
         assertFalse(texts().contains("正在合并已接收的数据"))
         assertFalse(texts().any { it.contains("最近一次实际进展") })
@@ -561,6 +604,8 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
         assertTrue(texts().contains("正在恢复并核对进度"))
         assertFalse(texts().any { it.contains("预计还需约") })
     }
@@ -585,6 +630,9 @@ class SyncPanelContentTest {
             ),
         ),
     ) {
+        awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
         awaitTag("sync-stage-count")
         assertTrue(texts().contains("已传输 6 / 10 条"))
         assertTrue(texts().contains("正在暂停，正在保存进度"))
@@ -611,6 +659,9 @@ class SyncPanelContentTest {
             ),
         ),
     ) {
+        awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
         awaitTag("sync-stage-count")
         assertTrue(texts().contains("正在生成上传数据"))
         assertFalse(texts().contains("正在上传变动"))
@@ -638,6 +689,8 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
         assertTrue(texts().contains("发现新增数据，继续同步"))
     }
 
@@ -663,6 +716,9 @@ class SyncPanelContentTest {
         val fixture = Fixture(state, ImageComposeScene(400, 800, coroutineContext = coroutineContext) {})
         try {
             fixture.setContent()
+            fixture.awaitTag("sync-progress-card")
+            fixture.click("sync-progress-details-toggle")
+            fixture.render()
             fixture.awaitTag("sync-stage-count")
             assertTrue(fixture.node("sync-stage-count").boundsInRoot.right <= 400f)
         } finally {
@@ -730,18 +786,18 @@ class SyncPanelContentTest {
             fixture.render()
             val scroll = requireNotNull(fixture.node("sync-pending-list").config[SemanticsActions.ScrollBy].action)
             for (attempt in 0..5) {
-                if (fixture.hasTag("sync-stage-count") &&
-                    fixture.node("sync-stage-count").boundsInRoot.top >= 0f &&
-                    fixture.node("sync-stage-count").boundsInRoot.bottom <= 600f
+                if (fixture.hasTag("sync-progress-details-toggle") &&
+                    fixture.node("sync-progress-details-toggle").boundsInRoot.top >= 0f &&
+                    fixture.node("sync-progress-details-toggle").boundsInRoot.bottom <= 600f
                 ) {
                     break
                 }
                 scroll.invoke(0f, 160f)
                 fixture.render()
             }
-            assertTrue(fixture.hasTag("sync-stage-count"))
-            assertTrue(fixture.node("sync-stage-count").boundsInRoot.top >= 0f)
-            assertTrue(fixture.node("sync-stage-count").boundsInRoot.bottom <= 600f)
+            assertTrue(fixture.hasTag("sync-progress-details-toggle"))
+            assertTrue(fixture.node("sync-progress-details-toggle").boundsInRoot.top >= 0f)
+            assertTrue(fixture.node("sync-progress-details-toggle").boundsInRoot.bottom <= 600f)
         } finally {
             fixture.scene.close()
         }
@@ -778,9 +834,11 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
         assertTrue(hasTag("sync-space-subtitle"))
         assertTrue(texts().contains("手机 A · 书架"))
-        assertTrue(hasTag("sync-status-icon"))
+        assertFalse(hasTag("sync-status-icon"))
         assertTrue(hasTag("sync-queue-summary"))
         assertTrue(texts().contains("1804 项"))
         assertTrue(texts().contains("3 条收藏 · 1 条关注"))
@@ -1174,8 +1232,8 @@ class SyncPanelContentTest {
             ),
         ),
     ) {
-        awaitTag("sync-notice-counts")
-        awaitTag("sync-notice-projection")
+        awaitTag("sync-progress-card")
+        assertFalse(hasTag("sync-notice-counts"))
         assertTrue(texts().contains("有数据尚未完成核对，请稍后重试同步"))
         assertFalse(hasTag("sync-notice-error"))
     }
@@ -1285,6 +1343,8 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
         assertTrue(hasTag("sync-progress"))
         assertTrue(hasTag("sync-log-item-1"))
         click("sync-pause-run")
@@ -1294,7 +1354,7 @@ class SyncPanelContentTest {
             run = panel.state.value.run!!.copy(state = SyncRunState.PAUSED_USER),
         )
         render()
-        assertTrue(node("sync-now").config.contains(SemanticsProperties.Disabled))
+        assertFalse(hasTag("sync-now"))
         click("sync-resume-run")
         assertEquals(SyncPanelAction.ResumeSync, actions.last())
     }
@@ -1344,6 +1404,8 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
         assertTrue(texts().contains("已准备 1 / 2 条"))
         assertTrue(hasTag("sync-log-item-1"))
     }
@@ -1693,6 +1755,422 @@ class SyncPanelContentTest {
         assertEquals(SyncPanelAction.ResumeBulk, actions.last())
     }
 
+    @Test
+    fun `running summary keeps details collapsed and exposes one track`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.UPLOADING),
+            progress = SyncProgressFact(
+                "run-visual:1", SyncProgressStage.TRANSFERRING,
+                SyncProgressDirection.UPLOAD, 6, 10, 64, 64, 100, 12,
+                SyncProgressHold.ACTIVE, 5, null, confirmedThisRun = 2,
+            ),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertFalse(hasTag("sync-stage-count"), "Stage counts belong to collapsed details")
+        assertTrue(hasTag("sync-progress-details-toggle"))
+        click("sync-progress-details-toggle")
+        render()
+        assertTrue(hasTag("sync-stage-count"))
+        assertEquals(1, nodes().count { tag(it) == "sync-progress" })
+    }
+
+    @Test
+    fun `D09 fixed summary geometry and status live region survive progress changes`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.UPLOADING),
+            progress = SyncProgressFact(
+                "run-visual:a", SyncProgressStage.TRANSFERRING,
+                SyncProgressDirection.UPLOAD, 999, 1000, 64, 64, 100, 12,
+                SyncProgressHold.ACTIVE, 5, 20, confirmedThisRun = 999, secondsWithoutProgress = 0,
+            ),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        val bottom = geometry("sync-progress-card").bottom
+        val button = geometry("sync-pause-run")
+        val toggle = geometry("sync-progress-details-toggle")
+        assertEquals(1, nodes().count { it.config.contains(SemanticsProperties.LiveRegion) })
+        for ((time, progress) in listOf(
+            800L to panel.state.value.progress!!.copy(completedItems = 1000, confirmedThisRun = 1000),
+            2000L to panel.state.value.progress!!.copy(wholeEtaSeconds = 18),
+            2001L to panel.state.value.progress!!.copy(stage = SyncProgressStage.CONFIRMING, wholeEtaSeconds = null),
+            2801L to
+                panel.state.value.progress!!.copy(
+                    direction = SyncProgressDirection.DOWNLOAD,
+                    mergingReceivedData = true,
+                ),
+        )) {
+            displayMillis = time
+            panel.state.value = panel.state.value.copy(progress = progress)
+            render()
+            assertEquals(bottom, geometry("sync-progress-card").bottom, 1f)
+            assertEquals(button, geometry("sync-pause-run"))
+            assertEquals(toggle, geometry("sync-progress-details-toggle"))
+            assertFalse(hasTag("sync-active-body-progress"))
+        }
+    }
+
+    @Test
+    fun `D06 same session preserves details across pages and new run or close resets`() = rendered(
+        connected().copy(run = visualRun(SyncRunPhase.UPLOADING)),
+    ) {
+        awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
+        assertTrue(hasTag("sync-progress-details"))
+        panel.state.value = panel.state.value.copy(page = SyncPanelPage.SETTINGS)
+        render()
+        panel.state.value = panel.state.value.copy(page = SyncPanelPage.MAIN)
+        render()
+        assertTrue(hasTag("sync-progress-details"))
+        panel.state.value = panel.state.value.copy(run = panel.state.value.run!!.copy(runId = "next"))
+        render()
+        assertFalse(hasTag("sync-progress-details"))
+        click("sync-progress-details-toggle")
+        render()
+        panel.state.value = panel.state.value.copy(visible = false)
+        render()
+        panel.state.value = panel.state.value.copy(visible = true)
+        render()
+        assertFalse(hasTag("sync-progress-details"))
+        assertTrue(actions.none { it == SyncPanelAction.PauseSync || it == SyncPanelAction.RetrySync })
+    }
+
+    @Test
+    fun `persisted terminal problems remain readable without an empty notice`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.UPLOADING).copy(state = SyncRunState.FAILED),
+            problem = SyncRunProblem.NETWORK,
+            notice = SyncPanelNotice(
+                exchange = mihon.domain.sync.runtime.SyncRunResult(
+                    SyncRunStatus.FAILED,
+                    problem = SyncRunProblem.NETWORK,
+                ),
+            ),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(texts().contains(MR.strings.sync_problem_network.localized(Locale.getDefault())))
+        assertFalse(hasTag("sync-dismiss-notice"))
+        click("sync-progress-details-toggle")
+        render()
+        assertTrue(hasTag("sync-full-reason"))
+        panel.state.value = panel.state.value.copy(run = panel.state.value.run!!.copy(state = SyncRunState.PARTIAL))
+        render()
+        assertTrue(hasTag("sync-full-reason"))
+    }
+
+    @Test
+    fun `incompatible terminal storage cannot enter password repair`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.CHECKING).copy(state = SyncRunState.BLOCKED),
+            problem = SyncRunProblem.STORAGE,
+            setupProblem = SyncDiscoveryProblem.INCOMPATIBLE,
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertFalse(hasTag("sync-reenter-password"))
+        click("sync-view-reason")
+        render()
+        assertTrue(hasTag("sync-full-reason"))
+        assertTrue(actions.none { it == SyncPanelAction.BeginSetup })
+    }
+
+    @Test
+    fun `known zero received and checked counts remain distinct from unknown`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.DOWNLOADING),
+            progress = SyncProgressFact(
+                "run-visual:a", SyncProgressStage.CONFIRMING, SyncProgressDirection.DOWNLOAD,
+                0, null, 0, 0, null, 0, SyncProgressHold.ACTIVE, null, null,
+                receivedItems = 0, receivedTotalItems = 0, checkedFields = 0,
+            ),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
+        assertTrue(hasTag("sync-received-count"))
+        assertTrue(hasTag("sync-checked-count"))
+        panel.state.value = panel.state.value.copy(progress = panel.state.value.progress!!.copy(receivedItems = null))
+        render()
+        assertFalse(hasTag("sync-received-count"))
+        assertTrue(hasTag("sync-checked-count"))
+    }
+
+    @Test
+    fun `D01 deadlines promote action and eta without another fact`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.UPLOADING),
+            progress = SyncProgressFact(
+                "run-visual:a", SyncProgressStage.TRANSFERRING,
+                SyncProgressDirection.UPLOAD, 0, 10, 0, 0, 100, 0, SyncProgressHold.ACTIVE, 12, 20,
+                secondsWithoutProgress = 0,
+            ),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        displayMillis = 800
+        withTimeout(3000) {
+            while (!texts().contains("正在上传变动")) {
+                render()
+                delay(10)
+            }
+        }
+        displayMillis = 2000
+        withTimeout(3000) {
+            while (texts().none { it.contains("20 秒") }) {
+                render()
+                delay(10)
+            }
+        }
+        panel.state.value = panel.state.value.copy(visible = false)
+        render()
+        val calls = clockCalls
+        displayMillis = 60000
+        delay(2100)
+        render()
+        assertEquals(calls, clockCalls)
+        panel.state.value = panel.state.value.copy(
+            visible = true,
+            run = panel.state.value.run!!.copy(state = SyncRunState.SUCCEEDED, confirmedItems = 7),
+        )
+        render()
+        assertTrue(texts().contains("同步完成"))
+        assertFalse(texts().contains("正在上传变动"))
+    }
+
+    @Test
+    fun `D10 hidden panel cancels visual wakes and reopen projects current terminal`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.UPLOADING),
+            progress = SyncProgressFact(
+                "run-visual:a", SyncProgressStage.TRANSFERRING,
+                SyncProgressDirection.UPLOAD, 0, 10, 0, 0, 100, 0, SyncProgressHold.ACTIVE, null, null,
+            ),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        panel.state.value = panel.state.value.copy(visible = false)
+        render()
+        val calls = clockCalls
+        repeat(20) {
+            panel.state.value =
+                panel.state.value.copy(progress = panel.state.value.progress!!.copy(completedItems = it.toLong()))
+            render()
+        }
+        assertEquals(calls, clockCalls)
+        assertFalse(hasTag("sync-progress-card"))
+        panel.state.value =
+            panel.state.value.copy(
+                visible = true,
+                run = panel.state.value.run!!.copy(state = SyncRunState.SUCCEEDED, confirmedItems = 7),
+            )
+        render()
+        assertTrue(texts().contains("同步完成"))
+        assertTrue(texts().contains("本次已确认 7 条"))
+        assertFalse(hasTag("sync-progress-details"))
+    }
+
+    @Test
+    fun `D09 waiting and pausing controls occupy the same fixed operation slot`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.UPLOADING),
+            progress = SyncProgressFact(
+                "run-visual:a", SyncProgressStage.TRANSFERRING, SyncProgressDirection.UPLOAD,
+                0, 10, 0, 0, 100, 0, SyncProgressHold.ACTIVE, null, null,
+            ),
+        ),
+    ) {
+        awaitTag("sync-pause-run")
+        val original = node("sync-pause-run").boundsInRoot
+        val bottom = geometry("sync-progress-card").bottom
+        panel.state.value =
+            panel.state.value.copy(run = panel.state.value.run!!.copy(state = SyncRunState.WAITING_RETRY))
+        render()
+        assertEquals(original, node("sync-wait").boundsInRoot)
+        assertEquals(bottom, geometry("sync-progress-card").bottom, 1f)
+        panel.state.value = panel.state.value.copy(
+            run = panel.state.value.run!!.copy(state = SyncRunState.RUNNING),
+            progress = panel.state.value.progress!!.copy(hold = SyncProgressHold.PAUSING),
+        )
+        render()
+        assertEquals(original, node("sync-wait").boundsInRoot)
+        assertEquals(bottom, geometry("sync-progress-card").bottom, 1f)
+    }
+
+    @Test
+    fun `P13 detail focus survives facts and collapse returns focus to trigger`() = rendered(
+        connected().copy(run = visualRun(SyncRunPhase.UPLOADING), logsHasMore = true),
+    ) {
+        awaitTag("sync-progress-card")
+        click("sync-progress-details-toggle")
+        render()
+        requireNotNull(node("sync-log-more").config[SemanticsActions.RequestFocus].action).invoke()
+        render()
+        assertTrue(node("sync-log-more").config[SemanticsProperties.Focused])
+        panel.state.value = panel.state.value.copy(nowMillis = 9999)
+        render()
+        assertTrue(node("sync-log-more").config[SemanticsProperties.Focused])
+        click("sync-progress-details-toggle")
+        render()
+        assertTrue(node("sync-progress-details-toggle").config[SemanticsProperties.Focused])
+    }
+
+    @Test
+    fun `P13 reduced motion retains a static track and readable running state`() = runBlocking {
+        val motion = object : androidx.compose.ui.MotionDurationScale {
+            override val scaleFactor = 0f
+        }
+        val state = connected().copy(
+            run = visualRun(SyncRunPhase.UPLOADING),
+            progress = SyncProgressFact(
+                "run-visual:a", SyncProgressStage.TRANSFERRING, SyncProgressDirection.UPLOAD,
+                0, 10, 0, 0, null, 0, SyncProgressHold.ACTIVE, null, null,
+            ),
+        )
+        val fixture = Fixture(state, ImageComposeScene(320, 680, coroutineContext = coroutineContext + motion) {})
+        try {
+            fixture.setContent()
+            fixture.awaitTag("sync-progress")
+            assertNotEquals(
+                androidx.compose.ui.semantics.ProgressBarRangeInfo.Indeterminate,
+                fixture.node("sync-progress").config[SemanticsProperties.ProgressBarRangeInfo],
+            )
+            assertTrue(fixture.texts().contains("正在同步…"))
+        } finally {
+            fixture.scene.close()
+        }
+    }
+
+    @Test
+    fun `P12 D09 native summary matrix stays readable and scrolls at 200 percent`() = runBlocking {
+        val originalLocale = Locale.getDefault()
+        val directory = System.getProperty("mihon.sync.visualDir")?.let(::File)
+        val configurations = listOf(
+            Triple(320, 1f, "zh-light"),
+            Triple(320, 2f, "zh-dark"),
+            Triple(320, 1f, "en-dark"),
+            Triple(320, 2f, "en-light"),
+            Triple(400, 1f, "zh-light"),
+            Triple(560, 1f, "zh-dark"),
+            Triple(400, 1f, "en-dark"),
+            Triple(560, 1f, "en-light"),
+        )
+        try {
+            for ((width, scale, languageTheme) in configurations) {
+                Locale.setDefault(if (languageTheme.startsWith("zh")) Locale.SIMPLIFIED_CHINESE else Locale.ENGLISH)
+                val state = connected().copy(
+                    run = visualRun(SyncRunPhase.UPLOADING),
+                    nowMillis = 39000,
+                    progress = SyncProgressFact(
+                        "run-visual:a", SyncProgressStage.TRANSFERRING,
+                        SyncProgressDirection.UPLOAD, 999, 1000, 64, 64, 100, 38,
+                        SyncProgressHold.ACTIVE, 12, 20, confirmedThisRun = 999, secondsWithoutProgress = 0,
+                    ),
+                )
+                val fixture =
+                    Fixture(
+                        state,
+                        ImageComposeScene(width, 680, coroutineContext = coroutineContext) {},
+                        scale,
+                        dark = languageTheme.endsWith("dark"),
+                    )
+                try {
+                    fixture.setContent()
+                    fixture.awaitTag("sync-progress-card")
+                    fixture.displayMillis = 2000
+                    fixture.render()
+                    assertTrue(fixture.node("sync-progress-card").boundsInRoot.right <= width)
+                    assertTrue(fixture.node("sync-close").boundsInRoot.right <= width)
+                    assertTrue(fixture.node("sync-settings").boundsInRoot.right <= width)
+                    assertEquals(1, fixture.nodes().count { fixture.tag(it) == "sync-progress" })
+                    fun assertReadable(tag: String) {
+                        val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+                        requireNotNull(
+                            fixture.node(tag).config[SemanticsActions.GetTextLayoutResult].action,
+                        ).invoke(results)
+                        assertTrue(results.isNotEmpty())
+                        assertTrue(
+                            results.none { it.hasVisualOverflow },
+                            "$languageTheme $width $scale $tag " + results.map {
+                                "${it.layoutInput.text} ${it.size} lines=${it.lineCount} height=${it.didOverflowHeight} width=${it.didOverflowWidth}"
+                            },
+                        )
+                    }
+                    val originalBottom = fixture.geometry("sync-progress-card").bottom
+                    val originalToggle = fixture.geometry("sync-progress-details-toggle")
+                    for ((time, count) in listOf(3000L to 1000L, 4000L to 1280L, 5000L to Long.MAX_VALUE)) {
+                        fixture.displayMillis = time
+                        fixture.panel.state.value = fixture.panel.state.value.copy(
+                            progress = fixture.panel.state.value.progress!!.copy(confirmedThisRun = count),
+                        )
+                        fixture.render()
+                        assertEquals(originalBottom, fixture.geometry("sync-progress-card").bottom, 1f)
+                        assertEquals(originalToggle, fixture.geometry("sync-progress-details-toggle"))
+                        assertReadable("sync-confirmed-count")
+                        assertReadable("sync-progress-action")
+                        assertReadable("sync-whole-eta-value")
+                        assertReadable("sync-running-explanation")
+                    }
+                    fixture.panel.state.value = fixture.panel.state.value.copy(
+                        run = fixture.panel.state.value.run!!.copy(state = SyncRunState.WAITING_RETRY),
+                    )
+                    fixture.render()
+                    assertEquals(originalBottom, fixture.geometry("sync-progress-card").bottom, 1f)
+                    assertEquals(originalToggle, fixture.geometry("sync-progress-details-toggle"))
+                    fixture.panel.state.value = state
+                    fixture.displayMillis = 7000
+                    fixture.render()
+                    fixture.displayMillis = 9000
+                    delay(850)
+                    fixture.render()
+                    if (directory != null && scale > 1f) {
+                        directory.mkdirs()
+                        fixture.scene.render().use { image ->
+                            requireNotNull(image.encodeToData(EncodedImageFormat.PNG)).use {
+                                File(directory, "summary-$width-$scale-$languageTheme-top.png").writeBytes(it.bytes)
+                            }
+                        }
+                    }
+                    val scroll =
+                        fixture.node("sync-pending-list").config[SemanticsActions.ScrollByOffset]
+                    withTimeout(5000) {
+                        while (fixture.node("sync-progress-details-toggle").boundsInRoot.height <
+                            fixture.node("sync-progress-details-toggle").size.height
+                        ) {
+                            withContext(object : MonotonicFrameClock {
+                                override suspend fun <R> withFrameNanos(onFrame: (Long) -> R): R {
+                                    delay(16)
+                                    return onFrame(System.nanoTime())
+                                }
+                            }) {
+                                scroll.invoke(androidx.compose.ui.geometry.Offset(0f, 100f))
+                            }
+                            delay(100)
+                            fixture.render()
+                        }
+                    }
+                    assertTrue(fixture.node("sync-progress-details-toggle").boundsInRoot.height > 0)
+                    assertTrue(fixture.node("sync-progress-details-toggle").boundsInRoot.bottom <= 680)
+                    if (directory != null) {
+                        directory.mkdirs()
+                        fixture.scene.render().use { image ->
+                            requireNotNull(image.encodeToData(EncodedImageFormat.PNG)).use {
+                                File(directory, "summary-$width-$scale-$languageTheme.png").writeBytes(it.bytes)
+                            }
+                        }
+                    }
+                } finally {
+                    fixture.scene.close()
+                }
+            }
+        } finally {
+            Locale.setDefault(originalLocale)
+        }
+    }
+
     private fun visualRun(phase: SyncRunPhase) = SyncRunSnapshot(
         runId = "run-visual",
         spaceId = "space",
@@ -1743,17 +2221,24 @@ class SyncPanelContentTest {
         }
     }
 
-    private class Fixture(initial: SyncPanelState, val scene: ImageComposeScene, private val fontScale: Float = 1f) {
+    private class Fixture(
+        initial: SyncPanelState,
+        val scene: ImageComposeScene,
+        private val fontScale: Float = 1f,
+        private val dark: Boolean = true,
+    ) {
         val actions = mutableListOf<SyncPanelAction>()
         val opened = mutableListOf<String>()
         val openedFailureLogs = mutableListOf<String>()
         val copied = mutableListOf<String>()
         val panel = TestPanel(initial, actions)
+        var displayMillis by mutableStateOf(0L)
+        var clockCalls = 0
         fun setContent() {
             scene.setContent {
                 val density = LocalDensity.current
                 CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
-                    MaterialTheme(colorScheme = darkColorScheme()) {
+                    MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
                         val state by panel.state.collectAsState()
                         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
                             Column {
@@ -1763,6 +2248,10 @@ class SyncPanelContentTest {
                                     onOpenBrowser = opened::add,
                                     onCopyCode = copied::add,
                                     onOpenFailureLog = openedFailureLogs::add,
+                                    displayMonotonicMillis = {
+                                        clockCalls++
+                                        displayMillis
+                                    },
                                 )
                             }
                         }
@@ -1800,7 +2289,7 @@ class SyncPanelContentTest {
         }
         suspend fun render() {
             repeat(3) {
-                scene.render()
+                scene.render(System.nanoTime())
                 yield()
             }
         }
@@ -1813,6 +2302,16 @@ class SyncPanelContentTest {
         fun nodes() = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
         fun hasTag(value: String) = nodes().any { tag(it) == value }
         fun node(value: String) = nodes().first { tag(it) == value }
+        fun geometry(value: String): androidx.compose.ui.geometry.Rect {
+            val node = node(value)
+            val position = node.positionInRoot
+            return androidx.compose.ui.geometry.Rect(
+                position.x,
+                position.y,
+                position.x + node.size.width,
+                position.y + node.size.height,
+            )
+        }
         fun click(value: String) {
             assertTrue(requireNotNull(node(value).config[SemanticsActions.OnClick].action).invoke())
         }
