@@ -96,7 +96,8 @@ object UpdatesTab : Tab {
 
     @Composable
     override fun Content() {
-        Navigator(UpdatesRootScreen()) {
+        Navigator(UpdatesRootScreen()) { navigator ->
+            mihon.desktop.ui.home.ObserveHomeNavigationStack(navigator)
             CurrentScreen()
         }
     }

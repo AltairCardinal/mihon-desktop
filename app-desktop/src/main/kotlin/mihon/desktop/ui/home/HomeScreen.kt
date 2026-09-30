@@ -3,22 +3,10 @@ package mihon.desktop.ui.home
 import mihon.desktop.LocalDesktopUiDependencies
 import tachiyomi.i18n.MR
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -28,46 +16,30 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.CurrentTab
-import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
-import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabNavigator
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
-import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.network.CloudflareChallenge
 import mihon.desktop.network.ChallengeRecoveryAction
 import mihon.desktop.network.ChallengeRecoveryIntent
 import mihon.desktop.test.navigation.TestNavigationController
-import mihon.desktop.ui.browse.BrowseTab
-import mihon.desktop.ui.authors.AuthorsTab
 import mihon.desktop.ui.authors.AuthorDetailScreen
 import mihon.desktop.ui.cloudflare.CloudflareBypassDialog
 import mihon.desktop.ui.cloudflare.DesktopChallengeHomeAction
 import mihon.desktop.ui.cloudflare.DesktopChallengeHomeActionAdapter
 import mihon.desktop.ui.cloudflare.DesktopChallengeLoginController
-import mihon.desktop.ui.extension.ExtensionListScreen
-import mihon.desktop.ui.history.HistoryTab
 import mihon.desktop.ui.library.LibraryTab
 import mihon.desktop.ui.library.LocalLibraryNavigationHost
-import mihon.desktop.ui.migration.MigrationSearchScreen
-import mihon.desktop.ui.more.MoreTab
 import mihon.desktop.ui.reader.ReaderModeState
-import mihon.desktop.ui.settings.BackupSettingsScreen
-import mihon.desktop.ui.settings.DownloadSettingsScreen
-import mihon.desktop.ui.settings.GeneralSettingsScreen
-import mihon.desktop.ui.settings.MoreRootScreen
-import mihon.desktop.ui.updates.UpdatesTab
 
 class HomeScreen : Screen {
 
@@ -182,39 +154,22 @@ class HomeScreen : Screen {
                     }
                 }
 
-                Scaffold(
-                    snackbarHost = {
-                        SnackbarHost(hostState = snackbarHostState) { data ->
-                            Snackbar(snackbarData = data)
-                        }
-                    },
-                    bottomBar = {
-                        // Hide bottom navigation bar when in reader mode
-                        if (!ReaderModeState.isInReaderMode) {
-                            NavigationBar {
-                                TabNavigationItem(LibraryTab, onReselect = libraryNavigationHost::onReselect)
-                                TabNavigationItem(UpdatesTab, badgeCount = authorDiscoveries.size)
-                                TabNavigationItem(HistoryTab)
-                                TabNavigationItem(BrowseTab)
-                                TabNavigationItem(AuthorsTab)
-                                TabNavigationItem(MoreTab)
-                            }
-                        }
-                    },
-                ) { paddingValues ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(paddingValues),
-                    ) {
-                        // Show pushed screen if navigator has more than root, otherwise show current tab
-                        // This uses the SAME navigator that receives pushes from TestNavigationController
-                        if (navigator.size > 1) {
-                            CurrentScreen()
+                HomeNavigationHost(
+                    current = tabNavigator.current,
+                    onSelect = { tab ->
+                        if (tabNavigator.current == tab) {
+                            if (tab == LibraryTab) libraryNavigationHost.onReselect()
                         } else {
-                            CurrentTab()
+                            tabNavigator.current = tab
                         }
-                    }
+                    },
+                    showNavigation = !ReaderModeState.isInReaderMode && navigator.size == 1,
+                    badgeCount = authorDiscoveries.size,
+                    snackbar = {
+                        SnackbarHost(hostState = snackbarHostState) { data -> Snackbar(snackbarData = data) }
+                    },
+                ) {
+                    if (navigator.size > 1) CurrentScreen() else CurrentTab()
                 }
             }
         }
@@ -244,27 +199,4 @@ internal class ExternalActionFeedbackDispatcher(
     private companion object {
         const val DEFAULT_CAPACITY = 8
     }
-}
-
-@Composable
-private fun RowScope.TabNavigationItem(tab: Tab, badgeCount: Int = 0, onReselect: () -> Unit = {}) {
-    val tabNavigator = LocalTabNavigator.current
-    NavigationBarItem(
-        selected = tabNavigator.current == tab,
-        onClick = {
-            if (tabNavigator.current == tab) onReselect() else tabNavigator.current = tab
-        },
-        icon = {
-            tab.options.icon?.let { painter ->
-                if (badgeCount > 0) {
-                    BadgedBox(badge = { Badge { Text(badgeCount.coerceAtMost(99).toString()) } }) {
-                        Icon(painter = painter, contentDescription = tab.options.title)
-                    }
-                } else {
-                    Icon(painter = painter, contentDescription = tab.options.title)
-                }
-            }
-        },
-        label = { Text(tab.options.title) },
-    )
 }

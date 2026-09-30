@@ -52,6 +52,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
@@ -147,6 +148,7 @@ class SourceExtensionNavigationContractTest {
             every { this@mockk.downloadManager } returns downloadManager
             every { downloadQueuePort } returns downloadManager
             every { appPreferences } returns DesktopAppPreferences(InMemoryPreferenceStore())
+            every { libraryPreferences } returns LibraryPreferences(InMemoryPreferenceStore())
         }
         lateinit var navigator: Navigator
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}

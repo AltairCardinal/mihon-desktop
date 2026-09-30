@@ -88,6 +88,7 @@ object TestNavigationController {
     fun navigateToTab(screenId: String): Boolean {
         val tab = getTab(screenId)
         if (tab != null) {
+            mihon.desktop.ui.browse.BrowseNavigationRequests.selectForLegacyRoute(screenId)
             _pendingTabNavigation.value = screenId
             _pendingScreenRequest.value = null // Clear any pending screen
             _navigationHistory.value = _navigationHistory.value + NavigationRequest(
@@ -198,7 +199,7 @@ object TestNavigationController {
             "Home" -> null // HomeScreen contains the TabNavigator
             "Library" -> LibraryTab
             "Browse" -> BrowseTab
-            "Authors" -> AuthorsTab
+            "Authors" -> BrowseTab
             "Updates" -> UpdatesTab
             "History" -> HistoryTab
             "More" -> MoreTab
@@ -310,6 +311,7 @@ object TestNavigationController {
      * Reset navigation history.
      */
     fun reset() {
+        mihon.desktop.ui.browse.BrowseNavigationRequests.selectForLegacyRoute("Browse")
         _pendingExtensions.value = null
         _displayedExtensions.value = null
         _pendingTabNavigation.value = null

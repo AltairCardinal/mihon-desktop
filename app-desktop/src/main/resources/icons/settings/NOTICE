@@ -1,0 +1,11 @@
+Material Symbols Rounded by Google
+
+These ten unmodified SVG icons are from google/material-design-icons:
+https://github.com/google/material-design-icons/tree/bd8cb85bd4bad964fe6918f79665bb40c3a8efef
+
+Upstream paths: symbols/web/<name>/materialsymbolsrounded/<name>_24px.svg
+Names: palette, collections_bookmark, chrome_reader_mode, download, sync,
+explore, storage, security, code, info.
+
+Licensed under the Apache License, Version 2.0. The upstream LICENSE from
+the same commit is included in this directory.

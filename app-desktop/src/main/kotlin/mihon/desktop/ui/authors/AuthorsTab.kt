@@ -38,7 +38,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -104,7 +103,6 @@ import tachiyomi.domain.creator.model.SourceDateQualityStatus
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WorkPresentationGroup
-import tachiyomi.domain.creator.service.CreatorLibraryIndexState
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import mihon.desktop.image.desktopSourceImageModel
@@ -153,14 +151,19 @@ object AuthorsTab : Tab {
     }
 }
 
-class AuthorsRootScreen(private val tabActivationToken: String = "initial") : Screen {
+class AuthorsRootScreen(
+    private val tabActivationToken: String = "initial",
+    private val screenModelOwner: Screen? = null,
+) : Screen {
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val dependencies = LocalDesktopUiDependencies.current
-        val model = rememberScreenModel { AuthorsScreenModelFactory.root(dependencies) }
+        val model = (screenModelOwner ?: this).rememberScreenModel {
+            AuthorsScreenModelFactory.root(dependencies)
+        }
         val state by model.state.collectAsState()
         val indexPresentation = authorIndexPresentation(state.indexState, state.cards.size)
         val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
@@ -261,10 +264,14 @@ class AuthorsRootScreen(private val tabActivationToken: String = "initial") : Sc
         Scaffold(
             snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar) },
             topBar = {
-                TopAppBar(
-                    title = { Text(MR.strings.desktop_ui_authors.localized()) },
-                    actions = { model.settingsEditor?.let { CreatorSettingsButton(it) } },
-                )
+                val primaryNavigation = mihon.desktop.ui.browse.LocalBrowsePrimaryNavigation.current
+                Column {
+                    TopAppBar(
+                        title = { Text(if (primaryNavigation != null) MR.strings.browse.localized() else MR.strings.desktop_ui_authors.localized()) },
+                        actions = { model.settingsEditor?.let { CreatorSettingsButton(it) } },
+                    )
+                    primaryNavigation?.invoke()
+                }
             },
         ) { padding ->
             Column(

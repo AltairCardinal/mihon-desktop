@@ -51,6 +51,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.CompositionLocalProvider
+import mihon.desktop.ui.authors.AuthorsRootScreen
+import mihon.desktop.ui.migration.MigrationSourceScreen
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -164,7 +169,8 @@ object BrowseTab : Tab {
         // Wrap in a nested Navigator so that push(SourceBrowseScreen) works.
         // Inside TabNavigator, LocalNavigator only accepts Tab objects — the nested
         // Navigator provides a regular Screen stack for the Browse tab.
-        Navigator(BrowseSourceListScreen()) {
+        Navigator(BrowseSourceListScreen()) { navigator ->
+            mihon.desktop.ui.home.ObserveHomeNavigationStack(navigator)
             CurrentScreen()
         }
     }
@@ -185,29 +191,49 @@ class BrowseSourceListScreen : Screen {
             }
         }
 
-        if (selectedSection == BROWSE_EXTENSIONS_SECTION) {
-            LaunchedEffect(extensionRequest) {
-                if (mihon.desktop.test.state.applicationState.testMode) {
-                    extensionRequest?.let(mihon.desktop.test.navigation.TestNavigationController::acknowledgeExtensionsDisplayed)
+        val requestedSection by BrowseNavigationRequests.section.collectAsState()
+        LaunchedEffect(requestedSection) {
+            requestedSection?.let { selectedSection = it; BrowseNavigationRequests.acknowledge(it) }
+        }
+        val holder = rememberSaveableStateHolder()
+        val onSectionSelected: (Int) -> Unit = { selectedSection = it }
+        val navigation: @Composable () -> Unit = { BrowseSectionTabs(selectedSection, onSectionSelected) }
+        holder.SaveableStateProvider(selectedSection) {
+            CompositionLocalProvider(LocalBrowsePrimaryNavigation provides navigation) {
+                when (selectedSection) {
+                    BROWSE_AUTHORS_SECTION -> AuthorsRootScreen("browse-authors", screenModelOwner = this@BrowseSourceListScreen).Content()
+                    BROWSE_MIGRATION_SECTION -> MigrationSourceScreen().Content()
+                    BROWSE_EXTENSIONS_SECTION -> {
+                        LaunchedEffect(extensionRequest) {
+                            if (mihon.desktop.test.state.applicationState.testMode) {
+                                extensionRequest?.let(mihon.desktop.test.navigation.TestNavigationController::acknowledgeExtensionsDisplayed)
+                            }
+                        }
+                        ExtensionListContent(
+                            model = LocalExtensionScreenModel.current(),
+                            title = MR.strings.browse.localized(),
+                            showBackButton = false,
+                            onRepositories = navigator::pushExtensionRepository,
+                            onOpen = navigator::pushExtensionDetails,
+                            onSuggestionMigration = { navigator.push(mihon.desktop.ui.extension.suggestionMigrationDestination(it)) },
+                            primaryNavigation = {
+                                BrowseSectionTabs(
+                                    selectedSection = selectedSection,
+                                    onSectionSelected = onSectionSelected,
+                                )
+                            },
+                        )
+                    }
+                    else -> SourcesContent(selectedSection, onSectionSelected)
                 }
             }
-            ExtensionListContent(
-                model = LocalExtensionScreenModel.current(),
-                title = MR.strings.browse.localized(),
-                showBackButton = false,
-                onRepositories = navigator::pushExtensionRepository,
-                onOpen = navigator::pushExtensionDetails,
-                onSuggestionMigration = { navigator.push(mihon.desktop.ui.extension.suggestionMigrationDestination(it)) },
-                primaryNavigation = {
-                    BrowseSectionTabs(
-                        selectedSection = selectedSection,
-                        onSectionSelected = { selectedSection = it },
-                    )
-                },
-            )
-            return
         }
+    }
 
+    @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+    @Composable
+    private fun SourcesContent(selectedSection: Int, onSectionSelected: (Int) -> Unit) {
+        val navigator = LocalNavigator.currentOrThrow
         val dependencies = LocalDesktopUiDependencies.current
         val sourceManager = dependencies.sourceManager
         val appPreferences = dependencies.appPreferences
@@ -223,7 +249,7 @@ class BrowseSourceListScreen : Screen {
             }
         }
 
-        var selectedLang by remember { mutableStateOf<String?>(null) }
+        var selectedLang by rememberSaveable { mutableStateOf<String?>(null) }
         var showLanguageFilter by remember { mutableStateOf(false) }
 
         val languages = remember(contentSources) {
@@ -294,7 +320,7 @@ class BrowseSourceListScreen : Screen {
                     )
                     BrowseSectionTabs(
                         selectedSection = selectedSection,
-                        onSectionSelected = { selectedSection = it },
+                        onSectionSelected = onSectionSelected,
                     )
                 }
             },
@@ -350,7 +376,7 @@ class BrowseSourceListScreen : Screen {
                         }
                     }
                     displayedSourceGroups.isEmpty() ->
-                        EmptySources(onExtensionsClick = { selectedSection = BROWSE_EXTENSIONS_SECTION })
+                        EmptySources(onExtensionsClick = { onSectionSelected(BROWSE_EXTENSIONS_SECTION) })
                     else -> LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(vertical = 4.dp),
@@ -400,7 +426,11 @@ class BrowseSourceListScreen : Screen {
 }
 
 private const val BROWSE_SOURCES_SECTION = 0
-private const val BROWSE_EXTENSIONS_SECTION = 1
+internal const val BROWSE_AUTHORS_SECTION = 1
+private const val BROWSE_EXTENSIONS_SECTION = 2
+private const val BROWSE_MIGRATION_SECTION = 3
+
+internal val LocalBrowsePrimaryNavigation = staticCompositionLocalOf<(@Composable () -> Unit)?> { null }
 
 @Composable
 private fun BrowseSectionTabs(
@@ -414,9 +444,19 @@ private fun BrowseSectionTabs(
             text = { Text(MR.strings.label_sources.localized()) },
         )
         Tab(
+            selected = selectedSection == BROWSE_AUTHORS_SECTION,
+            onClick = { onSectionSelected(BROWSE_AUTHORS_SECTION) },
+            text = { Text(MR.strings.desktop_ui_authors.localized()) },
+        )
+        Tab(
             selected = selectedSection == BROWSE_EXTENSIONS_SECTION,
             onClick = { onSectionSelected(BROWSE_EXTENSIONS_SECTION) },
             text = { Text(MR.strings.label_extensions.localized()) },
+        )
+        Tab(
+            selected = selectedSection == BROWSE_MIGRATION_SECTION,
+            onClick = { onSectionSelected(BROWSE_MIGRATION_SECTION) },
+            text = { Text(MR.strings.label_migration.localized()) },
         )
     }
 }

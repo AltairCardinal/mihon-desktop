@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -20,8 +18,6 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -69,7 +65,6 @@ import mihon.desktop.ui.settings.desktopSettingsActivationKeys
 import mihon.desktop.ui.settings.desktopSettingsAction
 import mihon.desktop.ui.settings.desktopSettingsAnchor
 import mihon.desktop.ui.settings.rememberDesktopSettingsAnchorLazyListHost
-import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.domain.track.service.TrackerAuthentication
@@ -146,9 +141,7 @@ data class TrackingSettingsScreen(
                         )
                     },
                     navigationIcon = {
-                        IconButton(onClick = navigator::pop) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, MR.strings.action_bar_up_description.localized())
-                        }
+                        mihon.desktop.ui.settings.SettingsNavigationIcon()
                     },
                 )
             },

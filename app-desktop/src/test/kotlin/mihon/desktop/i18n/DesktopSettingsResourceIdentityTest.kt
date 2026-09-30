@@ -508,12 +508,14 @@ class DesktopSettingsResourceIdentityTest {
             every { downloadQueuePort } returns downloads
             every { networkHelper } returns network
             every { networkRoutingPort } returns network
+            every { libraryPreferences } returns LibraryPreferences(InMemoryPreferenceStore())
         }
         val emptyDependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns prefs
             every { this@mockk.localeAdapter } returns localeAdapter
             every { downloadManager } returns emptyDownloads
             every { downloadQueuePort } returns emptyDownloads
+            every { libraryPreferences } returns LibraryPreferences(InMemoryPreferenceStore())
         }
         val previousLocale = Locale.getDefault()
         try {
@@ -526,8 +528,9 @@ class DesktopSettingsResourceIdentityTest {
                     MR.strings.pref_incognito_mode_summary.localized(locale),
                     MR.strings.label_download_queue.localized(locale),
                     MR.strings.desktop_more_download_queue_count.localized(locale, 2),
-                    MR.strings.label_migration.localized(locale),
-                    MR.strings.desktop_more_migration_summary.localized(locale),
+                    MR.strings.categories.localized(locale),
+                    MR.strings.label_data_storage.localized(locale),
+                    MR.strings.label_help.localized(locale),
                     MR.strings.label_stats.localized(locale),
                     MR.strings.desktop_more_stats_summary.localized(locale),
                     MR.strings.label_settings.localized(locale),

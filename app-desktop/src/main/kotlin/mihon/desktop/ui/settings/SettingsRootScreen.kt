@@ -1,163 +1,132 @@
 package mihon.desktop.ui.settings
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Book
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import mihon.desktop.ui.tracking.TrackingSettingsScreen
+import mihon.desktop.ui.home.DesktopWindowLayout
+import mihon.desktop.ui.home.LocalDesktopWindowLayout
 import tachiyomi.i18n.MR
 
-class SettingsRootScreen : Screen {
+internal data class SettingsNavigation(val expanded: Boolean, val onRootBack: () -> Unit)
+internal val LocalSettingsNavigation = staticCompositionLocalOf<SettingsNavigation?> { null }
 
+@Composable
+internal fun SettingsNavigationIcon() {
+    val navigator = LocalNavigator.currentOrThrow
+    val host = LocalSettingsNavigation.current
+    if (host?.expanded == true && navigator.size == 1) return
+    IconButton(onClick = { if (!navigator.pop()) host?.onRootBack?.invoke() }) {
+        Icon(Icons.AutoMirrored.Filled.ArrowBack, MR.strings.action_bar_up_description.localized())
+    }
+}
+
+class SettingsRootScreen : Screen {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
-        val navigator = LocalNavigator.currentOrThrow
-        val items = settingsItems()
-
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text(MR.strings.label_settings.localized()) },
-                    navigationIcon = {
-                        IconButton(onClick = navigator::pop) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = MR.strings.action_bar_up_description.localized(),
-                            )
-                        }
+        val parent = LocalNavigator.currentOrThrow
+        val entries = DesktopSettingsCatalog.directoryItems()
+        val directoryState = rememberLazyListState()
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val layout = LocalDesktopWindowLayout.current ?: DesktopWindowLayout(maxWidth, maxHeight)
+            var childSelected by remember { mutableStateOf(layout.expanded) }
+            LaunchedEffect(layout.expanded) { if (layout.expanded) childSelected = true }
+            Navigator(AppearanceSettingsScreen()) { child ->
+                val back: () -> Unit = {
+                    if (!child.pop()) {
+                        if (layout.expanded || !childSelected) parent.pop() else childSelected = false
+                    }
+                }
+                Row(
+                    Modifier.fillMaxSize().onPreviewKeyEvent {
+                        if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) { back(); true } else false
                     },
-                    actions = {
-                        IconButton(onClick = { navigator.push(SettingsSearchScreen()) }) {
-                            Icon(
-                                Icons.Default.Search,
-                                contentDescription = MR.strings.action_search_settings.localized(),
-                            )
+                ) {
+                    if (layout.expanded || !childSelected) {
+                        Scaffold(
+                            modifier = if (layout.expanded) {
+                                Modifier.width(minOf(layout.width / 2, 450.dp)).fillMaxHeight()
+                            } else Modifier.fillMaxSize(),
+                            topBar = {
+                                TopAppBar(
+                                    title = { Text(MR.strings.label_settings.localized()) },
+                                    navigationIcon = {
+                                        IconButton(onClick = parent::pop) {
+                                            Icon(Icons.AutoMirrored.Filled.ArrowBack, MR.strings.action_bar_up_description.localized())
+                                        }
+                                    },
+                                    actions = {
+                                        IconButton(onClick = {
+                                            if (layout.expanded || childSelected) child.push(SettingsSearchScreen())
+                                            else child.replaceAll(SettingsSearchScreen())
+                                            childSelected = true
+                                        }) {
+                                            Icon(Icons.Default.Search, MR.strings.action_search_settings.localized())
+                                        }
+                                    },
+                                )
+                            },
+                        ) { padding ->
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize().padding(padding).testTag("desktop-settings-directory"),
+                                state = directoryState,
+                            ) {
+                                entries.forEach { entry ->
+                                    item(key = entry.route::class.qualifiedName) {
+                                        SettingsEntry(entry.icon, entry.title, entry.subtitle) {
+                                            childSelected = true
+                                            child.replaceAll(entry.route)
+                                        }
+                                    }
+                                }
+                            }
                         }
-                    },
-                )
-            },
-        ) { padding ->
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-            ) {
-                items.forEachIndexed { index, settingsItem ->
-                    item {
-                        SettingsEntry(
-                            icon = settingsItem.icon,
-                            title = settingsItem.title,
-                            subtitle = settingsItem.subtitle,
-                            onClick = { navigator.push(settingsItem.route) },
-                        )
-                        if (index != items.lastIndex) {
-                            HorizontalDivider()
+                    }
+                    if (layout.expanded || childSelected) {
+                        Box(Modifier.weight(1f).fillMaxHeight().testTag("desktop-settings-detail")) {
+                            CompositionLocalProvider(
+                                LocalSettingsNavigation provides SettingsNavigation(layout.expanded) { childSelected = false },
+                            ) { CurrentScreen() }
                         }
                     }
                 }
             }
         }
     }
-
-    private data class SettingsItem(
-        val icon: ImageVector,
-        val title: String,
-        val subtitle: String,
-        val route: Screen,
-    )
-
-    @Composable
-    private fun settingsItems() = listOf(
-        SettingsItem(
-            Icons.Default.Settings,
-            MR.strings.pref_category_general.localized(),
-            MR.strings.desktop_more_general_summary.localized(),
-            GeneralSettingsScreen(),
-        ),
-        SettingsItem(
-            Icons.Default.Palette,
-            MR.strings.pref_category_appearance.localized(),
-            MR.strings.pref_appearance_summary.localized(),
-            AppearanceSettingsScreen(),
-        ),
-        SettingsItem(
-            Icons.Default.Book,
-            MR.strings.pref_category_library.localized(),
-            MR.strings.pref_library_summary.localized(),
-            LibrarySettingsScreen(),
-        ),
-        SettingsItem(
-            Icons.Default.MenuBook,
-            MR.strings.pref_category_reader.localized(),
-            MR.strings.pref_reader_summary.localized(),
-            ReaderSettingsScreen(),
-        ),
-        SettingsItem(
-            Icons.Default.Download,
-            MR.strings.pref_category_downloads.localized(),
-            MR.strings.pref_downloads_summary.localized(),
-            DownloadSettingsScreen(),
-        ),
-        SettingsItem(
-            Icons.Default.Sync,
-            MR.strings.pref_category_tracking.localized(),
-            MR.strings.pref_tracking_summary.localized(),
-            TrackingSettingsScreen(),
-        ),
-        SettingsItem(
-            Icons.Default.Explore,
-            MR.strings.browse.localized(),
-            MR.strings.pref_browse_summary.localized(),
-            ExtensionRepoScreen(),
-        ),
-        SettingsItem(
-            Icons.Default.SaveAlt,
-            MR.strings.label_data_storage.localized(),
-            MR.strings.pref_backup_summary.localized(),
-            BackupSettingsScreen(),
-        ),
-        SettingsItem(
-            Icons.Default.Lock,
-            MR.strings.pref_category_security.localized(),
-            MR.strings.pref_security_summary.localized(),
-            SecuritySettingsScreen(),
-        ),
-        SettingsItem(
-            Icons.Default.Build,
-            MR.strings.pref_category_advanced.localized(),
-            MR.strings.pref_advanced_summary.localized(),
-            AdvancedSettingsScreen(),
-        ),
-        SettingsItem(
-            Icons.Default.Info,
-            MR.strings.pref_category_about.localized(),
-            MR.strings.desktop_more_about_summary.localized(),
-            AboutScreen(),
-        ),
-    )
 }

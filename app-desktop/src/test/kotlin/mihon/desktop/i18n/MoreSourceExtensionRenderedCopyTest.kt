@@ -27,6 +27,7 @@ class MoreSourceExtensionRenderedCopyTest {
     fun `More omits extension navigation after browse consolidation`() = runBlocking {
         val downloads = mockk<DesktopDownloadManager> { every { queue } returns MutableStateFlow(emptyList()) }
         val dependencies = mockk<DesktopUiDependencies> {
+            every { libraryPreferences } returns tachiyomi.domain.library.service.LibraryPreferences(InMemoryPreferenceStore())
             every { downloadManager } returns downloads
             every { downloadQueuePort } returns downloads
             every { appPreferences } returns DesktopAppPreferences(InMemoryPreferenceStore())

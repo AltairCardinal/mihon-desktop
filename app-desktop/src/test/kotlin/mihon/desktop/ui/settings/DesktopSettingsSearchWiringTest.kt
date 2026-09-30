@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.IntSize
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.CurrentScreen
+import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.Tab
 import eu.kanade.domain.ui.model.AppTheme
 import eu.kanade.domain.ui.model.ThemeMode
@@ -69,6 +70,326 @@ import kotlin.coroutines.CoroutineContext
 @OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class)
 @org.junit.jupiter.api.parallel.Isolated
 class DesktopSettingsSearchWiringTest {
+    @Test
+    fun `More public entries execute existing category creation storage navigation and Help`() = runBlocking {
+        val categories = mockk<tachiyomi.domain.category.interactor.GetCategories> {
+            every { subscribe() } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        }
+        io.mockk.coEvery { categories.await() } returns emptyList()
+        val create = mockk<tachiyomi.domain.category.interactor.CreateCategoryWithName>()
+        io.mockk.coEvery { create.await(any()) } returns tachiyomi.domain.category.interactor.CreateCategoryWithName.Result.Success
+        val model = mihon.desktop.ui.library.LibraryScreenModel(getCategories = categories, createCategory = create)
+        var helpUri: String? = null
+        withSearchScene(MoreRootScreen(), height = 1400) { scene ->
+            lateinit var navigator: Navigator
+            scene.setContent {
+                dependencies {
+                    CompositionLocalProvider(androidx.compose.ui.platform.LocalUriHandler provides object : androidx.compose.ui.platform.UriHandler {
+                        override fun openUri(uri: String) { helpUri = uri }
+                    }) {
+                        mihon.desktop.ui.library.ProvideLibraryScreenModelFactory({ model }) {
+                            Navigator(MoreRootScreen()) { nav -> navigator = nav; CurrentScreen() }
+                        }
+                    }
+                }
+            }
+            render(scene)
+            click(scene, MR.strings.categories.localized())
+            render(scene)
+            assertTrue(MR.strings.desktop_ui_manage_categories.localized() in text(scene))
+            setText(scene, "Research")
+            render(scene)
+            clickDescription(scene, MR.strings.action_add.localized())
+            render(scene)
+            io.mockk.coVerify { create.await("Research") }
+            click(scene, MR.strings.desktop_ui_done.localized())
+            render(scene)
+            click(scene, MR.strings.label_data_storage.localized())
+            assertTrue(navigator.lastItem is BackupSettingsScreen)
+            navigator.pop()
+            render(scene)
+            click(scene, MR.strings.label_help.localized())
+            assertEquals(tachiyomi.core.common.Constants.URL_HELP, helpUri)
+        }
+    }
+    @Test
+    fun `settings directory preserves upstream public order before desktop General`() {
+        assertEquals(
+            listOf(
+                AppearanceSettingsScreen::class, LibrarySettingsScreen::class, ReaderSettingsScreen::class,
+                DownloadSettingsScreen::class, mihon.desktop.ui.tracking.TrackingSettingsScreen::class,
+                ExtensionRepoScreen::class, BackupSettingsScreen::class, SecuritySettingsScreen::class,
+                AdvancedSettingsScreen::class, AboutScreen::class, GeneralSettingsScreen::class,
+            ),
+            DesktopSettingsCatalog.directoryItems().map { it.route::class },
+        )
+    }
+    @Test
+    fun `HomeScreen root clicks and actual More and Library stacks are wired`() = runBlocking {
+        mockkObject(mihon.desktop.updates.UpdatesScreenModelFactory)
+        val updates = mockk<mihon.desktop.updates.UpdatesScreenModel>(relaxed = true) {
+            every { state } returns MutableStateFlow(mihon.desktop.updates.UpdatesState())
+        }
+        every { mihon.desktop.updates.UpdatesScreenModelFactory.create() } returns updates
+        val manga = mockk<tachiyomi.domain.manga.interactor.GetLibraryManga> {
+            every { subscribe() } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        }
+        val categories = mockk<tachiyomi.domain.category.interactor.GetCategories> {
+            every { subscribe() } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        }
+        lateinit var libraryStack: mihon.desktop.ui.library.LibraryScreenStack
+        lateinit var libraryModel: mihon.desktop.ui.library.LibraryScreenModel
+        val host = mihon.desktop.ui.library.VoyagerLibraryNavigationHost(onStackAttached = { libraryStack = it })
+        try {
+            withSearchScene(mihon.desktop.ui.home.HomeScreen(), width = 1400, height = 900) { scene ->
+                scene.setContent {
+                    dependencies {
+                        mihon.desktop.ui.library.ProvideLibraryNavigationHost(host) {
+                            mihon.desktop.ui.library.ProvideLibraryScreenModelFactory({
+                                mihon.desktop.ui.library.LibraryScreenModel(
+                                    getLibraryManga = manga,
+                                    getCategories = categories,
+                                    libraryPreferences = currentLibraryPreferences,
+                                ).also { libraryModel = it }
+                            }) { Navigator(mihon.desktop.ui.home.HomeScreen()) { CurrentScreen() } }
+                        }
+                    }
+                }
+                render(scene)
+                fun tag(name: String) = nodes(scene, true).firstOrNull { it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == name }
+                fun choose(tab: Tab) {
+                    val button = requireNotNull(tag("desktop-root-${tab.key}"))
+                    requireNotNull(button.config[SemanticsActions.OnClick].action).invoke()
+                }
+                choose(mihon.desktop.ui.browse.BrowseTab)
+                render(scene)
+                assertTrue(MR.strings.local_source.localized() in text(scene))
+                choose(mihon.desktop.ui.updates.UpdatesTab)
+                render(scene)
+                io.mockk.coVerify { updates.loadUpdates(any()) }
+                choose(mihon.desktop.ui.more.MoreTab)
+                render(scene)
+                assertTrue(MR.strings.label_downloaded_only.localized() in text(scene))
+                click(scene, MR.strings.label_downloaded_only.localized())
+                render(scene)
+                click(scene, MR.strings.label_settings.localized())
+                render(scene)
+                assertEquals(null, tag("desktop-root-rail"), "production MoreTab must report its child stack")
+                clickDescription(scene, MR.strings.action_bar_up_description.localized())
+                render(scene)
+                choose(mihon.desktop.ui.library.LibraryTab)
+                render(scene)
+                assertTrue(libraryModel.state.value.filter.globalDownloadedOnly, "More toggle must reach the actual Library consumer")
+                lateinit var child: Navigator
+                libraryStack.push(object : Screen {
+                    override val key = "library-child-fixture"
+                    @androidx.compose.runtime.Composable
+                    override fun Content() {
+                        child = cafe.adriel.voyager.navigator.LocalNavigator.currentOrThrow
+                        androidx.compose.material3.Text("Library child")
+                    }
+                })
+                render(scene)
+                assertEquals(null, tag("desktop-root-rail"), "production Library host must report its child stack")
+                child.pop()
+                render(scene)
+                assertTrue(tag("desktop-root-rail") != null)
+            }
+        } finally {
+            unmockkObject(mihon.desktop.updates.UpdatesScreenModelFactory)
+            mihon.desktop.test.navigation.TestNavigationController.reset()
+        }
+    }
+    private val creatorRows = MutableStateFlow(emptyList<tachiyomi.domain.creator.model.Creator>())
+    private val preferenceNode = java.util.prefs.Preferences.userRoot().node("mihon-tests/settings-${java.util.UUID.randomUUID()}")
+    @org.junit.jupiter.api.AfterEach
+    fun removeTestPreferences() { preferenceNode.removeNode() }
+    @Test
+    fun `settings directory retains scroll anchor after narrowing and returning from child`() = runBlocking {
+        withSearchScene(SettingsRootScreen(), width = 1400, height = 600) { scene ->
+            render(scene)
+            fun directory() = nodes(scene, true).single {
+                it.config.contains(SemanticsProperties.TestTag) &&
+                    it.config[SemanticsProperties.TestTag] == "desktop-settings-directory"
+            }
+            val scroll = flatten(directory()).first { it.config.contains(SemanticsActions.ScrollToIndex) }
+            requireNotNull(scroll.config[SemanticsActions.ScrollToIndex].action).invoke(3)
+            render(scene)
+            val anchor = MR.strings.pref_category_downloads.localized()
+            fun anchorTop() = flatten(directory()).first {
+                it.config.contains(SemanticsActions.OnClick) && flatten(it).any { child -> anchor in text(child) }
+            }.boundsInRoot.top
+            val before = anchorTop()
+            val beforeScroll = directory().config[SemanticsProperties.VerticalScrollAxisRange].value()
+            assertTrue(beforeScroll > 0f, "fixture must scroll the actual directory")
+            scene.resize(320, 600)
+            render(scene)
+            clickDescription(scene, MR.strings.action_bar_up_description.localized())
+            render(scene)
+            assertTrue(directory().config[SemanticsProperties.VerticalScrollAxisRange].value() > 0f, "directory scroll must survive hiding its composition")
+            assertEquals(beforeScroll, directory().config[SemanticsProperties.VerticalScrollAxisRange].value(), "directory must retain its scroll position")
+            assertEquals(before, anchorTop(), 1f, "returning to the directory must retain its visible anchor")
+        }
+    }
+    @Test
+    fun `narrow settings search returns to directory and wide appearance survives narrowing`() = runBlocking {
+        withSearchScene(SettingsRootScreen(), width = 320, height = 900) { scene ->
+            render(scene)
+            clickDescription(scene, MR.strings.action_search_settings.localized())
+            render(scene)
+            clickDescription(scene, MR.strings.action_bar_up_description.localized())
+            render(scene)
+            assertTrue(nodes(scene, true).any { it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == "desktop-settings-directory" })
+            assertFalse(nodes(scene, true).any { it.config.contains(SemanticsActions.SetProgress) })
+        }
+        withSearchScene(SettingsRootScreen(), width = 1400, height = 900) { scene ->
+            render(scene)
+            scene.resize(320, 900)
+            render(scene)
+            assertTrue(nodes(scene, true).any { it.config.contains(SemanticsActions.SetProgress) }, "current Appearance must survive resizing")
+            assertFalse(nodes(scene, true).any { it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == "desktop-settings-directory" })
+        }
+        withSearchScene(SettingsRootScreen(), width = 1400, height = 900) { scene ->
+            render(scene)
+            clickDescription(scene, MR.strings.action_search_settings.localized())
+            render(scene)
+            val query = MR.strings.pref_app_theme.localized()
+            setText(scene, query)
+            render(scene)
+            scene.resize(320, 900)
+            render(scene)
+            assertEquals(query, field(scene).config[SemanticsProperties.EditableText].text)
+            scene.resize(1400, 900)
+            render(scene)
+            assertEquals(query, field(scene).config[SemanticsProperties.EditableText].text)
+            click(scene, query)
+            render(scene)
+            assertTrue(nodes(scene, true).any {
+                it.config.contains(DesktopSettingsAnchorHighlighted) && it.config[DesktopSettingsAnchorHighlighted]
+            }, "host search must execute the real Appearance anchor")
+        }
+    }
+    @Test
+    fun `Browse exposes four ordered sections and consumes the legacy Authors request`() = runBlocking {
+        try {
+            withSearchScene(mihon.desktop.ui.browse.BrowseSourceListScreen()) { scene ->
+                lateinit var navigator: Navigator
+                scene.setContent { dependencies { Navigator(mihon.desktop.ui.browse.BrowseSourceListScreen()) { nav -> navigator = nav; CurrentScreen() } } }
+                render(scene)
+                val labels = listOf(MR.strings.label_sources, MR.strings.desktop_ui_authors, MR.strings.label_extensions, MR.strings.label_migration)
+                labels.forEach { assertTrue(it.localized() in text(scene), "Browse missing ${it.localized()}") }
+                mihon.desktop.test.navigation.TestNavigationController.navigateToTab("Authors")
+                render(scene)
+                assertTrue(MR.strings.desktop_ui_followed.localized() in text(scene))
+                setText(scene, "Ada")
+                render(scene)
+                kotlinx.coroutines.withTimeout(5_000) {
+                    while ("Ada Lovelace" !in text(scene)) { kotlinx.coroutines.delay(10); render(scene) }
+                }
+                click(scene, "Ada Lovelace")
+                assertTrue(navigator.lastItem is mihon.desktop.ui.authors.AuthorDetailScreen)
+                navigator.pop()
+                render(scene)
+                assertEquals("Ada", field(scene).config[SemanticsProperties.EditableText].text)
+                click(scene, MR.strings.label_sources.localized())
+                render(scene)
+                assertTrue(MR.strings.local_source.localized() in text(scene))
+                click(scene, MR.strings.desktop_ui_authors.localized())
+                render(scene)
+                assertEquals("Ada", field(scene).config[SemanticsProperties.EditableText].text)
+                assertTrue(creatorRows.subscriptionCount.value > 0, "actual Authors model must observe its port")
+                navigator.replaceAll(object : Screen {
+                    override val key = "closed-browse-fixture"
+                    @androidx.compose.runtime.Composable
+                    override fun Content() { androidx.compose.material3.Text("Closed Browse") }
+                })
+                render(scene)
+                kotlinx.coroutines.withTimeout(2_000) {
+                    while (creatorRows.subscriptionCount.value > 0) { kotlinx.coroutines.delay(10); render(scene) }
+                }
+            }
+        } finally {
+            mihon.desktop.test.navigation.TestNavigationController.reset()
+        }
+    }
+
+    @Test
+    fun `production navigation host adapts five roots and hides them on More child screens`() = runBlocking {
+        withSearchScene(MoreRootScreen(), width = 1400, height = 900) { scene ->
+            lateinit var navigator: Navigator
+            scene.setContent {
+                dependencies {
+                    mihon.desktop.ui.home.HomeNavigationHost(
+                        current = mihon.desktop.ui.more.MoreTab,
+                        onSelect = {},
+                        showNavigation = true,
+                        badgeCount = 0,
+                    ) {
+                        Navigator(MoreRootScreen()) { nav ->
+                            navigator = nav
+                            mihon.desktop.ui.home.ObserveHomeNavigationStack(nav)
+                            CurrentScreen()
+                        }
+                    }
+                }
+            }
+            render(scene)
+            fun tags() = nodes(scene, true).mapNotNull { if (it.config.contains(SemanticsProperties.TestTag)) it.config[SemanticsProperties.TestTag] else null }
+            assertTrue("desktop-root-rail" in tags())
+            assertEquals(5, tags().count { it.startsWith("desktop-root-") && it !in listOf("desktop-root-rail", "desktop-root-bar") })
+            click(scene, MR.strings.label_settings.localized())
+            render(scene)
+            assertFalse("desktop-root-rail" in tags())
+            clickDescription(scene, MR.strings.action_bar_up_description.localized())
+            render(scene)
+            assertEquals(1, navigator.size)
+            assertTrue("desktop-root-rail" in tags())
+            scene.resize(320, 900)
+            render(scene)
+            assertTrue("desktop-root-bar" in tags())
+            assertFalse("desktop-root-rail" in tags())
+            val rootButtons = nodes(scene, true).filter {
+                it.config.contains(SemanticsProperties.TestTag) &&
+                    it.config[SemanticsProperties.TestTag].startsWith("desktop-root-") &&
+                    it.config.contains(SemanticsActions.OnClick)
+            }.sortedBy { it.boundsInRoot.left }
+            assertEquals(80f, requireNotNull(nodes(scene, true).firstOrNull {
+                it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == "desktop-root-bar"
+            }).boundsInRoot.height)
+            assertEquals(0f, rootButtons[1].boundsInRoot.left - rootButtons[0].boundsInRoot.right, "upstream bar has no horizontal item spacer")
+        }
+    }
+    @Test
+    fun `wide settings directory opens appearance alongside the directory with one back action`() = runBlocking {
+        withSearchScene(SettingsRootScreen(), width = 1400, height = 900) { scene ->
+            render(scene)
+            assertTrue(nodes(scene, true).any { it.config.contains(SemanticsActions.SetProgress) }, "default Appearance must be mounted")
+            val backs = nodes(scene, true).filter {
+                it.config.contains(SemanticsActions.OnClick) &&
+                    flatten(it).any { child -> child.config.contains(SemanticsProperties.ContentDescription) &&
+                        MR.strings.action_bar_up_description.localized() in child.config[SemanticsProperties.ContentDescription] }
+            }
+            assertEquals(1, backs.size, "only the directory owns the wide settings back action")
+            click(scene, MR.strings.pref_category_reader.localized())
+            render(scene)
+            assertTrue(MR.strings.pref_category_library.localized() in text(scene), "directory stays mounted")
+            assertTrue(MR.strings.pref_viewer_type.localized() in text(scene), "real Reader settings must be mounted")
+        }
+    }
+
+    @Test
+    fun `More groups expose downloaded only data storage and help`() = runBlocking {
+        withSearchScene(MoreRootScreen(), width = 900, height = 1400) { scene ->
+            render(scene)
+            listOf(MR.strings.label_downloaded_only, MR.strings.label_data_storage, MR.strings.label_help).forEach {
+                assertTrue(it.localized() in text(scene), "missing production More entry: ${it.localized()}")
+            }
+            assertFalse(MR.strings.label_donate.localized() in text(scene))
+            click(scene, MR.strings.label_downloaded_only.localized())
+            render(scene)
+            assertTrue(currentLibraryPreferences.downloadedOnly().get())
+        }
+    }
     @Test
     fun `catalog preserves fixed-main prefix routes and shared top ten`() {
         val previous = Locale.getDefault()
@@ -353,7 +674,7 @@ class DesktopSettingsSearchWiringTest {
     }
     @Test
     fun `More settings entry opens the settings directory`() = runBlocking {
-        withSearchScene(MoreRootScreen()) { scene ->
+        withSearchScene(MoreRootScreen(), height = 1400) { scene ->
             lateinit var navigator: Navigator
             scene.setContent { dependencies { Navigator(MoreRootScreen()) { nav -> navigator = nav; CurrentScreen() } } }
             render(scene)
@@ -376,7 +697,8 @@ class DesktopSettingsSearchWiringTest {
                 assertTrue(resource.localized(Locale.getDefault()) in text(scene))
             }
             clickDescription(scene, MR.strings.action_search_settings.localized(Locale.getDefault()))
-            assertTrue(navigator.lastItem is SettingsSearchScreen)
+            render(scene)
+            assertTrue(nodes(scene, true).any { it.config.contains(SemanticsActions.SetText) })
         }
     }
 
@@ -530,7 +852,9 @@ class DesktopSettingsSearchWiringTest {
     @androidx.compose.runtime.Composable
     private fun dependencies(content: @androidx.compose.runtime.Composable () -> Unit) {
         val downloads = mockk<DesktopDownloadManager> { every { queue } returns MutableStateFlow(emptyList()) }
-        currentPreferences = androidx.compose.runtime.remember { mihon.desktop.settings.DesktopAppPreferences(InMemoryPreferenceStore()) }
+        currentPreferences = androidx.compose.runtime.remember {
+            mihon.desktop.settings.DesktopAppPreferences(tachiyomi.core.common.preference.DesktopPreferenceStore(preferenceNode.node("app")))
+        }
         currentReaderPreferences = androidx.compose.runtime.remember {
             mihon.desktop.reader.ReaderPreferences(InMemoryPreferenceStore())
         }
@@ -544,6 +868,34 @@ class DesktopSettingsSearchWiringTest {
                 every { activeGlobalProxy } returns currentPreferences.proxyRuntimeConfig()
             }
         }
+        val sources = object : tachiyomi.domain.source.service.SourceManager {
+            override val isInitialized = MutableStateFlow(true)
+            override val catalogueSources = kotlinx.coroutines.flow.flowOf(emptyList<eu.kanade.tachiyomi.source.CatalogueSource>())
+            override fun get(sourceKey: Long) = null
+            override fun getOrStub(sourceKey: Long) = error("no test sources")
+            override fun getOnlineSources() = emptyList<eu.kanade.tachiyomi.source.online.HttpSource>()
+            override fun getCatalogueSources() = emptyList<eu.kanade.tachiyomi.source.CatalogueSource>()
+            override fun getStubSources() = emptyList<tachiyomi.domain.source.model.StubSource>()
+        }
+        val creators = mockk<tachiyomi.domain.creator.interactor.GetCreators> {
+            every { subscribe() } returns creatorRows
+            every { subscribeFollowed() } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        }
+        val archive = mockk<tachiyomi.domain.creator.interactor.CreatorArchive> {
+            every { observeUnread(any()) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+            every { observeUnreadWorks(any()) } returns kotlinx.coroutines.flow.flowOf(emptyList())
+        }
+        val ada = tachiyomi.domain.creator.model.Creator(42L, "Ada Lovelace", "ada lovelace", null, emptyList(), 0L, 0L)
+        io.mockk.coEvery { archive.getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any(), any()) } returns
+            tachiyomi.domain.creator.model.CreatorCardProjectionPage(0, 50, false, listOf(tachiyomi.domain.creator.model.CreatorCardProjection(ada, true, 0)))
+        val indexer = mockk<tachiyomi.domain.creator.service.CreatorLibraryIndexer> {
+            every { state } returns MutableStateFlow(tachiyomi.domain.creator.service.CreatorLibraryIndexState.Idle)
+        }
+        val notifications = mihon.desktop.domain.DesktopNotificationService()
+        val challenges = mockk<mihon.desktop.network.DesktopChallengeUiPort> {
+            every { challenges } returns kotlinx.coroutines.flow.MutableSharedFlow()
+        }
+        val externalActions = mihon.desktop.ui.ExternalActionNavigator(resolveTarget = { error("no external test input") })
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns currentPreferences
             every { readerPreferences } returns currentReaderPreferences
@@ -553,7 +905,16 @@ class DesktopSettingsSearchWiringTest {
             every { networkHelper } returns network
             every { networkRoutingPort } returns network
             every { creatorDiscoveryScheduler } returns null
-            every { libraryPreferences } returns LibraryPreferences(InMemoryPreferenceStore())
+            every { libraryPreferences } returns currentLibraryPreferences
+            every { sourceManager } returns sources
+            every { getCreators } returns creators
+            every { creatorArchive } returns archive
+            every { creatorLibraryIndexer } returns indexer
+            every { creatorDiscoveryPreferences } returns null
+            every { notificationService } returns notifications
+            every { challengeUiPort } returns challenges
+            every { externalActionNavigator } returns externalActions
+            every { syncPanel } returns null
         }
         CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies, content = content)
     }
@@ -596,6 +957,7 @@ class DesktopSettingsSearchWiringTest {
         return try { block() } finally { Locale.setDefault(previous) }
     }
     private lateinit var currentPreferences: mihon.desktop.settings.DesktopAppPreferences
+    private val currentLibraryPreferences = LibraryPreferences(tachiyomi.core.common.preference.DesktopPreferenceStore(preferenceNode.node("library")))
     private lateinit var currentReaderPreferences: mihon.desktop.reader.ReaderPreferences
 
     private class SearchScene(context: CoroutineContext, height: Int, width: Int = 900) : AutoCloseable {
@@ -622,6 +984,7 @@ class DesktopSettingsSearchWiringTest {
         )
         fun setContent(content: @androidx.compose.runtime.Composable () -> Unit) = scene.setContent(content)
         fun render() = scene.render(canvas, System.nanoTime())
+        fun resize(width: Int, height: Int) { scene.size = IntSize(width, height) }
         fun sendKeyEvent(event: ComposeKeyEvent) = scene.sendKeyEvent(event)
         fun takeFocus() = scene.focusManager.takeFocus(FocusDirection.Enter)
         override fun close() = scene.close()

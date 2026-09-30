@@ -35,6 +35,7 @@ internal class VoyagerLibraryNavigationHost(
     @Composable
     override fun Content(root: Screen) {
         Navigator(root) { navigator ->
+            mihon.desktop.ui.home.ObserveHomeNavigationStack(navigator)
             val stack = remember(navigator) { VoyagerLibraryScreenStack(navigator) }
             DisposableEffect(stack) {
                 onStackAttached(stack)

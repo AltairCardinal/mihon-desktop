@@ -769,7 +769,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt",
           "symbol": "rememberScreenModel { DesktopSourcesScreenModel",
-          "line": 214
+          "line": 240
         }
       ],
       "FIXTURE": [
@@ -24862,7 +24862,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/ExtensionRepoScreen.kt",
           "symbol": "internal class DesktopExtensionRepoActions(",
-          "line": 92
+          "line": 89
         }
       ],
       "FIXTURE": [
@@ -29502,7 +29502,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/ReaderSettingsScreen.kt",
           "symbol": "NextChapterPrefetchMode.entries.forEach",
-          "line": 115
+          "line": 105
         }
       ],
       "FIXTURE": [
@@ -47639,7 +47639,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/GeneralSettingsScreen.kt",
           "symbol": "SwitchSettingsItem(",
-          "line": 90
+          "line": 80
         }
       ],
       "FIXTURE": [
@@ -48281,7 +48281,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsSearchScreen.kt",
           "symbol": "DesktopSettingsCatalog.search",
-          "line": 55
+          "line": 54
         }
       ],
       "FIXTURE": [
@@ -49618,7 +49618,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt",
           "symbol": "internal fun DesktopPrivacySettings",
-          "line": 452
+          "line": 443
         }
       ],
       "FIXTURE": [
@@ -51252,14 +51252,14 @@
           "kind": "PLATFORM_ADAPTER",
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreen.kt",
           "symbol": "internal interface AdvancedSettingsPlatformActions",
-          "line": 185
+          "line": 181
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreen.kt",
           "symbol": "class AdvancedSettingsScreen",
-          "line": 208
+          "line": 204
         }
       ],
       "FIXTURE": [

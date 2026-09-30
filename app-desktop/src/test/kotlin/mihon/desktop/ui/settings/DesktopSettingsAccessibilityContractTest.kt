@@ -43,7 +43,9 @@ class DesktopSettingsAccessibilityContractTest {
         withScene(MoreRootScreen(), height = 2_000) { scene ->
             val labels = listOf(
                 MR.strings.label_download_queue.localized(Locale.US),
-                MR.strings.label_migration.localized(Locale.US),
+                MR.strings.categories.localized(Locale.US),
+                MR.strings.label_data_storage.localized(Locale.US),
+                MR.strings.label_help.localized(Locale.US),
                 MR.strings.label_stats.localized(Locale.US),
                 MR.strings.label_settings.localized(Locale.US),
                 MR.strings.pref_category_about.localized(Locale.US),
@@ -162,6 +164,7 @@ class DesktopSettingsAccessibilityContractTest {
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns preferences
             every { localeAdapter } returns DesktopLocaleAdapter(preferences.appLanguage)
+            every { libraryPreferences } returns tachiyomi.domain.library.service.LibraryPreferences(InMemoryPreferenceStore())
             every { downloadManager } returns downloads
             every { downloadQueuePort } returns downloads
             every { networkHelper } returns network

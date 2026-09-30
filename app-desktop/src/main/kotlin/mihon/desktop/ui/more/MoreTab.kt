@@ -27,7 +27,8 @@ object MoreTab : Tab {
     @Composable
     override fun Content() {
         // Nested Navigator — same pattern as LibraryTab — so that push(SettingsScreen) works.
-        Navigator(MoreRootScreen()) {
+        Navigator(MoreRootScreen()) { navigator ->
+            mihon.desktop.ui.home.ObserveHomeNavigationStack(navigator)
             CurrentScreen()
         }
     }

@@ -102,9 +102,11 @@ internal fun SwitchSettingsItem(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    leadingContent: (@Composable () -> Unit)? = null,
 ) {
     val description = if (checked) MR.strings.on.localized() else MR.strings.off.localized()
     ListItem(
+        leadingContent = leadingContent,
         headlineContent = { Text(title) },
         supportingContent = subtitle?.let { { Text(it) } },
         trailingContent = {

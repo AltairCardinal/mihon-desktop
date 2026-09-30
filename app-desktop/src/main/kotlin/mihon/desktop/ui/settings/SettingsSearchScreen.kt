@@ -10,7 +10,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -59,12 +58,7 @@ class SettingsSearchScreen : Screen {
             topBar = {
                 TopAppBar(
                     navigationIcon = {
-                        IconButton(onClick = navigator::pop) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = MR.strings.action_bar_up_description.localized(),
-                            )
-                        }
+                        mihon.desktop.ui.settings.SettingsNavigationIcon()
                     },
                     title = {
                         BasicTextField(
