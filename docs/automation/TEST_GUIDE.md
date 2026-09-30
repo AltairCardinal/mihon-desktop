@@ -103,6 +103,32 @@ app-desktop/artifacts/windows/Mihon-Desktop-0.STAGE.FEATURE.BUILD.GIT_HASH-windo
   --test-http-port=8080 --headless
 ```
 
+### macOS 桌面会话的安全存储验收
+
+验收正式应用的 Keychain 读写时，通过 macOS 应用启动服务启动已核对的 `.app`，并使用独立 profile。
+SSH 中直接执行 `Contents/MacOS/Mihon Desktop` 的结果须记录为该启动上下文的证据；若安全存储失败，
+再核对桌面应用启动路径，不能仅凭 SSH 的默认钥匙串状态断言用户桌面钥匙串不可用。
+不要修改钥匙串设置或收集用户密码来绕过失败。
+
+下例将 `MIHON_ACCEPTANCE_APP` 替换为本轮构建日志 `Final macOS app:` 的实际绝对路径；
+先确认 HTTP/JMX 端口空闲，旧 Test Mode 服务存在时停止本次启动，而非复用旧服务。
+
+```bash
+MIHON_ACCEPTANCE_APP='/absolute/path/to/validated/Mihon Desktop.app'
+MIHON_ACCEPTANCE_PROFILE="${TMPDIR%/}/mihon-keychain-acceptance-$(uuidgen)"
+open -n -W -a "$MIHON_ACCEPTANCE_APP" --args \
+  --test-mode --test-profile="$MIHON_ACCEPTANCE_PROFILE" \
+  --test-http-port=49163 --test-jmx-port=49164 --headless
+```
+
+`open -W` 等待应用退出，其 PID 是启动包装器，不能当作 Mihon 的 PID。通过本地 HTTP、显式绕过代理，
+核对该实例的 health、production 同步面板打开/设置/关闭，再调用已有 `/test/sync/probe/write`。
+保留返回的虚构 probe ID；正常 shutdown 后，复用同一 profile 再启动并调用
+`/test/sync/probe/verify/{id}`，必须完成跨进程读回和删除。仅调用保留前缀的测试接口，不读取真实授权或空间秘密。
+每次完成后调用 `/test/shutdown`，等待包装器退出并核对本次应用进程已退出；异常时只处理本次精确实例。
+若有系统访问提示，由值守用户核对程序并决定授权；没有提示也不能代替真实读写断言。
+`--headless` 的证据仅覆盖 HTTP/production controller/系统安全存储，不代表原生窗口、键盘或视觉验收。
+
 ### 隔离验收配置
 
 在个人电脑验收时始终显式传 `--test-mode --test-profile=<绝对目录>`。Windows 使用本轮正式未打包 EXE，

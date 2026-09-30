@@ -124,7 +124,7 @@ python scripts/gradle-coordinator.py run --key password-android-panel -- .\gradl
 | HTML 基线 | `cdc1b9f1b3`；完整 DEMO 42/42、0 跳过，独立检查及修复见设计第 9 节 | 不代表真实加密、GitHub 服务或原生构建验收 |
 | 本次文档补全 | 第 10–12 节明确接口、状态、存储/兼容、失败矩阵与测试映射；本 roadmap 明确两个交付批次。4 份 UTF-8 文档、19 处本地链接/锚点、13 处完整源码路径、6 个 focused 测试类入口、两项未开始任务及 `git diff --check` 核验通过 | 不把静态源码核对记为运行测试；本次未运行 DEMO/原生测试或构建 |
 | S1 | 2026-09-30 在 `codex/sync-password-review`、起始 `dfd991567c` 实施；完成共享功能、双端接线、有效红绿与独立审查，并按用户批准追加一次作用域修复的小范围复审；本批提交包含 checkoff、production、测试及必要文档 | 不代表 S2 远端/正式运行验收完成；完整测试首轮失败与 focused 修复证据均保留如下 |
-| S2 | Android 完整测试及正式签名候选校验通过；Windows 经批准的完整复验、正式产物及真实发布运行时验收通过；macOS 正式候选已构建，但真实发布运行时安全存储失败。详见下方记录 | 不代表 macOS 可发布、实体设备升级或真实远端双端验收通过 |
+| S2 | Android 完整测试及正式签名候选校验通过；Windows 经批准的完整复验、正式产物及真实发布运行时验收通过；macOS 正式候选已构建，值守复验通过桌面应用启动路径完成安全存储重启验收；SSH 直接启动的失败仍保留。详见下方记录 | 不代表实体设备升级、真实远端双端或 macOS 原生窗口/视觉验收通过 |
 
 执行时直接补充本表下的批次证据，保留失败和环境限制；不要为每次命令创建新报告，也不要只改 checkbox 另开提交。
 
@@ -187,3 +187,18 @@ Android 正式产物为 [Mihon Fork 0.19.4-aex.18 APK](../../app/artifacts/andro
 S2 正式构建及 runtime 过程日志仍在忽略的 `.gradle-coordinator/` 与 macOS 隔离工作区；没有另建过程报告。签名 Android 候选与 Windows 正式产物可供用户按“书架 → 同步”手动验收；实体设备安装/升级、获授权隔离 GitHub 空间的真实双端创建/解锁/恢复与 macOS 安全存储仍为未完成门槛，S2 保持未勾选。P1–P11 的共享与两平台本地 production/Compose 行为证据见 S1；P12 沿用已有 HTML 基线，不重跑或改演示资产。
 
 最终 `password-s2-final-format`：`spotlessCheck --max-workers=2` 退出码 0、34 秒；版本分配后的全部格式检查通过。roadmap UTF-8 与 10 处本地链接、三个正式/未验收候选归档的 SHA-256、日志 Final unpacked EXE 的实际文件存在性及 `git diff --check` 均核验通过。S2 验收提交只包含 Android/Desktop 正常版本信息与本文证据，未混入其他用户改动或新增生产修复。
+
+
+### macOS 值守复验与启动流程（2026-09-30）
+
+用户要求再次尝试 Mac 并现场值守。本轮主代理直接执行，0 新代理、0 全量测试、0 生产代码修改；预计预算 5–15 分钟。隔离候选、既有正式 runtime 验收脚本及无旧 Mihon 进程先行核验。SSH 直接启动同一应用仍在 `/test/sync/probe/write` 的 WRITE 阶段返回 503 / `SyncSecureStoreException`，脚本退出码 1；该失败如实保留。
+
+随后仅把启动方式改为 `open -n -W -a <同一正式 app> --args ...`，经 macOS 应用启动服务进入桌面应用启动路径。使用新的隔离 profile、空闲动态 HTTP/JMX 端口，仍用同一 production controller 与 OS-backed store 接口。phase 1 打开/设置 SIGN_IN/关闭、写入并读回虚构保留前缀 probe；phase 2 同 profile 重启、读回并删除该 probe，全部通过。验收脚本退出码 0；两个 open 包装器 PID 为 27518/27532、均退出码 0，随后核对没有遗留 Mihon Desktop 应用进程。包装器 PID 不冒充应用 PID。没有索取密码、更改钥匙串设置或降级存储后端。
+
+可证实的是：同一候选在桌面应用启动路径下完成真实安全存储跨进程验收，SSH 直接启动路径仍失败。启动上下文是关键差异；具体 macOS 钥匙串会话机制尚未独立定位，不宣称系统缺陷或生产代码已修复。此前 SSH JVM focused 的失败不改写为通过，也不重新运行全量来掩盖失败。将该流程、隔离/关停及证据边界补入 [Test Guide](../automation/TEST_GUIDE.md#macos-桌面会话的安全存储验收)，指导后续正式 macOS 验收。
+
+实际 app 仍为 `/private/tmp/mihon-password-s2-deploy-412248c/Mihon Desktop.app`，CFBundleName 为 Mihon Desktop，CFBundleShortVersionString/CFBundleVersion 均为 `11.19.68`；完整版本 `0.11.19.68.412248c` 来自原正式构建日志。本地 [macOS 候选 ZIP](../../app-desktop/artifacts/macos/Mihon-Desktop-0.11.19.68.412248c-macos.zip) 与之前保留的 unverified ZIP 内容一致，SHA-256 `67d87adaa1b7283fd8cf775b832c6fd41b620bb3e595ddf5513d05583e4cff45`；仅补充新运行证据，没有重打包、重编译或重新分配版本。
+
+macOS 的 production controller 与系统安全存储运行门槛在桌面应用启动路径下已通过；headless Test Mode 不代表原生窗口/键盘/视觉或真实 GitHub 同步。实体 Android 运行/升级与获授权的真实远端双端验收仍未完成，S2 保持未勾选。本轮交付同时包含可复用的 macOS 启动/验收流程说明，不仅推进状态。
+
+另外启动同一正式候选的真实窗口（去掉 headless），以新隔离 profile 打开同步面板，production state 确认 loaded/visible 为 true、page MAIN、connected false；未发起 GitHub 授权。已向值守用户请求窗口/Tab/Escape/入口重开检查，收口时尚未收到反馈，故这四类原生窗口事件不记为通过。随后仅对本次实例调用 `/test/shutdown`，返回 202，并核对无遗留 Mihon Desktop 应用进程。两份文档 UTF-8、本地链接、候选 ZIP SHA-256 与 `git diff --check` 通过；本轮没有 Gradle 或重复构建。
