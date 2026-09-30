@@ -842,6 +842,7 @@ class LibraryCategoryBehaviorTest {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         var scene: ImageComposeScene? = null
         var model: LibraryScreenModel? = null
+        var navigator: Navigator? = null
         try {
             val categoryRepository = Injekt.get<CategoryRepository>()
             categoryRepository.insert(Category(1L, "A", 0L, 0L))
@@ -861,11 +862,23 @@ class LibraryCategoryBehaviorTest {
                 ),
             )
             val rootModel = LibraryScreenModelFactory.create().also { model = it }
+            var initialOwner = true
+            var childModel: LibraryScreenModel? = null
             scene = ImageComposeScene(1_400, 900, coroutineContext = coroutineContext) {}
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides DesktopUiDependencies.fromInjekt()) {
-                    ProvideLibraryScreenModelFactory(factory = { rootModel }) {
-                        Navigator(LibraryRootScreen()) { CurrentScreen() }
+                    ProvideLibraryScreenModelFactory(factory = {
+                        if (initialOwner) {
+                            initialOwner = false
+                            rootModel
+                        } else {
+                            LibraryScreenModelFactory.create().also { childModel = it }
+                        }
+                    }) {
+                        Navigator(LibraryRootScreen()) {
+                            navigator = it
+                            CurrentScreen()
+                        }
                     }
                 }
             }
@@ -945,8 +958,10 @@ class LibraryCategoryBehaviorTest {
             }
             click(scene, MR.strings.action_edit_categories.localized())
             render(scene)
-            assertTrue(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.desktop_ui_manage_categories.localized()))
-            assertTrue(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_sort.localized()))
+            assertTrue(navigator?.lastItem is CategoryManagementScreen)
+            assertTrue(childModel != null && childModel !== rootModel)
+            assertTrue(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_edit_categories.localized()))
+            assertFalse(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_sort.localized()))
 
             click(scene, MR.strings.action_delete.localized())
             render(scene)
@@ -959,6 +974,12 @@ class LibraryCategoryBehaviorTest {
             withTimeout(5_000) { while (categoryRepository.get(1L) != null) delay(10) }
             assertEquals(setOf(3L), rootModel.categoryIdsForManga(first.id))
             assertEquals(setOf(2L, 3L), rootModel.categoryIdsForManga(second.id))
+            render(scene)
+            click(scene, MR.strings.action_bar_up_description.localized())
+            render(scene)
+            assertTrue(navigator?.lastItem is LibraryRootScreen)
+            assertTrue(rootModel.screenModelScope.coroutineContext[Job]?.isActive == true)
+            assertTrue(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_sort.localized()))
         } finally {
             val modelJob = model?.screenModelScope?.coroutineContext?.get(Job)
             scene?.close()

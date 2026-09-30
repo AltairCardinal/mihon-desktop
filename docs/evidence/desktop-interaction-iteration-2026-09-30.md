@@ -209,9 +209,41 @@ RI03最终闭合：`interaction-ri03-library-search-green`于2026-09-30 14:06:37
 
 LibraryGrid／LibraryList当前没有显式共享Lazy状态和右侧滚动条；LibraryTab标签限定分类数大于一。两种布局的续读资格仍消费badges.unreadCount，隐藏角标会隐藏入口；已有syncedResumeMangaIds已验证恢复章节存在且非外链，但UI未消费，continueReadingRequest仍先选nextUnreadChapter再仅对相同目标附恢复页码。RI04须按稳定分类ID／有效作品锚点保护四布局位置，真实点击验证普通续读的有效未读目标、匹配目标的同步页码及过滤／陈旧目标回退，复用现Reader请求与恢复身份，不重写Reader算法。进一步核对既有LibraryPageCompositionTest和Detail实际nextUnreadChapter，二者保护最早适用未读优先于旧已读同步章、全已读隐藏普通续读；详情syncedResumeChapterId只影响匹配目标的Resume文案，不能误推为任意同步目标优先。RI04保留这些既有边界。封面应接现DesktopCustomCoverStore.resolveModel与rememberMangaCoverRequestState的typed源模型、memory／disk版本键，保持真实Desktop7:10和列表48dp独立小封面。这里仅核对入口，无本批实现或测试通过结论。
 
+## RI04：四布局、封面、滚动恢复与续读（完成）
+
+RI03同批提交为`56c963d79acf8582281fe1e6649d217f821e2ad4`，主代理确认提交后工作树干净。继续复用原实施代理，主代理固定接口／契约、独立初审1轮及必要修复复审1轮；按四组行为执行focused红绿与清理复验，稳定后1组明确受影响回归及格式，具体失败只补修复影响路径。完整测试／发布构建0次，预计1–2小时；不新增报告／快照、代理或状态引擎。
+
+固定四组验收：四布局真实Scrollbar拖动1000作品至尾／回顶且不启动更新，稳定分类ID＋有效作品锚点／有界offset恢复分类切换及详情返回，排序／布局／列数／尺寸／删除有界回退；书架接现自定义cover优先与typed版本化request，真实临时文件／Coil验证替换／删除／源同址版本／失败与重新owner；续读不消费角标显示值，真实Reader导航验证未读资格、匹配目标的同步页码、过滤／陈旧／外部恢复与选择中不误读；单自定义分类与默认0区别、显示开关和既有搜索语义。Desktop网格／详情7:10、列表实际48dp小封面、Android2:3保持。
+
+复用边界：Lazy与Voyager／ScreenModel所有者保存临时浏览位置，不持久写scroll、不迁移last_used_category原索引协议；封面沿DesktopCustomCoverStore／DesktopCoverUpdater／rememberMangaCoverRequestState，不改cache／HTTP／代理；普通续读保持既有最早适用未读与全已读隐藏，不将旧同步已读章提升为新入口。RI05再做统一面板／列数迁移／评分，RI06再改选择输入，RI08再做详情完整布局，RI10闭环其余下载／阅读动作。本批尚未完成独立审查或提交。
+
+RI04首组真实红绿：`interaction-ri04-root-red`于22:38:12–22:38:55 +08终态FAILED／exit1，3项分别因CompactGrid右侧拖动不能到Work0999、隐藏未读角标后续读入口缺失、唯一自定义标签缺失而正确失败。最小接线后`interaction-ri04-root-green`于22:40:52–22:42:26 +08终态PASSED／exit0，3项／0失败／0跳过；58.399s测试、总1m33s。夹具使用真实SQLite／DI／RootNavigator，四布局千本pointer拖至末并回顶，关闭角标真实按钮推Reader的chapter／page／index／refs及选择中不推；分类custom／show／search／default0实际语义通过。位置恢复、封面文件／Coil、独立审查及提交仍待完成，RI04不勾选。
+
+位置／封面第二组：`interaction-ri04-position-cover-red-valid`中分类A返回未恢复自身作品锚点是正确业务红；封面最初合并语义定位为空以及Skia编码API编译错误是夹具问题，不作产品红。改用实际AsyncImage未合并节点并先确认源图已绘制后，`interaction-ri04-cover-red-key`以真实请求memoryCacheKey为空正确失败。`interaction-ri04-position-cover-green`于22:56:02–22:57:39 +08终态PASSED／exit0，5项／0失败／0跳过，测试71.295s：分类A／B、详情返回、四布局、重排／搜索；同owner源像素及Referer、版本键、自定义四布局优先、删除后最新源图、同URL再次换版本均通过。补充边界组仍在实施，尚无独立验收结论。
+
+补充边界两轮整条仍FAILED，不改写为通过。`interaction-ri04-edges-green`于23:11:15–23:12:05 +08失败涉及像素尺寸取整、默认章节排序和Windows DOS只读未阻止unlink；旧明确受影响方法通过。修正夹具后`interaction-ri04-edges-green-valid`于23:15:13–23:16:04 +08，5项中3通过、2失败：真实封面四布局／重新owner、文件写入删除失败与详情反馈重试、同步目标过滤／外链／陈旧／全已读边界已绿；其余失败是PNG输出目录及ScrollBy误定位分类横向Tab，继续保留非零Lazy偏移和真实图输出要求修正夹具。Windows故障用临时文件NOSHARE_WRITE／NOSHARE_DELETE句柄，POSIX限制临时文件及父目录写权限，finally恢复，不操作系统或用户文件、不跳过。
+
+实施者收口核对最终设计4.2发现Grid未读角标与List两种角标尚未消费固定SOURCE角色；在既定四布局展示范围内补实际像素红绿，未读secondary／onSecondary、下载tertiary／onTertiary。预计追加5–10分钟，不新增代理、审查、全量或构建。本批最终受影响验证及独立初审尚未开始。
+
+`interaction-ri04-badge-red`于23:32:13–23:32:38 +08正确复现CompactGrid未读背景实际primary而非独立secondary像素。三处角色参数修正后，`interaction-ri04-cover-write-red`于23:39:49–23:40:38 +08整条仍FAILED，4项中角标像素和原生浅／深四布局2项通过，半写封面与非零偏移2项失败。半写测试经真实文件writer写入部分数据后抛IOException，旧文件被截断是正确业务红；拟在原store局部同目录暂存→原子替换修复，原子替换不可用时失败并保旧文件，不静默非原子覆盖、不新建事务系统。非零偏移在先前夹具定位修正后仍失败，原因尚未证实；主代理要求对照实际Lazy事件／bounds与model锚点，保留非零偏移及返回恢复断言。不能把尚未定位的失败继续按夹具问题消除。主代理已查看`ri04-library-layouts.png`原生离屏浅／深四布局拼图，网格与独立列表尺寸有实际bounds断言，千本拖动仍以事件测试为证据；这不代表正式运行或独立整体审查已完成。
+
+### RI04 最终闭合与独立验收
+
+非零偏移失败最终已证实是新夹具冻结帧时钟：ScrollBy返回true，但原生VerticalScrollAxisRange与实体bounds均未移动，model仍为0与实际一致。只读Compose 1.10.2 jar确认ImageComposeScene.render默认timeNanos为0；改用递增System.nanoTime后实际移动29px、model记录29。merged节点top被viewport裁剪，改以同实体bottom严格验证29px位移；保分类及详情返回的非零offset断言，不修改生产observer。`interaction-ri04-position-final-green`为1项／0失败／0跳过，实际测试12.889s，排序、重排、列数、resize、删除／筛选及分类删除同方法均绿。封面真实半写红后同目录暂存／原子替换绿，原子替换不可用不直接覆盖；Windows真实句柄权限故障和详情错误／重试证据保留。文件与DB失效仍是两个边界，不宣称跨存储原子；不将封面事务扩展挂入RI12分类／书架偏好范围。
+
+最终明确受影响8类：`interaction-ri04-final-affected`于2026-10-01 00:03:12–00:06:08 +08整条FAILED／exit1，141项中138通过、2失败、1既有条件跳过；root spotless及临时init限定2新增Desktop文件的格式检查通过。Interaction10、CoverManager7、CoverAdapter5、SyncContinuation7、ScreenModel58、Parity16均全绿；Category17中的2项失败，PageComposition20通过＋1跳过。跳过是既有explicit non-release build的assumption，当前Release构建条件下不满足，不能计作已验证非发布行为。初始加载用户选index0后默认分类首次出现，期望0实际1是真实回归；生产categoryIndex仅loaded后保持ID，loading继续原索引协议。另一项旧分类事务夹具仍期待Dialog标题及露出的根Sort，按RI02真实普通Screen路径修正，保混合归属、冻结、取消及删除数据断言。
+
+`interaction-ri04-initial-category-green`于00:08:21–00:09:31 +08终态PASSED／exit0，原2失败＋位置1＋ScreenModel58＋Parity16，共77项／0失败／0跳过，spotless通过。主代理独立核对发现旧事务fixture恒返回rootModel会隐藏child owner问题；改首个root实例、后续真实factory独立child，实际管理Screen、child与root不同、管理页隐藏Sort、返回root scope有效及Sort恢复均断言。最后`interaction-ri04-owner-fixture-final`于00:12:25–00:13:28 +08终态PASSED／exit0，仅事务与位置2项／0失败／0跳过＋格式；未整组重跑。新增Badge缩进作机械整理。初始守卫修复只影响首次分类投影，相关模型／投影及真实多类路径已复验，其余封面／角标／普通Reader绿色证据仍适用。
+
+去重有效合并证据为140项通过＋1项原有条件跳过，保留所有FAILED命令原终态。主代理本批唯一独立初审及必要修正核验已闭合：核实际Factory必需章节依赖、Root事件及Voyager owner、真实Lazy锚点／offset、typed请求／实际图片像素／版本、半写与权限故障、普通未读与同步目标边界、四布局角色／比例、单分类和旧索引协议；没有新增代理、全量、模块完整或正式构建。最终受影响类修复按必要影响范围复验，不以新绿覆盖旧失败事实。
+
+主代理已实际查看[原生四布局图](ri04-library-layouts.png)：Windows／JDK21.0.11／Compose1.10.2／Skiko0.9.37.4，density与fontScale均1；8幅实际1200×900离屏页面缩50%拼为2400×900，上浅下深，列序Compact／Comfortable／List／CoverOnly。实际已知绿色像素及Grid7:10／List48dp bounds独立断言；右侧滚动条能力以1000作品真实pointer往返证据确认，不将该图称正式发布或原版像素基准。POSIX权限分支保留RI18 macOS实跑门禁。
+
+本批9个内聚代码／测试文件加原生图，超过估算400行主要来自10个真实DB／UI／文件集成场景及同一Lazy宿主重排，保正常格式与同一owner上下文，不机械拆批。主代理仅定点修5条当前roleEvidence行号，manifest历史来源、状态和原排版保留；必要checkoff与production／测试／文档／索引同批提交。最终全量及正式交付仍未执行，继续RI05。
+
 ### RI05 评分前置核对（只读，不代表实施完成）
 
-当前 LibraryScreenModel 从已登录 tracker 的原始 track.score 直接 average；Desktop registry 的 AniList请求与解析存 POINT_100，MAL等为10分，Kitsu解析 ratingTwenty／2已为10分。Android现有 Tracker.get10PointScore／Anilist.get10PointScore明确 AniList除10。RI05应复用并共享这个投影契约，保持存储及远端回写原始分数不变，验证混合 provider真实HTTP→数据库→平均分排序，不在UI随意按最大值猜尺度。这里只确认当前链路与复用入口，尚无本批红绿或修复结论。
+当前 LibraryScreenModel 从已登录 tracker 的原始 track.score 直接 average；Desktop registry 的 AniList请求与解析存 POINT_100，MAL等为10分，Kitsu解析 ratingTwenty／2已为10分。Android现有 Tracker.get10PointScore／Anilist.get10PointScore明确 AniList除10。RI05应复用并共享这个投影契约，保持存储及远端回写原始分数不变，验证混合 provider真实HTTP→数据库→平均分排序，不在UI随意按最大值猜尺度。Android当前平均值对已登录有效tracker的get10PointScore结果做average，含0分；不能凭分数大小猜provider格式或随意改变0分语义。Desktop当前LibraryComponents只有评分排序名称，没有每本评分或无评分显示，RI05须核定稿A07的可见反馈。旧列数为DesktopAppPreferences的library_grid_columns，lazy首次访问才迁移旧desktop/app节点；共享横／纵键为pref_library_columns_portrait_key／landscape_key，当前LibraryPreferenceMigration仅迁移display／sort。RI05需要复用已注册AppPreferences的旧值读取和现marker迁移，保护各共享显式值（包括0自动），不因删除旧外观入口而漏掉尚未触发lazy迁移的旧值；这里是只读事实，不声明具体实现已完成。这里只确认当前链路与复用入口，尚无本批红绿或修复结论。
 
 ### RI13 目录同步前置核对（只读，不代表实施完成）
 
@@ -231,4 +263,4 @@ Android只读预检 `python scripts/build-android.py check --signing` 返回0／
 
 ## 未完成与限制
 
-RI00／RI01 的实现、focused、唯一独立审查及必要修复复审已完成，代码、测试、索引修复和必要 checkoff 随本功能批同一提交。首簇提交为 `14a8ce15695cf69ab2e468b825e88ec91641e08a`。用户继续要求完成剩余 roadmap，现复用原实施代理串行推进后续批次，每批按既有审查与必要修复复审流程执行；完整验证仍只在 RI18。RI02 实现、focused、唯一修复复审和格式／索引检查均通过，必要 checkoff 与代码／测试在本批同一提交；RI03 实现、唯一修复复审、140项有效focused证据、格式与索引检查已闭合，必要checkoff随本批同一提交；RI04–RI18 未完成；最终全量、正式构建及运行验收尚未执行。本轮没有 Android正式候选／macOS正式构建、真实鼠标／触控板／硬件条件验收，没有交付 EXE/APK，没有把 HTML 勾选更新为 native 完成。
+RI00／RI01 的实现、focused、唯一独立审查及必要修复复审已完成，代码、测试、索引修复和必要 checkoff 随本功能批同一提交。首簇提交为 `14a8ce15695cf69ab2e468b825e88ec91641e08a`。用户继续要求完成剩余 roadmap，现复用原实施代理串行推进后续批次，每批按既有审查与必要修复复审流程执行；完整验证仍只在 RI18。RI02 实现、focused、唯一修复复审和格式／索引检查均通过，必要 checkoff 与代码／测试在本批同一提交；RI03 实现、唯一修复复审、140项有效focused证据、格式与索引检查已闭合，必要checkoff随本批同一提交；RI04实现、140项有效focused、唯一独立初审及必要修正核验、格式及索引已闭合，必要checkoff随本批同一提交；RI05–RI18 未完成；最终全量、正式构建及运行验收尚未执行。本轮没有 Android正式候选／macOS正式构建、真实鼠标／触控板／硬件条件验收，没有交付 EXE/APK，没有把 HTML 勾选更新为 native 完成。

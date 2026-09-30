@@ -695,7 +695,7 @@ class LibraryPageCompositionTest {
             render(scene)
             val hiddenLabels = semanticLabels(scene)
             assertTrue(!hiddenLabels.contains("3"))
-            assertTrue(!hiddenLabels.contains(MR.strings.desktop_ui_continue_reading.localized()))
+            assertTrue(hiddenLabels.contains(MR.strings.desktop_ui_continue_reading.localized()))
 
             preferences.unreadBadge().set(true)
             render(scene)

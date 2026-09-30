@@ -5368,7 +5368,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "private val createCategory",
-          "line": 95
+          "line": 101
         }
       ],
       "FIXTURE": [
@@ -9833,17 +9833,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryTab.kt",
           "symbol": "internal fun librarySelectionActions(",
-          "line": 140
+          "line": 142
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "internal suspend fun enqueueDownloads(",
-          "line": 920
+          "line": 943
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1029
+          "line": 1052
         }
       ],
       "FIXTURE": [
@@ -11385,7 +11385,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1029
+          "line": 1052
         }
       ],
       "FIXTURE": [

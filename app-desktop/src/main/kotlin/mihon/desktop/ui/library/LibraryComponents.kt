@@ -4,6 +4,12 @@ import tachiyomi.i18n.MR
 import java.util.Locale
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.VerticalScrollbar
+import androidx.compose.foundation.rememberScrollbarAdapter
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -15,6 +21,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -554,6 +561,9 @@ internal fun LibraryGrid(
     showLanguageBadge: Boolean = false,
     showContinueReadingButton: Boolean = true,
     syncedResumeMangaIds: Set<Long> = emptySet(),
+    continueReadingMangaIds: Set<Long>? = null,
+    scrollState: LazyGridState = rememberLazyGridState(),
+    resolveCoverModel: (Long, String?) -> String? = { _, url -> url },
     onContextMenu: (LibraryManga) -> Unit,
     onItemClick: (LibraryManga, shiftPressed: Boolean) -> Unit,
     onItemLongClick: (LibraryManga) -> Unit,
@@ -562,6 +572,7 @@ internal fun LibraryGrid(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val columns = if (maxWidth < maxHeight) portraitColumns else landscapeColumns
         LazyVerticalGrid(
+            state = scrollState,
             columns = columns.takeIf { it > 0 }?.let(GridCells::Fixed)
                 ?: GridCells.Adaptive(minSize = minCardWidth),
             contentPadding = PaddingValues(8.dp),
@@ -585,6 +596,8 @@ internal fun LibraryGrid(
                     showLanguageBadge = showLanguageBadge,
                     showContinueReadingButton = showContinueReadingButton,
                     syncedResumeMangaIds = syncedResumeMangaIds,
+                    canContinueReading = continueReadingMangaIds?.contains(item.id) ?: (item.unreadCount > 0),
+                    coverModel = resolveCoverModel(item.id, item.manga.thumbnailUrl),
                     onClick = { shiftPressed -> onItemClick(item, shiftPressed) },
                     onLongClick = { onItemLongClick(item) },
                     onContinueReading = { onContinueReading(item) },
@@ -592,6 +605,10 @@ internal fun LibraryGrid(
                 )
             }
         }
+        VerticalScrollbar(
+            adapter = rememberScrollbarAdapter(scrollState),
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+        )
     }
 }
 
@@ -612,129 +629,143 @@ internal fun LibraryList(
     showLanguageBadge: Boolean = false,
     showContinueReadingButton: Boolean = true,
     syncedResumeMangaIds: Set<Long> = emptySet(),
+    continueReadingMangaIds: Set<Long>? = null,
+    scrollState: LazyListState = rememberLazyListState(),
+    resolveCoverModel: (Long, String?) -> String? = { _, url -> url },
     onContextMenu: (LibraryManga) -> Unit,
     onItemClick: (LibraryManga, shiftPressed: Boolean) -> Unit,
     onItemLongClick: (LibraryManga) -> Unit,
     onContinueReading: (LibraryManga) -> Unit = {},
 ) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(items, key = { it.id }) { item ->
-            val isSelected = selectionState.isSelected(item.manga.id)
-            val downloadCount = downloadCountsByManga[item.id] ?: if (item.id in downloadedMangaIds) 1L else 0L
-            val badges = projectLibraryBadges(
-                { downloadCount }, { item.unreadCount }, { item.id in localMangaIds },
-                { sourceLanguagesByManga[item.id].orEmpty() }, showDownloadBadge, showUnreadBadge,
-                showLocalBadge, showLanguageBadge,
-            )
-            val showLanguageIndicator = badges.sourceLanguage.isNotBlank()
-            val showTrailingIndicators =
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(state = scrollState, modifier = Modifier.fillMaxSize()) {
+            items(items, key = { it.id }) { item ->
+                val isSelected = selectionState.isSelected(item.manga.id)
+                val downloadCount = downloadCountsByManga[item.id] ?: if (item.id in downloadedMangaIds) 1L else 0L
+                val badges = projectLibraryBadges(
+                    { downloadCount }, { item.unreadCount }, { item.id in localMangaIds },
+                    { sourceLanguagesByManga[item.id].orEmpty() }, showDownloadBadge, showUnreadBadge,
+                    showLocalBadge, showLanguageBadge,
+                )
+                val showLanguageIndicator = badges.sourceLanguage.isNotBlank()
+                val showTrailingIndicators =
                     badges.unreadCount > 0L || badges.downloadCount > 0L || badges.isLocal ||
-                    showLanguageIndicator
-            val showContinueReading = showContinueReadingButton &&
-                badges.unreadCount > 0L
-            ListItem(
-                headlineContent = {
-                    Text(
-                        item.manga.title,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                leadingContent = {
-                    Box {
-                        AsyncImage(
-                            model = mihon.desktop.image.desktopSourceImageModel(
-                                item.manga.thumbnailUrl,
-                                item.manga.source,
-                            ),
-                            contentDescription = item.manga.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(48.dp),
-                        )
-                        if (isSelected) {
-                            Box(
-                                Modifier.size(48.dp).background(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                ),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                )
-                            }
-                        }
-                    }
-                },
-                supportingContent = if (badges.unreadCount > 0L) {
-                    {
+                        showLanguageIndicator
+                val showContinueReading = showContinueReadingButton &&
+                    (continueReadingMangaIds?.contains(item.id) ?: (item.unreadCount > 0))
+                ListItem(
+                    headlineContent = {
                         Text(
-                            MR.strings.desktop_ui_unread_count.localized(
-                                Locale.getDefault(),
-                                badges.unreadCount,
-                            ),
+                            item.manga.title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                    }
-                } else {
-                    null
-                },
-                trailingContent = if (showContinueReading || showTrailingIndicators) {
-                    {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (badges.unreadCount > 0L) {
-                                Badge { Text(badges.unreadCount.toString()) }
-                            }
-                            if (badges.downloadCount > 0L) {
-                                Badge(
-                                    modifier = Modifier.semantics {
-                                        contentDescription = MR.strings.label_downloaded.localized()
-                                    },
-                                ) { Text(badges.downloadCount.toString()) }
-                            }
-                            if (badges.isLocal || showLanguageIndicator) {
-                                LibraryLanguageBadge(
-                                    isLocal = badges.isLocal,
-                                    sourceLanguage = badges.sourceLanguage,
-                                )
-                            }
-                            if (showContinueReading) {
-                                IconButton(onClick = { onContinueReading(item) }) {
+                    },
+                    leadingContent = {
+                        Box {
+                            AsyncImage(
+                                model = rememberMangaCoverRequestState(
+                                    item.id, item.manga.source, resolveCoverModel(item.id, item.manga.thumbnailUrl),
+                                    item.manga.coverLastModified,
+                                ).request,
+                                contentDescription = item.manga.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(48.dp),
+                            )
+                            if (isSelected) {
+                                Box(
+                                    Modifier.size(48.dp).background(
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                    ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
                                     Icon(
-                                        Icons.Default.PlayArrow,
-                                        contentDescription = MR.strings.desktop_ui_continue_reading.localized(),
+                                        Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = Color.White,
                                     )
                                 }
                             }
                         }
-                    }
-                } else {
-                    null
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .shiftAwareCombinedClickable(
-                        onClick = { onItemClick(item, it) },
-                        onLongClick = { onItemLongClick(item) },
-                    )
-                    .pointerInput(item.manga.id) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                if (event.type == PointerEventType.Press &&
-                                    event.button == PointerButton.Secondary
-                                ) {
-                                    onContextMenu(item)
+                    },
+                    supportingContent = if (badges.unreadCount > 0L) {
+                        {
+                            Text(
+                                MR.strings.desktop_ui_unread_count.localized(
+                                    Locale.getDefault(),
+                                    badges.unreadCount,
+                                ),
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                    trailingContent = if (showContinueReading || showTrailingIndicators) {
+                        {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (badges.unreadCount > 0L) {
+                                    Badge(
+                                        containerColor = MaterialTheme.colorScheme.secondary,
+                                        contentColor = MaterialTheme.colorScheme.onSecondary,
+                                    ) { Text(badges.unreadCount.toString()) }
+                                }
+                                if (badges.downloadCount > 0L) {
+                                    Badge(
+                                        containerColor = MaterialTheme.colorScheme.tertiary,
+                                        contentColor = MaterialTheme.colorScheme.onTertiary,
+                                        modifier = Modifier.semantics {
+                                            contentDescription = MR.strings.label_downloaded.localized()
+                                        },
+                                    ) { Text(badges.downloadCount.toString()) }
+                                }
+                                if (badges.isLocal || showLanguageIndicator) {
+                                    LibraryLanguageBadge(
+                                        isLocal = badges.isLocal,
+                                        sourceLanguage = badges.sourceLanguage,
+                                    )
+                                }
+                                if (showContinueReading) {
+                                    IconButton(onClick = { onContinueReading(item) }) {
+                                        Icon(
+                                            Icons.Default.PlayArrow,
+                                            contentDescription = MR.strings.desktop_ui_continue_reading.localized(),
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
-                    .background(
-                        if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                        else Color.Transparent,
-                    ),
-            )
+                    } else {
+                        null
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shiftAwareCombinedClickable(
+                            onClick = { onItemClick(item, it) },
+                            onLongClick = { onItemLongClick(item) },
+                        )
+                        .pointerInput(item.manga.id) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    if (event.type == PointerEventType.Press &&
+                                        event.button == PointerButton.Secondary
+                                    ) {
+                                        onContextMenu(item)
+                                    }
+                                }
+                            }
+                        }
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                            else Color.Transparent,
+                        ),
+                )
+            }
         }
+        VerticalScrollbar(
+            adapter = rememberScrollbarAdapter(scrollState),
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+        )
     }
 }
 
@@ -757,6 +788,8 @@ internal fun MangaCoverCard(
     showLanguageBadge: Boolean = false,
     showContinueReadingButton: Boolean = true,
     syncedResumeMangaIds: Set<Long> = emptySet(),
+    canContinueReading: Boolean = item.unreadCount > 0,
+    coverModel: String? = item.manga.thumbnailUrl,
     onClick: (shiftPressed: Boolean) -> Unit,
     onLongClick: () -> Unit,
     onContinueReading: () -> Unit,
@@ -791,10 +824,9 @@ internal fun MangaCoverCard(
         Column {
             Box {
                 AsyncImage(
-                    model = mihon.desktop.image.desktopSourceImageModel(
-                        item.manga.thumbnailUrl,
-                        item.manga.source,
-                    ),
+                    model = rememberMangaCoverRequestState(
+                        item.id, item.manga.source, coverModel, item.manga.coverLastModified,
+                    ).request,
                     contentDescription = item.manga.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
@@ -835,7 +867,8 @@ internal fun MangaCoverCard(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(4.dp),
-                        containerColor = MaterialTheme.colorScheme.primary,
+                        containerColor = MaterialTheme.colorScheme.secondary,
+                        contentColor = MaterialTheme.colorScheme.onSecondary,
                     ) {
                         Text(
                             text = badges.unreadCount.toString(),
@@ -863,7 +896,7 @@ internal fun MangaCoverCard(
                 }
 
                 // Continue reading FAB overlay (bottom-start, visible on hover via always-visible small icon)
-                if (showContinueReadingButton && badges.unreadCount > 0L) {
+                if (showContinueReadingButton && canContinueReading) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)

@@ -91,3 +91,17 @@ V1初稿统一写2:3，后在实现期间经源码独立复核发现Desktop `Lib
 - SOURCE描述语义沿Android MangaInfoHeader.descriptionAnnotator：文本换行有效，HTML标签按字面文本保留；关闭图片以可点击图片URL和替代文字表示，不产生图片请求。解析flavour、marker及描述AST片段由现共享模块持有，Android／Desktop共同消费；平台Material样式、LinkAnnotation／inline图标和图片adapter各自适配。Desktop图片经现Coil真实源typed模型及认证网络链，成功真实显示、失败保留文字与可点击链接，同mounted详情响应开关；没有新HTTP客户端或第二份parser。
 - 日期／平板弹窗只有标题、选项和取消；选新值即时保存并关闭，选当前值保持，失败回权威旧值且反馈。Escape／遮罩／取消只关一层且不写，入焦及Tab／Shift+Tab留在弹窗，关闭回触发器。320dp和200%字号下所有选项、取消与横向主题条可达。
 - 固定视觉证据覆盖14个Windows可用静态主题的浅／深／纯黑，检查实际ColorScheme全部角色与真实原生组件。截图注明系统、Compose／Skiko、窗口、density／fontScale和来源，主代理独立看图；离屏和HTML不能代替RI18正式发布及运行验收。
+
+## 2026-09-30 四布局与续读契约（RI04）
+
+本节在RI04实现前固定原生验收，沿[最终设计4.2](2026-09-30-interaction-final-design.md#42-展示与直接能力l01l08)及书架A01–A06／A10–A11；上文三页HTML样本不替代本节真实DB／Lazy／导航／图片链路。
+
+- SOURCE：沿LibraryScreenModel／LibraryPageWiring和嵌套LibraryNavigationHost，实际getChaptersByMangaId的scanlator filter与nextUnreadChapter构造Reader请求。普通续读最早适用未读优先于旧已读同步章，全已读隐藏；只有目标匹配才附同步page／snapshot。Desktop网格／详情封面7:10，列表图片48dp方形；AndroidBook2:3。封面沿已认证typed源Coil、自定义文件解析与coverLastModified版本键。
+- PROJECT_POLICY：四布局各有真实右侧可拖Scrollbar和唯一Lazy滚动所有者。当前Library owner以稳定分类ID、有效作品ID及有界offset保存临时浏览位置，切类与详情push／pop恢复；改变排序／布局／列数／尺寸以作品锚点而非旧下标恢复，被删除／过滤锚点和删除分类有明确有界回退。位置不写偏好或跨进程承诺，last_used_category既有索引协议不随本批改变。
+- PROJECT_POLICY：1000作品真实pointer拖动至尾／回顶，不启动更新。布局重排及返回保持query／筛选／有效选择与导航owner；仍通过原动作入口操作作品，不用测试专用假滚动容器。
+- PROJECT_POLICY：四布局与详情消费同一个custom-priority／typed／版本化cover request；自定义替换立即更新、源版本变化不压过自定义、删除回最新源，同URL版本变化能产生新key。临时文件、真实Coil请求／绘制与磁盘失败保留／反馈验证，不另建cache或改变源／代理策略；重新owner可读现已保存cover。
+- 文件失败边界：DesktopCustomCoverStore在封面目录暂存完整数据后原子替换，写入中途失败保旧文件并清理暂存；原子替换不可用时报告失败，不降级为直接覆盖。文件替换与数据库版本失效仍是两个边界，不宣称跨存储原子性。实际Windows写入／删除权限和半写故障有测试；POSIX权限分支须在RI18 macOS运行中验证。
+- SOURCE角标：四布局未读使用secondary／onSecondary，下载使用tertiary／onTertiary；用独立角色期望检查实际背景与文字像素，保持网格7:10与列表48dp尺寸。
+- PROJECT_POLICY：继续按钮开关与角标开关独立。角标隐藏仍按真实适用未读章节提供可执行入口，目标匹配的同步页码保留；陈旧／被过滤／外部恢复不能伪造普通Reader目标，全已读不强加入口。选择模式的小按钮执行既有选择动作，绝不push Reader；真实按钮→嵌套Screen导航及chapterId／index／page／snapshot必须有集成证据。
+- PROJECT_POLICY：唯一自定义分类仍显示标签，唯一默认0不强加；0／1／多分类、显示开关、搜索与重排沿共享语义。续读、标签、封面、滚动是本批边界，统一面板／列数迁移、Ctrl／Shift和详情完整布局由后续原责任批次完成。
+- 验收固定为四布局真实事件＋位置恢复、文件／Coil、真实Reader请求、标签／比例，且深浅主题下边界一致。缺少真实wiring或失败处理不视为通过；原生视觉注明来源／窗口／density／fontScale，最终发布runtime仍在RI18。

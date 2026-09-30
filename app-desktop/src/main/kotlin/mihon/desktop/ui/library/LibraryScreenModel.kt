@@ -89,6 +89,12 @@ data class LibraryBatchDownloadResult(
     val failures: Int = 0,
 )
 
+/** Session-only position: an entity anchor plus a bounded fallback when that entity disappears. */
+internal data class LibraryBrowsePosition(val mangaId: Long, val index: Int, val offset: Int) {
+    fun indexIn(items: List<LibraryManga>): Int = items.indexOfFirst { it.id == mangaId }
+        .takeIf { it >= 0 } ?: index.coerceIn(0, (items.size - 1).coerceAtLeast(0))
+}
+
 class LibraryScreenModel(
     private val getLibraryManga: GetLibraryManga? = null,
     private val getCategories: GetCategories? = null,
@@ -136,6 +142,21 @@ class LibraryScreenModel(
     private var categoryProjectionInitialized = false
     private var pendingInitialCategoryIndex: Int? = null
     private var observedBackgroundUpdate: Job? = null
+    private val browsePositions = mutableMapOf<Long?, LibraryBrowsePosition>()
+
+    internal fun browsePosition(categoryId: Long?) = browsePositions[categoryId]
+
+    internal fun rememberBrowsePosition(categoryId: Long?, position: LibraryBrowsePosition) {
+        browsePositions[categoryId] = position
+    }
+
+    private fun categoryIndex(state: LibraryState, categories: List<Category>, initial: Int? = null): Int {
+        // Initial emissions retain the persisted index protocol until the first library projection.
+        val selectedId = state.categories.getOrNull(state.selectedCategoryIndex)?.id.takeUnless { state.isLoading }
+        val rememberedIndex = categories.indexOfFirst { it.id == selectedId }.takeIf { it >= 0 }
+        val index = initial ?: rememberedIndex ?: state.selectedCategoryIndex
+        return index.coerceIn(0, (categories.size - 1).coerceAtLeast(0))
+    }
 
     init {
         applySharedPreferences(categoryId = null)
@@ -167,13 +188,21 @@ class LibraryScreenModel(
         downloadQueueChanges,
         libraryPreferences?.showContinueReadingButton()?.changes() ?: flowOf(false),
     ) { items, tracksByManga, loggedInTrackerIds, _, showContinue ->
+        val eligible = if (showContinue) {
+            items.distinctBy { it.id }.filter { item ->
+                getChaptersByMangaId?.awaitOrThrow(item.id, applyScanlatorFilter = true)
+                    ?.let { nextUnreadChapter(it, item.manga) != null } ?: (item.unreadCount > 0)
+            }.mapTo(mutableSetOf()) { it.id }
+        } else {
+            emptySet()
+        }
         val resumable = if (showContinue && readingProgress != null) items.distinctBy { it.id }
             .filter { item ->
                 val resume = readingProgress.resumePosition(item.id)
                 resume != null && getChaptersByMangaId?.awaitOrThrow(item.id, applyScanlatorFilter = true)
                     ?.any { it.id == resume.chapterId && it.url.externalChapterUrlOrNull() == null } == true
             }.mapTo(mutableSetOf()) { it.id } else emptySet()
-        _state.update { it.copy(syncedResumeMangaIds = resumable) }
+        _state.update { it.copy(syncedResumeMangaIds = resumable, continueReadingMangaIds = eligible) }
         updateLibrarySnapshot(items, tracksByManga, loggedInTrackerIds)
         items
     }.catch { error ->
@@ -224,10 +253,7 @@ class LibraryScreenModel(
                 trackerMeansByManga = trackerMeansByManga,
                 availableTrackerIds = loggedInTrackerIds,
                 categories = projectedCategories,
-                selectedCategoryIndex = (pendingCategoryIndex ?: it.selectedCategoryIndex).coerceIn(
-                    0,
-                    (projectedCategories.size - 1).coerceAtLeast(0),
-                ),
+                selectedCategoryIndex = categoryIndex(it, projectedCategories, pendingCategoryIndex),
                 filter = it.filter.copy(
                     tracking = loggedInTrackerIds.associateWith { trackerId ->
                         libraryPreferences?.filterTracking(trackerId.toInt())?.get()
@@ -309,10 +335,7 @@ class LibraryScreenModel(
                 },
                 sourceLanguagesByManga = sourceLanguagesByManga(items),
                 categories = projectedCategories,
-                selectedCategoryIndex = it.selectedCategoryIndex.coerceIn(
-                    0,
-                    (projectedCategories.size - 1).coerceAtLeast(0),
-                ),
+                selectedCategoryIndex = categoryIndex(it, projectedCategories),
                 isLoading = false,
                 loadError = null,
             )
@@ -333,13 +356,13 @@ class LibraryScreenModel(
         }
         _state.update {
             val projected = libraryCategoryTabs(categories, it.allItems)
-            val selectedIndex = pendingInitialCategoryIndex ?: it.selectedCategoryIndex
             it.copy(
                 allCategories = categories,
                 categories = projected,
-                selectedCategoryIndex = selectedIndex.coerceIn(0, (projected.size - 1).coerceAtLeast(0)),
+                selectedCategoryIndex = categoryIndex(it, projected, pendingInitialCategoryIndex),
             )
         }
+        browsePositions.keys.retainAll(categories.map { it.id }.toSet() + setOf(0L, null))
         if (!state.value.isLoading) pendingInitialCategoryIndex = null
     }
 

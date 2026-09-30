@@ -14,6 +14,7 @@ data class LibraryState(
     // ── Loaded data ──────────────────────────────────────────────────────────
     val allItems: List<LibraryManga> = emptyList(),
     val syncedResumeMangaIds: Set<Long> = emptySet(),
+    val continueReadingMangaIds: Set<Long> = emptySet(),
     val allCategories: List<Category> = emptyList(),
     val categories: List<Category> = emptyList(),
 

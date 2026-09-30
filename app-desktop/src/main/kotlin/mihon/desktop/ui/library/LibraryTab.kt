@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -71,6 +72,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -588,7 +590,7 @@ class LibraryRootScreen : Screen {
                     },
                 )
 
-                if (categoryTabs.size > 1 && (state.showCategoryTabs || !searchQuery.isNullOrEmpty())) {
+                if (categoryTabs.any { !it.isSystemCategory } && (state.showCategoryTabs || !searchQuery.isNullOrEmpty())) {
                     ScrollableTabRow(
                         selectedTabIndex = selectedCategoryIndex,
                         modifier = Modifier.fillMaxWidth(),
@@ -666,95 +668,113 @@ class LibraryRootScreen : Screen {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                } else {
-                    when (displayMode) {
-                        LibraryDisplayMode.COMPACT_GRID ->
-                            LibraryGrid(
-                                items = displayedItems,
-                                minCardWidth = 120.dp,
-                                portraitColumns = state.portraitColumns,
-                                landscapeColumns = state.landscapeColumns,
-                                selectionState = selectionState,
-                                downloadedMangaIds = downloadedMangaIds,
-                                downloadCountsByManga = state.downloadCountsByManga,
-                                sourceLanguagesByManga = state.sourceLanguagesByManga,
-                                showDownloadBadge = state.showDownloadBadge,
-                                showUnreadBadge = state.showUnreadBadge,
-                                showLocalBadge = state.showLocalBadge,
-                                showLanguageBadge = state.showLanguageBadge,
-                                showContinueReadingButton = state.showContinueReadingButton,
-                                syncedResumeMangaIds = state.syncedResumeMangaIds,
-                                localMangaIds = state.localMangaIds,
-                                onContextMenu = { item -> model.setContextMenuManga(item) },
-                                onItemClick = onItemPrimaryClick,
-                                onItemLongClick = { item -> selectionState.toggle(item.manga.id, selectedCategoryId) },
-                                onContinueReading = onContinueReading,
-                            )
-                        LibraryDisplayMode.COMFORTABLE_GRID ->
-                            LibraryGrid(
-                                items = displayedItems,
-                                minCardWidth = 160.dp,
-                                comfortable = true,
-                                portraitColumns = state.portraitColumns,
-                                landscapeColumns = state.landscapeColumns,
-                                selectionState = selectionState,
-                                downloadedMangaIds = downloadedMangaIds,
-                                downloadCountsByManga = state.downloadCountsByManga,
-                                sourceLanguagesByManga = state.sourceLanguagesByManga,
-                                showDownloadBadge = state.showDownloadBadge,
-                                showUnreadBadge = state.showUnreadBadge,
-                                showLocalBadge = state.showLocalBadge,
-                                showLanguageBadge = state.showLanguageBadge,
-                                showContinueReadingButton = state.showContinueReadingButton,
-                                syncedResumeMangaIds = state.syncedResumeMangaIds,
-                                localMangaIds = state.localMangaIds,
-                                onContextMenu = { item -> model.setContextMenuManga(item) },
-                                onItemClick = onItemPrimaryClick,
-                                onItemLongClick = { item -> selectionState.toggle(item.manga.id, selectedCategoryId) },
-                                onContinueReading = onContinueReading,
-                            )
-                        LibraryDisplayMode.LIST ->
-                            LibraryList(
-                                items = displayedItems,
-                                selectionState = selectionState,
-                                downloadedMangaIds = downloadedMangaIds,
-                                downloadCountsByManga = state.downloadCountsByManga,
-                                sourceLanguagesByManga = state.sourceLanguagesByManga,
-                                showDownloadBadge = state.showDownloadBadge,
-                                showUnreadBadge = state.showUnreadBadge,
-                                showLocalBadge = state.showLocalBadge,
-                                showLanguageBadge = state.showLanguageBadge,
-                                showContinueReadingButton = state.showContinueReadingButton,
-                                syncedResumeMangaIds = state.syncedResumeMangaIds,
-                                localMangaIds = state.localMangaIds,
-                                onContextMenu = { item -> model.setContextMenuManga(item) },
-                                onItemClick = onItemPrimaryClick,
-                                onItemLongClick = { item -> selectionState.toggle(item.manga.id, selectedCategoryId) },
-                                onContinueReading = onContinueReading,
-                            )
-                        LibraryDisplayMode.COVER_ONLY_GRID ->
-                            LibraryGrid(
-                                items = displayedItems,
-                                minCardWidth = 120.dp,
-                                coverOnly = true,
-                                portraitColumns = state.portraitColumns,
-                                landscapeColumns = state.landscapeColumns,
-                                selectionState = selectionState,
-                                downloadedMangaIds = downloadedMangaIds,
-                                downloadCountsByManga = state.downloadCountsByManga,
-                                sourceLanguagesByManga = state.sourceLanguagesByManga,
-                                showDownloadBadge = state.showDownloadBadge,
-                                showUnreadBadge = state.showUnreadBadge,
-                                showLocalBadge = state.showLocalBadge,
-                                showLanguageBadge = state.showLanguageBadge,
-                                showContinueReadingButton = state.showContinueReadingButton,
-                                syncedResumeMangaIds = state.syncedResumeMangaIds,
-                                localMangaIds = state.localMangaIds,
-                                onContextMenu = { item -> model.setContextMenuManga(item) },
-                                onItemClick = onItemPrimaryClick,
-                                onItemLongClick = { item -> selectionState.toggle(item.manga.id, selectedCategoryId) },
-                                onContinueReading = onContinueReading,
-                            )
+                } else BoxWithConstraints(Modifier.fillMaxSize()) {
+                    key(
+                        selectedCategoryId, displayMode, displayedItems.map { it.id }, state.portraitColumns,
+                        state.landscapeColumns, maxWidth, maxHeight,
+                    ) {
+                        val viewport = rememberLibraryViewportState(model, selectedCategoryId, displayedItems, displayMode)
+                        when (displayMode) {
+                            LibraryDisplayMode.COMPACT_GRID ->
+                                LibraryGrid(
+                                    items = displayedItems,
+                                    scrollState = viewport.grid,
+                                    minCardWidth = 120.dp,
+                                    portraitColumns = state.portraitColumns,
+                                    landscapeColumns = state.landscapeColumns,
+                                    selectionState = selectionState,
+                                    downloadedMangaIds = downloadedMangaIds,
+                                    downloadCountsByManga = state.downloadCountsByManga,
+                                    sourceLanguagesByManga = state.sourceLanguagesByManga,
+                                    showDownloadBadge = state.showDownloadBadge,
+                                    showUnreadBadge = state.showUnreadBadge,
+                                    showLocalBadge = state.showLocalBadge,
+                                    showLanguageBadge = state.showLanguageBadge,
+                                    showContinueReadingButton = state.showContinueReadingButton,
+                                    syncedResumeMangaIds = state.syncedResumeMangaIds,
+                                    continueReadingMangaIds = state.continueReadingMangaIds,
+                                    resolveCoverModel = desktopDependencies.customCoverStore::resolveModel,
+                                    localMangaIds = state.localMangaIds,
+                                    onContextMenu = { item -> model.setContextMenuManga(item) },
+                                    onItemClick = onItemPrimaryClick,
+                                    onItemLongClick = { item -> selectionState.toggle(item.manga.id, selectedCategoryId) },
+                                    onContinueReading = onContinueReading,
+                                )
+                            LibraryDisplayMode.COMFORTABLE_GRID ->
+                                LibraryGrid(
+                                    items = displayedItems,
+                                    scrollState = viewport.grid,
+                                    minCardWidth = 160.dp,
+                                    comfortable = true,
+                                    portraitColumns = state.portraitColumns,
+                                    landscapeColumns = state.landscapeColumns,
+                                    selectionState = selectionState,
+                                    downloadedMangaIds = downloadedMangaIds,
+                                    downloadCountsByManga = state.downloadCountsByManga,
+                                    sourceLanguagesByManga = state.sourceLanguagesByManga,
+                                    showDownloadBadge = state.showDownloadBadge,
+                                    showUnreadBadge = state.showUnreadBadge,
+                                    showLocalBadge = state.showLocalBadge,
+                                    showLanguageBadge = state.showLanguageBadge,
+                                    showContinueReadingButton = state.showContinueReadingButton,
+                                    syncedResumeMangaIds = state.syncedResumeMangaIds,
+                                    continueReadingMangaIds = state.continueReadingMangaIds,
+                                    resolveCoverModel = desktopDependencies.customCoverStore::resolveModel,
+                                    localMangaIds = state.localMangaIds,
+                                    onContextMenu = { item -> model.setContextMenuManga(item) },
+                                    onItemClick = onItemPrimaryClick,
+                                    onItemLongClick = { item -> selectionState.toggle(item.manga.id, selectedCategoryId) },
+                                    onContinueReading = onContinueReading,
+                                )
+                            LibraryDisplayMode.LIST ->
+                                LibraryList(
+                                    items = displayedItems,
+                                    scrollState = viewport.list,
+                                    selectionState = selectionState,
+                                    downloadedMangaIds = downloadedMangaIds,
+                                    downloadCountsByManga = state.downloadCountsByManga,
+                                    sourceLanguagesByManga = state.sourceLanguagesByManga,
+                                    showDownloadBadge = state.showDownloadBadge,
+                                    showUnreadBadge = state.showUnreadBadge,
+                                    showLocalBadge = state.showLocalBadge,
+                                    showLanguageBadge = state.showLanguageBadge,
+                                    showContinueReadingButton = state.showContinueReadingButton,
+                                    syncedResumeMangaIds = state.syncedResumeMangaIds,
+                                    continueReadingMangaIds = state.continueReadingMangaIds,
+                                    resolveCoverModel = desktopDependencies.customCoverStore::resolveModel,
+                                    localMangaIds = state.localMangaIds,
+                                    onContextMenu = { item -> model.setContextMenuManga(item) },
+                                    onItemClick = onItemPrimaryClick,
+                                    onItemLongClick = { item -> selectionState.toggle(item.manga.id, selectedCategoryId) },
+                                    onContinueReading = onContinueReading,
+                                )
+                            LibraryDisplayMode.COVER_ONLY_GRID ->
+                                LibraryGrid(
+                                    items = displayedItems,
+                                    scrollState = viewport.grid,
+                                    minCardWidth = 120.dp,
+                                    coverOnly = true,
+                                    portraitColumns = state.portraitColumns,
+                                    landscapeColumns = state.landscapeColumns,
+                                    selectionState = selectionState,
+                                    downloadedMangaIds = downloadedMangaIds,
+                                    downloadCountsByManga = state.downloadCountsByManga,
+                                    sourceLanguagesByManga = state.sourceLanguagesByManga,
+                                    showDownloadBadge = state.showDownloadBadge,
+                                    showUnreadBadge = state.showUnreadBadge,
+                                    showLocalBadge = state.showLocalBadge,
+                                    showLanguageBadge = state.showLanguageBadge,
+                                    showContinueReadingButton = state.showContinueReadingButton,
+                                    syncedResumeMangaIds = state.syncedResumeMangaIds,
+                                    continueReadingMangaIds = state.continueReadingMangaIds,
+                                    resolveCoverModel = desktopDependencies.customCoverStore::resolveModel,
+                                    localMangaIds = state.localMangaIds,
+                                    onContextMenu = { item -> model.setContextMenuManga(item) },
+                                    onItemClick = onItemPrimaryClick,
+                                    onItemLongClick = { item -> selectionState.toggle(item.manga.id, selectedCategoryId) },
+                                    onContinueReading = onContinueReading,
+                                )
+                        }
                     }
                 }
             }
