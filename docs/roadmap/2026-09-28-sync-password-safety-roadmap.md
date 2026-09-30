@@ -202,3 +202,12 @@ S2 正式构建及 runtime 过程日志仍在忽略的 `.gradle-coordinator/` �
 macOS 的 production controller 与系统安全存储运行门槛在桌面应用启动路径下已通过；headless Test Mode 不代表原生窗口/键盘/视觉或真实 GitHub 同步。实体 Android 运行/升级与获授权的真实远端双端验收仍未完成，S2 保持未勾选。本轮交付同时包含可复用的 macOS 启动/验收流程说明，不仅推进状态。
 
 另外启动同一正式候选的真实窗口（去掉 headless），以新隔离 profile 打开同步面板，production state 确认 loaded/visible 为 true、page MAIN、connected false；未发起 GitHub 授权。已向值守用户请求窗口/Tab/Escape/入口重开检查，收口时尚未收到反馈，故这四类原生窗口事件不记为通过。随后仅对本次实例调用 `/test/shutdown`，返回 202，并核对无遗留 Mihon Desktop 应用进程。两份文档 UTF-8、本地链接、候选 ZIP SHA-256 与 `git diff --check` 通过；本轮没有 Gradle 或重复构建。
+
+
+### macOS 原生窗口复核（2026-09-30）
+
+用户反馈上一轮没有看见窗口。主代理纠正证据表述：去掉 headless 参数后启动及 HTTP 面板 visible 并不能证明窗口已经呈现；上轮没有取得窗口系统或现场证据，不能追溯记为用户可见。未定位上轮未见窗口的原因。
+
+本轮重新用同一正式 app、新隔离 profile 启动非 headless Test Mode。核对 macOS 控制台与 SSH 用户一致、GUI domain 存在。目标实际应用 PID 为 29116；CoreGraphics 窗口元数据报告该 PID 的 layer 0 窗口位于 (97,73)，尺寸 1024×768。随后 `open -a <同一 app>` 激活，目标 PID 在 on-screen 窗口列表中有 1 个窗口；未读取系统屏幕像素或申请录屏权限。用户随后明确回复“现在看见了”，并在交互问题中再次确认。至此本轮真实窗口可见通过；Tab、Escape、布局及入口重开仍需独立反馈，不能由“看到了”推导。
+
+Test Guide 同步补充窗口证据、激活和现场等待规则，原生窗口显示与 HTTP 面板状态明确分开；用户级 AGENTS 草稿尚未获准写入，未改用户级文件。本轮窗口继续保留供用户检查，未自动关闭；不启动其他实例或发起 GitHub 授权。

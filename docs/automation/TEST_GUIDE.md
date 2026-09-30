@@ -121,6 +121,12 @@ open -n -W -a "$MIHON_ACCEPTANCE_APP" --args \
   --test-http-port=49163 --test-jmx-port=49164 --headless
 ```
 
+验收原生窗口时去掉 `--headless`，并单独核对本次应用进程的窗口元数据或取得用户现场确认。
+启动命令返回成功、HTTP health 正常及同步 state 的 `visible=true` 都不能证明窗口已呈现；
+其中 `visible` 只表示产品面板状态。需要激活时，使用 `open -a "$MIHON_ACCEPTANCE_APP"` 激活已核对的应用包，
+避免误打开日常安装。窗口元数据检查只核对目标进程的窗口存在性、屏幕列表和尺寸，不读取屏幕像素。
+等待现场检查期间保持本次窗口打开；未收到反馈的窗口/键盘/视觉项目不记为通过。
+
 `open -W` 等待应用退出，其 PID 是启动包装器，不能当作 Mihon 的 PID。通过本地 HTTP、显式绕过代理，
 核对该实例的 health、production 同步面板打开/设置/关闭，再调用已有 `/test/sync/probe/write`。
 保留返回的虚构 probe ID；正常 shutdown 后，复用同一 profile 再启动并调用
