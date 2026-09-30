@@ -224,7 +224,7 @@ test('独立契约：双端焦点隔离、实际字号翻倍、320px弹层可达
   await page.keyboard.press('Shift+Tab');
   assert.equal(await phone.getByRole('dialog').evaluate(node => node.contains(document.activeElement)), true);
   await phone.getByTestId('modal-close').click();
-  const restored = await phone.getByTestId('settings-open').evaluate(node => ({
+  const restored = await phone.getByTestId('settings-library').evaluate(node => ({
     matched: node === document.activeElement,
     activeTestId: document.activeElement?.getAttribute('data-testid'),
     activeTag: document.activeElement?.tagName,
@@ -317,6 +317,7 @@ test('独立叠加契约：目录已同步后开启作品信息刷新，下一�
   await openMoreSettings(page);
   await page.getByTestId('pref-metadata').check();
   await page.getByTestId('modal-close').click();
+  await page.getByTestId('settings-back').click();
   await page.getByTestId('nav-library').click();
   await page.getByTestId('manga-A').click();
   await page.getByTestId("detail-overflow").click();

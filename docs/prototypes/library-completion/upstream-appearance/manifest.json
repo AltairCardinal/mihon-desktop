@@ -1,0 +1,706 @@
+{
+  "repository": "mihonapp/mihon",
+  "commit": "866d045c7aba343fd739c57d15c81ff6df59e796",
+  "files": [
+    {
+      "local": "AppBar.kt",
+      "sha256": "bf81009c9f67ff454421980be726b5da6b5c8f2ff9869e3d979db56d8aaf4521",
+      "path": "app/src/main/java/eu/kanade/presentation/components/AppBar.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/presentation/components/AppBar.kt"
+    },
+    {
+      "local": "AppLanguageScreen.kt",
+      "sha256": "8c56f961ec05c3cf850010ce5ed772c5d21eba84b3f30804ac3b403fdce202de",
+      "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/appearance/AppLanguageScreen.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/presentation/more/settings/screen/appearance/AppLanguageScreen.kt"
+    },
+    {
+      "local": "AppThemeModePreferenceWidget.kt",
+      "sha256": "abb759e9502fc9721821e5a21171c94f2c933d43430e1596866428a330a366a5",
+      "path": "app/src/main/java/eu/kanade/presentation/more/settings/widget/AppThemeModePreferenceWidget.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/presentation/more/settings/widget/AppThemeModePreferenceWidget.kt"
+    },
+    {
+      "local": "AppThemePreferenceWidget.kt",
+      "sha256": "ba3fcd8dd3b407df44af4524966bda2bbb9205e76a54762e772daf176f503984",
+      "path": "app/src/main/java/eu/kanade/presentation/more/settings/widget/AppThemePreferenceWidget.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/presentation/more/settings/widget/AppThemePreferenceWidget.kt"
+    },
+    {
+      "local": "BasePreferenceWidget.kt",
+      "sha256": "5a24a27405a14c8d86df82b2fd763396bf99244def847f41c638674517576428",
+      "path": "app/src/main/java/eu/kanade/presentation/more/settings/widget/BasePreferenceWidget.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/presentation/more/settings/widget/BasePreferenceWidget.kt"
+    },
+    {
+      "local": "DisplayExtensions.kt",
+      "sha256": "bd4ce21c3c77a5dfb6b15659d45aa95387d3368f13a7ac03fde3a51f627340b8",
+      "path": "app/src/main/java/eu/kanade/tachiyomi/util/system/DisplayExtensions.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/tachiyomi/util/system/DisplayExtensions.kt"
+    },
+    {
+      "local": "ListPreferenceWidget.kt",
+      "sha256": "9aad44623cce31cb40dfba23c4432c1094cc9eeef5f299288e910ddbed516b62",
+      "path": "app/src/main/java/eu/kanade/presentation/more/settings/widget/ListPreferenceWidget.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/presentation/more/settings/widget/ListPreferenceWidget.kt"
+    },
+    {
+      "local": "PreferenceGroupHeader.kt",
+      "sha256": "191187a3dce62c1f5829501c71da40ea5cb779c0a6b3438a61025867c7db5d2d",
+      "path": "app/src/main/java/eu/kanade/presentation/more/settings/widget/PreferenceGroupHeader.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/presentation/more/settings/widget/PreferenceGroupHeader.kt"
+    },
+    {
+      "local": "PreferenceScaffold.kt",
+      "sha256": "64aea327a40c56254d9c40f4a1d3340bf5dd7d8e5a824fd821aa401ceeacca93",
+      "path": "app/src/main/java/eu/kanade/presentation/more/settings/PreferenceScaffold.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/presentation/more/settings/PreferenceScaffold.kt"
+    },
+    {
+      "local": "PreferenceScreen.kt",
+      "sha256": "6e9d52dbde254327aa62d9435f35b670a1d0477f8273e22277d00a2e7c278bec",
+      "path": "app/src/main/java/eu/kanade/presentation/more/settings/PreferenceScreen.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/presentation/more/settings/PreferenceScreen.kt"
+    },
+    {
+      "local": "SearchableSettings.kt",
+      "sha256": "0971a3ba96d312dbd7bf06da48e8674e2d60ea28a79ae7c9dbb7fa062358ea4f",
+      "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SearchableSettings.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/presentation/more/settings/screen/SearchableSettings.kt"
+    },
+    {
+      "local": "SettingsAppearanceScreen.kt",
+      "sha256": "443418bcca1798dc3542f244116c509a8ce778cce2fe415742109266672532fc",
+      "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAppearanceScreen.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAppearanceScreen.kt"
+    },
+    {
+      "local": "SettingsMainScreen.kt",
+      "sha256": "09ba937b56dbed4d0c5423e7baba50455d6479febc0337122a90b7d5ff946b82",
+      "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsMainScreen.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsMainScreen.kt"
+    },
+    {
+      "local": "SettingsScreen.kt",
+      "sha256": "1d0f985d1dc1382201f27c8b3d1fb790721f14bdb77dc8575d964c7e7196b028",
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/setting/SettingsScreen.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/tachiyomi/ui/setting/SettingsScreen.kt"
+    },
+    {
+      "local": "SwitchPreferenceWidget.kt",
+      "sha256": "a78b5c9df43d108eea1c4275e77c743f617d4eb638ca59178b3298b686c5911b",
+      "path": "app/src/main/java/eu/kanade/presentation/more/settings/widget/SwitchPreferenceWidget.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/presentation/more/settings/widget/SwitchPreferenceWidget.kt"
+    },
+    {
+      "local": "TabletUiMode.kt",
+      "sha256": "cf64a34849eedd38c158c945580e9d9bf1d4eda51eb98e0f47ea51e64676ebc5",
+      "path": "app/src/main/java/eu/kanade/domain/ui/model/TabletUiMode.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/domain/ui/model/TabletUiMode.kt"
+    },
+    {
+      "local": "TextPreferenceWidget.kt",
+      "sha256": "e68e9adaf450560715891a2e85829872fbdf61199e90881cb5358c8c00ad508b",
+      "path": "app/src/main/java/eu/kanade/presentation/more/settings/widget/TextPreferenceWidget.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/presentation/more/settings/widget/TextPreferenceWidget.kt"
+    },
+    {
+      "local": "ThemeMode.kt",
+      "sha256": "d3b2d01cccf50b5c34d9d83f932a7e9b37fca53319b0c18441fc4090988339c7",
+      "path": "app/src/main/java/eu/kanade/domain/ui/model/ThemeMode.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/domain/ui/model/ThemeMode.kt"
+    },
+    {
+      "local": "TwoPanelBox.kt",
+      "sha256": "07d7e962cae7ab4fef522c8d4bed121af6a858a7521a53b05caf0760ac551b03",
+      "path": "presentation-core/src/main/java/tachiyomi/presentation/core/components/TwoPanelBox.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/presentation-core/src/main/java/tachiyomi/presentation/core/components/TwoPanelBox.kt"
+    },
+    {
+      "local": "UiPreferences.kt",
+      "sha256": "8deb382dbac5ca564ae1d296f6fca1235d0d4e55ce04f31b6dcf6228fe0c567f",
+      "path": "app/src/main/java/eu/kanade/domain/ui/UiPreferences.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/domain/ui/UiPreferences.kt"
+    },
+    {
+      "local": "WindowSize.kt",
+      "sha256": "b156786badee3665bf6ca53e6db6b2458661651a4fd9ec250c5ddd255262d52a"
+    },
+    {
+      "local": "translations.json",
+      "sha256": "d56f38a4e6b1907ed6387efb222103b9cc301995ef949da6522fd6765ddb7159",
+      "derived_from": "i18n/src/commonMain/moko-resources/{locale}/strings.xml, requested appearance keys only"
+    },
+    {
+      "local": "language-names.json",
+      "sha256": "4277e51642d08a67c2a1c5a65bf9795c44614e5d566d239e7db5df09ed0f49e6",
+      "source": "Java 21 Locale display names following LocaleHelper; CLDR rendering is HTML_ADAPTER"
+    },
+    {
+      "local": "check_circle.svg",
+      "sha256": "d13fdbc7bbbcf696b792411c8cb5a74915b95d4bb6d4c62f5b09c70d7ade6052",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/master/symbols/web/check_circle/materialsymbolsrounded/check_circle_fill1_24px.svg"
+    },
+    {
+      "local": "DateExtensions.kt",
+      "sha256": "5da3818b47969f9d80cd7669f8b82acd65d796a4cd9563d6446c655079c6a1fa",
+      "path": "app/src/main/java/eu/kanade/tachiyomi/util/lang/DateExtensions.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/tachiyomi/util/lang/DateExtensions.kt"
+    },
+    {
+      "local": "PreferenceItem.kt",
+      "sha256": "3f013f7311f8d9d7a26bac307e53bbd2301fc60ad0511b3234027f8761c254c0",
+      "path": "app/src/main/java/eu/kanade/presentation/more/settings/PreferenceItem.kt",
+      "source": "https://github.com/mihonapp/mihon/blob/866d045c7aba343fd739c57d15c81ff6df59e796/app/src/main/java/eu/kanade/presentation/more/settings/PreferenceItem.kt"
+    },
+    {
+      "local": "arrow_back.svg",
+      "sha256": "b9b58d54e13e0e3693a10d997c1001ec270c12eaa935f993cee1d8c916236ceb",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/master/symbols/web/arrow_back/materialsymbolsrounded/arrow_back_24px.svg"
+    },
+    {
+      "local": "check.svg",
+      "sha256": "51e706757e18de60cb7ade1cf0ae272708932d36e417365f14977ee039cd85b8",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/master/symbols/web/check/materialsymbolsrounded/check_24px.svg"
+    },
+    {
+      "local": "palette.svg",
+      "sha256": "0b847ea803e92b6e1c792103c89e7448659cb001032ffd5699c1f956ca74f656",
+      "source": "https://raw.githubusercontent.com/google/material-design-icons/master/symbols/web/palette/materialsymbolsrounded/palette_24px.svg"
+    }
+  ],
+  "translation_sources": [
+    {
+      "path": "translations/am-plurals.xml",
+      "sha256": "59c3763d1701348c392c790a08cf83a0cd50ca293902bb164b8a6a912dc5b0dc"
+    },
+    {
+      "path": "translations/am.xml",
+      "sha256": "5514051c3bba6b1269cbca9c18edab5176f1c5ddfbedfbd0da83d3fd61fc008a"
+    },
+    {
+      "path": "translations/ar-plurals.xml",
+      "sha256": "961d1090f2c4f46619f1c5f14a23134897310a50bc7d54e688ca7c7834ead9b0"
+    },
+    {
+      "path": "translations/ar.xml",
+      "sha256": "2c227819a29921e2541ca233a188cd0ef6fcb6fba46ea7f8518d259c1904e7d4"
+    },
+    {
+      "path": "translations/as-plurals.xml",
+      "sha256": "bc486e08a31126e7795c36fb29075742381b48a6349e65234d4ae4287afd16d1"
+    },
+    {
+      "path": "translations/as.xml",
+      "sha256": "19254391458911e81e9fd9b0e7c40142efb5daf68da9176b99d700e71052ac6d"
+    },
+    {
+      "path": "translations/base-plurals.xml",
+      "sha256": "fae1e40968ce16834eba30e61d020aa36eb00e91837cbff2a55349595e5154f2"
+    },
+    {
+      "path": "translations/base.xml",
+      "sha256": "0a37d2c48122bd0e9ac6e77c86ec435c53f27e0bd1428e46def5bc25f7a1f8f5"
+    },
+    {
+      "path": "translations/be-plurals.xml",
+      "sha256": "76af3808de84722b4d7ccdabacc5f822c28dfb982ad529c54d9232fb0dfc66dc"
+    },
+    {
+      "path": "translations/be.xml",
+      "sha256": "60819a73c09e2c0791722c8f0f651f846616ba12dda0adc99e06481e47a82116"
+    },
+    {
+      "path": "translations/bg-plurals.xml",
+      "sha256": "4ada8ed8e54fc220004674565419c6dd029697c3d71883fd7cfe3e16ec0d841a"
+    },
+    {
+      "path": "translations/bg.xml",
+      "sha256": "3008d55cecd116f7b142c6dd987f4bf5672b6c59c322ff2e3558d8868eee765f"
+    },
+    {
+      "path": "translations/bn-plurals.xml",
+      "sha256": "daf6072b5f6cf62aaa97005943a19f5f2ac589814a22808547ff3ee2f395fec1"
+    },
+    {
+      "path": "translations/bn.xml",
+      "sha256": "35d344abcefe2aadeb9c15e720b9f9c99c65ab7a32a9a3eaa1b9364158e3024e"
+    },
+    {
+      "path": "translations/ca-plurals.xml",
+      "sha256": "deb05904d329daa294da936fcdd1af14974bd357026c195946480357e5ce3dda"
+    },
+    {
+      "path": "translations/ca.xml",
+      "sha256": "9b3e5f2751cd9b1b3d0616b98213c4334bcf47b7657a7bb45574f6bec0316388"
+    },
+    {
+      "path": "translations/ceb-plurals.xml",
+      "sha256": "f6abc6e120216e8733162816fbba7ec7ce9395bf2bb628de6333899160991b69"
+    },
+    {
+      "path": "translations/ceb.xml",
+      "sha256": "1157d554144df162a4084666edc6b8c6060279a1c092e88987fd4b1fb77ff8e4"
+    },
+    {
+      "path": "translations/cs-plurals.xml",
+      "sha256": "a7bddffdcaa1fcbcfe039bfb35f5d6c985568a53f69acfc6663d6ed2ef28017d"
+    },
+    {
+      "path": "translations/cs.xml",
+      "sha256": "460ddc9d7be31ac1e68201f532e78850e44b41d94a3041158b12887fe09544fd"
+    },
+    {
+      "path": "translations/cv-plurals.xml",
+      "sha256": "2d0b8b51c97201f9746ef1ba776d44e6004ece46dbd6feac3b9c819a0f4c609d"
+    },
+    {
+      "path": "translations/cv.xml",
+      "sha256": "06610182ea5c251a0a233fdfe9014bf80f9aac72d99dac672ef01352c91f1186"
+    },
+    {
+      "path": "translations/da-plurals.xml",
+      "sha256": "5108681bd9c89a81c814ab519e112afa644f1033783785b4ccefbf9c357d7187"
+    },
+    {
+      "path": "translations/da.xml",
+      "sha256": "925a9662ad6db45c77b6540e4ba7aeb69619ce6807273e889559064dae6201e9"
+    },
+    {
+      "path": "translations/de-plurals.xml",
+      "sha256": "5283962104c9fb4efdabf7ddfaff42887d5aa5b1d0e72a3d0fc4976912d66246"
+    },
+    {
+      "path": "translations/de.xml",
+      "sha256": "225e23ba112f83208fdf995f59fede3953b941b20bb8f6b6fa008cb255c74924"
+    },
+    {
+      "path": "translations/el-plurals.xml",
+      "sha256": "7593335c15afbdeb0fa6b896968a13db1b6866f33ea810fb8f40bc9107754dba"
+    },
+    {
+      "path": "translations/el.xml",
+      "sha256": "030c76032967e532d3e580e94409923efc1f29f5fb39dd6da17b2e93b9f89c6b"
+    },
+    {
+      "path": "translations/eo-plurals.xml",
+      "sha256": "03c8dc1e6794577fb3458df176c4e728a830bf60fa4c8ae9827d885d1ee7fd22"
+    },
+    {
+      "path": "translations/eo.xml",
+      "sha256": "672dc9f88a211b385d4ba6d4586adea76ae369b313a6ad5cf3e82fe4f65d5bd4"
+    },
+    {
+      "path": "translations/es-plurals.xml",
+      "sha256": "b3407f9c38589a81ac9c5d60347ce3769d911d5c3bcc5bde658bf39f0ab6572f"
+    },
+    {
+      "path": "translations/es.xml",
+      "sha256": "dcf971de0c429e2a9ba2f5b6e98951371fc5078b6eeb161270324b139126ca80"
+    },
+    {
+      "path": "translations/eu-plurals.xml",
+      "sha256": "c8e9fe7b1ff8b13ab5002e6cb71273a3e8efabecb19b134d709e43969e95c275"
+    },
+    {
+      "path": "translations/eu.xml",
+      "sha256": "2562e16d36dfb62928a44eab64ebe641e34814bad575adbd49c7455d318c8471"
+    },
+    {
+      "path": "translations/fa-plurals.xml",
+      "sha256": "07a495cbbc98790da5b6112d8960d6cefb803be37c8f8d1f3ed7a70a84166f13"
+    },
+    {
+      "path": "translations/fa.xml",
+      "sha256": "a67c6f63f7e49df6803416a48e870a4272299fb2af98d651634269a0e0d798f1"
+    },
+    {
+      "path": "translations/fi-plurals.xml",
+      "sha256": "094d996d3234cada902808a874b73f96c4b8c1a45452229f0822e7d725917b71"
+    },
+    {
+      "path": "translations/fi.xml",
+      "sha256": "b4d07404ec3259352065f9a849c1e1a599d09a86e3063da61428329749458118"
+    },
+    {
+      "path": "translations/fil-plurals.xml",
+      "sha256": "1b789720afff285f42638610eb2dd2f40a7bf33d3ba288ac6b902638946fb102"
+    },
+    {
+      "path": "translations/fil.xml",
+      "sha256": "61b03e144cc7045ccfdbc6bf3c23621b42bb2de70ab846997e4689e058f991f5"
+    },
+    {
+      "path": "translations/fr-plurals.xml",
+      "sha256": "ffc065eedf3e66803afbc2efa6379d68f999e8bffac2aea10f3e01f6f8501dfd"
+    },
+    {
+      "path": "translations/fr.xml",
+      "sha256": "ed2d9f9ab49264037108da80a247699c4ef094f2b5453aaa77786b5faaccc990"
+    },
+    {
+      "path": "translations/gl-plurals.xml",
+      "sha256": "16d2cb79276b7e05c23814be82c07bbec9f2f1627a883ab033630a7ac66fcc9a"
+    },
+    {
+      "path": "translations/gl.xml",
+      "sha256": "3c2bb2a2f595dbbcc5d25556cfaa2b1037d47e31a287925a18307fc34bc76264"
+    },
+    {
+      "path": "translations/he-plurals.xml",
+      "sha256": "76c25c1eb5044fa816a7d2df8c053b53776bc479aa492bc675f0876be3a8c973"
+    },
+    {
+      "path": "translations/he.xml",
+      "sha256": "48a44cdd3d47c29330de280c380cc29e9cde831b036954cf827a062ba4e694ac"
+    },
+    {
+      "path": "translations/hi-plurals.xml",
+      "sha256": "4197a9f40f22219af8ed07f76e13dee1fa092c1dadf4fcea53d44d4f83f8deb7"
+    },
+    {
+      "path": "translations/hi.xml",
+      "sha256": "82da3c31f498475e7f48c5b16d5156c90b544afd2ed9a85f2ab37965aa6c3a27"
+    },
+    {
+      "path": "translations/hr-plurals.xml",
+      "sha256": "77b689943d3b50d9fb5bb9cb6f906158bf93dcfc5f26ee451bc43d5b85302f0a"
+    },
+    {
+      "path": "translations/hr.xml",
+      "sha256": "c26648b497d52e488026bf0ada16c1447cebb9bd9fc43a401f97b09f780eae86"
+    },
+    {
+      "path": "translations/hu-plurals.xml",
+      "sha256": "53afafef770ef81a75ba7a6feb91aa70a7fcf5769f87fa93fbfd9969f0bfbab8"
+    },
+    {
+      "path": "translations/hu.xml",
+      "sha256": "631cbae900d53e81fbb8f0cd488d0f3e661be8dc191f460f9469bbc0237926e2"
+    },
+    {
+      "path": "translations/in-plurals.xml",
+      "sha256": "ebaac0091f63630aedd02dc6d119bb2ba1ce25679163343d4dfa2916326a0934"
+    },
+    {
+      "path": "translations/in.xml",
+      "sha256": "56b2be89b6d51c698f1eb2e776e5a00c0f808c2cf1ba93db4e9e471b85e81d71"
+    },
+    {
+      "path": "translations/it-plurals.xml",
+      "sha256": "38b8eea80f176eb410b80c56c8d2d85558666b55858385bac789e3f5fd51f380"
+    },
+    {
+      "path": "translations/it.xml",
+      "sha256": "77ef9123d54a78e6ce99c4b3ec0453df7154d393c37cb8334eb0a2544b6731b6"
+    },
+    {
+      "path": "translations/ja-plurals.xml",
+      "sha256": "df79707dec0727ad4f9085a3be98f8675f4dc9f22e5c657d0dc3ba5caa4ca4c9"
+    },
+    {
+      "path": "translations/ja.xml",
+      "sha256": "1a9649a1f2be55b5df7fc9a9ebd9260fa2a6623ecf53bab38898fb576a109091"
+    },
+    {
+      "path": "translations/jv-plurals.xml",
+      "sha256": "7fe16784dec0a8da5c06d2369420f9315d3d9de665d45fe34e37c462fccfe149"
+    },
+    {
+      "path": "translations/jv.xml",
+      "sha256": "d0e83dc718429440984cdc18c9dcda88a58237a6b2b178b23bdd6306dab21b60"
+    },
+    {
+      "path": "translations/ka-rGE-plurals.xml",
+      "sha256": "b3277d8ddbc3d3ae2d907cf126ddb837bb8960b1ce169e5e22dda97b9dc4c284"
+    },
+    {
+      "path": "translations/ka-rGE.xml",
+      "sha256": "808159b7a8110ffc94e3a6e06eb51c01fd77f5aaee6f99bfd2d4b7d9f0704561"
+    },
+    {
+      "path": "translations/kk-plurals.xml",
+      "sha256": "9cfa8a5efbdac3e5502b2b242db2660b7cbc3f8e147f7f6ec591226ec8d69553"
+    },
+    {
+      "path": "translations/kk.xml",
+      "sha256": "539cb67acb9cfa8644f97f7466161f31f6e6ab3e9ac15e795ddc48978c4ebe30"
+    },
+    {
+      "path": "translations/km-plurals.xml",
+      "sha256": "25c2aa5b960a99319c4fb75edd06feb95783335f25225098f8d1d3c8b1009ebe"
+    },
+    {
+      "path": "translations/km.xml",
+      "sha256": "8d735d119673febdddfb158a6cddd2b67be9ffdd339d34b03829daaadae99b7b"
+    },
+    {
+      "path": "translations/kmr.xml",
+      "sha256": "e8e2a784862367489ba4ed75f93ac57ca34e7d8300213fd075dd0b95b9fab8bd"
+    },
+    {
+      "path": "translations/kn-plurals.xml",
+      "sha256": "e92e9fa649590c33a1380bfc7aff2b4de32a2f36f9b36d2b2525ad232966565a"
+    },
+    {
+      "path": "translations/kn.xml",
+      "sha256": "a43430e5f00eb2077843d0784fe7957e48d3488abc291b8c86717696bb4e92ea"
+    },
+    {
+      "path": "translations/ko-plurals.xml",
+      "sha256": "87548a36b6194c505ffeb849eec2da07931c16b5da229f6fc777008e48d59acf"
+    },
+    {
+      "path": "translations/ko.xml",
+      "sha256": "eb0b6730ec8cd97198fbe4023f91ba163285481c602ccb9d509603e45f6c5471"
+    },
+    {
+      "path": "translations/lt-plurals.xml",
+      "sha256": "a73f95f728556c7201df5535c47d38da009d59c9487051534fe76e3bc45d20e0"
+    },
+    {
+      "path": "translations/lt.xml",
+      "sha256": "b773de6bb97e0c195c55559d196ac0b2545d473fb175a5834ba991ee0ccce7d6"
+    },
+    {
+      "path": "translations/lv-plurals.xml",
+      "sha256": "cdf76d5bc10b852ce99805a5c681331db06949a00e5bd7ba6c9e819ebfb8a594"
+    },
+    {
+      "path": "translations/lv.xml",
+      "sha256": "0c18dd4f67ac65217bc8dd46e89675f18533edad4073c01d6604b8b4ba089c08"
+    },
+    {
+      "path": "translations/ml-plurals.xml",
+      "sha256": "aea4f3d4b351aaae25692510c781627443e1f2d3155b29f3f485ac06e6f90799"
+    },
+    {
+      "path": "translations/ml.xml",
+      "sha256": "4d7ed55374da97e71b9f3e25b17680b8bffeb956d19503e50b2161ec2edac225"
+    },
+    {
+      "path": "translations/mr-plurals.xml",
+      "sha256": "786d16454a1b779f8e2cf477def9f1f0847e4ef9a14dae447e375d489179405b"
+    },
+    {
+      "path": "translations/mr.xml",
+      "sha256": "0b3ab914ff6f7445699aa70920d9be1fea485c47a84b1d0acd2115f7b2171d57"
+    },
+    {
+      "path": "translations/ms-plurals.xml",
+      "sha256": "6f1ac6f290dd36cae2bb6a04237b623581969aad82d3b26d2edf7d731d281bba"
+    },
+    {
+      "path": "translations/ms.xml",
+      "sha256": "8c780bb182b2f10a02c684ad88e397ba1b0950d91fa6cc72656faf2a56ff1c31"
+    },
+    {
+      "path": "translations/my.xml",
+      "sha256": "524ab86e3538ead593a0f85e3e05ed63f894d1d45a2ae2e63a43fa15bbeaf9a8"
+    },
+    {
+      "path": "translations/nb-rNO-plurals.xml",
+      "sha256": "e9c1818d0f41002cb0def9e209eb280db0d94652541a5a0b1649da91f1b53e1c"
+    },
+    {
+      "path": "translations/nb-rNO.xml",
+      "sha256": "c0e18aa8327a648b9bed5ddf680aecf560af1cfb92382631ba675e9224423f75"
+    },
+    {
+      "path": "translations/ne-plurals.xml",
+      "sha256": "0dcee0e96c70df1ac08d2d139107bf5f6c062ec57656027a06154264cd60c078"
+    },
+    {
+      "path": "translations/ne.xml",
+      "sha256": "7b9b40a2b9ef0f8f2ee94c863b6dcbcc399afd63b04fcfe8d47a5906fc19aef5"
+    },
+    {
+      "path": "translations/nl-plurals.xml",
+      "sha256": "a1b59991780ee0bda61804b94488f06b29c3f4c8e6b2d1b59d277db8c395c876"
+    },
+    {
+      "path": "translations/nl.xml",
+      "sha256": "349dadd69af36399e0009f84856a7a9c98ae9a0fecf4432abd73ec2941b958ef"
+    },
+    {
+      "path": "translations/nn-plurals.xml",
+      "sha256": "763350649abd82895e8991cf008903328b9029bfddca93c9e9d706c2deb888aa"
+    },
+    {
+      "path": "translations/nn.xml",
+      "sha256": "c32408c10a1fbc18192a25cc16de1fefbb947c6e5dc8f5845de42cc76dcdf239"
+    },
+    {
+      "path": "translations/pl-plurals.xml",
+      "sha256": "854db7da0380082d82b5c134face8fc24195f13366b18c37b3c1a4dd51265432"
+    },
+    {
+      "path": "translations/pl.xml",
+      "sha256": "a93d17c0fa9976a2bc11318e915e10c0d85a2703e950091eb599a9d1b80ae11d"
+    },
+    {
+      "path": "translations/pt-plurals.xml",
+      "sha256": "58e0ea4c3c14a6a15ea69a6ae82a4c4363955da5ea164029e1d5ede2983e7d69"
+    },
+    {
+      "path": "translations/pt-rBR-plurals.xml",
+      "sha256": "d06232a66352a52bbf3ee836adc5c90681ca6cf06b6710733f74e75a73014497"
+    },
+    {
+      "path": "translations/pt-rBR.xml",
+      "sha256": "8cfc368f5678437ee4c45c97ff88181d09abb2c67aa33d65a5c7cbdbd01c026f"
+    },
+    {
+      "path": "translations/pt.xml",
+      "sha256": "a827fed20ea4e33d9653dd3d114d4f597a94b7242300dd69453ef7c3a08a190c"
+    },
+    {
+      "path": "translations/ro-plurals.xml",
+      "sha256": "a55f06990e3ba1e8c561db2faa48fb6bfdf4b118314d430c143ad3adbcad09e1"
+    },
+    {
+      "path": "translations/ro.xml",
+      "sha256": "723606a7218175e8d0cedf8a7215116b5400d837236be6e838a09b6b0ab2eb1d"
+    },
+    {
+      "path": "translations/ru-plurals.xml",
+      "sha256": "072ffffbba7da7df52d9803633a45b1a927bfb4d48fc987f79eb221e9960dbfa"
+    },
+    {
+      "path": "translations/ru.xml",
+      "sha256": "a939abfe814ba8a3a1f772a204af7c3a2fd67c6075085d1b64196293215a4def"
+    },
+    {
+      "path": "translations/sa-plurals.xml",
+      "sha256": "d6e8d60c2f20191b4b49765c7bf0e3390518007fc01ec90d4c6deb18424d74ab"
+    },
+    {
+      "path": "translations/sa.xml",
+      "sha256": "2cba9d394b3c397b3d77e8da50d76ea18e810faac4795e63ca079e299f28d9ed"
+    },
+    {
+      "path": "translations/sah-plurals.xml",
+      "sha256": "4ba6f9fbaff1484c10fa99424497efd3ab234afed935eb492e89fea3ff2565bf"
+    },
+    {
+      "path": "translations/sah.xml",
+      "sha256": "b31e4960d1cf026113207aa0269b1af19799ba385ca42e4a2dc72dec47a8e29f"
+    },
+    {
+      "path": "translations/sc-plurals.xml",
+      "sha256": "8237b74a4200db50087e5ec5ba023dd4e62b3b8f7b45d17ae3a210012d154959"
+    },
+    {
+      "path": "translations/sc.xml",
+      "sha256": "e8811a1e8688cfeff702368bf622906f604619c7230860cca4771c96b4c58dd4"
+    },
+    {
+      "path": "translations/sdh-plurals.xml",
+      "sha256": "7e2c6c1e97ec4183dfcd949ce35de01975c1a9473e9b17e49b0c6a4ab904a8d8"
+    },
+    {
+      "path": "translations/sdh.xml",
+      "sha256": "d245dada39ab57f32e6dc72aba661901600a628c9accea5c4e685beb3b45f0d2"
+    },
+    {
+      "path": "translations/sk-plurals.xml",
+      "sha256": "ef532d9d58392297a8215ac0a216a6d4321e0441380afd69403162ed9270c26c"
+    },
+    {
+      "path": "translations/sk.xml",
+      "sha256": "783e13b4695644b3f5d319a71d52f3ecec136a055944fec75999829852f3ad80"
+    },
+    {
+      "path": "translations/sq-plurals.xml",
+      "sha256": "0f4effec7126d48173b77df1ae0118b60f5aeabae838b1e45ca54fc584bc57c5"
+    },
+    {
+      "path": "translations/sq.xml",
+      "sha256": "d1ee8155d24f70cd18802465393c2b2323281f3c97c4a6961b8c6b60803a8293"
+    },
+    {
+      "path": "translations/sr-plurals.xml",
+      "sha256": "a4854629bcf5a31629f83dc92cad9f8839d2a07735d1f4d2a352f353f1269b79"
+    },
+    {
+      "path": "translations/sr.xml",
+      "sha256": "da99dfb61c42068c1c839de11841bb5d016dec60cc1d9078a080fcc07b58b0ec"
+    },
+    {
+      "path": "translations/sv-plurals.xml",
+      "sha256": "3bf91f3ae2567eef2fc90b124a3727afd3a88c065dc505006119b7527c2b40e7"
+    },
+    {
+      "path": "translations/sv.xml",
+      "sha256": "d9d9460435385708e794c38fc8b77f22f7114996cd9289147ee593ae64474e7c"
+    },
+    {
+      "path": "translations/ta.xml",
+      "sha256": "98a84abc242be90c3840f07d12ac2f38cb4021f07f761980c2c2f9c5750e2c74"
+    },
+    {
+      "path": "translations/te-plurals.xml",
+      "sha256": "395198d2ebf9ed7e4876362e2fc0f66a4bd6a1856834a3aefc364fdeb706c5fe"
+    },
+    {
+      "path": "translations/te.xml",
+      "sha256": "3f54308c10e53a29909e79f16bdea22bc94cd5083a61b098be26046227df2a5d"
+    },
+    {
+      "path": "translations/th-plurals.xml",
+      "sha256": "4b505c949a7a339ab825ee450e93b2835cbf4d3b42f8ba76ccfeed6299a60f21"
+    },
+    {
+      "path": "translations/th.xml",
+      "sha256": "2ef2da3ee8db40eb04f1f1c6dcdd79cb5f28ff2f432597bd92064ce48ced8d55"
+    },
+    {
+      "path": "translations/tr-plurals.xml",
+      "sha256": "6f2963cec0018207cfe1078f093a1d06ebf5d169c01a99c1b88b29f6e7aa2dea"
+    },
+    {
+      "path": "translations/tr.xml",
+      "sha256": "70405cca58dbe23f4c8755388cebab95bb47bc19aecb5bac62b356324486ed18"
+    },
+    {
+      "path": "translations/uk-plurals.xml",
+      "sha256": "cd6421c5e91c63ca06f5c6440457aabfda4242b5a246731837ef068f2390762d"
+    },
+    {
+      "path": "translations/uk.xml",
+      "sha256": "9a76161e5c9c03589684f9ddd0fc2e6862937a032b2252a2c732a1eb43e8a7c6"
+    },
+    {
+      "path": "translations/uz-plurals.xml",
+      "sha256": "e0df834f1c4b6a533ba483a21b2d02c27fe62fe07df032fb933eb57d9157495c"
+    },
+    {
+      "path": "translations/uz.xml",
+      "sha256": "8ee07c249341271e2205be6025e01ceec82a82bd55644a2628d8d3402c2d37d7"
+    },
+    {
+      "path": "translations/vi-plurals.xml",
+      "sha256": "736b57b6d60802c25c6778f7b84090d8ba7d75f709f70b461732e97ca76d85b5"
+    },
+    {
+      "path": "translations/vi.xml",
+      "sha256": "6abae96bc5b0b64212c3d31ca683af2489fb936ebe10c4e8410f22e7429af191"
+    },
+    {
+      "path": "translations/zh-rCN-plurals.xml",
+      "sha256": "49be33ce425a8381d8d79a58d0e30a8e5698223b5d4f92849c33df49271e8037"
+    },
+    {
+      "path": "translations/zh-rCN.xml",
+      "sha256": "264a524191cd0622dbdf3bc5f08beca0f0e9a969f31a09cde179de80941e375e"
+    },
+    {
+      "path": "translations/zh-rTW-plurals.xml",
+      "sha256": "9d3d930d6e73a0bb60524e9d9af744d9335668f8cd2c31506bc0af75ebe9b0f8"
+    },
+    {
+      "path": "translations/zh-rTW.xml",
+      "sha256": "3f0345f9c626c8a8bb9943b31906e07b4d77d722955e58c9bcbd08b840a8ca16"
+    }
+  ]
+}

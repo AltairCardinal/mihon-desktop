@@ -1,0 +1,342 @@
+[
+  {
+    "tag": "ca",
+    "name": "Català",
+    "localized": "加泰罗尼亚语"
+  },
+  {
+    "tag": "ceb",
+    "name": "Cebuano",
+    "localized": "宿务语"
+  },
+  {
+    "tag": "da",
+    "name": "Dansk",
+    "localized": "丹麦语"
+  },
+  {
+    "tag": "de",
+    "name": "Deutsch",
+    "localized": "德语"
+  },
+  {
+    "tag": "en",
+    "name": "English",
+    "localized": "英语"
+  },
+  {
+    "tag": "es",
+    "name": "Español",
+    "localized": "西班牙语"
+  },
+  {
+    "tag": "eo",
+    "name": "Esperanto",
+    "localized": "世界语"
+  },
+  {
+    "tag": "eu",
+    "name": "Euskara",
+    "localized": "巴斯克语"
+  },
+  {
+    "tag": "fil",
+    "name": "Filipino",
+    "localized": "菲律宾语"
+  },
+  {
+    "tag": "fr",
+    "name": "Français",
+    "localized": "法语"
+  },
+  {
+    "tag": "gl",
+    "name": "Galego",
+    "localized": "加利西亚语"
+  },
+  {
+    "tag": "hr",
+    "name": "Hrvatski",
+    "localized": "克罗地亚语"
+  },
+  {
+    "tag": "in",
+    "name": "Indonesia",
+    "localized": "印度尼西亚语"
+  },
+  {
+    "tag": "it",
+    "name": "Italiano",
+    "localized": "意大利语"
+  },
+  {
+    "tag": "jv",
+    "name": "Jawa",
+    "localized": "爪哇语"
+  },
+  {
+    "tag": "kmr",
+    "name": "Kmr",
+    "localized": "kmr"
+  },
+  {
+    "tag": "lv",
+    "name": "Latviešu",
+    "localized": "拉脱维亚语"
+  },
+  {
+    "tag": "lt",
+    "name": "Lietuvių",
+    "localized": "立陶宛语"
+  },
+  {
+    "tag": "hu",
+    "name": "Magyar",
+    "localized": "匈牙利语"
+  },
+  {
+    "tag": "ms",
+    "name": "Melayu",
+    "localized": "马来语"
+  },
+  {
+    "tag": "nl",
+    "name": "Nederlands",
+    "localized": "荷兰语"
+  },
+  {
+    "tag": "nb-NO",
+    "name": "Norsk bokmål (Norge)",
+    "localized": "书面挪威语 (挪威)"
+  },
+  {
+    "tag": "nn",
+    "name": "Norsk nynorsk",
+    "localized": "挪威尼诺斯克语"
+  },
+  {
+    "tag": "uz",
+    "name": "O‘zbek",
+    "localized": "乌兹别克语"
+  },
+  {
+    "tag": "pl",
+    "name": "Polski",
+    "localized": "波兰语"
+  },
+  {
+    "tag": "pt",
+    "name": "Português",
+    "localized": "葡萄牙语"
+  },
+  {
+    "tag": "pt-BR",
+    "name": "Português (Brasil)",
+    "localized": "葡萄牙语 (巴西)"
+  },
+  {
+    "tag": "ro",
+    "name": "Română",
+    "localized": "罗马尼亚语"
+  },
+  {
+    "tag": "sc",
+    "name": "Sardu",
+    "localized": "萨丁语"
+  },
+  {
+    "tag": "sdh",
+    "name": "Sdh",
+    "localized": "南库尔德语"
+  },
+  {
+    "tag": "sq",
+    "name": "Shqip",
+    "localized": "阿尔巴尼亚语"
+  },
+  {
+    "tag": "sk",
+    "name": "Slovenčina",
+    "localized": "斯洛伐克语"
+  },
+  {
+    "tag": "fi",
+    "name": "Suomi",
+    "localized": "芬兰语"
+  },
+  {
+    "tag": "sv",
+    "name": "Svenska",
+    "localized": "瑞典语"
+  },
+  {
+    "tag": "vi",
+    "name": "Tiếng Việt",
+    "localized": "越南语"
+  },
+  {
+    "tag": "tr",
+    "name": "Türkçe",
+    "localized": "土耳其语"
+  },
+  {
+    "tag": "cs",
+    "name": "Čeština",
+    "localized": "捷克语"
+  },
+  {
+    "tag": "el",
+    "name": "Ελληνικά",
+    "localized": "希腊语"
+  },
+  {
+    "tag": "be",
+    "name": "Беларуская",
+    "localized": "白俄罗斯语"
+  },
+  {
+    "tag": "bg",
+    "name": "Български",
+    "localized": "保加利亚语"
+  },
+  {
+    "tag": "ru",
+    "name": "Русский",
+    "localized": "俄语"
+  },
+  {
+    "tag": "sah",
+    "name": "Саха тыла",
+    "localized": "萨哈语"
+  },
+  {
+    "tag": "sr",
+    "name": "Српски",
+    "localized": "塞尔维亚语"
+  },
+  {
+    "tag": "uk",
+    "name": "Українська",
+    "localized": "乌克兰语"
+  },
+  {
+    "tag": "cv",
+    "name": "Чӑваш",
+    "localized": "楚瓦什语"
+  },
+  {
+    "tag": "kk",
+    "name": "Қазақ тілі",
+    "localized": "哈萨克语"
+  },
+  {
+    "tag": "he",
+    "name": "עברית",
+    "localized": "希伯来语"
+  },
+  {
+    "tag": "ar",
+    "name": "العربية",
+    "localized": "阿拉伯语"
+  },
+  {
+    "tag": "fa",
+    "name": "فارسی",
+    "localized": "波斯语"
+  },
+  {
+    "tag": "ne",
+    "name": "नेपाली",
+    "localized": "尼泊尔语"
+  },
+  {
+    "tag": "mr",
+    "name": "मराठी",
+    "localized": "马拉地语"
+  },
+  {
+    "tag": "sa",
+    "name": "संस्कृत भाषा",
+    "localized": "梵语"
+  },
+  {
+    "tag": "hi",
+    "name": "हिन्दी",
+    "localized": "印地语"
+  },
+  {
+    "tag": "as",
+    "name": "অসমীয়া",
+    "localized": "阿萨姆语"
+  },
+  {
+    "tag": "bn",
+    "name": "বাংলা",
+    "localized": "孟加拉语"
+  },
+  {
+    "tag": "ta",
+    "name": "தமிழ்",
+    "localized": "泰米尔语"
+  },
+  {
+    "tag": "te",
+    "name": "తెలుగు",
+    "localized": "泰卢固语"
+  },
+  {
+    "tag": "kn",
+    "name": "ಕನ್ನಡ",
+    "localized": "卡纳达语"
+  },
+  {
+    "tag": "ml",
+    "name": "മലയാളം",
+    "localized": "马拉雅拉姆语"
+  },
+  {
+    "tag": "th",
+    "name": "ไทย",
+    "localized": "泰语"
+  },
+  {
+    "tag": "my",
+    "name": "မြန်မာ",
+    "localized": "缅甸语"
+  },
+  {
+    "tag": "am",
+    "name": "አማርኛ",
+    "localized": "阿姆哈拉语"
+  },
+  {
+    "tag": "km",
+    "name": "ខ្មែរ",
+    "localized": "高棉语"
+  },
+  {
+    "tag": "ka-GE",
+    "name": "Ქართული (საქართველო)",
+    "localized": "格鲁吉亚语 (格鲁吉亚)"
+  },
+  {
+    "tag": "zh-CN",
+    "name": "中文 (简体)",
+    "localized": "中文 (简体)"
+  },
+  {
+    "tag": "zh-TW",
+    "name": "中文 (繁體)",
+    "localized": "中文 (繁体)"
+  },
+  {
+    "tag": "ja",
+    "name": "日本語",
+    "localized": "日语"
+  },
+  {
+    "tag": "ko",
+    "name": "한국어",
+    "localized": "韩语"
+  }
+]

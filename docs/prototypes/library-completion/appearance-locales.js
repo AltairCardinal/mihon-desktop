@@ -1,0 +1,3892 @@
+window.MihonAppearanceLocales = {
+  "translations": {
+    "am": {
+      "landscape": "የመሬት ገጽታ",
+      "pref_category_display": "ማሳያ",
+      "lock_never": "በጭራሽ",
+      "lock_always": "ሁል ጊዜ",
+      "pref_date_format": "የቀን ቅርጸት",
+      "theme_dark": "በርቷል",
+      "theme_light": "ጠፍቷል",
+      "theme_system": "ስርዓት ይከተሉ",
+      "pref_category_theme": "ገጽታ",
+      "pref_category_library": "ቤተ መጻሕፍት",
+      "action_cancel": "ሰርዝ",
+      "label_settings": "ማስተካከያዎች"
+    },
+    "ar": {
+      "label_settings": "اﻹعدادات",
+      "action_cancel": "إلغاء",
+      "landscape": "عرضيٌّ",
+      "pref_category_library": "المكتبة",
+      "lock_never": "أبدًا",
+      "lock_always": "دائماً",
+      "pref_date_format": "صيغة التاريخ",
+      "theme_system": "النظام",
+      "theme_dark": "داكن",
+      "theme_light": "فاتح",
+      "pref_category_display": "العرض",
+      "pref_category_theme": "المظهر",
+      "requires_app_restart": "يتطلب إعادة تشغيل التطبيق ليتم تفعيله",
+      "automatic_background": "تلقائيًّا",
+      "pref_app_theme": "مظهر التطبيق",
+      "pref_dark_theme_pure_black": "وضع داكن الأسود النقي",
+      "relative_time_today": "اليوم",
+      "label_default": "الافتراضي",
+      "pref_category_appearance": "المظهر",
+      "pref_tablet_ui_mode": "واجهة مستخدم الجهاز اللوحي",
+      "pref_app_language": "لغة تطبيق",
+      "pref_appearance_summary": "مظهر، التاريخ والوقت",
+      "pref_library_summary": "الفئات، التحديث الشامل، تمرير الفصول",
+      "pref_relative_format": "التوقيت النسبي",
+      "pref_relative_format_summary": "«%1$s» بدلًا عن «%2$s»",
+      "pref_display_images_description": "عرض الصور في وصف المجلات",
+      "theme_strawberrydaiquiri": "أحمر",
+      "theme_midnightdusk": "منتصف الليل",
+      "theme_greenapple": "أخضر",
+      "theme_yotsuba": "يوتسوبا",
+      "theme_yinyang": "ين & يانغ",
+      "theme_tako": "تاكو",
+      "theme_monet": "ديناميكي",
+      "theme_tealturquoise": "ازرق مخضر و فيروزي",
+      "theme_lavender": "أُرجواني",
+      "theme_tidalwave": "موجة مد و جزر",
+      "theme_nord": "نورد",
+      "theme_monochrome": "أحادي اللون",
+      "theme_catppuccin": "كاتبوتشين",
+      "relative_time": {
+        "zero": "الأمس",
+        "one": "منذ يوم",
+        "two": "منذ يومين",
+        "few": "منذ %1$d أيام",
+        "many": "منذ %1$d يوم",
+        "other": "منذ %1$d يوم"
+      },
+      "upcoming_relative_time": {
+        "zero": "اليوم",
+        "one": "غداً",
+        "two": "بعد غد",
+        "few": "بعد %1$d أيام",
+        "many": "بعد %1$d يوم",
+        "other": "بعد %1$d يوم"
+      }
+    },
+    "as": {
+      "pref_category_appearance": "ৰূপ",
+      "landscape": "লেণ্ডস্কেপ",
+      "label_settings": "ছেটিংছ",
+      "label_default": "ডিফল্ট",
+      "action_cancel": "বাতিল কৰক",
+      "pref_appearance_summary": "থিম, তাৰিখ আৰু সময় বিন্যাস",
+      "pref_category_library": "পুথিভঁৰাল",
+      "pref_library_summary": "শ্ৰেণী, বিশ্বব্যাপী আপডেট, অধ্যায় সুইপ",
+      "pref_category_theme": "থিম",
+      "pref_app_theme": "এপ থিম",
+      "theme_system": "চিষ্টেম",
+      "theme_light": "পোহৰ",
+      "theme_dark": "আন্ধাৰ",
+      "pref_dark_theme_pure_black": "বিশুদ্ধ ক'লা আন্ধাৰ মোড",
+      "pref_relative_format": "আপেক্ষিক টাইমষ্টেম্প",
+      "pref_relative_format_summary": "\"%2$s\"ৰ সলনি \"%1$s\"",
+      "pref_date_format": "তাৰিখ বিন্যাস",
+      "pref_app_language": "এপ ভাষা",
+      "lock_always": "সদায়",
+      "lock_never": "কেতিয়াও নহয়",
+      "relative_time_today": "আজি",
+      "pref_category_display": "প্ৰদৰ্শন",
+      "automatic_background": "স্বয়ংক্ৰিয়",
+      "requires_app_restart": "প্ৰভাৱী হ'বলৈ এপ পুনৰ আৰম্ভ কৰাৰ প্ৰয়োজন",
+      "pref_tablet_ui_mode": "টেবলেট UI",
+      "pref_display_images_description": "মাংগা বিৱৰণীত ছবি ৰেণ্ডাৰ কৰক",
+      "theme_monet": "গতিশীল",
+      "theme_greenapple": "সেউজীয়া আপেল",
+      "theme_lavender": "লেভেণ্ডাৰ",
+      "theme_midnightdusk": "মধ্যৰাত্ৰি গোধূলি",
+      "theme_nord": "নৰ্ড",
+      "theme_strawberrydaiquiri": "ষ্ট্ৰবেৰী ডাইকিৰী",
+      "theme_tako": "টাকো",
+      "theme_tealturquoise": "টিল আৰু টাৰ্কয়েজ",
+      "theme_yinyang": "য়িন আৰু য়াং",
+      "theme_yotsuba": "য়োট্ছুবা",
+      "theme_tidalwave": "টাইডেল ৱে\\'ভ",
+      "theme_monochrome": "মোন\\'ক্ৰম",
+      "theme_catppuccin": "কেটপুকিন",
+      "relative_time": {
+        "one": "কালি",
+        "other": "%1$d দিনৰ আগতে"
+      },
+      "upcoming_relative_time": {
+        "one": "কাইলৈ",
+        "other": "%1$d দিনত"
+      }
+    },
+    "en": {
+      "label_settings": "Settings",
+      "label_default": "Default",
+      "action_cancel": "Cancel",
+      "pref_category_appearance": "Appearance",
+      "pref_category_library": "Library",
+      "pref_appearance_summary": "Theme, date & time format",
+      "pref_library_summary": "Categories, global update, chapter swipe",
+      "pref_category_theme": "Theme",
+      "pref_app_theme": "App theme",
+      "theme_system": "System",
+      "theme_light": "Light",
+      "theme_dark": "Dark",
+      "pref_dark_theme_pure_black": "Pure black dark mode",
+      "pref_relative_format": "Relative timestamps",
+      "pref_relative_format_summary": "\"%1$s\" instead of \"%2$s\"",
+      "pref_date_format": "Date format",
+      "pref_display_images_description": "Render images in manga descriptions",
+      "pref_app_language": "App language",
+      "lock_always": "Always",
+      "lock_never": "Never",
+      "relative_time_today": "Today",
+      "pref_category_display": "Display",
+      "landscape": "Landscape",
+      "automatic_background": "Auto",
+      "requires_app_restart": "Requires app restart to take effect",
+      "pref_tablet_ui_mode": "Tablet UI",
+      "theme_monet": "Dynamic",
+      "theme_catppuccin": "Catppuccin",
+      "theme_tokyonight": "Tokyo Night",
+      "theme_greenapple": "Green Apple",
+      "theme_lavender": "Lavender",
+      "theme_midnightdusk": "Midnight Dusk",
+      "theme_monochrome": "Monochrome",
+      "theme_nord": "Nord",
+      "theme_strawberrydaiquiri": "Strawberry Daiquiri",
+      "theme_tako": "Tako",
+      "theme_tealturquoise": "Teal & Turquoise",
+      "theme_yinyang": "Yin & Yang",
+      "theme_yotsuba": "Yotsuba",
+      "theme_tidalwave": "Tidal Wave",
+      "relative_time": {
+        "one": "Yesterday",
+        "other": "%1$d days ago"
+      },
+      "upcoming_relative_time": {
+        "one": "Tomorrow",
+        "other": "In %1$d days"
+      }
+    },
+    "be": {
+      "action_cancel": "Скасаваць",
+      "label_settings": "Налады",
+      "landscape": "Альбомная",
+      "pref_category_display": "Адлюстраванне",
+      "lock_never": "Ніколі",
+      "lock_always": "Заўсёды",
+      "pref_date_format": "Фармат даты",
+      "pref_dark_theme_pure_black": "Чорная",
+      "pref_app_theme": "Тэма праграмы",
+      "theme_dark": "Цёмная",
+      "theme_light": "Светлая",
+      "theme_system": "Сістэмная",
+      "pref_category_theme": "Тэма",
+      "pref_category_library": "Бібліятэка",
+      "automatic_background": "Аўта",
+      "relative_time_today": "Сёння",
+      "pref_category_appearance": "Выгляд",
+      "label_default": "Па змаўчанні",
+      "pref_app_language": "Мова праграмы",
+      "pref_appearance_summary": "Тэма, фармат даты і часу",
+      "pref_library_summary": "Катэгорыі, глабальнае абнаўленне, гартанне раздзелаў",
+      "pref_relative_format": "Адносныя пазнакі часу",
+      "pref_relative_format_summary": "«%1$s» замест « %2$s»",
+      "pref_display_images_description": "Адлюстроўваць выявы ў апісаннях твораў",
+      "requires_app_restart": "Патрабуецца перазапуск праграмы, каб змены ўступілі ў сілу",
+      "pref_tablet_ui_mode": "Планшэтны інтэрфейс",
+      "theme_yotsuba": "Yotsuba",
+      "theme_yinyang": "Інь і Ян",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "Клубнічны дайкiры",
+      "theme_midnightdusk": "Паўночнае змярканне",
+      "theme_greenapple": "Зялёны яблык",
+      "theme_monet": "Дынамічная",
+      "theme_tealturquoise": "Бірузовая",
+      "theme_lavender": "Лаванда",
+      "theme_catppuccin": "Catppuccin",
+      "theme_monochrome": "Манахром",
+      "theme_nord": "Nord",
+      "theme_tidalwave": "Tidal Wave",
+      "theme_tokyonight": "Tokyo Night",
+      "relative_time": {
+        "one": "Учора",
+        "few": "%1$d дні таму",
+        "many": "%1$d дзён таму",
+        "other": "%1$d дзён таму"
+      },
+      "upcoming_relative_time": {
+        "one": "Заўтра",
+        "few": "Праз %1$d дні",
+        "many": "Праз %1$d дзён",
+        "other": "Праз %1$d дзён"
+      }
+    },
+    "bg": {
+      "label_settings": "Настройки",
+      "action_cancel": "Отмени",
+      "landscape": "Пейзажно",
+      "pref_category_library": "Библиотека",
+      "pref_date_format": "Формат на датата",
+      "pref_category_display": "Показване",
+      "lock_never": "Никога",
+      "lock_always": "Винаги",
+      "theme_system": "Система на абонаментите",
+      "theme_dark": "Включено",
+      "theme_light": "Изключено",
+      "requires_app_restart": "Изисква рестартиране, за да влезе в сила",
+      "pref_category_theme": "Тема",
+      "pref_dark_theme_pure_black": "Чисто черен режим",
+      "label_default": "По подразбиране",
+      "pref_category_appearance": "Облик",
+      "automatic_background": "Автоматично",
+      "pref_app_theme": "Тема",
+      "relative_time_today": "Днес",
+      "pref_tablet_ui_mode": "Потребителски интерфейс на таблет",
+      "pref_app_language": "Език на приложението",
+      "pref_appearance_summary": "Тема, формат на датата и времето",
+      "pref_library_summary": "Категории, глобални обновления",
+      "pref_relative_format_summary": "\"%1$s\" вместо \"%2$s\"",
+      "theme_monet": "Динамично",
+      "theme_greenapple": "Зелена ябълка",
+      "theme_midnightdusk": "Нощен здрач",
+      "theme_strawberrydaiquiri": "Дайкири ягода",
+      "theme_tako": "Тако",
+      "theme_tealturquoise": "Циан и тюркоаз",
+      "theme_yinyang": "Ин и Янг",
+      "theme_yotsuba": "Йоцуба",
+      "theme_tidalwave": "Приливна вълна",
+      "theme_lavender": "Лавандула",
+      "theme_nord": "Норд",
+      "theme_monochrome": "Монохром",
+      "relative_time": {
+        "one": "Вчера",
+        "other": "Преди %1$d дни"
+      },
+      "upcoming_relative_time": {
+        "one": "Утре",
+        "other": "След %1$d дни"
+      }
+    },
+    "bn": {
+      "label_settings": "সেটিংস",
+      "action_cancel": "বাতিল",
+      "landscape": "ভূদৃশ্য",
+      "pref_category_library": "লাইব্রেরি",
+      "pref_category_display": "প্রদর্শন",
+      "lock_never": "কখনই না",
+      "lock_always": "সবসময়",
+      "pref_date_format": "তারিখের রীতি",
+      "theme_dark": "ডার্ক",
+      "theme_light": "লাইট",
+      "theme_system": "সিস্টেম",
+      "pref_category_theme": "থিম",
+      "requires_app_restart": "কার্যকর করতে অ্যাপ পুনরারম্ভ করা লাগে",
+      "automatic_background": "স্বয়ংক্রিয়",
+      "relative_time_today": "সম্প্রতি",
+      "pref_dark_theme_pure_black": "খাঁটি কালো ডার্ক মোড",
+      "pref_app_theme": "অ্যাপ থিম",
+      "pref_category_appearance": "দৃশ্য",
+      "label_default": "সাধারণ",
+      "pref_tablet_ui_mode": "তাব্লেত উই",
+      "pref_library_summary": "বিভাগসমূহ, সার্বজনীন হালনাগাদ",
+      "pref_app_language": "অ্যাপ ভাষা",
+      "pref_appearance_summary": "থিম,সময় ও তারিখের ধরন",
+      "pref_relative_format": "আপেক্ষিক সময়চিহ্ন",
+      "pref_relative_format_summary": "\"%1$s\" এর পরিবর্তে \"%2$s\"",
+      "pref_display_images_description": "মাঙ্গা বিবরণে ছবি প্রদর্শন",
+      "theme_yotsuba": "ইয়োৎসুবা",
+      "theme_yinyang": "ইয়িন এবং ইয়াং",
+      "theme_tealturquoise": "টিল এবং ফিরোজা",
+      "theme_tako": "টাকো",
+      "theme_strawberrydaiquiri": "স্ট্রবেরি ডাইকুইরি",
+      "theme_midnightdusk": "মধ্যরাতের সন্ধ্যা",
+      "theme_greenapple": "সবুজ আপেল",
+      "theme_monet": "প্রগতিশীল",
+      "theme_lavender": "ল্যাভেণ্ডার",
+      "theme_tidalwave": "টাইডাল ওয়েভ",
+      "theme_catppuccin": "ক্যাটপুচিন",
+      "theme_monochrome": "মনোক্রোম",
+      "theme_nord": "নর্ড",
+      "relative_time": {
+        "one": "গতকাল",
+        "other": "%1$d দিন আগে"
+      },
+      "upcoming_relative_time": {
+        "one": "আগামীকাল",
+        "other": "\"%1$d  দিনে\""
+      }
+    },
+    "ca": {
+      "label_settings": "Configuració",
+      "action_cancel": "Cancel·la",
+      "landscape": "Horitzontal",
+      "pref_category_library": "Biblioteca",
+      "pref_date_format": "Format de data",
+      "theme_light": "Clar",
+      "theme_dark": "Fosc",
+      "theme_system": "Sistema",
+      "lock_always": "Sempre",
+      "lock_never": "Mai",
+      "pref_category_display": "Visualització",
+      "requires_app_restart": "Cal reiniciar l’aplicació perquè tingui efecte",
+      "pref_category_theme": "Tema",
+      "automatic_background": "Automàtic",
+      "relative_time_today": "Avui",
+      "label_default": "Per defecte",
+      "pref_category_appearance": "Aparença",
+      "pref_app_theme": "Tema de l’aplicació",
+      "pref_dark_theme_pure_black": "Mode fosc negre pur",
+      "pref_tablet_ui_mode": "Interfície de tauleta",
+      "pref_app_language": "Llengua de l’aplicació",
+      "pref_appearance_summary": "Tema, formats de data i hora",
+      "pref_library_summary": "Categories, actualitzacions globals i lliscament en capítols",
+      "pref_relative_format": "Marques de temps relatives",
+      "pref_relative_format_summary": "«%1$s» en comptes de «%2$s»",
+      "pref_display_images_description": "Renderitza les imatges a les descripcions dels mangues",
+      "theme_greenapple": "Verd poma",
+      "theme_monet": "Dinàmic",
+      "theme_midnightdusk": "Capvespre",
+      "theme_strawberrydaiquiri": "Daiquiri de maduixa",
+      "theme_tako": "Tako",
+      "theme_tealturquoise": "Xarxet i turquesa",
+      "theme_yinyang": "Yin i yang",
+      "theme_yotsuba": "Yotsuba",
+      "theme_lavender": "Lavanda",
+      "theme_tidalwave": "Tsunami",
+      "theme_nord": "Nòrdic",
+      "theme_monochrome": "Monocrom",
+      "theme_catppuccin": "Gatputxino",
+      "theme_tokyonight": "Nit a Tòquio",
+      "relative_time": {
+        "one": "Ahir",
+        "many": "Fa %1$d de dies",
+        "other": "Fa %1$d dies"
+      },
+      "upcoming_relative_time": {
+        "one": "Demà",
+        "many": "D’aquí a %1$d de dies",
+        "other": "D’aquí a %1$d dies"
+      }
+    },
+    "ceb": {
+      "label_settings": "Mga setting",
+      "label_default": "Default",
+      "action_cancel": "Pagkanselar",
+      "pref_category_appearance": "Panagway",
+      "pref_category_library": "Library",
+      "pref_category_theme": "Tema",
+      "theme_dark": "Sa",
+      "pref_app_theme": "Tema sa app",
+      "pref_date_format": "Pormat sa petsa",
+      "relative_time_today": "Karon",
+      "pref_category_display": "Pagpakita",
+      "landscape": "Landscape",
+      "theme_light": "Off",
+      "lock_never": "Dili gayud",
+      "theme_system": "Sunda ang sistema",
+      "pref_dark_theme_pure_black": "Purong itom nga dark mode",
+      "lock_always": "Kanunay",
+      "automatic_background": "Awtomatiko",
+      "requires_app_restart": "Nagkinahanglan nga i-restart ang app aron ma-epekto",
+      "pref_app_language": "Pinulongan sa app",
+      "pref_tablet_ui_mode": "Tablet UI",
+      "pref_appearance_summary": "Tema, format sa petsa ug panahon",
+      "theme_monet": "Dinamiko",
+      "theme_greenapple": "Berde nga mansanas",
+      "theme_midnightdusk": "Sa tungang gabii sa kilumkilom",
+      "theme_tako": "Tako",
+      "theme_tealturquoise": "Teal ug Turquoise",
+      "theme_yinyang": "Yin ug Yang",
+      "theme_yotsuba": "Yotsuba",
+      "theme_strawberrydaiquiri": "Strawberry Daiquiri",
+      "theme_lavender": "Lavender",
+      "relative_time": {
+        "one": "Kagahapon",
+        "other": "%1$d ka adlaw ang milabay"
+      },
+      "upcoming_relative_time": {
+        "one": "Ugma",
+        "other": "Sa %1$d ka adlaw"
+      }
+    },
+    "cs": {
+      "label_settings": "Nastavení",
+      "action_cancel": "Zrušit",
+      "landscape": "Na šířku",
+      "pref_category_library": "Knihovna",
+      "pref_date_format": "Formát data",
+      "lock_never": "Nikdy",
+      "lock_always": "Vždy",
+      "requires_app_restart": "Pro projevení je nutný restart aplikace",
+      "theme_dark": "Tmavý",
+      "theme_light": "Světlý",
+      "pref_category_theme": "Vzhled",
+      "pref_category_display": "Zobrazení",
+      "theme_system": "Systém",
+      "automatic_background": "Auto",
+      "pref_dark_theme_pure_black": "Čistě černý tmavý režim",
+      "pref_app_theme": "Motiv aplikace",
+      "pref_tablet_ui_mode": "Uživatelské rozhraní tabletu",
+      "relative_time_today": "Dnes",
+      "pref_category_appearance": "Vzhled",
+      "label_default": "Výchozí",
+      "pref_app_language": "Jazyk aplikace",
+      "pref_appearance_summary": "Téma, formát data a času",
+      "pref_library_summary": "Kategorie, globální aktualizace, přejetí po kapitole",
+      "pref_relative_format": "Relativní časová razítka",
+      "pref_relative_format_summary": "\"%1$s\" namísto \"%2$s\"",
+      "pref_display_images_description": "Zobrazovat obrázky v popisu mangy",
+      "theme_yotsuba": "Jotsuba",
+      "theme_yinyang": "Jin a Jang",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "Jahodové Daiquiri",
+      "theme_midnightdusk": "Půlnoční Soumrak",
+      "theme_greenapple": "Zelené Jablko",
+      "theme_monet": "Dynamické",
+      "theme_tealturquoise": "Modrozelená a Tyrkysová",
+      "theme_lavender": "Levandule",
+      "theme_tidalwave": "Přílivová Vlna",
+      "theme_nord": "Nord",
+      "theme_monochrome": "Černobílý",
+      "theme_catppuccin": "Catppuccin",
+      "theme_tokyonight": "Tokijská noc",
+      "relative_time": {
+        "one": "Včera",
+        "few": "Před %1$d dny",
+        "many": "Před %1$d dny",
+        "other": "Před %1$d dny"
+      },
+      "upcoming_relative_time": {
+        "one": "Zítra",
+        "few": "Za %1$d dny",
+        "many": "Za %1$d dnů",
+        "other": "Za %1$d dnů"
+      }
+    },
+    "cv": {
+      "pref_category_display": "Кӑтарт",
+      "pref_date_format": "Вӑхӑт хармачӗ",
+      "theme_dark": "Тӗттӗм",
+      "theme_light": "Ҫутӑ",
+      "pref_category_library": "Вулавӑш",
+      "action_cancel": "Пӑрахӑҫла",
+      "label_settings": "Ӗнерӳсем",
+      "landscape": "Тӑрӑх",
+      "lock_never": "Нихӑҫан",
+      "lock_always": "Йаланах",
+      "theme_system": "Ҫиҫтемри пекех",
+      "requires_app_restart": "Ҫакӑ вӑя кӗрес тесен хушӑма хупса уҫмалла",
+      "pref_category_theme": "Темӗ",
+      "pref_category_appearance": "Кӑтартӑну",
+      "pref_appearance_summary": "Темӗ, кун тата вӑхӑт тытӑмӗ",
+      "pref_library_summary": "Пухмӑшсем, пӗтӗмӗшле ҫӗнетӳ, сыпӑксене туртни",
+      "label_default": "Йаланхилле",
+      "pref_app_theme": "Ап темми",
+      "relative_time_today": "Пайан",
+      "pref_dark_theme_pure_black": "Хуп-хура темӗ",
+      "pref_app_language": "Ап чӗлхи",
+      "automatic_background": "Хӑй халлӗн",
+      "pref_relative_format_summary": "«%2$s» вырӑнне «%1$s»",
+      "pref_relative_format": "Вӑхӑт иртни палли",
+      "theme_strawberrydaiquiri": "Ҫӗр ҫырли тайккирийӗ",
+      "theme_midnightdusk": "Ҫур ҫӗр ӗнтрӗкӗ",
+      "theme_tidalwave": "Шыв хӑпарнин хумӗ",
+      "theme_lavender": "Лавантӑ",
+      "theme_yinyang": "Ин тата Йан",
+      "theme_greenapple": "Симӗс пан улми",
+      "theme_yotsuba": "Йутсупа",
+      "theme_tako": "Такку",
+      "theme_tealturquoise": "Симӗс кӑвак",
+      "theme_monet": "Куҫӑмлӑ",
+      "theme_nord": "Ҫур ҫӗр",
+      "theme_catppuccin": "Кушак пуҫҫин",
+      "theme_monochrome": "Пӗр тӗс",
+      "relative_time": {
+        "one": "Ӗнер",
+        "other": "%1$d кун кайалла"
+      }
+    },
+    "da": {
+      "label_default": "Standard",
+      "label_settings": "Indstillinger",
+      "action_cancel": "Afbryd",
+      "pref_category_appearance": "Udseende",
+      "pref_category_library": "Bibliotek",
+      "pref_category_theme": "Tema",
+      "theme_system": "Følg system",
+      "theme_light": "Fra",
+      "theme_dark": "Til",
+      "pref_app_theme": "App tema",
+      "pref_dark_theme_pure_black": "Kulsort",
+      "pref_date_format": "Dato format",
+      "relative_time_today": "I dag",
+      "lock_always": "Altid",
+      "lock_never": "Aldrig",
+      "pref_category_display": "Vis",
+      "landscape": "Liggende",
+      "pref_app_language": "App sprog",
+      "automatic_background": "Automatisk",
+      "pref_appearance_summary": "Tema, dato- og tidsformat",
+      "pref_relative_format": "Relative tidsstempler",
+      "pref_relative_format_summary": "\"%1$s\" i stedet for \"%2$s\"",
+      "requires_app_restart": "Kræver genstart af appen for at træde i kraft",
+      "theme_monet": "Dynamisk",
+      "theme_greenapple": "Æble grøn",
+      "theme_midnightdusk": "Skumring",
+      "theme_strawberrydaiquiri": "Jordbær Daiquiri",
+      "theme_tako": "Tako",
+      "theme_tealturquoise": "Blågrøn & Turquoise",
+      "theme_yinyang": "Yin-yang",
+      "theme_yotsuba": "Yotsuba",
+      "theme_tidalwave": "Tidevandsbølge",
+      "theme_lavender": "Lavendel",
+      "relative_time": {
+        "one": "I går",
+        "other": "%1$d dage siden"
+      }
+    },
+    "de": {
+      "label_settings": "Einstellungen",
+      "action_cancel": "Abbrechen",
+      "landscape": "Querformat",
+      "pref_category_library": "Bibliothek",
+      "pref_date_format": "Datumsformat",
+      "theme_light": "Hell",
+      "theme_dark": "Dunkel",
+      "theme_system": "System",
+      "lock_always": "Immer",
+      "lock_never": "Nie",
+      "pref_category_display": "Anzeige",
+      "requires_app_restart": "Erfordert einen Neustart der App, um wirksam zu werden",
+      "pref_category_theme": "Thema",
+      "automatic_background": "Automatisch",
+      "pref_dark_theme_pure_black": "Tiefschwarzer Dunkelmodus",
+      "pref_app_theme": "App-Design",
+      "relative_time_today": "Heute",
+      "pref_category_appearance": "Erscheinungsbild",
+      "label_default": "Standard",
+      "pref_tablet_ui_mode": "Tablet-Benutzeroberfläche",
+      "pref_app_language": "App-Sprache",
+      "pref_appearance_summary": "Thema, Datums- und Zeitformat",
+      "pref_library_summary": "Kategorien, globale Aktualisierungen, Kapitelaktionen",
+      "pref_relative_format": "Relative Zeitstempel",
+      "pref_relative_format_summary": "„%1$s“ anstelle von „%2$s“",
+      "pref_display_images_description": "Bilder in Mangabeschreibungen anzeigen",
+      "theme_yotsuba": "Yotsuba",
+      "theme_yinyang": "Yin & Yang",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "Erdbeer-Daiquiri",
+      "theme_midnightdusk": "Mitternachtsdämmerung",
+      "theme_greenapple": "Grüner Apfel",
+      "theme_monet": "Dynamisch",
+      "theme_tealturquoise": "Blaugrün & Türkis",
+      "theme_lavender": "Lavendel",
+      "theme_tidalwave": "Flutwelle",
+      "theme_nord": "Nord",
+      "theme_monochrome": "Monochrom",
+      "theme_catppuccin": "Catppuccin",
+      "theme_tokyonight": "Tokyo Night",
+      "relative_time": {
+        "one": "Gestern",
+        "other": "Vor %1$d Tagen"
+      },
+      "upcoming_relative_time": {
+        "one": "Morgen",
+        "other": "In %1$d Tagen"
+      }
+    },
+    "el": {
+      "label_settings": "Ρυθμίσεις",
+      "action_cancel": "Άκυρο",
+      "landscape": "Οριζόντια",
+      "pref_category_library": "Βιβλιοθήκη",
+      "pref_category_display": "Προβολή",
+      "lock_never": "Ποτέ",
+      "lock_always": "Πάντα",
+      "pref_date_format": "Μορφή ημερομηνίας",
+      "theme_system": "Σύστημα",
+      "theme_dark": "Σκοτεινό",
+      "theme_light": "Φωτεινό",
+      "requires_app_restart": "Απαιτείται επανεκκίνηση της εφαρμογής για να τεθεί σε ισχύ",
+      "pref_category_theme": "Θέμα",
+      "automatic_background": "Αυτόματο",
+      "pref_app_theme": "Θέμα εφαρμογής",
+      "pref_dark_theme_pure_black": "Απόλυτα μαύρη σκοτεινή λειτουργία",
+      "relative_time_today": "Σήμερα",
+      "label_default": "Προεπιλογή",
+      "pref_category_appearance": "Εμφάνιση",
+      "pref_tablet_ui_mode": "Διεπαφή χρήστη tablet",
+      "pref_app_language": "Γλώσσα εφαρμογής",
+      "pref_appearance_summary": "Θέμα, μορφή ημερομηνίας και ώρας",
+      "pref_library_summary": "Κατηγορίες, καθολική ενημέρωση, σύρσιμο κεφαλαίου",
+      "pref_relative_format": "Σχετικές χρονικές σημάνσεις",
+      "pref_relative_format_summary": "\"%1$s\" αντί του \"%2$s\"",
+      "pref_display_images_description": "Αναπαράσταση εικόνων σε περιγραφές manga",
+      "theme_midnightdusk": "Midnight Dusk",
+      "theme_greenapple": "Πράσινο Μήλο",
+      "theme_yotsuba": "Yotsuba",
+      "theme_yinyang": "Γιν και Γιανγκ",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "Φράουλα Daiquiri",
+      "theme_monet": "Δυναμικό",
+      "theme_tealturquoise": "Teal & Τιρκουάζ",
+      "theme_lavender": "Λεβάντα",
+      "theme_tidalwave": "Παλιρροϊκό κύμα",
+      "theme_nord": "Nord",
+      "theme_monochrome": "Μονόχρωμο",
+      "theme_catppuccin": "Catppuccin",
+      "relative_time": {
+        "one": "Εχθές",
+        "other": "%1$d μέρες πριν"
+      },
+      "upcoming_relative_time": {
+        "one": "Αύριο",
+        "other": "Σε %1$d ημέρες"
+      }
+    },
+    "eo": {
+      "label_settings": "Agordoj",
+      "lock_never": "Neniam",
+      "lock_always": "Ĉiam",
+      "pref_date_format": "Data formo",
+      "theme_dark": "Malhela",
+      "theme_light": "Hela",
+      "theme_system": "Sistema",
+      "pref_category_theme": "Etoso",
+      "pref_category_library": "Biblioteko",
+      "action_cancel": "Nuligi",
+      "landscape": "Horizontale",
+      "pref_category_display": "Montrado",
+      "automatic_background": "Aŭtomata",
+      "relative_time_today": "Hodiaŭ",
+      "pref_app_theme": "Apa etoso",
+      "pref_category_appearance": "Aspekto",
+      "label_default": "Defaŭlte",
+      "pref_dark_theme_pure_black": "Klara nigra reĝimo",
+      "pref_tablet_ui_mode": "Tabulkomputila fasado",
+      "pref_appearance_summary": "Etoso, formo de dato k tempo",
+      "pref_relative_format_summary": "\"%1$s\" anstataŭ \"%2$s\"",
+      "pref_app_language": "Apa lingvo",
+      "pref_relative_format": "Relativaj tempindikoj",
+      "pref_library_summary": "Kategorioj, ĉiea ĝisdatigo, ĉapitra ŝovumo",
+      "requires_app_restart": "Devigas restartigi apon por efektiviĝi",
+      "pref_display_images_description": "Montri bildojn en mangaaj priskriboj",
+      "theme_yinyang": "Jino kaj jango",
+      "theme_greenapple": "Verda pomo",
+      "theme_tako": "Tako",
+      "theme_midnightdusk": "Meznokta krepusko",
+      "theme_yotsuba": "Jocuba",
+      "theme_tealturquoise": "Bluverda k verdblua",
+      "theme_strawberrydaiquiri": "Fraga dajkirio",
+      "theme_monet": "Dinamika",
+      "theme_nord": "Nordo",
+      "theme_tidalwave": "Cunamo",
+      "theme_lavender": "Lavendo",
+      "theme_monochrome": "Unukolora",
+      "theme_catppuccin": "Katpuĉino",
+      "theme_tokyonight": "Tokia nokto",
+      "relative_time": {
+        "one": "Hieraŭ",
+        "other": "Antaŭ %1$d tagoj"
+      },
+      "upcoming_relative_time": {
+        "one": "Morgaŭ",
+        "other": "post %1$d tagoj"
+      }
+    },
+    "es": {
+      "label_settings": "Ajustes",
+      "action_cancel": "Cancelar",
+      "landscape": "En horizontal",
+      "pref_category_library": "Biblioteca",
+      "pref_date_format": "Formato de fecha",
+      "theme_light": "Claro",
+      "theme_dark": "Oscuro",
+      "theme_system": "Del sistema",
+      "lock_always": "Siempre",
+      "lock_never": "Nunca",
+      "pref_category_display": "Visualización",
+      "requires_app_restart": "Es necesario reiniciar la aplicación para que surta efecto",
+      "pref_category_theme": "Esquema de colores",
+      "pref_dark_theme_pure_black": "Modo oscuro negro puro",
+      "pref_app_theme": "Esquema de colores",
+      "automatic_background": "Automático",
+      "pref_tablet_ui_mode": "Interfaz de tableta",
+      "relative_time_today": "Hoy",
+      "pref_category_appearance": "Apariencia",
+      "label_default": "Original",
+      "pref_app_language": "Idioma de la aplicación",
+      "pref_library_summary": "Categorías, actualizaciones generales y acciones al deslizar el dedo",
+      "pref_appearance_summary": "Colores de la interfaz y formatos de fecha",
+      "pref_relative_format": "Marcas de tiempo relativas",
+      "pref_relative_format_summary": "«%1$s» en vez de «%2$s»",
+      "pref_display_images_description": "Ver imágenes en las descripciones de manga",
+      "theme_midnightdusk": "Crepúsculo de medianoche",
+      "theme_strawberrydaiquiri": "Daiquiri de fresa",
+      "theme_tako": "Tako",
+      "theme_yotsuba": "Yotsuba",
+      "theme_yinyang": "Yin y yang",
+      "theme_greenapple": "Manzana verde",
+      "theme_monet": "Dinámico",
+      "theme_tealturquoise": "Azul marino y turquesa",
+      "theme_lavender": "Lavanda",
+      "theme_tidalwave": "Marea",
+      "theme_nord": "Norteño",
+      "theme_monochrome": "Monocromo",
+      "theme_catppuccin": "Miaupuchino",
+      "relative_time": {
+        "one": "Ayer",
+        "many": "Hace %1$d días",
+        "other": "Hace %1$d días"
+      },
+      "upcoming_relative_time": {
+        "one": "Mañana",
+        "many": "Dentro de %1$d días",
+        "other": "Dentro de %1$d días"
+      }
+    },
+    "eu": {
+      "requires_app_restart": "Aplikazioa berrabiarazi behar da indarrean jartzeko",
+      "label_settings": "Ezarpenak",
+      "landscape": "Horizontala",
+      "automatic_background": "Automatikoa",
+      "label_default": "Lehenetsia",
+      "pref_category_theme": "Gaia",
+      "action_cancel": "Ezeztatu",
+      "theme_system": "Sistemarena erabili",
+      "theme_light": "Itzali",
+      "theme_dark": "Piztu",
+      "pref_app_theme": "Aplikazioaren gaia",
+      "pref_date_format": "Dataren formatua",
+      "lock_always": "Beti",
+      "relative_time_today": "Gaur",
+      "pref_category_display": "Bistaratu",
+      "lock_never": "Inoiz ere ez",
+      "pref_category_appearance": "Itxura",
+      "pref_category_library": "Liburutegia",
+      "pref_dark_theme_pure_black": "Beltz hutseko modu iluna",
+      "pref_tablet_ui_mode": "Tablet interfazea",
+      "pref_app_language": "App hizkuntza",
+      "theme_midnightdusk": "Gauerdiko ilunabarra",
+      "theme_monet": "Dinamikoa",
+      "theme_greenapple": "Sagar Berdea",
+      "theme_strawberrydaiquiri": "Marrubi Daiquiri-a",
+      "theme_tako": "Tako",
+      "theme_tealturquoise": "Urdin-berdea eta turkesa",
+      "theme_yinyang": "Yin eta Yang",
+      "theme_yotsuba": "Yotsuba",
+      "relative_time": {
+        "one": "Atzo",
+        "other": "Duela %1$d egun"
+      },
+      "upcoming_relative_time": {
+        "one": "Bihar",
+        "other": "%1$d egunetan"
+      }
+    },
+    "fa": {
+      "label_settings": "تنظیمات",
+      "landscape": "افقی",
+      "pref_category_display": "نمایش",
+      "lock_never": "هرگز",
+      "lock_always": "همیشه",
+      "pref_date_format": "فرمت تاریخ",
+      "theme_dark": "روشن",
+      "theme_light": "خاموش",
+      "theme_system": "تم پیش‌فرض سیستم",
+      "pref_category_library": "کتابخانه",
+      "action_cancel": "لغو",
+      "requires_app_restart": "برای اعمال تغییرات، به راه اندازی مجدد برنامه نیاز است",
+      "pref_category_theme": "تم",
+      "label_default": "پیش فرض",
+      "pref_category_appearance": "ظاهر",
+      "pref_dark_theme_pure_black": "حالت تاریک مشکی خالص",
+      "pref_app_theme": "تم برنامه",
+      "relative_time_today": "امروز",
+      "automatic_background": "خودکار",
+      "pref_app_language": "زبان برنامه",
+      "pref_appearance_summary": "قالب تم، تاریخ و زمان",
+      "pref_library_summary": "دسته‌ها، به روز رسانی سراسری",
+      "pref_relative_format_summary": "\"%1$s\" به جای \"%2$s\"",
+      "pref_relative_format": "زمان بندی های نسبی",
+      "pref_tablet_ui_mode": "رابط کاربری تبلت",
+      "pref_display_images_description": "نمایش تصاویر در توضیحات مانگا",
+      "theme_monet": "پویا",
+      "theme_greenapple": "سیب سبز",
+      "theme_midnightdusk": "غروب نیمه‌شب",
+      "theme_strawberrydaiquiri": "داکری توت‌فرنگی",
+      "theme_tealturquoise": "آبی و فیروزه‌ای",
+      "theme_yinyang": "یین و یانگ",
+      "theme_yotsuba": "یوتسوبا",
+      "theme_tako": "تاکو",
+      "theme_lavender": "ارغوانی",
+      "theme_tidalwave": "تم جزر و مدی",
+      "theme_monochrome": "تک‌رنگ",
+      "theme_tokyonight": "شبِ توکیو",
+      "theme_catppuccin": "کت‌پاچین",
+      "theme_nord": "نورد",
+      "relative_time": {
+        "one": "دیروز",
+        "other": "%1$d روز پیش"
+      },
+      "upcoming_relative_time": {
+        "one": "فردا",
+        "other": "در %1$d روز"
+      }
+    },
+    "fi": {
+      "label_settings": "Asetukset",
+      "action_cancel": "Peruuta",
+      "landscape": "Vaakataso",
+      "pref_category_library": "Kirjasto",
+      "pref_date_format": "Päivämäärän muoto",
+      "theme_light": "Pois päältä",
+      "theme_dark": "Päällä",
+      "theme_system": "Seuraa järjestelmää",
+      "lock_always": "Aina",
+      "lock_never": "Ei koskaan",
+      "pref_category_display": "Näyttö",
+      "requires_app_restart": "Edellyttää sovelluksen käynnisstämisen uudelleen",
+      "pref_category_theme": "Teema",
+      "automatic_background": "Automaattinen",
+      "label_default": "Oletus",
+      "pref_category_appearance": "Ulkonäkö",
+      "pref_dark_theme_pure_black": "Täysin musta pimeätila",
+      "relative_time_today": "Tänään",
+      "pref_app_theme": "Sovelluksen teema",
+      "pref_app_language": "Sovelluksen kieli",
+      "pref_tablet_ui_mode": "Tabletti käyttöliittymä",
+      "pref_relative_format": "Suhteelliset aikaleimat",
+      "pref_relative_format_summary": "Käytä muotoa \"%1$s\", kuin muotoa \"%2$s\"",
+      "pref_appearance_summary": "Teema, ajan ja päivämäärän formaatti",
+      "pref_library_summary": "Kategoriat, globaalit päivitykset, luvun pyyhkäisy",
+      "theme_monet": "Dynaaminen",
+      "theme_greenapple": "Vihreä omena",
+      "theme_yinyang": "Ying ja Yang",
+      "theme_midnightdusk": "Keskiyön hämärä",
+      "theme_strawberrydaiquiri": "Mansikka Daiquiri",
+      "theme_tealturquoise": "Sinivihreä ja turkoosi",
+      "theme_yotsuba": "Yotsuba",
+      "theme_tako": "Tako",
+      "theme_lavender": "Laventeli",
+      "theme_tidalwave": "Vuorovesiaalto",
+      "theme_nord": "Pohjoismainen",
+      "relative_time": {
+        "one": "Eilen",
+        "other": "%1$d päivää sitten"
+      },
+      "upcoming_relative_time": {
+        "one": "Huomenna",
+        "other": "%1$d:n päivän päästä"
+      }
+    },
+    "fil": {
+      "action_cancel": "Kanselahin",
+      "label_settings": "Mga Setting",
+      "lock_never": "Hindi",
+      "lock_always": "Palagi",
+      "pref_date_format": "Pormat ng petsa",
+      "theme_dark": "Madilim",
+      "theme_light": "Maliwanag",
+      "theme_system": "Sistema",
+      "pref_category_library": "Aklatan",
+      "landscape": "Pahiga",
+      "pref_category_display": "Pagpapakita",
+      "pref_category_theme": "Tema",
+      "requires_app_restart": "Nangangailangang buksan muli ang app para gumana",
+      "automatic_background": "Awto",
+      "pref_app_theme": "Tema",
+      "pref_dark_theme_pure_black": "Purong itim",
+      "relative_time_today": "Ngayon",
+      "pref_category_appearance": "Hitsura",
+      "label_default": "Default",
+      "pref_tablet_ui_mode": "Pang-tablet na UI",
+      "pref_app_language": "Wika ng app",
+      "pref_appearance_summary": "Tema, ayos ng petsa & oras",
+      "pref_library_summary": "Mga kategorya, panlahatang update, pag-swipe ng kabanata",
+      "pref_relative_format": "Mga relatibong timestamp",
+      "pref_relative_format_summary": "\"%1$s\" sa halip na \"%2$s\"",
+      "pref_display_images_description": "I-render ang mga imahe sa mga paglalarawan ng manga",
+      "theme_midnightdusk": "Hatinggabi",
+      "theme_greenapple": "Berdeng Mansanas",
+      "theme_monet": "Nagbabago",
+      "theme_yotsuba": "Yotsuba",
+      "theme_yinyang": "Yin at Yang",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "Presas",
+      "theme_tealturquoise": "Teal at Turquoise",
+      "theme_lavender": "Lila",
+      "theme_tidalwave": "Daluyong",
+      "theme_nord": "Nord",
+      "theme_monochrome": "Monokromatiko",
+      "theme_catppuccin": "Catppuccin",
+      "theme_tokyonight": "Tokyo sa Gabi",
+      "relative_time": {
+        "one": "Kahapon",
+        "other": "%1$d na araw ang nakakalipas"
+      },
+      "upcoming_relative_time": {
+        "one": "Bukas",
+        "other": "Sa loob ng %1$d na araw"
+      }
+    },
+    "fr": {
+      "label_settings": "Paramètres",
+      "action_cancel": "Annuler",
+      "landscape": "Paysage",
+      "pref_category_library": "Bibliothèque",
+      "pref_date_format": "Format de date",
+      "theme_light": "Clair",
+      "theme_dark": "Sombre",
+      "theme_system": "Système",
+      "lock_always": "Toujours",
+      "lock_never": "Jamais",
+      "pref_category_display": "Affichage",
+      "requires_app_restart": "Nécessite un redémarrage de l'application pour prendre effet",
+      "pref_category_theme": "Thème",
+      "automatic_background": "Auto",
+      "pref_dark_theme_pure_black": "Mode noir pur",
+      "pref_app_theme": "Thème de l'appli",
+      "relative_time_today": "Aujourd'hui",
+      "pref_category_appearance": "Apparence",
+      "label_default": "Par défaut",
+      "pref_tablet_ui_mode": "Mode tablette",
+      "pref_app_language": "Langue de l'application",
+      "pref_appearance_summary": "Thème, format de la date et de l'heure",
+      "pref_library_summary": "Catégories, mise à jour globale, faire glisser le chapitre",
+      "pref_relative_format_summary": "« %1$s » au lieu de « %2$s »",
+      "pref_relative_format": "Durées relatives",
+      "pref_display_images_description": "Rendre les images dans les descriptions de mangas",
+      "theme_yotsuba": "Yotsuba",
+      "theme_yinyang": "Yin & Yang",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "Daiquiri aux fraises",
+      "theme_midnightdusk": "Crépuscule de minuit",
+      "theme_greenapple": "Pomme verte",
+      "theme_monet": "Dynamique",
+      "theme_tealturquoise": "Bleu canard et turquoise",
+      "theme_lavender": "Lavande",
+      "theme_tidalwave": "Raz-de-marée",
+      "theme_nord": "Nord",
+      "theme_monochrome": "Monochrome",
+      "theme_catppuccin": "Catppuccin",
+      "relative_time": {
+        "one": "Hier",
+        "many": "Il y a %1$d jours",
+        "other": "Il y a %1$d jours"
+      },
+      "upcoming_relative_time": {
+        "one": "Demain",
+        "many": "Dans %1$d jours",
+        "other": "Dans %1$d jours"
+      }
+    },
+    "gl": {
+      "label_settings": "Axustes",
+      "landscape": "Horizontal",
+      "pref_category_display": "Amosar",
+      "lock_never": "Nunca",
+      "lock_always": "Sempre",
+      "requires_app_restart": "Require reiniciar a aplicación para que surxa efecto",
+      "pref_date_format": "Formato da data",
+      "theme_dark": "Activado",
+      "theme_light": "Desactivado",
+      "theme_system": "Utilizar o do sistema",
+      "pref_category_theme": "Tema",
+      "pref_category_library": "Biblioteca",
+      "action_cancel": "Cancelar",
+      "pref_app_theme": "Tema da aplicación",
+      "relative_time_today": "Hoxe",
+      "pref_library_summary": "Categorías, actualización global, accións ao arrastrar",
+      "label_default": "Por defecto",
+      "pref_app_language": "Idioma da aplicación",
+      "automatic_background": "Automático",
+      "pref_dark_theme_pure_black": "Modo negro puro",
+      "pref_tablet_ui_mode": "Interface de tableta",
+      "pref_appearance_summary": "Tema, formatos de data e hora",
+      "pref_category_appearance": "Aparencia",
+      "pref_relative_format": "Marcas de tempo relativas",
+      "pref_relative_format_summary": "«%1$s» en lugar de «%2$s»",
+      "theme_tidalwave": "Maremoto",
+      "theme_lavender": "Lavanda",
+      "theme_tako": "Tako",
+      "theme_yotsuba": "Yotsuba",
+      "theme_monet": "Dinámico",
+      "theme_greenapple": "Mazá verde",
+      "theme_midnightdusk": "Crepúsculo de medianoite",
+      "theme_strawberrydaiquiri": "Daiquiri de amorodo",
+      "theme_tealturquoise": "Azul mariño e turquesa",
+      "theme_yinyang": "Yin e Yang",
+      "theme_nord": "Nórdico",
+      "theme_monochrome": "Monocromo",
+      "relative_time": {
+        "one": "Onte",
+        "other": "Fai %1$d días"
+      },
+      "upcoming_relative_time": {
+        "one": "Mañá",
+        "other": "Dentro de %1$d días"
+      }
+    },
+    "he": {
+      "landscape": "מאוזן",
+      "lock_never": "לעולם לא",
+      "lock_always": "תמיד",
+      "pref_date_format": "תבנית תאריך",
+      "theme_dark": "פעיל",
+      "theme_light": "כבוי",
+      "pref_category_library": "ספרייה",
+      "action_cancel": "ביטול",
+      "label_settings": "הגדרות",
+      "label_default": "ברירת המחדל",
+      "pref_app_theme": "ערכת נושא של האפליקציה",
+      "theme_system": "עקוב אחר המערכת",
+      "pref_category_theme": "ערכת נושא",
+      "relative_time_today": "היום",
+      "pref_category_display": "תצוגה",
+      "pref_dark_theme_pure_black": "מצב שחור כהה טהור",
+      "pref_category_appearance": "מראה",
+      "automatic_background": "אוטומטי",
+      "requires_app_restart": "צריך לאתחל את האפליקציה כדי שהשינויים ייכנסו לתוקף",
+      "pref_app_language": "שפת אפליקציה",
+      "pref_appearance_summary": "ערכת נושא, תצורת תאריך ושעה",
+      "pref_library_summary": "קטגוריות, עדכון כללי, החלקת פרק",
+      "pref_tablet_ui_mode": "ממשק משתמש טאבלט",
+      "theme_tealturquoise": "טורקיז צהבהב",
+      "theme_greenapple": "ירוק תפוח",
+      "theme_strawberrydaiquiri": "תות דאיקירי",
+      "theme_yinyang": "יין ויאנג",
+      "theme_yotsuba": "ארבעה עלים",
+      "theme_midnightdusk": "דמדומי חצות",
+      "theme_tako": "טאקו",
+      "theme_monet": "דינמי",
+      "theme_tidalwave": "גלים",
+      "theme_lavender": "לבנדר",
+      "theme_monochrome": "מונוכרום",
+      "theme_nord": "נורד",
+      "relative_time": {
+        "one": "אתמול",
+        "two": "לפני יומיים",
+        "other": "לפני %1$d ימים"
+      },
+      "upcoming_relative_time": {
+        "one": "מחר",
+        "two": "מחרתיים",
+        "other": "בעוד %1$d ימים"
+      }
+    },
+    "hi": {
+      "label_settings": "सेटिंग्स",
+      "action_cancel": "रद्द करें",
+      "landscape": "लैंडस्केप",
+      "pref_category_library": "पुस्तकालय",
+      "pref_date_format": "दिनांक स्वरूप",
+      "theme_light": "बंद",
+      "theme_dark": "चालू करे",
+      "theme_system": "सिस्टम का पालन करें",
+      "lock_always": "हमेशा",
+      "lock_never": "कभी नहीँ",
+      "pref_category_display": "प्रदर्शन",
+      "requires_app_restart": "प्रभावी होने के लिए एप्लिकेशन पुनरारंभ की आवश्यकता होती है",
+      "pref_category_theme": "थीम",
+      "pref_dark_theme_pure_black": "पूरा काला मोड़",
+      "pref_app_theme": "एप थीम",
+      "pref_category_appearance": "रूप",
+      "pref_tablet_ui_mode": "टैबलेट यूआई",
+      "label_default": "डिफॉल्ट",
+      "automatic_background": "ऑटो",
+      "relative_time_today": "आज",
+      "pref_app_language": "ऐप की भाषा",
+      "pref_appearance_summary": "थीम, दिनांक और समय प्रारूप",
+      "pref_library_summary": "श्रेणियाँ, वैश्विक अपडेट, अध्याय स्वाइप",
+      "pref_relative_format": "सापेक्ष समय-चिह्न",
+      "pref_relative_format_summary": "\"%2$s\" के बजाय \"%1$s\"",
+      "pref_display_images_description": "मंगा विवरण में चित्र दिखाएँ",
+      "theme_tako": "टाको",
+      "theme_strawberrydaiquiri": "स्ट्रॉबेरी",
+      "theme_greenapple": "हरा सेब",
+      "theme_monet": "डायनेमिक",
+      "theme_yotsuba": "योटसूबा",
+      "theme_yinyang": "यीन और यैंन्ग",
+      "theme_tealturquoise": "टील",
+      "theme_midnightdusk": "मिडनाइट डस्क",
+      "theme_lavender": "लैवेंडर",
+      "theme_tidalwave": "टाइडल वेव्ह",
+      "theme_catppuccin": "कैटपुचिन",
+      "theme_monochrome": "एकवर्णी",
+      "theme_nord": "नॉर्ड",
+      "theme_tokyonight": "टोक्यो नाइट",
+      "relative_time": {
+        "one": "कल",
+        "other": "%1$d दिन पहले"
+      },
+      "upcoming_relative_time": {
+        "one": "कल",
+        "other": "%1$d दिनों में"
+      }
+    },
+    "hr": {
+      "lock_never": "Nikada",
+      "lock_always": "Uvijek",
+      "landscape": "Polegnuti format",
+      "pref_category_display": "Prikaz",
+      "pref_date_format": "Format datuma",
+      "theme_system": "Sustav",
+      "theme_dark": "Tamna",
+      "theme_light": "Svijetla",
+      "pref_category_library": "Biblioteka",
+      "label_settings": "Postavke",
+      "action_cancel": "Prekini",
+      "requires_app_restart": "Zahtijeva ponovno pokretanje aplikacije",
+      "pref_category_theme": "Tema",
+      "automatic_background": "Automatski",
+      "pref_app_theme": "Tema aplikacije",
+      "relative_time_today": "Danas",
+      "pref_dark_theme_pure_black": "Potpuno crna tamna tema",
+      "pref_category_appearance": "Izgled",
+      "label_default": "Standardno",
+      "pref_tablet_ui_mode": "Korisničko sučelje tableta",
+      "pref_app_language": "Jezik aplikacije",
+      "pref_library_summary": "Kategorije, globalno aktualiziranje, prelistavanje poglavlja",
+      "pref_appearance_summary": "Tema, format datuma i vremena",
+      "pref_relative_format": "Relativne vremenske oznake",
+      "pref_relative_format_summary": "„%1$s” umjesto „%2$s”",
+      "pref_display_images_description": "Iscrtaj slike u opisima manga",
+      "theme_tako": "Tako",
+      "theme_midnightdusk": "Ponoćni sumrak",
+      "theme_greenapple": "Zelena jabuka",
+      "theme_monet": "Dinamički",
+      "theme_yotsuba": "Yotsuba",
+      "theme_yinyang": "Jin i Jang",
+      "theme_strawberrydaiquiri": "Daiquiri jagoda",
+      "theme_tealturquoise": "Plavozelena i tirkiz",
+      "theme_lavender": "Lavanda",
+      "theme_tidalwave": "Tsunami",
+      "theme_nord": "Nord",
+      "theme_catppuccin": "Catppuccin",
+      "theme_monochrome": "Jednobojno",
+      "relative_time": {
+        "one": "Jučer",
+        "few": "Prije %1$d dana",
+        "other": "Prije %1$d dana"
+      },
+      "upcoming_relative_time": {
+        "one": "Sutra",
+        "few": "Za %1$d dana",
+        "other": "Za %1$d dana"
+      }
+    },
+    "hu": {
+      "label_settings": "Beállítások",
+      "landscape": "Fekvő",
+      "action_cancel": "Mégse",
+      "pref_date_format": "Dátum formátum",
+      "theme_dark": "Sötét",
+      "theme_light": "Világos",
+      "pref_category_library": "Könyvtár",
+      "lock_never": "Soha",
+      "lock_always": "Mindig",
+      "theme_system": "Rendszer",
+      "pref_category_theme": "Téma",
+      "pref_category_display": "Megjelenés",
+      "requires_app_restart": "A változtatások érvénybe lépéséhez újra kell indítania az applikációt",
+      "relative_time_today": "Ma",
+      "pref_dark_theme_pure_black": "Teljesen fekete sötét mód",
+      "pref_app_theme": "Alkalmazás témája",
+      "pref_category_appearance": "Kinézet",
+      "label_default": "Alapértelmezett",
+      "automatic_background": "Automatikus",
+      "pref_app_language": "Alkalmazás nyelve",
+      "pref_tablet_ui_mode": "Tablet mód",
+      "pref_appearance_summary": "Téma, dátum és idő formátuma",
+      "pref_library_summary": "Kategóriák, globális frissítés, fejezet csúsztatás",
+      "pref_relative_format": "Relatív időbélyegek",
+      "pref_relative_format_summary": "\"%1$s\", ahelyett hogy \"%2$s\"",
+      "theme_tako": "Polip",
+      "theme_strawberrydaiquiri": "Eper koktél",
+      "theme_yotsuba": "Yotsuba",
+      "theme_yinyang": "Jin és Jang",
+      "theme_tealturquoise": "Cián-zöld és türkiz",
+      "theme_midnightdusk": "Éjfél szürkület",
+      "theme_greenapple": "Zöldalma",
+      "theme_monet": "Dinamikus",
+      "theme_lavender": "Levendula",
+      "theme_tidalwave": "Szökőár",
+      "theme_nord": "Nord",
+      "theme_monochrome": "Monokróm",
+      "relative_time": {
+        "one": "Tegnap",
+        "other": "%1$d napja"
+      },
+      "upcoming_relative_time": {
+        "one": "Holnap",
+        "other": "%1$d nap múlva"
+      }
+    },
+    "in": {
+      "label_settings": "Pengaturan",
+      "action_cancel": "Batal",
+      "landscape": "Layar mendatar",
+      "pref_category_library": "Pustaka",
+      "pref_date_format": "Format tanggal",
+      "theme_light": "Terang",
+      "theme_dark": "Gelap",
+      "theme_system": "Sistem",
+      "lock_always": "Selalu",
+      "lock_never": "Tidak pernah",
+      "pref_category_display": "Tampilan",
+      "requires_app_restart": "Mulai ulang aplikasi untuk menerapkan pengaturan",
+      "pref_category_theme": "Tema",
+      "automatic_background": "Otomatis",
+      "pref_dark_theme_pure_black": "Mode gelap hitam pekat",
+      "pref_app_theme": "Tema aplikasi",
+      "relative_time_today": "Hari Ini",
+      "pref_category_appearance": "Tampilan",
+      "label_default": "Bawaan",
+      "pref_tablet_ui_mode": "UI tablet",
+      "pref_app_language": "Bahasa aplikasi",
+      "pref_appearance_summary": "Tema, format tanggal & waktu",
+      "pref_library_summary": "Kategori, pembaruan global, geser chapter",
+      "pref_relative_format": "Penanda waktu",
+      "pref_relative_format_summary": "\"%1$s\" seharusnya \"%2$s\"",
+      "pref_display_images_description": "Render gambar dalam deskripsi manga",
+      "theme_yotsuba": "Empat Daun",
+      "theme_yinyang": "Yin dan Yang",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "Stroberi Daiquiri",
+      "theme_midnightdusk": "Senja Tengah Malam",
+      "theme_greenapple": "Hijau Apel",
+      "theme_monet": "Dinamis",
+      "theme_tealturquoise": "Teal & Pirus",
+      "theme_lavender": "Bunga Lavender",
+      "theme_tidalwave": "Gelombang Pasang",
+      "theme_nord": "Nord",
+      "theme_monochrome": "Monokrom",
+      "theme_catppuccin": "Catppuccin",
+      "relative_time": {
+        "other": "%1$d hari yang lalu"
+      },
+      "upcoming_relative_time": {
+        "other": "Dalam %1$d hari"
+      }
+    },
+    "it": {
+      "label_settings": "Impostazioni",
+      "action_cancel": "Annulla",
+      "landscape": "Orizzontale",
+      "pref_category_library": "Libreria",
+      "pref_date_format": "Formato data",
+      "theme_light": "Chiaro",
+      "theme_dark": "Scuro",
+      "theme_system": "Sistema",
+      "lock_always": "Sempre",
+      "lock_never": "Mai",
+      "pref_category_display": "Visualizzazione",
+      "requires_app_restart": "Richiesto riavvio dell'app per applicare le modifiche",
+      "pref_category_theme": "Tema",
+      "automatic_background": "Auto",
+      "relative_time_today": "Oggi",
+      "pref_dark_theme_pure_black": "Modalità scura con nero puro",
+      "pref_app_theme": "Tema applicazione",
+      "label_default": "Predefinita",
+      "pref_category_appearance": "Aspetto",
+      "pref_tablet_ui_mode": "Interfaccia tablet",
+      "pref_app_language": "Lingua dell'applicazione",
+      "pref_appearance_summary": "Tema, formato data e ora",
+      "pref_library_summary": "Categorie, aggiornamenti globali, azioni di scorrimento capitoli",
+      "pref_relative_format": "Timestamp relativi",
+      "pref_relative_format_summary": "«%1$s» invece di «%2$s»",
+      "pref_display_images_description": "Renderizza immagini nella descrizioni dei manga",
+      "theme_yotsuba": "Yotsuba",
+      "theme_yinyang": "Yin e Yang",
+      "theme_tealturquoise": "Verde Acqua e Turchese",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "Daiquiri alla Fragola",
+      "theme_midnightdusk": "Crepuscolo di Mezzanotte",
+      "theme_greenapple": "Mela Verde",
+      "theme_monet": "Dinamico",
+      "theme_lavender": "Lavanda",
+      "theme_tidalwave": "Maremoto",
+      "theme_nord": "Nord",
+      "theme_monochrome": "Monocromatico",
+      "theme_catppuccin": "Gattuccino",
+      "theme_tokyonight": "Tokyo Notte",
+      "relative_time": {
+        "one": "Ieri",
+        "many": "%1$d giorni fa",
+        "other": "%1$d giorni fa"
+      },
+      "upcoming_relative_time": {
+        "one": "Domani",
+        "many": "Tra %1$d giorni",
+        "other": "Tra %1$d giorni"
+      }
+    },
+    "ja": {
+      "label_settings": "設定",
+      "action_cancel": "キャンセル",
+      "landscape": "横向き",
+      "pref_category_library": "ライブラリ",
+      "pref_date_format": "日付形式",
+      "theme_light": "ライト",
+      "theme_dark": "ダーク",
+      "theme_system": "システム",
+      "lock_always": "常時",
+      "lock_never": "しない",
+      "pref_category_display": "画面",
+      "requires_app_restart": "変更を適用するには再起動してください",
+      "pref_category_theme": "テーマ",
+      "automatic_background": "自動",
+      "pref_dark_theme_pure_black": "真っ黒モード",
+      "pref_app_theme": "アプリテーマ",
+      "relative_time_today": "今日",
+      "pref_tablet_ui_mode": "タブレット UI",
+      "pref_category_appearance": "外観",
+      "label_default": "デフォルト",
+      "pref_app_language": "アプリ言語",
+      "pref_appearance_summary": "テーマ、日付と時刻の形式",
+      "pref_library_summary": "カテゴリー、グローバルアップデート、章間スワイプ",
+      "pref_relative_format": "相対的なタイムスタンプ",
+      "pref_relative_format_summary": "「%2$s」の代わりに「%1$s」を使用",
+      "pref_display_images_description": "マンガの描写で画像をレンダリングする",
+      "theme_yotsuba": "四つ葉",
+      "theme_yinyang": "陰陽",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "ストロベリーダイキリ",
+      "theme_midnightdusk": "黄昏",
+      "theme_greenapple": "青りんご",
+      "theme_monet": "ダイナミック",
+      "theme_tealturquoise": "ティール & ターコイズ",
+      "theme_lavender": "ラベンダー",
+      "theme_tidalwave": "津波",
+      "theme_nord": "Nord",
+      "theme_catppuccin": "キャットプッチン",
+      "theme_monochrome": "モノクロ",
+      "theme_tokyonight": "Tokyo Night",
+      "relative_time": {
+        "other": "%1$d 日前"
+      },
+      "upcoming_relative_time": {
+        "other": "%1$d 日後"
+      }
+    },
+    "jv": {
+      "landscape": "Lansekap",
+      "pref_category_display": "Tampilan",
+      "pref_date_format": "Format tanggal",
+      "theme_dark": "Murup",
+      "theme_light": "Mati",
+      "pref_category_theme": "Tema",
+      "label_settings": "Setelan",
+      "pref_category_library": "Koleksi",
+      "pref_category_appearance": "Tampilan",
+      "action_cancel": "Batalke",
+      "label_default": "Default",
+      "theme_system": "Tumuti sistem",
+      "pref_app_theme": "Tema aplikasi",
+      "relative_time_today": "Dinten puniki",
+      "lock_always": "Tansah",
+      "pref_dark_theme_pure_black": "Mode ireng banget",
+      "lock_never": "ora tau",
+      "pref_app_language": "Bohoso aplikasi",
+      "automatic_background": "Otomatis",
+      "theme_monet": "Dinamis",
+      "theme_greenapple": "Ijo apel",
+      "theme_midnightdusk": "Surup wengi",
+      "theme_strawberrydaiquiri": "Stroberi Daiquiri",
+      "theme_tako": "Tako",
+      "theme_yinyang": "Yin lan Yang",
+      "theme_yotsuba": "Yotsuba",
+      "theme_lavender": "Lavender",
+      "relative_time": {
+        "other": "%1$d dinten kala-wingi"
+      },
+      "upcoming_relative_time": {
+        "other": "%1$d Dino engkas"
+      }
+    },
+    "ka-GE": {
+      "label_settings": "პარამეტრები",
+      "action_cancel": "გააუქმე",
+      "pref_category_library": "ბიბლიოთეკა",
+      "theme_system": "სისტემური",
+      "theme_light": "მსუბუქი",
+      "theme_dark": "ჩართული",
+      "pref_date_format": "თარიღის ფორმატი",
+      "lock_always": "ყოველთვის",
+      "lock_never": "არასდროს",
+      "pref_category_display": "დისპლეი",
+      "landscape": "პეიზაჟი",
+      "requires_app_restart": "ასამოქმედებლად საჭიროა აპლიკაციის გადატვირთვა",
+      "pref_category_theme": "თემა",
+      "pref_app_theme": "აპლიკაციის თემა",
+      "pref_category_appearance": "გარეგნობა",
+      "label_default": "ნაგულისხმევი",
+      "theme_greenapple": "მწვანე ვაშლი",
+      "theme_monet": "დინამიური",
+      "relative_time": {
+        "one": "გუშინ",
+        "other": "%1$d დღის წინ"
+      },
+      "upcoming_relative_time": {
+        "one": "ხვალ",
+        "other": "%1$d დღეში"
+      }
+    },
+    "kk": {
+      "label_settings": "Баптау",
+      "label_default": "Әдепкі",
+      "pref_app_theme": "Қолданба кейпі",
+      "pref_category_appearance": "Кейіп",
+      "pref_category_library": "Кітапхана",
+      "pref_category_theme": "Кейіп",
+      "theme_system": "Жүйе бойынша",
+      "theme_light": "Өшірулі",
+      "theme_dark": "Қосулы",
+      "pref_dark_theme_pure_black": "Қап-қараңғы режим",
+      "relative_time_today": "Бүгін",
+      "action_cancel": "Болдырмау",
+      "pref_date_format": "Күн пішімі",
+      "lock_always": "Әрдайым",
+      "lock_never": "Ешқашан",
+      "pref_category_display": "Көрсету",
+      "landscape": "Пейзаж",
+      "pref_app_language": "Қолданба тілі",
+      "automatic_background": "Автоматты",
+      "pref_tablet_ui_mode": "Планшетті интерфейс",
+      "requires_app_restart": "Күшіне ену үшін қолданбаны қайта іске қосу қажет",
+      "pref_appearance_summary": "Кейіп, күні мен уақыт пішімі",
+      "pref_library_summary": "Санаттар, ауқымды жаңарту",
+      "theme_monet": "Динамикалық",
+      "theme_greenapple": "Жасыл Алма",
+      "theme_midnightdusk": "Ымырт",
+      "theme_strawberrydaiquiri": "Құлпынай Дайкири",
+      "theme_tako": "Тако",
+      "theme_yotsuba": "Йотсуба",
+      "theme_tealturquoise": "Қызғылт пен жасыл",
+      "theme_yinyang": "Инь мен Йянь",
+      "theme_lavender": "Лаванда",
+      "theme_tidalwave": "Көтерілу Толқыны",
+      "relative_time": {
+        "one": "Кеше",
+        "other": "%1$d күн бұрын"
+      },
+      "upcoming_relative_time": {
+        "one": "Ертең",
+        "other": "%1$d күнде"
+      }
+    },
+    "km": {
+      "label_settings": "ការកំណត់",
+      "label_default": "លំនាំដើម",
+      "action_cancel": "ឈប់ធ្វើ",
+      "pref_category_appearance": "រូបរាង",
+      "pref_category_library": "បណ្ណាល័យ",
+      "pref_category_theme": "ពណ៌",
+      "theme_system": "តាមទូរសព្ទ",
+      "theme_light": "បិទ",
+      "theme_dark": "បើក",
+      "pref_dark_theme_pure_black": "ខ្មៅដិត",
+      "pref_date_format": "ទម្រង់ថ្ងៃខែ",
+      "lock_always": "គ្រប់ពេល",
+      "relative_time_today": "ថ្ងៃនេះ",
+      "pref_category_display": "ការបង្ហាញ",
+      "landscape": "ផ្ដេក",
+      "pref_app_theme": "ពណ៌កម្មវិធី",
+      "lock_never": "មិនដែល",
+      "theme_monet": "ឌីណាមិច",
+      "theme_greenapple": "ប៉ោមបៃតង",
+      "theme_midnightdusk": "មីដណាយdusk",
+      "theme_strawberrydaiquiri": "ស្ត្របឺរីដៃគីរី",
+      "theme_tako": "តាកូ",
+      "theme_tealturquoise": "បៃតងខ្ចី",
+      "theme_yinyang": "យីងនិងយ៉ាង",
+      "theme_yotsuba": "យ៉ុតស្ស៊ូបា",
+      "relative_time": {
+        "other": "%1$d ថ្ងៃមុន"
+      }
+    },
+    "kmr": {
+      "label_settings": "Miheng",
+      "label_default": "Herdemî",
+      "action_cancel": "Betal bike",
+      "pref_category_appearance": "Rûkar",
+      "pref_category_library": "Pirtûkxane",
+      "pref_appearance_summary": "Tema, formata dîrok û demê",
+      "pref_library_summary": "Kom, nûkirina giştî, beş kişandin",
+      "pref_category_theme": "Tema",
+      "pref_app_theme": "Temaya sepanê",
+      "theme_system": "Pergal",
+      "theme_light": "Ronak",
+      "theme_dark": "Tarî",
+      "pref_dark_theme_pure_black": "Tarîya ziftî",
+      "pref_relative_format": "Demnîşanên rêjeyî",
+      "relative_time_today": "Îro",
+      "pref_relative_format_summary": "\"%1$s\" ji dêvla \"%2$s\"",
+      "pref_date_format": "Formata dirokê",
+      "pref_display_images_description": "Wêneyên di danasîna mangayan de nîşan bide",
+      "pref_app_language": "Zimanê sepanê",
+      "lock_always": "Herdem",
+      "lock_never": "Tu carî",
+      "pref_category_display": "Ekran",
+      "theme_monet": "Guherbar",
+      "theme_catppuccin": "Catppuccin",
+      "theme_greenapple": "Sêva Kesk",
+      "theme_lavender": "Lavanta",
+      "theme_midnightdusk": "Şevbixwîn",
+      "theme_monochrome": "Bêreng",
+      "theme_nord": "Nord",
+      "theme_tako": "Tako",
+      "theme_tealturquoise": "Şinkesk & Firuzeyî",
+      "theme_yinyang": "Yin & Yang",
+      "theme_yotsuba": "Yotsuba",
+      "theme_tidalwave": "Feyezan",
+      "theme_strawberrydaiquiri": "Daiquiriya Çîlekan"
+    },
+    "kn": {
+      "landscape": "ಅಡ್ಡವಾದ ಪುಟ",
+      "pref_category_display": "ಪ್ರದರ್ಶಿಸು",
+      "lock_never": "ಎಂದಿಗೂ ಇಲ್ಲ",
+      "lock_always": "ಯಾವಾಗಲೂ",
+      "pref_date_format": "ದಿನಾಂಕ ಸ್ವರೂಪ",
+      "theme_system": "ಸಿಸ್ಟಮ್ ಅನುಕರಿಸಿ",
+      "theme_dark": "ಆನ್",
+      "theme_light": "ಆಫ",
+      "pref_category_library": "ಗ್ರಂಥಾಲಯ",
+      "action_cancel": "ರದ್ದುಮಾಡಿ",
+      "label_settings": "ಸಂಯೋಜನೆಗಳು",
+      "requires_app_restart": "ಅನ್ವಯಿಸಲು ಅಪ್ಲಿಕೇಶನ್ ಮರುಪ್ರಾರಂಭದ ಅಗತ್ಯವಿದೆ",
+      "pref_category_theme": "ಜನರಲ್ ಸೆಲೆಕ್ಷನ್",
+      "automatic_background": "ಸ್ವಯಂಚಾಲಿತ"
+    },
+    "ko": {
+      "action_cancel": "취소",
+      "label_settings": "설정",
+      "landscape": "가로",
+      "requires_app_restart": "앱을 재시작한 후에 적용됩니다",
+      "pref_dark_theme_pure_black": "다크 모드에 검정색 사용",
+      "pref_app_theme": "앱 테마",
+      "theme_dark": "다크",
+      "theme_light": "라이트",
+      "theme_system": "시스템",
+      "label_default": "기본값",
+      "automatic_background": "자동",
+      "pref_date_format": "날짜 형식",
+      "pref_category_library": "서재",
+      "pref_category_appearance": "모양",
+      "relative_time_today": "오늘",
+      "lock_always": "항상",
+      "lock_never": "끄기",
+      "pref_category_display": "디스플레이",
+      "pref_tablet_ui_mode": "태블릿 UI",
+      "pref_category_theme": "테마",
+      "pref_app_language": "앱 언어",
+      "pref_library_summary": "카테고리, 전역 업데이트, 회차 스와이프",
+      "pref_appearance_summary": "테마, 날짜 및 시간 형식",
+      "pref_relative_format": "상대적인 타임스탬프",
+      "pref_relative_format_summary": "\"%2$s\" 대신 \"%1$s\"를 사용",
+      "pref_display_images_description": "만화 설명에 이미지를 렌더링합니다",
+      "theme_monet": "다이내믹",
+      "theme_midnightdusk": "황혼",
+      "theme_tealturquoise": "옥색",
+      "theme_strawberrydaiquiri": "딸기 칵테일",
+      "theme_greenapple": "청사과",
+      "theme_tako": "문어",
+      "theme_yinyang": "음양",
+      "theme_yotsuba": "요츠바",
+      "theme_lavender": "라벤더",
+      "theme_tidalwave": "파도",
+      "theme_nord": "Nord",
+      "theme_catppuccin": "캣푸친(Catppuccin)",
+      "theme_monochrome": "모노크롬",
+      "theme_tokyonight": "도쿄 나이트",
+      "relative_time": {
+        "other": "%1$d일 전"
+      },
+      "upcoming_relative_time": {
+        "other": "%1$d일 후"
+      }
+    },
+    "lt": {
+      "label_settings": "Nustatymai",
+      "landscape": "Kraštovaizdis",
+      "pref_category_display": "Rodinys",
+      "relative_time_today": "Šiandien",
+      "lock_never": "Niekada",
+      "lock_always": "Visada",
+      "pref_date_format": "Datos formatas",
+      "pref_dark_theme_pure_black": "Visiškai juodas tamsus režimas",
+      "pref_app_theme": "Programos tema",
+      "theme_dark": "Įjungta",
+      "theme_light": "Išjungta",
+      "theme_system": "Pagal sistemą",
+      "pref_category_theme": "Tema",
+      "pref_category_library": "Biblioteka",
+      "pref_category_appearance": "Išvaizda",
+      "action_cancel": "Atšaukti",
+      "label_default": "Numatytas",
+      "automatic_background": "Automatinis",
+      "pref_app_language": "Programos kalba",
+      "requires_app_restart": "Kad įsigaliotų, reikia iš naujo paleisti programą",
+      "pref_tablet_ui_mode": "Planšetinio kompiuterio UI",
+      "pref_appearance_summary": "Tema, datos ir laiko formatas",
+      "pref_library_summary": "Kategorijos, visuotinis atnaujinimas",
+      "theme_yotsuba": "Yotsuba",
+      "theme_yinyang": "Jin ir Jang",
+      "theme_tealturquoise": "Teal ir Turquoise",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "Braškinis Daikiri",
+      "theme_midnightdusk": "Vidurnakčio saulėlydis",
+      "theme_greenapple": "Obuolių žalia",
+      "theme_monet": "Dinamiška",
+      "theme_lavender": "Levandos",
+      "theme_tidalwave": "Potvynio banga",
+      "relative_time": {
+        "one": "Vakar",
+        "few": "Prieš %1$d dienas",
+        "many": "Prieš %1$d dienų",
+        "other": "Prieš %1$d dienų"
+      }
+    },
+    "lv": {
+      "label_settings": "Iestatījumi",
+      "action_cancel": "Atcelt",
+      "landscape": "Ainava",
+      "pref_category_display": "Displejs",
+      "lock_never": "Nekad",
+      "lock_always": "Vienmēr",
+      "pref_date_format": "Datuma formāts",
+      "theme_dark": "Ieslēgts",
+      "theme_light": "Izslēgts",
+      "theme_system": "Sekot sistēmu",
+      "pref_category_theme": "Motīvs",
+      "pref_category_library": "Bibliotēka",
+      "relative_time_today": "Šodien",
+      "pref_category_appearance": "Izskats",
+      "pref_app_theme": "Aplikācijas tēma",
+      "pref_dark_theme_pure_black": "Pilnīgi melns tumšais režīms",
+      "pref_app_language": "Aplikācijas valoda",
+      "automatic_background": "Auto",
+      "label_default": "Noklusējums",
+      "pref_tablet_ui_mode": "Planšetdatora lietotāja interfeiss",
+      "requires_app_restart": "Lai stātos spēkā, ir nepieciešama lietotnes restartēšana",
+      "pref_appearance_summary": "Tēma, datuma un laika formāti",
+      "pref_library_summary": "Kategorijas, globāli atjauninājumi, nodaļu vilkšana",
+      "pref_relative_format": "Relatīviās laika stampas",
+      "pref_relative_format_summary": "\"%1$s\", nevis \"%2$s\"",
+      "theme_monet": "Dinamisks",
+      "theme_greenapple": "Zaļš Ābols",
+      "theme_midnightdusk": "Pusnakts Krēsla",
+      "theme_strawberrydaiquiri": "Zemeņu Daikirs",
+      "theme_tako": "Tako",
+      "theme_tealturquoise": "Teāls un Tirkīzs",
+      "theme_yinyang": "Jiņ & Jan",
+      "theme_yotsuba": "Yotsuba",
+      "theme_lavender": "Lavanda",
+      "theme_tidalwave": "Paisuma vilnis",
+      "relative_time": {
+        "zero": "Šodien",
+        "one": "Vakar",
+        "other": "Pirms %1$d dienām"
+      }
+    },
+    "ml": {
+      "label_default": "സ്ഥിരസ്ഥിതി",
+      "label_settings": "ക്രമീകരണങ്ങൾ",
+      "action_cancel": "റദ്ദാക്കുക",
+      "landscape": "ലാൻഡ്സ്കേപ്പ്",
+      "pref_category_appearance": "വീക്ഷണം",
+      "pref_category_library": "ലൈബ്രറി",
+      "automatic_background": "സ്വയമേവ",
+      "pref_date_format": "തീയതി രൂപം",
+      "pref_app_language": "ആപ്പ് ഭാഷ",
+      "relative_time_today": "ഇന്ന്",
+      "lock_always": "എപ്പോഴും",
+      "relative_time": {
+        "one": "ഇന്നലെ",
+        "other": "%1$d ദിവസം മുമ്പ്"
+      },
+      "upcoming_relative_time": {
+        "one": "നാളെ",
+        "other": "%1$d ദിവസത്തിനുള്ളിൽ"
+      }
+    },
+    "mr": {
+      "label_settings": "सेटिंग्ज",
+      "action_cancel": "रद्द करा",
+      "lock_never": "कधीही नाही",
+      "lock_always": "नेहमी",
+      "pref_date_format": "तारिकेचा स्वरूप",
+      "theme_system": "तंत्राचे अनुसरण करा",
+      "theme_dark": "डार्क",
+      "theme_light": "लाइट",
+      "pref_category_library": "संग्रहालय",
+      "landscape": "लँडस्केप",
+      "pref_category_display": "दाखवा",
+      "pref_category_appearance": "प्रदर्शन",
+      "pref_category_theme": "थीम"
+    },
+    "ms": {
+      "label_settings": "Tetapan",
+      "action_cancel": "Batal",
+      "landscape": "Landskap",
+      "pref_category_library": "Pustaka",
+      "pref_date_format": "Format tarikh",
+      "theme_light": "Terang",
+      "theme_dark": "Gelap",
+      "theme_system": "Sistem",
+      "lock_always": "Selalu",
+      "lock_never": "Tidak akan",
+      "pref_category_display": "Paparan",
+      "requires_app_restart": "Memerlukan apl untuk dimulakan semula untuk berkesan",
+      "pref_category_theme": "Tema",
+      "automatic_background": "Auto",
+      "pref_dark_theme_pure_black": "Mod gelap hitam asli",
+      "pref_app_theme": "Tema aplikasi",
+      "relative_time_today": "Hari ini",
+      "label_default": "Lalai",
+      "pref_category_appearance": "Penampilan",
+      "pref_tablet_ui_mode": "UI tablet",
+      "pref_app_language": "Bahasa aplikasi",
+      "pref_appearance_summary": "Tema, format tarikh & masa",
+      "pref_library_summary": "Kategori, Kemas kini keseluruhan, leret bab",
+      "pref_relative_format": "Cap masa relatif",
+      "pref_relative_format_summary": "\"%1$s bukannya %2$s\"",
+      "pref_display_images_description": "Memaparkan imej dalam huraian manga",
+      "theme_yotsuba": "Yotsuba",
+      "theme_yinyang": "Yin & Yang",
+      "theme_tako": "Tako",
+      "theme_midnightdusk": "Tengah malam senja",
+      "theme_greenapple": "Epal Hijau",
+      "theme_monet": "Dinamik",
+      "theme_strawberrydaiquiri": "Strawberry Daiquiri",
+      "theme_tealturquoise": "Teal & Turquoise",
+      "theme_lavender": "Lavender",
+      "theme_tidalwave": "Tidal Wave",
+      "theme_nord": "Nord",
+      "theme_catppuccin": "Catppuccin",
+      "theme_monochrome": "Monokrom",
+      "theme_tokyonight": "Tokyo Night",
+      "relative_time": {
+        "other": "%1$d hari lalu"
+      },
+      "upcoming_relative_time": {
+        "other": "Dalam %1$d hari"
+      }
+    },
+    "my": {
+      "label_default": "ပုံသေ",
+      "label_settings": "ဆက်တင်များ",
+      "pref_category_appearance": "ပုံစံ",
+      "pref_category_library": "စာကြည့်တိုက်",
+      "pref_appearance_summary": "ပုံစံအနှစ်ချုပ်",
+      "pref_library_summary": "စာကြည့်တိုက်အနှစ်ချုပ်",
+      "theme_dark": "အမှောင်",
+      "action_cancel": "မလုပ်ဆောင်ပါ",
+      "pref_category_theme": "ပုံစံအဆင့်",
+      "pref_app_theme": "အက်ပလီကေးရှင်းပုံစံ",
+      "theme_system": "စနစ်ပုံစံ",
+      "theme_light": "အလင်း",
+      "pref_date_format": "နေ့ရက် ပုံစံ",
+      "pref_app_language": "အက်ပ် ဘာသာစကား",
+      "lock_always": "ဘာဖြစ်ဖြစ်",
+      "lock_never": "ဘယ်တော့မှ",
+      "relative_time_today": "ယနေ့",
+      "landscape": "ရှုခင်း",
+      "pref_category_display": "ဖုန်းမျက်နှာပြင်",
+      "pref_relative_format": "အနီးစပ်ဆုံး အချိန်အမှတ်အသား",
+      "pref_relative_format_summary": "\"%2$s\" မဟုတ်ဘဲ \"%1$s\" ဟုပြရန်",
+      "theme_greenapple": "နီစိမ်းရောင်",
+      "theme_lavender": "ခရမ်းနုရောင်",
+      "theme_monet": "Dynamic"
+    },
+    "nb-NO": {
+      "label_settings": "Innstillinger",
+      "action_cancel": "Avbryt",
+      "landscape": "Liggende",
+      "pref_category_library": "Bibliotek",
+      "pref_date_format": "Datoformat",
+      "theme_light": "Lyst",
+      "theme_dark": "Mørkt",
+      "theme_system": "System",
+      "lock_always": "Alltid",
+      "lock_never": "Aldri",
+      "requires_app_restart": "Krever omstart for å tre i kraft",
+      "pref_category_display": "Skjerm",
+      "pref_category_theme": "Drakt",
+      "pref_dark_theme_pure_black": "Helt svart",
+      "automatic_background": "Automatisk",
+      "relative_time_today": "I dag",
+      "pref_app_theme": "Programdrakt",
+      "pref_category_appearance": "Utseende",
+      "label_default": "Standard",
+      "pref_tablet_ui_mode": "Nettbrettsgrensesnitt",
+      "pref_app_language": "Appspråk",
+      "pref_appearance_summary": "Tema, dato- og klokkeslettformat",
+      "pref_library_summary": "Kategorier, global oppdatering, kapittelsveip",
+      "pref_relative_format": "Relative tidsstempler",
+      "pref_relative_format_summary": "\"%1$s\" istedenfor \"%2$s\"",
+      "theme_monet": "Dynamisk",
+      "theme_yinyang": "Yin og yang",
+      "theme_tealturquoise": "Blågrønn og turkis",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "Jordbær-Daiquiri",
+      "theme_midnightdusk": "Midnattsskumring",
+      "theme_greenapple": "Grønt eple",
+      "theme_yotsuba": "Yotsuba",
+      "theme_lavender": "Lavendel",
+      "theme_tidalwave": "Tidevannsbølge",
+      "theme_nord": "Nord",
+      "relative_time": {
+        "one": "I går",
+        "other": "%1$d dager siden"
+      }
+    },
+    "ne": {
+      "theme_dark": "अन",
+      "theme_light": "अफ",
+      "pref_category_theme": "थीम",
+      "pref_category_library": "पुस्तकालय",
+      "action_cancel": "रद्द गर्नुहोस्",
+      "label_settings": "सेटिंग्स",
+      "landscape": "ल्याण्डस्केप",
+      "pref_category_display": "प्रदर्शन",
+      "relative_time_today": "आज",
+      "lock_never": "कहिल्यै हैन",
+      "lock_always": "सधैं",
+      "pref_date_format": "मिति ढाँचा",
+      "pref_dark_theme_pure_black": "शुद्ध कालो डार्क मोड",
+      "pref_app_theme": "एपको थीम",
+      "theme_system": "सिस्टम पालना गर्नुहोस्",
+      "pref_category_appearance": "रूप",
+      "label_default": "पूर्वनिर्धारित",
+      "pref_tablet_ui_mode": "ट्याब्लेट UI",
+      "automatic_background": "स्वत",
+      "requires_app_restart": "प्रभाव पार्न एप फेरि सुरु गर्न आवश्यक छ",
+      "pref_library_summary": "वर्गहरू, ग्लोबल अपडेट, अध्याय स्वाइप",
+      "pref_app_language": "एप को भाषा",
+      "pref_appearance_summary": "थीम, मिति र समय ढाँचा",
+      "pref_relative_format": "सापेक्ष टाइमस्ट्याम्पहरू",
+      "pref_relative_format_summary": "\"%2$s\" को सट्टा \"%1$s\"",
+      "pref_display_images_description": "mangaको विवरणहरूमा तस्वीर देखाउनुहोस",
+      "theme_yotsuba": "योत्सुबा",
+      "theme_yinyang": "यिन र यांग",
+      "theme_tealturquoise": "टील र फिरोजा",
+      "theme_tako": "टाको",
+      "theme_strawberrydaiquiri": "स्ट्रबेरी दाइक्वरी",
+      "theme_midnightdusk": "मिडनाइट डस्क",
+      "theme_greenapple": "हरियो स्याउ",
+      "theme_monet": "गतिशील",
+      "theme_lavender": "ल्याभेन्डर",
+      "theme_tidalwave": "समुन्द्री लहर",
+      "theme_nord": "नोर्ड",
+      "theme_monochrome": "मोनोक्रोम",
+      "theme_catppuccin": "क्याटपुचिन",
+      "relative_time": {
+        "one": "हिजो",
+        "other": "%1$d दिन अघि"
+      },
+      "upcoming_relative_time": {
+        "one": "भोलि",
+        "other": "%1$d दिनमा"
+      }
+    },
+    "nl": {
+      "label_settings": "Instellingen",
+      "action_cancel": "Annuleren",
+      "landscape": "Liggend",
+      "pref_category_library": "Bibliotheek",
+      "pref_date_format": "Datumformaat",
+      "theme_light": "Uit",
+      "theme_dark": "Aan",
+      "theme_system": "Volg systeeminstelling",
+      "lock_always": "Altijd",
+      "lock_never": "Nooit",
+      "pref_category_display": "Weergave",
+      "requires_app_restart": "Herstart van de app nodig om van kracht te worden",
+      "pref_category_theme": "Thema",
+      "automatic_background": "Automatisch",
+      "pref_dark_theme_pure_black": "Puur-zwarte donkere modus",
+      "pref_app_theme": "Appthema",
+      "pref_tablet_ui_mode": "Tablet UI",
+      "relative_time_today": "Vandaag",
+      "pref_category_appearance": "Uiterlijk",
+      "label_default": "Standaard",
+      "pref_app_language": "Taal van de applicatie",
+      "pref_appearance_summary": "Thema, datum- en tijdnotatie",
+      "pref_library_summary": "Categorieën, globaal bijwerken",
+      "pref_relative_format": "Relatieve tijdstempels",
+      "pref_relative_format_summary": "\"%1$s\" in plaats van \"%2$s\"",
+      "pref_display_images_description": "Geef afbeeldingen weer in mangabeschrijvingen",
+      "theme_yotsuba": "Yotsuba",
+      "theme_yinyang": "Yin & Yang",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "Aardbeien Daiquiri",
+      "theme_midnightdusk": "Nachtschemering",
+      "theme_greenapple": "Groene Appel",
+      "theme_monet": "Dynamisch",
+      "theme_tealturquoise": "Blauwgroen & Turkoois",
+      "theme_lavender": "Lavendel",
+      "theme_tidalwave": "Vloedgolf",
+      "theme_nord": "Nord",
+      "theme_monochrome": "Monochroom",
+      "theme_catppuccin": "Catppuccin",
+      "relative_time": {
+        "one": "Gisteren",
+        "other": "%1$d dagen geleden"
+      },
+      "upcoming_relative_time": {
+        "one": "Morgen",
+        "other": "Over %1$d dagen"
+      }
+    },
+    "nn": {
+      "label_settings": "Innstillingar",
+      "label_default": "Standard",
+      "action_cancel": "Avbryt",
+      "pref_category_appearance": "Utsjånad",
+      "pref_category_library": "Bibliotek",
+      "pref_category_theme": "Tema",
+      "theme_light": "Av",
+      "theme_dark": "På",
+      "pref_app_theme": "App tema",
+      "pref_date_format": "Datoformat",
+      "lock_always": "Alltid",
+      "lock_never": "Aldri",
+      "relative_time_today": "I dag",
+      "pref_category_display": "Skjerm",
+      "automatic_background": "Automatisk",
+      "landscape": "Liggjande",
+      "theme_monet": "Dynamisk",
+      "relative_time": {
+        "one": "I går",
+        "other": "%1$d dagar sidan"
+      }
+    },
+    "pl": {
+      "label_settings": "Ustawienia",
+      "action_cancel": "Anuluj",
+      "landscape": "Poziomo",
+      "pref_category_library": "Biblioteka",
+      "pref_date_format": "Format daty",
+      "pref_category_display": "Wyświetlanie",
+      "lock_never": "Nigdy",
+      "lock_always": "Zawsze",
+      "theme_system": "Systemowy",
+      "theme_dark": "Ciemny",
+      "theme_light": "Jasny",
+      "requires_app_restart": "Wymaga ponownego uruchomienia aplikacji",
+      "pref_category_theme": "Motyw",
+      "automatic_background": "Automatycznie",
+      "pref_app_theme": "Motyw aplikacji",
+      "pref_dark_theme_pure_black": "Czysty czarny motyw",
+      "pref_category_appearance": "Wygląd",
+      "label_default": "Domyślny",
+      "pref_tablet_ui_mode": "Wymuś UI dla tabletu",
+      "relative_time_today": "Dzisiaj",
+      "pref_app_language": "Język aplikacji",
+      "pref_appearance_summary": "Tło, data & format czasu",
+      "pref_library_summary": "Kategorie, aktualizacja globalna, przesunięcie rozdziału",
+      "pref_relative_format": "Użyj dat względnych",
+      "pref_relative_format_summary": "\"%1$s\" zamiast \"%2$s\"",
+      "pref_display_images_description": "Wyświetlaj obrazy w opisach mang",
+      "theme_greenapple": "Zielone jabłko",
+      "theme_monet": "Dynamiczny",
+      "theme_yotsuba": "Yotsuba •",
+      "theme_yinyang": "Yin i Yang",
+      "theme_strawberrydaiquiri": "Truskawkowe daiquiri",
+      "theme_tako": "Tako",
+      "theme_tealturquoise": "Błękitny & Turkusowy",
+      "theme_midnightdusk": "Zmierzch północy",
+      "theme_lavender": "Lawenda",
+      "theme_tidalwave": "Tsunami",
+      "theme_nord": "Nord",
+      "theme_monochrome": "Monochromatyczny",
+      "theme_catppuccin": "Catppucin",
+      "relative_time": {
+        "one": "Wczoraj",
+        "few": "%1$d dni temu",
+        "many": "%1$d dni temu",
+        "other": "%1$d dni temu"
+      },
+      "upcoming_relative_time": {
+        "one": "Jutro",
+        "few": "Za %1$d dni",
+        "many": "Za %1$d dni",
+        "other": "Za %1$d dni"
+      }
+    },
+    "pt-BR": {
+      "label_settings": "Configurações",
+      "action_cancel": "Cancelar",
+      "landscape": "Paisagem",
+      "pref_category_library": "Biblioteca",
+      "pref_date_format": "Formato de data",
+      "theme_light": "Claro",
+      "theme_dark": "Escuro",
+      "theme_system": "Sistema",
+      "lock_always": "Sempre",
+      "lock_never": "Nunca",
+      "pref_category_display": "Visualização",
+      "requires_app_restart": "Requer o reinício do aplicativo para ter efeito",
+      "pref_category_theme": "Tema",
+      "automatic_background": "Auto",
+      "pref_dark_theme_pure_black": "Modo noturno com preto absoluto",
+      "pref_app_theme": "Tema do aplicativo",
+      "relative_time_today": "Hoje",
+      "label_default": "Padrão",
+      "pref_category_appearance": "Aparência",
+      "pref_tablet_ui_mode": "Interface de tablet",
+      "pref_app_language": "Idioma do aplicativo",
+      "pref_appearance_summary": "Tema, formato de data e hora",
+      "pref_library_summary": "Categorias, atualização global, ações do capítulo",
+      "pref_relative_format": "Datas relativas",
+      "pref_relative_format_summary": "\"%1$s\" ao invés de \"%2$s\"",
+      "pref_display_images_description": "Renderizar imagens em descrições de mangá",
+      "theme_yotsuba": "Yotsuba",
+      "theme_yinyang": "Yin & Yang",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "Daiquiri de Morango",
+      "theme_midnightdusk": "Aurora-da-noite",
+      "theme_greenapple": "Maçã-verde",
+      "theme_monet": "Dinâmico",
+      "theme_tealturquoise": "Azul-petróleo & Turquesa",
+      "theme_lavender": "Lavanda",
+      "theme_tidalwave": "Onda Tidal",
+      "theme_nord": "Nord",
+      "theme_monochrome": "Monocromático",
+      "theme_catppuccin": "Catppuccin",
+      "theme_tokyonight": "Noite em Tóquio",
+      "relative_time": {
+        "one": "Ontem",
+        "many": "%1$d dias atrás",
+        "other": "%1$d dias atrás"
+      },
+      "upcoming_relative_time": {
+        "one": "Amanhã",
+        "many": "Em %1$d dias",
+        "other": "Em %1$d dias"
+      }
+    },
+    "pt": {
+      "label_settings": "Definições",
+      "action_cancel": "Cancelar",
+      "landscape": "Horizontal",
+      "pref_category_library": "Biblioteca",
+      "pref_date_format": "Formato da data",
+      "theme_light": "Desligado",
+      "theme_dark": "Ligado",
+      "theme_system": "Seguir o do sistema",
+      "lock_always": "Sempre",
+      "lock_never": "Nunca",
+      "pref_category_display": "Visualização",
+      "requires_app_restart": "Requer reinício da app para ter efeito",
+      "pref_category_theme": "Tema",
+      "automatic_background": "Automático",
+      "pref_app_theme": "Tema da aplicação",
+      "pref_dark_theme_pure_black": "Modo escuro preto puro",
+      "relative_time_today": "Hoje",
+      "label_default": "Predefinição",
+      "pref_category_appearance": "Aparência",
+      "pref_tablet_ui_mode": "Interface de tablet",
+      "pref_app_language": "Idioma da aplicação",
+      "pref_appearance_summary": "Tema, data e formato de hora",
+      "pref_library_summary": "Categorias, atualização global, trocar de capítulo",
+      "pref_relative_format": "Datas relativas",
+      "pref_relative_format_summary": "\"%1$s\" ao invés de \"%2$s\"",
+      "pref_display_images_description": "Renderizar imagens em descrições de mangá",
+      "theme_yinyang": "Yin e Yang",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "Daiquiri de Morango",
+      "theme_midnightdusk": "Crepúsculo da Meia-Noite",
+      "theme_greenapple": "Maçã Verde",
+      "theme_yotsuba": "Yotsuba",
+      "theme_tealturquoise": "Azul-petróleo e Turquesa",
+      "theme_monet": "Dinâmico",
+      "theme_tidalwave": "Maremoto",
+      "theme_lavender": "Lavanda",
+      "theme_nord": "Nord",
+      "theme_catppuccin": "Catppuccin",
+      "theme_monochrome": "Monocromático",
+      "relative_time": {
+        "one": "Ontem",
+        "many": "Há %1$d dias",
+        "other": "Há %1$d dias"
+      },
+      "upcoming_relative_time": {
+        "one": "Amanhã",
+        "many": "Em %1$d dias",
+        "other": "Em %1$d dias"
+      }
+    },
+    "ro": {
+      "label_settings": "Setări",
+      "action_cancel": "Anulează",
+      "landscape": "Peisaj",
+      "pref_category_library": "Biblioteca",
+      "pref_date_format": "Formatul datei",
+      "theme_light": "Oprită",
+      "theme_dark": "Pornită",
+      "theme_system": "Tema sistemului",
+      "lock_always": "Întotdeauna",
+      "lock_never": "Niciodată",
+      "pref_category_display": "Afișare",
+      "requires_app_restart": "Necesită repornirea aplicației pentru a avea efect",
+      "pref_category_theme": "Temă",
+      "label_default": "Implicit",
+      "pref_category_appearance": "Aspect",
+      "pref_app_theme": "Tematică Aplicație",
+      "pref_dark_theme_pure_black": "Mod întunecat negru pur",
+      "relative_time_today": "Azi",
+      "pref_app_language": "Limba aplicației",
+      "automatic_background": "Automat",
+      "pref_tablet_ui_mode": "Interfață de tabletă",
+      "pref_appearance_summary": "Tema, formatul datei și al orei",
+      "pref_library_summary": "Categorii, actualizări globale",
+      "pref_relative_format": "Marcaje de timp relative",
+      "pref_relative_format_summary": "\"%1$s\" în loc de \"%2$s\"",
+      "pref_display_images_description": "Afișați imagini în descrierile benzilor desenate",
+      "theme_monet": "Dinamic",
+      "theme_midnightdusk": "Amurg de Miazănoapte",
+      "theme_tealturquoise": "Teal și turcoaz",
+      "theme_greenapple": "Măr Verde",
+      "theme_strawberrydaiquiri": "Daiquiri de căpșuni",
+      "theme_tako": "Tako",
+      "theme_yinyang": "Yin și Yang",
+      "theme_yotsuba": "Yoțuba",
+      "theme_lavender": "Lavandă",
+      "theme_tidalwave": "Tsunami",
+      "theme_nord": "Nord",
+      "theme_catppuccin": "Catppuccino",
+      "theme_monochrome": "Monocromatic",
+      "relative_time": {
+        "one": "Ieri",
+        "few": "Acum %1$d zile",
+        "other": "Acum %1$d de zile"
+      },
+      "upcoming_relative_time": {
+        "one": "Mâine",
+        "few": "În %1$d zile",
+        "other": "În %1$d de zile"
+      }
+    },
+    "ru": {
+      "action_cancel": "Отмена",
+      "label_settings": "Настройки",
+      "landscape": "Альбомная",
+      "pref_category_library": "Библиотека",
+      "pref_date_format": "Формат даты",
+      "theme_light": "Светлая",
+      "theme_dark": "Тёмная",
+      "theme_system": "Система",
+      "lock_always": "Всегда",
+      "lock_never": "Никогда",
+      "pref_category_display": "Отображение",
+      "requires_app_restart": "Для вступления в силу требуется перезапуск приложения",
+      "pref_category_theme": "Тема",
+      "automatic_background": "Автоматически",
+      "pref_app_theme": "Тема приложения",
+      "pref_dark_theme_pure_black": "Тёмный режим с чистым чёрным",
+      "relative_time_today": "Сегодня",
+      "label_default": "По умолчанию",
+      "pref_category_appearance": "Отображение",
+      "pref_tablet_ui_mode": "Планшетный интерфейс",
+      "pref_app_language": "Язык приложения",
+      "pref_appearance_summary": "Тема, формат даты и времени",
+      "pref_library_summary": "Категории, глобальное обновление, перелистывание глав",
+      "pref_relative_format": "Относительные временные метки",
+      "pref_relative_format_summary": "\"%1$s\" вместо \"%2$s\"",
+      "pref_display_images_description": "Отрисововать изображения в описаниях серий",
+      "theme_greenapple": "Зелёное Яблоко",
+      "theme_yotsuba": "Ёцуба",
+      "theme_yinyang": "Инь и Янь",
+      "theme_tako": "Тако",
+      "theme_strawberrydaiquiri": "Клубничный Дайкири",
+      "theme_midnightdusk": "Полуночные Сумерки",
+      "theme_monet": "Динамическая",
+      "theme_tealturquoise": "Бирюзовая",
+      "theme_lavender": "Лаванда",
+      "theme_tidalwave": "Приливная Волна",
+      "theme_nord": "Север",
+      "theme_monochrome": "Монохром",
+      "theme_catppuccin": "Котопуссин",
+      "theme_tokyonight": "Токийская Ночь",
+      "relative_time": {
+        "one": "Вчера",
+        "few": "%1$d дня назад",
+        "many": "%1$d дней назад",
+        "other": "%1$d дней назад"
+      },
+      "upcoming_relative_time": {
+        "one": "Завтра",
+        "few": "В течении %1$d дней",
+        "many": "В течении %1$d дней",
+        "other": "В течении %1$d дней"
+      }
+    },
+    "sa": {
+      "label_settings": "समायोजनानि",
+      "label_default": "प्राथमिकम्",
+      "action_cancel": "लुम्पतु",
+      "pref_category_appearance": "रूपम्",
+      "pref_category_library": "ग्रन्थालयः",
+      "pref_category_theme": "दृश्यशैली",
+      "theme_system": "संविधाम् अनुसरतु",
+      "theme_light": "अशक्तं कुरु",
+      "pref_dark_theme_pure_black": "सम्पूर्णकृष्णवर्णीया असितदशा",
+      "theme_dark": "सशक्तं कुरु",
+      "pref_app_theme": "अनुप्रयोगस्य दृश्यशैली",
+      "lock_always": "सदा",
+      "lock_never": "न कदापि",
+      "pref_date_format": "तिथिसंरूपम्",
+      "relative_time_today": "अद्य",
+      "landscape": "अनुप्रस्थम्",
+      "pref_category_display": "प्रदर्शनम्",
+      "automatic_background": "स्वयङ्कृतम्",
+      "pref_tablet_ui_mode": "टाबलेट् यू॰ऐ",
+      "requires_app_restart": "प्रभावयितुम् अनुप्रयोगस्य पुनःप्रारम्भः आवश्यकः",
+      "theme_monet": "गतिशीलम्",
+      "theme_greenapple": "हरितसेवम्",
+      "theme_midnightdusk": "निशीथसन्ध्या",
+      "theme_strawberrydaiquiri": "तृणबदर-मदिरा",
+      "theme_tealturquoise": "टील्-शैली",
+      "theme_yinyang": "यिन् याङ्ग् च",
+      "theme_tako": "टाकोशैली",
+      "theme_yotsuba": "योट्सूबः",
+      "relative_time": {
+        "one": "ह्यः",
+        "other": "%1$d दिनानि पूर्वम्"
+      },
+      "upcoming_relative_time": {
+        "one": "श्वः",
+        "other": "%1$d दिनेषु"
+      }
+    },
+    "sah": {
+      "label_settings": "Түстэл",
+      "landscape": "Сытыары",
+      "pref_category_display": "Көрдөр",
+      "lock_never": "Хаһан да",
+      "lock_always": "Наар",
+      "pref_date_format": "Даататын формаата",
+      "theme_dark": "Холбоммут",
+      "theme_light": "Араарыллыбыт",
+      "theme_system": "Системнайы тутуһуҥ",
+      "pref_category_theme": "Тиэмэ",
+      "pref_category_library": "Бэбэлэтиэкэ",
+      "action_cancel": "Уларытыы",
+      "requires_app_restart": "Уларыйыы киирэрин гына эбилиги хос холбоо"
+    },
+    "sc": {
+      "label_settings": "Impostatziones",
+      "action_cancel": "Annulla",
+      "landscape": "Orizontale",
+      "pref_category_library": "Biblioteca",
+      "pref_date_format": "Formadu de sa data",
+      "theme_light": "Istudadu",
+      "theme_dark": "Allutu",
+      "theme_system": "Sighi su sistema",
+      "lock_always": "Semper",
+      "lock_never": "Mai",
+      "pref_category_display": "Visualizatzione",
+      "requires_app_restart": "Tenet bisòngiu chi torres a allùghere s'aplicatzione pro tènnere efetu",
+      "pref_category_theme": "Tema",
+      "automatic_background": "Automàticu",
+      "pref_dark_theme_pure_black": "Modalidade iscura niedda pura",
+      "pref_app_theme": "Tema de s'aplicatzione",
+      "relative_time_today": "Oe",
+      "label_default": "Predefinida",
+      "pref_category_appearance": "Aparèntzia",
+      "pref_tablet_ui_mode": "Modalidade pro tauleddas",
+      "pref_app_language": "Limba de s'aplicatzione",
+      "pref_appearance_summary": "Tema, data e formadu de s'ora",
+      "pref_library_summary": "Categorias, agiornamentos globales, iscurrimentu de capìtulos",
+      "pref_relative_format": "Marcas temporales relativas",
+      "pref_relative_format_summary": "\"%1$s\" in càmbiu de \"%2$s\"",
+      "theme_tako": "Tako",
+      "theme_yotsuba": "Yotsuba",
+      "theme_yinyang": "Yin e Yang",
+      "theme_strawberrydaiquiri": "Daiquiri a sa Fràgola",
+      "theme_midnightdusk": "Intrinada de mesanote",
+      "theme_greenapple": "Mela birde",
+      "theme_monet": "Dinàmicu",
+      "theme_tealturquoise": "Birde abba e turchesu",
+      "theme_lavender": "Archemissa",
+      "theme_tidalwave": "Maremotu",
+      "theme_nord": "Nord",
+      "theme_monochrome": "Monocromo",
+      "theme_catppuccin": "Gatuputzinu",
+      "relative_time": {
+        "one": "Eris",
+        "other": "%1$d dies a oe"
+      },
+      "upcoming_relative_time": {
+        "one": "Cras",
+        "other": "In %1$d dies"
+      }
+    },
+    "sdh": {
+      "label_default": "بنەڕەتی",
+      "label_settings": "سازکارییەکان",
+      "action_cancel": "هەڵوەشاندنەوە",
+      "pref_category_appearance": "شێوە",
+      "pref_category_library": "کۆکراوەکان",
+      "pref_category_theme": "ڕووکار",
+      "theme_system": "وەک ڕووکاری سیستەم",
+      "theme_light": "کوژاوە",
+      "theme_dark": "داگیرساو",
+      "pref_app_theme": "ڕووکاری پڕۆگرام",
+      "pref_dark_theme_pure_black": "دۆخی ڕەشی پوخت",
+      "pref_date_format": "ڕێکخستنی بەروار",
+      "lock_always": "هەمیشە",
+      "lock_never": "هەرگیز",
+      "relative_time_today": "ئەمڕۆ",
+      "pref_category_display": "شێوازی پیشاندان",
+      "automatic_background": "ئۆتۆماتیک",
+      "theme_monet": "داینامیک",
+      "theme_greenapple": "سەوز",
+      "theme_midnightdusk": "مۆر",
+      "theme_strawberrydaiquiri": "سوور",
+      "theme_tako": "تاکۆ",
+      "theme_tealturquoise": "پیرۆزەیی",
+      "theme_yinyang": "ین و یانگ",
+      "theme_yotsuba": "یۆتسوبا",
+      "relative_time": {
+        "one": "دوێنێ",
+        "other": "%1$d ڕۆژ پێش ئێستا"
+      }
+    },
+    "sk": {
+      "label_settings": "Nastavenia",
+      "action_cancel": "Zrušiť",
+      "landscape": "Na šírku",
+      "pref_category_library": "Knižnica",
+      "label_default": "Predvolené",
+      "theme_system": "Podľa systému",
+      "pref_category_appearance": "Vzhľad",
+      "pref_category_theme": "Téma",
+      "theme_light": "Vyp.",
+      "theme_dark": "Zap.",
+      "pref_app_theme": "Téma aplikácie",
+      "pref_dark_theme_pure_black": "Čisto čierny tmavý režim",
+      "pref_date_format": "Formát dátumu",
+      "lock_always": "Vždy",
+      "lock_never": "Nikdy",
+      "relative_time_today": "Dnes",
+      "pref_category_display": "Zobraziť",
+      "requires_app_restart": "Vyžaduje reštart aplikácie, aby sa zmeny prejavili",
+      "pref_tablet_ui_mode": "Používateľské rozhranie tabletu",
+      "automatic_background": "Automatický",
+      "pref_app_language": "Jazyk aplikácie",
+      "pref_appearance_summary": "Téma, dátum a formát času",
+      "pref_library_summary": "Kategórie, globálna aktualizácia, prechádzanie kapitolami",
+      "pref_relative_format": "Relatívne časové značky",
+      "pref_relative_format_summary": "\"%1$s\" namiesto \"%2$s\"",
+      "pref_display_images_description": "Zobraziť obrázky v popisoch mangy",
+      "theme_tako": "Tako",
+      "theme_yinyang": "Yin a Yang",
+      "theme_monet": "Dynamické",
+      "theme_greenapple": "Zelené jablko",
+      "theme_yotsuba": "Jotsuba",
+      "theme_midnightdusk": "Polnočný súmrak",
+      "theme_strawberrydaiquiri": "Jahodové Daiquiri",
+      "theme_tealturquoise": "Modrozelená a tyrkysová",
+      "theme_tidalwave": "Prílivová vlna",
+      "theme_lavender": "Levanduľa",
+      "theme_monochrome": "Monochromatická",
+      "relative_time": {
+        "one": "Včera",
+        "few": "Pred %1$d dňami",
+        "many": "Pred %1$d dňami",
+        "other": "Pred %1$d dňami"
+      },
+      "upcoming_relative_time": {
+        "one": "Zajtra",
+        "few": "O %1$d dni",
+        "many": "O %1$d dní",
+        "other": "O %1$d dní"
+      }
+    },
+    "sq": {
+      "label_settings": "Cilësimet",
+      "action_cancel": "Anulo",
+      "theme_dark": "Errët",
+      "pref_dark_theme_pure_black": "E zezë e pastër modaliteti i errët",
+      "pref_app_language": "Gjuha e aplikacionit",
+      "lock_always": "Gjithmonë",
+      "lock_never": "Kurrë",
+      "relative_time_today": "Sot",
+      "pref_category_display": "Shfaqja",
+      "label_default": "E paracaktuar",
+      "pref_category_appearance": "Paraqitja",
+      "pref_library_summary": "Kategoritë, përditësimi global",
+      "pref_category_library": "Biblioteka",
+      "pref_appearance_summary": "Formati i temës, datës dhe orës",
+      "pref_category_theme": "Tema",
+      "theme_system": "Ndiq Sistemin",
+      "theme_light": "Ndrçim",
+      "pref_app_theme": "Tema e aplikacionit",
+      "pref_date_format": "Formati i datës",
+      "landscape": "Peizazhi",
+      "automatic_background": "Automatik",
+      "requires_app_restart": "Kërkon rinisjen e aplikacionit për të hyrë në fuqi",
+      "pref_tablet_ui_mode": "Ndërfaqja e përdoruesve të tabletit",
+      "pref_relative_format": "Koha relative",
+      "pref_relative_format_summary": "\"%1$s\" në vend të \"%2$s\"",
+      "theme_greenapple": "Molle jeshile",
+      "theme_lavender": "Livando",
+      "theme_yinyang": "Yin & Yang",
+      "theme_yotsuba": "Yotsuba",
+      "theme_tidalwave": "Valët e Baticës",
+      "theme_tealturquoise": "Blu në Jeshile",
+      "theme_strawberrydaiquiri": "Daiquiri luleshtrydhe",
+      "theme_monet": "Dinamik",
+      "theme_tako": "Tako",
+      "theme_midnightdusk": "Perëndim Mesnate",
+      "relative_time": {
+        "one": "Dje",
+        "other": "%1$d ditë më parë"
+      }
+    },
+    "sr": {
+      "label_settings": "Подешавања",
+      "action_cancel": "Откажи",
+      "landscape": "Хоризонтално",
+      "pref_category_library": "Колекција",
+      "pref_date_format": "Формат датума",
+      "theme_light": "Светла",
+      "theme_dark": "Тамна",
+      "theme_system": "По систему",
+      "lock_always": "Увек",
+      "lock_never": "Никада",
+      "pref_category_display": "Прикажи",
+      "pref_category_theme": "Тема",
+      "pref_app_theme": "Тема апликације",
+      "label_default": "Подразумевано",
+      "pref_category_appearance": "Изглед",
+      "pref_dark_theme_pure_black": "Потпуно црна тема",
+      "pref_tablet_ui_mode": "Изглед за таблет",
+      "requires_app_restart": "Захтева поновно покретање апликације",
+      "automatic_background": "Аутоматски",
+      "relative_time_today": "Данас",
+      "pref_library_summary": "Категорије, глобално ажурирање, листање поглавља",
+      "pref_app_language": "Језик апликације",
+      "pref_appearance_summary": "Формат теме, датума и времена",
+      "pref_relative_format": "Релативне временске ознаке",
+      "pref_relative_format_summary": "„%1$s” уместо „%2$s”",
+      "theme_greenapple": "Зелена јабука",
+      "theme_yotsuba": "Јоцуба",
+      "theme_monet": "Динамично",
+      "theme_midnightdusk": "Поноћни сумрак",
+      "theme_strawberrydaiquiri": "Даикири јагода",
+      "theme_tako": "Тако",
+      "theme_tealturquoise": "Плавозелена и тиркизна",
+      "theme_yinyang": "Јин и јанг",
+      "theme_lavender": "Лаванда",
+      "theme_tidalwave": "Цунами",
+      "theme_nord": "Норд",
+      "relative_time": {
+        "one": "Пре %1$d дан",
+        "few": "Пре %1$d дана",
+        "other": "Пре %1$d дана"
+      },
+      "upcoming_relative_time": {
+        "one": "За %1$d дан",
+        "few": "За %1$d дана",
+        "other": "За %1$d дана"
+      }
+    },
+    "sv": {
+      "label_settings": "Inställningar",
+      "action_cancel": "Avbryt",
+      "landscape": "Landskap",
+      "pref_category_library": "Bibliotek",
+      "pref_date_format": "Datumformat",
+      "theme_light": "Ljus",
+      "theme_dark": "Mörk",
+      "theme_system": "System",
+      "lock_always": "Alltid",
+      "lock_never": "Aldrig",
+      "pref_category_display": "Skärmvisning",
+      "requires_app_restart": "Kräver omstart av appen för att börja gälla",
+      "pref_category_theme": "Tema",
+      "automatic_background": "Automatisk",
+      "pref_dark_theme_pure_black": "Rent svart mörkt läge",
+      "pref_app_theme": "App-tema",
+      "relative_time_today": "Idag",
+      "pref_category_appearance": "Utseende",
+      "label_default": "Standard",
+      "pref_tablet_ui_mode": "Tablettgränssnitt",
+      "pref_app_language": "Appspråk",
+      "pref_library_summary": "Kategorier, global uppdatering, kapitel svepning",
+      "pref_appearance_summary": "Tema, datum och tidsformat",
+      "pref_relative_format": "Relativa tidsstämplar",
+      "pref_relative_format_summary": "\"%1$s\" istället för \"%2$s\"",
+      "pref_display_images_description": "Rendera bilder i mangabeskrivningar",
+      "theme_yotsuba": "Yotsuba",
+      "theme_yinyang": "Yin och yang",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "Jordgubbsdaiquiri",
+      "theme_midnightdusk": "Midnattskymning",
+      "theme_greenapple": "Grönt äpple",
+      "theme_monet": "Dynamisk",
+      "theme_tealturquoise": "Teal och turkos",
+      "theme_lavender": "Lavendel",
+      "theme_tidalwave": "Tidvattenvåg",
+      "theme_nord": "Nord",
+      "theme_monochrome": "Monokrom",
+      "theme_catppuccin": "Catppuccin",
+      "relative_time": {
+        "one": "Igår",
+        "other": "För %1$d dagar sedan"
+      },
+      "upcoming_relative_time": {
+        "one": "Imorgon",
+        "other": "Om %1$d dagar"
+      }
+    },
+    "ta": {
+      "label_settings": "அமைப்புகள்",
+      "label_default": "இயல்புநிலை",
+      "action_cancel": "ரத்துசெய்",
+      "pref_appearance_summary": "கருப்பொருள், தேதி மற்றும் நேர வடிவம்",
+      "pref_library_summary": "வகைகள், உலகளாவிய புதுப்பிப்பு, அத்தியாயம் ச்வைப்",
+      "pref_category_theme": "கருப்பொருள்",
+      "pref_app_theme": "பயன்பாட்டு கருப்பொருள்",
+      "theme_system": "மண்டலம்",
+      "theme_light": "ஒளி",
+      "theme_dark": "இருண்ட",
+      "pref_category_appearance": "தோற்றம்",
+      "pref_category_library": "நூலகம்",
+      "pref_dark_theme_pure_black": "தூய கருப்பு இருண்ட பயன்முறை",
+      "pref_relative_format": "உறவினர் நேர முத்திரைகள்",
+      "pref_relative_format_summary": "\"%2$s\" க்கு பதிலாக \"%1$s\"",
+      "pref_date_format": "தேதி வடிவம்",
+      "pref_app_language": "பயன்பாட்டு மொழி",
+      "relative_time_today": "இன்று",
+      "pref_category_display": "காட்சி",
+      "landscape": "நிலப்பரப்பு",
+      "lock_always": "எப்போதும்",
+      "lock_never": "ஒருபோதும்",
+      "automatic_background": "தானி",
+      "requires_app_restart": "நடைமுறைக்கு வர பயன்பாட்டு மறுதொடக்கம் தேவை",
+      "pref_tablet_ui_mode": "டேப்லெட் இடைமுகம்",
+      "pref_display_images_description": "மங்கா விளக்கங்களில் படங்களை வழங்கவும்",
+      "theme_tako": "என",
+      "theme_tealturquoise": "டீல் & டர்க்கைச்",
+      "theme_yinyang": "யின் & யாங்",
+      "theme_yotsuba": "நான்கு இலைகள்",
+      "theme_tidalwave": "அலைகடல் அலை",
+      "theme_monet": "மாறும்",
+      "theme_greenapple": "பச்சை ஆப்பிள்",
+      "theme_lavender": "சுகந்தி",
+      "theme_midnightdusk": "நள்ளிரவு அந்தி",
+      "theme_nord": "nord",
+      "theme_strawberrydaiquiri": "ச்ட்ராபெரி டாய்கிரி",
+      "theme_catppuccin": "கேட்ப்புச்சின்",
+      "theme_monochrome": "ஒரே வண்ணமுடைய"
+    },
+    "te": {
+      "label_settings": "అమరికలు",
+      "label_default": "ప్రమాణము",
+      "action_cancel": "రద్దు చెయ్యుము",
+      "pref_category_appearance": "రూపము",
+      "pref_category_library": "గ్రంథాలయము",
+      "pref_category_theme": "వీక్షణము",
+      "theme_system": "పరికరమును అనుసరించుము",
+      "theme_light": "ఆపుము",
+      "theme_dark": "ప్రారంభించుము",
+      "pref_app_theme": "అనువర్తన వీక్షణము",
+      "lock_never": "ఎప్పుడూ వద్దు",
+      "pref_dark_theme_pure_black": "స్వచ్ఛమైన నలుపు వీక్షణ",
+      "lock_always": "ఎల్లప్పుడు",
+      "pref_date_format": "తారీఖు స్వరూపము",
+      "pref_appearance_summary": "థీమ్, తేదీ మరియు సమయ ఆకృతి",
+      "landscape": "ప్రకృతి దృశ్యం",
+      "theme_monet": "క్రియాశీలము",
+      "theme_greenapple": "ఆకుపచ్చ సేవఫలము",
+      "theme_yinyang": "యిన్ మరియు యాంగ్",
+      "theme_midnightdusk": "సందెచీకటి",
+      "theme_strawberrydaiquiri": "తుప్పపండు",
+      "theme_tako": "టాకో",
+      "theme_tealturquoise": "టీల్ మరియు మణి",
+      "theme_yotsuba": "యోట్సూబ"
+    },
+    "th": {
+      "label_settings": "ตั้งค่า",
+      "action_cancel": "ยกเลิก",
+      "landscape": "แนวนอน",
+      "automatic_background": "อัตโนมัติ",
+      "pref_category_display": "การแสดงผล",
+      "lock_never": "ไม่เลย",
+      "lock_always": "ตลอด",
+      "pref_date_format": "รูปแบบวันที่",
+      "theme_dark": "มืด",
+      "theme_light": "สว่าง",
+      "theme_system": "ระบบ",
+      "pref_category_theme": "ธีม",
+      "pref_category_library": "คลัง",
+      "requires_app_restart": "ต้องรีสตาร์ทแอปจึงจะมีผล",
+      "relative_time_today": "วันนี้",
+      "label_default": "ค่าเริ่มต้น",
+      "pref_tablet_ui_mode": "UI แท็บเล็ต",
+      "pref_category_appearance": "ลักษณะ",
+      "pref_app_theme": "ธีมแอพ",
+      "pref_dark_theme_pure_black": "โหมดมืดดำสนิท",
+      "pref_app_language": "ภาษาของแอพ",
+      "pref_appearance_summary": "ธีม, รูปแบบวันที่และเวลา",
+      "pref_library_summary": "หมวดหมู่, การอัปเดตคลัง, การปัดรายการตอน",
+      "pref_relative_format": "ประทับเวลาแบบสัมพันธ์กัน",
+      "pref_relative_format_summary": "แสดง \"%1$s\" แทน \"%2$s\"",
+      "pref_display_images_description": "เรนเดอร์รูปภาพในคำอธิบายเรื่อง",
+      "theme_monet": "ไดนามิก",
+      "theme_greenapple": "กรีนแอปเปิ้ล",
+      "theme_midnightdusk": "มิดไนท์ดัสก์",
+      "theme_strawberrydaiquiri": "สตรอว์เบอร์รีแด๊กเคอรี่",
+      "theme_tako": "ทาโกะ",
+      "theme_tealturquoise": "ทีลและเทอร์ควอยซ์",
+      "theme_yinyang": "หยินหยาง",
+      "theme_yotsuba": "โยทซึบะ",
+      "theme_lavender": "ลาเวนเดอร์",
+      "theme_tidalwave": "ไทเดลเวฟ",
+      "theme_nord": "นอร์ด",
+      "theme_catppuccin": "แคทปุชชิน",
+      "theme_monochrome": "โมโนโครม",
+      "relative_time": {
+        "other": "%1$d วันที่ผ่านมา"
+      }
+    },
+    "tr": {
+      "label_settings": "Ayarlar",
+      "action_cancel": "İptal et",
+      "landscape": "Manzara",
+      "pref_category_library": "Kitaplık",
+      "pref_date_format": "Tarih biçimi",
+      "theme_light": "Açık",
+      "theme_dark": "Koyu",
+      "theme_system": "Sistem",
+      "lock_always": "Her zaman",
+      "lock_never": "Asla",
+      "pref_category_display": "Ekran",
+      "requires_app_restart": "Etkili olması için uygulamanın yeniden başlatılmasını gerektirir",
+      "pref_category_theme": "Tema",
+      "automatic_background": "Otomatik",
+      "pref_dark_theme_pure_black": "Tamamen karanlık koyu mod",
+      "pref_app_theme": "Uygulama teması",
+      "relative_time_today": "Bugün",
+      "label_default": "Varsayılan",
+      "pref_category_appearance": "Görünüm",
+      "pref_tablet_ui_mode": "Tablet arayüzü",
+      "pref_app_language": "Uygulama dili",
+      "pref_library_summary": "Kategoriler, genel güncelleme, kaydırma kontrolleri",
+      "pref_appearance_summary": "Tema, tarih ve saat biçimi",
+      "pref_relative_format": "Göreli zaman damgaları",
+      "pref_relative_format_summary": "\"%2$s\" yerine \"%1$s\"",
+      "pref_display_images_description": "Manga açıklamalarında bulunan görselleri göster",
+      "theme_yotsuba": "Yotsuba",
+      "theme_yinyang": "Yin & Yang",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "Çilekli Kokteyl",
+      "theme_midnightdusk": "Alacakaranlık",
+      "theme_greenapple": "Yeşil Elma",
+      "theme_monet": "Dinamik",
+      "theme_tealturquoise": "Ördekbaşı & Turkuaz",
+      "theme_lavender": "Lavanta",
+      "theme_tidalwave": "Gelgit Dalgası",
+      "theme_nord": "Nord",
+      "theme_monochrome": "Monokrom",
+      "theme_catppuccin": "Catppuccin",
+      "theme_tokyonight": "Tokyo Gecesi",
+      "relative_time": {
+        "one": "Dün",
+        "other": "%1$d gün önce"
+      },
+      "upcoming_relative_time": {
+        "one": "Yarın",
+        "other": "%1$d gün içinde"
+      }
+    },
+    "uk": {
+      "label_settings": "Налаштування",
+      "action_cancel": "Скасувати",
+      "landscape": "Альбомна",
+      "pref_category_library": "Бібліотека",
+      "pref_date_format": "Формат дати",
+      "theme_light": "Світла",
+      "theme_dark": "Темна",
+      "theme_system": "Системна",
+      "lock_always": "Завжди",
+      "lock_never": "Ніколи",
+      "pref_category_display": "Відображення",
+      "requires_app_restart": "Потрібен перезапуск застосунку, щоб зміни вступили в дію",
+      "pref_category_theme": "Тема",
+      "automatic_background": "Авто",
+      "pref_dark_theme_pure_black": "Чистий чорний темний режим",
+      "pref_app_theme": "Тема застосунку",
+      "relative_time_today": "Сьогодні",
+      "label_default": "Типово",
+      "pref_category_appearance": "Вигляд",
+      "pref_tablet_ui_mode": "Планшетний інтерфейс",
+      "pref_app_language": "Мова застосунку",
+      "pref_appearance_summary": "Тема, формат дати та часу",
+      "pref_library_summary": "Категорії, глобальне оновлення, гортання розділів",
+      "pref_relative_format": "Відносні позначки часу",
+      "pref_relative_format_summary": "\"%1$s\" замість \"%2$s\"",
+      "pref_display_images_description": "Рендерити зображення в описах манґи",
+      "theme_yotsuba": "Йоцуба",
+      "theme_yinyang": "Інь та Янь",
+      "theme_tako": "Тако",
+      "theme_strawberrydaiquiri": "Полуничний Дайкірі",
+      "theme_midnightdusk": "Опівнічні Сутінки",
+      "theme_greenapple": "Зелене яблуко",
+      "theme_monet": "Динамічна",
+      "theme_tealturquoise": "Бірюзова",
+      "theme_lavender": "Лаванда",
+      "theme_tidalwave": "Приливна Хвиля",
+      "theme_nord": "Північ",
+      "theme_monochrome": "Монохромний режим",
+      "theme_catppuccin": "Catppuccin",
+      "relative_time": {
+        "one": "Учора",
+        "few": "%1$d дні тому",
+        "many": "%1$d днів тому",
+        "other": "%1$d днів тому"
+      },
+      "upcoming_relative_time": {
+        "one": "Завтра",
+        "few": "Через %1$d дні",
+        "many": "Через %1$d днів",
+        "other": "Через %1$d днів"
+      }
+    },
+    "uz": {
+      "label_settings": "Sozlamalar",
+      "label_default": "Standart",
+      "pref_appearance_summary": "Mavzu, sana va vaqt formati",
+      "theme_system": "Tizimdagidek",
+      "theme_light": "O'chiq",
+      "pref_category_theme": "Mavzu",
+      "pref_date_format": "Sana formati",
+      "pref_app_language": "Ilova tili",
+      "action_cancel": "Bekor qilish",
+      "theme_dark": "Yoniq",
+      "pref_category_appearance": "Ko'rsatish",
+      "pref_app_theme": "Ilova mavzusi",
+      "pref_category_library": "Kutubxona",
+      "pref_dark_theme_pure_black": "Qop-qora qorong'u rejim",
+      "pref_library_summary": "Toifalar, global yangilanish",
+      "lock_always": "Doim",
+      "relative_time_today": "Bugun",
+      "pref_category_display": "Ko'rsatish",
+      "landscape": "Landshaft",
+      "lock_never": "Hech qachon",
+      "automatic_background": "Avtomatik",
+      "theme_lavender": "Lavanda",
+      "theme_greenapple": "Yashil olma",
+      "theme_tidalwave": "Toshgan to\\'lqin",
+      "theme_monet": "O\\'zgaruvchan",
+      "theme_midnightdusk": "Yarim tungi oqshom",
+      "theme_strawberrydaiquiri": "Qulupnayli Daikiri",
+      "theme_yinyang": "In va Yang",
+      "theme_yotsuba": "Yotsuba",
+      "theme_tealturquoise": "Firuz",
+      "theme_tako": "Tako",
+      "relative_time": {
+        "one": "Kecha",
+        "other": "%1$d kun oldin"
+      }
+    },
+    "vi": {
+      "label_settings": "Cài đặt",
+      "action_cancel": "Hủy",
+      "landscape": "Ngang",
+      "pref_category_display": "Hiển thị",
+      "lock_never": "Không bao giờ",
+      "lock_always": "Luôn luôn",
+      "pref_date_format": "Định dạng ngày",
+      "theme_system": "Hệ thống",
+      "theme_dark": "Tối",
+      "theme_light": "Sáng",
+      "pref_category_library": "Thư viện",
+      "pref_category_theme": "Chủ đề",
+      "requires_app_restart": "Yêu cầu khởi động lại ứng dụng để có hiệu lực",
+      "automatic_background": "Tự động",
+      "pref_app_theme": "Chủ đề ứng dụng",
+      "pref_dark_theme_pure_black": "Chế độ đen tuyền",
+      "pref_category_appearance": "Giao diện",
+      "label_default": "Mặc định",
+      "pref_tablet_ui_mode": "Giao diện máy tính bảng",
+      "relative_time_today": "Hôm nay",
+      "pref_app_language": "Ngôn ngữ ứng dụng",
+      "pref_appearance_summary": "Chủ đề, kiểu hiển thị ngày & giờ",
+      "pref_library_summary": "Danh mục, cập nhật toàn bộ, vuốt chương",
+      "pref_relative_format": "Mốc thời gian liên quan",
+      "pref_relative_format_summary": "\"%1$s\" thay vì là \"%2$s\"",
+      "pref_display_images_description": "Hiển thị hình ảnh trong mô tả manga",
+      "theme_greenapple": "Táo Xanh",
+      "theme_monet": "Động",
+      "theme_midnightdusk": "Hoàng Hôn Giữa Đêm",
+      "theme_strawberrydaiquiri": "Daiquiri Dâu Tây",
+      "theme_tako": "Tako",
+      "theme_yinyang": "Âm & Dương",
+      "theme_yotsuba": "Yotsuba",
+      "theme_tealturquoise": "Xanh lam & Xanh ngọc",
+      "theme_lavender": "Oải Hương",
+      "theme_tidalwave": "Sóng Thủy Triều",
+      "theme_nord": "Phương bắc",
+      "theme_monochrome": "Đơn sắc",
+      "theme_catppuccin": "Catppuccin",
+      "theme_tokyonight": "Đêm Tokyo",
+      "relative_time": {
+        "other": "%1$d ngày trước"
+      },
+      "upcoming_relative_time": {
+        "other": "Trong %1$d ngày"
+      }
+    },
+    "zh-CN": {
+      "label_settings": "设置",
+      "action_cancel": "取消",
+      "landscape": "横屏",
+      "pref_category_library": "书架",
+      "pref_date_format": "日期格式",
+      "theme_light": "浅色",
+      "theme_dark": "深色",
+      "theme_system": "跟随系统",
+      "lock_always": "始终开启",
+      "lock_never": "关闭",
+      "pref_category_display": "显示",
+      "requires_app_restart": "需要重启应用才能生效",
+      "pref_category_theme": "主题",
+      "automatic_background": "自动",
+      "pref_dark_theme_pure_black": "纯黑深色模式",
+      "pref_app_theme": "应用主题",
+      "relative_time_today": "今天",
+      "label_default": "默认",
+      "pref_category_appearance": "外观",
+      "pref_tablet_ui_mode": "平板界面",
+      "pref_app_language": "应用语言",
+      "pref_appearance_summary": "主题 • 日期格式",
+      "pref_library_summary": "分类 • 全局更新 • 目录左右滑动",
+      "pref_relative_format": "相对时间戳",
+      "pref_relative_format_summary": "显示 \"%1$s\" 而不是 \"%2$s\"",
+      "pref_display_images_description": "在漫画注释中显示图片",
+      "theme_yotsuba": "四叶草",
+      "theme_yinyang": "阴阳",
+      "theme_tako": "Tako",
+      "theme_strawberrydaiquiri": "草莓黛绮莉",
+      "theme_midnightdusk": "午夜幽暗",
+      "theme_greenapple": "青苹果",
+      "theme_monet": "动态",
+      "theme_tealturquoise": "青绿",
+      "theme_lavender": "薰衣草",
+      "theme_tidalwave": "浪潮",
+      "theme_nord": "Nord",
+      "theme_monochrome": "单色",
+      "theme_catppuccin": "Catppuccin",
+      "theme_tokyonight": "东京夜色",
+      "relative_time": {
+        "other": "%1$d 天前"
+      },
+      "upcoming_relative_time": {
+        "other": "%1$d 天后"
+      }
+    },
+    "zh-TW": {
+      "label_settings": "設定",
+      "action_cancel": "取消",
+      "landscape": "橫向",
+      "pref_category_library": "書櫃",
+      "theme_light": "淺色",
+      "theme_system": "系統",
+      "theme_dark": "深色",
+      "pref_date_format": "日期格式",
+      "lock_never": "永不",
+      "lock_always": "立即",
+      "pref_category_display": "檢視",
+      "requires_app_restart": "需要重新啟動應用程式以套用",
+      "pref_category_theme": "主題",
+      "automatic_background": "自動",
+      "pref_dark_theme_pure_black": "純黑深色模式",
+      "pref_app_theme": "應用程式主題",
+      "pref_category_appearance": "外觀",
+      "relative_time_today": "今天",
+      "label_default": "預設",
+      "pref_tablet_ui_mode": "平板電腦介面",
+      "pref_app_language": "應用程式語言",
+      "pref_appearance_summary": "主題、日期格式",
+      "pref_library_summary": "類別、全域更新、目錄滑動動作",
+      "pref_relative_format": "相對時間戳記",
+      "pref_relative_format_summary": "以「%1$s」表示「%2$s」",
+      "pref_display_images_description": "在漫畫描述中顯示圖片",
+      "theme_yotsuba": "四葉",
+      "theme_yinyang": "陰陽",
+      "theme_tako": "章魚",
+      "theme_strawberrydaiquiri": "草莓黛綺莉",
+      "theme_midnightdusk": "黃昏",
+      "theme_greenapple": "青蘋果",
+      "theme_monet": "動態",
+      "theme_tealturquoise": "綠松色",
+      "theme_lavender": "薰衣草",
+      "theme_tidalwave": "潮浪",
+      "theme_nord": "北風",
+      "theme_monochrome": "單色",
+      "theme_catppuccin": "Catppuccin",
+      "theme_tokyonight": "Tokyo Night",
+      "relative_time": {
+        "other": "%1$d 天前"
+      },
+      "upcoming_relative_time": {
+        "other": "%1$d 天後"
+      }
+    }
+  },
+  "languages": [
+    {
+      "tag": "ca",
+      "name": "Català",
+      "localized": "加泰罗尼亚语"
+    },
+    {
+      "tag": "ceb",
+      "name": "Cebuano",
+      "localized": "宿务语"
+    },
+    {
+      "tag": "da",
+      "name": "Dansk",
+      "localized": "丹麦语"
+    },
+    {
+      "tag": "de",
+      "name": "Deutsch",
+      "localized": "德语"
+    },
+    {
+      "tag": "en",
+      "name": "English",
+      "localized": "英语"
+    },
+    {
+      "tag": "es",
+      "name": "Español",
+      "localized": "西班牙语"
+    },
+    {
+      "tag": "eo",
+      "name": "Esperanto",
+      "localized": "世界语"
+    },
+    {
+      "tag": "eu",
+      "name": "Euskara",
+      "localized": "巴斯克语"
+    },
+    {
+      "tag": "fil",
+      "name": "Filipino",
+      "localized": "菲律宾语"
+    },
+    {
+      "tag": "fr",
+      "name": "Français",
+      "localized": "法语"
+    },
+    {
+      "tag": "gl",
+      "name": "Galego",
+      "localized": "加利西亚语"
+    },
+    {
+      "tag": "hr",
+      "name": "Hrvatski",
+      "localized": "克罗地亚语"
+    },
+    {
+      "tag": "in",
+      "name": "Indonesia",
+      "localized": "印度尼西亚语"
+    },
+    {
+      "tag": "it",
+      "name": "Italiano",
+      "localized": "意大利语"
+    },
+    {
+      "tag": "jv",
+      "name": "Jawa",
+      "localized": "爪哇语"
+    },
+    {
+      "tag": "kmr",
+      "name": "Kmr",
+      "localized": "kmr"
+    },
+    {
+      "tag": "lv",
+      "name": "Latviešu",
+      "localized": "拉脱维亚语"
+    },
+    {
+      "tag": "lt",
+      "name": "Lietuvių",
+      "localized": "立陶宛语"
+    },
+    {
+      "tag": "hu",
+      "name": "Magyar",
+      "localized": "匈牙利语"
+    },
+    {
+      "tag": "ms",
+      "name": "Melayu",
+      "localized": "马来语"
+    },
+    {
+      "tag": "nl",
+      "name": "Nederlands",
+      "localized": "荷兰语"
+    },
+    {
+      "tag": "nb-NO",
+      "name": "Norsk bokmål (Norge)",
+      "localized": "书面挪威语 (挪威)"
+    },
+    {
+      "tag": "nn",
+      "name": "Norsk nynorsk",
+      "localized": "挪威尼诺斯克语"
+    },
+    {
+      "tag": "uz",
+      "name": "O‘zbek",
+      "localized": "乌兹别克语"
+    },
+    {
+      "tag": "pl",
+      "name": "Polski",
+      "localized": "波兰语"
+    },
+    {
+      "tag": "pt",
+      "name": "Português",
+      "localized": "葡萄牙语"
+    },
+    {
+      "tag": "pt-BR",
+      "name": "Português (Brasil)",
+      "localized": "葡萄牙语 (巴西)"
+    },
+    {
+      "tag": "ro",
+      "name": "Română",
+      "localized": "罗马尼亚语"
+    },
+    {
+      "tag": "sc",
+      "name": "Sardu",
+      "localized": "萨丁语"
+    },
+    {
+      "tag": "sdh",
+      "name": "Sdh",
+      "localized": "南库尔德语"
+    },
+    {
+      "tag": "sq",
+      "name": "Shqip",
+      "localized": "阿尔巴尼亚语"
+    },
+    {
+      "tag": "sk",
+      "name": "Slovenčina",
+      "localized": "斯洛伐克语"
+    },
+    {
+      "tag": "fi",
+      "name": "Suomi",
+      "localized": "芬兰语"
+    },
+    {
+      "tag": "sv",
+      "name": "Svenska",
+      "localized": "瑞典语"
+    },
+    {
+      "tag": "vi",
+      "name": "Tiếng Việt",
+      "localized": "越南语"
+    },
+    {
+      "tag": "tr",
+      "name": "Türkçe",
+      "localized": "土耳其语"
+    },
+    {
+      "tag": "cs",
+      "name": "Čeština",
+      "localized": "捷克语"
+    },
+    {
+      "tag": "el",
+      "name": "Ελληνικά",
+      "localized": "希腊语"
+    },
+    {
+      "tag": "be",
+      "name": "Беларуская",
+      "localized": "白俄罗斯语"
+    },
+    {
+      "tag": "bg",
+      "name": "Български",
+      "localized": "保加利亚语"
+    },
+    {
+      "tag": "ru",
+      "name": "Русский",
+      "localized": "俄语"
+    },
+    {
+      "tag": "sah",
+      "name": "Саха тыла",
+      "localized": "萨哈语"
+    },
+    {
+      "tag": "sr",
+      "name": "Српски",
+      "localized": "塞尔维亚语"
+    },
+    {
+      "tag": "uk",
+      "name": "Українська",
+      "localized": "乌克兰语"
+    },
+    {
+      "tag": "cv",
+      "name": "Чӑваш",
+      "localized": "楚瓦什语"
+    },
+    {
+      "tag": "kk",
+      "name": "Қазақ тілі",
+      "localized": "哈萨克语"
+    },
+    {
+      "tag": "he",
+      "name": "עברית",
+      "localized": "希伯来语"
+    },
+    {
+      "tag": "ar",
+      "name": "العربية",
+      "localized": "阿拉伯语"
+    },
+    {
+      "tag": "fa",
+      "name": "فارسی",
+      "localized": "波斯语"
+    },
+    {
+      "tag": "ne",
+      "name": "नेपाली",
+      "localized": "尼泊尔语"
+    },
+    {
+      "tag": "mr",
+      "name": "मराठी",
+      "localized": "马拉地语"
+    },
+    {
+      "tag": "sa",
+      "name": "संस्कृत भाषा",
+      "localized": "梵语"
+    },
+    {
+      "tag": "hi",
+      "name": "हिन्दी",
+      "localized": "印地语"
+    },
+    {
+      "tag": "as",
+      "name": "অসমীয়া",
+      "localized": "阿萨姆语"
+    },
+    {
+      "tag": "bn",
+      "name": "বাংলা",
+      "localized": "孟加拉语"
+    },
+    {
+      "tag": "ta",
+      "name": "தமிழ்",
+      "localized": "泰米尔语"
+    },
+    {
+      "tag": "te",
+      "name": "తెలుగు",
+      "localized": "泰卢固语"
+    },
+    {
+      "tag": "kn",
+      "name": "ಕನ್ನಡ",
+      "localized": "卡纳达语"
+    },
+    {
+      "tag": "ml",
+      "name": "മലയാളം",
+      "localized": "马拉雅拉姆语"
+    },
+    {
+      "tag": "th",
+      "name": "ไทย",
+      "localized": "泰语"
+    },
+    {
+      "tag": "my",
+      "name": "မြန်မာ",
+      "localized": "缅甸语"
+    },
+    {
+      "tag": "am",
+      "name": "አማርኛ",
+      "localized": "阿姆哈拉语"
+    },
+    {
+      "tag": "km",
+      "name": "ខ្មែរ",
+      "localized": "高棉语"
+    },
+    {
+      "tag": "ka-GE",
+      "name": "Ქართული (საქართველო)",
+      "localized": "格鲁吉亚语 (格鲁吉亚)"
+    },
+    {
+      "tag": "zh-CN",
+      "name": "中文 (简体)",
+      "localized": "中文 (简体)"
+    },
+    {
+      "tag": "zh-TW",
+      "name": "中文 (繁體)",
+      "localized": "中文 (繁体)"
+    },
+    {
+      "tag": "ja",
+      "name": "日本語",
+      "localized": "日语"
+    },
+    {
+      "tag": "ko",
+      "name": "한국어",
+      "localized": "韩语"
+    }
+  ],
+  "plurals": {
+    "am": {},
+    "ar": {
+      "relative_time": {
+        "zero": "الأمس",
+        "one": "منذ يوم",
+        "two": "منذ يومين",
+        "few": "منذ %1$d أيام",
+        "many": "منذ %1$d يوم",
+        "other": "منذ %1$d يوم"
+      },
+      "upcoming_relative_time": {
+        "zero": "اليوم",
+        "one": "غداً",
+        "two": "بعد غد",
+        "few": "بعد %1$d أيام",
+        "many": "بعد %1$d يوم",
+        "other": "بعد %1$d يوم"
+      }
+    },
+    "as": {
+      "relative_time": {
+        "one": "কালি",
+        "other": "%1$d দিনৰ আগতে"
+      },
+      "upcoming_relative_time": {
+        "one": "কাইলৈ",
+        "other": "%1$d দিনত"
+      }
+    },
+    "en": {
+      "relative_time": {
+        "one": "Yesterday",
+        "other": "%1$d days ago"
+      },
+      "upcoming_relative_time": {
+        "one": "Tomorrow",
+        "other": "In %1$d days"
+      }
+    },
+    "be": {
+      "relative_time": {
+        "one": "Учора",
+        "few": "%1$d дні таму",
+        "many": "%1$d дзён таму",
+        "other": "%1$d дзён таму"
+      },
+      "upcoming_relative_time": {
+        "one": "Заўтра",
+        "few": "Праз %1$d дні",
+        "many": "Праз %1$d дзён",
+        "other": "Праз %1$d дзён"
+      }
+    },
+    "bg": {
+      "relative_time": {
+        "one": "Вчера",
+        "other": "Преди %1$d дни"
+      },
+      "upcoming_relative_time": {
+        "one": "Утре",
+        "other": "След %1$d дни"
+      }
+    },
+    "bn": {
+      "relative_time": {
+        "one": "গতকাল",
+        "other": "%1$d দিন আগে"
+      },
+      "upcoming_relative_time": {
+        "one": "আগামীকাল",
+        "other": "\"%1$d  দিনে\""
+      }
+    },
+    "ca": {
+      "relative_time": {
+        "one": "Ahir",
+        "many": "Fa %1$d de dies",
+        "other": "Fa %1$d dies"
+      },
+      "upcoming_relative_time": {
+        "one": "Demà",
+        "many": "D’aquí a %1$d de dies",
+        "other": "D’aquí a %1$d dies"
+      }
+    },
+    "ceb": {
+      "relative_time": {
+        "one": "Kagahapon",
+        "other": "%1$d ka adlaw ang milabay"
+      },
+      "upcoming_relative_time": {
+        "one": "Ugma",
+        "other": "Sa %1$d ka adlaw"
+      }
+    },
+    "cs": {
+      "relative_time": {
+        "one": "Včera",
+        "few": "Před %1$d dny",
+        "many": "Před %1$d dny",
+        "other": "Před %1$d dny"
+      },
+      "upcoming_relative_time": {
+        "one": "Zítra",
+        "few": "Za %1$d dny",
+        "many": "Za %1$d dnů",
+        "other": "Za %1$d dnů"
+      }
+    },
+    "cv": {
+      "relative_time": {
+        "one": "Ӗнер",
+        "other": "%1$d кун кайалла"
+      }
+    },
+    "da": {
+      "relative_time": {
+        "one": "I går",
+        "other": "%1$d dage siden"
+      }
+    },
+    "de": {
+      "relative_time": {
+        "one": "Gestern",
+        "other": "Vor %1$d Tagen"
+      },
+      "upcoming_relative_time": {
+        "one": "Morgen",
+        "other": "In %1$d Tagen"
+      }
+    },
+    "el": {
+      "relative_time": {
+        "one": "Εχθές",
+        "other": "%1$d μέρες πριν"
+      },
+      "upcoming_relative_time": {
+        "one": "Αύριο",
+        "other": "Σε %1$d ημέρες"
+      }
+    },
+    "eo": {
+      "relative_time": {
+        "one": "Hieraŭ",
+        "other": "Antaŭ %1$d tagoj"
+      },
+      "upcoming_relative_time": {
+        "one": "Morgaŭ",
+        "other": "post %1$d tagoj"
+      }
+    },
+    "es": {
+      "relative_time": {
+        "one": "Ayer",
+        "many": "Hace %1$d días",
+        "other": "Hace %1$d días"
+      },
+      "upcoming_relative_time": {
+        "one": "Mañana",
+        "many": "Dentro de %1$d días",
+        "other": "Dentro de %1$d días"
+      }
+    },
+    "eu": {
+      "relative_time": {
+        "one": "Atzo",
+        "other": "Duela %1$d egun"
+      },
+      "upcoming_relative_time": {
+        "one": "Bihar",
+        "other": "%1$d egunetan"
+      }
+    },
+    "fa": {
+      "relative_time": {
+        "one": "دیروز",
+        "other": "%1$d روز پیش"
+      },
+      "upcoming_relative_time": {
+        "one": "فردا",
+        "other": "در %1$d روز"
+      }
+    },
+    "fi": {
+      "relative_time": {
+        "one": "Eilen",
+        "other": "%1$d päivää sitten"
+      },
+      "upcoming_relative_time": {
+        "one": "Huomenna",
+        "other": "%1$d:n päivän päästä"
+      }
+    },
+    "fil": {
+      "relative_time": {
+        "one": "Kahapon",
+        "other": "%1$d na araw ang nakakalipas"
+      },
+      "upcoming_relative_time": {
+        "one": "Bukas",
+        "other": "Sa loob ng %1$d na araw"
+      }
+    },
+    "fr": {
+      "relative_time": {
+        "one": "Hier",
+        "many": "Il y a %1$d jours",
+        "other": "Il y a %1$d jours"
+      },
+      "upcoming_relative_time": {
+        "one": "Demain",
+        "many": "Dans %1$d jours",
+        "other": "Dans %1$d jours"
+      }
+    },
+    "gl": {
+      "relative_time": {
+        "one": "Onte",
+        "other": "Fai %1$d días"
+      },
+      "upcoming_relative_time": {
+        "one": "Mañá",
+        "other": "Dentro de %1$d días"
+      }
+    },
+    "he": {
+      "relative_time": {
+        "one": "אתמול",
+        "two": "לפני יומיים",
+        "other": "לפני %1$d ימים"
+      },
+      "upcoming_relative_time": {
+        "one": "מחר",
+        "two": "מחרתיים",
+        "other": "בעוד %1$d ימים"
+      }
+    },
+    "hi": {
+      "relative_time": {
+        "one": "कल",
+        "other": "%1$d दिन पहले"
+      },
+      "upcoming_relative_time": {
+        "one": "कल",
+        "other": "%1$d दिनों में"
+      }
+    },
+    "hr": {
+      "relative_time": {
+        "one": "Jučer",
+        "few": "Prije %1$d dana",
+        "other": "Prije %1$d dana"
+      },
+      "upcoming_relative_time": {
+        "one": "Sutra",
+        "few": "Za %1$d dana",
+        "other": "Za %1$d dana"
+      }
+    },
+    "hu": {
+      "relative_time": {
+        "one": "Tegnap",
+        "other": "%1$d napja"
+      },
+      "upcoming_relative_time": {
+        "one": "Holnap",
+        "other": "%1$d nap múlva"
+      }
+    },
+    "in": {
+      "relative_time": {
+        "other": "%1$d hari yang lalu"
+      },
+      "upcoming_relative_time": {
+        "other": "Dalam %1$d hari"
+      }
+    },
+    "it": {
+      "relative_time": {
+        "one": "Ieri",
+        "many": "%1$d giorni fa",
+        "other": "%1$d giorni fa"
+      },
+      "upcoming_relative_time": {
+        "one": "Domani",
+        "many": "Tra %1$d giorni",
+        "other": "Tra %1$d giorni"
+      }
+    },
+    "ja": {
+      "relative_time": {
+        "other": "%1$d 日前"
+      },
+      "upcoming_relative_time": {
+        "other": "%1$d 日後"
+      }
+    },
+    "jv": {
+      "relative_time": {
+        "other": "%1$d dinten kala-wingi"
+      },
+      "upcoming_relative_time": {
+        "other": "%1$d Dino engkas"
+      }
+    },
+    "ka-GE": {
+      "relative_time": {
+        "one": "გუშინ",
+        "other": "%1$d დღის წინ"
+      },
+      "upcoming_relative_time": {
+        "one": "ხვალ",
+        "other": "%1$d დღეში"
+      }
+    },
+    "kk": {
+      "relative_time": {
+        "one": "Кеше",
+        "other": "%1$d күн бұрын"
+      },
+      "upcoming_relative_time": {
+        "one": "Ертең",
+        "other": "%1$d күнде"
+      }
+    },
+    "km": {
+      "relative_time": {
+        "other": "%1$d ថ្ងៃមុន"
+      }
+    },
+    "kmr": {},
+    "kn": {},
+    "ko": {
+      "relative_time": {
+        "other": "%1$d일 전"
+      },
+      "upcoming_relative_time": {
+        "other": "%1$d일 후"
+      }
+    },
+    "lt": {
+      "relative_time": {
+        "one": "Vakar",
+        "few": "Prieš %1$d dienas",
+        "many": "Prieš %1$d dienų",
+        "other": "Prieš %1$d dienų"
+      }
+    },
+    "lv": {
+      "relative_time": {
+        "zero": "Šodien",
+        "one": "Vakar",
+        "other": "Pirms %1$d dienām"
+      }
+    },
+    "ml": {
+      "relative_time": {
+        "one": "ഇന്നലെ",
+        "other": "%1$d ദിവസം മുമ്പ്"
+      },
+      "upcoming_relative_time": {
+        "one": "നാളെ",
+        "other": "%1$d ദിവസത്തിനുള്ളിൽ"
+      }
+    },
+    "mr": {},
+    "ms": {
+      "relative_time": {
+        "other": "%1$d hari lalu"
+      },
+      "upcoming_relative_time": {
+        "other": "Dalam %1$d hari"
+      }
+    },
+    "my": {},
+    "nb-NO": {
+      "relative_time": {
+        "one": "I går",
+        "other": "%1$d dager siden"
+      }
+    },
+    "ne": {
+      "relative_time": {
+        "one": "हिजो",
+        "other": "%1$d दिन अघि"
+      },
+      "upcoming_relative_time": {
+        "one": "भोलि",
+        "other": "%1$d दिनमा"
+      }
+    },
+    "nl": {
+      "relative_time": {
+        "one": "Gisteren",
+        "other": "%1$d dagen geleden"
+      },
+      "upcoming_relative_time": {
+        "one": "Morgen",
+        "other": "Over %1$d dagen"
+      }
+    },
+    "nn": {
+      "relative_time": {
+        "one": "I går",
+        "other": "%1$d dagar sidan"
+      }
+    },
+    "pl": {
+      "relative_time": {
+        "one": "Wczoraj",
+        "few": "%1$d dni temu",
+        "many": "%1$d dni temu",
+        "other": "%1$d dni temu"
+      },
+      "upcoming_relative_time": {
+        "one": "Jutro",
+        "few": "Za %1$d dni",
+        "many": "Za %1$d dni",
+        "other": "Za %1$d dni"
+      }
+    },
+    "pt-BR": {
+      "relative_time": {
+        "one": "Ontem",
+        "many": "%1$d dias atrás",
+        "other": "%1$d dias atrás"
+      },
+      "upcoming_relative_time": {
+        "one": "Amanhã",
+        "many": "Em %1$d dias",
+        "other": "Em %1$d dias"
+      }
+    },
+    "pt": {
+      "relative_time": {
+        "one": "Ontem",
+        "many": "Há %1$d dias",
+        "other": "Há %1$d dias"
+      },
+      "upcoming_relative_time": {
+        "one": "Amanhã",
+        "many": "Em %1$d dias",
+        "other": "Em %1$d dias"
+      }
+    },
+    "ro": {
+      "relative_time": {
+        "one": "Ieri",
+        "few": "Acum %1$d zile",
+        "other": "Acum %1$d de zile"
+      },
+      "upcoming_relative_time": {
+        "one": "Mâine",
+        "few": "În %1$d zile",
+        "other": "În %1$d de zile"
+      }
+    },
+    "ru": {
+      "relative_time": {
+        "one": "Вчера",
+        "few": "%1$d дня назад",
+        "many": "%1$d дней назад",
+        "other": "%1$d дней назад"
+      },
+      "upcoming_relative_time": {
+        "one": "Завтра",
+        "few": "В течении %1$d дней",
+        "many": "В течении %1$d дней",
+        "other": "В течении %1$d дней"
+      }
+    },
+    "sa": {
+      "relative_time": {
+        "one": "ह्यः",
+        "other": "%1$d दिनानि पूर्वम्"
+      },
+      "upcoming_relative_time": {
+        "one": "श्वः",
+        "other": "%1$d दिनेषु"
+      }
+    },
+    "sah": {},
+    "sc": {
+      "relative_time": {
+        "one": "Eris",
+        "other": "%1$d dies a oe"
+      },
+      "upcoming_relative_time": {
+        "one": "Cras",
+        "other": "In %1$d dies"
+      }
+    },
+    "sdh": {
+      "relative_time": {
+        "one": "دوێنێ",
+        "other": "%1$d ڕۆژ پێش ئێستا"
+      }
+    },
+    "sk": {
+      "relative_time": {
+        "one": "Včera",
+        "few": "Pred %1$d dňami",
+        "many": "Pred %1$d dňami",
+        "other": "Pred %1$d dňami"
+      },
+      "upcoming_relative_time": {
+        "one": "Zajtra",
+        "few": "O %1$d dni",
+        "many": "O %1$d dní",
+        "other": "O %1$d dní"
+      }
+    },
+    "sq": {
+      "relative_time": {
+        "one": "Dje",
+        "other": "%1$d ditë më parë"
+      }
+    },
+    "sr": {
+      "relative_time": {
+        "one": "Пре %1$d дан",
+        "few": "Пре %1$d дана",
+        "other": "Пре %1$d дана"
+      },
+      "upcoming_relative_time": {
+        "one": "За %1$d дан",
+        "few": "За %1$d дана",
+        "other": "За %1$d дана"
+      }
+    },
+    "sv": {
+      "relative_time": {
+        "one": "Igår",
+        "other": "För %1$d dagar sedan"
+      },
+      "upcoming_relative_time": {
+        "one": "Imorgon",
+        "other": "Om %1$d dagar"
+      }
+    },
+    "ta": {},
+    "te": {},
+    "th": {
+      "relative_time": {
+        "other": "%1$d วันที่ผ่านมา"
+      }
+    },
+    "tr": {
+      "relative_time": {
+        "one": "Dün",
+        "other": "%1$d gün önce"
+      },
+      "upcoming_relative_time": {
+        "one": "Yarın",
+        "other": "%1$d gün içinde"
+      }
+    },
+    "uk": {
+      "relative_time": {
+        "one": "Учора",
+        "few": "%1$d дні тому",
+        "many": "%1$d днів тому",
+        "other": "%1$d днів тому"
+      },
+      "upcoming_relative_time": {
+        "one": "Завтра",
+        "few": "Через %1$d дні",
+        "many": "Через %1$d днів",
+        "other": "Через %1$d днів"
+      }
+    },
+    "uz": {
+      "relative_time": {
+        "one": "Kecha",
+        "other": "%1$d kun oldin"
+      }
+    },
+    "vi": {
+      "relative_time": {
+        "other": "%1$d ngày trước"
+      },
+      "upcoming_relative_time": {
+        "other": "Trong %1$d ngày"
+      }
+    },
+    "zh-CN": {
+      "relative_time": {
+        "other": "%1$d 天前"
+      },
+      "upcoming_relative_time": {
+        "other": "%1$d 天后"
+      }
+    },
+    "zh-TW": {
+      "relative_time": {
+        "other": "%1$d 天前"
+      },
+      "upcoming_relative_time": {
+        "other": "%1$d 天後"
+      }
+    }
+  }
+};

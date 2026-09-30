@@ -138,6 +138,7 @@ test("目录增删改后缺章提示、状态承接及新增章自动下载可�
   await openMoreSettings(page);
   await page.getByTestId("pref-autoDownloadNew").check();
   await page.getByTestId("modal-close").click();
+  await page.getByTestId("settings-back").click();
   await page.getByTestId("nav-library").click();
   await page.getByTestId("manga-A").click();
   await page.getByTestId("detail-overflow").click();

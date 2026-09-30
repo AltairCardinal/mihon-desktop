@@ -7,10 +7,15 @@ async function openCoverMenu(page) {
 }
 async function openMoreSettings(page) {
   if (await page.getByRole("dialog", { name: "设置" }).count()) return;
+  if (await page.getByTestId("settings-library").isVisible()) {
+    await page.getByTestId("settings-library").click();
+    return;
+  }
   if (!(await page.getByTestId("settings-open").isVisible())) {
     await page.getByTestId("nav-more").click();
   }
   await page.getByTestId("settings-open").click();
+  await page.getByTestId("settings-library").click();
 }
 async function openLibraryMenuAction(page, action) {
   if (!(await page.getByTestId(action).count())) {

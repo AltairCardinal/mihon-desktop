@@ -66,6 +66,7 @@ test("分类管理仅从更多进入独立子页，键盘排序返回后反映�
   await openMoreSettings(p);
   assert.equal(await p.getByRole("dialog", { name: "设置" }).count(), 1);
   await p.keyboard.press("Escape");
+  await p.getByTestId("settings-back").click();
   await openManager(p);
   assert.equal(await p.getByRole("dialog").count(), 0);
   assert.equal(await p.getByTestId("category-page").isVisible(), true);

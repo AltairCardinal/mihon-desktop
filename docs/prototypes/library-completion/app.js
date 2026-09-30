@@ -12,7 +12,7 @@
       ? "android"
       : "windows";
   const reviewTarget = new URLSearchParams(location.search).get("review");
-  if (reviewTarget === "more" || reviewTarget === "categories") s.route = reviewTarget;
+  if (["more", "categories", "settings", "appearance"].includes(reviewTarget)) s.route = reviewTarget;
   if (reviewTarget === "detail" || reviewTarget === "detail-parity") {
     s.route = "detail";
     s.bookId = "A";
@@ -158,11 +158,26 @@
   }
   const button = (id, label, ico, extra = "") =>
     `<button data-testid="${id}" data-action="${id}" class="${ico ? "icon" : ""}" aria-label="${esc(label)}" title="${esc(label)}" ${extra}>${ico ? icon(ico) : esc(label)}</button>`;
+  function applyDemoTheme(next) {
+    themeSelection = MihonThemes.apply(document, next);
+    const note = document.querySelector("#demo-theme-note");
+    if (note) note.hidden = themeSelection.theme !== "MONET" || parent !== window;
+    document.body.classList.toggle("has-demo-theme-note", !!note && !note.hidden);
+    if (parent !== window) parent.postMessage({ libraryDemoAppearance: { theme: themeSelection.theme } }, "*");
+    return themeSelection;
+  }
+  const appearance = MihonAppearance.create({ esc, icon, button, selection: themeSelection,
+    navigate: (route, focus) => { s.route = route; render(); document.querySelector(`[data-testid="${focus}"]`)?.focus({ preventScroll: true }); },
+    render, openModal, closeModal,
+    notice: (message) => { s.notice = message; },
+    applyTheme: applyDemoTheme,
+  });
   const catName = () =>
     s.categories.find((c) => c.id === s.category)?.name || "默认";
   const book = () => s.books.find((b) => b.id === s.bookId);
   function markdownInline(value) {
     return esc(value)
+      .replace(/!\[([^\]]*)\]\((appearance-description-sample\.svg)\)/g, (_, label, url) => appearance.state.images ? `<img class="description-image" src="${url}" alt="${label}">` : label)
       .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) =>
         `<a href="#" data-action="detail-description-link" data-id="${url}">${label}</a>`,
       )
@@ -316,7 +331,7 @@
       ? `<div class="detail-menu-anchor chapter-progress-anchor chapter-download-indicator" data-download-state="${downloadState}"><button class="icon chapter-progress" data-action="chapter-progress" data-id="${esc(c.id)}" data-testid="chapter-progress-${esc(c.id)}" aria-label="${downloadState === "queued" ? "排队中" : "下载中"}" title="${downloadState === "queued" ? "排队中" : "下载中"}" ${downloadDisabled ? "disabled" : ""}>${icon("detail:Outlined.ArrowDownward")}</button>${downloadDisabled ? "" : detailMenuMarkup("chapter-progress-" + c.id, `<button data-action="chapter-cancel-${esc(c.id)}" data-testid="chapter-cancel-${esc(c.id)}">取消</button>`)}</div>`
       : `<span class="chapter-download-indicator" data-download-state="${downloadState}">${button(download[0] + c.id, download[1], download[2], downloadDisabled ? "disabled" : "")}</span>`;
     return `<div class="chapter-row ${selected ? "selected" : ""}" data-testid="chapter-row-${esc(c.id)}" data-chapter-id="${esc(c.id)}" data-read="${c.read}" data-action="chapter" data-id="${esc(c.id)}" role="button" tabindex="0" aria-pressed="${selected}">
-      <div class="chapter-main"><div class="chapter-title-line">${!c.read ? '<span class="chapter-unread-dot" role="img" aria-label="未读"></span>' : ""}${c.bookmark ? `<span class="chapter-bookmark-mark" role="img" aria-label="已加书签">${icon("detail:Filled.Bookmark")}</span>` : ""}<span class="chapter-title ${c.read ? "read" : ""}">${esc(title)}</span></div><small class="${c.read ? "read" : ""}">${[c.dateUpload ? new Date(c.dateUpload).toLocaleDateString("zh-CN") : null, c.page && !c.read ? `${c.syncedProgress ? "同步至" : ""}第 ${c.page + 1} 页` : null, c.scanlator?.trim() || null, c.external ? "外部章节" : null].filter(Boolean).map(esc).join(" · ")}</small></div>
+      <div class="chapter-main"><div class="chapter-title-line">${!c.read ? '<span class="chapter-unread-dot" role="img" aria-label="未读"></span>' : ""}${c.bookmark ? `<span class="chapter-bookmark-mark" role="img" aria-label="已加书签">${icon("detail:Filled.Bookmark")}</span>` : ""}<span class="chapter-title ${c.read ? "read" : ""}">${esc(title)}</span></div><small class="${c.read ? "read" : ""}">${[c.dateUpload ? appearance.chapterDate(c.dateUpload) : null, c.page && !c.read ? `${c.syncedProgress ? "同步至" : ""}第 ${c.page + 1} 页` : null, c.scanlator?.trim() || null, c.external ? "外部章节" : null].filter(Boolean).map(esc).join(" · ")}</small></div>
       <div class="chapter-trailing">
         ${downloadControl}
       </div>
@@ -483,9 +498,11 @@
     if (modal === "panel") panelScroll[panelTab] = sheetScroll;
     const focus = document.activeElement?.getAttribute("data-testid");
     const wasDetailSelection = !!document.querySelector(".detail-bar.action-mode");
-    const showNavigation = !["reader", "detail", "categories"].includes(s.route);
-    const page = s.route === "reader" ? readerView() : s.route === "detail" ? detail() : s.route === "library" ? library() : s.route === "categories" ? categoryPage() : rootPage();
+    appearance.capture();
+    const showNavigation = !["reader", "detail", "categories", "settings", "appearance", "appearance-language"].includes(s.route);
+    const page = ["settings", "appearance", "appearance-language"].includes(s.route) ? appearance.view(s.route) : s.route === "reader" ? readerView() : s.route === "detail" ? detail() : s.route === "library" ? library() : s.route === "categories" ? categoryPage() : rootPage();
     app.innerHTML = `<div class="platform-bar"><span>${s.platform === "windows" ? "Mihon Desktop" : "9:41"}</span><span>${s.platform === "windows" ? "—　□　×" : "●　▰"}</span></div><div class="app-content" id="content" ${modal ? "inert" : ""}><main class="page-content">${page}<div class="status" role="status" data-testid="notice">${esc(s.notice)}</div></main>${showNavigation ? nav() : ""}</div><div id="modal-root"></div>`;
+    appearance.restore();
     const newDetail = document.querySelector('[data-testid="detail-scroll"]');
     if (newDetail) {
       const position = detailScroll[newDetail.dataset.bookId] || {};
@@ -707,6 +724,8 @@
     if (modal === "detail-information")
       return `<div data-testid="detail-information"><p>${esc(confirmText)}</p><p class="muted">当前仅为本地交互样本；此页面未接入真实外部服务。</p></div>`;
     if (modal === "panel") return panel();
+    if (modal === "appearance-date") return appearance.dialog("date");
+    if (modal === "appearance-tablet") return appearance.dialog("tablet");
     if (modal === "settings") return settings();
     if (modal === "results") return results();
     if (modal === "policy")
@@ -738,6 +757,8 @@
     return `<p>${esc(modal === "browse" ? "从下方添加一本本地示例作品；不连接真实图源。" : "此入口保留导航上下文。完整内容不在书架交互审阅范围内。")}</p>${modal === "browse" ? button("add-book", "添加示例收藏") : ""}`;
   }
   const modalTitles = {
+    "appearance-date": "日期格式",
+    "appearance-tablet": "平板布局",
     panel: "筛选、排序与显示",
     settings: "设置",
     results: "更新详情",
@@ -783,7 +804,8 @@
     const prev = document.querySelector(".sheet-body");
     const oldScroll = prev?.scrollTop || 0;
     const compactDialog = modal === "batch-category" || modal === "batch-delete";
-    root.innerHTML = `<div class="overlay ${compactDialog ? "compact-dialog-overlay" : ""} ${modal === "panel" ? "library-options-overlay" : ""}" data-action="overlay"><section class="sheet ${modal === "panel" ? "library-options-sheet" : ""} ${modal === "detail-cover-viewer" ? "cover-sheet" : ""} ${compactDialog ? "action-dialog" : ""}" role="dialog" aria-modal="true" aria-label="${modalTitles[modal]}">${modal === "panel" ? "" : `<header class="sheet-head">${modalStack.length ? button("modal-back", "返回", "detail:AutoMirrored.Outlined.ArrowBack") : ""}<h2>${modalTitles[modal]}</h2>${button("modal-close", "关闭", "detail:Outlined.Close")}</header>`}${
+    const appearanceDialog = modal === "appearance-date" || modal === "appearance-tablet";
+    root.innerHTML = appearanceDialog ? `<div class="overlay" data-action="overlay"><section class="sheet appearance-alert" role="dialog" aria-modal="true" aria-label="${esc(appearance.title(modal))}"><h2>${esc(appearance.title(modal))}</h2><div class="sheet-body">${modalContent()}</div></section></div>` : `<div class="overlay ${compactDialog ? "compact-dialog-overlay" : ""} ${modal === "panel" ? "library-options-overlay" : ""}" data-action="overlay"><section class="sheet ${modal === "panel" ? "library-options-sheet" : ""} ${modal === "detail-cover-viewer" ? "cover-sheet" : ""} ${compactDialog ? "action-dialog" : ""}" role="dialog" aria-modal="true" aria-label="${modalTitles[modal]}">${modal === "panel" ? "" : `<header class="sheet-head">${modalStack.length ? button("modal-back", "返回", "detail:AutoMirrored.Outlined.ArrowBack") : ""}<h2>${modalTitles[modal]}</h2>${button("modal-close", "关闭", "detail:Outlined.Close")}</header>`}${
       modal === "panel" || modal === "detail-settings"
         ? `<div class="tabs" role="tablist" ${modal === "detail-settings" ? 'data-testid="chapter-settings-tabs"' : ""}>${[
             ["filter", "筛选"],
@@ -1046,6 +1068,7 @@
       render();
       return;
     }
+    if (appearance.handle(action, el)) return;
     if (action === "continue") {
       continueBook(id);
       return;
@@ -1097,7 +1120,10 @@
       return;
     }
     if (action === "settings-open") {
-      openModal("settings");
+      s.route = "settings";
+      appearance.apply();
+      render();
+      document.querySelector('[data-testid="settings-back"]')?.focus();
       return;
     }
     if (action === "sync-open") {
@@ -2491,6 +2517,10 @@
         closeModal();
         return;
       }
+      if (["settings", "appearance", "appearance-language"].includes(s.route)) {
+        appearance.handle(s.route === "settings" ? "settings-back" : "appearance-back", {});
+        return;
+      }
       if (s.route === "categories") {
         closeCategoryPage();
         return;
@@ -2777,6 +2807,7 @@
   }, 280);
   function command(name) {
     if (name === "restart") {
+      appearance.restart();
       s = M.restart(s);
       modal = null;
       modalStack = [];
@@ -2821,7 +2852,8 @@
     categoryWheel = { last: -Infinity, direction: 0 };
     M.scenario(s, name);
     if (name === "detail-content") {
-      s.books[0].description = "**星海手记** 在失落的灯塔发现地图。第一段只是开端。\n\n旅人沿海岸寻找同伴，逐渐拼出一封跨越多年的信。\n\n[查看世界设定](https://example.org/story) 记录了源端的补充信息。\n\n最后，他们决定回到最初的港口。";
+      s.books[0].description = "![灯塔与海岸示意图](appearance-description-sample.svg)\n\n**星海手记** 在失落的灯塔发现地图。第一段只是开端。\n\n旅人沿海岸寻找同伴，逐渐拼出一封跨越多年的信。\n\n[查看世界设定](https://example.org/story) 记录了源端的补充信息。\n\n最后，他们决定回到最初的港口。";
+      s.books[0].chapters[0].dateUpload = Date.now();
       s.books[0].status = "暂停连载";
       s.books[1].status = "未知";
       s.books[0].sourceTitle = "星海手记 · 新版";
@@ -2911,10 +2943,13 @@
     const d = e.data;
     if (!d?.libraryDemo || e.source !== parent) return;
     if (d.themeSelection || d.theme) {
-      themeSelection = MihonThemes.apply(document, d.themeSelection || { ...themeSelection, mode: d.theme });
+      themeSelection = applyDemoTheme(d.themeSelection || { ...themeSelection, mode: d.theme });
+      appearance.external(themeSelection);
+      if (["settings", "appearance", "appearance-language"].includes(s.route)) render();
     }
     if (d.font) document.documentElement.style.fontSize = 14 * d.font + "px";
     if (d.scenario) scenario(d.scenario);
+    if (d.command === "restart") appearance.restart();
     if (d.command) command(d.command);
     if (d.device) {
       Object.assign(s.device, d.device);
@@ -2924,6 +2959,9 @@
     }
     if (d.requestDeviceState) reportDeviceState();
   });
+  if (themeQuery.has("mode")) appearance.external(themeSelection);
+  if (["appearance", "settings"].includes(reviewTarget)) appearance.apply();
+  else applyDemoTheme(themeSelection);
   render();
   if (reviewTarget === "reading-mode") {
     detailMenu = "reader-mode";

@@ -78,6 +78,7 @@ test("审查修复：真实排序控件使用相同方向状态，切分类与�
     await p.getByTestId("pref-perCategory").uncheck();
     await p.getByTestId("pref-perCategory").check();
     await p.getByTestId("modal-close").click();
+    await p.getByTestId("settings-back").click();
     await p.getByTestId("nav-library").click();
     await p.getByTestId("category-1").click();
     await p.getByTestId("panel-open").click();
@@ -128,6 +129,7 @@ test("元数据刷新完成立即更新书架封面，保留自定义封面", ()
     await openMoreSettings(p);
     await p.getByTestId("pref-metadata").check();
     await p.getByTestId("modal-close").click();
+    await p.getByTestId("settings-back").click();
     await p.getByTestId("nav-library").click();
     await openLibraryMenuAction(p, "refresh");
     await p.waitForTimeout(1700);
@@ -275,14 +277,14 @@ test("阅读模式审核链接直达阅读预览菜单且加载新样式", () =>
 test("并列预览使用新版设备资源地址", () =>
   run(async (p) => {
     for (const platform of ["windows", "android"]) {
-      assert.match(await p.locator(`#preview-${platform}`).getAttribute("src"), /[?&]v=upstream-themes-20260930a/);
+      assert.match(await p.locator(`#preview-${platform}`).getAttribute("src"), /[?&]v=appearance-20260930a/);
       const device = p.frameLocator(`#preview-${platform}`);
-      assert.match(await device.locator('link[rel="stylesheet"]').getAttribute("href"), /styles\.css\?v=upstream-themes-20260930a/);
+      assert.match(await device.locator('link[rel="stylesheet"]').getAttribute("href"), /styles\.css\?v=appearance-20260930a/);
       for (const script of ["model.js", "detail-parity-model.js", "detail-parity-view.js", "detail-icons.js", "app.js"]) {
-        assert.match(await device.locator(`script[src^="${script}"]`).getAttribute("src"), new RegExp(`${script.replaceAll(".", "\\.")}\\?v=upstream-themes-20260930a`));
+        assert.match(await device.locator(`script[src^="${script}"]`).getAttribute("src"), new RegExp(`${script.replaceAll(".", "\\.")}\\?v=appearance-20260930a`));
       }
     }
-  }, "index.html?v=upstream-themes-20260930a", 1440));
+  }, "index.html?v=appearance-20260930a", 1440));
 
 test("目标详情章节：三态筛选排序、阅读进度与独立下载书签动作", () =>
   run(async (p) => {
@@ -460,6 +462,7 @@ test("详情叠加 S06/L02：默认不改作品信息，开启后刷新简介源
     await openMoreSettings(p);
     await p.getByTestId("pref-metadata").check();
     await p.getByTestId("modal-close").click();
+    await p.getByTestId("settings-back").click();
     await p.getByTestId("nav-library").click();
     await p.getByTestId("manga-A").click();
     await p.getByTestId("detail-overflow").click();
@@ -601,6 +604,7 @@ test("设置失败与草稿取消通过真实入口、默认分类影响新收�
     await openMoreSettings(p);
     await p.getByTestId("pref-defaultCategory").selectOption("2");
     await p.getByTestId("add-book").click();
+    await p.getByTestId("settings-back").click();
     await p.getByTestId("nav-library").click();
     await p.getByTestId("category-2").click();
     assert.equal(await p.locator(".book").count(), 2);
@@ -611,6 +615,7 @@ test("设置失败与草稿取消通过真实入口、默认分类影响新收�
     await p.getByTestId("policy-open").click();
     assert.match(await p.getByTestId("policy-0").textContent(), /不指定/);
     await p.getByTestId("modal-close").click();
+    await p.getByTestId("settings-back").click();
     await p.getByTestId("nav-library").click();
     await p.evaluate(() => window.demo.scenario("save-failure"));
     await p.getByTestId("panel-open").click();

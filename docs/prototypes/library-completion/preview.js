@@ -69,6 +69,14 @@
         control.value = JSON.stringify(value);
     });
   });
+  const appearanceThemes = new Map();
+  window.addEventListener("message", event => {
+    if (!event.data?.libraryDemoAppearance) return;
+    const frame = [...document.querySelectorAll("iframe")].find(frame => frame.contentWindow === event.source);
+    if (!frame) return;
+    appearanceThemes.set(frame.id, event.data.libraryDemoAppearance.theme);
+    document.querySelector("#theme-note").hidden = ![...appearanceThemes.values()].includes("MONET");
+  });
   let themeSelection = MihonThemes.apply(document);
   let big = false;
   const themeSelect = document.querySelector("#theme-select");
