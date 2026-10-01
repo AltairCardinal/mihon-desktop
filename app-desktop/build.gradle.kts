@@ -171,6 +171,7 @@ kotlin {
                 implementation(libs.coil.compose)
                 implementation(libs.coil.network.okhttp)
                 implementation(libs.bundles.markdown)
+                implementation(libs.richeditor.compose)
 
                 // RAR/CBR archive support (RAR4 + RAR5) via 7-Zip JNI bindings
                 // sevenzipjbinding = Java API; sevenzipjbinding-all-platforms = native libs

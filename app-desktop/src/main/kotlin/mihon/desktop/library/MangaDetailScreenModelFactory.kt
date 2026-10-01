@@ -28,9 +28,12 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 object MangaDetailScreenModelFactory {
-    fun create(mangaId: Long): MangaDetailScreenModel {
+    fun create(mangaId: Long): MangaDetailScreenModel = create(mangaId, DesktopCoverFilePicker())
+
+    fun create(mangaId: Long, coverFilePicker: mihon.desktop.ui.library.CoverFilePicker): MangaDetailScreenModel {
         val downloadManager = runCatching { Injekt.get<DesktopDownloadManager>() }.getOrNull()
         val downloadIdentityResolver = runCatching { Injekt.get<DesktopDownloadIdentityResolver>() }.getOrNull()
+        val downloadProvider = runCatching { Injekt.get<mihon.desktop.download.DesktopDownloadProvider>() }.getOrNull()
         val coverStore = Injekt.get<DesktopCustomCoverStore>()
         val coverUpdater = DesktopCoverUpdater(coverStore, Injekt.get())
         return MangaDetailScreenModel(
@@ -76,9 +79,32 @@ object MangaDetailScreenModelFactory {
                 { chapterId -> manager.retryItem(chapterId) }
             },
             updateLibraryMembership = Injekt.get<UpdateLibraryMembership>(),
-            coverAdapter = MangaCoverAdapter(DesktopCoverFilePicker(), coverUpdater::invoke),
+            coverAdapter = MangaCoverAdapter(coverFilePicker, coverUpdater::invoke),
             deleteCover = coverUpdater::delete,
             resolveCoverModel = coverStore::resolveModel,
+            getDuplicateLibraryManga = Injekt.get<tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga>(),
+            hasCustomCover = coverStore::customCoverExists,
+            deleteRemovedDownloads = if (downloadManager != null && downloadProvider != null &&
+                downloadIdentityResolver != null
+            ) {
+                { manga, chapters ->
+                    check(downloadManager.cancelAndAwaitRetirements(chapters.mapTo(mutableSetOf()) { it.id })) {
+                        "Unable to retire downloads for manga ${manga.id}"
+                    }
+                    chapters.forEach { chapter ->
+                        check(
+                            downloadProvider.deleteChapterDownload(
+                                manga.source,
+                                downloadIdentityResolver.resolve(manga, chapter),
+                            ),
+                        ) {
+                            "Unable to delete download ${chapter.id}"
+                        }
+                    }
+                }
+            } else {
+                null
+            },
         )
     }
 }

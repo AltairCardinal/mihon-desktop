@@ -181,9 +181,16 @@ class MangaDetailScreenModelTest {
 
     @Test
     fun `cover update success exposes feedback and refreshed model`() = runTest {
+        val repository = FakeMangaRepository().apply {
+            seed(createFakeManga(id = 1L).copy(thumbnailUrl = "remote"))
+        }
         val model = MangaDetailScreenModel(
             mangaId = 1L,
-            coverAdapter = MangaCoverAdapter(CoverFilePicker { byteArrayOf(1) }) { _, _ -> TaskState.Success(Unit) },
+            getMangaWithChapters = GetMangaWithChapters(repository, FakeChapterRepository()),
+            coverAdapter = MangaCoverAdapter(CoverFilePicker { byteArrayOf(1) }) { _, _ ->
+                repository.seed(repository.get(1L)!!.copy(coverLastModified = 42L))
+                TaskState.Success(Unit)
+            },
             deleteCover = { TaskState.Success(Unit) },
             resolveCoverModel = { _, _ -> "custom-cover" },
         )
@@ -193,7 +200,8 @@ class MangaDetailScreenModelTest {
         assertInstanceOf(TaskState.Success::class.java, model.state.value.coverTask)
         assertEquals("Cover updated", model.state.value.coverFeedback)
         assertEquals("custom-cover", model.state.value.coverModel)
-        assertTrue(model.state.value.coverLastModified > 0)
+        assertEquals(42L, model.state.value.coverLastModified)
+        assertEquals(repository.get(1L)!!.coverLastModified, model.state.value.coverLastModified)
     }
 
     @Test
@@ -217,10 +225,17 @@ class MangaDetailScreenModelTest {
 
     @Test
     fun `cover delete success refreshes model and reports feedback`() = runTest {
+        val repository = FakeMangaRepository().apply {
+            seed(createFakeManga(id = 1L).copy(thumbnailUrl = "remote"))
+        }
         val model = MangaDetailScreenModel(
             mangaId = 1L,
+            getMangaWithChapters = GetMangaWithChapters(repository, FakeChapterRepository()),
             coverAdapter = MangaCoverAdapter(CoverFilePicker { null }) { _, _ -> TaskState.Success(Unit) },
-            deleteCover = { TaskState.Success(Unit) },
+            deleteCover = {
+                repository.seed(repository.get(1L)!!.copy(coverLastModified = 43L))
+                TaskState.Success(Unit)
+            },
             resolveCoverModel = { _, fallback -> fallback },
         )
         model.setManga(createFakeManga(id = 1L).copy(thumbnailUrl = "remote"))
@@ -230,7 +245,8 @@ class MangaDetailScreenModelTest {
         assertInstanceOf(TaskState.Success::class.java, model.state.value.coverTask)
         assertEquals("Cover deleted", model.state.value.coverFeedback)
         assertEquals("remote", model.state.value.coverModel)
-        assertTrue(model.state.value.coverLastModified > 0)
+        assertEquals(43L, model.state.value.coverLastModified)
+        assertEquals(repository.get(1L)!!.coverLastModified, model.state.value.coverLastModified)
     }
 
     @Test

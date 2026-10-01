@@ -538,6 +538,12 @@ class LibraryInteractionTest {
                 )
                 render(scene)
                 assertTrue(navigator().lastItem is MangaDetailScreen)
+                click(nodes(scene).first {
+                    it.config.contains(SemanticsProperties.ContentDescription) &&
+                        manga.title in it.config[SemanticsProperties.ContentDescription] &&
+                        it.config.contains(SemanticsActions.OnClick)
+                })
+                render(scene)
                 clickLabel(scene, MR.strings.action_edit_cover.localized())
                 render(scene)
                 clickLabel(scene, MR.strings.desktop_ui_delete_cover.localized())

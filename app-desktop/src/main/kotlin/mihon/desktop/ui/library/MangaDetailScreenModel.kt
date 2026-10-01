@@ -92,11 +92,15 @@ class MangaDetailScreenModel(
     private val deleteCover: (suspend (Long) -> TaskState<Unit>)? = null,
     private val resolveCoverModel: ((Long, String?) -> String?)? = null,
     private val readingProgress: tachiyomi.domain.reader.interactor.RecordReadingProgress? = null,
+    private val getDuplicateLibraryManga: tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga? = null,
+    private val hasCustomCover: ((Long) -> Boolean)? = null,
+    private val deleteRemovedDownloads: (suspend (Manga, List<Chapter>) -> Unit)? = null,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(MangaDetailState())
     val state: StateFlow<MangaDetailState> = _state.asStateFlow()
     private val chapterSettingsMutex = Mutex()
+    internal var chapterPosition: MangaDetailChapterPosition? = null
 
     // ── Data loading ──────────────────────────────────────────────────────────
 
@@ -299,6 +303,15 @@ class MangaDetailScreenModel(
             } else {
                 state.copy(
                     manga = manga,
+                    coverLastModified = manga.coverLastModified,
+                    hasCustomCover = if (
+                        state.manga?.id != manga.id || state.manga?.coverLastModified != manga.coverLastModified ||
+                        state.manga?.thumbnailUrl != manga.thumbnailUrl
+                    ) {
+                        hasCustomCover?.invoke(manga.id) ?: false
+                    } else {
+                        state.hasCustomCover
+                    },
                     coverModel = resolveCoverModel?.invoke(manga.id, manga.thumbnailUrl) ?: manga.thumbnailUrl,
                     chapterSortMode = chapterSortModeFromManga(manga),
                     chapterSortAscending = !manga.sortDescending(),
@@ -482,24 +495,30 @@ class MangaDetailScreenModel(
         applyCoverResult(result, MR.strings.desktop_ui_cover_deleted.localized())
     }
 
-    private fun applyCoverResult(result: TaskState<Unit>, successFeedback: String) {
+    private suspend fun applyCoverResult(result: TaskState<Unit>, successFeedback: String) {
+        var settled = result
+        if (result is TaskState.Success && getMangaWithChapters != null) {
+            try {
+                setManga(getMangaWithChapters.awaitManga(mangaId))
+            } catch (canceled: kotlinx.coroutines.CancellationException) {
+                throw canceled
+            } catch (error: Exception) {
+                settled = TaskState.Failure(mihon.domain.error.AppError.Storage(error))
+            }
+        }
         val manga = _state.value.manga
         _state.update {
             it.copy(
-                coverTask = result,
-                coverFeedback = when (result) {
+                coverTask = settled,
+                hasCustomCover = hasCustomCover?.invoke(mangaId) ?: it.hasCustomCover,
+                coverFeedback = when (settled) {
                     is TaskState.Success -> successFeedback
                     is TaskState.Failure ->
-                        result.error.cause?.message
+                        settled.error.cause?.message
                             ?: MR.strings.desktop_ui_unable_to_update_cover.localized()
                     else -> null
                 },
-                coverLastModified = if (result is TaskState.Success) {
-                    System.currentTimeMillis()
-                } else {
-                    it.coverLastModified
-                },
-                coverModel = if (result is TaskState.Success) {
+                coverModel = if (settled is TaskState.Success) {
                     resolveCoverModel?.invoke(mangaId, manga?.thumbnailUrl) ?: manga?.thumbnailUrl
                 } else {
                     it.coverModel
@@ -508,9 +527,38 @@ class MangaDetailScreenModel(
         }
     }
 
-    suspend fun setFetchInterval(mangaId: Long, interval: Int) {
-        requireNotNull(updateManga) { "UpdateManga is required" }
+    suspend fun setFetchInterval(mangaId: Long, interval: Int): Boolean {
+        return requireNotNull(updateManga) { "UpdateManga is required" }
             .await(MangaUpdate(id = mangaId, fetchInterval = if (interval == 0) 0 else -interval))
+    }
+
+    internal suspend fun duplicates(manga: Manga): List<tachiyomi.domain.manga.model.MangaWithChapterCount> =
+        requireNotNull(getDuplicateLibraryManga) { "GetDuplicateLibraryManga is required" }(manga)
+
+    internal suspend fun removeFavorite(
+        manga: Manga,
+        downloadedChapters: List<Chapter>,
+        deleteFiles: Boolean,
+        membershipCompleted: Boolean = false,
+    ): MangaRemovalResult {
+        if (!membershipCompleted && toggleLibrary(manga) !is LibraryMembershipResult.Success) {
+            return MangaRemovalResult.MEMBERSHIP_FAILED
+        }
+        try {
+            if (deleteFiles) {
+                if (deleteRemovedDownloads != null) {
+                    deleteRemovedDownloads.invoke(manga, downloadedChapters)
+                } else {
+                    val delete = requireNotNull(deleteDownload) { "Delete download callback is required" }
+                    downloadedChapters.forEach { delete(manga, it) }
+                }
+            }
+        } catch (canceled: kotlinx.coroutines.CancellationException) {
+            throw canceled
+        } catch (_: Exception) {
+            return MangaRemovalResult.DOWNLOADS_FAILED
+        }
+        return MangaRemovalResult.SUCCESS
     }
 
     suspend fun setReadingMode(mangaId: Long, currentFlags: Long, mode: ReadingMode?) {

@@ -152,7 +152,7 @@ V1初稿统一写2:3，后在实现期间经源码独立复核发现Desktop `Lib
 
 - SOURCE：沿统一窗口adapter与现MangaDetail导航owner，宽屏左栏min(可用宽度／2,450dp)，扣除两侧16dp后封面占内容宽65%、居中且资料位于下方居中；实际Android MangaInfoHeader.MangaAndSourceTitlesLarge采用fillMaxWidth(0.65f)。窄屏沿MangaAndSourceTitlesSmall的Row、16dp间距、封面sizeIn(maxWidth=100dp)、顶部对齐与资料并排；Desktop封面仍7:10，不能照搬HTML360px上限或Android Book2:3。
 - PROJECT_POLICY：宽屏左右各独立Lazy滚动，左栏不显示滚动条、仅章节右栏显示；窄屏整页单列。无两栏／顶栏分割线；真实200章拖动、重排／尺寸变化后的稳定章节ID位置及有界回退，返回书架保RI04上下文。隐藏根导航，普通顶栏仅返回／标题／下载／章节设置／更多；更多检查更新／分类／迁移／分享链接／笔记按实际适用条件呈现，阅读模式只留Reader，不重复常驻外链和全部已读入口。
-- SOURCE／PROJECT_POLICY：标题进入既有全局搜索；作者／画师主点击保现CreatorMention解析与资料Screen，上下文角色搜索／复制；来源进入当前源搜索，缺源／语言／恢复状态明确。标签换行，主操作当前源搜索，上下文全局搜索／复制，结果范围与剪贴板失败反馈可见。所有普通Screen通过嵌套Navigator，不能凭mock callback或符号字符串验导航。
+- SOURCE／PROJECT_POLICY：标题主点击进入既有全局搜索、右键复制并显示真实结果；作者／画师主点击保现CreatorMention解析与资料Screen，上下文角色搜索／复制；来源进入当前源搜索，缺源／语言／恢复状态明确。标签换行，主操作当前源搜索，上下文全局搜索／复制，结果范围与剪贴板失败反馈可见。所有普通Screen通过嵌套Navigator，不能凭mock callback或符号字符串验导航。
 - PROJECT_POLICY：状态完整显示实际SOURCE状态／未知；空作者、组名、日期、描述不伪造值或悬空分隔符。长简介可展开／收起，富文本、链接和选择复制沿RI03真实description／Coil链，图片开关保持即时消费。章节头普通模式打开RI07同一面板，处理后共N章及活动筛选提示；未读标题前主色点，已读标题／副标题弱化，仅书签显示实心Bookmark，副标题只组合真实日期／页码／scanlator。选择／本地下载占位不触发；queue、真实文件、同步页码语义仍复用现链。
 - SOURCE／PROJECT_POLICY：封面主点击进入同一作品查看器，复用typed／custom-priority／version request，不造网络或cache。查看器实际缩放、关闭／Escape及还焦，编辑菜单内替换／删除；无custom不提供可执行删除，失败保有效原封面及反馈。Android MangaCoverDialog的Close／Share／Save／Edit家族作为来源；保存／分享未闭环时不以空回调或假成功对外开放。
 - PROJECT_POLICY：非空笔记摘要在简介前，摘要与更多→笔记进入同一草稿编辑器；空笔记无卡片。沿UpdateMangaNotes唯一repository与Android rich-editor的粗体／斜体／下划线／两类列表存储语义，保存重开保格式，取消／Escape不写，Boolean拒绝／异常保草稿并可重试，成功反馈并只关闭一层。不截断既有Desktop笔记或维护第二份文本存储；平台编辑器不能直接复用Android生命周期时仅适配owner／保存确认。
@@ -172,3 +172,81 @@ RI08复用前置核对：Android现用`libs.richeditor.compose`版本1.0.0-rc13�
 - SOURCE／PROJECT_POLICY：“之前已读”复用Android实际filteredChapters的升序叙事方向及take(pointerPos)，不含当前章；改变显示升降序不能改变目标集合。四种共享排序、首项、未知号／小数／重复号及陈旧目标均执行真实SetChapterReadStatus验证；不以当前显示位置drop()代替。More中的“全部标已读”移除，当前可见全选→批量已读承接需求。
 - PROJECT_POLICY：混合下载状态只处理适用子集，排队／下载中不重复入队，local限制沿既有能力。删除确认固定作品／章节ID快照，显示已选与适用数及本机影响；取消不删，后续新选择和新数据不扩张对象。真实成功／跳过／失败反馈可见，失败保留有效重试对象，不以成功清选掩盖部分失败；异步完成保护后来选择。
 - 验收：共享策略与Android实际包装保护、真实pointer／modifier／长按抑制click、完整详情导航及Escape／focus、SQLite标记与部分失败、固定对象文件拒绝／重试、窄320dp／fontScale2及浅深离屏。仅运行当前行为focused及稳定明确受影响组，正式键鼠／触控板／DPI及发布runtime留RI18，不能以离屏代替。
+
+## 2026-10-01 下载、阅读与文件动作契约（RI10，实施前固定）
+
+本节固定D-F1–F7／F9–F11、D-B9保存及D-E5／E6／E10真实下载／删除闭环和书架C17跨页状态。固定时RI08正在实施、RI09未实施；不声明本节能力已完成，不更改Reader图片算法、下载身份或同步协议。
+
+- SOURCE：共享`mihon.domain.chapter.interactor.FilterChaptersForDownload`服务源更新后的自动下载，消费自动下载开关、favorite、分类包含／排除及既有已读章号；手动下载不能借此强制收藏或要求自动下载开启。Android手动候选沿MangaScreenModel的getUnreadChapters／getBookmarkedChapters和getUnreadChaptersSorted，共用getChapterSort及当前方向反转得到升序工作集；下载书签包含已读书签章。
+- PROJECT_POLICY：详情下载菜单及书架批量1／5／10／25、未读、书签调用同一可复用候选链。先按真实资格排除已下载、不可普通下载和已排队／下载中的章，再截限额，不能先take再丢下载章；排序升降显示不改变叙事工作集。当前作品／章节稳定ID和接受时快照决定动作对象，后续筛选／排序／新选择不扩张它。
+- SOURCE／PROJECT_POLICY：是否跳过筛选复用实际Reader偏好，作用到手动下载候选并反馈当前范围；不造独立下载过滤偏好。Android为skip_filtered，Desktop现为reader_skip_filtered_chapters及旧skipFilteredChapters兼容，已有显式值须保留；通过平台偏好adapter供共享选择核心，不在此重写整套Reader偏好。全局下载、读／书签三态、扫描组及解除约束仍消费RI07同一投影。
+- PROJECT_POLICY：行右键和选择动作按真实未下载／排队／下载中／失败状态提供下载、立即／优先、取消或重试；使用现manager／状态机，动作结果、排队／进度／失败标记随真实flow变化。单击仍阅读，选择中行内动作不误触；不靠修改UI状态冒充队列成功，也不因已有排队重复加入。
+- PROJECT_POLICY：非收藏下载提供可加入书架的非阻塞提示，不强制收藏。local／失效源不启动无意义远端请求，实际存在的本地／已下载章节仍可阅读；external章节通过真实浏览器adapter打开，不进入普通下载和Reader请求。失败有明确原因及重试，不伪造缺源数据。
+- PROJECT_POLICY：删除确认只影响打开时固定作品／章节ID及适用的本机文件范围；取消无副作用，新对象不混入。必须执行现manager／provider和真实有限目录／别名，反馈实际成功／跳过／失败；Boolean拒绝不得被Unit回调吞成成功，部分失败保留重试对象。取消及晚到下载完成不能复活被取消对象，RI07文件revision只触发真实状态重算，不替代执行结果。
+- SOURCE／PROJECT_POLICY：继续阅读从当前可见有效章节沿共享resolveReaderEntry找叙事目标，无目标隐藏，已有同步目标／页码／snapshot按真实RecordReadingProgress恢复；阅读资格和筛选消费一致。阅读模式只在Reader设置单本值，返回详情、重启及更换作品持久且隔离，写入拒绝有反馈；不改变Reader内部图片／翻页算法或压掉未读目标。
+- PROJECT_POLICY：封面保存从RI08同一typed／custom-priority／version请求取得实际图像，目的地由平台文件保存入口选择；取消不写，覆盖需明确确认，失败保原文件及可重试反馈，成功给出真实保存结果。不能自建HTTP客户端、忽略源headers／代理或另造封面cache；分享由RI11平台adapter闭环。
+- 验收：真实Compose菜单／右键／Reader导航及DI，SQLite／Preference与manager、MockWebServer实际下载、临时目录取消／删除／失败／晚到边界，书架与详情状态互相响应。仅本行为focused红绿及稳定明确受影响验证；正式产物和production runtime统一RI18，不以空回调、源码扫描或离屏代替。
+
+## 2026-10-01 追踪、登录恢复与分享契约（RI11，实施前固定）
+
+本节固定D-H1–H9及D-B9分享；固定时RI08仍在实施，不声明RI11完成。复用当前TrackingSettingsScreen／TrackingScreenModel、registry／provider与共享ReadingProgressTrackSync、DesktopBrowserLoginAdapter／AuthenticatedSessionCommitter和DesktopShareService，不重写账号、OAuth、Cookie、代理或持久重试队列。
+
+- SOURCE／PROJECT_POLICY：详情信息区追踪入口显示有效绑定数，面板呈现服务名称、登录／绑定／状态／进度／评分及错误；所有查询、刷新、绑定、重匹配和回写经真实provider与repository。查询初值为作品标题，已有绑定可搜索替换；取消不解绑，不以另造provider或本地假结果代替。手动刷新必须读取远端状态，registry.refresh与本地reload不能充当远端刷新。
+- PROJECT_POLICY：进度按当前服务track.totalChapters的正数上限校验；未知服务总数允许非负值，不用本地目录条目数截断。UI步进及model校验遵守同一规则，保原始评分回写和RI05各provider尺度。HTTP成功、空／缺失、403／429／500及畸形响应覆盖实际parser至存储／界面的完整路径。
+- SOURCE／PROJECT_POLICY：手动已读的自动／询问／关闭沿AndroidautoUpdateTrackOnMarkRead语义，区别阅读完成autoUpdateTrack布尔偏好。实际成功标记后才处理适用的登录绑定、最高有效章节号及进度前移；询问取消只保本地已读，不回写远端，不触发重复请求。复用现共享同步／持久重试及增强匹配；增强作品入库匹配反馈须由真实收藏链消费，不能只打开追踪页才算入库自动匹配。
+- PROJECT_POLICY：远端打开与复制独立，成功／不可用／剪贴板拒绝分别反馈；源网页／预览及验证恢复使用现SourceLoginSession和真实Cookie提交，取消／过期不提交，迟到结果不能套到另一本或新会话。token、cookie、账号及授权链接不写仓库或普通日志；自动化用隔离服务及临时存储，真实账号验收另有明确授权及实际证据。
+- SOURCE／PROJECT_POLICY：Windows无native share时复用DesktopShareService文本复制降级，明确“已复制链接”；原生Opened只表示已打开系统界面，terminal成功／取消／失败分别反馈，不谎报已发送。封面分享复用RI08／RI10同一实际typed图像请求及已有临时文件生命周期，不造网络客户端或缓存。macOS保原生session终态与临时文件清理能力。
+- 验收：真实Compose搜索／重匹配／确认／取消／重试、factory／DI及普通Navigator类型；MockWebServer原始响应→生产provider→SQLite→投影，实际浏览／剪贴板／分享平台port拒绝及终态。320dp／200%字号、浅深主题、Tab／Shift+Tab／Escape／背景隔离和关闭还焦必须覆盖；最终正式runtime与已授权真实账号证据在RI18取得，不能将mock账号记为真实账号成功。
+
+## 2026-10-01 书架偏好一致性契约（RI12，实施前固定）
+
+本节固定S01／S02／S07及S03–S06的迁移、值域与消费者端口；固定时RI08仍在实施，不声明这些设置已完成。入口为更多→设置→书架，管理分类继续使用RI02同一子页，不新增管理入口。共享LibraryPreferences、现LibraryPreferenceMigration／membership／DeleteCategory／ResetCategoryFlags及scheduler为复用边界。
+
+- SOURCE／PROJECT_POLICY：默认分类沿唯一default_category键，-1每次询问、0系统默认、现有自定义ID；实际详情入库消费，取消不入库、保存失败反馈、删除所选分类按DeleteCategory回退-1，不搬移既有收藏。不能因共享显式值等于默认而将其视为未设置。
+- PROJECT_POLICY：更新分类包含0及自定义，草稿三态不指定／包含／排除，确认一次发布完整策略；多归属排除优先、包含空即全部。共享包含／排除两键不是原子事务，Desktop消费者须读一个验证完整的快照；保存失败只能看到旧完整策略，中断用最小恢复记录与幂等恢复，恢复前不消费半份值。旧CSV非法值不扩大范围，已删ID清理与实际DeleteCategory同链；手动当前分类绕过全库分类范围，作品限制由RI14消费。
+- SOURCE／PROJECT_POLICY：现categorized_display是分类排序消费开关。关闭先用ResetCategoryFlags／实际SQL更新分类flags到全局排序，再保存关闭偏好；失败保开启且可重试，恢复串行不假SQL与Preference原子，重新开启不能复活旧分类排序。保全局排序、随机种子及显示偏好；不能仅改Checkbox本地变量或set(false)就宣称清理完成。
+- PROJECT_POLICY：单次迁移保旧6h／CSV，共享显式有效值优先、marker最后写，无长期双写。未知周期安全关闭并反馈；旧配置未执行的设备限制不能升级时悄悄新增门槛。48／72h、智能规则、元数据默认关闭及Windows设备值域先进入可测试消费端口；未接通的新选项不提前开放，实际周期／元数据由RI14、系统限制由RI16验收。
+- 验收：真实Settings导航／搜索锚点、Compose草稿确认／取消／失败、SQLite分类flags及Preference故障／重启恢复、旧显式默认和中断迁移、真实membership及scheduler完整策略端口。高风险双存储边界独立核对后下游使用；仅focused与明确受影响wiring，最终全量仍在RI18。
+
+## 2026-10-01 完整目录同步契约（RI13，实施前固定）
+
+- `SOURCE`：先 characterization Android 实际 SyncChaptersWithSource，覆盖 URL 去重、名称规范化、prepareNewChapter、ChapterRecognition、sourceOrder、上传日期补全与保留、dateFetch、识别章号的重复已读及换链已读／书签继承、排除扫描组后的新增返回集合。共享核心由双端真实包装消费，不能只在测试中复制 Android 算法。Desktop 的作者观察、配对和同步身份保留为平台扩展。
+- `PROJECT_POLICY`：真实 source.getMangaUpdate 经 SourceMangaUpdateService 在事务外执行；空／错误／不完整响应不能清库。复用已有成功／错误反馈，详情当前作品与书架逐本更新都接同一同步入口。作者目录的 COMPLETE 标记不是来源完整性的证明；不得为非本地空响应默认视作有效清空。
+- `PROJECT_POLICY`：单本目录更新一次 SQL 事务发布新增、同 URL 改名／重排／元数据、移除与作品对应更新；事务内合并最新用户读态、书签、页码等，网络开始前的快照不能覆盖期间发生的用户操作。失败回滚后订阅者只见完整旧值，成功只见完整新值；原有 repository 单项吞异常或 addAll 返回空不能冒充整批成功。
+- `PROJECT_POLICY`：同 URL 保留已有 chapter ID、历史、配对、阅读事件与同步键；可识别换链按共享语义及有界唯一身份处理，保留适用既有引用，不按相近标题任意合并。实际 history、chapter_pairings、reading_events 与 sync_private_reading 存在 ON DELETE CASCADE，删后重插不能当作保身份，须以真实 SQL 及既有同步／阅读消费者验证。
+- `PROJECT_POLICY`：文件重命名与引用变动只针对本次有限对象，使用已有下载身份／provider；文件不能与 SQL 宣称原子。所需恢复记录局限于单本同步阶段和有限副作用，明确失败、重启恢复与幂等边界，不建通用 outbox、不自动清理下载文件。自动下载只消费已提交且适用的新增集合，重试不重复队列或作者观察。
+- 验收执行真实 HTTP→source→共享计划→SQL→Flow／调用入口，真实临时文件与阶段故障覆盖提交前／后中断、并发用户读写、相同响应重试和异常空响应；Android 同语义契约与 Desktop 独有引用均通过后，RI14 才可依赖该接口。此为实施前固定验收，未表示 RI13 已实现或已有测试证据。
+
+## 2026-10-01 更新恢复与策略消费契约（RI14，实施前固定）
+
+- `PROJECT_POLICY`：沿现 LibraryUpdateScheduler、DesktopTaskScheduler 和 checkpoint store，只追加书架任务所需上下文。启动保存触发来源、全库／指定分类／单本作用域与有限稳定工作集；恢复按原 ID 集合查完整 repository，不重新用当前分类偏好或 UI 查询裁剪。原范围内已删除／已不适用对象有明确跳过结果，后来入库的作品不被隐式追加。
+- `PROJECT_POLICY`：A 成功、B 失败、C 成功时 C 仍执行；成功／失败／跳过／未处理分开计数并与真实集合对应。失败明细、取消与重试可见，取消后晚到错误不能覆盖 Cancelled。离开页面不终止已授权后台任务；任务运行中同入口不重建重复工作。重试失败／原任务恢复与新刷新区分，不让旧 failed workset 被 register 的保留逻辑误套到新范围。
+- `PROJECT_POLICY`：已完成单元的 DB／文件／自动下载副作用不在恢复时重复；消费 RI13 已稳定同步和有限恢复接口。旧 task JSON 无新增字段仍可读取，但没有原范围证据时不能悄悄扩成全库；其他任务的序列化、idempotency 和生命周期保持兼容。故障注入在单元提交／checkpoint前后证明恢复边界，不能只以 completedUnitIds 数量证明副作用幂等。
+- `SOURCE`：智能候选复用共享 LibraryPreferences 的四项限制及 Android 真实判断：完成状态、有未读、totalChapters>0 且未开始阅读、nextUpdate 超过 FetchInterval 窗口；ONLY_FETCH_ONCE 已有目录的规则也保留。零章节不能被“尚未开始”错误永久排除，本地不请求远端。手动指定分类绕过全库包含／排除范围，仍遵守实际作品规则；UI筛选不改变后台工作集。设备限制由 RI16 同一 production adapter 提供。
+- `SOURCE／PROJECT_POLICY`：周期包括保留 Desktop 既有6小时及48／72小时／每周，0关闭；沿 RI12 发布的完整策略消费。Clock／等待边界可控，回拨、睡眠及重启不重复并发、不把轮询时间冒充实际检查时间。单本0自动或负天数覆盖复用 FetchInterval，展示持久 nextUpdate 与检查间隔，不能另写预测算法。现 FetchInterval 的 window=0 和 lastUpdate=0 分支仍读取墙钟，Clock验收须执行真实该分支并消除不可控时间，不能复制计算到测试。
+- `SOURCE／PROJECT_POLICY`：autoUpdateMetadata 默认false；来源详情更新仅开关允许时执行既有 SourceMangaUpdateService(fetchDetails)，保护用户标题与自定义封面，作品memo、作者观察和现源错误分类仍可用。不新增第二网络客户端或换代理；数据失败保旧值且准确反馈。
+- 验收：真实 scheduler→source／RI13→SQLite／队列→checkpoint／重启→UI，覆盖首中末失败、全部失败、取消晚到、精确恢复、旧记录、仅重试失败、新范围刷新及控制时钟；下游 RI16／RI17 在专项独立验收后消费。本节仅固定接口与验收，未声明 RI14 实施完成。
+
+## 2026-10-01 迁移确认与失败边界契约（RI15，实施前固定）
+
+- `SOURCE／PROJECT_POLICY`：复用现 MigrationSearchScreen、MigrationOptions、DesktopMigrateMangaUseCase、共享 MigrationOrchestrator 与 DesktopBatchMigrationController。详情重复收藏的迁移分支和 More→迁移进入同一普通 Screen；目标搜索可改词、分页、换源，实际空／错误／加载／重试及返回保留旧详情与搜索上下文，不另造来源选择链。
+- `PROJECT_POLICY`：目标源与作品 URL、chapter ID 及目录独立；先成功取得目标真实目录，再消费 RI13 共用同步边界。旧章节不能仅更改 sourceId／URL 挂到目标，既有目标也不能被旧快照覆盖用户读态。目标相同、无效或不适用时有真实反馈，取消和目标网络失败保旧作品／下载，网络不入 SQL 事务。
+- `SOURCE`：确认草稿覆盖章节状态、分类、自定义封面、笔记及旧下载策略；共享 MigrationFlag 已有 CUSTOM_COVER／REMOVE_DOWNLOAD，Desktop 当前只有前三种数据选项，须补适用消费。复制保留原收藏，迁移完成后移出原收藏；两者 dateAdded 和字段选择沿 shared libraryPlan，不将用户未选字段归零。章号识别、已读上界、书签及dateFetch复用现 chapterUpdates，不替换为标题近似或普通一对一复制算法。
+- `PROJECT_POLICY`：收藏／分类／选定字段的一次提交边界与目录变更协调，失败不能移出旧收藏或留下假成功。自定义封面与旧下载文件只按确认时的有限范围，复用既有store、provider与RI10 retirement；文件不伪装 SQL 原子，所需恢复限定本次迁移及有界对象。拒绝／中断保原有效文件，恢复和重试不重复迁移／自动下载，不扩张后来新增文件。
+- 验收：真实 source→目标持久化／目录→共享迁移→membership／封面／文件→UI，覆盖选项组合、既有目标、复制与迁移、取消、源失败、SQL／文件故障、重试及批量单项失败继续；导航类型／factory／DI与窄窗草稿可达性均执行。数据／文件边界经同批独立验收后勾选，不以只改源名或入口存在作为完成。
+
+## 2026-10-01 Windows设备条件与等待契约（RI16，实施前固定）
+
+- `SOURCE／PROJECT_POLICY`：复用已有JNA5.19.1及现DesktopTaskScheduler／LibraryUpdateScheduler。小型平台port只返回Wi-Fi、非计量、外接电源各自满足／不满足／未知与必要原因，查询失败或无可靠映射返回未知；不能把网络可达、TCP成功或Java NetworkInterface名称猜测当Wi-Fi／计量事实。多个活动连接不能凭任一Wi-Fi断言实际业务走Wi-Fi；无电池但确证外接电源可满足。
+- `PROJECT_POLICY`：自动任务只检查选中的条件，选中未知或不满足就等待且展示原因，未选字段不阻断；手动和显式重试绕过自动设备门槛。已开始单作品不因条件变化中断，在下一个作品边界重判。等待保同一任务ID、固定工作集和已完成集合，不算周期已经执行；满足或休眠恢复时同一任务只续一次，不安装后台唤醒服务、不修改系统网络／供电配置。
+- `SOURCE／PROJECT_POLICY`：沿RI12共享偏好及RI14完整策略发布与scheduler调用链接线，设置→书架提供实际能力与等待反馈。production DI只能消费同一真实原生adapter；测试注入小型port须另加真实native装配及发布runtime证据。macOS不加载Windows库、不显示能选却无效的Windows条件，其他既有Desktop能力保留。
+- `PROJECT_POLICY`：focused红绿覆盖三值矩阵、未选字段、无电池、多连接／未知、条件变化、作品边界、睡眠恢复、手动／显式重试、同任务去重，以及真实DI解析。Windows发布产物的native调用及真实状态由RI18统一取得，无法取得的实体硬件证据保持未验收，不能以模拟值或独立客户端代替。
+
+- `SOURCE`：原生API实施依据为微软[WlanQueryInterface](https://learn.microsoft.com/en-us/windows/win32/api/wlanapi/nf-wlanapi-wlanqueryinterface)、[GetSystemPowerStatus](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getsystempowerstatus)、[SYSTEM_POWER_STATUS](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-system_power_status)与[INetworkCostManager.GetCost](https://learn.microsoft.com/en-us/windows/win32/api/netlistmgr/nf-netlistmgr-inetworkcostmanager-getcost)。WLAN查询必须用实际接口GUID、检查ERROR_SUCCESS并释放系统内存；电源查询失败为未知，ACLineStatus为0／1／255分别断开／接通／未知，BatteryFlag无电池不能自行等同电源接通。GetCost传NULL反映machine-wide Internet成本，不证明任意源／VPN路由；多连接无法可靠对应实际业务路径时应保守未知。
+
+## 2026-10-01 两段顶部刷新契约（RI17，实施前固定）
+
+- `PROJECT_POLICY`：按最终设计4.5共用纯状态机，书架和详情各自拥有滚动与作用域。内容容器顶部无修饰原生向起点未消费量才参与；滚到顶本身不刷新。Idle→Hinting显示准备提示，第一段归一化80dp后Armed；提示可见至少300ms、两段间隔至少400ms、3秒绝对有效期内新段48dp才提交一次。惯性不能延长Armed有效期；任务真实完成后连续800ms无滚动才回Idle，运行中不重复请求。
+- `PROJECT_POLICY`：反向／离顶／失焦／离页、选择／模态、切分类与查询／筛选变化立即撤销未提交提示；提交前再核scope ID。空库、加载及加载错误不武装，非空不足一屏仍可用。Ctrl／Alt／Shift、横向、Home／PageUp、滚动条拖动与代码定位不触发；归一化与异常delta上限只在Desktop平台adapter，RI06分类Ctrl滚轮不抢占刷新。
+- `SOURCE／PROJECT_POLICY`：复用LibraryTab→LibraryScreenModel.refreshLibrary→现调度器，书架更新完整当前分类而非查询／UI过滤集合；详情复用同一真实目录更新链且只更新当前作品。宽屏仅右侧章节区可触发，左资料栏不触发；窄屏内容区可触发。提示不推挤列表，实际任务状态、失败及重复按钮反馈沿已有权威，不另建更新器或计时假成功。
+- `PROJECT_POLICY`：可控Clock focused红绿覆盖所有阈值和撤销／冷却；真实Compose wheel→页面／Root→scheduler集成覆盖完整分类与单作品、重复事件以及作用域切换。RI18统一补Windows鼠标、精确触控板、自然滚动及125%／150%／200%DPI实机证据；原生离屏事件不能代替实体输入验收。

@@ -2162,4 +2162,15 @@
     <string name="desktop_library_interval_requires_restriction">Enable “Outside expected release period” in library update restrictions to use this filter.</string>
     <string name="desktop_library_unrated">Unrated</string>
     <string name="desktop_chapter_defaults_apply_failed">Default settings were saved, but applying them to library entries did not finish. Try applying them again.</string>
+    <string name="desktop_notes_save_failed">Could not save notes. Your draft is kept; please retry.</string>
+    <string name="desktop_notes_saved">Notes saved</string>
+    <string name="desktop_notes_bold">Bold</string>
+    <string name="desktop_notes_italic">Italic</string>
+    <string name="desktop_notes_underline">Underline</string>
+    <string name="desktop_notes_unordered">Bullet list</string>
+    <string name="desktop_notes_ordered">Numbered list</string>
+    <string name="desktop_detail_save_failed">Could not save this change. Please retry.</string>
+    <string name="desktop_detail_removal_partial">Removed from library; some downloads could not be deleted. Retry deletes only the original downloads.</string>
+    <string name="desktop_detail_check_interval">Checking interval: %1$s</string>
+    <string name="desktop_detail_check_interval_automatic">Automatic: %1$s</string>
 </resources>

@@ -185,12 +185,13 @@ class MangaDetailChapterListItemsTest {
             }
             scene.render()
 
-            val bookmark = nodes(scene).single { node ->
-                node.config.contains(SemanticsActions.OnClick) &&
-                    node.config.contains(SemanticsProperties.ContentDescription) &&
-                    MR.strings.action_bookmark.localized() in node.config[SemanticsProperties.ContentDescription]
+            val row = nodes(scene).single { node ->
+                node.config.contains(SemanticsActions.CustomActions) && node.hasText("Button chapter")
             }
-            tap(scene, bookmark.boundsInRoot.center)
+            val bookmark = row.config[SemanticsActions.CustomActions].single {
+                it.label == MR.strings.action_bookmark.localized()
+            }
+            assertTrue(bookmark.action())
 
             val download = nodes(scene).single { node ->
                 node.config.contains(SemanticsActions.OnClick) &&

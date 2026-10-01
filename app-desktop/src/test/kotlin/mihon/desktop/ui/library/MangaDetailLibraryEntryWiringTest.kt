@@ -457,7 +457,9 @@ class MangaDetailLibraryEntryWiringTest {
 
             if (manual) {
                 renderUntil(scene) { nodes(scene).any { it.hasText("Auto-loaded chapter") } }
-                invokeDescriptionClick(scene, MR.strings.check_for_updates.localized())
+                invokeDescriptionClick(scene, MR.strings.label_more.localized())
+                scene.render()
+                invokeClick(scene, MR.strings.check_for_updates.localized())
             }
             renderUntil(scene) { model.state.value.chapters.any { it.memo == memo } }
             assertEquals(1, calls)
@@ -590,6 +592,7 @@ class MangaDetailLibraryEntryWiringTest {
             setMangaCategories = SetMangaCategories(mangaRepository),
             downloadQueue = MutableStateFlow(emptyList()),
             updateLibraryMembership = UpdateLibraryMembership(mangaRepository),
+            getDuplicateLibraryManga = tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga(mangaRepository),
         )
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns DesktopAppPreferences(DesktopPreferenceStore())
@@ -646,6 +649,7 @@ class MangaDetailLibraryEntryWiringTest {
             getCategories = GetCategories(FakeCategoryRepository()),
             downloadQueue = MutableStateFlow(emptyList()),
             updateLibraryMembership = UpdateLibraryMembership(mangaRepository),
+            getDuplicateLibraryManga = tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga(mangaRepository),
         )
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns DesktopAppPreferences(DesktopPreferenceStore())

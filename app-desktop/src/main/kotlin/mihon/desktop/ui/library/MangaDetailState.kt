@@ -19,6 +19,7 @@ data class MangaDetailState(
     val coverFeedback: String? = null,
     val coverLastModified: Long = 0L,
     val coverModel: String? = null,
+    val hasCustomCover: Boolean = false,
 
     // ── Sort state ───────────────────────────────────────────────────────────
     val chapterSortMode: ChapterSortMode = ChapterSortMode.BY_SOURCE_ORDER,

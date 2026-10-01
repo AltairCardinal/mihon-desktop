@@ -1,8 +1,5 @@
 package mihon.desktop.ui.browse
 
-import mihon.desktop.LocalDesktopUiDependencies
-import mihon.desktop.ui.source.desktopSourceErrorMessage
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -74,19 +71,21 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.extension.DesktopSourceArtifactStatusLookup
 import mihon.desktop.extension.DesktopSourceExtensionLookup
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.extension.extensionListDestination
 import mihon.desktop.ui.library.MangaDetailScreen
+import mihon.desktop.ui.source.desktopSourceErrorMessage
 import mihon.domain.error.AppError
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.source.service.SourceLoginState
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryState
-import tachiyomi.domain.source.service.SourceLoginState
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -177,9 +176,15 @@ internal fun sourceLoginDialogEvents(
     actions: DesktopSourceLoginUiActions,
     onStateChange: (DesktopSourceLoginUiState?) -> Unit,
 ) = DesktopSourceLoginDialogEvents(
-    edit = { value -> currentState()?.takeIf { it.attempt === rendered.attempt }?.let { onStateChange(actions.editHeader(it, value)) } },
+    edit = { value ->
+        currentState()?.takeIf { it.attempt === rendered.attempt }?.let { onStateChange(actions.editHeader(it, value)) }
+    },
     submit = { currentState()?.takeIf { it.attempt === rendered.attempt }?.let { onStateChange(actions.submit(it)) } },
-    dismiss = { currentState()?.takeIf { it.attempt === rendered.attempt }?.let { onStateChange(if (it.terminal) null else actions.cancel(it)) } },
+    dismiss = {
+        currentState()?.takeIf {
+            it.attempt === rendered.attempt
+        }?.let { onStateChange(if (it.terminal) null else actions.cancel(it)) }
+    },
 )
 
 @Composable
@@ -189,7 +194,10 @@ internal fun SourceLoginDialogHost(
     copy: DesktopSourceLoginCopy,
     actions: DesktopSourceLoginUiActions,
     onStateChange: (DesktopSourceLoginUiState?) -> Unit,
-    render: @Composable (DesktopSourceLoginDialogModel, DesktopSourceLoginDialogEvents) -> Unit = ::DesktopSourceLoginDialog,
+    render: @Composable (
+        DesktopSourceLoginDialogModel,
+        DesktopSourceLoginDialogEvents,
+    ) -> Unit = ::DesktopSourceLoginDialog,
 ) {
     state ?: return
     render(
@@ -421,7 +429,6 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
         ) { padding ->
 
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-
                 // Search bar (shown when active)
                 if (searchActive) {
                     SearchBar(
@@ -496,6 +503,21 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                 }
 
                 when {
+                    source == null -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    MR.strings.source_not_installed.localized(Locale.getDefault(), sourceId.toString()),
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                                androidx.compose.material3.Button(onClick = {
+                                    navigator.push(extensionListDestination(initialTab = 1))
+                                }, modifier = Modifier.padding(top = 8.dp)) {
+                                    Text(MR.strings.label_extensions.localized())
+                                }
+                            }
+                        }
+                    }
                     requiresApkReconversion -> {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -591,7 +613,10 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                                     navigator.push(MangaDetailScreen(manga.id))
                                     scope.launch {
                                         try {
-                                            val details = saveSourceMangaForDetails.awaitListedForDetails(listed, sourceId)
+                                            val details = saveSourceMangaForDetails.awaitListedForDetails(
+                                                listed,
+                                                sourceId,
+                                            )
                                             if (details.needsRefresh) {
                                                 saveSourceMangaForDetails.refreshFromSource(catalogueSource, listed)
                                             }
@@ -733,7 +758,10 @@ private fun FilterItem(filter: Filter<*>) {
             var text by remember(filter) { mutableStateOf(filter.state) }
             OutlinedTextField(
                 value = text,
-                onValueChange = { text = it; filter.state = it },
+                onValueChange = {
+                    text = it
+                    filter.state = it
+                },
                 label = { Text(filter.name) },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 singleLine = true,
@@ -810,7 +838,9 @@ private fun MangaCard(manga: Manga, onClick: () -> Unit) {
                 model = mihon.desktop.image.desktopSourceImageModel(manga.thumbnailUrl, manga.source),
                 contentDescription = manga.title,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth().aspectRatio(0.7f).testTag("source-browse-cover:${manga.thumbnailUrl}"),
+                modifier = Modifier.fillMaxWidth().aspectRatio(
+                    0.7f,
+                ).testTag("source-browse-cover:${manga.thumbnailUrl}"),
             )
             // Gradient overlay
             Box(

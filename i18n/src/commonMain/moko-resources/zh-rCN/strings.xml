@@ -1951,4 +1951,15 @@
     <string name="desktop_library_interval_requires_restriction">请先在书架更新限制中启用“超出预期更新周期”，再使用此筛选。</string>
     <string name="desktop_library_unrated">未评分</string>
     <string name="desktop_chapter_defaults_apply_failed">默认设置已保存，但应用到书架作品未完成。请重试应用。</string>
+    <string name="desktop_notes_save_failed">无法保存笔记。草稿已保留，请重试。</string>
+    <string name="desktop_notes_saved">笔记已保存</string>
+    <string name="desktop_notes_bold">粗体</string>
+    <string name="desktop_notes_italic">斜体</string>
+    <string name="desktop_notes_underline">下划线</string>
+    <string name="desktop_notes_unordered">项目列表</string>
+    <string name="desktop_notes_ordered">有序列表</string>
+    <string name="desktop_detail_save_failed">无法保存更改，请重试。</string>
+    <string name="desktop_detail_removal_partial">已移出书架，但部分下载无法删除。重试只删除原先确认的下载。</string>
+    <string name="desktop_detail_check_interval">检查间隔：%1$s</string>
+    <string name="desktop_detail_check_interval_automatic">自动：%1$s</string>
 </resources>

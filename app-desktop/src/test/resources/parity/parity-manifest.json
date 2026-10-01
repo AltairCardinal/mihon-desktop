@@ -11349,7 +11349,9 @@
       "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailMembershipDialogs.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -11413,22 +11415,37 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
           "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY",
-          "line": 810
+          "line": 828
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun toggleLibrary",
-          "line": 436
+          "line": 449
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
           "symbol": "MangaCategoryDialogMode.ADD_TO_LIBRARY -> model.toggleLibrary",
-          "line": 434
+          "line": 562
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
           "line": 1162
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailMembershipDialogs.kt",
+          "symbol": "internal fun DuplicateMangaDialog(",
+          "line": 39
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailMembershipDialogs.kt",
+          "symbol": "internal fun RemoveFavoriteDialog(",
+          "line": 120
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt",
+          "symbol": "getDuplicateLibraryManga = Injekt.get",
+          "line": 85
         }
       ],
       "FIXTURE": [
@@ -11446,6 +11463,22 @@
             "Navigator(MangaDetailScreen",
             "click(scene, addToLibrary)",
             "assertEquals"
+          ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt#duplicate dialog views and migrates actual existing screens then adds with the shared default category",
+          "productionMarkers": [
+            "withDetail(root",
+            "scene.navigator.lastItem",
+            "model.categoryIdsForManga"
+          ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt#remove favorite reports actual fixed download deletion refusal and permits retry without expanding snapshot",
+          "productionMarkers": [
+            "withDetail(root",
+            "getMangaById",
+            "assertTrue"
           ]
         }
       ]
@@ -12632,7 +12665,8 @@
       "app/src/test/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModelSharedMutationWiringTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailLibraryEntryWiringTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt"
     ],
     "behaviorMethods": {
       "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateLibraryMembershipTest.kt": [
@@ -12653,10 +12687,16 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailLibraryEntryWiringTest.kt": [
         "real MangaDetailScreen add action mounts category dialog and commits selection",
         "add to library dialog passes selected category ids through the production caller"
+      ],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt": [
+        "duplicate dialog views and migrates actual existing screens then adds with the shared default category",
+        "remove favorite reports actual fixed download deletion refusal and permits retry without expanding snapshot",
+        "favorite removal unchecked and cancelled download choices preserve actual files",
+        "duplicate modal owns Escape and returns the actual membership trigger without adding"
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
-    "verificationScope": "VERIFIED: fixed-main membership semantics, shared atomic transition, current Android add-with-category production wiring, mounted Desktop MangaDetailScreen entry/dialog persistence, Desktop removal and repository rollback are executable.",
+    "verificationScope": "VERIFIED: fixed-main membership semantics, shared atomic transition, current Android add-with-category production wiring, mounted Desktop MangaDetailScreen entry/dialog persistence, Desktop removal and repository rollback are executable. RI08 (2026-10-01) adds mounted real-factory duplicate detection, existing Screen view/migration navigation, shared default-category membership, native modal cancellation/focus, and fixed downloaded-file removal snapshots. Partial file deletion is reported; retry writes membership once and never expands to later downloads. Independent review and 159 unique affected test passes are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md. Files and membership are separate boundaries; full migration transactions remain RI15 and full download execution RI10; no final release or hardware acceptance is implied.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -20399,7 +20439,11 @@
       "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaChapterOptionsPanel.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaChapterSort.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/domain/SaveSourceMangaForDetails.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/SaveSourceMangaForDetails.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/DesktopMangaNotesScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailViewportState.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -20452,7 +20496,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun markSelectedBookmark",
-          "line": 415
+          "line": 428
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaChapterOptionsPanel.kt",
@@ -20463,6 +20507,26 @@
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "initialChapterFlags = { Injekt.get<SetMangaDefaultChapterFlags>().initialFlags() },",
           "line": 730
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
+          "symbol": "internal fun MangaHeader(",
+          "line": 147
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/DesktopMangaNotesScreen.kt",
+          "symbol": "fun MangaNotesDialog(",
+          "line": 72
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailViewportState.kt",
+          "symbol": "internal fun rememberMangaDetailChapterState(",
+          "line": 14
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
+          "symbol": "private fun MangaUpdateSchedule(",
+          "line": 766
         }
       ],
       "FIXTURE": [
@@ -20523,6 +20587,30 @@
             "Injekt.get<SetMangaDefaultChapterFlags>()",
             "assertNotNull"
           ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt#five notes formats persist real markdown and render styled text after reopening",
+          "productionMarkers": [
+            "withDetail(root",
+            "getMangaById",
+            "assertTrue"
+          ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt#deleted viewport anchor falls to a chapter entity with its bounded offset rather than missing row",
+          "productionMarkers": [
+            "withDetail(root",
+            "model.chapterPosition",
+            "removeChaptersWithIds"
+          ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt#actual persisted prediction is distinct from default custom and automatic check intervals",
+          "productionMarkers": [
+            "withDetail(root",
+            "repository.update",
+            "nextUpdate"
+          ]
         }
       ]
     },
@@ -20534,7 +20622,8 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaChapterPreferencesTest.kt",
       "app/src/test/java/eu/kanade/domain/chapter/model/ChapterPreferencesContractTest.kt",
       "domain/src/jvmTest/kotlin/tachiyomi/domain/chapter/service/ChapterViewFiltersTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailChapterRowsTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailChapterRowsTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt"
     ],
     "behaviorMethods": {
       "domain/src/commonTest/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChaptersTest.kt": [
@@ -20546,10 +20635,21 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": [
         "selected read action exposes partial failure in state",
         "markSelectedBookmark uses true when any selected chapter is not bookmarked"
+      ],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt": [
+        "production wide header uses source content ratio and narrow header uses source maximum",
+        "right scrollbar pointer drag reaches the actual last chapter without scrolling information",
+        "detail title enters the actual nested global search and returns to the same owner",
+        "missing source metadata remains actionable through current source recovery screen",
+        "five notes formats persist real markdown and render styled text after reopening",
+        "notes native modal keeps five formats save cancel and bidirectional focus reachable at 320 font200",
+        "deleted viewport anchor falls to a chapter entity with its bounded offset rather than missing row",
+        "actual persisted prediction is distinct from default custom and automatic check intervals",
+        "narrow large font primary actions have real in-window bounds and sequential keyboard reachability"
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
-    "verificationScope": "VERIFIED: fixed-main bookmark action, shared per-item continuation, current Android production mutation plus localized ScreenModel SnackbarHostState feedback, and Desktop bookmark consumption are executable. RI07 (2026-10-01) adds real chapter settings modal events, shared tri-state filtering and locale sorting, authoritative single-manga flags, explicit six-default confirmation/reset/favorite batch, new-source INSERT-only default consumption, scanlator drafts, normalized missing counts and mounted file/queue/global-filter projection. Independent review and focused evidence are in docs/evidence/desktop-interaction-iteration-2026-09-30.md: 169 unique tests pass after five legacy row fixture repairs. Detail header/layout, full selection actions, download execution, update and migration closure remain assigned to RI08-RI15; no final release or hardware acceptance is implied.",
+    "verificationScope": "VERIFIED: fixed-main bookmark action, shared per-item continuation, current Android production mutation plus localized ScreenModel SnackbarHostState feedback, and Desktop bookmark consumption are executable. RI07 (2026-10-01) adds real chapter settings modal events, shared tri-state filtering and locale sorting, authoritative single-manga flags, explicit six-default confirmation/reset/favorite batch, new-source INSERT-only default consumption, scanlator drafts, normalized missing counts and mounted file/queue/global-filter projection. Independent review and focused evidence are in docs/evidence/desktop-interaction-iteration-2026-09-30.md: 169 unique tests pass after five legacy row fixture repairs. Detail header/layout, full selection actions, download execution, update and migration closure remain assigned to RI08-RI15; no final release or hardware acceptance is implied. RI08 (2026-10-01) closes the 450dp/content-65% and narrow 100dp/16dp detail layout, independent native chapter scrollbar with entity/offset restoration, real metadata identity/search/copy and missing-source recovery, SOURCE ordinary chapter markers, SDK Markdown notes drafts and five formats, and persisted prediction/check-interval display. Native 320dp/fontScale2 modal and action keyboard reachability are executable. The same reviewed 159-test evidence applies; selection actions, queue/file execution and new prediction consumption remain RI09-RI14. Formal release, physical input and hardware gates remain RI18.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -21426,7 +21526,9 @@
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaCoverAdapter.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaCoverViewerDialog.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt"
     ],
     "deviations": [
       {
@@ -21467,6 +21569,11 @@
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaCoverAdapter.kt",
           "symbol": "suspend fun chooseAndUpdate",
           "line": 24
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaCoverViewerDialog.kt",
+          "symbol": "internal fun MangaCoverViewerDialog(",
+          "line": 52
         }
       ],
       "FIXTURE": [
@@ -21475,6 +21582,22 @@
           "productionMarkers": [
             "model.chooseCustomCover"
           ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt#cover editing keeps actual file and pixels on rejection cancellation and deletes back to source",
+          "productionMarkers": [
+            "withDetail(root",
+            "assertCoverPixel",
+            "model.state.value"
+          ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt#detail consumes actual persisted cover version in the real Coil request and pixels",
+          "productionMarkers": [
+            "withDetail(root",
+            "assertCoverPixel",
+            "coverLastModified = 20"
+          ]
         }
       ]
     },
@@ -21482,7 +21605,8 @@
       "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCoverTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaCoverAdapterTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt"
     ],
     "behaviorMethods": {
       "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCoverTest.kt": [
@@ -21500,10 +21624,15 @@
         "cover update success exposes feedback and refreshed model",
         "cover permission failure is visible and does not refresh cache",
         "cover delete success refreshes model and reports feedback"
+      ],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt": [
+        "cover editing keeps actual file and pixels on rejection cancellation and deletes back to source",
+        "detail consumes actual persisted cover version in the real Coil request and pixels",
+        "cover primary click opens actual viewer with zoom and Escape restores the visible trigger"
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
-    "verificationScope": "VERIFIED: current Android retains the fixed-main Uri/Context cover path, while Desktop confines file selection to an adapter and routes selection, permission and storage outcomes through the shared UpdateCustomCover result and visible Manga detail feedback.",
+    "verificationScope": "VERIFIED: current Android retains the fixed-main Uri/Context cover path, while Desktop confines file selection to an adapter and routes selection, permission and storage outcomes through the shared UpdateCustomCover result and visible Manga detail feedback. RI08 (2026-10-01) adds the actual mounted typed/versioned Coil viewer, zoom/edit and native close/focus, real selected/cancelled/locked replacement/deletion files, source fallback pixels, and repository-authoritative cover version consumption. The same reviewed 159-test evidence applies; file save and platform sharing remain RI10/RI11. Atomic file replacement does not claim a cross-file/database transaction; no final release or hardware acceptance is implied.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -23496,7 +23625,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt",
           "symbol": "internal class DesktopSourceLastUsedRecorder(",
-          "line": 162
+          "line": 161
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt",
@@ -28430,7 +28559,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt",
           "symbol": "fun recover()",
-          "line": 350
+          "line": 358
         }
       ],
       "FIXTURE": [

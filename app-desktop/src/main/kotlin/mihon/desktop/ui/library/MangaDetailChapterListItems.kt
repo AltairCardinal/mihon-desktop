@@ -1,8 +1,6 @@
 package mihon.desktop.ui.library
 
-import tachiyomi.i18n.MR
-import java.util.Locale
-
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +19,8 @@ import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DownloadStatus
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.i18n.MR
+import java.util.Locale
 
 internal fun LazyListScope.mangaDetailChapterListItems(
     displayedChapterCount: Int,
@@ -39,18 +39,34 @@ internal fun LazyListScope.mangaDetailChapterListItems(
     onToggleBookmark: (Chapter) -> Unit,
     onReadChapter: (Chapter) -> Unit,
     missingChapterCount: Int = 0,
+    hasActiveFilters: Boolean = false,
+    onOpenSettings: (() -> Unit)? = null,
 ) {
     item {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().then(
+                if (!isSelectionMode &&
+                    onOpenSettings != null
+                ) {
+                    Modifier.clickable(onClick = onOpenSettings)
+                } else {
+                    Modifier
+                },
+            ).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                val total = if (displayedChapterCount != totalChapterCount) "/$totalChapterCount" else ""
                 Text(
-                    text = "Chapters ($displayedChapterCount$total)",
+                    text = MR.strings.desktop_ui_chapter_count.localized(Locale.getDefault(), displayedChapterCount),
                     style = MaterialTheme.typography.titleMedium,
                 )
+                if (hasActiveFilters) {
+                    Text(
+                        MR.strings.action_filter.localized(),
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
                 if (missingChapterCount > 0) {
                     Text(missingChapterCountText(missingChapterCount), style = MaterialTheme.typography.labelMedium)
                 }
@@ -96,6 +112,7 @@ internal fun LazyListScope.mangaDetailChapterListItems(
                     onRetryDownload = { onRetryDownload(chapter.id) },
                     onToggleBookmark = { onToggleBookmark(chapter) },
                     onRead = { onReadChapter(chapter) },
+                    downloadEnabled = manga?.source != 0L,
                 )
             }
         }
