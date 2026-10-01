@@ -2,6 +2,7 @@ package mihon.desktop.migration
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -9,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -90,7 +92,10 @@ class DesktopBatchMigrationController(
     private val json = Json { ignoreUnknownKeys = true }
     private val mutableQueues = MutableStateFlow<Map<String, BatchMigrationQueue>>(emptyMap())
     val queues: StateFlow<Map<String, BatchMigrationQueue>> = mutableQueues.asStateFlow()
+    private val workerLock = Any()
     private val jobs = mutableMapOf<String, Job>()
+    private val stoppingWorkers = mutableSetOf<Job>()
+    private var stopped = false
 
     fun submit(
         requests: List<BatchMigrationRequest>,
@@ -145,7 +150,7 @@ class DesktopBatchMigrationController(
     }
 
     fun pause(id: String) {
-        jobs.remove(id)?.cancel()
+        cancelWorker(id)
         scheduler.pause(id)
         update(id) { queue ->
             queue.copy(
@@ -164,7 +169,7 @@ class DesktopBatchMigrationController(
 
     fun cancelItem(id: String, mangaId: Long) {
         if (queue(id)?.items?.firstOrNull { it.mangaId == mangaId }?.status == BatchMigrationItemStatus.RUNNING) {
-            jobs.remove(id)?.cancel()
+            cancelWorker(id)
             scheduler.pause(id)
         }
         updateItem(id, mangaId) { it.copy(status = BatchMigrationItemStatus.CANCELLED, error = null) }
@@ -172,7 +177,7 @@ class DesktopBatchMigrationController(
     }
 
     fun cancelAll(id: String) {
-        jobs.remove(id)?.cancel()
+        cancelWorker(id)
         scheduler.cancel(id)
         update(id) { queue ->
             queue.copy(
@@ -198,11 +203,34 @@ class DesktopBatchMigrationController(
         scheduler.start(id)
     }
 
-    override fun start() = recover()
+    override fun start() {
+        synchronized(workerLock) { stopped = false }
+        recover()
+    }
 
     override fun stop() {
-        jobs.values.forEach(Job::cancel)
-        jobs.clear()
+        val workers = synchronized(workerLock) {
+            stopped = true
+            jobs.values.toList().also {
+                stoppingWorkers.addAll(it)
+                jobs.clear()
+            }
+        }
+        workers.forEach(Job::cancel)
+    }
+
+    override suspend fun awaitStopped() {
+        stop()
+        val workers = synchronized(workerLock) { stoppingWorkers.toList() }
+        workers.joinAll()
+        synchronized(workerLock) { stoppingWorkers.removeAll(workers.toSet()) }
+    }
+
+    private fun cancelWorker(id: String) {
+        val worker = synchronized(workerLock) {
+            jobs.remove(id)?.also { stoppingWorkers += it }
+        }
+        worker?.cancel()
     }
 
     fun close() {
@@ -212,8 +240,20 @@ class DesktopBatchMigrationController(
 
     private fun launch(id: String) {
         val queue = queue(id) ?: return
-        if (queue.paused || queue.cancelled || jobs[id]?.isActive == true) return
-        jobs[id] = scope.launch(dispatcher) { run(id) }
+        if (queue.paused || queue.cancelled) return
+        val worker = synchronized(workerLock) {
+            if (stopped || jobs[id]?.isCompleted == false) return
+            scope.launch(dispatcher, start = CoroutineStart.LAZY) { run(id) }.also { launched ->
+                jobs[id] = launched
+                launched.invokeOnCompletion {
+                    synchronized(workerLock) {
+                        if (jobs[id] === launched) jobs.remove(id)
+                        stoppingWorkers.remove(launched)
+                    }
+                }
+            }
+        }
+        worker.start()
     }
 
     private suspend fun run(id: String) {
@@ -257,7 +297,6 @@ class DesktopBatchMigrationController(
                 }
             }
         }
-        jobs.remove(id)
     }
 
     private fun updateItem(id: String, mangaId: Long, transform: (BatchMigrationItemState) -> BatchMigrationItemState) {

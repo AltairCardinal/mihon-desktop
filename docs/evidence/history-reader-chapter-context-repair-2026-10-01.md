@@ -1,6 +1,6 @@
 # 历史续读与章节目录修复：聚合证据（2026-10-01）
 
-本报告唯一维护 HR01 实现、审查与 HR02 交付证据。[设计与冻结 H01–H15](../2026-10-01-history-reader-chapter-context-repair-design.md)；[当前 roadmap](../roadmap/2026-10-01-history-reader-chapter-context-repair-roadmap.md)。本节由实施者维护；主代理补独立审查、提交和正式平台交付。HR01 整体独立审查及本轮唯一修复复审通过；实现、相关验证与 checkoff 随本功能提交完成。HR01 提交为 `c1e13c47283a2c7d7b12621a3df4507a2beb3042`。HR02 首次 Desktop full 已失败，已授权必要 focused 修复及格式验证通过，作者独立问题随后获授权实施，focused 修复、格式验证与追加整体审查通过，等待 full 复验和正式运行，保持未勾选。
+本报告唯一维护 HR01 实现、审查与 HR02 交付证据。[设计与冻结 H01–H15](../2026-10-01-history-reader-chapter-context-repair-design.md)；[当前 roadmap](../roadmap/2026-10-01-history-reader-chapter-context-repair-roadmap.md)。本节由实施者维护；主代理补独立审查、提交和正式平台交付。HR01 整体独立审查及本轮唯一修复复审通过；实现、相关验证与 checkoff 随本功能提交完成。HR01 提交为 `c1e13c47283a2c7d7b12621a3df4507a2beb3042`。HR02 首次 Desktop full 已失败，已授权必要 focused 修复及格式验证通过，作者独立问题随后获授权实施，focused 修复、格式验证与追加整体审查通过，第二次 full 与 Mac focused 仍有具体阻塞，作者后续修复继续；HR02 保持未勾选。
 
 ## HR01：实施范围与当前边界
 
@@ -162,3 +162,49 @@ UI 来源与固定契约：读取 Desktop UI README、desktop-reference 和 page
 主代理追加独立审查（获批 1 轮）已通过：真实空迁移 metadata-only 与严格网络空目录校验分界、短事务/已有章与历史保留、7 夹具偏好生命周期和真实 worker、manifest JSON 仅 6 个 line 字段已独立核对；作者最终 production 全 diff、真实 SQLite StateFlow 红、未修改的 mounted 滚动/详情返回/搜索断言、generation/query/分页与双 LazyListState wiring 亦已核对。有效证据为 History 138 项/0 失败+9 文件格式，以及 Authors 8 项/0 失败+2 文件格式；没有剩余代码审查阻塞。原 58 项失败与作者时序差异保留，不将 focused 通过替代 full/runtime。实施回执已验证，协调权交回主代理，当前无运行 Gradle。
 
 History 必要回归修复提交为 `865579f2c6`；作者独立能力及本轮授权/审查证据在后续功能提交中一并保存。HR02 尚未执行获批的完整复验或正式平台构建，保持未勾选。
+
+## HR02 已批准 Desktop 完整复验与首次 macOS focused：仍有阻塞
+
+History 回归修复提交 `865579f2c6`，作者原子范围状态修复提交 `af47156b285dcb85754242f768dc4d0190101f4e`。两项相关验证与追加独立审查通过、工作树干净后执行获批的一次 Desktop full 复验 `history-reader-final-desktop-recheck`：实际 XML **3268 tests / 1 failure / 0 errors / 3 skipped**，6 分 33 秒，worker/process **57756 / 52736**，FAILED。完整失败 trace 与实际计数保留 `.gradle-coordinator/history-reader-final-desktop-recheck-failures.json`；首次 58 项失败仍单独保留，不能把本轮写为完整通过。
+
+本轮唯一失败在 `AdaptiveReaderViewportTest` 的 mounted settings 用例开始前，报告 `UncaughtExceptionsBeforeTest`。suppressed 链为真实 `NoSuchFileException`，迁移后台协程在 `DesktopBatchMigrationController.run` 处理 WaitingForUser 时调用 scheduler.pause，FileTaskCheckpointStore 移动 `background-tasks.json.<uuid>.tmp` 到同目录文件失败；路径属于 JUnit TempDir，full 完成后定点核对该目录已不存在。已观察到下一测试开始前残留协程错误；目录清理与后台写入竞态的具体来源仍待受控定位，不能只据 NoSuchFileException 断定删除时点。源码核对：DesktopBatchMigrationController.stop 取消并清空 jobs，未实现 awaitStopped，真实 DesktopAppRuntime.closeAndJoin 因此调用默认空等待；迁移 scope 独立于 runtime scope。该关停等待缺口已在源码确认，不能仅凭这一异常认定所有关停故障或本次 History production 引入了它。
+
+同一提交经 bundle 进入干净独立 Mac 工作树 `/Users/altair/github/mihon-history-reader-20261001-f235`；macOS 14.8.4 x86_64，项目 JDK 21.0.10+7，Android 36 SDK 存在。`history-reader-mac-focused` 限定 6 类，`--max-workers=2 --no-parallel` 且 Gradle heap 2 GiB，不是完整模块；4 分 42 秒，worker/process **16658 / 16659**，实际 XML **19 tests / 1 failure / 0 errors**，FAILED。原始各类/trace 保存本机 `.gradle-coordinator/history-reader-mac-focused-results.json`，远端协调器日志保留。
+
+其中真实 SourceChapterCatalog 11、History reader Compose 1、accessibility 2、两库 synced reader 2 共 **16 项**全部通过；Authors root state 2 项通过；未修改的 AuthorCardProductionWiringTest 1 项仍为 All 切回未恢复 Late Author 50，selected=true、scrollRange=100、仅头部卡片。再次证明原子 scope/cards 修复不足以关闭原非零滚动缺陷，不能以 Windows focused/本轮 full 中该项通过宣称跨平台作者 bug 已修复。原 Late Author 19/50 强断言保留，同一实施者继续已批准的 Authors 最小修复。
+
+Windows/Mac 上述进程均已结束。未运行剩余 Android/domain/data/test-desktop/spotless 完整组合，未构建或启动任何正式 EXE/.app，未发送原生输入。用户随后明确回复“批准”，批准新增迁移关停修复范围、限定独立复审 1 轮与下一次 Desktop full 1 次（45–75 分钟、无新代理）；复用原实施者，作者剩余修复与迁移真实 runtime/文件测试串行交付，不改变迁移策略。相关验证、独立复审及提交通过后才运行获批的 full；HR02 继续未勾选。
+
+
+## 作者布局恢复后续实施里程碑（待 Mac 复验）
+
+- `SOURCE`：Mac原 mounted 场景连续两次 Late Author50 恢复失败；`authors-restore-mac-diagnostic.xml`/16行位置序列证明切回All前位置49/1/51、实际cards52均完整，挂回layout后才保存为0/0/1。VerticalScrollAxisRange不能作为分页数量证据。此前scope/cards原子发布是必要独立修复，未充分关闭这个布局恢复问题。
+- `PROJECT_POLICY`：保留Followed/All各自非零位置及详情返回；重新激活Authors根页使用新model/saveable身份。最小实现按scope隔离LazyColumn实例，并使AuthorsRootScreen.key及两份rememberLazyListState身份消费既有activationToken；没有滚动补偿、下载/迁移策略或新作者UI能力。真实Screen实例新token仍同类名key的正确红为`authors-root-identity-red`（1/1，62128/63868）。
+- 新mounted回归复用原SQL fixture及所有Late19/50、详情返回、搜索/分页/重入强断言；真实factory callOriginal仅观察挂载model，仓库闸门只控制实际SQLite查询时序，在实际空loading界面就绪后放行。Windows快速/空加载帧诊断均绿；Mac test-only首轮2/1仅卸挂前置未就绪，修正编排后2/0，均不得计作位置行为红。原Mac两个真实Late50红仍保留。
+- 最小scope key首绿及加入列表activation key后，Windows原重入首行断言仍失败；显式Screen身份修复后`authors-activation-green`实际3类10/0通过（48440/58484，26秒）。`authors-layout-format`实际FileCollection匹配3个Kotlin文件通过（65460/49504，11秒）；`authors-layout-refactor`同3类10/0/0/0及这3文件spotlessCheck通过（55784/40372）。旧强断言没有增加超时或放宽目标。
+- 稳定产物为AuthorsTab.kt、AuthorCardProductionWiringTest.kt、AuthorsScreenModelsTest.kt及本报告；现有parity manifest没有AuthorsTab.kt roleEvidence锚点，本轮未改manifest。最终UTF8/LF三源码补丁在忽略过程目录`authors-layout-final.patch`，正式提交由主代理负责。Windows无运行Gradle；主代理接续Mac相同3类10项focused，实际Mac通过前不宣称原恢复bug已关闭。迁移关停TDD随后按最新明确批准范围串行实施。
+
+
+### Mac 作者最终候选 focused 与原提交对照
+
+主代理将相同三源码最终补丁（SHA256 `c0aed79d15f9a51b0907ac430f131a032b8b4b8c224601abf47a58167e1f8cc0`）应用于干净 Mac `af47156b28`。调用误选了完整 AuthorsProductionWiringTest 类而非 Windows 的五个限定方法，实际 `authors-layout-mac-green` **27 tests / 2 failures**（65025/65026，35 秒）；只属于作者相关 focused，不是完整模块或获批 full。原 mounted 与空加载帧两项均通过，包括 Late19/50、详情返回与重入。失败两项是既有 root failure/retry 的 retryNode 多匹配、projection refresh/retry 初始卡片未可见；它们本就属于 Windows 五项限定 wiring，不能当成无关新增选择而省略。实际 XML 22/2 与 mounted 2/0 保存 `authors-layout-mac-green-wiring.xml`、`authors-layout-mac-green.xml`。
+
+精确反向撤销本轮三源码补丁、核对 Mac 干净 `af47156b28` 后，`authors-wiring-mac-baseline` 仅运行上述两项：**2 tests / 2 failures**（68075/68126，19 秒），失败原因与候选一致；实际 XML 保存 `authors-wiring-mac-baseline.xml`。这证明本轮列表/Screen key 不是引入两项失败的必要条件；尚未确定根因。只读发现 Mac AppleLanguages 为 zh-Hans-CN，真实 factory 显式传首选文字形式，而两夹具只匹配六个参数（第七参数默认为 null），为待验证的窄夹具匹配原因。不得更改 production 语言或放宽重试/可见性断言换取通过。完整 Mac 相关 scope 尚未宣称通过。
+
+
+## 最新批准范围实施交接：迁移关停等待与作者夹具协议
+
+- **迁移关停SOURCE/边界**：原controller.stop仅取消并清空句柄，继承默认awaitStopped=Unit。真实runtime+真实FileTaskCheckpointStore的门控原子写用例证明closeAndJoin曾在实际写入未结束时返回；具体第二full临时目录删除由哪一个旧case触发仍未定位，不能把本用例当该case归因证据。修复按现有tracker模式，仅等待controller拥有的运行/暂停/替换worker；stopped禁止关停后新launch，LAZY先登记后启动，同ID完成回调以对象身份清理。没有等待/取消整个外传共享scope，没有改迁移选择、复制、恢复策略或持久化格式。
+- **迁移RFG/验证**：`migration-shutdown-red`真实1/1（59128/54748），因runtime在文件写入阻塞时提前返回失败；`migration-shutdown-red-confirm`真实2/2（28344/39964），追加暂停/同ID替换worker用例在漏等暂停worker处失败。`migration-shutdown-green`controller6/0（48016/7152）。重构复用小runtime fixture；`migration-shutdown-format`实际2文件格式通过（56436/54252），`migration-shutdown-refactor`实际5类79/0/0/0及2文件spotless通过（63060/57780，37秒）：Controller6、DesktopAppRuntime35、LibraryBatchMigrationConfigScreen2、AdaptiveReaderViewport2、CapabilityContract34。Mac独立worktree相同稳定controller/test补丁6/0/0/0（80040/80041，主代理执行），XML已保留；与第二full实际原失败事实分开记录。
+- **机器证据机械维护**：递归核对迁移controller路径，仅已有MG DESKTOP_CONSUMER class硬line由76→78；semantic locator沿用。删除line字段后JSON与HEAD完全一致，未改capability/status/MG或HI-01上游GAP。
+- **作者Mac相关夹具SOURCE**：候选27项/2失败的两用例在精确撤销后的af基线仍2/2失败，属于原有fixture协议缺口。production factory按平台Locale显式传第七preferredDisplayScript，但两个mock只写六个matcher，隐式限定第七null；Mac中文Locale不匹配时引入额外projection错误，多重Retry或首次卡片超时。
+- **夹具RFG**：新增中文Locale用例直接复用这两个真实factory/mounted重试场景，try/finally恢复全局Locale；`authors-locale-fixture-red`Windows正确1/1（63760/61256），同真实多重Retry失败。仅补齐两处第七any()后`authors-locale-fixture-green`原两项+中文复用共3/0（59216/49644）。不修改production locale/query，不减弱旧错误/卡片/重试断言；这不是新增作者能力。
+- **最终作者验证**：`authors-locale-format`实际4个源码/测试文件格式通过（59176/45420）；`authors-locale-refactor`实际3类11/0/0/0及4文件spotless通过（55388/55376，19秒）：Root models3、原及新mounted2、限定Wiring6，精确case清单在忽略过程目录。原三源码补丁SHA未变，额外第四文件仅夹具协议/中文用例及整文件格式。此前新loading测试的基线绿仍不计作红，原Mac两次真实Late50红与导航身份正确红仍是原恢复修复依据。主代理随后执行Mac精确11项；Mac完整相关scope尚不能在本次交接写通过。
+- **内聚性与风险**：本次最终9个工作树文件（含主代理维护roadmap）超过估算行数，主要来自实际AuthorsTab/既有长Wiring测试格式及真实生命周期门控用例；行为边界仍为作者范围/返回/重入与迁移关停两个独立功能批次。统一格式不改变旧业务断言；独立审查按功能收口，不按格式行数拆微任务。所有源码现在稳定、未提交，Windows无STARTING/RUNNING Gradle；主代理接续已批准一次限定审查、分批提交及一次Desktop full。正式产物、其他最终矩阵与runtime交付仍未执行。
+
+
+### 本轮限定审查：迁移关停通过，作者快速恢复尚未闭合
+
+主代理已独立核对迁移最终production diff及其实际DI消费者：UI依赖与DesktopAppRuntime接收同一controller单例；runtime.awaitClosed调用其awaitStopped，即使runtime未启动也会等待controller自己的任务；不join外部scope。LAZY先登记、stop后的launch抑制、暂停与取消时保留任务句柄、完成时按对象身份移除同ID槽位已核对。实际原子文件门控与暂停/替换门控的正确红、Windows限定79/0及Mac相同controller六项6/0 XML均有效；manifest只改既有class硬line76→78，递归删除line后状态完全一致。迁移部分没有剩余独立审查阻塞，随controller/test/manifest及必要文档功能提交，不勾选HR02，不提前full。
+
+随后Mac `authors-locale-mac-refactor` 精确11项实际 **11 tests / 1 failure / 0 errors**（85919/85920，28秒）：root3/0、Wiring6/0，mounted2/1。第七参数修正已使两原Mac失败/重试fixture及中文复用全部通过；原快速mounted场景却再次在切回All的LateAuthor50断言失败，新gated空加载帧场景通过。三份真实XML保存 `authors-locale-mac-refactor-AuthorCardProductionWiringTest.xml`、`authors-locale-mac-refactor-AuthorsScreenModelsTest.xml`、`authors-locale-mac-refactor-AuthorsProductionWiringTest.xml`。说明此前单次mounted绿不足以关闭原快速恢复问题，scope key并非充分修复；不以放宽断言、增大sleep/超时或重复full换取通过。作者源码保持未提交，同一实施者继续原已授权范围内修复；本轮作者独立审查尚未签收。新增Desktop full额度未使用，原剩余完整矩阵及正式产物/native运行仍未执行。

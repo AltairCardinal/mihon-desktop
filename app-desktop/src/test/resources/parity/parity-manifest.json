@@ -39132,7 +39132,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/migration/DesktopBatchMigrationController.kt",
           "symbol": "class DesktopBatchMigrationController(",
-          "line": 76
+          "line": 78
         }
       ],
       "FIXTURE": [
