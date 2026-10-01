@@ -89,7 +89,11 @@ abstract class SyncHistorySuppressionContract {
             assertEquals(
                 null,
                 s.handler.await {
-                    sync_projectionQueries.getChapterByIdentity("/chapter", "/manga", 42).executeAsOneOrNull()
+                    sync_projectionQueries.getChapterByIdentity(
+                        chapterUrl = "/chapter",
+                        mangaUrl = "/manga",
+                        sourceId = 42,
+                    ).executeAsOneOrNull()
                 },
             )
             s.history.resetHistoryByMangaId(existing.mangaId)
@@ -293,6 +297,60 @@ abstract class SyncHistorySuppressionContract {
                 assertEquals(first, s.chapters.getChapterById(first.id))
                 assertEquals(other, s.chapters.getChapterById(other.id))
             }
+        }
+    }
+
+    @Test
+    fun `relinked current URL cannot bypass an accepted canonical chapter history clear`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            s.receive(history(1))
+            val chapter = s.chapter(chapterKey)
+            s.chapters.update(tachiyomi.domain.chapter.model.ChapterUpdate(chapter.id, chapterNumber = 2.0))
+            val recognized = requireNotNull(s.chapters.getChapterById(chapter.id))
+            s.chapters.syncDirectory(
+                tachiyomi.domain.chapter.service.ChapterDirectoryCommit(
+                    chapter.mangaId,
+                    listOf(
+                        tachiyomi.domain.chapter.service.PreparedSourceChapter(
+                            recognized.copy(url = "/new-chapter"),
+                            0,
+                        ),
+                    ),
+                    2000,
+                ),
+            )
+            val historyId = s.handler.await { historyQueries.getHistoryByMangaId(chapter.mangaId).executeAsOne()._id }
+            s.history.resetHistory(historyId)
+            val currentKey = chapterKey.copy(originalUrl = "/new-chapter")
+            val incoming = history(2, SyncOrigin.INITIAL_IMPORT).let { batch ->
+                batch.copy(
+                    events = batch.events.map { event ->
+                        event.copy(
+                            effects = event.effects.map { effect ->
+                                effect.copy(
+                                    payload = buildJsonObject {
+                                        put("chapterKey", currentKey.stableKey)
+                                        put("readAt", 2000)
+                                    },
+                                )
+                            },
+                        )
+                    },
+                    objects = batch.objects.map {
+                        if (it.objectKey ==
+                            chapterKey
+                        ) {
+                            it.copy(objectKey = currentKey)
+                        } else {
+                            it
+                        }
+                    },
+                )
+            }
+            s.receive(incoming)
+            assertEquals(0L, s.readAt(chapter.id), "A current URL alias must not resurrect cleared imported history")
+            assertEquals(chapter.id, s.chapters.getChapterByUrlAndMangaId("/chapter", chapter.mangaId)?.id)
         }
     }
 

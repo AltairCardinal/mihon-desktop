@@ -45,9 +45,9 @@ internal fun Database.describeSyncObjects(keys: List<SyncObjectKey>): List<SyncO
             }
             SyncObjectType.CHAPTER -> {
                 val chapter = sync_journalQueries.getSyncChapterDescription(
-                    requireNotNull(key.originalUrl),
-                    requireNotNull(key.parentUrl),
-                    requireNotNull(key.sourceId).toLong(),
+                    chapterUrl = requireNotNull(key.originalUrl),
+                    mangaUrl = requireNotNull(key.parentUrl),
+                    sourceId = requireNotNull(key.sourceId).toLong(),
                 ).executeAsOne()
                 SyncObjectDescriptor(
                     key,

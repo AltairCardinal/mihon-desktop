@@ -246,6 +246,10 @@ WHERE _id = :mangaId;
 selectLastInsertedRowId:
 SELECT last_insert_rowid();
 
+updateChapterDirectoryState:
+UPDATE mangas SET memo = coalesce(:memo, memo), last_update = coalesce(:lastUpdate, last_update)
+WHERE _id = :mangaId;
+
 insertNetworkManga {
     -- Insert the manga if it doesn't exist already
     INSERT INTO mangas(

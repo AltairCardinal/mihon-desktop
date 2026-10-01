@@ -9,10 +9,10 @@ import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonPrimitive
 import mihon.desktop.reader.externalChapterUrl
 import mihon.domain.network.parseNetworkPayload
@@ -98,13 +98,14 @@ class MangaDexSource(
         val chapters = mutableListOf<SChapter>()
         var offset = 0
         val limit = 500
+        var expectedTotal: Int? = null
 
         while (true) {
             val url = "$baseUrl/manga/$mangaId/feed" +
                 "?limit=$limit&offset=$offset" +
                 "&order[chapter]=desc&order[volume]=desc"
             val obj = json.parseToJsonElement(fetchMangaDexJson(url)).jsonObject
-            val data = obj["data"]?.jsonArray ?: break
+            val data = requireNotNull(obj["data"]) { "MangaDex chapter pagination is incomplete" }.jsonArray
 
             for (item in data) {
                 val ch = item.jsonObject
@@ -137,9 +138,18 @@ class MangaDexSource(
                 chapters.add(sChapter)
             }
 
-            val total = obj["total"]?.jsonPrimitive?.content?.toIntOrNull() ?: break
-            offset += limit
-            if (offset >= total) break
+            val total = requireNotNull(obj["total"]?.jsonPrimitive?.content?.toIntOrNull()) {
+                "MangaDex chapter pagination total is missing"
+            }
+            require(total >= 0 && (expectedTotal == null || expectedTotal == total)) {
+                "MangaDex chapter pagination total changed"
+            }
+            expectedTotal = total
+            require(data.size == minOf(limit, total - offset)) {
+                "MangaDex chapter pagination is incomplete"
+            }
+            offset += data.size
+            if (offset == total) break
         }
         chapters
     }
@@ -222,7 +232,9 @@ class MangaDexSource(
 
         // Genres from tags
         val genres = attrs["tags"]?.jsonArray
-            ?.mapNotNull { it.jsonObject["attributes"]?.jsonObject?.get("name")?.jsonObject?.get("en")?.jsonPrimitive?.content }
+            ?.mapNotNull {
+                it.jsonObject["attributes"]?.jsonObject?.get("name")?.jsonObject?.get("en")?.jsonPrimitive?.content
+            }
 
         return SManga.create().apply {
             url = "/manga/$id"

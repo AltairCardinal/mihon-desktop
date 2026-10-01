@@ -1976,4 +1976,5 @@
     <string name="desktop_library_update_scope_recovery">无法恢复更新分类，请重试后再更新。</string>
     <string name="desktop_library_update_scope_invalid">请重新选择更新分类后再更新。</string>
     <string name="desktop_library_update_interval_invalid">无法识别原更新周期，已关闭自动更新。请重新选择更新周期。</string>
+    <string name="desktop_directory_download_conflict">请先完成或取消受影响章节的下载，然后重试更新。</string>
 </resources>

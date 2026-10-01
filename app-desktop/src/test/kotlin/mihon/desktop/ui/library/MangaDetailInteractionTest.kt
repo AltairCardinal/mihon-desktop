@@ -51,6 +51,7 @@ import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.platform.toDesktopNotification
 import mihon.desktop.ui.reader.DesktopReaderScreen
@@ -3687,6 +3688,120 @@ class MangaDetailInteractionTest {
         }
     }
 
+    @Test
+    fun `actual detail refresh reports a missing source and keeps chapters retryable`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, model, manga, chapters ->
+            click(scene, MR.strings.label_more.localized())
+            render(scene)
+            click(scene, MR.strings.check_for_updates.localized())
+            render(scene)
+            assertTrue(
+                nodes(scene).any { MR.strings.desktop_source_preferences_missing.localized() in labels(it) },
+                "Refresh without its source must show a visible refusal",
+            )
+            assertEquals(
+                chapters.sortedBy {
+                    it.id
+                },
+                Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id).sortedBy { it.id },
+            )
+            assertFalse(model.state.value.isUpdating)
+            click(scene, MR.strings.label_more.localized())
+            render(scene)
+            assertTrue(
+                activeNodes(scene).any {
+                    MR.strings.check_for_updates.localized() in labels(it) &&
+                        !it.config.contains(SemanticsProperties.Disabled)
+                },
+            )
+        }
+    }
+
+    @Test
+    fun `actual detail HTTP refresh shows queue refusal then retries the same owner through committed directory`(
+        @TempDir root: File,
+    ) = runBlocking {
+        mockwebserver3.MockWebServer().use { server ->
+            server.start()
+            val source = mihon.desktop.source.MangaDexSource(
+                okhttp3.OkHttpClient(),
+                kotlinx.serialization.json.Json,
+                server.url("/").toString().trimEnd('/'),
+                browserJsonFetcher = null,
+            )
+            server.dispatcher = object : mockwebserver3.Dispatcher() {
+                override fun dispatch(request: mockwebserver3.RecordedRequest): mockwebserver3.MockResponse {
+                    val body = if (request.url.encodedPath.endsWith("/feed")) {
+                        """{"data":[{"id":"replacement",
+                        "attributes":{"chapter":"1","title":"Revised","volume":null},
+                        "relationships":[]}],"total":1}"""
+                    } else {
+                        """{"data":{"id":"work",
+                        "attributes":{"title":{"en":"Manga details"},
+                        "description":{"en":"Description"},"status":"ongoing"},
+                        "relationships":[]}}"""
+                    }
+                    return mockwebserver3.MockResponse.Builder().body(body).build()
+                }
+            }
+            withDetail(root, directorySources = listOf(source), mangaTransform = {
+                it.copy(source = source.id, url = "/manga/work")
+            }) { scene, model, manga, chapters ->
+                val manager = Injekt.get<mihon.desktop.download.DesktopDownloadManager>()
+                manager.pauseAll()
+                val old = chapters.first()
+                assertTrue(
+                    manager.enqueue(
+                        mihon.desktop.download.DownloadItem(
+                            manga.source,
+                            manga.title,
+                            old.name,
+                            old.id,
+                            manga.id,
+                            old.url,
+                        ),
+                    ),
+                )
+                click(scene, MR.strings.label_more.localized())
+                render(scene)
+                click(scene, MR.strings.check_for_updates.localized())
+                withTimeout(5000) {
+                    while (Injekt.get<SaveSourceMangaForDetails>().refreshStates.value.values.none {
+                            it is mihon.desktop.domain.SourceMangaRefreshState.Failure
+                        }
+                    ) {
+                        render(scene)
+                        delay(5)
+                    }
+                }
+                render(scene)
+                assertTrue(
+                    nodes(scene).any {
+                        MR.strings.desktop_directory_download_conflict.localized() in labels(it)
+                    },
+                    "Accepted downloads must give a visible action to resolve the directory conflict",
+                )
+                assertEquals(old.url, Injekt.get<ChapterRepository>().getChapterById(old.id)!!.url)
+                assertTrue(manager.cancelAndAwaitRetirements(listOf(old.id)))
+                click(scene, MR.strings.action_retry.localized())
+                withTimeout(5000) {
+                    while (Injekt.get<ChapterRepository>().getChapterById(old.id)?.url !=
+                        "/chapter/replacement"
+                    ) {
+                        render(scene)
+                        delay(5)
+                    }
+                }
+                render(scene)
+                assertEquals(manga.id, model.state.value.manga!!.id)
+                assertTrue(model.state.value.chapters.any { it.id == old.id && it.url == "/chapter/replacement" })
+                assertTrue(Injekt.get<SaveSourceMangaForDetails>().refreshStates.value.isEmpty())
+            }
+        }
+    }
+
     private suspend fun withDetail(
         root: File,
         mangaRepositoryOverride: ((MangaRepository) -> MangaRepository)? = null,
@@ -3697,6 +3812,7 @@ class MangaDetailInteractionTest {
         coverRequests: MutableList<coil3.request.ImageRequest>? = null,
         coverPicker: CoverFilePicker? = null,
         httpSource: Boolean = false,
+        directorySources: List<eu.kanade.tachiyomi.source.CatalogueSource>? = null,
         downloadManagerFactory: (
             (mihon.desktop.download.DesktopDownloadManager) -> mihon.desktop.download.DesktopDownloadManager
         )? = null,
@@ -3717,10 +3833,11 @@ class MangaDetailInteractionTest {
             Injekt.addFactory<mihon.desktop.download.DesktopDownloadManager> { replacementManager }
         }
         Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().tabletUiMode.set(tabletMode)
-        val detailsSourceManager = if (httpSource) {
+        val detailsSourceManager = if (httpSource || directorySources != null) {
             mihon.desktop.source.DesktopSourceManager(
                 Injekt.get<mihon.desktop.extension.DesktopExtensionManager>(),
-                builtinSources = listOf(mihon.desktop.source.FakeHttpSource(42L, "en", "Native source")),
+                builtinSources =
+                directorySources ?: listOf(mihon.desktop.source.FakeHttpSource(42L, "en", "Native source")),
             )
         } else {
             null

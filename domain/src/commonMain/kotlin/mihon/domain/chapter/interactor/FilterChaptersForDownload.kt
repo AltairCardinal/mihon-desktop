@@ -27,24 +27,16 @@ class FilterChaptersForDownload(
      * @return A list of chapters that should be downloaded
      */
     suspend fun await(manga: Manga, newChapters: List<Chapter>): List<Chapter> {
-        if (
-            newChapters.isEmpty() ||
-            !downloadPreferences.downloadNewChapters().get() ||
-            !manga.shouldDownloadNewChapters()
-        ) {
-            return emptyList()
-        }
-
-        if (!downloadPreferences.downloadNewUnreadChaptersOnly().get()) return newChapters
-
-        val readChapterNumbers = getChaptersByMangaId.await(manga.id)
-            .asSequence()
-            .filter { it.read && it.isRecognizedNumber }
-            .map { it.chapterNumber }
-            .toSet()
-
-        return newChapters.filterNot { it.chapterNumber in readChapterNumbers }
+        if (newChapters.isEmpty()) return emptyList()
+        val policy = snapshot(manga)
+        return policy.select(newChapters, if (policy.unreadOnly) getChaptersByMangaId.await(manga.id) else emptyList())
     }
+
+    /** Capture caller policy before the directory commit; retries consume its fixed accepted IDs. */
+    suspend fun snapshot(manga: Manga): DownloadNewChapterPolicy = DownloadNewChapterPolicy(
+        enabled = downloadPreferences.downloadNewChapters().get() && manga.shouldDownloadNewChapters(),
+        unreadOnly = downloadPreferences.downloadNewUnreadChaptersOnly().get(),
+    )
 
     /**
      * Determines whether new chapters should be downloaded for the manga based on user preferences and the
@@ -73,5 +65,14 @@ class FilterChaptersForDownload(
 
     companion object {
         private const val DEFAULT_CATEGORY_ID = 0L
+    }
+}
+
+data class DownloadNewChapterPolicy(val enabled: Boolean, val unreadOnly: Boolean) {
+    fun select(newChapters: List<Chapter>, allChapters: List<Chapter>): List<Chapter> {
+        if (!enabled) return emptyList()
+        if (!unreadOnly) return newChapters
+        val readNumbers = allChapters.filter { it.read && it.isRecognizedNumber }.map { it.chapterNumber }.toSet()
+        return newChapters.filterNot { it.chapterNumber in readNumbers }
     }
 }

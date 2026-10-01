@@ -35,6 +35,90 @@ import tachiyomi.domain.reader.model.ReadingProgressEvent
 import java.util.Date
 
 abstract class SyncReadingStorageContract {
+
+    @Test
+    fun `shared complete directory adds renames reorders removes and inherits latest number state`() = runBlocking {
+        open().use { s ->
+            val original = s.seed()
+            s.chapters.update(
+                ChapterUpdate(original.id, chapterNumber = 2.0, bookmark = true, read = true, lastPageRead = 8),
+            )
+            val latest = requireNotNull(s.chapters.getChapterById(original.id))
+            val manga = s.mangas.getMangaById(latest.mangaId)
+            val removed = s.chapters.addAll(
+                listOf(
+                    Chapter.create().copy(
+                        mangaId = manga.id,
+                        url = "/obsolete",
+                        name = "Obsolete",
+                        chapterNumber = 9.0,
+                    ),
+                ),
+            ).single()
+            fun raw(
+                url: String,
+                name: String,
+                number: Float,
+            ) = eu.kanade.tachiyomi.source.model.SChapter.create().apply {
+                this.url = url
+                this.name = name
+                chapter_number = number
+            }
+            val response = tachiyomi.domain.chapter.service.ChapterDirectoryPlan.prepare(
+                manga,
+                listOf(
+                    raw("/3", "Chapter 3", 3f),
+                    raw(latest.url, "Renamed chapter 2", 2f),
+                    raw("/duplicate", "Chapter 2 alternate", 2f),
+                ),
+            )
+            val result = s.chapters.syncDirectory(
+                tachiyomi.domain.chapter.service.ChapterDirectoryCommit(
+                    manga.id,
+                    response,
+                    2000,
+                    markDuplicateAsRead = true,
+                ),
+            )
+            val rows = s.chapters.getChapterByMangaId(manga.id).sortedBy { it.sourceOrder }
+            assertEquals(listOf("/3", latest.url, "/duplicate"), rows.map { it.url })
+            val retained = rows[1]
+            assertEquals(latest.id, retained.id)
+            assertEquals(8L, retained.lastPageRead)
+            assertTrue(retained.read && retained.bookmark)
+            assertTrue(rows[2].read)
+            assertEquals(listOf("/3"), result.added.map { it.url })
+            assertEquals(null, s.chapters.getChapterById(removed.id))
+        }
+    }
+
+    @Test
+    fun `shared full directory ambiguity does not rebind an old ID or grant an alias`() = runBlocking {
+        open().use { s ->
+            val old = s.seed()
+            s.chapters.update(ChapterUpdate(old.id, chapterNumber = 2.0, read = true))
+            val latest = requireNotNull(s.chapters.getChapterById(old.id))
+            val retained = s.chapters.addAll(listOf(latest.copy(id = -1, url = "/retained"))).single()
+            val result = s.chapters.syncDirectory(
+                tachiyomi.domain.chapter.service.ChapterDirectoryCommit(
+                    old.mangaId,
+                    listOf(
+                        tachiyomi.domain.chapter.service.PreparedSourceChapter(retained, 0),
+                        tachiyomi.domain.chapter.service.PreparedSourceChapter(
+                            latest.copy(id = -1, url = "/replacement"),
+                            0,
+                        ),
+                    ),
+                    2000,
+                ),
+            )
+            val replacement = requireNotNull(s.chapters.getChapterByUrlAndMangaId("/replacement", old.mangaId))
+            assertTrue(replacement.id != old.id && replacement.id != retained.id)
+            assertTrue(replacement.read)
+            assertEquals(null, s.chapters.getChapterByUrlAndMangaId(old.url, old.mangaId))
+            assertTrue(result.plan.updates.none { it.before.url != it.after.url })
+        }
+    }
     protected abstract fun open(): Storage
 
     @Test
@@ -68,6 +152,82 @@ abstract class SyncReadingStorageContract {
             assertEquals(null, s.recorder.resumePosition(chapter.mangaId))
         }
     }
+
+    @Test
+    fun `unique directory relink preserves accepted resume head and canonical reading event`() = runBlocking {
+        open().use { s ->
+            val chapter = s.seed()
+            s.chapters.update(ChapterUpdate(chapter.id, chapterNumber = 2.0))
+            val recognized = requireNotNull(s.chapters.getChapterById(chapter.id))
+            s.recorder.await(s.reading(recognized, 6))
+            val before = s.journal.pendingEvents("space", 1).single()
+            s.chapters.syncDirectory(
+                tachiyomi.domain.chapter.service.ChapterDirectoryCommit(
+                    recognized.mangaId,
+                    listOf(
+                        tachiyomi.domain.chapter.service.PreparedSourceChapter(
+                            recognized.copy(url = "/new-chapter"),
+                            0,
+                        ),
+                    ),
+                    2000,
+                ),
+            )
+            val resumed = s.recorder.resumePosition(recognized.mangaId)
+            assertEquals(
+                recognized.id,
+                resumed?.chapterId,
+                "Accepted old URL resume heads must resolve after relinking",
+            )
+            assertEquals(6, resumed?.pageIndex)
+            s.recorder.await(s.reading(requireNotNull(s.chapters.getChapterById(chapter.id)), 7))
+            val after = s.journal.pendingEvents("space", 1)
+            assertEquals(before, after.first(), "Sealed reading events must not be rewritten")
+            assertTrue(
+                after.last().effects.filter { it.objectKey.type == mihon.domain.sync.SyncObjectType.CHAPTER }
+                    .all { it.objectKey.originalUrl == "/chapter" },
+            )
+        }
+    }
+
+    @Test
+    fun `deleting a highest chapter then adding later cannot redirect an accepted reader to another chapter`() =
+        runBlocking {
+            open().use { s ->
+                val first = s.seed()
+                val removed = s.chapters.addAll(
+                    listOf(first.copy(id = -1, url = "/removed", chapterNumber = 3.0)),
+                ).single()
+                val snapshot = s.recorder.openSession(removed.id)
+                s.chapters.syncDirectory(
+                    tachiyomi.domain.chapter.service.ChapterDirectoryCommit(
+                        first.mangaId,
+                        listOf(tachiyomi.domain.chapter.service.PreparedSourceChapter(first, 0)),
+                        2000,
+                    ),
+                )
+                s.chapters.syncDirectory(
+                    tachiyomi.domain.chapter.service.ChapterDirectoryCommit(
+                        first.mangaId,
+                        listOf(
+                            tachiyomi.domain.chapter.service.PreparedSourceChapter(first, 0),
+                            tachiyomi.domain.chapter.service.PreparedSourceChapter(
+                                first.copy(id = -1, url = "/later", chapterNumber = 7.0),
+                                0,
+                            ),
+                        ),
+                        3000,
+                    ),
+                )
+                val later = s.chapters.getChapterByMangaId(first.mangaId).single { it.url == "/later" }
+                runCatching { snapshot.await(s.reading(removed, 6)) }
+                assertEquals(
+                    0L,
+                    s.chapters.getChapterById(later.id)!!.lastPageRead,
+                    "A late reader of deleted ID ${removed.id} must not write newly accepted chapter ${later.id}",
+                )
+            }
+        }
 
     @Test
     fun `continuation adopts the selected snapshot even after later receipt`() = runBlocking {
@@ -286,7 +446,7 @@ abstract class SyncReadingStorageContract {
     protected class Storage(val driver: SqlDriver, database: Database, handler: DatabaseHandler) : AutoCloseable {
         val journal = SyncLocalJournal(handler)
         val chapters = ChapterRepositoryImpl(handler)
-        private val mangas = MangaRepositoryImpl(handler, NoopCreatorLibraryIndexWriter)
+        val mangas = MangaRepositoryImpl(handler, NoopCreatorLibraryIndexWriter)
         val recorder = RecordReadingProgress(SqlDelightReadingProgressRepository(database))
         val markRead = SetChapterReadStatus(GetChaptersByMangaId(chapters), UpdateChapter(chapters))
 

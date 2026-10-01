@@ -141,6 +141,7 @@ import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.chapter.interactor.SetMangaDefaultChapterFlags
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.chapter.service.finishDirectoryFiles
 import tachiyomi.domain.creator.interactor.CreatorArchive
 import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
 import tachiyomi.domain.creator.interactor.GetCreatorDetails
@@ -259,6 +260,7 @@ internal suspend fun initDesktopDIForTest(
     chapterRepositoryOverride: ((ChapterRepository) -> ChapterRepository)? = null,
     categoryRepositoryOverride: ((CategoryRepository) -> CategoryRepository)? = null,
     mangaRepositoryOverride: ((MangaRepository) -> MangaRepository)? = null,
+    builtInSources: List<CatalogueSource>? = null,
 ): DesktopTestDIContext {
     activeDesktopTestDIContext?.closeAndJoin()
     patchInjekt()
@@ -268,7 +270,7 @@ internal suspend fun initDesktopDIForTest(
     initDesktopConfigurationForTest(appDir, preferenceStore)
     val networkHelper = initNetworkLayer(paths, preferenceStore, browserOpener)
     val handler = initDataLayer(paths, chapterRepositoryOverride, categoryRepositoryOverride, mangaRepositoryOverride)
-    initExtensionLayer(paths, networkHelper, handler, artifactAuthenticator, trackerServiceRegistry)
+    initExtensionLayer(paths, networkHelper, handler, artifactAuthenticator, trackerServiceRegistry, builtInSources)
     initDomainLayer(handler)
     initUILayer(
         paths,
@@ -493,9 +495,6 @@ internal fun initDataLayer(
     mangaRepositoryOverride: ((MangaRepository) -> MangaRepository)? = null,
 ): DatabaseHandler {
     val handler = initDatabase(paths.databaseFile)
-    val chapterRepository: ChapterRepository = ChapterRepositoryImpl(handler).let { repository ->
-        chapterRepositoryOverride?.invoke(repository) ?: repository
-    }
     val categoryRepository: CategoryRepository = CategoryRepositoryImpl(handler).let { repository ->
         categoryRepositoryOverride?.invoke(repository) ?: repository
     }
@@ -509,6 +508,9 @@ internal fun initDataLayer(
         bootstrap = creatorArchiveBootstrap,
         discoverySchedule = Injekt.get(),
     )
+    val chapterRepository: ChapterRepository = ChapterRepositoryImpl(handler, creatorRepositoryImpl).let { repository ->
+        chapterRepositoryOverride?.invoke(repository) ?: repository
+    }
     val mangaRepositoryImpl = MangaRepositoryImpl(handler, creatorRepositoryImpl)
     val mangaRepository: MangaRepository = mangaRepositoryOverride?.invoke(mangaRepositoryImpl) ?: mangaRepositoryImpl
     val creatorRepository: CreatorRepository = creatorRepositoryImpl
@@ -571,8 +573,16 @@ internal fun initExtensionLayer(
     handler: DatabaseHandler,
     artifactAuthenticator: DesktopArtifactAuthenticator = DefaultDesktopArtifactAuthenticator,
     trackerServiceRegistry: TrackerServiceRegistry? = null,
+    builtInSources: List<CatalogueSource>? = null,
 ) {
-    registerDesktopExtension(paths, networkHelper, handler, artifactAuthenticator, trackerServiceRegistry)
+    registerDesktopExtension(
+        paths,
+        networkHelper,
+        handler,
+        artifactAuthenticator,
+        trackerServiceRegistry,
+        builtInSources,
+    )
 }
 
 private fun registerDesktopExtension(
@@ -581,6 +591,7 @@ private fun registerDesktopExtension(
     handler: DatabaseHandler,
     artifactAuthenticator: DesktopArtifactAuthenticator,
     trackerServiceRegistry: TrackerServiceRegistry?,
+    builtInSources: List<CatalogueSource>?,
 ) {
     val extensionRepoRepository = Injekt.get<ExtensionRepoRepository>()
     val extensionApi = DesktopExtensionApi(
@@ -598,11 +609,20 @@ private fun registerDesktopExtension(
     Injekt.addSingleton(extensionManager)
     Injekt.addSingleton(extensionApi)
     val appPreferences = Injekt.get<DesktopAppPreferences>()
-    val sourceManager = DesktopSourceManager(
-        extensionManager = extensionManager,
-        preferences = appPreferences,
-        additionalCatalogueSources = mihon.desktop.test.http.ReaderTestModeSourceBridge::sources,
-    )
+    val sourceManager = if (builtInSources == null) {
+        DesktopSourceManager(
+            extensionManager = extensionManager,
+            preferences = appPreferences,
+            additionalCatalogueSources = mihon.desktop.test.http.ReaderTestModeSourceBridge::sources,
+        )
+    } else {
+        DesktopSourceManager(
+            extensionManager = extensionManager,
+            preferences = appPreferences,
+            builtinSources = builtInSources,
+            additionalCatalogueSources = mihon.desktop.test.http.ReaderTestModeSourceBridge::sources,
+        )
+    }
     Injekt.addSingleton<SourceManager>(sourceManager)
     Injekt.addSingleton(sourceManager)
     val sourceRepository = DesktopSourceRepository(sourceManager, handler)
@@ -739,6 +759,10 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
         Injekt.get<CreatorArchiveRepository>(),
         sourceDateExtensionIdentityProvider = sourceDateExtensionIdentityProvider,
         initialChapterFlags = { Injekt.get<SetMangaDefaultChapterFlags>().initialFlags() },
+        finishPendingDirectory = { manga, phase -> Injekt.get<LibraryUpdateChecker>().finishPhase(manga, phase) },
+        downloadPolicy = { manga -> Injekt.get<FilterChaptersForDownload>().snapshot(manga) },
+        disallowNonAsciiFilenames = { Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get() },
+        directoryCommit = { manga, request -> Injekt.get<LibraryUpdateChecker>().commitDirectory(manga, request) },
     )
     Injekt.addSingleton(saveSourceMangaForDetails)
     Injekt.addSingleton(GetFavorites(mangaRepository))
@@ -763,6 +787,71 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
             mangaRepository,
             Injekt.get<CreatorArchiveRepository>(),
             sourceDateExtensionIdentityProvider,
+            renameDirectoryChapter = { phase, change ->
+                Injekt.get<mihon.desktop.download.DesktopDownloadProvider>().renameDirectoryChapter(phase, change)
+            },
+            downloadPolicy = { manga -> Injekt.get<FilterChaptersForDownload>().snapshot(manga) },
+            downloadCommitted = { manga, chapters ->
+                val manager = Injekt.get<mihon.desktop.download.DesktopDownloadManager>()
+                chapters.forEach { chapter ->
+                    val existing = manager.queue.value.find { it.chapterId == chapter.id }
+                    val downloaded = Injekt.get<mihon.desktop.download.DesktopDownloadProvider>().isChapterDownloaded(
+                        manga.source,
+                        Injekt.get<mihon.desktop.download.DesktopDownloadIdentityResolver>().resolve(manga, chapter),
+                    )
+                    check(
+                        existing?.let { it.mangaId == manga.id && it.chapterUrl == chapter.url }
+                            ?: (
+                                downloaded || manager.enqueue(
+                                    mihon.desktop.download.DownloadItem(
+                                        manga.source,
+                                        manga.title,
+                                        chapter.name,
+                                        chapter.id,
+                                        manga.id,
+                                        chapter.url,
+                                    ),
+                                )
+                                ),
+                    ) { "Committed chapter could not be accepted into the download queue" }
+                }
+            },
+            directoryCommit = { _, request ->
+                val manager = Injekt.get<mihon.desktop.download.DesktopDownloadManager>()
+                val latestManga = mangaRepository.getMangaById(request.mangaId)
+                val stored = chapterRepository.getChapterByMangaId(request.mangaId)
+                val plan = tachiyomi.domain.chapter.service.ChapterDirectoryPlan.create(
+                    stored,
+                    request.source,
+                    request.now,
+                    request.markDuplicateAsRead,
+                    emptySet(),
+                )
+                val titleChanged = request.mangaMetadata?.title?.let {
+                    it != latestManga.title && (!request.metadataOnlyForNonFavorites || !latestManga.favorite)
+                } == true
+                val guarded = plan.affectedDownloadIds(stored, titleChanged)
+                manager.withDirectoryChanges(guarded) {
+                    val result = chapterRepository.syncDirectory(request.copy(guardedChapterIds = guarded))
+                    result.phase?.let { phase ->
+                        chapterRepository.finishDirectoryFiles(phase) { p, change ->
+                            Injekt.get<mihon.desktop.download.DesktopDownloadProvider>().renameDirectoryChapter(
+                                p,
+                                change,
+                            )
+                        }
+                    }
+                    result.copy(phase = chapterRepository.pendingDirectoryPhase(request.mangaId))
+                }
+            },
+            fileReservation = { ids, operation ->
+                Injekt.get<mihon.desktop.download.DesktopDownloadManager>().withDirectoryChanges(ids, operation)
+            },
+            markDuplicateAsRead = {
+                Injekt.get<LibraryPreferences>().markDuplicateReadChapterAsRead().get()
+                    .contains(LibraryPreferences.MARK_DUPLICATE_CHAPTER_READ_NEW)
+            },
+            disallowNonAsciiFilenames = { Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get() },
         ),
     )
     val creatorDiscoverySourcePort = CatalogueCreatorDiscoverySourceAdapter(
@@ -1203,22 +1292,6 @@ private fun registerDesktopLibrary(
             taskNotifier = taskNotifier,
             libraryProvider = libraryProvider,
             updateManga = updateManga,
-            autoDownload = { manga, chapters ->
-                filterChaptersForDownload.await(manga, chapters).forEach { chapter ->
-                    enqueueDownload(
-                        mihon.domain.download.DownloadQueueEntry(
-                            chapterId = chapter.id,
-                            mangaId = manga.id,
-                            sourceId = manga.source,
-                            mangaTitle = manga.title,
-                            chapterName = chapter.name,
-                            chapterUrl = chapter.url,
-                            pageUrls = emptyList(),
-                            position = System.nanoTime(),
-                        ),
-                    )
-                }
-            },
         ),
     )
     Injekt.addSingleton(UpdatesPreferences(preferenceStore))

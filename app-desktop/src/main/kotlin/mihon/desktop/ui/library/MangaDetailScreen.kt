@@ -189,6 +189,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         var restoreCategoryMenuFocus by rememberSaveable { mutableStateOf(false) }
         val categoryMenuFocus = remember { FocusRequester() }
         val categorySnackbar = remember { SnackbarHostState() }
+        LaunchedEffect(state.directoryRefreshFeedback) {
+            state.directoryRefreshFeedback?.let { categorySnackbar.showSnackbar(it) }
+        }
         LaunchedEffect(restoreCategoryMenuFocus) {
             if (restoreCategoryMenuFocus && navigator.lastItem == this@MangaDetailScreen) {
                 androidx.compose.runtime.withFrameNanos { }
@@ -350,6 +353,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             dependencies.saveSourceMangaForDetails.refreshFromSource(
                 source = currentSource,
                 listedManga = currentManga.toSourceMangaForRefresh(),
+                origin = "DETAIL_REFRESH",
             )
         }
         LaunchedEffect(manga?.id) {

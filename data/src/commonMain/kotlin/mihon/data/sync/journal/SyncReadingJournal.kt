@@ -12,6 +12,7 @@ import mihon.domain.sync.SyncObjectKey
 import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.SyncOrigin
 import tachiyomi.data.Database
+import tachiyomi.data.chapter.readChapterUrlIdentity
 import tachiyomi.domain.reader.model.ReadingProgressEvent
 
 internal fun Database.appendReadingOperation(event: ReadingProgressEvent): SyncEventEnvelope? {
@@ -74,7 +75,7 @@ internal fun Database.readingObjectKeys(chapterId: Long): Pair<SyncObjectKey, Sy
     return SyncObjectKey(
         SyncObjectType.CHAPTER,
         sourceId = manga.source.toString(),
-        originalUrl = chapter.url,
+        originalUrl = readChapterUrlIdentity(chapterId).canonicalUrl,
         parentUrl = manga.url,
     ) to SyncObjectKey(SyncObjectType.MANGA, sourceId = manga.source.toString(), originalUrl = manga.url)
 }

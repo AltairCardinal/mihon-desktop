@@ -15,6 +15,7 @@ data class MangaDetailState(
     val manga: Manga? = null,
     val chapters: List<Chapter> = emptyList(),
     val isUpdating: Boolean = false,
+    val directoryRefreshFeedback: String? = null,
     val coverTask: TaskState<Unit> = TaskState.Idle,
     val coverFeedback: String? = null,
     val coverLastModified: Long = 0L,

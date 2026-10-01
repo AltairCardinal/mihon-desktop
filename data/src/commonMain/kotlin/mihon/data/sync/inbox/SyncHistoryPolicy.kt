@@ -5,6 +5,7 @@ import mihon.domain.sync.SyncObjectKey
 import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.SyncOrigin
 import tachiyomi.data.Database
+import tachiyomi.data.chapter.readChapterUrlIdentity
 
 /** A local clear suppresses known history, without pretending to date a never-observed remote actor. */
 internal fun Database.allowSyncHistory(event: SyncEventEnvelope, chapterKey: SyncObjectKey): Boolean {
@@ -56,12 +57,26 @@ private fun Database.recordHistoryClear(target: String) {
     sync_historyQueries.captureWatermarks(target)
 }
 
-private fun historyTargets(chapter: SyncObjectKey): List<String> {
+private fun Database.historyTargets(chapter: SyncObjectKey): List<String> {
     require(chapter.type == SyncObjectType.CHAPTER)
     val manga = SyncObjectKey(
         SyncObjectType.MANGA,
         sourceId = chapter.sourceId,
         originalUrl = chapter.parentUrl,
     )
-    return listOf("*", manga.stableKey, chapter.stableKey)
+    val row = chapter.sourceId?.toLongOrNull()?.let { source ->
+        sync_projectionQueries.getChapterByIdentity(
+            chapterUrl = requireNotNull(chapter.originalUrl),
+            mangaUrl = requireNotNull(chapter.parentUrl),
+            sourceId = source,
+        ).executeAsOneOrNull()
+    }
+    val chapterTargets = if (row == null) {
+        listOf(chapter.stableKey)
+    } else {
+        val identity = readChapterUrlIdentity(row._id)
+        (identity.aliases + identity.canonicalUrl + row.url + requireNotNull(chapter.originalUrl))
+            .distinct().map { chapter.copy(originalUrl = it).stableKey }
+    }
+    return listOf("*", manga.stableKey) + chapterTargets
 }

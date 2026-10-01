@@ -311,6 +311,58 @@ class DesktopDownloadProvider(
         add(File(legacy.parentFile, "${legacy.name}.cbz"))
     }.distinctBy(File::getAbsolutePath)
 
+    /** Move only this committed identity's existing aliases; collisions never overwrite another download. */
+    fun renameDirectoryChapter(
+        phase: tachiyomi.domain.chapter.service.ChapterDirectoryPhase,
+        change: tachiyomi.domain.chapter.service.DirectoryFileChange,
+    ) {
+        fun identity(
+            chapter: tachiyomi.domain.chapter.service.DirectoryFileChapter,
+            title: String,
+        ) = DownloadChapterIdentity(
+            phase.effects.sourceName,
+            title,
+            chapter.name,
+            chapter.scanlator,
+            chapter.url,
+            phase.effects.disallowNonAsciiFilenames,
+        )
+        val previous = identity(change.before, phase.effects.mangaTitle)
+        val current = identity(change.after, phase.currentTitle)
+        val root = baseDir.toPath().toAbsolutePath().normalize()
+        try {
+            chapterDownloadArtifacts(phase.effects.sourceId, previous).filter(File::exists).forEach { original ->
+                val targetDirectory = canonicalChapterDownloadDir(current)
+                val target = if (original.isFile) {
+                    File(
+                        targetDirectory.parentFile,
+                        "${targetDirectory.name}.cbz",
+                    )
+                } else {
+                    targetDirectory
+                }
+                if (original.toPath().toAbsolutePath().normalize() ==
+                    target.toPath().toAbsolutePath().normalize()
+                ) {
+                    return@forEach
+                }
+                check(
+                    original.toPath().toAbsolutePath().normalize().startsWith(root) &&
+                        target.toPath().toAbsolutePath().normalize().startsWith(root),
+                )
+                check(!target.exists()) { "A different chapter download already occupies the renamed path" }
+                java.nio.file.Files.createDirectories(target.parentFile.toPath())
+                java.nio.file.Files.move(
+                    original.toPath(),
+                    target.toPath(),
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                )
+            }
+        } finally {
+            notifyAvailabilityChanged()
+        }
+    }
+
     /** Return the original paths that still need retry; never re-enumerate the manga directory. */
     fun deleteCapturedDownloadArtifacts(artifacts: Collection<File>): List<File> = try {
         val root = baseDir.toPath().toAbsolutePath().normalize()

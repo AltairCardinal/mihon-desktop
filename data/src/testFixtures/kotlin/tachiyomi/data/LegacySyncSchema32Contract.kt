@@ -33,8 +33,23 @@ object LegacySyncSchema32Contract {
         check(queryLong(driver, "SELECT COUNT(*) FROM sync_remote_guards WHERE latest_head = 'preserved-head'") == 1L)
     }
 
+    fun removeChapterDirectoryAdditions(driver: SqlDriver) {
+        listOf(
+            "chapter_id_floor_insert_guard",
+            "chapter_id_floor_delete_guard",
+            "chapter_id_floor_insert",
+            "chapter_id_floor_delete",
+        ).forEach {
+            driver.execute(null, "DROP TRIGGER IF EXISTS $it", 0)
+        }
+        listOf("chapter_directory_phases", "chapter_url_aliases", "chapter_id_floor").forEach {
+            driver.execute(null, "DROP TABLE IF EXISTS $it", 0)
+        }
+    }
+
     private fun prepare(driver: SqlDriver, hasRuntime: Boolean) {
         Database.Schema.create(driver)
+        removeChapterDirectoryAdditions(driver)
         listOf("sync_events_by_batch_confirmation", "sync_pending_upload_round").forEach {
             driver.execute(null, "DROP INDEX IF EXISTS $it", 0)
         }

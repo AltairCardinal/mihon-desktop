@@ -488,7 +488,11 @@ abstract class SyncInboxStorageContract {
                 setOf(1000L, 2000L),
                 s.handler.await {
                     listOf(chapter1, chapter2).map { key ->
-                        val chapter = sync_projectionQueries.getChapterByIdentity(key.originalUrl!!, "/manga", 42)
+                        val chapter = sync_projectionQueries.getChapterByIdentity(
+                            chapterUrl = key.originalUrl!!,
+                            mangaUrl = "/manga",
+                            sourceId = 42,
+                        )
                             .executeAsOne()
                         assertTrue(chapter.read)
                         sync_projectionQueries.getChapterHistory(chapter._id).executeAsOne().last_read!!.time
@@ -500,7 +504,11 @@ abstract class SyncInboxStorageContract {
             assertTrue(s.inbox.ingest(back).accepted)
             s.projectAll()
             s.handler.await {
-                val chapter = sync_projectionQueries.getChapterByIdentity(chapter2.originalUrl!!, "/manga", 42)
+                val chapter = sync_projectionQueries.getChapterByIdentity(
+                    chapterUrl = chapter2.originalUrl!!,
+                    mangaUrl = "/manga",
+                    sourceId = 42,
+                )
                     .executeAsOne()
                 assertEquals(2L, chapter.last_page_read)
                 assertEquals(

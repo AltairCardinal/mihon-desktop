@@ -23,6 +23,8 @@ data class BackupChapter(
     @ProtoNumber(11) var lastModifiedAt: Long = 0,
     @ProtoNumber(12) var version: Long = 0,
     @ProtoNumber(13) var memo: ByteArray = tachiyomi.data.JsonObjectEmptyBytes,
+    @ProtoNumber(14) var urlAliases: List<String> = emptyList(),
+    @ProtoNumber(15) var canonicalUrl: String? = null,
 ) {
     fun toChapterImpl(): Chapter {
         return Chapter.create().copy(
@@ -76,4 +78,25 @@ val backupChapterMapper = {
         version = version,
         memo = memo,
     )
+}
+
+/** Old backups have neither field. Source memo remains independent of this local identity metadata. */
+fun BackupChapter.chapterUrlIdentity(): tachiyomi.domain.chapter.model.ChapterUrlIdentity? {
+    if (canonicalUrl == null && urlAliases.isEmpty()) return null
+    val canonical = requireNotNull(canonicalUrl) { "Chapter aliases have no canonical URL" }
+    require(canonical.isNotBlank() && url.isNotBlank() && urlAliases.all { it.isNotBlank() })
+    require(canonical in (urlAliases + url)) { "Canonical URL is not part of the chapter identity" }
+    return tachiyomi.domain.chapter.model.ChapterUrlIdentity(canonical, urlAliases.distinct())
+}
+
+fun validateBackupChapterIdentities(chapters: List<BackupChapter>) {
+    val owners = mutableMapOf<String, String>()
+    chapters.forEach { chapter ->
+        val identity = chapter.chapterUrlIdentity()
+        (identity?.aliases.orEmpty() + listOfNotNull(identity?.canonicalUrl) + chapter.url).distinct().forEach { url ->
+            require(url.isNotBlank())
+            val owner = owners.putIfAbsent(url, chapter.url)
+            require(owner == null || owner == chapter.url) { "Backup URL belongs to multiple chapters" }
+        }
+    }
 }

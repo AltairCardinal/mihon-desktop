@@ -218,9 +218,14 @@ RI08复用前置核对：Android现用`libs.richeditor.compose`版本1.0.0-rc13�
 
 - `SOURCE`：先 characterization Android 实际 SyncChaptersWithSource，覆盖 URL 去重、名称规范化、prepareNewChapter、ChapterRecognition、sourceOrder、上传日期补全与保留、dateFetch、识别章号的重复已读及换链已读／书签继承、排除扫描组后的新增返回集合。共享核心由双端真实包装消费，不能只在测试中复制 Android 算法。Desktop 的作者观察、配对和同步身份保留为平台扩展。
 - `PROJECT_POLICY`：真实 source.getMangaUpdate 经 SourceMangaUpdateService 在事务外执行；空／错误／不完整响应不能清库。复用已有成功／错误反馈，详情当前作品与书架逐本更新都接同一同步入口。作者目录的 COMPLETE 标记不是来源完整性的证明；不得为非本地空响应默认视作有效清空。
+- `SOURCE／PROJECT_POLICY`：现 SMangaUpdate 为普通 class；显式目录完整性字段须保留原二参数 JVM 构造，旧扩展按既有全目录契约默认为完整。显式不完整、请求失败、非本地空目录或空 URL 整批拒绝；不能据此声称识别来源未标记的服务端静默截断。作者 COMPLETE 状态与该字段独立。
 - `PROJECT_POLICY`：单本目录更新一次 SQL 事务发布新增、同 URL 改名／重排／元数据、移除与作品对应更新；事务内合并最新用户读态、书签、页码等，网络开始前的快照不能覆盖期间发生的用户操作。失败回滚后订阅者只见完整旧值，成功只见完整新值；原有 repository 单项吞异常或 addAll 返回空不能冒充整批成功。
 - `PROJECT_POLICY`：同 URL 保留已有 chapter ID、历史、配对、阅读事件与同步键；可识别换链按共享语义及有界唯一身份处理，保留适用既有引用，不按相近标题任意合并。实际 history、chapter_pairings、reading_events 与 sync_private_reading 存在 ON DELETE CASCADE，删后重插不能当作保身份，须以真实 SQL 及既有同步／阅读消费者验证。
+- `PROJECT_POLICY`：唯一可识别换链可增加有限 URL alias 与稳定首次 URL，仅登记本次确认对象，并与目录同一事务提交；冲突不得抢占其他章节身份。保留既有 journal 原文，读取旧 URL 的 repository、同步投影、描述、历史清除与备份重建须消费同一映射；备份通过共享BackupChapter可选Proto14 aliases／15 canonicalUrl保存，旧备份使用空默认；采用repository独立有限身份端口，不占用SOURCE memo或普通Chapter状态，须有真实双端往返／重开验证。该本地映射不等于把 alias 经旧同步 wire 自动传播到其他设备，不另建同步协议。
+- `PROJECT_POLICY`：真实旧Reader事件已证明SQLite删除最高ROWID后独立新增会复用ID并写错新章；chapters高水位仅维护一个持久只增值，迁移初始化当前MAX，后续普通／目录／projection／backup生产插入复用同query。新章不得借已记录的删除ID冒充旧对象，回滚不发布未提交ID；保护范围自迁移及后续记录起，不假称可推导历史已删除最大ID，不重建FK或改ID格式。
 - `PROJECT_POLICY`：文件重命名与引用变动只针对本次有限对象，使用已有下载身份／provider；文件不能与 SQL 宣称原子。所需恢复记录局限于单本同步阶段和有限副作用，明确失败、重启恢复与幂等边界，不建通用 outbox、不自动清理下载文件。自动下载只消费已提交且适用的新增集合，重试不重复队列或作者观察。
+- `PROJECT_POLICY`：单本阶段随目录事务保存原来源／作品身份、旧新文件身份、原观测时间及扩展版本、固定新增下载ID和接受时下载策略；本地阶段不进入backup或同步wire。同入口先恢复原阶段，失败不抓取新响应覆盖它；每项实际成功后才ack。文件目标冲突拒绝覆盖，身份已改变拒绝盲移，取消／ack失败保记录；作者原值重放与队列接受后重放须验证幂等，不能以ack标记单独替代业务验证。Browse的新增批次不自动下载，不能因此吞掉先前待恢复的下载批次。此为RI13接线约束，完成状态仍以真实证据为准。
+- `PROJECT_POLICY`：已接受下载对象的URL／名称／组名／作品目录或章节成员资格将改变时，最小门禁可在目录提交前拒绝并保旧目录／队列，明确提示完成或取消适用下载后重试；不得取消再入队而丢失generation、顺序或暂停状态。检查与新入队之间须用现有有限占用边界，且事务内最新变更必须属于已保护对象；仅章节排列变化不阻断。未完成阶段重启仍遵守同一下载身份门禁，不让旧URL静默进入source.getPageList。
 - 验收执行真实 HTTP→source→共享计划→SQL→Flow／调用入口，真实临时文件与阶段故障覆盖提交前／后中断、并发用户读写、相同响应重试和异常空响应；Android 同语义契约与 Desktop 独有引用均通过后，RI14 才可依赖该接口。此为实施前固定验收，未表示 RI13 已实现或已有测试证据。
 
 ## 2026-10-01 更新恢复与策略消费契约（RI14，实施前固定）

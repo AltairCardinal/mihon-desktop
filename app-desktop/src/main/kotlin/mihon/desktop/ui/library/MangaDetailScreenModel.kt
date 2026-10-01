@@ -947,8 +947,28 @@ class MangaDetailScreenModel(
     }
 
     suspend fun refreshManga(manga: Manga) {
-        val source = sourceFor(manga) ?: return
-        requireNotNull(updateChecker) { "LibraryUpdateChecker is required" }.checkForUpdates(manga, source)
+        _state.update { it.copy(directoryRefreshFeedback = null) }
+        val source = sourceFor(manga)
+        if (source == null) {
+            _state.update {
+                it.copy(directoryRefreshFeedback = MR.strings.desktop_source_preferences_missing.localized())
+            }
+            return
+        }
+        try {
+            val result = requireNotNull(updateChecker).checkForUpdates(manga, source, origin = "DETAIL_REFRESH")
+            if (result.error != null || result.sourceError != null) {
+                _state.update {
+                    it.copy(directoryRefreshFeedback = MR.strings.desktop_ui_library_update_failed.localized())
+                }
+            }
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            _state.update {
+                it.copy(directoryRefreshFeedback = MR.strings.desktop_ui_library_update_failed.localized())
+            }
+        }
     }
 
     suspend fun migrateTo(targetSourceId: Long, item: SManga, fallbackTitle: String?) {

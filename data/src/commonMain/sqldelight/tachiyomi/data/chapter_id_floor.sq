@@ -1,0 +1,28 @@
+CREATE TABLE chapter_id_floor (
+    singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
+    value INTEGER NOT NULL CHECK (value >= 0)
+);
+
+INSERT INTO chapter_id_floor(singleton, value) VALUES (1, 0);
+
+CREATE TRIGGER chapter_id_floor_insert_guard BEFORE INSERT ON chapters
+WHEN NOT EXISTS (SELECT 1 FROM chapter_id_floor WHERE singleton = 1)
+BEGIN
+    SELECT RAISE(ABORT, 'Missing chapter identity floor');
+END;
+
+CREATE TRIGGER chapter_id_floor_delete_guard BEFORE DELETE ON chapters
+WHEN NOT EXISTS (SELECT 1 FROM chapter_id_floor WHERE singleton = 1)
+BEGIN
+    SELECT RAISE(ABORT, 'Missing chapter identity floor');
+END;
+
+CREATE TRIGGER chapter_id_floor_insert AFTER INSERT ON chapters
+BEGIN
+    UPDATE chapter_id_floor SET value = max(value, new._id) WHERE singleton = 1;
+END;
+
+CREATE TRIGGER chapter_id_floor_delete AFTER DELETE ON chapters
+BEGIN
+    UPDATE chapter_id_floor SET value = max(value, old._id) WHERE singleton = 1;
+END;

@@ -243,6 +243,24 @@ class DesktopDownloadManager(
     /** True when downloads are paused by the user. */
     val isPaused: StateFlow<Boolean> = _isPaused.asStateFlow()
 
+    /** Reserves only this directory operation's existing chapter identities. */
+    suspend fun <T> withDirectoryChanges(chapterIds: Set<Long>, operation: suspend () -> T): T {
+        synchronized(queueStateLock) {
+            if (_queue.value.any { it.chapterId in chapterIds } ||
+                chapterIds.any { it in enqueuePreflights || it in retirementsByChapter } ||
+                activeProducers.keys.any { it.chapterId in chapterIds }
+            ) {
+                throw tachiyomi.domain.chapter.service.ChapterDirectoryDownloadConflictException()
+            }
+            enqueuePreflights.addAll(chapterIds)
+        }
+        try {
+            return operation()
+        } finally {
+            synchronized(queueStateLock) { enqueuePreflights.removeAll(chapterIds) }
+        }
+    }
+
     /** Add a chapter to the download queue (no-op if already queued or downloaded). */
     fun enqueue(item: DownloadItem): Boolean {
         val hasRetiringAttempt = synchronized(queueStateLock) {

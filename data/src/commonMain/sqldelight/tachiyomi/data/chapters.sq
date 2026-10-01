@@ -81,13 +81,16 @@ AND manga_id = :mangaId;
 getChapterByUrl:
 SELECT *
 FROM chapters
-WHERE url = :chapterUrl;
+WHERE url = :chapterUrl OR EXISTS(SELECT 1 FROM chapter_url_aliases A WHERE A.chapter_id = chapters._id AND A.url = :chapterUrl)
+ORDER BY CASE WHEN url = :chapterUrl THEN 0 ELSE 1 END, _id;
 
 getChapterByUrlAndMangaId:
 SELECT *
 FROM chapters
-WHERE url = :chapterUrl
-AND manga_id = :mangaId;
+WHERE manga_id = :mangaId
+AND (url = :chapterUrl OR EXISTS(SELECT 1 FROM chapter_url_aliases A WHERE A.chapter_id = chapters._id AND A.url = :chapterUrl))
+ORDER BY CASE WHEN url = :chapterUrl THEN 0 ELSE 1 END, _id
+LIMIT 1;
 
 removeChaptersWithIds:
 DELETE FROM chapters
@@ -99,8 +102,8 @@ SET is_syncing = 0
 WHERE is_syncing = 1;
 
 insert:
-INSERT INTO chapters(manga_id, url, name, scanlator, read, bookmark, last_page_read, chapter_number, source_order, date_fetch, date_upload, last_modified_at, version, is_syncing, memo)
-VALUES (:mangaId, :url, :name, :scanlator, :read, :bookmark, :lastPageRead, :chapterNumber, :sourceOrder, :dateFetch, :dateUpload, 0, :version, 0, :memo);
+INSERT INTO chapters(_id, manga_id, url, name, scanlator, read, bookmark, last_page_read, chapter_number, source_order, date_fetch, date_upload, last_modified_at, version, is_syncing, memo)
+VALUES ((SELECT value + 1 FROM chapter_id_floor WHERE singleton = 1), :mangaId, :url, :name, :scanlator, :read, :bookmark, :lastPageRead, :chapterNumber, :sourceOrder, :dateFetch, :dateUpload, 0, :version, 0, :memo);
 
 update:
 UPDATE chapters
@@ -122,3 +125,9 @@ WHERE _id = :chapterId;
 
 selectLastInsertedRowId:
 SELECT last_insert_rowid();
+
+updateSourceMetadata:
+UPDATE chapters SET url = :url, name = :name, scanlator = :scanlator,
+    chapter_number = :chapterNumber, source_order = :sourceOrder,
+    date_upload = :dateUpload, memo = :memo
+WHERE _id = :chapterId;

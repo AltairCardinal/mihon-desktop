@@ -12,6 +12,26 @@ import tachiyomi.domain.creator.model.SourceDateQualityStatus
 class SourceDateQualityPolicyTest {
 
     @Test
+    fun `identical valid and diagnostic observations replay without changing bounded evidence`() {
+        val identity = SourceDateQualityIdentity("example.extension", "1", 42, SourceDateField.CHAPTER_UPDATED)
+        val dated =
+            SourceDateObservation(identity, "/work", "/dated", "1000", 1000, SourceDatePrecision.DAY, observedAt = 2000)
+        val missing = SourceDateObservation(identity, "/work", "/missing", observedAt = 2000, reason = "missing-date")
+        val nextDay = dated.copy(observedAt = 2000 + DAY)
+        assertEquals(
+            listOf(dated, missing).toSet(),
+            SourceDateQualityPolicy.retain(listOf(dated, missing, dated, missing), 2000).toSet(),
+        )
+        assertEquals(
+            setOf(dated, missing, nextDay),
+            SourceDateQualityPolicy.retain(
+                listOf(dated, missing, nextDay, dated),
+                2000 + DAY,
+            ).toSet(),
+        )
+    }
+
+    @Test
     fun `chapter dates become trusted only after bounded cross day stable evidence`() {
         val observedAt = DAY * 40
         val identity = SourceDateQualityIdentity(

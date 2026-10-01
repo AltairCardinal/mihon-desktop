@@ -18,7 +18,17 @@ class SourceMangaUpdateService {
         val sourceManga = manga.toSourceManga()
         val sourceChapters = chapters.sortedBy { it.sourceOrder }.map { it.toSourceChapter() }
         if (!fetchDetails && !fetchChapters) return SMangaUpdate(sourceManga, sourceChapters)
-        return source.getMangaUpdate(sourceManga, sourceChapters, fetchDetails, fetchChapters)
+        return source.getMangaUpdate(sourceManga, sourceChapters, fetchDetails, fetchChapters).also { update ->
+            if (fetchChapters) {
+                require(update.chapterListComplete) { "Source chapter directory is incomplete" }
+                if (update.chapters.isEmpty() &&
+                    source.id != 0L
+                ) {
+                    throw tachiyomi.domain.chapter.model.NoChaptersException()
+                }
+                require(update.chapters.all { it.url.isNotBlank() }) { "Source returned an empty chapter URL" }
+            }
+        }
     }
 }
 

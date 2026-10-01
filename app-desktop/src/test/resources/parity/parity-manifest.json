@@ -1225,7 +1225,7 @@
           "kind": "PLATFORM_ADAPTER",
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "fun initDesktopDI",
-          "line": 207
+          "line": 208
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -2775,7 +2775,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/source/MangaDexSource.kt",
           "symbol": "return requireSuccessfulHttpResponse(",
-          "line": 254
+          "line": 266
         }
       ],
       "FIXTURE": [
@@ -2803,9 +2803,23 @@
       "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/SourceSharedQueryWiringTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionInstallCoordinatorWiringTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/network/NetworkErrorContractTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/ChapterDirectorySyncIntegrationTest.kt"
     ],
-    "verificationScope": "VERIFIED: fixed-main network ownership, current Android and Desktop shared error-mapper consumers, three required compiled edges, zero missing or forbidden edges, and executable failure fixtures are closed; JVM client wiring remains an explicit platform adapter.",
+    "interactionIterationEvidence": {
+      "RI13": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/ChapterDirectorySyncIntegrationTest.kt": [
+            "real MangaDex HTTP failures and incomplete pagination never publish a destructive directory",
+            "real complete first page followed by empty or regressed total cannot publish partial chapters",
+            "real complete 500 plus 1 pagination commits every parsed chapter"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "108 unique affected methods passed; 0 skipped; exact historical behaviorMethods retained."
+      }
+    },
+    "verificationScope": "VERIFIED: fixed-main network ownership, current Android and Desktop shared error-mapper consumers, three required compiled edges, zero missing or forbidden edges, and executable failure fixtures are closed; JVM client wiring remains an explicit platform adapter. RI13 adds real MockWebServer -> MangaDexSource -> shared directory -> SQLite failure protection for destructive partial pagination; this does not add network clients or establish live source availability.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -4278,7 +4292,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 1134
+          "line": 1223
         }
       ],
       "FIXTURE": [
@@ -11581,12 +11595,12 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun toggleFavorite(",
-          "line": 335
+          "line": 334
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun moveMangaToCategoriesAndAddToLibrary",
-          "line": 468
+          "line": 467
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt",
@@ -11618,7 +11632,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
           "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY",
-          "line": 1144
+          "line": 1148
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
@@ -20692,7 +20706,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun bookmarkChapters",
-          "line": 830
+          "line": 829
         },
         {
           "path": "app/src/main/java/eu/kanade/domain/chapter/model/ChapterFilter.kt",
@@ -20702,12 +20716,12 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun markPreviousChapterRead(",
-          "line": 738
+          "line": 737
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun runDownloadAction(",
-          "line": 695
+          "line": 694
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -20762,7 +20776,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "initialChapterFlags = { Injekt.get<SetMangaDefaultChapterFlags>().initialFlags() },",
-          "line": 741
+          "line": 761
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
@@ -30987,7 +31001,15 @@
     "desktopImplementation": "DesktopReaderSession reduces settled canonical page identities through ReaderSessionCore and forwards identity-bearing progress effects to ReaderProgressTracker/RecordReadingProgress; page loading and background work do not emit progress, and an already-read chapter remains read on partial settlement.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "private suspend fun updateChapterProgress"}],
-    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/reader/progress/ReaderProgressPolicy.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/reader/interactor/RecordReadingProgress.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/reader/model/ReadingProgressEvent.kt", "data/src/commonMain/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepository.kt"],
+    "sharedImplementationPaths": [
+      "domain/src/commonMain/kotlin/mihon/domain/reader/progress/ReaderProgressPolicy.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/reader/interactor/RecordReadingProgress.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/reader/model/ReadingProgressEvent.kt",
+      "data/src/commonMain/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepository.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/model/ChapterUrlIdentity.kt",
+      "data/src/commonMain/kotlin/tachiyomi/data/chapter/ChapterUrlIdentity.kt",
+      "data/src/commonMain/sqldelight/tachiyomi/data/chapter_id_floor.sq"
+    ],
     "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiter.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderProgressCoordinator.kt"],
     "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt", "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt", "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt"],
     "deviations": [
@@ -31030,12 +31052,100 @@
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "private suspend fun updateChapterProgress", "line": 534}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "val submission = handle.submit(", "line": 959}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderProgressCoordinator.kt", "symbol": "command.session.await(command.event)", "line": 76}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiter.kt", "symbol": "internal class ReaderViewportSettlementArbiter", "line": 5}],
-      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/progress/ReaderProgressPolicy.kt", "symbol": "object ReaderProgressPolicy", "line": 59}, {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/reader/interactor/RecordReadingProgress.kt", "symbol": "class RecordReadingProgress", "line": 9}],
+      "SHARED_OR_ADAPTER": [
+        {
+          "kind": "SHARED",
+          "path": "domain/src/commonMain/kotlin/mihon/domain/reader/progress/ReaderProgressPolicy.kt",
+          "symbol": "object ReaderProgressPolicy",
+          "line": 59
+        },
+        {
+          "kind": "SHARED",
+          "path": "domain/src/commonMain/kotlin/tachiyomi/domain/reader/interactor/RecordReadingProgress.kt",
+          "symbol": "class RecordReadingProgress",
+          "line": 9
+        },
+        {
+          "kind": "SHARED",
+          "path": "data/src/commonMain/sqldelight/tachiyomi/data/chapter_id_floor.sq",
+          "symbol": "CREATE TABLE chapter_id_floor (",
+          "line": 1
+        }
+      ],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt", "symbol": "readingSession.await(event)", "line": 78}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt", "symbol": "class DesktopReaderSession", "line": 122}],
       "FIXTURE": [{"artifact": "domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt#only a settled viewport in the active chapter produces a progress effect", "productionMarkers": ["ReaderProgressPolicy.reduce"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt#Android current settled page records progress through the canonical shared transaction", "productionMarkers": ["viewModel.onPageSelected", "awaitRecordedEvent"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt#newer current settlement rejects older adjacent activation and progress", "productionMarkers": ["viewModel.onPageSelected", "releaseAdjacentLoad.complete"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt#issuing a new token invalidates every older unaccepted viewport", "productionMarkers": ["ReaderViewportSettlementArbiter", "arbiter.isLatest(older)"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderProgressCoordinatorTest.kt#accepted writes survive close and preserve same manga submission order", "productionMarkers": ["reader.submit", "release.complete(Unit)", "assertEquals(listOf(1, 2), writes)"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageProgressProductionWiringTest.kt#rendered last pair queued behind earlier write survives immediate next chapter selection", "productionMarkers": ["selectGroup", "assertPersistedProgress(4, true)", "database.reading_eventsQueries.countByChapter(2)"]}, {"artifact": "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt#reading a later chapter updates only that row and requires its last page to mark read", "productionMarkers": ["recorder.await"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#dual presentation settles both source pages through screen model and session progress port", "productionMarkers": ["DualPagedPresentation.present", "model.settleDualPage", "progress.single"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#settling the last page then paging backward never makes the chapter unread", "productionMarkers": ["session.settleViewport", "wasRead"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#closing immediately after settlement lets the final progress write finish", "productionMarkers": ["session.close", "allowWrite.complete", "writeCompleted"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#local reader session identity never becomes a durable chapter progress id", "productionMarkers": ["localReaderScreen", "progressTracker.track"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt#settling an already read chapter mid chapter keeps it read", "productionMarkers": ["tracker.track", "wasRead"]}]
     },
-    "protectionTests": ["domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderProgressCoordinatorTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageProgressProductionWiringTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderDuplicateCompletionPolicyTest.kt", "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerIntegrationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterReadPresentationTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt"],
-    "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt": ["only a settled viewport in the active chapter produces a progress effect", "settled spread records its highest visible logical page and only the last page completes", "a partial settled page never clears an existing read state", "settlement identity creates a stable idempotency key and a later settlement creates a new key"], "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt": ["Android domain DI resolves the canonical reading progress recorder", "Android current settled page records progress through the canonical shared transaction"], "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt": ["newer current settlement rejects older adjacent activation and progress"], "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt": ["issuing a new token invalidates every older unaccepted viewport"], "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderProgressCoordinatorTest.kt": ["accepted writes survive close and preserve same manga submission order"], "app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageProgressProductionWiringTest.kt": ["rendered last pair queued behind earlier write survives immediate next chapter selection"], "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderDuplicateCompletionPolicyTest.kt": ["duplicate completion remains disabled independently of current chapter completion", "enabled duplicate completion marks only other unread chapters with the same number"], "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt": ["reading a later chapter updates only that row and requires its last page to mark read", "partial progress preserves an existing read state"], "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["reading to last page marks shared event as read", "settling an already read chapter mid chapter keeps it read"], "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt": ["one session opens at zero pages then materializes visible pages and settled progress", "dual presentation settles both source pages through screen model and session progress port", "settling the last page then paging backward never makes the chapter unread", "closing immediately after settlement lets the final progress write finish"], "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt": ["local reader session identity never becomes a durable chapter progress id"], "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterReadPresentationTest.kt": ["partial chapter shows progress ring and one based page"], "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt": ["online ReaderViewModel executes shared session scheduler encoded cache and progress chain", "legacy Android chapter state is a read only projection", "ReaderViewModel initialization preserves cooperative cancellation"]},
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderProgressCoordinatorTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageProgressProductionWiringTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderDuplicateCompletionPolicyTest.kt",
+      "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterReadPresentationTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt",
+      "data/src/commonTest/kotlin/mihon/data/sync/SyncReadingStorageContract.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/ChapterDirectorySyncIntegrationTest.kt"
+    ],
+    "behaviorMethods": {
+      "domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt": [
+        "only a settled viewport in the active chapter produces a progress effect",
+        "settled spread records its highest visible logical page and only the last page completes",
+        "a partial settled page never clears an existing read state",
+        "settlement identity creates a stable idempotency key and a later settlement creates a new key"
+      ],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt": [
+        "Android domain DI resolves the canonical reading progress recorder",
+        "Android current settled page records progress through the canonical shared transaction"
+      ],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt": [
+        "newer current settlement rejects older adjacent activation and progress"
+      ],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt": [
+        "issuing a new token invalidates every older unaccepted viewport"
+      ],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderProgressCoordinatorTest.kt": [
+        "accepted writes survive close and preserve same manga submission order"
+      ],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageProgressProductionWiringTest.kt": [
+        "rendered last pair queued behind earlier write survives immediate next chapter selection"
+      ],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderDuplicateCompletionPolicyTest.kt": [
+        "duplicate completion remains disabled independently of current chapter completion",
+        "enabled duplicate completion marks only other unread chapters with the same number"
+      ],
+      "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt": [
+        "reading a later chapter updates only that row and requires its last page to mark read",
+        "partial progress preserves an existing read state"
+      ],
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": [
+        "reading to last page marks shared event as read",
+        "settling an already read chapter mid chapter keeps it read"
+      ],
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt": [
+        "one session opens at zero pages then materializes visible pages and settled progress",
+        "dual presentation settles both source pages through screen model and session progress port",
+        "settling the last page then paging backward never makes the chapter unread",
+        "closing immediately after settlement lets the final progress write finish"
+      ],
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt": [
+        "local reader session identity never becomes a durable chapter progress id"
+      ],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterReadPresentationTest.kt": [
+        "partial chapter shows progress ring and one based page"
+      ],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt": [
+        "online ReaderViewModel executes shared session scheduler encoded cache and progress chain",
+        "legacy Android chapter state is a read only projection",
+        "ReaderViewModel initialization preserves cooperative cancellation"
+      ]
+    },
     "statusDecision": {"task": "Task 10", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["reading to last page marks shared event as read"]}},
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "additionalBehaviorVerificationTask": ":domain:jvmTest --tests \"mihon.domain.reader.progress.ReaderProgressPolicyTest\"; :app:testReleaseUnitTest --tests \"eu.kanade.tachiyomi.ui.reader.ReaderProgressProductionWiringTest\" --tests \"eu.kanade.tachiyomi.ui.reader.ReaderProgressSettlementRaceTest\" --tests \"eu.kanade.tachiyomi.ui.reader.ReaderViewportSettlementArbiterTest\"; :data:jvmTest --tests \"tachiyomi.data.reader.SqlDelightReadingProgressRepositoryTest\"",
@@ -31057,7 +31167,22 @@
       "legacyReaderExecutors": "REMOVED",
       "readerArchitectureGuard": "ENFORCED"
     },
-    "verificationScope": "VERIFIED for the shared viewport-settled progress policy, latest-settlement ordering, active-row-only persistence, last-page completion and existing-read preservation across both platforms. The Desktop canonical ReaderSessionCore emits identity-bearing settled effects through ReaderProgressTracker, keeps read state monotonic, drains accepted writes after disposal, prevents synthetic local-reader identities from entering durable chapter progress, and loading/prefetch alone emits no progress.",
+    "interactionIterationEvidence": {
+      "RI13": {
+        "behaviorMethods": {
+          "data/src/commonTest/kotlin/mihon/data/sync/SyncReadingStorageContract.kt": [
+            "unique directory relink preserves accepted resume head and canonical reading event",
+            "deleting a highest chapter then adding later cannot redirect an accepted reader to another chapter"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/ChapterDirectorySyncIntegrationTest.kt": [
+            "chapter identity floor survives empty directory reopen and refuses missing or overflow state"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "108 unique affected methods passed; 0 skipped; exact historical behaviorMethods retained."
+      }
+    },
+    "verificationScope": "VERIFIED for the shared viewport-settled progress policy, latest-settlement ordering, active-row-only persistence, last-page completion and existing-read preservation across both platforms. The Desktop canonical ReaderSessionCore emits identity-bearing settled effects through ReaderProgressTracker, keeps read state monotonic, drains accepted writes after disposal, prevents synthetic local-reader identities from entering durable chapter progress, and loading/prefetch alone emits no progress. RI13 keeps unambiguous relink IDs and canonical URL identity for accepted reading; the persistent chapter ID floor prevents later inserts from redirecting accepted sessions. The migration seeds current MAX and cannot recover previously deleted historical IDs.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -33416,12 +33541,12 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt",
           "symbol": "downloadPreferences.parallelSourceLimit().changes()",
-          "line": 196
+          "line": 203
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt",
           "symbol": ".retryWhen { _, attempt ->",
-          "line": 504
+          "line": 544
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -33442,27 +33567,27 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "stateMachine.schedule(",
-          "line": 762
+          "line": 780
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(retryAttempt++) ?: break",
-          "line": 1204
+          "line": 1222
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(publishAttempt++) ?: break",
-          "line": 952
+          "line": 970
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "fun startDownloadNow(",
-          "line": 651
+          "line": 669
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "suspend fun deleteCapturedDownloadFiles(",
-          "line": 306
+          "line": 324
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadProvider.kt",
@@ -33861,14 +33986,19 @@
       }
     ],
     "sharedImplementationPaths": [
-      "domain/src/commonMain/kotlin/mihon/domain/chapter/interactor/FilterChaptersForDownload.kt"
+      "domain/src/commonMain/kotlin/mihon/domain/chapter/interactor/FilterChaptersForDownload.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterDirectoryPhase.kt"
     ],
     "currentAndroidConsumerPaths": [
-      "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt"
+      "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
+      "app/src/main/java/eu/kanade/domain/chapter/interactor/SyncChaptersWithSource.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/data/download/DownloadStore.kt"
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateChecker.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -33881,9 +34011,14 @@
       ],
       "CURRENT_ANDROID": [
         {
-          "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
-          "symbol": "filterChaptersForDownload.await(manga, newChapters)",
-          "line": 298
+          "path": "app/src/main/java/eu/kanade/domain/chapter/interactor/SyncChaptersWithSource.kt",
+          "symbol": "downloadManager.downloadDirectoryChapters(",
+          "line": 140
+        },
+        {
+          "path": "app/src/main/java/eu/kanade/tachiyomi/data/download/DownloadStore.kt",
+          "symbol": "fun addAllConfirmed(downloads: List<Download>): Boolean",
+          "line": 52
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -33897,8 +34032,8 @@
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
-          "symbol": "filterChaptersForDownload.await(manga, chapters)",
-          "line": 1207
+          "symbol": "downloadPolicy = { manga -> Injekt.get<FilterChaptersForDownload>().snapshot(manga) }",
+          "line": 793
         }
       ],
       "FIXTURE": [
@@ -33919,7 +34054,9 @@
     },
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/ChapterDirectorySyncIntegrationTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/data/download/DirectoryDownloadAcceptanceTest.kt"
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt": [
@@ -33944,6 +34081,27 @@
       }
     },
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
+    "interactionIterationEvidence": {
+      "RI13": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/ChapterDirectorySyncIntegrationTest.kt": [
+            "actual DI queued directory mutation is refused before SQL and keeps accepted download identity",
+            "persistent queue acceptance resumes linked Browse phase without redelivery or network"
+          ],
+          "app/src/test/java/eu/kanade/tachiyomi/data/download/DirectoryDownloadAcceptanceTest.kt": [
+            "actual queue reorder cannot insert a reserved directory identity",
+            "actual directory phase never acknowledges a missing HTTP source",
+            "actual directory phase keeps pending work when synchronous download storage rejects it",
+            "confirmed directory queue survives reopening and matching retry retains state and order",
+            "failed original queue initialization cannot release a directory transaction",
+            "existing downloaded directory satisfies original work without accepting a duplicate queue item"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "108 unique affected methods passed; 0 skipped; exact historical behaviorMethods retained."
+      }
+    },
+    "verificationScope": " RI13 captures original eligible new IDs and download policy, refuses affected accepted queue identities before SQL, and acknowledges actual queue acceptance with retry after restart. Browse cannot replace an older pending policy; scheduling is unchanged until RI14.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -35116,13 +35274,21 @@
       }
     ],
     "sharedImplementationPaths": [
-      "domain/src/commonMain/kotlin/mihon/domain/task/BackgroundTask.kt"
+      "domain/src/commonMain/kotlin/mihon/domain/task/BackgroundTask.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterDirectoryPlan.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterDirectoryPhase.kt",
+      "data/src/commonMain/kotlin/tachiyomi/data/chapter/ChapterRepositoryImpl.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaUpdateService.kt",
+      "source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/model/SMangaUpdate.kt"
     ],
     "currentAndroidConsumerPaths": [
-      "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt"
+      "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
+      "app/src/main/java/eu/kanade/domain/chapter/interactor/SyncChaptersWithSource.kt"
     ],
     "desktopConsumerAdapterPaths": [
-      "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateChecker.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/SaveSourceMangaForDetails.kt"
     ],
     "deviations": [
       {
@@ -35148,6 +35314,11 @@
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
           "symbol": "override suspend fun doWork",
           "line": 106
+        },
+        {
+          "path": "app/src/main/java/eu/kanade/domain/chapter/interactor/SyncChaptersWithSource.kt",
+          "symbol": "class SyncChaptersWithSource(",
+          "line": 24
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -35156,6 +35327,18 @@
           "path": "domain/src/commonMain/kotlin/mihon/domain/task/BackgroundTask.kt",
           "symbol": "data class BackgroundTask",
           "line": 6
+        },
+        {
+          "kind": "SHARED",
+          "path": "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterDirectoryPlan.kt",
+          "symbol": "data class ChapterDirectoryPlan(",
+          "line": 32
+        },
+        {
+          "kind": "SHARED",
+          "path": "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterDirectoryPhase.kt",
+          "symbol": "data class ChapterDirectoryPhase(",
+          "line": 48
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -35163,6 +35346,11 @@
           "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt",
           "symbol": "fun runNow",
           "line": 83
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateChecker.kt",
+          "symbol": "class LibraryUpdateChecker(",
+          "line": 28
         }
       ],
       "FIXTURE": [
@@ -35180,7 +35368,13 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt",
       "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateScopeTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/ChapterDirectorySyncIntegrationTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/data/backup/ChapterDirectorySourceContractTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/data/backup/SourceUpdateMemoBackupIntegrationTest.kt",
+      "data/src/commonTest/kotlin/mihon/data/sync/SyncReadingStorageContract.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/data/backup/SourceUpdateMemoPageConsumersIntegrationTest.kt"
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": [
@@ -35201,7 +35395,49 @@
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD",
-    "verificationScope": "The Library interaction repair shares selectLibraryMangaForUpdate between the real Android LibraryUpdateJob and Desktop LibraryUpdateScheduler: explicit categories bypass whole-library include/exclude, while whole-library exclusion wins (including default category 0). Real Root -> factory -> scheduler fixtures cover search-independent scope, duplicate requests, detail navigation/return and actual job completion; persisted stale Running is not treated as an active occurrence. The existing executor, automatic device restrictions, scheduling and migration gaps remain under LU-01 and are not promoted by this manual-entry repair. Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted."
+    "interactionIterationEvidence": {
+      "RI13": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/ChapterDirectorySyncIntegrationTest.kt": [
+            "actual Desktop SQL directory refresh renames reorders removes and preserves same URL user state",
+            "actual Desktop unique relink preserves chapter ID history and progress",
+            "retained duplicate identity prevents a missing incoming pair from being rebound",
+            "old source URL still resolves to the unique relink after database reopen",
+            "shared source service rejects explicit incomplete directory before returning a usable update",
+            "Browse source save rolls back manga metadata together with a refused directory insert",
+            "directory rename keeps actual downloaded image readable through the new chapter identity",
+            "original source date observations are idempotent when phase acknowledgement fails and restarts",
+            "directory collision keeps artifacts and ACK retry restores the moved file after restart",
+            "older observation phase replay keeps newer current version and same bucket evidence",
+            "actual creator index write refusal rolls back the whole metadata and directory transaction",
+            "actual bound library scheduler reports HTTP refusal and retries through the same committed directory core"
+          ],
+          "app/src/test/java/eu/kanade/tachiyomi/data/backup/ChapterDirectorySourceContractTest.kt": [
+            "actual Android wrapper preserves original rename work across post commit refusal and restart",
+            "actual Android wrapper deduplicates sanitizes recognizes and preserves upload and fetch order",
+            "actual Android wrapper inherits removed number state and suppresses duplicate read additions",
+            "actual Android empty remote response preserves existing directory"
+          ],
+          "app/src/test/java/eu/kanade/tachiyomi/data/backup/SourceUpdateMemoBackupIntegrationTest.kt": [
+            "Android combined remote memo and directory refusal rolls back source metadata"
+          ],
+          "data/src/commonTest/kotlin/mihon/data/sync/SyncReadingStorageContract.kt": [
+            "shared complete directory adds renames reorders removes and inherits latest number state",
+            "shared full directory ambiguity does not rebind an old ID or grant an alias"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt": [
+            "actual detail refresh reports a missing source and keeps chapters retryable",
+            "actual detail HTTP refresh shows queue refusal then retries the same owner through committed directory"
+          ],
+          "app/src/test/java/eu/kanade/tachiyomi/data/backup/SourceUpdateMemoPageConsumersIntegrationTest.kt": [
+            "Android directory rename preserves bytes and refuses collision with fixed ASCII names"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "108 unique affected methods passed; 0 skipped; exact historical behaviorMethods retained."
+      }
+    },
+    "verificationScope": "The Library interaction repair shares selectLibraryMangaForUpdate between the real Android LibraryUpdateJob and Desktop LibraryUpdateScheduler: explicit categories bypass whole-library include/exclude, while whole-library exclusion wins (including default category 0). Real Root -> factory -> scheduler fixtures cover search-independent scope, duplicate requests, detail navigation/return and actual job completion; persisted stale Running is not treated as an active occurrence. The existing executor, automatic device restrictions, scheduling and migration gaps remain under LU-01 and are not promoted by this manual-entry repair. Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI13 uses the shared complete-directory plan and one-manga SQL commit with latest user state, original identity and finite post-commit work. Empty remote, explicit incomplete and failed source responses retain old data. Unmarked legacy truncation cannot be detected. Workset scheduling remains RI14."
   },
   {
     "id": 62,
@@ -37532,7 +37768,8 @@
     ],
     "sharedImplementationPaths": [
       "domain/src/commonMain/kotlin/tachiyomi/domain/history/interactor/GetHistory.kt",
-      "domain/src/commonMain/kotlin/tachiyomi/domain/history/interactor/RemoveHistory.kt"
+      "domain/src/commonMain/kotlin/tachiyomi/domain/history/interactor/RemoveHistory.kt",
+      "data/src/commonMain/kotlin/mihon/data/sync/inbox/SyncHistoryPolicy.kt"
     ],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/eu/kanade/tachiyomi/ui/history/HistoryScreenModel.kt"
@@ -37581,7 +37818,8 @@
       ]
     },
     "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/history/HistoryScreenModelTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/history/HistoryScreenModelTest.kt",
+      "data/src/commonTest/kotlin/mihon/data/sync/SyncHistorySuppressionContract.kt"
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/history/HistoryScreenModelTest.kt": [
@@ -37602,6 +37840,18 @@
       }
     },
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
+    "interactionIterationEvidence": {
+      "RI13": {
+        "behaviorMethods": {
+          "data/src/commonTest/kotlin/mihon/data/sync/SyncHistorySuppressionContract.kt": [
+            "relinked current URL cannot bypass an accepted canonical chapter history clear"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "108 unique affected methods passed; 0 skipped; exact historical behaviorMethods retained."
+      }
+    },
+    "verificationScope": " RI13 canonical chapter identity protects accepted history clear after relink, retaining immutable prior journals and existing read/page/duration semantics. Local aliases do not extend the old sync wire protocol.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -43278,7 +43528,8 @@
       "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt"
     ],
     "sharedImplementationPaths": [
-      "data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt"
+      "data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt",
+      "data/src/commonMain/kotlin/eu/kanade/tachiyomi/data/backup/models/BackupChapter.kt"
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt"
@@ -43305,6 +43556,12 @@
           "path": "data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt",
           "symbol": "object BackupCodec",
           "line": 13
+        },
+        {
+          "kind": "SHARED",
+          "path": "data/src/commonMain/kotlin/eu/kanade/tachiyomi/data/backup/models/BackupChapter.kt",
+          "symbol": "data class BackupChapter(",
+          "line": 8
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -43361,7 +43618,9 @@
     "protectionTests": [
       "data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/ChapterDirectorySyncIntegrationTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/data/backup/SourceUpdateMemoBackupIntegrationTest.kt"
     ],
     "deviations": [
       {
@@ -43369,7 +43628,21 @@
         "description": "The fixed-main creator owns app-local model serialization; current Android and Desktop consume the fork-extracted common schema and BackupCodec without treating that migration output as fixed-main source."
       }
     ],
-    "verificationScope": "VERIFIED: fixed-main artifact provenance, current Android creator, shared codec, Desktop production creator and byte-level fixed Android compatibility fixture all execute; Desktop re-encoding preserves every canonical section and legacy viewer field.",
+    "interactionIterationEvidence": {
+      "RI13": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/ChapterDirectorySyncIntegrationTest.kt": [
+            "production Desktop backup creator codec and restorer preserve relink aliases after restart"
+          ],
+          "app/src/test/java/eu/kanade/tachiyomi/data/backup/SourceUpdateMemoBackupIntegrationTest.kt": [
+            "Android production backup creator and restorer rebuild canonical relink after reopen"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "108 unique affected methods passed; 0 skipped; exact historical behaviorMethods retained."
+      }
+    },
+    "verificationScope": "VERIFIED: fixed-main artifact provenance, current Android creator, shared codec, Desktop production creator and byte-level fixed Android compatibility fixture all execute; Desktop re-encoding preserves every canonical section and legacy viewer field. RI13 actual Android and Desktop backup writers retain finite canonical URL/aliases using optional shared chapter fields; source memo is unchanged.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -44040,7 +44313,8 @@
       "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt"
     ],
     "sharedImplementationPaths": [
-      "data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt"
+      "data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt",
+      "data/src/commonMain/kotlin/eu/kanade/tachiyomi/data/backup/models/BackupChapter.kt"
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupRestorer.kt"
@@ -44067,13 +44341,19 @@
           "path": "data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt",
           "symbol": "fun <T> decode",
           "line": 25
+        },
+        {
+          "kind": "SHARED",
+          "path": "data/src/commonMain/kotlin/eu/kanade/tachiyomi/data/backup/models/BackupChapter.kt",
+          "symbol": "data class BackupChapter(",
+          "line": 8
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupRestorer.kt",
           "symbol": "suspend fun restore",
-          "line": 62
+          "line": 71
         }
       ],
       "FIXTURE": [
@@ -44148,7 +44428,9 @@
       "data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorerBehaviorTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/backup/BackupWorkflowIntegrationTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/backup/BackupWorkflowIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/ChapterDirectorySyncIntegrationTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/data/backup/SourceUpdateMemoBackupIntegrationTest.kt"
     ],
     "additionalBehaviorVerificationTask": ":app:testReleaseUnitTest --tests \"eu.kanade.tachiyomi.data.backup.restore.BackupRestorerBehaviorTest\"",
     "deviations": [
@@ -44157,7 +44439,22 @@
         "description": "Fixed-main restoration is an Android background job with notifications; Desktop uses a lifecycle-bound workflow and UI progress while retaining field-level restore behavior."
       }
     ],
-    "verificationScope": "VERIFIED: the fixed-main schema artifact now follows original MangaBackupCreator category-order semantics; current Android executes its production BackupRestorer manga/progress path, and Desktop restores every persisted section and progress boundary without an ID fallback.",
+    "interactionIterationEvidence": {
+      "RI13": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/ChapterDirectorySyncIntegrationTest.kt": [
+            "production Desktop backup creator codec and restorer preserve relink aliases after restart",
+            "Desktop alias restore conflict rejects the manga unit and preserves the existing directory"
+          ],
+          "app/src/test/java/eu/kanade/tachiyomi/data/backup/SourceUpdateMemoBackupIntegrationTest.kt": [
+            "Android production backup creator and restorer rebuild canonical relink after reopen"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "108 unique affected methods passed; 0 skipped; exact historical behaviorMethods retained."
+      }
+    },
+    "verificationScope": "VERIFIED: the fixed-main schema artifact now follows original MangaBackupCreator category-order semantics; current Android executes its production BackupRestorer manga/progress path, and Desktop restores every persisted section and progress boundary without an ID fallback. RI13 actual restore rebuilds canonical chapter identity after reopen; alias ownership conflicts refuse the whole manga restore unit and keep prior state.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -45072,7 +45369,8 @@
       "app/src/main/java/eu/kanade/tachiyomi/data/backup/BackupDecoder.kt"
     ],
     "sharedImplementationPaths": [
-      "data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt"
+      "data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt",
+      "data/src/commonMain/kotlin/eu/kanade/tachiyomi/data/backup/models/BackupChapter.kt"
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt"
@@ -45104,6 +45402,12 @@
           "path": "data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt",
           "symbol": "object BackupCodec",
           "line": 13
+        },
+        {
+          "kind": "SHARED",
+          "path": "data/src/commonMain/kotlin/eu/kanade/tachiyomi/data/backup/models/BackupChapter.kt",
+          "symbol": "data class BackupChapter(",
+          "line": 8
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -45150,7 +45454,9 @@
     "protectionTests": [
       "data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/data/backup/BackupAndroidCodecIntegrationTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/ChapterDirectorySyncIntegrationTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/data/backup/SourceUpdateMemoBackupIntegrationTest.kt"
     ],
     "statusDecisionHistory": [
       {
@@ -45215,6 +45521,22 @@
         "description": "The current common schema is migration output. android-full.tachibk is generated from fixed main, while desktop-first-writer.tachibk is generated independently from Desktop commit 8c6d18c20; neither current fixture is relabeled as fixed source."
       }
     ],
+    "interactionIterationEvidence": {
+      "RI13": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/ChapterDirectorySyncIntegrationTest.kt": [
+            "production Desktop backup creator codec and restorer preserve relink aliases after restart",
+            "legacy chapter protobuf has empty alias fields and retains source memo"
+          ],
+          "app/src/test/java/eu/kanade/tachiyomi/data/backup/SourceUpdateMemoBackupIntegrationTest.kt": [
+            "Android production backup creator and restorer rebuild canonical relink after reopen"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "108 unique affected methods passed; 0 skipped; exact historical behaviorMethods retained."
+      }
+    },
+    "verificationScope": " RI13 optional protobuf fields 14 (aliases) and 15 (canonical URL) default empty for legacy chapter bytes and round trip through real two-platform creators/codecs/restorers; the local directory phase is not exported.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -55235,12 +55557,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.initialize",
-          "line": 236
+          "line": 237
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.startApp",
-          "line": 238
+          "line": 239
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",

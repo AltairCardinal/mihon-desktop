@@ -4,8 +4,9 @@ SELECT * FROM mangas WHERE url = :mangaUrl AND source = :sourceId ORDER BY _id L
 
 getChapterByIdentity:
 SELECT chapters.* FROM chapters JOIN mangas ON mangas._id = chapters.manga_id
-WHERE chapters.url = :chapterUrl AND mangas.url = :mangaUrl AND mangas.source = :sourceId
-ORDER BY chapters._id LIMIT 1;
+WHERE mangas.url = :mangaUrl AND mangas.source = :sourceId
+AND (chapters.url = :chapterUrl OR EXISTS(SELECT 1 FROM chapter_url_aliases A WHERE A.chapter_id = chapters._id AND A.url = :chapterUrl))
+ORDER BY CASE WHEN chapters.url = :chapterUrl THEN 0 ELSE 1 END, chapters._id LIMIT 1;
 
 getAuthorMembership:
 SELECT enabled FROM author_archive_watches WHERE creator_id = :creatorId;

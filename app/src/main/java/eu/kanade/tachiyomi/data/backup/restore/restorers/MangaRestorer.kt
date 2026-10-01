@@ -6,8 +6,12 @@ import eu.kanade.tachiyomi.data.backup.models.BackupChapter
 import eu.kanade.tachiyomi.data.backup.models.BackupHistory
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupTracking
+import eu.kanade.tachiyomi.data.backup.models.chapterUrlIdentity
+import eu.kanade.tachiyomi.data.backup.models.validateBackupChapterIdentities
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.UpdateStrategyColumnAdapter
+import tachiyomi.data.chapter.readChapterUrlIdentity
+import tachiyomi.data.chapter.restoreChapterUrlAliases
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.model.Chapter
@@ -160,8 +164,13 @@ class MangaRestorer(
     }
 
     private suspend fun restoreChapters(manga: Manga, backupChapters: List<BackupChapter>) {
-        val dbChaptersByUrl = getChaptersByMangaId.await(manga.id)
-            .associateBy { it.url }
+        validateBackupChapterIdentities(backupChapters)
+        val dbChaptersByUrl = handler.await {
+            getChaptersByMangaId.await(manga.id).flatMap { chapter ->
+                val identity = readChapterUrlIdentity(chapter.id)
+                (identity.aliases + identity.canonicalUrl + chapter.url).distinct().map { it to chapter }
+            }.toMap()
+        }
 
         val (existingChapters, newChapters) = backupChapters
             .mapNotNull {
@@ -199,6 +208,17 @@ class MangaRestorer(
 
         insertNewChapters(newChapters)
         updateExistingChapters(existingChapters)
+        handler.await(inTransaction = true) {
+            backupChapters.forEach { backup ->
+                backup.chapterUrlIdentity()?.let { identity ->
+                    val chapter = chaptersQueries.getChapterByUrlAndMangaId(
+                        mangaId = manga.id,
+                        chapterUrl = backup.url,
+                    ).executeAsOne()
+                    restoreChapterUrlAliases(manga.id, chapter._id, identity)
+                }
+            }
+        }
     }
 
     private fun Chapter.forComparison() =

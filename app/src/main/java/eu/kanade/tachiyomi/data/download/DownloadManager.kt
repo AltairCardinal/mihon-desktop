@@ -124,7 +124,14 @@ class DownloadManager(
      * @param downloads value to set the download queue to
      */
     fun reorderQueue(downloads: List<Download>) {
-        downloader.updateQueue(downloads)
+        synchronized(directoryChangeLock) {
+            check(
+                downloads.none {
+                    it.chapter.id in directoryChangeReservations
+                },
+            ) { "Chapter directory is being refreshed" }
+            downloader.updateQueue(downloads)
+        }
     }
 
     /**
@@ -134,8 +141,41 @@ class DownloadManager(
      * @param chapters the list of chapters to enqueue.
      * @param autoStart whether to start the downloader after enqueing the chapters.
      */
+    private val directoryChangeLock = Any()
+    private val directoryChangeReservations = mutableSetOf<Long>()
+
+    suspend fun <T> withDirectoryChanges(chapterIds: Set<Long>, operation: suspend () -> T): T {
+        downloader.awaitQueueRestored()
+        synchronized(directoryChangeLock) {
+            if (queueState.value.any { it.chapter.id in chapterIds } ||
+                chapterIds.any { it in directoryChangeReservations }
+            ) {
+                throw tachiyomi.domain.chapter.service.ChapterDirectoryDownloadConflictException(
+                    context.stringResource(MR.strings.desktop_directory_download_conflict),
+                )
+            }
+            directoryChangeReservations.addAll(chapterIds)
+        }
+        try {
+            return operation()
+        } finally {
+            synchronized(directoryChangeLock) { directoryChangeReservations.removeAll(chapterIds) }
+        }
+    }
+
     fun downloadChapters(manga: Manga, chapters: List<Chapter>, autoStart: Boolean = true) {
-        downloader.queueChapters(manga, chapters, autoStart)
+        synchronized(directoryChangeLock) {
+            check(chapters.none { it.id in directoryChangeReservations }) { "Chapter directory is being refreshed" }
+            downloader.queueChapters(manga, chapters, autoStart)
+        }
+    }
+
+    internal suspend fun downloadDirectoryChapters(manga: Manga, chapters: List<Chapter>, autoStart: Boolean): Boolean {
+        downloader.awaitQueueRestored()
+        return synchronized(directoryChangeLock) {
+            check(chapters.none { it.id in directoryChangeReservations }) { "Chapter directory is being refreshed" }
+            downloader.queueDirectoryChapters(manga, chapters, autoStart)
+        }
     }
 
     /**
@@ -145,9 +185,16 @@ class DownloadManager(
      */
     fun addDownloadsToStartOfQueue(downloads: List<Download>) {
         if (downloads.isEmpty()) return
-        queueState.value.toMutableList().apply {
-            addAll(0, downloads)
-            reorderQueue(this)
+        synchronized(directoryChangeLock) {
+            check(
+                downloads.none {
+                    it.chapter.id in directoryChangeReservations
+                },
+            ) { "Chapter directory is being refreshed" }
+            queueState.value.toMutableList().apply {
+                addAll(0, downloads)
+                reorderQueue(this)
+            }
         }
         if (!DownloadJob.isRunning(context)) startDownloads()
     }
@@ -406,6 +453,19 @@ class DownloadManager(
         } else {
             logcat(LogPriority.ERROR) { "Could not rename downloaded chapter: ${oldNames.joinToString()}" }
         }
+    }
+
+    suspend fun renameDirectoryChapter(
+        source: Source,
+        manga: Manga,
+        phase: tachiyomi.domain.chapter.service.ChapterDirectoryPhase,
+        change: tachiyomi.domain.chapter.service.DirectoryFileChange,
+    ) {
+        check(queueState.value.none { it.chapter.id == change.after.id }) {
+            "Existing chapter downloads must finish before their directory is renamed"
+        }
+        provider.renameDirectoryChapter(source, phase, change)
+        cache.invalidateCache()
     }
 
     private suspend fun getChaptersToDelete(chapters: List<Chapter>, manga: Manga): List<Chapter> {

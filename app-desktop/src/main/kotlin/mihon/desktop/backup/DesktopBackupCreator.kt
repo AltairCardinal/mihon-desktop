@@ -2,6 +2,8 @@
 
 package mihon.desktop.backup
 
+import eu.kanade.tachiyomi.data.backup.models.backupExtensionReposMapper
+import eu.kanade.tachiyomi.data.backup.models.backupTrackMapper
 import mihon.desktop.backup.models.Backup
 import mihon.desktop.backup.models.BackupCategory
 import mihon.desktop.backup.models.BackupChapter
@@ -20,21 +22,19 @@ import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
+import tachiyomi.data.backup.AuthorArchiveBackupContributor
+import tachiyomi.data.backup.BackupCodec
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.history.repository.HistoryRepository
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.track.repository.TrackRepository
-import tachiyomi.data.backup.BackupCodec
-import eu.kanade.tachiyomi.data.backup.models.backupExtensionReposMapper
-import eu.kanade.tachiyomi.data.backup.models.backupTrackMapper
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.prefs.Preferences
-import tachiyomi.data.backup.AuthorArchiveBackupContributor
 
 /**
  * Creates and reads `.tachibk` backup files in the same protobuf+gzip format
@@ -133,6 +133,7 @@ object DesktopBackupCreator {
             val mangaCategories = categoryRepository.getCategoriesByMangaId(manga.id)
 
             val backupChapters = chapters.map { ch ->
+                val identity = requireNotNull(chapterRepository.getChapterUrlIdentity(ch.id))
                 BackupChapter(
                     url = ch.url,
                     name = ch.name,
@@ -147,6 +148,8 @@ object DesktopBackupCreator {
                     lastModifiedAt = ch.lastModifiedAt,
                     version = ch.version,
                     memo = tachiyomi.data.MemoColumnAdapter.encode(ch.memo),
+                    urlAliases = identity.aliases,
+                    canonicalUrl = identity.canonicalUrl.takeIf { identity.aliases.isNotEmpty() },
                 )
             }
 

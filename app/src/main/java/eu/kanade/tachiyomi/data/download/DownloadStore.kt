@@ -47,6 +47,29 @@ class DownloadStore(
         }
     }
 
+    /** Synchronous acceptance used only by a committed directory's finite download stage. */
+    @Synchronized
+    fun addAllConfirmed(downloads: List<Download>): Boolean {
+        val previous = downloads.associate { getKey(it) to preferences.getString(getKey(it), null) }
+        val previousCounter = counter
+        val editor = preferences.edit()
+        for (download in downloads) {
+            val key = getKey(download)
+            val stored = previous[key]?.let(::deserialize)
+            if (stored == null || stored.mangaId != download.manga.id || stored.chapterId != download.chapter.id) {
+                editor.putString(key, serialize(download))
+            }
+        }
+        if (editor.commit()) return true
+        counter = previousCounter
+        val rollback = preferences.edit()
+        previous.forEach { (key, value) ->
+            if (value == null) rollback.remove(key) else rollback.putString(key, value)
+        }
+        rollback.commit()
+        return false
+    }
+
     /**
      * Removes a download from the store.
      *

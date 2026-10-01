@@ -174,9 +174,9 @@ class SyncRemoteProjectionWriter(
         describe: (SyncObjectKey) -> SyncObjectDescriptor?,
     ): Chapters {
         sync_projectionQueries.getChapterByIdentity(
-            requireNotNull(key.originalUrl),
-            requireNotNull(key.parentUrl),
-            requireNotNull(key.sourceId).toLong(),
+            chapterUrl = requireNotNull(key.originalUrl),
+            mangaUrl = requireNotNull(key.parentUrl),
+            sourceId = requireNotNull(key.sourceId).toLong(),
         ).executeAsOneOrNull()?.let { return it }
         val description = description(key, describe)
         val manga = ensureManga(parentKey(key), describe)

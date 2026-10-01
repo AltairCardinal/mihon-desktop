@@ -1,18 +1,31 @@
 package mihon.desktop.backup
 
+import eu.kanade.tachiyomi.data.backup.models.chapterUrlIdentity
+import eu.kanade.tachiyomi.data.backup.models.validateBackupChapterIdentities
+import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import mihon.data.sync.journal.SyncRestoreOutcome
-import tachiyomi.core.common.preference.Preference
-import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import mihon.desktop.backup.models.Backup
 import mihon.desktop.backup.models.BackupCategory
 import mihon.desktop.backup.models.BackupChapter
 import mihon.desktop.backup.models.BackupManga
+import mihon.desktop.backup.models.BackupPreference
+import mihon.desktop.backup.models.BackupTracking
+import mihon.desktop.backup.models.BooleanPreferenceValue
+import mihon.desktop.backup.models.FloatPreferenceValue
+import mihon.desktop.backup.models.IntPreferenceValue
+import mihon.desktop.backup.models.LongPreferenceValue
+import mihon.desktop.backup.models.StringPreferenceValue
+import mihon.desktop.backup.models.StringSetPreferenceValue
+import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
+import tachiyomi.core.common.preference.Preference
+import tachiyomi.core.common.preference.PreferenceStore
+import tachiyomi.data.backup.AuthorArchiveBackupContributor
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.model.Chapter
@@ -23,12 +36,8 @@ import tachiyomi.domain.history.repository.HistoryRepository
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
-import java.util.Date
-import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.domain.track.repository.TrackRepository
-import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
-import mihon.desktop.backup.models.*
-import tachiyomi.data.backup.AuthorArchiveBackupContributor
+import java.util.Date
 
 data class RestoreProgress(val completed: Int, val total: Int) {
     val fraction: Float get() = if (total == 0) 1f else completed.toFloat() / total
@@ -69,10 +78,16 @@ class DesktopBackupRestorer(
     ): RestoreResult {
         val importId = if (backup.backupManga.isNotEmpty() || backup.backupAuthorArchive != null) {
             backupRestoreSync.begin()
-        } else null
+        } else {
+            null
+        }
         var outcome = SyncRestoreOutcome.FAILED
         try {
-            return restoreContents(if (appSettings) backup else backup.copy(backupPreferences = emptyList()), importId, onProgress).also {
+            return restoreContents(
+                if (appSettings) backup else backup.copy(backupPreferences = emptyList()),
+                importId,
+                onProgress,
+            ).also {
                 outcome = if (it.hasErrors) SyncRestoreOutcome.PARTIAL else SyncRestoreOutcome.COMPLETED
             }
         } catch (error: CancellationException) {
@@ -110,7 +125,13 @@ class DesktopBackupRestorer(
                     reportProcessed()
                 }
             } else {
-                restorePreferences(source.prefs, sourcePreferenceStore?.invoke(sourceId), "sourcePreferences:${source.sourceKey}", result, ::reportProcessed)
+                restorePreferences(
+                    source.prefs,
+                    sourcePreferenceStore?.invoke(sourceId),
+                    "sourcePreferences:${source.sourceKey}",
+                    result,
+                    ::reportProcessed,
+                )
             }
         }
         backup.backupExtensionRepo.forEach { repo ->
@@ -362,7 +383,11 @@ class DesktopBackupRestorer(
     ) {
         if (backupChapters.isEmpty()) return
 
-        val existingByUrl = chapterRepository.getChapterByMangaId(mangaId).associateBy { it.url }
+        validateBackupChapterIdentities(backupChapters)
+        val existingByUrl = chapterRepository.getChapterByMangaId(mangaId).flatMap { chapter ->
+            val identity = requireNotNull(chapterRepository.getChapterUrlIdentity(chapter.id))
+            (identity.aliases + identity.canonicalUrl + chapter.url).distinct().map { it to chapter }
+        }.toMap()
 
         val toInsert = mutableListOf<Chapter>()
         val toUpdate = mutableListOf<ChapterUpdate>()
@@ -406,21 +431,14 @@ class DesktopBackupRestorer(
         }
 
         if (toInsert.isNotEmpty()) {
-            try {
-                chapterRepository.addAll(toInsert)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                result.addError("chapters:manga$mangaId", e)
-            }
+            val inserted = chapterRepository.addAll(toInsert)
+            check(inserted.size == toInsert.size) { "Chapter restore was not committed" }
         }
-        if (toUpdate.isNotEmpty()) {
-            try {
-                chapterRepository.updateAll(toUpdate)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                result.addError("chapters:manga$mangaId", e)
+        if (toUpdate.isNotEmpty()) chapterRepository.updateAll(toUpdate)
+        backupChapters.forEach { backup ->
+            backup.chapterUrlIdentity()?.let { identity ->
+                val chapter = requireNotNull(chapterRepository.getChapterByUrlAndMangaId(backup.url, mangaId))
+                chapterRepository.restoreChapterUrlIdentity(mangaId, chapter.id, identity)
             }
         }
     }
@@ -440,7 +458,7 @@ class DesktopBackupRestorer(
 
         for ((url, item) in backupHistoryByUrl) {
             currentCoroutineContext().ensureActive()
-            val chapter = chaptersByUrl[url] ?: continue
+            val chapter = chaptersByUrl[url] ?: chapterRepository.getChapterByUrlAndMangaId(url, mangaId) ?: continue
             if (item.lastRead > 0L) {
                 val existing = historyByChapterId[chapter.id]
                 try {
@@ -548,7 +566,9 @@ class DesktopBackupRestorer(
         val errors: MutableList<Pair<String, String>> = mutableListOf()
         val failures: MutableList<Failure> = mutableListOf()
 
-        fun incrementSuccess() { successCount++ }
+        fun incrementSuccess() {
+            successCount++
+        }
 
         fun addError(key: String, message: String) {
             errors += Pair(key, message)

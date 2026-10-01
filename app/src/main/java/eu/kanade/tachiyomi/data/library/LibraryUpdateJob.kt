@@ -295,10 +295,11 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                                             .sortedByDescending { it.sourceOrder }
 
                                         if (newChapters.isNotEmpty()) {
-                                            val chaptersToDownload = filterChaptersForDownload.await(manga, newChapters)
-
-                                            if (chaptersToDownload.isNotEmpty()) {
-                                                downloadChapters(manga, chaptersToDownload)
+                                            if (downloadManager.queueState.value.any { queued ->
+                                                    queued.manga.id == manga.id &&
+                                                        newChapters.any { it.id == queued.chapter.id }
+                                                }
+                                            ) {
                                                 hasDownloads.store(true)
                                             }
 
@@ -313,7 +314,8 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                                             is NoChaptersException -> context.stringResource(
                                                 MR.strings.no_chapters_error,
                                             )
-                                            // failedUpdates will already have the source, don't need to copy it into the message
+                                            // failedUpdates will already have the source, don't need to copy it
+                                            // into the message
                                             is SourceNotInstalledException -> context.stringResource(
                                                 MR.strings.loader_not_implemented_error,
                                             )

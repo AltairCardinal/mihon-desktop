@@ -229,34 +229,7 @@ class MangaRepositoryImpl(
     private suspend fun partialUpdate(vararg mangaUpdates: MangaUpdate) {
         handler.await(inTransaction = true) {
             mangaUpdates.forEach { value ->
-                mangasQueries.update(
-                    source = value.source,
-                    url = value.url,
-                    artist = value.artist,
-                    updateArtist = value.updateArtist,
-                    author = value.author,
-                    updateAuthor = value.updateAuthor,
-                    description = value.description,
-                    genre = value.genre?.let(StringListColumnAdapter::encode),
-                    title = value.title,
-                    status = value.status,
-                    thumbnailUrl = value.thumbnailUrl,
-                    favorite = value.favorite,
-                    lastUpdate = value.lastUpdate,
-                    nextUpdate = value.nextUpdate,
-                    calculateInterval = value.fetchInterval?.toLong(),
-                    initialized = value.initialized,
-                    viewer = value.viewerFlags,
-                    chapterFlags = value.chapterFlags,
-                    coverLastModified = value.coverLastModified,
-                    dateAdded = value.dateAdded,
-                    mangaId = value.id,
-                    updateStrategy = value.updateStrategy?.let(UpdateStrategyColumnAdapter::encode),
-                    version = value.version,
-                    isSyncing = 0,
-                    notes = value.notes,
-                    memo = value.memo?.let(tachiyomi.data.MemoColumnAdapter::encode),
-                )
+                applyMangaUpdateFields(value)
                 if (value.affectsCreatorIndex()) {
                     reconcileCreatorIndex(value.id)
                 }
@@ -266,23 +239,6 @@ class MangaRepositoryImpl(
     }
 
     private suspend fun tachiyomi.data.Database.reconcileCreatorIndex(mangaId: Long) {
-        val manga = mangasQueries.getMangaById(mangaId, MangaMapper::mapManga).executeAsOne()
-        if (manga.favorite) {
-            creatorIndexWriter.indexLibraryMangaBatch(
-                listOf(CreatorLibraryIndexEntry(manga, extractCreators.await(manga))),
-            )
-        } else {
-            creatorIndexWriter.removeLibraryMangaIndex(mangaId)
-        }
-    }
-
-    private fun MangaUpdate.affectsCreatorIndex(): Boolean {
-        return favorite != null ||
-            source != null ||
-            url != null ||
-            title != null ||
-            updateAuthor ||
-            updateArtist ||
-            thumbnailUrl != null
+        reconcileMangaCreatorIndex(mangaId, creatorIndexWriter, extractCreators)
     }
 }

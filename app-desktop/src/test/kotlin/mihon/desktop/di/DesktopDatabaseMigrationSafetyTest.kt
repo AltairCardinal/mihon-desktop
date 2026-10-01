@@ -150,6 +150,7 @@ class DesktopDatabaseMigrationSafetyTest {
     ) {
         JdbcSqliteDriver("jdbc:sqlite:${database.absolutePath}").use { driver ->
             Database.Schema.create(driver)
+            tachiyomi.data.LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
             val laterSyncTables = driver.executeQuery(
                 null,
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name GLOB 'sync_*'",

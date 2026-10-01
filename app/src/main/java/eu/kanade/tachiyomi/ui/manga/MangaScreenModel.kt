@@ -291,7 +291,6 @@ class MangaScreenModel(
                     libraryPreferences = libraryPreferences,
                     downloadManager = downloadManager,
                 )
-                if (manualFetch && fetchChapters) downloadNewChapters(newChapters)
             }
         } catch (e: Throwable) {
             if (e is kotlinx.coroutines.CancellationException) throw e

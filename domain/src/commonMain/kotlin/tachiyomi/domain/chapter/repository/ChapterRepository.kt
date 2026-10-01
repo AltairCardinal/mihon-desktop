@@ -6,6 +6,30 @@ import tachiyomi.domain.chapter.model.ChapterUpdate
 
 interface ChapterRepository {
 
+    suspend fun pendingDirectoryPhase(mangaId: Long): tachiyomi.domain.chapter.service.ChapterDirectoryPhase? = null
+
+    suspend fun acknowledgeDirectoryPhase(phase: tachiyomi.domain.chapter.service.ChapterDirectoryPhase): Unit =
+        throw UnsupportedOperationException("Directory phase acknowledgements are not supported")
+
+    suspend fun getChapterUrlIdentity(chapterId: Long): tachiyomi.domain.chapter.model.ChapterUrlIdentity? =
+        getChapterById(chapterId)?.let { tachiyomi.domain.chapter.model.ChapterUrlIdentity(it.url) }
+
+    suspend fun restoreChapterUrlIdentity(
+        mangaId: Long,
+        chapterId: Long,
+        identity: tachiyomi.domain.chapter.model.ChapterUrlIdentity,
+    ) {
+        val chapter = requireNotNull(getChapterById(chapterId))
+        require(chapter.mangaId == mangaId && identity.canonicalUrl == chapter.url && identity.aliases.isEmpty()) {
+            "This repository cannot restore chapter URL aliases"
+        }
+    }
+
+    /** Atomically commits one complete source directory, merging the latest stored user state. */
+    suspend fun syncDirectory(request: tachiyomi.domain.chapter.service.ChapterDirectoryCommit):
+        tachiyomi.domain.chapter.service.ChapterDirectoryResult =
+        throw UnsupportedOperationException("Atomic chapter directory commits are not supported by this repository")
+
     suspend fun addAll(chapters: List<Chapter>): List<Chapter>
 
     suspend fun update(chapterUpdate: ChapterUpdate)
