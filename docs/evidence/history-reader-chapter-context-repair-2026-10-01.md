@@ -1,6 +1,6 @@
 # 历史续读与章节目录修复：聚合证据（2026-10-01）
 
-本报告唯一维护 HR01 实现、审查与 HR02 交付证据。[设计与冻结 H01–H15](../2026-10-01-history-reader-chapter-context-repair-design.md)；[当前 roadmap](../roadmap/2026-10-01-history-reader-chapter-context-repair-roadmap.md)。本节由实施者维护；主代理补独立审查、提交和正式平台交付。HR01 整体独立审查及本轮唯一修复复审通过；实现、相关验证与 checkoff 随本功能提交完成。HR02 尚未执行，保持未勾选。
+本报告唯一维护 HR01 实现、审查与 HR02 交付证据。[设计与冻结 H01–H15](../2026-10-01-history-reader-chapter-context-repair-design.md)；[当前 roadmap](../roadmap/2026-10-01-history-reader-chapter-context-repair-roadmap.md)。本节由实施者维护；主代理补独立审查、提交和正式平台交付。HR01 整体独立审查及本轮唯一修复复审通过；实现、相关验证与 checkoff 随本功能提交完成。HR01 提交为 `c1e13c47283a2c7d7b12621a3df4507a2beb3042`。HR02 首次 Desktop full 已失败，已授权必要 focused 修复及格式验证通过，作者独立问题随后获授权实施，focused 修复、格式验证与追加整体审查通过，等待 full 复验和正式运行，保持未勾选。
 
 ## HR01：实施范围与当前边界
 
@@ -96,16 +96,46 @@ Desktop UI README 的旧“稳定后完整模块”要求与项目 AGENTS 分层
 
 仅过程产物，位于忽略的 build 目录，不入 Git。第一版中文候选实际为英语，原因是只设 Locale.setDefault，但真实 appLanguage 为空，provider 重设系统英语；旧图不能作中文证据。已改真实 appLanguage=zh-CN +固定中文“源不可用/重试加载章节/使用已有章节阅读”断言，并在布局展开后重新保存。候选图不代替实际业务事件或原生平台验收。
 
+## HR02 首次 Desktop full 与必要 focused 修复（2026-10-01）
+
+HR01 提交后，主代理执行唯一已授权 Desktop full：`history-reader-final-desktop`，实际 **3265 tests / 58 failures / 3 skipped**，Gradle 8 分 59 秒（协调器生命周期 541 秒），worker/process 为 **51692 / 56904**。状态/日志与完整失败 trace 保留在忽略目录 `.gradle-coordinator/history-reader-final-desktop.json`、同名 `.log` 和 `history-reader-final-desktop-failures.json`，focused 覆盖 XML 后仍可核对原始 58 项，不能把首次 full 写成通过。
+
+原始失败按实际保存记录为：迁移 1 类/9 项；下载 **6 类/46 项**（早期称 7 类已纠正）；历史 lifecycle 1 项；manifest 证据锚点 1 项；作者 mounted wiring 1 项。以下修复不重复 full、不构建、不提交；独立作者能力及额外复审/full 授权由主代理处理。
+
+- **迁移兼容已证实回归**：原 generic SaveSourceMangaForDetails.await 接受空章节并保存作品，HR01 把 generic 调用也收紧成 NoChaptersException，阻断实际单项/批量迁移的合法无章目标。最小修复让 generic 空列表只在原短事务内保存必要元数据，保留已有章节及目录观测，不执行 merge、不写 COMPLETE。非空仍严格合并；真实 fetchFromSource 与 LibraryUpdateChecker 网络入口继续在调用前 validate，空源响应仍明确失败。没有补假章节或改迁移 flags/分类/笔记策略。
+- **本批夹具残留偏好已由实际 worker 证实**：SQLite/DI context.closeAndJoin 后 removeNode，但全局 Injekt 的 downloadPreferences 仍引用该已删除节点。受控探针随后启动生产 DesktopDownloadManager，正确红捕获 `Node has been removed`；full 中 17 个 failure trace 直接含该错误，其余下载超时/断言不能仅凭时间相邻全部归为同因。原样独立 focused 下载 73 项及历史 lifecycle 4 项通过，说明 full 上下文是必要诊断维度。
+- 仅 7 个本批 DI 集成夹具改为隔离内存后端，复用既有测试 helper 工厂返回**真实 DesktopPreferenceStore**；AbstractPreferences 只替代本机 registry 存储，字符串集合、子节点、序列化与真实 appLanguage/locale provider 继续由 production 实现消费。没有改公共 InMemoryPreferenceStore、生产 Download 或旧下载测试；所有历史、HTTP/parser、两库同步、中文固定断言和真实页面事件保持。
+- 尝试公共 InMemoryPreferenceStore 的 `history-final-fixture-green` 因 getStringSet 尚为 TODO 导致 21 个 DI 初始化 NotImplementedError，另有下一处证据锚点失败，共 99/22；这是诊断失败，**不作业务绿证据**。改真实 DesktopPreferenceStore 的完整内存后端后，探针实际下载完成（队列为空且 HTTP 1 请求）、相关组合及中英文 UI 断言通过。
+- **证据仅机械重定位**：manifest 现有 roleEvidence 中 6 个格式/行偏移锚点（ID 11 后继续发现 ID 22 等）按旧基线精确行与当前实际 symbol 重定位；JSON 比较确认仅这 6 个 line 字段改变，任何 capability/status/actionInventory/HI-01 GAP 均未改。此源码定位是维护现有证据，不能作为产品行为验收。
+- **作者首次 full 与独立复现事实（后续获授权修复见下节）**：原样独立 focused 精准复现 All 切回未恢复 Late Author 50，selected=true、scrollRange=100、仅头部卡片。现有测试已经分别对 scope 与目标文本做真实 render 轮询 5 秒；不能无证据把它说成过早断言或放宽 Late Author 50/非零滚动/返回期望。夹具 indexer 未启动，Preparing 文案来自 Idle，不能证明有 bootstrap 工作尚未结束。分开发布 scope/cards 可能影响 scroll 恢复仅为待证实推断；该次 History focused 修复未修改作者 production/test，当时独立能力修复等待明确授权。
+
+| key | focused 实际结果 | worker / process |
+|---|---|---|
+| history-final-migration-red | 既有迁移 11 项/9 失败，新 production DI/SQLite 契约 1/1；正确 NoChaptersException 红 | 59256 / 54672 |
+| history-final-migration-green | 6 类实际 52 项/0 失败；无章迁移不造 COMPLETE，既有章/历史/用户状态和观测保留，网络空响应严格失败 | 63872 / 59752 |
+| history-final-runtime-diagnostic | 原样 8 类实际 78 项/1 失败；下载 73/0 + lifecycle 4/0，作者 1/1 | 18532 / 49888 |
+| history-final-fixture-red | 探针实际 1/1，夹具关闭后生产 worker 明确 Node has been removed | 61412 / 58512 |
+| history-final-fixture-green | 99/22，公共 InMemory TODO 初始化与后续证据行号失败，不作业务绿 | 64064 / 55160 |
+| history-final-fixture-green-confirm | 15 个限定 target 实际 99 项/0 失败，生产 worker、SQLite/parser、实际 locale、旧下载与 lifecycle 通过 | 19044 / 64176 |
+| history-final-repair-format | 明确 FileCollection 实际 9 个 Kotlin 文件格式化通过，沿用已披露 Desktop max-line-length 例外 | 33496 / 60888 |
+| history-final-repair-refactor | 合并上述受影响范围，19 个限定 target 实际 138 项/0 失败与 9 文件格式检查通过；73 秒 | 61256 / 41512 |
+
+本修复 11 个文件（1 production Kotlin、8 test Kotlin、1 JSON、唯一报告）属于同一首次 full 失败诊断闭环；超过估计文件数仅因消除 7 个使用同种失效偏好生命周期的本批 fixture，不增加产品下载/作者能力或独立验收系统。原 58 项失败记录保留，新的 focused 通过不替代额外 full、独立复审与正式平台验收；截至该次 History focused 修复交接，用户尚未批准作者独立能力实现、额外独立复审或再次 Desktop full；当时三项均未执行。其他完整 Android/domain/data/test-desktop/spotless 验证矩阵尚未执行，正式 Windows/macOS 产物未构建。
+
 ## HR02 固定运行入口与待验
 
 夹具路由和实际 session 字段详见[API_REFERENCE](../automation/API_REFERENCE.md)。正式运行在新专用 `--test-profile`：seed→history_select 或历史按钮→三个实际章节/四页；fixture/state 核对 COMPLETE、稳定 ID 和目录一次请求。重启同 profile 可验缓存；新 profile 的 mode=http500/empty/missing_target 后 select 可验反馈、retry/read_existing；advance 可验加载期间与已打开会话边界。history_select/retry/read_existing 使用 index 字符串，history_cancel 取消导航。
 
 `/test/reader/state` 的 production、context currentChapterId、实际 activeChapterId、loadState、chapterIds/index、initialPage/resumeHeadIds、真实页数/边界是关键观测；必须同时看到真实 pageCalls/imageCalls。实际阅读可以改变持久化 resume，不假定返回后仍为固定章/页。
 
-未执行：HR02 完整 Android/Desktop 矩阵、Windows 正式 EXE、macOS 正式 .app、真实平台键盘/焦点/运行验收。没有正式产物可在本节交付。主代理平台只读检查 Mac macOS 14.8.4 x86_64 图形会话锁定，原生操作条件待用户值守；不影响 HR01 离屏行为验证。不将上述未执行项写为通过。
+尚未完成：HR02 完整 Android/Desktop 矩阵（首次 Desktop full 已执行但失败）；未执行 Windows 正式 EXE、macOS 正式 .app、真实平台键盘/焦点/运行验收。没有正式产物可在本节交付。主代理平台只读检查 Mac macOS 14.8.4 x86_64 图形会话锁定，原生操作条件待用户值守；不影响 HR01 离屏行为验证。不将上述未执行项写为通过。
 
 ## 主代理独立审查与最终交付
 
-HR01 文档 UTF-8、两份字符串 XML、本地文档链接、本报告引用日志存在性和 git diff --check 已核验通过；结构化实施回执通过 scripts/agent-handoff.py 验证，过程文件位于忽略目录 `.gradle-coordinator/hr01-handoff.json`。协调器当前无运行任务。
+HR01 文档 UTF-8、两份字符串 XML、本地文档链接、本报告引用日志存在性和 git diff --check 已核验通过；结构化实施回执通过 scripts/agent-handoff.py 验证，过程文件位于忽略目录 `.gradle-coordinator/hr01-handoff.json`。该次 HR01 交接时协调器无运行任务。
 
 主代理完成整体独立审查，指出详情预检未捕获异常阻塞，其余核心路径未发现新增阻塞；本轮修复影响路径复审已通过。主代理已独立核对最终 44 文件写入边界、UTF-8/XML、diff、协调器命令与实际 XML：最终修复 4 类 29 项通过，先前受影响 focused 16 类 94 项与共享 JVM/Android 各 2 项证据有效。审查覆盖事务回滚、exact identity、下载身份、同步快照、过滤导航、生命周期、实际 mounted session/Test Mode wiring；详情预检及兼容 listing 阻塞已关闭，无剩余代码阻塞。HR01 checkoff 随本功能提交完成；提交 hash 及 HR02 全量/正式运行证据在最终交付节补入。冻结 H01–H15 保持不变。
+
+当前授权修复交接：UNCOMMITTED；9 个 Kotlin 明确格式目标、manifest 仅 6 个既有 line 字段、实际 XML 138 testcase、UTF-8/JSON/本地文档链接及 diff 检查已核对；协调器无 STARTING/RUNNING。作者原失败与首次 full 58 项原 trace 保留；主代理已完成获批的额外独立审查，完整复验与正式运行尚待执行。
+
+主代理已完成获批的额外独立审查：上述 History 回归修复及 138 项/9 文件格式证据有效，无剩余审查阻塞；原失败记录保留，完整复验与正式运行仍待执行。

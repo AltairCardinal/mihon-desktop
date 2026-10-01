@@ -4,6 +4,7 @@ import app.cash.sqldelight.db.SqlDriver
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.runBlocking
+import mihon.desktop.di.inMemoryDesktopPreferenceStore
 import mihon.desktop.di.initDesktopDIForTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -15,7 +16,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
@@ -24,11 +24,72 @@ import tachiyomi.domain.manga.repository.MangaRepository
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
-import java.util.UUID
-import java.util.prefs.Preferences
 
 @Isolated
 class SourceChapterCatalogIntegrationTest {
+    @Test
+    fun `closing catalogue SQLite fixture does not leave unusable preferences for a default download worker`(@TempDir folder: File) = runBlocking {
+        fixture(folder.resolve("profile")) { seed() }
+        val failures = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        val worker = kotlinx.coroutines.SupervisorJob()
+        val server = mockwebserver3.MockWebServer().apply {
+            enqueue(mockwebserver3.MockResponse(body = "GIF89aDATA"))
+            start()
+        }
+        val manager = mihon.desktop.download.DesktopDownloadManager(
+            provider = mihon.desktop.download.DesktopDownloadProvider(folder.resolve("downloads")),
+            httpClient = okhttp3.OkHttpClient(),
+            workerScope = kotlinx.coroutines.CoroutineScope(worker + kotlinx.coroutines.Dispatchers.Default + kotlinx.coroutines.CoroutineExceptionHandler { _, error -> failures += error }),
+        )
+        try {
+            manager.enqueue(mihon.desktop.download.DownloadItem(sourceId = 42, mangaTitle = "Work", chapterName = "Chapter", chapterId = 1, pageUrls = listOf(server.url("/page.gif").toString())))
+            manager.start()
+            kotlinx.coroutines.withTimeout(5_000) {
+                while (failures.isEmpty() && manager.queue.value.isNotEmpty()) kotlinx.coroutines.delay(10)
+            }
+            assertTrue(failures.isEmpty(), "Closed test fixture must not leave removed preference nodes reachable by the next real worker: $failures")
+            assertTrue(manager.queue.value.isEmpty())
+            assertEquals(1, server.requestCount)
+        } finally {
+            manager.stopAndJoin()
+            worker.cancel()
+            worker.join()
+            server.close()
+        }
+    }
+
+    @Test
+    fun `real migration accepts empty chapters as metadata only without inventing a complete directory`(@TempDir folder: File) = fixture(folder) {
+        val mangas = Injekt.get<MangaRepository>()
+        val source = seed()
+        val owner = Injekt.get<SaveSourceMangaForDetails>()
+        val migration = Injekt.get<DesktopMigrateMangaUseCase>()
+        val options = MigrationOptions(copyChapters = false, copyCategories = false, copyNotes = false)
+        val created = migration.await(source, listed().apply { url = "/empty-migration" }, 42, emptyList(), options, replace = false)
+        assertTrue(created.favorite)
+        assertTrue(Injekt.get<ChapterRepository>().getChapterByMangaId(created.id).isEmpty())
+        val handler = Injekt.get<DatabaseHandler>()
+        val emptyObservation = handler.await { author_archiveQueries.getArchiveSourceWorkByKey(42, created.url).executeAsOneOrNull() }
+        assertTrue(emptyObservation?.chapter_count_state != "COMPLETE", "Empty migration may save metadata but cannot prove a complete directory")
+        owner.await(listed().apply { url = "/retained-migration" }, 42, remote())
+        val existing = requireNotNull(mangas.getMangaByUrlAndSourceId("/retained-migration", 42))
+        val chapters = Injekt.get<ChapterRepository>()
+        val first = chapters.getChapterByMangaId(existing.id).first()
+        chapters.update(tachiyomi.domain.chapter.model.ChapterUpdate(first.id, bookmark = true, lastPageRead = 8, read = true))
+        Injekt.get<tachiyomi.domain.history.interactor.UpsertHistory>().await(tachiyomi.domain.history.model.HistoryUpdate(first.id, java.util.Date(), 123))
+        val beforeChapters = chapters.getChapterByMangaId(existing.id)
+        val history = Injekt.get<tachiyomi.domain.history.interactor.GetHistory>().await(existing.id)
+        val before = handler.await { author_archiveQueries.getArchiveSourceWorkByKey(42, existing.url).executeAsOne() }
+        val retained = migration.await(source, listed().apply { url = existing.url }, 42, emptyList(), options, replace = false)
+        assertEquals(existing.id, retained.id)
+        assertEquals(beforeChapters, chapters.getChapterByMangaId(existing.id))
+        assertEquals(history, Injekt.get<tachiyomi.domain.history.interactor.GetHistory>().await(existing.id))
+        val after = handler.await { author_archiveQueries.getArchiveSourceWorkByKey(42, existing.url).executeAsOne() }
+        assertEquals(before.catalog_chapter_count, after.catalog_chapter_count)
+        assertEquals(before.chapter_count_state, after.chapter_count_state)
+        assertEquals(before.latest_chapter_at, after.latest_chapter_at)
+    }
+
     @Test
     fun `existing listed entry keeps work identity and publishes an explicit catalogue preparation failure`(@TempDir folder: File) = fixture(folder) {
         val manga = seed()
@@ -212,13 +273,11 @@ class SourceChapterCatalogIntegrationTest {
     }
 
     private fun fixture(folder: File, action: suspend () -> Unit) = runBlocking {
-        val node = Preferences.userRoot().node("mihon-catalog-test-" + UUID.randomUUID())
-        val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node))
+        val context = initDesktopDIForTest(folder, inMemoryDesktopPreferenceStore())
         try {
             action()
         } finally {
             context.closeAndJoin()
-            node.removeNode()
         }
     }
 

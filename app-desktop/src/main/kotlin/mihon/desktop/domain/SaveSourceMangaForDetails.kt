@@ -312,10 +312,12 @@ class SaveSourceMangaForDetails(
         fetchDetails: Boolean = true,
         expectedManga: Manga? = null,
     ): Manga {
-        catalogWriter.validate(sChapters)
+        // Generic callers such as migration may save metadata without receiving a directory.
+        // Source refresh callers validate their network response before reaching this method.
+        if (sChapters.isNotEmpty()) catalogWriter.validate(sChapters)
         return catalogWriter.transaction {
             val dbManga = persistManga(sManga, sourceId, fetchDetails, expectedManga)
-            catalogWriter.merge(dbManga, sChapters)
+            if (sChapters.isNotEmpty()) catalogWriter.merge(dbManga, sChapters)
 
             dbManga
         }

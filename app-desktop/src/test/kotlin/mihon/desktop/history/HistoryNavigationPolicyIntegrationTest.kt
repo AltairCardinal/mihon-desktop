@@ -3,6 +3,7 @@ package mihon.desktop.history
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.runBlocking
+import mihon.desktop.di.inMemoryDesktopPreferenceStore
 import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.reader.ReaderNavigator
@@ -13,7 +14,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
@@ -26,15 +26,12 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
 import java.util.Date
-import java.util.UUID
-import java.util.prefs.Preferences
 
 @Isolated
 class HistoryNavigationPolicyIntegrationTest {
     @Test
     fun `history refs honor scanlator exclusion external targets and all shared skip policies`(@TempDir folder: File) = runBlocking {
-        val node = Preferences.userRoot().node("mihon-history-policy-" + UUID.randomUUID())
-        val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node))
+        val context = initDesktopDIForTest(folder, inMemoryDesktopPreferenceStore())
         try {
             val remote = listOf("external", "4", "3", "2b", "2", "1").map { key ->
                 SChapter.create().apply {
@@ -89,7 +86,6 @@ class HistoryNavigationPolicyIntegrationTest {
             assertEquals(HistoryReadFailure.TARGET_MISSING, model.state.value.readStatus?.failure)
         } finally {
             context.closeAndJoin()
-            node.removeNode()
         }
     }
 }

@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.di.inMemoryDesktopPreferenceStore
 import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.ui.history.HistoryRootScreen
@@ -31,7 +32,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.history.interactor.UpsertHistory
 import tachiyomi.domain.history.model.HistoryUpdate
@@ -39,16 +39,13 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
 import java.util.Date
-import java.util.UUID
-import java.util.prefs.Preferences
 
 @Isolated
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class HistoryReaderComposeIntegrationTest {
     @Test
     fun `real history click pushes middle chapter with all directory refs`(@TempDir folder: File) = runBlocking {
-        val node = Preferences.userRoot().node("mihon-history-compose-" + UUID.randomUUID())
-        val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node))
+        val context = initDesktopDIForTest(folder, inMemoryDesktopPreferenceStore())
         Dispatchers.setMain(UnconfinedTestDispatcher())
         val scene = ImageComposeScene(700, 600, coroutineContext = coroutineContext) {}
         var destination: Screen? = null
@@ -101,7 +98,6 @@ class HistoryReaderComposeIntegrationTest {
             scene.close()
             context.closeAndJoin()
             Dispatchers.resetMain()
-            node.removeNode()
         }
     }
 

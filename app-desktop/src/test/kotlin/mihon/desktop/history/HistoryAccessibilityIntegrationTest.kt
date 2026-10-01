@@ -30,6 +30,7 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.di.inMemoryDesktopPreferenceStore
 import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.test.http.ProductionReaderTestModeBridge
@@ -41,7 +42,6 @@ import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.history.interactor.UpsertHistory
@@ -52,8 +52,6 @@ import uy.kohesive.injekt.api.get
 import java.io.File
 import java.util.Date
 import java.util.Locale
-import java.util.UUID
-import java.util.prefs.Preferences
 
 @Isolated
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
@@ -62,8 +60,7 @@ class HistoryAccessibilityIntegrationTest {
     fun `native loading cancel survives language theme font and width changes without another source call or late navigation`(@TempDir folder: File) = runBlocking {
         val locale = Locale.getDefault()
         Locale.setDefault(Locale.ENGLISH)
-        val node = Preferences.userRoot().node("mihon-history-loading-" + UUID.randomUUID())
-        val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node))
+        val context = initDesktopDIForTest(folder, inMemoryDesktopPreferenceStore())
         Dispatchers.setMain(UnconfinedTestDispatcher())
         val feeds = java.util.concurrent.atomic.AtomicInteger()
         val server = mockwebserver3.MockWebServer().apply {
@@ -136,7 +133,6 @@ class HistoryAccessibilityIntegrationTest {
             server.close()
             context.closeAndJoin()
             Dispatchers.resetMain()
-            node.removeNode()
             Locale.setDefault(locale)
         }
     }
@@ -147,8 +143,7 @@ class HistoryAccessibilityIntegrationTest {
         try {
             listOf(Locale.ENGLISH, Locale.SIMPLIFIED_CHINESE).forEachIndexed { index, locale ->
                 Locale.setDefault(locale)
-                val node = Preferences.userRoot().node("mihon-history-accessibility-" + UUID.randomUUID())
-                val context = initDesktopDIForTest(folder.resolve("case$index"), DesktopPreferenceStore(node))
+                val context = initDesktopDIForTest(folder.resolve("case$index"), inMemoryDesktopPreferenceStore())
                 Dispatchers.setMain(UnconfinedTestDispatcher())
                 val scene = ImageComposeScene(420, 900, coroutineContext = coroutineContext) {}
                 var destination: Screen? = null
@@ -237,7 +232,6 @@ class HistoryAccessibilityIntegrationTest {
                     ProductionReaderTestModeBridge.reset()
                     context.closeAndJoin()
                     Dispatchers.resetMain()
-                    node.removeNode()
                 }
             }
         } finally {

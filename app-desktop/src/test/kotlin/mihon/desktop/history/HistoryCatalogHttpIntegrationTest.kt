@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import mihon.desktop.di.inMemoryDesktopPreferenceStore
 import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.extension.SourceCallResult
@@ -28,7 +29,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
@@ -40,17 +40,14 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
 import java.util.Date
-import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
-import java.util.prefs.Preferences
 
 @Isolated
 class HistoryCatalogHttpIntegrationTest {
     @Test
     fun `history catalog preserves actual downloaded identity while a concurrent manual refresh keeps detail semantics`(@TempDir folder: File) = runBlocking {
-        val node = Preferences.userRoot().node("mihon-history-download-" + UUID.randomUUID())
-        val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node))
+        val context = initDesktopDIForTest(folder, inMemoryDesktopPreferenceStore())
         val server = MockWebServer().apply {
             dispatcher = dispatcher { MockResponse(body = historyCatalogFeed()) }
             start()
@@ -108,7 +105,6 @@ class HistoryCatalogHttpIntegrationTest {
             mihon.desktop.test.http.HistoryCatalogTestSourceBridge.clear(source)
             server.close()
             context.closeAndJoin()
-            node.removeNode()
         }
     }
 
@@ -125,8 +121,7 @@ class HistoryCatalogHttpIntegrationTest {
             MockResponse.Builder().onResponseStart(SocketEffect.Stall).build(),
         )
         responses.forEachIndexed { index, response ->
-            val node = Preferences.userRoot().node("mihon-history-http-" + UUID.randomUUID())
-            val context = initDesktopDIForTest(folder.resolve("case$index"), DesktopPreferenceStore(node))
+            val context = initDesktopDIForTest(folder.resolve("case$index"), inMemoryDesktopPreferenceStore())
             val responseOwner = AtomicReference(response)
             val server = MockWebServer().apply {
                 dispatcher = dispatcher { responseOwner.get() }
@@ -166,15 +161,13 @@ class HistoryCatalogHttpIntegrationTest {
             } finally {
                 server.close()
                 context.closeAndJoin()
-                node.removeNode()
             }
         }
     }
 
     @Test
     fun `source wait merges only metadata and cannot resurrect a deleted work or switch response identity`(@TempDir folder: File) = runBlocking {
-        val node = Preferences.userRoot().node("mihon-history-race-" + UUID.randomUUID())
-        val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node))
+        val context = initDesktopDIForTest(folder, inMemoryDesktopPreferenceStore())
         val server = MockWebServer().apply {
             dispatcher = dispatcher { MockResponse(body = historyCatalogFeed()) }
             start()
@@ -253,7 +246,6 @@ class HistoryCatalogHttpIntegrationTest {
         } finally {
             server.close()
             context.closeAndJoin()
-            node.removeNode()
         }
     }
 

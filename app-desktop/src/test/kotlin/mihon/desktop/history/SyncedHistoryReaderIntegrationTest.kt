@@ -30,6 +30,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.di.inMemoryDesktopPreferenceStore
 import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.reader.ReaderPreferences
@@ -51,7 +52,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.manga.repository.MangaRepository
@@ -63,16 +63,13 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
-import java.util.UUID
-import java.util.prefs.Preferences
 
 @Isolated
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class SyncedHistoryReaderIntegrationTest {
     @Test
     fun `projection during source wait selects coherent latest resume and metadata never revives cleared history`(@TempDir folder: File) = runBlocking {
-        val node = Preferences.userRoot().node("mihon-history-inflight-sync-" + UUID.randomUUID())
-        val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node))
+        val context = initDesktopDIForTest(folder, inMemoryDesktopPreferenceStore())
         val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) { testHttpServer() }.start()
         val base = "http://127.0.0.1:${server.resolvedConnectors().single().port}"
         val fixture = HistoryCatalogTestFixture(folder, Injekt.get<DatabaseHandler>(), Injekt.get<SyncRuntime>(), Injekt.get<NetworkHelper>().client, base, verifyProfile = { check(folder.isDirectory) })
@@ -142,14 +139,12 @@ class SyncedHistoryReaderIntegrationTest {
             HistoryTestModeBridge.clear(controller)
             server.stop(0, 0)
             context.closeAndJoin()
-            node.removeNode()
         }
     }
 
     @Test
     fun `two file databases project sparse history then actual reader loads adjacent pages and holds session baseline`(@TempDir folder: File) = runBlocking {
-        val node = Preferences.userRoot().node("mihon-history-sync-" + UUID.randomUUID())
-        val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node))
+        val context = initDesktopDIForTest(folder, inMemoryDesktopPreferenceStore())
         Dispatchers.setMain(UnconfinedTestDispatcher())
         val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) { testHttpServer() }.start()
         val base = "http://127.0.0.1:${server.resolvedConnectors().single().port}"
@@ -260,7 +255,6 @@ class SyncedHistoryReaderIntegrationTest {
             server.stop(0, 0)
             context.closeAndJoin()
             Dispatchers.resetMain()
-            node.removeNode()
         }
     }
 

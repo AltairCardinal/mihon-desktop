@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.di.inMemoryDesktopPreferenceStore
 import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.domain.SourceMangaRefreshKey
@@ -40,7 +41,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
@@ -54,18 +54,15 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
 import java.util.Date
-import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.prefs.Preferences
 
 @Isolated
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class MangaDetailPreparationIntegrationTest {
     @Test
     fun `real detail preparation reports identity failure retains sparse chapters and retry repairs directory`(@TempDir folder: File) = runBlocking {
-        val node = Preferences.userRoot().node("mihon-detail-preparation-" + UUID.randomUUID())
-        val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node))
+        val context = initDesktopDIForTest(folder, inMemoryDesktopPreferenceStore())
         Dispatchers.setMain(UnconfinedTestDispatcher())
         val calls = AtomicInteger()
         val server = MockWebServer().apply {
@@ -140,7 +137,6 @@ class MangaDetailPreparationIntegrationTest {
             server.close()
             context.closeAndJoin()
             Dispatchers.resetMain()
-            node.removeNode()
         }
     }
 
