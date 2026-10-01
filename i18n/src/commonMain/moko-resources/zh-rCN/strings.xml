@@ -1962,4 +1962,6 @@
     <string name="desktop_detail_removal_partial">已移出书架，但部分下载无法删除。重试只删除原先确认的下载。</string>
     <string name="desktop_detail_check_interval">检查间隔：%1$s</string>
     <string name="desktop_detail_check_interval_automatic">自动：%1$s</string>
+    <string name="desktop_chapter_batch_result">%1$d 成功，%2$d 跳过，%3$d 失败</string>
+    <string name="desktop_chapter_delete_snapshot">已选 %1$d 章；将仅从此设备删除其中 %2$d 章的下载。之后的选择和下载不包含在内。</string>
 </resources>

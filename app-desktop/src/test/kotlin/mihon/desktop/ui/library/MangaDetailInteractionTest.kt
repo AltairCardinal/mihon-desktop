@@ -92,6 +92,745 @@ import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 @OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class MangaDetailInteractionTest {
     @Test
+    fun `chapter result explicit read preserves shared User intent for matching local state`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val written = mutableListOf<tachiyomi.domain.chapter.model.ChapterUpdate>()
+        var capture = false
+        withDetail(root, chapterRepositoryOverride = { actual ->
+            object : ChapterRepository by actual {
+                override suspend fun updateAll(updates: List<tachiyomi.domain.chapter.model.ChapterUpdate>) {
+                    if (capture) written += updates
+                    actual.updateAll(updates)
+                }
+            }
+        }) { scene, _, _, chapters ->
+            Injekt.get<ChapterRepository>().update(
+                tachiyomi.domain.chapter.model.ChapterUpdate(chapters[0].id, read = true),
+            )
+            render(scene)
+            capture = true
+            chapterMouse(scene, "Chapter 1", ctrl = true)
+            chapterMouse(scene, "Chapter 2", ctrl = true)
+            click(scene, MR.strings.action_mark_as_read.localized())
+            render(scene)
+            assertEquals(
+                setOf(chapters[0].id, chapters[1].id),
+                written.map { it.id }.toSet(),
+                "explicit read retains every shared command, including locally matching state",
+            )
+            assertTrue(written.all { it.read == true && it.syncContext == mihon.domain.sync.SyncMutationContext.User })
+            assertTrue(Injekt.get<ChapterRepository>().getChapterById(chapters[1].id)!!.read)
+        }
+    }
+
+    @Test
+    fun `chapter result bookmark processes only applicable objects and shows success skip failure`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val written = mutableListOf<Long>()
+        var capture = false
+        withDetail(root, chapterRepositoryOverride = { actual ->
+            object : ChapterRepository by actual {
+                override suspend fun update(chapterUpdate: tachiyomi.domain.chapter.model.ChapterUpdate) {
+                    if (capture) written += chapterUpdate.id
+                    actual.update(chapterUpdate)
+                }
+            }
+        }) { scene, _, _, chapters ->
+            Injekt.get<ChapterRepository>().update(
+                tachiyomi.domain.chapter.model.ChapterUpdate(chapters[0].id, bookmark = true),
+            )
+            render(scene)
+            capture = true
+            chapterMouse(scene, "Chapter 1", ctrl = true)
+            chapterMouse(scene, "Chapter 2", ctrl = true)
+            click(scene, MR.strings.action_bookmark.localized())
+            render(scene)
+            assertEquals(
+                listOf(chapters[1].id),
+                written,
+                "already bookmarked objects are skipped rather than rewritten",
+            )
+            assertTrue(activeNodes(scene).flatMap(::labels).any { "1 succeeded, 1 skipped, 0 failed" in it })
+            assertTrue(
+                selectedChapterNames(scene).isEmpty(),
+                "successful and explicitly skipped applicable selection completes",
+            )
+        }
+    }
+
+    @Test
+    fun `chapter result deletion confirms frozen actual files cancels and preserves partial failures for retry`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, model, manga, chapters ->
+            val provider = Injekt.get<mihon.desktop.download.DesktopDownloadProvider>()
+            val resolver = Injekt.get<mihon.desktop.download.DesktopDownloadIdentityResolver>()
+            fun create(chapter: Chapter) = File(
+                provider.canonicalChapterDownloadDir(resolver.resolve(manga, chapter))
+                    .apply { mkdirs() },
+                "001.png",
+            ).apply { writeBytes(png(0xFF00FF00.toInt())) }
+            val first = create(chapters[0])
+            val second = create(chapters[1])
+            provider.notifyAvailabilityChanged()
+            render(scene)
+            assertTrue(model.isChapterDownloaded(manga, chapters[0]))
+            chapterMouse(scene, "Chapter 1", ctrl = true)
+            chapterMouse(scene, "Chapter 2", ctrl = true)
+            clickChapterAction(scene, MR.strings.action_delete.localized())
+            render(scene)
+            assertTrue(first.exists() && second.exists(), "opening deletion confirmation never deletes files")
+            assertTrue(activeNodes(scene).flatMap(::labels).any { "2 selected" in it && "2" in it && "device" in it })
+            click(scene, MR.strings.action_cancel.localized())
+            render(scene)
+            assertEquals(setOf("Chapter 1", "Chapter 2"), selectedChapterNames(scene))
+            clickChapterAction(scene, MR.strings.action_delete.localized())
+            render(scene)
+            val late = create(chapters[2])
+            val restore = denyFileChanges(first)
+            try {
+                click(scene, MR.strings.action_delete.localized())
+                render(scene)
+                assertTrue(first.exists())
+                assertFalse(second.exists())
+                assertTrue(late.exists(), "new files after opening are outside the accepted snapshot")
+                assertEquals(setOf("Chapter 1"), selectedChapterNames(scene))
+                assertTrue(activeNodes(scene).flatMap(::labels).any { "1 succeeded, 0 skipped, 1 failed" in it })
+            } finally {
+                restore()
+            }
+            click(scene, MR.strings.action_delete.localized())
+            render(scene)
+            assertFalse(first.exists())
+            assertTrue(late.exists())
+            assertTrue(selectedChapterNames(scene).isEmpty())
+        }
+    }
+
+    @Test
+    fun `chapter result mixed download queue uses eligible snapshot without duplicate or local writes`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, model, manga, chapters ->
+            val provider = Injekt.get<mihon.desktop.download.DesktopDownloadProvider>()
+            val resolver = Injekt.get<mihon.desktop.download.DesktopDownloadIdentityResolver>()
+            File(
+                provider.canonicalChapterDownloadDir(resolver.resolve(manga, chapters[0]))
+                    .apply { mkdirs() },
+                "001.png",
+            ).writeBytes(png(0xFF00FF00.toInt()))
+            provider.notifyAvailabilityChanged()
+            model.enqueueDownloads(manga, listOf(chapters[1]))
+            render(scene)
+            chapterMouse(scene, "Chapter 1", ctrl = true)
+            chapterMouse(scene, "Chapter 3", shift = true)
+            val bottom = activeNodes(scene).first {
+                it.config.contains(SemanticsProperties.TestTag) &&
+                    it.config[SemanticsProperties.TestTag] == "chapter-selection-bottom-bar"
+            }.let(::flatten).flatMap(::labels)
+            assertTrue(MR.strings.action_download.localized() in bottom)
+            assertTrue(
+                MR.strings.action_delete.localized() in bottom,
+                "mixed selection offers both applicable families",
+            )
+            clickChapterAction(scene, MR.strings.action_download.localized())
+            render(scene)
+            assertEquals(
+                setOf(chapters[1].id, chapters[2].id),
+                model.downloadQueueFlow().value.map {
+                    it.chapterId
+                }.toSet(),
+            )
+            assertTrue(activeNodes(scene).flatMap(::labels).any { "1 succeeded, 2 skipped, 0 failed" in it })
+            assertTrue(selectedChapterNames(scene).isEmpty())
+        }
+        withDetail(File(root, "local"), mangaTransform = { it.copy(source = 0L) }) { scene, _, _, _ ->
+            chapterMouse(scene, "Chapter 1", ctrl = true)
+            val bottom = activeNodes(scene).first {
+                it.config.contains(SemanticsProperties.TestTag) &&
+                    it.config[SemanticsProperties.TestTag] == "chapter-selection-bottom-bar"
+            }.let(::flatten).flatMap(::labels)
+            assertFalse(MR.strings.action_download.localized() in bottom)
+        }
+    }
+
+    @Test
+    fun `chapter native context actual right click marks and bookmarks without entering Reader`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, _, manga, chapters ->
+            val bounds = chapterNode(scene, "Chapter 1").boundsInRoot
+            scene.pointerSecondaryClick(Offset(bounds.left + bounds.width / 3, bounds.center.y))
+            render(scene)
+            assertTrue(scene.navigator.lastItem is MangaDetailScreen)
+            assertTrue(
+                activeNodes(scene).any { MR.strings.action_mark_as_read.localized() in labels(it) },
+                "secondary context exposes actual mark read rather than Reader",
+            )
+            click(scene, MR.strings.action_mark_as_read.localized())
+            render(scene)
+            assertTrue(Injekt.get<ChapterRepository>().getChapterById(chapters[0].id)!!.read)
+            scene.pointerSecondaryClick(Offset(bounds.left + bounds.width / 3, bounds.center.y))
+            render(scene)
+            click(scene, MR.strings.action_bookmark.localized())
+            render(scene)
+            assertTrue(Injekt.get<ChapterRepository>().getChapterById(chapters[0].id)!!.bookmark)
+            assertEquals(manga.id, scene.createdModels.single().mangaId)
+        }
+    }
+
+    @Test
+    fun `chapter native selection Escape exits one layer restores focus and all inverse stay visible`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, _, manga, _ ->
+            chapterMouse(scene, "Chapter 1", ctrl = true)
+            val count = activeNodes(scene).first {
+                it.config.contains(SemanticsProperties.Text) &&
+                    "1" in labels(it) && it.boundsInRoot.bottom <= 64f
+            }
+            assertFalse(count.config.contains(SemanticsActions.OnClick), "SOURCE number is not a select-all button")
+            click(scene, MR.strings.action_select_all.localized())
+            render(scene)
+            assertTrue(activeNodes(scene).any { "200" in labels(it) && it.boundsInRoot.bottom <= 64f })
+            click(scene, MR.strings.action_select_inverse.localized())
+            render(scene)
+            assertTrue(selectedChapterNames(scene).isEmpty())
+            assertTrue(scene.navigator.lastItem is MangaDetailScreen)
+            chapterMouse(scene, "Chapter 2", ctrl = true)
+            chapterNode(scene, "Chapter 2").config[SemanticsActions.RequestFocus].action!!.invoke()
+            key(scene, Key.Escape)
+            render(scene)
+            assertTrue(selectedChapterNames(scene).isEmpty(), "selection Escape does not navigate away")
+            assertTrue(scene.navigator.lastItem is MangaDetailScreen)
+            assertTrue(focused(scene).config.contains(SemanticsActions.OnClick))
+            assertTrue(MR.strings.action_bar_up_description.localized() in labels(focused(scene)))
+            assertEquals(manga.id, scene.createdModels.single().mangaId)
+        }
+    }
+
+    @Test
+    fun `chapter native selected row uses SOURCE effective theme alpha and transient long press label`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, _, _, _ ->
+            Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().themeMode
+                .set(mihon.desktop.settings.ThemeMode.LIGHT)
+            render(scene)
+            chapterMouse(scene, "Chapter 1", ctrl = true)
+            activeNodes(scene).first {
+                MR.strings.desktop_ui_clear_selection.localized() in labels(it) &&
+                    it.config.contains(SemanticsActions.RequestFocus)
+            }.config[SemanticsActions.RequestFocus].action!!.invoke()
+            scene.pointer(PointerEventType.Move, Offset(20f, 70f), false)
+            delay(300)
+            render(scene)
+            val bounds = chapterNode(scene, "Chapter 1").boundsInRoot
+            val expected = scene.colors.secondary.copy(alpha = .22f).compositeOver(scene.colors.surface).toArgb()
+            assertEquals(
+                expected and 0xFFFFFF,
+                scene.snapshot().getRGB(
+                    (bounds.left + 3).toInt(),
+                    (bounds.center.y).toInt(),
+                ) and 0xFFFFFF,
+                "selected row uses SOURCE secondary alpha in explicit light mode",
+            )
+            val button = activeNodes(scene).first {
+                MR.strings.action_bookmark.localized() in labels(it) &&
+                    it.config.contains(SemanticsActions.OnClick) && it.boundsInRoot.top > 600f
+            }.boundsInRoot
+            scene.pointer(PointerEventType.Press, button.center, true)
+            try {
+                delay(650)
+                render(scene)
+                assertTrue(
+                    activeNodes(scene).any {
+                        it.config.contains(SemanticsProperties.Text) &&
+                            MR.strings.action_bookmark.localized() in labels(it)
+                    },
+                    "long press displays a transient real action name",
+                )
+                assertEquals(
+                    setOf("Chapter 1"),
+                    selectedChapterNames(scene),
+                    "long press feedback never executes action",
+                )
+            } finally {
+                scene.pointer(PointerEventType.Release, button.center, false)
+            }
+            render(scene)
+            assertTrue(
+                Injekt.get<ChapterRepository>().getChapterByMangaId(scene.createdModels.single().mangaId).none {
+                    it.bookmark
+                },
+                "long press release does not execute the bookmark command",
+            )
+            assertEquals(setOf("Chapter 1"), selectedChapterNames(scene))
+        }
+    }
+
+    @Test
+    fun `chapter native long press shows transient SOURCE name without executing action`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, _, _, _ ->
+            chapterMouse(scene, "Chapter 1", ctrl = true)
+            val button = activeNodes(scene).first {
+                MR.strings.action_bookmark.localized() in labels(it) &&
+                    it.config.contains(SemanticsActions.OnClick) && it.boundsInRoot.top > 600f
+            }.boundsInRoot
+            scene.pointer(PointerEventType.Press, button.center, true)
+            try {
+                delay(650)
+                render(scene)
+                assertTrue(
+                    activeNodes(scene).any {
+                        it.config.contains(SemanticsProperties.Text) &&
+                            MR.strings.action_bookmark.localized() in labels(it)
+                    },
+                    "long press displays actual action name",
+                )
+                assertEquals(setOf("Chapter 1"), selectedChapterNames(scene))
+            } finally {
+                scene.pointer(PointerEventType.Release, button.center, false)
+            }
+            render(scene)
+            assertTrue(
+                Injekt.get<ChapterRepository>().getChapterByMangaId(scene.createdModels.single().mangaId).none {
+                    it.bookmark
+                },
+                "long press release does not execute the bookmark command",
+            )
+            assertEquals(setOf("Chapter 1"), selectedChapterNames(scene))
+        }
+    }
+
+    @Test
+    fun `chapter final deletion modal traps keys and background returns trigger before selection Escape`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, _, manga, chapters ->
+            val provider = Injekt.get<mihon.desktop.download.DesktopDownloadProvider>()
+            val resolver = Injekt.get<mihon.desktop.download.DesktopDownloadIdentityResolver>()
+            val file = File(
+                provider.canonicalChapterDownloadDir(resolver.resolve(manga, chapters[0]))
+                    .apply { mkdirs() },
+                "001.png",
+            ).apply { writeBytes(png(0xFF00FF00.toInt())) }
+            provider.notifyAvailabilityChanged()
+            render(scene)
+            chapterMouse(scene, "Chapter 1", ctrl = true)
+            val row = chapterNode(scene, "Chapter 2").boundsInRoot
+            clickChapterAction(scene, MR.strings.action_delete.localized())
+            render(scene)
+            assertTrue(MR.strings.action_cancel.localized() in labels(focused(scene)))
+            key(scene, Key.Tab)
+            render(scene)
+            assertTrue(MR.strings.action_delete.localized() in labels(focused(scene)))
+            key(scene, Key.Tab)
+            render(scene)
+            assertTrue(MR.strings.action_cancel.localized() in labels(focused(scene)))
+            key(scene, Key.Tab, shift = true)
+            render(scene)
+            assertTrue(MR.strings.action_delete.localized() in labels(focused(scene)))
+            scene.pointerClick(Offset(row.left + 30f, row.center.y))
+            render(scene)
+            assertTrue(file.exists())
+            assertEquals(
+                setOf("Chapter 1"),
+                selectedChapterNames(scene),
+                "modal background cannot change selection or enter Reader",
+            )
+            assertTrue(
+                MR.strings.action_delete.localized() in labels(focused(scene)),
+                "outside dismissal returns selection trigger",
+            )
+            clickChapterAction(scene, MR.strings.action_delete.localized())
+            render(scene)
+            key(scene, Key.Escape)
+            render(scene)
+            assertEquals(setOf("Chapter 1"), selectedChapterNames(scene))
+            assertTrue(
+                MR.strings.action_delete.localized() in labels(focused(scene)),
+                "dismiss returns to actual selection trigger",
+            )
+            clickChapterAction(scene, MR.strings.action_delete.localized())
+            render(scene)
+            val restore = denyFileChanges(file)
+            try {
+                click(scene, MR.strings.action_delete.localized())
+                render(scene)
+                assertTrue(file.exists())
+                assertEquals(setOf("Chapter 1"), selectedChapterNames(scene))
+                key(scene, Key.Escape)
+                render(scene)
+                assertTrue(
+                    MR.strings.action_delete.localized() in labels(focused(scene)),
+                    "partial failure Escape restores trigger",
+                )
+            } finally {
+                restore()
+            }
+            key(scene, Key.Escape)
+            render(scene)
+            assertTrue(selectedChapterNames(scene).isEmpty())
+            assertTrue(scene.navigator.lastItem is MangaDetailScreen)
+            assertTrue(MR.strings.action_bar_up_description.localized() in labels(focused(scene)))
+        }
+    }
+
+    @Test
+    fun `chapter final native 320 font200 SOURCE controls remain reachable in light and dark`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, _, _, _ ->
+            for (mode in listOf(mihon.desktop.settings.ThemeMode.LIGHT, mihon.desktop.settings.ThemeMode.DARK)) {
+                scene.resize(1200, 800)
+                scene.fontScale = 1f
+                Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().themeMode.set(mode)
+                render(scene)
+                chapterMouse(scene, "Chapter 1", ctrl = true)
+                activeNodes(scene).first {
+                    MR.strings.desktop_ui_clear_selection.localized() in labels(it) &&
+                        it.config.contains(SemanticsActions.RequestFocus)
+                }.config[SemanticsActions.RequestFocus].action!!.invoke()
+                scene.pointer(PointerEventType.Move, Offset(20f, 70f), false)
+                delay(300)
+                render(scene)
+                val row = chapterNode(scene, "Chapter 1").boundsInRoot
+                val alpha = if (mode == mihon.desktop.settings.ThemeMode.DARK) .16f else .22f
+                val expected = scene.colors.secondary.copy(alpha = alpha).compositeOver(scene.colors.surface).toArgb()
+                assertEquals(
+                    expected and 0xFFFFFF,
+                    scene.snapshot().getRGB((row.left + 3).toInt(), row.center.y.toInt()) and 0xFFFFFF,
+                )
+                scene.resize(320, 680)
+                scene.fontScale = 2f
+                render(scene)
+                val bar = activeNodes(scene).first {
+                    it.config.contains(SemanticsProperties.TestTag) &&
+                        it.config[SemanticsProperties.TestTag] == "chapter-selection-bottom-bar"
+                }
+                assertEquals(0f, bar.boundsInRoot.left)
+                assertEquals(320f, bar.boundsInRoot.right)
+                val actions = flatten(bar).filter { it.config.contains(SemanticsActions.OnClick) }
+                assertTrue(actions.size >= 4)
+                actions.forEach {
+                    val bounds = it.boundsInRoot
+                    assertTrue(
+                        bounds.width > 0 && bounds.height > 0 && bounds.left >= 0 && bounds.right <= 320f &&
+                            bounds.top >= 0 && bounds.bottom <= 680f,
+                    )
+                }
+                actions.first().config[SemanticsActions.RequestFocus].action!!.invoke()
+                render(scene)
+                val seen = mutableSetOf<String>()
+                repeat(actions.size) {
+                    seen += labels(focused(scene))
+                    key(scene, Key.Tab)
+                    render(scene)
+                }
+                actions.flatMap(::labels).forEach { assertTrue(it in seen, "Tab reaches source action $it") }
+                repeat(actions.size) {
+                    key(scene, Key.Tab, shift = true)
+                    render(scene)
+                }
+                scene.savePng(visualFile(root, "ri09-selection-320-font200-${mode.name.lowercase()}.png"))
+                key(scene, Key.Escape)
+                render(scene)
+                assertTrue(selectedChapterNames(scene).isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun `chapter final ALWAYS 320 preserves whole page half width and every 48dp action target`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root, tabletMode = eu.kanade.domain.ui.model.TabletUiMode.ALWAYS) { scene, _, _, _ ->
+            chapterMouse(scene, "Chapter 1", ctrl = true)
+            scene.resize(320, 680)
+            scene.fontScale = 2f
+            render(scene)
+            val bar = activeNodes(scene).first {
+                it.config.contains(SemanticsProperties.TestTag) &&
+                    it.config[SemanticsProperties.TestTag] == "chapter-selection-bottom-bar"
+            }
+            assertEquals(160f, bar.boundsInRoot.left)
+            assertEquals(320f, bar.boundsInRoot.right)
+            assertEquals(160f, bar.boundsInRoot.width)
+            val actions = flatten(bar).filter { it.config.contains(SemanticsActions.OnClick) }
+            assertTrue(actions.size >= 4)
+            actions.forEach {
+                val bounds = it.boundsInRoot
+                assertTrue(
+                    bounds.width >= 48 && bounds.height >= 48 && bounds.left >= 160 && bounds.right <= 320 &&
+                        bounds.top >= 0 && bounds.bottom <= 680,
+                    "forced wide action remains a reachable 48dp target: $bounds",
+                )
+            }
+            actions.first().config[SemanticsActions.RequestFocus].action!!.invoke()
+            render(scene)
+            val seen = mutableSetOf<String>()
+            repeat(actions.size) {
+                seen += labels(focused(scene))
+                key(scene, Key.Tab)
+                render(scene)
+            }
+            actions.flatMap(::labels).forEach { assertTrue(it in seen) }
+        }
+    }
+
+    @Test
+    fun `chapter batch previous follows four shared sorts stable ties and excludes current`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, model, manga, chapters ->
+            val repo = Injekt.get<ChapterRepository>()
+            repo.removeChaptersWithIds(chapters.drop(6).map { it.id })
+            val names = listOf("Z", "B", "A", "C", "D", "E")
+            val numbers = listOf(3.0, -1.0, 2.5, 2.5, 7.0, 1.0)
+            repo.updateAll(
+                chapters.take(6).mapIndexed { index, chapter ->
+                    tachiyomi.domain.chapter.model.ChapterUpdate(
+                        chapter.id,
+                        name = names[index],
+                        chapterNumber = numbers[index],
+                        dateUpload = (6 - index).toLong(),
+                    )
+                },
+            )
+            val cases = listOf(
+                Triple(Manga.CHAPTER_SORTING_SOURCE, false, listOf(6, 5, 4)),
+                Triple(Manga.CHAPTER_SORTING_SOURCE, true, listOf(6, 5, 4)),
+                Triple(Manga.CHAPTER_SORTING_NUMBER, false, listOf(2, 6)),
+                Triple(Manga.CHAPTER_SORTING_NUMBER, true, listOf(2, 6)),
+                Triple(Manga.CHAPTER_SORTING_UPLOAD_DATE, false, listOf(6, 5, 4)),
+                Triple(Manga.CHAPTER_SORTING_UPLOAD_DATE, true, listOf(6, 5, 4)),
+                Triple(Manga.CHAPTER_SORTING_ALPHABET, false, emptyList()),
+                Triple(Manga.CHAPTER_SORTING_ALPHABET, true, emptyList()),
+            )
+            for ((sort, descending, before) in cases) {
+                repo.updateAll(
+                    chapters.take(6).map {
+                        tachiyomi.domain.chapter.model.ChapterUpdate(it.id, read = false)
+                    },
+                )
+                Injekt.get<MangaRepository>().update(
+                    MangaUpdate(
+                        manga.id,
+                        chapterFlags = sort or if (descending) Manga.CHAPTER_SORT_DESC else Manga.CHAPTER_SORT_ASC,
+                    ),
+                )
+                render(scene)
+                model.markAtOrBelowRead(model.visibleChapters(), setOf(chapters[2].id))
+                assertEquals(
+                    before.map { chapters[it - 1].id }.toSet(),
+                    repo.getChapterByMangaId(manga.id).filter { it.read }.map { it.id }.toSet(),
+                    "Shared sort=$sort descending=$descending: PROJECT_POLICY stable ID ties exclude current",
+                )
+            }
+            repo.updateAll(chapters.take(6).map { tachiyomi.domain.chapter.model.ChapterUpdate(it.id, read = false) })
+            model.markAtOrBelowRead(model.visibleChapters(), setOf(Long.MAX_VALUE))
+            assertTrue(repo.getChapterByMangaId(manga.id).none { it.read })
+        }
+    }
+
+    @Test
+    fun `chapter batch native partial bookmark keeps failed selection for retry`(@TempDir root: File) = runBlocking {
+        var reject = true
+        withDetail(root, chapterRepositoryOverride = { actual ->
+            object : ChapterRepository by actual {
+                override suspend fun update(chapterUpdate: tachiyomi.domain.chapter.model.ChapterUpdate) {
+                    if (reject && chapterUpdate.bookmark == true &&
+                        actual.getChapterById(chapterUpdate.id)?.name == "Chapter 2"
+                    ) {
+                        error("actual bookmark write rejected")
+                    }
+                    actual.update(chapterUpdate)
+                }
+            }
+        }) { scene, _, manga, _ ->
+            chapterMouse(scene, "Chapter 1", ctrl = true)
+            chapterMouse(scene, "Chapter 3", shift = true)
+            click(scene, MR.strings.action_bookmark.localized())
+            render(scene)
+            assertEquals(
+                setOf("Chapter 1", "Chapter 3"),
+                Injekt.get<ChapterRepository>()
+                    .getChapterByMangaId(manga.id).filter { it.bookmark }.map { it.name }.toSet(),
+            )
+            assertEquals(setOf("Chapter 2"), selectedChapterNames(scene), "only failed objects remain selected")
+            reject = false
+            click(scene, MR.strings.action_bookmark.localized())
+            render(scene)
+            assertTrue(selectedChapterNames(scene).isEmpty())
+            assertEquals(3, Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id).count { it.bookmark })
+        }
+    }
+
+    @Test
+    fun `chapter batch late successful write does not clear a later native selection`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        withDetail(root, chapterRepositoryOverride = { actual ->
+            object : ChapterRepository by actual {
+                override suspend fun update(chapterUpdate: tachiyomi.domain.chapter.model.ChapterUpdate) {
+                    if (chapterUpdate.bookmark == true) {
+                        started.complete(Unit)
+                        release.await()
+                    }
+                    actual.update(chapterUpdate)
+                }
+            }
+        }) { scene, _, manga, _ ->
+            try {
+                chapterMouse(scene, "Chapter 1", ctrl = true)
+                click(scene, MR.strings.action_bookmark.localized())
+                withTimeout(3000) { started.await() }
+                click(scene, MR.strings.desktop_ui_clear_selection.localized())
+                render(scene)
+                chapterMouse(scene, "Chapter 4", ctrl = true)
+                release.complete(Unit)
+                render(scene)
+                assertEquals(
+                    setOf("Chapter 4"),
+                    selectedChapterNames(scene),
+                    "old completion cannot clear a new user selection",
+                )
+                assertEquals(
+                    listOf("Chapter 1"),
+                    Injekt.get<ChapterRepository>()
+                        .getChapterByMangaId(manga.id).filter { it.bookmark }.map { it.name },
+                )
+            } finally {
+                release.complete(Unit)
+            }
+        }
+    }
+
+    @Test
+    fun `chapter batch SOURCE available actions follow actual selected object conditions`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, _, _, chapters ->
+            chapterMouse(scene, "Chapter 1", ctrl = true)
+            assertFalse(
+                activeNodes(scene).any { MR.strings.action_mark_as_unread.localized() in labels(it) },
+                "unread with no saved page has no mark unread action",
+            )
+            assertTrue(activeNodes(scene).any { MR.strings.action_mark_previous_as_read.localized() in labels(it) })
+            chapterMouse(scene, "Chapter 2", ctrl = true)
+            assertFalse(
+                activeNodes(scene).any { MR.strings.action_mark_previous_as_read.localized() in labels(it) },
+                "previous is a single chapter action",
+            )
+            Injekt.get<ChapterRepository>().updateAll(
+                chapters.take(2).map {
+                    tachiyomi.domain.chapter.model.ChapterUpdate(it.id, bookmark = true, read = true)
+                },
+            )
+            render(scene)
+            assertTrue(activeNodes(scene).any { MR.strings.action_remove_bookmark.localized() in labels(it) })
+            assertFalse(activeNodes(scene).any { MR.strings.action_mark_as_read.localized() in labels(it) })
+            assertTrue(activeNodes(scene).any { MR.strings.action_mark_as_unread.localized() in labels(it) })
+        }
+    }
+
+    @Test
+    fun `chapter selection real ctrl shift and stale pointer stay in the same detail owner`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, model, manga, chapters ->
+            chapterMouse(scene, "Chapter 1")
+            val reader = scene.navigator.lastItem
+            assertTrue(reader is mihon.desktop.ui.reader.DesktopReaderScreen)
+            assertEquals(chapters[0].id, (reader as mihon.desktop.ui.reader.DesktopReaderScreen).chapterId)
+            assertFalse(reader is cafe.adriel.voyager.navigator.tab.Tab)
+            scene.navigator.pop()
+            render(scene)
+            assertEquals(1, scene.createdModels.size)
+            chapterMouse(scene, "Chapter 1", ctrl = true)
+            assertTrue(scene.navigator.lastItem is MangaDetailScreen, "Ctrl enters selection instead of Reader")
+            assertEquals(setOf("Chapter 1"), selectedChapterNames(scene))
+            chapterMouse(scene, "Chapter 4", shift = true)
+            assertEquals((1..4).map { "Chapter $it" }.toSet(), selectedChapterNames(scene))
+            chapterMouse(scene, "Chapter 2", ctrl = true, shift = true)
+            assertEquals((1..4).map { "Chapter $it" }.toSet(), selectedChapterNames(scene))
+            chapterMouse(scene, "Chapter 4")
+            assertEquals((1..3).map { "Chapter $it" }.toSet(), selectedChapterNames(scene))
+            chapterMouse(scene, "Chapter 6", shift = true)
+            assertEquals((1..6).map { "Chapter $it" }.toSet(), selectedChapterNames(scene))
+            val oldClick = chapterNode(scene, "Chapter 5").config[SemanticsActions.OnClick].action!!
+            Injekt.get<MangaRepository>().update(
+                MangaUpdate(manga.id, chapterFlags = Manga.CHAPTER_SHOW_READ),
+            )
+            render(scene)
+            assertTrue(model.state.value.manga!!.unreadFilterRaw == Manga.CHAPTER_SHOW_READ)
+            oldClick.invoke()
+            render(scene)
+            assertTrue(scene.navigator.lastItem is MangaDetailScreen, "a filtered stale callback cannot open Reader")
+            assertTrue(selectedChapterNames(scene).isEmpty())
+            assertEquals(1, scene.createdModels.size)
+        }
+    }
+
+    @Test
+    fun `chapter selection real long press appends interval without a trailing reader click`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, _, _, _ ->
+            chapterMouse(scene, "Chapter 1", holdMillis = 650)
+            assertTrue(scene.navigator.lastItem is MangaDetailScreen)
+            assertEquals(setOf("Chapter 1"), selectedChapterNames(scene))
+            chapterMouse(scene, "Chapter 4", holdMillis = 650)
+            assertEquals((1..4).map { "Chapter $it" }.toSet(), selectedChapterNames(scene))
+            assertTrue(
+                scene.navigator.lastItem is MangaDetailScreen,
+                "long press release does not emit an ordinary click",
+            )
+        }
+    }
+
+    @Test
+    fun `chapter selection SOURCE bars hide ordinary controls checkbox and occupy right half of full page`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, _, manga, _ ->
+            chapterNode(scene, "Chapter 1").config[SemanticsActions.OnLongClick].action!!.invoke()
+            render(scene)
+            val top = activeNodes(scene).filter { it.boundsInRoot.top >= 0f && it.boundsInRoot.bottom <= 64f }
+            val copy = top.flatMap(::labels)
+            assertTrue("1" in copy, "SOURCE count is a plain non-clickable number in the top bar")
+            assertFalse(manga.title in copy)
+            assertTrue(MR.strings.action_select_all.localized() in copy)
+            assertTrue(MR.strings.action_select_inverse.localized() in copy)
+            assertFalse(MR.strings.desktop_ui_filter_chapters.localized() in copy)
+            assertFalse(MR.strings.desktop_ui_download_chapters.localized() in copy)
+            assertFalse(MR.strings.label_more.localized() in copy)
+            assertFalse(activeNodes(scene).any { it.config.contains(SemanticsProperties.ToggleableState) })
+            assertFalse(activeNodes(scene).any { MR.strings.action_start.localized() in labels(it) })
+            val bar = activeNodes(scene).first {
+                MR.strings.action_bookmark.localized() in labels(it) &&
+                    it.config.contains(SemanticsActions.OnClick)
+            }.boundsInRoot
+            assertTrue(bar.left >= 600f, "wide action menu occupies page right half, independent of 450dp information")
+            assertTrue(bar.right <= 1200f)
+            val container = activeNodes(scene).first {
+                it.config.contains(SemanticsProperties.TestTag) &&
+                    it.config[SemanticsProperties.TestTag] == "chapter-selection-bottom-bar"
+            }.boundsInRoot
+            assertEquals(600f, container.left)
+            assertEquals(1200f, container.right)
+            assertEquals(600f, container.width)
+        }
+    }
+
+    @Test
     fun `notes summary Escape returns to its actual summary trigger without writing`(
         @TempDir root: File,
     ) = runBlocking {
@@ -1885,6 +2624,8 @@ class MangaDetailInteractionTest {
     private suspend fun withDetail(
         root: File,
         mangaRepositoryOverride: ((MangaRepository) -> MangaRepository)? = null,
+        chapterRepositoryOverride: ((ChapterRepository) -> ChapterRepository)? = null,
+        tabletMode: eu.kanade.domain.ui.model.TabletUiMode = eu.kanade.domain.ui.model.TabletUiMode.AUTOMATIC,
         backendFactory: (Preferences) -> Preferences = { it },
         mangaTransform: (Manga) -> Manga = { it },
         coverRequests: MutableList<coil3.request.ImageRequest>? = null,
@@ -1899,7 +2640,9 @@ class MangaDetailInteractionTest {
             DesktopPreferenceStore(backendFactory(node)),
             startDownloadWorker = false,
             mangaRepositoryOverride = mangaRepositoryOverride,
+            chapterRepositoryOverride = chapterRepositoryOverride,
         )
+        Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().tabletUiMode.set(tabletMode)
         val detailsSourceManager = if (httpSource) {
             mihon.desktop.source.DesktopSourceManager(
                 Injekt.get<mihon.desktop.extension.DesktopExtensionManager>(),
@@ -2052,11 +2795,18 @@ class MangaDetailInteractionTest {
             scene.render(canvas, System.nanoTime())
         }
         fun sendKeyEvent(event: ComposeKeyEvent) = scene.sendKeyEvent(event)
-        fun pointer(type: PointerEventType, position: Offset, pressed: Boolean) {
+        fun pointer(
+            type: PointerEventType,
+            position: Offset,
+            pressed: Boolean,
+            modifiers: androidx.compose.ui.input.pointer.PointerKeyboardModifiers =
+                androidx.compose.ui.input.pointer.PointerKeyboardModifiers(),
+        ) {
             scene.sendPointerEvent(
                 type,
                 position,
                 buttons = PointerButtons(isPrimaryPressed = pressed),
+                keyboardModifiers = modifiers,
                 button = PointerButton.Primary,
             )
         }
@@ -2105,6 +2855,54 @@ class MangaDetailInteractionTest {
         override fun close() = scene.close()
     }
 
+    private fun clickChapterAction(scene: NativeScene, label: String) {
+        val bar = nodes(scene).first {
+            it.config.contains(SemanticsProperties.TestTag) &&
+                it.config[SemanticsProperties.TestTag] == "chapter-selection-bottom-bar"
+        }
+        val action = flatten(bar).first {
+            label in labels(it) && it.config.contains(SemanticsActions.OnClick) &&
+                !it.config.contains(SemanticsProperties.Disabled)
+        }
+        action.config[SemanticsActions.OnClick].action!!.invoke()
+    }
+
+    private fun chapterNode(scene: NativeScene, title: String): SemanticsNode = nodes(scene).first {
+        it.config.contains(SemanticsActions.OnLongClick) && title in labels(it) && it.boundsInRoot.height > 0
+    }
+
+    private fun selectedChapterNames(scene: NativeScene): Set<String> = nodes(scene).filter { node ->
+        node.config.contains(SemanticsActions.OnLongClick) &&
+            (
+                node.config.getOrElse(SemanticsProperties.Selected) { false } || flatten(node).any {
+                    it.config.contains(SemanticsProperties.ToggleableState) &&
+                        it.config[SemanticsProperties.ToggleableState] == androidx.compose.ui.state.ToggleableState.On
+                }
+                )
+    }.flatMap(::labels).filter { it.startsWith("Chapter ") }.toSet()
+
+    private suspend fun chapterMouse(
+        scene: NativeScene,
+        title: String,
+        ctrl: Boolean = false,
+        shift: Boolean = false,
+        holdMillis: Long = 0,
+    ) {
+        val bounds = chapterNode(scene, title).boundsInRoot
+        val point = Offset(bounds.left + bounds.width / 3, bounds.top + bounds.height / 3)
+        val modifiers = androidx.compose.ui.input.pointer.PointerKeyboardModifiers(
+            isCtrlPressed = ctrl,
+            isShiftPressed = shift,
+        )
+        scene.pointer(PointerEventType.Press, point, true, modifiers)
+        if (holdMillis > 0) {
+            delay(holdMillis)
+            render(scene)
+        }
+        scene.pointer(PointerEventType.Release, point, false, modifiers)
+        render(scene)
+    }
+
     private suspend fun render(scene: NativeScene) {
         repeat(16) {
             scene.render()
@@ -2129,7 +2927,8 @@ class MangaDetailInteractionTest {
         }.config[SemanticsProperties.EditableText]
 
     private fun visualFile(root: File, name: String): File = File(
-        System.getenv("MIHON_RI08_VISUAL_DIR")?.let(::File) ?: File(root, "visuals"),
+        (System.getenv("MIHON_RI09_VISUAL_DIR") ?: System.getenv("MIHON_RI08_VISUAL_DIR"))?.let(::File)
+            ?: File(root, "visuals"),
         name,
     )
     private fun denyFileChanges(file: File): () -> Unit {
@@ -2197,11 +2996,14 @@ class MangaDetailInteractionTest {
             factory.invoke(null, key.keyCode, eventType, key.nativeKeyLocation, false, false, false, shift, null),
         )
     }
-    private fun focused(
-        scene: NativeScene,
-    ) = activeNodes(scene).single {
-        it.config.contains(SemanticsProperties.Focused) &&
-            it.config[SemanticsProperties.Focused]
+    private fun focused(scene: NativeScene): SemanticsNode {
+        // Nonfocusable tooltip popups have a distinct, empty focus owner.
+        val owner = scene.owners.last { candidate ->
+            flatten(candidate.rootSemanticsNode).any { it.config.contains(SemanticsProperties.Focused) }
+        }
+        return flatten(owner.rootSemanticsNode).single {
+            it.config.contains(SemanticsProperties.Focused) && it.config[SemanticsProperties.Focused]
+        }
     }
 
     private fun nodes(scene: NativeScene) = scene.owners.flatMap { flatten(it.rootSemanticsNode) }

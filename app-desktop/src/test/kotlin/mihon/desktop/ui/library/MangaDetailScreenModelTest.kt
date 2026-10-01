@@ -99,7 +99,8 @@ class MangaDetailScreenModelTest {
             driver,
             historyAdapter = tachiyomi.data.History.Adapter(tachiyomi.data.DateColumnAdapter),
             mangasAdapter = tachiyomi.data.Mangas.Adapter(
-                tachiyomi.data.StringListColumnAdapter, tachiyomi.data.UpdateStrategyColumnAdapter,
+                tachiyomi.data.StringListColumnAdapter,
+                tachiyomi.data.UpdateStrategyColumnAdapter,
             ),
         )
         val handler = tachiyomi.data.JvmDatabaseHandler(database, driver)
@@ -258,7 +259,7 @@ class MangaDetailScreenModelTest {
         val result = model.runChapterBatch(chapters) { if (it.id == 2L) error("write failed") }
 
         assertEquals(listOf(1L), result.succeededIds)
-        assertEquals("1 succeeded, 1 failed", model.state.value.batchActionMessage)
+        assertEquals("1 succeeded, 0 skipped, 1 failed", model.state.value.batchActionMessage)
     }
 
     @Test
@@ -293,7 +294,7 @@ class MangaDetailScreenModelTest {
         assertEquals(listOf(1L, 2L), backing.updates.map { it.id })
         assertTrue(backing.updates.all { it.lastPageRead == 0L })
         assertTrue(backing.updates.all { it.syncContext == mihon.domain.sync.SyncMutationContext.User })
-        assertEquals("2 succeeded, 1 failed", model.state.value.batchActionMessage)
+        assertEquals("2 succeeded, 0 skipped, 1 failed", model.state.value.batchActionMessage)
     }
 
     @Test
@@ -304,7 +305,7 @@ class MangaDetailScreenModelTest {
 
         assertTrue(result.succeededIds.isEmpty())
         assertTrue(result.failures.isEmpty())
-        assertEquals("0 succeeded, 0 failed", model.state.value.batchActionMessage)
+        assertEquals("0 succeeded, 0 skipped, 0 failed", model.state.value.batchActionMessage)
     }
 
     @Test
@@ -326,7 +327,7 @@ class MangaDetailScreenModelTest {
         assertEquals(listOf(1L, 3L), result.succeededIds)
         assertEquals(listOf(2L), result.failures.map { it.id })
         assertEquals(listOf(1L, 3L), enqueued)
-        assertEquals("2 succeeded, 1 failed", model.state.value.batchActionMessage)
+        assertEquals("2 succeeded, 0 skipped, 1 failed", model.state.value.batchActionMessage)
     }
 
     @Test
@@ -334,6 +335,7 @@ class MangaDetailScreenModelTest {
         val deleted = mutableListOf<String>()
         val model = MangaDetailScreenModel(
             mangaId = 1L,
+            isDownloaded = { _, _ -> true },
             deleteDownload = { _, chapter ->
                 if (chapter.name == "Chapter 2") error("delete failed")
                 deleted += chapter.name
@@ -348,7 +350,7 @@ class MangaDetailScreenModelTest {
         assertEquals(listOf(1L, 3L), result.succeededIds)
         assertEquals(listOf(2L), result.failures.map { it.id })
         assertEquals(listOf("Chapter 1", "Chapter 3"), deleted)
-        assertEquals("2 succeeded, 1 failed", model.state.value.batchActionMessage)
+        assertEquals("2 succeeded, 0 skipped, 1 failed", model.state.value.batchActionMessage)
     }
 
     // ── Construction ─────────────────────────────────────────────────────────
@@ -649,15 +651,16 @@ class MangaDetailScreenModelTest {
         chapterRepository.addAll(chapters)
         val model = MangaDetailScreenModel(mangaId = 1L, updateChapter = UpdateChapter(chapterRepository))
 
-        model.markSelectedBookmark(chapters)
+        val result = model.markSelectedBookmark(chapters)
 
         assertEquals(
             listOf(
-                ChapterUpdate(id = 1L, bookmark = true),
                 ChapterUpdate(id = 2L, bookmark = true),
             ),
             chapterRepository.updates,
         )
+        assertEquals(listOf(1L), result.skippedIds)
+        assertEquals(listOf(2L), result.succeededIds)
     }
 
     @Test

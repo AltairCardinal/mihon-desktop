@@ -170,6 +170,8 @@ RI08复用前置核对：Android现用`libs.richeditor.compose`版本1.0.0-rc13�
 - SOURCE／PROJECT_POLICY：选择顶栏仅Close、纯数字、SelectAll、FlipToBack；常规作品标题／下载／筛选／More、续读FAB隐藏，章节头设置不可用，滚动刷新暂停。行只用选底，不加复选框；行内下载／书签不独立执行。宽屏原版圆角底栏按页面右半宽，窄屏占可用宽，不用右章节栏剩余宽替代公式。退出和成功清选还焦可见控制点，模态Escape→选择Escape→普通详情返回逐层消费。
 - SOURCE：动作家族按实际来源：Outlined BookmarkAdd／BookmarkRemove／DoneAll／RemoveDone／Download／Delete及原版ic_done_prev_24dp，不全部替成Rounded。按已选状态提供书签增减／读和未读；单章才提供“之前已读”。原生tooltip、长按短暂操作名及可访问名称可用，不复制HTML计时常量，不用常驻文字和重复数量占底栏。
 - SOURCE／PROJECT_POLICY：“之前已读”复用Android实际filteredChapters的升序叙事方向及take(pointerPos)，不含当前章；改变显示升降序不能改变目标集合。四种共享排序、首项、未知号／小数／重复号及陈旧目标均执行真实SetChapterReadStatus验证；不以当前显示位置drop()代替。More中的“全部标已读”移除，当前可见全选→批量已读承接需求。
+- SOURCE／PROJECT_POLICY补充：共享getChapterSort对相同章号／日期／标题没有tie-break；Android旧filtered降序后asReversed会反转同值组，导致同一目标的前序对象随显示方向变化。D-E4的方向不变要求保持：仅前序计算使用共享chaptersBeforePointer，将有效filtered章按既有显式升序comparator排序、相等时用持久chapter ID稳定顺序，排除当前并取prefix；Android与Desktop都接同一计算。普通章节列表及全局getChapterSort不改变。真实fixture的未知号／2.5重复号与四sort／双方向须literal断言及production wrapper验证；此接口已由RI09双端生产包装与真实SQL／共享契约验证，证据见唯一迭代报告；普通列表排序及同步协议保持原权威。
+- SOURCE：读态命令适用性与动作显隐分开。共享SetChapterReadStatus.filterToUpdate保所有distinct有效ID：本机读态相同也须传User同步意图，Android SetReadStatus同消费；Desktop不得以本地read/page值提前跳过该显式命令。UI Read／Unread是否出现仍按原版any状态，真正执行后成功／失败／有效跳过按真实结果反馈。书签沿Android已有同值过滤，下载沿真实资格，不据读态规则改其他同步协议。
 - PROJECT_POLICY：混合下载状态只处理适用子集，排队／下载中不重复入队，local限制沿既有能力。删除确认固定作品／章节ID快照，显示已选与适用数及本机影响；取消不删，后续新选择和新数据不扩张对象。真实成功／跳过／失败反馈可见，失败保留有效重试对象，不以成功清选掩盖部分失败；异步完成保护后来选择。
 - 验收：共享策略与Android实际包装保护、真实pointer／modifier／长按抑制click、完整详情导航及Escape／focus、SQLite标记与部分失败、固定对象文件拒绝／重试、窄320dp／fontScale2及浅深离屏。仅运行当前行为focused及稳定明确受影响组，正式键鼠／触控板／DPI及发布runtime留RI18，不能以离屏代替。
 

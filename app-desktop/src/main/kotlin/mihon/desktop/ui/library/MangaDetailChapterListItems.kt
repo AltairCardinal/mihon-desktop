@@ -41,6 +41,8 @@ internal fun LazyListScope.mangaDetailChapterListItems(
     missingChapterCount: Int = 0,
     hasActiveFilters: Boolean = false,
     onOpenSettings: (() -> Unit)? = null,
+    onPrimaryChapterClick: ((Chapter, LibraryClickModifiers) -> Unit)? = null,
+    onToggleRead: ((Chapter) -> Unit)? = null,
 ) {
     item {
         Row(
@@ -112,6 +114,10 @@ internal fun LazyListScope.mangaDetailChapterListItems(
                     onRetryDownload = { onRetryDownload(chapter.id) },
                     onToggleBookmark = { onToggleBookmark(chapter) },
                     onRead = { onReadChapter(chapter) },
+                    onToggleRead = onToggleRead?.let { toggle -> { toggle(chapter) } },
+                    onPrimaryClick = onPrimaryChapterClick?.let { onPrimary ->
+                        { modifiers -> onPrimary(chapter, modifiers) }
+                    },
                     downloadEnabled = manga?.source != 0L,
                 )
             }

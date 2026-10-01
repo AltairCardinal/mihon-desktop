@@ -2173,4 +2173,6 @@
     <string name="desktop_detail_removal_partial">Removed from library; some downloads could not be deleted. Retry deletes only the original downloads.</string>
     <string name="desktop_detail_check_interval">Checking interval: %1$s</string>
     <string name="desktop_detail_check_interval_automatic">Automatic: %1$s</string>
+    <string name="desktop_chapter_batch_result">%1$d succeeded, %2$d skipped, %3$d failed</string>
+    <string name="desktop_chapter_delete_snapshot">%1$d selected; %2$d downloaded chapters will be deleted only from this device. New selections and downloads are excluded.</string>
 </resources>

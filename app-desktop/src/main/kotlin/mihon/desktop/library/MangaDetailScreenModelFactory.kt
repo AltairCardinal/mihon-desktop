@@ -84,6 +84,26 @@ object MangaDetailScreenModelFactory {
             resolveCoverModel = coverStore::resolveModel,
             getDuplicateLibraryManga = Injekt.get<tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga>(),
             hasCustomCover = coverStore::customCoverExists,
+            deleteSelectedDownloads = if (downloadManager != null && downloadProvider != null &&
+                downloadIdentityResolver != null
+            ) {
+                { manga, chapters ->
+                    val retired = downloadManager.cancelAndAwaitRetirements(chapters.map { it.id })
+                    tachiyomi.domain.chapter.interactor.BatchUpdateChapters().await(chapters) { chapter ->
+                        check(retired) { "Unable to retire selected downloads" }
+                        check(
+                            downloadProvider.deleteChapterDownload(
+                                manga.source,
+                                downloadIdentityResolver.resolve(manga, chapter),
+                            ),
+                        ) {
+                            "Unable to delete download ${chapter.id}"
+                        }
+                    }
+                }
+            } else {
+                null
+            },
             deleteRemovedDownloads = if (downloadManager != null && downloadProvider != null &&
                 downloadIdentityResolver != null
             ) {

@@ -463,6 +463,58 @@ RI07已提交`27169e118e88618bfe24fe781106a24dd767f966`，提交后工作树干�
 
 RI08同一独立初审及必要修正核验闭合，实施者六字段回执IMPLEMENTED／UNCOMMITTED／process NONE并停写；所有RI08协调记录无STARTING／RUNNING。20个源码／配置／测试文件、三幅原生图及必要文档／契约／索引／checkoff内聚于同一详情Screen的布局、资料、草稿、收藏和封面真实边界，超过8文件／400行保完整测试与正常格式，不机械拆批。主代理仅增cap22／24／26适用保护与证据、6处当前定位漂移；287条当前定位核验通过，64项status／FIXED_ORIGINAL／actionInventory与原基线不变。索引核验仅为治理，不替代行为测试。封面仍7:10，文件／DB不称跨存储原子；文件删除partial明确可重试且不重复membership、不扩迟到文件；保存／分享／新预测／完整迁移分别由RI10／11／14／15闭环。本批全量／模块完整／finalParityAudit／正式构建／runtime0次；必要checkoff与代码、测试、证据同批提交后继续RI09。
 
+## RI09：章节选择与原版上下动作栏
+
+RI08已提交`27a24dedc9709df3cf590a16aa121c32c6e3d6c5`，27个本任务路径同批提交；提交后禁用只读status的缓存读取，`git -c core.fsmonitor=false -c core.untrackedCache=false status --short --untracked-files=all`为空，空的app-desktop/docs目录未当成用户文件清理。RI08最终治理核对manifest与HEAD的64状态／固定原版／actionInventory未变，两语言新增各11资源名无新碰撞、UTF-8／XML通过；基线既有重名不在本轮扩大清理。
+
+继续复用同一实施代理，主要实现约四个内聚簇：共享范围与真实原生选择输入、原版选择顶／底栏、真实前序／批量适用集与snapshot结果、320dp／fontScale2／浅深及明确affected。主代理固定接口、独立初审1轮及必要修正核验1轮，唯一docs／manifest／roadmap及git仍由主代理维护；预计3–5小时，成本集中真实事件、repository／manager边界及原版图标适配。每行为focused正确红绿、清理后相关复验，稳定一次精确affected／scoped格式；模块完整、全量、finalParityAudit、正式构建／runtime0次，统一RI18。追加仅具体失败及受影响路径，不新增代理或新计划／报告。
+
+固定验收见page-contracts RI09。章节Shift／长按及CtrlShift为APPEND＋KEEP_START，普通／Ctrl移动锚点，owner隔离、失效单项／陈旧目标忽略；过滤隐藏即时裁章与锚点，不套书架保留策略。普通动作／FAB／章节头入口及刷新在选择中隐藏，TopBar仅Close／非clickable计数／SelectAll／FlipToBack、选中背景无checkbox；宽底栏按整个可用页宽右半，窄窗与大字真正可达。前序按Android filtered叙事升序take(pointerPos)不含当前，混合读态／书签／下载状态采用适用子集；删除固定对象、不扩迟到变化，批量结果保失败与操作期新增选择。完整队列／文件失败由RI10闭环，不以空回调提前完成。现共享BatchUpdateChapters吞CancellationException的边界若被本批消费，须focused确认后最小传播、保其它失败继续；不扩通用重构。当前只启动本批，尚无RI09实施或验证完成结论。
+
+### RI09 首簇红绿与原生选择红（实施中）
+
+主代理已读当前ChapterSelectionState、共享LibrarySelectionPolicy、domain BatchUpdateChapters及新增测试。范围计算复用共享APPEND＋KEEP_START，未改共享默认APPEND＋MOVE_TO_TARGET；作品owner／陈旧目标校验、可见反选及用户选择revision在本地状态层，批量completion只移成功ID且保护后来选择。domain仅补CancellationException传播，其余普通失败继续；尚未据首簇绿宣称产品选择UI完成。
+
+协调器`interaction-ri09-foundation-red`在12:29:52–12:30:04退出1，原因是public接口暴露internal LibraryClickModifiers，属于编译错误而非业务红；最小改可见性后`foundation-red-valid`12:31:04–12:31:11退出1，domain实际3项／1失败，取消被吞（expected true、actual false）。该task graph失败阻断Desktop，未执行的章节测试不计红。随后`selection-red`12:31:39–12:31:57实际12项／4正确失败；`foundation-green`12:33:33–12:33:59 PASSED，Desktop12及domain3全绿、无跳过。共享默认策略与旧普通失败继续仍受保护。
+
+原生`interaction-ri09-native-selection-red`12:36:55–12:37:03误用不存在的readFilterRaw字段，编译失败，不计业务红；核对实际unreadFilterRaw后`native-selection-red-valid`12:38:19–12:38:45 FAILED，XML04:38:34.066Z实际3项／3正确失败：Ctrl真实pointer误推Reader；真实650ms长按只选1／4未补2／3；选择顶栏缺原版非clickable纯数字。夹具挂载实际MangaDetailScreen／production factory／SQLite，含过滤后的旧row callback保护。当前进入最小UI接线，尚无本簇绿、批次完成或提交结论；模块完整、全量、audit、发布及正式runtime次数仍为0。
+
+原生最小绿补记：`native-selection-green`12:46:38–12:46:48因漏filterAndSortChapters import编译失败，不计绿。补import后`native-selection-green-valid`12:47:45–12:48:36 PASSED／exit0，主代理已核协调器命令、终态及XML04:48:20.742Z：3项通过、0失败／跳过。真实Ctrl／Shift／CtrlShift、过滤旧回调、650ms长按及release均经production Root；底栏实际容器left600／right1200／width600，按1200宽整个页面右半计算。ChapterDonePreviousIcon两条path已对照Android实际XML，旧默认共享策略未改。此绿仅闭合原生选择首簇；批量适用集合／失败／删除快照、Escape／焦点和320大字待后两簇，不提前勾选RI09。
+
+### RI09 前序接口决定（实施前）
+
+主代理读取实际共享ChapterSort与Android markPreviousChapterRead：四sort comparator相等时返回0，Android filtered降序再asReversed反转整个tie组。实施者提供literal fixture：原始numbers=[3,-1,2.5,2.5,7,1]、target id3=2.5，旧ASC prefix为[2,6]而旧DESC／reverse prefix为[2,6,4]。此时精确照搬旧包装会违反既定D-E4“显示升降不改变前序对象”。这不是已执行测试结果；正确红仍待实际运行确认。
+
+接口决定采用两端共用纯chaptersBeforePointer(filtered,manga,pointerId)：仅前序按现共享显式ASC comparator、相等以稳定chapter ID排序，再定位有效pointer取take(prefix)，排除当前；陈旧／隐藏pointer返回空。Android原markPrevious与Desktop均消费，避免Desktop独立重写；普通列表及全局getChapterSort不改。四sort、双方向、未知／小数／重复号均用literal预期、真实repository/wrapper验证。共享抽取及双端focused属本批既有前序风险门禁，不增加全量或审查轮次；此刻尚无该接口实现或测试完成结论。
+
+RI09批量红：`interaction-ri09-batch-red`12:52:12–12:52:45 FAILED／exit1，主代理已核命令、终态及XML04:52:32.114Z：4项／4正确失败、0跳过。状态条件fresh未读无页码仍显示Unread；旧操作成功回执将用户新选Chapter4清空；真实SQLite只写成功Chapter1／3后，失败Chapter2也被清；SOURCE非tie前序实际[1,2,3]而预期[6,5,4]，含当前且方向错误。未执行后续sort loop不能计为已验证；新集合/反馈/快照实现尚待绿。
+
+`interaction-ri09-previous-android-red`12:54:41–12:55:16 FAILED，domain先执行2项／2失败。正式共享helper方向稳定契约expected[2,6]／actual[2,6,4]是正确行为红；辅助旧包装characterization漏写显式ASC，实际ASC=1／DESC=0，expected[2,6]／actual[5,1]是夹具错误，不能计业务红。已核常量修正该夹具；Android被先行domain失败阻断未执行，单独focused wrapper红待取得。共享helper暂委托旧reverse仅为编译红，不作为正式实现，尚无本簇绿或提交。
+
+Android前序真实红补记：`interaction-ri09-android-previous-red`12:55:58–12:57:15 FAILED／exit1；主代理已核init script仅限定Test include当前class、保实际Android编译与运行，及XML04:56:32.177Z。实际两个唯一方法：取消wrapper绿；前序wrapper通过真实MangaScreenModel.markPreviousChapterRead→SetReadStatus→repository port正确红，expected[2,6]／actual[2,6,4]。Gradle既有retry将同一失败方法运行3遍，所以XML4条／3fail，不能冒充4个独立测试或3个独立前序场景。Android端repository注入捕获真实更新，Desktop端另由SQLite断言存储，未用源码字符串充当行为证据。尚待共享稳定前序与双端最小绿。
+
+RI09批量最小绿：`interaction-ri09-batch-green`12:58:54–13:00:49 PASSED／exit0，主代理已核三个实际XML：domain2（04:59:42.837Z）、Desktop4（05:00:23.984Z）、Android2（05:00:09.152Z），均0失败／跳过。其中当前真实共享helper契约1、实际Android wrapper2、Desktop native/SQL4是production行为证据；domain另外1为复制旧reverse/take包装的来源对照，不能算当前production行为完成证据，已要求清理或转为必要真实helper契约，不为数量保留退役逻辑。Desktop实际四sort×双direction literal前序、当前排除／陈旧目标、bookmark部分失败保Chapter2及retry、晚到成功保用户新选Chapter4、按状态条件动作均绿。当前只闭合本簇，删除对象快照／跳过结果／native Escape与focus等仍待末簇；RI09保持未勾选。
+
+RI09末簇正确红：`interaction-ri09-results-native-red`13:04:41–13:05:55 FAILED／exit1，主代理已核实际meta/XML05:05:31.423Z，6项／6 Assertion失败、无跳过：混合状态缺Delete；secondary无已读上下文；选底用secondaryContainer而非SOURCE secondary浅色.22；selection Escape未退出；bookmark重写已存在对象；Delete打开确认前已立即删实际文件。失败前未到达的长按名称、后续删除retry和local子场景不计已红；实施者分别取得对应focused子边界再接线。Factory拟增加有限快照batch删除结果port，复用R8 retire＋真实provider Boolean，保BatchResult旧两参调用默认skippedIds兼容；这些尚待实现／验证，不代表本批队列深链RI10已闭合。
+
+末簇长按边界`interaction-ri09-native-label-red`13:07:20–13:07:47 FAILED，XML05:07:41.143Z实际1项／1正确失败：真实650ms长按未显示操作名。没有把上次pixel先失败时未到达的分支计为已红。
+
+主代理当前独审发现读态适用过滤回归：实际共享SetChapterReadStatus.filterToUpdate明确保全部distinct ID，源代码说明本地相同也必须保用户显式命令，Android SetReadStatus也接该port。新Desktop仅按read／lastPage先过滤会吞本地相同章的User同步意图；必须回用共享filter，UI动作显隐与命令发送分开。现有`selected unread preserves same value user intent and exposes write failure`保护ID／page0／UserContext不可削弱，新native factory→共享SetRead→实际SQLite另保护入口。
+
+`interaction-ri09-results-native-green-read-red`13:15:47–13:16:08因TextButton漏命名modifier而编译失败，未执行测试，不计业务证据。修正参数后`...-valid`13:17:07–13:18:12终态FAILED，主代理已核XML：native8／5绿3fail（05:17:42.273Z），model1／1fail（05:18:11.435Z）、均无skip。两个显式命令正确红：native expectedIDs[1,2]／actual[2]，旧model expectedIDs[1,2]／actual[1]。其余尚失败：mixed没有观察到底栏反馈（原实施者定位为测试选中disabled行内语义callback，待精确bottom入口复验）；选底resting像素偏暗（focus/ripple候选，尚未证实，不调整预期颜色或容差）。五个有效绿为真实文件confirm／cancel／固定快照与partial retry、真实secondary context、长按名称、selection Escape／focus及bookmarkskip反馈；尚不能把该FAILED key标为PASSED或勾RI09。
+
+同一前序包装审查还发现有效首项边界：Android旧pointerPos>=0时仍调用markChaptersRead(empty)，后者先clear selection后返回；新if(previous.isNotEmpty())会丢有效首项清选。已要求有效pointer与空prefix分开，并以actual wrapper验证“有效首项零写且清选，陈旧pointer无动作／保选”。该必要修正在同一前序功能边界内，不改变普通排序、协议或追加审查轮次；末簇modal Escape→selection Escape、强制宽屏320／font2可达及普通pointer→Reader仍须有效原生证据。
+
+RI09末簇边界红补记：`interaction-ri09-native-boundaries-red`05:31:37.597–05:33:10.175Z，FAILED／exit1，主代理核实际meta及log。Desktop8条（native7＋model1），3绿5失败：ALWAYS320右半栏只有40×40命中区、长按Release误写书签、删除框关闭未还焦为必要行为边界；mixed下载bottom定位及320 focus节点NSE为观测问题，不计业务红。Android有效首项包装1唯一方法失败，既有retry重复3遍，不扩大计数。显式同值User读态、普通Reader→pop及严格静止像素已有有效绿。最小修正把原公式内底栏调整为有限FlowRow、48dp combinedClickable，长按释放抑制点击、实际删除触发点还焦；Android有效首pointer空prefix仍清选而陈旧pointer保选。随后native Tooltip附加owner影响测试定位，按真实含Focused节点owner及bottom subtree修正观测，保模态Tab／Escape／还焦、文件和SQL断言，没有降低SOURCE颜色或像素容差。
+
+RI09稳定受影响组：`interaction-ri09-affected`05:49:32.420–05:51:27.475Z实际FAILED／exit1；Desktop51／48绿3失败、domain10绿、Android4绿，共65项／62绿3失败、0跳过，四module scoped spotless通过。三个失败是删除Cancel后再次打开误定位Tooltip，旧delete fixture未注入真实下载资格，旧bookmark期望冗余重写已书签对象。仅修夹具和适用子集预期，保部分失败／成功／skip与真实文件断言。`interaction-ri09-affected-repair`首次参数误名isChapterDownloaded编译失败，没有测试证据；`interaction-ri09-affected-repair-valid`05:54:53.881–05:55:37.166Z PASSED／exit0。主代理核实际XML05:55:27.353Z native1和05:55:35.559Z model2及log／meta，原3项全部通过，Desktop scoped格式通过；不重复此前62有效绿。最终65个有效去重测试全部通过、0跳过：Desktop51（新增native18、selection12、actions4、list7、model10），domain10（当前helper2／Batch3／原共享policy5），Android4（actual ScreenModel3＋显式同值User保护1）。旧复制reverse/take对照已替换为当前helper四sort／双方向literal行为，domain XML05:49:47.240Z有实际2绿。Android实际消费者仍保同值命令不重复删除下载，XML05:49:49.243Z／05:49:53.371Z保护。所有FAILED key保原状态，不用后续通过改写失败历史。
+
+同一独立初审及必要修正核验完成：主代理核production diff、共享stable-prefix及Android／Desktop消费、factory bulk retirement／真实provider Boolean、真实SQLite显式User状态与文件拒绝／retry、普通Screen导航、纯计数及48dp范围、长按Release无副作用、modal与selection分层Escape／还焦。没有新增审查轮次。SOURCE动作图标逐项核对，前序自定义vector取Android ic_done_prev_24dp；只前序的stable ID ties是PROJECT_POLICY，不更改普通排序。成功／显式skip从接受时选择移出，失败保有效对象，新user revision不受晚回执清除。文件与SQL不宣称跨存储原子，队列深链RI10继续闭环。
+
+原生视觉：[LIGHT](desktop-interaction-native/ri09-selection-320-font200-light.png)／[DARK](desktop-interaction-native/ri09-selection-320-font200-dark.png)主代理已实际view：真实CanvasLayersComposeScene，Windows／Temurin21.0.11／Compose1.10.2／Skiko0.9.37.4，320×680、density1／fontScale2、English、显式LIGHT／DARK；Bookmark键盘Focus及原生Tooltip可见，4动作可达、顶栏纯计数、选底无复选框。严格SOURCE secondary alpha浅.22／深.16像素由1200宽静止实际渲染测试取得；PNG不能代替真实硬件或发布runtime。
+
+本批21个代码／测试／资源文件及2PNG属于同一章节选择和批量能力：共享范围／前序／取消与实际上下动作／对象快照／结果保选必须一同编译和验收，因此不按文件或行数拆分。19 Kotlin缓存ktlint及2 XML scoped spotless通过，git diff检查通过；manifest仅增当前capability24的有限角色／行为证据并修复行漂移，293条当前定位有效，64项status／FIXED_ORIGINAL／actionInventory全部保持不变。完整模块、finalParityAudit、全量、发布构建及运行验收均0，留RI18。实施代理六字段回执IMPLEMENTED／UNCOMMITTED／process NONE后停写；代码、测试、两PNG、索引及本次checkoff同一批提交。
+
 ### RI10 下载前置核对（只读，不代表实施完成）
 
 实际共享入口为`domain/src/commonMain/kotlin/mihon/domain/chapter/interactor/FilterChaptersForDownload.kt`；它服务更新后的自动下载，以downloadNewChapters、favorite、分类包含／排除及已读章号规则门控，不能直接把手动下载接到该门控而造成非收藏或关闭自动下载时无工作集。Android MangaScreenModel现手动getUnreadChapters／getBookmarkedChapters以ReaderPreferences.skipFiltered选filtered／all，再按真实Download.State.NOT_DOWNLOADED取未读或书签；书签没有排除已读，getUnreadChaptersSorted用共享getChapterSort及反转得到叙事方向。RI10复用此手动候选语义与manager、保自动下载原语义，不为同名用例强行合并两种触发条件。
@@ -515,6 +567,8 @@ RI06已存在LibraryCategoryWheelModifier，Ctrl平台条件、根owner及250ms�
 
 Android只读预检 `python scripts/build-android.py check --signing` 返回0／signing verified，SDK36、build-tools36.0.0及JDK21.0.11可用，原发布证书身份验证通过。未分配候选版本、未构建／安装APK，不能作为最终候选验收；收口时在冻结源码上重新按规范核对。
 
+RI18构建入口补核（只读）：当前build-desktop.sh的build-only会分配BUILD＋1并跳过JVM tests；macOS run_macos按MIHON_MACOS_DIST_ROOT／MIHON_MACOS_DEPLOY_DIR构建和复制，其默认部署目标是已有/Applications/Mihon Desktop.app，部署前会删除该目标。最终Mac验收必须显式指定本轮隔离路径，核实真实目标不与旧应用／旧checkout重叠，不能沿默认覆盖。Windows统一入口委托build-windows.ps1，其构建／runtime／extension验收后输出Final unpacked EXE。当前只是读取脚本，未分配版本、未执行构建或部署；最终同冻结行为diff完整JVM证据先齐，再使用build-only并记录各实际版本／来源，不能假称版本或运行已通过。
+
 ## 未完成与限制
 
-RI00／RI01 的实现、focused、唯一独立审查及必要修复复审已完成，代码、测试、索引修复和必要 checkoff 随本功能批同一提交。首簇提交为 `14a8ce15695cf69ab2e468b825e88ec91641e08a`。用户继续要求完成剩余 roadmap，现复用原实施代理串行推进后续批次，每批按既有审查与必要修复复审流程执行；完整验证仍只在 RI18。RI02 实现、focused、唯一修复复审和格式／索引检查均通过，必要 checkoff 与代码／测试在本批同一提交；RI03 实现、唯一修复复审、140项有效focused证据、格式与索引检查已闭合，必要checkoff随本批同一提交；RI04实现、140项有效focused、唯一独立初审及必要修正核验、格式及索引已闭合，必要checkoff随本批同一提交；RI05实现、唯一独立初审及必要修复核验、132项去重focused证据、格式及索引检查已闭合，必要checkoff随本批同一提交；RI06实现、同一独立初审及必要修正核验、122项有效去重focused证据、scoped格式与273条当前索引检查已闭合，实施代理已回执停写、无存活Gradle进程，必要checkoff随本批同一提交；RI07实现、同一独立初审与必要修正核验、169项去重focused证据、scoped格式及279条当前索引已闭合，必要checkoff与代码／测试在本批同一提交；RI08实现、同一独立初审及必要修正核验、159项有效去重focused、scoped格式和287条当前索引已闭合，必要checkoff随本批同一提交；RI09–RI18 未完成；最终全量、正式构建及运行验收尚未执行。本轮没有 Android正式候选／macOS正式构建、真实鼠标／触控板／硬件条件验收，没有交付 EXE/APK，没有把 HTML 勾选更新为 native 完成。
+RI00／RI01 的实现、focused、唯一独立审查及必要修复复审已完成，代码、测试、索引修复和必要 checkoff 随本功能批同一提交。首簇提交为 `14a8ce15695cf69ab2e468b825e88ec91641e08a`。用户继续要求完成剩余 roadmap，现复用原实施代理串行推进后续批次，每批按既有审查与必要修复复审流程执行；完整验证仍只在 RI18。RI02 实现、focused、唯一修复复审和格式／索引检查均通过，必要 checkoff 与代码／测试在本批同一提交；RI03 实现、唯一修复复审、140项有效focused证据、格式与索引检查已闭合，必要checkoff随本批同一提交；RI04实现、140项有效focused、唯一独立初审及必要修正核验、格式及索引已闭合，必要checkoff随本批同一提交；RI05实现、唯一独立初审及必要修复核验、132项去重focused证据、格式及索引检查已闭合，必要checkoff随本批同一提交；RI06实现、同一独立初审及必要修正核验、122项有效去重focused证据、scoped格式与273条当前索引检查已闭合，实施代理已回执停写、无存活Gradle进程，必要checkoff随本批同一提交；RI07实现、同一独立初审与必要修正核验、169项去重focused证据、scoped格式及279条当前索引已闭合，必要checkoff与代码／测试在本批同一提交；RI08实现、同一独立初审及必要修正核验、159项有效去重focused、scoped格式和287条当前索引已闭合，必要checkoff随本批同一提交；RI09实现、同一独立初审与必要修正核验、65项有效去重focused、scoped格式及293条当前索引已闭合，必要checkoff随本批同一提交；RI10–RI18 未完成；最终全量、正式构建及运行验收尚未执行。本轮没有 Android正式候选／macOS正式构建、真实鼠标／触控板／硬件条件验收，没有交付 EXE/APK，没有把 HTML 勾选更新为 native 完成。

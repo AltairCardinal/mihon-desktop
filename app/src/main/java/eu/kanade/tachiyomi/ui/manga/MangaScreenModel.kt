@@ -735,9 +735,8 @@ class MangaScreenModel(
     fun markPreviousChapterRead(pointer: Chapter) {
         val manga = successState?.manga ?: return
         val chapters = filteredChapters.orEmpty().map { it.chapter }
-        val prevChapters = if (manga.sortDescending()) chapters.asReversed() else chapters
-        val pointerPos = prevChapters.indexOf(pointer)
-        if (pointerPos != -1) markChaptersRead(prevChapters.take(pointerPos), true)
+        val previous = tachiyomi.domain.chapter.service.chaptersBeforePointer(chapters, manga, pointer.id)
+        if (chapters.any { it.id == pointer.id }) markChaptersRead(previous, true)
     }
 
     /**

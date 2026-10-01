@@ -598,6 +598,90 @@ class MangaScreenModelSharedMutationWiringTest {
         }
     }
 
+    @Test
+    fun `Android previous actual wrapper preserves stable duplicate prefix in both directions`() = runTest {
+        val chapters = listOf(3.0, -1.0, 2.5, 2.5, 7.0, 1.0).mapIndexed { index, number ->
+            chapter(index + 1L).copy(chapterNumber = number)
+        }
+        for (direction in listOf(Manga.CHAPTER_SORT_ASC, Manga.CHAPTER_SORT_DESC)) {
+            val captured = Channel<List<ChapterUpdate>>(Channel.UNLIMITED)
+            val repository = mockk<ChapterRepository> {
+                coEvery { updateAll(any()) } coAnswers { captured.send(firstArg()) }
+            }
+            val preferences = mockk<DownloadPreferences> {
+                every { removeAfterMarkedAsRead().get() } returns false
+            }
+            val model = screenModel(
+                manga = manga(true).copy(chapterFlags = Manga.CHAPTER_SORTING_NUMBER or direction),
+                chapters = chapters,
+                setReadStatus = SetReadStatus(preferences, mockk(), mockk(), repository),
+            )
+            try {
+                awaitSuccess(model)
+                model.markPreviousChapterRead(chapters[2])
+                val updates = withContext(Dispatchers.Default) { withTimeout(5000) { captured.receive() } }
+                assertEquals(listOf(2L, 6L), updates.map { it.id })
+                assertTrue(updates.all { it.read == true && it.syncContext == SyncMutationContext.User })
+            } finally {
+                model.onDispose()
+            }
+        }
+    }
+
+    @Test
+    fun `Android bookmark actual wrapper propagates cancellation without writes or snackbar`() = runTest {
+        val attempted = Collections.synchronizedList(mutableListOf<Long>())
+        val repository = mockk<ChapterRepository> {
+            coEvery { update(any()) } answers {
+                attempted += firstArg<ChapterUpdate>().id
+                throw kotlinx.coroutines.CancellationException("cancel actual batch")
+            }
+        }
+        val model = screenModel(
+            manga = manga(true),
+            chapters = listOf(chapter(1), chapter(2)),
+            updateChapter = UpdateChapter(repository),
+            batchUpdateChapters = BatchUpdateChapters(),
+        )
+        try {
+            awaitSuccess(model)
+            val mutation = model.bookmarkChapters(listOf(chapter(1), chapter(2)), true)
+            withContext(Dispatchers.Default) { withTimeout(5000) { mutation.join() } }
+            assertTrue(mutation.isCancelled)
+            assertEquals(listOf(1L), attempted)
+            assertEquals(null, model.snackbarHostState.currentSnackbarData)
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `Android previous first valid pointer clears selection with no writes stale pointer does not`() = runTest {
+        val chapters = listOf(chapter(1).copy(chapterNumber = 1.0), chapter(2).copy(chapterNumber = 2.0))
+        val repository = mockk<ChapterRepository>(relaxed = true)
+        val preferences = mockk<DownloadPreferences> { every { removeAfterMarkedAsRead().get() } returns false }
+        val model = screenModel(
+            manga = manga(true).copy(
+                chapterFlags =
+                Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SORT_ASC,
+            ),
+            chapters = chapters,
+            setReadStatus = SetReadStatus(preferences, mockk(), mockk(), repository),
+        )
+        try {
+            awaitSuccess(model)
+            model.toggleAllSelection(true)
+            assertEquals(2, (model.state.value as MangaScreenModel.State.Success).chapters.count { it.selected })
+            model.markPreviousChapterRead(chapter(99))
+            assertEquals(2, (model.state.value as MangaScreenModel.State.Success).chapters.count { it.selected })
+            model.markPreviousChapterRead(chapters[0])
+            assertTrue((model.state.value as MangaScreenModel.State.Success).chapters.none { it.selected })
+            coVerify(exactly = 0) { repository.updateAll(any()) }
+        } finally {
+            model.onDispose()
+        }
+    }
+
     private fun screenModel(
         context: Context = RuntimeEnvironment.getApplication(),
         manga: Manga,

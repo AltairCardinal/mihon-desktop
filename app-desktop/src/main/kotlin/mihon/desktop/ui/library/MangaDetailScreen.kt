@@ -50,6 +50,8 @@ import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.outlined.FlipToBack
+import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Checkbox
@@ -87,6 +89,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -147,7 +154,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val hideMissingChapterIndicators by appPreferences.hideMissingChapterIndicators.changes().collectAsState(
             initial = appPreferences.hideMissingChapterIndicators.get(),
         )
-        val selectionState = remember { ChapterSelectionState() }
+        val selectionState = remember(mangaId) { ChapterSelectionState(mangaId) }
 
         // Read aliases — immutable vals at all read sites, writes go through model
         val manga = state.manga
@@ -210,6 +217,26 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         var showCoverViewer by remember { mutableStateOf(false) }
         val coverFocus = remember { FocusRequester() }
         val backFocus = remember { FocusRequester() }
+        var wasSelecting by remember { mutableStateOf(false) }
+        LaunchedEffect(selectionState.isActive) {
+            if (selectionState.isActive) {
+                wasSelecting = true
+            } else if (wasSelecting && navigator.lastItem == this@MangaDetailScreen) {
+                androidx.compose.runtime.withFrameNanos { }
+                backFocus.requestFocus()
+                wasSelecting = false
+            }
+        }
+        var chapterDeletion by remember { mutableStateOf<ChapterBatchDeleteSnapshot?>(null) }
+        val chapterDeleteFocus = remember { FocusRequester() }
+        var returnChapterDeleteFocus by remember { mutableStateOf(false) }
+        LaunchedEffect(returnChapterDeleteFocus, chapterDeletion) {
+            if (returnChapterDeleteFocus && chapterDeletion == null) {
+                androidx.compose.runtime.withFrameNanos { }
+                if (selectionState.isActive) chapterDeleteFocus.requestFocus() else backFocus.requestFocus()
+                returnChapterDeleteFocus = false
+            }
+        }
         var returnCoverFocus by remember { mutableStateOf(false) }
         var notesFromSummary by remember { mutableStateOf(false) }
         LaunchedEffect(returnCoverFocus) {
@@ -314,7 +341,56 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         }
 
         val canRefresh = !isUpdating && sourceRefreshState !is SourceMangaRefreshState.Loading
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        fun openChapter(chapterId: Long) {
+            scope.launch {
+                val current = model.state.value.manga ?: return@launch
+                if (current.id != mangaId) return@launch
+                val chapter = model.visibleChapters().firstOrNull { it.id == chapterId } ?: return@launch
+                val externalUrl = chapter.url.externalChapterUrlOrNull()
+                if (externalUrl != null) {
+                    openExternalLink(externalUrl)
+                    return@launch
+                }
+                val request = model.readerRequest(current, model.state.value.chapters, chapter) ?: return@launch
+                navigator.push(
+                    DesktopReaderScreen(
+                        chapterTitle = request.chapterTitle,
+                        mangaId = request.mangaId,
+                        mangaTitle = request.mangaTitle,
+                        isWebtoon = false,
+                        sourceId = request.sourceId,
+                        chapterUrl = request.chapterUrl,
+                        chapterId = request.chapterId,
+                        chapters = request.chapters,
+                        currentChapterIndex = request.currentChapterIndex,
+                        initialPage = request.initialPage,
+                        mangaViewerFlags = request.mangaViewerFlags,
+                    ),
+                )
+            }
+        }
+
+        fun showChapterBatchResult(result: tachiyomi.domain.chapter.interactor.BatchChapterResult) {
+            val message = MR.strings.desktop_chapter_batch_result.localized(
+                Locale.getDefault(),
+                result.succeededIds.size,
+                result.skippedIds.size,
+                result.failures.size,
+            )
+            model.consumeChapterBatchFeedback()
+            scope.launch { categorySnackbar.showSnackbar(message) }
+        }
+
+        BoxWithConstraints(
+            Modifier.fillMaxSize().onPreviewKeyEvent {
+                if (it.key == Key.Escape && it.type == KeyEventType.KeyDown && selectionState.isActive) {
+                    selectionState.clear()
+                    true
+                } else {
+                    false
+                }
+            },
+        ) {
             val layout = mihon.desktop.ui.home.LocalDesktopWindowLayout.current
                 ?: mihon.desktop.ui.home.DesktopWindowLayout(
                     maxWidth,
@@ -325,25 +401,47 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 snackbarHost = { SnackbarHost(categorySnackbar) },
                 topBar = {
                     TopAppBar(
-                        title = { Text(manga?.title ?: "…", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        title = {
+                            Text(
+                                if (selectionState.isActive) {
+                                    selectionState.selectedIds.size.toString()
+                                } else {
+                                    manga?.title
+                                        ?: "…"
+                                },
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
                         navigationIcon = {
-                            IconButton(modifier = Modifier.focusRequester(backFocus), onClick = { navigator.pop() }) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = MR.strings.action_bar_up_description.localized(),
-                                )
+                            IconButton(
+                                modifier = Modifier.focusRequester(backFocus),
+                                onClick = { if (selectionState.isActive) selectionState.clear() else navigator.pop() },
+                            ) {
+                                if (selectionState.isActive) {
+                                    Icon(Icons.Default.Close, MR.strings.desktop_ui_clear_selection.localized())
+                                } else {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                        MR.strings.action_bar_up_description.localized(),
+                                    )
+                                }
                             }
                         },
                         actions = {
                             if (selectionState.isActive) {
-                                IconButton(onClick = { selectionState.selectAll(displayedChapters.map { it.id }) }) {
-                                    Icon(Icons.Default.SelectAll, MR.strings.action_select_all.localized())
+                                IconButton(onClick = {
+                                    selectionState.selectAll(model.visibleChapters().map { it.id })
+                                }) {
+                                    Icon(Icons.Outlined.SelectAll, MR.strings.action_select_all.localized())
                                 }
-                                IconButton(onClick = { selectionState.clear() }) {
-                                    Icon(Icons.Default.Close, MR.strings.desktop_ui_clear_selection.localized())
+                                IconButton(onClick = {
+                                    selectionState.invertVisible(model.visibleChapters().map { it.id })
+                                }) {
+                                    Icon(Icons.Outlined.FlipToBack, MR.strings.action_select_inverse.localized())
                                 }
                             }
-                            if (manga != null) {
+                            if (manga != null && !selectionState.isActive) {
                                 Box {
                                     IconButton(onClick = { downloadMenuExpanded = true }) {
                                         Icon(
@@ -369,95 +467,99 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     }
                                 }
                             }
-                            IconButton(
-                                onClick = { model.toggleFilterMenu() },
-                                modifier = Modifier.focusRequester(chapterOptionsFocus),
-                            ) {
-                                Icon(
-                                    Icons.Default.FilterList,
-                                    contentDescription = MR.strings.desktop_ui_filter_chapters.localized(),
-                                    tint = if (
-                                        manga?.hasActiveChapterFilters(downloadedOnly) == true ||
-                                        excludedScanlators.isNotEmpty()
-                                    ) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    },
-                                )
+                            if (!selectionState.isActive) {
+                                IconButton(
+                                    onClick = { model.toggleFilterMenu() },
+                                    modifier = Modifier.focusRequester(chapterOptionsFocus),
+                                ) {
+                                    Icon(
+                                        Icons.Default.FilterList,
+                                        contentDescription = MR.strings.desktop_ui_filter_chapters.localized(),
+                                        tint = if (
+                                            manga?.hasActiveChapterFilters(downloadedOnly) == true ||
+                                            excludedScanlators.isNotEmpty()
+                                        ) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                    )
+                                }
                             }
 
-                            Box {
-                                IconButton(
-                                    modifier = Modifier.focusRequester(
-                                        categoryMenuFocus,
-                                    ).testTag("manga-category-menu"),
-                                    onClick = { categoryMenuExpanded = true },
-                                ) { Icon(Icons.Default.MoreVert, MR.strings.label_more.localized()) }
-                                DropdownMenu(expanded = categoryMenuExpanded, onDismissRequest = {
-                                    categoryMenuExpanded =
-                                        false
-                                }) {
-                                    DropdownMenuItem(
-                                        text = { Text(MR.strings.check_for_updates.localized()) },
-                                        enabled = canRefresh,
-                                        onClick = {
-                                            categoryMenuExpanded = false
-                                            val current = manga ?: return@DropdownMenuItem
-                                            if (source != null) {
-                                                refreshFromSource()
-                                            } else {
-                                                scope.launch {
-                                                    model.setIsUpdating(true)
-                                                    try {
-                                                        model.refreshManga(current)
-                                                    } finally {
-                                                        model.setIsUpdating(false)
+                            if (!selectionState.isActive) {
+                                Box {
+                                    IconButton(
+                                        modifier = Modifier.focusRequester(
+                                            categoryMenuFocus,
+                                        ).testTag("manga-category-menu"),
+                                        onClick = { categoryMenuExpanded = true },
+                                    ) { Icon(Icons.Default.MoreVert, MR.strings.label_more.localized()) }
+                                    DropdownMenu(expanded = categoryMenuExpanded, onDismissRequest = {
+                                        categoryMenuExpanded =
+                                            false
+                                    }) {
+                                        DropdownMenuItem(
+                                            text = { Text(MR.strings.check_for_updates.localized()) },
+                                            enabled = canRefresh,
+                                            onClick = {
+                                                categoryMenuExpanded = false
+                                                val current = manga ?: return@DropdownMenuItem
+                                                if (source != null) {
+                                                    refreshFromSource()
+                                                } else {
+                                                    scope.launch {
+                                                        model.setIsUpdating(true)
+                                                        try {
+                                                            model.refreshManga(current)
+                                                        } finally {
+                                                            model.setIsUpdating(false)
+                                                        }
                                                     }
                                                 }
-                                            }
-                                        },
-                                    )
-                                    if (manga?.favorite == true) {
-                                        DropdownMenuItem(
-                                            text = { Text(MR.strings.action_edit_categories.localized()) },
-                                            onClick = {
-                                                categoryMenuExpanded = false
-                                                categoryDialogMode =
-                                                    MangaCategoryDialogMode.EDIT_CATEGORIES
                                             },
                                         )
-                                    }
-                                    DropdownMenuItem(
-                                        text = { Text(MR.strings.desktop_ui_migrate_source.localized()) },
-                                        onClick = {
-                                            categoryMenuExpanded = false
-                                            val current = manga ?: return@DropdownMenuItem
-                                            navigator.push(
-                                                mihon.desktop.ui.migration.MigrationSearchScreen(
-                                                    current.id,
-                                                    current.title,
-                                                ),
+                                        if (manga?.favorite == true) {
+                                            DropdownMenuItem(
+                                                text = { Text(MR.strings.action_edit_categories.localized()) },
+                                                onClick = {
+                                                    categoryMenuExpanded = false
+                                                    categoryDialogMode =
+                                                        MangaCategoryDialogMode.EDIT_CATEGORIES
+                                                },
                                             )
-                                        },
-                                    )
-                                    if (mangaUrl != null) {
+                                        }
                                         DropdownMenuItem(
-                                            text = { Text(MR.strings.desktop_ui_share_link.localized()) },
+                                            text = { Text(MR.strings.desktop_ui_migrate_source.localized()) },
                                             onClick = {
                                                 categoryMenuExpanded = false
-                                                linkActions!!.share()
+                                                val current = manga ?: return@DropdownMenuItem
+                                                navigator.push(
+                                                    mihon.desktop.ui.migration.MigrationSearchScreen(
+                                                        current.id,
+                                                        current.title,
+                                                    ),
+                                                )
+                                            },
+                                        )
+                                        if (mangaUrl != null) {
+                                            DropdownMenuItem(
+                                                text = { Text(MR.strings.desktop_ui_share_link.localized()) },
+                                                onClick = {
+                                                    categoryMenuExpanded = false
+                                                    linkActions!!.share()
+                                                },
+                                            )
+                                        }
+                                        DropdownMenuItem(
+                                            text = { Text(MR.strings.action_notes.localized()) },
+                                            onClick = {
+                                                notesFromSummary = false
+                                                categoryMenuExpanded = false
+                                                model.setShowNotesDialog(true)
                                             },
                                         )
                                     }
-                                    DropdownMenuItem(
-                                        text = { Text(MR.strings.action_notes.localized()) },
-                                        onClick = {
-                                            notesFromSummary = false
-                                            categoryMenuExpanded = false
-                                            model.setShowNotesDialog(true)
-                                        },
-                                    )
                                 }
                             }
                         },
@@ -466,53 +568,76 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 bottomBar = {
                     if (selectionState.isActive) {
                         val selectedChapters = chapters.filter { it.id in selectionState.selectedIds }
-                        val selectedDownloadAction = chapterSelectionDownloadAction(selectedChapters) { ch ->
-                            val m = manga
-                            m != null && model.isChapterDownloaded(m, ch)
-                        }
-                        ChapterSelectionBar(
-                            selectedCount = selectionState.selectedIds.size,
-                            downloadAction = selectedDownloadAction,
-                            onBookmark = {
-                                scope.launch {
-                                    model.markSelectedBookmark(selectedChapters)
-                                    selectionState.clear()
-                                }
-                            },
-                            onMarkRead = {
-                                scope.launch {
-                                    model.markSelectedRead(selectedChapters, read = true)
-                                    selectionState.clear()
-                                }
-                            },
-                            onMarkUnread = {
-                                scope.launch {
-                                    model.markSelectedRead(selectedChapters, read = false)
-                                    selectionState.clear()
-                                }
-                            },
-                            onMarkBelowRead = {
-                                scope.launch {
-                                    model.markAtOrBelowRead(displayedChapters, selectionState.selectedIds)
-                                    selectionState.clear()
-                                }
-                            },
-                            onDownloadOrDelete = {
-                                val m = manga ?: return@ChapterSelectionBar
-                                scope.launch {
-                                    when (selectedDownloadAction) {
-                                        ChapterSelectionDownloadAction.DOWNLOAD -> {
-                                            model.enqueueDownloadBatch(m, selectedChapters)
-                                        }
-                                        ChapterSelectionDownloadAction.DELETE_DOWNLOAD -> {
-                                            model.deleteDownloadBatch(m, selectedChapters)
-                                        }
+                        val selectedManga = manga
+                        val canDownload =
+                            selectedManga != null &&
+                                model.downloadableChapters(selectedManga, selectedChapters).isNotEmpty()
+                        val canDelete =
+                            selectedManga != null &&
+                                selectedChapters.any { model.isChapterDownloaded(selectedManga, it) }
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomEnd) {
+                            ChapterSelectionBar(
+                                selectedCount = selectionState.selectedIds.size,
+                                selectedChapters = selectedChapters,
+                                modifier = Modifier.fillMaxWidth(if (layout.expanded) .5f else 1f),
+                                downloadAction = ChapterSelectionDownloadAction.DOWNLOAD,
+                                showDownload = canDownload,
+                                showDelete = canDelete,
+                                onBookmark = {
+                                    val complete = selectionState.captureCompletion()
+                                    scope.launch {
+                                        val result = model.markSelectedBookmark(selectedChapters)
+                                        complete(result.succeededIds + result.skippedIds)
+                                        showChapterBatchResult(result)
                                     }
-                                    selectionState.clear()
-                                }
-                            },
-                            onClose = { selectionState.clear() },
-                        )
+                                },
+                                onMarkRead = {
+                                    val complete = selectionState.captureCompletion()
+                                    scope.launch {
+                                        val result = model.markSelectedRead(selectedChapters, read = true)
+                                        complete(result.succeededIds + result.skippedIds)
+                                        showChapterBatchResult(result)
+                                    }
+                                },
+                                onMarkUnread = {
+                                    val complete = selectionState.captureCompletion()
+                                    scope.launch {
+                                        val result = model.markSelectedRead(selectedChapters, read = false)
+                                        complete(result.succeededIds + result.skippedIds)
+                                        showChapterBatchResult(result)
+                                    }
+                                },
+                                onMarkBelowRead = {
+                                    val selected = selectionState.selectedIds.toSet()
+                                    val complete = selectionState.captureCompletion()
+                                    scope.launch {
+                                        val result = model.markAtOrBelowRead(model.visibleChapters(), selected)
+                                        if (result.failures.isEmpty()) complete(selected)
+                                        showChapterBatchResult(result)
+                                    }
+                                },
+                                onDownloadOrDelete = {
+                                    val current = selectedManga ?: return@ChapterSelectionBar
+                                    val complete = selectionState.captureCompletion()
+                                    scope.launch {
+                                        val result = model.enqueueDownloadBatch(current, selectedChapters)
+                                        complete(result.succeededIds + result.skippedIds)
+                                        showChapterBatchResult(result)
+                                    }
+                                },
+                                deleteFocus = chapterDeleteFocus,
+                                onDelete = {
+                                    val current = selectedManga ?: return@ChapterSelectionBar
+                                    chapterDeletion = ChapterBatchDeleteSnapshot(
+                                        current,
+                                        selectedChapters.toList(),
+                                        selectedChapters.count { model.isChapterDownloaded(current, it) },
+                                        selectionState.captureCompletion(),
+                                    )
+                                },
+                                onClose = { selectionState.clear() },
+                            )
+                        }
                     }
                 },
                 floatingActionButton = {
@@ -559,6 +684,17 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     }
                 },
             ) { padding ->
+                chapterDeletion?.let { fixed ->
+                    ChapterBatchDeleteDialog(fixed, onDismiss = {
+                        chapterDeletion = null
+                        returnChapterDeleteFocus = true
+                    }, onConfirm = {
+                        val result = model.deleteDownloadBatch(fixed.manga, fixed.chapters)
+                        fixed.complete(result.succeededIds + result.skippedIds)
+                        showChapterBatchResult(result)
+                        result
+                    })
+                }
                 // Delete confirmation dialog
                 deleteConfirmChapter?.let { ch ->
                     AlertDialog(
@@ -1040,7 +1176,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             hasActiveFilters =
                             manga?.hasActiveChapterFilters(downloadedOnly) == true || excludedScanlators.isNotEmpty(),
                             onOpenSettings = model::toggleFilterMenu,
-                            onSelectChapter = selectionState::toggle,
+                            onSelectChapter = { chapterId ->
+                                selectionState.selectRange(model.visibleChapters().map { it.id }, chapterId)
+                            },
                             onDownloadChapter = { chapter ->
                                 manga?.let { model.enqueueDownloads(it, listOf(chapter)) }
                             },
@@ -1048,38 +1186,29 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             onCancelDownload = model::cancelChapterDownload,
                             onRetryDownload = model::retryChapterDownload,
                             onToggleBookmark = { chapter ->
-                                scope.launch {
-                                    model.toggleChapterBookmark(chapter)
+                                val current = model.visibleChapters().firstOrNull { it.id == chapter.id }
+                                if (current != null && !selectionState.isActive) {
+                                    scope.launch {
+                                        showChapterBatchResult(model.markSelectedBookmark(listOf(current)))
+                                    }
                                 }
                             },
-                            onReadChapter = { chapter ->
-                                scope.launch {
-                                    val externalUrl = chapter.url.externalChapterUrlOrNull()
-                                    if (externalUrl != null) {
-                                        openExternalLink(externalUrl)
-                                        return@launch
+                            onToggleRead = { chapter ->
+                                val current = model.visibleChapters().firstOrNull { it.id == chapter.id }
+                                if (current != null && !selectionState.isActive) {
+                                    scope.launch {
+                                        showChapterBatchResult(model.markSelectedRead(listOf(current), !current.read))
                                     }
-                                    val request = model.readerRequest(
-                                        manga = manga!!,
-                                        chapters = chapters,
-                                        chapter = chapter,
-                                    ) ?: return@launch
-                                    navigator.push(
-                                        DesktopReaderScreen(
-                                            chapterTitle = request.chapterTitle,
-                                            mangaId = request.mangaId,
-                                            mangaTitle = request.mangaTitle,
-                                            isWebtoon = false,
-                                            sourceId = request.sourceId,
-                                            chapterUrl = request.chapterUrl,
-                                            chapterId = request.chapterId,
-                                            chapters = request.chapters,
-                                            currentChapterIndex = request.currentChapterIndex,
-                                            initialPage = request.initialPage,
-                                            mangaViewerFlags = request.mangaViewerFlags,
-                                        ),
-                                    )
                                 }
+                            },
+                            onReadChapter = { chapter -> openChapter(chapter.id) },
+                            onPrimaryChapterClick = { chapter, modifiers ->
+                                selectionState.handlePrimaryClick(
+                                    model.visibleChapters().map { it.id },
+                                    chapter.id,
+                                    modifiers,
+                                    ownerId = model.state.value.manga?.id ?: mangaId,
+                                ) { openChapter(chapter.id) }
                             },
                         )
                     }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -53,7 +54,13 @@ import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.outlined.BookmarkAdd
+import androidx.compose.material.icons.outlined.BookmarkRemove
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.DoneAll
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.RemoveDone
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Checkbox
@@ -67,13 +74,18 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -90,6 +102,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isShiftPressed
@@ -104,8 +117,10 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -788,7 +803,7 @@ private fun MangaUpdateSchedule(manga: Manga) {
 
 internal enum class ChapterDownloadStatus { NOT_DOWNLOADED, QUEUED, DOWNLOADING, ERROR, DOWNLOADED }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 internal fun ChapterRow(
     chapter: Chapter,
@@ -805,6 +820,8 @@ internal fun ChapterRow(
     onToggleBookmark: () -> Unit,
     onRead: () -> Unit,
     downloadEnabled: Boolean = true,
+    onPrimaryClick: ((LibraryClickModifiers) -> Unit)? = null,
+    onToggleRead: (() -> Unit)? = null,
 ) {
     val readPresentation = chapterReadPresentation(chapter)
     val readProgress = readPresentation.pageNumber?.let {
@@ -834,133 +851,207 @@ internal fun ChapterRow(
         readProgress,
         chapter.scanlator?.takeIf { it.isNotBlank() },
     ).joinToString(" · ")
-    ListItem(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (isSelected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier,
-            )
-            .semantics {
-                if (!isSelectionMode) {
-                    val label = if (chapter.bookmark) {
-                        MR.strings.action_remove_bookmark.localized()
-                    } else {
-                        MR.strings.action_bookmark.localized()
+    var contextExpanded by remember(chapter.id) { mutableStateOf(false) }
+    val rowFocus = remember(chapter.id) { FocusRequester() }
+    val closeContext = {
+        contextExpanded = false
+        try {
+            rowFocus.requestFocus()
+        } catch (_: IllegalStateException) {
+            false
+        }
+        Unit
+    }
+    Box(Modifier.fillMaxWidth()) {
+        val selectedColor = MaterialTheme.colorScheme.secondary.copy(
+            alpha = if (mihon.desktop.ui.theme.LocalDesktopDarkTheme.current) .16f else .22f,
+        ).compositeOver(MaterialTheme.colorScheme.surface)
+        ListItem(
+            colors = ListItemDefaults.colors(
+                containerColor = if (isSelected) selectedColor else MaterialTheme.colorScheme.surface,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(rowFocus)
+                .onPointerEvent(PointerEventType.Press) {
+                    if (!isSelectionMode && onToggleRead != null && it.button == PointerButton.Secondary) {
+                        contextExpanded = true
+                        it.changes.forEach { change -> change.consume() }
                     }
-                    customActions = listOf(
-                        CustomAccessibilityAction(label) {
-                            onToggleBookmark()
-                            true
+                }
+                .onPreviewKeyEvent {
+                    if (!isSelectionMode && onToggleRead != null && it.key == Key.F10 && it.isShiftPressed &&
+                        it.type == KeyEventType.KeyDown
+                    ) {
+                        contextExpanded = true
+                        true
+                    } else {
+                        false
+                    }
+                }
+                .semantics {
+                    if (!isSelectionMode) {
+                        val label = if (chapter.bookmark) {
+                            MR.strings.action_remove_bookmark.localized()
+                        } else {
+                            MR.strings.action_bookmark.localized()
+                        }
+                        customActions = listOf(
+                            CustomAccessibilityAction(label) {
+                                onToggleBookmark()
+                                true
+                            },
+                        )
+                    }
+                }
+                .semantics { selected = isSelected }
+                .shiftAwareCombinedClickable(
+                    onClick = { modifiers ->
+                        if (onPrimaryClick != null) {
+                            onPrimaryClick(modifiers)
+                        } else {
+                            when (chapterItemClickAction(isSelected, isSelectionMode)) {
+                                ChapterItemClickAction.READ -> onRead()
+                                ChapterItemClickAction.SELECT,
+                                ChapterItemClickAction.DESELECT,
+                                -> onSelect()
+                            }
+                        }
+                    },
+                    onLongClick = onSelect,
+                ),
+            leadingContent = null,
+            headlineContent = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (!chapter.read) {
+                        Icon(
+                            Icons.Default.Circle,
+                            MR.strings.unread.localized(),
+                            Modifier.height(8.dp).padding(end = 4.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    Text(
+                        text = title,
+                        color = if (chapter.read) {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = .38f)
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
                         },
                     )
                 }
-            }
-            .combinedClickable(
-                onClick = {
-                    when (chapterItemClickAction(isSelected, isSelectionMode)) {
-                        ChapterItemClickAction.READ -> onRead()
-                        ChapterItemClickAction.SELECT,
-                        ChapterItemClickAction.DESELECT,
-                        -> onSelect()
+            },
+            trailingContent = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Bookmark toggle
+                    if (chapter.bookmark) {
+                        IconButton(enabled = !isSelectionMode, onClick = onToggleBookmark) {
+                            Icon(
+                                Icons.Default.Bookmark,
+                                contentDescription = if (chapter.bookmark) {
+                                    MR.strings.action_remove_bookmark.localized()
+                                } else {
+                                    MR.strings.action_bookmark.localized()
+                                },
+                                tint = if (chapter.bookmark) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        }
                     }
-                },
-                onLongClick = onSelect,
-            ),
-        leadingContent = if (isSelectionMode) {
-            {
-                Checkbox(
-                    checked = isSelected,
-                    onCheckedChange = { onSelect() },
-                )
-            }
-        } else {
-            null
-        },
-        headlineContent = {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (!chapter.read) {
-                    Icon(
-                        Icons.Default.Circle,
-                        MR.strings.unread.localized(),
-                        Modifier.height(8.dp).padding(end = 4.dp),
-                        tint = MaterialTheme.colorScheme.primary,
+
+                    when (downloadStatus) {
+                        ChapterDownloadStatus.DOWNLOADED ->
+                            IconButton(enabled = downloadEnabled && !isSelectionMode, onClick = onDeleteDownload) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = MR.strings.desktop_ui_delete_download.localized(),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        ChapterDownloadStatus.QUEUED, ChapterDownloadStatus.DOWNLOADING ->
+                            ChapterDownloadingIndicator(
+                                downloadProgress = downloadProgress,
+                                onCancel = onCancelDownload,
+                                enabled = downloadEnabled && !isSelectionMode,
+                            )
+                        ChapterDownloadStatus.ERROR ->
+                            IconButton(enabled = downloadEnabled && !isSelectionMode, onClick = onRetryDownload) {
+                                Icon(
+                                    Icons.Outlined.ErrorOutline,
+                                    contentDescription = MR.strings.desktop_ui_download_retry_error.localized(),
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        ChapterDownloadStatus.NOT_DOWNLOADED ->
+                            IconButton(enabled = downloadEnabled && !isSelectionMode, onClick = onDownload) {
+                                Icon(
+                                    ChapterDownloadIcon,
+                                    contentDescription = MR.strings.action_download.localized(),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .78f),
+                                )
+                            }
+                    }
+                }
+            },
+            supportingContent = supportingText.takeIf { it.isNotEmpty() }?.let { text ->
+                {
+                    Text(
+                        text,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (chapter.read) .38f else .78f),
                     )
                 }
+            },
+        )
+        DropdownMenu(expanded = contextExpanded && !isSelectionMode, onDismissRequest = closeContext) {
+            DropdownMenuItem(text = {
                 Text(
-                    text = title,
-                    color = if (chapter.read) {
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = .38f)
+                    if (chapter.read) {
+                        MR.strings.action_mark_as_unread.localized()
                     } else {
-                        MaterialTheme.colorScheme.onSurface
+                        MR.strings.action_mark_as_read.localized()
                     },
                 )
-            }
-        },
-        trailingContent = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Bookmark toggle
-                if (chapter.bookmark) {
-                    IconButton(onClick = onToggleBookmark) {
-                        Icon(
-                            Icons.Default.Bookmark,
-                            contentDescription = if (chapter.bookmark) {
-                                MR.strings.action_remove_bookmark.localized()
-                            } else {
-                                MR.strings.action_bookmark.localized()
-                            },
-                            tint = if (chapter.bookmark) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
-                    }
-                }
-
-                when (downloadStatus) {
-                    ChapterDownloadStatus.DOWNLOADED ->
-                        IconButton(enabled = downloadEnabled, onClick = onDeleteDownload) {
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                contentDescription = MR.strings.desktop_ui_delete_download.localized(),
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    ChapterDownloadStatus.QUEUED, ChapterDownloadStatus.DOWNLOADING ->
-                        ChapterDownloadingIndicator(
-                            downloadProgress = downloadProgress,
-                            onCancel = onCancelDownload,
-                            enabled = downloadEnabled,
-                        )
-                    ChapterDownloadStatus.ERROR ->
-                        IconButton(enabled = downloadEnabled, onClick = onRetryDownload) {
-                            Icon(
-                                Icons.Outlined.ErrorOutline,
-                                contentDescription = MR.strings.desktop_ui_download_retry_error.localized(),
-                                tint = MaterialTheme.colorScheme.error,
-                            )
-                        }
-                    ChapterDownloadStatus.NOT_DOWNLOADED ->
-                        IconButton(enabled = downloadEnabled, onClick = onDownload) {
-                            Icon(
-                                ChapterDownloadIcon,
-                                contentDescription = MR.strings.action_download.localized(),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .78f),
-                            )
-                        }
-                }
-            }
-        },
-        supportingContent = supportingText.takeIf { it.isNotEmpty() }?.let { text ->
-            {
+            }, onClick = {
+                closeContext()
+                onToggleRead?.invoke()
+            })
+            DropdownMenuItem(text = {
                 Text(
-                    text,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (chapter.read) .38f else .78f),
+                    if (chapter.bookmark) {
+                        MR.strings.action_remove_bookmark.localized()
+                    } else {
+                        MR.strings.action_bookmark.localized()
+                    },
                 )
+            }, onClick = {
+                closeContext()
+                onToggleBookmark()
+            })
+            if (downloadEnabled) {
+                val contextDownloadLabel = when (downloadStatus) {
+                    ChapterDownloadStatus.DOWNLOADED -> MR.strings.action_delete
+                    ChapterDownloadStatus.QUEUED, ChapterDownloadStatus.DOWNLOADING -> MR.strings.action_cancel
+                    else -> MR.strings.action_download
+                }
+                DropdownMenuItem(text = { Text(contextDownloadLabel.localized()) }, onClick = {
+                    closeContext()
+                    when (downloadStatus) {
+                        ChapterDownloadStatus.DOWNLOADED -> onDeleteDownload()
+                        ChapterDownloadStatus.QUEUED, ChapterDownloadStatus.DOWNLOADING -> onCancelDownload()
+                        ChapterDownloadStatus.ERROR -> onRetryDownload()
+                        ChapterDownloadStatus.NOT_DOWNLOADED -> onDownload()
+                    }
+                })
             }
-        },
-    )
+        }
+    }
     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 }
 
@@ -1099,6 +1190,7 @@ internal fun ChapterDownloadingIndicator(
  * Batch action bar that appears at the bottom when chapters are selected.
  * Mirrors the SelectionActionBar pattern from LibraryTab.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ChapterSelectionBar(
     selectedCount: Int,
@@ -1109,64 +1201,99 @@ internal fun ChapterSelectionBar(
     onMarkBelowRead: () -> Unit,
     onDownloadOrDelete: () -> Unit,
     onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    selectedChapters: List<Chapter> = emptyList(),
+    showDownload: Boolean = downloadAction == ChapterSelectionDownloadAction.DOWNLOAD,
+    showDelete: Boolean = downloadAction == ChapterSelectionDownloadAction.DELETE_DOWNLOAD,
+    onDelete: () -> Unit = onDownloadOrDelete,
+    deleteFocus: FocusRequester? = null,
 ) {
-    val actionTypes = chapterSelectionActionTypes(downloadAction)
-    BottomAppBar(
-        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-    ) {
-        IconButton(onClick = onClose) {
-            Icon(Icons.Default.Close, contentDescription = MR.strings.desktop_ui_clear_selection.localized())
-        }
-        Text(
-            text = MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), selectedCount),
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.weight(1f),
+    val baseActions = chapterSelectionActionTypes(ChapterSelectionDownloadAction.DOWNLOAD)
+        .filterNot { it == ChapterSelectionActionType.DOWNLOAD }
+    val actionTypes = (
+        baseActions + listOfNotNull(
+            ChapterSelectionActionType.DOWNLOAD.takeIf { showDownload },
+            ChapterSelectionActionType.DELETE_DOWNLOAD.takeIf { showDelete },
         )
-        actionTypes.forEach { action ->
-            when (action) {
-                ChapterSelectionActionType.BOOKMARK ->
-                    IconButton(onClick = onBookmark) {
-                        Icon(
-                            Icons.Default.Bookmark,
-                            contentDescription = MR.strings.desktop_ui_bookmark_selected.localized(),
+        ).filter { action ->
+        when (action) {
+            ChapterSelectionActionType.MARK_READ -> selectedChapters.any { !it.read }
+            ChapterSelectionActionType.MARK_UNREAD -> selectedChapters.any { it.read || it.lastPageRead > 0 }
+            ChapterSelectionActionType.MARK_BELOW_READ -> selectedChapters.size == 1
+            else -> true
+        }
+    }
+    val addingBookmark = selectedChapters.any { !it.bookmark }
+    Surface(
+        modifier = modifier.testTag("chapter-selection-bottom-bar"),
+        shape = MaterialTheme.shapes.large.copy(
+            bottomStart = androidx.compose.foundation.shape.CornerSize(0.dp),
+            bottomEnd = androidx.compose.foundation.shape.CornerSize(0.dp),
+        ),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        BoxWithConstraints(Modifier.padding(horizontal = 8.dp, vertical = 12.dp)) {
+            val columns = (maxWidth / 48.dp).toInt().coerceAtLeast(1).coerceAtMost(actionTypes.size)
+            val actionWidth = maxWidth / columns
+            val scope = rememberCoroutineScope()
+            FlowRow(maxItemsInEachRow = columns) {
+                actionTypes.forEach { action ->
+                    val (icon, label, callback) = when (action) {
+                        ChapterSelectionActionType.BOOKMARK -> Triple(
+                            if (addingBookmark) Icons.Outlined.BookmarkAdd else Icons.Outlined.BookmarkRemove,
+                            if (addingBookmark) MR.strings.action_bookmark else MR.strings.action_remove_bookmark,
+                            onBookmark,
+                        )
+                        ChapterSelectionActionType.MARK_READ -> Triple(
+                            Icons.Outlined.DoneAll,
+                            MR.strings.action_mark_as_read,
+                            onMarkRead,
+                        )
+                        ChapterSelectionActionType.MARK_UNREAD -> Triple(
+                            Icons.Outlined.RemoveDone,
+                            MR.strings.action_mark_as_unread,
+                            onMarkUnread,
+                        )
+                        ChapterSelectionActionType.MARK_BELOW_READ -> Triple(
+                            ChapterDonePreviousIcon,
+                            MR.strings.action_mark_previous_as_read,
+                            onMarkBelowRead,
+                        )
+                        ChapterSelectionActionType.DOWNLOAD -> Triple(
+                            Icons.Outlined.Download,
+                            MR.strings.action_download,
+                            onDownloadOrDelete,
+                        )
+                        ChapterSelectionActionType.DELETE_DOWNLOAD -> Triple(
+                            Icons.Outlined.Delete,
+                            MR.strings.action_delete,
+                            onDelete,
                         )
                     }
-                ChapterSelectionActionType.MARK_READ ->
-                    IconButton(onClick = onMarkRead) {
-                        Icon(
-                            Icons.Default.DoneAll,
-                            contentDescription = MR.strings.desktop_ui_mark_selected_as_read.localized(),
-                        )
+                    val tooltipState = rememberTooltipState()
+                    TooltipBox(
+                        modifier = Modifier.width(actionWidth),
+                        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                        tooltip = { PlainTooltip { Text(label.localized()) } },
+                        state = tooltipState,
+                    ) {
+                        val focusModifier = if (action == ChapterSelectionActionType.DELETE_DOWNLOAD &&
+                            deleteFocus != null
+                        ) {
+                            Modifier.focusRequester(deleteFocus)
+                        } else {
+                            Modifier
+                        }
+                        Box(
+                            modifier = focusModifier.fillMaxWidth().height(48.dp).combinedClickable(
+                                role = Role.Button,
+                                onClick = callback,
+                                onLongClick = { scope.launch { tooltipState.show() } },
+                            ),
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(icon, label.localized()) }
                     }
-                ChapterSelectionActionType.MARK_UNREAD ->
-                    IconButton(onClick = onMarkUnread) {
-                        Icon(
-                            Icons.Default.RadioButtonUnchecked,
-                            contentDescription = MR.strings.desktop_ui_mark_selected_as_unread.localized(),
-                        )
-                    }
-                ChapterSelectionActionType.MARK_BELOW_READ ->
-                    IconButton(onClick = onMarkBelowRead) {
-                        Icon(
-                            Icons.Default.ArrowDownward,
-                            contentDescription = MR.strings.desktop_ui_mark_below_as_read.localized(),
-                        )
-                    }
-                ChapterSelectionActionType.DOWNLOAD ->
-                    IconButton(onClick = onDownloadOrDelete) {
-                        Icon(
-                            Icons.Default.CloudDownload,
-                            contentDescription = MR.strings.desktop_ui_download_selected.localized(),
-                        )
-                    }
-                ChapterSelectionActionType.DELETE_DOWNLOAD ->
-                    IconButton(onClick = onDownloadOrDelete) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = MR.strings.delete_downloaded.localized(),
-                            tint = MaterialTheme.colorScheme.error,
-                        )
-                    }
+                }
             }
         }
     }

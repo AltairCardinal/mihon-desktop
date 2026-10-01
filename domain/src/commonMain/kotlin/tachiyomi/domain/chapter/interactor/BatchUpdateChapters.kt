@@ -1,5 +1,6 @@
 package tachiyomi.domain.chapter.interactor
 
+import kotlinx.coroutines.CancellationException
 import tachiyomi.domain.chapter.model.Chapter
 
 class BatchUpdateChapters {
@@ -11,6 +12,8 @@ class BatchUpdateChapters {
             try {
                 action(chapter)
                 succeeded += chapter.id
+            } catch (canceled: CancellationException) {
+                throw canceled
             } catch (e: Exception) {
                 failed += BatchChapterFailure(chapter.id, e.message ?: e::class.simpleName ?: "Unknown error")
             }
@@ -19,7 +22,11 @@ class BatchUpdateChapters {
     }
 }
 
-data class BatchChapterResult(val succeededIds: List<Long>, val failures: List<BatchChapterFailure>) {
+data class BatchChapterResult(
+    val succeededIds: List<Long>,
+    val failures: List<BatchChapterFailure>,
+    val skippedIds: List<Long> = emptyList(),
+) {
     companion object {
         val Empty = BatchChapterResult(emptyList(), emptyList())
     }

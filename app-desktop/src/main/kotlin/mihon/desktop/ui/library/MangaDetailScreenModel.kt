@@ -36,6 +36,7 @@ import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
+import tachiyomi.domain.chapter.service.filterAndSortChapters
 import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
 import tachiyomi.domain.creator.interactor.LinkMangaCreator
 import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
@@ -95,6 +96,7 @@ class MangaDetailScreenModel(
     private val getDuplicateLibraryManga: tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga? = null,
     private val hasCustomCover: ((Long) -> Boolean)? = null,
     private val deleteRemovedDownloads: (suspend (Manga, List<Chapter>) -> Unit)? = null,
+    private val deleteSelectedDownloads: (suspend (Manga, List<Chapter>) -> BatchChapterResult)? = null,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(MangaDetailState())
@@ -126,6 +128,15 @@ class MangaDetailScreenModel(
 
     fun downloadQueueFlow(): StateFlow<List<DownloadItem>> {
         return requireNotNull(downloadQueue) { "Download queue is required" }
+    }
+
+    fun visibleChapters(): List<Chapter> {
+        val current = state.value.manga ?: return emptyList()
+        return state.value.chapters.filterAndSortChapters(
+            current,
+            libraryPreferences?.downloadedOnly()?.get() == true,
+            current.source == 0L,
+        ) { isChapterDownloaded(current, it) }
     }
 
     fun downloadedOnlyFlow(): Flow<Boolean> = libraryPreferences?.downloadedOnly()?.changes() ?: flowOf(false)
@@ -418,22 +429,44 @@ class MangaDetailScreenModel(
 
     suspend fun runChapterBatch(
         chapters: List<Chapter>,
+        skippedIds: List<Long> = emptyList(),
         action: suspend (Chapter) -> Unit,
-    ): BatchChapterResult = batchUpdateChapters.await(chapters, action).also { result ->
+    ): BatchChapterResult = publishChapterBatchResult(
+        batchUpdateChapters.await(chapters.distinctBy { it.id }, action).copy(skippedIds = skippedIds.distinct()),
+    )
+
+    private fun publishChapterBatchResult(result: BatchChapterResult): BatchChapterResult {
         _state.update {
-            it.copy(batchActionMessage = "${result.succeededIds.size} succeeded, ${result.failures.size} failed")
+            it.copy(
+                batchActionMessage = MR.strings.desktop_chapter_batch_result.localized(
+                    java.util.Locale.getDefault(),
+                    result.succeededIds.size,
+                    result.skippedIds.size,
+                    result.failures.size,
+                ),
+            )
         }
+        return result
+    }
+
+    fun consumeChapterBatchFeedback() {
+        _state.update { it.copy(batchActionMessage = null) }
     }
 
     suspend fun markSelectedBookmark(chapters: List<Chapter>): BatchChapterResult {
         val shouldBookmark = chapters.any { !it.bookmark }
+        val applicable = chapters.filter { it.bookmark != shouldBookmark }
         val updater = requireNotNull(updateChapter) { "UpdateChapter is required" }
-        return runChapterBatch(chapters) { updater.awaitOrThrow(ChapterUpdate(id = it.id, bookmark = shouldBookmark)) }
+        return runChapterBatch(applicable, skippedIds = (chapters - applicable.toSet()).map { it.id }) {
+            updater.awaitOrThrow(ChapterUpdate(id = it.id, bookmark = shouldBookmark))
+        }
     }
 
-    suspend fun markAtOrBelowRead(displayedChapters: List<Chapter>, selectedIds: Set<Long>) {
-        requireNotNull(setChapterReadStatus) { "SetChapterReadStatus is required" }
-            .awaitOrThrow(chaptersAtOrBelowSelection(displayedChapters, selectedIds), read = true)
+    suspend fun markAtOrBelowRead(displayedChapters: List<Chapter>, selectedIds: Set<Long>): BatchChapterResult {
+        val manga = state.value.manga ?: return BatchChapterResult.Empty
+        val pointer = selectedIds.singleOrNull() ?: return BatchChapterResult.Empty
+        val previous = tachiyomi.domain.chapter.service.chaptersBeforePointer(displayedChapters, manga, pointer)
+        return markSelectedRead(previous, read = true)
     }
 
     suspend fun toggleChapterBookmark(chapter: Chapter) {
@@ -605,12 +638,22 @@ class MangaDetailScreenModel(
             }
     }
 
+    internal fun downloadableChapters(manga: Manga, chapters: List<Chapter>): List<Chapter> {
+        if (manga.source == 0L) return emptyList()
+        val queued = downloadQueue?.value.orEmpty().filter {
+            it.status != mihon.desktop.download.DownloadStatus.DONE &&
+                it.status != mihon.desktop.download.DownloadStatus.CANCELLED
+        }.mapTo(mutableSetOf()) { it.chapterId }
+        return chapters.filter {
+            it.url.externalChapterUrlOrNull() == null && it.id !in queued &&
+                !isChapterDownloaded(manga, it)
+        }
+    }
+
     suspend fun enqueueDownloadBatch(manga: Manga, chapters: List<Chapter>): BatchChapterResult {
         val enqueue = requireNotNull(enqueueDownload) { "Download enqueue callback is required" }
-        val eligible = chapters
-            .filterNot { it.url.externalChapterUrlOrNull() != null }
-            .filterNot { chapter -> isChapterDownloaded(manga, chapter) }
-        return runChapterBatch(eligible) { chapter ->
+        val eligible = downloadableChapters(manga, chapters)
+        return runChapterBatch(eligible, skippedIds = (chapters - eligible.toSet()).map { it.id }) { chapter ->
             enqueue(
                 DownloadItem(
                     sourceId = manga.source,
@@ -628,8 +671,15 @@ class MangaDetailScreenModel(
     }
 
     suspend fun deleteDownloadBatch(manga: Manga, chapters: List<Chapter>): BatchChapterResult {
-        val delete = requireNotNull(deleteDownload) { "Delete download callback is required" }
-        return runChapterBatch(chapters) { chapter -> delete(manga, chapter) }
+        val eligible = chapters.filter { isChapterDownloaded(manga, it) }
+        val skipped = (chapters - eligible.toSet()).map { it.id }
+        val result = if (deleteSelectedDownloads != null) {
+            deleteSelectedDownloads.invoke(manga, eligible)
+        } else {
+            val delete = requireNotNull(deleteDownload) { "Delete download callback is required" }
+            batchUpdateChapters.await(eligible) { chapter -> delete(manga, chapter) }
+        }
+        return publishChapterBatchResult(result.copy(skippedIds = skipped))
     }
 
     fun cancelChapterDownload(chapterId: Long) {

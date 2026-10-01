@@ -42,12 +42,3 @@ internal fun chapterSelectionDownloadAction(
         ChapterSelectionDownloadAction.DOWNLOAD
     }
 }
-
-internal fun chaptersAtOrBelowSelection(
-    displayedChapters: List<Chapter>,
-    selectedIds: Set<Long>,
-): List<Chapter> {
-    val firstSelectedIndex = displayedChapters.indexOfFirst { it.id in selectedIds }
-    if (firstSelectedIndex < 0) return emptyList()
-    return displayedChapters.drop(firstSelectedIndex)
-}

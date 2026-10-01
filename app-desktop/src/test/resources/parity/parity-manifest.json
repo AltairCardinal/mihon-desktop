@@ -11415,17 +11415,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
           "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY",
-          "line": 828
+          "line": 964
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun toggleLibrary",
-          "line": 449
+          "line": 482
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
           "symbol": "MangaCategoryDialogMode.ADD_TO_LIBRARY -> model.toggleLibrary",
-          "line": 562
+          "line": 577
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
@@ -20427,7 +20427,9 @@
       "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChapters.kt",
       "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterViewFilters.kt",
       "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/interactor/SetMangaDefaultChapterFlags.kt",
-      "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/SetMangaChapterFlags.kt"
+      "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/SetMangaChapterFlags.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterPreviousSelection.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/library/LibrarySelectionPolicy.kt"
     ],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
@@ -20443,7 +20445,12 @@
       "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/library/DesktopMangaNotesScreen.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailViewportState.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/ChapterSelectionState.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/ChapterSelectionActions.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/ChapterBatchDeleteDialog.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/ChapterDonePreviousIcon.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -20458,12 +20465,17 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun bookmarkChapters",
-          "line": 824
+          "line": 823
         },
         {
           "path": "app/src/main/java/eu/kanade/domain/chapter/model/ChapterFilter.kt",
           "symbol": "fun List<Chapter>.applyFilters(",
           "line": 16
+        },
+        {
+          "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
+          "symbol": "fun markPreviousChapterRead(",
+          "line": 735
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -20471,7 +20483,7 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChapters.kt",
           "symbol": "class BatchUpdateChapters",
-          "line": 5
+          "line": 6
         },
         {
           "kind": "SHARED",
@@ -20490,13 +20502,19 @@
           "path": "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/SetMangaChapterFlags.kt",
           "symbol": "class SetMangaChapterFlags(",
           "line": 7
+        },
+        {
+          "kind": "SHARED",
+          "path": "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterPreviousSelection.kt",
+          "symbol": "fun chaptersBeforePointer(",
+          "line": 7
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun markSelectedBookmark",
-          "line": 428
+          "line": 456
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaChapterOptionsPanel.kt",
@@ -20511,7 +20529,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
           "symbol": "internal fun MangaHeader(",
-          "line": 147
+          "line": 162
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/DesktopMangaNotesScreen.kt",
@@ -20526,7 +20544,27 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
           "symbol": "private fun MangaUpdateSchedule(",
-          "line": 766
+          "line": 781
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/ChapterSelectionState.kt",
+          "symbol": "class ChapterSelectionState(",
+          "line": 15
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
+          "symbol": "internal fun ChapterSelectionBar(",
+          "line": 1195
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/ChapterBatchDeleteDialog.kt",
+          "symbol": "internal fun ChapterBatchDeleteDialog(",
+          "line": 39
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt",
+          "symbol": "deleteSelectedDownloads = if",
+          "line": 87
         }
       ],
       "FIXTURE": [
@@ -20611,6 +20649,38 @@
             "repository.update",
             "nextUpdate"
           ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt#chapter selection real ctrl shift and stale pointer stay in the same detail owner",
+          "productionMarkers": [
+            "withDetail(root",
+            "chapterMouse(",
+            "scene.navigator.lastItem"
+          ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt#chapter result explicit read preserves shared User intent for matching local state",
+          "productionMarkers": [
+            "withDetail(root",
+            "actual.updateAll(updates)",
+            "SyncMutationContext.User"
+          ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt#chapter result deletion confirms frozen actual files cancels and preserves partial failures for retry",
+          "productionMarkers": [
+            "withDetail(root",
+            "denyFileChanges(first)",
+            "late.exists()"
+          ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt#chapter final deletion modal traps keys and background returns trigger before selection Escape",
+          "productionMarkers": [
+            "withDetail(root",
+            "key(scene, Key.Tab",
+            "selectedChapterNames(scene)"
+          ]
         }
       ]
     },
@@ -20623,14 +20693,21 @@
       "app/src/test/java/eu/kanade/domain/chapter/model/ChapterPreferencesContractTest.kt",
       "domain/src/jvmTest/kotlin/tachiyomi/domain/chapter/service/ChapterViewFiltersTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailChapterRowsTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt",
+      "domain/src/jvmTest/kotlin/tachiyomi/domain/chapter/service/ChapterPreviousSelectionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterSelectionStateTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterSelectionActionsTest.kt"
     ],
     "behaviorMethods": {
       "domain/src/commonTest/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChaptersTest.kt": [
-        "continues after failure and reports each item"
+        "continues after failure and reports each item",
+        "batch cancellation propagates and never processes the next chapter"
       ],
       "app/src/test/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModelSharedMutationWiringTest.kt": [
-        "Android bookmark batch continues after write failure and shows localized result"
+        "Android bookmark batch continues after write failure and shows localized result",
+        "Android previous actual wrapper preserves stable duplicate prefix in both directions",
+        "Android previous first valid pointer clears selection with no writes stale pointer does not",
+        "Android bookmark actual wrapper propagates cancellation without writes or snackbar"
       ],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": [
         "selected read action exposes partial failure in state",
@@ -20645,11 +20722,33 @@
         "notes native modal keeps five formats save cancel and bidirectional focus reachable at 320 font200",
         "deleted viewport anchor falls to a chapter entity with its bounded offset rather than missing row",
         "actual persisted prediction is distinct from default custom and automatic check intervals",
-        "narrow large font primary actions have real in-window bounds and sequential keyboard reachability"
+        "narrow large font primary actions have real in-window bounds and sequential keyboard reachability",
+        "chapter result explicit read preserves shared User intent for matching local state",
+        "chapter result bookmark processes only applicable objects and shows success skip failure",
+        "chapter result deletion confirms frozen actual files cancels and preserves partial failures for retry",
+        "chapter result mixed download queue uses eligible snapshot without duplicate or local writes",
+        "chapter native context actual right click marks and bookmarks without entering Reader",
+        "chapter native selection Escape exits one layer restores focus and all inverse stay visible",
+        "chapter native selected row uses SOURCE effective theme alpha and transient long press label",
+        "chapter native long press shows transient SOURCE name without executing action",
+        "chapter final deletion modal traps keys and background returns trigger before selection Escape",
+        "chapter final native 320 font200 SOURCE controls remain reachable in light and dark",
+        "chapter final ALWAYS 320 preserves whole page half width and every 48dp action target",
+        "chapter batch previous follows four shared sorts stable ties and excludes current",
+        "chapter batch native partial bookmark keeps failed selection for retry",
+        "chapter batch late successful write does not clear a later native selection",
+        "chapter batch SOURCE available actions follow actual selected object conditions",
+        "chapter selection real ctrl shift and stale pointer stay in the same detail owner",
+        "chapter selection real long press appends interval without a trailing reader click",
+        "chapter selection SOURCE bars hide ordinary controls checkbox and occupy right half of full page"
+      ],
+      "domain/src/jvmTest/kotlin/tachiyomi/domain/chapter/service/ChapterPreviousSelectionTest.kt": [
+        "previous uses stable identity for equal comparisons independent of display direction",
+        "previous reuses each actual shared comparator with literal eligible prefixes"
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
-    "verificationScope": "VERIFIED: fixed-main bookmark action, shared per-item continuation, current Android production mutation plus localized ScreenModel SnackbarHostState feedback, and Desktop bookmark consumption are executable. RI07 (2026-10-01) adds real chapter settings modal events, shared tri-state filtering and locale sorting, authoritative single-manga flags, explicit six-default confirmation/reset/favorite batch, new-source INSERT-only default consumption, scanlator drafts, normalized missing counts and mounted file/queue/global-filter projection. Independent review and focused evidence are in docs/evidence/desktop-interaction-iteration-2026-09-30.md: 169 unique tests pass after five legacy row fixture repairs. Detail header/layout, full selection actions, download execution, update and migration closure remain assigned to RI08-RI15; no final release or hardware acceptance is implied. RI08 (2026-10-01) closes the 450dp/content-65% and narrow 100dp/16dp detail layout, independent native chapter scrollbar with entity/offset restoration, real metadata identity/search/copy and missing-source recovery, SOURCE ordinary chapter markers, SDK Markdown notes drafts and five formats, and persisted prediction/check-interval display. Native 320dp/fontScale2 modal and action keyboard reachability are executable. The same reviewed 159-test evidence applies; selection actions, queue/file execution and new prediction consumption remain RI09-RI14. Formal release, physical input and hardware gates remain RI18.",
+    "verificationScope": "VERIFIED: fixed-main bookmark action, shared per-item continuation, current Android production mutation plus localized ScreenModel SnackbarHostState feedback, and Desktop bookmark consumption are executable. RI07 (2026-10-01) adds real chapter settings modal events, shared tri-state filtering and locale sorting, authoritative single-manga flags, explicit six-default confirmation/reset/favorite batch, new-source INSERT-only default consumption, scanlator drafts, normalized missing counts and mounted file/queue/global-filter projection. Independent review and focused evidence are in docs/evidence/desktop-interaction-iteration-2026-09-30.md: 169 unique tests pass after five legacy row fixture repairs. Detail header/layout, full selection actions, download execution, update and migration closure remain assigned to RI08-RI15; no final release or hardware acceptance is implied. RI08 (2026-10-01) closes the 450dp/content-65% and narrow 100dp/16dp detail layout, independent native chapter scrollbar with entity/offset restoration, real metadata identity/search/copy and missing-source recovery, SOURCE ordinary chapter markers, SDK Markdown notes drafts and five formats, and persisted prediction/check-interval display. Native 320dp/fontScale2 modal and action keyboard reachability are executable. The same reviewed 159-test evidence applies; At that checkpoint selection was pending; queue/file execution and new prediction consumption remain assigned through RI14. Formal release, physical input and hardware gates remain RI18. RI09 (2026-10-01) closes real owner-bound Ctrl/Shift/long-press range selection, native SOURCE top/bottom actions, strict effective-theme selected pixels, distinct explicit read User intent, cancellation propagation, shared stable previous-only ordering in both production platforms, frozen deletion snapshots and partial result retention/retry. Independent review reuses 62 valid affected passes and three targeted repaired passes: 65 unique tests, zero skipped; scoped formatting and two 320dp/fontScale2 native captures are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md. Full queue/file execution remains RI10; release/runtime and physical input remain RI18. Stable chapter-ID tie ordering applies only to previous selection and does not change ordinary list sorting or synchronization protocols.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
