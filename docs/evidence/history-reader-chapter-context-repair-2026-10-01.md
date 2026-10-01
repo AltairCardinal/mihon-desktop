@@ -138,4 +138,27 @@ HR01 文档 UTF-8、两份字符串 XML、本地文档链接、本报告引用�
 
 当前授权修复交接：UNCOMMITTED；9 个 Kotlin 明确格式目标、manifest 仅 6 个既有 line 字段、实际 XML 138 testcase、UTF-8/JSON/本地文档链接及 diff 检查已核对；协调器无 STARTING/RUNNING。作者原失败与首次 full 58 项原 trace 保留；主代理已完成获批的额外独立审查，完整复验与正式运行尚待执行。
 
-主代理已完成获批的额外独立审查：上述 History 回归修复及 138 项/9 文件格式证据有效，无剩余审查阻塞；原失败记录保留，完整复验与正式运行仍待执行。
+## 后续授权：作者切换一致状态与滚动恢复小修复
+
+用户随后明确批准作者页小范围 TDD 修复、额外独立复审 1 轮与 Desktop full 复验 1 次，无新代理。实施者只处理作者 focused 修复，原 History 11 文件/138 focused 证据保留；额外审查/full 由主代理在交接后执行，本段不把它们写成已通过。
+
+UI 来源与固定契约：读取 Desktop UI README、desktop-reference 和 page-contracts 的适用约束。**SOURCE** 为当前 c1e13c4728 的 AuthorsRootScreenModel、关注/全部 FilterChip、按范围独立的双 LazyListState、稳定 creator ID 卡片、分页/搜索及 Voyager 详情返回；**PROJECT_POLICY** 为切换与详情返回恢复各自非零位置、新范围不能挂旧范围卡片、搜索/过滤/重试保持既有语义。作者根页有唯一顶栏与内容列表，原返回/焦点/导航链路不新增入口；加载/错误仍用现有反馈。不新建 HTML_ADAPTER、页面或视觉规范，不改颜色/尺寸/封面 token。UI README 旧完整模块句继续按项目分层政策解释，实施者只跑限定 focused。
+
+新真实 SQLite/root StateFlow 测试观察到明确混合发布：先 `followedOnly=false + 上一关注范围 cards + loading=false`，后才清空 cards/进入 loading，再返回真实 All 数据。最小实现去掉 showTab 的提前独立 scope 更新，把 followedOnly 作为现有 requestPages 参数，与 query、cards 和 loading 在同一次状态更新中发布；generation、query、分页数量、旧结果取消、刷新保留旧卡片、错误/重试守卫保持。双 LazyListState 的保存、恢复与详情返回 wiring 未发现新的明确阻塞，没有修改 UI listState 或增加滚动重定位流程。
+
+因果边界：原 full 与独立 focused 的 Late Author 50 恢复失败均保留；本轮状态正确红时原 mounted 用例却通过，说明原滚动失败有时序差异。已证实并修复的是混合 scope/cards 发布，不能把它称为原所有 UI 失败的唯一原因。绿与重构后原 mounted 用例通过，Late Author 19/50、详情返回、分页尾部、搜索/清除、重入与浅/深主题的原断言均未削弱，未加 sleep 或修改等待上限；正式 full/runtime 仍待主代理。
+
+| key | 实际结果 | worker / process |
+|---|---|---|
+| authors-scroll-state-red | 3 项/1 失败；真实 SQLite 原子范围契约正确红，mounted 1/0；完整失败详情保留 authors-scroll-state-red-failures.json | 3512 / 58048 |
+| authors-scroll-green | 3 类实际 8 项/0 失败：root 2、原 mounted 1、既有 root/刷新失败重试/归档筛选 wiring 5 | 57008 / 39012 |
+| authors-scroll-format | 明确 FileCollection 实际 2 文件格式化通过，沿用已披露 Desktop max-line-length 例外 | 60764 / 60196 |
+| authors-scroll-refactor | 同 3 类实际 8 项/0 失败与 2 文件格式检查通过；新测试整理 imports 和就地 SQLite helper | 58784 / 59808 |
+
+作者新增写入仅 AuthorsScreenModels.kt、AuthorsScreenModelsTest.kt 与本唯一报告；原 AuthorCardProductionWiringTest/AuthorsProductionWiringTest 未改。格式包含常规 import/缩进整理；manifest roleEvidence 没有引用该 model 的行号（0 条），作者修复未进一步改 manifest。refactor 外层 run 曾过早返回 NOT_STARTED；随后 status 确认同一 worker/process 实际 RUNNING，仅 wait 同 key，未重复启动 Gradle，最终 PASSED。
+
+作者稳定交接：UNCOMMITTED；实际 XML 8 testcase、两文件格式、UTF-8/diff 检查完成，协调器无 STARTING/RUNNING。主代理接管协调权并按已批准预算完成整体独立审查、分开功能提交及一次 Desktop full 复验；实施者未运行额外 full、正式构建、审查或 checkoff。
+
+主代理追加独立审查（获批 1 轮）已通过：真实空迁移 metadata-only 与严格网络空目录校验分界、短事务/已有章与历史保留、7 夹具偏好生命周期和真实 worker、manifest JSON 仅 6 个 line 字段已独立核对；作者最终 production 全 diff、真实 SQLite StateFlow 红、未修改的 mounted 滚动/详情返回/搜索断言、generation/query/分页与双 LazyListState wiring 亦已核对。有效证据为 History 138 项/0 失败+9 文件格式，以及 Authors 8 项/0 失败+2 文件格式；没有剩余代码审查阻塞。原 58 项失败与作者时序差异保留，不将 focused 通过替代 full/runtime。实施回执已验证，协调权交回主代理，当前无运行 Gradle。
+
+History 必要回归修复提交为 `865579f2c6`；作者独立能力及本轮授权/审查证据在后续功能提交中一并保存。HR02 尚未执行获批的完整复验或正式平台构建，保持未勾选。

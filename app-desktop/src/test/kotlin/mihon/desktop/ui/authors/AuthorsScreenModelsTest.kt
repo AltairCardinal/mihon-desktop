@@ -1,7 +1,26 @@
 package mihon.desktop.ui.authors
 
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.data.Database
+import tachiyomi.data.DateColumnAdapter
+import tachiyomi.data.History
+import tachiyomi.data.JvmDatabaseHandler
+import tachiyomi.data.Mangas
+import tachiyomi.data.StringListColumnAdapter
+import tachiyomi.data.UpdateStrategyColumnAdapter
+import tachiyomi.data.creator.CreatorRepositoryImpl
+import tachiyomi.domain.creator.interactor.CreatorArchive
+import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
+import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.LanguageCertainty
 import tachiyomi.domain.creator.model.LanguageDimension
@@ -9,8 +28,52 @@ import tachiyomi.domain.creator.model.LanguageEvidenceKind
 import tachiyomi.domain.creator.model.LanguageProjectionContract
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.repository.CreatorLibraryMangaSource
+import tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter
+import tachiyomi.domain.creator.service.CreatorLibraryIndexer
+import tachiyomi.domain.manga.model.Manga
+import java.util.concurrent.CopyOnWriteArrayList
 
 class AuthorsScreenModelsTest {
+    @Test
+    fun `scope switch publishes cards and loading for the same scope atomically`() = runBlocking {
+        val handler = createDatabaseHandler()
+        val repository = CreatorRepositoryImpl(handler)
+        val followed = repository.upsertCreator("Followed author")
+        repository.followCreator(followed.id)
+        repository.upsertCreator("Unfollowed author")
+        val indexer = CreatorLibraryIndexer(
+            object : CreatorLibraryMangaSource {
+                override suspend fun countLibraryMangaForCreatorIndex(): Long = 0
+                override suspend fun getLibraryMangaForCreatorIndex(afterId: Long, limit: Long) = emptyList<Manga>()
+            },
+            NoopCreatorLibraryIndexWriter,
+            ExtractCreatorsFromManga(),
+        )
+        val model = AuthorsRootScreenModel(GetCreators(repository), CreatorArchive(repository, repository), indexer)
+        val emissions = CopyOnWriteArrayList<AuthorsRootState>()
+        val observer = launch(Dispatchers.Unconfined, start = CoroutineStart.UNDISPATCHED) {
+            model.state.collect { emissions += it }
+        }
+        try {
+            withTimeout(5_000) { model.state.first { !it.loading && it.cards.size == 1 } }
+            emissions.clear()
+            model.showAllAuthors()
+            withTimeout(5_000) { model.state.first { !it.loading && !it.followedOnly && it.cards.size == 2 } }
+            assertTrue(emissions.none { !it.followedOnly && it.cards.size == 1 }, "All must never expose the preceding followed cards: $emissions")
+            emissions.clear()
+            model.showFollowing()
+            withTimeout(5_000) { model.state.first { !it.loading && it.followedOnly && it.cards.size == 1 } }
+            assertTrue(emissions.none { it.followedOnly && it.cards.size == 2 }, "Following must never expose the preceding All cards: $emissions")
+        } finally {
+            observer.cancel()
+            observer.join()
+            model.onDispose()
+            indexer.stop()
+            handler.close()
+        }
+    }
+
     @Test
     fun `unknown chapter count is omitted while a complete zero count is retained`() {
         val unknown = version(ChapterCatalogCompleteness.UNKNOWN)
@@ -18,6 +81,19 @@ class AuthorsScreenModelsTest {
 
         assertEquals(null, chapterCountForWorkMatching(unknown))
         assertEquals(0, chapterCountForWorkMatching(complete))
+    }
+
+    private fun createDatabaseHandler(): JvmDatabaseHandler {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        Database.Schema.create(driver)
+        return JvmDatabaseHandler(
+            Database(
+                driver,
+                History.Adapter(DateColumnAdapter),
+                Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+            ),
+            driver,
+        )
     }
 
     private fun version(completeness: ChapterCatalogCompleteness) = SourceWorkArchiveVersion(
