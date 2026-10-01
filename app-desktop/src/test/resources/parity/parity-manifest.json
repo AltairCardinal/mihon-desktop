@@ -4216,7 +4216,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 1101
+          "line": 1122
         }
       ],
       "FIXTURE": [
@@ -9858,17 +9858,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "val available = tachiyomi.domain.library.selectManualDownloadChapters(",
-          "line": 1168
+          "line": 1170
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1257
+          "line": 1259
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/LibraryScreenModelFactory.kt",
           "symbol": "enqueueAccepted = downloadManager",
-          "line": 63
+          "line": 64
         }
       ],
       "FIXTURE": [
@@ -11448,12 +11448,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
           "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY",
-          "line": 1095
+          "line": 1144
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun toggleLibrary",
-          "line": 491
+          "line": 496
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
@@ -11463,7 +11463,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1257
+          "line": 1259
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailMembershipDialogs.kt",
@@ -11478,12 +11478,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt",
           "symbol": "getDuplicateLibraryManga = Injekt.get",
-          "line": 80
+          "line": 81
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt",
           "symbol": "captureMangaDownloadDeletion = if",
-          "line": 153
+          "line": 154
         }
       ],
       "FIXTURE": [
@@ -20492,7 +20492,8 @@
       "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadProvider.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopManualTracking.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -20507,7 +20508,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun bookmarkChapters",
-          "line": 826
+          "line": 830
         },
         {
           "path": "app/src/main/java/eu/kanade/domain/chapter/model/ChapterFilter.kt",
@@ -20567,7 +20568,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun markSelectedBookmark",
-          "line": 465
+          "line": 470
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaChapterOptionsPanel.kt",
@@ -20577,7 +20578,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "initialChapterFlags = { Injekt.get<SetMangaDefaultChapterFlags>().initialFlags() },",
-          "line": 730
+          "line": 741
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
@@ -20597,7 +20598,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
           "symbol": "private fun MangaUpdateSchedule(",
-          "line": 781
+          "line": 788
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/ChapterSelectionState.kt",
@@ -20607,7 +20608,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
           "symbol": "internal fun ChapterSelectionBar(",
-          "line": 1213
+          "line": 1220
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/ChapterBatchDeleteDialog.kt",
@@ -20617,12 +20618,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt",
           "symbol": "captureDownloadDeletion = if",
-          "line": 82
+          "line": 83
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt",
           "symbol": "enqueueAccepted = downloadManager",
-          "line": 59
+          "line": 60
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt",
@@ -20778,7 +20779,8 @@
       "domain/src/jvmTest/kotlin/tachiyomi/domain/chapter/service/ChapterPreviousSelectionTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterSelectionStateTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterSelectionActionsTest.kt",
-      "domain/src/jvmTest/kotlin/tachiyomi/domain/library/ManualDownloadSelectionTest.kt"
+      "domain/src/jvmTest/kotlin/tachiyomi/domain/library/ManualDownloadSelectionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/tracking/TrackingInteractionTest.kt"
     ],
     "behaviorMethods": {
       "domain/src/commonTest/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChaptersTest.kt": [
@@ -20790,7 +20792,9 @@
         "Android previous actual wrapper preserves stable duplicate prefix in both directions",
         "Android previous first valid pointer clears selection with no writes stale pointer does not",
         "Android bookmark actual wrapper propagates cancellation without writes or snackbar",
-        "Android manual download uses raw repository range and stable ascending candidates before limit"
+        "Android manual download uses raw repository range and stable ascending candidates before limit",
+        "Android actual manual read uses highest valid shared progress after local write",
+        "Android manual read local storage failure never starts remote refresh or progress"
       ],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": [
         "selected read action exposes partial failure in state",
@@ -20847,10 +20851,23 @@
       "domain/src/jvmTest/kotlin/tachiyomi/domain/library/ManualDownloadSelectionTest.kt": [
         "manual eligibility precedes each limit and bookmark commands retain read chapters",
         "manual stable original ties do not change with display direction"
+      ],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/tracking/TrackingInteractionTest.kt": [
+        "manual read success refreshes actual remote state and advances through existing sync workflow",
+        "manual Never avoids remote IO while Ask keeps local read and cancel never writes progress",
+        "Library actual factory manual read shares remote update rather than only local SQL",
+        "empty manual batch performs no remote IO after no local successes",
+        "manual progress feedback reports actual service cap rather than raw source number",
+        "Ask confirms persisted post refresh identity and ignores a later rematch",
+        "Ask accepted identity cannot target a rematch before shared sync reload",
+        "Ask provider completion cannot replace a rematched SQL library identity",
+        "manual multiple providers continue actual SQL refresh after the first provider fails",
+        "Ask never prompts after fresh service cap already reached",
+        "manual Ask native modal traps both Tab directions Escape preserves read and restores detail Back"
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
-    "verificationScope": "VERIFIED: fixed-main bookmark action, shared per-item continuation, current Android production mutation plus localized ScreenModel SnackbarHostState feedback, and Desktop bookmark consumption are executable. RI07 (2026-10-01) adds real chapter settings modal events, shared tri-state filtering and locale sorting, authoritative single-manga flags, explicit six-default confirmation/reset/favorite batch, new-source INSERT-only default consumption, scanlator drafts, normalized missing counts and mounted file/queue/global-filter projection. Independent review and focused evidence are in docs/evidence/desktop-interaction-iteration-2026-09-30.md: 169 unique tests pass after five legacy row fixture repairs. Detail header/layout, full selection actions, download execution, update and migration closure remain assigned to RI08-RI15; no final release or hardware acceptance is implied. RI08 (2026-10-01) closes the 450dp/content-65% and narrow 100dp/16dp detail layout, independent native chapter scrollbar with entity/offset restoration, real metadata identity/search/copy and missing-source recovery, SOURCE ordinary chapter markers, SDK Markdown notes drafts and five formats, and persisted prediction/check-interval display. Native 320dp/fontScale2 modal and action keyboard reachability are executable. The same reviewed 159-test evidence applies; At that checkpoint selection was pending; queue/file execution and new prediction consumption remain assigned through RI14. Formal release, physical input and hardware gates remain RI18. RI09 (2026-10-01) closes real owner-bound Ctrl/Shift/long-press range selection, native SOURCE top/bottom actions, strict effective-theme selected pixels, distinct explicit read User intent, cancellation propagation, shared stable previous-only ordering in both production platforms, frozen deletion snapshots and partial result retention/retry. Independent review reuses 62 valid affected passes and three targeted repaired passes: 65 unique tests, zero skipped; scoped formatting and two 320dp/fontScale2 native captures are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md. Full queue/file execution remains RI10; release/runtime and physical input remain RI18. Stable chapter-ID tie ordering applies only to previous selection and does not change ordinary list sorting or synchronization protocols. RI10 closes raw shared manual eligibility before limits, read bookmarks, real Reader skip-filter preference, truthful accepted/skipped/failed queue outcomes, QUEUED start-now, cancel/retry refusal, optional membership, local/missing/external qualification, finite original single/selected deletion and browser-result feedback. Actual focused/affected results, independent review and limitations are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; this does not claim final full tests or release/runtime/hardware acceptance.",
+    "verificationScope": "VERIFIED: fixed-main bookmark action, shared per-item continuation, current Android production mutation plus localized ScreenModel SnackbarHostState feedback, and Desktop bookmark consumption are executable. RI07 (2026-10-01) adds real chapter settings modal events, shared tri-state filtering and locale sorting, authoritative single-manga flags, explicit six-default confirmation/reset/favorite batch, new-source INSERT-only default consumption, scanlator drafts, normalized missing counts and mounted file/queue/global-filter projection. Independent review and focused evidence are in docs/evidence/desktop-interaction-iteration-2026-09-30.md: 169 unique tests pass after five legacy row fixture repairs. Detail header/layout, full selection actions, download execution, update and migration closure remain assigned to RI08-RI15; no final release or hardware acceptance is implied. RI08 (2026-10-01) closes the 450dp/content-65% and narrow 100dp/16dp detail layout, independent native chapter scrollbar with entity/offset restoration, real metadata identity/search/copy and missing-source recovery, SOURCE ordinary chapter markers, SDK Markdown notes drafts and five formats, and persisted prediction/check-interval display. Native 320dp/fontScale2 modal and action keyboard reachability are executable. The same reviewed 159-test evidence applies; At that checkpoint selection was pending; queue/file execution and new prediction consumption remain assigned through RI14. Formal release, physical input and hardware gates remain RI18. RI09 (2026-10-01) closes real owner-bound Ctrl/Shift/long-press range selection, native SOURCE top/bottom actions, strict effective-theme selected pixels, distinct explicit read User intent, cancellation propagation, shared stable previous-only ordering in both production platforms, frozen deletion snapshots and partial result retention/retry. Independent review reuses 62 valid affected passes and three targeted repaired passes: 65 unique tests, zero skipped; scoped formatting and two 320dp/fontScale2 native captures are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md. Full queue/file execution remains RI10; release/runtime and physical input remain RI18. Stable chapter-ID tie ordering applies only to previous selection and does not change ordinary list sorting or synchronization protocols. RI10 closes raw shared manual eligibility before limits, read bookmarks, real Reader skip-filter preference, truthful accepted/skipped/failed queue outcomes, QUEUED start-now, cancel/retry refusal, optional membership, local/missing/external qualification, finite original single/selected deletion and browser-result feedback. Actual focused/affected results, independent review and limitations are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; this does not claim final full tests or release/runtime/hardware acceptance. RI11 manual marking waits for real local success and refreshes eligible original bindings under the separate ALWAYS/ASK/NEVER preference. Cancel and failed local writes do not send progress; shared finite nonnegative chapter qualification and fresh service caps preserve Reader behavior. Focused/affected/scoped evidence and native 320dp/font200 light tracking and dark ASK captures are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; no final full tests, hardware, real-account or release-runtime acceptance is claimed.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -21776,7 +21793,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaCoverViewerDialog.kt",
           "symbol": "internal fun MangaCoverViewerDialog(",
-          "line": 53
+          "line": 54
         }
       ],
       "FIXTURE": [
@@ -21838,11 +21855,13 @@
         "cover editing keeps actual file and pixels on rejection cancellation and deletes back to source",
         "detail consumes actual persisted cover version in the real Coil request and pixels",
         "cover primary click opens actual viewer with zoom and Escape restores the visible trigger",
-        "cover viewer saves the actual loaded typed image with overwrite cancellation failure retry and focus"
+        "cover viewer saves the actual loaded typed image with overwrite cancellation failure retry and focus",
+        "early cover share terminal remains authoritative over later Opened acknowledgement",
+        "actual cover viewer shares loaded typed pixels and retains snapshot until every native terminal"
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
-    "verificationScope": "VERIFIED: current Android retains the fixed-main Uri/Context cover path, while Desktop confines file selection to an adapter and routes selection, permission and storage outcomes through the shared UpdateCustomCover result and visible Manga detail feedback. RI08 (2026-10-01) adds the actual mounted typed/versioned Coil viewer, zoom/edit and native close/focus, real selected/cancelled/locked replacement/deletion files, source fallback pixels, and repository-authoritative cover version consumption. The same reviewed 159-test evidence applies; file save and platform sharing remain RI10/RI11. Atomic file replacement does not claim a cross-file/database transaction; no final release or hardware acceptance is implied. RI10 Save consumes the actual successful typed Coil image and custom/versioned request, not a second HTTP/cache pipeline; chooser cancellation, overwrite refusal, partial writer failure and retry preserve the original destination. Narrow-window 200-percent font light/dark native captures and bidirectional keyboard/refocus evidence are recorded; image sharing remains RI11. Actual focused/affected results, independent review and limitations are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; this does not claim final full tests or release/runtime/hardware acceptance.",
+    "verificationScope": "VERIFIED: current Android retains the fixed-main Uri/Context cover path, while Desktop confines file selection to an adapter and routes selection, permission and storage outcomes through the shared UpdateCustomCover result and visible Manga detail feedback. RI08 (2026-10-01) adds the actual mounted typed/versioned Coil viewer, zoom/edit and native close/focus, real selected/cancelled/locked replacement/deletion files, source fallback pixels, and repository-authoritative cover version consumption. The same reviewed 159-test evidence applies; file save and platform sharing remain RI10/RI11. Atomic file replacement does not claim a cross-file/database transaction; no final release or hardware acceptance is implied. RI10 Save consumes the actual successful typed Coil image and custom/versioned request, not a second HTTP/cache pipeline; chooser cancellation, overwrite refusal, partial writer failure and retry preserve the original destination. Narrow-window 200-percent font light/dark native captures and bidirectional keyboard/refocus evidence are recorded; image sharing remains RI11. Actual focused/affected results, independent review and limitations are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; this does not claim final full tests or release/runtime/hardware acceptance. RI11 adds Share to the same successful typed cover image, retaining its PNG until the real native terminal and protecting early terminal and retired viewer owners. Focused/affected/scoped evidence and native 320dp/font200 light tracking and dark ASK captures are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; no final full tests, hardware, real-account or release-runtime acceptance is claimed.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -28739,7 +28758,8 @@
     "desktopImplementation": "Desktop current implementation to characterize and align: WebView/源登录",
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapterTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceLoginTestModeWiringTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceLoginTestModeWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -28781,7 +28801,17 @@
         }
       ]
     },
-    "verificationScope": "VERIFIED: fixed/current Android embedded login, shared authentication outcome, Desktop external-browser adapter, real cookie commit/rollback and source-browse feedback are bound.",
+    "behaviorMethods": {
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceLoginTestModeWiringTest.kt": [
+        "source browse installs observation after real open login recovery"
+      ],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt": [
+        "stale source login events cannot replace or close the current attempt",
+        "source browse content mounts the real active and terminal login dialog",
+        "global login action uses the shared dialog and retries its failed child request"
+      ]
+    },
+    "verificationScope": "VERIFIED: fixed/current Android embedded login, shared authentication outcome, Desktop external-browser adapter, real cookie commit/rollback and source-browse feedback are bound. Existing four source-login characterization methods remain protected; no OAuth/Cookie/proxy rewrite or real-account acceptance is claimed. Focused/affected/scoped evidence and native 320dp/font200 light tracking and dark ASK captures are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; no final full tests, hardware, real-account or release-runtime acceptance is claimed.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -30950,7 +30980,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "private fun eligibleReaderChapters(",
-          "line": 1217
+          "line": 1219
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
@@ -33684,7 +33714,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "filterChaptersForDownload.await(manga, chapters)",
-          "line": 1144
+          "line": 1165
         }
       ],
       "FIXTURE": [
@@ -41603,7 +41633,11 @@
       "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerServiceRegistry.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopEnhancedTrackerServices.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/TrackingScreenModel.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerSyncScheduler.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerSyncScheduler.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopManualTracking.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/ManualTrackingDialog.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/TrackingSettingsScreen.kt",
+      "data/src/commonMain/kotlin/tachiyomi/data/track/TrackRepositoryImpl.kt"
     ],
     "deviations": [
       {
@@ -41665,7 +41699,9 @@
       "app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingScreenModelTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingTestModeControllerTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingNavigationContractTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopTrackerSessionProviderTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopTrackerSessionProviderTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/tracking/TrackingInteractionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -41688,7 +41724,19 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocol.kt",
           "symbol": "object TrackerProviderProtocols",
-          "line": 420
+          "line": 431
+        },
+        {
+          "kind": "SHARED",
+          "path": "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/ManualTrackProgress.kt",
+          "symbol": "fun manualTrackProgress(",
+          "line": 7
+        },
+        {
+          "kind": "ADAPTER",
+          "path": "data/src/commonMain/kotlin/tachiyomi/data/track/TrackRepositoryImpl.kt",
+          "symbol": "override suspend fun insertIfMatches(",
+          "line": 48
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -41696,6 +41744,16 @@
           "path": "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerServiceRegistry.kt",
           "symbol": "class DesktopTrackerServiceRegistry(",
           "line": 66
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopManualTracking.kt",
+          "symbol": "class DesktopManualTracking(",
+          "line": 34
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/TrackingSettingsScreen.kt",
+          "symbol": "private fun TrackingManualSyncPreference(",
+          "line": 495
         }
       ],
       "FIXTURE": [
@@ -41704,12 +41762,58 @@
           "productionMarkers": [
             "DesktopTrackerServiceRegistry.production("
           ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/tracking/TrackingInteractionTest.kt#actual tracker refresh consumes remote raw roles into SQL and visible progress",
+          "productionMarkers": [
+            "withTracking("
+          ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/tracking/TrackingInteractionTest.kt#Ask provider completion cannot replace a rematched SQL library identity",
+          "productionMarkers": [
+            "withTracking(",
+            "SyncReadingProgressWithTrack("
+          ]
         }
       ]
     },
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt": [
         "production registry contains every public Android tracker with isolated credentials"
+      ],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/tracking/TrackingInteractionTest.kt": [
+        "actual unbound tracker query starts at manga title and searches through provider HTTP",
+        "actual bound tracker can search replacement and cancel without unbinding",
+        "actual tracker refresh consumes remote raw roles into SQL and visible progress",
+        "actual service stepper clamps a fractional last step to remote total without local limit",
+        "remote refresh HTTP errors and invalid data keep SQL binding and allow visible retry",
+        "detail tracking entrance shows only live supported bindings and changes after logout",
+        "manual read success refreshes actual remote state and advances through existing sync workflow",
+        "manual Never avoids remote IO while Ask keeps local read and cancel never writes progress",
+        "Library actual factory manual read shares remote update rather than only local SQL",
+        "real add to Library automatically matches accepted enhanced source after membership succeeds",
+        "empty manual batch performs no remote IO after no local successes",
+        "manual progress feedback reports actual service cap rather than raw source number",
+        "late manual refresh preserves rematched SQL identity and never prompts new binding",
+        "Ask confirms persisted post refresh identity and ignores a later rematch",
+        "Ask accepted identity cannot target a rematch before shared sync reload",
+        "Ask provider completion cannot replace a rematched SQL library identity",
+        "global manual three state preference is persisted separately from Reader auto sync",
+        "manual multiple providers continue actual SQL refresh after the first provider fails",
+        "Ask never prompts after fresh service cap already reached",
+        "bound tracking modal at 320 font200 has reachable scrolling controls and preserves SQL on cancel",
+        "tracking modal Escape closes one owner and returns focus to actual service trigger",
+        "detail tracking navigation bind cancel and unbind update the same owner's effective count",
+        "bound remote link opens through production Result port and remains retryable",
+        "manual Ask native modal traps both Tab directions Escape preserves read and restores detail Back"
+      ],
+      "app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingScreenModelTest.kt": [
+        "service progress maximum ignores local catalogue count and unknown service total stays unbounded",
+        "late local reload cannot replace an accepted user edit with its old track snapshot"
+      ],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt": [
+        "manual tracking preference search enters actual three state anchored control"
       ]
     },
     "statusDecisionHistory": [
@@ -41744,7 +41848,7 @@
       "followUp": "NONE",
       "gap": "NONE"
     },
-    "verificationScope": "READY_FOR_PROMOTION: Tasks 145A–146D close the shared provider workflow and current Android/Desktop production consumers with provider, OAuth, edit, unbind and enhanced auto-match fixtures; Task 18 performs the terminal status promotion.",
+    "verificationScope": "READY_FOR_PROMOTION: Tasks 145A–146D close the shared provider workflow and current Android/Desktop production consumers with provider, OAuth, edit, unbind and enhanced auto-match fixtures; Task 18 performs the terminal status promotion. RI11 actual tracking UI supports title-based query, rematch/cancel, independent remote refresh, live qualified binding counts, service progress limits, remote open/copy and enhanced add-to-Library matching. Manual prompts freeze actual SQL binding identities, reject rematches at shared reload and atomically reject late writes. Ordinary refresh failures retain the original intent and actual durable retries remain visible. Focused/affected/scoped evidence and native 320dp/font200 light tracking and dark ASK captures are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; no final full tests, hardware, real-account or release-runtime acceptance is claimed.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -42245,7 +42349,10 @@
     ],
     "sharedImplementationPaths": [
       "domain/src/commonMain/kotlin/tachiyomi/domain/track/interactor/SyncReadingProgressWithTrack.kt",
-      "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/DelayedTrackerSyncQueue.kt"
+      "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/DelayedTrackerSyncQueue.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/ManualTrackProgress.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocol.kt",
+      "presentation-theme/src/commonMain/kotlin/eu/kanade/domain/track/model/AutoTrackState.kt"
     ],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/eu/kanade/domain/track/interactor/TrackChapter.kt",
@@ -42264,7 +42371,9 @@
       "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderLifecycleEffect.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionDetailsScreen.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopManualTracking.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/TrackingSettingsScreen.kt"
     ],
     "deviations": [
       {
@@ -42299,7 +42408,12 @@
       "app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingAutoSyncPreferenceWiringTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionManagerTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionIncognitoPreferenceWiringTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt",
+      "domain/src/jvmTest/kotlin/tachiyomi/domain/track/service/ManualTrackProgressTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/track/service/DelayedTrackerSyncQueueTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/tracking/TrackingInteractionTest.kt",
+      "app/src/test/java/eu/kanade/domain/track/service/DelayedTrackingUpdateJobSharedQueueTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModelSharedMutationWiringTest.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -42322,7 +42436,13 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/tachiyomi/domain/track/interactor/SyncReadingProgressWithTrack.kt",
           "symbol": "class SyncReadingProgressWithTrack(",
-          "line": 38
+          "line": 40
+        },
+        {
+          "kind": "SHARED",
+          "path": "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/ManualTrackProgress.kt",
+          "symbol": "fun manualTrackProgress(",
+          "line": 7
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -42330,6 +42450,11 @@
           "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt",
           "symbol": "class ReaderProgressTracker(",
           "line": 26
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopManualTracking.kt",
+          "symbol": "class DesktopManualTracking(",
+          "line": 34
         }
       ],
       "FIXTURE": [
@@ -42338,12 +42463,47 @@
           "productionMarkers": [
             "ReaderProgressTracker("
           ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/tracking/TrackingInteractionTest.kt#manual read success refreshes actual remote state and advances through existing sync workflow",
+          "productionMarkers": [
+            "withTracking("
+          ]
         }
       ]
     },
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": [
         "eligible tracker sync completes after caller cancellation"
+      ],
+      "domain/src/jvmTest/kotlin/tachiyomi/domain/track/service/ManualTrackProgressTest.kt": [
+        "known service cap already reached never asks while unknown total may advance",
+        "highest valid chapter excludes unknown and non finite numbers and only moves forward"
+      ],
+      "domain/src/commonTest/kotlin/tachiyomi/domain/track/service/DelayedTrackerSyncQueueTest.kt": [
+        "sync and drain clamp fresh progress and clear raw pending without regression"
+      ],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/tracking/TrackingInteractionTest.kt": [
+        "manual read success refreshes actual remote state and advances through existing sync workflow",
+        "manual Never avoids remote IO while Ask keeps local read and cancel never writes progress",
+        "Library actual factory manual read shares remote update rather than only local SQL",
+        "empty manual batch performs no remote IO after no local successes",
+        "manual progress feedback reports actual service cap rather than raw source number",
+        "Ask confirms persisted post refresh identity and ignores a later rematch",
+        "Ask accepted identity cannot target a rematch before shared sync reload",
+        "Ask provider completion cannot replace a rematched SQL library identity",
+        "global manual three state preference is persisted separately from Reader auto sync",
+        "manual multiple providers continue actual SQL refresh after the first provider fails",
+        "Ask never prompts after fresh service cap already reached",
+        "manual Ask native modal traps both Tab directions Escape preserves read and restores detail Back"
+      ],
+      "app/src/test/java/eu/kanade/domain/track/service/DelayedTrackingUpdateJobSharedQueueTest.kt": [
+        "actual Android TrackChapter caps fresh service progress and drains pending raw target",
+        "Android default persistence rejects failed SQL and keeps raw pending for update and fresh no op"
+      ],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModelSharedMutationWiringTest.kt": [
+        "Android actual manual read uses highest valid shared progress after local write",
+        "Android manual read local storage failure never starts remote refresh or progress"
       ]
     },
     "statusDecisionHistory": [
@@ -42378,7 +42538,7 @@
       "followUp": "NONE",
       "gap": "NONE"
     },
-    "verificationScope": "READY_FOR_PROMOTION: Tasks 147 and 148 close the shared delayed queue plus Android WorkManager/store and Desktop scheduler/checkpoint production consumers; Task 18 performs the terminal status promotion.",
+    "verificationScope": "READY_FOR_PROMOTION: Tasks 147 and 148 close the shared delayed queue plus Android WorkManager/store and Desktop scheduler/checkpoint production consumers; Task 18 performs the terminal status promotion. RI11 manual-mark policy uses the separate shared ALWAYS/ASK/NEVER key and highest finite nonnegative chapter; real Android and Desktop wrappers consume shared fresh service caps without regression. Actual persistence refusal retains retries. A nullable in-memory expected binding guards manual commands only; Reader default and durable queue schema remain unchanged. Focused/affected/scoped evidence and native 320dp/font200 light tracking and dark ASK captures are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; no final full tests, hardware, real-account or release-runtime acceptance is claimed.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -45713,6 +45873,12 @@
             "MangaDetailActionRow",
             "DesktopShareService"
           ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt#actual cover viewer shares loaded typed pixels and retains snapshot until every native terminal",
+          "productionMarkers": [
+            "withDetail("
+          ]
         }
       ]
     },
@@ -45758,10 +45924,14 @@
         "finite image saving preserves original bytes after a real partial write failure in both entry points"
       ],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt": [
-        "cover viewer saves the actual loaded typed image with overwrite cancellation failure retry and focus"
+        "cover viewer saves the actual loaded typed image with overwrite cancellation failure retry and focus",
+        "early cover share terminal remains authoritative over later Opened acknowledgement",
+        "detail website consumes actual browser Result and reports refusal then retry",
+        "actual cover viewer shares loaded typed pixels and retains snapshot until every native terminal",
+        "actual detail share link fallback reports copied link and clipboard refusal is retryable"
       ]
     },
-    "verificationScope": "CANDIDATE and ready for Task 18 promotion: repository-local host-share implementation, fallback feedback, and evidence are closed; final Windows/macOS build and runtime acceptance runs once in Task 19. RI10 Save shares one finite staged atomic replacement writer across picker and explicit-destination entry points; unsupported atomic replacement is an honest failure preserving old bytes, and Save notifications report actual outcome. Share lifecycle remains protected by the existing service tests; source/image sharing UI closes in RI11. Actual focused/affected results, independent review and limitations are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; this does not claim final full tests or release/runtime/hardware acceptance.",
+    "verificationScope": "CANDIDATE and ready for Task 18 promotion: repository-local host-share implementation, fallback feedback, and evidence are closed; final Windows/macOS build and runtime acceptance runs once in Task 19. RI10 Save shares one finite staged atomic replacement writer across picker and explicit-destination entry points; unsupported atomic replacement is an honest failure preserving old bytes, and Save notifications report actual outcome. Share lifecycle remains protected by the existing service tests; source/image sharing UI closes in RI11. Actual focused/affected results, independent review and limitations are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; this does not claim final full tests or release/runtime/hardware acceptance. RI11 actual text sharing reports copied-link fallback and retryable clipboard refusal; typed cover sharing honors native terminal and temporary-file lifetime, and browser actions consume actual Result feedback. Focused/affected/scoped evidence and native 320dp/font200 light tracking and dark ASK captures are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; no final full tests, hardware, real-account or release-runtime acceptance is claimed.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },

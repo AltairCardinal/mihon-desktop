@@ -17,5 +17,9 @@ interface TrackRepository {
 
     suspend fun insert(track: Track)
 
+    /** Replace only the binding captured before a remote refresh, in one repository transaction. */
+    suspend fun insertIfMatches(previous: Track, refreshed: Track): Boolean =
+        throw UnsupportedOperationException("Conditional track refresh is unavailable")
+
     suspend fun insertAll(tracks: List<Track>)
 }

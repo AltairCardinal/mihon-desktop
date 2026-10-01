@@ -1,8 +1,7 @@
 package mihon.desktop.settings
 
-import eu.kanade.domain.ui.model.TabletUiMode
-import tachiyomi.core.common.preference.getEnum
 import eu.kanade.domain.ui.model.AppTheme
+import eu.kanade.domain.ui.model.TabletUiMode
 import eu.kanade.domain.ui.model.ThemeDefaults
 import eu.kanade.domain.ui.model.ThemePreferenceCodec
 import kotlinx.serialization.decodeFromString
@@ -12,8 +11,9 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
-import java.net.URI
+import tachiyomi.core.common.preference.getEnum
 import java.net.Proxy
+import java.net.URI
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.prefs.Preferences
@@ -151,6 +151,10 @@ class DesktopAppPreferences(
     /** When true, completing a chapter updates configured tracking services. */
     val autoUpdateTrack: Preference<Boolean> by lazy {
         boolean(key = "pref_auto_update_manga_sync_key", default = true)
+    }
+
+    val autoUpdateTrackOnMarkRead by lazy {
+        store.getEnum("pref_auto_update_manga_on_mark_read", eu.kanade.domain.track.model.AutoTrackState.ALWAYS)
     }
 
     /** Comma-separated source IDs disabled by the user. Empty keeps legacy behavior. */

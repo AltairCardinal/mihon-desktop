@@ -105,6 +105,7 @@ class MangaDetailScreenModel(
     private val cancelAccepted: ((Long) -> Boolean)? = null,
     private val retryAccepted: ((Long) -> Boolean)? = null,
     private val captureDownloadDeletion: ((Manga, List<Chapter>) -> (suspend () -> BatchChapterResult))? = null,
+    val manualTracking: mihon.desktop.tracking.DesktopManualTracking? = null,
     private val captureMangaDownloadDeletion: (suspend (Manga) -> (suspend () -> Boolean))? = null,
 ) : ScreenModel {
 
@@ -126,6 +127,8 @@ class MangaDetailScreenModel(
                 manga to chapters
             }
     }
+
+    fun trackingBindingCount(manga: Manga): Flow<Int> = manualTracking?.bindingCount(manga) ?: flowOf(0)
 
     fun availableScanlatorsFlow(): Flow<Set<String>> {
         return requireNotNull(getAvailableScanlators) { "GetAvailableScanlators is required" }.subscribe(mangaId)
@@ -433,7 +436,9 @@ class MangaDetailScreenModel(
 
     suspend fun markSelectedRead(chapters: List<Chapter>, read: Boolean): BatchChapterResult {
         val updater = requireNotNull(setChapterReadStatus) { "SetChapterReadStatus is required" }
-        return runChapterBatch(updater.filterToUpdate(chapters, read)) { updater.awaitOrThrow(it, read) }
+        val result = runChapterBatch(updater.filterToUpdate(chapters, read)) { updater.awaitOrThrow(it, read) }
+        if (read) manualTracking?.afterRead(mangaId, chapters.filter { it.id in result.succeededIds })
+        return result
     }
 
     suspend fun runChapterBatch(
@@ -493,13 +498,15 @@ class MangaDetailScreenModel(
         categoryIds: List<Long> = emptyList(),
         nowMillis: Long = System.currentTimeMillis(),
     ): LibraryMembershipResult {
-        return requireNotNull(updateLibraryMembership) { "UpdateLibraryMembership is required" }
+        val result = requireNotNull(updateLibraryMembership) { "UpdateLibraryMembership is required" }
             .await(
                 manga = manga,
                 favorite = !manga.favorite,
                 categoryIds = categoryIds,
                 nowMillis = nowMillis,
             )
+        if (!manga.favorite && result is LibraryMembershipResult.Success) manualTracking?.afterAdded(manga)
+        return result
     }
 
     internal suspend fun addToLibraryUsingDefault(

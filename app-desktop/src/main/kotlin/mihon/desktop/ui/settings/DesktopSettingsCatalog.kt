@@ -3,7 +3,6 @@ package mihon.desktop.ui.settings
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
-import kotlin.reflect.KClass
 import cafe.adriel.voyager.core.screen.Screen
 import dev.icerock.moko.resources.StringResource
 import mihon.desktop.ui.tracking.TrackingSettingsScreen
@@ -13,6 +12,7 @@ import mihon.domain.settings.SettingsLayoutDirection
 import mihon.domain.settings.SettingsSearchPolicy
 import mihon.domain.settings.SettingsSearchResult
 import tachiyomi.i18n.MR
+import kotlin.reflect.KClass
 
 internal object DesktopSettingsAnchorResources {
     val downloadDirectory = MR.strings.desktop_download_directory
@@ -26,6 +26,7 @@ internal object DesktopSettingsAnchorResources {
     val extensionRepoAdd = MR.strings.action_add_repo
     val extensionRepoDelete = MR.strings.action_delete_repo
     val trackingAutoSync = MR.strings.pref_auto_update_manga_sync
+    val trackingManualSync = MR.strings.pref_auto_update_manga_on_mark_read
     val trackingLogin = MR.strings.login
 }
 
@@ -153,13 +154,50 @@ object DesktopSettingsCatalog {
                 SearchablePreference.Entry(DesktopSettingsAnchorResources.downloadAsCbz.localized()),
             ),
         ),
-        screen(route(TrackingSettingsScreen::class), MR.strings.pref_category_tracking, DesktopSettingsAnchorResources.trackingAutoSync, DesktopSettingsAnchorResources.trackingLogin),
-        screen(route(BackupSettingsScreen::class), MR.strings.label_backup, DesktopSettingsAnchorResources.createBackup, DesktopSettingsAnchorResources.restoreBackup),
-        screen(route(SecuritySettingsScreen::class), MR.strings.pref_category_security, MR.strings.desktop_security_lock_enabled, DesktopSettingsAnchorResources.securitySecureScreen),
-        screen(route(AdvancedSettingsScreen::class), MR.strings.pref_category_advanced, MR.strings.pref_clear_cookies, MR.strings.desktop_advanced_clear_network_cache, DesktopSettingsAnchorResources.advancedCrashLog),
-        screen(route(GeneralSettingsScreen::class), MR.strings.pref_category_general, MR.strings.pref_incognito_mode, MR.strings.pref_dns_over_https),
-        screen(route(ExtensionRepoScreen::class), MR.strings.browse, DesktopSettingsAnchorResources.extensionRepoAdd, DesktopSettingsAnchorResources.extensionRepoDelete),
-        screen(route(AboutScreen::class), MR.strings.pref_category_about, MR.strings.check_for_updates, DesktopSettingsAnchorResources.aboutAppData),
+        screen(
+            route(TrackingSettingsScreen::class),
+            MR.strings.pref_category_tracking,
+            DesktopSettingsAnchorResources.trackingAutoSync,
+            DesktopSettingsAnchorResources.trackingManualSync,
+            DesktopSettingsAnchorResources.trackingLogin,
+        ),
+        screen(
+            route(BackupSettingsScreen::class),
+            MR.strings.label_backup,
+            DesktopSettingsAnchorResources.createBackup,
+            DesktopSettingsAnchorResources.restoreBackup,
+        ),
+        screen(
+            route(SecuritySettingsScreen::class),
+            MR.strings.pref_category_security,
+            MR.strings.desktop_security_lock_enabled,
+            DesktopSettingsAnchorResources.securitySecureScreen,
+        ),
+        screen(
+            route(AdvancedSettingsScreen::class),
+            MR.strings.pref_category_advanced,
+            MR.strings.pref_clear_cookies,
+            MR.strings.desktop_advanced_clear_network_cache,
+            DesktopSettingsAnchorResources.advancedCrashLog,
+        ),
+        screen(
+            route(GeneralSettingsScreen::class),
+            MR.strings.pref_category_general,
+            MR.strings.pref_incognito_mode,
+            MR.strings.pref_dns_over_https,
+        ),
+        screen(
+            route(ExtensionRepoScreen::class),
+            MR.strings.browse,
+            DesktopSettingsAnchorResources.extensionRepoAdd,
+            DesktopSettingsAnchorResources.extensionRepoDelete,
+        ),
+        screen(
+            route(AboutScreen::class),
+            MR.strings.pref_category_about,
+            MR.strings.check_for_updates,
+            DesktopSettingsAnchorResources.aboutAppData,
+        ),
     )
 
     fun search(

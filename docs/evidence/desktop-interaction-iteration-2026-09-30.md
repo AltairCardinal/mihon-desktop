@@ -587,6 +587,12 @@ RI10 收口（2026-10-01）：原实施代理六字段回执已核对并停止�
 
 本批超过8文件／400行仍属同一下载、阅读入场及文件动作用户能力：35Kotlin／2XML包含共享Android候选契约、同一manager／finite-file adapter和真实UI/wiring测试，2张PNG及3份既有文档与manifest为必要验收与维护资产；不按文件机械拆分不可独立验收的上下文。没有引入第二下载器、下载身份／同步协议、Reader图片引擎或长期删除队列。主要风险是原始会话快照仅进程内有效，数据库与文件不是跨存储原子事务，atomic替换不可用时保旧文件并明确失败；需重新发起操作时捕获新的对象，不把上一次会话的失败对象无限扩张。实体设备、正式process重启、Windows／macOS发布运行仍由RI18验收，本批没有全量、模块测试、finalParityAudit或发布构建。必要checkoff随本功能批与测试／production同一提交，随后推进RI11。
 
+### RI11 启动预算与前置产物
+
+RI10已提交 `6fb901f5f81d587e06281646034522f151ea9ef7`，启动RI11时工作树干净。复用唯一原实施代理，四内聚簇依次实施：追踪查询／远端刷新／重新匹配及服务上限；手动已读三态和增强入库；现网页登录恢复；文本与同typed封面分享终态。每簇仅focused红绿，末尾一组精确affected／wiring／scoped格式，根同轮独立初审一次与必要修正核验一次，预计3–5小时，主要成本为真实provider网络形状／SQLite／原生Compose事件；root维护本唯一报告、契约及manifest，实施代理承担主要代码与唯一Gradle协调。无全量、模块测试、finalParityAudit、正式构建／runtime，全部RI00–RI17实施完才RI18最终一次矩阵；失败只追加受影响路径诊断和必要修复验证，不提前扩大账号／OAuth／Cookie／代理范围。
+
+补核实际已有SourceLoginController的attempt／ticket身份、redacted UI状态和SourceLoginSession Cookie校验可复用，打开浏览器不能宣称已验证；共享AuthenticatedSessionCommitter原契约允许已领取的有限本地提交在NonCancellable内完成，须区分取消／超时在领取前获胜与已领取提交的真实终态，不能虚构回滚已开始的写入。保护迟到UI／query回执不会污染新owner，保现Cookie存储及成功后恢复链，真实账号证据仍须RI18授权。
+
 ### RI11 追踪与平台动作前置核对（只读，不代表实施完成）
 
 主代理读取当前TrackingScreenModel／TrackingSettingsScreen：未绑定查询初值为空，已绑定分支没有重匹配入口；model.validateEdit与UIChapterStepper均优先消费传入totalChapters，再回退track.totalChapters，详情onTracking仍传本地数量，因此服务总章数约束不能仅修UI。model.load调用registry.refresh及本地GetTracks，并不证明远端状态刷新。既有EnhancedTrackerWorkflow、provider解析、repository和共享SyncReadingProgressWithTrack／DelayedTrackerSyncQueue可复用，禁止另起追踪引擎。
@@ -594,6 +600,80 @@ RI10 收口（2026-10-01）：原实施代理六字段回执已核对并停止�
 Android实际TrackPreferences的autoUpdateTrackOnMarkRead键为pref_auto_update_manga_on_mark_read、默认ALWAYS，与阅读完成pref_auto_update_manga_sync_key布尔值分开；MangaScreenModel.markChaptersRead在本地写入后刷新远端、检查进度前移，ALWAYS回写、ASK等待明确操作、NEVER不回写。Desktop目前只有阅读完成autoUpdateTrack及ReaderProgressTracker→ReadingProgressTrackSync→现重试scheduler；详情标记用SetChapterReadStatus，不能复用阅读布尔值冒充三态手动策略。RI11须沿共享port与真实详情消费者接线，同时保护Reader既有链。
 
 DesktopShareService已区分OpenedNatively／SharedNatively／CopiedToClipboard／Cancelled／Failed，WindowsUnavailable native port的文本降级为copyText；macOS异步terminal及临时文件清理已存在。BrowserLoginAdapter／SourceLoginSessionFactory／AuthenticatedSessionCommitter保现cookieJar，浏览器打开不是已验证登录。以上只读固定RI11接口及验收，不记实现、测试或真实账号成功；原账号／鉴权与代理范围保持。
+
+RI11 首组 `interaction-ri11-tracking-foundation-red`（2026-10-01 09:52:06–09:52:37 UTC）FAILED已消费，实际XML09:52:35.782Z：2项失败、0跳过，正确红分别是服务总数100／本地2时合法进度80被本地上限误拒，以及迟到本地加载把用户新进度9覆盖为旧1。最小实现将load／bind／update／unbind共用既有operationMutex，保本地load与实际remote刷新独立命令。实际refresh(track)声明在TrackerProviderPort，真实DesktopProviderTrackerService与Enhanced具体实现已有该port；先前将它简写为service.refresh不精确，实际接线沿原port，缺port给出明确不支持反馈，不改端点或共享协议。原生HTTP→production provider→SQLite→UI远端刷新／重新匹配验证仍待后续首簇完成，不能把此两项unit红声称为集成证据。
+
+`interaction-ri11-tracking-foundation-green` 于09:54:42–09:55:04 UTC PASSED exit0，实施代理当次回执2方法0fail／0skip，根核协调器及load锁／仅service total diff；其XML已被下一focused任务替换，不声称根事后读到了旧XML。后续 `interaction-ri11-tracking-native-red` 实施代理当次XML09:58:58.441Z为4项正确行为失败／0skip，终态FAILED已消费：未绑定query标题初值空、bound缺搜索替换入口、实际页面缺remote刷新、remote10／local2时9.5的+误disabled。最后一项红只到资格guard，尚未执行其后9.5→10 clamp断言，不虚称该分支红已执行；整原生场景绿时须覆盖该分支。新fixture使用真实DesktopTrackerServiceRegistry具体provider、隔离HTTP与SQL、普通Navigator及实际TrackingSettingsScreen，当前900dp viewport的语义事件不外推320／200%字号／浅深／键鼠／正式runtime验收，后者仍按固定范围补齐。
+
+`interaction-ri11-tracking-native-green`（10:01:40–10:02:32 UTC）终态FAILED已消费，根核实际XML10:02:20.746Z：4项中3通过、1超时、0跳过。真实title→HTTP、POINT_100请求／raw score90→SQL／progress80及总数100→UI、fractional9.5→10夹到服务上限三项绿；重匹配已执行搜索／取消保旧对象，确认后5秒超时原因经具体生产parser核验为fixture错误响应MediaList:null，实际bind lookup要求data.Page.mediaList数组。修正只变为Page.mediaList=[]再单独复验，不称超时为业务红、不重复三个有效绿，不修改parser迎合fixture。后续原远端command错误／空／缺失／畸形反馈及保旧／重试矩阵继续本簇精确范围。
+
+手动三态前置接口在同独审收敛：原AutoTrackState含titleRes仅Android app，可沿已有presentation-theme共享表现模式迁原同包enum及同键／ALWAYS默认，domain不新增UI依赖；最高有效章节／前移判断须由两真实wrapper消费最小共享core。ASK冻结原owner/event及原Track行／service／remote身份，确认时失效不套新匹配对象；取消保护不写远端／不重复写入，不禁止Android既有资格判定所必需的远端读取。详情有效绑定数遵循AndroidobserveTrackers实际combine，统计登录且支持作品源的服务绑定并随profile变化，不直接count全部SQL rows。以上为固定RI11验收的实施前接口核对，尚无手动／绑定数／增强入库完成结论。
+
+`interaction-ri11-tracking-remote-green`（10:07:57–10:08:34 UTC）FAILED，实施代理当次回执HTTP403／429／500／空／缺失／畸形＋实际可见重试方法通过；rematch已成功HTTP→真实SQL替换且仅一行，失败是fixture硬要求rowID1保持而实际为2。根独立读取权威manga_sync.sq的UNIQUE(manga_id,sync_id) ON CONFLICT REPLACE与无_id INSERT、TrackRepositoryImpl.insertValues，确认任何InsertTrack均可能更换rowID，修正fixture只核作品／服务／远端身份和唯一行，不改现数据协议。`interaction-ri11-tracking-rematch-green`（10:14:23–10:14:38 UTC）PASSED exit0，实施代理当次回执该method绿；首簇累计7项有效去重绿＝foundation2／native四业务4／错误矩阵1，不把矩阵内部响应枚举数充当测试method数。后手动snapshot须refresh／insert后重新读取实际SQL身份，不能用带旧id的provider响应冻结ASK。
+
+手动／绑定数首红实施代理回执：手动mark的真实SQL已读成功但没有远端Refresh请求，为正确业务红；绑定数场景尚在入口查找NSE，不能计正确红，需执行真实资料列表滚动定位后单方法确认。尚未到的确认／取消分支不得记完成；首簇有效绿证据保留，不重复宽测试。
+
+`interaction-ri11-binding-red-valid`（10:20:37–10:21:08 UTC）FAILED已消费，实施代理当次XML10:21:03.761Z的1项正确行为红：真实资料列表滚动定位后，Tracking入口子树没有有效绑定数，先前入口NSE不计红。`interaction-ri11-manual-binding-green`（10:24:27–10:25:14 UTC）PASSED exit0，实施代理当次TrackingInteractionTest XML10:25:09.678Z回执2项0fail／0skip，根核协调器PASSED；后续专项XML已替换为10:30:01.539Z，不能声称事后根读取了旧XML：实际详情有效绑定1→服务退出0且SQL行保留；真实Factory手动已读→远端Refresh→SQL重读→既有ReadingProgressTrackSync／queue／workflow→SQL进度9。当前原enum同包迁共享表现模块，reader布尔独立；ASK／NEVER／身份取消／批量Library／增强入库及共享Android wrapper尚待后续focused，不能外推完成。
+
+同一独审已读初步DesktopManualTracking及manualTrackProgress，共享core仍需过滤有限非负号，零成功章节必须在任何远端IO前返回，服务正确clamp到总章数不能被反馈为失败或谎报原大号已更新；资格SQL＋profile＋Enhanced.accept已复用。继续原簇必要正确红及绿，不新增宽验证或协议重构。
+
+`interaction-ri11-manual-policy-red`（10:29:34–10:30:09 UTC）FAILED已消费：根核Desktop实际XML10:30:01.539Z的5项Assertion正确红，分别是服务cap实际SQL50而非10、ASK缺实际确认UI、零成功批次错误触发1次refresh、Enhanced入库未匹配、Library实际Factory手动已读未调用远端；domain共享策略1项正确红为NaN导致本应有效9被丢弃。共6项正确红，不代表尚未到的确认／取消／错误／身份guard分支已验证。
+
+根此前“已有workflow会clamp”的判断已用实际源码纠正：独立读取DelayedTrackerSyncQueue.sync/drain/syncOne、TrackerProviderWorkflow.apply和Android TrackChapter，确认当前都无服务上限。D-H5既定上限需在现共享追踪策略最小补齐，由两端原consumer共用，属于同轮独审与范围内必要实现，不新增端点、队列、schema或Reader分页／图片算法。只用旧SQL total不够，实际写入还须消费provider刷新后的正数total；unknown不按本地条目数限幅，didRead自动／手动仅前移不降已有远端进度，用户显式编辑保自己的允许降低分支。旧pending原高水位在有效限幅成功后必须可清理，防止永久remaining，新增并发目标不得被旧完成清除。以上共享高风险接口通过独审前不作为下游已稳定产物，继续focused sync／drain／fresh total／remote ahead／unknown及Android实际wrapper；原Reader追踪契约受影响方法纳末尾唯一affected保护。
+
+`interaction-ri11-manual-shared-boundary-red`（10:38:15–10:39:49 UTC）FAILED已消费：实施代理当次domain XML10:38:39.977Z确认fresh service cap预期10／实际50正确红；Android实际TrackChapter上限及实际manual wrapper各一个唯一方法正确红，各自自动重试三次不计为六项。Desktop四项未到业务，真实initUILayer先创建LibraryFactory、后注册其新依赖ReadingProgressTrackSync，InjektionException不计业务红。将同一既有sync singleton／scheduler注册块提前至LibraryFactory之前，保持原实例及装配，不用未来Injekt惰性访问掩盖依赖错误。
+
+`interaction-ri11-manual-shared-boundary-green`（10:44:02–10:44:56 UTC）仍FAILED exit1。根独立核本次XML：domain两方法全绿（10:44:23.347／543Z）、Android两实际wrapper全绿（10:44:39.741／45.975Z）、Desktop五方法四绿一失败（10:44:42.221Z），合计9方法／8通过／1失败／0跳过。真实NEVER零远端IO与ASK取消保本地且不写进度、零成功集零IO、LibraryFactory手动远端更新、实际cap10反馈通过；Enhanced真实入库尚失败，不能记整批通过。shared测试逐sync／drain覆盖fresh正数total变化、remote已更高、remote超过total、unknown不限制及显式编辑允许降低，矩阵枚举不计额外方法。根同轮接口独审核对fresh no-op Success保远端、队列按原requested目标清理；Android普通update已持久一次，新增no-op须持久fresh，默认InsertTrack.await原本吞Exception的真实失败边界仍须保护及受影响focused，不以注入成功persist证明真实SQL失败安全。
+
+RI11 Enhanced失败原因继续按实际断言纠正：实施代理消费原green并核完整failure，HTTP匹配与真实SQL保存均已执行成功，失败只在最后绑定数UI断言前未render（测试299行），不计为未接afterAdded。根补读addToLibraryUsingDefault确实委托toggleLibrary已有afterAdded接线，不重复增加匹配；夹具改为等待实际Tracking入口子树count1后单方法复验。默认persist吞异常、manual refresh迟到覆盖重新匹配及ASK身份确认仍按原簇补正确红，当前无存活Gradle进程。
+
+`interaction-ri11-manual-identity-red`（10:55:19–10:56:06 UTC）FAILED已消费，根读取当前XML：Android10:55:45.705Z为同一方法三次自动重试，pending预期50／实际null正确红，计一个唯一方法；Desktop10:55:54.141Z为三方法，两失败一通过／0跳过，迟到manual refresh将新remote22覆盖为原11正确红，ASK实际确认SQL REPLACE后身份并拒绝后续rematch已绿。Enhanced本次在等待请求处失败，实施代理说明主事件循环被阻塞；与上次最终count断言失败区分，改为renderUntil真实requestCount>0再取请求并等待实际入口count，不降低SQL或HTTP断言。新缺口合计两个唯一正确红，后未到分支不能计为绿。
+
+身份修复按同轮独审固定：现TrackRepositoryImpl／DatabaseHandler同一事务内比较原row／service／remote／library并写入，InsertTrack提供仅此有限awaitIfMatches结果，避免两次suspend读写间覆盖新绑定；不新增schema或通用事务系统。陈旧false不再把新匹配行纳本次ASK，部分服务只继续本次真实接受身份。默认Android持久失败传播保既有queue重试／取消语义，正常update和fresh no-op成功各只持久一次。全局TrackingSettingsScreen沿现共享AutoTrackState资源补真实三态持久入口，与Reader bool分开；尚待正确红绿及原生验收。
+
+`interaction-ri11-manual-identity-green`（10:58:04–10:59:10 UTC）PASSED exit0已消费，根核Android实际默认持久化XML10:58:50.526Z一方法全绿、Desktop XML10:59:05.131Z三方法全绿，均0跳过。迟到刷新不覆盖新匹配且不提示新绑定、ASK真实SQL REPLACE后确认与后续rematch保护、Enhanced实际HTTP／SQL／界面绑定数已通过；默认Android保存拒绝保原pending50，成功update／fresh no-op各持久一次。同一独审已读真实TrackRepositoryImpl.insertIfMatches：DatabaseHandler现inTransaction=true内读原row并比作品／service／remote／library后写，不先悬挂到无条件插入；原子身份边界通过，可继续后续簇。私有字段映射后续重构需在同事务内复用，不嵌套handler等待。
+
+本轮补核上游app实际RefreshTracks.await为supervisorScope逐服务失败隔离，DesktopManualTracking也须保普通单服务失败不阻断其他适用绑定，CE继续传播；仅本次真实接受身份进后续ASK。已达服务正数总数的manual绑定不能因源更大号误提示更新，前移资格须消费同一readProgressTarget，未知仍允许前移。这些为既定多绑定／进度前移边界，待同簇focused，不引入新并发框架或Reader行为。
+
+`interaction-ri11-surfaces-policy-red`（11:03:08–11:03:38 UTC）FAILED已消费；实施代理回执domain已达cap资格、Desktop三态入口／首服务失败续行／cap不ASK三方法及封面真实Share入口为五个正确红。网页／文本分享初次NSE因fixture missing source未生成URL，不能计业务红；只补实际httpSource后再精确确认。新三态入口复用原TrackingSettingsScreen与共享AutoTrackState资源、既有单键恢复保存及真实反馈，不新增路由或偏好权威。
+
+`interaction-ri11-policy-green-link-red`（11:05:24–11:06:16 UTC）FAILED exit1；根核domain XML11:05:42.806Z一方法绿、Tracking原生XML11:06:12.314Z三方法全绿，0跳过：三态实际点击持久并与Reader bool独立、首AniList403后真实Komga响应仍刷新SQL、fresh cap已达时不ASK。网页及链接分享XML11:06:05.386Z两方法正确红（真实网页入口未调用已注入browser Result，预期1／实际0；native不可用时缺明确复制链接反馈）；修正fixture后已到业务断言，不以先前NSE代替红。封面Share仍待单独绿；整命令没有记为全通过。新设置行搜索词／实际锚点及320dp／fontScale2键盘owner在本簇继续补齐。
+
+`interaction-ri11-links-cover-green`（11:08:32–11:09:28 UTC）PASSED exit0已消费，根核实际XML：Detail三方法11:09:10.029Z、SourceLoginTestMode一方法11:09:23.437Z、SourceSharedState三方法11:09:26.675Z，7方法／0失败／0跳过。普通网页入口真实注入browser Result失败／重试、链接分享复制降级及剪贴板拒绝后重试、实际typed Coil绿色图像转现shareImage PNG并按Shared／Cancelled／Failed终态保留再清理临时文件与Escape还焦通过；四项既有登录characterization保护真实SourceBrowse入口观察、active／terminal共享state、Global恢复原query及stale attempt，未为了红测重写已有正确登录行为。mock账号／隔离fixture不是已授权真实账号或正式runtime证据。
+
+同轮分享独审核具体早到terminal竞态：封面callback可先于withContext返回到达，Opened启动结果不得再覆盖真实成功／取消／失败终态。需沿当前平台backend有限保护与原生真实入口测试，不变share协议／临时文件生命周期；320dp／fontScale2浅深、双向Tab／背景隔离／关闭还焦与新增设置搜索定位仍待本批收口，完整全量／发布仍0。
+
+Android持久拒绝证据的环境边界：测试在TrackRepository接口注入IOException，调用真实InsertTrack、TrackerManager默认persist及TrackChapter／store，验证异常不吞、pending保留与成功只持久一次；没有制造实体磁盘或SQLite引擎故障。Desktop身份保护与绑定／进度集成使用实际SQLDelight数据库。相应命令与方法数量按各自证据记录，不混用两端环境。
+
+`interaction-ri11-native-search-terminal-red`（11:14:58–11:15:29 UTC）FAILED exit1已消费，根核XML：Detail11:15:17.941Z早到终态Completed被后到Share覆盖正确红；Search11:15:22.908Z真实catalog无manual策略正确红；Tracking11:15:26.178Z三方法中320dp／fontScale2缺bounded scroll、Escape不关闭原生edit Dialog为两个正确红，详情往返绑定方法NSE定位失败不计业务红。合计四个正确红、一个尚未到业务，后续修复仅原生可达性／同owner／搜索／终态，不新增产品能力或宽验证。
+
+`interaction-ri11-native-search-terminal-green`（11:25:56–11:26:54 UTC）仍FAILED exit1已消费，根核XML：Detail两方法11:26:32.811Z全绿（早到真实终态优先、网页明确成功／失败／重试）；Tracking三方法11:26:44.566Z中Escape一层关闭／回实际服务trigger通过，320双向Tab断言与详情解除绑定timeout失败；Search11:26:41.246Z结果节点断言失败。合计6方法／3通过／3失败／0跳过。320真实bounded scroll与Close bounds已执行通过，随后Tab visited失败不能把键盘闭环记绿。实施代理诊断unmerged／merged语义ownership、焦点button子Text及当前confirmation owner，根指出搜索旧断言已flatten孩子，须准确说明实际owner修正，保真实输入→结果→route／anchor／持久读回；timeout／定位不当不计新业务红。剩余本批固定remote打开／复制、manual ASK原生owner和本地写拒绝门控按精确focused补，未进入下游或全量。
+
+`interaction-ri11-native-local-boundaries-red`（11:30:22–11:31:17 UTC）FAILED已消费：实施代理当次Desktop五方法中详情导航／搜索取消／绑定／解除后同owner计数方法通过，其余四失败；Android仅编译错误（MockK DSL内解析Injekt.get为dynamic），不计业务红。搜索已通过结果／route而在高亮wrapper的文本断言失败，先前“结果仍缺失”的归因按实际失败行纠正；ASK使用重新遍历构造的SemanticsNode对象做in比较导致失败，修为同owner节点ID，未到还焦不提前记绿；bound远端链接缺真实入口为正确业务红。第二次Android编译缺api.get import亦不计红。
+
+`interaction-ri11-native-local-boundaries-valid`（11:34:37–11:35:16 UTC）仍FAILED，根核Desktop XML11:35:01.108Z Search一方法、11:35:09.145Z Tracking三方法全部通过／0跳过：真实新策略搜索→同route／高亮anchor→ASK保存、bound320滚动／双向Tab、remote Result失败／重试及复制实际URL、manual ASK双向Tab／Escape保本地已读与还Detail Back。Android编译失败独立保留。`interaction-ri11-android-local-read-red`（11:36:39–11:37:28 UTC）单一方法正确红，根核XML11:36:51.463Z自动重试三次，repository写拒绝后远端仍收到9而预期null；计一个唯一方法。最小消费SetReadStatus.Result.Success，失败反馈后不调用Refresh／TrackChapter，Reader协议不变。
+
+`interaction-ri11-final-native-green-format`（11:40:34–11:41:34 UTC）FAILED仅格式，根核实际Desktop三方法11:41:25.846Z及Android两方法11:41:16.695Z共五方法全绿／0跳过：native两个弹层／迟到CAS、Android本地失败门控与原成功共享包装通过。scoped Apply列出长行错误不记整命令通过，随后cached ktlint同实际规范整理31Kotlin／2XML，格式结果以末scoped Check为准。
+
+主代理已实际查看`desktop-interaction-native/ri11-tracking-320-font200-light.png`（浅色服务编辑modal，截图处在实际滚动位置）与`ri11-manual-ask-320-font200-dark.png`（深色ASK）：Windows、JDK21／Compose1.10.2、CanvasLayers离屏、320×680／density1／fontScale2，控件／Close及确认／取消可达。native方法执行双向Tab、背景pointer隔离、Escape和真实trigger还焦；两图分别为上述场景，不外推每类两主题或实机DPI／发布runtime／真实账号。
+
+`interaction-ri11-affected`（11:48:37–11:49:34 UTC）FAILED exit1已消费；根核domain XML11:49:17.420–664Z共12方法全绿、Android11:49:18.411／23.375Z四方法全绿／0跳过，scoped31Kotlin／2XML Check通过。Desktop compileTest失败，TrackingScreenModelTest旧真实constructor被机械误替换成小写helper却仍传use case参数；只恢复实际constructor，不改production，不计产品红。Desktop原filters尚未执行须续验，其他16方法／格式结果可复用。whole-file Check必要的旧区纯机械格式diff保留并说明，不以region规则替代项目检查。
+
+收口同一独审指出multi-provider测试只证明后服务SQL续行，未覆盖首失败服务手动目标：pre-refresh失败被排除候选并由后成功覆盖反馈，导致该意图不进现持久retry。必要修正仅原已读／ALWAYS／ASK失败恢复边界：仍有效的原失败绑定可继续现sync queue，陈旧／CAS false仍排除，ASK取消不写或排队，实际失败／待重试不被后成功掩盖。终态后原实现者先focused红再最小修复，只补影响方法，复用已有绿，不增加全量、代理或独审轮。
+
+`interaction-ri11-manual-failure-retention-red`当次XML11:54:39.524Z正确红为ASK应保原候选[2,6]、实际仅[6]：首服务refresh普通失败丢本次已读意图，后成功还覆盖错误反馈。必要修正保仍为原row／service／remote／library且有资格的失败绑定，陈旧CAS=false仍排除；ASK取消不排队，确认及ALWAYS复用原ReadingProgressTrackSync和持久队列。反馈只读既有store原ID的真实pending显示等待重试，不能因第二服务成功误报全部成功。
+
+`interaction-ri11-affected-desktop-repair`于11:58:37–12:00:05 UTC PASSED／exit0，根核协调器终态与命令范围，代理当次回执Desktop86方法全绿／0跳过及31Kotlin／2XML scoped Check通过。与仍适用的原affected domain12／Android4及登录characterization4合计106有效去重绿；不将原affected编译失败整条改成绿。真实SQL／MockWebServer／现scheduler store覆盖ASK取消零pending、ALWAYS首服务403保raw9 pending及后Komga成功9不掩盖等待重试反馈。原构造误改只恢复测试实际构造；whole-file ktlint要求的旧区纯格式保留，未缩减检查范围。当前无Gradle存活进程，module／full／发布runtime均0。
+
+提交前同一轮独审发现尚未覆盖的具体身份窗口：ManualTracking先核ASK行，shared sync随后按service重读SQL，期间重新匹配可把旧询问套新remote；provider请求等待中重新匹配，成功后原无条件insert也可能覆盖新绑定。此时只是源码风险观察，尚无可控行为复现，不能写已确认缺陷或已修复。已交原实施代理先真实SQL／production sync红测，若复现仅补有限manual身份上下文与现条件写，保原Reader及durablequeue协议，预计增加10–20分钟，在RI11既定预算内，不增加代理、全量或独审轮次。
+
+`interaction-ri11-ask-sync-identity-red`终态FAILED／exit1，根核当次XML12:08:52.119Z两方法均为正确Assertion红／0跳过：shared重读窗口新remote22／library55／进度1被旧ASK写成remote22／library44／进度9，provider晚响应窗口新library55／进度1被旧响应覆为library44／进度9。Deferred只控制真实SQL／production共享sync及provider HTTP调用窗口，不复制算法。缺陷已证实，继续原有限manual expected-binding上下文及现条件写修正，保Reader默认分支、schema和持久队列协议；尚未宣称修复完成。
+
+`interaction-ri11-ask-sync-identity-green`于12:12:04–12:12:59 UTC PASSED／exit0；根读本次XML确认Desktop Tracking9（12:12:50.184Z）＋Reader6（12:12:58.303Z）、domain默认共享sync2（12:12:31.047Z）、Android实际TrackChapter2（12:12:43.220Z），合计19方法／0失败／0跳过，32Kotlin／2XML scoped Check通过。仅新增两个正确红对应方法，17项为直接影响复验，本批有效去重108项。主代理复核真实production与测试：TrackerSyncRequest末尾nullable expectedBinding仅手动传实际SQL快照，shared重读及provider调用前核五身份，成功后现repository同事务条件保存；已失效旧命令不写新匹配、不排新绑定，反馈也核libraryId。两个身份竞态bug已修复。Reader默认null及durablequeue schema／序列化保持原链，无新账号、端点或队列。
+
+同一轮独审与必要修正核验完成。两原生PNG已由根实际查看：320×680、density1、fontScale2、Windows／JDK21.0.11.10／Compose1.10.2，浅色服务绑定弹层真实滚动及双向Tab／关闭还焦、深色ASK取消／确认／Escape／背景阻隔；两种场景各一主题，不外推每类浅深或硬件DPI。网页登录保四个现有真实挂载／恢复／迟到事件characterization，不宣称真实账号验证。capability24／26／39／69／70／82追加本轮真实consumer／test与有限范围；全64条312 current locators已核，21处实际行漂移修正，FIXED_ORIGINAL／status／actionInventory不变。超过8文件／400行仍是同追踪、已读与分享能力的共享契约、production wiring及原生验证，旧区纯格式为实际whole-file Check所需，不拆开不可独立验收的上下文。
+
+本批交付包含测试、实现、必要证据及RI11勾选的同一功能提交；formal runtime／真实账号／硬件及完整Android/Desktop、finalParityAudit、Windows/macOS构建均未执行，统一留RI18，不因尚无正式产物阻断后续RI12实施。
 
 ### RI12 书架设置前置核对（只读，不代表实施完成）
 

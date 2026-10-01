@@ -697,6 +697,7 @@ internal fun MangaDetailActionRow(
     intervalFocus: FocusRequester? = null,
     onEditFetchInterval: () -> Unit,
     onTracking: () -> Unit,
+    trackingCount: Int = 0,
     onOpenInBrowser: () -> Unit,
 ) {
     val linkActions = mangaUrl?.let { mangaLinkActions(it) }
@@ -750,7 +751,13 @@ internal fun MangaDetailActionRow(
                         }
                     MangaDetailPrimaryActionType.TRACKING ->
                         IconButton(onClick = onTracking) {
-                            Icon(Icons.Default.Sync, contentDescription = MR.strings.pref_category_tracking.localized())
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.Sync,
+                                    contentDescription = MR.strings.pref_category_tracking.localized(),
+                                )
+                                Text(trackingCount.toString())
+                            }
                         }
                     MangaDetailPrimaryActionType.OPEN_IN_BROWSER ->
                         IconButton(onClick = onOpenInBrowser) {
@@ -1120,7 +1127,7 @@ internal fun mangaLinkActions(url: String): MangaLinkActions {
     val scope = rememberCoroutineScope()
     return MangaLinkActions(
         copyLink = {
-            notificationService.post(shareService.copyText(url).toDesktopNotification())
+            notificationService.post(shareService.copyText(url).linkNotification())
         },
         share = {
             scope.launch(Dispatchers.IO) {
@@ -1128,7 +1135,7 @@ internal fun mangaLinkActions(url: String): MangaLinkActions {
                     notificationService.post(terminal.toDesktopNotification())
                 }
                 if (launch != DesktopShareResult.OpenedNatively) {
-                    notificationService.post(launch.toDesktopNotification())
+                    notificationService.post(launch.linkNotification())
                 }
             }
         },
@@ -1314,5 +1321,19 @@ internal fun ChapterSelectionBar(
                 }
             }
         }
+    }
+}
+
+private fun mihon.desktop.platform.DesktopShareResult.linkNotification(): mihon.desktop.domain.DesktopNotification {
+    val notification = toDesktopNotification()
+    return if (this == mihon.desktop.platform.DesktopShareResult.CopiedToClipboard) {
+        notification.copy(
+            message = MR.strings.copied_to_clipboard.localized(
+                java.util.Locale.getDefault(),
+                MR.strings.action_copy_link.localized(),
+            ),
+        )
+    } else {
+        notification
     }
 }

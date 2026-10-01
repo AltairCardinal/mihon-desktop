@@ -141,6 +141,7 @@ class LibraryScreenModel(
     private val downloadQueueChanges: Flow<Unit> = flowOf(Unit),
     private val readingProgress: tachiyomi.domain.reader.interactor.RecordReadingProgress? = null,
     private val readerPreferences: mihon.desktop.reader.ReaderPreferences? = null,
+    val manualTracking: mihon.desktop.tracking.DesktopManualTracking? = null,
     private val enqueueAccepted: ((DownloadItem) -> Boolean)? = null,
     private val captureRemovalFiles: (suspend (LibraryManga) -> LibraryRemovalFiles)? = null,
     private val deleteRemovalFiles: (
@@ -957,6 +958,7 @@ class LibraryScreenModel(
         val newlyReadChapters = chapters.filterNot { it.read }.distinctBy { it.id }
         val item = state.value.allItems.firstOrNull { it.id == mangaId }
         statusUpdater.awaitOrThrow(chapters, read)
+        if (read) manualTracking?.afterRead(mangaId, chapters)
         if (read && sharedDownloadPreferences?.removeAfterMarkedAsRead()?.get() == true) {
             if (item != null) {
                 val delete = requireNotNull(deleteChapterDownload) { "Delete chapter download is required" }

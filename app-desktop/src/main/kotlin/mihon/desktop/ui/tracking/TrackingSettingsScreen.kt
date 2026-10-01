@@ -1,28 +1,32 @@
 package mihon.desktop.ui.tracking
 
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
@@ -30,39 +34,48 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.core.model.rememberScreenModel
+import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.domain.track.model.AutoTrackState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.platform.DesktopUrlOpener
+import mihon.desktop.platform.toDesktopNotification
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.settings.saveDesktopPreference
 import mihon.desktop.tracking.DesktopAuthenticatingTrackerService
 import mihon.desktop.tracking.DesktopTrackerOAuthCallbackBroker
+import mihon.desktop.ui.library.categoryDialogEscape
 import mihon.desktop.ui.security.DesktopPasswordField
 import mihon.desktop.ui.settings.DesktopSettingsAnchorResources
 import mihon.desktop.ui.settings.DesktopSettingsButton
 import mihon.desktop.ui.settings.DesktopSettingsLazyAnchor
 import mihon.desktop.ui.settings.DesktopSettingsTextButton
+import mihon.desktop.ui.settings.RadioSettingsItem
 import mihon.desktop.ui.settings.SwitchSettingsItem
-import mihon.desktop.ui.settings.desktopSettingsActivationKeys
 import mihon.desktop.ui.settings.desktopSettingsAction
+import mihon.desktop.ui.settings.desktopSettingsActivationKeys
 import mihon.desktop.ui.settings.desktopSettingsAnchor
 import mihon.desktop.ui.settings.rememberDesktopSettingsAnchorLazyListHost
 import tachiyomi.domain.track.service.TrackEdit
@@ -104,6 +117,15 @@ data class TrackingSettingsScreen(
         }
         val state by model.state.collectAsState()
         var selectedId by remember { mutableStateOf<Long?>(null) }
+        var returnServiceFocus by remember { mutableStateOf<Long?>(null) }
+        val serviceFocus = remember { mutableMapOf<Long, FocusRequester>() }
+        LaunchedEffect(returnServiceFocus) {
+            returnServiceFocus?.let { id ->
+                withFrameNanos { }
+                serviceFocus[id]?.requestFocus()
+                returnServiceFocus = null
+            }
+        }
         var confirmation by remember { mutableStateOf<TrackingConfirmation?>(null) }
         val scope = rememberCoroutineScope()
         LaunchedEffect(model) { model.load() }
@@ -111,7 +133,15 @@ data class TrackingSettingsScreen(
         val loginTitle = DesktopSettingsAnchorResources.trackingLogin.localized()
         val serviceStartIndex = listOf(state.error, state.feedback).count { it != null }
         val anchors = buildList {
-            if (mangaId == null) add(DesktopSettingsLazyAnchor(autoSyncTitle, "tracking-auto-sync"))
+            if (mangaId == null) {
+                add(DesktopSettingsLazyAnchor(autoSyncTitle, "tracking-auto-sync"))
+                add(
+                    DesktopSettingsLazyAnchor(
+                        MR.strings.pref_auto_update_manga_on_mark_read.localized(),
+                        "tracking-manual-sync",
+                    ),
+                )
+            }
             state.services.forEachIndexed { index, item ->
                 val sourceManaged =
                     dependencies.trackerServiceRegistry.get(item.profile.id) !is DesktopAuthenticatingTrackerService
@@ -143,6 +173,13 @@ data class TrackingSettingsScreen(
                     navigationIcon = {
                         mihon.desktop.ui.settings.SettingsNavigationIcon()
                     },
+                    actions = {
+                        if (mangaId != null) {
+                            DesktopSettingsTextButton(enabled = !state.loading, onClick = {
+                                scope.launch { model.refresh() }
+                            }) { Text(MR.strings.action_webview_refresh.localized()) }
+                        }
+                    },
                 )
             },
         ) { padding ->
@@ -152,6 +189,14 @@ data class TrackingSettingsScreen(
                         dependencies.appPreferences,
                         autoSyncTitle,
                         Modifier.desktopSettingsAnchor(autoSyncTitle, "tracking-auto-sync", anchorHost),
+                    )
+                    TrackingManualSyncPreference(
+                        dependencies.appPreferences,
+                        Modifier.desktopSettingsAnchor(
+                            MR.strings.pref_auto_update_manga_on_mark_read.localized(),
+                            "tracking-manual-sync",
+                            anchorHost,
+                        ),
                     )
                     HorizontalDivider()
                 }
@@ -168,16 +213,22 @@ data class TrackingSettingsScreen(
                                 item {
                                     Text(
                                         trackingMessageText(message),
-                                        Modifier.padding(16.dp),
+                                        Modifier.padding(16.dp).testTag("tracking-error"),
                                         color = MaterialTheme.colorScheme.error,
                                     )
                                 }
                             }
-                            state.feedback?.let { message -> item { Text(trackingMessageText(message), Modifier.padding(16.dp)) } }
+                            state.feedback?.let { message ->
+                                item { Text(trackingMessageText(message), Modifier.padding(16.dp)) }
+                            }
                             items(state.services, key = { it.profile.id }) { item ->
                                 val profile = item.profile
+                                val itemFocus = remember(profile.id) { FocusRequester() }
+                                serviceFocus[profile.id] = itemFocus
                                 val sourceManaged =
-                                    dependencies.trackerServiceRegistry.get(profile.id) !is DesktopAuthenticatingTrackerService
+                                    dependencies.trackerServiceRegistry.get(
+                                        profile.id,
+                                    ) !is DesktopAuthenticatingTrackerService
                                 val boundManga = mangaId != null && item.track != null
                                 val actionEnabled =
                                     boundManga ||
@@ -190,46 +241,53 @@ data class TrackingSettingsScreen(
                                     }
                                 }
                                 val actionLabel = when {
-                                    sourceManaged && mangaId == null -> MR.strings.desktop_tracking_source_managed.localized()
+                                    sourceManaged && mangaId == null -> {
+                                        MR.strings.desktop_tracking_source_managed.localized()
+                                    }
                                     profile.loggedIn && mangaId == null -> MR.strings.logout.localized()
                                     boundManga || profile.loggedIn -> MR.strings.desktop_tracking_manage.localized()
                                     else -> loginTitle
                                 }
+                                val supportingText = profile.unavailableReason ?: when {
+                                    item.track != null -> MR.strings.desktop_tracking_bound_to.localized(
+                                        Locale.getDefault(),
+                                        item.track.title,
+                                    )
+                                    sourceManaged && profile.loggedIn ->
+                                        MR.strings.desktop_tracking_source_available.localized()
+                                    profile.loggedIn -> profile.username?.let {
+                                        MR.strings.desktop_tracking_logged_in_as_not_bound.localized(
+                                            Locale.getDefault(),
+                                            it,
+                                        )
+                                    } ?: MR.strings.desktop_tracking_logged_in_not_bound.localized()
+                                    else -> MR.strings.desktop_tracking_not_logged_in.localized()
+                                }
                                 ListItem(
                                     headlineContent = { Text(profile.name) },
-                                    supportingContent = {
-                                        Text(
-                                            profile.unavailableReason
-                                                ?: when {
-                                                    item.track != null -> MR.strings.desktop_tracking_bound_to.localized(
-                                                        Locale.getDefault(),
-                                                        item.track.title,
-                                                    )
-                                                    sourceManaged && profile.loggedIn -> MR.strings.desktop_tracking_source_available.localized()
-                                                    profile.loggedIn ->
-                                                        profile.username?.let {
-                                                            MR.strings.desktop_tracking_logged_in_as_not_bound.localized(Locale.getDefault(), it)
-                                                        } ?: MR.strings.desktop_tracking_logged_in_not_bound.localized()
-                                                    else -> MR.strings.desktop_tracking_not_logged_in.localized()
-                                                },
-                                        )
-                                    },
+                                    supportingContent = { Text(supportingText) },
                                     trailingContent = {
                                         Text(actionLabel)
                                     },
-                                    modifier = (if (item.track == null && !profile.loggedIn && (!sourceManaged || mangaId != null)) {
-                                        Modifier.desktopSettingsAnchor(
-                                            loginTitle,
-                                            "tracking-login-${profile.id}",
-                                            anchorHost,
-                                        )
-                                    } else {
-                                        Modifier
-                                    }).then(if (actionEnabled) {
-                                        Modifier.desktopSettingsAction(Role.Button, serviceAction)
-                                    } else {
-                                        Modifier.semantics { disabled() }
-                                    }),
+                                    modifier = (
+                                        if (item.track == null && !profile.loggedIn &&
+                                            (!sourceManaged || mangaId != null)
+                                        ) {
+                                            Modifier.desktopSettingsAnchor(
+                                                loginTitle,
+                                                "tracking-login-${profile.id}",
+                                                anchorHost,
+                                            )
+                                        } else {
+                                            Modifier
+                                        }
+                                        ).focusRequester(itemFocus).then(
+                                        if (actionEnabled) {
+                                            Modifier.desktopSettingsAction(Role.Button, serviceAction)
+                                        } else {
+                                            Modifier.semantics { disabled() }
+                                        },
+                                    ),
                                 )
                                 HorizontalDivider()
                             }
@@ -248,7 +306,10 @@ data class TrackingSettingsScreen(
                 mangaId != null && selectedItem.track != null -> MangaTrackingDialog(
                     item = selectedItem,
                     model = model,
-                    onDismiss = { selectedId = null },
+                    onDismiss = {
+                        selectedId = null
+                        returnServiceFocus = trackerId
+                    },
                     onRequestUnbind = {
                         confirmation = TrackingConfirmation.Unbind(
                             trackerId,
@@ -280,7 +341,10 @@ data class TrackingSettingsScreen(
                 mangaId != null -> MangaTrackingDialog(
                     item = selectedItem,
                     model = model,
-                    onDismiss = { selectedId = null },
+                    onDismiss = {
+                        selectedId = null
+                        returnServiceFocus = trackerId
+                    },
                     onRequestUnbind = {
                         confirmation = TrackingConfirmation.Unbind(
                             trackerId,
@@ -379,7 +443,10 @@ internal fun TrackingConfirmationDialog(
     )
 }
 
-internal fun trackingMessageText(message: TrackingMessage, locale: Locale = Locale.getDefault()): String = when (message) {
+internal fun trackingMessageText(
+    message: TrackingMessage,
+    locale: Locale = Locale.getDefault(),
+): String = when (message) {
     TrackingMessage.LoadFailed -> MR.strings.desktop_tracking_load_failed.localized(locale)
     TrackingMessage.Bound -> MR.strings.desktop_tracking_bound.localized(locale)
     TrackingMessage.Updated -> MR.strings.desktop_tracking_updated.localized(locale)
@@ -422,6 +489,73 @@ internal fun TrackingAutoSyncPreference(
         onCheckedChange = preferences.autoUpdateTrack::set,
         modifier = modifier,
     )
+}
+
+@Composable
+private fun TrackingManualSyncPreference(preferences: DesktopAppPreferences, modifier: Modifier = Modifier) {
+    val preference = preferences.autoUpdateTrackOnMarkRead
+    val selected by preference.changes().collectAsState(preference.get())
+    var opened by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf(false) }
+    var returnFocus by remember { mutableStateOf(false) }
+    val trigger = remember { FocusRequester() }
+    val dialogFocus = remember { FocusRequester() }
+    val title = MR.strings.pref_auto_update_manga_on_mark_read.localized()
+    val dismiss = {
+        opened = false
+        returnFocus = true
+    }
+    LaunchedEffect(returnFocus) {
+        if (returnFocus) {
+            withFrameNanos { }
+            trigger.requestFocus()
+            returnFocus = false
+        }
+    }
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(selected.titleRes.localized()) },
+        modifier = modifier.focusRequester(trigger).desktopSettingsAction(Role.Button) {
+            error = false
+            opened = true
+        },
+    )
+    if (opened) {
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            dialogFocus.requestFocus()
+        }
+        AlertDialog(
+            modifier = Modifier.categoryDialogEscape(true, dismiss),
+            onDismissRequest = dismiss,
+            title = { Text(title) },
+            text = {
+                LazyColumn(Modifier.heightIn(max = 400.dp)) {
+                    item {
+                        if (error) {
+                            Text(
+                                MR.strings.desktop_detail_save_failed.localized(),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                    items(AutoTrackState.entries) { choice ->
+                        RadioSettingsItem(choice.titleRes.localized(), choice == selected, onClick = {
+                            if (choice != selected) {
+                                if (saveDesktopPreference(preference, choice)) dismiss() else error = true
+                            }
+                        })
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                DesktopSettingsTextButton(modifier = Modifier.focusRequester(dialogFocus), onClick = dismiss) {
+                    Text(MR.strings.action_cancel.localized())
+                }
+            },
+        )
+    }
 }
 
 fun trackingSettingsDestination() = TrackingSettingsScreen()
@@ -473,7 +607,7 @@ internal fun LoginDialog(
     var password by remember { mutableStateOf("") }
     val method = service.profile.value.authentication
     val credentialsValid = method == TrackerAuthentication.OAUTH ||
-        password.isNotBlank() && (method != TrackerAuthentication.USERNAME_PASSWORD || username.isNotBlank())
+        (password.isNotBlank() && (method != TrackerAuthentication.USERNAME_PASSWORD || username.isNotBlank()))
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(MR.strings.login_title.localized(Locale.getDefault(), service.profile.value.name)) },
@@ -508,7 +642,9 @@ internal fun LoginDialog(
                 },
             ) { Text(MR.strings.login.localized()) }
         },
-        dismissButton = { DesktopSettingsTextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) } },
+        dismissButton = {
+            DesktopSettingsTextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
+        },
     )
 }
 
@@ -534,10 +670,12 @@ private fun MangaTrackingDialog(
     onDismiss: () -> Unit,
     onRequestUnbind: () -> Unit,
 ) {
+    val dependencies = LocalDesktopUiDependencies.current
     val scope = rememberCoroutineScope()
-    var query by remember { mutableStateOf("") }
+    var query by remember { mutableStateOf(model.mangaTitle.orEmpty()) }
     var results by remember { mutableStateOf<List<TrackSearchResult>?>(null) }
     val bound = item.track
+    var searching by remember { mutableStateOf(bound == null) }
     var status by remember(bound) { mutableStateOf(bound?.status) }
     var score by remember(bound) { mutableStateOf(bound?.score) }
     var chapter by remember(bound) { mutableStateOf(bound?.lastChapterRead ?: 0.0) }
@@ -546,8 +684,15 @@ private fun MangaTrackingDialog(
     var finishDate by remember(bound) { mutableStateOf(bound?.finishDate ?: 0) }
     var datePickerTarget by remember { mutableStateOf<TrackingDateTarget?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var linkFeedback by remember { mutableStateOf<String?>(null) }
     var working by remember { mutableStateOf(false) }
+    val closeFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        closeFocus.requestFocus()
+    }
     AlertDialog(
+        modifier = Modifier.categoryDialogEscape(!working, onDismiss),
         onDismissRequest = onDismiss,
         title = {
             Text(
@@ -559,18 +704,28 @@ private fun MangaTrackingDialog(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                if (bound == null) {
-                    OutlinedTextField(query, { query = it }, label = { Text(MR.strings.action_search_hint.localized()) })
+                linkFeedback?.let { Text(it) }
+                if (searching) {
+                    OutlinedTextField(query, {
+                        query = it
+                    }, label = { Text(MR.strings.action_search_hint.localized()) })
                     Button(enabled = !working, onClick = {
                         scope.launch {
                             working = true
                             runCatching { model.search(item.profile.id, query) }
-                                .onSuccess { results = it; error = null }
+                                .onSuccess {
+                                    results = it
+                                    error = null
+                                }
                                 .onFailure {
-                                    error = (it as? TrackingMessageException)?.trackingMessage?.let(::trackingMessageText)
-                                        ?: it.message ?: MR.strings.desktop_tracking_search_failed.localized()
+                                    error =
+                                        (it as? TrackingMessageException)?.trackingMessage?.let(::trackingMessageText)
+                                            ?: it.message ?: MR.strings.desktop_tracking_search_failed.localized()
                                 }
                             working = false
                         }
@@ -588,8 +743,12 @@ private fun MangaTrackingDialog(
                                         runCatching { model.bind(item.profile.id, result) }
                                             .onSuccess { onDismiss() }
                                             .onFailure {
-                                                error = (it as? TrackingMessageException)?.trackingMessage?.let(::trackingMessageText)
-                                                    ?: it.message ?: MR.strings.desktop_tracking_bind_failed.localized()
+                                                error =
+                                                    (it as? TrackingMessageException)?.trackingMessage?.let(
+                                                        ::trackingMessageText,
+                                                    )
+                                                        ?: it.message
+                                                        ?: MR.strings.desktop_tracking_bind_failed.localized()
                                             }
                                         working = false
                                     }
@@ -597,12 +756,52 @@ private fun MangaTrackingDialog(
                             }
                         }
                     }
-                } else {
+                } else if (bound != null) {
+                    if (bound.remoteUrl.isNotBlank()) {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(enabled = !working, onClick = {
+                                dependencies.externalUrlOpener(bound.remoteUrl).fold(
+                                    onSuccess = {
+                                        linkFeedback = MR.strings.desktop_link_opened.localized()
+                                        error =
+                                            null
+                                    },
+                                    onFailure = {
+                                        error =
+                                            MR.strings.desktop_extension_open_link_failed.localized(
+                                                Locale.getDefault(),
+                                                it.message.orEmpty(),
+                                            )
+                                        linkFeedback =
+                                            null
+                                    },
+                                )
+                            }) { Text(MR.strings.action_open_in_browser.localized()) }
+                            TextButton(enabled = !working, onClick = {
+                                val result = dependencies.shareService.copyText(bound.remoteUrl)
+                                val notification = result.toDesktopNotification(MR.strings.action_copy_link.localized())
+                                dependencies.notificationService.post(notification)
+                                if (result is mihon.desktop.platform.DesktopShareResult.CopiedToClipboard) {
+                                    linkFeedback = notification.message
+                                    error = null
+                                } else {
+                                    error = notification.message
+                                    linkFeedback = null
+                                }
+                            }) { Text(MR.strings.action_copy_link.localized()) }
+                        }
+                    }
+                    TextButton(enabled = !working, onClick = { searching = true }) {
+                        Text(MR.strings.action_search.localized())
+                    }
                     ChoiceField(MR.strings.status.localized(), item.statuses, status) { status = it }
                     if (item.scores.isNotEmpty()) {
-                        ChoiceField(MR.strings.score.localized(), item.scores.map { it to it.toString() }, score) { score = it }
+                        ChoiceField(MR.strings.score.localized(), item.scores.map { it to it.toString() }, score) {
+                            score =
+                                it
+                        }
                     }
-                    ChapterStepper(chapter, model.totalChapters?.takeIf { it > 0 } ?: bound.totalChapters.takeIf { it > 0 }) { chapter = it }
+                    ChapterStepper(chapter, bound.totalChapters.takeIf { it > 0 }) { chapter = it }
                     if (item.providerConfiguration?.supportsPrivateTracking == true) {
                         SwitchSettingsItem(
                             title = MR.strings.tracked_privately.localized(),
@@ -643,8 +842,9 @@ private fun MangaTrackingDialog(
                                 )
                             }.onSuccess { onDismiss() }
                                 .onFailure {
-                                    error = (it as? TrackingMessageException)?.trackingMessage?.let(::trackingMessageText)
-                                        ?: it.message ?: MR.strings.desktop_tracking_update_failed.localized()
+                                    error =
+                                        (it as? TrackingMessageException)?.trackingMessage?.let(::trackingMessageText)
+                                            ?: it.message ?: MR.strings.desktop_tracking_update_failed.localized()
                                 }
                             working = false
                         }
@@ -653,7 +853,15 @@ private fun MangaTrackingDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(MR.strings.action_close.localized()) } },
+        confirmButton = {
+            DesktopSettingsTextButton(
+                modifier = Modifier.focusRequester(closeFocus),
+                enabled = !working,
+                onClick = onDismiss,
+            ) {
+                Text(MR.strings.action_close.localized())
+            }
+        },
     )
     datePickerTarget?.let { target ->
         val currentDate = if (target == TrackingDateTarget.START) startDate else finishDate
@@ -802,11 +1010,18 @@ private fun <T> ChoiceField(label: String, choices: List<Pair<T, String>>, selec
     var expanded by remember { mutableStateOf(false) }
     Box {
         TextButton(onClick = { expanded = true }) {
-            Text("$label: ${choices.firstOrNull { it.first == selected }?.second ?: MR.strings.desktop_tracking_choice.localized()}")
+            Text(
+                "$label: ${choices.firstOrNull {
+                    it.first == selected
+                }?.second ?: MR.strings.desktop_tracking_choice.localized()}",
+            )
         }
         DropdownMenu(expanded, { expanded = false }) {
             choices.forEach { (value, name) ->
-                DropdownMenuItem(text = { Text(name) }, onClick = { onSelect(value); expanded = false })
+                DropdownMenuItem(text = { Text(name) }, onClick = {
+                    onSelect(value)
+                    expanded = false
+                })
             }
         }
     }
@@ -814,12 +1029,12 @@ private fun <T> ChoiceField(label: String, choices: List<Pair<T, String>>, selec
 
 @Composable
 private fun ChapterStepper(value: Double, maximum: Long?, onChange: (Double) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(MR.strings.chapters.localized())
         TextButton(onClick = { onChange((value - 1.0).coerceAtLeast(0.0)) }, enabled = value > 0) { Text("−") }
         Text(if (maximum == null) value.toString() else "$value / $maximum")
         TextButton(
-            onClick = { onChange(value + 1.0) },
+            onClick = { onChange(maximum?.let { (value + 1.0).coerceAtMost(it.toDouble()) } ?: (value + 1.0)) },
             enabled = maximum == null || value < maximum,
         ) { Text("+") }
     }

@@ -751,10 +751,16 @@ class MangaScreenModel(
         toggleAllSelection(false)
         if (chapters.isEmpty()) return
         screenModelScope.launchIO {
-            setReadStatus.await(
+            val localResult = setReadStatus.await(
                 read = read,
                 chapters = chapters.toTypedArray(),
             )
+            if (localResult != SetReadStatus.Result.Success) {
+                if (localResult is SetReadStatus.Result.InternalError) {
+                    withUIContext { context.toast(context.stringResource(MR.strings.internal_error)) }
+                }
+                return@launchIO
+            }
 
             if (!read || successState?.hasLoggedInTrackers == false || autoTrackState == AutoTrackState.NEVER) {
                 return@launchIO
@@ -763,10 +769,8 @@ class MangaScreenModel(
             refreshTrackers()
 
             val tracks = getTracks.await(mangaId)
-            val maxChapterNumber = chapters.maxOf { it.chapterNumber }
-            val shouldPromptTrackingUpdate = tracks.any { track -> maxChapterNumber > track.lastChapterRead }
-
-            if (!shouldPromptTrackingUpdate) return@launchIO
+            val maxChapterNumber =
+                tachiyomi.domain.track.service.manualTrackProgress(chapters, tracks) ?: return@launchIO
             if (autoTrackState == AutoTrackState.ALWAYS) {
                 trackChapter.await(context, mangaId, maxChapterNumber)
                 withUIContext {

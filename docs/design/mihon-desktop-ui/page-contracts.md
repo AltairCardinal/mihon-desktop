@@ -196,6 +196,8 @@ RI08复用前置核对：Android现用`libs.richeditor.compose`版本1.0.0-rc13�
 - SOURCE／PROJECT_POLICY：详情信息区追踪入口显示有效绑定数，面板呈现服务名称、登录／绑定／状态／进度／评分及错误；所有查询、刷新、绑定、重匹配和回写经真实provider与repository。查询初值为作品标题，已有绑定可搜索替换；取消不解绑，不以另造provider或本地假结果代替。手动刷新必须读取远端状态，registry.refresh与本地reload不能充当远端刷新。
 - PROJECT_POLICY：进度按当前服务track.totalChapters的正数上限校验；未知服务总数允许非负值，不用本地目录条目数截断。UI步进及model校验遵守同一规则，保原始评分回写和RI05各provider尺度。HTTP成功、空／缺失、403／429／500及畸形响应覆盖实际parser至存储／界面的完整路径。
 - SOURCE／PROJECT_POLICY：手动已读的自动／询问／关闭沿AndroidautoUpdateTrackOnMarkRead语义，区别阅读完成autoUpdateTrack布尔偏好。实际成功标记后才处理适用的登录绑定、最高有效章节号及进度前移；询问取消只保本地已读，不回写远端，不触发重复请求。复用现共享同步／持久重试及增强匹配；增强作品入库匹配反馈须由真实收藏链消费，不能只打开追踪页才算入库自动匹配。
+- PROJECT_POLICY（RI11共享进度／身份边界）：自动及手动已读写入消费provider刷新后的正数总章数，只前移、不降低已有远端值；未知总数不按本地条目数限制，显式编辑仍保允许降低的分支。已达服务上限时不因源更大号误询问。共享队列成功按原请求高水位清理，保后续更高目标；真实存储拒绝必须保失败及重试，不能由吞异常的保存返回误报成功。普通写入和无需远端写入的fresh结果各只持久一次。
+- PROJECT_POLICY（RI11会话及失败处理）：手动刷新冻结本次原绑定，返回后在现repository同一事务内核原row／作品／service／remote／library并条件保存；陈旧返回不覆盖新匹配，也不将新对象纳本次询问。SQL REPLACE后询问冻结实际持久行身份，确认时再核当前资格；取消不回写，失效原对象不套到新绑定。逐服务普通失败不阻断其他适用绑定，取消继续传播；控制器仅拥有当前页面的询问／反馈，持久重试仍归现有共享队列，不新增账号、schema或状态权威。
 - PROJECT_POLICY：远端打开与复制独立，成功／不可用／剪贴板拒绝分别反馈；源网页／预览及验证恢复使用现SourceLoginSession和真实Cookie提交，取消／过期不提交，迟到结果不能套到另一本或新会话。token、cookie、账号及授权链接不写仓库或普通日志；自动化用隔离服务及临时存储，真实账号验收另有明确授权及实际证据。
 - SOURCE／PROJECT_POLICY：Windows无native share时复用DesktopShareService文本复制降级，明确“已复制链接”；原生Opened只表示已打开系统界面，terminal成功／取消／失败分别反馈，不谎报已发送。封面分享复用RI08／RI10同一实际typed图像请求及已有临时文件生命周期，不造网络客户端或缓存。macOS保原生session终态与临时文件清理能力。
 - 验收：真实Compose搜索／重匹配／确认／取消／重试、factory／DI及普通Navigator类型；MockWebServer原始响应→生产provider→SQLite→投影，实际浏览／剪贴板／分享平台port拒绝及终态。320dp／200%字号、浅深主题、Tab／Shift+Tab／Escape／背景隔离和关闭还焦必须覆盖；最终正式runtime与已授权真实账号证据在RI18取得，不能将mock账号记为真实账号成功。

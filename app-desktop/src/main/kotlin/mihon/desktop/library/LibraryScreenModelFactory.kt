@@ -43,6 +43,7 @@ object LibraryScreenModelFactory {
         val getChaptersByMangaId = Injekt.get<GetChaptersByMangaId>()
         val updateScheduler = Injekt.get<LibraryUpdateScheduler>()
         return LibraryScreenModel(
+            manualTracking = mihon.desktop.tracking.DesktopManualTracking.fromInjekt(),
             readingProgress = Injekt.get<tachiyomi.domain.reader.interactor.RecordReadingProgress>(),
             readerPreferences = Injekt.get<mihon.desktop.reader.ReaderPreferences>(),
             getLibraryManga = Injekt.get<GetLibraryManga>(),

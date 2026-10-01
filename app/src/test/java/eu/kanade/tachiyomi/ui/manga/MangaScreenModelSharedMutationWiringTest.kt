@@ -100,6 +100,7 @@ import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.InjektScope
 import uy.kohesive.injekt.api.addSingleton
+import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.registry.default.DefaultRegistrar
 import java.util.Collections
 
@@ -198,6 +199,166 @@ class MangaScreenModelSharedMutationWiringTest {
             assertEquals(Manga.CHAPTER_DISPLAY_NUMBER, preferences.displayChapterByNameOrNumber().get())
         } finally {
             model.onDispose()
+        }
+    }
+
+    @Test
+    fun `Android actual manual read uses highest valid shared progress after local write`() = runTest {
+        val chapters =
+            listOf(chapter(1).copy(chapterNumber = 9.0), chapter(2).copy(chapterNumber = Double.NaN), chapter(3))
+        val track = tachiyomi.domain.track.model.Track(
+            1,
+            MANGA_ID,
+            2,
+            11,
+            44,
+            "Title",
+            1.0,
+            100,
+            1,
+            80.0,
+            "url",
+            0,
+            0,
+            false,
+        )
+        val get = mockk<GetTracks> {
+            every { subscribe(MANGA_ID) } returns flowOf(listOf(track))
+            coEvery { await(MANGA_ID) } returns listOf(track)
+        }
+        val tracker = mockk<eu.kanade.tachiyomi.data.track.Tracker>(relaxed = true) {
+            every { id } returns 2L
+            every { isLoggedIn } returns true
+            every { isLoggedInFlow } returns flowOf(true)
+        }
+        val progress = Channel<Double>(Channel.UNLIMITED)
+        val trackChapter = mockk<TrackChapter>(relaxed = true) {
+            coEvery { await(any(), MANGA_ID, any(), any()) } answers {
+                progress.trySend(thirdArg())
+                Unit
+            }
+        }
+        val repository = mockk<ChapterRepository>(relaxed = true)
+        val status =
+            SetReadStatus(
+                DownloadPreferences(preferenceStore),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                repository,
+            )
+        Injekt.addSingleton<eu.kanade.domain.track.interactor.RefreshTracks>(
+            mockk {
+                coEvery { await(MANGA_ID) } returns emptyList()
+            },
+        )
+        val model = screenModel(
+            manga = manga(true),
+            chapters = chapters,
+            setReadStatus = status,
+            trackerManagerOverride = TrackerManager(listOf(tracker)),
+            getTracksOverride = get,
+            trackChapterOverride = trackChapter,
+        )
+        try {
+            testScheduler.runCurrent()
+            awaitSuccess(model)
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    while ((model.state.value as MangaScreenModel.State.Success).hasLoggedInTrackers.not()) delay(10)
+                }
+            }
+            model.markChaptersRead(chapters, true)
+            testScheduler.runCurrent()
+            val actual =
+                withContext(Dispatchers.Default) { kotlinx.coroutines.withTimeoutOrNull(1_000) { progress.receive() } }
+            assertEquals(9.0, actual)
+            coVerify(exactly = 1) {
+                repository.updateAll(match { it.map { row -> row.id }.toSet() == setOf(1L, 2L, 3L) })
+            }
+        } finally {
+            withContext(Dispatchers.Main) { model.onDispose() }
+        }
+    }
+
+    @Test
+    fun `Android manual read local storage failure never starts remote refresh or progress`() = runTest {
+        val chapters =
+            listOf(chapter(1).copy(chapterNumber = 9.0), chapter(2).copy(chapterNumber = Double.NaN), chapter(3))
+        val track = tachiyomi.domain.track.model.Track(
+            1,
+            MANGA_ID,
+            2,
+            11,
+            44,
+            "Title",
+            1.0,
+            100,
+            1,
+            80.0,
+            "url",
+            0,
+            0,
+            false,
+        )
+        val get = mockk<GetTracks> {
+            every { subscribe(MANGA_ID) } returns flowOf(listOf(track))
+            coEvery { await(MANGA_ID) } returns listOf(track)
+        }
+        val tracker = mockk<eu.kanade.tachiyomi.data.track.Tracker>(relaxed = true) {
+            every { id } returns 2L
+            every { isLoggedIn } returns true
+            every { isLoggedInFlow } returns flowOf(true)
+        }
+        val progress = Channel<Double>(Channel.UNLIMITED)
+        val trackChapter = mockk<TrackChapter>(relaxed = true) {
+            coEvery { await(any(), MANGA_ID, any(), any()) } answers {
+                progress.trySend(thirdArg())
+                Unit
+            }
+        }
+        val repository = mockk<ChapterRepository>(relaxed = true) {
+            coEvery { updateAll(any()) } throws java.io.IOException("local read rejected")
+        }
+        val status =
+            SetReadStatus(
+                DownloadPreferences(preferenceStore),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                repository,
+            )
+        Injekt.addSingleton<eu.kanade.domain.track.interactor.RefreshTracks>(
+            mockk {
+                coEvery { await(MANGA_ID) } returns emptyList()
+            },
+        )
+        val model = screenModel(
+            manga = manga(true),
+            chapters = chapters,
+            setReadStatus = status,
+            trackerManagerOverride = TrackerManager(listOf(tracker)),
+            getTracksOverride = get,
+            trackChapterOverride = trackChapter,
+        )
+        try {
+            testScheduler.runCurrent()
+            awaitSuccess(model)
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    while ((model.state.value as MangaScreenModel.State.Success).hasLoggedInTrackers.not()) delay(10)
+                }
+            }
+            model.markChaptersRead(chapters, true)
+            testScheduler.runCurrent()
+            val actual =
+                withContext(Dispatchers.Default) { kotlinx.coroutines.withTimeoutOrNull(1_000) { progress.receive() } }
+            assertEquals(null, actual)
+            val refresh = Injekt.get<eu.kanade.domain.track.interactor.RefreshTracks>()
+            coVerify(exactly = 0) { refresh.await(MANGA_ID) }
+            coVerify(exactly = 1) {
+                repository.updateAll(match { it.map { row -> row.id }.toSet() == setOf(1L, 2L, 3L) })
+            }
+        } finally {
+            withContext(Dispatchers.Main) { model.onDispose() }
         }
     }
 
@@ -752,6 +913,9 @@ class MangaScreenModelSharedMutationWiringTest {
         getMangaWithChaptersOverride: GetMangaWithChapters? = null,
         defaultsOverride: SetMangaDefaultChapterFlags? = null,
         downloadManagerOverride: DownloadManager? = null,
+        trackerManagerOverride: TrackerManager? = null,
+        getTracksOverride: GetTracks? = null,
+        trackChapterOverride: TrackChapter? = null,
     ): MangaScreenModel {
         Injekt.addSingleton(chapterRepository)
         Injekt.addSingleton(mockk<eu.kanade.tachiyomi.data.cache.CoverCache>(relaxed = true))
@@ -786,8 +950,8 @@ class MangaScreenModelSharedMutationWiringTest {
             libraryPreferences = libraryPreferences,
             trackPreferences = TrackPreferences(preferenceStore),
             readerPreferences = ReaderPreferences(preferenceStore),
-            trackerManager = TrackerManager(emptyList()),
-            trackChapter = mockk<TrackChapter>(relaxed = true),
+            trackerManager = trackerManagerOverride ?: TrackerManager(emptyList()),
+            trackChapter = trackChapterOverride ?: mockk<TrackChapter>(relaxed = true),
             downloadManager = downloadManager,
             downloadCache = downloadCache,
             getMangaAndChapters = getMangaWithChapters,
@@ -802,7 +966,7 @@ class MangaScreenModelSharedMutationWiringTest {
             updateManga = updateManga,
             syncChaptersWithSource = syncChaptersWithSource,
             getCategories = mockk<GetCategories>(relaxed = true),
-            getTracks = mockk<GetTracks> {
+            getTracks = getTracksOverride ?: mockk<GetTracks> {
                 every { subscribe(MANGA_ID) } returns flowOf(emptyList())
             },
             addTracks = mockk<AddTracks>(relaxed = true),

@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -61,6 +62,7 @@ internal fun MangaCoverViewerDialog(
     onReplace: () -> Unit,
     onDelete: () -> Unit,
     onSave: (coil3.Image) -> Unit,
+    onShare: (coil3.Image) -> Unit,
 ) {
     val request = rememberMangaCoverRequestState(manga.id, manga.source, coverModel, coverVersion)
     var loadedImage by remember(request.request) { mutableStateOf<coil3.Image?>(null) }
@@ -94,6 +96,9 @@ internal fun MangaCoverViewerDialog(
                     Text(manga.title, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
                     IconButton(enabled = !busy && loadedImage != null, onClick = { loadedImage?.let(onSave) }) {
                         Icon(Icons.Default.Save, MR.strings.action_save.localized())
+                    }
+                    IconButton(enabled = !busy && loadedImage != null, onClick = { loadedImage?.let(onShare) }) {
+                        Icon(Icons.Default.Share, MR.strings.action_share.localized())
                     }
                     Box {
                         IconButton(enabled = !busy, onClick = {

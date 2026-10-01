@@ -278,6 +278,15 @@ class LibraryRootScreen : Screen {
         val screenModelFactory = LocalLibraryScreenModelFactory.current
         val model = rememberScreenModel { screenModelFactory() }
         val state by model.state.collectAsState()
+        val manualTrackingFeedback by model.manualTracking?.feedback?.collectAsState()
+            ?: remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(manualTrackingFeedback) {
+            manualTrackingFeedback?.let {
+                model.setOperationFeedback(it)
+                model.manualTracking?.consumeFeedback()
+            }
+        }
+        mihon.desktop.ui.tracking.ManualTrackingDialog(model.manualTracking) { rootFocusRequester.requestFocus() }
         val selectionState = remember { LibrarySelectionState() }
         val categoryWheelSegment = remember { LibraryCategoryWheelSegment() }
         DisposableEffect(libraryNavigationHost, categoryWheelSegment) {
@@ -789,6 +798,7 @@ class LibraryRootScreen : Screen {
                         enabled = !editingSearch && !toolbarPopupVisible && !selectionPopupVisible && !showFilterMenu &&
                             !showBatchCategoryDialog && removalTarget == null && contextMenuManga == null &&
                             !syncPanelVisible &&
+                            model.manualTracking?.prompts?.collectAsState()?.value?.isNotEmpty() != true &&
                             navigator.lastItem is LibraryRootScreen && windowInfo.isWindowFocused,
                     ) { direction ->
                         val current = model.state.value

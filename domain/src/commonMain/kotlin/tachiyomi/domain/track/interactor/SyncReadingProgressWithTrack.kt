@@ -1,5 +1,6 @@
 package tachiyomi.domain.track.interactor
 
+import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.DelayedTrackerSyncItem
 import tachiyomi.domain.track.service.DelayedTrackerSyncPersistence
@@ -17,6 +18,7 @@ data class TrackerSyncRequest(
     val chapterNumber: Double,
     val trackerId: Long? = null,
     val attempt: Int = 0,
+    val expectedBinding: Track? = null,
 ) {
     val idempotencyKey: String get() = "$eventId:${trackerId ?: "all"}"
 }
@@ -61,9 +63,10 @@ class SyncReadingProgressWithTrack(
             override suspend fun removeUpTo(trackId: Long, lastChapterRead: Double) =
                 durablePersistence?.removeUpTo(trackId, lastChapterRead) ?: false
         }
-        queue(persistence).sync(
+        queue(persistence, request.expectedBinding).sync(
             repository.getTracksByMangaId(request.mangaId)
-                .filter { request.trackerId == null || it.trackerId == request.trackerId },
+                .filter { request.trackerId == null || it.trackerId == request.trackerId }
+                .filter { request.expectedBinding == null || it.matchesBinding(request.expectedBinding) },
             request.chapterNumber,
         )
     }
@@ -117,12 +120,24 @@ class SyncReadingProgressWithTrack(
             eventId == other.eventId &&
             attempt == other.attempt
 
-    private fun queue(persistence: DelayedTrackerSyncPersistence) = DelayedTrackerSyncQueue(
+    private fun Track.matchesBinding(other: Track): Boolean =
+        id == other.id && mangaId == other.mangaId && trackerId == other.trackerId &&
+            remoteId == other.remoteId && libraryId == other.libraryId
+
+    private fun queue(
+        persistence: DelayedTrackerSyncPersistence,
+        expectedBinding: Track? = null,
+    ) = DelayedTrackerSyncQueue(
         persistence = persistence,
         session = { id ->
             registry.get(id)?.profile?.value?.let { TrackerProviderSession(id, it.loggedIn, it.username) }
         },
-        execute = { providerRequest ->
+        execute = execute@{ providerRequest ->
+            if (expectedBinding != null &&
+                repository.getTrackById(expectedBinding.id)?.matchesBinding(expectedBinding) != true
+            ) {
+                return@execute TrackerProviderResult.Success(providerRequest.track)
+            }
             val service = requireNotNull(registry.get(providerRequest.track.trackerId))
             val result = if (service is TrackerProviderService) {
                 service.execute(providerRequest)
@@ -137,7 +152,15 @@ class SyncReadingProgressWithTrack(
                     ),
                 )
             }
-            (result as? TrackerProviderResult.Success)?.track?.let { repository.insert(it) }
+            (result as? TrackerProviderResult.Success)?.track?.let { refreshed ->
+                if (expectedBinding == null) {
+                    repository.insert(refreshed)
+                } else if (!repository.insertIfMatches(expectedBinding, refreshed)) {
+                    // The accepted binding was replaced. Retire only its old checkpoint;
+                    // never apply or retry this manual command against the replacement.
+                    return@execute TrackerProviderResult.Success(providerRequest.track)
+                }
+            }
             result
         },
     )

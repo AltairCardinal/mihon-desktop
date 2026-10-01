@@ -1,6 +1,7 @@
 package tachiyomi.data.track
 
 import kotlinx.coroutines.flow.Flow
+import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
@@ -44,6 +45,19 @@ class TrackRepositoryImpl(
         insertValues(track)
     }
 
+    override suspend fun insertIfMatches(previous: Track, refreshed: Track): Boolean =
+        handler.await(inTransaction = true) {
+            val current = manga_syncQueries.getTrackById(previous.id, TrackMapper::mapTrack).executeAsOneOrNull()
+            if (current == null || current.mangaId != previous.mangaId || current.trackerId != previous.trackerId ||
+                current.remoteId != previous.remoteId || current.libraryId != previous.libraryId
+            ) {
+                return@await false
+            }
+            require(refreshed.mangaId == previous.mangaId && refreshed.trackerId == previous.trackerId)
+            insertTrackValues(refreshed)
+            true
+        }
+
     override suspend fun insertAll(tracks: List<Track>) {
         insertValues(*tracks.toTypedArray())
     }
@@ -51,22 +65,26 @@ class TrackRepositoryImpl(
     private suspend fun insertValues(vararg tracks: Track) {
         handler.await(inTransaction = true) {
             tracks.forEach { mangaTrack ->
-                manga_syncQueries.insert(
-                    mangaId = mangaTrack.mangaId,
-                    syncId = mangaTrack.trackerId,
-                    remoteId = mangaTrack.remoteId,
-                    libraryId = mangaTrack.libraryId,
-                    title = mangaTrack.title,
-                    lastChapterRead = mangaTrack.lastChapterRead,
-                    totalChapters = mangaTrack.totalChapters,
-                    status = mangaTrack.status,
-                    score = mangaTrack.score,
-                    remoteUrl = mangaTrack.remoteUrl,
-                    startDate = mangaTrack.startDate,
-                    finishDate = mangaTrack.finishDate,
-                    private = mangaTrack.private,
-                )
+                insertTrackValues(mangaTrack)
             }
         }
+    }
+
+    private fun Database.insertTrackValues(track: Track) {
+        manga_syncQueries.insert(
+            mangaId = track.mangaId,
+            syncId = track.trackerId,
+            remoteId = track.remoteId,
+            libraryId = track.libraryId,
+            title = track.title,
+            lastChapterRead = track.lastChapterRead,
+            totalChapters = track.totalChapters,
+            status = track.status,
+            score = track.score,
+            remoteUrl = track.remoteUrl,
+            startDate = track.startDate,
+            finishDate = track.finishDate,
+            private = track.private,
+        )
     }
 }

@@ -40,6 +40,7 @@ object MangaDetailScreenModelFactory {
             readingProgress = Injekt.get<tachiyomi.domain.reader.interactor.RecordReadingProgress>(),
             readerPreferences = Injekt.get<mihon.desktop.reader.ReaderPreferences>(),
             mangaId = mangaId,
+            manualTracking = mihon.desktop.tracking.DesktopManualTracking.fromInjekt(),
             getMangaWithChapters = Injekt.get<GetMangaWithChapters>(),
             sourceManager = Injekt.get<SourceManager>(),
             updateChecker = Injekt.get<LibraryUpdateChecker>(),

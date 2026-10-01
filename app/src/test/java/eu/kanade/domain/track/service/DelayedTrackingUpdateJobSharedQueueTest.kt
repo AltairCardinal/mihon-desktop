@@ -21,6 +21,7 @@ import tachiyomi.domain.track.service.DelayedTrackerSyncItem
 import tachiyomi.domain.track.service.TrackerProviderRequest
 import tachiyomi.domain.track.service.TrackerProviderResult
 import tachiyomi.domain.track.service.TrackerProviderSession
+import uy.kohesive.injekt.api.addSingleton
 import java.util.concurrent.TimeUnit
 
 class DelayedTrackingUpdateJobSharedQueueTest {
@@ -120,6 +121,100 @@ class DelayedTrackingUpdateJobSharedQueueTest {
         subject.await(mockk<Context>(), 7, 6.0)
         assertEquals(emptyList<DelayedTrackerSyncItem>(), store.getItems())
         assertEquals(1, scheduled)
+    }
+
+    @Test
+    fun `actual Android TrackChapter caps fresh service progress and drains pending raw target`() = runTest {
+        val original = track()
+        val getTracks = mockk<GetTracks> { coEvery { await(7) } returns listOf(original) }
+        val writes = mutableListOf<Double>()
+        val persisted = mutableListOf<Track>()
+        val tracker = mockk<eu.kanade.tachiyomi.data.track.Tracker>(relaxed = true) {
+            io.mockk.every { id } returns 9L
+            io.mockk.every { isLoggedIn } returns true
+            io.mockk.every { name } returns "Test tracker"
+            io.mockk.every { getReadingStatus() } returns 1L
+            io.mockk.every { getCompletionStatus() } returns 2L
+            io.mockk.every { getRereadingStatus() } returns -1L
+            coEvery { refresh(any()) } answers
+                {
+                    firstArg<eu.kanade.tachiyomi.data.database.models.Track>().apply {
+                        total_chapters = 10
+                        last_chapter_read =
+                            2.0
+                    }
+                }
+            coEvery { update(any(), any()) } answers
+                { firstArg<eu.kanade.tachiyomi.data.database.models.Track>().also { writes += it.last_chapter_read } }
+        }
+        val manager = TrackerManager(listOf(tracker), persist = { persisted += it })
+        val store = DelayedTrackingStore(mutableMapOf())
+        store.upsertMax(DelayedTrackerSyncItem(original.id, 7, 9, 50.0))
+        val subject = TrackChapter(getTracks, manager, mockk(relaxed = true), store, scheduleRetry = {})
+        subject.await(mockk<Context>(), 7, 50.0)
+        assertEquals(listOf(10.0), writes)
+        assertEquals(10.0, persisted.single().lastChapterRead)
+        assertEquals(emptyList<DelayedTrackerSyncItem>(), store.getItems())
+    }
+
+    @Test
+    fun `Android default persistence rejects failed SQL and keeps raw pending for update and fresh no op`() = runTest {
+        val previous = uy.kohesive.injekt.Injekt
+        uy.kohesive.injekt.Injekt =
+            uy.kohesive.injekt.api.InjektScope(uy.kohesive.injekt.registry.default.DefaultRegistrar())
+        try {
+            val repository = mockk<tachiyomi.domain.track.repository.TrackRepository>()
+            var rejected = true
+            val saved = mutableListOf<Track>()
+            coEvery { repository.insert(any()) } coAnswers {
+                if (rejected) throw java.io.IOException("isolated SQL rejection")
+                saved += firstArg<Track>()
+            }
+            uy.kohesive.injekt.Injekt.addSingleton(InsertTrack(repository))
+            for (freshProgress in listOf(2.0, 60.0)) {
+                val original = track()
+                val getTracks = mockk<GetTracks> { coEvery { await(7) } returns listOf(original) }
+                val writes = mutableListOf<Double>()
+                val tracker = mockk<eu.kanade.tachiyomi.data.track.Tracker>(relaxed = true) {
+                    io.mockk.every { id } returns 9L
+                    io.mockk.every { isLoggedIn } returns true
+                    io.mockk.every { getReadingStatus() } returns 1L
+                    io.mockk.every { getCompletionStatus() } returns 2L
+                    io.mockk.every { getRereadingStatus() } returns -1L
+                    coEvery { refresh(any()) } answers {
+                        firstArg<eu.kanade.tachiyomi.data.database.models.Track>().apply {
+                            total_chapters = 10
+                            last_chapter_read = freshProgress
+                        }
+                    }
+                    coEvery { update(any(), any()) } answers {
+                        firstArg<eu.kanade.tachiyomi.data.database.models.Track>().also {
+                            writes += it.last_chapter_read
+                        }
+                    }
+                }
+                val manager = TrackerManager(listOf(tracker))
+                val store = DelayedTrackingStore(mutableMapOf())
+                val subject = TrackChapter(getTracks, manager, InsertTrack(repository), store, scheduleRetry = {})
+                rejected = true
+                subject.await(mockk<Context>(), 7, 50.0)
+                assertEquals(
+                    50.0,
+                    store.getItems().singleOrNull()?.lastChapterRead,
+                    "failed authoritative persistence must not report completion or discard retry",
+                )
+                rejected = false
+                saved.clear()
+                writes.clear()
+                subject.await(mockk<Context>(), 7, 50.0)
+                assertEquals(emptyList<DelayedTrackerSyncItem>(), store.getItems())
+                assertEquals(1, saved.size, "successful update and fresh no-op each persist exactly once")
+                assertEquals(if (freshProgress == 2.0) listOf(10.0) else emptyList<Double>(), writes)
+                assertEquals(if (freshProgress == 2.0) 10.0 else 60.0, saved.single().lastChapterRead)
+            }
+        } finally {
+            uy.kohesive.injekt.Injekt = previous
+        }
     }
 
     private fun track() = Track(

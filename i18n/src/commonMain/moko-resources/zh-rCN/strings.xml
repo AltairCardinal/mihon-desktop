@@ -1971,4 +1971,6 @@
     <string name="desktop_library_removal_download_count">%1$d 个本机下载</string>
     <string name="desktop_external_chapter_open_failed">无法在浏览器中打开章节，请重试。</string>
     <string name="desktop_external_chapter_opened">已在浏览器中打开章节。</string>
+    <string name="desktop_link_opened">已在浏览器打开链接。</string>
+    <string name="desktop_tracking_updates_pending">部分追踪进度等待重试。</string>
 </resources>

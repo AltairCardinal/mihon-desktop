@@ -74,6 +74,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -159,6 +160,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
 
         // Read aliases — immutable vals at all read sites, writes go through model
         val manga = state.manga
+        val trackingCount by remember(model, manga?.id, manga?.source, manga?.url) {
+            manga?.let(model::trackingBindingCount) ?: kotlinx.coroutines.flow.flowOf(0)
+        }.collectAsState(0)
         val chapters = state.chapters
         val sourceRefreshStates by dependencies.saveSourceMangaForDetails.refreshStates.collectAsState()
         val sourceRefreshState = manga?.let {
@@ -192,6 +196,14 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 restoreCategoryMenuFocus = false
             }
         }
+        val manualTrackingFeedback by model.manualTracking?.feedback?.collectAsState()
+            ?: remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(manualTrackingFeedback) {
+            manualTrackingFeedback?.let {
+                categorySnackbar.showSnackbar(it)
+                model.manualTracking?.consumeFeedback()
+            }
+        }
         val chapterOptionsFocus = remember { FocusRequester() }
         var returnChapterOptionsFocus by remember { mutableStateOf(false) }
         LaunchedEffect(returnChapterOptionsFocus) {
@@ -216,6 +228,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         }
         var showFetchIntervalDialog by remember { mutableStateOf(false) }
         var showCoverViewer by remember { mutableStateOf(false) }
+        var coverViewerGeneration by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+        val detailAlive = remember { java.util.concurrent.atomic.AtomicBoolean(true) }
+        DisposableEffect(Unit) { onDispose { detailAlive.set(false) } }
         var coverSaving by remember { mutableStateOf(false) }
         var coverSaveFeedback by remember(showCoverViewer) { mutableStateOf<String?>(null) }
         val coverFocus = remember { FocusRequester() }
@@ -230,6 +245,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 wasSelecting = false
             }
         }
+        mihon.desktop.ui.tracking.ManualTrackingDialog(model.manualTracking) { backFocus.requestFocus() }
         var chapterDeletion by remember { mutableStateOf<ChapterBatchDeleteSnapshot?>(null) }
         val chapterDeleteFocus = remember { FocusRequester() }
         var returnChapterDeleteFocus by remember { mutableStateOf(false) }
@@ -1038,17 +1054,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     try {
                                         val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                                             try {
-                                                val bitmap = image.toBitmap()
-                                                val buffered = java.awt.image.BufferedImage(
-                                                    bitmap.width,
-                                                    bitmap.height,
-                                                    java.awt.image.BufferedImage.TYPE_INT_ARGB,
-                                                )
-                                                for (y in 0 until bitmap.height) {
-                                                    for (x in 0 until bitmap.width) {
-                                                        buffered.setRGB(x, y, bitmap.getColor(x, y))
-                                                    }
-                                                }
+                                                val buffered = image.toDesktopBufferedImage()
                                                 dependencies.shareService.saveImage(buffered, "${manga.title}.png")
                                             } catch (error: Exception) {
                                                 if (error is kotlinx.coroutines.CancellationException) throw error
@@ -1062,6 +1068,49 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                         )
                                         coverSaveFeedback = notification.message
                                         dependencies.notificationService.post(notification)
+                                    } finally {
+                                        coverSaving = false
+                                    }
+                                }
+                            }
+                        },
+                        onShare = { image ->
+                            if (!coverSaving) {
+                                val owner = coverViewerGeneration
+                                val resultLock = Any()
+                                var terminalReceived = false
+                                fun report(result: mihon.desktop.platform.DesktopShareResult, terminal: Boolean) {
+                                    synchronized(resultLock) {
+                                        if (!terminal && terminalReceived) return
+                                        if (terminal) terminalReceived = true
+                                        val notification = result.toDesktopNotification()
+                                        if (detailAlive.get() && showCoverViewer && coverViewerGeneration == owner) {
+                                            coverSaveFeedback = notification.message
+                                        }
+                                        dependencies.notificationService.post(notification)
+                                    }
+                                }
+                                scope.launch {
+                                    coverSaving = true
+                                    try {
+                                        val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            dependencies.shareService.shareImage(
+                                                image.toDesktopBufferedImage(),
+                                                manga.title,
+                                            ) {
+                                                report(it, true)
+                                            }
+                                        }
+                                        report(result, false)
+                                    } catch (canceled: kotlinx.coroutines.CancellationException) {
+                                        throw canceled
+                                    } catch (_: Exception) {
+                                        report(
+                                            mihon.desktop.platform.DesktopShareResult.Failed(
+                                                mihon.desktop.platform.DesktopShareFailureReason.INVALID_PAYLOAD,
+                                            ),
+                                            false,
+                                        )
                                     } finally {
                                         coverSaving = false
                                     }
@@ -1170,7 +1219,10 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             coverLastModified = state.coverLastModified,
                             coverFeedback = state.coverFeedback,
                             coverFailed = state.coverTask is mihon.domain.task.TaskState.Failure,
-                            onViewCover = { showCoverViewer = true },
+                            onViewCover = {
+                                coverViewerGeneration++
+                                showCoverViewer = true
+                            },
                             coverFocus = coverFocus,
                             sourceName = source?.name,
                             sourceLanguage = (source as? eu.kanade.tachiyomi.source.CatalogueSource)?.lang,
@@ -1267,10 +1319,25 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 }
                             },
                             onEditFetchInterval = { showFetchIntervalDialog = true },
+                            trackingCount = trackingCount,
                             onTracking = {
                                 onTracking(navigator, manga!!.title, chapters.size.toLong())
                             },
-                            onOpenInBrowser = { mangaUrl?.let(::openExternalLink) },
+                            onOpenInBrowser = {
+                                mangaUrl?.let { url ->
+                                    val result = dependencies.externalUrlOpener(url)
+                                    val message = if (result.isSuccess) {
+                                        MR.strings.desktop_link_opened.localized()
+                                    } else {
+                                        MR.strings.desktop_extension_open_link_failed.localized(
+                                            java.util.Locale.getDefault(),
+                                            result.exceptionOrNull()?.message.orEmpty(),
+                                        )
+                                    }
+                                    categorySnackbar.currentSnackbarData?.dismiss()
+                                    scope.launch { categorySnackbar.showSnackbar(message) }
+                                }
+                            },
                         )
                     }
                 }
@@ -1438,3 +1505,16 @@ internal fun mangaDetailChapterContentState(
 }
 
 internal fun Manga.toSourceMangaForRefresh(): SManga = toSourceManga()
+
+private fun coil3.Image.toDesktopBufferedImage(): java.awt.image.BufferedImage {
+    val bitmap = toBitmap()
+    return java.awt.image.BufferedImage(
+        bitmap.width,
+        bitmap.height,
+        java.awt.image.BufferedImage.TYPE_INT_ARGB,
+    ).also { image ->
+        for (y in 0 until bitmap.height) {
+            for (x in 0 until bitmap.width) image.setRGB(x, y, bitmap.getColor(x, y))
+        }
+    }
+}

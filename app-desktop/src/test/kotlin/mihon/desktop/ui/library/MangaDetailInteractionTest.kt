@@ -93,6 +93,276 @@ import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 @Isolated
 @OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class MangaDetailInteractionTest {
+
+    @Test
+    fun `early cover share terminal remains authoritative over later Opened acknowledgement`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val source = File(root, "early-share.png").apply { writeBytes(png(0xFF00FF00.toInt())) }
+        var terminal = mihon.desktop.platform.DesktopNativeShareTerminal.Shared
+        var calls = 0
+        val service = mihon.desktop.platform.DesktopShareService(
+            nativeSharePort = mihon.desktop.platform.DesktopNativeSharePort {
+                calls++
+                mihon.desktop.platform.DesktopNativeShareOutcome.Opened(
+                    mihon.desktop.platform.DesktopNativeShareSession {
+                        it(terminal)
+                    },
+                )
+            },
+            isHeadless = { false },
+        )
+        withDetail(
+            root,
+            mangaTransform = { it.copy(thumbnailUrl = source.absolutePath) },
+            coverRequests = mutableListOf(),
+            shareService = service,
+        ) { scene, _, manga, _ ->
+            val notifications = mutableListOf<mihon.desktop.domain.DesktopNotification>()
+            val collector = launch(Dispatchers.Unconfined) {
+                Injekt.get<mihon.desktop.domain.DesktopNotificationService>().notifications.collect {
+                    notifications +=
+                        it
+                }
+            }
+            try {
+                assertCoverPixel(scene, manga.title, 0xFF00FF00.toInt())
+                val cover = nodes(scene).first {
+                    manga.title in labels(it) &&
+                        it.config.contains(SemanticsProperties.ContentDescription) &&
+                        it.config.contains(SemanticsActions.OnClick)
+                }
+                scene.pointerClick(cover.boundsInRoot.center)
+                render(scene)
+                for ((index, result) in mihon.desktop.platform.DesktopNativeShareTerminal.entries.withIndex()) {
+                    terminal = result
+                    notifications.clear()
+                    click(scene, MR.strings.action_share.localized())
+                    withTimeout(5_000) {
+                        while (calls <= index || notifications.isEmpty() || activeNodes(scene).none {
+                                MR.strings.action_share.localized() in labels(it) &&
+                                    it.config.contains(SemanticsActions.OnClick) &&
+                                    !it.config.contains(SemanticsProperties.Disabled)
+                            }
+                        ) {
+                            render(scene)
+                            delay(10)
+                        }
+                    }
+                    val expected = when (result) {
+                        mihon.desktop.platform.DesktopNativeShareTerminal.Shared -> {
+                            MR.strings.completed.localized()
+                        }
+                        mihon.desktop.platform.DesktopNativeShareTerminal.Cancelled -> {
+                            MR.strings.cancelled.localized()
+                        }
+                        mihon.desktop.platform.DesktopNativeShareTerminal.Failed -> {
+                            MR.strings.error_sharing_cover.localized()
+                        }
+                    }
+                    assertEquals(
+                        expected,
+                        notifications.last().message,
+                        "early native terminal outranks the later opened return",
+                    )
+                    assertTrue(activeNodes(scene).any { expected in labels(it) })
+                }
+            } finally {
+                collector.cancel()
+            }
+        }
+    }
+
+    @Test
+    fun `detail website consumes actual browser Result and reports refusal then retry`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val urls = mutableListOf<String>()
+        var reject = true
+        withDetail(root, httpSource = true, externalUrlOpener = { url ->
+            urls += url
+            if (reject) Result.failure(IllegalStateException("isolated browser refusal")) else Result.success(Unit)
+        }) { scene, _, _, _ ->
+            val info = nodes(scene).filter {
+                it.config.contains(SemanticsActions.ScrollToIndex)
+            }.minBy { it.boundsInRoot.left }
+            info.config[SemanticsActions.ScrollToIndex].action!!.invoke(1)
+            render(scene)
+            click(scene, MR.strings.action_open_in_browser.localized())
+            render(scene)
+            assertEquals(1, urls.size, "the mounted website entry must use the injected production browser adapter")
+            assertTrue(nodes(scene).any { labels(it).any { text -> text.contains("isolated browser refusal") } })
+            reject = false
+            click(scene, MR.strings.action_open_in_browser.localized())
+            render(scene)
+            assertEquals(listOf(urls.first(), urls.first()), urls)
+            assertTrue(nodes(scene).any { MR.strings.desktop_link_opened.localized() in labels(it) })
+        }
+    }
+
+    @Test
+    fun `actual cover viewer shares loaded typed pixels and retains snapshot until every native terminal`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val source = File(root, "share-source.png").apply { writeBytes(png(0xFF00FF00.toInt())) }
+        val shared = mutableListOf<File>()
+        val callbacks = mutableListOf<(mihon.desktop.platform.DesktopNativeShareTerminal) -> Unit>()
+        val service = mihon.desktop.platform.DesktopShareService(
+            nativeSharePort = mihon.desktop.platform.DesktopNativeSharePort { content ->
+                shared += (content as mihon.desktop.platform.DesktopNativeShareContent.LocalFile).file
+                mihon.desktop.platform.DesktopNativeShareOutcome.Opened(
+                    mihon.desktop.platform.DesktopNativeShareSession {
+                        callbacks +=
+                            it
+                    },
+                )
+            },
+            isHeadless = { false },
+        )
+        withDetail(
+            root,
+            mangaTransform = { it.copy(thumbnailUrl = source.absolutePath) },
+            coverRequests = mutableListOf(),
+            shareService = service,
+        ) { scene, _, manga, _ ->
+            val notifications = mutableListOf<mihon.desktop.domain.DesktopNotification>()
+            val collector = launch(Dispatchers.Unconfined) {
+                Injekt.get<mihon.desktop.domain.DesktopNotificationService>().notifications.collect {
+                    notifications +=
+                        it
+                }
+            }
+            try {
+                assertCoverPixel(scene, manga.title, 0xFF00FF00.toInt())
+                val cover = nodes(scene).first {
+                    manga.title in labels(it) &&
+                        it.config.contains(SemanticsProperties.ContentDescription) &&
+                        it.config.contains(SemanticsActions.OnClick)
+                }
+                scene.pointerClick(cover.boundsInRoot.center)
+                render(scene)
+                assertTrue(
+                    activeNodes(scene).any {
+                        MR.strings.action_share.localized() in labels(it) &&
+                            it.config.contains(SemanticsActions.OnClick)
+                    },
+                    "successfully loaded cover has a real Share entry",
+                )
+                for ((index, terminal) in mihon.desktop.platform.DesktopNativeShareTerminal.entries.withIndex()) {
+                    click(scene, MR.strings.action_share.localized())
+                    withTimeout(5_000) {
+                        while (callbacks.size <= index) {
+                            render(scene)
+                            delay(10)
+                        }
+                    }
+                    assertTrue(shared[index].isFile)
+                    assertEquals(0xFF00FF00.toInt(), ImageIO.read(shared[index]).getRGB(1, 1))
+                    assertTrue(
+                        notifications.none {
+                            it.message == MR.strings.completed.localized()
+                        },
+                        "opened is not a successful terminal",
+                    )
+                    callbacks[index](terminal)
+                    render(scene)
+                    assertFalse(shared[index].exists(), "bounded native terminal retires its private image snapshot")
+                    assertEquals(
+                        when (terminal) {
+                            mihon.desktop.platform.DesktopNativeShareTerminal.Shared -> {
+                                MR.strings.completed.localized()
+                            }
+                            mihon.desktop.platform.DesktopNativeShareTerminal.Cancelled -> {
+                                MR.strings.cancelled.localized()
+                            }
+                            mihon.desktop.platform.DesktopNativeShareTerminal.Failed -> {
+                                MR.strings.error_sharing_cover.localized()
+                            }
+                        },
+                        notifications.last().message,
+                    )
+                    notifications.clear()
+                }
+                key(scene, Key.Escape)
+                render(scene)
+                assertTrue(
+                    nodes(scene).any {
+                        manga.title in labels(it) &&
+                            it.config.contains(SemanticsProperties.Focused) &&
+                            it.config[SemanticsProperties.Focused]
+                    },
+                )
+            } finally {
+                collector.cancel()
+                callbacks.forEach { it(mihon.desktop.platform.DesktopNativeShareTerminal.Cancelled) }
+            }
+        }
+    }
+
+    @Test
+    fun `actual detail share link fallback reports copied link and clipboard refusal is retryable`(
+        @TempDir root: File,
+    ) = runBlocking {
+        var copied: String? = null
+        var reject = true
+        val service = mihon.desktop.platform.DesktopShareService(
+            clipboardPort = object : mihon.desktop.platform.DesktopClipboardPort {
+                override fun copyText(text: String) {
+                    if (reject) throw IllegalStateException("clipboard busy")
+                    copied = text
+                }
+                override fun copyImage(image: java.awt.image.BufferedImage) = error("not used")
+            },
+            isHeadless = { false },
+        )
+        withDetail(root, httpSource = true, shareService = service) { scene, _, _, _ ->
+            val notifications = mutableListOf<mihon.desktop.domain.DesktopNotification>()
+            val collector = launch(Dispatchers.Unconfined) {
+                Injekt.get<mihon.desktop.domain.DesktopNotificationService>().notifications.collect {
+                    notifications +=
+                        it
+                }
+            }
+            try {
+                val info = nodes(scene).filter {
+                    it.config.contains(SemanticsActions.ScrollToIndex)
+                }.minBy { it.boundsInRoot.left }
+                info.config[SemanticsActions.ScrollToIndex].action!!.invoke(1)
+                render(scene)
+                click(scene, MR.strings.desktop_ui_share_link.localized())
+                withTimeout(5_000) {
+                    while (notifications.isEmpty()) {
+                        render(scene)
+                        delay(10)
+                    }
+                }
+                assertNull(copied)
+                assertEquals(
+                    mihon.desktop.platform.DesktopShareResult.Failed(
+                        mihon.desktop.platform.DesktopShareFailureReason.CLIPBOARD_BUSY,
+                    ).toDesktopNotification().message,
+                    notifications.last().message,
+                )
+                reject = false
+                notifications.clear()
+                click(scene, MR.strings.desktop_ui_share_link.localized())
+                withTimeout(5_000) {
+                    while (notifications.isEmpty()) {
+                        render(scene)
+                        delay(10)
+                    }
+                }
+                assertTrue(copied?.startsWith("http") == true)
+                assertTrue(
+                    notifications.last().message.contains(MR.strings.action_copy_link.localized()),
+                    "Unavailable native text share explicitly identifies the copied link",
+                )
+            } finally {
+                collector.cancel()
+            }
+        }
+    }
+
     @Test
     fun `single downloaded chapter deletion confirms actual refusal and retries only its fixed file`(
         @TempDir root: File,
