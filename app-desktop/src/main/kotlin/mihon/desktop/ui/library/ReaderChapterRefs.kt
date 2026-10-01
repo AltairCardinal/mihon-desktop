@@ -9,6 +9,7 @@ import tachiyomi.domain.manga.model.Manga
 internal fun List<Chapter>.toReaderChapterRefs(
     currentChapterId: Long,
     manga: Manga,
+    downloadedOnly: Boolean = false,
     isChapterDownloaded: (Chapter) -> Boolean,
 ): List<ReaderChapterRef> = map { chapter ->
     ReaderChapterRef(
@@ -18,14 +19,14 @@ internal fun List<Chapter>.toReaderChapterRefs(
         isRead = chapter.read,
         chapterNumber = chapter.chapterNumber,
         scanlator = chapter.scanlator,
-        isDownloaded = isChapterDownloaded(chapter),
+        isDownloaded = manga.source == 0L || isChapterDownloaded(chapter),
         isFiltered = isReaderChapterFiltered(
             unreadFilterRaw = manga.unreadFilterRaw,
-            downloadedFilterRaw = manga.downloadedFilterRaw,
+            downloadedFilterRaw = if (downloadedOnly) Manga.CHAPTER_SHOW_DOWNLOADED else manga.downloadedFilterRaw,
             bookmarkedFilterRaw = manga.bookmarkedFilterRaw,
             chapterIsRead = chapter.read,
             chapterIsBookmarked = chapter.bookmark,
-            chapterIsDownloaded = isChapterDownloaded(chapter),
+            chapterIsDownloaded = manga.source == 0L || isChapterDownloaded(chapter),
         ),
     )
 }.withDuplicateChapterFlags(currentChapterId)

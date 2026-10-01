@@ -1,7 +1,7 @@
 package mihon.desktop.download
 
-import mihon.domain.reader.content.DownloadArtifactLocator
 import mihon.domain.reader.content.DownloadArtifactKind
+import mihon.domain.reader.content.DownloadArtifactLocator
 import mihon.domain.reader.content.DownloadArtifactNamingPolicy
 import mihon.domain.reader.content.DownloadChapterIdentity
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -49,6 +49,23 @@ class DownloadProviderTest {
         0x87.toByte(),
         0x0A,
     )
+
+    @Test
+    fun `opened manga artifact snapshot rejects failed enumeration and never disguises it as an empty success`() {
+        val real = provider()
+        val identity = downloadIdentity()
+        val file = File(real.canonicalChapterDownloadDir(identity).apply { mkdirs() }, "001.jpg")
+            .apply { writeBytes(jpegBytes()) }
+        val inaccessible = DesktopDownloadProvider(tempDir, directoryLister = { directory ->
+            if (directory.exists()) null else directory.listFiles()
+        })
+        org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException::class.java) {
+            inaccessible.captureMangaDownloadArtifacts(42, identity.mangaTitle, identity)
+        }
+        assertTrue(file.exists())
+        assertEquals(listOf(file.parentFile), real.captureMangaDownloadArtifacts(42, identity.mangaTitle, identity))
+        assertTrue(real.captureMangaDownloadArtifacts(99, "Absent", identity.copy(mangaTitle = "Absent")).isEmpty())
+    }
 
     @Test
     fun `chapter download dir uses sourceId mangaTitle chapterName`() {
@@ -231,7 +248,9 @@ class DownloadProviderTest {
         val expected = DownloadArtifactNamingPolicy.chapterCandidates(identity)
             .filter { it.kind == DownloadArtifactKind.DIRECTORY }
             .distinct()
-            .map { provider.canonicalMangaDownloadDir(identity).resolve(it.name + DesktopDownloadProvider.TMP_DIR_SUFFIX) } +
+            .map {
+                provider.canonicalMangaDownloadDir(identity).resolve(it.name + DesktopDownloadProvider.TMP_DIR_SUFFIX)
+            } +
             provider.chapterTmpDir(42L, identity.mangaTitle, identity.chapterName)
 
         assertEquals(
@@ -291,7 +310,10 @@ class DownloadProviderTest {
         val second = provider.chapterDownloadDir(1L, "My Manga", "Ch 2").also(File::mkdirs)
         File(second, "001.jpg").writeBytes(jpegBytes())
         provider.chapterTmpDir(1L, "My Manga", "Ch 3").also(File::mkdirs)
-        File(provider.chapterDownloadDir(1L, "My Manga", "Ch 4").also(File::mkdirs), "001.jpg").writeText("not an image")
+        File(
+            provider.chapterDownloadDir(1L, "My Manga", "Ch 4").also(File::mkdirs),
+            "001.jpg",
+        ).writeText("not an image")
 
         assertEquals(2, provider.downloadedChapterCount(1L, "My Manga"))
     }

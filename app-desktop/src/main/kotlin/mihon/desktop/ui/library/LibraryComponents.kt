@@ -1,18 +1,11 @@
 package mihon.desktop.ui.library
 
-import tachiyomi.i18n.MR
-import java.util.Locale
-
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.VerticalScrollbar
-import androidx.compose.foundation.rememberScrollbarAdapter
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.grid.LazyGridState
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -25,63 +18,58 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.rememberScrollbarAdapter
+import androidx.compose.foundation.selection.triStateToggleable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.ZeroCornerSize
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CollectionsBookmark
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.foundation.selection.triStateToggleable
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.ui.semantics.Role
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.ui.platform.testTag
-import androidx.compose.material.icons.automirrored.outlined.Label
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FlipToBack
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.RemoveDone
 import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.outlined.SwapCalls
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.foundation.shape.ZeroCornerSize
-import androidx.compose.material3.Surface
-import mihon.desktop.ui.theme.LocalDesktopDarkTheme
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.filled.SelectAll
-import androidx.compose.material.icons.filled.SortByAlpha
-import androidx.compose.material3.Badge
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
 import androidx.compose.material3.BottomAppBar
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -89,19 +77,21 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -109,27 +99,33 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.collectAsState
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
@@ -142,17 +138,20 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.LibrarySearchFilter
-import mihon.desktop.ui.library.pickRandomMangaId
 import mihon.desktop.domain.SortMode
 import mihon.desktop.library.LibraryScreenModelFactory
-import mihon.desktop.ui.reader.DesktopReaderScreen
 import mihon.desktop.ui.browse.GlobalSearchScreen
-import tachiyomi.domain.category.model.Category
-import tachiyomi.domain.library.model.LibraryManga
-import tachiyomi.domain.library.interactor.LibraryFilter
-import tachiyomi.domain.library.projectLibraryBadges
+import mihon.desktop.ui.library.pickRandomMangaId
+import mihon.desktop.ui.reader.DesktopReaderScreen
+import mihon.desktop.ui.theme.LocalDesktopDarkTheme
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.TriState
+import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.library.interactor.LibraryFilter
+import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.library.projectLibraryBadges
+import tachiyomi.i18n.MR
+import java.util.Locale
 
 @Composable
 internal fun LibraryToolbar(
@@ -235,13 +234,18 @@ internal fun LibraryToolbar(
                         overflow = TextOverflow.Ellipsis,
                         modifier = if (!showCategoryTabs && categories.size > 1) {
                             Modifier.clickable { showCategoryMenu = true }
-                        } else Modifier,
+                        } else {
+                            Modifier
+                        },
                     )
                     DropdownMenu(expanded = showCategoryMenu, onDismissRequest = { showCategoryMenu = false }) {
                         categories.forEachIndexed { index, category ->
                             DropdownMenuItem(
                                 text = { Text(category.name) },
-                                onClick = { showCategoryMenu = false; onCategoryChange(index) },
+                                onClick = {
+                                    showCategoryMenu = false
+                                    onCategoryChange(index)
+                                },
                             )
                         }
                     }
@@ -290,7 +294,9 @@ internal fun LibraryToolbar(
                         if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) {
                             dismissMore()
                             true
-                        } else false
+                        } else {
+                            false
+                        }
                     },
                 ) {
                     DropdownMenuItem(
@@ -323,7 +329,9 @@ internal fun LibraryToolbar(
             it.second.second != TriState.DISABLED &&
                 (it.second.first != LibraryFilterField.INTERVAL_CUSTOM || filter.skipOutsideReleasePeriod)
         }
-        val tracking = availableTrackerIds.sorted().filter { filter.tracking[it].orDisabledForUi() != TriState.DISABLED }
+        val tracking = availableTrackerIds.sorted().filter {
+            filter.tracking[it].orDisabledForUi() != TriState.DISABLED
+        }
         if (activeFilters.isNotEmpty() || tracking.isNotEmpty()) {
             Row(
                 Modifier.horizontalScroll(rememberScrollState()),
@@ -337,14 +345,19 @@ internal fun LibraryToolbar(
                     )
                 }
                 tracking.forEach { id ->
-                    val title = if (availableTrackerIds.size == 1) MR.strings.action_filter_tracked.localized() else trackerNamesById[id].orEmpty()
+                    val title = if (availableTrackerIds.size ==
+                        1
+                    ) {
+                        MR.strings.action_filter_tracked.localized()
+                    } else {
+                        trackerNamesById[id].orEmpty()
+                    }
                     FilterChip(
                         selected = true,
                         onClick = { onShowFilterMenuChange(true) },
                         label = { Text("$title: ${filter.tracking[id].orDisabledForUi().label()}") },
                     )
                 }
-
             }
         }
     }
@@ -460,7 +473,9 @@ internal fun SelectionActionBar(
             if (it.key == Key.Escape && it.type == KeyEventType.KeyDown && !downloadExpanded && !moreExpanded) {
                 onExitSelection()
                 true
-            } else false
+            } else {
+                false
+            }
         },
         shape = MaterialTheme.shapes.large.copy(bottomEnd = ZeroCornerSize, bottomStart = ZeroCornerSize),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -495,7 +510,9 @@ internal fun SelectionActionBar(
                             if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) {
                                 dismissDownload()
                                 true
-                            } else false
+                            } else {
+                                false
+                            }
                         },
                     ) {
                         listOf(
@@ -507,8 +524,10 @@ internal fun SelectionActionBar(
                                 MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 10),
                             MangaDetailDownloadAction.NEXT_25_CHAPTERS to
                                 MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 25),
-                            MangaDetailDownloadAction.UNREAD_CHAPTERS to MR.strings.desktop_ui_all_unread_chapters.localized(),
-                            MangaDetailDownloadAction.BOOKMARKED_CHAPTERS to MR.strings.desktop_ui_bookmarked_chapters.localized(),
+                            MangaDetailDownloadAction.UNREAD_CHAPTERS to
+                                MR.strings.desktop_ui_all_unread_chapters.localized(),
+                            MangaDetailDownloadAction.BOOKMARKED_CHAPTERS to
+                                MR.strings.desktop_ui_bookmarked_chapters.localized(),
                         ).forEachIndexed { index, (action, label) ->
                             DropdownMenuItem(
                                 text = { Text(label) },
@@ -535,7 +554,9 @@ internal fun SelectionActionBar(
                             if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) {
                                 dismissMore()
                                 true
-                            } else false
+                            } else {
+                                false
+                            }
                         },
                     ) {
                         DropdownMenuItem(
@@ -563,8 +584,8 @@ internal fun SelectionActionBar(
                 IconButton(
                     onClick = onRemoveFromLibrary,
                     modifier = Modifier
-                    .weight(1f)
-                    .then(removalFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier),
+                        .weight(1f)
+                        .then(removalFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier),
                 ) {
                     Icon(Icons.Outlined.Delete, MR.strings.action_delete.localized())
                 }
@@ -710,9 +731,14 @@ internal fun LibraryList(
                 val isSelected = selectionState.isSelected(item.manga.id)
                 val downloadCount = downloadCountsByManga[item.id] ?: if (item.id in downloadedMangaIds) 1L else 0L
                 val badges = projectLibraryBadges(
-                    { downloadCount }, { item.unreadCount }, { item.id in localMangaIds },
-                    { sourceLanguagesByManga[item.id].orEmpty() }, showDownloadBadge, showUnreadBadge,
-                    showLocalBadge, showLanguageBadge,
+                    { downloadCount },
+                    { item.unreadCount },
+                    { item.id in localMangaIds },
+                    { sourceLanguagesByManga[item.id].orEmpty() },
+                    showDownloadBadge,
+                    showUnreadBadge,
+                    showLocalBadge,
+                    showLanguageBadge,
                 )
                 val showLanguageIndicator = badges.sourceLanguage.isNotBlank()
                 val showTrailingIndicators =
@@ -725,7 +751,9 @@ internal fun LibraryList(
                     colors = ListItemDefaults.colors(
                         containerColor = if (isSelected) {
                             MaterialTheme.colorScheme.secondary.copy(alpha = selectionAlpha)
-                        } else Color.Transparent,
+                        } else {
+                            Color.Transparent
+                        },
                     ),
                     headlineContent = {
                         Text(
@@ -738,26 +766,34 @@ internal fun LibraryList(
                         Box {
                             AsyncImage(
                                 model = rememberMangaCoverRequestState(
-                                    item.id, item.manga.source, resolveCoverModel(item.id, item.manga.thumbnailUrl),
+                                    item.id,
+                                    item.manga.source,
+                                    resolveCoverModel(item.id, item.manga.thumbnailUrl),
                                     item.manga.coverLastModified,
                                 ).request,
                                 contentDescription = item.manga.title,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.size(48.dp),
                             )
-
                         }
                     },
                     supportingContent = if (badges.unreadCount > 0L || showTrackerScore) {
                         {
                             Column {
                                 if (badges.unreadCount > 0L) {
-                                    Text(MR.strings.desktop_ui_unread_count.localized(Locale.getDefault(), badges.unreadCount))
+                                    Text(
+                                        MR.strings.desktop_ui_unread_count.localized(
+                                            Locale.getDefault(),
+                                            badges.unreadCount,
+                                        ),
+                                    )
                                 }
                                 if (showTrackerScore) Text(trackerScoreLabel(trackerMeansByManga[item.id]))
                             }
                         }
-                    } else null,
+                    } else {
+                        null
+                    },
                     trailingContent = if (showContinueReading || showTrailingIndicators) {
                         {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -853,8 +889,14 @@ internal fun MangaCoverCard(
     onContextMenu: () -> Unit,
 ) {
     val badges = projectLibraryBadges(
-        { downloadCount }, { item.unreadCount }, { isLocal }, { sourceLanguage },
-        showDownloadBadge, showUnreadBadge, showLocalBadge, showLanguageBadge,
+        { downloadCount },
+        { item.unreadCount },
+        { isLocal },
+        { sourceLanguage },
+        showDownloadBadge,
+        showUnreadBadge,
+        showLocalBadge,
+        showLanguageBadge,
     )
     Surface(
         modifier = Modifier
@@ -874,14 +916,21 @@ internal fun MangaCoverCard(
                 }
             },
         shape = MaterialTheme.shapes.small,
-        color = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceContainerHighest,
+        color = if (isSelected) {
+            MaterialTheme.colorScheme.secondary
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        },
         contentColor = if (isSelected) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurface,
     ) {
         Column(Modifier.padding(4.dp)) {
             Box {
                 AsyncImage(
                     model = rememberMangaCoverRequestState(
-                        item.id, item.manga.source, coverModel, item.manga.coverLastModified,
+                        item.id,
+                        item.manga.source,
+                        coverModel,
+                        item.manga.coverLastModified,
                     ).request,
                     contentDescription = item.manga.title,
                     contentScale = ContentScale.Crop,
@@ -1005,8 +1054,6 @@ internal fun MangaCoverCard(
                         )
                     }
                 }
-
-
             }
 
             // Title below cover in comfortable mode
@@ -1108,6 +1155,10 @@ internal fun LibraryRemovalDialog(
     items: List<LibraryManga>,
     onDismiss: () -> Unit,
     onConfirm: (removeFromLibrary: Boolean, deleteDownloads: Boolean) -> Unit,
+    downloadCount: Int = 0,
+    loading: Boolean = false,
+    busy: Boolean = false,
+    feedback: String? = null,
 ) {
     var removeFromLibrary by remember(items) { mutableStateOf(false) }
     var deleteDownloads by remember(items) { mutableStateOf(false) }
@@ -1119,17 +1170,24 @@ internal fun LibraryRemovalDialog(
     }
 
     AlertDialog(
-        modifier = Modifier.categoryDialogEscape(true, onDismiss),
-        onDismissRequest = onDismiss,
+        modifier = Modifier.categoryDialogEscape(!busy, onDismiss),
+        onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(MR.strings.action_remove.localized()) },
         text = {
             Column {
+                Text(MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), items.size))
+                if (policy.canDeleteDownloads) {
+                    Text(
+                        MR.strings.desktop_library_removal_download_count.localized(Locale.getDefault(), downloadCount),
+                    )
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(MR.strings.manga_from_library.localized(), modifier = Modifier.weight(1f))
                     Checkbox(
+                        enabled = !loading && !busy,
                         checked = removeFromLibrary,
                         onCheckedChange = { removeFromLibrary = it },
                     )
@@ -1141,21 +1199,23 @@ internal fun LibraryRemovalDialog(
                     ) {
                         Text(MR.strings.downloaded_chapters.localized(), modifier = Modifier.weight(1f))
                         Checkbox(
+                            enabled = !loading && !busy,
                             checked = deleteDownloads,
                             onCheckedChange = { deleteDownloads = it },
                         )
                     }
                 }
+                feedback?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
             TextButton(
-                enabled = policy.canConfirm(removeFromLibrary, deleteDownloads),
+                enabled = !loading && !busy && policy.canConfirm(removeFromLibrary, deleteDownloads),
                 onClick = { onConfirm(removeFromLibrary, deleteDownloads) },
             ) { Text(MR.strings.action_ok.localized()) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, modifier = Modifier.focusRequester(cancelFocus)) {
+            TextButton(enabled = !busy, onClick = onDismiss, modifier = Modifier.focusRequester(cancelFocus)) {
                 Text(MR.strings.action_cancel.localized())
             }
         },

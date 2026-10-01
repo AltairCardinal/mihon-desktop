@@ -4,19 +4,18 @@ import androidx.compose.runtime.compositionLocalOf
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import kotlinx.coroutines.flow.Flow
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
+import mihon.desktop.domain.CreatorDiscoveryScheduler
 import mihon.desktop.domain.DesktopCoverUpdater
 import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.domain.DesktopMigrateMangaUseCase
 import mihon.desktop.domain.DesktopNotificationService
-import mihon.desktop.domain.CreatorDiscoveryScheduler
 import mihon.desktop.domain.GetExcludedScanlators
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.domain.SetExcludedScanlators
-import tachiyomi.domain.creator.service.CreatorDiscoverySourcePort
 import mihon.desktop.download.DesktopDownloadDirectoryController
 import mihon.desktop.download.DesktopDownloadManager
-import mihon.desktop.download.DesktopDownloadQueuePort
 import mihon.desktop.download.DesktopDownloadPreferences
+import mihon.desktop.download.DesktopDownloadQueuePort
 import mihon.desktop.download.DownloadQueueScreenModel
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionManager
@@ -24,67 +23,68 @@ import mihon.desktop.extension.DesktopExtensionPresentationService
 import mihon.desktop.extension.DesktopExtensionSourceLookup
 import mihon.desktop.extension.DesktopSourceExtensionLookup
 import mihon.desktop.license.DependencyNoticeProvider
+import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.network.CloudflareChallengeManager
-import mihon.desktop.network.DesktopChallengeUiPort
 import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
-import mihon.desktop.network.DesktopSourceLoginSessionFactory
+import mihon.desktop.network.DesktopChallengeUiPort
 import mihon.desktop.network.DesktopExtensionCookiePort
 import mihon.desktop.network.DesktopNetworkMaintenancePort
 import mihon.desktop.network.DesktopNetworkRoutingPort
-import mihon.desktop.migration.DesktopBatchMigrationController
-import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.platform.DesktopDeepLinkHandler
 import mihon.desktop.platform.DesktopDownloadDirectoryState
 import mihon.desktop.platform.DesktopFilePicker
+import mihon.desktop.platform.DesktopLocaleAdapter
+import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.privacy.DesktopPrivacyCapabilities
 import mihon.desktop.privacy.DesktopWindowPrivacyController
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.settings.DesktopAppPreferences
-import mihon.desktop.platform.DesktopLocaleAdapter
+import mihon.desktop.source.LocalSourceScanService
 import mihon.desktop.tracking.DesktopTrackerOAuthCallbackBroker
 import mihon.desktop.tracking.DesktopTrackerServiceRegistry
-import mihon.desktop.source.LocalSourceScanService
-import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.ui.ExternalActionNavigator
-import mihon.desktop.update.DesktopUpdateController
-import mihon.desktop.ui.settings.DesktopUpdateScreenModel
+import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.ui.settings.DesktopDirectoryOpenPort
+import mihon.desktop.ui.settings.DesktopUpdateScreenModel
+import mihon.desktop.update.DesktopUpdateController
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
 import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
 import mihon.domain.extensionrepo.interactor.GetExtensionRepo
 import mihon.domain.extensionrepo.interactor.ReplaceExtensionRepo
 import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.upcoming.interactor.GetUpcomingManga
-import tachiyomi.domain.category.repository.CategoryRepository
-import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.category.interactor.GetCategories
+import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.creator.interactor.CreatorArchive
 import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
 import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
+import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
-import tachiyomi.domain.creator.interactor.CreatorArchive
-import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
+import tachiyomi.domain.creator.service.CreatorDiscoverySourcePort
 import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 import tachiyomi.domain.history.repository.HistoryRepository
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetFavorites
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.UpdateMangaNotes
 import tachiyomi.domain.manga.repository.MangaRepository
-import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.domain.source.model.Source
+import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
-import tachiyomi.domain.track.service.TrackerServiceRegistry
 import tachiyomi.domain.track.interactor.DeleteTrack
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.domain.track.interactor.InsertTrack
+import tachiyomi.domain.track.service.TrackerServiceRegistry
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -143,6 +143,7 @@ data class DesktopUiDependencies(
     val securityPreferences: SecurityPreferences,
     val passphraseVerifier: DesktopPassphraseVerifier,
     val shareService: DesktopShareService,
+    val externalUrlOpener: (String) -> Result<Unit> = { mihon.desktop.platform.DesktopUrlOpener.open(it) },
     val replaceExtensionRepo: ReplaceExtensionRepo,
     val saveSourceMangaForDetails: SaveSourceMangaForDetails,
     val setExcludedScanlators: SetExcludedScanlators,
@@ -168,7 +169,9 @@ data class DesktopUiDependencies(
     val libraryPreferences: LibraryPreferences? = null,
     val creatorDiscoveryPreferences: tachiyomi.domain.creator.service.CreatorDiscoveryPreferences? = null,
     val syncPanel: mihon.data.sync.runtime.SyncPanel? = null,
-    val layoutSnapshot: mihon.desktop.platform.DesktopLayoutSnapshot = mihon.desktop.platform.DesktopLayoutSnapshot(appPreferences.tabletUiMode.get()),
+    val layoutSnapshot: mihon.desktop.platform.DesktopLayoutSnapshot = mihon.desktop.platform.DesktopLayoutSnapshot(
+        appPreferences.tabletUiMode.get(),
+    ),
 ) {
     suspend fun getMangaTitle(mangaId: Long): String {
         return mangaRepository.getMangaById(mangaId).title
@@ -267,7 +270,6 @@ data class DesktopUiDependencies(
             )
         }
     }
-
 }
 
 val LocalDesktopUiDependencies = compositionLocalOf<DesktopUiDependencies> {

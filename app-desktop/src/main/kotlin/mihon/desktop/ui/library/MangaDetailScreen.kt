@@ -104,6 +104,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
+import coil3.toBitmap
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
@@ -215,6 +216,8 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         }
         var showFetchIntervalDialog by remember { mutableStateOf(false) }
         var showCoverViewer by remember { mutableStateOf(false) }
+        var coverSaving by remember { mutableStateOf(false) }
+        var coverSaveFeedback by remember(showCoverViewer) { mutableStateOf<String?>(null) }
         val coverFocus = remember { FocusRequester() }
         val backFocus = remember { FocusRequester() }
         var wasSelecting by remember { mutableStateOf(false) }
@@ -230,6 +233,22 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         var chapterDeletion by remember { mutableStateOf<ChapterBatchDeleteSnapshot?>(null) }
         val chapterDeleteFocus = remember { FocusRequester() }
         var returnChapterDeleteFocus by remember { mutableStateOf(false) }
+        var singleDeleteFocus by remember { mutableStateOf<FocusRequester?>(null) }
+        var returnSingleDeleteFocus by remember { mutableStateOf(false) }
+        LaunchedEffect(returnSingleDeleteFocus, deleteConfirmChapter) {
+            if (returnSingleDeleteFocus && deleteConfirmChapter == null) {
+                androidx.compose.runtime.withFrameNanos { }
+                val restored = try {
+                    singleDeleteFocus?.requestFocus() ?: false
+                } catch (
+                    _: IllegalStateException,
+                ) {
+                    false
+                }
+                if (!restored) backFocus.requestFocus()
+                returnSingleDeleteFocus = false
+            }
+        }
         LaunchedEffect(returnChapterDeleteFocus, chapterDeletion) {
             if (returnChapterDeleteFocus && chapterDeletion == null) {
                 androidx.compose.runtime.withFrameNanos { }
@@ -255,7 +274,21 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             mutableStateOf<List<tachiyomi.domain.manga.model.MangaWithChapterCount>?>(null)
         }
         var removalSnapshot by remember { mutableStateOf<Pair<Manga, List<Chapter>>?>(null) }
+        var removalFileExecute by remember { mutableStateOf<(suspend () -> Boolean)?>(null) }
         var downloadMenuExpanded by remember { mutableStateOf(false) }
+        val downloadFocus = remember { FocusRequester() }
+        val downloadFirstFocus = remember { FocusRequester() }
+        LaunchedEffect(downloadMenuExpanded) {
+            if (downloadMenuExpanded) {
+                androidx.compose.runtime.withFrameNanos { }
+                downloadFirstFocus.requestFocus()
+            }
+        }
+        val dismissDownloads = {
+            downloadMenuExpanded = false
+            downloadFocus.requestFocus()
+            Unit
+        }
         var creatorIdentityLoading by remember { mutableStateOf(false) }
         var creatorIdentityError by remember { mutableStateOf<String?>(null) }
 
@@ -341,6 +374,16 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         }
 
         val canRefresh = !isUpdating && sourceRefreshState !is SourceMangaRefreshState.Loading
+        fun openExternalChapter(url: String) {
+            val result = dependencies.externalUrlOpener(url)
+            val message = if (result.isSuccess) {
+                MR.strings.desktop_external_chapter_opened.localized()
+            } else {
+                MR.strings.desktop_external_chapter_open_failed.localized()
+            }
+            categorySnackbar.currentSnackbarData?.dismiss()
+            scope.launch { categorySnackbar.showSnackbar(message) }
+        }
         fun openChapter(chapterId: Long) {
             scope.launch {
                 val current = model.state.value.manga ?: return@launch
@@ -348,7 +391,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 val chapter = model.visibleChapters().firstOrNull { it.id == chapterId } ?: return@launch
                 val externalUrl = chapter.url.externalChapterUrlOrNull()
                 if (externalUrl != null) {
-                    openExternalLink(externalUrl)
+                    openExternalChapter(externalUrl)
                     return@launch
                 }
                 val request = model.readerRequest(current, model.state.value.chapters, chapter) ?: return@launch
@@ -370,15 +413,38 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             }
         }
 
-        fun showChapterBatchResult(result: tachiyomi.domain.chapter.interactor.BatchChapterResult) {
-            val message = MR.strings.desktop_chapter_batch_result.localized(
+        fun showChapterBatchResult(
+            result: tachiyomi.domain.chapter.interactor.BatchChapterResult,
+            offerLibrary: Boolean = false,
+        ) {
+            val message = model.state.value.batchActionMessage ?: MR.strings.desktop_chapter_batch_result.localized(
                 Locale.getDefault(),
                 result.succeededIds.size,
                 result.skippedIds.size,
                 result.failures.size,
             )
             model.consumeChapterBatchFeedback()
-            scope.launch { categorySnackbar.showSnackbar(message) }
+            scope.launch {
+                val offer =
+                    offerLibrary && result.succeededIds.isNotEmpty() && model.state.value.manga?.favorite == false
+                val response = categorySnackbar.showSnackbar(
+                    message = if (offer) message + "\n" + MR.strings.snack_add_to_library.localized() else message,
+                    actionLabel = if (offer) MR.strings.action_add.localized() else null,
+                    withDismissAction = offer,
+                )
+                if (response == androidx.compose.material3.SnackbarResult.ActionPerformed && offer) {
+                    val current = model.state.value.manga
+                    if (current != null && !current.favorite) {
+                        when (model.addToLibraryUsingDefault(current)) {
+                            MangaDetailAddToLibraryResult.CHOOSE_CATEGORY ->
+                                categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY
+                            MangaDetailAddToLibraryResult.FAILED ->
+                                categorySnackbar.showSnackbar(MR.strings.desktop_detail_save_failed.localized())
+                            MangaDetailAddToLibraryResult.ADDED -> Unit
+                        }
+                    }
+                }
+            }
         }
 
         BoxWithConstraints(
@@ -443,7 +509,10 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             }
                             if (manga != null && !selectionState.isActive) {
                                 Box {
-                                    IconButton(onClick = { downloadMenuExpanded = true }) {
+                                    IconButton(modifier = Modifier.focusRequester(downloadFocus), onClick = {
+                                        downloadMenuExpanded =
+                                            true
+                                    }) {
                                         Icon(
                                             Icons.Default.CloudDownload,
                                             contentDescription = MR.strings.desktop_ui_download_chapters.localized(),
@@ -451,16 +520,38 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     }
                                     DropdownMenu(
                                         expanded = downloadMenuExpanded,
-                                        onDismissRequest = { downloadMenuExpanded = false },
+                                        onDismissRequest = dismissDownloads,
+                                        modifier = Modifier.onPreviewKeyEvent {
+                                            if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) {
+                                                dismissDownloads()
+                                                true
+                                            } else {
+                                                false
+                                            }
+                                        },
                                     ) {
-                                        mangaDetailDownloadActions().forEach { action ->
+                                        Text(
+                                            model.manualDownloadScope(),
+                                            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                        )
+                                        mangaDetailDownloadActions().forEachIndexed { index, action ->
                                             DropdownMenuItem(
                                                 text = { Text(action.label) },
+                                                modifier = if (index ==
+                                                    0
+                                                ) {
+                                                    Modifier.focusRequester(downloadFirstFocus)
+                                                } else {
+                                                    Modifier
+                                                },
                                                 onClick = {
-                                                    val m = manga ?: return@DropdownMenuItem
-                                                    chaptersForDownloadAction(chapters, action)
-                                                        .let { model.enqueueDownloads(m, it) }
-                                                    downloadMenuExpanded = false
+                                                    dismissDownloads()
+                                                    scope.launch {
+                                                        showChapterBatchResult(
+                                                            model.downloadManualAction(action),
+                                                            offerLibrary = true,
+                                                        )
+                                                    }
                                                 },
                                             )
                                         }
@@ -633,6 +724,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                         selectedChapters.toList(),
                                         selectedChapters.count { model.isChapterDownloaded(current, it) },
                                         selectionState.captureCompletion(),
+                                        model.captureChapterDownloadDeletion(current, selectedChapters.toList()),
                                     )
                                 },
                                 onClose = { selectionState.clear() },
@@ -657,7 +749,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             onClick = {
                                 val externalUrl = ch.url.externalChapterUrlOrNull()
                                 if (externalUrl != null) {
-                                    openExternalLink(externalUrl)
+                                    openExternalChapter(externalUrl)
                                     return@ExtendedFloatingActionButton
                                 }
                                 scope.launch {
@@ -689,37 +781,33 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         chapterDeletion = null
                         returnChapterDeleteFocus = true
                     }, onConfirm = {
-                        val result = model.deleteDownloadBatch(fixed.manga, fixed.chapters)
+                        val result = fixed.execute?.invoke() ?: model.deleteDownloadBatch(fixed.manga, fixed.chapters)
                         fixed.complete(result.succeededIds + result.skippedIds)
                         showChapterBatchResult(result)
                         result
                     })
                 }
-                // Delete confirmation dialog
-                deleteConfirmChapter?.let { ch ->
-                    AlertDialog(
-                        onDismissRequest = { model.setDeleteConfirmChapter(null) },
-                        title = { Text(MR.strings.desktop_ui_delete_download_bba9a9de.localized()) },
-                        text = {
-                            Text(
-                                MR.strings.desktop_ui_delete_chapter_files.localized(
-                                    Locale.getDefault(),
-                                    ch.name,
-                                ),
+                deleteConfirmChapter?.let { chapter ->
+                    val current = manga
+                    if (current != null) {
+                        val fixed = remember(current.id, chapter.id) {
+                            ChapterBatchDeleteSnapshot(
+                                current,
+                                listOf(chapter),
+                                1,
+                                {},
+                                model.captureChapterDownloadDeletion(current, listOf(chapter)),
                             )
-                        },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                manga?.let { model.deleteChapterDownload(it, ch) }
-                                model.setDeleteConfirmChapter(null)
-                            }) { Text(MR.strings.action_delete.localized(), color = MaterialTheme.colorScheme.error) }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = {
-                                model.setDeleteConfirmChapter(null)
-                            }) { Text(MR.strings.action_cancel.localized()) }
-                        },
-                    )
+                        }
+                        ChapterBatchDeleteDialog(fixed, onDismiss = {
+                            model.setDeleteConfirmChapter(null)
+                            returnSingleDeleteFocus = true
+                        }, onConfirm = {
+                            val result = requireNotNull(fixed.execute).invoke()
+                            showChapterBatchResult(result)
+                            result
+                        })
+                    }
                 }
 
                 // Mark all read confirmation
@@ -929,14 +1017,57 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         coverModel = state.coverModel,
                         coverVersion = state.coverLastModified,
                         hasCustomCover = state.hasCustomCover,
-                        busy = state.coverTask is mihon.domain.task.TaskState.Running,
-                        feedback = state.coverFeedback,
+                        busy = coverSaving || state.coverTask is mihon.domain.task.TaskState.Running,
+                        feedback = coverSaveFeedback ?: state.coverFeedback,
                         onDismiss = {
                             showCoverViewer = false
                             returnCoverFocus = true
                         },
-                        onReplace = { scope.launch { model.chooseCustomCover() } },
-                        onDelete = { scope.launch { model.deleteCustomCover() } },
+                        onReplace = {
+                            coverSaveFeedback = null
+                            scope.launch { model.chooseCustomCover() }
+                        },
+                        onDelete = {
+                            coverSaveFeedback = null
+                            scope.launch { model.deleteCustomCover() }
+                        },
+                        onSave = { image ->
+                            if (!coverSaving) {
+                                scope.launch {
+                                    coverSaving = true
+                                    try {
+                                        val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            try {
+                                                val bitmap = image.toBitmap()
+                                                val buffered = java.awt.image.BufferedImage(
+                                                    bitmap.width,
+                                                    bitmap.height,
+                                                    java.awt.image.BufferedImage.TYPE_INT_ARGB,
+                                                )
+                                                for (y in 0 until bitmap.height) {
+                                                    for (x in 0 until bitmap.width) {
+                                                        buffered.setRGB(x, y, bitmap.getColor(x, y))
+                                                    }
+                                                }
+                                                dependencies.shareService.saveImage(buffered, "${manga.title}.png")
+                                            } catch (error: Exception) {
+                                                if (error is kotlinx.coroutines.CancellationException) throw error
+                                                mihon.desktop.platform.DesktopShareResult.Failed(
+                                                    mihon.desktop.platform.DesktopShareFailureReason.INVALID_PAYLOAD,
+                                                )
+                                            }
+                                        }
+                                        val notification = result.toDesktopNotification(
+                                            MR.strings.action_save.localized(),
+                                        )
+                                        coverSaveFeedback = notification.message
+                                        dependencies.notificationService.post(notification)
+                                    } finally {
+                                        coverSaving = false
+                                    }
+                                }
+                            }
+                        },
                     )
                 }
                 duplicateEntries?.let { entries ->
@@ -977,7 +1108,13 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             returnLibraryFocus = true
                         },
                         onConfirm = { deleteFiles, membershipCompleted ->
-                            model.removeFavorite(fixedManga, fixedChapters, deleteFiles, membershipCompleted)
+                            model.removeFavorite(
+                                fixedManga,
+                                fixedChapters,
+                                deleteFiles,
+                                membershipCompleted,
+                                removalFileExecute,
+                            )
                         },
                     )
                 }
@@ -1093,8 +1230,20 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             onToggleLibrary = {
                                 val current = manga ?: return@MangaDetailActionRow
                                 if (current.favorite) {
-                                    removalSnapshot =
-                                        current to chapters.filter { model.isChapterDownloaded(current, it) }
+                                    scope.launch {
+                                        try {
+                                            val downloaded = chapters.filter { model.isChapterDownloaded(current, it) }
+                                            removalFileExecute =
+                                                model.captureFavoriteDownloadDeletion(current, downloaded)
+                                            removalSnapshot = current to downloaded
+                                        } catch (canceled: kotlinx.coroutines.CancellationException) {
+                                            throw canceled
+                                        } catch (_: Exception) {
+                                            categorySnackbar.showSnackbar(
+                                                MR.strings.desktop_detail_save_failed.localized(),
+                                            )
+                                        }
+                                    }
                                 } else {
                                     scope.launch {
                                         try {
@@ -1180,11 +1329,29 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 selectionState.selectRange(model.visibleChapters().map { it.id }, chapterId)
                             },
                             onDownloadChapter = { chapter ->
-                                manga?.let { model.enqueueDownloads(it, listOf(chapter)) }
+                                val current = model.visibleChapters().firstOrNull { it.id == chapter.id }
+                                if (current != null && !selectionState.isActive) {
+                                    manga?.let { item ->
+                                        scope.launch {
+                                            showChapterBatchResult(
+                                                model.enqueueDownloadBatch(item, listOf(current)),
+                                                offerLibrary = true,
+                                            )
+                                        }
+                                    }
+                                }
                             },
                             onDeleteDownload = model::setDeleteConfirmChapter,
-                            onCancelDownload = model::cancelChapterDownload,
-                            onRetryDownload = model::retryChapterDownload,
+                            onDeleteDownloadFocus = { singleDeleteFocus = it },
+                            onCancelDownload = { id ->
+                                scope.launch { showChapterBatchResult(model.cancelChapterDownload(id)) }
+                            },
+                            onRetryDownload = { id ->
+                                scope.launch { showChapterBatchResult(model.retryChapterDownload(id)) }
+                            },
+                            onStartDownloadNow = { id ->
+                                scope.launch { showChapterBatchResult(model.downloadChapterNow(id)) }
+                            },
                             onToggleBookmark = { chapter ->
                                 val current = model.visibleChapters().firstOrNull { it.id == chapter.id }
                                 if (current != null && !selectionState.isActive) {

@@ -822,6 +822,8 @@ internal fun ChapterRow(
     downloadEnabled: Boolean = true,
     onPrimaryClick: ((LibraryClickModifiers) -> Unit)? = null,
     onToggleRead: (() -> Unit)? = null,
+    onStartDownloadNow: (() -> Unit)? = null,
+    onDeleteDownloadFocus: ((FocusRequester) -> Unit)? = null,
 ) {
     val readPresentation = chapterReadPresentation(chapter)
     val readProgress = readPresentation.pageNumber?.let {
@@ -853,6 +855,11 @@ internal fun ChapterRow(
     ).joinToString(" · ")
     var contextExpanded by remember(chapter.id) { mutableStateOf(false) }
     val rowFocus = remember(chapter.id) { FocusRequester() }
+    val deleteFocus = remember(chapter.id) { FocusRequester() }
+    val delete = {
+        onDeleteDownloadFocus?.invoke(deleteFocus)
+        onDeleteDownload()
+    }
     val closeContext = {
         contextExpanded = false
         try {
@@ -967,7 +974,12 @@ internal fun ChapterRow(
 
                     when (downloadStatus) {
                         ChapterDownloadStatus.DOWNLOADED ->
-                            IconButton(enabled = downloadEnabled && !isSelectionMode, onClick = onDeleteDownload) {
+                            IconButton(
+                                modifier = Modifier.focusRequester(deleteFocus),
+                                enabled =
+                                downloadEnabled && !isSelectionMode,
+                                onClick = delete,
+                            ) {
                                 Icon(
                                     Icons.Default.CheckCircle,
                                     contentDescription = MR.strings.desktop_ui_delete_download.localized(),
@@ -1034,6 +1046,12 @@ internal fun ChapterRow(
                 closeContext()
                 onToggleBookmark()
             })
+            if (downloadEnabled && downloadStatus == ChapterDownloadStatus.QUEUED && onStartDownloadNow != null) {
+                DropdownMenuItem(text = { Text(MR.strings.action_start_downloading_now.localized()) }, onClick = {
+                    closeContext()
+                    onStartDownloadNow()
+                })
+            }
             if (downloadEnabled) {
                 val contextDownloadLabel = when (downloadStatus) {
                     ChapterDownloadStatus.DOWNLOADED -> MR.strings.action_delete
@@ -1043,7 +1061,7 @@ internal fun ChapterRow(
                 DropdownMenuItem(text = { Text(contextDownloadLabel.localized()) }, onClick = {
                     closeContext()
                     when (downloadStatus) {
-                        ChapterDownloadStatus.DOWNLOADED -> onDeleteDownload()
+                        ChapterDownloadStatus.DOWNLOADED -> delete()
                         ChapterDownloadStatus.QUEUED, ChapterDownloadStatus.DOWNLOADING -> onCancelDownload()
                         ChapterDownloadStatus.ERROR -> onRetryDownload()
                         ChapterDownloadStatus.NOT_DOWNLOADED -> onDownload()

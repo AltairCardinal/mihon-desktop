@@ -38,6 +38,7 @@ object MangaDetailScreenModelFactory {
         val coverUpdater = DesktopCoverUpdater(coverStore, Injekt.get())
         return MangaDetailScreenModel(
             readingProgress = Injekt.get<tachiyomi.domain.reader.interactor.RecordReadingProgress>(),
+            readerPreferences = Injekt.get<mihon.desktop.reader.ReaderPreferences>(),
             mangaId = mangaId,
             getMangaWithChapters = Injekt.get<GetMangaWithChapters>(),
             sourceManager = Injekt.get<SourceManager>(),
@@ -55,7 +56,8 @@ object MangaDetailScreenModelFactory {
             setMangaCategories = Injekt.get<SetMangaCategories>(),
             linkMangaCreator = Injekt.get<LinkMangaCreator>(),
             manageCreatorIdentity = ManageCreatorIdentity(Injekt.get<CreatorArchiveRepository>()),
-            enqueueDownload = downloadManager?.let { it::enqueue },
+            enqueueAccepted = downloadManager?.let { manager -> manager::enqueue },
+            startDownloadNow = downloadManager?.let { manager -> manager::startDownloadNow },
             downloadQueue = downloadManager?.queue,
             downloadAvailability = downloadManager?.availabilityRevision,
             isDownloaded = downloadManager?.let { manager ->
@@ -65,17 +67,10 @@ object MangaDetailScreenModelFactory {
                     manager.isDownloaded(manga.source, identity)
                 }
             },
-            deleteDownload = downloadManager?.let { manager ->
-                { manga, chapter ->
-                    val identity = requireNotNull(downloadIdentityResolver) { "Download identity resolver is required" }
-                        .resolve(manga, chapter)
-                    manager.deleteDownload(manga.source, identity)
-                }
-            },
-            cancelDownload = downloadManager?.let { manager ->
+            cancelAccepted = downloadManager?.let { manager ->
                 { chapterId -> manager.cancel(chapterId) }
             },
-            retryDownload = downloadManager?.let { manager ->
+            retryAccepted = downloadManager?.let { manager ->
                 { chapterId -> manager.retryItem(chapterId) }
             },
             updateLibraryMembership = Injekt.get<UpdateLibraryMembership>(),
@@ -84,47 +79,129 @@ object MangaDetailScreenModelFactory {
             resolveCoverModel = coverStore::resolveModel,
             getDuplicateLibraryManga = Injekt.get<tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga>(),
             hasCustomCover = coverStore::customCoverExists,
-            deleteSelectedDownloads = if (downloadManager != null && downloadProvider != null &&
+            captureDownloadDeletion = if (downloadManager != null && downloadProvider != null &&
                 downloadIdentityResolver != null
             ) {
                 { manga, chapters ->
-                    val retired = downloadManager.cancelAndAwaitRetirements(chapters.map { it.id })
-                    tachiyomi.domain.chapter.interactor.BatchUpdateChapters().await(chapters) { chapter ->
-                        check(retired) { "Unable to retire selected downloads" }
-                        check(
-                            downloadProvider.deleteChapterDownload(
+                    val targets = chapters.distinctBy { it.id }
+                    val currentAliases = targets.associate { chapter ->
+                        chapter.id to
+                            downloadProvider.chapterDownloadArtifacts(
                                 manga.source,
                                 downloadIdentityResolver.resolve(manga, chapter),
-                            ),
-                        ) {
-                            "Unable to delete download ${chapter.id}"
-                        }
+                            ).toSet()
                     }
+                    val originalAttempts = downloadManager.captureDownloadAttempts(
+                        targets.map {
+                            it.id
+                        },
+                    ).map { target ->
+                        target.copy(
+                            item = target.item.copy(
+                                downloadIdentity = target.item.downloadIdentity
+                                    ?: downloadIdentityResolver.resolve(
+                                        manga.copy(source = target.item.sourceId, title = target.item.mangaTitle),
+                                        targets.first { it.id == target.item.chapterId },
+                                    ),
+                            ),
+                        )
+                    }
+                    val queuedAliases = originalAttempts.associate { target ->
+                        target.item.chapterId to
+                            downloadProvider.chapterDownloadArtifacts(
+                                manga.source,
+                                requireNotNull(target.item.downloadIdentity),
+                            ).toSet()
+                    }
+                    val aliases = currentAliases.mapValues { (id, paths) -> paths + queuedAliases[id].orEmpty() }
+                    val artifacts = aliases.values.flatten().filterTo(mutableSetOf()) { it.exists() }
+                    val applicable = targets.filter { chapter ->
+                        aliases.getValue(chapter.id).any { it in artifacts } ||
+                            originalAttempts.any { it.item.chapterId == chapter.id }
+                    }.mapTo(mutableSetOf()) { it.id }
+                    val files = mihon.desktop.download.CapturedDownloadFiles(
+                        artifacts,
+                        originalAttempts.toMutableList(),
+                        queuedAliases,
+                    )
+                    val pending = targets.mapTo(mutableSetOf()) { it.id }
+                    val execute: suspend () -> tachiyomi.domain.chapter.interactor.BatchChapterResult = {
+                        val result = downloadManager.deleteCapturedDownloadFiles(files)
+                        val failed = pending.filter { id ->
+                            id in result.refusedAttempts ||
+                                aliases.getValue(id).any { it in result.failedArtifacts }
+                        }
+                        val completed = pending - failed.toSet()
+                        pending.removeAll(completed)
+                        files.pendingArtifacts.retainAll(result.failedArtifacts.toSet())
+                        tachiyomi.domain.chapter.interactor.BatchChapterResult(
+                            completed.filter { it in applicable },
+                            failed.map {
+                                tachiyomi.domain.chapter.interactor.BatchChapterFailure(
+                                    it,
+                                    "Unable to delete captured download",
+                                )
+                            },
+                            completed.filter { it !in applicable },
+                        )
+                    }
+                    execute
                 }
             } else {
                 null
             },
-            deleteRemovedDownloads = if (downloadManager != null && downloadProvider != null &&
+            captureMangaDownloadDeletion = if (downloadManager != null && downloadProvider != null &&
                 downloadIdentityResolver != null
             ) {
-                { manga, chapters ->
-                    check(downloadManager.cancelAndAwaitRetirements(chapters.mapTo(mutableSetOf()) { it.id })) {
-                        "Unable to retire downloads for manga ${manga.id}"
-                    }
-                    chapters.forEach { chapter ->
-                        check(
-                            downloadProvider.deleteChapterDownload(
-                                manga.source,
-                                downloadIdentityResolver.resolve(manga, chapter),
+                { manga ->
+                    val originalAttempts = downloadManager.captureDownloadAttempts(
+                        downloadManager.queue.value.map {
+                            it.chapterId
+                        },
+                    )
+                    val artifacts = downloadProvider.captureMangaDownloadArtifacts(
+                        manga.source,
+                        manga.title,
+                        downloadIdentityResolver.resolve(manga),
+                    ).toMutableSet()
+                    val chapters = Injekt.get<GetMangaWithChapters>().awaitChapters(
+                        manga.id,
+                        applyScanlatorFilter = false,
+                    )
+                    val chapterIds = chapters.mapTo(mutableSetOf()) { it.id }
+                    val owned = originalAttempts.filter {
+                        it.item.mangaId == manga.id || it.item.chapterId in chapterIds
+                    }.map { target ->
+                        target.copy(
+                            item = target.item.copy(
+                                downloadIdentity = target.item.downloadIdentity
+                                    ?: downloadIdentityResolver.resolve(target.item),
                             ),
-                        ) {
-                            "Unable to delete download ${chapter.id}"
-                        }
+                        )
                     }
+                    val queuedAliases = owned.associate { target ->
+                        target.item.chapterId to
+                            downloadProvider.chapterDownloadArtifacts(
+                                manga.source,
+                                requireNotNull(target.item.downloadIdentity),
+                            ).toSet()
+                    }
+                    val files = mihon.desktop.download.CapturedDownloadFiles(
+                        artifacts,
+                        owned.toMutableList(),
+                        queuedAliases,
+                    )
+                    val execute: suspend () -> Boolean = {
+                        val result = downloadManager.deleteCapturedDownloadFiles(files)
+                        files.pendingArtifacts.retainAll(result.failedArtifacts.toSet())
+                        result.failedArtifacts.isEmpty() && result.refusedAttempts.isEmpty()
+                    }
+                    execute
                 }
             } else {
                 null
             },
+
         )
     }
 }

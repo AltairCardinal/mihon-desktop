@@ -107,6 +107,56 @@ import java.util.Collections
 @Config(sdk = [35], manifest = Config.NONE)
 class MangaScreenModelSharedMutationWiringTest {
     @Test
+    fun `Android manual download uses raw repository range and stable ascending candidates before limit`() = runTest {
+        val original = listOf(
+            chapter(1).copy(chapterNumber = 1.0, bookmark = true, read = true),
+            chapter(2).copy(chapterNumber = 2.0, bookmark = true),
+            chapter(3).copy(chapterNumber = 2.0),
+        )
+        val current = manga(true).copy(chapterFlags = Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SORT_DESC)
+        val get = mockk<GetMangaWithChapters> {
+            coEvery { subscribe(MANGA_ID, true) } returns flowOf(current to original.drop(1))
+            coEvery { awaitManga(MANGA_ID) } returns current
+            coEvery { awaitChapters(MANGA_ID, true) } returns original.drop(1)
+            coEvery { awaitChapters(MANGA_ID, false) } returns original
+        }
+        val accepted = Channel<List<Chapter>>(Channel.UNLIMITED)
+        val manager = mockk<DownloadManager>(relaxed = true) {
+            every { getQueuedDownloadOrNull(any()) } returns null
+            every { queueState } returns MutableStateFlow(emptyList())
+            every { statusFlow() } returns emptyFlow()
+            every { progressFlow() } returns emptyFlow()
+            every { isChapterDownloaded(any(), any(), any(), any(), any(), any()) } returns false
+            every { downloadChapters(any(), any(), any()) } answers {
+                accepted.trySend(secondArg())
+                Unit
+            }
+        }
+        for (skip in listOf(false, true)) {
+            ReaderPreferences(preferenceStore).skipFiltered().set(skip)
+            val model = screenModel(
+                manga = current,
+                chapters = original.drop(1),
+                getMangaWithChaptersOverride = get,
+                downloadManagerOverride = manager,
+            )
+            try {
+                awaitSuccess(model)
+                model.runDownloadAction(eu.kanade.presentation.manga.DownloadAction.BOOKMARKED_CHAPTERS)
+                testScheduler.runCurrent()
+                val bookmarks = withContext(Dispatchers.Default) { withTimeout(5000) { accepted.receive() } }
+                assertEquals(if (skip) listOf(2L) else listOf(1L, 2L), bookmarks.map { it.id })
+                model.runDownloadAction(eu.kanade.presentation.manga.DownloadAction.NEXT_1_CHAPTER)
+                testScheduler.runCurrent()
+                val next = withContext(Dispatchers.Default) { withTimeout(5000) { accepted.receive() } }
+                assertEquals(listOf(2L), next.map { it.id })
+            } finally {
+                model.onDispose()
+            }
+        }
+    }
+
+    @Test
     fun `Android current defaults calls the shared favorite batch and six authoritative preferences`() = runTest {
         val current = manga(true).copy(
             chapterFlags = Manga.CHAPTER_SHOW_UNREAD or Manga.CHAPTER_SHOW_DOWNLOADED or
@@ -701,6 +751,7 @@ class MangaScreenModelSharedMutationWiringTest {
         syncChaptersWithSource: eu.kanade.domain.chapter.interactor.SyncChaptersWithSource = mockk(relaxed = true),
         getMangaWithChaptersOverride: GetMangaWithChapters? = null,
         defaultsOverride: SetMangaDefaultChapterFlags? = null,
+        downloadManagerOverride: DownloadManager? = null,
     ): MangaScreenModel {
         Injekt.addSingleton(chapterRepository)
         Injekt.addSingleton(mockk<eu.kanade.tachiyomi.data.cache.CoverCache>(relaxed = true))
@@ -717,7 +768,7 @@ class MangaScreenModelSharedMutationWiringTest {
             every { subscribe(MANGA_ID) } returns flowOf(emptySet())
             coEvery { await(MANGA_ID) } returns emptySet()
         }
-        val downloadManager = mockk<DownloadManager>(relaxed = true) {
+        val downloadManager = downloadManagerOverride ?: mockk<DownloadManager>(relaxed = true) {
             every { queueState } returns MutableStateFlow(emptyList())
             every { statusFlow() } returns emptyFlow()
             every { progressFlow() } returns emptyFlow()

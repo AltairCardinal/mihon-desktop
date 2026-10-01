@@ -5,12 +5,6 @@ import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import io.mockk.verify
-import java.awt.Desktop
-import java.awt.image.BufferedImage
-import java.io.File
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.attribute.PosixFileAttributeView
 import mihon.domain.platform.SharePayload
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -19,8 +13,72 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.i18n.MR
+import java.awt.Desktop
+import java.awt.image.BufferedImage
+import java.io.File
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.attribute.PosixFileAttributeView
 
 class DesktopShareServiceTest {
+
+    @Test
+    fun `finite image saving confirms overwrite and cancel preserves the original destination`(
+        @TempDir directory: Path,
+    ) {
+        val destination = directory.resolve("cover.png").toFile().apply { writeBytes(byteArrayOf(7, 8, 9)) }
+        val original = destination.readBytes()
+        var confirmations = 0
+        val image = BufferedImage(3, 3, BufferedImage.TYPE_INT_ARGB)
+        val service = DesktopShareService(
+            isHeadless = { false },
+            revealPort = DesktopRevealPort {},
+            overwriteConfirmation = {
+                confirmations++
+                false
+            },
+        )
+        assertEquals(DesktopShareResult.Cancelled, service.saveImage(image, destination))
+        org.junit.jupiter.api.Assertions.assertArrayEquals(original, destination.readBytes())
+        assertEquals(1, confirmations)
+        val port = SwingDesktopSavePort(chooseDestination = { destination }, overwriteConfirmation = { false })
+        assertEquals(DesktopSaveOutcome.Cancelled, port.save(DesktopSaveContent.Image(image), "cover.png"))
+        org.junit.jupiter.api.Assertions.assertArrayEquals(original, destination.readBytes())
+    }
+
+    @Test
+    fun `finite image saving preserves original bytes after a real partial write failure in both entry points`(
+        @TempDir directory: Path,
+    ) {
+        val destination = directory.resolve("cover.png").toFile().apply { writeBytes(byteArrayOf(7, 8, 9)) }
+        val original = destination.readBytes()
+        val image = BufferedImage(3, 3, BufferedImage.TYPE_INT_ARGB)
+        val halfWrite: (DesktopSaveContent, File) -> Unit = { _, target ->
+            target.outputStream().use { it.write(byteArrayOf(1, 2)) }
+            throw java.io.IOException("image storage stopped after writing real bytes")
+        }
+        val service = DesktopShareService(
+            isHeadless = { false },
+            revealPort = DesktopRevealPort {},
+            overwriteConfirmation = { true },
+            saveContentWriter = halfWrite,
+        )
+        assertEquals(
+            DesktopShareResult.Failed(DesktopShareFailureReason.SAVE_FAILED),
+            service.saveImage(image, destination),
+        )
+        org.junit.jupiter.api.Assertions.assertArrayEquals(original, destination.readBytes())
+        val port = SwingDesktopSavePort(
+            chooseDestination = { destination },
+            overwriteConfirmation = { true },
+            contentWriter = halfWrite,
+        )
+        org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException::class.java) {
+            port.save(DesktopSaveContent.Image(image), "cover.png")
+        }
+        org.junit.jupiter.api.Assertions.assertArrayEquals(original, destination.readBytes())
+        assertEquals(listOf("cover.png"), directory.toFile().listFiles()!!.map { it.name })
+    }
 
     @Test
     fun `default reveal is blocked inside a Gradle test worker`(@TempDir tempDir: Path) {
@@ -74,10 +132,12 @@ class DesktopShareServiceTest {
     fun `native success reports shared only after terminal callback`() {
         var received: DesktopNativeShareContent? = null
         var complete: ((DesktopNativeShareTerminal) -> Unit)? = null
-        val service = service(native = DesktopNativeSharePort {
-            received = it
-            DesktopNativeShareOutcome.Opened(DesktopNativeShareSession { complete = it })
-        })
+        val service = service(
+            native = DesktopNativeSharePort {
+                received = it
+                DesktopNativeShareOutcome.Opened(DesktopNativeShareSession { complete = it })
+            },
+        )
         var terminal: DesktopShareResult? = null
 
         val result = service.share(SharePayload.Text("https://example.com/manga")) { terminal = it }
@@ -93,10 +153,12 @@ class DesktopShareServiceTest {
     fun `image share snapshots are unique and each terminal cleans only its own file`() {
         val files = mutableListOf<File>()
         val terminals = mutableListOf<(DesktopNativeShareTerminal) -> Unit>()
-        val service = service(native = DesktopNativeSharePort { content ->
-            files += (content as DesktopNativeShareContent.LocalFile).file
-            DesktopNativeShareOutcome.Opened(DesktopNativeShareSession { terminals += it })
-        })
+        val service = service(
+            native = DesktopNativeSharePort { content ->
+                files += (content as DesktopNativeShareContent.LocalFile).file
+                DesktopNativeShareOutcome.Opened(DesktopNativeShareSession { terminals += it })
+            },
+        )
         val first = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB).also { it.setRGB(0, 0, 0xFFFF0000.toInt()) }
         val second = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB).also { it.setRGB(0, 0, 0xFF00FF00.toInt()) }
 
@@ -108,7 +170,13 @@ class DesktopShareServiceTest {
         assertEquals(0xFFFF0000.toInt(), javax.imageio.ImageIO.read(files[0]).getRGB(0, 0))
         assertTrue(files.all(File::isFile))
         if (Files.getFileAttributeView(files[0].toPath(), PosixFileAttributeView::class.java) != null) {
-            assertEquals(setOf(java.nio.file.attribute.PosixFilePermission.OWNER_READ, java.nio.file.attribute.PosixFilePermission.OWNER_WRITE), Files.getPosixFilePermissions(files[0].toPath()))
+            assertEquals(
+                setOf(
+                    java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                    java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+                ),
+                Files.getPosixFilePermissions(files[0].toPath()),
+            )
         }
         terminals[0](DesktopNativeShareTerminal.Shared)
         assertTrue(!files[0].exists() && files[1].isFile)
@@ -123,7 +191,10 @@ class DesktopShareServiceTest {
         val seen = mutableListOf<File>()
         val image = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)
         fun fallback(outcome: () -> DesktopSaveOutcome): DesktopShareResult = service(
-            native = DesktopNativeSharePort { content -> seen += (content as DesktopNativeShareContent.LocalFile).file; DesktopNativeShareOutcome.Unavailable },
+            native = DesktopNativeSharePort { content ->
+                seen += (content as DesktopNativeShareContent.LocalFile).file
+                DesktopNativeShareOutcome.Unavailable
+            },
             save = DesktopSavePort { _, _ -> outcome() },
         ).shareImage(image)
         val destination = Files.createTempFile("mihon-shared-destination", ".png").toFile()
@@ -133,18 +204,28 @@ class DesktopShareServiceTest {
         assertTrue(!seen.removeLast().exists())
         assertEquals(DesktopShareResult.Failed(DesktopShareFailureReason.SAVE_FAILED), fallback { error("save") })
         assertTrue(!seen.removeLast().exists())
-        val nativeFailure = service(native = DesktopNativeSharePort { content ->
-            seen += (content as DesktopNativeShareContent.LocalFile).file
-            error("launch")
-        })
-        assertEquals(DesktopShareResult.Failed(DesktopShareFailureReason.NATIVE_SHARE_FAILED), nativeFailure.shareImage(image))
+        val nativeFailure = service(
+            native = DesktopNativeSharePort { content ->
+                seen += (content as DesktopNativeShareContent.LocalFile).file
+                error("launch")
+            },
+        )
+        assertEquals(
+            DesktopShareResult.Failed(DesktopShareFailureReason.NATIVE_SHARE_FAILED),
+            nativeFailure.shareImage(image),
+        )
         assertTrue(!seen.removeLast().exists())
         seen.clear()
-        val registrationFailure = service(native = DesktopNativeSharePort { content ->
-            seen += (content as DesktopNativeShareContent.LocalFile).file
-            DesktopNativeShareOutcome.Opened(DesktopNativeShareSession { error("register") })
-        })
-        assertEquals(DesktopShareResult.Failed(DesktopShareFailureReason.NATIVE_SHARE_FAILED), registrationFailure.shareImage(image))
+        val registrationFailure = service(
+            native = DesktopNativeSharePort { content ->
+                seen += (content as DesktopNativeShareContent.LocalFile).file
+                DesktopNativeShareOutcome.Opened(DesktopNativeShareSession { error("register") })
+            },
+        )
+        assertEquals(
+            DesktopShareResult.Failed(DesktopShareFailureReason.NATIVE_SHARE_FAILED),
+            registrationFailure.shareImage(image),
+        )
         assertTrue(!seen.single().exists())
     }
 
@@ -169,7 +250,9 @@ class DesktopShareServiceTest {
     fun `unavailable native text share honestly falls back to clipboard`() {
         var copied: String? = null
         val clipboard = object : DesktopClipboardPort {
-            override fun copyText(text: String) { copied = text }
+            override fun copyText(text: String) {
+                copied = text
+            }
             override fun copyImage(image: BufferedImage) = Unit
         }
         val service = service(clipboard = clipboard)
@@ -183,7 +266,9 @@ class DesktopShareServiceTest {
         var copied: String? = null
         val service = DesktopShareService(
             clipboardPort = object : DesktopClipboardPort {
-                override fun copyText(text: String) { copied = text }
+                override fun copyText(text: String) {
+                    copied = text
+                }
                 override fun copyImage(image: BufferedImage) = Unit
             },
             isHeadless = { false },
@@ -198,10 +283,12 @@ class DesktopShareServiceTest {
         val source = Files.createTempFile("mihon-share", ".png").toFile()
         val destination = File(source.parentFile, "saved.png")
         var outcome: DesktopSaveOutcome = DesktopSaveOutcome.Saved(destination)
-        val service = service(save = DesktopSavePort { content, _ ->
-            assertEquals(DesktopSaveContent.LocalFile(source), content)
-            outcome
-        })
+        val service = service(
+            save = DesktopSavePort { content, _ ->
+                assertEquals(DesktopSaveContent.LocalFile(source), content)
+                outcome
+            },
+        )
         val payload = SharePayload.Stream(source.toURI().toString(), "image/png")
 
         assertEquals(DesktopShareResult.Saved(destination), service.share(payload))
@@ -211,10 +298,12 @@ class DesktopShareServiceTest {
 
     @Test
     fun `clipboard busy and save failure are structured failures`() {
-        val clipboardFailure = service(clipboard = object : DesktopClipboardPort {
-            override fun copyText(text: String) = error("busy")
-            override fun copyImage(image: BufferedImage) = error("busy")
-        }).share(SharePayload.Text("text"))
+        val clipboardFailure = service(
+            clipboard = object : DesktopClipboardPort {
+                override fun copyText(text: String) = error("busy")
+                override fun copyImage(image: BufferedImage) = error("busy")
+            },
+        ).share(SharePayload.Text("text"))
         val saveFailure = service(save = DesktopSavePort { _, _ -> error("disk full") })
             .saveImage(BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB), "page.png")
 
@@ -227,7 +316,11 @@ class DesktopShareServiceTest {
 
     @Test
     fun `native failure exception and invalid remote stream never report native success`() {
-        val failed = service(native = DesktopNativeSharePort { DesktopNativeShareOutcome.Failed }).share(SharePayload.Text("text"))
+        val failed = service(
+            native = DesktopNativeSharePort {
+                DesktopNativeShareOutcome.Failed
+            },
+        ).share(SharePayload.Text("text"))
         val exception = service(native = DesktopNativeSharePort { error("boom") }).share(SharePayload.Text("text"))
         val invalid = service().share(SharePayload.Stream("https://example.com/page.png", "image/png"))
 
@@ -273,6 +366,7 @@ class DesktopShareServiceTest {
         val revealFailure = DesktopShareService(
             isHeadless = { false },
             revealPort = DesktopRevealPort { error("unsupported") },
+            overwriteConfirmation = { true },
         ).saveImage(image, destination)
         assertEquals(DesktopShareResult.Saved(destination), revealFailure)
     }
@@ -294,5 +388,4 @@ class DesktopShareServiceTest {
         override fun copyText(text: String) = Unit
         override fun copyImage(image: BufferedImage) = Unit
     }
-
 }

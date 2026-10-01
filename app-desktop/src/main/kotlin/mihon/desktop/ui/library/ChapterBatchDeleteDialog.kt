@@ -33,6 +33,7 @@ internal data class ChapterBatchDeleteSnapshot(
     val chapters: List<Chapter>,
     val downloadedCount: Int,
     val complete: (Collection<Long>) -> Unit,
+    val execute: (suspend () -> BatchChapterResult)? = null,
 )
 
 @Composable

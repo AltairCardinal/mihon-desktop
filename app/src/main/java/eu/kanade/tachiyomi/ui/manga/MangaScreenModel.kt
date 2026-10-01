@@ -637,26 +637,6 @@ class MangaScreenModel(
         return chapters.applyFilters(manga).firstOrNull { it.chapter.id == position.chapterId }?.chapter
     }
 
-    private fun getUnreadChapters(): List<Chapter> {
-        val chapterItems = if (skipFiltered) filteredChapters.orEmpty() else allChapters.orEmpty()
-        return chapterItems
-            .filter { (chapter, dlStatus) -> !chapter.read && dlStatus == Download.State.NOT_DOWNLOADED }
-            .map { it.chapter }
-    }
-
-    private fun getUnreadChaptersSorted(): List<Chapter> {
-        val manga = successState?.manga ?: return emptyList()
-        val chaptersSorted = getUnreadChapters().sortedWith(getChapterSort(manga))
-        return if (manga.sortDescending()) chaptersSorted.reversed() else chaptersSorted
-    }
-
-    private fun getBookmarkedChapters(): List<Chapter> {
-        val chapterItems = if (skipFiltered) filteredChapters.orEmpty() else allChapters.orEmpty()
-        return chapterItems
-            .filter { (chapter, dlStatus) -> chapter.bookmark && dlStatus == Download.State.NOT_DOWNLOADED }
-            .map { it.chapter }
-    }
-
     private fun startDownload(
         chapters: List<Chapter>,
         startNow: Boolean,
@@ -713,16 +693,39 @@ class MangaScreenModel(
     }
 
     fun runDownloadAction(action: DownloadAction) {
-        val chaptersToDownload = when (action) {
-            DownloadAction.NEXT_1_CHAPTER -> getUnreadChaptersSorted().take(1)
-            DownloadAction.NEXT_5_CHAPTERS -> getUnreadChaptersSorted().take(5)
-            DownloadAction.NEXT_10_CHAPTERS -> getUnreadChaptersSorted().take(10)
-            DownloadAction.NEXT_25_CHAPTERS -> getUnreadChaptersSorted().take(25)
-            DownloadAction.UNREAD_CHAPTERS -> getUnreadChapters()
-            DownloadAction.BOOKMARKED_CHAPTERS -> getBookmarkedChapters()
+        val current = successState ?: return
+        val skip = skipFiltered
+        val visibleIds = current.processedChapters.mapTo(mutableSetOf()) { it.id }
+        val limit = when (action) {
+            DownloadAction.NEXT_1_CHAPTER -> 1
+            DownloadAction.NEXT_5_CHAPTERS -> 5
+            DownloadAction.NEXT_10_CHAPTERS -> 10
+            DownloadAction.NEXT_25_CHAPTERS -> 25
+            else -> null
         }
-        if (chaptersToDownload.isNotEmpty()) {
-            startDownload(chaptersToDownload, false)
+        screenModelScope.launchIO {
+            try {
+                val raw = getMangaAndChapters.awaitChapters(current.manga.id, applyScanlatorFilter = false)
+                val original = if (skip) raw.filter { it.id in visibleIds } else raw
+                val availability = original.toChapterListItems(current.manga).associateBy { it.id }
+                val selected = tachiyomi.domain.library.selectManualDownloadChapters(
+                    candidates = original,
+                    manga = current.manga,
+                    bookmarkedOnly = action == DownloadAction.BOOKMARKED_CHAPTERS,
+                    limit = limit,
+                    isQueued = { chapter ->
+                        val status = availability.getValue(chapter.id).downloadState
+                        status != Download.State.NOT_DOWNLOADED && status != Download.State.DOWNLOADED
+                    },
+                    isDownloaded = { availability.getValue(it.id).downloadState == Download.State.DOWNLOADED },
+                )
+                if (selected.isNotEmpty()) startDownload(selected, false)
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                logcat(LogPriority.ERROR, error)
+                snackbarHostState.showSnackbar(context.stringResource(MR.strings.download_queue_error))
+            }
         }
     }
 

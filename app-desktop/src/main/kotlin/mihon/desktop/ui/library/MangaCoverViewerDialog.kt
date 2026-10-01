@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -59,8 +60,10 @@ internal fun MangaCoverViewerDialog(
     onDismiss: () -> Unit,
     onReplace: () -> Unit,
     onDelete: () -> Unit,
+    onSave: (coil3.Image) -> Unit,
 ) {
     val request = rememberMangaCoverRequestState(manga.id, manga.source, coverModel, coverVersion)
+    var loadedImage by remember(request.request) { mutableStateOf<coil3.Image?>(null) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var editing by remember { mutableStateOf(false) }
     val closeFocus = remember { FocusRequester() }
@@ -89,6 +92,9 @@ internal fun MangaCoverViewerDialog(
                         Icon(Icons.Default.Close, MR.strings.action_close.localized())
                     }
                     Text(manga.title, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    IconButton(enabled = !busy && loadedImage != null, onClick = { loadedImage?.let(onSave) }) {
+                        Icon(Icons.Default.Save, MR.strings.action_save.localized())
+                    }
                     Box {
                         IconButton(enabled = !busy, onClick = {
                             editing = true
@@ -119,6 +125,8 @@ internal fun MangaCoverViewerDialog(
                 ) {
                     AsyncImage(
                         model = request.request,
+                        onSuccess = { loadedImage = it.result.image },
+                        onError = { loadedImage = null },
                         contentDescription = manga.title,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.height(

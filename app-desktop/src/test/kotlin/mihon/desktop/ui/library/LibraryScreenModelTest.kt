@@ -25,6 +25,7 @@ import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DownloadStatus
 import mihon.desktop.reader.ReaderNavigator
+import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.source.FakeSource
 import mihon.domain.reader.content.DownloadChapterIdentity
@@ -1050,6 +1051,7 @@ class LibraryScreenModelTest {
             chapterRepository = chapterRepository,
             enqueueDownload = { enqueued += it },
             mangaProvider = { manga },
+            skipFiltered = true,
         )
 
         model.enqueueNextUnreadDownload(sampleLibraryManga(manga))
@@ -1218,6 +1220,7 @@ class LibraryScreenModelTest {
             repository,
             enqueueDownload = { nextOne += it.chapterId },
             mangaProvider = { manga },
+            skipFiltered = true,
         )
             .enqueueDownloads(listOf(item), MangaDetailDownloadAction.NEXT_1_CHAPTER)
         val nextFive = mutableListOf<Long>()
@@ -1225,6 +1228,7 @@ class LibraryScreenModelTest {
             repository,
             enqueueDownload = { nextFive += it.chapterId },
             mangaProvider = { manga },
+            skipFiltered = true,
         )
             .enqueueDownloads(listOf(item), MangaDetailDownloadAction.NEXT_5_CHAPTERS)
 
@@ -1287,7 +1291,7 @@ class LibraryScreenModelTest {
     fun `bookmarked download query failure is reported without queueing chapters`() = runTest {
         val backing = FakeChapterRepository()
         val repository = object : ChapterRepository by backing {
-            override suspend fun getBookmarkedChaptersByMangaId(mangaId: Long): List<Chapter> =
+            override suspend fun getChapterByMangaId(mangaId: Long, applyScanlatorFilter: Boolean): List<Chapter> =
                 error("bookmark query failed")
         }
         val enqueued = mutableListOf<DownloadItem>()
@@ -1480,13 +1484,28 @@ class LibraryScreenModelTest {
         isChapterDownloaded: ((LibraryManga, Chapter) -> Boolean)? = null,
         isChapterQueued: ((Chapter) -> Boolean)? = null,
         mangaProvider: (Long) -> Manga = { sampleManga(it) },
+        skipFiltered: Boolean = false,
     ): LibraryScreenModel {
         val getChapters = GetChaptersByMangaId(chapterRepository)
         val mangaBacking = FakeMangaRepository()
         val mangaRepository = object : MangaRepository by mangaBacking {
             override suspend fun getMangaById(id: Long): Manga = mangaProvider(id)
         }
+        val readerStore = isolatedDesktopPreferenceStore().apply {
+            getBoolean("reader_skip_filtered_chapters", false).set(skipFiltered)
+        }
+        val legacyReader = java.util.prefs.Preferences.userRoot()
+            .node("/mihon-test/${java.util.UUID.randomUUID()}/reader")
+        val readerPreferences = try {
+            ReaderPreferences(readerStore, legacyReader)
+        } finally {
+            legacyReader.removeNode()
+        }
         return LibraryScreenModel(
+            sourceManager = FakeDesktopSourceManager(
+                listOf(FakeSource(1L, "en", "One"), FakeSource(7L, "en", "Seven")),
+            ),
+            readerPreferences = readerPreferences,
             getChaptersByMangaId = getChapters,
             getBookmarkedChaptersByMangaId = GetBookmarkedChaptersByMangaId(chapterRepository),
             getNextChapters = GetNextChapters(getChapters, GetManga(mangaRepository), FakeHistoryRepository()),

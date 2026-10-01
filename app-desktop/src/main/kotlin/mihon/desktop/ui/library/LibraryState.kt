@@ -81,3 +81,14 @@ data class LibraryState(
 
     val hasActiveFilters get() = filter.globalDownloadedOnly || hasActiveLocalFilters
 }
+
+typealias LibraryRemovalFiles = mihon.desktop.download.CapturedDownloadFiles
+
+typealias LibraryRemovalDeletionResult = mihon.desktop.download.CapturedDownloadDeletionResult
+
+internal data class LibraryRemovalTarget(
+    val item: LibraryManga,
+    val files: LibraryRemovalFiles?,
+    var membershipCompleted: Boolean = false,
+    var coverDeletionCompleted: Boolean = false,
+)

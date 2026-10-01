@@ -3,8 +3,8 @@ package mihon.desktop.download
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import mihon.domain.reader.content.DownloadArtifactKind
 import mihon.domain.reader.content.DownloadArtifactCandidate
+import mihon.domain.reader.content.DownloadArtifactKind
 import mihon.domain.reader.content.DownloadArtifactLocator
 import mihon.domain.reader.content.DownloadArtifactLookup
 import mihon.domain.reader.content.DownloadArtifactMatch
@@ -15,6 +15,23 @@ import mihon.domain.reader.content.ReaderImageCandidatePolicy
 import mihon.domain.reader.content.ReaderImageSortMode
 import java.io.File
 import java.io.FileNotFoundException
+
+/** One opened removal session, including legacy artifacts without a SQL chapter. */
+data class CapturedDownloadFiles(
+    val pendingArtifacts: MutableSet<java.io.File>,
+    val pendingAttempts: MutableList<mihon.desktop.download.CapturedDownloadAttempt>,
+    val queuedArtifacts: Map<Long, Set<java.io.File>>,
+    val initialArtifactCount: Int = pendingArtifacts.size,
+    var succeeded: Int = 0,
+    var skipped: Int = 0,
+)
+
+data class CapturedDownloadDeletionResult(
+    val failedArtifacts: List<java.io.File>,
+    val succeeded: Int,
+    val skipped: Int,
+    val refusedAttempts: Set<Long> = emptySet(),
+)
 
 private val ILLEGAL_CHARS = Regex("""[/\\:*?"<>|]""")
 private fun sanitize(name: String): String =
@@ -30,6 +47,7 @@ private fun sanitize(name: String): String =
  */
 class DesktopDownloadProvider(
     private val baseDir: File,
+    private val directoryLister: (File) -> Array<File>? = File::listFiles,
 ) {
     private val _availabilityRevision = MutableStateFlow(0L)
     val availabilityRevision = _availabilityRevision.asStateFlow()
@@ -64,7 +82,10 @@ class DesktopDownloadProvider(
 
     /** Returns the temporary chapter directory used during downloads. */
     fun chapterTmpDir(sourceId: Long, mangaTitle: String, chapterName: String): File =
-        File(baseDir, "${sanitize(sourceId.toString())}/${sanitize(mangaTitle)}/${sanitize(chapterName)}$TMP_DIR_SUFFIX")
+        File(
+            baseDir,
+            "${sanitize(sourceId.toString())}/${sanitize(mangaTitle)}/${sanitize(chapterName)}$TMP_DIR_SUFFIX",
+        )
 
     /** Canonical upstream-style source/manga directory used by new Desktop downloads. */
     fun canonicalMangaDownloadDir(identity: DownloadChapterIdentity): File = File(
@@ -77,7 +98,10 @@ class DesktopDownloadProvider(
         File(canonicalMangaDownloadDir(identity), DownloadArtifactNamingPolicy.currentChapterName(identity))
 
     fun canonicalChapterTmpDir(identity: DownloadChapterIdentity): File =
-        File(canonicalMangaDownloadDir(identity), DownloadArtifactNamingPolicy.currentChapterName(identity) + TMP_DIR_SUFFIX)
+        File(
+            canonicalMangaDownloadDir(identity),
+            DownloadArtifactNamingPolicy.currentChapterName(identity) + TMP_DIR_SUFFIX,
+        )
 
     /** Finite canonical aliases plus the historical Desktop `_tmp` path; never scans the download tree. */
     fun partialTmpDirectoryCandidates(sourceId: Long, identity: DownloadChapterIdentity): List<File> =
@@ -255,6 +279,49 @@ class DesktopDownloadProvider(
         notifyAvailabilityChanged()
     }
 
+    /** Capture only existing chapter artifacts in the two known manga directories. */
+    fun captureMangaDownloadArtifacts(
+        sourceId: Long,
+        mangaTitle: String,
+        identity: DownloadChapterIdentity,
+    ): List<File> =
+        listOf(
+            File(baseDir, "${sanitize(sourceId.toString())}/${sanitize(mangaTitle)}"),
+            canonicalMangaDownloadDir(identity),
+        ).distinctBy(File::getAbsolutePath).flatMap { directory ->
+            val artifacts = if (!directory.exists()) {
+                emptyArray()
+            } else {
+                directoryLister(directory)
+                    ?: throw java.io.IOException("Unable to read download directory: ${directory.name}")
+            }
+            artifacts.filter { artifact ->
+                (artifact.isDirectory && !artifact.name.endsWith(TMP_DIR_SUFFIX)) ||
+                    (artifact.isFile && artifact.extension.equals("cbz", ignoreCase = true))
+            }
+        }.distinctBy(File::getAbsolutePath)
+
+    /** Finite aliases used both by immediate chapter deletion and an opened removal session. */
+    fun chapterDownloadArtifacts(sourceId: Long, identity: DownloadChapterIdentity): List<File> = buildList {
+        DownloadArtifactNamingPolicy.chapterCandidates(identity).distinct().forEach { candidate ->
+            add(File(canonicalMangaDownloadDir(identity), candidate.name))
+        }
+        val legacy = chapterDownloadDir(sourceId, identity.mangaTitle, identity.chapterName)
+        add(legacy)
+        add(File(legacy.parentFile, "${legacy.name}.cbz"))
+    }.distinctBy(File::getAbsolutePath)
+
+    /** Return the original paths that still need retry; never re-enumerate the manga directory. */
+    fun deleteCapturedDownloadArtifacts(artifacts: Collection<File>): List<File> = try {
+        val root = baseDir.toPath().toAbsolutePath().normalize()
+        artifacts.filter { artifact ->
+            val path = artifact.toPath().toAbsolutePath().normalize()
+            !path.startsWith(root) || path == root || !deleteArtifact(artifact)
+        }
+    } finally {
+        notifyAvailabilityChanged()
+    }
+
     /** Returns true when a downloaded image has a supported extension and a matching file signature. */
     fun isValidDownloadedImage(file: File): Boolean = file.isReadableImageFile()
 
@@ -269,14 +336,7 @@ class DesktopDownloadProvider(
 
     /** Deletes only the finite aliases belonging to this identity; no download-tree scan or migration is performed. */
     fun deleteChapterDownload(sourceId: Long, identity: DownloadChapterIdentity): Boolean {
-        val artifacts = buildList {
-            DownloadArtifactNamingPolicy.chapterCandidates(identity).distinct().forEach { candidate ->
-                add(File(canonicalMangaDownloadDir(identity), candidate.name))
-            }
-            val currentDesktop = chapterDownloadDir(sourceId, identity.mangaTitle, identity.chapterName)
-            add(currentDesktop)
-            add(File(currentDesktop.parentFile, "${currentDesktop.name}.cbz"))
-        }.distinctBy(File::getAbsolutePath)
+        val artifacts = chapterDownloadArtifacts(sourceId, identity)
         return try {
             artifacts.map(::deleteArtifact).all { it }
         } finally {
@@ -379,5 +439,4 @@ class DesktopDownloadProvider(
             hasAsciiAt(8, brand) || (16..28 step 4).any { offset -> hasAsciiAt(offset, brand) }
         }
     }
-
 }

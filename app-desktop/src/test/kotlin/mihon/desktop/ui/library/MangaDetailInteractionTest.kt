@@ -53,6 +53,7 @@ import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.platform.toDesktopNotification
+import mihon.desktop.ui.reader.DesktopReaderScreen
 import mihon.desktop.ui.theme.DesktopTheme
 import org.jetbrains.skia.Image
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -65,6 +66,7 @@ import org.junit.jupiter.api.parallel.Isolated
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.chapter.service.missingChaptersCount
 import tachiyomi.domain.library.service.LibraryPreferences
@@ -91,6 +93,786 @@ import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 @Isolated
 @OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class MangaDetailInteractionTest {
+    @Test
+    fun `single downloaded chapter deletion confirms actual refusal and retries only its fixed file`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, _, manga, chapters ->
+            val provider = Injekt.get<mihon.desktop.download.DesktopDownloadProvider>()
+            val resolver = Injekt.get<mihon.desktop.download.DesktopDownloadIdentityResolver>()
+            fun create(chapter: Chapter) = provider.canonicalChapterDownloadDir(resolver.resolve(manga, chapter))
+                .apply { mkdirs() }.resolve("001.png").apply { writeBytes(png(0xFF00FF00.toInt())) }
+            val first = create(chapters[0])
+            provider.notifyAvailabilityChanged()
+            render(scene)
+            click(scene, MR.strings.desktop_ui_delete_download.localized())
+            render(scene)
+            click(scene, MR.strings.action_cancel.localized())
+            render(scene)
+            assertTrue(first.exists())
+            assertTrue(
+                nodes(scene).any {
+                    MR.strings.desktop_ui_delete_download.localized() in labels(it) &&
+                        it.config.contains(SemanticsProperties.Focused) && it.config[SemanticsProperties.Focused]
+                },
+                "cancel restores the actual still-visible inline deletion trigger",
+            )
+            click(scene, MR.strings.desktop_ui_delete_download.localized())
+            render(scene)
+            val late = create(chapters[1])
+            val restore = denyFileChanges(first)
+            try {
+                click(scene, MR.strings.action_delete.localized())
+                render(scene)
+                assertTrue(first.exists())
+                assertTrue(
+                    activeNodes(scene).any { "0 succeeded, 0 skipped, 1 failed" in labels(it) },
+                    "the real provider Boolean refusal cannot close the single chapter confirmation as success",
+                )
+                assertTrue(activeNodes(scene).any { MR.strings.action_cancel.localized() in labels(it) })
+            } finally {
+                restore()
+            }
+            click(scene, MR.strings.action_delete.localized())
+            render(scene)
+            assertFalse(first.exists())
+            assertTrue(late.exists())
+            assertEquals(MangaDetailScreen(manga.id), scene.navigator.lastItem)
+        }
+    }
+
+    @Test
+    fun `external chapter delegates the actual browser result without Reader navigation and retries visible failure`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val urls = mutableListOf<String>()
+        var accepted = false
+        withDetail(root, externalUrlOpener = { url ->
+            urls += url
+            if (accepted) Result.success(Unit) else Result.failure(java.io.IOException("system browser refused"))
+        }) { scene, _, manga, chapters ->
+            Injekt.get<ChapterRepository>().update(
+                ChapterUpdate(chapters[0].id, url = "external:https://example.com/external-chapter"),
+            )
+            render(scene)
+            chapterMouse(scene, "Chapter 1")
+            render(scene)
+            assertEquals(
+                listOf("https://example.com/external-chapter"),
+                urls,
+                "the actual row must consume the existing production browser port result",
+            )
+            assertEquals(MangaDetailScreen(manga.id), scene.navigator.lastItem)
+            assertTrue(nodes(scene).any { MR.strings.desktop_external_chapter_open_failed.localized() in labels(it) })
+            accepted = true
+            chapterMouse(scene, "Chapter 1")
+            render(scene)
+            assertEquals(2, urls.size)
+            assertTrue(nodes(scene).any { MR.strings.desktop_external_chapter_opened.localized() in labels(it) })
+            assertEquals(MangaDetailScreen(manga.id), scene.navigator.lastItem)
+            assertTrue(Injekt.get<mihon.desktop.download.DesktopDownloadManager>().queue.value.isEmpty())
+        }
+    }
+
+    @Test
+    fun `actual Reader mode writes isolate Manga flags reject visibly and persist through real detail return`(
+        @TempDir root: File,
+    ) = runBlocking {
+        var reject = true
+        withDetail(
+            root,
+            httpSource = true,
+            mangaTransform = { it.copy(viewerFlags = 7L) },
+            mangaRepositoryOverride = { actual ->
+                object : MangaRepository by actual {
+                    override suspend fun update(update: MangaUpdate): Boolean =
+                        if (reject && update.viewerFlags != null) false else actual.update(update)
+                }
+            },
+        ) { scene, _, manga, chapters ->
+            val repository = Injekt.get<MangaRepository>()
+            val other = repository.insertNetworkManga(
+                listOf(
+                    Manga.create().copy(
+                        source = 42,
+                        url = "/other-reader",
+                        title = "Other reader",
+                        viewerFlags = 2L,
+                        initialized = true,
+                    ),
+                ),
+            ).single()
+            val preferences = Injekt.get<mihon.desktop.reader.ReaderPreferences>()
+            val global = preferences.readingMode
+            val provider = Injekt.get<mihon.desktop.download.DesktopDownloadProvider>()
+            val resolver = Injekt.get<mihon.desktop.download.DesktopDownloadIdentityResolver>()
+            provider.canonicalChapterDownloadDir(resolver.resolve(manga, chapters[0])).apply {
+                mkdirs()
+                resolve("001.png").writeBytes(png(0xFF00FF00.toInt()))
+            }
+            provider.notifyAvailabilityChanged()
+            render(scene)
+            chapterMouse(scene, "Chapter 1")
+            render(scene)
+            assertTrue(scene.navigator.lastItem is DesktopReaderScreen)
+            scene.pointerClick(Offset(600f, 450f))
+            render(scene)
+            click(scene, MR.strings.desktop_ui_reader_settings.localized())
+            render(scene)
+            click(scene, MR.strings.left_to_right_viewer.localized())
+            render(scene)
+            assertEquals(7L, repository.getMangaById(manga.id).viewerFlags)
+            assertTrue(
+                activeNodes(scene).any { MR.strings.desktop_detail_save_failed.localized() in labels(it) },
+                "a real SQL rejection stays visible in the reader settings and restores its authoritative mode",
+            )
+            assertTrue(
+                activeNodes(scene).any { node ->
+                    MR.strings.automatic_background.localized() in labels(node) &&
+                        flatten(node).any {
+                            it.config.contains(SemanticsProperties.Selected) &&
+                                it.config[SemanticsProperties.Selected]
+                        }
+                },
+                "rejected LTR restores the real persisted AUTO mode, without resetting the reader session",
+            )
+            reject = false
+            click(scene, MR.strings.left_to_right_viewer.localized())
+            render(scene)
+            assertEquals(1L, repository.getMangaById(manga.id).viewerFlags and 7L)
+            assertEquals(2L, repository.getMangaById(other.id).viewerFlags)
+            assertEquals(global, preferences.readingMode)
+            click(scene, MR.strings.action_close.localized())
+            scene.navigator.pop()
+            render(scene)
+            chapterMouse(scene, "Chapter 1")
+            render(scene)
+            assertEquals(1L, (scene.navigator.lastItem as DesktopReaderScreen).mangaViewerFlags and 7L)
+            scene.pointerClick(Offset(600f, 450f))
+            render(scene)
+            click(scene, MR.strings.desktop_ui_reader_settings.localized())
+            render(scene)
+            assertTrue(
+                activeNodes(scene).any { node ->
+                    MR.strings.left_to_right_viewer.localized() in labels(node) &&
+                        flatten(node).any {
+                            it.config.contains(SemanticsProperties.Selected) &&
+                                it.config[SemanticsProperties.Selected]
+                        }
+                },
+            )
+            click(scene, MR.strings.action_close.localized())
+            scene.navigator.pop()
+            render(scene)
+            assertEquals(MangaDetailScreen(manga.id), scene.navigator.lastItem)
+        }
+    }
+
+    @Test
+    fun `cover viewer saves the actual loaded typed image with overwrite cancellation failure retry and focus`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val source = File(root, "save-source.png").apply { writeBytes(png(0xFF00FF00.toInt())) }
+        val destination = File(root, "saved-cover.png").apply { writeBytes(png(0xFFFF0000.toInt())) }
+        var overwrite = false
+        var reject = false
+        val share = mihon.desktop.platform.DesktopShareService(
+            isHeadless = { false },
+            revealPort = mihon.desktop.platform.DesktopRevealPort {},
+            savePort = mihon.desktop.platform.SwingDesktopSavePort(
+                chooseDestination = { destination },
+                overwriteConfirmation = { overwrite },
+                contentWriter = { content, file ->
+                    if (reject) {
+                        file.writeBytes(byteArrayOf(1, 2))
+                        throw java.io.IOException("cover save interrupted")
+                    }
+                    val image = (content as mihon.desktop.platform.DesktopSaveContent.Image).image
+                    check(ImageIO.write(image, "png", file))
+                },
+            ),
+        )
+        withDetail(
+            root,
+            mangaTransform = { it.copy(thumbnailUrl = source.absolutePath) },
+            coverRequests = mutableListOf(),
+            shareService = share,
+        ) { scene, _, manga, _ ->
+            val notifications = mutableListOf<mihon.desktop.domain.DesktopNotification>()
+            val collector = launch(Dispatchers.Unconfined) {
+                Injekt.get<mihon.desktop.domain.DesktopNotificationService>().notifications.collect {
+                    notifications +=
+                        it
+                }
+            }
+            try {
+                assertCoverPixel(scene, manga.title, 0xFF00FF00.toInt())
+                val cover = nodes(scene).first {
+                    it.config.contains(SemanticsProperties.ContentDescription) && manga.title in labels(it) &&
+                        it.config.contains(SemanticsActions.OnClick)
+                }
+                scene.pointerClick(cover.boundsInRoot.center)
+                render(scene)
+                assertTrue(
+                    activeNodes(scene).any { MR.strings.action_save.localized() in labels(it) },
+                    "the real cover viewer exposes saving its successfully loaded typed Coil image",
+                )
+                click(scene, MR.strings.action_save.localized())
+                render(scene)
+                assertEquals(0xFFFF0000.toInt(), ImageIO.read(destination).getRGB(1, 1))
+                assertTrue(activeNodes(scene).any { MR.strings.cancelled.localized() in labels(it) })
+                overwrite = true
+                reject = true
+                click(scene, MR.strings.action_save.localized())
+                render(scene)
+                assertEquals(0xFFFF0000.toInt(), ImageIO.read(destination).getRGB(1, 1))
+                assertTrue(activeNodes(scene).any { MR.strings.error_saving_picture.localized() in labels(it) })
+                reject = false
+                click(scene, MR.strings.action_save.localized())
+                render(scene)
+                assertEquals(0xFF00FF00.toInt(), ImageIO.read(destination).getRGB(1, 1))
+                assertTrue(activeNodes(scene).any { MR.strings.picture_saved.localized() in labels(it) })
+                key(scene, Key.Escape)
+                render(scene)
+                assertTrue(
+                    nodes(scene).any {
+                        it.config.contains(SemanticsProperties.Focused) && it.config[SemanticsProperties.Focused] &&
+                            manga.title in labels(it)
+                    },
+                )
+                assertEquals(MR.strings.action_save.localized(), notifications.last().title)
+                assertEquals(MR.strings.picture_saved.localized(), notifications.last().message)
+                for (mode in listOf(mihon.desktop.settings.ThemeMode.LIGHT, mihon.desktop.settings.ThemeMode.DARK)) {
+                    scene.resize(320, 680)
+                    scene.fontScale = 2f
+                    Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().themeMode.set(mode)
+                    render(scene)
+                    val trigger = activeNodes(scene).first {
+                        manga.title in labels(it) &&
+                            it.config.contains(SemanticsProperties.ContentDescription) &&
+                            it.config.contains(SemanticsActions.OnClick)
+                    }
+                    scene.pointerClick(trigger.boundsInRoot.center)
+                    render(scene)
+                    val required = listOf(
+                        MR.strings.action_close.localized(),
+                        MR.strings.action_save.localized(),
+                        MR.strings.action_edit_cover.localized(),
+                    )
+                    for (label in required) {
+                        val node = activeNodes(scene).first {
+                            label in labels(it) &&
+                                it.config.contains(SemanticsActions.OnClick)
+                        }
+                        val bounds = node.touchBoundsInRoot
+                        assertTrue(
+                            bounds.width >= 48f && bounds.height >= 48f && bounds.left >= 0 && bounds.right <= 320 &&
+                                bounds.top >= 0 && bounds.bottom <= 680,
+                            "viewer $label remains reachable at 320dp/font200: $bounds",
+                        )
+                    }
+                    val seen = mutableSetOf<String>()
+                    repeat(8) {
+                        seen += labels(focused(scene))
+                        assertFalse(
+                            MR.strings.action_bar_up_description.localized() in labels(focused(scene)),
+                            "native modal keyboard focus never reaches the background detail",
+                        )
+                        key(scene, Key.Tab)
+                        render(scene)
+                    }
+                    required.forEach { assertTrue(it in seen, "forward Tab reaches viewer $it") }
+                    seen.clear()
+                    repeat(8) {
+                        key(scene, Key.Tab, shift = true)
+                        render(scene)
+                        seen += labels(focused(scene))
+                    }
+                    required.forEach { assertTrue(it in seen, "reverse Tab reaches viewer $it") }
+                    activeNodes(scene).first {
+                        MR.strings.action_save.localized() in labels(it) &&
+                            it.config.contains(SemanticsActions.RequestFocus)
+                    }.config[SemanticsActions.RequestFocus].action!!.invoke()
+                    key(scene, Key.Spacebar)
+                    render(scene)
+                    assertEquals(0xFF00FF00.toInt(), ImageIO.read(destination).getRGB(1, 1))
+                    assertEquals(MR.strings.action_save.localized(), notifications.last().title)
+                    scene.savePng(visualFile(root, "ri10-cover-save-320-font200-${mode.name.lowercase()}.png"))
+                    key(scene, Key.Escape)
+                    render(scene)
+                    assertTrue(
+                        nodes(scene).any {
+                            manga.title in labels(it) &&
+                                it.config.contains(SemanticsProperties.Focused) &&
+                                it.config[SemanticsProperties.Focused]
+                        },
+                    )
+                }
+            } finally {
+                collector.cancel()
+            }
+        }
+    }
+
+    @Test
+    fun `download queue cancel refusal preserves persistent work and gives retry feedback`(
+        @TempDir root: File,
+    ) = runBlocking {
+        var reject = false
+        withDetail(root, httpSource = true, downloadManagerFactory = {
+            val store = tachiyomi.data.download.PersistentDownloadStore(Injekt.get<tachiyomi.data.Database>())
+            mihon.desktop.download.DesktopDownloadManager(
+                provider = Injekt.get(),
+                store = store,
+                queuePersister = { entries ->
+                    if (reject) throw java.io.IOException("persistent queue is unavailable")
+                    store.replaceAll(entries)
+                },
+            )
+        }) { scene, model, manga, chapters ->
+            model.enqueueDownloads(manga, listOf(chapters[0]))
+            render(scene)
+            reject = true
+            val bounds = chapterNode(scene, "Chapter 1").boundsInRoot
+            scene.pointerSecondaryClick(Offset(bounds.left + bounds.width / 3, bounds.center.y))
+            render(scene)
+            click(scene, MR.strings.action_cancel.localized())
+            render(scene)
+            assertEquals(listOf(chapters[0].id), model.downloadQueueFlow().value.map { it.chapterId })
+            assertTrue(
+                activeNodes(scene).flatMap(::labels).any { "0 succeeded, 0 skipped, 1 failed" in it },
+                "actual manager cancellation refusal is visible and leaves accepted work retryable",
+            )
+            reject = false
+            scene.pointerSecondaryClick(Offset(bounds.left + bounds.width / 3, bounds.center.y))
+            render(scene)
+            click(scene, MR.strings.action_cancel.localized())
+            render(scene)
+            assertTrue(model.downloadQueueFlow().value.isEmpty())
+        }
+    }
+
+    @Test
+    fun `download queue retry persistence error remains visible and retry reuses chapter identity`(
+        @TempDir root: File,
+    ) = runBlocking {
+        var reject = false
+        withDetail(root, httpSource = true, downloadManagerFactory = {
+            val store = tachiyomi.data.download.PersistentDownloadStore(Injekt.get<tachiyomi.data.Database>())
+            mihon.desktop.download.DesktopDownloadManager(
+                provider = Injekt.get(),
+                store = store,
+                queuePersister = { entries ->
+                    if (reject) throw java.io.IOException("persistent queue is unavailable")
+                    store.replaceAll(entries)
+                },
+            )
+        }) { scene, model, manga, chapters ->
+            val manager = Injekt.get<mihon.desktop.download.DesktopDownloadManager>()
+            model.enqueueDownloads(manga, listOf(chapters[0]))
+            assertTrue(manager.transition(chapters[0].id, mihon.domain.download.DownloadQueueStatus.DOWNLOADING))
+            assertTrue(manager.transition(chapters[0].id, mihon.domain.download.DownloadQueueStatus.ERROR))
+            render(scene)
+            reject = true
+            val action = flatten(chapterNode(scene, "Chapter 1")).first {
+                MR.strings.desktop_ui_download_retry_error.localized() in labels(it) &&
+                    it.config.contains(SemanticsActions.OnClick)
+            }
+            scene.pointerClick(action.boundsInRoot.center)
+            render(scene)
+            assertEquals(mihon.desktop.download.DownloadStatus.ERROR, manager.queue.value.single().status)
+            assertTrue(
+                activeNodes(scene).flatMap(::labels).any { "0 succeeded, 0 skipped, 1 failed" in it },
+                "a persistent retry failure cannot escape the ordinary chapter UI callback",
+            )
+            reject = false
+            scene.pointerClick(action.boundsInRoot.center)
+            render(scene)
+            assertEquals(mihon.desktop.download.DownloadStatus.QUEUED, manager.queue.value.single().status)
+            assertEquals(manga.id, manager.queue.value.single().mangaId)
+        }
+    }
+
+    @Test
+    fun `download queue queued chapter context starts now by real factory without Reader or identity replacement`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root, httpSource = true) { scene, model, manga, chapters ->
+            assertEquals(
+                chapters.take(3).map {
+                    it.id
+                },
+                model.enqueueDownloadBatch(manga, chapters.take(3)).succeededIds,
+            )
+            val manager = Injekt.get<mihon.desktop.download.DesktopDownloadManager>()
+            manager.pauseAll()
+            render(scene)
+            val bounds = chapterNode(scene, "Chapter 3").boundsInRoot
+            scene.pointerSecondaryClick(Offset(bounds.left + bounds.width / 3, bounds.center.y))
+            render(scene)
+            assertTrue(
+                activeNodes(scene).flatMap(::labels).contains(MR.strings.action_start_downloading_now.localized()),
+                "queued ordinary context exposes the actual start-now manager command",
+            )
+            click(scene, MR.strings.action_start_downloading_now.localized())
+            render(scene)
+            assertEquals(
+                listOf(chapters[2].id, chapters[0].id, chapters[1].id),
+                manager.queue.value.map {
+                    it.chapterId
+                },
+            )
+            assertFalse(manager.isPaused.value)
+            assertTrue(manager.queue.value.all { it.mangaId == manga.id })
+            assertTrue(scene.navigator.lastItem is MangaDetailScreen)
+        }
+    }
+
+    @Test
+    fun `download queue missing source inline gesture reports reason without accepting work`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root) { scene, model, _, _ ->
+            val action = flatten(chapterNode(scene, "Chapter 1")).first {
+                MR.strings.action_download.localized() in labels(it) && it.config.contains(SemanticsActions.OnClick)
+            }
+            scene.pointerClick(action.boundsInRoot.center)
+            render(scene)
+            assertTrue(
+                model.downloadQueueFlow().value.isEmpty(),
+                "ordinary inline route obeys the same source eligibility as the menu",
+            )
+            assertTrue(activeNodes(scene).flatMap(::labels).any { "Source not installed: 42" in it })
+        }
+    }
+
+    @Test
+    fun `download queue actual preflight no op is skipped rather than accepted by selection wiring`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root, httpSource = true, downloadManagerFactory = {
+            mihon.desktop.download.DesktopDownloadManager(
+                provider = Injekt.get(),
+                store = tachiyomi.data.download.PersistentDownloadStore(Injekt.get<tachiyomi.data.Database>()),
+                enqueueFileOperations = object : mihon.desktop.download.DownloadEnqueueFileOperations by
+                mihon.desktop.download.DefaultDownloadEnqueueFileOperations {
+                    override fun isChapterDownloaded(
+                        provider: mihon.desktop.download.DesktopDownloadProvider,
+                        item: mihon.desktop.download.DownloadItem,
+                    ): Boolean {
+                        File(
+                            provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
+                                .apply { mkdirs() },
+                            "001.png",
+                        ).writeBytes(png(0xFF00FF00.toInt()))
+                        return mihon.desktop.download.DefaultDownloadEnqueueFileOperations.isChapterDownloaded(
+                            provider,
+                            item,
+                        )
+                    }
+                },
+            )
+        }) { scene, model, _, _ ->
+            chapterMouse(scene, "Chapter 1", ctrl = true)
+            clickChapterAction(scene, MR.strings.action_download.localized())
+            render(scene)
+            assertTrue(model.downloadQueueFlow().value.isEmpty())
+            assertTrue(
+                activeNodes(scene).flatMap(::labels).any { "0 succeeded, 1 skipped, 0 failed" in it },
+                "the real manager no-op cannot be reported as accepted by a Unit-adapted factory port",
+            )
+        }
+    }
+
+    @Test
+    fun `download manual accepted scope stays fixed while raw repository read is suspended`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var gate = false
+        withDetail(root, httpSource = true, mangaTransform = {
+            it.copy(chapterFlags = Manga.CHAPTER_SHOW_UNREAD or Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SORT_ASC)
+        }, chapterRepositoryOverride = { actual ->
+            object : ChapterRepository by actual {
+                override suspend fun getChapterByMangaId(mangaId: Long, applyScanlatorFilter: Boolean): List<Chapter> {
+                    if (gate && !applyScanlatorFilter) {
+                        entered.complete(Unit)
+                        release.await()
+                    }
+                    return actual.getChapterByMangaId(mangaId, applyScanlatorFilter)
+                }
+            }
+        }) { scene, model, _, chapters ->
+            Injekt.get<ChapterRepository>().update(ChapterUpdate(chapters[0].id, read = true, bookmark = true))
+            render(scene)
+            val preference = Injekt.get<mihon.desktop.reader.ReaderPreferences>()
+            preference.skipFilteredChapters = false
+            gate = true
+            try {
+                click(scene, MR.strings.desktop_ui_download_chapters.localized())
+                render(scene)
+                click(scene, MangaDetailDownloadAction.BOOKMARKED_CHAPTERS.label)
+                kotlinx.coroutines.withTimeout(5000) { entered.await() }
+                preference.skipFilteredChapters = true
+                release.complete(Unit)
+                render(scene)
+                assertEquals(
+                    listOf(chapters[0].id),
+                    model.downloadQueueFlow().value.map { it.chapterId },
+                    "the accepted All chapters scope is not replaced by a later preference write",
+                )
+            } finally {
+                release.complete(Unit)
+            }
+        }
+    }
+
+    @Test
+    fun `download manual raw query failure reports retry and cancellation remains cancellation`(
+        @TempDir root: File,
+    ) = runBlocking {
+        var failure: Exception? = null
+        withDetail(root, httpSource = true, chapterRepositoryOverride = { actual ->
+            object : ChapterRepository by actual {
+                override suspend fun getChapterByMangaId(mangaId: Long, applyScanlatorFilter: Boolean): List<Chapter> {
+                    if (!applyScanlatorFilter) failure?.let { throw it }
+                    return actual.getChapterByMangaId(mangaId, applyScanlatorFilter)
+                }
+            }
+        }) { scene, model, _, _ ->
+            failure = java.io.IOException("raw directory rejected")
+            val result = model.downloadManualAction(MangaDetailDownloadAction.NEXT_1_CHAPTER)
+            assertEquals(1, result.failures.size)
+            assertTrue(model.downloadQueueFlow().value.isEmpty())
+            click(scene, MR.strings.desktop_ui_download_chapters.localized())
+            render(scene)
+            click(scene, MangaDetailDownloadAction.NEXT_1_CHAPTER.label)
+            render(scene)
+            assertTrue(
+                activeNodes(scene).flatMap(::labels).any {
+                    MR.strings.desktop_ui_download_failed.localized() in
+                        it
+                },
+            )
+            failure = kotlinx.coroutines.CancellationException("cancel directory query")
+            val cancelled = runCatching {
+                model.downloadManualAction(MangaDetailDownloadAction.NEXT_1_CHAPTER)
+            }.exceptionOrNull()
+            assertTrue(cancelled is kotlinx.coroutines.CancellationException)
+            failure = null
+            assertEquals(1, model.downloadManualAction(MangaDetailDownloadAction.NEXT_1_CHAPTER).succeededIds.size)
+        }
+    }
+
+    @Test
+    fun `download manual next limits use eligible narrative candidates before taking`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root, httpSource = true, mangaTransform = {
+            it.copy(chapterFlags = Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SORT_ASC)
+        }) { scene, model, manga, chapters ->
+            val provider = Injekt.get<mihon.desktop.download.DesktopDownloadProvider>()
+            val identity = Injekt.get<mihon.desktop.download.DesktopDownloadIdentityResolver>()
+            File(
+                provider.canonicalChapterDownloadDir(identity.resolve(manga, chapters[0]))
+                    .apply { mkdirs() },
+                "001.png",
+            ).writeBytes(png(0xFF00FF00.toInt()))
+            provider.notifyAvailabilityChanged()
+            model.enqueueDownloads(manga, listOf(chapters[1]))
+            Injekt.get<ChapterRepository>().update(
+                ChapterUpdate(
+                    chapters[2].id,
+                    url = "external:https://example.com/chapter-3",
+                ),
+            )
+            render(scene)
+            val actions = listOf(
+                MangaDetailDownloadAction.NEXT_1_CHAPTER to 1,
+                MangaDetailDownloadAction.NEXT_5_CHAPTERS to 5,
+                MangaDetailDownloadAction.NEXT_10_CHAPTERS to 10,
+                MangaDetailDownloadAction.NEXT_25_CHAPTERS to 25,
+            )
+            val manager = Injekt.get<mihon.desktop.download.DesktopDownloadManager>()
+            for (direction in listOf(Manga.CHAPTER_SORT_ASC, Manga.CHAPTER_SORT_DESC)) {
+                assertTrue(
+                    Injekt.get<MangaRepository>().update(
+                        MangaUpdate(
+                            manga.id,
+                            chapterFlags = Manga.CHAPTER_SORTING_NUMBER or direction,
+                        ),
+                    ),
+                )
+                render(scene)
+                for ((action, limit) in actions) {
+                    click(scene, MR.strings.desktop_ui_download_chapters.localized())
+                    render(scene)
+                    click(scene, action.label)
+                    render(scene)
+                    val expected = listOf(chapters[1].id) + chapters.drop(3).take(limit).map { it.id }
+                    assertEquals(
+                        expected,
+                        manager.queue.value.map { it.chapterId },
+                        "already downloaded, queued and external chapters never consume the requested limit",
+                    )
+                    assertTrue(
+                        manager.cancelAndAwaitRetirements(
+                            manager.queue.value.map { it.chapterId }
+                                .filterNot { it == chapters[1].id },
+                        ),
+                    )
+                    render(scene)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `download manual read bookmarks and real skip filtered preference share the mounted candidate range`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root, httpSource = true, mangaTransform = {
+            it.copy(chapterFlags = Manga.CHAPTER_SHOW_UNREAD or Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SORT_ASC)
+        }) { scene, _, _, chapters ->
+            val repository = Injekt.get<ChapterRepository>()
+            repository.update(ChapterUpdate(chapters[0].id, read = true, bookmark = true))
+            repository.update(ChapterUpdate(chapters[4].id, bookmark = true))
+            val preferences = Injekt.get<mihon.desktop.reader.ReaderPreferences>()
+            val manager = Injekt.get<mihon.desktop.download.DesktopDownloadManager>()
+            for (skip in listOf(false, true)) {
+                preferences.skipFilteredChapters = skip
+                render(scene)
+                click(scene, MR.strings.desktop_ui_download_chapters.localized())
+                render(scene)
+                click(scene, MangaDetailDownloadAction.BOOKMARKED_CHAPTERS.label)
+                render(scene)
+                assertEquals(
+                    if (skip) listOf(chapters[4].id) else listOf(chapters[0].id, chapters[4].id),
+                    manager.queue.value.map {
+                        it.chapterId
+                    },
+                    "read bookmarks remain downloadable; skip uses the real preference",
+                )
+                assertTrue(manager.cancelAndAwaitRetirements(manager.queue.value.map { it.chapterId }))
+                render(scene)
+            }
+        }
+    }
+
+    @Test
+    fun `download manual scope label reflects the actual Reader preference before accepting work`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root, httpSource = true) { scene, _, _, _ ->
+            val preferences = Injekt.get<mihon.desktop.reader.ReaderPreferences>()
+            for (skip in listOf(false, true)) {
+                preferences.skipFilteredChapters = skip
+                val top = nodes(scene).first {
+                    MR.strings.desktop_ui_download_chapters.localized() in labels(it) &&
+                        it.config.contains(SemanticsActions.OnClick) && it.boundsInRoot.height > 0
+                }
+                top.config[SemanticsActions.OnClick].action!!.invoke()
+                render(scene)
+                val expected = if (skip) "Filtered chapters" else "All chapters"
+                assertTrue(
+                    activeNodes(scene).flatMap(::labels).any { it == expected },
+                    "menu declares the actual persisted download scope before accepting a snapshot",
+                )
+                key(scene, Key.Escape)
+                render(scene)
+                assertFalse(
+                    activeNodes(scene).flatMap(::labels).any {
+                        it ==
+                            MangaDetailDownloadAction.NEXT_1_CHAPTER.label
+                    },
+                    "Escape closes only the actual download popup before the next Root trigger",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `download manual skip preference controls excluded scanlator raw input without changing visible rows`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root, httpSource = true, mangaTransform = {
+            it.copy(chapterFlags = Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SORT_ASC)
+        }) { scene, model, manga, chapters ->
+            Injekt.get<ChapterRepository>().update(ChapterUpdate(chapters[0].id, scanlator = "Team A"))
+            assertTrue(model.updateExcludedScanlators(setOf("Team A")))
+            render(scene)
+            assertFalse(
+                chapters[0].id in model.state.value.chapters.map { it.id },
+                "existing repository-level scanlator filter remains authoritative for visible chapters",
+            )
+            val preferences = Injekt.get<mihon.desktop.reader.ReaderPreferences>()
+            val manager = Injekt.get<mihon.desktop.download.DesktopDownloadManager>()
+            for (skip in listOf(false, true)) {
+                preferences.skipFilteredChapters = skip
+                click(scene, MR.strings.desktop_ui_download_chapters.localized())
+                render(scene)
+                click(scene, MangaDetailDownloadAction.NEXT_1_CHAPTER.label)
+                render(scene)
+                assertEquals(listOf(chapters[if (skip) 1 else 0].id), manager.queue.value.map { it.chapterId })
+                assertTrue(manager.cancelAndAwaitRetirements(manager.queue.value.map { it.chapterId }))
+                render(scene)
+                assertFalse(chapters[0].id in model.state.value.chapters.map { it.id })
+            }
+            assertEquals(manga.id, model.state.value.manga?.id)
+        }
+    }
+
+    @Test
+    fun `download manual local and missing source never enqueue meaningless remote work`(
+        @TempDir root: File,
+    ) = runBlocking {
+        for (sourceId in listOf(0L, 42L)) {
+            withDetail(File(root, "source-$sourceId"), mangaTransform = {
+                it.copy(source = sourceId)
+            }) { scene, model, _, _ ->
+                click(scene, MR.strings.desktop_ui_download_chapters.localized())
+                render(scene)
+                click(scene, MangaDetailDownloadAction.NEXT_1_CHAPTER.label)
+                render(scene)
+                assertTrue(
+                    model.downloadQueueFlow().value.isEmpty(),
+                    "local and uninstalled sources never enter the queue",
+                )
+                val reason = if (sourceId == 0L) {
+                    "Local source: chapters are already available on this device."
+                } else {
+                    "Cannot download: Source not installed: 42"
+                }
+                assertTrue(
+                    activeNodes(scene).flatMap(::labels).any { reason in it },
+                    "actual feedback explains the local or missing source instead of only reporting counts",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `download manual nonfavorite accepted work offers optional actual library membership`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root, httpSource = true) { scene, model, manga, _ ->
+            click(scene, MR.strings.desktop_ui_download_chapters.localized())
+            render(scene)
+            click(scene, MangaDetailDownloadAction.NEXT_1_CHAPTER.label)
+            render(scene)
+            assertEquals(1, model.downloadQueueFlow().value.size)
+            assertFalse(Injekt.get<MangaRepository>().getMangaById(manga.id).favorite)
+            assertTrue(
+                activeNodes(scene).flatMap(::labels).any { MR.strings.snack_add_to_library.localized() in it },
+                "accepted download provides the existing nonblocking add-to-library reminder",
+            )
+            click(scene, MR.strings.action_add.localized())
+            render(scene)
+            assertTrue(Injekt.get<MangaRepository>().getMangaById(manga.id).favorite)
+        }
+    }
+
     @Test
     fun `chapter result explicit read preserves shared User intent for matching local state`(
         @TempDir root: File,
@@ -201,10 +983,12 @@ class MangaDetailInteractionTest {
             } finally {
                 restore()
             }
+            val replacement = create(chapters[1])
             click(scene, MR.strings.action_delete.localized())
             render(scene)
             assertFalse(first.exists())
             assertTrue(late.exists())
+            assertTrue(replacement.exists(), "retry must not delete a replacement at an already successful target")
             assertTrue(selectedChapterNames(scene).isEmpty())
         }
     }
@@ -213,7 +997,7 @@ class MangaDetailInteractionTest {
     fun `chapter result mixed download queue uses eligible snapshot without duplicate or local writes`(
         @TempDir root: File,
     ) = runBlocking {
-        withDetail(root) { scene, model, manga, chapters ->
+        withDetail(root, httpSource = true) { scene, model, manga, chapters ->
             val provider = Injekt.get<mihon.desktop.download.DesktopDownloadProvider>()
             val resolver = Injekt.get<mihon.desktop.download.DesktopDownloadIdentityResolver>()
             File(
@@ -1819,7 +2603,12 @@ class MangaDetailInteractionTest {
                 },
                 "001.png",
             ).apply { writeBytes(png(0xFF00FF00.toInt())) }
+            Injekt.get<ChapterRepository>().update(ChapterUpdate(chapters[1].id, scanlator = "Excluded group"))
+            Injekt.get<mihon.desktop.domain.SetExcludedScanlators>().await(manga.id, setOf("Excluded group"))
             val first = create(chapters.first())
+            val refused = create(chapters[1])
+            val orphan = File(provider.canonicalMangaDownloadDir(identity.resolve(manga)), "Existing orphan")
+                .apply { mkdirs() }.resolve("001.png").apply { writeBytes(png(0xFF00FF00.toInt())) }
             provider.notifyAvailabilityChanged()
             render(scene)
             assertTrue(model.isChapterDownloaded(manga, chapters.first()))
@@ -1827,8 +2616,8 @@ class MangaDetailInteractionTest {
             render(scene)
             click(scene, MR.strings.delete_downloads_for_manga.localized())
             render(scene)
-            val later = create(chapters[1])
-            val restore = denyFileChanges(first)
+            val later = create(chapters[2])
+            val restore = denyFileChanges(refused)
             try {
                 click(scene, MR.strings.action_remove.localized())
                 render(scene)
@@ -1842,14 +2631,21 @@ class MangaDetailInteractionTest {
                     },
                     "partial completion must be explicit rather than imply membership rollback",
                 )
-                assertTrue(first.exists())
+                assertFalse(first.exists(), "the first original artifact succeeds before the refused artifact")
+                assertFalse(
+                    orphan.exists(),
+                    "the original known manga directory includes downloads without a SQL chapter",
+                )
+                assertTrue(refused.exists())
                 assertTrue(later.exists())
             } finally {
                 restore()
             }
+            val replacement = create(chapters.first())
             click(scene, MR.strings.action_remove.localized())
             render(scene)
-            assertFalse(first.exists())
+            assertTrue(replacement.exists(), "partial retry cannot delete a new file at an already successful artifact")
+            assertFalse(refused.exists())
             assertTrue(later.exists(), "a download added after opening is outside the frozen snapshot")
             assertFalse(Injekt.get<MangaRepository>().getMangaById(manga.id).favorite)
             assertEquals(1, membershipWrites, "file retry does not repeat membership or sync journal writes")
@@ -2631,7 +3427,11 @@ class MangaDetailInteractionTest {
         coverRequests: MutableList<coil3.request.ImageRequest>? = null,
         coverPicker: CoverFilePicker? = null,
         httpSource: Boolean = false,
+        downloadManagerFactory: (
+            (mihon.desktop.download.DesktopDownloadManager) -> mihon.desktop.download.DesktopDownloadManager
+        )? = null,
         shareService: mihon.desktop.platform.DesktopShareService? = null,
+        externalUrlOpener: ((String) -> Result<Unit>)? = null,
         block: suspend (NativeScene, MangaDetailScreenModel, Manga, List<Chapter>) -> Unit,
     ) {
         val node = Preferences.userRoot().node("mihon-tests/chapter-options-${UUID.randomUUID()}")
@@ -2642,6 +3442,10 @@ class MangaDetailInteractionTest {
             mangaRepositoryOverride = mangaRepositoryOverride,
             chapterRepositoryOverride = chapterRepositoryOverride,
         )
+        val replacementManager = downloadManagerFactory?.invoke(Injekt.get())
+        if (replacementManager != null) {
+            Injekt.addFactory<mihon.desktop.download.DesktopDownloadManager> { replacementManager }
+        }
         Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().tabletUiMode.set(tabletMode)
         val detailsSourceManager = if (httpSource) {
             mihon.desktop.source.DesktopSourceManager(
@@ -2709,6 +3513,7 @@ class MangaDetailInteractionTest {
                             sourceManager = detailsSourceManager ?: it.sourceManager,
                             shareService =
                             shareService ?: it.shareService,
+                            externalUrlOpener = externalUrlOpener ?: it.externalUrlOpener,
                         )
                     },
                     LocalDensity provides Density(1f, scene.fontScale),
@@ -2747,6 +3552,7 @@ class MangaDetailInteractionTest {
                 coil3.SingletonImageLoader.setUnsafe(previousLoader)
                 loader.shutdown()
             }
+            replacementManager?.stopAndJoin()
             context.closeAndJoin()
             Dispatchers.resetMain()
             node.removeNode()
@@ -2927,7 +3733,10 @@ class MangaDetailInteractionTest {
         }.config[SemanticsProperties.EditableText]
 
     private fun visualFile(root: File, name: String): File = File(
-        (System.getenv("MIHON_RI09_VISUAL_DIR") ?: System.getenv("MIHON_RI08_VISUAL_DIR"))?.let(::File)
+        (
+            System.getenv("MIHON_RI10_VISUAL_DIR") ?: System.getenv("MIHON_RI09_VISUAL_DIR")
+                ?: System.getenv("MIHON_RI08_VISUAL_DIR")
+            )?.let(::File)
             ?: File(root, "visuals"),
         name,
     )

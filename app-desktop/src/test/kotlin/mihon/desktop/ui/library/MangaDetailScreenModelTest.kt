@@ -4,12 +4,14 @@ import eu.kanade.tachiyomi.source.model.SManga
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.download.DownloadItem
+import mihon.desktop.download.DownloadStatus
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.viewerFlagsWithReadingMode
 import mihon.domain.error.AppError
@@ -827,6 +829,9 @@ class MangaDetailScreenModelTest {
         val model = MangaDetailScreenModel(
             mangaId = 1L,
             retryDownload = { chapterId -> retriedChapterId = chapterId },
+            downloadQueue = MutableStateFlow(
+                listOf(DownloadItem(1L, "M", "Failed chapter", 91L, status = DownloadStatus.ERROR)),
+            ),
         )
 
         model.retryChapterDownload(91L)

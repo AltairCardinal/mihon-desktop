@@ -85,6 +85,7 @@ import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.reader.model.ReadingProgressEvent
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.addFactory
 import uy.kohesive.injekt.api.get
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
@@ -102,6 +103,416 @@ import coil3.PlatformContext as CoilPlatformContext
 @OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 @Isolated
 class LibraryInteractionTest {
+    @Test
+    fun `continue root respects bookmark download global and scanlator filters with the matching synchronized page`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withLibrary(root, httpSource = true) { scene, navigator, preferences, model, _ ->
+            SyncLocalJournal(
+                Injekt.get(),
+            ).connect("filtered-resume", 1, SyncRepository("owner", "sync", "sync"), "reader", 1)
+            val mangas = Injekt.get<MangaRepository>()
+            val manga = mangas.insertNetworkManga(
+                listOf(
+                    Manga.create().copy(
+                        source = 42,
+                        url = "/filtered-resume",
+                        title = "Filtered resume",
+                        initialized = true,
+                    ),
+                ),
+            ).single()
+            mangas.updateMembershipsAtomically(listOf(LibraryMembershipUpdate(manga.id, true, 1, emptyList())))
+            val repository = Injekt.get<ChapterRepository>()
+            val chapters = repository.addAll(
+                (1..4).map { number ->
+                    Chapter.create().copy(
+                        mangaId = manga.id,
+                        name = "Eligible $number",
+                        url = "/eligible-$number",
+                        chapterNumber = number.toDouble(),
+                        sourceOrder = number.toLong(),
+                        bookmark = number != 2,
+                        scanlator = if (number == 1) "Excluded" else null,
+                    )
+                },
+            )
+            Injekt.get<SetExcludedScanlators>().await(manga.id, setOf("Excluded"))
+            val provider = Injekt.get<mihon.desktop.download.DesktopDownloadProvider>()
+            val identity = Injekt.get<mihon.desktop.download.DesktopDownloadIdentityResolver>().resolve(
+                manga,
+                chapters[2],
+            )
+            provider.canonicalChapterDownloadDir(identity).apply {
+                mkdirs()
+                resolve("001.png").writeBytes(png(0xFF00FF00.toInt()))
+            }
+            Injekt.get<RecordReadingProgress>().await(
+                ReadingProgressEvent(
+                    chapters[2].id,
+                    7,
+                    20,
+                    java.util.Date(),
+                    0,
+                    syncContext = SyncMutationContext.User,
+                ),
+            )
+            mangas.update(
+                MangaUpdate(
+                    manga.id,
+                    chapterFlags =
+                    Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SHOW_BOOKMARKED or Manga.CHAPTER_SHOW_DOWNLOADED,
+                ),
+            )
+            preferences.unreadBadge().set(false)
+            preferences.showContinueReadingButton().set(true)
+            render(scene)
+            clickLabel(scene, MR.strings.desktop_ui_continue_reading.localized())
+            render(scene)
+            val reader = navigator().lastItem as DesktopReaderScreen
+            assertEquals(
+                chapters[2].id,
+                reader.chapterId,
+                "earlier unbookmarked or absent-download chapters cannot be the continuation target",
+            )
+            assertEquals(7, reader.initialPage)
+            assertTrue(reader.initialContext().resumeSnapshot?.heads?.isNotEmpty() == true)
+            navigator().pop()
+            mangas.update(
+                MangaUpdate(
+                    manga.id,
+                    chapterFlags =
+                    Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SHOW_BOOKMARKED or Manga.CHAPTER_SHOW_NOT_DOWNLOADED,
+                ),
+            )
+            render(scene)
+            clickLabel(scene, MR.strings.desktop_ui_continue_reading.localized())
+            render(scene)
+            assertEquals(chapters[3].id, (navigator().lastItem as DesktopReaderScreen).chapterId)
+            navigator().pop()
+            preferences.downloadedOnly().set(true)
+            render(scene)
+            clickLabel(scene, MR.strings.desktop_ui_continue_reading.localized())
+            render(scene)
+            assertEquals(chapters[2].id, (navigator().lastItem as DesktopReaderScreen).chapterId)
+            navigator().pop()
+            assertTrue(provider.deleteChapterDownload(manga.source, identity))
+            render(scene)
+            assertFalse(
+                MR.strings.desktop_ui_continue_reading.localized() in labels(scene),
+                "real file deletion without a queue change removes the last effective continuation target",
+            )
+            assertEquals(
+                Manga.CHAPTER_SHOW_NOT_DOWNLOADED,
+                mangas.getMangaById(manga.id).downloadedFilterRaw,
+                "global forcing never overwrites the stored local filter",
+            )
+            assertFalse(model().state.value.isUpdating)
+        }
+    }
+
+    @Test
+    fun `manual removal freezes opened chapter artifacts and leaves later files and cancelled membership untouched`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withLibrary(root, httpSource = true) { scene, _, _, model, _ ->
+            val repository = Injekt.get<MangaRepository>()
+            val manga = repository.insertNetworkManga(
+                listOf(
+                    Manga.create().copy(
+                        source = 42,
+                        url = "/fixed-removal",
+                        title = "Fixed removal",
+                    ),
+                ),
+            ).single()
+            repository.updateMembershipsAtomically(listOf(LibraryMembershipUpdate(manga.id, true, 1, emptyList())))
+            val chapters = Injekt.get<tachiyomi.domain.chapter.repository.ChapterRepository>().addAll(
+                listOf(
+                    tachiyomi.domain.chapter.model.Chapter.create().copy(
+                        mangaId = manga.id,
+                        name = "Old chapter",
+                        url = "/old",
+                    ),
+                ),
+            )
+            val provider = Injekt.get<mihon.desktop.download.DesktopDownloadProvider>()
+            val old = File(
+                provider.chapterDownloadDir(manga.source, manga.title, chapters.single().name)
+                    .apply { mkdirs() },
+                "001.png",
+            ).apply { writeBytes(png(0xFF00FF00.toInt())) }
+            render(scene)
+            mouseClick(scene, manga.title, button = PointerButton.Secondary)
+            render(scene)
+            clickLabel(scene, MR.strings.remove_from_library.localized())
+            render(scene)
+            clickLabel(scene, MR.strings.action_cancel.localized())
+            render(scene)
+            assertTrue(repository.getMangaById(manga.id).favorite)
+            assertTrue(old.exists())
+            mouseClick(scene, manga.title, button = PointerButton.Secondary)
+            render(scene)
+            clickLabel(scene, MR.strings.remove_from_library.localized())
+            render(scene)
+            Injekt.get<tachiyomi.domain.chapter.repository.ChapterRepository>().addAll(
+                listOf(
+                    tachiyomi.domain.chapter.model.Chapter.create().copy(
+                        mangaId = manga.id,
+                        name = "Later chapter",
+                        url = "/later",
+                    ),
+                ),
+            )
+            val late = File(
+                provider.chapterDownloadDir(manga.source, manga.title, "Later chapter")
+                    .apply { mkdirs() },
+                "001.png",
+            ).apply { writeBytes(png(0xFF0000FF.toInt())) }
+            val toggles = nodes(scene).filter { it.config.contains(SemanticsProperties.ToggleableState) }
+            click(toggles.last())
+            clickLabel(scene, MR.strings.action_ok.localized())
+            render(scene)
+            assertFalse(old.exists(), "confirmed original artifact is deleted")
+            assertTrue(late.exists(), "an artifact added after opening is outside the fixed working set")
+            assertTrue(repository.getMangaById(manga.id).favorite)
+            assertTrue(model().state.value.allItems.any { it.id == manga.id })
+        }
+    }
+
+    @Test
+    fun `manual removal partial file failure keeps fixed retry after membership leaves the live library`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withLibrary(root, httpSource = true) { scene, _, _, model, dependencies ->
+            val repository = Injekt.get<MangaRepository>()
+            val manga = repository.insertNetworkManga(
+                listOf(
+                    Manga.create().copy(
+                        source = 42,
+                        url = "/retry-removal",
+                        title = "Retry removal",
+                    ),
+                ),
+            ).single()
+            repository.updateMembershipsAtomically(listOf(LibraryMembershipUpdate(manga.id, true, 1, emptyList())))
+            val provider = Injekt.get<mihon.desktop.download.DesktopDownloadProvider>()
+            // Existing legacy files without a SQL chapter must remain manageable.
+            val old = File(
+                provider.chapterDownloadDir(manga.source, manga.title, "Orphan chapter")
+                    .apply { mkdirs() },
+                "001.png",
+            ).apply { writeBytes(png(0xFF00FF00.toInt())) }
+            val successful = File(
+                provider.chapterDownloadDir(manga.source, manga.title, "Successful orphan")
+                    .apply { mkdirs() },
+                "001.png",
+            ).apply { writeBytes(png(0xFFAA0000.toInt())) }
+            val queuedChapter = Injekt.get<ChapterRepository>().addAll(
+                listOf(Chapter.create().copy(mangaId = manga.id, name = "Original queue", url = "/original-queue")),
+            ).single()
+            val manager = Injekt.get<mihon.desktop.download.DesktopDownloadManager>()
+            val queuedItem = mihon.desktop.download.DownloadItem(
+                manga.source,
+                manga.title,
+                queuedChapter.name,
+                queuedChapter.id,
+                mangaId = manga.id,
+                chapterUrl = queuedChapter.url,
+            )
+            assertTrue(manager.enqueue(queuedItem))
+            val cover = File(root, "old-removal-cover.png").apply { writeBytes(png(0xFFAA0000.toInt())) }
+            assertTrue(dependencies.coverUpdater(manga.id, cover.readBytes()) is TaskState.Success)
+            render(scene)
+            mouseClick(scene, manga.title, button = PointerButton.Secondary)
+            render(scene)
+            clickLabel(scene, MR.strings.remove_from_library.localized())
+            render(scene)
+            assertTrue("1 selected" in labels(scene), "opened removal displays the fixed manga count")
+            assertTrue(
+                "2 local downloads" in labels(scene),
+                "only initially existing artifacts contribute to the download count",
+            )
+            nodes(scene).filter { it.config.contains(SemanticsProperties.ToggleableState) }.forEach(::click)
+            val restore = denyCoverWrites(old)
+            try {
+                clickLabel(scene, MR.strings.action_ok.localized())
+                render(scene)
+                assertFalse(repository.getMangaById(manga.id).favorite)
+                assertTrue(old.exists())
+                assertFalse(successful.exists(), "the first pass completes other original artifacts")
+                assertTrue(labels(scene).any { "1 succeeded, 0 skipped, 1 failed" in it })
+                assertTrue(
+                    labels(scene).any { MR.strings.desktop_detail_removal_partial.localized() in it },
+                    "membership completion and failed local deletion are explicitly distinguished",
+                )
+                assertTrue(
+                    nodes(scene).any {
+                        MR.strings.action_ok.localized() in copy(it) &&
+                            it.config.contains(SemanticsActions.OnClick)
+                    },
+                    "the same opened snapshot remains retryable",
+                )
+                assertTrue(model().state.value.allItems.none { it.id == manga.id })
+                assertTrue(manager.queue.value.isEmpty())
+                assertFalse(dependencies.customCoverStore.customCoverExists(manga.id))
+            } finally {
+                restore()
+            }
+            successful.parentFile.mkdirs()
+            successful.writeBytes(png(0xFF00AAAA.toInt()))
+            val late = File(
+                provider.chapterDownloadDir(manga.source, manga.title, "Late orphan")
+                    .apply { mkdirs() },
+                "001.png",
+            ).apply { writeBytes(png(0xFF0000FF.toInt())) }
+            assertTrue(manager.enqueue(queuedItem))
+            cover.writeBytes(png(0xFF00AAAA.toInt()))
+            assertTrue(dependencies.coverUpdater(manga.id, cover.readBytes()) is TaskState.Success)
+            val newCover = dependencies.customCoverStore.resolveModel(manga.id, null)!!
+            val newCoverBytes = File(newCover).readBytes()
+            clickLabel(scene, MR.strings.action_ok.localized())
+            render(scene)
+            assertFalse(old.exists())
+            assertTrue(late.exists())
+            assertTrue(successful.exists(), "retry never deletes a new file at an already completed artifact path")
+            assertFalse(repository.getMangaById(manga.id).favorite)
+            org.junit.jupiter.api.Assertions.assertAll("completed removal steps are never repeated", {
+                assertEquals(
+                    listOf(queuedChapter.id),
+                    manager.queue.value.map { it.chapterId },
+                    "the completed retirement is not repeated on a later accepted generation",
+                )
+            }, {
+                assertTrue(
+                    dependencies.customCoverStore.customCoverExists(manga.id),
+                    "completed custom-cover deletion is not repeated on a newly written cover",
+                )
+                org.junit.jupiter.api.Assertions.assertArrayEquals(newCoverBytes, File(newCover).readBytes())
+            })
+        }
+    }
+
+    @Test
+    fun `manual library enqueue consumes the actual manager refusal without fake acceptance`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withLibrary(root, httpSource = true, downloadManagerFactory = {
+            mihon.desktop.download.DesktopDownloadManager(
+                provider = Injekt.get(),
+                store = tachiyomi.data.download.PersistentDownloadStore(Injekt.get<tachiyomi.data.Database>()),
+                enqueueFileOperations = object : mihon.desktop.download.DownloadEnqueueFileOperations by
+                mihon.desktop.download.DefaultDownloadEnqueueFileOperations {
+                    override fun isChapterDownloaded(
+                        provider: mihon.desktop.download.DesktopDownloadProvider,
+                        item: mihon.desktop.download.DownloadItem,
+                    ): Boolean {
+                        File(
+                            provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
+                                .apply { mkdirs() },
+                            "001.png",
+                        ).writeBytes(png(0xFF00FF00.toInt()))
+                        return mihon.desktop.download.DefaultDownloadEnqueueFileOperations.isChapterDownloaded(
+                            provider,
+                            item,
+                        )
+                    }
+                },
+            )
+        }) { scene, _, _, model, _ ->
+            val manga = Injekt.get<MangaRepository>().insertNetworkManga(
+                listOf(
+                    Manga.create().copy(
+                        source = 42,
+                        url = "/noop-library",
+                        title = "No op library",
+                        initialized = true,
+                    ),
+                ),
+            ).single()
+            Injekt.get<MangaRepository>().updateMembershipsAtomically(
+                listOf(LibraryMembershipUpdate(manga.id, true, 1, emptyList())),
+            )
+            Injekt.get<ChapterRepository>().addAll(
+                listOf(
+                    Chapter.create().copy(
+                        mangaId = manga.id,
+                        url = "/noop",
+                        name = "No op",
+                        chapterNumber = 1.0,
+                    ),
+                ),
+            )
+            render(scene)
+            val result = model().enqueueDownloads(
+                listOf(model().state.value.allItems.single()),
+                MangaDetailDownloadAction.NEXT_1_CHAPTER,
+            )
+            assertEquals(0, result.queued)
+            assertEquals(1, result.skipped)
+            assertTrue(Injekt.get<mihon.desktop.download.DesktopDownloadManager>().queue.value.isEmpty())
+        }
+    }
+
+    @Test
+    fun `manual library factory uses raw scanlator range read bookmarks and narrative order`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withLibrary(root, httpSource = true) { scene, _, _, model, _ ->
+            val mangas = Injekt.get<MangaRepository>()
+            val manga = mangas.insertNetworkManga(
+                listOf(
+                    Manga.create().copy(
+                        source = 42,
+                        url = "/manual-library",
+                        title = "Manual library",
+                        initialized = true,
+                        chapterFlags =
+                        Manga.CHAPTER_SHOW_UNREAD or Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SORT_DESC,
+                    ),
+                ),
+            ).single()
+            mangas.updateMembershipsAtomically(listOf(LibraryMembershipUpdate(manga.id, true, 1, emptyList())))
+            val chapters = Injekt.get<ChapterRepository>().addAll(
+                listOf(
+                    Chapter.create().copy(
+                        mangaId = manga.id,
+                        name = "First",
+                        url = "/1",
+                        chapterNumber = 1.0,
+                        sourceOrder = 8,
+                        read = true,
+                        bookmark = true,
+                        scanlator = "Excluded",
+                    ),
+                    Chapter.create().copy(
+                        mangaId = manga.id,
+                        name = "Second",
+                        url = "/2",
+                        chapterNumber = 2.0,
+                        sourceOrder = 7,
+                        bookmark = true,
+                    ),
+                ),
+            )
+            Injekt.get<SetExcludedScanlators>().await(manga.id, setOf("Excluded"))
+            render(scene)
+            val manager = Injekt.get<mihon.desktop.download.DesktopDownloadManager>()
+            val preferences = Injekt.get<mihon.desktop.reader.ReaderPreferences>()
+            for (skip in listOf(false, true)) {
+                preferences.skipFilteredChapters = skip
+                val item = model().state.value.allItems.first { it.id == manga.id }
+                val result = model().enqueueDownloads(listOf(item), MangaDetailDownloadAction.BOOKMARKED_CHAPTERS)
+                assertEquals(
+                    if (skip) listOf(chapters[1].id) else chapters.map { it.id },
+                    manager.queue.value.map { it.chapterId },
+                )
+                assertEquals(if (skip) 1 else 2, result.queued)
+                assertTrue(manager.cancelAndAwaitRetirements(manager.queue.value.map { it.chapterId }))
+            }
+        }
+    }
+
     @Test
     fun `source selection frame alpha and list background use actual light dark cover pixels`(
         @TempDir root: File,
@@ -538,11 +949,13 @@ class LibraryInteractionTest {
                 )
                 render(scene)
                 assertTrue(navigator().lastItem is MangaDetailScreen)
-                click(nodes(scene).first {
-                    it.config.contains(SemanticsProperties.ContentDescription) &&
-                        manga.title in it.config[SemanticsProperties.ContentDescription] &&
-                        it.config.contains(SemanticsActions.OnClick)
-                })
+                click(
+                    nodes(scene).first {
+                        it.config.contains(SemanticsProperties.ContentDescription) &&
+                            manga.title in it.config[SemanticsProperties.ContentDescription] &&
+                            it.config.contains(SemanticsActions.OnClick)
+                    },
+                )
                 render(scene)
                 clickLabel(scene, MR.strings.action_edit_cover.localized())
                 render(scene)
@@ -920,6 +1333,10 @@ class LibraryInteractionTest {
     private suspend fun withLibrary(
         root: File,
         systemTheme: SystemTheme? = null,
+        httpSource: Boolean = false,
+        downloadManagerFactory: (
+            (mihon.desktop.download.DesktopDownloadManager) -> mihon.desktop.download.DesktopDownloadManager
+        )? = null,
         block: suspend (
             ImageComposeScene,
             () -> Navigator,
@@ -930,6 +1347,19 @@ class LibraryInteractionTest {
     ) {
         val node = Preferences.userRoot().node("mihon-tests/library-interaction-${UUID.randomUUID()}")
         val context = initDesktopDIForTest(root, DesktopPreferenceStore(node), startDownloadWorker = false)
+        val replacementManager = downloadManagerFactory?.invoke(Injekt.get())
+        if (replacementManager !=
+            null
+        ) {
+            Injekt.addFactory<mihon.desktop.download.DesktopDownloadManager> { replacementManager }
+        }
+        if (httpSource) {
+            val sources = mihon.desktop.source.DesktopSourceManager(
+                Injekt.get<mihon.desktop.extension.DesktopExtensionManager>(),
+                builtinSources = listOf(mihon.desktop.source.FakeHttpSource(42L, "en", "Manual source")),
+            )
+            Injekt.addFactory<tachiyomi.domain.source.service.SourceManager> { sources }
+        }
         Dispatchers.setMain(UnconfinedTestDispatcher())
         val dependencies = DesktopUiDependencies.fromInjekt()
         val scene = ImageComposeScene(1200, 900, coroutineContext = Dispatchers.Unconfined) {}
@@ -955,6 +1385,7 @@ class LibraryInteractionTest {
             block(scene, { navigator }, Injekt.get(), { model }, dependencies)
         } finally {
             scene.close()
+            replacementManager?.stopAndJoin()
             context.closeAndJoin()
             Dispatchers.resetMain()
             node.removeNode()

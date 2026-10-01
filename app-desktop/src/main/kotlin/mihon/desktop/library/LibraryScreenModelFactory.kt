@@ -1,5 +1,6 @@
 package mihon.desktop.library
 
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -43,6 +44,7 @@ object LibraryScreenModelFactory {
         val updateScheduler = Injekt.get<LibraryUpdateScheduler>()
         return LibraryScreenModel(
             readingProgress = Injekt.get<tachiyomi.domain.reader.interactor.RecordReadingProgress>(),
+            readerPreferences = Injekt.get<mihon.desktop.reader.ReaderPreferences>(),
             getLibraryManga = Injekt.get<GetLibraryManga>(),
             getCategories = Injekt.get<GetCategories>(),
             categoryRepository = Injekt.get<tachiyomi.domain.category.repository.CategoryRepository>(),
@@ -58,7 +60,7 @@ object LibraryScreenModelFactory {
             setChapterReadStatus = Injekt.get<SetChapterReadStatus>(),
             updateManga = Injekt.get<UpdateManga>(),
             setMangaCategories = Injekt.get<SetMangaCategories>(),
-            enqueueDownload = downloadManager?.let { it::enqueue },
+            enqueueAccepted = downloadManager?.let { manager -> manager::enqueue },
             downloadProvider = downloadProvider,
             isMangaDownloaded = if (downloadProvider != null && downloadIdentityResolver != null) {
                 { item ->
@@ -95,24 +97,46 @@ object LibraryScreenModelFactory {
             } else {
                 null
             },
-            deleteMangaDownloads = if (downloadProvider != null && downloadIdentityResolver != null) {
+            captureRemovalFiles = if (downloadProvider != null && downloadIdentityResolver != null) {
                 { item ->
-                    if (downloadManager != null) {
-                        val chapterIds = getChaptersByMangaId.awaitOrThrow(item.id).mapTo(mutableSetOf()) { it.id }
-                        val queuedTargetIds = chapterIds + downloadManager.queue.value.mapNotNull { queued ->
-                            queued.chapterId.takeIf { queued.mangaId == item.id }
-                        }
-                        check(downloadManager.cancelAndAwaitRetirements(queuedTargetIds)) {
-                            "Unable to retire downloads for manga ${item.id}"
-                        }
+                    val queued = downloadManager?.queue?.value.orEmpty().toList()
+                    val captured = downloadManager?.captureDownloadAttempts(queued.map { it.chapterId }).orEmpty()
+                    val artifacts = downloadProvider.captureMangaDownloadArtifacts(
+                        item.manga.source,
+                        item.manga.title,
+                        downloadIdentityResolver.resolve(item.manga),
+                    )
+                    val chapters = getChaptersByMangaId.awaitOrThrow(item.id, applyScanlatorFilter = false)
+                    val ids = chapters.mapTo(mutableSetOf()) { it.id }
+                    val owned = captured.filter {
+                        it.item.mangaId == item.id || it.item.chapterId in ids
+                    }.map { target ->
+                        target.copy(
+                            item = target.item.copy(
+                                downloadIdentity = target.item.downloadIdentity
+                                    ?: downloadIdentityResolver.resolve(target.item),
+                            ),
+                        )
                     }
-                    check(
-                        downloadProvider.deleteMangaDownloads(
-                            item.manga.source,
-                            item.manga.title,
-                            downloadIdentityResolver.resolve(item.manga),
-                        ),
-                    ) { "Unable to delete downloads for manga ${item.id}" }
+                    val queuedArtifacts = owned.associate { target ->
+                        target.item.chapterId to
+                            downloadProvider.chapterDownloadArtifacts(
+                                item.manga.source,
+                                requireNotNull(target.item.downloadIdentity),
+                            ).toSet()
+                    }
+                    mihon.desktop.ui.library.LibraryRemovalFiles(
+                        artifacts.toMutableSet(),
+                        owned.toMutableList(),
+                        queuedArtifacts,
+                    )
+                }
+            } else {
+                null
+            },
+            deleteRemovalFiles = if (downloadProvider != null && downloadManager != null) {
+                { _, files ->
+                    downloadManager.deleteCapturedDownloadFiles(files)
                 }
             } else {
                 null
@@ -153,11 +177,12 @@ object LibraryScreenModelFactory {
                     manager.queue.value.any { item -> item.chapterId == chapter.id }
                 }
             },
-            downloadQueueChanges = downloadManager?.queue
-                ?.map { queue -> queue.map { it.chapterId to it.status } }
-                ?.distinctUntilChanged()
-                ?.map { Unit }
-                ?: flowOf(Unit),
+            downloadQueueChanges = downloadManager?.let { manager ->
+                combine(
+                    manager.queue.map { queue -> queue.map { it.chapterId to it.status } }.distinctUntilChanged(),
+                    manager.availabilityRevision,
+                ) { _, _ -> Unit }
+            } ?: flowOf(Unit),
         )
     }
 }

@@ -1,12 +1,9 @@
 package mihon.desktop.ui.library
 
-import mihon.desktop.reader.externalChapterUrlOrNull
-
 import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +12,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -26,9 +24,12 @@ import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
+import mihon.desktop.reader.externalChapterUrlOrNull
 import mihon.desktop.settings.LibraryCategoryPrefs
+import mihon.desktop.settings.saveDesktopPreference
 import mihon.domain.sync.SyncMutationContext
 import mihon.domain.task.TaskStatus
+import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.DeleteCategory
@@ -43,6 +44,7 @@ import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.service.filterAndSortChapters
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.history.interactor.GetNextChapters
 import tachiyomi.domain.library.applyLibraryCategoryDelta
@@ -59,8 +61,6 @@ import tachiyomi.domain.track.interactor.GetTracksPerManga
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.service.TrackerSessionProvider
 import tachiyomi.i18n.MR
-import mihon.desktop.settings.saveDesktopPreference
-import tachiyomi.core.common.preference.Preference
 import java.util.Locale
 import kotlin.random.Random
 import tachiyomi.domain.library.model.LibraryDisplayMode as SharedLibraryDisplayMode
@@ -140,6 +140,15 @@ class LibraryScreenModel(
     private val isChapterQueued: ((Chapter) -> Boolean)? = null,
     private val downloadQueueChanges: Flow<Unit> = flowOf(Unit),
     private val readingProgress: tachiyomi.domain.reader.interactor.RecordReadingProgress? = null,
+    private val readerPreferences: mihon.desktop.reader.ReaderPreferences? = null,
+    private val enqueueAccepted: ((DownloadItem) -> Boolean)? = null,
+    private val captureRemovalFiles: (suspend (LibraryManga) -> LibraryRemovalFiles)? = null,
+    private val deleteRemovalFiles: (
+        suspend (
+            LibraryManga,
+            LibraryRemovalFiles,
+        ) -> LibraryRemovalDeletionResult
+    )? = null,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(LibraryState())
@@ -191,24 +200,32 @@ class LibraryScreenModel(
         getTracksPerManga?.subscribe() ?: flowOf(emptyMap()),
         activeTrackerProfiles(),
         downloadQueueChanges,
-        libraryPreferences?.showContinueReadingButton()?.changes() ?: flowOf(false),
+        combine(
+            libraryPreferences?.showContinueReadingButton()?.changes() ?: flowOf(false),
+            libraryPreferences?.downloadedOnly()?.changes() ?: flowOf(false),
+        ) { show, _ -> show },
     ) { items, tracksByManga, trackerProfiles, _, showContinue ->
         val (loggedInTrackerIds, trackerNames) = trackerProfiles
         _state.update { it.copy(trackerNamesById = trackerNames) }
         val eligible = if (showContinue) {
             items.distinctBy { it.id }.filter { item ->
                 getChaptersByMangaId?.awaitOrThrow(item.id, applyScanlatorFilter = true)
-                    ?.let { nextUnreadChapter(it, item.manga) != null } ?: (item.unreadCount > 0)
+                    ?.let { nextUnreadChapter(eligibleReaderChapters(item, it), item.manga) != null }
+                    ?: (item.unreadCount > 0)
             }.mapTo(mutableSetOf()) { it.id }
         } else {
             emptySet()
         }
-        val resumable = if (showContinue && readingProgress != null) items.distinctBy { it.id }
-            .filter { item ->
-                val resume = readingProgress.resumePosition(item.id)
-                resume != null && getChaptersByMangaId?.awaitOrThrow(item.id, applyScanlatorFilter = true)
-                    ?.any { it.id == resume.chapterId && it.url.externalChapterUrlOrNull() == null } == true
-            }.mapTo(mutableSetOf()) { it.id } else emptySet()
+        val resumable = if (showContinue && readingProgress != null) {
+            items.distinctBy { it.id }
+                .filter { item ->
+                    val resume = readingProgress.resumePosition(item.id)
+                    resume != null && getChaptersByMangaId?.awaitOrThrow(item.id, applyScanlatorFilter = true)
+                        ?.any { it.id == resume.chapterId && it.url.externalChapterUrlOrNull() == null } == true
+                }.mapTo(mutableSetOf()) { it.id }
+        } else {
+            emptySet()
+        }
         _state.update { it.copy(syncedResumeMangaIds = resumable, continueReadingMangaIds = eligible) }
         updateLibrarySnapshot(items, tracksByManga, loggedInTrackerIds)
         items
@@ -226,7 +243,9 @@ class LibraryScreenModel(
     private fun activeTrackerProfiles(): Flow<Pair<Set<Long>, Map<Long, String>>> {
         val sessions = trackerSessionProvider?.loggedInTrackerIds() ?: flowOf(emptySet())
         val registry = trackerServiceRegistry ?: return sessions.map { it to emptyMap() }
-        val profiles = if (registry.services.isEmpty()) flowOf(emptyList()) else {
+        val profiles = if (registry.services.isEmpty()) {
+            flowOf(emptyList())
+        } else {
             combine(registry.services.map { it.profile }) { it.toList() }
         }
         return combine(sessions, profiles) { ids, current ->
@@ -251,7 +270,9 @@ class LibraryScreenModel(
             mangaTracks.mapTo(mutableSetOf()) { track -> track.trackerId }
         }
         val trackerMeansByManga = activeTracksByManga.mapValues { (_, mangaTracks) ->
-            mangaTracks.map { tachiyomi.domain.track.service.TrackerProviderContracts.tenPointScore(it.trackerId, it.score) }.average()
+            mangaTracks.map {
+                tachiyomi.domain.track.service.TrackerProviderContracts.tenPointScore(it.trackerId, it.score)
+            }.average()
         }
         val pendingCategoryIndex = pendingInitialCategoryIndex
         _state.update {
@@ -308,11 +329,14 @@ class LibraryScreenModel(
     }
 
     suspend fun deleteCategory(categoryId: Long): Boolean = categoryOperation {
-        requireNotNull(deleteCategory) { "DeleteCategory is required" }.await(categoryId) == DeleteCategory.Result.Success
+        requireNotNull(deleteCategory) { "DeleteCategory is required" }.await(categoryId) ==
+            DeleteCategory.Result.Success
     }
 
     suspend fun reorderCategory(categoryId: Long, newIndex: Int): Boolean = categoryOperation {
-        val category = state.value.allCategories.firstOrNull { it.id == categoryId && !it.isSystemCategory } ?: return@categoryOperation false
+        val category =
+            state.value.allCategories.firstOrNull { it.id == categoryId && !it.isSystemCategory }
+                ?: return@categoryOperation false
         when (requireNotNull(reorderCategory) { "ReorderCategory is required" }.await(category, newIndex)) {
             ReorderCategory.Result.Success, ReorderCategory.Result.Unchanged -> true
             is ReorderCategory.Result.InternalError -> false
@@ -419,7 +443,9 @@ class LibraryScreenModel(
         }
         val sort = LibrarySearchFilter.toSharedSort(mode, ascending)
         if (!saveDesktopPreference(preferences.sortingMode(), sort)) reportPreferenceFailure()
-        if (sort.type == LibrarySort.Type.Random && !saveDesktopPreference(preferences.randomSortSeed(), Random.nextInt())) {
+        if (sort.type == LibrarySort.Type.Random &&
+            !saveDesktopPreference(preferences.randomSortSeed(), Random.nextInt())
+        ) {
             reportPreferenceFailure()
         }
         applySharedPreferences(state.value.categories.getOrNull(state.value.selectedCategoryIndex)?.id)
@@ -588,14 +614,16 @@ class LibraryScreenModel(
         val preferences = libraryPreferences
         if (preferences == null) {
             val filter = state.value.filter
-            setFilter(when (field) {
-                LibraryFilterField.DOWNLOADED -> filter.copy(downloaded = filter.downloaded.next())
-                LibraryFilterField.UNREAD -> filter.copy(unread = filter.unread.next())
-                LibraryFilterField.STARTED -> filter.copy(started = filter.started.next())
-                LibraryFilterField.BOOKMARKED -> filter.copy(bookmarked = filter.bookmarked.next())
-                LibraryFilterField.COMPLETED -> filter.copy(completed = filter.completed.next())
-                LibraryFilterField.INTERVAL_CUSTOM -> filter.copy(intervalCustom = filter.intervalCustom.next())
-            })
+            setFilter(
+                when (field) {
+                    LibraryFilterField.DOWNLOADED -> filter.copy(downloaded = filter.downloaded.next())
+                    LibraryFilterField.UNREAD -> filter.copy(unread = filter.unread.next())
+                    LibraryFilterField.STARTED -> filter.copy(started = filter.started.next())
+                    LibraryFilterField.BOOKMARKED -> filter.copy(bookmarked = filter.bookmarked.next())
+                    LibraryFilterField.COMPLETED -> filter.copy(completed = filter.completed.next())
+                    LibraryFilterField.INTERVAL_CUSTOM -> filter.copy(intervalCustom = filter.intervalCustom.next())
+                },
+            )
             return
         }
         val preference = when (field) {
@@ -616,13 +644,20 @@ class LibraryScreenModel(
         val preferences = libraryPreferences
         if (preferences == null) {
             setFilter(state.value.filter.copy(tracking = state.value.filter.tracking + (trackerId to next)))
-        } else writeLibraryPreference(preferences.filterTracking(trackerId.toInt()), next)
+        } else {
+            writeLibraryPreference(preferences.filterTracking(trackerId.toInt()), next)
+        }
     }
 
     fun toggleGlobalDownloadedOnly() {
         val preferences = libraryPreferences
-        if (preferences == null) setFilter(state.value.filter.copy(globalDownloadedOnly = !state.value.filter.globalDownloadedOnly))
-        else writeLibraryPreference(preferences.downloadedOnly(), !preferences.downloadedOnly().get())
+        if (preferences ==
+            null
+        ) {
+            setFilter(state.value.filter.copy(globalDownloadedOnly = !state.value.filter.globalDownloadedOnly))
+        } else {
+            writeLibraryPreference(preferences.downloadedOnly(), !preferences.downloadedOnly().get())
+        }
     }
 
     fun toggleSkipOutsideReleasePeriod() {
@@ -956,99 +991,119 @@ class LibraryScreenModel(
         return failures == 0
     }
 
+    internal suspend fun captureRemovalSnapshot(items: List<LibraryManga>): List<LibraryRemovalTarget> =
+        items.distinctBy { it.id }.map { item ->
+            LibraryRemovalTarget(
+                item,
+                if (item.manga.source !=
+                    LOCAL_SOURCE_ID
+                ) {
+                    captureRemovalFiles?.invoke(item)
+                } else {
+                    null
+                },
+            )
+        }
+
     suspend fun removeFromLibrary(
         mangaIds: Iterable<Long>,
         deleteDownloads: Boolean = false,
         removeFromLibrary: Boolean = true,
     ): Boolean {
-        val updater = updateManga
-        if (removeFromLibrary) requireNotNull(updater) { "UpdateManga is required" }
-        val targets = mangaIds.toList().distinct()
-        val itemsById = state.value.allItems.associateBy { it.id }
+        val items = state.value.allItems.associateBy { it.id }
+        val ids = mangaIds.toList().distinct()
+        val targets = captureRemovalSnapshot(ids.mapNotNull(items::get))
+        if (targets.size != ids.size) return false
+        return removeSnapshot(targets, deleteDownloads, removeFromLibrary)
+    }
+
+    internal suspend fun removeSnapshot(
+        targets: List<LibraryRemovalTarget>,
+        deleteDownloads: Boolean,
+        removeFromLibrary: Boolean,
+    ): Boolean {
         var updated = 0
         var failures = 0
-        targets.forEach { mangaId ->
-            var itemFailed = false
-            var membershipUpdated = true
+        var partialDownloads = false
+        for (target in targets) {
+            val item = target.item
             try {
-                if (removeFromLibrary) {
-                    if (!requireNotNull(updater).await(
+                if (removeFromLibrary && !target.membershipCompleted) {
+                    check(
+                        requireNotNull(updateManga).await(
                             MangaUpdate(
-                                id = mangaId,
+                                id = item.id,
                                 favorite = false,
                                 syncContext = SyncMutationContext.User,
                             ),
-                        )
-                    ) {
-                        itemFailed = true
-                        membershipUpdated = false
-                    } else {
-                        deleteCustomCover?.invoke(mangaId)?.let { deleted ->
-                            if (!deleted) itemFailed = true
-                        }
-                    }
+                        ),
+                    ) { "Unable to remove library membership" }
+                    target.membershipCompleted = true
                 }
-                if (membershipUpdated) {
-                    val item = itemsById[mangaId]
-                    if (deleteDownloads && item != null && item.manga.source != LOCAL_SOURCE_ID) {
-                        try {
+                if (removeFromLibrary && !target.coverDeletionCompleted) {
+                    check(deleteCustomCover?.invoke(item.id) != false) { "Unable to delete custom cover" }
+                    target.coverDeletionCompleted = true
+                }
+                if (deleteDownloads && item.manga.source != LOCAL_SOURCE_ID) {
+                    try {
+                        val files = target.files
+                        if (files != null && deleteRemovalFiles != null) {
+                            val result = deleteRemovalFiles.invoke(item, files)
+                            files.succeeded += result.succeeded
+                            files.skipped += result.skipped
+                            files.pendingArtifacts.retainAll(result.failedArtifacts.toSet())
+                            check(result.failedArtifacts.isEmpty() && result.refusedAttempts.isEmpty()) {
+                                "Unable to delete original downloads"
+                            }
+                        } else {
                             requireNotNull(deleteMangaDownloads) { "Delete manga downloads is required" }.invoke(item)
-                        } finally {
-                            refreshDownloadState()
                         }
-                    } else if (deleteDownloads && item == null) {
-                        itemFailed = true
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        partialDownloads = partialDownloads || target.membershipCompleted
+                        throw error
+                    } finally {
+                        refreshDownloadState()
                     }
                 }
+                updated++
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
-                itemFailed = true
+                failures++
             }
-            if (itemFailed) failures++ else updated++
         }
-        _state.update {
-            it.copy(
-                operationFeedback = if (failures == 0) {
-                    if (removeFromLibrary) {
-                        MR.strings.manga_removed_library.localized()
-                    } else {
-                        MR.strings.desktop_ui_delete_download.localized()
-                    }
-                } else {
-                    MR.strings.desktop_ui_items_updated_failed.localized(
-                        Locale.getDefault(),
-                        updated,
-                        failures,
-                    )
+        val outcome = when {
+            partialDownloads -> MR.strings.desktop_detail_removal_partial.localized()
+            failures > 0 -> MR.strings.desktop_ui_items_updated_failed.localized(Locale.getDefault(), updated, failures)
+            removeFromLibrary -> MR.strings.manga_removed_library.localized()
+            else -> MR.strings.desktop_ui_delete_download.localized()
+        }
+        val counts = if (deleteDownloads) {
+            MR.strings.desktop_chapter_batch_result.localized(
+                Locale.getDefault(),
+                targets.sumOf { it.files?.succeeded ?: 0 },
+                targets.sumOf { it.files?.skipped ?: 0 },
+                targets.sumOf { target ->
+                    target.files?.let { files ->
+                        files.pendingArtifacts.size + files.pendingAttempts.count { attempt ->
+                            files.queuedArtifacts[attempt.item.chapterId].orEmpty().none {
+                                it in files.pendingArtifacts
+                            }
+                        }
+                    } ?: 0
                 },
             )
+        } else {
+            null
         }
+        _state.update { it.copy(operationFeedback = listOfNotNull(outcome, counts).joinToString("\n")) }
         return failures == 0
     }
 
-    suspend fun enqueueNextUnreadDownload(item: LibraryManga): Boolean {
-        val chapters = requireNotNull(getNextChapters) { "GetNextChapters is required" }
-        val enqueue = requireNotNull(enqueueDownload) { "Download enqueue callback is required" }
-        val firstUnread = selectLibraryDownloadChapters(
-            candidates = chapters.awaitOrThrow(item.manga.id),
-            limit = 1,
-            isQueued = { chapter -> isChapterQueued?.invoke(chapter) == true },
-            isDownloaded = { chapter -> chapterIsDownloaded(item, chapter) },
-        ).firstOrNull()
-            ?: return false
-        enqueue(
-            DownloadItem(
-                sourceId = item.manga.source,
-                mangaTitle = item.manga.title,
-                chapterName = firstUnread.name,
-                chapterId = firstUnread.id,
-                mangaId = item.id,
-                chapterUrl = firstUnread.url,
-            ),
-        )
-        return true
-    }
+    suspend fun enqueueNextUnreadDownload(item: LibraryManga): Boolean =
+        enqueueDownloads(listOf(item), MangaDetailDownloadAction.NEXT_1_CHAPTER).queued > 0
 
     internal suspend fun enqueueDownloads(
         items: List<LibraryManga>,
@@ -1059,44 +1114,69 @@ class LibraryScreenModel(
             _state.update { it.copy(batchCategoryResultMessage = MR.strings.desktop_ui_no_manga_selected.localized()) }
             return LibraryBatchDownloadResult()
         }
-        val bookmarkedByManga = requireNotNull(getBookmarkedChaptersByMangaId) {
-            "GetBookmarkedChaptersByMangaId is required"
-        }
-        val nextChaptersByManga = requireNotNull(getNextChapters) { "GetNextChapters is required" }
-        val enqueue = requireNotNull(enqueueDownload) { "Download enqueue callback is required" }
+        val chaptersByManga = requireNotNull(getChaptersByMangaId) { "GetChaptersByMangaId is required" }
+        val enqueue =
+            enqueueAccepted
+                ?: requireNotNull(enqueueDownload) { "Download enqueue callback is required" }.let { legacy ->
+                    { item: DownloadItem ->
+                        legacy(item)
+                        true
+                    }
+                }
+        val skipFiltered = readerPreferences?.skipFilteredChapters == true
+        val downloadedOnly = libraryPreferences?.downloadedOnly()?.get() == true
         val activeIds = queue.mapTo(mutableSetOf()) { it.chapterId }
+        val limit = when (action) {
+            MangaDetailDownloadAction.NEXT_1_CHAPTER -> 1
+            MangaDetailDownloadAction.NEXT_5_CHAPTERS -> 5
+            MangaDetailDownloadAction.NEXT_10_CHAPTERS -> 10
+            MangaDetailDownloadAction.NEXT_25_CHAPTERS -> 25
+            else -> null
+        }
         var result = LibraryBatchDownloadResult()
-        items.forEach { item ->
-            val candidates = try {
-                if (action == MangaDetailDownloadAction.BOOKMARKED_CHAPTERS) {
-                    bookmarkedByManga.awaitOrThrow(item.id)
+        val unavailable = mutableListOf<String>()
+        for (item in items) {
+            if (item.manga.source == 0L || sourceManager?.get(item.manga.source) == null) {
+                unavailable += if (item.manga.source == 0L) {
+                    MR.strings.desktop_manual_download_local.localized()
                 } else {
-                    nextChaptersByManga.awaitOrThrow(item.id)
+                    MR.strings.desktop_manual_download_missing_source.localized(Locale.getDefault(), item.manga.source)
+                }
+                result = result.copy(skipped = result.skipped + 1)
+                continue
+            }
+            val candidates = try {
+                val raw = chaptersByManga.awaitOrThrow(item.id, applyScanlatorFilter = false)
+                if (skipFiltered) {
+                    val visible = chaptersByManga.awaitOrThrow(item.id, applyScanlatorFilter = true)
+                        .filterAndSortChapters(item.manga, downloadedOnly, false) { chapterIsDownloaded(item, it) }
+                        .mapTo(mutableSetOf()) { it.id }
+                    raw.filter { it.id in visible }
+                } else {
+                    raw
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
                 result = result.copy(failures = result.failures + 1)
-                return@forEach
+                continue
             }
-            val available = selectLibraryDownloadChapters(
-                candidates = candidates,
-                isQueued = { chapter -> chapter.id in activeIds },
-                isDownloaded = { chapter -> chapterIsDownloaded(item, chapter) },
+            val eligible = candidates.filter {
+                (if (action == MangaDetailDownloadAction.BOOKMARKED_CHAPTERS) it.bookmark else !it.read) &&
+                    it.url.externalChapterUrlOrNull() == null
+            }
+            val available = tachiyomi.domain.library.selectManualDownloadChapters(
+                candidates,
+                item.manga,
+                bookmarkedOnly = action == MangaDetailDownloadAction.BOOKMARKED_CHAPTERS,
+                isQueued = { it.id in activeIds || isChapterQueued?.invoke(it) == true },
+                isDownloaded = { chapterIsDownloaded(item, it) },
+                isDownloadable = { it.url.externalChapterUrlOrNull() == null },
             )
-            result = result.copy(skipped = result.skipped + (candidates.size - available.size))
-            val chapters = when (action) {
-                MangaDetailDownloadAction.NEXT_1_CHAPTER -> available.take(1)
-                MangaDetailDownloadAction.NEXT_5_CHAPTERS -> available.take(5)
-                MangaDetailDownloadAction.NEXT_10_CHAPTERS -> available.take(10)
-                MangaDetailDownloadAction.NEXT_25_CHAPTERS -> available.take(25)
-                MangaDetailDownloadAction.UNREAD_CHAPTERS,
-                MangaDetailDownloadAction.BOOKMARKED_CHAPTERS,
-                -> available
-            }
-            chapters.forEach { chapter ->
+            result = result.copy(skipped = result.skipped + eligible.size - available.size)
+            for (chapter in limit?.let { available.take(it) } ?: available) {
                 result = try {
-                    enqueue(
+                    val accepted = enqueue(
                         DownloadItem(
                             sourceId = item.manga.source,
                             mangaTitle = item.manga.title,
@@ -1106,7 +1186,12 @@ class LibraryScreenModel(
                             chapterUrl = chapter.url,
                         ),
                     )
-                    result.copy(queued = result.queued + 1)
+                    if (accepted) {
+                        activeIds += chapter.id
+                        result.copy(queued = result.queued + 1)
+                    } else {
+                        result.copy(skipped = result.skipped + 1)
+                    }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (_: Exception) {
@@ -1114,24 +1199,33 @@ class LibraryScreenModel(
                 }
             }
         }
+        val message = MR.strings.desktop_ui_download_batch_result.localized(
+            Locale.getDefault(),
+            result.queued,
+            result.skipped,
+            result.failures,
+        )
         _state.update {
             it.copy(
-                batchCategoryResultMessage = MR.strings.desktop_ui_download_batch_result.localized(
-                    Locale.getDefault(),
-                    result.queued,
-                    result.skipped,
-                    result.failures,
-                ),
+                batchCategoryResultMessage =
+                (listOf(message) + unavailable.distinct()).joinToString("\n"),
             )
         }
         return result
     }
 
+    private fun eligibleReaderChapters(item: LibraryManga, chapters: List<Chapter>): List<Chapter> =
+        chapters.filterAndSortChapters(
+            item.manga,
+            libraryPreferences?.downloadedOnly()?.get() == true,
+            item.manga.source == 0L,
+        ) { chapterIsDownloaded(item, it) }
+
     suspend fun continueReadingRequest(item: LibraryManga): LibraryReaderRequest? {
         val chapters = requireNotNull(getChaptersByMangaId) { "GetChaptersByMangaId is required" }
             .awaitOrThrow(item.manga.id, applyScanlatorFilter = true)
             .sortedBy { it.sourceOrder }
-        val target = nextUnreadChapter(chapters, item.manga) ?: run {
+        val target = nextUnreadChapter(eligibleReaderChapters(item, chapters), item.manga) ?: run {
             setOperationFeedback(MR.strings.no_next_chapter.localized())
             return null
         }
@@ -1142,6 +1236,7 @@ class LibraryScreenModel(
             .toReaderChapterRefs(
                 currentChapterId = target.id,
                 manga = item.manga,
+                downloadedOnly = libraryPreferences?.downloadedOnly()?.get() == true,
                 isChapterDownloaded = { chapter -> chapterIsDownloaded(item, chapter) },
             )
         return LibraryReaderRequest(

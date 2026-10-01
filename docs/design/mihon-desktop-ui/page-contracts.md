@@ -184,9 +184,9 @@ RI08复用前置核对：Android现用`libs.richeditor.compose`版本1.0.0-rc13�
 - SOURCE／PROJECT_POLICY：是否跳过筛选复用实际Reader偏好，作用到手动下载候选并反馈当前范围；不造独立下载过滤偏好。Android为skip_filtered，Desktop现为reader_skip_filtered_chapters及旧skipFilteredChapters兼容，已有显式值须保留；通过平台偏好adapter供共享选择核心，不在此重写整套Reader偏好。全局下载、读／书签三态、扫描组及解除约束仍消费RI07同一投影。
 - PROJECT_POLICY：行右键和选择动作按真实未下载／排队／下载中／失败状态提供下载、立即／优先、取消或重试；使用现manager／状态机，动作结果、排队／进度／失败标记随真实flow变化。单击仍阅读，选择中行内动作不误触；不靠修改UI状态冒充队列成功，也不因已有排队重复加入。
 - PROJECT_POLICY：非收藏下载提供可加入书架的非阻塞提示，不强制收藏。local／失效源不启动无意义远端请求，实际存在的本地／已下载章节仍可阅读；external章节通过真实浏览器adapter打开，不进入普通下载和Reader请求。失败有明确原因及重试，不伪造缺源数据。
-- PROJECT_POLICY：删除确认只影响打开时固定作品／章节ID及适用的本机文件范围；取消无副作用，新对象不混入。必须执行现manager／provider和真实有限目录／别名，反馈实际成功／跳过／失败；Boolean拒绝不得被Unit回调吞成成功，部分失败保留重试对象。取消及晚到下载完成不能复活被取消对象，RI07文件revision只触发真实状态重算，不替代执行结果。
+- PROJECT_POLICY：删除确认只影响打开时固定作品／章节ID及适用的本机文件范围；取消无副作用，新对象不混入。必须执行现manager／provider和真实有限目录／别名，反馈实际成功／跳过／失败；Boolean拒绝不得被Unit回调吞成成功，部分失败保留重试对象。打开确认时固定已有文件路径及队列原attempt，按每项目真实接受／拒绝返回，重试只处理原失败项；已成功的membership、封面及下载不重复执行，新generation不得被旧操作取消或删除。队列generation捕获仅本进程会话引用，不新增磁盘身份协议；等待producer／文件租约和清理不得持队列状态锁。取消及晚到下载完成不能复活被取消对象，RI07文件revision只触发真实状态重算，不替代执行结果。
 - SOURCE／PROJECT_POLICY：继续阅读从当前可见有效章节沿共享resolveReaderEntry找叙事目标，无目标隐藏，已有同步目标／页码／snapshot按真实RecordReadingProgress恢复；阅读资格和筛选消费一致。阅读模式只在Reader设置单本值，返回详情、重启及更换作品持久且隔离，写入拒绝有反馈；不改变Reader内部图片／翻页算法或压掉未读目标。
-- PROJECT_POLICY：封面保存从RI08同一typed／custom-priority／version请求取得实际图像，目的地由平台文件保存入口选择；取消不写，覆盖需明确确认，失败保原文件及可重试反馈，成功给出真实保存结果。不能自建HTTP客户端、忽略源headers／代理或另造封面cache；分享由RI11平台adapter闭环。
+- PROJECT_POLICY：封面保存从RI08同一typed／custom-priority／version请求取得实际图像，目的地由平台文件保存入口选择；取消不写，覆盖需明确确认，失败保原文件及可重试反馈，成功给出真实保存结果。两个保存入口共用目标同目录临时写入及原子替换；不支持原子替换时报告失败并保原文件，不作破坏性覆盖回退。不能自建HTTP客户端、忽略源headers／代理或另造封面cache；分享由RI11平台adapter闭环。
 - 验收：真实Compose菜单／右键／Reader导航及DI，SQLite／Preference与manager、MockWebServer实际下载、临时目录取消／删除／失败／晚到边界，书架与详情状态互相响应。仅本行为focused红绿及稳定明确受影响验证；正式产物和production runtime统一RI18，不以空回调、源码扫描或离屏代替。
 
 ## 2026-10-01 追踪、登录恢复与分享契约（RI11，实施前固定）

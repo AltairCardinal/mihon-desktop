@@ -4,6 +4,7 @@ import cafe.adriel.voyager.core.model.ScreenModel
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +31,7 @@ import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.chapter.interactor.BatchChapterFailure
 import tachiyomi.domain.chapter.interactor.BatchChapterResult
 import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
 import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
@@ -97,6 +99,13 @@ class MangaDetailScreenModel(
     private val hasCustomCover: ((Long) -> Boolean)? = null,
     private val deleteRemovedDownloads: (suspend (Manga, List<Chapter>) -> Unit)? = null,
     private val deleteSelectedDownloads: (suspend (Manga, List<Chapter>) -> BatchChapterResult)? = null,
+    private val readerPreferences: mihon.desktop.reader.ReaderPreferences? = null,
+    private val enqueueAccepted: ((DownloadItem) -> Boolean)? = null,
+    private val startDownloadNow: ((Long) -> Boolean)? = null,
+    private val cancelAccepted: ((Long) -> Boolean)? = null,
+    private val retryAccepted: ((Long) -> Boolean)? = null,
+    private val captureDownloadDeletion: ((Manga, List<Chapter>) -> (suspend () -> BatchChapterResult))? = null,
+    private val captureMangaDownloadDeletion: (suspend (Manga) -> (suspend () -> Boolean))? = null,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(MangaDetailState())
@@ -568,18 +577,27 @@ class MangaDetailScreenModel(
     internal suspend fun duplicates(manga: Manga): List<tachiyomi.domain.manga.model.MangaWithChapterCount> =
         requireNotNull(getDuplicateLibraryManga) { "GetDuplicateLibraryManga is required" }(manga)
 
+    internal suspend fun captureFavoriteDownloadDeletion(manga: Manga, chapters: List<Chapter>): suspend () -> Boolean {
+        captureMangaDownloadDeletion?.let { return it(manga) }
+        val delete = captureChapterDownloadDeletion(manga, chapters)
+        return { delete().failures.isEmpty() }
+    }
+
     internal suspend fun removeFavorite(
         manga: Manga,
         downloadedChapters: List<Chapter>,
         deleteFiles: Boolean,
         membershipCompleted: Boolean = false,
+        executeDownloads: (suspend () -> Boolean)? = null,
     ): MangaRemovalResult {
         if (!membershipCompleted && toggleLibrary(manga) !is LibraryMembershipResult.Success) {
             return MangaRemovalResult.MEMBERSHIP_FAILED
         }
         try {
             if (deleteFiles) {
-                if (deleteRemovedDownloads != null) {
+                if (executeDownloads != null) {
+                    check(executeDownloads()) { "Some captured downloads could not be deleted" }
+                } else if (deleteRemovedDownloads != null) {
                     deleteRemovedDownloads.invoke(manga, downloadedChapters)
                 } else {
                     val delete = requireNotNull(deleteDownload) { "Delete download callback is required" }
@@ -620,8 +638,74 @@ class MangaDetailScreenModel(
             requireNotNull(setMangaChapterFlags).awaitSetDisplayMode(it, displayMode)
         }
 
+    internal fun manualDownloadScope(): String = if (readerPreferences?.skipFilteredChapters == true) {
+        MR.strings.desktop_manual_download_scope_filtered.localized()
+    } else {
+        MR.strings.desktop_manual_download_scope_all.localized()
+    }
+
+    internal suspend fun downloadManualAction(action: MangaDetailDownloadAction): BatchChapterResult {
+        val current = state.value.manga ?: return BatchChapterResult.Empty
+        val unavailable = when {
+            current.source == 0L -> MR.strings.desktop_manual_download_local.localized()
+            sourceManager?.get(current.source) == null ->
+                MR.strings.desktop_manual_download_missing_source.localized(
+                    java.util.Locale.getDefault(),
+                    current.source,
+                )
+            else -> null
+        }
+        if (unavailable != null) {
+            _state.update { it.copy(batchActionMessage = unavailable) }
+            return BatchChapterResult(emptyList(), emptyList(), skippedIds = state.value.chapters.map { it.id })
+        }
+        val skipFiltered = readerPreferences?.skipFilteredChapters == true
+        val visibleIds = visibleChapters().mapTo(mutableSetOf()) { it.id }
+        val candidates = try {
+            requireNotNull(getMangaWithChapters).awaitChapters(current.id, applyScanlatorFilter = false)
+                .filter { !skipFiltered || it.id in visibleIds }
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            _state.update { it.copy(batchActionMessage = MR.strings.desktop_ui_download_failed.localized()) }
+            return BatchChapterResult(
+                emptyList(),
+                listOf(
+                    tachiyomi.domain.chapter.interactor.BatchChapterFailure(
+                        current.id,
+                        error.message ?: "Directory read failed",
+                    ),
+                ),
+            )
+        }
+        val limit = when (action) {
+            MangaDetailDownloadAction.NEXT_1_CHAPTER -> 1
+            MangaDetailDownloadAction.NEXT_5_CHAPTERS -> 5
+            MangaDetailDownloadAction.NEXT_10_CHAPTERS -> 10
+            MangaDetailDownloadAction.NEXT_25_CHAPTERS -> 25
+            else -> null
+        }
+        val chapters = tachiyomi.domain.library.selectManualDownloadChapters(
+            candidates,
+            current,
+            bookmarkedOnly = action == MangaDetailDownloadAction.BOOKMARKED_CHAPTERS,
+            limit = limit,
+            isQueued = { chapter -> downloadQueue?.value.orEmpty().any { it.chapterId == chapter.id } },
+            isDownloaded = { isChapterDownloaded(current, it) },
+            isDownloadable = { it.url.externalChapterUrlOrNull() == null },
+        )
+        return enqueueDownloadBatch(current, chapters)
+    }
+
     fun enqueueDownloads(manga: Manga, chapters: List<Chapter>) {
-        val enqueue = requireNotNull(enqueueDownload) { "Download enqueue callback is required" }
+        val enqueue =
+            enqueueAccepted
+                ?: requireNotNull(enqueueDownload) { "Download enqueue callback is required" }.let { legacy ->
+                    { item: DownloadItem ->
+                        legacy(item)
+                        true
+                    }
+                }
         chapters
             .filterNot { it.url.externalChapterUrlOrNull() != null }
             .filterNot { chapter -> isChapterDownloaded(manga, chapter) }
@@ -629,6 +713,7 @@ class MangaDetailScreenModel(
                 enqueue(
                     DownloadItem(
                         sourceId = manga.source,
+                        mangaId = manga.id,
                         mangaTitle = manga.title,
                         chapterName = chapter.name,
                         chapterId = chapter.id,
@@ -651,23 +736,81 @@ class MangaDetailScreenModel(
     }
 
     suspend fun enqueueDownloadBatch(manga: Manga, chapters: List<Chapter>): BatchChapterResult {
-        val enqueue = requireNotNull(enqueueDownload) { "Download enqueue callback is required" }
-        val eligible = downloadableChapters(manga, chapters)
-        return runChapterBatch(eligible, skippedIds = (chapters - eligible.toSet()).map { it.id }) { chapter ->
-            enqueue(
-                DownloadItem(
-                    sourceId = manga.source,
-                    mangaTitle = manga.title,
-                    chapterName = chapter.name,
-                    chapterId = chapter.id,
-                    chapterUrl = chapter.url,
-                ),
-            )
+        val unavailable = when {
+            manga.source == 0L -> MR.strings.desktop_manual_download_local.localized()
+            sourceManager != null && sourceManager.get(manga.source) == null ->
+                MR.strings.desktop_manual_download_missing_source.localized(java.util.Locale.getDefault(), manga.source)
+            else -> null
         }
+        if (unavailable != null) {
+            _state.update { it.copy(batchActionMessage = unavailable) }
+            return BatchChapterResult(emptyList(), emptyList(), chapters.map { it.id })
+        }
+        val enqueue =
+            enqueueAccepted
+                ?: requireNotNull(enqueueDownload) { "Download enqueue callback is required" }.let { legacy ->
+                    { item: DownloadItem ->
+                        legacy(item)
+                        true
+                    }
+                }
+        val eligible = downloadableChapters(manga, chapters)
+        val declined = mutableSetOf<Long>()
+        val result = batchUpdateChapters.await(eligible) { chapter ->
+            if (!enqueue(
+                    DownloadItem(
+                        sourceId = manga.source,
+                        mangaId = manga.id,
+                        mangaTitle = manga.title,
+                        chapterName = chapter.name,
+                        chapterId = chapter.id,
+                        chapterUrl = chapter.url,
+                    ),
+                )
+            ) {
+                declined += chapter.id
+            }
+        }
+        return publishChapterBatchResult(
+            result.copy(
+                succeededIds = result.succeededIds.filterNot { it in declined },
+                skippedIds = ((chapters - eligible.toSet()).map { it.id } + declined).distinct(),
+            ),
+        )
+    }
+
+    fun downloadChapterNow(chapterId: Long): BatchChapterResult = queueCommand(
+        chapterId,
+        requireNotNull(startDownloadNow) { "Start download callback is required" },
+    )
+
+    private fun queueCommand(chapterId: Long, command: (Long) -> Boolean): BatchChapterResult {
+        if (downloadQueue?.value.orEmpty().none { it.chapterId == chapterId }) {
+            return publishChapterBatchResult(BatchChapterResult(emptyList(), emptyList(), listOf(chapterId)))
+        }
+        val result = try {
+            check(command(chapterId)) { "Download queue did not accept the command" }
+            BatchChapterResult(listOf(chapterId), emptyList())
+        } catch (canceled: CancellationException) {
+            throw canceled
+        } catch (error: Exception) {
+            BatchChapterResult(emptyList(), listOf(BatchChapterFailure(chapterId, error.message ?: "Download failed")))
+        }
+        return publishChapterBatchResult(result)
     }
 
     fun deleteChapterDownload(manga: Manga, chapter: Chapter) {
         requireNotNull(deleteDownload) { "Delete download callback is required" }(manga, chapter)
+    }
+
+    fun captureChapterDownloadDeletion(manga: Manga, chapters: List<Chapter>): suspend () -> BatchChapterResult {
+        val fixed = chapters.distinctBy { it.id }.toList()
+        val execute = captureDownloadDeletion?.invoke(manga, fixed)
+        return if (execute != null) {
+            { publishChapterBatchResult(execute()) }
+        } else {
+            { deleteDownloadBatch(manga, fixed) }
+        }
     }
 
     suspend fun deleteDownloadBatch(manga: Manga, chapters: List<Chapter>): BatchChapterResult {
@@ -682,13 +825,25 @@ class MangaDetailScreenModel(
         return publishChapterBatchResult(result.copy(skippedIds = skipped))
     }
 
-    fun cancelChapterDownload(chapterId: Long) {
-        requireNotNull(cancelDownload) { "Cancel download callback is required" }(chapterId)
-    }
+    fun cancelChapterDownload(chapterId: Long): BatchChapterResult = queueCommand(
+        chapterId,
+        cancelAccepted ?: requireNotNull(cancelDownload) { "Cancel download callback is required" }.let { legacy ->
+            { id ->
+                legacy(id)
+                true
+            }
+        },
+    )
 
-    fun retryChapterDownload(chapterId: Long) {
-        requireNotNull(retryDownload) { "Retry download callback is required" }(chapterId)
-    }
+    fun retryChapterDownload(chapterId: Long): BatchChapterResult = queueCommand(
+        chapterId,
+        retryAccepted ?: requireNotNull(retryDownload) { "Retry download callback is required" }.let { legacy ->
+            { id ->
+                legacy(id)
+                true
+            }
+        },
+    )
 
     fun isChapterDownloaded(manga: Manga, chapter: Chapter): Boolean {
         return isDownloaded?.invoke(manga, chapter) ?: false
@@ -720,6 +875,7 @@ class MangaDetailScreenModel(
         val chapterRefs = readerChapters.toReaderChapterRefs(
             currentChapterId = chapter.id,
             manga = manga,
+            downloadedOnly = libraryPreferences?.downloadedOnly()?.get() == true,
             isChapterDownloaded = { readerChapter -> isChapterDownloaded(manga, readerChapter) },
         )
         return MangaDetailReaderRequest(

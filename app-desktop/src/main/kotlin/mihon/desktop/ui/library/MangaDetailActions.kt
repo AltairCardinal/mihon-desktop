@@ -1,16 +1,15 @@
 package mihon.desktop.ui.library
 
+import mihon.desktop.reader.externalChapterUrlOrNull
 import mihon.domain.reader.progress.ReaderChapterDisplayOrder
 import mihon.domain.reader.progress.ReaderEntryCandidate
 import mihon.domain.reader.progress.resolveReaderEntry
 import mihon.domain.reader.session.ReaderChapterId
-import mihon.desktop.reader.externalChapterUrlOrNull
+import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.service.getChapterSort
+import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import java.util.Locale
-
-import tachiyomi.domain.chapter.model.Chapter
-import tachiyomi.domain.manga.model.Manga
 
 internal enum class MangaDetailPrimaryActionType {
     TOGGLE_LIBRARY,
@@ -55,25 +54,6 @@ internal fun mangaDetailPrimaryActionTypes(
 
 internal fun mangaDetailDownloadActions(): List<MangaDetailDownloadAction> =
     MangaDetailDownloadAction.entries
-
-internal fun chaptersForDownloadAction(
-    chapters: List<Chapter>,
-    action: MangaDetailDownloadAction,
-): List<Chapter> {
-    val unread = chapters
-        .sortedBy { it.sourceOrder }
-        .filter { !it.read }
-    return when (action) {
-        MangaDetailDownloadAction.NEXT_1_CHAPTER -> unread.take(1)
-        MangaDetailDownloadAction.NEXT_5_CHAPTERS -> unread.take(5)
-        MangaDetailDownloadAction.NEXT_10_CHAPTERS -> unread.take(10)
-        MangaDetailDownloadAction.NEXT_25_CHAPTERS -> unread.take(25)
-        MangaDetailDownloadAction.UNREAD_CHAPTERS -> unread
-        MangaDetailDownloadAction.BOOKMARKED_CHAPTERS -> chapters
-            .sortedBy { it.sourceOrder }
-            .filter { it.bookmark && !it.read }
-    }
-}
 
 internal fun nextUnreadChapter(chapters: List<Chapter>, manga: Manga): Chapter? {
     val sortedChapters = chapters.filter { it.url.externalChapterUrlOrNull() == null }.sortedWith(getChapterSort(manga))
