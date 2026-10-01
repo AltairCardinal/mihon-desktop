@@ -1,6 +1,5 @@
 package mihon.desktop.ui.library
 
-import mihon.domain.reader.progress.resolveReaderChapterEntryPage
 import cafe.adriel.voyager.core.model.ScreenModel
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -9,8 +8,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import mihon.desktop.domain.GetAvailableScanlators
 import mihon.desktop.domain.GetExcludedScanlators
 import mihon.desktop.domain.LibraryUpdateChecker
@@ -22,7 +24,9 @@ import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.externalChapterUrlOrNull
 import mihon.desktop.reader.viewerFlagsFollowingGlobal
 import mihon.desktop.reader.viewerFlagsWithReadingMode
+import mihon.domain.reader.progress.resolveReaderChapterEntryPage
 import mihon.domain.task.TaskState
+import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
@@ -70,12 +74,14 @@ class MangaDetailScreenModel(
     private val setChapterReadStatus: SetChapterReadStatus? = null,
     private val updateManga: UpdateManga? = null,
     private val setMangaChapterFlags: SetMangaChapterFlags? = null,
+    private val setMangaDefaultChapterFlags: tachiyomi.domain.chapter.interactor.SetMangaDefaultChapterFlags? = null,
     private val setMangaCategories: SetMangaCategories? = null,
     private val linkMangaCreator: LinkMangaCreator? = null,
     private val manageCreatorIdentity: ManageCreatorIdentity? = null,
     private val extractCreatorsFromManga: ExtractCreatorsFromManga = ExtractCreatorsFromManga(),
     private val enqueueDownload: ((DownloadItem) -> Unit)? = null,
     private val downloadQueue: StateFlow<List<DownloadItem>>? = null,
+    private val downloadAvailability: StateFlow<Long>? = null,
     private val isDownloaded: ((manga: Manga, chapter: Chapter) -> Boolean)? = null,
     private val deleteDownload: ((manga: Manga, chapter: Chapter) -> Unit)? = null,
     private val cancelDownload: ((chapterId: Long) -> Unit)? = null,
@@ -90,6 +96,7 @@ class MangaDetailScreenModel(
 
     private val _state = MutableStateFlow(MangaDetailState())
     val state: StateFlow<MangaDetailState> = _state.asStateFlow()
+    private val chapterSettingsMutex = Mutex()
 
     // ── Data loading ──────────────────────────────────────────────────────────
 
@@ -117,35 +124,182 @@ class MangaDetailScreenModel(
         return requireNotNull(downloadQueue) { "Download queue is required" }
     }
 
+    fun downloadedOnlyFlow(): Flow<Boolean> = libraryPreferences?.downloadedOnly()?.changes() ?: flowOf(false)
+
+    fun downloadAvailabilityFlow(): Flow<Long> = downloadAvailability ?: flowOf(0L)
+
+    suspend fun saveChapterDefaults(applyToExisting: Boolean): Boolean {
+        return chapterSettingsMutex.withLock {
+            try {
+                saveChapterDefaultsLocked(applyToExisting)
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                chapterSettingsFailed()
+                false
+            }
+        }
+    }
+
+    private suspend fun saveChapterDefaultsLocked(applyToExisting: Boolean): Boolean {
+        val manga = requireNotNull(getMangaWithChapters).awaitManga(mangaId)
+        val preferences = requireNotNull(libraryPreferences)
+        val entries = listOf(
+            preferences.filterChapterByRead() to manga.unreadFilterRaw,
+            preferences.filterChapterByDownloaded() to manga.downloadedFilterRaw,
+            preferences.filterChapterByBookmarked() to manga.bookmarkedFilterRaw,
+            preferences.sortChapterBySourceOrNumber() to manga.sorting,
+            preferences.displayChapterByNameOrNumber() to manga.displayMode,
+            preferences.sortChapterByAscendingOrDescending() to
+                if (manga.sortDescending()) Manga.CHAPTER_SORT_DESC else Manga.CHAPTER_SORT_ASC,
+        )
+        val previous = entries.map { (preference, _) -> preference.get() to preference.isSet() }
+        try {
+            preferences.setChapterSettingsDefault(manga)
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            entries.forEachIndexed { index, (preference, target) ->
+                try {
+                    if (preference.get() == target) {
+                        val (value, wasSet) = previous[index]
+                        if (wasSet) preference.set(value) else preference.delete()
+                    }
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    // A second storage failure is reported; there is no multi-key transaction.
+                }
+            }
+            chapterSettingsFailed()
+            return false
+        }
+        if (applyToExisting) {
+            try {
+                requireNotNull(setMangaDefaultChapterFlags).awaitAll()
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                _state.update {
+                    it.copy(
+                        chapterSettingsFeedback = MR.strings.desktop_chapter_defaults_apply_failed.localized(),
+                        chapterSettingsFeedbackIsError = true,
+                    )
+                }
+                return false
+            }
+        }
+        _state.update {
+            it.copy(
+                chapterSettingsFeedback = MR.strings.chapter_settings_updated.localized(),
+                chapterSettingsFeedbackIsError = false,
+            )
+        }
+        return true
+    }
+
+    suspend fun resetChapterDefaults(): Boolean = editChapterSettings(
+        Manga.CHAPTER_UNREAD_MASK or Manga.CHAPTER_DOWNLOADED_MASK or Manga.CHAPTER_BOOKMARKED_MASK or
+            Manga.CHAPTER_SORTING_MASK or Manga.CHAPTER_SORT_DIR_MASK or Manga.CHAPTER_DISPLAY_MASK,
+    ) { requireNotNull(setMangaDefaultChapterFlags).await(it) }
+
+    suspend fun setChapterBookmarkFilter(value: TriState): Boolean = editChapterSettings(
+        Manga.CHAPTER_BOOKMARKED_MASK,
+    ) {
+        requireNotNull(setMangaChapterFlags).awaitSetBookmarkFilter(
+            it,
+            when (value) {
+                TriState.DISABLED -> Manga.SHOW_ALL
+                TriState.ENABLED_IS -> Manga.CHAPTER_SHOW_BOOKMARKED
+                TriState.ENABLED_NOT -> Manga.CHAPTER_SHOW_NOT_BOOKMARKED
+            },
+        )
+    }
+
+    suspend fun setChapterReadFilter(value: TriState): Boolean = editChapterSettings(Manga.CHAPTER_UNREAD_MASK) {
+        requireNotNull(setMangaChapterFlags).awaitSetUnreadFilter(
+            it,
+            when (value) {
+                TriState.DISABLED -> Manga.SHOW_ALL
+                TriState.ENABLED_IS -> Manga.CHAPTER_SHOW_READ
+                TriState.ENABLED_NOT -> Manga.CHAPTER_SHOW_UNREAD
+            },
+        )
+    }
+
+    suspend fun setChapterDownloadFilter(value: TriState): Boolean {
+        if (libraryPreferences?.downloadedOnly()?.get() == true) return false
+        return editChapterSettings(Manga.CHAPTER_DOWNLOADED_MASK) {
+            requireNotNull(setMangaChapterFlags).awaitSetDownloadedFilter(
+                it,
+                when (value) {
+                    TriState.DISABLED -> Manga.SHOW_ALL
+                    TriState.ENABLED_IS -> Manga.CHAPTER_SHOW_DOWNLOADED
+                    TriState.ENABLED_NOT -> Manga.CHAPTER_SHOW_NOT_DOWNLOADED
+                },
+            )
+        }
+    }
+
+    private suspend fun editChapterSettings(mask: Long, write: suspend (Manga) -> Boolean): Boolean =
+        chapterSettingsMutex.withLock {
+            var before: Manga? = null
+            try {
+                val target = getMangaWithChapters?.awaitManga(mangaId) ?: state.value.manga ?: return@withLock false
+                before = target
+                check(write(target)) { "Chapter settings write rejected" }
+                setManga(getMangaWithChapters?.awaitManga(mangaId) ?: target)
+                clearChapterSettingsFeedback()
+                true
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                try {
+                    before?.let { previous ->
+                        val current = requireNotNull(getMangaWithChapters).awaitManga(mangaId)
+                        val restored = current.chapterFlags and mask.inv() or (previous.chapterFlags and mask)
+                        if (restored != current.chapterFlags) {
+                            check(requireNotNull(updateManga).await(MangaUpdate(id = mangaId, chapterFlags = restored)))
+                        }
+                    }
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    // Reconciliation can fail too; the next read remains authoritative.
+                }
+                try {
+                    getMangaWithChapters?.let { setManga(it.awaitManga(mangaId)) }
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    // Keep the previous visible state and report that saving could not be reconciled.
+                }
+                chapterSettingsFailed()
+                false
+            }
+        }
+
+    fun clearChapterSettingsFeedback() {
+        _state.update { it.copy(chapterSettingsFeedback = null, chapterSettingsFeedbackIsError = false) }
+    }
+
+    private fun chapterSettingsFailed() {
+        _state.update {
+            it.copy(
+                chapterSettingsFeedback = MR.strings.desktop_appearance_save_failed.localized(),
+                chapterSettingsFeedbackIsError = true,
+            )
+        }
+    }
+
     fun setManga(manga: Manga?) {
         _state.update { state ->
             if (manga == null) {
                 state.copy(manga = null)
             } else {
-                val initializeFilters = state.manga?.id != manga.id
                 state.copy(
                     manga = manga,
                     coverModel = resolveCoverModel?.invoke(manga.id, manga.thumbnailUrl) ?: manga.thumbnailUrl,
-                    filterShowRead = if (initializeFilters) {
-                        manga.unreadFilterRaw != Manga.CHAPTER_SHOW_UNREAD
-                    } else {
-                        state.filterShowRead
-                    },
-                    filterShowUnread = if (initializeFilters) {
-                        manga.unreadFilterRaw != Manga.CHAPTER_SHOW_READ
-                    } else {
-                        state.filterShowUnread
-                    },
-                    filterShowBookmarked = if (initializeFilters) {
-                        manga.bookmarkedFilterRaw == Manga.CHAPTER_SHOW_BOOKMARKED
-                    } else {
-                        state.filterShowBookmarked
-                    },
-                    filterShowDownloaded = if (initializeFilters) {
-                        manga.downloadedFilterRaw == Manga.CHAPTER_SHOW_DOWNLOADED
-                    } else {
-                        state.filterShowDownloaded
-                    },
                     chapterSortMode = chapterSortModeFromManga(manga),
                     chapterSortAscending = !manga.sortDescending(),
                 )
@@ -167,24 +321,6 @@ class MangaDetailScreenModel(
 
     fun setExcludedScanlators(scanlators: Set<String>) {
         _state.update { it.copy(excludedScanlators = scanlators) }
-    }
-
-    // ── Filter toggles ────────────────────────────────────────────────────────
-
-    fun setFilterShowRead(show: Boolean) {
-        _state.update { it.copy(filterShowRead = show) }
-    }
-
-    fun setFilterShowUnread(show: Boolean) {
-        _state.update { it.copy(filterShowUnread = show) }
-    }
-
-    fun setFilterShowBookmarked(show: Boolean) {
-        _state.update { it.copy(filterShowBookmarked = show) }
-    }
-
-    fun setFilterShowDownloaded(show: Boolean) {
-        _state.update { it.copy(filterShowDownloaded = show) }
     }
 
     // ── Sort ──────────────────────────────────────────────────────────────────
@@ -212,7 +348,13 @@ class MangaDetailScreenModel(
     // ── Dialog / sheet visibility ─────────────────────────────────────────────
 
     fun toggleFilterMenu() {
-        _state.update { it.copy(showFilterMenu = !it.showFilterMenu) }
+        _state.update {
+            it.copy(
+                showFilterMenu = !it.showFilterMenu,
+                chapterSettingsFeedback = null,
+                chapterSettingsFeedbackIsError = false,
+            )
+        }
     }
 
     fun setShowNotesDialog(show: Boolean) {
@@ -373,21 +515,29 @@ class MangaDetailScreenModel(
 
     suspend fun setReadingMode(mangaId: Long, currentFlags: Long, mode: ReadingMode?) {
         requireNotNull(updateManga) { "UpdateManga is required" }
-            .await(MangaUpdate(id = mangaId, viewerFlags = if (mode == null) viewerFlagsFollowingGlobal(currentFlags) else viewerFlagsWithReadingMode(currentFlags, mode)))
+            .await(
+                MangaUpdate(
+                    id = mangaId,
+                    viewerFlags = if (mode ==
+                        null
+                    ) {
+                        viewerFlagsFollowingGlobal(currentFlags)
+                    } else {
+                        viewerFlagsWithReadingMode(currentFlags, mode)
+                    },
+                ),
+            )
     }
 
-    suspend fun setChapterSort(manga: Manga, requestedMode: ChapterSortMode) {
-        val requestedFlag = requestedMode.toMangaFlag()
-        requireNotNull(setMangaChapterFlags) { "SetMangaChapterFlags is required" }
-            .awaitSetSortingModeOrFlipOrder(manga, requestedFlag)
-        setSortMode(requestedMode)
-        setSortAscending(if (manga.sorting == requestedFlag) manga.sortDescending() else true)
-    }
+    suspend fun setChapterSort(manga: Manga, requestedMode: ChapterSortMode): Boolean =
+        editChapterSettings(Manga.CHAPTER_SORTING_MASK or Manga.CHAPTER_SORT_DIR_MASK) {
+            requireNotNull(setMangaChapterFlags).awaitSetSortingModeOrFlipOrder(it, requestedMode.toMangaFlag())
+        }
 
-    suspend fun setChapterDisplayMode(manga: Manga, displayMode: Long) {
-        requireNotNull(setMangaChapterFlags) { "SetMangaChapterFlags is required" }
-            .awaitSetDisplayMode(manga, displayMode)
-    }
+    suspend fun setChapterDisplayMode(manga: Manga, displayMode: Long): Boolean =
+        editChapterSettings(Manga.CHAPTER_DISPLAY_MASK) {
+            requireNotNull(setMangaChapterFlags).awaitSetDisplayMode(it, displayMode)
+        }
 
     fun enqueueDownloads(manga: Manga, chapters: List<Chapter>) {
         val enqueue = requireNotNull(enqueueDownload) { "Download enqueue callback is required" }
@@ -506,8 +656,18 @@ class MangaDetailScreenModel(
             .toSet()
     }
 
-    suspend fun updateExcludedScanlators(excluded: Set<String>) {
-        requireNotNull(setExcludedScanlators) { "SetExcludedScanlators is required" }.await(mangaId, excluded)
+    suspend fun updateExcludedScanlators(excluded: Set<String>): Boolean {
+        return try {
+            requireNotNull(setExcludedScanlators).await(mangaId, excluded)
+            setExcludedScanlators(requireNotNull(getExcludedScanlators).await(mangaId))
+            clearChapterSettingsFeedback()
+            true
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            chapterSettingsFailed()
+            false
+        }
     }
 
     fun sourceFor(manga: Manga): eu.kanade.tachiyomi.source.Source? {

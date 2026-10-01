@@ -1225,7 +1225,7 @@
           "kind": "PLATFORM_ADAPTER",
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "fun initDesktopDI",
-          "line": 206
+          "line": 207
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -4216,7 +4216,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 1094
+          "line": 1101
         }
       ],
       "FIXTURE": [
@@ -6282,6 +6282,14 @@
           "productionMarkers": [
             "applyFilters",
             "applySort"
+          ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaChapterOptionsInteractionTest.kt#one missing preference controls shared total and real list indicators",
+          "productionMarkers": [
+            "hideMissingChapterIndicators",
+            "assertFalse",
+            "assertTrue"
           ]
         }
       ]
@@ -9741,7 +9749,9 @@
       "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt",
       "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/EvaluateLibraryTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaChapterOptionsInteractionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailChapterRowsTest.kt"
     ],
     "behaviorMethods": {
       "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt": [
@@ -9758,7 +9768,7 @@
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD",
-    "verificationScope": "Current Library repairs 7aaea9f2e and 0337e7a40 are covered by real Root/Home, production DI/SQLDelight, shared contracts and current Android consumer tests documented in docs/roadmap/2026-09-08-desktop-library-interaction-parity-roadmap.md. Categorized settings branch sorting persistence; display mode remains global as in the fixed original. Default add-to-library category and duplicate-read chapter-sync policy remain out of scope. Action provenance remains the immutable 95b82fc inventory baseline. Download/delete visible-state integration is reviewed in 6b204c085: the real worker completes a PNG download, Root shows the numeric badge and downloaded filter result, and confirmed download-only deletion removes that result while keeping the favorite. Real Root random-detail-back navigation also preserves query/category while the production update job remains active; Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted."
+    "verificationScope": "Current Library repairs 7aaea9f2e and 0337e7a40 are covered by real Root/Home, production DI/SQLDelight, shared contracts and current Android consumer tests documented in docs/roadmap/2026-09-08-desktop-library-interaction-parity-roadmap.md. Categorized settings branch sorting persistence; display mode remains global as in the fixed original. Default add-to-library category and duplicate-read chapter-sync policy remain out of scope. Action provenance remains the immutable 95b82fc inventory baseline. Download/delete visible-state integration is reviewed in 6b204c085: the real worker completes a PNG download, Root shows the numeric badge and downloaded filter result, and confirmed download-only deletion removes that result while keeping the favorite. Real Root random-detail-back navigation also preserves query/category while the production update job remains active; Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI07 protects the existing hide-missing preference through the mounted detail total and row indicators, retaining shared recognition of cached volume numbers; focused/native evidence is recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md. This does not advance the remaining library update or settings consumers."
   },
   {
     "id": 19,
@@ -11403,12 +11413,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
           "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY",
-          "line": 926
+          "line": 810
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun toggleLibrary",
-          "line": 294
+          "line": 436
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
@@ -20374,13 +20384,22 @@
       }
     ],
     "sharedImplementationPaths": [
-      "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChapters.kt"
+      "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChapters.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterViewFilters.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/interactor/SetMangaDefaultChapterFlags.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/SetMangaChapterFlags.kt"
     ],
     "currentAndroidConsumerPaths": [
-      "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt"
+      "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
+      "app/src/main/java/eu/kanade/domain/chapter/model/ChapterFilter.kt",
+      "app/src/main/java/eu/kanade/domain/manga/model/Manga.kt"
     ],
     "desktopConsumerAdapterPaths": [
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaChapterOptionsPanel.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaChapterSort.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/SaveSourceMangaForDetails.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -20396,6 +20415,11 @@
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun bookmarkChapters",
           "line": 824
+        },
+        {
+          "path": "app/src/main/java/eu/kanade/domain/chapter/model/ChapterFilter.kt",
+          "symbol": "fun List<Chapter>.applyFilters(",
+          "line": 16
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -20404,13 +20428,41 @@
           "path": "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChapters.kt",
           "symbol": "class BatchUpdateChapters",
           "line": 5
+        },
+        {
+          "kind": "SHARED",
+          "path": "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterViewFilters.kt",
+          "symbol": "fun Chapter.matchesChapterFilters(",
+          "line": 20
+        },
+        {
+          "kind": "SHARED",
+          "path": "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/interactor/SetMangaDefaultChapterFlags.kt",
+          "symbol": "class SetMangaDefaultChapterFlags(",
+          "line": 9
+        },
+        {
+          "kind": "SHARED",
+          "path": "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/SetMangaChapterFlags.kt",
+          "symbol": "class SetMangaChapterFlags(",
+          "line": 7
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun markSelectedBookmark",
-          "line": 273
+          "line": 415
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaChapterOptionsPanel.kt",
+          "symbol": "internal fun MangaChapterOptionsPanel(",
+          "line": 62
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
+          "symbol": "initialChapterFlags = { Injekt.get<SetMangaDefaultChapterFlags>().initialFlags() },",
+          "line": 730
         }
       ],
       "FIXTURE": [
@@ -20430,13 +20482,59 @@
             "model.markSelectedBookmark",
             "assertEquals"
           ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaChapterOptionsInteractionTest.kt#real detail chapter settings opens a single filter sort display modal",
+          "productionMarkers": [
+            "click(scene",
+            "Role.Tab",
+            "assertEquals"
+          ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaChapterOptionsInteractionTest.kt#defaults require explicit confirmation and apply to existing favorites only when checked",
+          "productionMarkers": [
+            "click(scene",
+            "repository.getMangaById",
+            "defaults.filterChapterByRead().get()"
+          ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaChapterOptionsInteractionTest.kt#real source save initializes new defaults and preserves favorite and nonfavorite overrides",
+          "productionMarkers": [
+            "service.awaitListed",
+            "service.awaitSearchResults",
+            "service.await(",
+            "repository.getMangaById"
+          ]
+        },
+        {
+          "artifact": "app/src/test/java/eu/kanade/domain/chapter/model/ChapterPreferencesContractTest.kt#both Android consumers use identical read bookmark download and source ordering contracts",
+          "productionMarkers": [
+            "chapters.applyFilters",
+            "items.applyFilters",
+            "manga.chaptersFiltered()"
+          ]
+        },
+        {
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaChapterPreferencesTest.kt#production DI resolves shared chapter defaults",
+          "productionMarkers": [
+            "initDesktopDIForTest",
+            "Injekt.get<SetMangaDefaultChapterFlags>()",
+            "assertNotNull"
+          ]
         }
       ]
     },
     "protectionTests": [
       "domain/src/commonTest/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChaptersTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModelSharedMutationWiringTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaChapterOptionsInteractionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaChapterPreferencesTest.kt",
+      "app/src/test/java/eu/kanade/domain/chapter/model/ChapterPreferencesContractTest.kt",
+      "domain/src/jvmTest/kotlin/tachiyomi/domain/chapter/service/ChapterViewFiltersTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailChapterRowsTest.kt"
     ],
     "behaviorMethods": {
       "domain/src/commonTest/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChaptersTest.kt": [
@@ -20451,7 +20549,7 @@
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
-    "verificationScope": "VERIFIED: fixed-main bookmark action, shared per-item continuation, current Android production mutation plus localized ScreenModel SnackbarHostState feedback, and Desktop bookmark consumption are executable.",
+    "verificationScope": "VERIFIED: fixed-main bookmark action, shared per-item continuation, current Android production mutation plus localized ScreenModel SnackbarHostState feedback, and Desktop bookmark consumption are executable. RI07 (2026-10-01) adds real chapter settings modal events, shared tri-state filtering and locale sorting, authoritative single-manga flags, explicit six-default confirmation/reset/favorite batch, new-source INSERT-only default consumption, scanlator drafts, normalized missing counts and mounted file/queue/global-filter projection. Independent review and focused evidence are in docs/evidence/desktop-interaction-iteration-2026-09-30.md: 169 unique tests pass after five legacy row fixture repairs. Detail header/layout, full selection actions, download execution, update and migration closure remain assigned to RI08-RI15; no final release or hardware acceptance is implied.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -32755,17 +32853,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "stateMachine.schedule(",
-          "line": 564
+          "line": 566
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(retryAttempt++) ?: break",
-          "line": 978
+          "line": 983
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(publishAttempt++) ?: break",
-          "line": 735
+          "line": 737
         }
       ],
       "FIXTURE": [
@@ -33183,7 +33281,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "filterChaptersForDownload.await(manga, chapters)",
-          "line": 1137
+          "line": 1144
         }
       ],
       "FIXTURE": [
@@ -54347,12 +54445,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.initialize",
-          "line": 235
+          "line": 236
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.startApp",
-          "line": 237
+          "line": 238
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",

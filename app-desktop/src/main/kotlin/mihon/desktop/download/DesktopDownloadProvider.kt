@@ -1,5 +1,8 @@
 package mihon.desktop.download
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import mihon.domain.reader.content.DownloadArtifactKind
 import mihon.domain.reader.content.DownloadArtifactCandidate
 import mihon.domain.reader.content.DownloadArtifactLocator
@@ -28,6 +31,12 @@ private fun sanitize(name: String): String =
 class DesktopDownloadProvider(
     private val baseDir: File,
 ) {
+    private val _availabilityRevision = MutableStateFlow(0L)
+    val availabilityRevision = _availabilityRevision.asStateFlow()
+
+    internal fun notifyAvailabilityChanged() {
+        _availabilityRevision.update { it + 1 }
+    }
 
     companion object {
         /** Suffix appended to chapter directories while downloading (mirrors Android Downloader.TMP_DIR_SUFFIX). */
@@ -230,23 +239,32 @@ class DesktopDownloadProvider(
         }
 
     /** Deletes the finite canonical and historical directories for one manga only. */
-    fun deleteMangaDownloads(sourceId: Long, mangaTitle: String): Boolean =
+    fun deleteMangaDownloads(sourceId: Long, mangaTitle: String): Boolean = try {
         deleteArtifact(File(baseDir, "${sanitize(sourceId.toString())}/${sanitize(mangaTitle)}"))
+    } finally {
+        notifyAvailabilityChanged()
+    }
 
     /** Deletes the canonical and historical directories for one resolved manga identity only. */
-    fun deleteMangaDownloads(sourceId: Long, mangaTitle: String, identity: DownloadChapterIdentity): Boolean =
+    fun deleteMangaDownloads(sourceId: Long, mangaTitle: String, identity: DownloadChapterIdentity): Boolean = try {
         listOf(
             File(baseDir, "${sanitize(sourceId.toString())}/${sanitize(mangaTitle)}"),
             canonicalMangaDownloadDir(identity),
         ).distinctBy(File::getAbsolutePath).map(::deleteArtifact).all { it }
+    } finally {
+        notifyAvailabilityChanged()
+    }
 
     /** Returns true when a downloaded image has a supported extension and a matching file signature. */
     fun isValidDownloadedImage(file: File): Boolean = file.isReadableImageFile()
 
     /** Deletes the chapter download directory and all its contents. */
     fun deleteChapterDownload(sourceId: Long, mangaTitle: String, chapterName: String): Boolean {
-        val dir = chapterDownloadDir(sourceId, mangaTitle, chapterName)
-        return deleteArtifact(dir)
+        return try {
+            deleteArtifact(chapterDownloadDir(sourceId, mangaTitle, chapterName))
+        } finally {
+            notifyAvailabilityChanged()
+        }
     }
 
     /** Deletes only the finite aliases belonging to this identity; no download-tree scan or migration is performed. */
@@ -259,7 +277,12 @@ class DesktopDownloadProvider(
             add(currentDesktop)
             add(File(currentDesktop.parentFile, "${currentDesktop.name}.cbz"))
         }.distinctBy(File::getAbsolutePath)
-        return artifacts.map(::deleteArtifact).all { it }
+        return try {
+            artifacts.map(::deleteArtifact).all { it }
+        } finally {
+            // A failed deletion can still remove an earlier alias.
+            notifyAvailabilityChanged()
+        }
     }
 
     private fun deleteArtifact(artifact: File): Boolean =
@@ -298,9 +321,13 @@ class DesktopDownloadProvider(
         val tmpDir = chapterTmpDir(sourceId, mangaTitle, chapterName)
         val finalDir = chapterDownloadDir(sourceId, mangaTitle, chapterName)
         if (!tmpDir.isDirectory) return false
-        // Remove any existing final directory first
-        finalDir.deleteRecursively()
-        return tmpDir.renameTo(finalDir)
+        return try {
+            // Remove any existing final directory first.
+            finalDir.deleteRecursively()
+            tmpDir.renameTo(finalDir)
+        } finally {
+            notifyAvailabilityChanged()
+        }
     }
 
     private fun File.isReadableImageFile(): Boolean {

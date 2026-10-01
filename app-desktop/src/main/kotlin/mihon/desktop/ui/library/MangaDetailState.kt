@@ -20,12 +20,6 @@ data class MangaDetailState(
     val coverLastModified: Long = 0L,
     val coverModel: String? = null,
 
-    // ── Filter state ─────────────────────────────────────────────────────────
-    val filterShowRead: Boolean = true,
-    val filterShowUnread: Boolean = true,
-    val filterShowBookmarked: Boolean = false,
-    val filterShowDownloaded: Boolean = false,
-
     // ── Sort state ───────────────────────────────────────────────────────────
     val chapterSortMode: ChapterSortMode = ChapterSortMode.BY_SOURCE_ORDER,
     val chapterSortAscending: Boolean = false,
@@ -36,6 +30,8 @@ data class MangaDetailState(
 
     // ── Dialog / sheet visibility ─────────────────────────────────────────────
     val showFilterMenu: Boolean = false,
+    val chapterSettingsFeedback: String? = null,
+    val chapterSettingsFeedbackIsError: Boolean = false,
     val showNotesDialog: Boolean = false,
     val showMigrateSourcePicker: Boolean = false,
     val deleteConfirmChapter: Chapter? = null,
@@ -47,4 +43,10 @@ data class MangaDetailState(
     val migrateTargetSourceId: Long? = null,
     val migrateSearching: Boolean = false,
     val migrateConfirmItem: SManga? = null,
-)
+) {
+    // Compatibility projections; persisted manga flags remain the only filter authority.
+    val filterShowRead get() = manga?.unreadFilterRaw != Manga.CHAPTER_SHOW_UNREAD
+    val filterShowUnread get() = manga?.unreadFilterRaw != Manga.CHAPTER_SHOW_READ
+    val filterShowBookmarked get() = manga?.bookmarkedFilterRaw == Manga.CHAPTER_SHOW_BOOKMARKED
+    val filterShowDownloaded get() = manga?.downloadedFilterRaw == Manga.CHAPTER_SHOW_DOWNLOADED
+}

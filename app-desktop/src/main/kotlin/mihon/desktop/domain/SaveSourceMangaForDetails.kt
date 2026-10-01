@@ -47,13 +47,14 @@ class SaveSourceMangaForDetails(
     private val sourceDateExtensionIdentityProvider: (Long) -> SourceDateExtensionIdentity = {
         SourceDateExtensionIdentity("unknown.extension", "unknown")
     },
+    private val initialChapterFlags: () -> Long = { 0L },
 ) {
 
     private val mutableRefreshStates = MutableStateFlow<Map<SourceMangaRefreshKey, SourceMangaRefreshState>>(emptyMap())
     val refreshStates: StateFlow<Map<SourceMangaRefreshKey, SourceMangaRefreshState>> = mutableRefreshStates.asStateFlow()
 
     suspend fun awaitSearchResults(results: List<SManga>, sourceId: Long): List<Manga> =
-        results.map { it.toDomainManga(sourceId) }
+        results.map { it.toDomainManga(sourceId).copy(chapterFlags = initialChapterFlags()) }
             .distinctBy(Manga::url)
             .let { networkToLocalManga(it) }
 
@@ -127,6 +128,7 @@ class SaveSourceMangaForDetails(
             thumbnailUrl = sManga.thumbnail_url,
             initialized = false,
             memo = sManga.memo,
+            chapterFlags = initialChapterFlags(),
         )
 
         return networkToLocalManga(networkManga)
@@ -162,6 +164,7 @@ class SaveSourceMangaForDetails(
             status = sManga.status.toLong(),
             initialized = true,
             memo = sManga.memo,
+            chapterFlags = initialChapterFlags(),
         )
 
         val storedManga = if (fetchDetails) networkToLocalManga(networkManga) else {

@@ -106,6 +106,51 @@ import java.util.Collections
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], manifest = Config.NONE)
 class MangaScreenModelSharedMutationWiringTest {
+    @Test
+    fun `Android current defaults calls the shared favorite batch and six authoritative preferences`() = runTest {
+        val current = manga(true).copy(
+            chapterFlags = Manga.CHAPTER_SHOW_UNREAD or Manga.CHAPTER_SHOW_DOWNLOADED or
+                Manga.CHAPTER_SHOW_BOOKMARKED or Manga.CHAPTER_SORTING_NUMBER or
+                Manga.CHAPTER_SORT_ASC or Manga.CHAPTER_DISPLAY_NUMBER,
+        )
+        val other = current.copy(id = MANGA_ID + 1, chapterFlags = 0)
+        val updates = Collections.synchronizedList(mutableListOf<tachiyomi.domain.manga.model.MangaUpdate>())
+        val batchCompleted = CompletableDeferred<Unit>()
+        val repository = mockk<MangaRepository> {
+            coEvery { getFavorites() } returns listOf(current, other)
+            coEvery { update(any()) } coAnswers {
+                val update = firstArg<tachiyomi.domain.manga.model.MangaUpdate>()
+                updates += update
+                if (update.id == other.id) batchCompleted.complete(Unit)
+                true
+            }
+        }
+        val preferences = LibraryPreferences(preferenceStore)
+        val sharedDefaults = SetMangaDefaultChapterFlags(
+            preferences,
+            SetMangaChapterFlags(repository),
+            tachiyomi.domain.manga.interactor.GetFavorites(repository),
+        )
+        val model = screenModel(manga = current, chapters = emptyList(), defaultsOverride = sharedDefaults)
+        try {
+            awaitSuccess(model)
+            model.setCurrentSettingsAsDefault(applyToExisting = true)
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) { batchCompleted.await() }
+            }
+            assertEquals(listOf(current.id, other.id), updates.map { it.id })
+            assertTrue(updates.all { it.chapterFlags == current.chapterFlags })
+            assertEquals(Manga.CHAPTER_SHOW_UNREAD, preferences.filterChapterByRead().get())
+            assertEquals(Manga.CHAPTER_SHOW_DOWNLOADED, preferences.filterChapterByDownloaded().get())
+            assertEquals(Manga.CHAPTER_SHOW_BOOKMARKED, preferences.filterChapterByBookmarked().get())
+            assertEquals(Manga.CHAPTER_SORTING_NUMBER, preferences.sortChapterBySourceOrNumber().get())
+            assertEquals(Manga.CHAPTER_SORT_ASC, preferences.sortChapterByAscendingOrDescending().get())
+            assertEquals(Manga.CHAPTER_DISPLAY_NUMBER, preferences.displayChapterByNameOrNumber().get())
+        } finally {
+            model.onDispose()
+        }
+    }
+
     @get:Rule
     val compose = createEmptyComposeRule()
     private val readingRepository = mockk<ReadingProgressRepository>(relaxed = true)
@@ -571,6 +616,7 @@ class MangaScreenModelSharedMutationWiringTest {
         chapterRepository: ChapterRepository = mockk(relaxed = true),
         syncChaptersWithSource: eu.kanade.domain.chapter.interactor.SyncChaptersWithSource = mockk(relaxed = true),
         getMangaWithChaptersOverride: GetMangaWithChapters? = null,
+        defaultsOverride: SetMangaDefaultChapterFlags? = null,
     ): MangaScreenModel {
         Injekt.addSingleton(chapterRepository)
         Injekt.addSingleton(mockk<eu.kanade.tachiyomi.data.cache.CoverCache>(relaxed = true))
@@ -615,7 +661,7 @@ class MangaScreenModelSharedMutationWiringTest {
             getExcludedScanlators = excludedScanlators,
             setExcludedScanlators = mockk<SetExcludedScanlators>(relaxed = true),
             setMangaChapterFlags = mockk<SetMangaChapterFlags>(relaxed = true),
-            setMangaDefaultChapterFlags = mockk<SetMangaDefaultChapterFlags>(relaxed = true),
+            setMangaDefaultChapterFlags = defaultsOverride ?: mockk<SetMangaDefaultChapterFlags>(relaxed = true),
             setReadStatus = setReadStatus,
             updateChapter = updateChapter,
             updateManga = updateManga,

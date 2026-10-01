@@ -140,6 +140,7 @@ import tachiyomi.domain.chapter.interactor.GetChapter
 import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
+import tachiyomi.domain.chapter.interactor.SetMangaDefaultChapterFlags
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.creator.interactor.LinkMangaCreator
@@ -256,6 +257,7 @@ internal suspend fun initDesktopDIForTest(
         mihon.desktop.tracking.JvmDesktopNetworkConnectivity,
     chapterRepositoryOverride: ((ChapterRepository) -> ChapterRepository)? = null,
     categoryRepositoryOverride: ((CategoryRepository) -> CategoryRepository)? = null,
+    mangaRepositoryOverride: ((MangaRepository) -> MangaRepository)? = null,
 ): DesktopTestDIContext {
     activeDesktopTestDIContext?.closeAndJoin()
     patchInjekt()
@@ -264,7 +266,7 @@ internal suspend fun initDesktopDIForTest(
     prepareDesktopProfile(paths, preferenceStore)
     initDesktopConfigurationForTest(appDir, preferenceStore)
     val networkHelper = initNetworkLayer(paths, preferenceStore, browserOpener)
-    val handler = initDataLayer(paths, chapterRepositoryOverride, categoryRepositoryOverride)
+    val handler = initDataLayer(paths, chapterRepositoryOverride, categoryRepositoryOverride, mangaRepositoryOverride)
     initExtensionLayer(paths, networkHelper, handler, artifactAuthenticator, trackerServiceRegistry)
     initDomainLayer(handler)
     initUILayer(
@@ -482,6 +484,7 @@ internal fun initDataLayer(
     paths: DesktopPlatformPaths,
     chapterRepositoryOverride: ((ChapterRepository) -> ChapterRepository)? = null,
     categoryRepositoryOverride: ((CategoryRepository) -> CategoryRepository)? = null,
+    mangaRepositoryOverride: ((MangaRepository) -> MangaRepository)? = null,
 ): DatabaseHandler {
     val handler = initDatabase(paths.databaseFile)
     val chapterRepository: ChapterRepository = ChapterRepositoryImpl(handler).let { repository ->
@@ -501,7 +504,7 @@ internal fun initDataLayer(
         discoverySchedule = Injekt.get(),
     )
     val mangaRepositoryImpl = MangaRepositoryImpl(handler, creatorRepositoryImpl)
-    val mangaRepository: MangaRepository = mangaRepositoryImpl
+    val mangaRepository: MangaRepository = mangaRepositoryOverride?.invoke(mangaRepositoryImpl) ?: mangaRepositoryImpl
     val creatorRepository: CreatorRepository = creatorRepositoryImpl
     val creatorLibraryIndexer = CreatorLibraryIndexer(
         mangaSource = mangaRepositoryImpl,
@@ -724,6 +727,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
         chapterRepository,
         Injekt.get<CreatorArchiveRepository>(),
         sourceDateExtensionIdentityProvider = sourceDateExtensionIdentityProvider,
+        initialChapterFlags = { Injekt.get<SetMangaDefaultChapterFlags>().initialFlags() },
     )
     Injekt.addSingleton(saveSourceMangaForDetails)
     Injekt.addSingleton(GetFavorites(mangaRepository))
@@ -874,6 +878,9 @@ internal fun initUILayer(
 
     val database = (handler as JvmDatabaseHandler).db
     val libraryPreferences = LibraryPreferences(preferenceStore)
+    Injekt.addSingleton(
+        SetMangaDefaultChapterFlags(libraryPreferences, Injekt.get(), Injekt.get()),
+    )
     Injekt.addSingleton(libraryPreferences)
     LibraryPreferenceMigration(
         preferenceStore, libraryPreferences,

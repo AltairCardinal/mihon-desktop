@@ -6,6 +6,19 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ChapterSelectionStateTest {
+    @Test
+    fun `visible projection removes hidden selected chapters and invalid range anchor`() {
+        val state = ChapterSelectionState()
+        state.toggle(1L)
+        state.toggle(2L)
+        assertEquals(2L, state.anchorId)
+        state.retainVisibleIds(listOf(1L, 3L))
+        assertEquals(setOf(1L), state.selectedIds)
+        assertEquals(null, state.anchorId)
+        state.retainVisibleIds(listOf(3L))
+        assertTrue(state.selectedIds.isEmpty())
+        assertEquals(null, state.anchorId)
+    }
 
     @Test
     fun `initially no chapters are selected`() {

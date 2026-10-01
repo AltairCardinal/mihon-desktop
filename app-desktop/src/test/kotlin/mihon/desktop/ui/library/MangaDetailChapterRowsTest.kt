@@ -4,8 +4,67 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.service.missingChaptersCount
 
 class MangaDetailChapterRowsTest {
+    @Test
+    fun `missing rows use unique recognized numbers without changing actual display order`() {
+        val chapters = listOf(
+            chapter(5L, 5.0),
+            chapter(8L, 8.0),
+            chapter(80L, 8.5),
+            chapter(90L, -1.0).copy(name = "Chapter 90"),
+            chapter(3L, 3.0),
+            chapter(50L, 5.0),
+        )
+        val expected = chapters.map {
+            if (it.isRecognizedNumber) {
+                it.chapterNumber
+            } else {
+                tachiyomi.domain.chapter.service.ChapterRecognition.parseChapterNumber("", it.name, null)
+            }
+        }.missingChaptersCount()
+        assertEquals(86, expected)
+        for (ascending in listOf(true, false)) {
+            val rows = mangaDetailChapterRows(chapters, ascending, hideMissingChapters = false)
+            assertEquals(chapters.map { it.id }, realChapterIds(rows))
+            assertEquals(
+                expected,
+                rows.filterIsInstance<MangaDetailChapterListRow.MissingCountRow>().sumOf {
+                    it.count
+                },
+            )
+        }
+    }
+
+    @Test
+    fun `unrecognized names never manufacture chapter gaps`() {
+        val chapters = listOf(
+            chapter(8L, -1.0).copy(name = "Special"),
+            chapter(3L, -1.0).copy(name = "Bonus"),
+        )
+        assertEquals(
+            0,
+            mangaDetailChapterRows(chapters, ascending = false, hideMissingChapters = false)
+                .filterIsInstance<MangaDetailChapterListRow.MissingCountRow>().sumOf { it.count },
+        )
+        assertEquals(0, chapters.map { it.chapterNumber }.missingChaptersCount())
+    }
+
+    @Test
+    fun `descending final recognized chapter includes gap down to chapter one`() {
+        val rows = mangaDetailChapterRows(
+            chapters = listOf(chapter(8L, 8.0), chapter(8_1L, 8.5), chapter(3L, 3.0)),
+            ascending = false,
+            hideMissingChapters = false,
+        )
+
+        assertEquals(
+            listOf("chapter:8", "chapter:81", "missing:4", "chapter:3", "missing:2"),
+            rows.labels(),
+        )
+        assertEquals(6, rows.filterIsInstance<MangaDetailChapterListRow.MissingCountRow>().sumOf { it.count })
+    }
 
     @Test
     fun `inserts missing row between visible chapter gaps`() {
@@ -68,7 +127,7 @@ class MangaDetailChapterRowsTest {
             hideMissingChapters = false,
         )
 
-        assertEquals(listOf("chapter:22", "missing:5", "chapter:16"), rows.labels())
+        assertEquals(listOf("chapter:22", "missing:5", "chapter:16", "missing:15"), rows.labels())
     }
 
     @Test
@@ -82,7 +141,8 @@ class MangaDetailChapterRowsTest {
             hideMissingChapters = false,
         )
 
-        assertEquals(listOf("chapter:22", "missing:5", "chapter:16"), rows.labels())
+        assertEquals(listOf("chapter:22", "missing:5", "chapter:16", "missing:15"), rows.labels())
+        assertEquals(20, listOf(22.0, 16.0).missingChaptersCount())
     }
 
     @Test

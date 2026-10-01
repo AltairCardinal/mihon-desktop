@@ -499,6 +499,8 @@ class DesktopDownloadManager(
         provider.deleteChapterDownload(sourceId, identity)
     }
 
+    val availabilityRevision get() = provider.availabilityRevision
+
     /** Delegates to [DesktopDownloadProvider]. */
     override fun isDownloaded(sourceId: Long, mangaTitle: String, chapterName: String): Boolean =
         provider.isChapterDownloaded(sourceId, mangaTitle, chapterName)
@@ -756,6 +758,7 @@ class DesktopDownloadManager(
             return isCurrentAttempt(attempt) && completeAttempt(attempt)
         } finally {
             if (!tokenCommitted) partialArtifactLifecycleCoordinator.abortDirectoryPublish(publishToken)
+            provider.notifyAvailabilityChanged()
         }
     }
 
@@ -803,6 +806,8 @@ class DesktopDownloadManager(
             if (error is CancellationException) throw error
             recordFailure(attempt, error.toAppError())
             false
+        } finally {
+            provider.notifyAvailabilityChanged()
         }
     }
 

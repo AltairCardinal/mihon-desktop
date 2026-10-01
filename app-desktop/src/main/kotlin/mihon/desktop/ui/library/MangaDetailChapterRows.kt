@@ -1,8 +1,9 @@
 package mihon.desktop.ui.library
 
 import tachiyomi.domain.chapter.model.Chapter
-import tachiyomi.domain.chapter.service.calculateChapterGap
 import tachiyomi.domain.chapter.service.ChapterRecognition
+import tachiyomi.domain.chapter.service.calculateChapterGap
+import tachiyomi.domain.chapter.service.missingChaptersCount
 import kotlin.math.floor
 
 sealed interface MangaDetailChapterListRow {
@@ -19,23 +20,35 @@ fun mangaDetailChapterRows(
         return chapters.map(MangaDetailChapterListRow::ChapterRow)
     }
 
+    // Number authority is independent of display sorting. Each numeric interval is shown once;
+    // unknown names and alternate releases never manufacture gaps or reorder real chapters.
+    val byNumber = chapters.withIndex().map { it.index to it.value.effectiveMissingChapterNumber() }
+        .filter { it.second >= 0.0 }.groupBy { floor(it.second).toInt() }.toSortedMap()
+    val before = mutableMapOf<Int, MangaDetailChapterListRow.MissingCountRow>()
+    val after = mutableMapOf<Int, MangaDetailChapterListRow.MissingCountRow>()
+    var lower = 0
+    byNumber.forEach { (higher, group) ->
+        val count = calculateChapterGap(higher.toDouble(), lower.toDouble()).coerceAtLeast(0)
+        if (count > 0) {
+            val row = MangaDetailChapterListRow.MissingCountRow("missing-$lower-$higher", count)
+            if (ascending) {
+                before[group.first().first] = row
+            } else {
+                val lowerGroup = byNumber[lower]
+                if (lowerGroup != null) {
+                    before[lowerGroup.first().first] = row
+                } else {
+                    after[group.last().first] = row
+                }
+            }
+        }
+        lower = higher
+    }
     return buildList {
         chapters.forEachIndexed { index, chapter ->
-            val previous = chapters.getOrNull(index - 1)
-            val missingCount = missingCountBefore(
-                previous = previous,
-                current = chapter,
-                ascending = ascending,
-            )
-            if (missingCount > 0) {
-                add(
-                    MangaDetailChapterListRow.MissingCountRow(
-                        id = "missing-${previous?.id ?: "start"}-${chapter.id}",
-                        count = missingCount,
-                    ),
-                )
-            }
+            before[index]?.let(::add)
             add(MangaDetailChapterListRow.ChapterRow(chapter))
+            after[index]?.let(::add)
         }
     }
 }
@@ -43,30 +56,13 @@ fun mangaDetailChapterRows(
 fun realChapterIds(rows: List<MangaDetailChapterListRow>): List<Long> =
     rows.mapNotNull { row -> (row as? MangaDetailChapterListRow.ChapterRow)?.chapter?.id }
 
-private fun missingCountBefore(
-    previous: Chapter?,
-    current: Chapter,
-    ascending: Boolean,
-): Int {
-    val currentNumber = current.displayChapterNumber()
-    if (currentNumber < 0.0) return 0
-    if (previous == null) {
-        if (!ascending) return 0
-        return floor(currentNumber).toInt().minus(1).coerceAtLeast(0)
-    }
+internal fun List<Chapter>.detailMissingChaptersCount(): Int = map {
+    it.effectiveMissingChapterNumber()
+}.missingChaptersCount()
 
-    val previousNumber = previous.displayChapterNumber()
-    if (previousNumber < 0.0) return 0
-    val lower = if (ascending) previousNumber else currentNumber
-    val higher = if (ascending) currentNumber else previousNumber
-    return calculateChapterGap(higher, lower).coerceAtLeast(0)
-}
-
-private fun Chapter.displayChapterNumber(): Double {
-    if (isRecognizedNumber) return chapterNumber
-    return ChapterRecognition.parseChapterNumber(
-        mangaTitle = "",
-        chapterName = name,
-        chapterNumber = null,
-    )
+private fun Chapter.effectiveMissingChapterNumber(): Double = if (isRecognizedNumber) {
+    chapterNumber
+} else {
+    // Preserve cached Desktop name recovery without changing repository chapter numbers.
+    ChapterRecognition.parseChapterNumber(mangaTitle = "", chapterName = name, chapterNumber = null)
 }

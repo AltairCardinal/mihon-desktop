@@ -114,6 +114,8 @@ import mihon.desktop.ui.reader.DesktopReaderScreen
 import mihon.desktop.ui.reader.readingModeLabel
 import mihon.desktop.ui.source.desktopSourceErrorMessage
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.chapter.service.hasActiveChapterFilters
+import tachiyomi.domain.chapter.service.filterAndSortChapters
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.manga.model.Manga
@@ -142,6 +144,8 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val model = rememberScreenModel { screenModelFactory(mangaId) }
         val state by model.state.collectAsState()
         val downloadQueue by model.downloadQueueFlow().collectAsState()
+        val downloadedOnly by model.downloadedOnlyFlow().collectAsState(false)
+        val downloadAvailability by model.downloadAvailabilityFlow().collectAsState(0L)
         val dependencies = LocalDesktopUiDependencies.current
         val appPreferences = dependencies.appPreferences
         val hideMissingChapterIndicators by appPreferences.hideMissingChapterIndicators.changes().collectAsState(
@@ -168,10 +172,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val migrateConfirmItem = state.migrateConfirmItem
         val showNotesDialog = state.showNotesDialog
         val showFilterMenu = state.showFilterMenu
-        val filterShowRead = state.filterShowRead
-        val filterShowUnread = state.filterShowUnread
-        val filterShowBookmarked = state.filterShowBookmarked
-        val filterShowDownloaded = state.filterShowDownloaded
         val chapterSortMode = state.chapterSortMode
         val chapterSortAscending = state.chapterSortAscending
         val availableScanlators = state.availableScanlators
@@ -186,6 +186,15 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 androidx.compose.runtime.withFrameNanos { }
                 categoryMenuFocus.requestFocus()
                 restoreCategoryMenuFocus = false
+            }
+        }
+        val chapterOptionsFocus = remember { FocusRequester() }
+        var returnChapterOptionsFocus by remember { mutableStateOf(false) }
+        LaunchedEffect(returnChapterOptionsFocus) {
+            if (returnChapterOptionsFocus) {
+                androidx.compose.runtime.withFrameNanos { }
+                chapterOptionsFocus.requestFocus()
+                returnChapterOptionsFocus = false
             }
         }
         var showFetchIntervalDialog by remember { mutableStateOf(false) }
@@ -208,28 +217,13 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             model.excludedScanlatorsFlow().collect { model.setExcludedScanlators(it) }
         }
 
-        // Apply chapter filter + sort
-        val displayedChapters = remember(
-            chapters,
-            filterShowRead,
-            filterShowUnread,
-            filterShowBookmarked,
-            filterShowDownloaded,
-            chapterSortMode,
-            chapterSortAscending,
-        ) {
-            val filtered = chapters.filter { ch ->
-                val readOk = (filterShowRead && ch.read) || (filterShowUnread && !ch.read)
-                val bookmarkOk = if (filterShowBookmarked) ch.bookmark else true
-                val downloadedOk = if (filterShowDownloaded) {
-                    val m = manga
-                    m != null && model.isChapterDownloaded(m, ch)
-                } else {
-                    true
+        // Manga flags and the shared projection are the authoritative chapter settings.
+        val displayedChapters = remember(chapters, manga, downloadQueue, downloadedOnly, downloadAvailability) {
+            manga?.let { current ->
+                chapters.filterAndSortChapters(current, downloadedOnly, current.source == 0L) {
+                    model.isChapterDownloaded(current, it)
                 }
-                readOk && bookmarkOk && downloadedOk
-            }
-            sortMangaDetailChapters(filtered, chapterSortMode, chapterSortAscending)
+            } ?: emptyList()
         }
         val chapterRows = remember(displayedChapters, chapterSortAscending, hideMissingChapterIndicators) {
             mangaDetailChapterRows(
@@ -237,6 +231,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 ascending = chapterSortAscending,
                 hideMissingChapters = hideMissingChapterIndicators,
             )
+        }
+        LaunchedEffect(displayedChapters) {
+            selectionState.retainVisibleIds(displayedChapters.map { it.id })
         }
         val source = remember(manga?.source) {
             manga?.let { m -> model.sourceFor(m) }
@@ -277,6 +274,13 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         }
         val nextUnread = remember(chapters, manga?.chapterFlags) {
             manga?.let { nextUnreadChapter(chapters, it) }
+        }
+
+        if (showFilterMenu) {
+            MangaChapterOptionsPanel(model, downloadedOnly) {
+                model.toggleFilterMenu()
+                returnChapterOptionsFocus = true
+            }
         }
 
         Scaffold(
@@ -353,142 +357,22 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             }
                         }
 
-                        // Chapter filter/sort
-                        Box {
-                            IconButton(onClick = { model.toggleFilterMenu() }) {
-                                Icon(Icons.Default.FilterList, contentDescription = MR.strings.desktop_ui_filter_chapters.localized())
-                            }
-                            DropdownMenu(expanded = showFilterMenu, onDismissRequest = { model.toggleFilterMenu() }) {
-                                DropdownMenuItem(
-                                    text = { Text(MR.strings.desktop_ui_filter.localized()) },
-                                    onClick = {},
-                                    enabled = false,
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Text("${if (filterShowRead) "✓" else " "} ${MR.strings.desktop_ui_show_read.localized()}")
-                                    },
-                                    onClick = { model.setFilterShowRead(!filterShowRead) },
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Text("${if (filterShowUnread) "✓" else " "} ${MR.strings.desktop_ui_show_unread.localized()}")
-                                    },
-                                    onClick = { model.setFilterShowUnread(!filterShowUnread) },
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            "${if (filterShowBookmarked) "✓" else " "} " +
-                                                MR.strings.desktop_ui_bookmarked_only.localized(),
-                                        )
-                                    },
-                                    onClick = { model.setFilterShowBookmarked(!filterShowBookmarked) },
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            "${if (filterShowDownloaded) "✓" else " "} " +
-                                                MR.strings.desktop_ui_downloaded_only.localized(),
-                                        )
-                                    },
-                                    onClick = { model.setFilterShowDownloaded(!filterShowDownloaded) },
-                                )
-                                if (availableScanlators.isNotEmpty()) {
-                                    HorizontalDivider()
-                                    DropdownMenuItem(
-                                        text = { Text(MR.strings.desktop_ui_scanlators.localized()) },
-                                        onClick = {},
-                                        enabled = false,
-                                    )
-                                    availableScanlators.sorted().forEach { scanlator ->
-                                        val isExcluded = scanlator in excludedScanlators
-                                        DropdownMenuItem(
-                                            text = { Text(if (!isExcluded) "✓ $scanlator" else "  $scanlator") },
-                                            onClick = {
-                                                scope.launch {
-                                                    val newExcluded = if (isExcluded) {
-                                                        excludedScanlators - scanlator
-                                                    } else {
-                                                        excludedScanlators + scanlator
-                                                    }
-                                                    model.updateExcludedScanlators(newExcluded)
-                                                }
-                                            },
-                                        )
-                                    }
-                                }
-                                HorizontalDivider()
-                                DropdownMenuItem(
-                                    text = { Text(MR.strings.desktop_ui_sort.localized()) },
-                                    onClick = {},
-                                    enabled = false,
-                                )
-                                ChapterSortMode.entries.forEach { mode ->
-                                    val label = when (mode) {
-                                        ChapterSortMode.BY_SOURCE_ORDER -> MR.strings.desktop_ui_source_order.localized()
-                                        ChapterSortMode.BY_CHAPTER_NUMBER -> MR.strings.show_chapter_number.localized()
-                                        ChapterSortMode.BY_DATE_UPLOAD -> MR.strings.desktop_ui_upload_date.localized()
-                                        ChapterSortMode.BY_ALPHABET -> MR.strings.desktop_ui_alphabet.localized()
-                                    }
-                                    val arrow = if (mode ==
-                                        chapterSortMode
-                                    ) {
-                                        (if (chapterSortAscending) " ↑" else " ↓")
-                                    } else {
-                                        ""
-                                    }
-                                    DropdownMenuItem(
-                                        text = { Text("$label$arrow") },
-                                        onClick = {
-                                            manga?.let { m ->
-                                                scope.launch {
-                                                    model.setChapterSort(m, mode)
-                                                }
-                                            }
-                                            model.toggleFilterMenu()
-                                        },
-                                    )
-                                }
-                                HorizontalDivider()
-                                DropdownMenuItem(
-                                    text = { Text(MR.strings.desktop_ui_display.localized()) },
-                                    onClick = {},
-                                    enabled = false,
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            "${if (manga?.displayMode == Manga.CHAPTER_DISPLAY_NAME) "✓" else " "} " +
-                                                MR.strings.desktop_ui_title.localized(),
-                                        )
-                                    },
-                                    onClick = {
-                                        manga?.let { m ->
-                                            scope.launch {
-                                                model.setChapterDisplayMode(m, Manga.CHAPTER_DISPLAY_NAME)
-                                            }
-                                        }
-                                        model.toggleFilterMenu()
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            "${if (manga?.displayMode == Manga.CHAPTER_DISPLAY_NUMBER) "✓" else " "} " +
-                                                MR.strings.show_chapter_number.localized(),
-                                        )
-                                    },
-                                    onClick = {
-                                        manga?.let { m ->
-                                            scope.launch {
-                                                model.setChapterDisplayMode(m, Manga.CHAPTER_DISPLAY_NUMBER)
-                                            }
-                                        }
-                                        model.toggleFilterMenu()
-                                    },
-                                )
-                            }
+                        IconButton(
+                            onClick = { model.toggleFilterMenu() },
+                            modifier = Modifier.focusRequester(chapterOptionsFocus),
+                        ) {
+                            Icon(
+                                Icons.Default.FilterList,
+                                contentDescription = MR.strings.desktop_ui_filter_chapters.localized(),
+                                tint = if (
+                                    manga?.hasActiveChapterFilters(downloadedOnly) == true ||
+                                    excludedScanlators.isNotEmpty()
+                                ) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
                         }
 
                         if (isUpdating || sourceRefreshState is SourceMangaRefreshState.Loading) {
@@ -1039,6 +923,11 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     MangaDetailChapterContentState.CONTENT -> mangaDetailChapterListItems(
                         displayedChapterCount = displayedChapters.size,
                         totalChapterCount = chapters.size,
+                        missingChapterCount = if (hideMissingChapterIndicators) {
+                            0
+                        } else {
+                            displayedChapters.detailMissingChaptersCount()
+                        },
                         chapterRows = chapterRows,
                         downloadQueue = downloadQueue,
                         manga = manga,

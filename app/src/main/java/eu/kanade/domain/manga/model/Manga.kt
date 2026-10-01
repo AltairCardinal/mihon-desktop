@@ -9,6 +9,8 @@ import tachiyomi.core.common.preference.TriState
 import tachiyomi.core.metadata.comicinfo.ComicInfo
 import tachiyomi.core.metadata.comicinfo.ComicInfoPublishingStatus
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.service.effectiveDownloadedChapterFilter
+import tachiyomi.domain.chapter.service.hasActiveChapterFilters
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.toSourceManga
 import uy.kohesive.injekt.Injekt
@@ -22,19 +24,9 @@ val Manga.readerOrientation: Long
     get() = viewerFlags and ReaderOrientation.MASK.toLong()
 
 val Manga.downloadedFilter: TriState
-    get() {
-        if (Injekt.get<BasePreferences>().downloadedOnly().get()) return TriState.ENABLED_IS
-        return when (downloadedFilterRaw) {
-            Manga.CHAPTER_SHOW_DOWNLOADED -> TriState.ENABLED_IS
-            Manga.CHAPTER_SHOW_NOT_DOWNLOADED -> TriState.ENABLED_NOT
-            else -> TriState.DISABLED
-        }
-    }
-fun Manga.chaptersFiltered(): Boolean {
-    return unreadFilter != TriState.DISABLED ||
-        downloadedFilter != TriState.DISABLED ||
-        bookmarkedFilter != TriState.DISABLED
-}
+    get() = effectiveDownloadedChapterFilter(Injekt.get<BasePreferences>().downloadedOnly().get())
+
+fun Manga.chaptersFiltered(): Boolean = hasActiveChapterFilters(Injekt.get<BasePreferences>().downloadedOnly().get())
 
 fun Manga.toSManga(): SManga = toSourceManga()
 

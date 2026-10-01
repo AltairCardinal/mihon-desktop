@@ -1423,9 +1423,10 @@ class LibraryScreenModelTest {
             ),
         )
 
-        detailModel.setFilterShowRead(true)
+        detailModel.toggleFilterMenu()
         detailModel.setManga(manga.copy(title = "Updated title"))
-        assertTrue(detailModel.state.value.filterShowRead)
+        assertTrue(detailModel.state.value.showFilterMenu)
+        assertFalse(detailModel.state.value.filterShowRead)
         val requestAfterTemporaryUiChange = requireNotNull(
             detailModel.readerRequest(
                 manga = requireNotNull(detailModel.state.value.manga),

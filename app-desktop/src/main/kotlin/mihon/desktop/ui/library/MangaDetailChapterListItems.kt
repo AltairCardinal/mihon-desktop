@@ -4,6 +4,7 @@ import tachiyomi.i18n.MR
 import java.util.Locale
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -37,17 +38,23 @@ internal fun LazyListScope.mangaDetailChapterListItems(
     onRetryDownload: (Long) -> Unit,
     onToggleBookmark: (Chapter) -> Unit,
     onReadChapter: (Chapter) -> Unit,
+    missingChapterCount: Int = 0,
 ) {
     item {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "Chapters ($displayedChapterCount${if (displayedChapterCount != totalChapterCount) "/$totalChapterCount" else ""})",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f),
-            )
+            Column(Modifier.weight(1f)) {
+                val total = if (displayedChapterCount != totalChapterCount) "/$totalChapterCount" else ""
+                Text(
+                    text = "Chapters ($displayedChapterCount$total)",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                if (missingChapterCount > 0) {
+                    Text(missingChapterCountText(missingChapterCount), style = MaterialTheme.typography.labelMedium)
+                }
+            }
         }
         HorizontalDivider()
     }

@@ -333,6 +333,60 @@ RI06视觉为[四布局选择浅深色离屏图](ri06-selection-layouts.png)，�
 
 本批超过8文件／400行仍是同一Root交互与数据结果边界：共享范围策略、四布局pointer、根owner滚轮、上下选择栏、批量Dialog／异步结果及Android包装保护须一起编译验收。风险集中在输入抢占、陈旧目标、异步清选和部分数据／文件失败；主代理同一独立初审及必要修正核验逐项检查实际production、真实事件与SQLite／文件证据，没有增加第二个实现代理、独立审查轮次或全量运行。当前roleEvidence只修本批5处唯一符号定位漂移，历史fixedOriginal和actionInventory来源保留；索引只用于可定位性治理，不作为行为验收。
 
+## RI07：章节设置、默认策略与实时投影
+
+RI06已提交`8d66e8d03e74af4a3948ee450813b62b6899ace5`，提交后工作树干净。继续复用原实施代理；实施前固定契约已随RI06提交保存于page-contracts末尾，主代理负责共享接口、独立初审1轮及必要修复复审1轮。预算为约五簇focused红绿、一次明确受影响集成／wiring／scoped格式，预计3–5小时；全量、模块完整、finalParityAudit、正式构建0次。交付同批生产／测试／必要契约、单一报告与索引／提交，不创建第二套章节偏好或下载器；追加仅具体失败影响路径。
+
+首选复用Manga.chapterFlags、SetMangaChapterFlags、LibraryPreferences六默认及SetMangaDefaultChapterFlags；实际factory位于`app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt`。共同过滤／排序从Android真实ChapterFilter包装进入共享核心，平台仅供下载状态。统一三页模态、三态与权威持久值、显式批量默认、扫描组草稿、真实chapter number缺口、mounted repository／queue／file状态响应和章节可见裁剪为本批范围；RI08完整详情布局与头资料、RI09完整选择、RI10下载／文件动作仍由原责任批次闭环。当前红绿与接口核对按下列key记录；本批尚未收口。
+
+`interaction-ri07-projection-red`于07:05:27–07:05:44 +08 FAILED／exit1，仅两个既有production API方法，正确失败为同作品外部CHAPTER_SHOW_READ更新后filterShowUnread仍true，以及8／8.5／3降序列表遗漏最低章之前missing2。对应focused filters为`*MangaDetailScreenModelTest.same manga repository*`与`*MangaDetailChapterRowsTest.descending final recognized*`，无编译或夹具失败，worker43788／Gradle52184已结束并消费。继续最小修权威flags同步与最低实际章节尾部缺口，尚无整体通过。主代理前置接口核对要求共享默认结果不能被Android忽略而静默改变异常／取消边界；Boolean拒绝与异常分别测试，不声称多偏好／DB原子事务。
+
+`interaction-ri07-projection-green`于07:06:43–07:06:55 +08 PASSED／exit0，原两个方法通过并消费，最小修同作品权威flags同步及降序最低实际章前缺口。随后foundation首次漏runBlocking是夹具编译失败，不计业务红；`interaction-ri07-foundation-red-valid`于07:09:28–07:09:39 +08 FAILED／exit1，XML23:09:37.937 UTC实际两项。locale collator排序期望[2,1]、实际[1,2]为正确业务红；DI方法先在core InMemoryPreferenceStore.getStringSet的TODO、经extension初始化失败，未到共享默认binding解析，不计DI红。主代理已要求复用完整隔离PreferenceStore修setup、再仅原DI方法确认正确未绑定失败，不改core夹具扩大产品范围。
+
+默认方法首次runBlocking末表达式返回Exception导致JUnit未发现，补显式Unit后只运行尚未有效红的默认／DI两方法。`interaction-ri07-foundation-default-di-red`于07:11:16–07:11:27 +08 FAILED／exit1，匹配XML23:11:25.085 UTC，2项正确失败：repository拒绝默认flags写入后await返回Unit而非可反馈的false，真实production DI未注册SetMangaDefaultChapterFlags。既有隔离完整PreferenceStore初始化已完成，未再遇core TODO；此组不重复先前collator红。异常边界的后续断言仍需绿测到达，不能提前宣称已覆盖。
+
+`interaction-ri07-foundation-green`于07:13:03–07:13:29 +08仍FAILED／exit1，3项中单本拒绝／原异常及locale排序2通过、默认binding仍缺；保原终态。批量拒绝新增方法在原Unit／忽略拒绝边界对照下，`interaction-ri07-default-batch-red`于07:14:57–07:15:24 +08 FAILED，2项中真实DI已通过、awaitAll拒绝未抛为正确红。`interaction-ri07-foundation-green-final`于07:16:01–07:16:17 +08 PASSED／exit0，实际4项／0失败／0跳过，接口为await:Boolean、awaitAll保Unit并拒绝首错停止，原异常／取消不捕获，绑定使用真实LibraryPreferences。Desktop排序adapter消费共享getChapterSort，保SOURCE方向及locale collator。主代理同一初审已读实际接口／DI／测试与协调器证据，允许下游使用；Android实际包装与取消契约仍须在本批补齐。
+
+`interaction-ri07-native-projection-red`于07:17:57–07:18:12 +08 FAILED／exit1，实际两个原生方法正确失败：真实详情章节设置点击后没有筛选／排序／显示Role.Tab，全局downloadedOnly设true后mounted远端Chapter Alpha仍存在，而局部raw flags0须保持。继续独立即时持久化红测后最小面板／共享过滤接线，尚无原生绿或整体完成结论。
+
+RI07原生偏好写入：`interaction-ri07-native-preference-red`于07:21:04–07:21:18 +08 FAILED／exit1，实际书签偏好事件的持久化断言失败；后续绿测已覆盖旧XML，原红结果以对应协调器log及当时方法回执核对，不把新XML配给旧key。`interaction-ri07-native-projection-green`于07:25:36–07:26:18 +08 PASSED／exit0，Desktop三项／0失败／0跳过，实际三Tab、mounted全局下载覆盖入出及局部flags保持、书签事件SQLite持久化通过；同命令domain共享过滤两项通过，XML23:25:47.969 UTC，包含六种include／exclude及global覆盖／本地资格。尚未完成默认、扫描组和队列／文件实时全部边界。
+
+`interaction-ri07-native-settings-red`于07:28:22–07:28:43 +08 FAILED／exit1，四项中默认入口缺失、扫描组入口缺失及外部筛选后章节选择未裁剪为三项正确红；display拒绝夹具在DI初始化后追加binding，被已缓存SetMangaChapterFlags实例遮住，实际写入成功，不计拒绝业务红。改为真实SQLite创建后、domain／factory解析前的可选mangaRepositoryOverride，默认null且沿已有chapter／category测试端口模式，不改production仓库和core PreferenceStore。`interaction-ri07-write-failure-red`于07:31:56–07:32:31 +08 FAILED／exit1，两项正确失败：真实display写拒绝没有失败反馈，以及补偿阶段取消被当成普通失败。`interaction-ri07-write-failure-green`于07:35:10–07:35:35 +08 PASSED／exit0，XML23:35:29.109／34.817 UTC，两项／0失败／0跳过；真实拒绝→可见反馈→重试、post-commit异常仅恢复display mask并保并发bookmark，以及补偿CancellationException传播通过。它不是跨SQL／偏好的原子事务证明，默认／扫描组后续仍需实际确认／取消／六默认与已有收藏显式应用的事件证据。
+
+`interaction-ri07-defaults-scan-boundaries`于07:42:32–07:43:22 +08整条FAILED／exit1；XML23:43:04.679／21.734 UTC，五项中三项通过（真实默认取消／六值保存／显式favorite批量／非favorite保持／单本重置，扫描组SelectAll／取消／确认／重置驱动mounted列表，以及外部flags隐藏后选择退出）。初次权威repo读取异常仍逸出而没有产品反馈为正确红；未知chapterNumber=-1但name含数字时生成六个缺口（测试当时期望0）的断言前提，随后因已有缓存卷号恢复能力纠正，不计有效业务红。原整条失败保留，继续同一失败／投影簇最小修正；三项绿不外推为完整默认失败恢复、扫描组失败重试或所有缺章顺序已闭合。
+
+RI07同一初审检查共享SetMangaChapterFlags写整个snapshot时的并发风险后，`interaction-ri07-concurrent-gap-red`于07:49:58–07:50:14 +08 FAILED／exit1，两个定点真实方法实际失败，XML23:50:07.846／13.231 UTC；并发断言为正确业务红，缺章方法的总量前提随后按既有缓存恢复能力纠正。有界repo门闩下交错设置导致第二字段NUMBER被旧snapshot覆盖为NAME（1048576→0）；当时按raw数值的缺章方法包含可解析未知名，行缺口总和88而raw共享总量5；5不是纠正后的验收值，不能以该差值外推正确缺口。最小修正限当前详情model设置串行边界内重读权威值、缺章按统一effective recognized投影计算但保实际行序；不修改共享数据库协议、Android现长按语义或下载算法。新增为本批即时保存及缺章既定边界，非增加独立审查轮次；这两项尚未绿。
+
+RI07验收前提纠正：主代理读取旧`falls back to chapter name recognition for cached unrecognized volume numbers`方法，确认Desktop已有raw=-1时通过共享ChapterRecognition恢复“第22／16卷”的缓存能力。按AGENTS保护Desktop独有能力，前述一律忽略可解析名称的新增期望过严；保留实际失败记录，但不将其作为业务红。修正为一次effective recognized-number投影同时供shared missingChaptersCount总量和calculateChapterGap行提示消费，不持久化改目录、不复制公式。真正不可解析未知仍无缺口；重复／小数及非数字排序保持显示序和总量一致，旧卷号能力保护与正确总量断言须重新核验。此纠正不是以实现失败取消必做项，两处一致及最低章缺口要求保持。
+
+`interaction-ri07-file-total-red`于07:52:38–07:53:04 +08 FAILED／exit1，两个真实mounted方法正确失败：production provider完成真实PNG并经manager删除后，queue始终为空而已删章节仍在下载过滤结果中；缺章总量尚无UI显示。随后纠正缓存恢复前提，`interaction-ri07-normalized-gap-red`于07:55:57–07:56:20 +08 FAILED／exit1，XML23:56:19.416 UTC，两项原算法对照正确红：统一可恢复数值总量应86而行缺口合计88，旧第22／16卷恢复保留且最低16之前须补15，实际遗漏。此处86替代先前无效raw总量5前提；不将XML缺失或被覆盖的方法配给后续key。继续本批最小通知端口、总量同偏好及规范化缺口实现，尚无绿结论。
+
+`interaction-ri07-boundary-green`于07:58:14–07:58:57 +08 PASSED／exit0，实际18项／0失败／0跳过：Native五项（交错写、初次权威读、真实文件完成／删除且空队列不变、两处缺章同隐藏偏好、默认实际成功反馈及不回放），Rows十二项及补偿取消一项。缓存卷号保留，literal86和旧卷总量20独立期望固定；同一个effectiveMissingChapterNumber规则供shared总量及gap消费，缺章按unique整数区间只插一次且不改变真实行序。provider revision由真实删除／rename／manager目录与CBZ发布finally通知，factory向model绑定，mounted详情将revision加入投影依赖；不伪emit同值queue，不修改下载身份或结果算法。主代理同一初审已核代码／接口及协调器终态，文件部分失败仍属既有非SQL边界；模态完整focus、默认部分失败、扫描组拒绝和Android实际包装尚待本批闭合。
+
+`interaction-ri07-partial-file-boundaries`于08:01:25–08:01:53 +08整条FAILED／exit1，XML00:01:36.334 UTC，四项中默认六偏好写入／flush前后拒绝恢复及保框重试、已保存默认＋favorite批量拒绝的明确部分反馈／显式重试、扫描组SQLite拒绝保原值／草稿及同框重试三项通过。whole manga删除补入既有file方法后，mounted列表仍保章节为正确红；queue为空保持断言，继续仅覆盖provider已有整本删除通知边界。原FAILED不能外推整批通过，不新造跨偏好／SQL原子结果。
+
+`interaction-ri07-native-modal`于08:05:32–08:06:16 +08 PASSED／exit0，三个实际方法／0失败／0跳过：两个已有整本删除入口通知mounted过滤、原生双向完整Tab环及扫描组／默认／面板Escape逐层还真实触发器、320dp／fontScale2三页及24扫描组末项在主题／尺寸重排后可达且owner保持。两个provider整本删除沿相同finally revision通知，无目录算法扩展。主代理实际打开[浅色显示页320dp／200%字号](desktop-interaction-native/ri07-chapter-display-light-320-font200.png)与[深色扫描组末项](desktop-interaction-native/ri07-scanlators-dark-320-font200.png)，可见选项、默认／重置／关闭及确认／取消都在窗口内；英文Tab有大字号换行，不以该离屏图作为上游像素基准。场景Windows／Temurin JDK21.0.11、Compose1.10.2／Skiko0.9.37.4、真实DesktopTheme浅／深、density1／fontScale2、320×680、English；硬件／发布runtime仍属RI18。Android实际共享wrapper和最终明确受影响／格式尚未完成。
+
+`interaction-ri07-active-filter-red`于08:11:31–08:11:52 +08 FAILED／exit1，XML00:11:42.276 UTC。活动反馈真实primary像素方法在ENABLED_NOT时没有提示，为正确红；三态方法读取ToggleableState时IllegalStateException不是有效Assertion红。核对当前modal owner与实际downloaded整行Role.Checkbox后，确认生产Row缺原生ToggleableState，onClick=null的子TriStateCheckbox也不补整行状态。继续先用contains明确断言该缺失红，再最小原生triStateToggleable接线，不能读取另一节点掩盖整行无状态或将enum实现词用于读屏。共享活动判断须覆盖原值NOT、global约束与扫描组，RI08再承担章节头完整资料。
+
+`interaction-ri07-row-semantics-red-valid`于08:14:12–08:14:51 +08以实际downloaded整行缺ToggleableState的contains断言确认正确业务红；原IllegalStateException不升级证据。`interaction-ri07-active-android-green`于08:16:29–08:16:45 +08 FAILED于旧Desktop Reader保护夹具仍调用已移除独立bool setter的编译，未执行目标行为；修改为真实章节面板会话及same-id权威emit，保Reader／filter／snapshot断言。`interaction-ri07-active-android-green-valid`于08:18:31–08:19:19 +08仍FAILED于新Android测试RuntimeEnvironment.getApplication错误泛型编译，尚无这一组Desktop2／Android3行为结果，不计红绿。
+
+默认首次消费者门禁：主代理及实施者核对Android MangaScreenModel line228首次加载nonfavorite时应用默认、Desktop此前仅reset／显式batch消费默认。新源作品真实入口统一SaveSourceMangaForDetails.awaitListed／awaitSearchResults／await→NetworkToLocalManga→MangaRepositoryImpl.insertNetworkManga；SQL同事务INSERT采用输入chapterFlags、existing UPDATE不改chapter_flags，能够只初始化真正新对象且避免precheck race。方案在本批默认策略范围内复用共享六mask打包、SetMangaDefaultChapterFlags同一六默认snapshot及生产DI延迟callback，不增加存储／marker／目录迁移；已有favorite与nonfavorite单本值均不自动覆写，Android现初始化不改，平台差异由PROJECT_POLICY D-D3持久化与D-D5已有作品仅显式覆盖解释。实际新listed／search／refreshed及已有对象DI＋SQLite红绿尚待闭合，不能只以“设为默认”入口通过宣称完整。
+
+`interaction-ri07-new-default-red`于08:23:26–08:23:56 +08 FAILED／exit1，三项中活动图标真实primary像素、原生三态读态反转／global下载强制与解除raw值保持／四种排序方向两项通过；production DI解析SaveSourceMangaForDetails并调用awaitListed后，真实SQLite新对象chapterFlags期望1048885、实际0，为正确默认首次消费者红。随后共享六mask打包与真实源保存三个入口接线，不增加单独偏好、预检查或迁移marker。
+
+`interaction-ri07-new-default-android-green-valid`于08:29:55–08:30:49 +08整体FAILED／exit1。Desktop真实源保存方法通过，匹配XML00:30:42.913 UTC，覆盖listed／search／refreshed新对象消费默认、已存favorite及nonfavorite单本值保持、真实详情factory读回。Android ChapterPreferencesContractTest两个实际wrapper／共享默认契约方法通过；新增actualMangaScreenModel方法期望两作品更新[42,43]、实际[]，失败XML00:30:16.057 UTC并提示主Looper待执行任务。该方法框架重试三次仍失败，不算三个独立用例；原因尚待实施者诊断，仅修验这一项，不能把整体FAILED记作全绿或把待执行夹具当生产原因。
+
+Android页面默认测试失败诊断：实际launchNonCancellable委托launchIO，再进入NonCancellable；runTest的advanceUntilIdle不等待该真实IO工作。实施者和主代理核对共享协程helper与既有同类测试后，将其认定为夹具同步缺口，未改production；采用真实第二次repository.update完成信号等待，保更新对象顺序、六mask与全部默认偏好断言。修验只运行此失败方法，前述已通过契约方法和Desktop源保存方法不重复。
+
+`interaction-ri07-android-default-green`于08:37:09–08:37:25 +08 PASSED／exit0，仅复验失败的actualMangaScreenModel方法，XML00:37:15.472 UTC，1项／0失败／0跳过。真实IO仓库写入完成信号后，两收藏对象及六项权威默认断言通过，未改Android production；前次整体FAILED及夹具失败事实保留。Android本批有效证据为实际filter包装／共享默认两方法与该页面包装一方法，不按框架重试次数加总。
+
+稳定受影响验证`interaction-ri07-affected`于08:44:58–08:47:30 +08 FAILED／exit1。Desktop共164项：源保存13、DownloadProvider22、SortPersistence6、Selection8、Library既有导航／续读3、新原生面板19、章节默认5、Sort2、ChapterListItems7、Rows12、入库wiring10、DetailModel57；其中159通过、ChapterListItems五个真实行场景因未提供LocalDesktopUiDependencies失败。domain共享过滤2项通过，Android实际契约／页面包装3项通过；总169项＝164通过＋5失败，0跳过。对应Desktop XML时间00:45:34–00:47:29 UTC、domain00:45:14.622、Android00:45:22.279／31.416，均属于本次运行。新原生组包括Space三态SQLite消费、真实背景pointer隔离和同一模态owner／还焦；取消传播覆盖flags补偿读取及最终权威重读两个路径。五个旧行夹具须补真实界面依赖并仅受影响方法复验，原FAILED保留；未跑完整模块、全量或发布。
+
+`interaction-ri07-affected-repair`于08:50:39–08:50:56 +08 PASSED／exit0，仅复验前述五个失败行方法及scoped格式；夹具只为真实ChapterRow提供DesktopAppPreferences与LocalDesktopUiDependencies，保原pointer／Reader、选择、下载／取消／重试调用次数断言，不改production以绕过失败。Desktop／domain／Android／i18n scoped格式checks通过，其余绿色方法复用；合并唯一有效证据169项全部通过、0失败／0跳过，仍不是全量证据。主代理核对原FAILED、修复diff、最终PASSED和两幅离屏图，完成同一独立初审及必要修正核验；后续仅收口索引、checkoff与提交。
+
+RI07收口：实施代理返回status／diff／tests／commit／process／next并停写，34条RI07协调记录均为终态。30个代码／测试／资源文件、两幅离屏图及必要契约／索引／checkoff共同交付；超过8文件／400行仍内聚于章节权威设置、真实投影与失败恢复，共享Android消费、DI与文件信号必须一起验收，不按文件机械拆分。格式首次apply有五处超长行，后续一次apply仍失败，最终format-final于08:42:54–08:42:59 +08 PASSED；最后修复命令scoped checks全绿。11个Desktop文件及共享／Android受影响文件使用scoped Kotlin，base XML使用scoped XML，zh-rCN另核UTF-8／XML与行尾；其余九个Desktop修改文件逐diff核新区域，不宣称历史整文件均完成格式化。主代理最小更新cap17／24保护路径与适用证据、11处当前role定位漂移；279条当前角色定位有效，64项status、固定原版与actionInventory不变。索引核验仅为治理，不代替行为测试；后续RI08–RI18保持未完成。
+
 ### RI13 目录同步前置核对（只读，不代表实施完成）
 
 共享 SourceMangaUpdateService 已提供 getMangaUpdate网络入口，不能重建第二份 source更新协议。当前 Desktop LibraryUpdateChecker主要追加新 URL并更新章号／memo，分次更新 manga／chapter，尚无完整改名、重排和移除事务。Android实际复用入口是 `app/src/main/java/eu/kanade/domain/chapter/interactor/SyncChaptersWithSource.kt`，不是 domain中的同名文件；其非本地空响应抛 NoChaptersException，包含去重／名称规范化、recognition、sourceOrder、重复已读与换链接数值状态、dateFetch保护、下载目录重命名。RI13须保持characterization并抽取可共享计划／事务边界，保Desktop作者观察与同步身份；网络／文件不冒充SQL原子，不以当前Desktop标记 COMPLETE作为响应完整性证明。这里只定位复用边界，未实施或验收RI13。
@@ -351,4 +405,4 @@ Android只读预检 `python scripts/build-android.py check --signing` 返回0／
 
 ## 未完成与限制
 
-RI00／RI01 的实现、focused、唯一独立审查及必要修复复审已完成，代码、测试、索引修复和必要 checkoff 随本功能批同一提交。首簇提交为 `14a8ce15695cf69ab2e468b825e88ec91641e08a`。用户继续要求完成剩余 roadmap，现复用原实施代理串行推进后续批次，每批按既有审查与必要修复复审流程执行；完整验证仍只在 RI18。RI02 实现、focused、唯一修复复审和格式／索引检查均通过，必要 checkoff 与代码／测试在本批同一提交；RI03 实现、唯一修复复审、140项有效focused证据、格式与索引检查已闭合，必要checkoff随本批同一提交；RI04实现、140项有效focused、唯一独立初审及必要修正核验、格式及索引已闭合，必要checkoff随本批同一提交；RI05实现、唯一独立初审及必要修复核验、132项去重focused证据、格式及索引检查已闭合，必要checkoff随本批同一提交；RI06实现、同一独立初审及必要修正核验、122项有效去重focused证据、scoped格式与273条当前索引检查已闭合，实施代理已回执停写、无存活Gradle进程，必要checkoff随本批同一提交；RI07–RI18 未完成；最终全量、正式构建及运行验收尚未执行。本轮没有 Android正式候选／macOS正式构建、真实鼠标／触控板／硬件条件验收，没有交付 EXE/APK，没有把 HTML 勾选更新为 native 完成。
+RI00／RI01 的实现、focused、唯一独立审查及必要修复复审已完成，代码、测试、索引修复和必要 checkoff 随本功能批同一提交。首簇提交为 `14a8ce15695cf69ab2e468b825e88ec91641e08a`。用户继续要求完成剩余 roadmap，现复用原实施代理串行推进后续批次，每批按既有审查与必要修复复审流程执行；完整验证仍只在 RI18。RI02 实现、focused、唯一修复复审和格式／索引检查均通过，必要 checkoff 与代码／测试在本批同一提交；RI03 实现、唯一修复复审、140项有效focused证据、格式与索引检查已闭合，必要checkoff随本批同一提交；RI04实现、140项有效focused、唯一独立初审及必要修正核验、格式及索引已闭合，必要checkoff随本批同一提交；RI05实现、唯一独立初审及必要修复核验、132项去重focused证据、格式及索引检查已闭合，必要checkoff随本批同一提交；RI06实现、同一独立初审及必要修正核验、122项有效去重focused证据、scoped格式与273条当前索引检查已闭合，实施代理已回执停写、无存活Gradle进程，必要checkoff随本批同一提交；RI07实现、同一独立初审与必要修正核验、169项去重focused证据、scoped格式及279条当前索引已闭合，必要checkoff与代码／测试在本批同一提交；RI08–RI18 未完成；最终全量、正式构建及运行验收尚未执行。本轮没有 Android正式候选／macOS正式构建、真实鼠标／触控板／硬件条件验收，没有交付 EXE/APK，没有把 HTML 勾选更新为 native 完成。

@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
@@ -41,6 +42,7 @@ import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.interactor.UpdateManga
@@ -54,6 +56,24 @@ import tachiyomi.domain.manga.model.MangaUpdate
  * lives in a ScreenModel with StateFlow<MangaDetailState>.
  */
 class MangaDetailScreenModelTest {
+    @Test
+    fun `same manga repository emission refreshes authoritative chapter filters`() {
+        val model = MangaDetailScreenModel(mangaId = 1L)
+        val manga = Manga.create().copy(id = 1L)
+        model.setManga(manga)
+        model.setManga(
+            manga.copy(
+                chapterFlags = Manga.CHAPTER_SHOW_READ or Manga.CHAPTER_SHOW_DOWNLOADED or
+                    Manga.CHAPTER_SHOW_BOOKMARKED,
+            ),
+        )
+
+        assertTrue(model.state.value.filterShowRead)
+        assertFalse(model.state.value.filterShowUnread)
+        assertTrue(model.state.value.filterShowDownloaded)
+        assertTrue(model.state.value.filterShowBookmarked)
+    }
+
     @Test
     fun `creator mentions split bibliography and fold author artist overlap`() {
         val model = MangaDetailScreenModel(mangaId = 1L)
@@ -386,36 +406,46 @@ class MangaDetailScreenModelTest {
     // ── Filter toggles ────────────────────────────────────────────────────────
 
     @Test
-    fun `setFilterShowRead toggles filterShowRead`() {
-        val model = MangaDetailScreenModel(mangaId = 1L)
+    fun `setFilterShowRead toggles filterShowRead`() = runTest {
+        val model = chapterPreferenceModel()
         assertTrue(model.state.value.filterShowRead)
-        model.setFilterShowRead(false)
+        model.setChapterReadFilter(TriState.ENABLED_NOT)
         assertFalse(model.state.value.filterShowRead)
-        model.setFilterShowRead(true)
+        model.setChapterReadFilter(TriState.DISABLED)
         assertTrue(model.state.value.filterShowRead)
     }
 
     @Test
-    fun `setFilterShowUnread toggles filterShowUnread`() {
-        val model = MangaDetailScreenModel(mangaId = 1L)
-        model.setFilterShowUnread(false)
+    fun `setFilterShowUnread toggles filterShowUnread`() = runTest {
+        val model = chapterPreferenceModel()
+        model.setChapterReadFilter(TriState.ENABLED_IS)
         assertFalse(model.state.value.filterShowUnread)
     }
 
     @Test
-    fun `setFilterShowBookmarked toggles filterShowBookmarked`() {
-        val model = MangaDetailScreenModel(mangaId = 1L)
+    fun `setFilterShowBookmarked toggles filterShowBookmarked`() = runTest {
+        val model = chapterPreferenceModel()
         assertFalse(model.state.value.filterShowBookmarked)
-        model.setFilterShowBookmarked(true)
+        model.setChapterBookmarkFilter(TriState.ENABLED_IS)
         assertTrue(model.state.value.filterShowBookmarked)
     }
 
     @Test
-    fun `setFilterShowDownloaded toggles filterShowDownloaded`() {
-        val model = MangaDetailScreenModel(mangaId = 1L)
+    fun `setFilterShowDownloaded toggles filterShowDownloaded`() = runTest {
+        val model = chapterPreferenceModel()
         assertFalse(model.state.value.filterShowDownloaded)
-        model.setFilterShowDownloaded(true)
+        model.setChapterDownloadFilter(TriState.ENABLED_IS)
         assertTrue(model.state.value.filterShowDownloaded)
+    }
+
+    private fun chapterPreferenceModel(): MangaDetailScreenModel {
+        val manga = Manga.create().copy(id = 1L)
+        val repository = FakeMangaRepository().apply { seed(manga) }
+        return MangaDetailScreenModel(
+            mangaId = manga.id,
+            getMangaWithChapters = GetMangaWithChapters(repository, FakeChapterRepository()),
+            setMangaChapterFlags = SetMangaChapterFlags(repository),
+        ).also { it.setManga(manga) }
     }
 
     // ── Sort ──────────────────────────────────────────────────────────────────
@@ -897,13 +927,12 @@ class MangaDetailScreenModelTest {
     @Test
     fun `MangaDetailState has expected fields`() {
         val state = MangaDetailState(
-            filterShowRead = false,
-            filterShowUnread = false,
+            manga = Manga.create().copy(chapterFlags = Manga.CHAPTER_SHOW_UNREAD),
             chapterSortMode = ChapterSortMode.BY_CHAPTER_NUMBER,
             chapterSortAscending = true,
         )
         assertFalse(state.filterShowRead)
-        assertFalse(state.filterShowUnread)
+        assertTrue(state.filterShowUnread)
         assertEquals(ChapterSortMode.BY_CHAPTER_NUMBER, state.chapterSortMode)
         assertTrue(state.chapterSortAscending)
     }

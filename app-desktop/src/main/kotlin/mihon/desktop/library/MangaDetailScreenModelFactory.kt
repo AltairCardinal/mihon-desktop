@@ -48,11 +48,13 @@ object MangaDetailScreenModelFactory {
             setChapterReadStatus = Injekt.get<SetChapterReadStatus>(),
             updateManga = Injekt.get<UpdateManga>(),
             setMangaChapterFlags = Injekt.get<SetMangaChapterFlags>(),
+            setMangaDefaultChapterFlags = Injekt.get<tachiyomi.domain.chapter.interactor.SetMangaDefaultChapterFlags>(),
             setMangaCategories = Injekt.get<SetMangaCategories>(),
             linkMangaCreator = Injekt.get<LinkMangaCreator>(),
             manageCreatorIdentity = ManageCreatorIdentity(Injekt.get<CreatorArchiveRepository>()),
             enqueueDownload = downloadManager?.let { it::enqueue },
             downloadQueue = downloadManager?.queue,
+            downloadAvailability = downloadManager?.availabilityRevision,
             isDownloaded = downloadManager?.let { manager ->
                 { manga, chapter ->
                     val identity = requireNotNull(downloadIdentityResolver) { "Download identity resolver is required" }

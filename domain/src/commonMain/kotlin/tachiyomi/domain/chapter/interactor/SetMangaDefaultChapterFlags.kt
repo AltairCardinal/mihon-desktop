@@ -11,9 +11,20 @@ class SetMangaDefaultChapterFlags(
     private val setMangaChapterFlags: SetMangaChapterFlags,
     private val getFavorites: GetFavorites,
 ) {
+    /** The INSERT path uses the same six defaults without overwriting an existing manga. */
+    fun initialFlags(): Long = with(libraryPreferences) {
+        SetMangaChapterFlags.composeFlags(
+            filterChapterByRead().get(),
+            filterChapterByDownloaded().get(),
+            filterChapterByBookmarked().get(),
+            sortChapterBySourceOrNumber().get(),
+            sortChapterByAscendingOrDescending().get(),
+            displayChapterByNameOrNumber().get(),
+        )
+    }
 
-    suspend fun await(manga: Manga) {
-        withNonCancellableContext {
+    suspend fun await(manga: Manga): Boolean {
+        return withNonCancellableContext {
             with(libraryPreferences) {
                 setMangaChapterFlags.awaitSetAllFlags(
                     mangaId = manga.id,
@@ -30,7 +41,9 @@ class SetMangaDefaultChapterFlags(
 
     suspend fun awaitAll() {
         withNonCancellableContext {
-            getFavorites.await().forEach { await(it) }
+            getFavorites.await().forEach { manga ->
+                check(await(manga)) { "Chapter defaults were rejected for manga ${manga.id}" }
+            }
         }
     }
 }

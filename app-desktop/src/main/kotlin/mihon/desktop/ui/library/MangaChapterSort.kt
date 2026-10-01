@@ -1,6 +1,7 @@
 package mihon.desktop.ui.library
 
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.service.getChapterSort
 import tachiyomi.domain.manga.model.Manga
 
 fun sortMangaDetailChapters(
@@ -8,13 +9,8 @@ fun sortMangaDetailChapters(
     mode: ChapterSortMode,
     ascending: Boolean,
 ): List<Chapter> {
-    val comparator: Comparator<Chapter> = when (mode) {
-        ChapterSortMode.BY_SOURCE_ORDER -> compareByDescending { it.sourceOrder }
-        ChapterSortMode.BY_CHAPTER_NUMBER -> compareBy { it.chapterNumber }
-        ChapterSortMode.BY_DATE_UPLOAD -> compareBy { it.dateUpload }
-        ChapterSortMode.BY_ALPHABET -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }
-    }
-    return if (ascending) chapters.sortedWith(comparator) else chapters.sortedWith(comparator.reversed())
+    val manga = Manga.create().copy(chapterFlags = chapterSortFlags(mode, ascending))
+    return chapters.sortedWith(getChapterSort(manga))
 }
 
 fun ChapterSortMode.toMangaFlag(): Long =
@@ -44,7 +40,11 @@ fun chapterSortFlags(mode: ChapterSortMode, ascending: Boolean, currentFlags: Lo
 fun chapterDisplayFlags(displayMode: Long, currentFlags: Long = 0L): Long =
     currentFlags.setFlag(displayMode, Manga.CHAPTER_DISPLAY_MASK)
 
-fun nextChapterSort(currentMode: ChapterSortMode, currentAscending: Boolean, requestedMode: ChapterSortMode): Pair<ChapterSortMode, Boolean> =
+fun nextChapterSort(
+    currentMode: ChapterSortMode,
+    currentAscending: Boolean,
+    requestedMode: ChapterSortMode,
+): Pair<ChapterSortMode, Boolean> =
     if (currentMode == requestedMode) {
         currentMode to !currentAscending
     } else {

@@ -5,8 +5,8 @@ import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.ui.manga.ChapterList
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.service.getChapterSort
+import tachiyomi.domain.chapter.service.matchesChapterFilters
 import tachiyomi.domain.manga.model.Manga
-import tachiyomi.domain.manga.model.applyFilter
 import tachiyomi.source.local.isLocal
 
 /**
@@ -15,24 +15,17 @@ import tachiyomi.source.local.isLocal
  */
 fun List<Chapter>.applyFilters(manga: Manga, downloadManager: DownloadManager): List<Chapter> {
     val isLocalManga = manga.isLocal()
-    val unreadFilter = manga.unreadFilter
-    val downloadedFilter = manga.downloadedFilter
-    val bookmarkedFilter = manga.bookmarkedFilter
-
-    return filter { chapter -> applyFilter(unreadFilter) { !chapter.read } }
-        .filter { chapter -> applyFilter(bookmarkedFilter) { chapter.bookmark } }
-        .filter { chapter ->
-            applyFilter(downloadedFilter) {
-                val downloaded = downloadManager.isChapterDownloaded(
-                    chapter.name,
-                    chapter.scanlator,
-                    chapter.url,
-                    manga.title,
-                    manga.source,
-                )
-                downloaded || isLocalManga
-            }
+    return filter { chapter ->
+        chapter.matchesChapterFilters(manga, manga.downloadedFilter, isLocalManga) {
+            downloadManager.isChapterDownloaded(
+                chapter.name,
+                chapter.scanlator,
+                chapter.url,
+                manga.title,
+                manga.source,
+            )
         }
+    }
         .sortedWith(getChapterSort(manga))
 }
 
@@ -42,12 +35,8 @@ fun List<Chapter>.applyFilters(manga: Manga, downloadManager: DownloadManager): 
  */
 fun List<ChapterList.Item>.applyFilters(manga: Manga): Sequence<ChapterList.Item> {
     val isLocalManga = manga.isLocal()
-    val unreadFilter = manga.unreadFilter
-    val downloadedFilter = manga.downloadedFilter
-    val bookmarkedFilter = manga.bookmarkedFilter
-    return asSequence()
-        .filter { (chapter) -> applyFilter(unreadFilter) { !chapter.read } }
-        .filter { (chapter) -> applyFilter(bookmarkedFilter) { chapter.bookmark } }
-        .filter { applyFilter(downloadedFilter) { it.isDownloaded || isLocalManga } }
+    return asSequence().filter { item ->
+        item.chapter.matchesChapterFilters(manga, manga.downloadedFilter, isLocalManga) { item.isDownloaded }
+    }
         .sortedWith { (chapter1), (chapter2) -> getChapterSort(manga).invoke(chapter1, chapter2) }
 }
