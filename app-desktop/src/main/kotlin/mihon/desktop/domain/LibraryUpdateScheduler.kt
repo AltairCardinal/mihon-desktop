@@ -8,8 +8,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.task.StoredTask
@@ -38,6 +38,8 @@ class LibraryUpdateScheduler(
     private val libraryProvider: (suspend () -> List<LibraryManga>)? = null,
     private val updateManga: (suspend (Manga) -> LibraryUpdateChecker.UpdateResult)? = null,
     private val autoDownload: (suspend (Manga, List<Chapter>) -> Unit)? = null,
+    private val categoryPolicy: mihon.desktop.settings.DesktopLibraryCategoryPolicy? = null,
+    private val libraryPreferences: tachiyomi.domain.library.service.LibraryPreferences? = null,
 ) {
     private val scope = scope ?: CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var schedulerJob: Job? = null
@@ -50,7 +52,8 @@ class LibraryUpdateScheduler(
     fun start(): Job = synchronized(updateLock) {
         if (schedulerJob?.isActive == true) return@synchronized requireNotNull(initialRecoveryJob)
         val registered = taskScheduler?.register(LIBRARY_UPDATE_TASK)
-        val needsInitialRecovery = registered?.status in setOf(TaskStatus.Pending, TaskStatus.Running, TaskStatus.Failed)
+        val needsInitialRecovery =
+            registered?.status in setOf(TaskStatus.Pending, TaskStatus.Running, TaskStatus.Failed)
         initialRecoveryJob = if (needsInitialRecovery) {
             scope.launch { runNow().join() }
         } else {
@@ -64,7 +67,8 @@ class LibraryUpdateScheduler(
             }
             while (true) {
                 delay(CHECK_INTERVAL_MS)
-                val intervalMs = appPreferences.libraryUpdateInterval.get().toMillis()
+                val intervalMs = libraryPreferences?.autoUpdateInterval()?.get()?.toLong()?.times(3_600_000L)
+                    ?: appPreferences.libraryUpdateInterval.get().toMillis()
                 if (intervalMs <= 0) continue
                 val now = System.currentTimeMillis()
                 if (lastRun == 0L || now - lastRun >= intervalMs) {
@@ -133,12 +137,21 @@ class LibraryUpdateScheduler(
 
     private suspend fun runLibraryUpdate(categoryId: Long?) {
         try {
+            val policy = if (categoryId == null) categoryPolicy?.snapshot() else null
             val allManga = libraryProvider?.invoke() ?: requireNotNull(getLibraryManga).await()
             val filtered = selectLibraryMangaForUpdate(
                 library = allManga,
                 categoryId = categoryId,
-                includeCategories = parseCategoryIds(appPreferences.updateCategoryIncludes.get()),
-                excludeCategories = parseCategoryIds(appPreferences.updateCategoryExcludes.get()),
+                includeCategories = if (categoryId != null) {
+                    emptySet()
+                } else {
+                    policy?.included ?: parseCategoryIds(appPreferences.updateCategoryIncludes.get())
+                },
+                excludeCategories = if (categoryId != null) {
+                    emptySet()
+                } else {
+                    policy?.excluded ?: parseCategoryIds(appPreferences.updateCategoryExcludes.get())
+                },
             )
             taskScheduler?.setWorkset(LIBRARY_UPDATE_TASK.id, filtered.map { it.manga.id })
             val snapshot = taskSnapshot()
@@ -192,7 +205,13 @@ class LibraryUpdateScheduler(
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 if (taskScheduler?.isCancelled(LIBRARY_UPDATE_TASK.id) == true) throw CancellationException()
                 if (taskScheduler?.complete(LIBRARY_UPDATE_TASK.id) == true) {
-                    taskNotifier?.notify(NotificationEvent.Success(LIBRARY_UPDATE_TASK.id, "Library updated", "$newChapters new chapters found"))
+                    taskNotifier?.notify(
+                        NotificationEvent.Success(
+                            LIBRARY_UPDATE_TASK.id,
+                            "Library updated",
+                            "$newChapters new chapters found",
+                        ),
+                    )
                 }
                 // Library update only asks the independent author discovery task to re-evaluate due
                 // work; it never runs discovery itself and never swallows its results.
@@ -234,7 +253,8 @@ class LibraryUpdateScheduler(
 
     companion object {
         const val CHECK_INTERVAL_MS = 60_000L
-        val LIBRARY_UPDATE_TASK = BackgroundTask("library-update", "library-update:scheduled", setOf(TaskConstraint.NetworkConnected))
+        val LIBRARY_UPDATE_TASK =
+            BackgroundTask("library-update", "library-update:scheduled", setOf(TaskConstraint.NetworkConnected))
     }
 }
 

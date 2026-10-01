@@ -896,11 +896,23 @@ internal fun initUILayer(
         SetMangaDefaultChapterFlags(libraryPreferences, Injekt.get(), Injekt.get()),
     )
     Injekt.addSingleton(libraryPreferences)
-    LibraryPreferenceMigration(
+    val libraryPreferenceMigration = LibraryPreferenceMigration(
         preferenceStore,
         libraryPreferences,
+        legacyUpdatePreferences = {
+            val app = Injekt.get<DesktopAppPreferences>()
+            Triple(app.updateCategoryIncludes, app.updateCategoryExcludes, app.libraryUpdateInterval)
+        },
+        validCategoryIds = {
+            kotlinx.coroutines.runBlocking {
+                Injekt.get<CategoryRepository>().getAll().map { it.id }.toSet() +
+                    0L
+            }
+        },
         legacyColumns = { Injekt.get<DesktopAppPreferences>().libraryGridColumns },
-    ).migrate()
+    )
+    libraryPreferenceMigration.migrate()
+    Injekt.addSingleton(libraryPreferenceMigration)
     val downloadPreferences = DesktopDownloadPreferences(preferenceStore)
     val downloadDirectoryPreference = downloadPreferences.downloadDirectory(paths.downloadsDir)
     val downloadDirectoryState = downloadDirectoryPreference.state()
@@ -1148,12 +1160,42 @@ private fun registerDesktopLibrary(
     Injekt.addSingleton(SetSortModeForCategory(libraryPreferences, categoryRepository))
     Injekt.addSingleton(CreateCategoryWithName(categoryRepository, libraryPreferences))
     Injekt.addSingleton(RenameCategory(categoryRepository))
-    Injekt.addSingleton(DeleteCategory(categoryRepository, libraryPreferences, Injekt.get()))
+    val categoryPreferenceOperations = kotlinx.coroutines.sync.Mutex()
+    val deleteCategory =
+        DeleteCategory(categoryRepository, libraryPreferences, Injekt.get(), categoryPreferenceOperations)
+    Injekt.addSingleton(deleteCategory)
+    val libraryCategoryPolicy = mihon.desktop.settings.DesktopLibraryCategoryPolicy(
+        preferenceStore,
+        libraryPreferences,
+        Injekt.get<GetCategories>(),
+        deleteCategory,
+        categoryPreferenceOperations,
+        applicationScope,
+        migration = Injekt.get<LibraryPreferenceMigration>(),
+    )
+    kotlinx.coroutines.runBlocking { libraryCategoryPolicy.recover() }
+    Injekt.addSingleton(libraryCategoryPolicy)
+    val resetCategoryFlags = tachiyomi.domain.category.interactor.ResetCategoryFlags(
+        libraryPreferences,
+        categoryRepository,
+    )
+    Injekt.addSingleton(resetCategoryFlags)
+    val categorySortSettings = mihon.desktop.settings.DesktopCategorySortSettings(
+        preferenceStore,
+        libraryPreferences,
+        categoryRepository,
+        resetCategoryFlags,
+        categoryPreferenceOperations,
+    )
+    kotlinx.coroutines.runBlocking { categorySortSettings.recover() }
+    Injekt.addSingleton(categorySortSettings)
     Injekt.addSingleton(ReorderCategory(categoryRepository))
     Injekt.addSingleton(
         LibraryUpdateScheduler(
             appPreferences = appPreferences,
             updateChecker = Injekt.get<LibraryUpdateChecker>(),
+            categoryPolicy = libraryCategoryPolicy,
+            libraryPreferences = libraryPreferences,
             getLibraryManga = Injekt.get<GetLibraryManga>(),
             sourceManager = Injekt.get<SourceManager>(),
             creatorDiscoveryScheduler = creatorDiscoveryScheduler,

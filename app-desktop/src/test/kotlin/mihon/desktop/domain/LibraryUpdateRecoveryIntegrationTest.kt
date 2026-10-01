@@ -1,12 +1,12 @@
 package mihon.desktop.domain
 
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -27,6 +27,49 @@ import java.nio.file.Path
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class LibraryUpdateRecoveryIntegrationTest {
     @TempDir lateinit var directory: Path
+
+    @Test
+    fun `original timer consumes shared extended interval and explicit off without legacy dual writes`() = runTest {
+        for (hours in listOf(48, 72)) {
+            val node = java.util.prefs.Preferences.userRoot().node(
+                "/mihon-test/ri12-timer-${java.util.UUID.randomUUID()}",
+            )
+            val store = tachiyomi.core.common.preference.DesktopPreferenceStore(node)
+            val preferences = tachiyomi.domain.library.service.LibraryPreferences(store)
+            val app = DesktopAppPreferences(store, node.node("desktop/app"))
+            app.libraryUpdateInterval.set(mihon.desktop.settings.LibraryUpdateInterval.OFF)
+            preferences.autoUpdateInterval().set(hours)
+            val calls = mutableListOf<Long>()
+            val scheduler = LibraryUpdateScheduler(
+                appPreferences = app,
+                updateChecker = null,
+                getLibraryManga = null,
+                sourceManager = null,
+                scope = this,
+                libraryProvider = { listOf(libraryManga(1)) },
+                updateManga = { manga ->
+                    calls += manga.id
+                    UpdateResult(0)
+                },
+                libraryPreferences = preferences,
+            )
+            try {
+                scheduler.start().join()
+                advanceTimeBy(61_000)
+                runCurrent()
+                assertEquals(listOf(1L), calls)
+                assertEquals(hours, preferences.autoUpdateInterval().get())
+                assertEquals(mihon.desktop.settings.LibraryUpdateInterval.OFF, app.libraryUpdateInterval.get())
+                preferences.autoUpdateInterval().set(0)
+                advanceTimeBy(61_000)
+                runCurrent()
+                assertEquals(listOf(1L), calls)
+            } finally {
+                scheduler.stopAndJoin()
+                node.removeNode()
+            }
+        }
+    }
 
     @Test
     fun `new instance resumes after cursor and never repeats successful manga`() = runTest {
@@ -165,9 +208,11 @@ class LibraryUpdateRecoveryIntegrationTest {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val scheduler = scheduler(directory.resolve("tasks.json"), mutableListOf(), this, delivered) { id ->
-            if (id == 3L) withContext(NonCancellable) {
-                entered.complete(Unit)
-                release.await()
+            if (id == 3L) {
+                withContext(NonCancellable) {
+                    entered.complete(Unit)
+                    release.await()
+                }
             }
             UpdateResult(1)
         }
@@ -189,10 +234,12 @@ class LibraryUpdateRecoveryIntegrationTest {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val scheduler = scheduler(directory.resolve("tasks.json"), mutableListOf(), this, delivered) { id ->
-            if (id == 3L) withContext(NonCancellable) {
-                entered.complete(Unit)
-                release.await()
-                return@withContext UpdateResult(0, error = "source failed after cancellation")
+            if (id == 3L) {
+                withContext(NonCancellable) {
+                    entered.complete(Unit)
+                    release.await()
+                    return@withContext UpdateResult(0, error = "source failed after cancellation")
+                }
             }
             UpdateResult(0)
         }
@@ -224,7 +271,10 @@ class LibraryUpdateRecoveryIntegrationTest {
             getLibraryManga = null,
             sourceManager = null,
             taskScheduler = taskScheduler,
-            taskNotifier = DesktopSystemNotifier(system = { delivered += it; true }, fallback = DesktopNotificationService()),
+            taskNotifier = DesktopSystemNotifier(system = {
+                delivered += it
+                true
+            }, fallback = DesktopNotificationService()),
             scope = this,
             libraryProvider = { listOf(libraryManga(1L)) },
             updateManga = { UpdateResult(0) },
@@ -379,9 +429,14 @@ class LibraryUpdateRecoveryIntegrationTest {
         val delivered = mutableListOf<DesktopNotification>()
         val scheduler = LibraryUpdateScheduler(
             appPreferences = DesktopAppPreferences(InMemoryPreferenceStore()),
-            updateChecker = null, getLibraryManga = null, sourceManager = null,
+            updateChecker = null,
+            getLibraryManga = null,
+            sourceManager = null,
             taskScheduler = taskScheduler,
-            taskNotifier = DesktopSystemNotifier(system = { delivered += it; true }, fallback = DesktopNotificationService()),
+            taskNotifier = DesktopSystemNotifier(system = {
+                delivered += it
+                true
+            }, fallback = DesktopNotificationService()),
             scope = this,
             libraryProvider = { error("database unavailable") },
         )
@@ -407,16 +462,27 @@ class LibraryUpdateRecoveryIntegrationTest {
             getLibraryManga = null,
             sourceManager = null,
             taskScheduler = taskScheduler,
-            taskNotifier = DesktopSystemNotifier(system = { delivered += it; true }, fallback = DesktopNotificationService()),
+            taskNotifier = DesktopSystemNotifier(system = {
+                delivered += it
+                true
+            }, fallback = DesktopNotificationService()),
             scope = scope,
             libraryProvider = { ids.map(::libraryManga) },
-            updateManga = { manga -> calls += manga.id; update(manga.id) },
+            updateManga = { manga ->
+                calls += manga.id
+                update(manga.id)
+            },
         )
     }
 
     private fun libraryManga(id: Long) = LibraryManga(
         manga = Manga.create().copy(id = id, title = "M$id", favorite = true),
-        categories = emptyList(), totalChapters = 0, readCount = 0, bookmarkCount = 0,
-        latestUpload = 0, chapterFetchedAt = 0, lastRead = 0,
+        categories = emptyList(),
+        totalChapters = 0,
+        readCount = 0,
+        bookmarkCount = 0,
+        latestUpload = 0,
+        chapterFetchedAt = 0,
+        lastRead = 0,
     )
 }

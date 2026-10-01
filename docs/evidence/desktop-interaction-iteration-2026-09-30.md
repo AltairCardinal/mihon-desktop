@@ -675,11 +675,59 @@ Android持久拒绝证据的环境边界：测试在TrackRepository接口注入I
 
 本批交付包含测试、实现、必要证据及RI11勾选的同一功能提交；formal runtime／真实账号／硬件及完整Android/Desktop、finalParityAudit、Windows/macOS构建均未执行，统一留RI18，不因尚无正式产物阻断后续RI12实施。
 
-### RI12 书架设置前置核对（只读，不代表实施完成）
+### RI12 书架设置、偏好一致性与恢复证据
+
+RI11已提交 `6ea1078420970a4d827f1a06dd72b54d7116e4b3`，开始RI12时工作树干净。继续复用1名原实施代理，3内聚簇预计3–5小时：默认分类真实持久／入库；共享包含排除完整策略发布及删除引用；分类排序实际SQL清理与旧偏好迁移有限恢复。focused红绿按当前行为、末一组精确affected／wiring／scoped，主代理独审1轮及必要修正核验1轮，root维护唯一契约／报告／manifest与提交。主要成本为真实SQLite／偏好故障及原生事件。module／full／audit／build／runtime均不在本批执行；全部实施后RI18最终一次矩阵。失败仅受影响路径诊断修复，不新增长期双存储权威或通用恢复系统。
+
+先固定DB与Preference非原子边界；共享显式有效值优先、marker最后，消费前有限恢复完整旧策略。S01／S02／S07须有实际消费者与失败反馈；S03–S06仅迁移／值域／端口，实际周期智能元数据RI14、Windows设备RI16验收，新未接线动作不能提前开放。保护RI11新收藏一次增强匹配及真实LibraryFactory DI注册次序。
 
 实际LibrarySettingsScreen仍以Desktop旧周期enum及updateCategoryExcludes CSV显示，categorizedDisplaySettings仅直接set；LibraryUpdateScheduler读取旧Desktop包含／排除CSV。共享LibraryPreferences已有默认分类、两份更新分类StringSet、周期Int、设备／作品限制、元数据和categorized_display；LibraryScreenModel的真实排序投影及设置面板已消费categorized_display。ResetCategoryFlags.await实际写全体SQL flags为全局sort.type＋direction，现设置页未调用，关闭清理需真实wiring及两存储恢复，不另建分类排序权威。
 
 实际DeleteCategory删除所选default_category并清理共享更新／下载分类引用，默认-1；MangaDetailScreenModel.addToLibraryUsingDefault已通过当前categories与共享默认决定直接入库／系统默认／选择草稿。RI12在RI08已稳定收藏入口上复用该链。LibraryPreferenceMigration VERSION2已有显示／排序／列数有效共享值优先与marker最后写，可以追加同风格迁移，不能覆盖旧明确值或让scheduler读取迁移半份策略。这里只读固定接口，无RI12实现／验证结论。
+
+`interaction-ri12-default-delete-red`于12:23:38–12:24:03 UTC FAILED／exit1。首组两项测试覆盖真实设置默认分类入口与实际SQL删除后Preference拒绝；根核实际XML12:23:59.074Z两项均为List has more than one element，DI已有系统默认0、fixture对全部SQL分类使用single，尚未到业务，不计正确红；修正仅按实际新建自定义name／ID定位后focused确认。方法标题所述既有收藏保护尚未执行，不自动计为完成。后续补真实入库／取消及旧收藏不迁移验证。
+
+`interaction-ri12-default-delete-red-valid`于12:26:14–12:26:30 UTC FAILED／exit1，根核XML12:26:25.801Z两项正确Assertion红／0跳过：实际设置没有共享默认分类控件；实际SQL删除后的StringSet拒绝以IOException从用例逸出。已修夹具使用实际自定义ID并保系统0，既有收藏真实fixture已补；红停在入口和异常捕获，后续完整选择／五引用重试／旧收藏保持尚须绿执行，不能提前外推。
+
+`interaction-ri12-delete-recovery-red`于12:29:25–12:29:39 UTC FAILED／exit1；根核XML12:29:35.690Z两项正确Assertion红／0跳过：真实重新初始化后原已删分类引用仍保留；原ID重试又执行已完成的delete，受控拒绝时返回InternalError而非完成清理。有限恢复记录须让启动先补原ID引用及顺序，不以重新删除失效对象作为恢复，也不把普通重新初始化冒充正式进程／实体存储崩溃验收。
+
+`interaction-ri12-default-delete-green`于12:32:53–12:33:30 UTC PASSED／exit0；根核协调器终态及当次XML，LibrarySettingsPolicyInteractionTest四项（12:33:23.205Z）和旧CategoryManagementScreenTest删除回归一项（12:33:27.593Z）均绿／0跳过。首簇默认分类控件与有限DeleteCategory恢复已实现，剩余策略发布／迁移／排序关闭及完整消费者故障门禁尚未实施，不外推RI12完成。主代理同一轮初审发现registerDesktopLibrary丢弃recoverPending结果，持续恢复拒绝仍可进入scheduler消费者；已交原实施者在同批策略Ready状态和现错误反馈中接线及真实wiring红绿，不扩大为整个应用退出或第二后台队列。共享新pending还需核Android实际恢复consumer与共享契约，不能仅凭Desktop启动成功声称两端一致。
+
+`interaction-ri12-android-recovery-red`于12:45:54–12:47:09 UTC FAILED／exit1；根核XML12:46:42.289Z两唯一方法因原pending未消费，默认分类预期-1／实际1正确红，既有自动重试各三次产生6条失败，不记六项。测试执行真实AndroidPreferenceStore／shared DeleteCategory、原CategoryScreenModel及App现start scope，不把JVM启动片段等同正式APK运行。实际CategoryScreen在Loading早return之后才注册events collector，恢复拒绝若保Loading会无人消费错误事件；原实施者选择有限RecoveryError及既有EmptyScreen／Retry ActionButton adapter与同用例重试，补真实Screen wiring红绿，不新增导航pop或后台恢复器。App原IOscope先恢复再现startSync；失败不启动依赖的sync，日志保真实结果；不宣称所有WorkManager／Android S02连续set都有新Desktop完整snapshot门禁。必要验证预计新增15分钟，仍本批预算内，未增代理／独审轮次／全量。
+
+`interaction-ri12-android-recovery-green`于12:57:31–12:58:31 UTC仍FAILED／exit1；代理当次回执模型5方法绿，Screen方法finally匿名父Screen缺key覆盖结果，不能记整条通过。该旧XML随后被单Screen focused替换，根不事后声称读过5模型XML。修正仅fixture固定parent key；根实际核Screen当前XML12:59:22.817Z一方法绿／0跳过，执行真实AndroidPreferenceStore／shared Delete／production CategoryScreen及普通Navigator：错误状态阻断、Back到parent、再进入、实际Retry后显示剩余分类并清原pending，构造及返回上下文正确。原生host使用已存在Robolectric／Compose test依赖，不新增平台框架，不等同正式APK验收。生产错误适配确新增同navigator的Back pop；不得继续简写为无导航调用。
+
+同轮初审实际App调用点只有onCreate启动一次startSync；恢复失败return后分类页Retry成功若无人重新启动sync，可能停用既有同步直至重启。已交原实施者核现启动者及有限完成通知后原scope一次恢复，保原scheduler和协议，不添加周期重试器；当前仅源码风险观察，须正确行为红绿后才称修复。
+
+S01无自定义边界在本场景实施／红测前核定：实际Android MangaScreenModel366–380及Desktop addToLibraryUsingDefault均对default=0或categories.isEmpty直接系统默认；-1有自定义候选才询问。定稿S01原意为暴露已有偏好与真实消费者，未明示取消此SOURCE分支，主代理据上游对齐规则保两端已有语义，补契约／最终设计边界及characterization；不能将控件名称“每次询问”外推为无候选也新增空框。-1有类取消不收藏、0／custom实际归属及旧收藏不搬仍为必做验收，没有把已失败的必要项改成不适用。
+
+`interaction-ri12-android-resume-red`于13:04:14–13:05:10 UTC FAILED／exit1，正确失败及自动retry去重数以实施代理当次回执为准，根仅核协调器而未事后读取已替换旧XML。`interaction-ri12-android-resume-green`于13:06:22–13:07:04 UTC PASSED／exit0；根读当前XML：模型两方法（13:06:45.742Z）及真实Screen一方法（13:06:54.189Z）全绿／0跳过，验证初次原scope恢复及分类重试后原sync一次恢复。根复核DeleteCategory仅新增进程内recoveryReady StateFlow，确认／恢复开始置false，全部pending为空且引用／顺序完成才true；App原IO启动协程恢复失败后一次等待该通知再原AndroidSyncScheduler.start，不自动重试、不造第二scheduler。已恢复后的既有同步被启动门禁停用问题已修复。原正确Screen红在red-valid当时尚未加入匿名parent，确到internal_error断言失败；后green parent key错误是不同夹具阶段，二者不得混为一轮失败原因。
+
+`interaction-ri12-policy-red`于13:12:37–13:13:15 UTC FAILED／exit1；根读当次XML13:13:08.920Z四方法／三正确失败／一通过／0跳过：实际scheduler未消费共享策略，期望[1]实际[1,2,3,4]；持续恢复拒绝未阻断真实update；原设置缺完整三态草稿入口。真实详情默认分类characterization已通过，覆盖有自定义时-1取消不入库、0与custom真实归属、删除默认回退及无自定义SOURCE分支，不把已绿行为算为红。`interaction-ri12-policy-green`于13:24:33–13:25:56 UTC PASSED／exit0；根核终态及当前XML13:25:50.415Z原四方法全绿／0跳过。初审继续核故障边界：当前scheduler对manual类别也读取全库策略，以及失败保存从非法旧策略补偿可能发布Ready；均交原实施者先行为红再有限修复，目前仍为待复现风险，不外推策略原子性或RI12完成。
+
+`interaction-ri12-policy-boundary-red`于13:32:09–13:32:33 UTC FAILED／exit1；根核当次XML13:32:27.379Z四方法／四失败／0跳过。manual当前分类预期更新[1]实际[]，非法旧包含排除校正拒绝后recover预期false实际true，两项为已复现业务红；已交原实施者修复，尚未确认修复完成。另两失败准确停在草稿行预期Indeterminate实际On，以及交叉恢复后的最终用户确认预期空／空实际包含[2]／空；后者此前两次启动不复活旧ID、不自动扩为全库的断言已通过，不能将最后草稿失败记为恢复断言失败。真实事件目标／渲染或业务三态原因待原实施者诊断，不把未明确夹具原因的失败自动计为正确红。
+
+`interaction-ri12-policy-opening-red`于13:49:25–13:50:39 UTC FAILED／exit1；根核XML13:50:27.733Z五方法／两通过／三正确UI断言失败／0跳过。原非法策略校正及manual分类两项已绿：manual不读全库include/exclude，保存前旧策略非法性进入有限requires-choice记录，拒绝后不能变有效。两个弹窗方法新增编辑前真实行状态断言，持久include预期On实际Off、恢复exclude预期Indeterminate实际Off；此前最终点击差异从此初态产生，不记为恢复不变量失败。原三态方法新增两集合重叠行：Exclude优先显示后一次点击预期Off实际On，确认清两侧的正确红。初审观察首次categories列表空而showEditor裁剪raw，原实施者将用实际Repository延迟首发定点验证，并在同入口首快照前阻断／延迟编辑，不仅预先等测试以掩盖真实加载窗口。当前整条命令仍失败，不算整组全绿或RI12完成。
+
+首发延迟 `interaction-ri12-category-first-snapshot-red`于13:51:48–13:52:04 UTC为编译失败：Flow缺emitAll导致类型推断失败，未到业务、不计红。`...red-valid`于13:53:10–13:53:40 UTC FAILED／exit1；代理当次XML13:53:32.627Z一项正确Disabled断言红（首发前入口应禁用、实际未禁用）。根核协调器终态，但随后XML已由下一组替换，不事后声称读取旧红XML。`interaction-ri12-policy-boundary-green`当前XML13:55:28.586Z四项全绿／0跳过，根实际读取；包含实际Repository首发门闩、草稿初态／保存前后拒绝、旧journal与删除跨两次初始化、重叠三态。原生产categoriesLoaded首个真实Flow快照前阻断点击／键盘激活，之后从真实集合建完整草稿；Indeterminate点击同时清包含与排除，两项UI bug已修复。该组加前opening复用两范围绿仍仅覆盖第二簇；排序与迁移、共享契约／search／native及末组affected待完成，不能将四项绿记全RI12验收。
+
+第三簇固定最小S03端口：原0／6／12／24／168小时控件及定时触发读写shared autoUpdateInterval，保旧能力且不长期双写旧enum；显式48／72合法值保持真实值／摘要，暂不新增选项，完整周期／时钟／智能／元数据仍RI14。`interaction-ri12-sort-migration-red`于14:04:15–14:04:48 UTC FAILED／exit1；根核实际当前XML：迁移14:04:40.524Z三方法两红一过，marker2未升级使实际import／retry返回false，72与显式空保护已有绿，不算三红；排序14:04:40.823Z两正确红，SQLflags预期64实际12，重置拒绝后分类开关预期保持true实际false。合五方法／四失败／一通过／0跳过。失败方法仍需绿执行后续值与故障断言，不能只凭返回值红宣称其余已覆盖。
+
+原实施代理于此后发生模型capacity错误、非构建故障；根确认上述Gradle已结束并保现diff与证据，按原代理／模型恢复一次，不新增代理，不重跑旧组。恢复传递当前diff、新红位置、终态与原3–5h预算，主代理仅独立读审／文档。共享Android实际LibraryUpdateJob直接读取分类两键、现没有pending恢复门禁是新增影响范围观察；原App sync／Category门禁不能外推全部WorkManager链已恢复，已交原实施者核现fixture与最小消费者接线成本，尚无此链修复结论。
+
+`interaction-ri12-migration-sort-boundaries`于14:25:54–14:28:31 UTC FAILED／exit1；根核当次XML：Migration14:28:18.833Z三方法全绿／0跳过，旧6h／完整CSV／显式空与72保护、exclude写前写后拒绝后原raw恢复及重试实际执行；该故障方法首次红只停VERSION2无升级，现绿不能据此捏造曾到故障断言的红。PolicyInteraction14:28:19.103Z四方法一过三失败／0跳过，SQL重置拒绝与SQL提交后错误现已绿；新增偏好写后错误仍关闭、删除记录写后失败恢复跳过ack两项为正确业务红。普通排序方法失败为UI等待超时；原实施者诊断实际偏好已false而第二click捕获尚未重组旧checked，改先等待真实Off语义再重开，保SQL与偏好断言，后续复验。不能将七项整条记通过。共享锁内migration完整门禁、实例同步及恢复前再次ack已初审读取；新增偏好／pending错误尚待修正绿，不外推全部journal崩溃／未知周期／AndroidJob验收。
+
+后续focused终态均按原协调器记录保留：`recovery-consumers` 14:34:25–14:37:33 FAILED；`migration-consumer-boundaries` 14:40:52–14:42:31 FAILED，其中实际Android Worker及marker／未知周期已绿，并发fixture临时移除新实例同步保护作真实敏感性红，第一写入仍受门闩时第二调用已越过，随后恢复同步并绿。不能把此红描述成此前VERSION2已执行V3恢复。`native-search-gate-red-valid` 14:53:40–14:56:27 FAILED，新default写前写后／native／并发三项绿；未索引三title与临时移除migration门禁后的实际DI半策略Ready为两正确红，已恢复门禁及真实catalog／anchor。上述旧XML被后续focused替换，根核协调器记录及实施者当次回执，不事后声称读过所有原红XML。
+
+`native-search-green` 15:07:14–15:08:04仅compileTest失败：新增Modifier末参破坏原trailing callback，改回callback末参／内部显式命名，保旧测试；`...green-valid` 15:16:54–15:18:00四项两绿两失败，新Root搜索／持久迁移门禁已绿，旧relaxed mock为新增nullable依赖制造Object→State ClassCast，显式stub null后保原搜索／写回断言。`...repair` 15:19:47–15:20:39旧搜索绿、native失败；`native-migration-final` 15:22:15–15:22:54迁移桥接与RAM journal重新ack两项绿、native失败；`native-focus-diagnostic` 15:24:29–15:25:05及`native-background-diagnostic` 15:26:36–15:27:16保失败。原新测试对背景pointer必须统一关闭或保持owner数的假设不属于固定契约，真实观察为更新弹层可关闭、默认弹层可保持，均不能执行父Back；改为实际背景隔离及Escape关闭一层，未改固定要求为不适用。最后default背景pointer后Escape失败证实缺focusable宿主，最小沿既有dialog模式加首帧焦点。`native-focus-green` 15:28:27–15:29:21 PASSED，完整双向Tab闭环、Space、30分类末项、320→300→320resize保焦点／滚动、背景父Back隔离、Escape关闭一层／还原入口焦点全绿，后在affected再次有效执行。
+
+原 `format-apply` 15:31:38–15:32:11 FAILED保留：五长行不可自动修，缓存同版本ktlint明确输出后只缩短三新方法名及分行，局部CLI退出0。`interaction-ri12-affected` 15:36:09–15:39:16 FAILED／exit1，实际66方法64通过／两失败／0跳过（Desktop53中51通过、domain4及Android9通过）。新timer fixture的InMemoryPreferenceStore每次getInt新对象，设48后读0；改隔离真实DesktopPreferenceStore。旧Root刷新fixture仍写不再权威的旧CSV，期望[4]实际[1,2,3,4]；改调用实际policy.save原范围，保搜索不裁剪、manual分类、导航及阻止重复／原ID断言。均为fixture修正，无production变更。`interaction-ri12-affected-repair` 15:42:41–15:43:23 PASSED／exit0，仅上述两方法及25K／2XML scopedCheck，当前XML15:43:14.738Z和15:43:15.124Z两绿／0跳过。根读原affected归档13套有效结果与当前修复结果按class／method去重：**66全绿（Desktop53、domain4、Android9），0失败／0跳过**；未把重复红／自动retry计为新方法。原归档保失败事实，scopedSpotlessCheck和git diff --check通过。没有追加module／full／finalParityAudit／正式构建。
+
+主代理同一初审与必要修正核验已关闭具体边界：共享Delete写前再次ack／已提交SQL不重复／五引用与顺序、Android App有限恢复通知及实际Category错误／Retry／普通Navigator Back、实际Worker恢复拒绝→既有retry／允许后真实HTTP＋SQL；Desktop完整旧策略发布、异常旧值显式选择、删除与旧journal两次初始化不复活／不自动扩全库、手动范围不读全库策略；S07实际ResetCategoryFlags＋失败原开启／原排序位恢复；V3完整raw／isSet记录、marker写前写后／恢复拒绝、lazy旧desktop/app桥接、实例串行／共享锁门禁、非法周期0及有效选择解除说明。共享contract采用repository seam执行真实Delete，不冒称其fake repository是SQLite；实际SQL证据由Desktop和AndroidWorker集成补足。没有全局恢复平台或长期双写。未设置限制清为旧Desktop不施加门槛，显式用户选择保留；现Library自定义周期筛选gate确消费同智能键，其SOURCE未设置默认在本迁移后不自动施加，不宣称此前该gate从未存在。
+
+root已实际查看本批两张PNG：`docs/evidence/desktop-interaction-native/ri12-update-categories-light-320-font200.png`和`ri12-default-category-dark-320-font200.png`，Windows／JDK21／Compose1.10.2／Skia离屏，英文、320×680、density1、fontScale2，长列表末端及按钮可见；一浅更新／一深默认，不能外推每场景两主题或物理DPI验收。无屏幕像素读取，无正式runtime／账号／硬件验收。25K＋2XML与两PNG围绕同一设置／分类一致性及跨端消费者；超过Estimated scope的内聚性为共享锁、有限恢复与真实DI／SQL／事件须一同交付，风险集中写前ack、补偿与重新初始化。旧测试必要格式变动保留，不以文件数拆不可独立验收上下文。
+
+manifest仅局部更新capability10／16／17／22／90的真实路径／方法／角色与范围，修当前定位4处行漂移；根只读核323 current locators、全部64capability、状态／FIXED_ORIGINAL／actionInventory原值保持。这是索引维护，不作源码扫描替代行为验证，也未执行最终audit。S01／S02／S07本批完成，S03–S06为迁移／值域／原能力端口，完整时钟／智能／元数据RI14、Windows条件RI16。RI12勾选与测试／实现／证据同功能提交；后续RI13继续，不以本批66绿外推整个roadmap完成。
 
 ### RI13 目录同步前置核对（只读，不代表实施完成）
 

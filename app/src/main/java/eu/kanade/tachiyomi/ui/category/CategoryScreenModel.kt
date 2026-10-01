@@ -33,7 +33,17 @@ class CategoryScreenModel(
     val events = _events.receiveAsFlow()
 
     init {
+        retryRecovery()
+    }
+
+    fun retryRecovery() {
         screenModelScope.launch {
+            mutableState.value = CategoryScreenState.Loading
+            if (deleteCategory.recoverPending() is DeleteCategory.Result.InternalError) {
+                mutableState.value = CategoryScreenState.RecoveryError
+                _events.send(CategoryEvent.InternalError)
+                return@launch
+            }
             getCategories.subscribe()
                 .collectLatest { categories ->
                     mutableState.update {
@@ -86,7 +96,7 @@ class CategoryScreenModel(
     fun showDialog(dialog: CategoryDialog) {
         mutableState.update {
             when (it) {
-                CategoryScreenState.Loading -> it
+                CategoryScreenState.Loading, CategoryScreenState.RecoveryError -> it
                 is CategoryScreenState.Success -> it.copy(dialog = dialog)
             }
         }
@@ -95,7 +105,7 @@ class CategoryScreenModel(
     fun dismissDialog() {
         mutableState.update {
             when (it) {
-                CategoryScreenState.Loading -> it
+                CategoryScreenState.Loading, CategoryScreenState.RecoveryError -> it
                 is CategoryScreenState.Success -> it.copy(dialog = null)
             }
         }
@@ -117,6 +127,9 @@ sealed interface CategoryScreenState {
 
     @Immutable
     data object Loading : CategoryScreenState
+
+    @Immutable
+    data object RecoveryError : CategoryScreenState
 
     @Immutable
     data class Success(

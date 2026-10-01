@@ -1,0 +1,1490 @@
+package mihon.desktop.ui.settings
+
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.InternalComposeUiApi
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asSkiaBitmap
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.input.InputModeManager
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.nativeKeyLocation
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.PlatformContext
+import androidx.compose.ui.platform.WindowInfo
+import androidx.compose.ui.scene.CanvasLayersComposeScene
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsOwner
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntSize
+import cafe.adriel.voyager.navigator.CurrentScreen
+import cafe.adriel.voyager.navigator.Navigator
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.domain.LibraryUpdateChecker
+import mihon.desktop.domain.LibraryUpdateScheduler
+import mihon.desktop.settings.DesktopLibraryCategoryPolicy
+import mihon.desktop.ui.library.MangaDetailScreen
+import mihon.desktop.ui.theme.DesktopTheme
+import org.junit.jupiter.api.Assertions.assertDoesNotThrow
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.parallel.Isolated
+import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.core.common.preference.Preference
+import tachiyomi.core.common.preference.PreferenceStore
+import tachiyomi.domain.category.interactor.DeleteCategory
+import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.category.repository.CategoryRepository
+import tachiyomi.domain.download.service.DownloadPreferences
+import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.repository.LibraryMembershipUpdate
+import tachiyomi.domain.manga.repository.MangaRepository
+import tachiyomi.i18n.MR
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
+import java.io.File
+import java.io.IOException
+import java.util.UUID
+import java.util.prefs.Preferences
+import kotlin.coroutines.CoroutineContext
+import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
+
+@OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class, ExperimentalCoroutinesApi::class)
+@Isolated
+class LibrarySettingsPolicyInteractionTest {
+    @Test
+    fun `shared extended interval shows its actual hours and a valid legacy option corrects the migration warning`(
+        @TempDir root: File,
+    ) = runBlocking {
+        for (hours in listOf(48, 72)) {
+            withSettings(File(root, hours.toString())) { scene ->
+                val preferences = Injekt.get<LibraryPreferences>()
+                val app = Injekt.get<mihon.desktop.settings.DesktopAppPreferences>()
+                preferences.autoUpdateInterval().set(hours)
+                app.libraryUpdateInterval.set(mihon.desktop.settings.LibraryUpdateInterval.OFF)
+                app.libraryUpdateIntervalMigrationInvalid.set(true)
+                scene.mountLibrary()
+                scene.renderUntil { scene.text().any { it.endsWith(": $hours h") } }
+                assertTrue(scene.text().contains(MR.strings.desktop_library_update_interval_invalid.localized()))
+                scene.click(MR.strings.update_6hour.localized())
+                scene.renderUntil {
+                    preferences.autoUpdateInterval().get() == 6 &&
+                        !app.libraryUpdateIntervalMigrationInvalid.get()
+                }
+                assertEquals(mihon.desktop.settings.LibraryUpdateInterval.OFF, app.libraryUpdateInterval.get())
+                assertFalse(scene.text().contains(MR.strings.desktop_library_update_interval_invalid.localized()))
+            }
+        }
+    }
+
+    @Test
+    fun `new library settings search enters actual Root destinations and highlights their persistent controls`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withSettings(root) { scene ->
+            val repository = Injekt.get<CategoryRepository>()
+            repository.insert(Category(0, "Search actual", 0, 12))
+            val category = repository.getAll().single { it.name == "Search actual" }
+            val preferences = Injekt.get<LibraryPreferences>()
+            preferences.categorizedDisplaySettings().set(true)
+            scene.mountSettings()
+            scene.renderUntil { scene.text().contains(MR.strings.action_search_settings.localized()) }
+            val titles = listOf(
+                MR.strings.default_category.localized(),
+                MR.strings.categories.localized(),
+                MR.strings.categorized_display_settings.localized(),
+            )
+            for (title in titles) {
+                scene.click(MR.strings.action_search_settings.localized())
+                scene.renderUntil { scene.nodes().any { it.config.contains(SemanticsActions.SetText) } }
+                scene.setText(title)
+                scene.renderUntil { true }
+                assertTrue(
+                    scene.nodes().any {
+                        title in scene.labels(it) && it.config.contains(SemanticsActions.OnClick)
+                    },
+                    "Search must expose the actual new library preference",
+                )
+                scene.click(title)
+                scene.renderUntil {
+                    scene.nodes().any { it.config.getOrElse(DesktopSettingsAnchorHighlighted) { false } }
+                }
+                val highlighted = scene.nodes().single {
+                    it.config.getOrElse(DesktopSettingsAnchorHighlighted) { false }
+                }
+                assertTrue(title in scene.labels(highlighted))
+                when (title) {
+                    titles[0] -> {
+                        scene.click(title)
+                        scene.renderUntil { scene.text().contains(category.name) }
+                        scene.click(category.name)
+                        scene.renderUntil { preferences.defaultCategory().get() == category.id.toInt() }
+                    }
+                    titles[1] -> {
+                        scene.renderUntil { scene.categoryEntryReady() }
+                        scene.click(title)
+                        scene.renderUntil { scene.text().contains(MR.strings.action_cancel.localized()) }
+                        scene.click(category.name)
+                        scene.click(MR.strings.action_ok.localized())
+                        scene.renderUntil { preferences.updateCategories().get() == setOf(category.id.toString()) }
+                    }
+                    else -> {
+                        scene.click(title)
+                        scene.renderUntil { !preferences.categorizedDisplaySettings().get() }
+                        assertEquals(
+                            preferences.sortingMode().get().flag,
+                            requireNotNull(repository.get(category.id)).flags,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `default category dialog preserves unset authority on pre and post write failures and retry`(
+        @TempDir root: File,
+    ) = runBlocking {
+        for (afterWrite in listOf(false, true)) {
+            var reject = false
+            withSettings(File(root, "default-" + afterWrite), storeAdapter = { actual ->
+                object : PreferenceStore by actual {
+                    override fun getInt(key: String, defaultValue: Int): Preference<Int> {
+                        val preference = actual.getInt(key, defaultValue)
+                        return object : Preference<Int> by preference {
+                            override fun set(value: Int) {
+                                if (reject && key == "default_category") {
+                                    reject = false
+                                    if (afterWrite) preference.set(value)
+                                    throw IOException("Default category write refused")
+                                }
+                                preference.set(value)
+                            }
+                        }
+                    }
+                }
+            }) { scene ->
+                val repository = Injekt.get<CategoryRepository>()
+                repository.insert(Category(0, "Default retry", 0, 0))
+                val category = repository.getAll().single { it.name == "Default retry" }
+                val preference = Injekt.get<LibraryPreferences>().defaultCategory()
+                scene.mountLibrary()
+                scene.renderUntil(message = "category entry ready") { scene.categoryEntryReady() }
+                scene.click(MR.strings.default_category.localized())
+                scene.renderUntil { scene.text().contains(category.name) }
+                scene.click(MR.strings.default_category_summary.localized())
+                scene.renderUntil { true }
+                assertTrue(
+                    scene.text().contains(MR.strings.action_cancel.localized()),
+                    "Current choice does not close or write",
+                )
+                assertFalse(preference.isSet())
+                reject = true
+                scene.click(category.name)
+                scene.renderUntil { scene.text().contains(MR.strings.internal_error.localized()) }
+                assertEquals(-1, preference.get())
+                assertFalse(preference.isSet())
+                scene.click(category.name)
+                scene.renderUntil { preference.get() == category.id.toInt() }
+                assertTrue(preference.isSet())
+            }
+        }
+    }
+
+    @Test
+    fun `native category dialogs at 320 font200 keep scrolling keyboard modal isolation and Escape focus return`(
+        @TempDir root: File,
+    ) = runBlocking {
+        for (defaultDialog in listOf(false, true)) {
+            withSettings(File(root, "native-" + defaultDialog), size = IntSize(320, 680), fontScale = 2f) { scene ->
+                val repository = Injekt.get<CategoryRepository>()
+                repeat(30) { repository.insert(Category(0, "Category " + (it + 1), it.toLong(), 0)) }
+                Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().themeMode.set(
+                    if (defaultDialog) {
+                        eu.kanade.domain.ui.model.ThemeMode.DARK
+                    } else {
+                        eu.kanade.domain.ui.model.ThemeMode.LIGHT
+                    },
+                )
+                val preference = Injekt.get<LibraryPreferences>()
+                scene.mountLibrary(withParent = true)
+                scene.renderUntil(message = "Native stage 11: default=$defaultDialog") { scene.categoryEntryReady() }
+                val title = if (defaultDialog) {
+                    MR.strings.default_category.localized()
+                } else {
+                    MR.strings.categories.localized()
+                }
+                scene.requestFocus(title)
+                scene.key(Key.Spacebar)
+                scene.renderUntil(message = "Native stage 15: default=$defaultDialog") { scene.ownerCount() == 2 }
+                for (shift in listOf(false, true)) {
+                    scene.requestFocus(MR.strings.action_cancel.localized())
+                    scene.renderUntil(message = "Native stage 18: default=$defaultDialog") {
+                        scene.activeFocused()?.let {
+                            MR.strings.action_cancel.localized() in
+                                scene.labels(it)
+                        } ==
+                            true
+                    }
+                    val start = requireNotNull(scene.activeFocused()).id
+                    val visited = mutableSetOf<Int>()
+                    var closedLoop = false
+                    for (step in 0 until 80) {
+                        scene.key(Key.Tab, shift = shift)
+                        scene.renderUntil(message = "Native stage 24: default=$defaultDialog") {
+                            scene.activeFocused() !=
+                                null
+                        }
+                        val focused = requireNotNull(scene.activeFocused())
+                        visited += focused.id
+                        if (focused.id == start && visited.size > 1) {
+                            closedLoop = true
+                            break
+                        }
+                    }
+                    assertTrue(
+                        closedLoop && visited.size >= 3,
+                        "Native Tab and Shift+Tab must complete their dialog focus loop",
+                    )
+                }
+                val lazy = scene.activeNodes().single { it.config.contains(SemanticsActions.ScrollToIndex) }
+                val lastIndex = if (defaultDialog) 31 else 30
+                assertTrue(requireNotNull(lazy.config[SemanticsActions.ScrollToIndex].action).invoke(lastIndex))
+                scene.renderUntil(message = "Native stage 34: default=$defaultDialog") {
+                    scene.activeNodes().any {
+                        "Category 30" in
+                            scene.labels(it) &&
+                            it.boundsInRoot != Rect.Zero
+                    }
+                }
+                val last = scene.activeNodes().last {
+                    "Category 30" in scene.labels(it) &&
+                        it.config.contains(SemanticsActions.OnClick)
+                }
+                assertTrue(last.boundsInRoot.left >= 0 && last.boundsInRoot.right <= 320)
+                assertTrue(last.boundsInRoot.top >= 0 && last.boundsInRoot.bottom <= 680)
+                val cancel = scene.activeNodes().last {
+                    MR.strings.action_cancel.localized() in scene.labels(it) &&
+                        it.config.contains(SemanticsActions.OnClick)
+                }
+                assertTrue(cancel.boundsInRoot != Rect.Zero && cancel.boundsInRoot.bottom <= 680)
+                scene.requestFocus(MR.strings.action_cancel.localized())
+                scene.renderUntil(message = "Native stage 41: default=$defaultDialog") { scene.activeFocused() != null }
+                scene.resize(300, 620)
+                scene.renderUntil(message = "Cancel focus survives resize") {
+                    scene.activeFocused()?.let {
+                        MR.strings.action_cancel.localized() in
+                            scene.labels(it)
+                    } ==
+                        true
+                }
+                assertEquals(2, scene.ownerCount())
+                assertTrue(
+                    scene.activeNodes().any {
+                        "Category 30" in scene.labels(it) && it.boundsInRoot != Rect.Zero
+                    },
+                )
+                scene.resize(320, 680)
+                scene.renderUntil(message = "Native stage 47: default=$defaultDialog") {
+                    scene.activeNodes().any {
+                        "Category 30" in
+                            scene.labels(it) &&
+                            it.boundsInRoot != Rect.Zero
+                    }
+                }
+                scene.savePng(
+                    File(
+                        System.getenv("MIHON_RI12_VISUAL_DIR") ?: File(root, "visual").absolutePath,
+                        if (defaultDialog) {
+                            "ri12-default-category-dark-320-font200.png"
+                        } else {
+                            "ri12-update-categories-light-320-font200.png"
+                        },
+                    ),
+                )
+                scene.key(Key.Escape)
+                scene.renderUntil(message = "Escape closes modal") { scene.ownerCount() == 1 }
+                scene.renderUntil(message = "Escape returns focus to original trigger") {
+                    scene.nodes().any {
+                        title in
+                            scene.labels(it) &&
+                            it.config.getOrElse(SemanticsProperties.Focused) { false }
+                    }
+                }
+                assertEquals(-1, preference.defaultCategory().get())
+                assertTrue(preference.updateCategories().get().isEmpty())
+                assertTrue(preference.updateCategoriesExclude().get().isEmpty())
+                scene.key(Key.Escape)
+                scene.renderUntil(message = "Native stage 57: default=$defaultDialog") { true }
+                assertEquals(1, scene.ownerCount(), "Escape closes one modal only")
+                assertTrue(scene.navigator.lastItem is LibrarySettingsScreen)
+                scene.key(Key.Spacebar)
+                scene.renderUntil(message = "Native stage 61: default=$defaultDialog") { scene.ownerCount() == 2 }
+                val backgroundBack = scene.nodes().first {
+                    MR.strings.action_bar_up_description.localized() in scene.labels(it) &&
+                        it.config.contains(SemanticsActions.OnClick)
+                }
+                scene.pointerClick(backgroundBack.boundsInRoot.center)
+                scene.renderUntil { true }
+                assertTrue(
+                    scene.navigator.lastItem is LibrarySettingsScreen,
+                    "The modal backdrop must not execute the background Back action",
+                )
+                assertEquals(-1, preference.defaultCategory().get())
+                assertTrue(preference.updateCategories().get().isEmpty())
+                scene.key(Key.Escape)
+                scene.renderUntil(message = "Native stage 71: default=$defaultDialog") { scene.ownerCount() == 1 }
+            }
+        }
+    }
+
+    @Test
+    fun `persistent migration recovery refusal blocks real scheduler across restart until a complete retry`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val node = Preferences.userRoot().node("mihon-tests/migration-gate-" + UUID.randomUUID())
+        val actual = DesktopPreferenceStore(node)
+        var reject = false
+        val store = object : PreferenceStore by actual {
+            override fun getString(key: String, defaultValue: String): Preference<String> {
+                val preference = actual.getString(key, defaultValue)
+                return object : Preference<String> by preference {
+                    override fun delete() {
+                        if (reject &&
+                            key == "library_update_categories"
+                        ) {
+                            throw IOException("Original scope restoration refused")
+                        }
+                        preference.delete()
+                    }
+                }
+            }
+            override fun getStringSet(key: String, defaultValue: Set<String>): Preference<Set<String>> {
+                val preference = actual.getStringSet(key, defaultValue)
+                return object : Preference<Set<String>> by preference {
+                    override fun set(value: Set<String>) {
+                        if (reject &&
+                            key == "library_update_categories_exclude"
+                        ) {
+                            throw IOException("New scope write refused")
+                        }
+                        preference.set(value)
+                    }
+                }
+            }
+        }
+        val updated = mutableListOf<Long>()
+        var context = initDesktopDIForTest(root, actual, startDownloadWorker = false)
+        try {
+            val categories = Injekt.get<CategoryRepository>()
+            categories.insert(Category(0, "Import include", 0, 0))
+            categories.insert(Category(0, "Import exclude", 1, 0))
+            val a = categories.getAll().single { it.name == "Import include" }.id
+            val b = categories.getAll().single { it.name == "Import exclude" }.id
+            val repository = Injekt.get<MangaRepository>()
+            val manga = repository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 0, url = "/migration", title = "Migration scope")),
+            ).single()
+            repository.updateAtomically(LibraryMembershipUpdate(manga.id, true, 100, listOf(a)))
+            context.closeAndJoin()
+            actual.getStringSet("library_update_categories", emptySet()).delete()
+            actual.getStringSet("library_update_categories_exclude", emptySet()).delete()
+            actual.getString("update_category_includes", "").set(a.toString())
+            actual.getString("update_category_excludes", "").set(b.toString())
+            actual.getInt(mihon.desktop.settings.LibraryPreferenceMigration.MARKER_KEY, 0).set(2)
+            reject = true
+            repeat(2) {
+                context = initDesktopDIForTest(root, store, startDownloadWorker = false, updateManga = {
+                    updated += it.id
+                    LibraryUpdateChecker.UpdateResult(0)
+                })
+                assertFalse(Injekt.get<mihon.desktop.settings.LibraryPreferenceMigration>().isComplete())
+                assertEquals(
+                    DesktopLibraryCategoryPolicy.State.Unavailable(true),
+                    Injekt.get<DesktopLibraryCategoryPolicy>().state.value,
+                )
+                Injekt.get<LibraryUpdateScheduler>().runNow().join()
+                assertTrue(updated.isEmpty(), "A half-imported policy must not be consumed on either startup")
+                if (it == 0) context.closeAndJoin()
+            }
+            reject = false
+            assertTrue(Injekt.get<DesktopLibraryCategoryPolicy>().recover())
+            assertEquals(
+                DesktopLibraryCategoryPolicy.Snapshot(setOf(a), setOf(b)),
+                Injekt.get<DesktopLibraryCategoryPolicy>().snapshot(),
+            )
+            Injekt.get<LibraryUpdateScheduler>().runNow().join()
+            assertEquals(listOf(manga.id), updated)
+            assertEquals(a.toString(), actual.getString("update_category_includes", "").get())
+            assertEquals(b.toString(), actual.getString("update_category_excludes", "").get())
+        } finally {
+            context.closeAndJoin()
+            node.removeNode()
+        }
+    }
+
+    @Test
+    fun `category sorting preference pre and post write errors restore enabled and its original SQL sorts`(
+        @TempDir root: File,
+    ) = runBlocking {
+        for (afterWrite in listOf(false, true)) {
+            var reject = false
+            withSettings(File(root, "sort-preference-$afterWrite"), storeAdapter = { actual ->
+                object : PreferenceStore by actual {
+                    override fun getBoolean(key: String, defaultValue: Boolean): Preference<Boolean> {
+                        val preference = actual.getBoolean(key, defaultValue)
+                        return object : Preference<Boolean> by preference {
+                            override fun set(value: Boolean) {
+                                if (reject && key == "categorized_display") {
+                                    reject = false
+                                    if (afterWrite) preference.set(value)
+                                    throw IOException("Rejected category sorting preference")
+                                }
+                                preference.set(value)
+                            }
+                        }
+                    }
+                }
+            }) { scene ->
+                val repository = Injekt.get<CategoryRepository>()
+                repository.insert(Category(0, "Sort preference", 0, 12))
+                val category = repository.getAll().single { it.name == "Sort preference" }
+                val preferences = Injekt.get<LibraryPreferences>()
+                preferences.categorizedDisplaySettings().set(true)
+                scene.mountLibrary()
+                val title = MR.strings.categorized_display_settings.localized()
+                scene.renderUntil { scene.text().contains(title) }
+                reject = true
+                scene.click(title)
+                scene.renderUntil { scene.text().contains(MR.strings.internal_error.localized()) }
+                assertTrue(
+                    preferences.categorizedDisplaySettings().get(),
+                    "Reported failure keeps the original preference enabled",
+                )
+                assertEquals(12L, requireNotNull(repository.get(category.id)).flags)
+                scene.click(title)
+                scene.renderUntil { !preferences.categorizedDisplaySettings().get() }
+                assertEquals(preferences.sortingMode().get().flag, requireNotNull(repository.get(category.id)).flags)
+            }
+        }
+    }
+
+    @Test
+    fun `confirmed deletion reacknowledges a pending ID that only reached memory after failed flush`(
+        @TempDir root: File,
+    ) = runBlocking {
+        var reject = false
+        withSettings(root, storeAdapter = { actual ->
+            object : PreferenceStore by actual {
+                override fun getStringSet(key: String, defaultValue: Set<String>): Preference<Set<String>> {
+                    val preference = actual.getStringSet(key, defaultValue)
+                    return object : Preference<Set<String>> by preference {
+                        override fun set(value: Set<String>) {
+                            preference.set(value)
+                            if (reject &&
+                                key == Preference.appStateKey("category_deletion_pending")
+                            ) {
+                                throw IOException("Pending flush rejected")
+                            }
+                        }
+                    }
+                }
+            }
+        }) { _ ->
+            val repository = Injekt.get<CategoryRepository>()
+            repository.insert(Category(0, "Acknowledgment actual", 0, 0))
+            val category = repository.getAll().single { it.name == "Acknowledgment actual" }
+            val delete = Injekt.get<DeleteCategory>()
+            reject = true
+            assertTrue(delete.await(category.id) is DeleteCategory.Result.InternalError)
+            assertTrue(repository.get(category.id) != null)
+            assertTrue(delete.recoverPending() is DeleteCategory.Result.InternalError)
+            assertTrue(
+                repository.get(category.id) != null,
+                "A RAM pending ID cannot authorize SQL while its acknowledgement still fails",
+            )
+            assertTrue(delete.await(category.id) is DeleteCategory.Result.InternalError)
+            assertTrue(repository.get(category.id) != null)
+            reject = false
+            assertEquals(DeleteCategory.Result.Success, delete.recoverPending())
+            assertEquals(null, repository.get(category.id))
+        }
+    }
+
+    @Test
+    fun `disabling category sorting resets actual SQL flags before switching the shared preference`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withSettings(root) { scene ->
+            val repository = Injekt.get<CategoryRepository>()
+            repository.insert(Category(0, "Sort actual", 0, 12))
+            val category = repository.getAll().single { it.name == "Sort actual" }
+            val preferences = Injekt.get<LibraryPreferences>()
+            preferences.categorizedDisplaySettings().set(true)
+            preferences.randomSortSeed().set(19)
+            val originalDisplay = preferences.displayMode().get()
+            val originalSort = preferences.sortingMode().get()
+            scene.mountLibrary()
+            val title = MR.strings.categorized_display_settings.localized()
+            scene.renderUntil { scene.text().contains(title) }
+            scene.click(title)
+            scene.renderUntil {
+                !preferences.categorizedDisplaySettings().get() &&
+                    scene.categoryState(title) == androidx.compose.ui.state.ToggleableState.Off
+            }
+            assertEquals(originalSort.flag, requireNotNull(repository.get(category.id)).flags)
+            assertEquals(originalSort, preferences.sortingMode().get())
+            assertEquals(originalDisplay, preferences.displayMode().get())
+            assertEquals(19, preferences.randomSortSeed().get())
+            scene.click(title)
+            scene.renderUntil { preferences.categorizedDisplaySettings().get() }
+            assertEquals(
+                originalSort.flag,
+                requireNotNull(repository.get(category.id)).flags,
+                "Re-enabling cannot revive the old category sort",
+            )
+        }
+    }
+
+    @Test
+    fun `SQL reset rejection and post commit error keep category sorting enabled and retryable`(
+        @TempDir root: File,
+    ) = runBlocking {
+        for (afterCommit in listOf(false, true)) {
+            var reject = true
+            withSettings(File(root, "reset-$afterCommit"), categoryAdapter = { actual ->
+                object : CategoryRepository by actual {
+                    override suspend fun updateAllFlags(flags: Long?) {
+                        if (reject) {
+                            reject = false
+                            if (afterCommit) actual.updateAllFlags(flags)
+                            throw IOException("Actual reset rejected")
+                        }
+                        actual.updateAllFlags(flags)
+                    }
+                }
+            }) { scene ->
+                val repository = Injekt.get<CategoryRepository>()
+                repository.insert(Category(0, "Sort retry", 0, 12))
+                val category = repository.getAll().single { it.name == "Sort retry" }
+                val preferences = Injekt.get<LibraryPreferences>()
+                preferences.categorizedDisplaySettings().set(true)
+                scene.mountLibrary()
+                val title = MR.strings.categorized_display_settings.localized()
+                scene.renderUntil { scene.text().contains(title) }
+                scene.click(title)
+                scene.renderUntil { scene.text().contains(MR.strings.internal_error.localized()) }
+                assertTrue(
+                    preferences.categorizedDisplaySettings().get(),
+                    "A rejected reset must not disable category sorting",
+                )
+                assertTrue(scene.text().contains(MR.strings.internal_error.localized()))
+                assertEquals(12L, requireNotNull(repository.get(category.id)).flags)
+                scene.click(title)
+                scene.renderUntil { !preferences.categorizedDisplaySettings().get() }
+                assertEquals(preferences.sortingMode().get().flag, requireNotNull(repository.get(category.id)).flags)
+            }
+        }
+    }
+
+    @Test
+    fun `category scope cannot open before the actual category snapshot arrives`(@TempDir root: File) = runBlocking {
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        withSettings(root, categoryAdapter = { actual ->
+            object : CategoryRepository by actual {
+                override fun getAllAsFlow() = kotlinx.coroutines.flow.flow {
+                    release.await()
+                    emitAll(actual.getAllAsFlow())
+                }
+            }
+        }) { scene ->
+            try {
+                val repository = Injekt.get<CategoryRepository>()
+                repository.insert(Category(0, "Delayed actual", 0, 0))
+                val category = repository.getAll().single { it.name == "Delayed actual" }
+                Injekt.get<LibraryPreferences>().updateCategories().set(setOf(category.id.toString()))
+                scene.mountLibrary()
+                scene.renderUntil { scene.text().contains(MR.strings.categories.localized()) }
+                assertTrue(
+                    scene.nodes().any {
+                        MR.strings.categories.localized() in scene.labels(it) &&
+                            it.config.contains(SemanticsActions.OnClick) &&
+                            it.config.contains(SemanticsProperties.Disabled)
+                    },
+                    "The scope entry must wait for the repository's first complete category snapshot",
+                )
+                release.complete(Unit)
+                scene.renderUntil { scene.categoryEntryReady() }
+                scene.click(MR.strings.categories.localized())
+                scene.renderUntil { scene.text().contains(category.name) }
+                assertEquals(androidx.compose.ui.state.ToggleableState.On, scene.categoryState(category.name))
+                scene.click(MR.strings.action_cancel.localized())
+                assertEquals(setOf(category.id.toString()), Injekt.get<LibraryPreferences>().updateCategories().get())
+            } finally {
+                release.complete(Unit)
+            }
+        }
+    }
+
+    @Test
+    fun `invalid whole library scope still permits an explicit current category update`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val updated = mutableListOf<Long>()
+        withSettings(root, updateManga = {
+            updated += it.id
+            LibraryUpdateChecker.UpdateResult(0)
+        }) { _ ->
+            val categories = Injekt.get<CategoryRepository>()
+            categories.insert(Category(0, "Current actual", 0, 0))
+            val category = categories.getAll().single { it.name == "Current actual" }
+            val repository = Injekt.get<MangaRepository>()
+            val manga = repository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 0, url = "/current", title = "Current")),
+            ).single()
+            repository.updateAtomically(LibraryMembershipUpdate(manga.id, true, 100, listOf(category.id)))
+            Injekt.get<LibraryPreferences>().updateCategories().set(setOf("BROKEN"))
+            val scheduler = Injekt.get<LibraryUpdateScheduler>()
+            scheduler.runNow().join()
+            assertTrue(updated.isEmpty(), "Invalid whole-library include must not widen to all")
+            scheduler.runNow(category.id).join()
+            assertEquals(
+                listOf(manga.id),
+                updated,
+                "An explicit category never consumes the invalid whole-library scope",
+            )
+        }
+    }
+
+    @Test
+    fun `failed correction of invalid include and exclude cannot activate a sanitized policy`(
+        @TempDir root: File,
+    ) = runBlocking {
+        var reject = false
+        withSettings(root, storeAdapter = { actual ->
+            object : PreferenceStore by actual {
+                override fun getStringSet(key: String, defaultValue: Set<String>): Preference<Set<String>> {
+                    val preference = actual.getStringSet(key, defaultValue)
+                    return object : Preference<Set<String>> by preference {
+                        override fun set(value: Set<String>) {
+                            if (reject &&
+                                key == "library_update_categories_exclude"
+                            ) {
+                                throw IOException("Rejected correction")
+                            }
+                            preference.set(value)
+                        }
+                    }
+                }
+            }
+        }) { _ ->
+            val categories = Injekt.get<CategoryRepository>()
+            categories.insert(Category(0, "Valid old", 0, 0))
+            categories.insert(Category(0, "Valid new", 1, 0))
+            val a = categories.getAll().single { it.name == "Valid old" }.id
+            val b = categories.getAll().single { it.name == "Valid new" }.id
+            val preferences = Injekt.get<LibraryPreferences>()
+            preferences.updateCategories().set(setOf(a.toString(), "BROKEN"))
+            preferences.updateCategoriesExclude().set(setOf("BROKEN"))
+            val policy = Injekt.get<DesktopLibraryCategoryPolicy>()
+            assertFalse(policy.recover())
+            reject = true
+            assertFalse(policy.save(setOf(b), emptySet()))
+            reject = false
+            assertFalse(
+                policy.recover(),
+                "A rejected correction cannot turn an invalid old policy into an active subset",
+            )
+            assertTrue(policy.state.value is DesktopLibraryCategoryPolicy.State.Unavailable)
+            assertTrue(policy.save(emptySet(), emptySet()), "Only explicit valid confirmation may choose all")
+            assertEquals(DesktopLibraryCategoryPolicy.Snapshot(emptySet(), emptySet()), policy.snapshot())
+        }
+    }
+
+    @Test
+    fun `real category policy dialog retains draft and complete old values after pre and post write failures`(
+        @TempDir root: File,
+    ) = runBlocking {
+        for (afterWrite in listOf(false, true)) {
+            var rejectNext = false
+            withSettings(File(root, if (afterWrite) "after" else "before"), storeAdapter = { actual ->
+                object : PreferenceStore by actual {
+                    override fun getStringSet(key: String, defaultValue: Set<String>): Preference<Set<String>> {
+                        val preference = actual.getStringSet(key, defaultValue)
+                        return object : Preference<Set<String>> by preference {
+                            override fun set(value: Set<String>) {
+                                if (rejectNext && key == "library_update_categories_exclude") {
+                                    rejectNext = false
+                                    if (afterWrite) preference.set(value)
+                                    throw IOException("Rejected policy write")
+                                }
+                                preference.set(value)
+                            }
+                        }
+                    }
+                }
+            }) { scene ->
+                val categories = Injekt.get<CategoryRepository>()
+                categories.insert(Category(0, "Draft actual", 0, 0))
+                val category = categories.getAll().single { it.name == "Draft actual" }
+                val preferences = Injekt.get<LibraryPreferences>()
+                preferences.updateCategories().set(setOf(category.id.toString()))
+                preferences.updateCategoriesExclude().set(emptySet())
+                scene.mountLibrary()
+                scene.renderUntil { scene.categoryEntryReady() }
+                scene.click(MR.strings.categories.localized())
+                scene.renderUntil { scene.text().contains(MR.strings.action_cancel.localized()) }
+                assertEquals(
+                    androidx.compose.ui.state.ToggleableState.On,
+                    scene.categoryState(category.name),
+                    "Opening must retain the persisted include before editing",
+                )
+                scene.click(category.name)
+                rejectNext = true
+                scene.click(MR.strings.action_ok.localized())
+                scene.renderUntil { scene.text().contains(MR.strings.internal_error.localized()) }
+                assertEquals(setOf(category.id.toString()), preferences.updateCategories().get())
+                assertEquals(emptySet<String>(), preferences.updateCategoriesExclude().get())
+                assertEquals(
+                    DesktopLibraryCategoryPolicy.Snapshot(setOf(category.id), emptySet()),
+                    Injekt.get<DesktopLibraryCategoryPolicy>().snapshot(),
+                )
+                val row = scene.nodes().last {
+                    category.name in scene.labels(it) &&
+                        it.config.contains(SemanticsActions.OnClick)
+                }
+                assertEquals(
+                    androidx.compose.ui.state.ToggleableState.Indeterminate,
+                    row.config[SemanticsProperties.ToggleableState],
+                )
+                scene.click(MR.strings.action_ok.localized())
+                scene.renderUntil { !scene.text().contains(MR.strings.action_cancel.localized()) }
+                assertEquals(emptySet<String>(), preferences.updateCategories().get())
+                assertEquals(setOf(category.id.toString()), preferences.updateCategoriesExclude().get())
+            }
+        }
+    }
+
+    @Test
+    fun `interrupted old snapshot cannot revive deleted category or widen scope across two startups`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val node = Preferences.userRoot().node("mihon-tests/library-policy-cross-${UUID.randomUUID()}")
+        val actual = DesktopPreferenceStore(node)
+        var reject = false
+        val failing = object : PreferenceStore by actual {
+            override fun getStringSet(key: String, defaultValue: Set<String>): Preference<Set<String>> {
+                val preference = actual.getStringSet(key, defaultValue)
+                return object : Preference<Set<String>> by preference {
+                    override fun set(value: Set<String>) {
+                        if (reject &&
+                            key == "library_update_categories_exclude"
+                        ) {
+                            throw IOException("Interrupted policy compensation")
+                        }
+                        preference.set(value)
+                    }
+                }
+            }
+        }
+        var context = initDesktopDIForTest(root, failing, startDownloadWorker = false)
+        try {
+            val categories = Injekt.get<CategoryRepository>()
+            categories.insert(Category(0, "Gone include", 0, 0))
+            categories.insert(Category(0, "Remain exclude", 1, 0))
+            val a = categories.getAll().single { it.name == "Gone include" }.id
+            val b = categories.getAll().single { it.name == "Remain exclude" }.id
+            val preferences = Injekt.get<LibraryPreferences>()
+            preferences.updateCategories().set(setOf(a.toString()))
+            preferences.updateCategoriesExclude().set(setOf(b.toString()))
+            reject = true
+            assertFalse(Injekt.get<DesktopLibraryCategoryPolicy>().save(setOf(b), emptySet()))
+            assertEquals(DeleteCategory.Result.Success, Injekt.get<DeleteCategory>().await(a))
+            assertEquals(null, categories.get(a))
+            context.closeAndJoin()
+            reject = false
+            repeat(2) {
+                context = initDesktopDIForTest(root, actual, startDownloadWorker = false)
+                val restored = Injekt.get<LibraryPreferences>()
+                assertFalse(a.toString() in restored.updateCategories().get())
+                assertFalse(a.toString() in restored.updateCategoriesExclude().get())
+                val policy = Injekt.get<DesktopLibraryCategoryPolicy>()
+                assertFalse(
+                    policy.recover(),
+                    "Deleting every original include needs an explicit choice after every restart",
+                )
+                assertEquals(DesktopLibraryCategoryPolicy.State.Unavailable(false), policy.state.value)
+                if (it == 0) context.closeAndJoin()
+            }
+            Dispatchers.setMain(UnconfinedTestDispatcher())
+            val scene = PolicyScene(kotlinx.coroutines.currentCoroutineContext())
+            try {
+                scene.mountLibrary()
+                scene.renderUntil { scene.categoryEntryReady() }
+                scene.click(MR.strings.categories.localized())
+                scene.renderUntil { scene.text().contains("Remain exclude") }
+                assertEquals(
+                    androidx.compose.ui.state.ToggleableState.Indeterminate,
+                    scene.categoryState("Remain exclude"),
+                    "Opening must retain the recovered exclude before editing",
+                )
+                scene.click("Remain exclude")
+                scene.click(MR.strings.action_ok.localized())
+                scene.renderUntil { !scene.text().contains(MR.strings.action_cancel.localized()) }
+            } finally {
+                scene.close()
+                Dispatchers.resetMain()
+            }
+            assertEquals(
+                DesktopLibraryCategoryPolicy.Snapshot(emptySet(), emptySet()),
+                Injekt.get<DesktopLibraryCategoryPolicy>().snapshot(),
+            )
+        } finally {
+            context.closeAndJoin()
+            node.removeNode()
+        }
+    }
+
+    @Test
+    fun `actual detail asks and cancels before membership then consumes system and custom defaults`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withSettings(root) { scene ->
+            val categories = Injekt.get<CategoryRepository>()
+            categories.insert(Category(0, "Add target", 0, 0))
+            val target = categories.getAll().single { it.name == "Add target" }
+            val repository = Injekt.get<MangaRepository>()
+            val manga = repository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 0, url = "/ask", title = "Ask actual")),
+            ).single()
+            val preferences = Injekt.get<LibraryPreferences>()
+            preferences.defaultCategory().set(-1)
+            scene.mountDetail(manga.id)
+            scene.renderUntil { scene.text().contains(MR.strings.add_to_library.localized()) }
+            scene.click(MR.strings.add_to_library.localized())
+            scene.renderUntil { scene.text().contains(MR.strings.action_cancel.localized()) }
+            assertFalse(repository.getMangaById(manga.id).favorite)
+            scene.click(MR.strings.action_cancel.localized())
+            scene.renderUntil { !scene.text().contains(MR.strings.action_cancel.localized()) }
+            assertFalse(repository.getMangaById(manga.id).favorite)
+            preferences.defaultCategory().set(0)
+            scene.click(MR.strings.add_to_library.localized())
+            scene.renderUntil { repository.getMangaById(manga.id).favorite }
+            assertTrue(categories.getCategoriesByMangaId(manga.id).filterNot(Category::isSystemCategory).isEmpty())
+            val second = repository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 0, url = "/custom", title = "Custom actual")),
+            ).single()
+            preferences.defaultCategory().set(target.id.toInt())
+            scene.mountDetail(second.id)
+            scene.renderUntil { scene.text().contains(MR.strings.add_to_library.localized()) }
+            scene.click(MR.strings.add_to_library.localized())
+            scene.renderUntil { repository.getMangaById(second.id).favorite }
+            assertEquals(listOf(target.id), categories.getCategoriesByMangaId(second.id).map(Category::id))
+            assertTrue(
+                categories.getCategoriesByMangaId(manga.id).filterNot(Category::isSystemCategory).isEmpty(),
+                "Changing the default never moves the previous favorite",
+            )
+            assertEquals(DeleteCategory.Result.Success, Injekt.get<DeleteCategory>().await(target.id))
+            assertEquals(-1, preferences.defaultCategory().get())
+            val third = repository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 0, url = "/no-custom", title = "No custom actual")),
+            ).single()
+            scene.mountDetail(third.id)
+            scene.renderUntil { scene.text().contains(MR.strings.add_to_library.localized()) }
+            scene.click(MR.strings.add_to_library.localized())
+            scene.renderUntil { repository.getMangaById(third.id).favorite }
+            assertTrue(
+                categories.getCategoriesByMangaId(third.id).filterNot(Category::isSystemCategory).isEmpty(),
+                "SOURCE always-ask falls back to system default when no custom categories exist",
+            )
+            assertTrue(repository.getMangaById(second.id).favorite)
+        }
+    }
+
+    @Test
+    fun `shared update categories drive the actual scheduler with exclusion taking precedence`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val updated = mutableListOf<Long>()
+        withSettings(root, updateManga = { manga ->
+            updated += manga.id
+            LibraryUpdateChecker.UpdateResult(0)
+        }) { _ ->
+            val categories = Injekt.get<CategoryRepository>()
+            categories.insert(Category(0, "Include A", 0, 0))
+            categories.insert(Category(0, "Exclude B", 1, 0))
+            val a = categories.getAll().single { it.name == "Include A" }.id
+            val b = categories.getAll().single { it.name == "Exclude B" }.id
+            val repository = Injekt.get<MangaRepository>()
+            val entries = repository.insertNetworkManga(
+                listOf("Only A", "Only B", "Both", "Default").mapIndexed {
+                        index,
+                        title,
+                    ->
+                    Manga.create().copy(source = 0, url = "/scope-$index", title = title)
+                },
+            )
+            val memberships = listOf(listOf(a), listOf(b), listOf(a, b), emptyList())
+            entries.zip(memberships).forEach { (manga, ids) ->
+                repository.updateAtomically(LibraryMembershipUpdate(manga.id, true, 100, ids))
+            }
+            Injekt.get<LibraryPreferences>().updateCategories().set(setOf(a.toString()))
+            Injekt.get<LibraryPreferences>().updateCategoriesExclude().set(setOf(b.toString()))
+            Injekt.get<LibraryUpdateScheduler>().runNow().join()
+            assertEquals(
+                listOf(entries.first().id),
+                updated,
+                "Scheduler must consume the complete shared policy instead of legacy CSV",
+            )
+            updated.clear()
+            Injekt.get<LibraryUpdateScheduler>().runNow(categoryId = b).join()
+            assertEquals(
+                setOf(entries[1].id, entries[2].id),
+                updated.toSet(),
+                "Explicit current-category update keeps its existing override",
+            )
+        }
+    }
+
+    @Test
+    fun `persistent startup recovery refusal blocks the actual update task instead of consuming half cleared scope`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val node = Preferences.userRoot().node("mihon-tests/library-persistent-recovery-${UUID.randomUUID()}")
+        val actual = DesktopPreferenceStore(node)
+        var reject = false
+        val failing = object : PreferenceStore by actual {
+            override fun getStringSet(key: String, defaultValue: Set<String>): Preference<Set<String>> {
+                val preference = actual.getStringSet(key, defaultValue)
+                return object : Preference<Set<String>> by preference {
+                    override fun set(value: Set<String>) {
+                        if (reject &&
+                            key == "library_update_categories_exclude"
+                        ) {
+                            throw IOException("Persistent recovery refusal")
+                        }
+                        preference.set(value)
+                    }
+                }
+            }
+        }
+        val updated = mutableListOf<Long>()
+        val updater: suspend (
+            Manga,
+        ) -> LibraryUpdateChecker.UpdateResult = {
+            updated += it.id
+            LibraryUpdateChecker.UpdateResult(0)
+        }
+        var context = initDesktopDIForTest(root, failing, updateManga = updater, startDownloadWorker = false)
+        try {
+            val categories = Injekt.get<CategoryRepository>()
+            categories.insert(Category(0, "Interrupted scope", 0, 0))
+            val category = categories.getAll().single { it.name == "Interrupted scope" }
+            val mangaRepository = Injekt.get<MangaRepository>()
+            val manga = mangaRepository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 0, url = "/interrupted", title = "Still favorite")),
+            ).single()
+            mangaRepository.updateAtomically(LibraryMembershipUpdate(manga.id, true, 100, listOf(category.id)))
+            val preferences = Injekt.get<LibraryPreferences>()
+            preferences.updateCategories().set(setOf(category.id.toString()))
+            preferences.updateCategoriesExclude().set(setOf(category.id.toString()))
+            reject = true
+            assertTrue(Injekt.get<DeleteCategory>().await(category.id) is DeleteCategory.Result.InternalError)
+            assertEquals(null, categories.get(category.id))
+            context.closeAndJoin()
+            context = initDesktopDIForTest(root, failing, updateManga = updater, startDownloadWorker = false)
+            val scheduler = Injekt.get<LibraryUpdateScheduler>()
+            scheduler.runNow().join()
+            assertTrue(updated.isEmpty(), "Failed startup recovery must not allow an update to consume half a scope")
+            assertEquals(mihon.domain.task.TaskStatus.Failed, scheduler.taskSnapshot()?.status)
+            assertTrue(Injekt.get<LibraryPreferences>().categoryDeletionPending().get().isNotEmpty())
+        } finally {
+            context.closeAndJoin()
+            node.removeNode()
+        }
+    }
+
+    @Test
+    fun `update categories edit one three state draft and cancel leaves both shared keys unchanged`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withSettings(root) { scene ->
+            val categories = Injekt.get<CategoryRepository>()
+            categories.insert(Category(0, "Scope A", 0, 0))
+            categories.insert(Category(0, "Scope B", 1, 0))
+            categories.insert(Category(0, "Scope overlap", 2, 0))
+            val a = categories.getAll().single { it.name == "Scope A" }
+            val b = categories.getAll().single { it.name == "Scope B" }
+            val overlap = categories.getAll().single { it.name == "Scope overlap" }
+            val preferences = Injekt.get<LibraryPreferences>()
+            val originalIncluded = setOf(a.id.toString(), overlap.id.toString())
+            val originalExcluded = setOf(b.id.toString(), overlap.id.toString())
+            preferences.updateCategories().set(originalIncluded)
+            preferences.updateCategoriesExclude().set(originalExcluded)
+            scene.mountLibrary()
+            scene.renderUntil { scene.categoryEntryReady() }
+            val title = MR.strings.categories.localized()
+            assertTrue(
+                scene.nodes().any {
+                    title in scene.labels(it) && it.config.contains(SemanticsActions.OnClick)
+                },
+                "Global updates need one actual category-policy dialog",
+            )
+            scene.click(title)
+            scene.renderUntil { scene.text().contains(MR.strings.action_cancel.localized()) }
+            scene.click(a.name)
+            assertEquals(originalIncluded, preferences.updateCategories().get())
+            assertEquals(originalExcluded, preferences.updateCategoriesExclude().get())
+            scene.click(MR.strings.action_cancel.localized())
+            scene.renderUntil { !scene.text().contains(MR.strings.action_cancel.localized()) }
+            assertEquals(originalIncluded, preferences.updateCategories().get())
+            assertEquals(originalExcluded, preferences.updateCategoriesExclude().get())
+            scene.click(title)
+            scene.renderUntil { scene.text().contains(MR.strings.action_cancel.localized()) }
+            scene.click(a.name)
+            scene.click(b.name)
+            assertEquals(androidx.compose.ui.state.ToggleableState.Indeterminate, scene.categoryState(overlap.name))
+            scene.click(overlap.name)
+            scene.renderUntil { true }
+            assertEquals(
+                androidx.compose.ui.state.ToggleableState.Off,
+                scene.categoryState(overlap.name),
+                "Exclude wins overlap, then one activation clears both sides",
+            )
+            scene.click(MR.strings.label_default.localized())
+            scene.click(MR.strings.action_ok.localized())
+            scene.renderUntil { !scene.text().contains(MR.strings.action_cancel.localized()) }
+            assertEquals(setOf("0"), preferences.updateCategories().get())
+            assertEquals(setOf(a.id.toString()), preferences.updateCategoriesExclude().get())
+        }
+    }
+
+    @Test
+    fun `actual Library settings selects shared default category without moving existing favorites`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withSettings(root) { scene ->
+            val repository = Injekt.get<CategoryRepository>()
+            repository.insert(Category(0, "Default target", 0, 0))
+            val category = repository.getAll().single { it.name == "Default target" }
+            val mangas = Injekt.get<tachiyomi.domain.manga.repository.MangaRepository>()
+            val favorite = mangas.insertNetworkManga(
+                listOf(
+                    tachiyomi.domain.manga.model.Manga.create().copy(
+                        source = 0,
+                        url = "/existing",
+                        title = "Existing favorite",
+                    ),
+                ),
+            ).single()
+            mangas.updateAtomically(
+                tachiyomi.domain.manga.repository.LibraryMembershipUpdate(
+                    mangaId = favorite.id,
+                    favorite = true,
+                    dateAdded = 123,
+                    categoryIds = listOf(category.id),
+                ),
+            )
+            scene.mountLibrary()
+            scene.renderUntil { true }
+            val title = MR.strings.default_category.localized()
+            assertTrue(
+                scene.nodes().any { title in scene.labels(it) && it.config.contains(SemanticsActions.OnClick) },
+                "Library settings must expose the actual shared default-category control",
+            )
+            scene.click(title)
+            scene.renderUntil { scene.text().contains(category.name) }
+            scene.click(category.name)
+            scene.renderUntil { Injekt.get<LibraryPreferences>().defaultCategory().get() == category.id.toInt() }
+            scene.click(title)
+            scene.renderUntil { scene.text().contains(MR.strings.default_category_summary.localized()) }
+            scene.click(MR.strings.default_category_summary.localized())
+            scene.renderUntil { Injekt.get<LibraryPreferences>().defaultCategory().get() == -1 }
+            scene.click(title)
+            scene.renderUntil { scene.text().contains(MR.strings.label_default.localized()) }
+            scene.click(MR.strings.label_default.localized())
+            scene.renderUntil { Injekt.get<LibraryPreferences>().defaultCategory().get() == 0 }
+            assertTrue(mangas.getMangaById(favorite.id).favorite)
+            assertEquals(listOf(category.id), repository.getCategoriesByMangaId(favorite.id).map { it.id })
+        }
+    }
+
+    @Test
+    fun `delete committed category returns failure and retries all five references after preference rejection`(
+        @TempDir root: File,
+    ) = runBlocking {
+        var reject = false
+        withSettings(root, storeAdapter = { actual ->
+            object : PreferenceStore by actual {
+                override fun getStringSet(key: String, defaultValue: Set<String>): Preference<Set<String>> {
+                    val pref = actual.getStringSet(key, defaultValue)
+                    return object : Preference<Set<String>> by pref {
+                        override fun set(value: Set<String>) {
+                            if (reject &&
+                                key == "library_update_categories_exclude"
+                            ) {
+                                throw IOException("Rejected category cleanup")
+                            }
+                            pref.set(value)
+                        }
+                    }
+                }
+            }
+        }) { _ ->
+            val repository = Injekt.get<CategoryRepository>()
+            repository.insert(Category(0, "Delete target", 0, 0))
+            val category = repository.getAll().single { it.name == "Delete target" }
+            val library = Injekt.get<LibraryPreferences>()
+            val downloads = Injekt.get<DownloadPreferences>()
+            library.defaultCategory().set(category.id.toInt())
+            val references = listOf(
+                library.updateCategories(),
+                library.updateCategoriesExclude(),
+                downloads.removeExcludeCategories(),
+                downloads.downloadNewChapterCategories(),
+                downloads.downloadNewChapterCategoriesExclude(),
+            )
+            references.forEach { it.set(setOf(category.id.toString())) }
+            reject = true
+            var result: DeleteCategory.Result? = null
+            assertDoesNotThrow { runBlocking { result = Injekt.get<DeleteCategory>().await(category.id) } }
+            assertTrue(result is DeleteCategory.Result.InternalError)
+            assertEquals(null, repository.get(category.id), "SQL deletion may be complete before preference failure")
+            reject = false
+            assertEquals(DeleteCategory.Result.Success, Injekt.get<DeleteCategory>().await(category.id))
+            assertEquals(-1, library.defaultCategory().get())
+            assertTrue(references.all { it.get().isEmpty() })
+        }
+    }
+
+    @Test
+    fun `delete retry resumes references without deleting an already committed category again`(
+        @TempDir root: File,
+    ) = runBlocking {
+        var afterCommitFailure = true
+        withSettings(root, categoryAdapter = { actual ->
+            object : CategoryRepository by actual {
+                override suspend fun delete(categoryId: Long) {
+                    if (actual.get(categoryId) ==
+                        null
+                    ) {
+                        throw IOException("Already committed delete must not execute again")
+                    }
+                    actual.delete(categoryId)
+                    if (afterCommitFailure) throw IOException("SQL committed before transport failure")
+                }
+            }
+        }) { _ ->
+            val repository = Injekt.get<CategoryRepository>()
+            repository.insert(Category(0, "Committed target", 0, 0))
+            val category = repository.getAll().single { it.name == "Committed target" }
+            val library = Injekt.get<LibraryPreferences>()
+            library.defaultCategory().set(category.id.toInt())
+            library.updateCategories().set(setOf(category.id.toString()))
+            Injekt.get<DeleteCategory>().await(category.id)
+            assertEquals(null, repository.get(category.id))
+            afterCommitFailure = false
+            assertEquals(DeleteCategory.Result.Success, Injekt.get<DeleteCategory>().await(category.id))
+            assertEquals(-1, library.defaultCategory().get())
+            assertTrue(library.updateCategories().get().isEmpty())
+        }
+    }
+
+    @Test
+    fun `real startup resumes deleted category references before consumers read them`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val node = Preferences.userRoot().node("mihon-tests/library-recovery-${UUID.randomUUID()}")
+        val actual = DesktopPreferenceStore(node)
+        var reject = false
+        val failing = object : PreferenceStore by actual {
+            override fun getStringSet(key: String, defaultValue: Set<String>): Preference<Set<String>> {
+                val pref = actual.getStringSet(key, defaultValue)
+                return object : Preference<Set<String>> by pref {
+                    override fun set(value: Set<String>) {
+                        if (reject &&
+                            key == "library_update_categories_exclude"
+                        ) {
+                            throw IOException("Interrupted reference cleanup")
+                        }
+                        pref.set(value)
+                    }
+                }
+            }
+        }
+        var context = initDesktopDIForTest(root, failing, startDownloadWorker = false)
+        try {
+            val repository = Injekt.get<CategoryRepository>()
+            repository.insert(Category(0, "Restart target", 0, 0))
+            val category = repository.getAll().single { it.name == "Restart target" }
+            val library = Injekt.get<LibraryPreferences>()
+            val downloads = Injekt.get<DownloadPreferences>()
+            listOf(
+                library.updateCategories(),
+                library.updateCategoriesExclude(),
+                downloads.removeExcludeCategories(),
+                downloads.downloadNewChapterCategories(),
+                downloads.downloadNewChapterCategoriesExclude(),
+            ).forEach {
+                it.set(setOf(category.id.toString()))
+            }
+            library.defaultCategory().set(category.id.toInt())
+            reject = true
+            runCatching { Injekt.get<DeleteCategory>().await(category.id) }
+            assertEquals(null, repository.get(category.id))
+            context.closeAndJoin()
+            reject = false
+            context = initDesktopDIForTest(root, actual, startDownloadWorker = false)
+            val restoredLibrary = Injekt.get<LibraryPreferences>()
+            val restoredDownloads = Injekt.get<DownloadPreferences>()
+            assertEquals(-1, restoredLibrary.defaultCategory().get())
+            assertTrue(
+                listOf(
+                    restoredLibrary.updateCategories(),
+                    restoredLibrary.updateCategoriesExclude(),
+                    restoredDownloads.removeExcludeCategories(),
+                    restoredDownloads.downloadNewChapterCategories(),
+                    restoredDownloads.downloadNewChapterCategoriesExclude(),
+                ).all { it.get().isEmpty() },
+            )
+        } finally {
+            context.closeAndJoin()
+            node.removeNode()
+        }
+    }
+
+    private suspend fun withSettings(
+        root: File,
+        storeAdapter: (PreferenceStore) -> PreferenceStore = { it },
+        categoryAdapter: ((CategoryRepository) -> CategoryRepository)? = null,
+        updateManga: (suspend (Manga) -> LibraryUpdateChecker.UpdateResult)? = null,
+        size: IntSize = IntSize(900, 760),
+        fontScale: Float = 1f,
+        block: suspend (PolicyScene) -> Unit,
+    ) {
+        val node = Preferences.userRoot().node("mihon-tests/library-policy-${UUID.randomUUID()}")
+        val context = initDesktopDIForTest(
+            root,
+            storeAdapter(DesktopPreferenceStore(node)),
+            startDownloadWorker = false,
+            categoryRepositoryOverride = categoryAdapter,
+            updateManga = updateManga,
+        )
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        val scene = PolicyScene(kotlinx.coroutines.currentCoroutineContext(), size, fontScale)
+        try {
+            block(scene)
+        } finally {
+            scene.close()
+            context.closeAndJoin()
+            Dispatchers.resetMain()
+            node.removeNode()
+        }
+    }
+
+    private class PolicyScene(
+        context: CoroutineContext,
+        size: IntSize = IntSize(
+            900,
+            760,
+        ),
+        private val fontScale: Float = 1f,
+    ) : AutoCloseable {
+        private val owners = linkedSetOf<SemanticsOwner>()
+        private var windowSize by androidx.compose.runtime.mutableStateOf(size)
+        private val bitmap = ImageBitmap(900, 900)
+        lateinit var navigator: Navigator
+        private val canvas = Canvas(bitmap)
+        private val scene = CanvasLayersComposeScene(
+            size = size,
+            coroutineContext = context,
+            platformContext = object : PlatformContext {
+                override val windowInfo = object : WindowInfo {
+                    override val isWindowFocused = true
+                    override val containerSize get() = windowSize
+                }
+                override val inputModeManager = object : InputModeManager {
+                    override val inputMode = InputMode.Keyboard
+                    override fun requestInputMode(inputMode: InputMode) = true
+                }
+                override fun requestFocus() = true
+                override val semanticsOwnerListener = object : PlatformContext.SemanticsOwnerListener {
+                    override fun onSemanticsOwnerAppended(semanticsOwner: SemanticsOwner) {
+                        owners += semanticsOwner
+                    }
+                    override fun onSemanticsOwnerRemoved(semanticsOwner: SemanticsOwner) {
+                        owners -= semanticsOwner
+                    }
+                    override fun onSemanticsChange(semanticsOwner: SemanticsOwner) = Unit
+                    override fun onLayoutChange(semanticsOwner: SemanticsOwner, semanticsNodeId: Int) = Unit
+                }
+            },
+            invalidate = {},
+        )
+        fun mountLibrary(withParent: Boolean = false) = scene.setContent {
+            CompositionLocalProvider(
+                LocalDesktopUiDependencies provides DesktopUiDependencies.fromInjekt(),
+                LocalDensity provides Density(1f, fontScale),
+            ) {
+                DesktopTheme {
+                    val pages = if (withParent) {
+                        listOf(
+                            object : cafe.adriel.voyager.core.screen.Screen {
+                                override val key = "library-settings-parent"
+
+                                @androidx.compose.runtime.Composable override fun Content() {
+                                    androidx.compose.material3.Text("Settings parent")
+                                }
+                            },
+                            LibrarySettingsScreen(),
+                        )
+                    } else {
+                        listOf(LibrarySettingsScreen())
+                    }
+                    Navigator(pages) {
+                        navigator = it
+                        CurrentScreen()
+                    }
+                }
+            }
+        }
+        fun mountSettings() = scene.setContent {
+            CompositionLocalProvider(
+                LocalDesktopUiDependencies provides DesktopUiDependencies.fromInjekt(),
+                LocalDensity provides Density(1f, fontScale),
+            ) {
+                DesktopTheme { Navigator(SettingsRootScreen()) { CurrentScreen() } }
+            }
+        }
+        fun mountDetail(id: Long) = scene.setContent {
+            CompositionLocalProvider(LocalDesktopUiDependencies provides DesktopUiDependencies.fromInjekt()) {
+                DesktopTheme {
+                    androidx.compose.runtime.key(id) { Navigator(MangaDetailScreen(id)) { CurrentScreen() } }
+                }
+            }
+        }
+        private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+        fun nodes() = owners.flatMap { flatten(it.unmergedRootSemanticsNode) }
+        fun activeNodes() = flatten(owners.last().unmergedRootSemanticsNode)
+        fun activeFocused() = activeNodes().singleOrNull { it.config.getOrElse(SemanticsProperties.Focused) { false } }
+        fun ownerCount() = owners.size
+        fun requestFocus(label: String) {
+            val target = activeNodes().last { label in labels(it) && it.config.contains(SemanticsActions.RequestFocus) }
+            assertTrue(requireNotNull(target.config[SemanticsActions.RequestFocus].action).invoke())
+        }
+        fun setText(text: String) {
+            val target = nodes().single { it.config.contains(SemanticsActions.SetText) }
+            assertTrue(
+                requireNotNull(
+                    target.config[SemanticsActions.SetText].action,
+                ).invoke(androidx.compose.ui.text.AnnotatedString(text)),
+            )
+        }
+        fun key(key: Key, shift: Boolean = false) {
+            val events = Class.forName("androidx.compose.ui.input.key.KeyEvent_desktopKt")
+            val eventType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
+            val factory = events.declaredMethods.single {
+                it.name.startsWith("KeyEvent-") &&
+                    !it.name.endsWith("\$default")
+            }
+            for (type in listOf("access\$getKeyDown\$cp", "access\$getKeyUp\$cp")) {
+                val value = eventType.getMethod(type).invoke(null)
+                scene.sendKeyEvent(
+                    ComposeKeyEvent(
+                        factory.invoke(
+                            null, key.keyCode, value, key.nativeKeyLocation, false, false, false, shift, null,
+                        ),
+                    ),
+                )
+            }
+        }
+        fun savePng(file: File) {
+            file.parentFile.mkdirs()
+            org.jetbrains.skia.Image.makeFromBitmap(bitmap.asSkiaBitmap()).use { image ->
+                val pixels = javax.imageio.ImageIO.read(
+                    java.io.ByteArrayInputStream(requireNotNull(image.encodeToData()).bytes),
+                )
+                javax.imageio.ImageIO.write(pixels.getSubimage(0, 0, windowSize.width, windowSize.height), "png", file)
+            }
+        }
+        fun resize(width: Int, height: Int) {
+            windowSize = IntSize(width, height)
+            scene.size = windowSize
+        }
+        fun pointerClick(position: androidx.compose.ui.geometry.Offset) {
+            scene.sendPointerEvent(
+                androidx.compose.ui.input.pointer.PointerEventType.Press,
+                position,
+                buttons = androidx.compose.ui.input.pointer.PointerButtons(isPrimaryPressed = true),
+                button = androidx.compose.ui.input.pointer.PointerButton.Primary,
+            )
+            scene.sendPointerEvent(
+                androidx.compose.ui.input.pointer.PointerEventType.Release,
+                position,
+                buttons = androidx.compose.ui.input.pointer.PointerButtons(),
+                button = androidx.compose.ui.input.pointer.PointerButton.Primary,
+            )
+        }
+        fun labels(node: SemanticsNode): List<String> = flatten(node).flatMap {
+            buildList {
+                if (it.config.contains(SemanticsProperties.Text)) {
+                    addAll(
+                        it.config[SemanticsProperties.Text].map { value ->
+                            value.text
+                        },
+                    )
+                }
+                if (it.config.contains(
+                        SemanticsProperties.ContentDescription,
+                    )
+                ) {
+                    addAll(it.config[SemanticsProperties.ContentDescription])
+                }
+            }
+        }
+        fun text() = nodes().flatMap(::labels)
+        fun categoryEntryReady() = nodes().any {
+            MR.strings.categories.localized() in labels(it) && it.config.contains(SemanticsActions.OnClick) &&
+                !it.config.contains(SemanticsProperties.Disabled)
+        }
+        fun categoryState(label: String) = nodes().last {
+            label in labels(it) && it.config.contains(SemanticsProperties.ToggleableState)
+        }.config[SemanticsProperties.ToggleableState]
+        fun click(label: String) {
+            val target = nodes().last { label in labels(it) && it.config.contains(SemanticsActions.OnClick) }
+            assertTrue(requireNotNull(target.config[SemanticsActions.OnClick].action).invoke())
+        }
+        suspend fun renderUntil(
+            message: String = "production UI condition did not arrive",
+            predicate: suspend () -> Boolean,
+        ) {
+            repeat(80) {
+                scene.render(canvas, System.nanoTime())
+                delay(10)
+                if (predicate()) return
+            }
+            assertTrue(predicate(), message)
+        }
+        override fun close() = scene.close()
+    }
+}

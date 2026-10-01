@@ -104,6 +104,11 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
     private var mangaToUpdate: List<LibraryManga> = mutableListOf()
 
     override suspend fun doWork(): Result {
+        if (Injekt.get<tachiyomi.domain.category.interactor.DeleteCategory>().recoverPending() is
+                tachiyomi.domain.category.interactor.DeleteCategory.Result.InternalError
+        ) {
+            return Result.retry()
+        }
         if (tags.contains(WORK_NAME_AUTO)) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
                 val preferences = Injekt.get<LibraryPreferences>()

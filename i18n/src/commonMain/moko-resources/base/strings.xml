@@ -2184,4 +2184,7 @@
     <string name="desktop_external_chapter_opened">Chapter opened in your browser.</string>
     <string name="desktop_link_opened">Link opened in your browser.</string>
     <string name="desktop_tracking_updates_pending">Some tracking updates are waiting to retry.</string>
+    <string name="desktop_library_update_scope_recovery">Could not restore update categories. Retry before updating.</string>
+    <string name="desktop_library_update_scope_invalid">Choose update categories again before updating.</string>
+    <string name="desktop_library_update_interval_invalid">An unrecognized update interval was disabled. Choose an update interval again.</string>
 </resources>

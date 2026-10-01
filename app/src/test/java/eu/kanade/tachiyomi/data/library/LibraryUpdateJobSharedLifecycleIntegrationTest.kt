@@ -83,6 +83,11 @@ import java.util.concurrent.TimeUnit
 class LibraryUpdateJobSharedLifecycleIntegrationTest {
 
     @Test
+    fun `library worker recovers category deletion before scope and retries persistent refusal`() = runBlocking {
+        verifyMemoWorker(metadata = false, recoveryGate = true)
+    }
+
+    @Test
     fun `library worker reaches real combined chapter update and stores memo`() = runBlocking {
         verifyMemoWorker(metadata = false)
     }
@@ -92,7 +97,7 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
         verifyMemoWorker(metadata = true)
     }
 
-    private suspend fun verifyMemoWorker(metadata: Boolean) {
+    private suspend fun verifyMemoWorker(metadata: Boolean, recoveryGate: Boolean = false) {
         Injekt = InjektScope(DefaultRegistrar())
         Injekt.addSingleton(mockk<SecurityPreferences>(relaxed = true))
         Injekt.addSingleton(mockk<DownloadManager>(relaxed = true))
@@ -162,11 +167,58 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
                         return eu.kanade.tachiyomi.source.model.SMangaUpdate(manga, chapters)
                     }
                 }
-                val preferences = libraryPreferences()
-                every { preferences.autoUpdateMetadata().get() } returns false
-                every { preferences.markDuplicateReadChapterAsRead().get() } returns emptySet()
-                every { preferences.updateMangaTitles().get() } returns false
+                var rejectRecovery = false
+                val actualStore = tachiyomi.core.common.preference.AndroidPreferenceStore(
+                    context,
+                    context.getSharedPreferences("worker-category-${System.nanoTime()}", Context.MODE_PRIVATE),
+                )
+                val faultStore = object : tachiyomi.core.common.preference.PreferenceStore by actualStore {
+                    override fun getStringSet(key: String, defaultValue: Set<String>): Preference<Set<String>> {
+                        val actual = actualStore.getStringSet(key, defaultValue)
+                        return object : Preference<Set<String>> by actual {
+                            override fun set(value: Set<String>) {
+                                if (rejectRecovery &&
+                                    key == "library_update_categories_exclude"
+                                ) {
+                                    error("Category reference cleanup refused")
+                                }
+                                actual.set(value)
+                            }
+                        }
+                    }
+                }
+                val preferences = if (recoveryGate) {
+                    LibraryPreferences(faultStore).also {
+                        storage.categories.insert(
+                            tachiyomi.domain.category.model.Category(0, "Confirmed deleted", 0, 0),
+                        )
+                        val category = storage.categories.getAll().single { category ->
+                            category.name == "Confirmed deleted"
+                        }
+                        assertEquals(1L, category.id)
+                        storage.categories.delete(category.id)
+                        it.autoUpdateMangaRestrictions().set(emptySet())
+                        it.updateCategoriesExclude().set(setOf("1"))
+                        it.categoryDeletionPending().set(setOf("1"))
+                    }
+                } else {
+                    libraryPreferences().also {
+                        every { it.autoUpdateMetadata().get() } returns false
+                        every { it.markDuplicateReadChapterAsRead().get() } returns emptySet()
+                        every { it.updateMangaTitles().get() } returns false
+                        every { it.categoryDeletionPending() } returns
+                            LibraryPreferences(actualStore).categoryDeletionPending()
+                    }
+                }
                 Injekt.addSingleton(preferences)
+                Injekt.addSingleton(
+                    tachiyomi.domain.category.interactor.DeleteCategory(
+                        storage.categories,
+                        preferences,
+                        tachiyomi.domain.download.service.DownloadPreferences(actualStore),
+                    ),
+                )
+                rejectRecovery = recoveryGate
                 Injekt.addSingleton<SourceManager>(
                     mockk {
                         every { get(42) } returns source
@@ -200,7 +252,19 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
                 } else {
                     TestListenableWorkerBuilder<LibraryUpdateJob>(context).setTags(listOf(WORK_NAME_MANUAL)).build()
                 }
-                worker.doWork()
+                if (recoveryGate) {
+                    assertEquals(ListenableWorker.Result.retry(), worker.doWork())
+                    assertEquals("Unrecovered references must not enter the source update", 0, calls)
+                    assertEquals(setOf("1"), preferences.categoryDeletionPending().get())
+                    rejectRecovery = false
+                    TestListenableWorkerBuilder<LibraryUpdateJob>(
+                        context,
+                    ).setTags(listOf(WORK_NAME_MANUAL)).build().doWork()
+                    assertTrue(preferences.categoryDeletionPending().get().isEmpty())
+                    assertTrue(preferences.updateCategoriesExclude().get().isEmpty())
+                } else {
+                    worker.doWork()
+                }
                 assertEquals("worker must call the combined source API once", 1, calls)
                 assertEquals(memo, storage.mangas.getMangaById(manga.id).memo)
                 val chapter = storage.chapters.getChapterByMangaId(manga.id).single()

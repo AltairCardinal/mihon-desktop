@@ -927,7 +927,7 @@ class DesktopSettingsSearchWiringTest {
                     }
                 }
                 render(scene)
-                currentPreferences.libraryUpdateInterval.set(mihon.desktop.settings.LibraryUpdateInterval.OFF)
+                currentLibraryPreferences.autoUpdateInterval().set(0)
                 setText(scene, anchorTitle)
                 render(scene)
                 val results = DesktopSettingsCatalog.search(anchorTitle)
@@ -959,8 +959,8 @@ class DesktopSettingsSearchWiringTest {
                 assertTrue(scroll.value() > 0f)
                 click(scene, MR.strings.update_6hour.localized(Locale.US))
                 assertEquals(
-                    mihon.desktop.settings.LibraryUpdateInterval.EVERY_6H,
-                    currentPreferences.libraryUpdateInterval.get(),
+                    6,
+                    currentLibraryPreferences.autoUpdateInterval().get(),
                 )
             }
             withSearchScene(LibrarySettingsScreen(), height = 260) { scene ->
@@ -1281,6 +1281,8 @@ class DesktopSettingsSearchWiringTest {
             every { networkRoutingPort } returns network
             every { creatorDiscoveryScheduler } returns null
             every { libraryPreferences } returns currentLibraryPreferences
+            every { libraryCategoryPolicy } returns null
+            every { categorySortSettings } returns null
             every { sourceManager } returns sources
             every { getCreators } returns creators
             every { creatorArchive } returns archive

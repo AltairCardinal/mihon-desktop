@@ -1,5 +1,7 @@
 package mihon.desktop.settings
 
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.domain.library.model.LibraryDisplayMode
@@ -17,30 +19,148 @@ import tachiyomi.domain.library.service.LibraryPreferences
 class LibraryPreferenceMigration(
     private val store: PreferenceStore,
     private val preferences: LibraryPreferences,
+    private val legacyUpdatePreferences:
+    (() -> Triple<Preference<String>, Preference<String>, Preference<LibraryUpdateInterval>>)? = null,
+    private val validCategoryIds: (() -> Set<Long>)? = null,
     private val legacyColumns: () -> Preference<Int> = { store.getInt(LEGACY_COLUMNS_KEY, 3) },
 ) {
 
+    @Synchronized
     fun migrate(): Boolean {
         val marker = store.getInt(MARKER_KEY, 0)
+        val journal = store.getString(RECOVERY_KEY, "")
+        if (journal.get().isNotEmpty()) {
+            try {
+                journal.set(journal.get())
+                restore(Json.decodeFromString<Map<String, String?>>(journal.get()))
+                journal.delete()
+            } catch (_: Exception) {
+                return false
+            }
+        }
         if (marker.get() >= VERSION) return false
 
-        val previousMarker = marker.get() to marker.isSet()
+        // Resolve the lazy desktop/app bridge before freezing the original authority.
+        val legacy = legacyUpdatePreferences?.invoke()
+        legacyColumns()
+        val raw = store.getAll()
+        val original = migrationKeys().associateWith { raw[it]?.toString() }
         return try {
+            journal.set(Json.encodeToString(original))
             migrateDisplay()
             migrateSort()
             migrateColumns()
+            migrateUpdatePolicy(legacy)
             marker.set(VERSION)
+            journal.delete()
             true
         } catch (_: Exception) {
-            runCatching { if (previousMarker.second) marker.set(previousMarker.first) else marker.delete() }
+            runCatching {
+                // A flush failure can remove the record in RAM; acknowledge it again before compensating.
+                journal.set(Json.encodeToString(original))
+                restore(original)
+                journal.delete()
+            }
             false
         }
+    }
+
+    @Synchronized
+    fun isComplete() = store.getInt(MARKER_KEY, 0).get() >= VERSION && store.getString(RECOVERY_KEY, "").get().isEmpty()
+
+    private fun migrationKeys() = listOf(
+        preferences.displayMode().key(), preferences.sortingMode().key(),
+        preferences.portraitColumns().key(), preferences.landscapeColumns().key(),
+        preferences.updateCategories().key(), preferences.updateCategoriesExclude().key(),
+        preferences.autoUpdateInterval().key(), preferences.autoUpdateDeviceRestrictions().key(),
+        preferences.autoUpdateMangaRestrictions().key(), preferences.autoUpdateMetadata().key(),
+        CHOICE_KEY, INTERVAL_INVALID_KEY, MARKER_KEY,
+    )
+
+    private fun restore(original: Map<String, String?>) {
+        require(original.keys == migrationKeys().toSet()) { "Invalid library migration recovery" }
+        val restored = original.toMutableMap()
+        val validIds = validCategoryIds?.invoke()
+        if (validIds != null) {
+            for (key in listOf(preferences.updateCategories().key(), preferences.updateCategoriesExclude().key())) {
+                val raw = restored[key] ?: continue
+                val tokens = if (raw.isEmpty()) emptySet() else raw.split('\u001F').toSet()
+                val valid = tokens.filter { it.toLongOrNull() in validIds }.toSet()
+                if (tokens != valid) restored[CHOICE_KEY] = "true"
+                restored[key] = valid.joinToString("\u001F")
+            }
+        }
+        restored.forEach { (key, raw) ->
+            val preference = store.getString(key, "")
+            if (raw == null) preference.delete() else preference.set(raw)
+        }
+    }
+
+    private fun migrateUpdatePolicy(
+        legacy: Triple<Preference<String>, Preference<String>, Preference<LibraryUpdateInterval>>?,
+    ) {
+        val raw = store.getAll()
+        val validIds = validCategoryIds?.invoke()
+        var choiceRequired = store.getBoolean(CHOICE_KEY, false).get()
+        listOf(
+            preferences.updateCategories() to (legacy?.first ?: store.getString("update_category_includes", "")),
+            preferences.updateCategoriesExclude() to (
+                legacy?.second ?: store.getString(
+                    "update_category_excludes",
+                    "",
+                )
+                ),
+        ).forEach { (shared, previous) ->
+            val serialized = raw[shared.key()]?.toString()
+            val sharedIds = shared.get()
+            val validShared = shared.isSet() && serialized != null && sharedIds.all {
+                val id = it.toLongOrNull()
+                id != null && (validIds == null || id in validIds)
+            }
+            if (validShared) return@forEach
+            if (!previous.isSet()) return@forEach
+            val text = previous.get()
+            val tokens = text.split(',').map(String::trim).filter(String::isNotEmpty).toSet()
+            val usable = tokens.filter {
+                val id = it.toLongOrNull()
+                id != null && (validIds == null || id in validIds)
+            }.toSet()
+            if (tokens != usable || (text.isNotBlank() && tokens.isEmpty())) choiceRequired = true
+            shared.set(usable)
+        }
+        store.getBoolean(CHOICE_KEY, false).set(choiceRequired)
+        val interval = preferences.autoUpdateInterval()
+        val explicit = raw[interval.key()]?.toString()?.toIntOrNull()
+        if (!interval.isSet() || explicit !in setOf(0, 6, 12, 24, 48, 72, 168)) {
+            val old = legacy?.third
+            val name = raw["library_update_interval"]?.toString() ?: old?.takeIf { it.isSet() }?.get()?.name
+            val hours = LibraryUpdateInterval.entries.firstOrNull { it.name == name }?.hours
+            if (hours != null) {
+                interval.set(hours.toInt())
+            } else if (name != null || (interval.isSet() && explicit !in setOf(0, 6, 12, 24, 48, 72, 168))) {
+                interval.set(0)
+                store.getBoolean(INTERVAL_INVALID_KEY, false).set(true)
+            }
+        }
+        // These defaults were not enforced by the old Desktop scheduler.
+        if (!preferences.autoUpdateDeviceRestrictions().isSet()) {
+            preferences.autoUpdateDeviceRestrictions().set(
+                emptySet(),
+            )
+        }
+        if (!preferences.autoUpdateMangaRestrictions().isSet()) {
+            preferences.autoUpdateMangaRestrictions().set(
+                emptySet(),
+            )
+        }
+        if (!preferences.autoUpdateMetadata().isSet()) preferences.autoUpdateMetadata().set(false)
     }
 
     private fun migrateColumns() {
         val columns = listOf(preferences.portraitColumns(), preferences.landscapeColumns())
         val raw = store.getAll()
-        fun valid(preference: Preference<Int>) = raw[preference.key()]?.toString()?.toIntOrNull()?.let { it in 0..10 } == true
+        fun valid(preference: Preference<Int>) =
+            raw[preference.key()]?.toString()?.toIntOrNull()?.let { it in 0..10 } == true
         if (columns.all(::valid)) return
         val legacy = legacyColumns()
         if (!legacy.isSet()) return
@@ -51,7 +171,11 @@ class LibraryPreferenceMigration(
     private fun migrateDisplay() {
         val shared = preferences.displayMode()
         val rawShared = store.getAll()[shared.key()]
-        if (shared.isSet() && (rawShared is LibraryDisplayMode || rawShared?.toString()?.let(::decodeDisplay) != null)) return
+        if (shared.isSet() &&
+            (rawShared is LibraryDisplayMode || rawShared?.toString()?.let(::decodeDisplay) != null)
+        ) {
+            return
+        }
 
         val rawLegacy = store.getAll()[LEGACY_ALL_DISPLAY_KEY]?.toString() ?: return
         decodeDisplay(rawLegacy)?.let(shared::set)
@@ -65,7 +189,9 @@ class LibraryPreferenceMigration(
         val rawLegacy = store.getAll()[LEGACY_ALL_SORT_KEY]?.toString()
         val type = decodeLegacySortType(rawLegacy) ?: return
         val ascending = store.getAll()[LEGACY_ALL_SORT_ASC_KEY]?.let(::decodeBoolean) ?: true
-        shared.set(LibrarySort(type, if (ascending) LibrarySort.Direction.Ascending else LibrarySort.Direction.Descending))
+        shared.set(
+            LibrarySort(type, if (ascending) LibrarySort.Direction.Ascending else LibrarySort.Direction.Descending),
+        )
     }
 
     private fun decodeDisplay(raw: String): LibraryDisplayMode? = when (raw) {
@@ -114,8 +240,11 @@ class LibraryPreferenceMigration(
     }
 
     companion object {
-        const val VERSION = 2
+        const val VERSION = 3
         const val MARKER_KEY = "library_interaction_parity_migration_version"
+        val RECOVERY_KEY = Preference.appStateKey("library_settings_migration_recovery")
+        val INTERVAL_INVALID_KEY = Preference.appStateKey("library_update_interval_migration_invalid")
+        private val CHOICE_KEY = Preference.appStateKey("library_update_scope_requires_choice")
         private const val LEGACY_COLUMNS_KEY = "library_grid_columns"
         private const val LEGACY_ALL_DISPLAY_KEY = "lib_cat_-1_display"
         private const val LEGACY_ALL_SORT_KEY = "lib_cat_-1_sort"

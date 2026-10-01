@@ -206,11 +206,13 @@ RI08复用前置核对：Android现用`libs.richeditor.compose`版本1.0.0-rc13�
 
 本节固定S01／S02／S07及S03–S06的迁移、值域与消费者端口；固定时RI08仍在实施，不声明这些设置已完成。入口为更多→设置→书架，管理分类继续使用RI02同一子页，不新增管理入口。共享LibraryPreferences、现LibraryPreferenceMigration／membership／DeleteCategory／ResetCategoryFlags及scheduler为复用边界。
 
-- SOURCE／PROJECT_POLICY：默认分类沿唯一default_category键，-1每次询问、0系统默认、现有自定义ID；实际详情入库消费，取消不入库、保存失败反馈、删除所选分类按DeleteCategory回退-1，不搬移既有收藏。不能因共享显式值等于默认而将其视为未设置。
+- SOURCE／PROJECT_POLICY：默认分类沿唯一default_category键，-1每次询问、0系统默认、现有自定义ID；实际详情入库消费，取消不入库、保存失败反馈、删除所选分类按DeleteCategory回退-1，不搬移既有收藏。不能因共享显式值等于默认而将其视为未设置。 SOURCE边界：Android MangaScreenModel及Desktop addToLibraryUsingDefault均在无自定义分类时直接系统默认；-1在存在自定义候选时询问，取消不入库。S01暴露同一已有偏好／消费者，不单端增空选择框；此边界在该场景实施／红测前依据实际源码固定。
 - PROJECT_POLICY：更新分类包含0及自定义，草稿三态不指定／包含／排除，确认一次发布完整策略；多归属排除优先、包含空即全部。共享包含／排除两键不是原子事务，Desktop消费者须读一个验证完整的快照；保存失败只能看到旧完整策略，中断用最小恢复记录与幂等恢复，恢复前不消费半份值。旧CSV非法值不扩大范围，已删ID清理与实际DeleteCategory同链；手动当前分类绕过全库分类范围，作品限制由RI14消费。
 - SOURCE／PROJECT_POLICY：现categorized_display是分类排序消费开关。关闭先用ResetCategoryFlags／实际SQL更新分类flags到全局排序，再保存关闭偏好；失败保开启且可重试，恢复串行不假SQL与Preference原子，重新开启不能复活旧分类排序。保全局排序、随机种子及显示偏好；不能仅改Checkbox本地变量或set(false)就宣称清理完成。
 - PROJECT_POLICY：单次迁移保旧6h／CSV，共享显式有效值优先、marker最后写，无长期双写。未知周期安全关闭并反馈；旧配置未执行的设备限制不能升级时悄悄新增门槛。48／72h、智能规则、元数据默认关闭及Windows设备值域先进入可测试消费端口；未接通的新选项不提前开放，实际周期／元数据由RI14、系统限制由RI16验收。
 - 验收：真实Settings导航／搜索锚点、Compose草稿确认／取消／失败、SQLite分类flags及Preference故障／重启恢复、旧显式默认和中断迁移、真实membership及scheduler完整策略端口。高风险双存储边界独立核对后下游使用；仅focused与明确受影响wiring，最终全量仍在RI18。
+
+实施维护边界：共享 `DeleteCategory` 的恢复记录只包含用户已经确认的分类ID；记录写入成功后才删除SQL对象，再完成默认分类、更新／下载五引用及剩余分类顺序，最后清记录。重试跳过已经完成的SQL删除，恢复失败保留记录和错误反馈。Desktop分类策略复用同一操作锁，先恢复删除，再恢复两键旧快照并校验当前分类；确认草稿前须取得真实分类首快照，不能把加载初值空列表当成分类不存在。消费者只取得 `Ready` 的完整策略；原非空包含丢失全部对象，或原策略本就非法时，补偿不能自动放宽为全库，须实际有效确认。Android原启动同步及分类管理使用同一删除恢复结果／有限完成通知；实际LibraryUpdateJob在读取分类范围前恢复，持续拒绝走既有Worker retry，解除拒绝后的新任务使用清理后完整范围。不得据此推断其他未验证的后台入口已有门禁。分类排序关闭复用ResetCategoryFlags；有限记录保存本次原排序位与目标mask，SQL及偏好失败补偿开启与适用原排序位，不覆写期间已改变的排序或其他位。恢复记录重新确认后才继续，持续拒绝保记录和设置错误反馈，下一次恢复／重试继续；不能据此声称两个存储原子提交。V3迁移实例内串行，并在Desktop策略共享操作锁内恢复完整原raw／isSet后重试，版本marker最后；非法周期明确关闭并在设置说明，有效选择解除说明。未设置的旧Desktop限制不自动施加SOURCE默认智能／设备门槛，显式用户集合保留；已有书架自定义周期筛选gate消费同智能键，其显式选择不丢。以上为局部失败处理与维护约束，实际完成证据随本迭代报告更新，不建立第二个持久分类权威或周期恢复任务。
 
 ## 2026-10-01 完整目录同步契约（RI13，实施前固定）
 

@@ -233,6 +233,9 @@ class DesktopAppPreferences(
             deserializer = { LibraryUpdateInterval.valueOf(it) },
         ).migrate("library_update_interval") { runCatching { LibraryUpdateInterval.valueOf(it) }.getOrNull() }
     }
+    val libraryUpdateIntervalMigrationInvalid: Preference<Boolean> by lazy {
+        store.getBoolean(LibraryPreferenceMigration.INTERVAL_INVALID_KEY, false)
+    }
 
     /** When true, manga detail lists hide missing chapter indicator rows. */
     val hideMissingChapterIndicators: Preference<Boolean> by lazy {
