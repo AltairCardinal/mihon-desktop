@@ -153,3 +153,19 @@ HTTP 验证用 MockWebServer 与最小真实测试源 adapter，覆盖原始响�
 默认不增加 schema、同步协议或新状态表；若现有目录观测无法真实表达本契约，保留失败证据并提出最小替代及迁移风险，暂停相关扩展等待决定，不把章数启发式作为伪完整性证据。最终交付包含代码与测试、必要设计更新、一份聚合证据报告和正式 Desktop 产物；无不可替代平台证据时列明待验，不用浏览器/系统 JDK/独立客户端替代生产链路。
 
 后续维护诊断按顺序核对：历史请求实际 refs/索引 → 原始本机章集合与观测身份 → sourceOrder/首取证据 → 刷新结果与事务提交 → 实际 reader session。日志只记录脱敏操作关联、状态、章数和错误类别，不输出真实账号、章节内容、令牌或整个数据库。失败时保留原始数据并让用户重试；不以清空历史、批量改 initialized 或删除同步章修复状态。若正式版本需要回退，使用正常 Git revert/旧正式候选并核对数据库兼容，本设计没有 schema 升级或不可逆数据删除；源补载已增加的正确章节不在回退时清除。
+
+## 7. HR01 实现维护约束（2026-10-01）
+
+规划事实与 H01–H15 保持为原设计基线；以下记录当前实现的接口和边界，验证状态见[唯一聚合报告](evidence/history-reader-chapter-context-repair-2026-10-01.md)。
+
+- `CreatorArchiveRepository.getSourceWorkCatalog` 只读取确切 source-work 观测，精确 URL 优先，旧 `legacy-manga:<id>` 仅接受同 mangaId。发现行的 mangaId=null 表示尚未关联，可经真实 upsert 关联；非空异 mangaId 报身份冲突。
+- Desktop `SourceChapterCatalogWriter` 复用已有仓库和归档表，负责非删除合并及 COMPLETE 观测。生产 DI 必须提供同一 DatabaseHandler、归档仓库及 bootstrap；bootstrap 在短事务外等待。无 handler 默认构造只用于既有 fake 单测，不能作为产品绑定。
+- 网络阶段不持有数据库事务。短事务在任何作品详情/creator index 写入之前重读原作品 ID/source/url 与 source-work 绑定，合并入口也再次核对；作品消失、返回 URL 改变或观测被改绑均失败，不能重建原作品或覆盖异作品绑定。必要作品更新、章节写入与 COMPLETE 同事务；章节添加吞异常通过读回校验转为失败并回滚。
+- 原始本机重复 URL 先报身份冲突，再建立匹配表；远端同 URL 保留首项，空白 URL/名称及空目录失败。匹配章节仅更新来源元数据和缺失首取时间，保留 ID、名称、书签、阅读页与已读；旧不匹配章保留，但不加入这次验证的阅读邻接目录。缓存复用要求观测计数、原始章数、连续顺序及首取证据一致；保留的旧章可能使下一次保守刷新。
+- 历史、详情共享按 sourceId+URL 合并的刷新 owner。共享网络请求获取详情与目录，历史纯目录准备不覆写既有标题/详情，以保护现有下载目录身份。手动详情刷新意图可提升同一 flight：若短事务尚未决定，详情与目录一起提交；若已决定，复用已获取详情做另一短事务的必要详情更新，不再次请求目录。手动刷新本来的详情更新语义保留。
+- COMPLETE 仅证明目录，不替代 initialized。详情首次加载还考虑 !initialized；历史缓存判定只使用目录证据。源超时/HTTP/解析/空目录与存储失败保留各自结果；失败不伪造 COMPLETE，重试仍走真实请求。
+- 详情首次准备通过 owner.prepareForDetails 返回显式 SourceCallResult，并把身份/本机查询失败发布到既有刷新 Failure；原稀疏列表保留，现有失败栏显示原因和重试。Browse/Search 的兼容 awaitListedForDetails 保留已经获得的固定作品 ID，在检查失败时返回 preparationError 并发布同一 Failure；needsRefresh=false 只阻止失败后的推测性自动刷新，不声明目录完整或检查成功。取得作品 ID 之前既有 listing 查询/创建失败仍按原调用契约处理。手动刷新初始/最终本机查询失败归为 Storage，源错误保留原分类；取消异常始终传播，不转为普通失败。
+- 历史准备完成后才读取最新有效续读章、页和快照，按实际筛选与共享导航生成不可变 refs/index；目标未纳入验证目录时不能猜 index=0。源消失目标的显式已有章节降级只提供当前已知目标。取消/删除/清除/离开使迟到导航失效，已打开 session 不因新的同步候选跳转。
+- Test Mode 的 history_select/history_retry/history_read_existing 与历史按钮复用相同请求 mapper，production tracker 保持默认。真实已挂载 session 的只读观测和既有业务动作优先于模拟 reader state；隔离固定夹具使用 production source parser、两个文件 SQLite、真实 journal/inbox/projector，见[API 参考](automation/API_REFERENCE.md)。它不接受任意 SQL、事件、源 URL 或用户目录参数。
+
+本修复不改变 schema、同步协议、Android 产品 UI 或下载文件名称，也不意味着宏观 parity manifest 的 HI-01 全部差异收口。Desktop UI README 的旧“稳定后完整模块”句按项目 AGENTS 分层验证约束解释：HR01 只运行受影响 focused 回归，完整模块及正式产物由 HR02 验收。

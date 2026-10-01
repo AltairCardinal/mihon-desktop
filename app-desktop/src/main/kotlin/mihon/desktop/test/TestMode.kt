@@ -1,20 +1,22 @@
 package mihon.desktop.test
 
-import io.ktor.server.engine.embeddedServer
+import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import io.ktor.server.engine.ApplicationEngine
+import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.network.DesktopNetworkMaintenancePort
+import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.security.DesktopPassphraseVerifier
-import mihon.desktop.test.http.createPlatformAcceptanceController
-import mihon.desktop.test.http.BrowseSearchTestModeBridge
-import mihon.desktop.test.http.BrowseSearchTestModeController
+import mihon.desktop.test.http.AuthorArchiveTestModeBridge
+import mihon.desktop.test.http.AuthorArchiveTestModeController
 import mihon.desktop.test.http.BackupTestModeBridge
 import mihon.desktop.test.http.BackupTestModeController
+import mihon.desktop.test.http.BrowseSearchTestModeBridge
+import mihon.desktop.test.http.BrowseSearchTestModeController
 import mihon.desktop.test.http.DownloadTestModeBridge
 import mihon.desktop.test.http.DownloadTestModeController
 import mihon.desktop.test.http.HistoryTestModeBridge
@@ -27,19 +29,17 @@ import mihon.desktop.test.http.SettingsTestModeController
 import mihon.desktop.test.http.TrackingTestBridge
 import mihon.desktop.test.http.UpdatesTestModeBridge
 import mihon.desktop.test.http.UpdatesTestModeController
-import mihon.desktop.test.http.AuthorArchiveTestModeController
-import mihon.desktop.test.http.AuthorArchiveTestModeBridge
+import mihon.desktop.test.http.createPlatformAcceptanceController
 import mihon.desktop.test.http.testHttpServer
 import mihon.desktop.test.state.applicationState
 import mihon.desktop.tracking.TrackingTestModeController
 import mihon.desktop.ui.settings.SecuritySettingsController
 import org.slf4j.LoggerFactory
-import eu.kanade.tachiyomi.core.security.SecurityPreferences
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackerServiceRegistry
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
 
@@ -123,7 +123,18 @@ object TestMode {
         synchronized(lifecycleLock) {
             updatesController = updates
         }
-        val history = HistoryTestModeController(mihon.desktop.history.HistoryScreenModelFactory.create())
+        val history = HistoryTestModeController(
+            mihon.desktop.history.HistoryScreenModelFactory.create(),
+            catalogFixture = args.testProfile?.let { profile ->
+                mihon.desktop.test.http.HistoryCatalogTestFixture(
+                    java.io.File(profile),
+                    Injekt.get(),
+                    Injekt.get(),
+                    Injekt.get(),
+                    "http://$TEST_MODE_HOST:${args.httpPort}",
+                )
+            },
+        )
         HistoryTestModeBridge.install(history)
         synchronized(lifecycleLock) {
             historyController = history
@@ -156,7 +167,11 @@ object TestMode {
             mangaRepository = Injekt.get(),
             syncFixture = args.testProfile?.let { profile ->
                 mihon.desktop.test.http.AuthorSyncTestFixture(
-                    profile, Injekt.get(), Injekt.get(), Injekt.get(), Injekt.get(),
+                    profile,
+                    Injekt.get(),
+                    Injekt.get(),
+                    Injekt.get(),
+                    Injekt.get(),
                 )::execute
             },
         )

@@ -5,15 +5,16 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
-import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeCatalogueSource
+import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
+import mihon.domain.error.AppError
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
-import mihon.domain.error.AppError
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.SourceDateExtensionIdentity
@@ -25,13 +26,137 @@ import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 
 class SaveSourceMangaForDetailsTest {
+    @Test
+    fun `detail preparation cancellation propagates without publishing a failure`() = runBlocking<Unit> {
+        val mangas = FakeMangaRepository()
+        val manga = Manga.create().copy(id = 71, source = 42, url = "/cancel", title = "Cancel", initialized = true)
+        mangas.seed(manga)
+        val cancellation = kotlinx.coroutines.CancellationException("Cancelled catalogue check")
+        val chapters = object : tachiyomi.domain.chapter.repository.ChapterRepository by FakeChapterRepository() {
+            override suspend fun getChapterByMangaId(mangaId: Long, applyScanlatorFilter: Boolean): List<Chapter> = throw cancellation
+        }
+        val owner = SaveSourceMangaForDetails(NetworkToLocalManga(mangas), mangas, chapters)
+        val thrown = org.junit.jupiter.api.Assertions.assertThrows(kotlinx.coroutines.CancellationException::class.java) {
+            runBlocking { owner.prepareForDetails(manga) }
+        }
+        org.junit.jupiter.api.Assertions.assertSame(cancellation, thrown)
+        val legacy = org.junit.jupiter.api.Assertions.assertThrows(kotlinx.coroutines.CancellationException::class.java) {
+            runBlocking {
+                owner.awaitListedForDetails(
+                    SManga.create().apply {
+                        url = manga.url
+                        title = manga.title
+                    },
+                    manga.source,
+                )
+            }
+        }
+        org.junit.jupiter.api.Assertions.assertSame(cancellation, legacy)
+        assertEquals(emptyMap<SourceMangaRefreshKey, SourceMangaRefreshState>(), owner.refreshStates.value)
+    }
+
+    @Test
+    fun `another work prepares independently while the first source response waits`() = runBlocking<Unit> {
+        val mangas = FakeMangaRepository()
+        val chapters = FakeChapterRepository()
+        val owner = SaveSourceMangaForDetails(NetworkToLocalManga(mangas), mangas, chapters)
+        val first = owner.awaitListed(
+            SManga.create().apply {
+                url = "/first"
+                title = "First"
+            },
+            42,
+        )
+        val second = owner.awaitListed(
+            SManga.create().apply {
+                url = "/second"
+                title = "Second"
+            },
+            42,
+        )
+        val reached = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val source = object : eu.kanade.tachiyomi.source.Source {
+            override val id = 42L
+            override val name = "Two works"
+            override suspend fun getMangaUpdate(manga: SManga, chapters: List<SChapter>, fetchDetails: Boolean, fetchChapters: Boolean): eu.kanade.tachiyomi.source.model.SMangaUpdate {
+                if (manga.url == first.url) {
+                    reached.complete(Unit)
+                    release.await()
+                }
+                return eu.kanade.tachiyomi.source.model.SMangaUpdate(
+                    manga,
+                    listOf(
+                        SChapter.create().apply {
+                            url = manga.url + "/1"
+                            name = manga.title + " 1"
+                        },
+                    ),
+                )
+            }
+        }
+        kotlinx.coroutines.coroutineScope {
+            val pending = async { owner.awaitPrepared(source, first) }
+            reached.await()
+            val independent = owner.awaitPrepared(source, second)
+            assertEquals(second.id, (independent as mihon.desktop.extension.SourceCallResult.Success).value.manga.id)
+            assertEquals(listOf("/second/1"), chapters.getChapterByMangaId(second.id).map { it.url })
+            release.complete(Unit)
+            assertEquals(first.id, (pending.await() as mihon.desktop.extension.SourceCallResult.Success).value.manga.id)
+            assertEquals(listOf("/first/1"), chapters.getChapterByMangaId(first.id).map { it.url })
+        }
+    }
+
+    @Test
+    fun `detail refresh shares source request and cancellation of a waiter preserves another`() = runBlocking<Unit> {
+        val mangas = FakeMangaRepository()
+        val chapters = FakeChapterRepository()
+        val owner = SaveSourceMangaForDetails(NetworkToLocalManga(mangas), mangas, chapters)
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val source = object : eu.kanade.tachiyomi.source.Source {
+            override val id = 42L
+            override val name = "Shared"
+            override suspend fun getMangaUpdate(manga: SManga, chapters: List<SChapter>, fetchDetails: Boolean, fetchChapters: Boolean): eu.kanade.tachiyomi.source.model.SMangaUpdate {
+                calls.incrementAndGet()
+                entered.complete(Unit)
+                release.await()
+                return eu.kanade.tachiyomi.source.model.SMangaUpdate(
+                    manga,
+                    listOf(
+                        SChapter.create().apply {
+                            url = "/1"
+                            name = "Chapter 1"
+                        },
+                    ),
+                )
+            }
+        }
+        val listed = SManga.create().apply {
+            url = "/shared"
+            title = "Shared"
+        }
+        val first = owner.refreshFromSource(source, listed)
+        entered.await()
+        val second = owner.refreshFromSource(source, listed)
+        first.cancel()
+        release.complete(Unit)
+        second.join()
+        assertEquals(1, calls.get())
+        assertEquals(1, chapters.addedChapters.size)
+        assertEquals(null, owner.refreshStates.value[SourceMangaRefreshKey(42, "/shared")])
+    }
 
     @Test
     fun `detail refresh calls combined update exactly once with both flags`() = runBlocking<Unit> {
         val mangaRepo = FakeMangaRepository()
         val chapterRepo = FakeChapterRepository()
         val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
-        val listed = SManga.create().apply { url = "/combined"; title = "Combined" }
+        val listed = SManga.create().apply {
+            url = "/combined"
+            title = "Combined"
+        }
         var calls = 0
         val source = object : eu.kanade.tachiyomi.source.Source {
             override val id = 42L
@@ -47,7 +172,12 @@ class SaveSourceMangaForDetailsTest {
                 assertEquals(true, fetchChapters)
                 return eu.kanade.tachiyomi.source.model.SMangaUpdate(
                     manga,
-                    listOf(SChapter.create().apply { url = "/chapter"; name = "Chapter 1" }),
+                    listOf(
+                        SChapter.create().apply {
+                            url = "/chapter"
+                            name = "Chapter 1"
+                        },
+                    ),
                 )
             }
         }
@@ -157,8 +287,14 @@ class SaveSourceMangaForDetailsTest {
             },
             sourceId = 42L,
             sChapters = listOf(
-                SChapter.create().apply { url = "/chapter/1"; name = "Chapter 1" },
-                SChapter.create().apply { url = "/chapter/2"; name = "Chapter 2" },
+                SChapter.create().apply {
+                    url = "/chapter/1"
+                    name = "Chapter 1"
+                },
+                SChapter.create().apply {
+                    url = "/chapter/2"
+                    name = "Chapter 2"
+                },
             ),
         )
 
@@ -237,8 +373,14 @@ class SaveSourceMangaForDetailsTest {
             },
             sourceId = 42L,
             sChapters = listOf(
-                SChapter.create().apply { url = "/chapter/16"; name = "第16卷" },
-                SChapter.create().apply { url = "/chapter/22"; name = "第22卷" },
+                SChapter.create().apply {
+                    url = "/chapter/16"
+                    name = "第16卷"
+                },
+                SChapter.create().apply {
+                    url = "/chapter/22"
+                    name = "第22卷"
+                },
             ),
         )
 
@@ -272,8 +414,14 @@ class SaveSourceMangaForDetailsTest {
             },
             sourceId = 42L,
             sChapters = listOf(
-                SChapter.create().apply { url = "/chapter/16"; name = "第16卷" },
-                SChapter.create().apply { url = "/chapter/22"; name = "第22卷" },
+                SChapter.create().apply {
+                    url = "/chapter/16"
+                    name = "第16卷"
+                },
+                SChapter.create().apply {
+                    url = "/chapter/22"
+                    name = "第22卷"
+                },
             ),
         )
 
@@ -289,7 +437,12 @@ class SaveSourceMangaForDetailsTest {
             url = "/manga/chainsaw-man"
             title = "Chainsaw Man"
         }
-        val chapters = listOf(SChapter.create().apply { url = "/chapter/1"; name = "Chapter 1" })
+        val chapters = listOf(
+            SChapter.create().apply {
+                url = "/chapter/1"
+                name = "Chapter 1"
+            },
+        )
 
         val first = useCase.await(sManga, sourceId = 42L, sChapters = chapters)
         val second = useCase.await(sManga, sourceId = 42L, sChapters = chapters)
@@ -310,7 +463,12 @@ class SaveSourceMangaForDetailsTest {
                 author = "Author A"
                 thumbnail_url = "https://example.invalid/detail-cover.jpg"
             },
-            chapters = listOf(SChapter.create().apply { url = "/chapter/1"; name = "Chapter 1" }),
+            chapters = listOf(
+                SChapter.create().apply {
+                    url = "/chapter/1"
+                    name = "Chapter 1"
+                },
+            ),
         )
 
         val result = useCase.awaitFromSource(
@@ -406,7 +564,7 @@ class SaveSourceMangaForDetailsTest {
     }
 
     @Test
-    fun `listed detail open does not request refresh for existing initialized manga with chapters`() = runBlocking<Unit> {
+    fun `listed detail open requests refresh for unobserved initialized manga with chapters`() = runBlocking<Unit> {
         val mangaRepo = FakeMangaRepository()
         val chapterRepo = FakeChapterRepository()
         val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
@@ -432,6 +590,28 @@ class SaveSourceMangaForDetailsTest {
             sourceId = 42L,
         )
 
-        assertEquals(false, result.needsRefresh)
+        assertEquals(true, result.needsRefresh)
+    }
+
+    @Test
+    fun `remote duplicate stable URLs keep first occurrence and consecutive order`() = runBlocking<Unit> {
+        val mangas = FakeMangaRepository()
+        val chapters = FakeChapterRepository()
+        val owner = SaveSourceMangaForDetails(NetworkToLocalManga(mangas), mangas, chapters)
+        owner.await(
+            SManga.create().apply {
+                url = "/duplicates"
+                title = "Duplicates"
+            },
+            42,
+            listOf("/3", "/3", "/2", "/1").map { url ->
+                SChapter.create().apply {
+                    this.url = url
+                    name = url
+                }
+            },
+        )
+        assertEquals(listOf("/3", "/2", "/1"), chapters.addedChapters.map { it.url })
+        assertEquals(listOf(0L, 1L, 2L), chapters.addedChapters.map { it.sourceOrder })
     }
 }

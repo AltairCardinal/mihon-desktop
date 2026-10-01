@@ -48,6 +48,7 @@ class HistoryScreenModelTest {
             GetChapter(chapters),
             GetManga(mangas),
             progress,
+            getChapters = tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(chapters),
         )
         val request = requireNotNull(model.readerRequestFor(sampleHistory(chapterId = 1, mangaId = 10)))
         assertEquals(2L, request.chapterId)
@@ -165,6 +166,7 @@ class HistoryScreenModelTest {
             removeHistory = RemoveHistory(historyRepository),
             getChapter = GetChapter(chapterRepository),
             getManga = GetManga(mangaRepository),
+            getChapters = tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(chapterRepository),
         )
     }
 

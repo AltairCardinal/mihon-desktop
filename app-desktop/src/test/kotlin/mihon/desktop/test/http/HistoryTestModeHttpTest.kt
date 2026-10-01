@@ -55,7 +55,15 @@ class HistoryTestModeHttpTest {
             it.addHistory(history(2, "One Piece"))
         }
         val chapterRepository = FakeChapterRepository().also {
-            it.seed(Chapter.create().copy(id = 1, mangaId = 10, name = "Chapter 1", url = "/chapter/1"))
+            it.seed(
+                Chapter.create().copy(id = 3, mangaId = 10, name = "Chapter 3", url = "/chapter/3", sourceOrder = 0),
+            )
+            it.seed(
+                Chapter.create().copy(id = 1, mangaId = 10, name = "Chapter 1", url = "/chapter/1", sourceOrder = 1),
+            )
+            it.seed(
+                Chapter.create().copy(id = 2, mangaId = 10, name = "Chapter 0", url = "/chapter/0", sourceOrder = 2),
+            )
         }
         val mangaRepository = FakeMangaRepository().also {
             it.seed(Manga.create().copy(id = 10, source = 1, title = "Naruto", url = "/manga"))
@@ -78,6 +86,10 @@ class HistoryTestModeHttpTest {
                 assertEquals(listOf("Naruto"), model.state.value.items.map { it.title })
                 assertEquals(200, post(baseUrl, "/test/action/history_select", """{"index":0}""").statusCode())
                 assertTrue(TestNavigationController.pendingScreenRequest.value?.screen is DesktopReaderScreen)
+                val reader = TestNavigationController.pendingScreenRequest.value?.screen as DesktopReaderScreen
+                assertEquals(listOf(3L, 1L, 2L), reader.chapters.map { it.id })
+                assertEquals(1, reader.currentChapterIndex)
+                assertEquals(null, reader.progressTracker)
 
                 assertEquals(200, post(baseUrl, "/test/action/history_clear_all", "{}").statusCode())
                 assertTrue(model.state.value.items.isEmpty())
@@ -132,6 +144,7 @@ class HistoryTestModeHttpTest {
         removeHistory = RemoveHistory(repository),
         getChapter = GetChapter(chapterRepository),
         getManga = GetManga(mangaRepository),
+        getChapters = tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(chapterRepository),
     )
 
     private fun history(id: Long, title: String) = HistoryWithRelations(

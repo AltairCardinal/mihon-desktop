@@ -2154,4 +2154,12 @@
     <string name="creator_frequency_monthly">Monthly</string>
     <string name="creator_settings_saved">Author settings saved</string>
     <string name="desktop_backup_preview_authors">Author archive: %1$d authors</string>
+    <string name="history_loading_chapters">Loading chapters…</string>
+    <string name="history_source_unavailable">Source unavailable</string>
+    <string name="history_chapter_not_in_catalog">This chapter is not in the latest catalogue</string>
+    <string name="history_chapter_identity_conflict">Chapter identity conflict</string>
+    <string name="history_catalog_storage_error">Unable to read or save the chapter catalogue</string>
+    <string name="history_retry_chapters">Retry loading chapters</string>
+    <string name="history_read_existing_chapters">Read using existing chapters</string>
+    <string name="history_existing_chapters_incomplete">The chapter list may be incomplete</string>
 </resources>

@@ -14,11 +14,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -33,6 +35,7 @@ import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -41,7 +44,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -55,8 +65,12 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
+import mihon.desktop.history.HistoryReadFailure
+import mihon.desktop.history.HistoryReadStatus
 import mihon.desktop.history.HistoryScreenModelFactory
+import mihon.desktop.history.toReaderScreen
 import mihon.desktop.ui.reader.DesktopReaderScreen
+import mihon.desktop.ui.source.desktopSourceErrorMessage
 import tachiyomi.domain.history.model.HistoryWithRelations
 import tachiyomi.i18n.MR
 import java.text.SimpleDateFormat
@@ -131,6 +145,7 @@ class HistoryRootScreen : Screen {
         val model = rememberScreenModel { HistoryScreenModelFactory.create() }
         val state by model.state.collectAsState()
         val scope = rememberCoroutineScope()
+        DisposableEffect(model) { onDispose { model.cancelRead() } }
 
         LaunchedEffect(state.searchQuery) {
             model.loadHistory(state.searchQuery)
@@ -160,7 +175,16 @@ class HistoryRootScreen : Screen {
             )
         }
 
-        Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.fillMaxSize().onPreviewKeyEvent {
+                if (it.type == KeyEventType.KeyDown && it.key == Key.Escape && state.readStatus != null) {
+                    model.cancelRead()
+                    true
+                } else {
+                    false
+                }
+            },
+        ) {
             // Search bar + clear-all button
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -216,6 +240,7 @@ class HistoryRootScreen : Screen {
             } else {
                 val sections = remember(state.items) { groupHistoryByDate(state.items) }
                 LazyColumn(
+                    state = rememberLazyListState(),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -227,22 +252,21 @@ class HistoryRootScreen : Screen {
                         items(section.items, key = { it.id }) { item ->
                             HistoryItem(
                                 item = item,
+                                status = state.readStatus?.takeIf { it.historyId == item.id },
+                                restoreReadFocus = state.lastReadHistoryId == item.id,
+                                onCancel = model::cancelRead,
+                                onUseExisting = {
+                                    scope.launch {
+                                        model.readerRequestFor(item, useExisting = true)?.let {
+                                            navigator.push(it.toReaderScreen(model::cancelRead))
+                                        }
+                                    }
+                                },
                                 onRead = {
                                     scope.launch {
                                         val request = model.readerRequestFor(item) ?: return@launch
                                         navigator.push(
-                                            DesktopReaderScreen(
-                                                chapterTitle = request.chapterTitle,
-                                                mangaTitle = request.mangaTitle,
-                                                isWebtoon = false,
-                                                sourceId = request.sourceId,
-                                                chapterUrl = request.chapterUrl,
-                                                chapterId = request.chapterId,
-                                                mangaId = request.mangaId,
-                                                mangaViewerFlags = request.mangaViewerFlags,
-                                                initialPage = request.initialPage,
-                                                resumeSnapshot = request.resumeSnapshot,
-                                            ),
+                                            request.toReaderScreen(model::cancelRead),
                                         )
                                     }
                                 },
@@ -276,13 +300,21 @@ private fun HistoryItem(
     item: HistoryWithRelations,
     onRead: () -> Unit,
     onRemove: () -> Unit,
+    status: HistoryReadStatus? = null,
+    restoreReadFocus: Boolean = false,
+    onCancel: () -> Unit = {},
+    onUseExisting: () -> Unit = {},
 ) {
     val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy  HH:mm", Locale.getDefault()) }
+    val readFocus = remember(item.id) { FocusRequester() }
+    LaunchedEffect(item.id, restoreReadFocus) {
+        if (restoreReadFocus) readFocus.requestFocus()
+    }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onRead),
+            .clickable(enabled = status?.loading != true, onClick = onRead),
     ) {
         Row(
             modifier = Modifier
@@ -324,9 +356,41 @@ private fun HistoryItem(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                if (status?.loading == true) {
+                    Text(MR.strings.history_loading_chapters.localized(), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = onCancel) { Text(MR.strings.action_cancel.localized()) }
+                } else if (status?.failure != null) {
+                    val message = when (status.failure) {
+                        HistoryReadFailure.SOURCE_UNAVAILABLE -> MR.strings.history_source_unavailable.localized()
+                        HistoryReadFailure.TARGET_MISSING -> MR.strings.history_chapter_not_in_catalog.localized()
+                        HistoryReadFailure.IDENTITY -> MR.strings.history_chapter_identity_conflict.localized()
+                        HistoryReadFailure.STORAGE -> MR.strings.history_catalog_storage_error.localized()
+                        HistoryReadFailure.SOURCE -> status.error?.let { desktopSourceErrorMessage(it) }
+                            ?: MR.strings.unknown_error.localized()
+                    }
+                    Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = onRead) { Text(MR.strings.history_retry_chapters.localized()) }
+                    if (status.canUseExisting) {
+                        Text(
+                            MR.strings.history_existing_chapters_incomplete.localized(),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        TextButton(onClick = onUseExisting) {
+                            Text(MR.strings.history_read_existing_chapters.localized())
+                        }
+                    }
+                    TextButton(onClick = onCancel) { Text(MR.strings.action_cancel.localized()) }
+                }
             }
 
             // Delete button
+            IconButton(
+                onClick = onRead,
+                enabled = status?.loading != true,
+                modifier = Modifier.focusRequester(readFocus),
+            ) {
+                Icon(Icons.Default.PlayArrow, contentDescription = MR.strings.action_resume.localized())
+            }
             IconButton(onClick = onRemove) {
                 Icon(
                     Icons.Default.Delete,

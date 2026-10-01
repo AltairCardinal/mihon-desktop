@@ -623,6 +623,31 @@ class CreatorRepositoryImpl(
         }
     }
 
+    override suspend fun getSourceWorkCatalog(
+        sourceWork: SourceWorkNaturalKey,
+        mangaId: Long,
+    ): tachiyomi.domain.creator.model.SourceWorkCatalogObservation? {
+        bootstrap.awaitReady()
+        return handler.await {
+            val row = author_archiveQueries.getArchiveSourceWorkByKey(
+                sourceWork.sourceId,
+                sourceWork.stableSourceUrl.trim(),
+            ).executeAsOneOrNull() ?: author_archiveQueries.getArchiveSourceWorkByKey(
+                sourceWork.sourceId,
+                "legacy-manga:$mangaId",
+            ).executeAsOneOrNull()?.takeIf { it.manga_id == mangaId }
+            row?.let {
+                check(it.manga_id == null || it.manga_id == mangaId) { "Source catalogue manga identity conflict" }
+                tachiyomi.domain.creator.model.SourceWorkCatalogObservation(
+                    SourceWorkNaturalKey(it.source_id, it.stable_source_url),
+                    it.manga_id,
+                    it.catalog_chapter_count,
+                    ChapterCatalogCompleteness.valueOf(it.chapter_count_state),
+                )
+            }
+        }
+    }
+
     override suspend fun updateSourceWorkCatalog(
         sourceWork: SourceWorkNaturalKey,
         chapterCount: Long,

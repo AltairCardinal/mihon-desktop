@@ -1,8 +1,5 @@
 package mihon.desktop.ui.reader
 
-import mihon.desktop.LocalDesktopUiDependencies
-import tachiyomi.i18n.MR
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
@@ -23,6 +20,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -50,6 +48,7 @@ import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.DesktopReaderPresentationImageOwner
@@ -80,6 +79,7 @@ import mihon.desktop.ui.source.desktopSourceErrorMessage
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.session.ReaderChapterLoadState
+import tachiyomi.i18n.MR
 
 @OptIn(ExperimentalMaterial3Api::class)
 data class DesktopReaderScreen(
@@ -129,14 +129,31 @@ data class DesktopReaderScreen(
             )
         }
         val runtime = checkNotNull(model.runtime)
+        DisposableEffect(runtime) {
+            val binding = if (progressTracker == null) {
+                mihon.desktop.test.http.ProductionReaderBinding(
+                    model,
+                    chapters,
+                    transition = { direction, nav -> requestAdjacentChapterTransition(direction, model, nav) },
+                    closeReader = { navigator.pop() },
+                )
+            } else {
+                null
+            }
+            binding?.let(mihon.desktop.test.http.ProductionReaderTestModeBridge::install)
+            onDispose { binding?.let(mihon.desktop.test.http.ProductionReaderTestModeBridge::clear) }
+        }
         val state by model.state.collectAsState()
         val notifications = LocalDesktopUiDependencies.current.notificationService
         LaunchedEffect(state.context.chapterId, state.resumePageUnavailable) {
-            if (state.resumePageUnavailable) notifications.post(
-                mihon.desktop.domain.DesktopNotification(
-                    MR.strings.action_resume.localized(), MR.strings.sync_resume_page_unavailable.localized(),
-                ),
-            )
+            if (state.resumePageUnavailable) {
+                notifications.post(
+                    mihon.desktop.domain.DesktopNotification(
+                        MR.strings.action_resume.localized(),
+                        MR.strings.sync_resume_page_unavailable.localized(),
+                    ),
+                )
+            }
         }
         LaunchedEffect(state.context.chapterId, state.pairingNoticeSerial) {
             val message = when (state.pairingNotice) {
@@ -145,9 +162,14 @@ data class DesktopReaderScreen(
                 PairingNotice.SESSION_ONLY -> MR.strings.desktop_reader_pairing_session_only.localized()
                 null -> null
             }
-            if (message != null) notifications.post(mihon.desktop.domain.DesktopNotification(
-                MR.strings.desktop_ui_adjust_spread.localized(), message,
-            ))
+            if (message != null) {
+                notifications.post(
+                    mihon.desktop.domain.DesktopNotification(
+                        MR.strings.desktop_ui_adjust_spread.localized(),
+                        message,
+                    ),
+                )
+            }
         }
         val focusRequester = remember { FocusRequester() }
         ReaderLifecycleEffect(model)
@@ -322,11 +344,11 @@ data class DesktopReaderScreen(
         chapterNumber = target.chapterNumber,
         chapterIndex = ReaderNavigator.indexForId(chapters, target.id),
         initialPage = initialPageForChapterNavigation(
-                if (direction == ReaderTransitionDirection.PREVIOUS) {
-                    ReaderChapterNavigationDirection.Previous
-                } else {
-                    ReaderChapterNavigationDirection.Next
-                },
+            if (direction == ReaderTransitionDirection.PREVIOUS) {
+                ReaderChapterNavigationDirection.Previous
+            } else {
+                ReaderChapterNavigationDirection.Next
+            },
         ),
         wasRead = target.isRead,
         mangaId = mangaId,
@@ -449,12 +471,17 @@ private fun ReaderSideEffects(
     }
     LaunchedEffect(state.session.activeChapter.pages.size, state.spreadPages, state.autoSplitPages, state.dualPageMode, state.readingMode) {
         model.setVirtualPages(
-            if (state.autoSplitPages && !state.dualPageMode && state.readingMode != ReadingMode.WEBTOON && state.spreadPages.isNotEmpty())
+            if (state.autoSplitPages && !state.dualPageMode && state.readingMode != ReadingMode.WEBTOON && state.spreadPages.isNotEmpty()) {
                 buildVirtualPageList(totalPages = state.session.activeChapter.pages.size, spreadPages = state.spreadPages, isRtl = state.readingMode == ReadingMode.RTL)
-            else null,
+            } else {
+                null
+            },
         )
     }
-    LaunchedEffect(Unit) { kotlinx.coroutines.delay(100); focusRequester.requestFocus() }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(100)
+        focusRequester.requestFocus()
+    }
 }
 
 internal suspend fun observeDesktopMatchedPairs(
@@ -596,24 +623,24 @@ internal fun ReaderViewport(
             if (state.showUI) {
                 TopAppBar(
                     title = { Text(chapterTitle, maxLines = 1, style = MaterialTheme.typography.bodyMedium, color = Color.White) },
-                navigationIcon = {
-                    IconButton(onClick = { navigator.pop() }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            MR.strings.desktop_ui_back.localized(),
-                            tint = Color.White,
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { model.toggleSettings() }) {
-                        Icon(
-                            Icons.Default.Settings,
-                            MR.strings.desktop_ui_reader_settings.localized(),
-                            tint = Color.White,
-                        )
-                    }
-                },
+                    navigationIcon = {
+                        IconButton(onClick = { navigator.pop() }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                MR.strings.desktop_ui_back.localized(),
+                                tint = Color.White,
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { model.toggleSettings() }) {
+                            Icon(
+                                Icons.Default.Settings,
+                                MR.strings.desktop_ui_reader_settings.localized(),
+                                tint = Color.White,
+                            )
+                        }
+                    },
                     modifier = Modifier.align(Alignment.TopCenter),
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.7f)),
                 )
@@ -762,9 +789,18 @@ internal fun handleReaderKeyEvent(
     val navCurrent = navPosition.current
     if (event.isCtrlPressed) {
         return when (event.key) {
-            Key.Equals -> { model.setZoomState(state.zoomState.zoomIn()); true }
-            Key.Minus -> { model.setZoomState(state.zoomState.zoomOut()); true }
-            Key.Zero -> { model.setZoomState(state.zoomState.reset()); true }
+            Key.Equals -> {
+                model.setZoomState(state.zoomState.zoomIn())
+                true
+            }
+            Key.Minus -> {
+                model.setZoomState(state.zoomState.zoomOut())
+                true
+            }
+            Key.Zero -> {
+                model.setZoomState(state.zoomState.reset())
+                true
+            }
             else -> false
         }
     }
@@ -786,7 +822,10 @@ internal fun handleReaderKeyEvent(
         Key.Seven -> ReaderKeyboardAction.forDigit(7, totalPages)
         Key.Eight -> ReaderKeyboardAction.forDigit(8, totalPages)
         Key.Nine -> ReaderKeyboardAction.forDigit(9, totalPages)
-        Key.Escape -> { navigator.pop(); return true }
+        Key.Escape -> {
+            navigator.pop()
+            return true
+        }
         else -> null
     } ?: return false
     return applyReaderPageAction(
@@ -829,8 +868,14 @@ private fun applyReaderPageAction(
         }
         true
     }
-    is ReaderPageAction.NoPrevPage -> { onPrevChapter(); true }
-    is ReaderPageAction.NoNextPage -> { onNextChapter(); true }
+    is ReaderPageAction.NoPrevPage -> {
+        onPrevChapter()
+        true
+    }
+    is ReaderPageAction.NoNextPage -> {
+        onNextChapter()
+        true
+    }
 }
 
 internal data class ReaderKeyboardNavigationPosition(

@@ -29,6 +29,11 @@ class LibraryUpdateChecker(
     private val sourceDateExtensionIdentityProvider: (Long) -> SourceDateExtensionIdentity = {
         SourceDateExtensionIdentity("unknown.extension", "unknown")
     },
+    private val catalogWriter: SourceChapterCatalogWriter = SourceChapterCatalogWriter(
+        chapterRepository,
+        creatorArchiveRepository,
+        extensionIdentity = sourceDateExtensionIdentityProvider,
+    ),
 ) {
 
     /**
@@ -39,93 +44,23 @@ class LibraryUpdateChecker(
      */
     suspend fun checkForUpdates(manga: Manga, source: Source): UpdateResult {
         val knownChapters = chapterRepository.getChapterByMangaId(manga.id)
-        val remoteUpdate = when (val r = safeSourceCall {
-            tachiyomi.domain.source.service.SourceMangaUpdateService().await(source, manga, knownChapters, false, true)
-        }) {
+        val remoteUpdate = when (
+            val r = safeSourceCall {
+                tachiyomi.domain.source.service.SourceMangaUpdateService().await(source, manga, knownChapters, false, true)
+                    .also { catalogWriter.validate(it.chapters) }
+            }
+        ) {
             is SourceCallResult.Success -> r.value
             is SourceCallResult.Timeout -> return UpdateResult(newChapterCount = 0, sourceError = r.error)
             is SourceCallResult.Error -> return UpdateResult(newChapterCount = 0, sourceError = r.error)
         }
-        check(mangaRepository.update(tachiyomi.domain.manga.model.MangaUpdate(manga.id, memo = remoteUpdate.manga.memo)))
-        val remoteChapters = remoteUpdate.chapters
-
-        val knownChaptersByUrl = chapterRepository.getChapterByMangaId(manga.id)
-            .associateBy { it.url }
-        val toUpdate = mutableListOf<ChapterUpdate>()
-
-        val toAdd = remoteChapters.mapIndexedNotNull { index, sc ->
-            val chapterNumber = sc.recognizedChapterNumber(manga)
-            val knownChapter = knownChaptersByUrl[sc.url]
-            if (knownChapter != null) {
-                if (knownChapter.chapterNumber != chapterNumber || knownChapter.memo != sc.memo) {
-                    toUpdate += ChapterUpdate(id = knownChapter.id, chapterNumber = chapterNumber, memo = sc.memo)
-                }
-                return@mapIndexedNotNull null
-            }
-            Chapter.create().copy(
-                mangaId = manga.id,
-                url = sc.url,
-                name = sc.name,
-                dateUpload = sc.date_upload,
-                chapterNumber = chapterNumber,
-                scanlator = sc.scanlator?.ifBlank { null }?.trim(),
-                sourceOrder = index.toLong(),
-                dateFetch = System.currentTimeMillis(),
-                memo = sc.memo,
-            )
+        val inserted = catalogWriter.transaction {
+            val current = mangaRepository.getMangaById(manga.id)
+            check(current.source == manga.source && current.url == manga.url) { "Source manga identity conflict" }
+            catalogWriter.validateWorkIdentity(current)
+            check(mangaRepository.update(tachiyomi.domain.manga.model.MangaUpdate(manga.id, memo = remoteUpdate.manga.memo)))
+            catalogWriter.merge(current, remoteUpdate.chapters).added
         }
-
-        if (toUpdate.isNotEmpty()) {
-            chapterRepository.updateAll(toUpdate)
-        }
-        val inserted = if (toAdd.isNotEmpty()) {
-            chapterRepository.addAll(toAdd)
-        } else {
-            emptyList()
-        }
-
-        val observedAt = System.currentTimeMillis()
-        val extensionIdentity = sourceDateExtensionIdentityProvider(manga.source)
-        val stableSourceUrl = CreatorSourceWorkKey.stableUrl(
-            url = manga.url,
-            title = manga.title,
-            author = manga.author,
-            artist = manga.artist,
-        )
-        creatorArchiveRepository?.recordSourceDateQualityObservations(
-            remoteChapters.mapNotNull { chapter ->
-                chapter.url.takeIf(String::isNotBlank)?.let { chapterUrl ->
-                    val value = chapter.date_upload.takeIf { it > 0L }
-                    SourceDateObservation(
-                        identity = SourceDateQualityIdentity(
-                            extensionPackage = extensionIdentity.packageName,
-                            extensionVersion = extensionIdentity.version,
-                            sourceId = manga.source,
-                            field = SourceDateField.CHAPTER_UPDATED,
-                        ),
-                        workNaturalKey = stableSourceUrl,
-                        chapterNaturalKey = chapterUrl,
-                        rawValue = value?.toString(),
-                        valueAt = value,
-                        precision = value?.let { SourceDatePrecision.DAY } ?: SourceDatePrecision.UNKNOWN,
-                        observedAt = observedAt,
-                        reason = value?.let { null } ?: "missing-date",
-                    )
-                }
-            },
-            now = observedAt,
-        )
-        creatorArchiveRepository?.updateSourceWorkCatalog(
-            sourceWork = tachiyomi.domain.creator.model.SourceWorkNaturalKey(
-                sourceId = manga.source,
-                stableSourceUrl = stableSourceUrl,
-            ),
-            chapterCount = remoteChapters.size.toLong(),
-            completeness = ChapterCatalogCompleteness.COMPLETE,
-            latestChapterAt = remoteChapters.map { it.date_upload }.filter { it > 0L }.maxOrNull(),
-            observedAt = observedAt,
-            mangaId = manga.id,
-        )
 
         return UpdateResult(newChapterCount = inserted.size, newChapters = inserted)
     }

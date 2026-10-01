@@ -1,9 +1,5 @@
 package mihon.desktop.ui.library
 
-import tachiyomi.domain.source.service.toSourceManga
-import tachiyomi.i18n.MR
-import java.util.Locale
-import mihon.desktop.LocalDesktopUiDependencies
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,10 +41,10 @@ import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SelectAll
-import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Checkbox
@@ -93,8 +89,10 @@ import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.SourceMangaRefreshKey
 import mihon.desktop.domain.SourceMangaRefreshState
+import mihon.desktop.platform.toDesktopNotification
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.externalChapterUrlOrNull
 import mihon.desktop.reader.readingModeFromViewerFlags
@@ -106,12 +104,10 @@ import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.manga.model.Manga
-import mihon.desktop.platform.toDesktopNotification
+import tachiyomi.domain.source.service.toSourceManga
+import tachiyomi.i18n.MR
+import java.util.Locale
 import androidx.compose.foundation.layout.size as layoutSize
-
-
-
-
 
 data class MangaDetailScreen(val mangaId: Long) : Screen {
 
@@ -229,9 +225,13 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         }
         LaunchedEffect(manga?.id) {
             val currentManga = manga ?: return@LaunchedEffect
-            if (model.state.value.chapters.isNotEmpty()) return@LaunchedEffect
             if (sourceRefreshState is SourceMangaRefreshState.Loading) return@LaunchedEffect
             val currentSource = model.sourceFor(currentManga) ?: return@LaunchedEffect
+            val preparation = when (val result = dependencies.saveSourceMangaForDetails.prepareForDetails(currentManga)) {
+                is mihon.desktop.extension.SourceCallResult.Success -> result.value
+                is mihon.desktop.extension.SourceCallResult.Error, is mihon.desktop.extension.SourceCallResult.Timeout -> return@LaunchedEffect
+            }
+            if (!preparation.needsRefresh) return@LaunchedEffect
             dependencies.saveSourceMangaForDetails.refreshFromSource(
                 source = currentSource,
                 listedManga = currentManga.toSourceMangaForRefresh(),
@@ -661,7 +661,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 )
             }
 
-
             // ── Migration: source picker ──────────────────────────────────
             if (showMigrateSourcePicker) {
                 val availableSources = remember {
@@ -969,7 +968,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             Text(
-                                text = desktopSourceErrorMessage(failure.error),
+                                text = mangaDetailSourceRefreshErrorMessage(failure.error),
                                 color = MaterialTheme.colorScheme.onErrorContainer,
                             )
                             TextButton(onClick = refreshFromSource) {
@@ -1066,3 +1065,10 @@ internal fun mangaDetailChapterContentState(
 }
 
 internal fun Manga.toSourceMangaForRefresh(): SManga = toSourceManga()
+
+internal fun mangaDetailSourceRefreshErrorMessage(error: mihon.domain.error.AppError): String = when {
+    error is mihon.domain.error.AppError.Storage &&
+        error.cause?.message.orEmpty().contains("identity", ignoreCase = true) -> MR.strings.history_chapter_identity_conflict.localized()
+    error is mihon.domain.error.AppError.Storage -> MR.strings.history_catalog_storage_error.localized()
+    else -> desktopSourceErrorMessage(error)
+}
