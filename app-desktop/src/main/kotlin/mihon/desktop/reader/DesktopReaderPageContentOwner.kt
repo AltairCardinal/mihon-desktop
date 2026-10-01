@@ -16,6 +16,7 @@ class DesktopReaderPageContentOwner internal constructor(
     scope: CoroutineScope,
     encodedPageReader: suspend (EncodedPageRef) -> ByteArray?,
     ioReporter: ReaderIoReporter,
+    encodedPrefixReader: (suspend (EncodedPageRef, Int) -> ByteArray?)? = null,
 ) : AutoCloseable {
     private val coordinator = ReaderPageContentOpenCoordinator(
         scope = scope,
@@ -27,12 +28,24 @@ class DesktopReaderPageContentOwner internal constructor(
                 generation = request.generation,
                 purpose = ReaderIoPurpose.CURRENT_PAGE,
             )
-            encodedPageReader(request.encodedPageRef)
+            val limit = request.maxBytes
+            if (limit == null) {
+                encodedPageReader(request.encodedPageRef)
+            } else {
+                requireNotNull(encodedPrefixReader) {
+                    "Bounded header reader is unavailable"
+                }(request.encodedPageRef, limit)
+            }
         },
     )
 
     suspend fun acquire(request: ReaderPageContentOpenRequest): ReaderPageContentLease<ByteArray>? =
         coordinator.acquire(request)
+
+    suspend fun acquireHeader(request: ReaderPageContentOpenRequest): ReaderPageContentLease<ByteArray>? =
+        coordinator.acquire(
+            request.copy(maxBytes = mihon.domain.reader.ReaderDualPageFactLimits.MAX_HEADER_BYTES.toInt()),
+        )
 
     internal fun snapshot(): ReaderPageContentOpenSnapshot = coordinator.snapshot()
 

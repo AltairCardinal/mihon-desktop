@@ -16,7 +16,11 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -34,8 +38,14 @@ import mihon.desktop.test.http.ReaderTestFixtureSpec
 import mihon.desktop.test.http.ReaderTestImageFormat
 import mihon.desktop.test.http.ReaderTestModeController
 import mihon.desktop.test.http.testHttpServer
+import mihon.desktop.ui.reader.ReaderScreenModel
+import mihon.desktop.ui.reader.ReaderViewportBody
+import mihon.desktop.ui.reader.presentation.ReaderPresentationRequest
+import mihon.desktop.ui.reader.presentation.SinglePagedPresentation
+import mihon.desktop.ui.reader.readerViewportBody
 import mihon.domain.error.AppError
 import mihon.domain.reader.PageDecodePurpose
+import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderPageDecodeKey
 import mihon.domain.reader.content.ReaderPageContentOpenRequest
 import mihon.domain.reader.materialize.CanonicalReaderMaterializeExecutor
@@ -49,9 +59,13 @@ import mihon.domain.reader.observability.ReaderIoEventType
 import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
+import mihon.domain.reader.scheduler.ReaderRequestScheduler
+import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
+import mihon.domain.reader.session.ReaderSessionCore
 import mihon.domain.reader.storage.EncodedPageStoreWriteResult
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -332,9 +346,15 @@ class DesktopReaderMaterializePortsIntegrationTest {
         val downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads"))
         val downloaded = downloadProvider.chapterDownloadDir(42L, "Manga", "Chapter 1")
             .resolve("001.png")
-            .also { file -> file.parentFile.mkdirs(); file.writeBytes(pngBytes(Color.RED)) }
+            .also { file ->
+                file.parentFile.mkdirs()
+                file.writeBytes(pngBytes(Color.RED))
+            }
         val local = tempDir.resolve("local/Chapter 2/001.png")
-            .also { file -> file.parentFile.mkdirs(); file.writeBytes(pngBytes(Color.BLUE)) }
+            .also { file ->
+                file.parentFile.mkdirs()
+                file.writeBytes(pngBytes(Color.BLUE))
+            }
         val sourceManager = FakeDesktopSourceManager(emptyList())
 
         val downloadedPort = DesktopReaderChapterContentPort(
@@ -402,7 +422,10 @@ class DesktopReaderMaterializePortsIntegrationTest {
                 encodedPageStore = store,
                 contentAdapter = adapter,
             ),
-            publish = { events += it; true },
+            publish = {
+                events += it
+                true
+            },
         )
 
         val ready = assertInstanceOf(ReaderPageMaterializeResult.Ready::class.java, result)
@@ -710,7 +733,9 @@ class DesktopReaderMaterializePortsIntegrationTest {
         }
 
         ExtensionClassLoader(extensionJar.toURI().toURL(), javaClass.classLoader).use { classLoader ->
-            val source = classLoader.loadClass(fixtureClassName).getDeclaredConstructor().newInstance() as CatalogueSource
+            val source = classLoader.loadClass(
+                fixtureClassName,
+            ).getDeclaredConstructor().newInstance() as CatalogueSource
             assertSame(classLoader, source.javaClass.classLoader)
             assertFalse(source is HttpSource)
             MockWebServer().use { server ->
@@ -755,6 +780,144 @@ class DesktopReaderMaterializePortsIntegrationTest {
     }
 
     @Test
+    fun `real MangaDex HTTP page parser reaches model with typed failures and chapter retry recovery`() =
+        kotlinx.coroutines.runBlocking {
+            MockWebServer().use { server ->
+                server.start()
+                val client = OkHttpClient()
+                val baseUrl = server.url("/").toString().trimEnd('/')
+                val source = mihon.desktop.source.MangaDexSource(
+                    client,
+                    kotlinx.serialization.json.Json { ignoreUnknownKeys = true },
+                    baseUrl,
+                    browserJsonFetcher = null,
+                )
+                val sourceManager = FakeDesktopSourceManager(listOf(source))
+                val responseBase = """{"result":"ok","baseUrl":"$baseUrl","chapter":"""
+                val shape = responseBase + """{"hash":"real-hash","data":["001.png"],"dataSaver":[]}}"""
+                val empty = responseBase + """{"hash":"real-hash","data":[],"dataSaver":[]}}"""
+                val cases = listOf(
+                    MockResponse(code = 200, body = empty) to AppError.NoResults.javaClass,
+                    MockResponse(code = 200, body = """{"result":"ok","baseUrl":"http://unused.local"}""") to
+                        AppError.MalformedData::class.java,
+                    MockResponse(
+                        code = 403,
+                        body = """{"result":"error","errors":[{"status":403,"title":"Forbidden"}]}""",
+                    ) to
+                        AppError.Authentication::class.java,
+                    MockResponse(
+                        code = 429,
+                        body = """{"result":"error","errors":[{"status":429,"title":"Too many requests"}]}""",
+                    ) to
+                        AppError.RateLimited::class.java,
+                    MockResponse(
+                        code = 500,
+                        body = """{"result":"error","errors":[{"status":500,"title":"Internal Server Error"}]}""",
+                    ) to
+                        AppError.Server::class.java,
+                    MockResponse(code = 200, body = """{"result":""") to AppError.MalformedData::class.java,
+                )
+                cases.forEachIndexed { index, (response, expected) ->
+                    server.enqueue(response)
+                    val scope = kotlinx.coroutines.CoroutineScope(
+                        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default,
+                    )
+                    val store = DesktopReaderEncodedPageStore(tempDir.resolve("real-parser-$index"))
+                    val readerContext = context(sourceId = source.id)
+                    val session = DesktopReaderSession(
+                        readerContext,
+                        ReaderSessionCore(
+                            ReaderChapterId(1),
+                            "real-parser-$index",
+                            ReaderRequestScheduler(
+                                ReaderSchedulerPolicy(nearbyForward = 0, nearbyBackward = 0, maxConcurrentRequests = 1),
+                            ),
+                        ),
+                        store,
+                        DesktopReaderChapterContentPortFactory { context, lease ->
+                            DesktopReaderChapterContentPort(
+                                context,
+                                DesktopDownloadProvider(tempDir.resolve("downloads-parser")),
+                                sourceManager,
+                                leaseGeneration = lease,
+                            )
+                        },
+                        DesktopReaderPageFetchPortFactory { context, descriptor ->
+                            DesktopReaderPageFetchPort(context, descriptor, sourceManager, NetworkHelper(client), store)
+                        },
+                        DesktopReaderProgressPort { _, _ -> },
+                        parentScope = scope,
+                    )
+                    val model = ReaderScreenModel(
+                        initialSessionState = session.state.value,
+                        onChapterRetry = session::retryChapter,
+                        dualPageOverride = false,
+                        onViewportLayoutSettled = session::scheduleViewportWithoutProgress,
+                    )
+                    val mirror = scope.launch { session.state.collect { model.acceptSessionState(it) } }
+                    try {
+                        session.start()
+                        val failed = withTimeout(10_000) {
+                            session.state.first { it.snapshot.activeChapter.loadState is ReaderChapterLoadState.Error }
+                        }
+                        assertInstanceOf(
+                            expected,
+                            (failed.snapshot.activeChapter.loadState as ReaderChapterLoadState.Error).error,
+                        )
+                        withTimeout(10_000) {
+                            model.state.first { it.session.activeChapter.loadState is ReaderChapterLoadState.Error }
+                        }
+                        assertEquals(ReaderViewportBody.ERROR, readerViewportBody(model.state.value))
+                        server.enqueue(MockResponse(code = 200, body = shape))
+                        server.enqueue(
+                            MockResponse.Builder().setHeader(
+                                "Content-Type",
+                                "image/png",
+                            ).body(Buffer().write(pngBytes(Color.CYAN))).build(),
+                        )
+                        model.requestRetry()
+                        val materialized = withTimeout(10_000) {
+                            model.state.first { it.session.activeChapter.pages.size == 1 }
+                        }
+                        val selected = SinglePagedPresentation.present(
+                            ReaderPresentationRequest(
+                                materialized.session.activeChapter,
+                                ReaderDirection.LTR,
+                            ),
+                        )
+                        val selectedUnit = selected.displayUnits.single { it.slots.any { slot -> slot.page != null } }
+                        val viewport =
+                            requireNotNull(model.beginPagerViewport(selected.visiblePages(selectedUnit.id), false))
+                        val recovered = withTimeout(10_000) {
+                            session.state.first {
+                                it.snapshot.activeChapter.pages.singleOrNull()?.loadState is ReaderPageLoadState.Ready
+                            }
+                        }
+                        withTimeout(10_000) {
+                            model.state.first {
+                                it.session.activeChapter.pages.singleOrNull()?.loadState is ReaderPageLoadState.Ready
+                            }
+                        }
+                        assertEquals(
+                            server.url("/data/real-hash/001.png").toString(),
+                            recovered.snapshot.activeChapter.pages.single().imageUrl,
+                        )
+                        assertEquals(ReaderViewportBody.CONTENT, readerViewportBody(model.state.value))
+                        model.releaseDualViewport(viewport)
+                        assertEquals("/at-home/server/1", server.takeRequest().url.encodedPath)
+                        assertEquals("/at-home/server/1", server.takeRequest().url.encodedPath)
+                        assertEquals("/data/real-hash/001.png", server.takeRequest().url.encodedPath)
+                    } finally {
+                        model.onDispose()
+                        session.close()
+                        mirror.cancelAndJoin()
+                        scope.cancel()
+                    }
+                }
+            }
+        }
+
+    @Test
     fun `online failures retain shared empty authentication rate limit server and malformed errors`() = runTest {
         val emptySource = PageSource(emptyList(), OkHttpClient())
         val emptyPort = DesktopReaderChapterContentPort(
@@ -788,7 +951,13 @@ class DesktopReaderMaterializePortsIntegrationTest {
                         url = descriptor.url,
                         imageUrl = descriptor.imageUrl,
                     ),
-                    DesktopReaderPageFetchPort(context(), descriptor, sourceManager, NetworkHelper(source.httpClient), store),
+                    DesktopReaderPageFetchPort(
+                        context(),
+                        descriptor,
+                        sourceManager,
+                        NetworkHelper(source.httpClient),
+                        store,
+                    ),
                     publish = { true },
                 ) as ReaderPageMaterializeResult.Failed
             }.map { it.error }

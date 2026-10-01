@@ -86,6 +86,14 @@ internal fun ColumnScope.ReadingModePage(screenModel: ReaderSettingsScreenModel)
 private fun ColumnScope.PagerViewerSettings(screenModel: ReaderSettingsScreenModel) {
     HeadingItem(MR.strings.pager_viewer)
 
+    val viewer by screenModel.viewerFlow.collectAsState()
+    if (viewer is DualPageR2LPagerViewer) {
+        CheckboxItem(
+            label = stringResource(MR.strings.desktop_ui_auto_spread_matching),
+            pref = screenModel.preferences.automaticSpreadMatching(),
+        )
+    }
+
     val navigationModePager by screenModel.preferences.navigationModePager().collectAsState()
     val pagerNavInverted by screenModel.preferences.pagerNavInverted().collectAsState()
     TapZonesItems(

@@ -198,6 +198,12 @@ class DesktopReaderEncodedPageStore internal constructor(
         ?.takeIf { it.hasEncodedBytes() }
         ?.readBytes()
 
+    /** Reads a bounded encoded prefix while the existing store session retains the file. */
+    internal fun readPrefix(ref: EncodedPageRef, maxBytes: Int): ByteArray? {
+        require(maxBytes > 0)
+        return ref.fileOrNull()?.takeIf { it.hasEncodedBytes() }?.inputStream()?.use { it.readNBytes(maxBytes) }
+    }
+
     /** Resolves the private staging file while inside [store], otherwise the committed file. */
     internal fun destinationFile(ref: EncodedPageRef): File = synchronized(sharedState.lock) {
         sharedState.activeWriteFiles[ref]

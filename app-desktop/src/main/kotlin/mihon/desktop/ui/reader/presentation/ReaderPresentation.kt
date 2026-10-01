@@ -4,8 +4,8 @@ import mihon.domain.reader.PageRotation
 import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.PixelBounds
 import mihon.domain.reader.ReaderDirection
-import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.ReaderPageSize
+import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.session.ReaderChapterSession
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageSession
@@ -93,6 +93,7 @@ internal data class ReaderPresentationRequest(
     val pageSizes: Map<ReaderPageId, ReaderPageSize> = emptyMap(),
     val pageRotations: Map<ReaderPageId, PageRotation> = emptyMap(),
     val dualPagedOptions: DualPagedPresentationOptions = DualPagedPresentationOptions(),
+    val dualPageUnits: List<mihon.domain.reader.ReaderDualPageUnit>? = null,
 ) {
     init {
         require(splitPageIds.all { it.chapterId == chapter.id }) {

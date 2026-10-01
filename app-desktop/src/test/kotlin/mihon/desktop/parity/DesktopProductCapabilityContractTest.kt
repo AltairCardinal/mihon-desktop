@@ -1,26 +1,26 @@
 package mihon.desktop.parity
 
-import java.nio.file.Files
-import java.nio.file.Path
-import kotlin.io.path.exists
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
+import java.nio.file.Files
+import java.nio.file.Path
+import kotlin.io.path.exists
 
 class DesktopProductCapabilityContractTest {
     @TempDir
@@ -274,14 +274,14 @@ class DesktopProductCapabilityContractTest {
                             "switching off cancels a policy-only next chapter page-list request",
                             "activating a prefetched chapter cancels P4 and retries its visible page as P0",
                             "adjacent storage failure stops the remaining background chapter without changing active state",
-                            "non cooperative page cancellation keeps physical image requests within policy plus one stale request",
-                            "non cooperative target switches keep physical chapter requests within policy plus one stale request",
+                            "non cooperative page cancellation keeps physical image requests within policy",
+                            "non cooperative target switches keep physical chapter requests within policy",
                             "late storage failure from an old target cannot cancel the new target prefetch",
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt" to
                         setOf(
                             "production runtime follows persisted next chapter prefetch changes",
-                            "production runtime preference changes drive off first viewport and full request sets",
+                            "production runtime preference changes drive the full viewport request sets",
                             "production runtime binds the independent 512 MiB encoded cache policy",
                             "production factory creates one shared core and exposes its canonical state to the model",
                             "production factory coordinates encoded cache across concurrent reader runtimes",
@@ -751,7 +751,7 @@ class DesktopProductCapabilityContractTest {
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to setOf("fork-added pairing adapter and shared core produce the same enhancement vectors"),
                     "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt" to setOf("fork-added shared portrait pairing enhancement groups adjacent pages"),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt" to setOf("LTR single spread produces LEFT then RIGHT"),
-                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt" to setOf("shared pairing keeps cover edge matching adjust and landscape parity enhancements"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt" to setOf("shared pairing keeps cover edge matching adjust and spread phase"),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt" to
                         setOf("missing adjacent chapters become independent boundary items"),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt" to
@@ -1260,7 +1260,8 @@ class DesktopProductCapabilityContractTest {
         92 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt" to "SettingsSecurityScreen getSecurityGroup/getFirebaseGroup"),
     )
     private val exactPlatformCapabilityShared = mapOf(
-        81 to setOf("domain/src/commonMain/kotlin/mihon/domain/platform/ExternalAction.kt"), 82 to setOf("domain/src/commonMain/kotlin/mihon/domain/platform/ExternalShare.kt"),
+        81 to setOf("domain/src/commonMain/kotlin/mihon/domain/platform/ExternalAction.kt"),
+        82 to setOf("domain/src/commonMain/kotlin/mihon/domain/platform/ExternalShare.kt"),
         83 to setOf("core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/core/security/SecurityPreferences.kt", "domain/src/commonMain/kotlin/mihon/domain/security/AppSecurityPolicy.kt"),
         84 to setOf("core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/core/security/SecurityPreferences.kt", "domain/src/commonMain/kotlin/mihon/domain/security/AppSecurityPolicy.kt"),
         85 to setOf("domain/src/commonMain/kotlin/tachiyomi/domain/updates/interactor/GetUpdates.kt"),
@@ -1268,7 +1269,8 @@ class DesktopProductCapabilityContractTest {
         92 to setOf("core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/core/security/SecurityPreferences.kt", "domain/src/commonMain/kotlin/mihon/domain/security/AppSecurityPolicy.kt"),
     )
     private val exactPlatformCapabilityAndroid = mapOf(
-        81 to setOf("app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt"), 82 to setOf("app/src/main/java/eu/kanade/tachiyomi/util/system/IntentExtensions.kt"),
+        81 to setOf("app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt"),
+        82 to setOf("app/src/main/java/eu/kanade/tachiyomi/util/system/IntentExtensions.kt"),
         83 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/base/delegate/SecureActivityDelegate.kt"),
         84 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/base/delegate/SecureActivityDelegate.kt"),
         85 to setOf("presentation-widget/src/main/java/tachiyomi/presentation/widget/BaseUpdatesGridGlanceWidget.kt", "presentation-widget/src/main/java/tachiyomi/presentation/widget/WidgetPrivacyDataSource.kt", "presentation-widget/src/main/java/tachiyomi/presentation/widget/WidgetManager.kt"),
@@ -1750,7 +1752,7 @@ class DesktopProductCapabilityContractTest {
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
                     "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt",
-                    "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedSpreadDesktopWiringTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderPageCacheIntegrationTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt",
@@ -1799,15 +1801,15 @@ class DesktopProductCapabilityContractTest {
                 ),
             43 to
                 mapOf(
-                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/SharedDualPageAndroidWiringTest.kt" to
                         mapOf(
-                            "fork-added pairing adapter and shared core produce the same enhancement vectors" to
-                                setOf("PagePairingAlgorithm.buildPairings", "ReaderPagePairing.build"),
+                            "matching preference reaches actual encoded sampler shared session and native display pages" to
+                                setOf("viewer.adapter", "DisplayPage", "page.stream"),
                         ),
-                    "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt" to
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/SharedDualPageSessionContractTest.kt" to
                         mapOf(
-                            "fork-added shared portrait pairing enhancement groups adjacent pages" to
-                                setOf("ReaderPagePairing.build", "PageLayout.PORTRAIT"),
+                            "session owns complete sample selection across direction manual restore and physical replacement" to
+                                setOf("SharedDualPageSession(", "session.acceptSpreadSample", "session.configure"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt" to
                         mapOf(
@@ -1816,18 +1818,13 @@ class DesktopProductCapabilityContractTest {
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt" to
                         mapOf(
-                            "shared pairing keeps cover edge matching adjust and landscape parity enhancements" to
+                            "shared pairing keeps cover edge matching adjust and spread phase" to
                                 setOf("dualGroups(", "matchedPairs", "forcedSinglePages"),
                         ),
-                    "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt" to
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedSpreadDesktopWiringTest.kt" to
                         mapOf(
-                            "matched pairs consume only caller supplied bounded decoded images" to
-                                setOf("matcher.findMatchedPairs", "requested"),
-                        ),
-                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderPageCacheIntegrationTest.kt" to
-                        mapOf(
-                            "cache revision observer matches late pages preserves pairs after eviction and never loads" to
-                                setOf("observeDesktopMatchedPairs", "retainCachedFullPageAssets", "EdgePixelMatcher"),
+                            "actual setting event samples original encoded leases and changes shared visible layout" to
+                                setOf("model", "GeneralTab", "activeLeaseCounts"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt" to
                         mapOf(
@@ -1840,7 +1837,7 @@ class DesktopProductCapabilityContractTest {
                             "load-state updates do not resettle identical viewports in any presentation mode" to
                                 setOf("acceptSessionState(ready)", "singleSettlements"),
                             "settled webtoon and dual viewports report canonical page identities" to
-                                setOf("model.settleWebtoon", "model.settleDualPage", "settled.last()"),
+                                setOf("model.settleWebtoon", "model.presentReadyPagerViewport", "settled.last()"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt" to
                         mapOf(
@@ -1896,8 +1893,8 @@ class DesktopProductCapabilityContractTest {
                         mapOf(
                             "portrait first and trailing singles occupy opposite physical halves for each direction" to
                                 setOf("DualPagedPresentation", "assertEquals"),
-                            "landscape cover remains whole in the physical left slot for one and many page chapters" to
-                                setOf("DualPagedPresentation", "splitPageIds", "assertNull"),
+                            "landscape cover remains whole across the complete viewport for one and many page chapters" to
+                                setOf("present(", "splitPageIds", "assertNull"),
                             "portrait pairs follow physical LTR and RTL slots while reporting both pages" to
                                 setOf("resolveDualVisiblePages", "activePageId"),
                             "late content and state changes preserve pair and slot identities" to
@@ -2046,9 +2043,9 @@ class DesktopProductCapabilityContractTest {
                                 setOf("session.activate(context(2L))", "prefetchCancelled.await"),
                             "adjacent storage failure stops the remaining background chapter without changing active state" to
                                 setOf("DesktopReaderEncodedPageStore", "encodedStore.diagnostics()"),
-                            "non cooperative page cancellation keeps physical image requests within policy plus one stale request" to
+                            "non cooperative page cancellation keeps physical image requests within policy" to
                                 setOf("NonCancellable", "startedPages"),
-                            "non cooperative target switches keep physical chapter requests within policy plus one stale request" to
+                            "non cooperative target switches keep physical chapter requests within policy" to
                                 setOf("NonCancellable", "startedChapters"),
                             "late storage failure from an old target cannot cancel the new target prefetch" to
                                 setOf("oldFailurePublished", "newPageAttempts"),
@@ -2057,7 +2054,7 @@ class DesktopProductCapabilityContractTest {
                         mapOf(
                             "production runtime follows persisted next chapter prefetch changes" to
                                 setOf("prefs.nextChapterPrefetchMode", "runtime.session.currentNextChapterPrefetchMode"),
-                            "production runtime preference changes drive off first viewport and full request sets" to
+                            "production runtime preference changes drive the full viewport request sets" to
                                 setOf("NextChapterPrefetchMode.FIRST_VIEWPORT", "runtime.encodedPageStore.diagnostics().refs.size"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
@@ -2216,13 +2213,13 @@ class DesktopProductCapabilityContractTest {
                 ),
             43 to
                 mapOf(
-                    "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt" to setOf("object ReaderPagePairing"),
-                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt" to
-                        setOf("ReaderPagePairing.build"),
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt" to setOf("class SharedDualPageSession"),
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageViewerAdapter.kt" to
+                        setOf("SharedDualPageSession", "buildDisplayPages"),
                     "app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt" to
                         setOf("buildVirtualReaderPages"),
-                    "app-desktop/src/main/kotlin/mihon/desktop/reader/EdgePixelMatcher.kt" to
-                        setOf("findMatchedPairs(", "ImageBitmap"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSpreadSampler.kt" to
+                        setOf("sample(", "session.acquireTile", "lease.use"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt" to
                         setOf("interface ReaderPresentationStrategy", "data class DisplayUnit", "data class VisiblePageSet"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DesktopReaderPresentationRequest.kt" to
@@ -2232,17 +2229,16 @@ class DesktopProductCapabilityContractTest {
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentation.kt" to
                         setOf("object WebtoonPresentation", "resolveWebtoonViewport", "WebtoonScrollAnchor"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentation.kt" to
-                        setOf("object DualPagedPresentation", "ReaderPagePairing.build", "resolveDualVisiblePages"),
+                        setOf("object DualPagedPresentation", "requireNotNull(request.dualPageUnits)", "resolveDualVisiblePages"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderState.kt" to
                         setOf("currentDisplayUnitId", "visiblePageIds", "webtoonScrollAnchor"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt" to
-                        setOf("fun settleSinglePage", "fun settleWebtoon", "fun settleDualPage", "currentDisplayUnitId"),
+                        setOf("fun beginPagerViewport", "fun settleWebtoon", "fun settleDualPage", "currentDisplayUnitId"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt" to
                         setOf(
                             "readerViewportBody(state)",
-                            "onSingleVisiblePagesChanged = model::settleSinglePage",
+                            "ReaderPagerPresentationBinding",
                             "onViewportChanged = model::settleWebtoon",
-                            "onDualVisiblePagesChanged = model::settleDualPage",
                         ),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt" to
                         setOf(
@@ -2918,6 +2914,7 @@ class DesktopProductCapabilityContractTest {
             "Tracker must not duplicate current manifest status rows for IDs 71–74",
         )
     }
+
     @Tag("parity-governance")
     @Test
     fun `Task 18 owns every remaining gap without dangling completed follow ups`() {
@@ -2998,7 +2995,6 @@ class DesktopProductCapabilityContractTest {
             assertFalse("TEMP-COMPAT" in tags, "ID $id terminal taxonomy must not retain TEMP-COMPAT")
         }
     }
-
 
     @Test
     fun `extension install and Cloudflare product protection tests are real files`() {
@@ -3087,10 +3083,10 @@ class DesktopProductCapabilityContractTest {
         createSyntheticConsumerFiles()
         val item = syntheticSourceExtensionItem(
             deviations =
-                listOf(
-                    "PLATFORM_ADAPTER" to "The first deviation is classified.",
-                    null to "The second deviation has no classification.",
-                ),
+            listOf(
+                "PLATFORM_ADAPTER" to "The first deviation is classified.",
+                null to "The second deviation has no classification.",
+            ),
         )
 
         val failure = assertThrows(AssertionError::class.java) {
@@ -3306,8 +3302,10 @@ class DesktopProductCapabilityContractTest {
                 currentConsumerAsAuthority,
                 repositoryRoot,
                 inventory +
-                    ("domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocol.kt" to
-                        "0".repeat(40)),
+                    (
+                        "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocol.kt" to
+                            "0".repeat(40)
+                        ),
             )
         }
         assertTrue(consumerFailure.message.orEmpty().contains("exact fixed-main authority paths"), consumerFailure.message)
@@ -3693,7 +3691,8 @@ class DesktopProductCapabilityContractTest {
             val expectedStatus = if (name in setOf("nativeNotificationContent", "telemetry")) "UNSUPPORTED" else "CANDIDATE"
             assertEquals(expectedStatus, requiredText(capability, "status", 92, name))
             if (expectedStatus == "UNSUPPORTED") assertEquals("NONE", requiredText(capability, "desktopConsumer", 92, name))
-            requiredText(capability, "reason", 92, name); requiredText(capability, "uiBehavior", 92, name)
+            requiredText(capability, "reason", 92, name)
+            requiredText(capability, "uiBehavior", 92, name)
         }
     }
 
@@ -3742,14 +3741,16 @@ class DesktopProductCapabilityContractTest {
             licenses.toMutableMap().apply {
                 put(
                     "behaviorMethods",
-                    JsonObject(getValue("behaviorMethods").jsonObject.toMutableMap().apply {
-                        put(
-                            androidBehaviorPath,
-                            search.getValue("behaviorMethods").jsonObject.getValue(
-                                "domain/src/commonTest/kotlin/mihon/domain/settings/SettingsSearchPolicyTest.kt",
-                            ),
-                        )
-                    }),
+                    JsonObject(
+                        getValue("behaviorMethods").jsonObject.toMutableMap().apply {
+                            put(
+                                androidBehaviorPath,
+                                search.getValue("behaviorMethods").jsonObject.getValue(
+                                    "domain/src/commonTest/kotlin/mihon/domain/settings/SettingsSearchPolicyTest.kt",
+                                ),
+                            )
+                        },
+                    ),
                 )
             },
         )
@@ -4071,7 +4072,11 @@ class DesktopProductCapabilityContractTest {
                     var depth = 1
                     cursor++
                     while (cursor < structural.length && depth > 0) {
-                        if (structural[cursor] == '(') depth++ else if (structural[cursor] == ')') depth--
+                        if (structural[cursor] == '(') {
+                            depth++
+                        } else if (structural[cursor] == ')') {
+                            depth--
+                        }
                         cursor++
                     }
                 }
@@ -4089,7 +4094,15 @@ class DesktopProductCapabilityContractTest {
             if (structural.getOrNull(cursor) != '`') return@mapNotNull null
             val nameEnd = structural.indexOf('`', cursor + 1)
             if (nameEnd < 0 || structural.substring(cursor + 1, nameEnd) != methodName) return@mapNotNull null
-            val memberDepth = structural.take(funStart).fold(0) { depth, char -> depth + if (char == '{') 1 else if (char == '}') -1 else 0 }
+            val memberDepth = structural.take(funStart).fold(0) { depth, char ->
+                depth + if (char == '{') {
+                    1
+                } else if (char == '}') {
+                    -1
+                } else {
+                    0
+                }
+            }
             if (memberDepth != 1) return@mapNotNull null
             var parentheses = 0
             var bodyStart: Int? = null
@@ -4118,7 +4131,11 @@ class DesktopProductCapabilityContractTest {
             var bodyDepth = 1
             var bodyEnd = bodyStart + 1
             while (bodyEnd < structural.length && bodyDepth > 0) {
-                if (structural[bodyEnd] == '{') bodyDepth++ else if (structural[bodyEnd] == '}') bodyDepth--
+                if (structural[bodyEnd] == '{') {
+                    bodyDepth++
+                } else if (structural[bodyEnd] == '}') {
+                    bodyDepth--
+                }
                 bodyEnd++
             }
             if (bodyDepth == 0) commentFree.substring(funStart, bodyEnd) else null
@@ -4152,7 +4169,10 @@ class DesktopProductCapabilityContractTest {
             val previousState = state
             val width = when {
                 state == 0 && source.startsWith("//", index) -> 2.also { state = 1 }
-                state == 0 && source.startsWith("/*", index) -> 2.also { state = 2; blockDepth = 1 }
+                state == 0 && source.startsWith("/*", index) -> 2.also {
+                    state = 2
+                    blockDepth = 1
+                }
                 state == 0 && source.startsWith("\"\"\"", index) -> 3.also { state = 3 }
                 state == 0 && source[index] == '"' -> 1.also { state = 4 }
                 state == 0 && source[index] == '\'' -> 1.also { state = 5 }

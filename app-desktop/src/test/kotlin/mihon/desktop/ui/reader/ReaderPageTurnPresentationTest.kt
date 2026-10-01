@@ -1,56 +1,57 @@
 package mihon.desktop.ui.reader
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
-import androidx.compose.ui.graphics.asComposeImageBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
-import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.graphics.asComposeImageBitmap
+import androidx.compose.ui.graphics.asSkiaBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.pointer.PointerButton
+import androidx.compose.ui.input.pointer.PointerEventType
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.reader.DesktopReaderImageAsset
 import mihon.desktop.reader.DesktopReaderPageContentOwner
 import mihon.desktop.reader.DesktopReaderPageImageDecoder
 import mihon.desktop.reader.DesktopReaderPageImagePipeline
 import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.ReaderPageIoObserver
+import mihon.desktop.reader.ReaderPreferences
+import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.desktopReaderSessionState
 import mihon.desktop.reader.readerChapterSession
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.reader.presentation.DesktopReaderPresentationRegistry
 import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
 import mihon.desktop.ui.reader.presentation.desktopReaderPresentationRequest
+import mihon.desktop.ui.reader.presentation.withSharedOwner
 import mihon.domain.reader.ReaderDirection
-import mihon.desktop.reader.ReaderPreferences
-import mihon.desktop.reader.ReadingMode
-import mihon.desktop.DesktopUiDependencies
-import mihon.desktop.LocalDesktopUiDependencies
-import mihon.desktop.settings.DesktopAppPreferences
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.EncodedImageFormat
-import org.jetbrains.skia.Image as SkiaImage
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import tachiyomi.core.common.preference.DesktopPreferenceStore
 import java.io.File
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.prefs.Preferences
+import org.jetbrains.skia.Image as SkiaImage
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class ReaderPageTurnPresentationTest {
@@ -59,7 +60,11 @@ class ReaderPageTurnPresentationTest {
     fun `settled feedback resumes after a blocked page becomes reportable without moving`(dual: Boolean) = runTest {
         val mode = if (dual) ReaderPresentationMode.DUAL_PAGED else ReaderPresentationMode.SINGLE_PAGED
         val presentation = DesktopReaderPresentationRegistry.require(mode).present(
-            desktopReaderPresentationRequest(chapter = readerChapterSession(pageCount = 7), direction = ReaderDirection.LTR),
+            desktopReaderPresentationRequest(
+                chapter = readerChapterSession(pageCount = 7),
+                direction = ReaderDirection.LTR,
+            )
+                .let { if (dual) it.withSharedOwner() else it },
         )
         var reportable by mutableStateOf(false)
         var reports = 0
@@ -72,10 +77,16 @@ class ReaderPageTurnPresentationTest {
                     SinglePageSettledVisiblePageReporter(presentation, false, { 1 }, { reportable }) { reports++ }
                 }
             }
-            repeat(6) { scene.render().close(); runCurrent() }
+            repeat(6) {
+                scene.render().close()
+                runCurrent()
+            }
             assertEquals(0, reports)
             reportable = true
-            repeat(6) { scene.render().close(); runCurrent() }
+            repeat(6) {
+                scene.render().close()
+                runCurrent()
+            }
             assertEquals(1, reports, "Releasing the pending-target gate must publish the already settled page")
         } finally {
             scene.close()
@@ -86,12 +97,15 @@ class ReaderPageTurnPresentationTest {
     @CsvSource("false,false", "false,true", "true,false", "true,true")
     fun `external page requests animate just like taps`(dual: Boolean, rtl: Boolean) = runTest {
         Fixture(this, dual, rtl).use { fixture ->
-            repeat(40) { fixture.frame(); runCurrent() }
+            repeat(40) {
+                fixture.frame()
+                runCurrent()
+            }
             fixture.page = if (dual) 3 else 1
             var sawTransition = false
             repeat(40) {
                 val colors = fixture.frame()
-                sawTransition = sawTransition || (RED in colors && GREEN in colors)
+                sawTransition = sawTransition || fixture.bothPageColorsDrawn
                 runCurrent()
             }
             assertTrue(sawTransition, "An animated turn must draw both departing and arriving pages in a frame")
@@ -102,7 +116,10 @@ class ReaderPageTurnPresentationTest {
     @CsvSource("false,false", "false,true", "true,false", "true,true")
     fun `adjacent pages are decoded before an instant turn`(dual: Boolean, rtl: Boolean) = runTest {
         Fixture(this, dual, rtl).use { fixture ->
-            repeat(40) { fixture.frame(); runCurrent() }
+            repeat(40) {
+                fixture.frame()
+                runCurrent()
+            }
             val nextPage = if (dual) 3 else 1
             assertTrue(nextPage in fixture.decoded, "Next viewport must already hold a decoded image")
         }
@@ -121,10 +138,16 @@ class ReaderPageTurnPresentationTest {
         input: String,
     ) = runTest {
         Fixture(this, dual, rtl).use { fixture ->
-            repeat(40) { fixture.frame(); runCurrent() }
+            repeat(40) {
+                fixture.frame()
+                runCurrent()
+            }
             for (animated in listOf(false, true, false)) {
                 fixture.preferences.pageTurnAnimation.set(animated)
-                repeat(6) { fixture.frame(); runCurrent() }
+                repeat(6) {
+                    fixture.frame()
+                    runCurrent()
+                }
                 if (!animated && !dual && !rtl && input == "request") {
                     fixture.writeFrame("reader-page-turn-before.png")
                 }
@@ -139,8 +162,15 @@ class ReaderPageTurnPresentationTest {
                 var sawTransition = false
                 repeat(40) {
                     val colors = fixture.frame()
-                    sawTransition = sawTransition || (RED in colors && GREEN in colors)
-                    if (!animated) assertTrue(colors.all { it == RED || it == GREEN }, "Instant frame exposed background: $colors")
+                    sawTransition = sawTransition || fixture.bothPageColorsDrawn
+                    if (!animated) {
+                        assertTrue(
+                            colors.all {
+                                it == RED || it == GREEN
+                            },
+                            "Instant frame exposed background: $colors",
+                        )
+                    }
                     runCurrent()
                 }
                 if (!animated && !dual && !rtl && input == "request") {
@@ -157,11 +187,20 @@ class ReaderPageTurnPresentationTest {
     @CsvSource("false,false", "false,true", "true,false", "true,true")
     fun `latest rapid page request wins over settled page feedback`(dual: Boolean, rtl: Boolean) = runTest {
         Fixture(this, dual, rtl).use { fixture ->
-            repeat(40) { fixture.frame(); runCurrent() }
+            repeat(40) {
+                fixture.frame()
+                runCurrent()
+            }
             fixture.page = if (dual) 3 else 1
-            repeat(3) { fixture.frame(); runCurrent() }
+            repeat(3) {
+                fixture.frame()
+                runCurrent()
+            }
             fixture.page = if (dual) 5 else 3
-            repeat(80) { fixture.frame(); runCurrent() }
+            repeat(80) {
+                fixture.frame()
+                runCurrent()
+            }
 
             assertEquals(if (dual) 5 else 3, fixture.page)
             assertEquals(setOf(GREEN), fixture.frame())
@@ -173,14 +212,26 @@ class ReaderPageTurnPresentationTest {
     fun `user turn during external animation clears stale programmatic feedback`(rtl: Boolean) = runTest {
         repeat(12) { trial ->
             Fixture(this, dual = false, rtl).use { fixture ->
-                repeat(40) { fixture.frame(); runCurrent() }
+                repeat(40) {
+                    fixture.frame()
+                    runCurrent()
+                }
                 fixture.page = 1
-                repeat(40) { fixture.frame(); runCurrent() }
+                repeat(40) {
+                    fixture.frame()
+                    runCurrent()
+                }
                 fixture.page = 3
-                repeat(3) { fixture.frame(); runCurrent() }
+                repeat(3) {
+                    fixture.frame()
+                    runCurrent()
+                }
                 val beforeTap = fixture.page
                 fixture.tap(forward = false, rtl = rtl)
-                repeat(80) { fixture.frame(); runCurrent() }
+                repeat(80) {
+                    fixture.frame()
+                    runCurrent()
+                }
 
                 assertEquals(0, fixture.page, "RTL=$rtl trial=$trial beforeTap=$beforeTap")
                 assertEquals(setOf(RED), fixture.frame())
@@ -192,15 +243,30 @@ class ReaderPageTurnPresentationTest {
     @CsvSource("false,false", "false,true", "true,false", "true,true")
     fun `tap across animation frames still turns from the settled page`(dual: Boolean, rtl: Boolean) = runTest {
         Fixture(this, dual, rtl).use { fixture ->
-            repeat(40) { fixture.frame(); runCurrent() }
+            repeat(40) {
+                fixture.frame()
+                runCurrent()
+            }
             fixture.page = 1
-            repeat(40) { fixture.frame(); runCurrent() }
+            repeat(40) {
+                fixture.frame()
+                runCurrent()
+            }
             fixture.page = 3
-            repeat(3) { fixture.frame(); runCurrent() }
+            repeat(3) {
+                fixture.frame()
+                runCurrent()
+            }
             fixture.press(forward = false, rtl = rtl)
-            repeat(3) { fixture.frame(); runCurrent() }
+            repeat(3) {
+                fixture.frame()
+                runCurrent()
+            }
             fixture.release(forward = false, rtl = rtl)
-            repeat(80) { fixture.frame(); runCurrent() }
+            repeat(80) {
+                fixture.frame()
+                runCurrent()
+            }
 
             assertEquals(0, fixture.page)
             assertEquals(if (dual) setOf(RED, 0) else setOf(RED), fixture.frame())
@@ -211,11 +277,20 @@ class ReaderPageTurnPresentationTest {
     @CsvSource("false,false", "false,true", "true,false", "true,true")
     fun `rapid taps advance from the latest user turn target`(dual: Boolean, rtl: Boolean) = runTest {
         Fixture(this, dual, rtl).use { fixture ->
-            repeat(40) { fixture.frame(); runCurrent() }
+            repeat(40) {
+                fixture.frame()
+                runCurrent()
+            }
             fixture.tap(forward = true, rtl = rtl)
-            repeat(3) { fixture.frame(); runCurrent() }
+            repeat(3) {
+                fixture.frame()
+                runCurrent()
+            }
             fixture.tap(forward = true, rtl = rtl)
-            repeat(80) { fixture.frame(); runCurrent() }
+            repeat(80) {
+                fixture.frame()
+                runCurrent()
+            }
 
             assertEquals(if (dual) 5 else 2, fixture.page)
             assertEquals(setOf(GREEN), fixture.frame())
@@ -238,18 +313,29 @@ class ReaderPageTurnPresentationTest {
         )
         var page: Int
             get() = model.state.value.currentPage
-            set(value) { model.goToPage(value) }
+            set(value) {
+                model.goToPage(value)
+            }
         val decoded = CopyOnWriteArraySet<Int>()
+        var bothPageColorsDrawn = false
+            private set
         private val reporter = ReaderIoReporter(ReaderIoProbe.None, ReaderMonotonicClock { 0L })
         private val content = DesktopReaderPageContentOwner(scope, { byteArrayOf(1) }, reporter)
         private val pipeline = DesktopReaderPageImagePipeline(
-            scope, content, reporter,
+            scope,
+            content,
+            reporter,
             decoder = DesktopReaderPageImageDecoder { _, key ->
                 decoded += key.pageIndex
-                val bitmap = Bitmap().apply { allocN32Pixels(32, 32) }
+                val bitmap = Bitmap().apply { allocN32Pixels(32, 48) }
                 Canvas(bitmap).use { canvas -> canvas.clear(if (key.pageIndex < (if (dual) 3 else 1)) RED else GREEN) }
                 DesktopReaderImageAsset(
-                    bitmap.asComposeImageBitmap(), 32, 32, 4096L, false, disposer = bitmap::close,
+                    bitmap.asComposeImageBitmap(),
+                    32,
+                    48,
+                    6144L,
+                    false,
+                    disposer = bitmap::close,
                 )
             },
         )
@@ -258,6 +344,16 @@ class ReaderPageTurnPresentationTest {
         private var time = 0L
         init {
             owner.beginGeneration(1L)
+            // ReaderContent consumes the shared facts; the runtime factory's encoded/header
+            // collector is outside this focused color-frame fixture.
+            model.state.value.session.activeChapter.pages.forEach { page ->
+                assertTrue(
+                    model.acceptDualFact(
+                        requireNotNull(model.captureDualFact(page.id)),
+                        mihon.domain.reader.ReaderPageFact.dimensions(32, 48),
+                    ),
+                )
+            }
             val dependencies = mockk<DesktopUiDependencies> { every { appPreferences } returns preferences }
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
@@ -290,18 +386,46 @@ class ReaderPageTurnPresentationTest {
             assertTrue(handleReaderWheelEvent(event, model.state.value, model, {}, {}))
         }
         fun key(forward: Boolean, rtl: Boolean) {
-            val key = if (forward != rtl) androidx.compose.ui.input.key.Key.DirectionRight else androidx.compose.ui.input.key.Key.DirectionLeft
+            val key = if (forward !=
+                rtl
+            ) {
+                androidx.compose.ui.input.key.Key.DirectionRight
+            } else {
+                androidx.compose.ui.input.key.Key.DirectionLeft
+            }
             val events = Class.forName("androidx.compose.ui.input.key.KeyEvent_desktopKt")
-            val type = Class.forName("androidx.compose.ui.input.key.KeyEventType").getMethod("access\$getKeyDown\$cp").invoke(null)
-            val factory = events.declaredMethods.single { it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default") }
+            val type = Class.forName(
+                "androidx.compose.ui.input.key.KeyEventType",
+            ).getMethod("access\$getKeyDown\$cp").invoke(null)
+            val factory = events.declaredMethods.single {
+                it.name.startsWith("KeyEvent-") &&
+                    !it.name.endsWith("\$default")
+            }
             val native = factory.invoke(null, key.keyCode, type, 0, false, false, false, false, null)
-            assertTrue(handleReaderKeyEvent(androidx.compose.ui.input.key.KeyEvent(native), model.state.value, model, mockk(), null, {}, {}))
+            assertTrue(
+                handleReaderKeyEvent(
+                    androidx.compose.ui.input.key.KeyEvent(
+                        native,
+                    ),
+                    model.state.value,
+                    model,
+                    mockk(),
+                    null,
+                    {
+                    },
+                    {},
+                ),
+            )
         }
         fun frame(): Set<Int> {
             time += 16_000_000L
             val bitmap = renderBitmap()
             return try {
-                (10 until 400 step 10).map { bitmap.getColor(it, 200) }.toSet()
+                val wholeViewport = (10 until 400 step 10).map { bitmap.getColor(it, 200) }.toSet()
+                bothPageColorsDrawn = RED in wholeViewport && GREEN in wholeViewport
+                // Sample inside the fitted portrait content, excluding legitimate outer bars.
+                // This still includes both physical dual slots and catches an undrawn viewport.
+                (100 until 301 step 10).map { bitmap.getColor(it, 200) }.toSet()
             } finally {
                 bitmap.close()
             }

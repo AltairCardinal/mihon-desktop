@@ -7,33 +7,59 @@ class ReaderPortraitSingleSlotTest {
     @Test
     fun `one page fills the viewport in both reading directions`() {
         for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
-            assertEquals(ReaderPortraitSingleSlot.FULL, portraitSinglePageSlot(direction, 0, 1))
+            assertEquals(
+                ReaderPortraitSingleSlot.FULL,
+                portraitSinglePageSlot(direction, ReaderDualPageSingleReason.ONLY_PAGE),
+            )
         }
     }
 
     @Test
     fun `four page portrait grouping places first and trailing singles on opposite sides`() {
-        val groups = ReaderPagePairing.build(
-            pageCount = 4,
-            layoutAt = { PageLayout.PORTRAIT },
-            options = PagePairingOptions(pairAdjacentPortraitPages = true, forceFirstPageSingle = true),
+        val groups = portraitGroups(4)
+        assertEquals(
+            listOf(listOf(0), listOf(1, 2), listOf(3)),
+            groups.map {
+                it.pageIds.map { id -> id.sourcePageIndex }
+            },
         )
-        assertEquals(listOf(listOf(0), listOf(1, 2), listOf(3)), groups.map(IntArray::toList))
-        assertEquals(ReaderPortraitSingleSlot.LEFT, portraitSinglePageSlot(ReaderDirection.RTL, 0, groups.size))
-        assertEquals(ReaderPortraitSingleSlot.RIGHT, portraitSinglePageSlot(ReaderDirection.RTL, 2, groups.size))
-        assertEquals(ReaderPortraitSingleSlot.RIGHT, portraitSinglePageSlot(ReaderDirection.LTR, 0, groups.size))
-        assertEquals(ReaderPortraitSingleSlot.LEFT, portraitSinglePageSlot(ReaderDirection.LTR, 2, groups.size))
+        assertEquals(
+            ReaderPortraitSingleSlot.LEFT,
+            portraitSinglePageSlot(ReaderDirection.RTL, requireNotNull(groups.first().singleReason)),
+        )
+        assertEquals(
+            ReaderPortraitSingleSlot.RIGHT,
+            portraitSinglePageSlot(ReaderDirection.RTL, requireNotNull(groups.last().singleReason)),
+        )
+        assertEquals(ReaderPortraitSingleSlot.RIGHT, groups.first().slots.single().position)
+        assertEquals(ReaderPortraitSingleSlot.LEFT, groups.last().slots.single().position)
     }
 
     @Test
     fun `five page final pair does not create another single slot`() {
-        val groups = ReaderPagePairing.build(
-            pageCount = 5,
-            layoutAt = { PageLayout.PORTRAIT },
-            options = PagePairingOptions(pairAdjacentPortraitPages = true, forceFirstPageSingle = true),
+        val groups = portraitGroups(5)
+        assertEquals(
+            listOf(listOf(0), listOf(1, 2), listOf(3, 4)),
+            groups.map {
+                it.pageIds.map { id -> id.sourcePageIndex }
+            },
         )
-        assertEquals(listOf(listOf(0), listOf(1, 2), listOf(3, 4)), groups.map(IntArray::toList))
-        assertEquals(ReaderPortraitSingleSlot.LEFT, portraitSinglePageSlot(ReaderDirection.RTL, 0, groups.size))
-        assertEquals(ReaderPortraitSingleSlot.RIGHT, portraitSinglePageSlot(ReaderDirection.LTR, 0, groups.size))
+        assertEquals(
+            ReaderPortraitSingleSlot.LEFT,
+            portraitSinglePageSlot(ReaderDirection.RTL, requireNotNull(groups.first().singleReason)),
+        )
+        assertEquals(ReaderPortraitSingleSlot.RIGHT, groups.first().slots.single().position)
+    }
+
+    private fun portraitGroups(count: Int): List<ReaderDualPageUnit> {
+        val ids =
+            List(count) { mihon.domain.reader.session.ReaderPageId(mihon.domain.reader.session.ReaderChapterId(7), it) }
+        return SharedDualPageRules.build(
+            ids,
+            ids.associateWith {
+                ReaderPageFact.dimensions(40, 60)
+            },
+            ReaderDirection.LTR,
+        )
     }
 }

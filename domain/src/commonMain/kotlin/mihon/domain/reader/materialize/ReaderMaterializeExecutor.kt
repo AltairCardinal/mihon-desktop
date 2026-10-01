@@ -3,6 +3,7 @@ package mihon.domain.reader.materialize
 import kotlinx.coroutines.CancellationException
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
+import mihon.domain.reader.ReaderDualPageFactReadPermit
 import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderEncodedPageProvenance
@@ -37,6 +38,7 @@ data class ReaderPageFetchRequest(
     val imageUrl: String?,
     val attemptGeneration: Long = 0L,
     val forceRefresh: Boolean = false,
+    val factReadPermit: ReaderDualPageFactReadPermit? = null,
 ) {
     init {
         require(generation >= 0) { "generation must be non-negative" }

@@ -27,7 +27,9 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import logcat.LogPriority
+import mihon.domain.reader.ReaderDualPageViewportTicket
 import mihon.domain.reader.ReaderPortraitSingleSlot
+import mihon.domain.reader.SharedDualPageSession
 import okio.Buffer
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.launchIO
@@ -82,11 +84,24 @@ class DualPagerPageHolder(
     private var progressIndicator: ReaderProgressIndicator? = null
     private var errorLayout: ReaderErrorBinding? = null
     private var errorPage: ReaderPage? = null
-    private val renderedPages = mutableSetOf<ReaderPage>()
+    private val renderedPages = mutableMapOf<ReaderPage, String>()
     private val decodeGenerations = mutableMapOf<ReaderPage, Long>()
+    internal var presentationScope: Pair<SharedDualPageSession, ReaderDualPageViewportTicket>? =
+        viewer.capturePresentation(displayPage)
+        private set
+    private var attachmentGeneration = 0L
+
+    internal fun beginPresentation() {
+        val next = viewer.capturePresentation(displayPage)
+        if (presentationScope?.second === next?.second) return
+        presentationScope?.let(viewer::releasePresentation)
+        presentationScope = next
+    }
 
     internal fun hasRenderedVisiblePages(): Boolean =
-        displayPage.visiblePages.all { it.status == Page.State.Ready && it in renderedPages } && errorPage == null
+        displayPage.visiblePages.all {
+            it.status == Page.State.Ready && renderedPages[it] == it.contentIdentity()
+        } && errorPage == null
 
     private fun clearRendered(page: ReaderPage): Long {
         renderedPages.remove(page)
@@ -179,12 +194,17 @@ class DualPagerPageHolder(
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+        attachmentGeneration++
+        presentationScope?.let(viewer::releasePresentation)
+        presentationScope = null
         loadJob?.cancel()
         loadJob = null
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        beginPresentation()
+        if (loadJob == null) loadJob = scope.launch { loadPages() }
         viewer.onHolderDisplayStateChanged(this)
     }
 
@@ -240,6 +260,17 @@ class DualPagerPageHolder(
         val loader = page.chapter.pageLoader ?: return
         supervisorScope {
             launchIO { loader.loadPage(page) }
+            launch {
+                var observed = page.contentFact.value.version
+                page.contentFact.collect { captured ->
+                    if (observed != captured.version) {
+                        observed = captured.version
+                        clearRendered(page)
+                        beginPresentation()
+                        if (page.status == Page.State.Ready) setImage(page, side)
+                    }
+                }
+            }
             page.statusFlow.collectLatest { state ->
                 when (state) {
                     Page.State.Queue -> {
@@ -268,6 +299,18 @@ class DualPagerPageHolder(
 
     private suspend fun setImage(page: ReaderPage, side: Side) {
         val generation = clearRendered(page)
+        val attachment = attachmentGeneration
+        val encodedContent = page.encodedContentIdentity()
+        withIOContext { page.publishHeaderFact() }
+        if (attachment != attachmentGeneration || page.encodedContentIdentity() != encodedContent ||
+            decodeGenerations[page] != generation
+        ) {
+            return
+        }
+        beginPresentation()
+        val content = page.contentIdentity()
+        val orientation = page.contentFact.value.fact.sourceOrientation
+        val dimensionsRequest = viewer.adapter.captureDimensions(page)
         val streamFn = page.stream ?: return
         try {
             val (source, isAnimated, background) = withIOContext {
@@ -281,10 +324,14 @@ class DualPagerPageHolder(
                 Triple(source, isAnimated, background)
             }
             withUIContext {
+                if (attachment != attachmentGeneration) return@withUIContext
                 // Decode dimensions before displaying
-                val (w, h) = withIOContext {
+                val (rawWidth, rawHeight) = withIOContext {
                     ImageUtil.getImageDimensions(source.peek())
                 }
+                val (w, h) = orientation.orientedSize(rawWidth, rawHeight)
+                if (attachment != attachmentGeneration || page.contentIdentity() != content) return@withUIContext
+                viewer.adapter.acceptDecodedDimensions(page, dimensionsRequest, w, h, orientation)
                 onDimensionsDecoded(side, w, h)
 
                 val config = ReaderPageImageView.Config(
@@ -298,23 +345,34 @@ class DualPagerPageHolder(
                         viewer.config.imageZoomType
                     },
                     landscapeZoom = false, // handled by dual-page container zoom
+                    sourceOrientation = orientation,
                 )
 
                 val holder = getOrCreateSubHolder(side, page)
                 holder.onImageLoaded = {
-                    if (decodeGenerations[page] == generation && page.status == Page.State.Ready) {
+                    if (attachment == attachmentGeneration && page.contentIdentity() == content &&
+                        decodeGenerations[page] == generation &&
+                        page.status == Page.State.Ready
+                    ) {
                         if (errorPage === page) {
                             errorLayout?.root?.isVisible = false
                             errorPage = null
                         }
-                        renderedPages.add(page)
+                        renderedPages[page] = content
                         viewer.onHolderDisplayStateChanged(this@DualPagerPageHolder)
                     }
                 }
                 holder.onImageLoadError = { error ->
-                    if (decodeGenerations[page] == generation) setError(error, page, side)
+                    if (attachment == attachmentGeneration && page.contentIdentity() == content &&
+                        decodeGenerations[page] == generation
+                    ) {
+                        setError(error, page, side)
+                    }
                 }
-                holder.setImage(source, isAnimated, config, page.index)
+                holder.setImage(source, isAnimated, config, page.index, callbackIsCurrent = {
+                    attachment == attachmentGeneration && page.contentIdentity() == content &&
+                        decodeGenerations[page] == generation && page.status == Page.State.Ready
+                })
                 if (!isAnimated) holder.pageBackground = background
                 removeProgressIndicator()
             }
@@ -322,7 +380,13 @@ class DualPagerPageHolder(
             throw e
         } catch (e: Throwable) {
             logcat(LogPriority.ERROR, e)
-            withUIContext { setError(e, page, side) }
+            withUIContext {
+                if (attachment == attachmentGeneration && page.contentIdentity() == content &&
+                    decodeGenerations[page] == generation
+                ) {
+                    setError(e, page, side)
+                }
+            }
         }
     }
 
@@ -340,8 +404,6 @@ class DualPagerPageHolder(
             Side.LEFT -> (displayPage as? DisplayPage.Double)?.leftPage
             Side.CENTER -> (displayPage as? DisplayPage.Single)?.page
         } ?: return
-
-        viewer.adapter.updatePageDimensions(page, width, height)
 
         val slot = when (side) {
             Side.LEFT -> leftSlot

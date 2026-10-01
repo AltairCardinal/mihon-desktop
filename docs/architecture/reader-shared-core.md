@@ -417,6 +417,68 @@ Android `DualPagerPageHolder` 与 Desktop `DualPagePagerViewer` 的普通双页�
 
 ## Authority 分层维护规则
 
+### 双页方向与内容版本（DP01 接口）
+
+编码头部最多读取 512 KiB，以 `ReaderImageOrientation` 表示 EXIF 1–8；其坐标约定是先旋转，再水平镜像。
+`sourcePixel` 和 `splitBounds` 是规范显示坐标到原编码坐标的唯一映射，奇数宽度的 LEFT 使用 floor、RIGHT 使用 ceil。
+分类采用未裁边的规范宽高；裁边、窗口旋转、zoom 和 rotate-to-fit 不改变该事实。Skia 已归一的像素只保留源方向身份，剩余变换为 NONE；
+Android 原固定 decoder 的原始像素由 SSIV 的旋转和窄镜像 adapter 归一，仍使用有界分块，不能重复归一或引入整页 Bitmap 路径。
+
+非 NORMAL 图像的 split+crop 使用窄条带 PNG adapter：先按共享规范半页的逆映射取得原始 region，
+由原 ImageDecoder 按单次最多 4 MiB 解码并逐行流式写入临时 PNG，再交给原 SSIV 在该半页局部坐标裁边。
+这避免原 native decoder 裁边后不可取得非对称原点的限制；NORMAL 历史拆图路径保留。
+巨大单行超过预算会失败，不能扩大 Bitmap 上限。临时编码增加 CPU 和磁盘写入，只适用于非 NORMAL 的 split+crop 路由；
+不聚合整半页 Bitmap 或完整 PNG 缓冲，剩余方向只归一一次。中间像素按 sRGB 解码且 PNG 显式声明 sRGB，
+最终 SSIV 才转换到显示 profile，避免二次颜色转换。实际 presentation owner 负责失败、取消、替换和回收时关闭并删除文件；
+原 decoder 释放失败时不交付文件，旧内容回调不能删除新 presentation 的文件。
+临时 PNG 在交给 SSIV 前由呈现 owner 打开并登记原输入流；回收在 finally 关闭该原流，再删除文件。
+不能交给 URI provider 重新打开文件而失去在途初始化的句柄所有权；SSIV 尚未安装 decoder 或回收抛错时也必须关闭原流。
+Windows 测试可验证流式 PNG、实际 BitmapFactory、SSIV 旋转与 Bitmap source region；原 JNI 的编码分块、ICC 和裁边必须在 ART 验收。
+
+Android `ReaderPageContentFact` 在同一内容锁内发布 encodedVersion、呈现 version、事实和 retrySequence。
+encodedVersion 只随真实 stream/ref 替换递增；呈现 version 还随首次可信方向确认递增，以撤销默认方向画出的像素。
+头部 I/O 开始前一次捕获 stream、两个版本、重试和可信方向，完成时核对原快照；失败和重试保留同一编码内容已经确认的方向。
+当前缓存事实也只能通过同一原子快照准入，不能将迟到的 Flow 值与当下内容拼接。
+
+`SharedDualPageSession.acceptOrientedFact` 只接纳该 owner 仍签发的原事实请求，核 generation、页表版本、完整有序页集合和本页物理内容。
+首次确认本页方向更新其身份、撤本页原事实票据及所有旧视口票据，保留逻辑定位、已消费阅读原因、持久化状态和原补齐预算。
+其他未改变页的原事实请求继续有效；普通 `acceptFact` 要求方向与原请求一致，不能绕过身份更新。
+真实 bytes 替换仍走完整 rebind，不允许旧请求跨 owner 或同身份重建。
+Desktop 头部工作按 owner 实例、workRevision 和物理 ContentOpenRequest 标识，其他页方向确认不得撤销正常或可选消费者。
+
+### 自动匹配的共同样本 owner 与双端接线（DP01 D）
+
+`SharedSpreadMatching` 定义原编码坐标上的 50 个书脊侧采样点、straight-alpha sRGB 到固定白底的合成、
+严格色差与白／暗／低方差排除，以及完整候选的强边优先、同分较早页优先选择。
+可生成正方图采样坐标不表示可配对；生产候选还必须具有共同 PORTRAIT 事实。手动边界先屏蔽冲突候选，
+再重新选择其余候选，不能屏蔽整章，也不能取历次已选关系的并集。
+
+`SharedDualPageSession` 唯一持有 `ReaderSpreadSamplesOwner`。平台在现有 encoded lease／有界解码开始前签原
+`ReaderSpreadSampleRequest`；接纳核本 owner 签发实例、generation、页表版本、完整页序和本页物理内容／方向。
+同 owner 其他页首次方向确认不撤本页原 work；本页方向确认、真 bytes rebind、关闭、禁用匹配或切单页撤销相关原票据。
+重新开启不能复活已取消票据；方向切换使用已采两侧重新评分，已确认同内容样本／评分继续有效。
+布局改变不建立导航或新阅读原因，header 请求与采样请求各自独立。
+
+样本只保留防御复制后的两组 50 色标量，最多缓存 16 页，不持有 Bitmap；缓存淘汰保留已确认相邻关系的
+RTL／LTR 标量评分。`requiredSamples` 每次推进一条未评分的 PORTRAIT 相邻边，最多需求两页；接受时先评分再淘汰，
+完成一次需求就确认一条边，避免有限缓存导致无进展重读。重采样只复用已有 encoded，不能新发 HTTP；
+16 页样本缓存与每次显式定位 16 页新增 materialize 上限是不同额度，已有编码重采样不消耗新增 materialize 页数。
+实际生产采样仍使用既有解码资源和主动等待／并发限制，平台租约在完成、失败、取消和关闭时释放。
+Desktop 的既有 GeneralTab 开关经 ReaderPreferences、ReaderScreenModel 和 runtime factory 接入该 owner；
+Android 的 ReadingModePage 双页分页设置经 ReaderPreferences、PagerConfig 和实际 DualPageViewerAdapter 接入。
+两端默认关闭，Desktop 已保存的 true 继续迁移保留。Desktop 只从 Ready 的原 ContentOpenRequest 开 region session，
+Android 在原 ReaderPage 内容锁内捕获 encoded stream；都不依赖显示 Bitmap，也不为匹配 materialize 或发网络请求。
+Android 采样完成还须在同一内容锁下消费原事实快照，核对方向、呈现版本和 retrySequence，防止尚未消费的新方向被旧样本覆盖。
+
+两端采样 pass 复用本 owner 可选事实预算的剩余主动等待时间；一次原 region 工作超过截止后不能接纳样本。
+失败或截止记录本页完整内容身份，普通布局重建停止重复尝试；原内容改变、显式图片 retry 或关闭后重新开启才允许重新尝试。
+16 页样本淘汰后的补边从已有编码逐边重采，不创建另一条补齐队列。原生不可中断解码可在截止后结束，
+但其结果不发布；流、region/像素 lease 和 decoder 在原 finally/use 路径释放。正常可见消费者不随匹配取消。
+平台已删除旧显示 Bitmap 的 EdgePixelMatcher、历次 matchedPairs 并集和整章 manual 禁用；
+Session 只消费共同 owner 当前完整候选，手动状态继续局部遮蔽。Desktop presentation 只消费实际 shared units；旧独立 pairing facade、索引推槽、visible-only single/dual settle 和兼容 matchedPairs 决策已删除。
+Windows Robolectric 仅替换不能加载的 JNI region 边界，执行真实编码像素、共享评分和实际 DisplayPage 接线；
+原 JNI 的 EXIF/ICC/alpha 验收入口为 SharedSpreadNativeAcceptanceTest，仍待 DP02 在正式 ART 产物运行。
+
 - fixed-main 只证明固定原版用户语义；共享提取完成、可靠性加固或平台实现不能反向成为上游来源证据。
 - latest settlement、进度幂等/drain 与 encoded store 生命周期属于跨平台可靠性；它们需要两端 production
   consumer 或真实 adapter I/O 证据，但分类仍不是 `FIXED_ORIGINAL`。
@@ -426,3 +488,11 @@ Android `DualPagerPageHolder` 与 Desktop `DualPagePagerViewer` 的普通双页�
   production/mounted 测试证明；不得进入 shared core 或借 decoded cache 证据完成验收。
 - manifest 是 capability 状态与 deviation 证据的机器权威。architecture 文档解释目的与边界，源码零命中只
   防止已删除的固定 4:3 实现回归，不能代替真实几何和 wiring 测试。
+
+### 保存、输入与验收桥接（DP01 E）
+
+共享 owner 是 manual committed、preview 和持久化状态的唯一权威。保存开始不改变 committed；真实 repository 成功才提交，失败释放 shared SAVING 并保留原通知与再次点击，CAS 冲突经原 coordinator reload。已接受写入继续串行完成，beginRestore 可用新 Load 票据替代尚未返回 Save 票据；旧回调不能覆盖 RESTORING/READY，新读等待原写终态。恢复期间保留 committed 并关闭调整。首开/重开/邻章沿同一次 entry resolver 事件向 shared 提交真实入口页，不另算恢复位置。
+
+Desktop tap 在动画前记录逻辑 PageId，key/drag 继续沿原 navigation intent；尺寸或匹配重排用新 owner units 映射同一目标，不把 delayed native index 变成新用户意图。实际 renderer 只有原 viewport ticket、完整槽位已画和 native idle 才能记录 single/dual 阅读；布局反馈不制造进度。Webtoon 单独保留原恢复 anchor，仅条漫恢复/模式入口设置，由实际条漫 settle 消费，不能给 single/dual 绕过 ticket。
+
+Test Mode 读取 actual mounted model 并在 EventQueue 调用原动作。分页几何来自真实 modifier 和本 publisher 生命周期，pager 卸载时清除；实际窗口/owner focus 缺失时不能报告可原生输入。HTTP 动作与外部 physical key/mouse 证据分开。DP02 Android instrumentation 的原 View/SSIV Canvas 像素、EXIF split/fit/crop/触摸及原已安装扩展 parser 入口仅供隔离 ART 验收；Windows 编译和受控 HTTP 响应路由不能替代正式 ART、TLS/代理或真实源产物验收。

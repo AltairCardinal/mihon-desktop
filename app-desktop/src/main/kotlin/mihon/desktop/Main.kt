@@ -33,14 +33,15 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import mihon.desktop.di.initDesktopDI
+import mihon.desktop.image.installDesktopImageLoader
+import mihon.desktop.platform.AwtDesktopOpenUriEventPort
 import mihon.desktop.platform.DesktopExternalActionBroker
 import mihon.desktop.platform.DesktopOpenUriEventPort
+import mihon.desktop.platform.DesktopOpenUriInstallResult
 import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.platform.DesktopTestProfile
 import mihon.desktop.platform.DesktopUriSchemeRegistrar
 import mihon.desktop.platform.DesktopUriSchemeRegistration
-import mihon.desktop.platform.AwtDesktopOpenUriEventPort
-import mihon.desktop.platform.DesktopOpenUriInstallResult
 import mihon.desktop.privacy.DesktopWindowPrivacyController
 import mihon.desktop.release.desktopExtensionRuntimeAcceptanceRequest
 import mihon.desktop.release.executeDesktopExtensionRuntimeAcceptance
@@ -55,7 +56,6 @@ import mihon.desktop.test.state.applicationState
 import mihon.desktop.tracking.DesktopTrackerOAuthCallbackBroker
 import mihon.desktop.ui.ExternalActionNavigator
 import mihon.desktop.ui.home.HomeScreen
-import mihon.desktop.image.installDesktopImageLoader
 import mihon.desktop.ui.security.DesktopProtectedRoot
 import mihon.desktop.ui.settings.DesktopLocaleFeedbackHost
 import mihon.desktop.ui.theme.DesktopTheme
@@ -63,11 +63,11 @@ import mihon.domain.platform.ExternalActionInput
 import mihon.domain.security.SecureScreenPolicy
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.awt.Window as AwtWindow
 import java.awt.event.WindowEvent
 import java.awt.event.WindowFocusListener
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.system.exitProcess
+import java.awt.Window as AwtWindow
 
 /**
  * Main entry point for Mihon Desktop application.
@@ -255,17 +255,20 @@ private suspend fun runDesktopComposeWindowEventLoop(
                     requestClose { exitApplication() }
                 }
             },
-            title = "Mihon Desktop $APP_VERSION", icon = androidx.compose.runtime.remember {
+            title = "Mihon Desktop $APP_VERSION",
+            icon = androidx.compose.runtime.remember {
                 androidx.compose.ui.graphics.painter.BitmapPainter(loadDesktopAppIcon())
             },
             state = rememberWindowState(width = 1024.dp, height = 768.dp),
         ) {
             BindDesktopWindowLifecycle(window, owner.appLock, owner.windowPrivacyController)
-            OwnerUiDependencies(owner.ingress) {
-                DesktopTheme {
-                    DesktopProtectedRoot(owner.appLock) {
-                        Navigator(HomeScreen()) { navigator ->
-                            DesktopLocalizedNavigatorContent(owner.ingress.uiDependencies.localeAdapter, navigator)
+            CompositionLocalProvider(mihon.desktop.ui.reader.LocalReaderNativeWindow provides window) {
+                OwnerUiDependencies(owner.ingress) {
+                    DesktopTheme {
+                        DesktopProtectedRoot(owner.appLock) {
+                            Navigator(HomeScreen()) { navigator ->
+                                DesktopLocalizedNavigatorContent(owner.ingress.uiDependencies.localeAdapter, navigator)
+                            }
                         }
                     }
                 }
@@ -318,7 +321,9 @@ private fun prepareDesktopOwner(
             ingress.uiDependencies.trackerOAuthCallbackBroker,
         )
         return startup
-    } catch (failure: Throwable) { throw failure }
+    } catch (failure: Throwable) {
+        throw failure
+    }
 }
 
 internal class DesktopOwnerTransaction {
@@ -460,7 +465,11 @@ internal class DesktopRuntimeBootstrapSession(
                 true
             } catch (failure: Throwable) {
                 val primary = primaryFailure
-                if (primary == null) primaryFailure = failure else if (failure !== primary) primary.addSuppressed(failure)
+                if (primary == null) {
+                    primaryFailure = failure
+                } else if (failure !== primary) {
+                    primary.addSuppressed(failure)
+                }
                 false
             }
         }
@@ -482,7 +491,11 @@ internal class DesktopRuntimeBootstrapSession(
                 runtimeAwaited = true
             } catch (failure: Throwable) {
                 val primary = primaryFailure
-                if (primary == null) primaryFailure = failure else if (failure !== primary) primary.addSuppressed(failure)
+                if (primary == null) {
+                    primaryFailure = failure
+                } else if (failure !== primary) {
+                    primary.addSuppressed(failure)
+                }
             }
         }
         primaryFailure?.let { throw it }

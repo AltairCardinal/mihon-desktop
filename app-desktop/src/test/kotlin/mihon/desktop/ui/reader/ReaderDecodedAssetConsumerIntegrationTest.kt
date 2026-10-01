@@ -1,12 +1,6 @@
 package mihon.desktop.ui.reader
 
 import androidx.compose.ui.graphics.asSkiaBitmap
-import java.awt.Color
-import java.awt.image.BufferedImage
-import java.io.ByteArrayOutputStream
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.atomic.AtomicLong
-import javax.imageio.ImageIO
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.reader.DesktopReaderPageContentOwner
@@ -14,7 +8,6 @@ import mihon.desktop.reader.DesktopReaderPageImagePipeline
 import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.DesktopReaderPresentationImageSlotIdentity
 import mihon.desktop.reader.DesktopReaderPresentationImageState
-import mihon.desktop.reader.EdgePixelMatcher
 import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.domain.reader.PageDecodePurpose
@@ -33,11 +26,17 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
+import java.awt.Color
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicLong
+import javax.imageio.ImageIO
 
 class ReaderDecodedAssetConsumerIntegrationTest {
 
     @Test
-    fun `preview edge split crop and filter reuse one production decoded asset`() = runTest {
+    fun `preview split crop and filter reuse one production decoded asset`() = runTest {
         val events = CopyOnWriteArrayList<ReaderIoEvent>()
         val clock = AtomicLong()
         val reporter = ReaderIoReporter(
@@ -105,9 +104,6 @@ class ReaderDecodedAssetConsumerIntegrationTest {
                 ).bitmap
                 try {
                     assertSame(cached.bitmap, visibleLease.asset.bitmap)
-                    EdgePixelMatcher().findMatchedPairs(pageCount = 3) { index ->
-                        cached.bitmap.takeIf { index == 1 || index == 2 }
-                    }
                     assertNotNull(readerColorMatrix(ReaderColorFilter(grayscaleEnabled = true)))
                     assertEquals(cached.bitmap.width / 2, split.width)
                     assertEquals(cached.bitmap.width - 4, cropped.width)

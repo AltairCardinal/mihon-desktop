@@ -12,10 +12,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
+import mihon.domain.reader.ReaderDualPageFactReadPermit
 import mihon.domain.reader.materialize.CanonicalReaderMaterializeExecutor
 import mihon.domain.reader.materialize.ReaderMaterializeExecutor
 import mihon.domain.reader.materialize.ReaderPageFetchRequest
@@ -63,6 +65,7 @@ internal class HttpPageLoader(
 
     private val preloadJobLock = Any()
     private val scheduledPages = mutableMapOf<ReaderRequestKey, ReaderPage>()
+    private val factPermits = mutableMapOf<ReaderRequestKey, ReaderDualPageFactReadPermit>()
     private val pageRunner = ReaderPageMaterializeRunner(
         scope = scope,
         maxConcurrentRequests = requestScheduler.snapshot().maxConcurrentRequests,
@@ -142,6 +145,40 @@ internal class HttpPageLoader(
         }
     }
 
+    override suspend fun loadFactPage(page: ReaderPage, permit: ReaderDualPageFactReadPermit) = withContext(
+        dispatcher,
+    ) {
+        check(!isRecycled)
+        if (page.status == Page.State.Ready) {
+            page.publishHeaderFact()
+            return@withContext
+        }
+        val result = synchronized(preloadJobLock) {
+            requestScheduler.enqueue(readerPageId(page.index), ReaderRequestKind.CURRENT_BACKGROUND).also {
+                registerEnqueueResultLocked(it, page.chapter.pages.orEmpty())
+                it.request?.let { request -> factPermits[request.jobKey] = permit }
+            }
+        }
+        pageRunner.cancel(result.cancelRequests)
+        pageRunner.pump()
+        try {
+            page.statusFlow.first { it == Page.State.Ready || it is Page.State.Error }
+            Unit
+        } finally {
+            // A null request means the normal scheduler already owns this page; withdraw only our own ticket.
+            result.request?.let { request ->
+                synchronized(preloadJobLock) {
+                    requestScheduler.cancelPending(request.jobKey)
+                    requestScheduler.complete(request.jobKey)
+                    scheduledPages.remove(request.jobKey)
+                    factPermits.remove(request.jobKey)
+                }
+                pageRunner.cancel(setOf(request.jobKey))
+                pageRunner.pump()
+            }
+        }
+    }
+
     override fun onPageSelected(page: ReaderPage) {
         val pages = page.chapter.pages.orEmpty()
         val preloadPlan = synchronized(preloadJobLock) {
@@ -168,6 +205,7 @@ internal class HttpPageLoader(
      * Retries a page. This method is only called from user interaction on the viewer.
      */
     override fun retryPage(page: ReaderPage) {
+        super.retryPage(page)
         if (page.status is Page.State.Error) {
             page.status = Page.State.Queue
         }
@@ -241,6 +279,7 @@ internal class HttpPageLoader(
                             generation = request.generation,
                             url = page.url,
                             imageUrl = page.imageUrl,
+                            factReadPermit = factPermits[request.jobKey],
                         ),
                         fetchPort = fetchPort,
                         binding = AndroidReaderPageBinding(page, fetchPort),
@@ -275,6 +314,7 @@ internal class HttpPageLoader(
                 if (rejected) discardStaleResultLocked(work.binding.page, work.request.jobKey)
                 requestScheduler.complete(work.request.jobKey)
                 scheduledPages.remove(work.request.jobKey)
+                factPermits.remove(work.request.jobKey)
             }
         }
     }
@@ -293,6 +333,7 @@ internal class HttpPageLoader(
                 imageUrl = event.imageUrl
                 encodedPageRef = event.encodedPageRef
                 stream = { port.openEncodedPage(event.encodedPageRef) }
+                publishHeaderFact()
                 status = Page.State.Ready
             }
             is ReaderPageMaterializeEvent.Failed -> {

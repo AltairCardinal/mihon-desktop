@@ -16,8 +16,10 @@ data class ReaderPageContentOpenRequest(
     val encodedPageRef: EncodedPageRef,
     val attemptGeneration: Long = 0L,
     val encodedPageProvenance: ReaderEncodedPageProvenance? = null,
+    val maxBytes: Int? = null,
 ) {
     init {
+        require(maxBytes == null || maxBytes > 0) { "read bound must be positive" }
         require(generation >= 0L) { "generation must be non-negative" }
         require(attemptGeneration >= 0L) { "attemptGeneration must be non-negative" }
     }

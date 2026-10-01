@@ -20,9 +20,17 @@ import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.model.loadedEntryPage
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import mihon.domain.reader.ReaderAdjacentChapterPolicy
+import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.ReaderDualPageSettlement
+import mihon.domain.reader.ReaderDualPageSettlementReason
+import mihon.domain.reader.ReaderDualPageViewportTicket
+import mihon.domain.reader.ReaderPresentationMode
+import mihon.domain.reader.SharedDualPageSession
 import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.injectLazy
 import kotlin.math.min
@@ -36,6 +44,10 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
     override val downloadManager: DownloadManager by injectLazy()
 
     private val scope = MainScope()
+    private val pairingStore get() = activity.viewModel.dualPagePairings
+    private val factCollectors = mutableMapOf<ReaderPage, Job>()
+    private val presentedViewports = mutableMapOf<SharedDualPageSession, ReaderDualPageViewportTicket>()
+    private var destroyed = false
 
     /**
      * View pager used by this viewer. It's abstract to implement L2R, R2L and vertical pagers on
@@ -101,6 +113,7 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
 
         override fun onPageScrollStateChanged(state: Int) {
             isIdle = state == ViewPager.SCROLL_STATE_IDLE
+            if (isIdle) reportSettledViewport()
         }
     }
 
@@ -157,6 +170,9 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
     }
 
     override fun destroy() {
+        destroyed = true
+        presentedViewports.forEach { (owner, ticket) -> owner.releaseViewport(ticket) }
+        presentedViewports.clear()
         super.destroy()
         scope.cancel()
     }
@@ -207,7 +223,11 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
                 is ReaderPage -> onReaderPageSelected(page, allowPreload, forward)
                 is ChapterTransition -> onTransitionSelected(page)
             }
+        } else if (page is ReaderPage) {
+            if (page !is InsertPage) activity.onViewerPageAnchorSelected(this, page, layoutOnly = false)
+            getPageHolder(page)?.beginPresentation()
         }
+        reportSettledViewport()
     }
 
     private fun checkAllowPreload(page: ReaderPage?): Boolean {
@@ -236,7 +256,14 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
     internal fun onReaderPageSelected(page: ReaderPage, allowPreload: Boolean, forward: Boolean) {
         val pages = page.chapter.pages ?: return
         logcat { "onReaderPageSelected: ${page.number}/${pages.size}" }
-        activity.onViewerPageSelected(this, page)
+        if (page !is InsertPage) {
+            val owner = ensureSingleOwner(page) ?: return
+            if (owner.location?.pageId != owner.identity.pageIds[page.index]) {
+                owner.goToPage(owner.identity.pageIds[page.index])
+            }
+            activity.onViewerPageAnchorSelected(this, page, layoutOnly = false)
+            getPageHolder(page)?.beginPresentation()
+        }
 
         // Notify holder of page change
         getPageHolder(page)?.onPageSelected(forward)
@@ -297,13 +324,14 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
         val entryPage = (adapter.items.getOrNull(pager.currentItem) as? ChapterTransition)?.loadedEntryPage()
         val forceTransition = config.alwaysShowChapterTransition ||
             adapter.items.getOrNull(pager.currentItem) is ChapterTransition
+        bindSingleFacts(chapters)
         adapter.setChapters(chapters, forceTransition)
 
         // Layout the pager once a chapter is being set
         if (pager.isGone) {
             logcat { "Pager first layout" }
             val pages = chapters.currChapter.pages ?: return
-            moveToPage(pages[min(chapters.currChapter.requestedPage, pages.lastIndex)])
+            positionPage(pages[min(chapters.currChapter.requestedPage, pages.lastIndex)])
             pager.isVisible = true
         }
 
@@ -321,6 +349,13 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
      * Tells this viewer to move to the given [page].
      */
     override fun moveToPage(page: ReaderPage) {
+        if (page !is InsertPage) {
+            ensureSingleOwner(page)?.let { it.goToPage(it.identity.pageIds[page.index]) }
+        }
+        positionPage(page)
+    }
+
+    private fun positionPage(page: ReaderPage) {
         val position = adapter.items.indexOf(page)
         if (position != -1) {
             val currentPosition = pager.currentItem
@@ -332,6 +367,94 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
         } else {
             logcat { "Page $page not found in adapter" }
         }
+    }
+
+    private fun ensureSingleOwner(page: ReaderPage): SharedDualPageSession? {
+        if (destroyed || page is InsertPage) return null
+        val pages = page.chapter.pages ?: return null
+        if (pages.getOrNull(page.index) !== page) return null
+        return pairingStore.ensure(page.chapter, pages).session.also {
+            it.configure(if (this is L2RPagerViewer) ReaderDirection.LTR else ReaderDirection.RTL)
+            it.configurePresentationMode(ReaderPresentationMode.SINGLE)
+        }
+    }
+
+    private fun bindSingleFacts(chapters: ViewerChapters) {
+        val window = listOfNotNull(chapters.prevChapter, chapters.currChapter, chapters.nextChapter)
+        val retained = window.flatMap { it.pages.orEmpty() }.toSet()
+        factCollectors.keys.toList().filter { it !in retained }.forEach { factCollectors.remove(it)?.cancel() }
+        window.forEach { chapter ->
+            val pages = chapter.pages ?: return@forEach
+            pages.firstOrNull()?.let(::ensureSingleOwner)
+            pages.filter { it !in factCollectors }.forEach { page ->
+                factCollectors[page] = scope.launch {
+                    page.contentFact.collect { captured ->
+                        if (chapter.pages !== pages || destroyed) return@collect
+                        val owner = ensureSingleOwner(page) ?: return@collect
+                        if (page.contentFact.value != captured) return@collect
+                        val entry = pairingStore.chapters[chapter] ?: return@collect
+                        val previous = entry.factRetrySequences[page] ?: captured.retrySequence
+                        if (captured.retrySequence > previous) {
+                            entry.factRetrySequences[page] = captured.retrySequence
+                            owner.retryFacts()
+                        }
+                        owner.acceptFact(owner.requestFact(owner.identity.pageIds[page.index]), captured.fact)
+                        (currentPage as? ReaderPage)?.takeIf { it.chapter === chapter }
+                            ?.let { getPageHolder(it)?.beginPresentation() }
+                    }
+                }
+            }
+        }
+        presentedViewports.keys.toList().filter { owner ->
+            pairingStore.chapters.values.none { it.session === owner && it.pages.any(retained::contains) }
+        }.forEach { owner -> presentedViewports.remove(owner)?.let(owner::releaseViewport) }
+    }
+
+    internal fun capturePresentation(page: ReaderPage): Pair<SharedDualPageSession, ReaderDualPageViewportTicket>? {
+        // A split's offscreen second half must never issue or release the selected first half's scope.
+        if (page is InsertPage || currentPage !== page ||
+            adapter.items.getOrNull(pager.currentItem) !== page
+        ) {
+            return null
+        }
+        val owner = ensureSingleOwner(page) ?: return null
+        if (owner.location?.pageId != owner.identity.pageIds[page.index]) return null
+        return owner.captureViewport()?.let {
+            presentedViewports[owner] = it
+            owner to it
+        }
+    }
+
+    internal fun releasePresentation(presentation: Pair<SharedDualPageSession, ReaderDualPageViewportTicket>) {
+        val (owner, ticket) = presentation
+        owner.releaseViewport(ticket)
+        if (presentedViewports[owner] === ticket) presentedViewports.remove(owner)
+    }
+
+    internal fun onHolderDisplayStateChanged(holder: PagerPageHolder) {
+        if (holder.page === currentPage) reportSettledViewport()
+    }
+
+    private fun reportSettledViewport() {
+        if (destroyed || !isIdle) return
+        val page = adapter.items.getOrNull(pager.currentItem) as? ReaderPage ?: return
+        if (page is InsertPage || currentPage !== page) return
+        val holder = getPageHolder(page) ?: return
+        if (!holder.hasRenderedPage()) return
+        val (owner, ticket) = holder.presentationScope ?: return
+        if (owner.settle(
+                ReaderDualPageSettlement(
+                    ticket.identity, ticket.layoutRevision, ticket.locationSequence, ticket.unitId,
+                    setOf(ticket.identity.pageIds[page.index]), true, ReaderDualPageSettlementReason.USER_NAVIGATION,
+                    ticket.locationSequence, ticket,
+                ),
+                page.chapter.chapter.read,
+                "android-pager-${ticket.identity.generation}",
+            ) == null
+        ) {
+            return
+        }
+        activity.onViewerViewportSettled(this, page, listOf(page))
     }
 
     /**

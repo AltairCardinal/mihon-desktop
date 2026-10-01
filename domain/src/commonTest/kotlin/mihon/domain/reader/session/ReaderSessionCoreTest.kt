@@ -15,6 +15,39 @@ import org.junit.jupiter.api.Test
 class ReaderSessionCoreTest {
 
     @Test
+    fun `first rendered settlement preserves work already scheduled for the same native viewport`() {
+        val chapterId = ReaderChapterId(92)
+        val core = loadedCore(chapterId, pageCount = 17)
+        val visible = ReaderPageId(chapterId, 16)
+        core.settleViewport(setOf(visible), visible, wasRead = false, recordProgress = false)
+        val visibleRequest = requireNotNull(core.pollNextPageRequest())
+        val optional = core.enqueueFactPage(ReaderPageId(chapterId, 9))
+        val optionalRequest = requireNotNull(optional.request)
+        val rendered = core.settleViewport(setOf(visible), visible, wasRead = false)
+
+        assertTrue(requireNotNull(rendered.progressEffect).isRead)
+        assertNull(rendered.schedulePlan, "Unchanged native viewport must retain its original I/O window")
+        assertTrue(
+            core.acceptPageMaterialization(
+                visibleRequest,
+                ReaderPageMaterializeEvent.Downloading("https://example.test/16.png"),
+            ),
+        )
+        assertTrue(core.completePageRequest(visibleRequest.jobKey))
+        assertEquals(
+            optionalRequest,
+            core.pollNextPageRequest(),
+            "The original queued optional request must survive the rendered settlement",
+        )
+        assertTrue(
+            core.acceptPageMaterialization(
+                optionalRequest,
+                ReaderPageMaterializeEvent.Downloading("https://example.test/9.png"),
+            ),
+        )
+    }
+
+    @Test
     fun `layout-only viewport schedules visible image without recording progress`() {
         val chapterId = ReaderChapterId(91)
         val core = loadedCore(chapterId, pageCount = 3)

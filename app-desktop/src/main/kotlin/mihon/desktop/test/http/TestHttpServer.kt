@@ -20,26 +20,26 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonObject
+import mihon.desktop.migration.BatchMigrationRequest
+import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.test.state.applicationState
 import mihon.desktop.test.state.downloadState
 import mihon.desktop.test.state.historyState
 import mihon.desktop.test.state.readerState
 import mihon.desktop.test.state.updatesState
-import mihon.desktop.ui.browse.SourceBrowseTestFailureCode
-import mihon.desktop.ui.browse.SourceBrowseTestModeBridge
-import mihon.desktop.ui.browse.SourceBrowseTestSnapshot
-import java.time.Instant
-import mihon.desktop.migration.BatchMigrationRequest
-import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.tracking.TrackingTestFailureCode
 import mihon.desktop.tracking.TrackingTestModeController
 import mihon.desktop.tracking.TrackingTestState
+import mihon.desktop.ui.browse.SourceBrowseTestFailureCode
+import mihon.desktop.ui.browse.SourceBrowseTestModeBridge
+import mihon.desktop.ui.browse.SourceBrowseTestSnapshot
 import mihon.desktop.ui.settings.DesktopUpdateIntent
 import mihon.desktop.ui.settings.DesktopUpdateScreenModel
 import mihon.desktop.ui.settings.presentation
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicReference
 
 object MigrationBatchTestBridge {
@@ -90,7 +90,14 @@ private fun parseReaderFixtureSpec(params: Map<String, String>): ReaderTestFixtu
     val format = ReaderTestImageFormat.fromWireName(formatValue)
         ?: throw IllegalArgumentException("Unsupported reader fixture format: $formatValue")
     val partialPageCount = params["partialPageCount"]?.toIntOrNull()
-        ?: if (params.containsKey("partialPageCount")) throw IllegalArgumentException("partialPageCount must be an integer") else null
+        ?: if (params.containsKey(
+                "partialPageCount",
+            )
+        ) {
+            throw IllegalArgumentException("partialPageCount must be an integer")
+        } else {
+            null
+        }
     val offline = params["offline"]?.let { raw ->
         raw.toBooleanStrictOrNull() ?: throw IllegalArgumentException("offline must be true or false")
     } ?: false
@@ -159,98 +166,100 @@ internal fun currentTestStateJson(updateModel: DesktopUpdateScreenModel? = null)
     val settings = SettingsTestModeBridge.controller?.snapshot()
     val tracking = TrackingTestBridge.controller?.snapshot()
     val authors = AuthorArchiveTestModeBridge.controller?.snapshot()
-    return jsonText(buildJsonObject {
-        put("currentScreen", JsonPrimitive(state.currentScreen.value ?: "HomeScreen"))
-        put("isLoading", JsonPrimitive(state.isLoading.value))
-        put("appLocked", JsonPrimitive(state.appLocked.value))
-        put("notifications", JsonArray(emptyList()))
-        put("screens", JsonArray(state.screens.value.map(::JsonPrimitive)))
-        put("actions", JsonArray(state.actions.value.map(::JsonPrimitive)))
-        put("testMode", JsonPrimitive(state.testMode))
-        put("downloadQueueSize", JsonPrimitive(downloads?.rows?.size ?: dlState.queueSize))
-        put("downloadsPaused", JsonPrimitive(downloads?.paused ?: dlState.isPaused))
-        put("updateCount", JsonPrimitive(updates?.rows?.size ?: upState.count))
-        put("hasUnreadUpdates", JsonPrimitive(updates?.rows?.any { !it.read } ?: upState.hasUnread))
-        put("historyCount", JsonPrimitive(history?.rows?.size ?: histState.count))
-        put("migrationQueueCount", JsonPrimitive(migrationQueues))
-        val update = updateModel?.state?.value?.presentation()
-        put("updateStatus", update?.status?.let(::JsonPrimitive) ?: JsonNull)
-        put("updateProgress", update?.progress?.let(::JsonPrimitive) ?: JsonNull)
-        put("updateReleasePage", update?.releasePage?.let(::JsonPrimitive) ?: JsonNull)
-        put("timestamp", JsonPrimitive(Instant.now().toString()))
-        put(
-            "updates",
-            updates?.let {
-                Json.encodeToJsonElement(UpdatesTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "downloads",
-            downloads?.let {
-                Json.encodeToJsonElement(DownloadTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "history",
-            history?.let {
-                Json.encodeToJsonElement(HistoryTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "backup",
-            backup?.let {
-                Json.encodeToJsonElement(BackupTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "settings",
-            settings?.let {
-                Json.encodeToJsonElement(SettingsTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "tracking",
-            tracking?.let {
-                Json.encodeToJsonElement(TrackingTestState.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "authors",
-            authors?.let {
-                Json.encodeToJsonElement(AuthorArchiveTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "extension",
-            SourceExtensionTestModeBridge.controller?.snapshot()?.let {
-                Json.encodeToJsonElement(SourceExtensionTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "browse",
-            BrowseSearchTestModeBridge.controller?.snapshot()?.let {
-                Json.encodeToJsonElement(BrowseSearchTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "source",
-            SourceBrowseTestModeBridge.port?.snapshot()?.let {
-                Json.encodeToJsonElement(SourceBrowseTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "library",
-            LibraryMangaTestModeBridge.controller?.snapshot()?.let {
-                Json.encodeToJsonElement(LibraryTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "detail",
-            LibraryMangaTestModeBridge.controller?.detailSnapshot()?.let {
-                Json.encodeToJsonElement(MangaDetailTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-    })
+    return jsonText(
+        buildJsonObject {
+            put("currentScreen", JsonPrimitive(state.currentScreen.value ?: "HomeScreen"))
+            put("isLoading", JsonPrimitive(state.isLoading.value))
+            put("appLocked", JsonPrimitive(state.appLocked.value))
+            put("notifications", JsonArray(emptyList()))
+            put("screens", JsonArray(state.screens.value.map(::JsonPrimitive)))
+            put("actions", JsonArray(state.actions.value.map(::JsonPrimitive)))
+            put("testMode", JsonPrimitive(state.testMode))
+            put("downloadQueueSize", JsonPrimitive(downloads?.rows?.size ?: dlState.queueSize))
+            put("downloadsPaused", JsonPrimitive(downloads?.paused ?: dlState.isPaused))
+            put("updateCount", JsonPrimitive(updates?.rows?.size ?: upState.count))
+            put("hasUnreadUpdates", JsonPrimitive(updates?.rows?.any { !it.read } ?: upState.hasUnread))
+            put("historyCount", JsonPrimitive(history?.rows?.size ?: histState.count))
+            put("migrationQueueCount", JsonPrimitive(migrationQueues))
+            val update = updateModel?.state?.value?.presentation()
+            put("updateStatus", update?.status?.let(::JsonPrimitive) ?: JsonNull)
+            put("updateProgress", update?.progress?.let(::JsonPrimitive) ?: JsonNull)
+            put("updateReleasePage", update?.releasePage?.let(::JsonPrimitive) ?: JsonNull)
+            put("timestamp", JsonPrimitive(Instant.now().toString()))
+            put(
+                "updates",
+                updates?.let {
+                    Json.encodeToJsonElement(UpdatesTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "downloads",
+                downloads?.let {
+                    Json.encodeToJsonElement(DownloadTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "history",
+                history?.let {
+                    Json.encodeToJsonElement(HistoryTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "backup",
+                backup?.let {
+                    Json.encodeToJsonElement(BackupTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "settings",
+                settings?.let {
+                    Json.encodeToJsonElement(SettingsTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "tracking",
+                tracking?.let {
+                    Json.encodeToJsonElement(TrackingTestState.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "authors",
+                authors?.let {
+                    Json.encodeToJsonElement(AuthorArchiveTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "extension",
+                SourceExtensionTestModeBridge.controller?.snapshot()?.let {
+                    Json.encodeToJsonElement(SourceExtensionTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "browse",
+                BrowseSearchTestModeBridge.controller?.snapshot()?.let {
+                    Json.encodeToJsonElement(BrowseSearchTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "source",
+                SourceBrowseTestModeBridge.port?.snapshot()?.let {
+                    Json.encodeToJsonElement(SourceBrowseTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "library",
+                LibraryMangaTestModeBridge.controller?.snapshot()?.let {
+                    Json.encodeToJsonElement(LibraryTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "detail",
+                LibraryMangaTestModeBridge.controller?.detailSnapshot()?.let {
+                    Json.encodeToJsonElement(MangaDetailTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+        },
+    )
 }
 
 private fun actionJson(
@@ -415,7 +424,8 @@ internal fun Application.testHttpServer(
                     contentType = ContentType.Application.Json,
                     status = HttpStatusCode.OK,
                 ) {
-                    """{"success":true,"newScreen":"$screenId","type":"tab","tabFound":true,"timestamp":"${Instant.now()}"}"""
+                    """{"success":true,"newScreen":"$screenId","type":"tab","tabFound":true""" +
+                        ""","timestamp":"${Instant.now()}"}"""
                 }
             } else {
                 // Check if this is a known screen that needs special navigation
@@ -444,7 +454,9 @@ internal fun Application.testHttpServer(
                         contentType = ContentType.Application.Json,
                         status = HttpStatusCode.OK,
                     ) {
-                        """{"success":true,"newScreen":"$screenId","type":"nested","note":"Navigate to MoreTab first, then trigger action","timestamp":"${Instant.now()}"}"""
+                        """{"success":true,"newScreen":"$screenId","type":"nested"""" +
+                            ""","note":"Navigate to MoreTab first, then trigger action"""" +
+                            ""","timestamp":"${Instant.now()}"}"""
                     }
                 } else {
                     // Unknown screen
@@ -456,7 +468,8 @@ internal fun Application.testHttpServer(
                         contentType = ContentType.Application.Json,
                         status = HttpStatusCode.OK,
                     ) {
-                        """{"success":false,"newScreen":"$screenId","error":"Unknown screen: $screenId","timestamp":"${Instant.now()}"}"""
+                        """{"success":false,"newScreen":"$screenId","error":"Unknown screen: $screenId"""" +
+                            ""","timestamp":"${Instant.now()}"}"""
                     }
                 }
             }
@@ -522,16 +535,40 @@ internal fun Application.testHttpServer(
                     else -> null
                 }
                 if (intent == null) {
-                    call.respondText(jsonText(actionJson(action, false, "UNKNOWN_UPDATE_ACTION")), ContentType.Application.Json, HttpStatusCode.BadRequest)
+                    call.respondText(
+                        jsonText(actionJson(action, false, "UNKNOWN_UPDATE_ACTION")),
+                        ContentType.Application.Json,
+                        HttpStatusCode.BadRequest,
+                    )
                     return@post
                 }
                 if (updateModel == null) {
-                    call.respondText(jsonText(actionJson(action, false, "UPDATE_CONTROLLER_UNAVAILABLE")), ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
+                    call.respondText(
+                        jsonText(actionJson(action, false, "UPDATE_CONTROLLER_UNAVAILABLE")),
+                        ContentType.Application.Json,
+                        HttpStatusCode.ServiceUnavailable,
+                    )
                     return@post
                 }
                 val accepted = updateModel.intent(intent)
                 val status = if (accepted) HttpStatusCode.OK else HttpStatusCode.Conflict
-                call.respondText(jsonText(actionJson(action, accepted == true, if (accepted == true) null else "UPDATE_ACTION_REJECTED")), ContentType.Application.Json, status)
+                call.respondText(
+                    jsonText(
+                        actionJson(
+                            action,
+                            accepted == true,
+                            if (accepted ==
+                                true
+                            ) {
+                                null
+                            } else {
+                                "UPDATE_ACTION_REJECTED"
+                            },
+                        ),
+                    ),
+                    ContentType.Application.Json,
+                    status,
+                )
                 return@post
             }
 
@@ -686,91 +723,106 @@ internal fun Application.testHttpServer(
             val trackingResult = trackingController?.execute(action, params)
 
             // Process actions
-            if (!isExtensionAction && !isLibraryAction && !isBrowseAction && !isSourceLoginAction && !isDownloadAction && !isUpdatesAction && !isHistoryAction && !isBackupAction && !isSettingsAction && !isTrackingAction) when (action) {
-                // Read chapter - open reader
-                "read_chapter", "start_reading" -> {
-                    val mangaId = params["mangaId"]?.toLongOrNull()
-                        ?: params["mangaIndex"]?.toLongOrNull()
-                        ?: params["chapterId"]?.toLongOrNull()
-                        ?: 0L
-                    if (mangaId > 0) {
-                        val chapterId = params["chapterId"]?.toLongOrNull() ?: mangaId
-                        val chapterTitle = params["chapterTitle"] ?: "Chapter ${params["chapterIndex"] ?: 0}"
-                        val dualPage = params["dualPage"]?.toBooleanStrictOrNull()
-                        if (params.containsKey("dualPage") && dualPage == null) {
-                            call.respondText(
-                                jsonText(actionJson(action, false, "INVALID_DUAL_PAGE")),
-                                ContentType.Application.Json,
-                                HttpStatusCode.BadRequest,
-                            )
-                            return@post
-                        }
-                        val fixtureController = ReaderIoTestModeBridge.controller
-                        val fixture = if (fixtureController != null) {
-                            val spec = try {
-                                parseReaderFixtureSpec(params)
-                            } catch (error: IllegalArgumentException) {
+            if (!isExtensionAction && !isLibraryAction && !isBrowseAction && !isSourceLoginAction &&
+                !isDownloadAction && !isUpdatesAction && !isHistoryAction && !isBackupAction &&
+                !isSettingsAction && !isTrackingAction
+            ) {
+                when (action) {
+                    // Read chapter - open reader
+                    "read_chapter", "start_reading" -> {
+                        val mangaId = params["mangaId"]?.toLongOrNull()
+                            ?: params["mangaIndex"]?.toLongOrNull()
+                            ?: params["chapterId"]?.toLongOrNull()
+                            ?: 0L
+                        if (mangaId > 0) {
+                            val chapterId = params["chapterId"]?.toLongOrNull() ?: mangaId
+                            val chapterTitle = params["chapterTitle"] ?: "Chapter ${params["chapterIndex"] ?: 0}"
+                            val dualPage = params["dualPage"]?.toBooleanStrictOrNull()
+                            if (params.containsKey("dualPage") && dualPage == null) {
                                 call.respondText(
-                                    jsonText(actionJson(action, false, "INVALID_READER_FIXTURE: ${error.message}")),
+                                    jsonText(actionJson(action, false, "INVALID_DUAL_PAGE")),
                                     ContentType.Application.Json,
                                     HttpStatusCode.BadRequest,
                                 )
                                 return@post
                             }
-                            fixtureController.prepareFixtureAwait(
-                                spec = spec,
+                            val fixtureController = ReaderIoTestModeBridge.controller
+                            val fixture = if (fixtureController != null) {
+                                val spec = try {
+                                    parseReaderFixtureSpec(params)
+                                } catch (error: IllegalArgumentException) {
+                                    call.respondText(
+                                        jsonText(actionJson(action, false, "INVALID_READER_FIXTURE: ${error.message}")),
+                                        ContentType.Application.Json,
+                                        HttpStatusCode.BadRequest,
+                                    )
+                                    return@post
+                                }
+                                fixtureController.prepareFixtureAwait(
+                                    spec = spec,
+                                    mangaId = mangaId,
+                                    chapterId = chapterId,
+                                    chapterTitle = chapterTitle,
+                                )
+                            } else {
+                                null
+                            }
+                            TestNavigationController.openReader(
                                 mangaId = mangaId,
                                 chapterId = chapterId,
-                                chapterTitle = chapterTitle,
+                                chapterTitle = fixture?.chapterTitle ?: chapterTitle,
+                                mangaTitle = fixture?.mangaTitle ?: "Manga",
+                                chapterUrl = fixture?.chapterUrl.orEmpty(),
+                                sourceId = fixture?.sourceId ?: 0L,
+                                initialPage = params["chapterIndex"]?.toIntOrNull() ?: 0,
+                                pageCount = fixture?.spec?.pageCount ?: params["pageCount"]?.toIntOrNull() ?: 20,
+                                localChapterPath = fixture?.localChapterPath,
+                                dualPage = dualPage ?: false,
                             )
-                        } else {
-                            null
+
+                            applicationState.setCurrentScreen("ReaderScreen")
+                            applicationState.recordAction(action, mapOf("mangaId" to mangaId, "chapterId" to chapterId))
                         }
-                        TestNavigationController.openReader(
-                            mangaId = mangaId,
-                            chapterId = chapterId,
-                            chapterTitle = fixture?.chapterTitle ?: chapterTitle,
-                            mangaTitle = fixture?.mangaTitle ?: "Manga",
-                            chapterUrl = fixture?.chapterUrl.orEmpty(),
-                            sourceId = fixture?.sourceId ?: 0L,
-                            initialPage = params["chapterIndex"]?.toIntOrNull() ?: 0,
-                            pageCount = fixture?.spec?.pageCount ?: params["pageCount"]?.toIntOrNull() ?: 20,
-                            localChapterPath = fixture?.localChapterPath,
-                            dualPage = dualPage ?: false,
-                        )
-
-                        applicationState.setCurrentScreen("ReaderScreen")
-                        applicationState.recordAction(action, mapOf("mangaId" to mangaId, "chapterId" to chapterId))
                     }
-                }
 
-                // Reader actions
-                "reader_next_page", "reader_prev_page", "reader_next_chapter", "reader_prev_chapter",
-                "reader_mode", "reader_zoom",
-                -> { }
-                // Browse actions
-                // Migration actions
-                "migration_search", "migration_select" -> { }
-                "migration_submit" -> {
-                    val mangaId = params["mangaId"]?.toLongOrNull() ?: 0L
-                    if (mangaId > 0) {
-                        MigrationBatchTestBridge.controller?.submit(
-                            listOf(BatchMigrationRequest(mangaId, params["title"] ?: "Manga $mangaId")),
-                        )
+                    // Reader actions
+                    "reader_next_page", "reader_prev_page", "reader_next_chapter", "reader_prev_chapter" ->
+                        readerState.perform(action.removePrefix("reader_"))
+                    "reader_mode", "reader_zoom" -> { }
+                    // Browse actions
+                    // Migration actions
+                    "migration_search", "migration_select" -> { }
+                    "migration_submit" -> {
+                        val mangaId = params["mangaId"]?.toLongOrNull() ?: 0L
+                        if (mangaId > 0) {
+                            MigrationBatchTestBridge.controller?.submit(
+                                listOf(BatchMigrationRequest(mangaId, params["title"] ?: "Manga $mangaId")),
+                            )
+                        }
                     }
-                }
-                "migration_pause" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.pause(it) }
-                "migration_resume" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.resume(it) }
-                "migration_cancel_all" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.cancelAll(it) }
-                "migration_cancel_item" -> {
-                    val mangaId = params["mangaId"]?.toLongOrNull()
-                    val queueId = params["queueId"]
-                    if (mangaId != null && queueId != null) MigrationBatchTestBridge.controller?.cancelItem(queueId, mangaId)
-                }
-                "migration_retry" -> {
-                    val mangaId = params["mangaId"]?.toLongOrNull()
-                    val queueId = params["queueId"]
-                    if (mangaId != null && queueId != null) MigrationBatchTestBridge.controller?.retryItem(queueId, mangaId)
+                    "migration_pause" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.pause(it) }
+                    "migration_resume" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.resume(it) }
+                    "migration_cancel_all" -> params["queueId"]?.let {
+                        MigrationBatchTestBridge.controller?.cancelAll(it)
+                    }
+                    "migration_cancel_item" -> {
+                        val mangaId = params["mangaId"]?.toLongOrNull()
+                        val queueId = params["queueId"]
+                        if (mangaId != null &&
+                            queueId != null
+                        ) {
+                            MigrationBatchTestBridge.controller?.cancelItem(queueId, mangaId)
+                        }
+                    }
+                    "migration_retry" -> {
+                        val mangaId = params["mangaId"]?.toLongOrNull()
+                        val queueId = params["queueId"]
+                        if (mangaId != null &&
+                            queueId != null
+                        ) {
+                            MigrationBatchTestBridge.controller?.retryItem(queueId, mangaId)
+                        }
+                    }
                 }
             }
 
@@ -787,125 +839,127 @@ internal fun Application.testHttpServer(
                     TrackingTestFailureCode.OWNER_CLOSED,
                     -> HttpStatusCode.ServiceUnavailable
                     null -> when (settingsResult?.failureCode) {
-                    SettingsTestFailureCode.MISSING_PARAMETER,
-                    SettingsTestFailureCode.INVALID_PARAMETER,
-                    SettingsTestFailureCode.UNSUPPORTED_ACTION,
-                    -> HttpStatusCode.BadRequest
-                    SettingsTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
-                    SettingsTestFailureCode.CONFIRMATION_REQUIRED,
-                    SettingsTestFailureCode.AUTHENTICATION_FAILED,
-                    SettingsTestFailureCode.OPERATION_IN_PROGRESS,
-                    SettingsTestFailureCode.OPERATION_REJECTED,
-                    SettingsTestFailureCode.NAVIGATION_REJECTED,
-                    -> HttpStatusCode.Conflict
-                    SettingsTestFailureCode.BACKEND_UNAVAILABLE,
-                    SettingsTestFailureCode.PORT_FAILURE,
-                    SettingsTestFailureCode.OWNER_CLOSED,
-                    -> HttpStatusCode.ServiceUnavailable
-                    null -> when (backupResult?.failureCode) {
-                    BackupTestFailureCode.MISSING_PARAMETER,
-                    BackupTestFailureCode.INVALID_PARAMETER,
-                    BackupTestFailureCode.UNSUPPORTED_ACTION,
-                    -> HttpStatusCode.BadRequest
-                    BackupTestFailureCode.CONFIRMATION_REQUIRED,
-                    BackupTestFailureCode.OPERATION_IN_PROGRESS,
-                    BackupTestFailureCode.OPERATION_REJECTED,
-                    BackupTestFailureCode.WORKFLOW_FAILED,
-                    BackupTestFailureCode.PARTIAL_FAILURE,
-                    -> HttpStatusCode.Conflict
-                    BackupTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
-                    null -> when (historyResult?.failureCode) {
-                    TimelineTestFailureCode.MISSING_PARAMETER,
-                    TimelineTestFailureCode.INVALID_PARAMETER,
-                    TimelineTestFailureCode.UNSUPPORTED_ACTION,
-                    -> HttpStatusCode.BadRequest
-                    TimelineTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
-                    TimelineTestFailureCode.OPERATION_REJECTED,
-                    TimelineTestFailureCode.PARTIAL_FAILURE,
-                    -> HttpStatusCode.Conflict
-                    TimelineTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
-                    null -> when (updatesResult?.failureCode) {
-                    TimelineTestFailureCode.MISSING_PARAMETER,
-                    TimelineTestFailureCode.INVALID_PARAMETER,
-                    TimelineTestFailureCode.UNSUPPORTED_ACTION,
-                    -> HttpStatusCode.BadRequest
-                    TimelineTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
-                    TimelineTestFailureCode.OPERATION_REJECTED,
-                    TimelineTestFailureCode.PARTIAL_FAILURE,
-                    -> HttpStatusCode.Conflict
-                    TimelineTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
-                    null -> when (downloadResult?.failureCode) {
-                    DownloadTestFailureCode.MISSING_PARAMETER,
-                    DownloadTestFailureCode.INVALID_PARAMETER,
-                    DownloadTestFailureCode.UNSUPPORTED_ACTION,
-                    -> HttpStatusCode.BadRequest
-                    DownloadTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
-                    DownloadTestFailureCode.OPERATION_REJECTED,
-                    DownloadTestFailureCode.PARTIAL_FAILURE,
-                    -> HttpStatusCode.Conflict
-                    DownloadTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
-                    null -> when (browseResult?.failureCode) {
-                    BrowseSearchTestFailureCode.MISSING_PARAMETER,
-                    BrowseSearchTestFailureCode.BLANK_QUERY,
-                    BrowseSearchTestFailureCode.UNSUPPORTED_ACTION,
-                    -> HttpStatusCode.BadRequest
-                    BrowseSearchTestFailureCode.SOURCE_NOT_FOUND,
-                    BrowseSearchTestFailureCode.ROW_NOT_FOUND,
-                    -> HttpStatusCode.NotFound
-                    BrowseSearchTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
-                    BrowseSearchTestFailureCode.STALE_GENERATION,
-                    BrowseSearchTestFailureCode.RECOVERY_UNAVAILABLE,
-                    BrowseSearchTestFailureCode.OPERATION_REJECTED,
-                    -> HttpStatusCode.Conflict
-                    null -> when (sourceResult?.failureCode) {
-                    SourceBrowseTestFailureCode.MISSING_TOKEN,
-                    SourceBrowseTestFailureCode.MISSING_HEADER,
-                    -> HttpStatusCode.BadRequest
-                    SourceBrowseTestFailureCode.STALE_GENERATION,
-                    SourceBrowseTestFailureCode.NO_ACTIVE_LOGIN,
-                    SourceBrowseTestFailureCode.ATTEMPT_MISMATCH,
-                    SourceBrowseTestFailureCode.TERMINAL,
-                    SourceBrowseTestFailureCode.OPERATION_REJECTED,
-                    SourceBrowseTestFailureCode.PORT_CLOSED,
-                    -> HttpStatusCode.Conflict
-                    null -> when (extensionResult?.failureCode) {
-                    SourceExtensionActionFailureCode.MISSING_PARAMETER,
-                    SourceExtensionActionFailureCode.UNSUPPORTED_ACTION,
-                    -> HttpStatusCode.BadRequest
-                    SourceExtensionActionFailureCode.UNKNOWN_PACKAGE -> HttpStatusCode.NotFound
-                    SourceExtensionActionFailureCode.ACTION_UNAVAILABLE,
-                    SourceExtensionActionFailureCode.NO_PENDING_TRUST,
-                    SourceExtensionActionFailureCode.TRUST_PACKAGE_MISMATCH,
-                    SourceExtensionActionFailureCode.OPERATION_REJECTED,
-                    -> HttpStatusCode.Conflict
-                        null -> when (libraryResult?.failureCode) {
-                            LibraryMangaActionFailureCode.MISSING_PARAMETER,
-                            LibraryMangaActionFailureCode.INVALID_PARAMETER,
-                            LibraryMangaActionFailureCode.UNSUPPORTED_ACTION,
+                        SettingsTestFailureCode.MISSING_PARAMETER,
+                        SettingsTestFailureCode.INVALID_PARAMETER,
+                        SettingsTestFailureCode.UNSUPPORTED_ACTION,
+                        -> HttpStatusCode.BadRequest
+                        SettingsTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
+                        SettingsTestFailureCode.CONFIRMATION_REQUIRED,
+                        SettingsTestFailureCode.AUTHENTICATION_FAILED,
+                        SettingsTestFailureCode.OPERATION_IN_PROGRESS,
+                        SettingsTestFailureCode.OPERATION_REJECTED,
+                        SettingsTestFailureCode.NAVIGATION_REJECTED,
+                        -> HttpStatusCode.Conflict
+                        SettingsTestFailureCode.BACKEND_UNAVAILABLE,
+                        SettingsTestFailureCode.PORT_FAILURE,
+                        SettingsTestFailureCode.OWNER_CLOSED,
+                        -> HttpStatusCode.ServiceUnavailable
+                        null -> when (backupResult?.failureCode) {
+                            BackupTestFailureCode.MISSING_PARAMETER,
+                            BackupTestFailureCode.INVALID_PARAMETER,
+                            BackupTestFailureCode.UNSUPPORTED_ACTION,
                             -> HttpStatusCode.BadRequest
-                            LibraryMangaActionFailureCode.ROW_NOT_FOUND,
-                            LibraryMangaActionFailureCode.DETAIL_NOT_FOUND,
-                            -> HttpStatusCode.NotFound
-                            LibraryMangaActionFailureCode.DETAIL_NOT_OPEN,
-                            LibraryMangaActionFailureCode.ACTION_UNAVAILABLE,
-                            LibraryMangaActionFailureCode.OPERATION_REJECTED,
-                            LibraryMangaActionFailureCode.PARTIAL_FAILURE,
-                            LibraryMangaActionFailureCode.LIBRARY_LOADING,
-                            LibraryMangaActionFailureCode.DETAIL_LOADING,
+                            BackupTestFailureCode.CONFIRMATION_REQUIRED,
+                            BackupTestFailureCode.OPERATION_IN_PROGRESS,
+                            BackupTestFailureCode.OPERATION_REJECTED,
+                            BackupTestFailureCode.WORKFLOW_FAILED,
+                            BackupTestFailureCode.PARTIAL_FAILURE,
                             -> HttpStatusCode.Conflict
-                            LibraryMangaActionFailureCode.LIBRARY_UNAVAILABLE,
-                            LibraryMangaActionFailureCode.DETAIL_LOAD_FAILED,
-                            LibraryMangaActionFailureCode.PORT_CLOSED,
-                            -> HttpStatusCode.ServiceUnavailable
-                            null -> HttpStatusCode.OK
+                            BackupTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
+                            null -> when (historyResult?.failureCode) {
+                                TimelineTestFailureCode.MISSING_PARAMETER,
+                                TimelineTestFailureCode.INVALID_PARAMETER,
+                                TimelineTestFailureCode.UNSUPPORTED_ACTION,
+                                -> HttpStatusCode.BadRequest
+                                TimelineTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
+                                TimelineTestFailureCode.OPERATION_REJECTED,
+                                TimelineTestFailureCode.PARTIAL_FAILURE,
+                                -> HttpStatusCode.Conflict
+                                TimelineTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
+                                null -> when (updatesResult?.failureCode) {
+                                    TimelineTestFailureCode.MISSING_PARAMETER,
+                                    TimelineTestFailureCode.INVALID_PARAMETER,
+                                    TimelineTestFailureCode.UNSUPPORTED_ACTION,
+                                    -> HttpStatusCode.BadRequest
+                                    TimelineTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
+                                    TimelineTestFailureCode.OPERATION_REJECTED,
+                                    TimelineTestFailureCode.PARTIAL_FAILURE,
+                                    -> HttpStatusCode.Conflict
+                                    TimelineTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
+                                    null -> when (downloadResult?.failureCode) {
+                                        DownloadTestFailureCode.MISSING_PARAMETER,
+                                        DownloadTestFailureCode.INVALID_PARAMETER,
+                                        DownloadTestFailureCode.UNSUPPORTED_ACTION,
+                                        -> HttpStatusCode.BadRequest
+                                        DownloadTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
+                                        DownloadTestFailureCode.OPERATION_REJECTED,
+                                        DownloadTestFailureCode.PARTIAL_FAILURE,
+                                        -> HttpStatusCode.Conflict
+                                        DownloadTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
+                                        null -> when (browseResult?.failureCode) {
+                                            BrowseSearchTestFailureCode.MISSING_PARAMETER,
+                                            BrowseSearchTestFailureCode.BLANK_QUERY,
+                                            BrowseSearchTestFailureCode.UNSUPPORTED_ACTION,
+                                            -> HttpStatusCode.BadRequest
+                                            BrowseSearchTestFailureCode.SOURCE_NOT_FOUND,
+                                            BrowseSearchTestFailureCode.ROW_NOT_FOUND,
+                                            -> HttpStatusCode.NotFound
+                                            BrowseSearchTestFailureCode.OWNER_CLOSED ->
+                                                HttpStatusCode.ServiceUnavailable
+                                            BrowseSearchTestFailureCode.STALE_GENERATION,
+                                            BrowseSearchTestFailureCode.RECOVERY_UNAVAILABLE,
+                                            BrowseSearchTestFailureCode.OPERATION_REJECTED,
+                                            -> HttpStatusCode.Conflict
+                                            null -> when (sourceResult?.failureCode) {
+                                                SourceBrowseTestFailureCode.MISSING_TOKEN,
+                                                SourceBrowseTestFailureCode.MISSING_HEADER,
+                                                -> HttpStatusCode.BadRequest
+                                                SourceBrowseTestFailureCode.STALE_GENERATION,
+                                                SourceBrowseTestFailureCode.NO_ACTIVE_LOGIN,
+                                                SourceBrowseTestFailureCode.ATTEMPT_MISMATCH,
+                                                SourceBrowseTestFailureCode.TERMINAL,
+                                                SourceBrowseTestFailureCode.OPERATION_REJECTED,
+                                                SourceBrowseTestFailureCode.PORT_CLOSED,
+                                                -> HttpStatusCode.Conflict
+                                                null -> when (extensionResult?.failureCode) {
+                                                    SourceExtensionActionFailureCode.MISSING_PARAMETER,
+                                                    SourceExtensionActionFailureCode.UNSUPPORTED_ACTION,
+                                                    -> HttpStatusCode.BadRequest
+                                                    SourceExtensionActionFailureCode.UNKNOWN_PACKAGE ->
+                                                        HttpStatusCode.NotFound
+                                                    SourceExtensionActionFailureCode.ACTION_UNAVAILABLE,
+                                                    SourceExtensionActionFailureCode.NO_PENDING_TRUST,
+                                                    SourceExtensionActionFailureCode.TRUST_PACKAGE_MISMATCH,
+                                                    SourceExtensionActionFailureCode.OPERATION_REJECTED,
+                                                    -> HttpStatusCode.Conflict
+                                                    null -> when (libraryResult?.failureCode) {
+                                                        LibraryMangaActionFailureCode.MISSING_PARAMETER,
+                                                        LibraryMangaActionFailureCode.INVALID_PARAMETER,
+                                                        LibraryMangaActionFailureCode.UNSUPPORTED_ACTION,
+                                                        -> HttpStatusCode.BadRequest
+                                                        LibraryMangaActionFailureCode.ROW_NOT_FOUND,
+                                                        LibraryMangaActionFailureCode.DETAIL_NOT_FOUND,
+                                                        -> HttpStatusCode.NotFound
+                                                        LibraryMangaActionFailureCode.DETAIL_NOT_OPEN,
+                                                        LibraryMangaActionFailureCode.ACTION_UNAVAILABLE,
+                                                        LibraryMangaActionFailureCode.OPERATION_REJECTED,
+                                                        LibraryMangaActionFailureCode.PARTIAL_FAILURE,
+                                                        LibraryMangaActionFailureCode.LIBRARY_LOADING,
+                                                        LibraryMangaActionFailureCode.DETAIL_LOADING,
+                                                        -> HttpStatusCode.Conflict
+                                                        LibraryMangaActionFailureCode.LIBRARY_UNAVAILABLE,
+                                                        LibraryMangaActionFailureCode.DETAIL_LOAD_FAILED,
+                                                        LibraryMangaActionFailureCode.PORT_CLOSED,
+                                                        -> HttpStatusCode.ServiceUnavailable
+                                                        null -> HttpStatusCode.OK
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
-                    }
-                    }
-                    }
-                    }
-                    }
-                    }
-                    }
                     }
                 },
             ) {
@@ -971,119 +1025,32 @@ internal fun Application.testHttpServer(
             }
         }
 
-        // Reader navigation endpoints
-        post("/test/reader/next_page") {
-            val currentPage = readerState.currentPage
-            val totalPages = readerState.totalPages
-
-            if (currentPage < totalPages - 1) {
-                readerState.updatePage(currentPage + 1)
-                applicationState.recordAction("reader_next_page", mapOf("page" to (currentPage + 1)))
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":true,"action":"next_page","page":${currentPage + 1},"totalPages":$totalPages,"timestamp":"${Instant.now()}"}"""
-                }
-            } else {
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":false,"action":"next_page","error":"Already at last page","page":$currentPage,"timestamp":"${Instant.now()}"}"""
-                }
+        // Reader actions consume the actual mounted model on its UI thread.
+        suspend fun io.ktor.server.application.ApplicationCall.readerAction(action: String, page: Int? = null) {
+            val success = readerState.perform(action, page)
+            if (success) applicationState.recordAction("reader_$action", mapOf("page" to readerState.currentPage))
+            respondText(
+                contentType = ContentType.Application.Json,
+                status = if (action == "go_to_page" && !success) HttpStatusCode.BadRequest else HttpStatusCode.OK,
+            ) {
+                buildJsonObject {
+                    put("success", JsonPrimitive(success))
+                    put("action", JsonPrimitive(action))
+                    put("page", JsonPrimitive(readerState.currentPage))
+                    put("totalPages", JsonPrimitive(readerState.totalPages))
+                    put("inputKind", JsonPrimitive("application_action"))
+                    if (!success) put("error", JsonPrimitive("Reader is not mounted or target is unavailable"))
+                }.toString()
             }
         }
-
-        post("/test/reader/prev_page") {
-            val currentPage = readerState.currentPage
-            val totalPages = readerState.totalPages
-
-            if (currentPage > 0) {
-                readerState.updatePage(currentPage - 1)
-                applicationState.recordAction("reader_prev_page", mapOf("page" to (currentPage - 1)))
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":true,"action":"prev_page","page":${currentPage - 1},"totalPages":$totalPages,"timestamp":"${Instant.now()}"}"""
-                }
-            } else {
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":false,"action":"prev_page","error":"Already at first page","page":$currentPage,"timestamp":"${Instant.now()}"}"""
-                }
-            }
-        }
-
+        post("/test/reader/next_page") { call.readerAction("next_page") }
+        post("/test/reader/prev_page") { call.readerAction("prev_page") }
         post("/test/reader/go_to_page") {
-            val body = try {
-                call.receiveText()
-            } catch (e: Exception) {
-                "{}"
-            }
-            val params = parseJsonBody(body)
-            val targetPage = params["page"]?.toIntOrNull() ?: 0
-            val totalPages = readerState.totalPages
-
-            if (targetPage in 0 until totalPages) {
-                readerState.updatePage(targetPage)
-                applicationState.recordAction("reader_go_to_page", mapOf("page" to targetPage))
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":true,"action":"go_to_page","page":$targetPage,"totalPages":$totalPages,"timestamp":"${Instant.now()}"}"""
-                }
-            } else {
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.BadRequest,
-                ) {
-                    """{"success":false,"action":"go_to_page","error":"Invalid page number","requestedPage":$targetPage,"validRange":"0-${totalPages - 1}","timestamp":"${Instant.now()}"}"""
-                }
-            }
+            val params = parseJsonBody(call.receiveText())
+            call.readerAction("go_to_page", params["page"]?.toIntOrNull())
         }
-
-        post("/test/reader/next_chapter") {
-            if (readerState.hasNextChapter) {
-                applicationState.recordAction("reader_next_chapter", mapOf("chapterId" to readerState.currentChapterId))
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":true,"action":"next_chapter","hasNext":${readerState.hasNextChapter},"timestamp":"${Instant.now()}"}"""
-                }
-            } else {
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":false,"action":"next_chapter","error":"No next chapter available","timestamp":"${Instant.now()}"}"""
-                }
-            }
-        }
-
-        post("/test/reader/prev_chapter") {
-            if (readerState.hasPrevChapter) {
-                applicationState.recordAction("reader_prev_chapter", mapOf("chapterId" to readerState.currentChapterId))
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":true,"action":"prev_chapter","hasPrev":${readerState.hasPrevChapter},"timestamp":"${Instant.now()}"}"""
-                }
-            } else {
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":false,"action":"prev_chapter","error":"No previous chapter available","timestamp":"${Instant.now()}"}"""
-                }
-            }
-        }
+        post("/test/reader/next_chapter") { call.readerAction("next_chapter") }
+        post("/test/reader/prev_chapter") { call.readerAction("prev_chapter") }
 
         post("/test/reader/close") {
             readerState.requestClose()
@@ -1104,7 +1071,58 @@ internal fun Application.testHttpServer(
             ) {
                 val events = ReaderIoTestModeBridge.controller?.snapshot().orEmpty()
                 val fixtureController = ReaderIoTestModeBridge.controller
+                val mounted = readerState.mountedSnapshot()
                 buildJsonObject {
+                    put(
+                        "mountedReader",
+                        mounted?.let { actual ->
+                            buildJsonObject {
+                                put("chapterId", JsonPrimitive(actual.context.chapterId))
+                                put("generation", JsonPrimitive(actual.session.generation))
+                                put("layoutRevision", JsonPrimitive(actual.dualPageLayoutRevision))
+                                put(
+                                    "locationSequence",
+                                    actual.dualPageLocation?.sequence?.let(::JsonPrimitive) ?: JsonNull,
+                                )
+                                put(
+                                    "pairingStatus",
+                                    actual.dualPairingState?.status?.name?.let(::JsonPrimitive) ?: JsonNull,
+                                )
+                                put("readingMode", JsonPrimitive(actual.readingMode.name))
+                                put("dualPageMode", JsonPrimitive(actual.dualPageMode))
+                                put("autoSpreadMatching", JsonPrimitive(actual.autoSpreadMatching))
+                                put(
+                                    "currentDisplayPageIndices",
+                                    kotlinx.serialization.json.JsonArray(
+                                        actual.currentDisplayUnitId?.slots.orEmpty().mapNotNull {
+                                            it.pageId?.sourcePageIndex
+                                        }.map(::JsonPrimitive),
+                                    ),
+                                )
+                                put(
+                                    "visiblePageIndices",
+                                    kotlinx.serialization.json.JsonArray(
+                                        actual.visiblePageIds.map {
+                                            JsonPrimitive(it.sourcePageIndex)
+                                        },
+                                    ),
+                                )
+                            }
+                        } ?: JsonNull,
+                    )
+                    put(
+                        "sharedUnits",
+                        kotlinx.serialization.json.JsonArray(
+                            mounted?.dualPageUnits.orEmpty().map { unit ->
+                                kotlinx.serialization.json.JsonArray(
+                                    unit.pageIds.map {
+                                        JsonPrimitive(it.sourcePageIndex)
+                                    },
+                                )
+                            },
+                        ),
+                    )
+                    put("nativeInput", readerMountedNativeInput())
                     put("isOpen", JsonPrimitive(readerState.isOpen))
                     put("closeRequested", JsonPrimitive(readerState.closeRequested))
                     put("productionClosed", JsonPrimitive(readerState.productionClosed))
@@ -1141,7 +1159,10 @@ internal fun Application.testHttpServer(
                         "scenarioImageRequests",
                         JsonPrimitive(fixtureController?.scenarioOnlineImageRequestCount() ?: 0),
                     )
-                    put("downloadIoLockViolations", JsonPrimitive(fixtureController?.downloadIoLockViolationCount() ?: 0))
+                    put(
+                        "downloadIoLockViolations",
+                        JsonPrimitive(fixtureController?.downloadIoLockViolationCount() ?: 0),
+                    )
                     put("timestamp", JsonPrimitive(Instant.now().toString()))
                 }.toString()
             }
@@ -1220,5 +1241,103 @@ internal fun Application.testHttpServer(
                 """{"success":true,"operation":"processed","timestamp":"${Instant.now()}"}"""
             }
         }
+    }
+}
+
+/** Read-only coordinates from the mounted pager and its actual window, with no screen capture. */
+private fun readerMountedNativeInput(): kotlinx.serialization.json.JsonObject {
+    val actual = readerState.mountedSnapshot()
+    val geometry = readerState.geometry
+    val bounds = geometry?.bounds
+    val hasGeometry = bounds != null && bounds.width > 0 && bounds.height > 0 && geometry.density > 0
+    val window = geometry?.window
+    val showing = window?.isShowing == true
+    val focused = window?.isFocused == true && readerState.composeWindowFocused
+    val origin = if (showing) {
+        runCatching {
+            (window as? javax.swing.RootPaneContainer)?.contentPane?.locationOnScreen ?: window?.locationOnScreen
+        }.getOrNull()
+    } else {
+        null
+    }
+    val available = hasGeometry && origin != null && focused && readerState.ownerFocused &&
+        actual != null && !actual.showSettings && actual.currentDisplayUnitId != null
+    return buildJsonObject {
+        put("available", JsonPrimitive(available))
+        put("geometryAvailable", JsonPrimitive(hasGeometry))
+        put("windowPresent", JsonPrimitive(window != null))
+        put("windowShowing", JsonPrimitive(showing))
+        put("windowFocused", JsonPrimitive(focused))
+        put("ownerFocused", JsonPrimitive(readerState.ownerFocused))
+        put(
+            "reason",
+            JsonPrimitive(
+                when {
+                    actual == null -> "reader_not_mounted"
+                    !hasGeometry -> "pager_geometry_unavailable"
+                    origin == null -> "window_geometry_unavailable"
+                    !focused || !readerState.ownerFocused -> "reader_not_focused"
+                    actual.showSettings -> "reader_settings_open"
+                    actual.currentDisplayUnitId == null -> "presentation_not_selected"
+                    else -> "ready"
+                },
+            ),
+        )
+        put("density", geometry?.density?.let(::JsonPrimitive) ?: JsonNull)
+        put("coordinateSpace", JsonPrimitive("awt_screen_points"))
+        put(
+            "viewportPixels",
+            bounds?.let { rect ->
+                buildJsonObject {
+                    put("left", JsonPrimitive(rect.left))
+                    put("top", JsonPrimitive(rect.top))
+                    put("width", JsonPrimitive(rect.width))
+                    put("height", JsonPrimitive(rect.height))
+                }
+            } ?: JsonNull,
+        )
+        put(
+            "viewportScreenPoints",
+            if (hasGeometry && origin != null) {
+                buildJsonObject {
+                    put("left", JsonPrimitive(origin.x + bounds.left / geometry.density))
+                    put("top", JsonPrimitive(origin.y + bounds.top / geometry.density))
+                    put("width", JsonPrimitive(bounds.width / geometry.density))
+                    put("height", JsonPrimitive(bounds.height / geometry.density))
+                }
+            } else {
+                JsonNull
+            },
+        )
+        put(
+            "tapPoints",
+            kotlinx.serialization.json.JsonArray(
+                if (!hasGeometry || origin == null || actual == null) {
+                    emptyList()
+                } else {
+                    listOf(0.15f, 0.5f, 0.85f).flatMap { y ->
+                        listOf(0.1f, 0.5f, 0.9f).map { x ->
+                            buildJsonObject {
+                                put("x", JsonPrimitive(origin.x + (bounds.left + bounds.width * x) / geometry.density))
+                                put("y", JsonPrimitive(origin.y + (bounds.top + bounds.height * y) / geometry.density))
+                                put(
+                                    "action",
+                                    JsonPrimitive(
+                                        mihon.desktop.ui.reader.tapNavRegion(
+                                            x,
+                                            y,
+                                            1f,
+                                            1f,
+                                            actual.navigationMode,
+                                            actual.readingMode == mihon.desktop.reader.ReadingMode.RTL,
+                                        ).name,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                },
+            ),
+        )
     }
 }

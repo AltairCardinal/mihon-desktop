@@ -106,8 +106,12 @@ tasks.register("verifyBuildInfoInstallerTrust") {
             "generateBuildInfo must declare installerMacTeamId as a stable task input"
         }
 
-        val buildInfo = layout.buildDirectory.file("generated/src/main/kotlin/mihon/desktop/BuildInfo.kt").get().asFile.readText()
-        check("const val INSTALLER_WINDOWS_PUBLISHER = ${installerWindowsPublisher.asKotlinStringLiteral()}" in buildInfo) {
+        val buildInfo = layout.buildDirectory.file(
+            "generated/src/main/kotlin/mihon/desktop/BuildInfo.kt",
+        ).get().asFile.readText()
+        check(
+            "const val INSTALLER_WINDOWS_PUBLISHER = ${installerWindowsPublisher.asKotlinStringLiteral()}" in buildInfo,
+        ) {
             "generated BuildInfo retained a stale Windows publisher"
         }
         check("const val INSTALLER_MAC_TEAM_ID = ${installerMacTeamId.asKotlinStringLiteral()}" in buildInfo) {
@@ -200,7 +204,12 @@ kotlin {
             }
         }
         val jvmTest by getting {
-            kotlin.srcDirs("src/test/kotlin", "../data/src/testFixtures/kotlin", "../data/src/creatorEntryContract/kotlin")
+            resources.srcDir(project(":domain").file("src/commonTest/resources"))
+            kotlin.srcDirs(
+                "src/test/kotlin",
+                "../data/src/testFixtures/kotlin",
+                "../data/src/creatorEntryContract/kotlin",
+            )
             resources.srcDir("src/test/resources")
             dependencies {
                 implementation(libs.bundles.test)
@@ -409,7 +418,8 @@ tasks.register<Test>("task4ParityVerification") {
 
 tasks.register<Test>("task5ParityVerification") {
     group = "verification"
-    description = "Runs Task 5 provenance, historical backup fixtures, maintenance, architecture, and compatibility tests."
+    description =
+        "Runs Task 5 provenance, historical backup fixtures, maintenance, architecture, and compatibility tests."
     dependsOn(tasks.named("jvmTestClasses"), ":data:jvmTestClasses")
     testClassesDirs = files(
         jvmTestTask.get().testClassesDirs,

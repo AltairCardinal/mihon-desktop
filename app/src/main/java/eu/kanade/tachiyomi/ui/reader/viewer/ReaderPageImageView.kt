@@ -27,6 +27,7 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import coil3.size.Precision
 import coil3.size.ViewSizeResolver
+import com.davemorrissey.labs.subscaleview.ImageRotation
 import com.davemorrissey.labs.subscaleview.ImageSource
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView.EASE_IN_OUT_QUAD
@@ -73,6 +74,8 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     private var config: Config? = null
     private val decodeIdentitySource = DecodeRequestIdentitySource()
+    private var imageCallbackIsCurrent: () -> Boolean = { true }
+    private var regionInputStream: java.io.InputStream? = null
 
     var onImageLoaded: (() -> Unit)? = null
     var onImageLoadError: ((Throwable?) -> Unit)? = null
@@ -111,15 +114,18 @@ open class ReaderPageImageView @JvmOverloads constructor(
             if (isReady) {
                 landscapeZoom(forward)
             } else {
+                val callbackIsCurrent = imageCallbackIsCurrent
                 setOnImageEventListener(
                     object : SubsamplingScaleImageView.DefaultOnImageEventListener() {
                         override fun onReady() {
+                            if (!callbackIsCurrent()) return
                             setupZoom(config)
                             landscapeZoom(forward)
                             this@ReaderPageImageView.onImageLoaded()
                         }
 
                         override fun onImageLoadError(e: Exception) {
+                            if (!callbackIsCurrent()) return
                             onImageLoadError(e)
                         }
                     },
@@ -129,21 +135,28 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     private fun SubsamplingScaleImageView.landscapeZoom(forward: Boolean) {
+        val effective = config?.sourceOrientation?.orientedSize(
+            sWidth,
+            sHeight,
+        ) ?: mihon.domain.reader.ReaderPageSize(sWidth, sHeight)
         if (
             config != null &&
             config!!.landscapeZoom &&
             config!!.minimumScaleType == SCALE_TYPE_CENTER_INSIDE &&
-            sWidth > sHeight &&
+            effective.width > effective.height &&
             scale == minScale
         ) {
+            val expectedConfig = config
+            val callbackIsCurrent = imageCallbackIsCurrent
             handler?.postDelayed(500) {
+                if (config !== expectedConfig || !callbackIsCurrent()) return@postDelayed
                 val point = when (config!!.zoomStartPosition) {
-                    ZoomStartPosition.LEFT -> if (forward) PointF(0F, 0F) else PointF(sWidth.toFloat(), 0F)
-                    ZoomStartPosition.RIGHT -> if (forward) PointF(sWidth.toFloat(), 0F) else PointF(0F, 0F)
+                    ZoomStartPosition.LEFT -> PointF(physicalEdge(!forward, effective.width.toFloat()), 0F)
+                    ZoomStartPosition.RIGHT -> PointF(physicalEdge(forward, effective.width.toFloat()), 0F)
                     ZoomStartPosition.CENTER -> center
                 }
 
-                val targetScale = height.toFloat() / sHeight.toFloat()
+                val targetScale = height.toFloat() / effective.height.toFloat()
                 animateScaleAndCenter(targetScale, point)!!
                     .withDuration(500)
                     .withEasing(EASE_IN_OUT_QUAD)
@@ -154,6 +167,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     fun setImage(drawable: Drawable, config: Config) {
+        imageCallbackIsCurrent = { true }
         this.config = config
         if (drawable is Animatable) {
             prepareAnimatedImageView()
@@ -164,25 +178,56 @@ open class ReaderPageImageView @JvmOverloads constructor(
         }
     }
 
-    fun setImage(source: BufferedSource, isAnimated: Boolean, config: Config, pageIndex: Int) {
+    fun setImage(
+        source: BufferedSource,
+        isAnimated: Boolean,
+        config: Config,
+        pageIndex: Int,
+        callbackIsCurrent: () -> Boolean = { true },
+    ) {
+        imageCallbackIsCurrent = callbackIsCurrent
         this.config = config
         val identity = decodeIdentitySource.next(pageIndex)
         if (isAnimated) {
             prepareAnimatedImageView()
-            setAnimatedImage(source, config, identity)
+            setAnimatedImage(source, config, identity, callbackIsCurrent)
         } else {
             prepareNonAnimatedImageView()
-            setNonAnimatedImage(source, config, identity)
+            setNonAnimatedImage(source, config, identity, callbackIsCurrent)
         }
     }
 
-    fun recycle() = pageView?.let {
+    internal fun setRegionImage(
+        file: java.io.File,
+        config: Config,
+        pageIndex: Int,
+        callbackIsCurrent: () -> Boolean,
+    ) {
+        imageCallbackIsCurrent = callbackIsCurrent
+        this.config = config
+        val identity = decodeIdentitySource.next(pageIndex)
+        prepareNonAnimatedImageView()
+        // Own the original handle even while SSIV's tile initialization has not installed its decoder.
+        val stream = file.inputStream()
+        regionInputStream = stream
+        setNonAnimatedImage(stream, config, identity, callbackIsCurrent)
+    }
+
+    open fun recycle() {
         decodeIdentitySource.invalidate()
-        when (it) {
-            is SubsamplingScaleImageView -> it.recycle()
-            is AppCompatImageView -> it.dispose()
+        try {
+            pageView?.let {
+                when (it) {
+                    is SubsamplingScaleImageView -> it.recycle()
+                    is AppCompatImageView -> it.dispose()
+                }
+                it.isVisible = false
+            }
+        } finally {
+            val stream = regionInputStream
+            regionInputStream = null
+            stream?.close()
         }
-        it.isVisible = false
     }
 
     /**
@@ -203,6 +248,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
         (pageView as? SubsamplingScaleImageView)?.let { view ->
             RectF().let {
                 view.getPanRemaining(it)
+                if (config?.sourceOrientation?.mirrorHorizontally == true) {
+                    val left = it.left
+                    it.left = it.right
+                    it.right = left
+                }
                 return fn(it) > 1
             }
         }
@@ -213,15 +263,19 @@ open class ReaderPageImageView @JvmOverloads constructor(
      * Pans the image to the left by a screen's width worth.
      */
     fun panLeft() {
-        pan { center, view -> center.also { it.x -= view.width / view.scale } }
+        pan { center, view -> center.also { it.x -= view.width / view.scale * horizontalDirection() } }
     }
 
     /**
      * Pans the image to the right by a screen's width worth.
      */
     fun panRight() {
-        pan { center, view -> center.also { it.x += view.width / view.scale } }
+        pan { center, view -> center.also { it.x += view.width / view.scale * horizontalDirection() } }
     }
+
+    private fun horizontalDirection() = if (config?.sourceOrientation?.mirrorHorizontally == true) -1f else 1f
+    private fun physicalEdge(right: Boolean, width: Float): Float =
+        if (right != (config?.sourceOrientation?.mirrorHorizontally == true)) width else 0f
 
     /**
      * Pans the image.
@@ -273,9 +327,13 @@ open class ReaderPageImageView @JvmOverloads constructor(
         maxScale = scale * MAX_ZOOM_SCALE
         setDoubleTapZoomScale(scale * 2)
 
+        val effectiveWidth = config?.sourceOrientation?.orientedSize(
+            sWidth,
+            sHeight,
+        )?.width?.toFloat() ?: sWidth.toFloat()
         when (config?.zoomStartPosition) {
-            ZoomStartPosition.LEFT -> setScaleAndCenter(scale, PointF(0F, 0F))
-            ZoomStartPosition.RIGHT -> setScaleAndCenter(scale, PointF(sWidth.toFloat(), 0F))
+            ZoomStartPosition.LEFT -> setScaleAndCenter(scale, PointF(physicalEdge(false, effectiveWidth), 0F))
+            ZoomStartPosition.RIGHT -> setScaleAndCenter(scale, PointF(physicalEdge(true, effectiveWidth), 0F))
             ZoomStartPosition.CENTER -> setScaleAndCenter(scale, center)
             null -> {}
         }
@@ -285,7 +343,15 @@ open class ReaderPageImageView @JvmOverloads constructor(
         data: Any,
         config: Config,
         identity: DecodeRequestIdentity? = null,
+        callbackIsCurrent: () -> Boolean = { true },
     ) = (pageView as? SubsamplingScaleImageView)?.apply {
+        imageRotation = when (config.sourceOrientation.rotation) {
+            mihon.domain.reader.PageRotation.NONE -> ImageRotation.ROTATION_0
+            mihon.domain.reader.PageRotation.CLOCKWISE_90 -> ImageRotation.ROTATION_90
+            mihon.domain.reader.PageRotation.HALF_TURN -> ImageRotation.ROTATION_180
+            mihon.domain.reader.PageRotation.COUNTER_CLOCKWISE_90 -> ImageRotation.ROTATION_270
+        }
+        scaleX = if (config.sourceOrientation.mirrorHorizontally) -1f else 1f
         setDoubleTapZoomDuration(config.zoomDuration.getSystemScaledDuration())
         setMinimumScaleType(config.minimumScaleType)
         setMinimumDpi(1) // Just so that very small image will be fit for initial load
@@ -293,12 +359,14 @@ open class ReaderPageImageView @JvmOverloads constructor(
         setOnImageEventListener(
             object : SubsamplingScaleImageView.DefaultOnImageEventListener() {
                 override fun onReady() {
+                    if (!callbackIsCurrent()) return
                     setupZoom(config)
                     if (isVisibleOnScreen()) landscapeZoom(true)
                     this@ReaderPageImageView.onImageLoaded()
                 }
 
                 override fun onImageLoadError(e: Exception) {
+                    if (!callbackIsCurrent()) return
                     this@ReaderPageImageView.onImageLoadError(e)
                 }
             },
@@ -306,13 +374,17 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
         when (data) {
             is BitmapDrawable -> {
-                setImage(ImageSource.bitmap(data.bitmap))
+                setImage(boundedSource(ImageSource.bitmap(data.bitmap), config))
+                isVisible = true
+            }
+            is java.io.InputStream -> {
+                setImage(boundedSource(ImageSource.inputStream(data), config))
                 isVisible = true
             }
             is BufferedSource -> {
                 if (!isWebtoon || alwaysDecodeLongStripWithSSIV) {
                     setHardwareConfig(ImageUtil.canUseHardwareBitmap(data))
-                    setImage(ImageSource.inputStream(data.inputStream()))
+                    setImage(boundedSource(ImageSource.inputStream(data.inputStream()), config))
                     isVisible = true
                     return@apply
                 }
@@ -323,6 +395,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
                     .applySharedReaderCachePolicy(PageDecodeCachePolicy.TILED_READER)
                     .target(
                         onSuccess = { result ->
+                            if (!callbackIsCurrent()) return@target
                             val image = result as BitmapImage
                             setImage(ImageSource.bitmap(image.bitmap))
                             isVisible = true
@@ -330,6 +403,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
                     )
                     .listener(
                         onError = { _, result ->
+                            if (!callbackIsCurrent()) return@listener
                             onImageLoadError(result.throwable)
                         },
                     )
@@ -345,6 +419,20 @@ open class ReaderPageImageView @JvmOverloads constructor(
                 throw IllegalArgumentException("Not implemented for class ${data::class.simpleName}")
             }
         }
+    }
+
+    private fun boundedSource(source: ImageSource, config: Config): ImageSource {
+        val bounds = config.sourceBounds ?: return source
+        require(!config.cropBorders) { "Raw source regions with border cropping require the owned half-page adapter" }
+        return source.region(
+            android.graphics.Rect(
+                bounds.x,
+                bounds.y,
+                bounds.x + bounds.width,
+                bounds.y +
+                    bounds.height,
+            ),
+        )
     }
 
     private fun prepareAnimatedImageView() {
@@ -390,6 +478,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         data: Any,
         config: Config,
         identity: DecodeRequestIdentity? = null,
+        callbackIsCurrent: () -> Boolean = { true },
     ) = (pageView as? AppCompatImageView)?.apply {
         if (this is PhotoView) {
             setZoomTransitionDuration(config.zoomDuration.getSystemScaledDuration())
@@ -402,6 +491,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
             .diskCachePolicy(CachePolicy.DISABLED)
             .target(
                 onSuccess = { result ->
+                    if (!callbackIsCurrent()) return@target
                     val drawable = result.asDrawable(context.resources)
                     setImageDrawable(drawable)
                     (drawable as? Animatable)?.start()
@@ -411,6 +501,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
             )
             .listener(
                 onError = { _, result ->
+                    if (!callbackIsCurrent()) return@listener
                     onImageLoadError(result.throwable)
                 },
             )
@@ -432,6 +523,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
         val cropBorders: Boolean = false,
         val zoomStartPosition: ZoomStartPosition = ZoomStartPosition.CENTER,
         val landscapeZoom: Boolean = false,
+        val sourceOrientation: mihon.domain.reader.ReaderImageOrientation =
+            mihon.domain.reader.ReaderImageOrientation.NORMAL,
+        val sourceBounds: mihon.domain.reader.PixelBounds? = null,
     )
 
     enum class ZoomStartPosition {

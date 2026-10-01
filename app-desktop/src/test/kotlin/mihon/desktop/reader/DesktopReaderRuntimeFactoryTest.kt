@@ -1,7 +1,18 @@
 package mihon.desktop.reader
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.Page
@@ -10,44 +21,58 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicReference
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.browse.localReaderScreen
+import mihon.desktop.ui.reader.DualPageSlotIdKey
 import mihon.desktop.ui.reader.ReaderLifecycleEffect
 import mihon.desktop.ui.reader.ReaderModeState
+import mihon.desktop.ui.reader.ReaderPagerNativePresentationKey
 import mihon.desktop.ui.reader.ReaderScreenModel
-import mihon.domain.reader.PageDecodePurpose
-import mihon.domain.reader.ReaderPageDecodeKey
-import mihon.domain.reader.content.ReaderPageContentOpenRequest
+import mihon.desktop.ui.reader.ReaderViewport
+import mihon.desktop.ui.reader.dualPresentationSnapshot
+import mihon.desktop.ui.reader.presentation.resolveDualVisiblePages
 import mihon.domain.download.DownloadQueueStatus
+import mihon.domain.reader.PageDecodePurpose
+import mihon.domain.reader.ReaderImageOrientation
+import mihon.domain.reader.ReaderPageDecodeKey
+import mihon.domain.reader.content.DownloadChapterIdentity
+import mihon.domain.reader.content.ReaderPageContentOpenRequest
 import mihon.domain.reader.observability.ReaderIoEvent
 import mihon.domain.reader.observability.ReaderIoEventType
 import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderMonotonicClock
-import mihon.domain.reader.session.ReaderChapterId
-import mihon.domain.reader.session.ReaderChapterLoadState
-import mihon.domain.reader.session.ReaderPageId
-import mihon.domain.reader.content.DownloadChapterIdentity
 import mihon.domain.reader.partial.DisabledPartialDownloadSnapshotLookup
 import mihon.domain.reader.partial.PartialCommittedPage
 import mihon.domain.reader.partial.PartialDownloadSnapshot
 import mihon.domain.reader.partial.PartialDownloadSnapshotLookup
 import mihon.domain.reader.partial.PartialPageTable
 import mihon.domain.reader.partial.PartialPageTableEntry
+import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderChapterLoadState
+import mihon.domain.reader.session.ReaderPageId
+import mihon.domain.reader.session.ReaderPageLoadState
 import okhttp3.OkHttpClient
-import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertArrayEquals
+import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -58,24 +83,647 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
-import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.model.StubSource
+import tachiyomi.domain.source.service.SourceManager
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import java.util.prefs.Preferences
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.imageio.ImageIO
 
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, ExperimentalComposeUiApi::class)
 class DesktopReaderRuntimeFactoryTest {
 
     @TempDir
     lateinit var tempDir: File
 
     @Test
-    fun `runtime applies the filename preference to both initial and live partial identities`() = runTest {
+    fun `two original encoded header leases survive another page confirming its orientation`() = runBlocking {
+        val dispatcher = StandardTestDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val raw = requireNotNull(javaClass.classLoader?.getResourceAsStream("reader/exif-corners-raw.jpg")).use {
+            it.readBytes()
+        }
+        val directory = tempDir.resolve("two-header-leases").apply { mkdirs() }
+        for ((index, orientation) in listOf(6, 8).withIndex()) {
+            val exif = "45786966000049492a0008000000010012010300010000000100000000000000"
+                .chunked(2).map { it.toInt(16).toByte() }.toByteArray().also { it[24] = orientation.toByte() }
+            directory.resolve("$index.jpg").writeBytes(
+                raw.copyOfRange(0, 2) + byteArrayOf(
+                    -1,
+                    -31,
+                    0,
+                    (
+                        exif.size +
+                            2
+                        ).toByte(),
+                ) + exif + raw.copyOfRange(2, raw.size),
+            )
+        }
+        val legacy = Preferences.userRoot().node("/mihon/two-original-header-leases/${System.nanoTime()}")
+        val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply {
+            readingMode = ReadingMode.RTL
+            isDualPage = true
+            isAutoSpreadMatching = false
+            nextChapterPrefetchMode = NextChapterPrefetchMode.OFF
+        }
+        val factory = DesktopReaderRuntimeFactory(
+            prefs,
+            DesktopDownloadProvider(tempDir.resolve("two-header-downloads")),
+            mockk<SourceManager>(relaxed = true),
+            NetworkHelper(OkHttpClient()),
+            mockk<ReaderProgressTracker>(relaxed = true),
+            null,
+            tempDir.resolve("two-header-cache"),
+        )
+        val originalRuntime = factory.createRuntime(localContext(99, directory), scope)
+        val gates = mapOf(
+            6 to kotlinx.coroutines.CompletableDeferred<Unit>(),
+            8 to kotlinx.coroutines.CompletableDeferred<Unit>(),
+        )
+        val entered = CopyOnWriteArrayList<Int>()
+        val cancelled = CopyOnWriteArrayList<Int>()
+        val boundedOwner = DesktopReaderPageContentOwner(
+            scope,
+            originalRuntime.encodedPageStore::read,
+            mihon.domain.reader.observability.ReaderIoReporter(clock = ReaderMonotonicClock { System.nanoTime() }),
+            encodedPrefixReader = { ref, limit ->
+                val bytes = checkNotNull(originalRuntime.encodedPageStore.readPrefix(ref, limit))
+                val orientation = mihon.domain.reader.readImageOrientation(bytes).exifValue
+                entered += orientation
+                try {
+                    gates.getValue(orientation).await()
+                    bytes
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    cancelled += orientation
+                    throw error
+                }
+            },
+        )
+        val runtime = originalRuntime.copy(pageContentOwner = boundedOwner)
+        val model = factory.createModel(runtime, false, 0, null)
+        val collector = scope.launch { runtime.session.state.collect { model.acceptSessionState(it) } }
+        val scene = mountReaderScene(runtime, model, scope, legacy)
+        suspend fun pumpUntil(condition: () -> Boolean) {
+            val end = System.nanoTime() + 5_000_000_000L
+            while (!condition() && System.nanoTime() < end) {
+                dispatcher.scheduler.runCurrent()
+                scene.render(dispatcher.scheduler.currentTime * 1_000_000).close()
+                dispatcher.scheduler.advanceTimeBy(16)
+                delay(10)
+            }
+        }
+        try {
+            pumpUntil { entered.containsAll(listOf(6, 8)) }
+            assertEquals(
+                listOf(6, 8),
+                entered.sorted(),
+                "Both actual bounded prefix leases must have started before either header completes",
+            )
+            val location = model.state.value.dualPageLocation
+            gates.getValue(6).complete(Unit)
+            pumpUntil {
+                model.state.value.dualPageIdentity?.content?.firstOrNull()?.sourceOrientation ==
+                    ReaderImageOrientation.CLOCKWISE
+            }
+            assertEquals(
+                ReaderImageOrientation.CLOCKWISE,
+                model.state.value.dualPageIdentity?.content?.firstOrNull()?.sourceOrientation,
+            )
+            assertEquals(
+                ReaderImageOrientation.NORMAL,
+                model.state.value.dualPageIdentity?.content?.lastOrNull()?.sourceOrientation,
+            )
+            assertTrue(
+                cancelled.isEmpty(),
+                "Another page's metadata confirmation cannot cancel the original second header lease",
+            )
+            assertEquals(1, entered.count { it == 8 })
+            gates.getValue(8).complete(Unit)
+            pumpUntil {
+                model.state.value.dualPageUnits.all { it.certain } &&
+                    model.state.value.dualPageIdentity?.content?.lastOrNull()?.sourceOrientation ==
+                    ReaderImageOrientation.COUNTER_CLOCKWISE
+            }
+            assertEquals(
+                listOf(
+                    ReaderImageOrientation.CLOCKWISE,
+                    ReaderImageOrientation.COUNTER_CLOCKWISE,
+                ),
+                model.state.value.dualPageIdentity?.content?.map { it.sourceOrientation },
+            )
+            assertEquals(listOf(6, 8), entered.sorted())
+            assertEquals(location, model.state.value.dualPageLocation)
+            assertTrue(cancelled.isEmpty())
+            pumpUntil { boundedOwner.snapshot().activeLeaseCounts.isEmpty() }
+            assertTrue(
+                boundedOwner.snapshot().activeLeaseCounts.isEmpty(),
+                "Both original header leases must close after their original results are consumed",
+            )
+        } finally {
+            gates.values.forEach { it.complete(Unit) }
+            scene.close()
+            collector.cancel()
+            model.onDispose()
+            runtime.close()
+            originalRuntime.pageContentOwner.close()
+            scope.cancel()
+            legacy.removeNode()
+        }
+    }
+
+    @Test
+    fun `interleaved actual EXIF headers preserve original HTTP consumers in Compose`() = runBlocking {
+        val dispatcher = StandardTestDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val raw = requireNotNull(javaClass.classLoader?.getResourceAsStream("reader/exif-corners-raw.jpg")).use {
+            it.readBytes()
+        }
+        fun encoded(orientation: Int): ByteArray {
+            val exif = "45786966000049492a0008000000010012010300010000000100000000000000"
+                .chunked(2).map { it.toInt(16).toByte() }.toByteArray().also { it[24] = orientation.toByte() }
+            return raw.copyOfRange(0, 2) +
+                byteArrayOf(-1, -31, 0, (exif.size + 2).toByte()) +
+                exif + raw.copyOfRange(2, raw.size)
+        }
+        val gate = java.util.concurrent.CountDownLatch(1)
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val paths = CopyOnWriteArrayList<String>()
+        val server = mockwebserver3.MockWebServer().apply {
+            this.dispatcher = object : mockwebserver3.Dispatcher() {
+                override fun dispatch(request: mockwebserver3.RecordedRequest): mockwebserver3.MockResponse {
+                    paths += request.url.encodedPath
+                    val index = request.url.encodedPath.substringAfterLast('/').toInt()
+                    if (index == 1) {
+                        entered.countDown()
+                        check(gate.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                    }
+                    return mockwebserver3.MockResponse.Builder().body(
+                        okio.Buffer().write(
+                            encoded(
+                                if (index ==
+                                    0
+                                ) {
+                                    6
+                                } else {
+                                    8
+                                },
+                            ),
+                        ),
+                    ).build()
+                }
+            }
+            start()
+        }
+        val source = mockk<CatalogueSource>(relaxed = true) { every { id } returns 42L }
+        coEvery { source.getPageList(any()) } returns List(2) {
+            Page(
+                it,
+                imageUrl =
+                server.url("/image/$it").toString(),
+            )
+        }
+        val legacy = Preferences.userRoot().node("/mihon/exif-header-interleave/${System.nanoTime()}")
+        val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply {
+            readingMode = ReadingMode.RTL
+            isDualPage = true
+            isAutoSpreadMatching = false
+            nextChapterPrefetchMode = NextChapterPrefetchMode.OFF
+        }
+        val factory = DesktopReaderRuntimeFactory(
+            prefs,
+            DesktopDownloadProvider(tempDir.resolve("exif-downloads")),
+            sourceManager(listOf(source)),
+            NetworkHelper(OkHttpClient()),
+            mockk<ReaderProgressTracker>(relaxed = true),
+            null,
+            tempDir.resolve("exif-encoded"),
+        )
+        val runtime = factory.createRuntime(
+            DesktopReaderChapterContext(
+                98, 42, "/chapter/98", "Manga", "EXIF", 98.0, 0,
+                1, false,
+            ),
+            scope,
+        )
+        val model = factory.createModel(runtime, false, 0, null)
+        val collector = scope.launch { runtime.session.state.collect { model.acceptSessionState(it) } }
+        val scene = mountReaderScene(runtime, model, scope, legacy)
+        suspend fun pumpUntil(condition: () -> Boolean) {
+            val end = System.nanoTime() + 5_000_000_000L
+            while (!condition() && System.nanoTime() < end) {
+                dispatcher.scheduler.runCurrent()
+                scene.render(dispatcher.scheduler.currentTime * 1_000_000).close()
+                dispatcher.scheduler.advanceTimeBy(16)
+                delay(10)
+            }
+        }
+        try {
+            pumpUntil {
+                entered.count == 0L &&
+                    model.state.value.dualPageIdentity?.content?.firstOrNull()?.sourceOrientation ==
+                    ReaderImageOrientation.CLOCKWISE
+            }
+            assertEquals(
+                0L,
+                entered.count,
+                "The original normal page request must remain in flight through the other page's direction confirmation",
+            )
+            assertEquals(
+                ReaderImageOrientation.CLOCKWISE,
+                model.state.value.dualPageIdentity?.content?.firstOrNull()?.sourceOrientation,
+            )
+            val identity = requireNotNull(model.state.value.dualPageIdentity)
+            val location = model.state.value.dualPageLocation
+            gate.countDown()
+            pumpUntil {
+                model.state.value.dualPageIdentity?.content?.lastOrNull()?.sourceOrientation ==
+                    ReaderImageOrientation.COUNTER_CLOCKWISE &&
+                    model.state.value.dualPageUnits.all { it.certain }
+            }
+            assertEquals(
+                listOf(
+                    ReaderImageOrientation.CLOCKWISE,
+                    ReaderImageOrientation.COUNTER_CLOCKWISE,
+                ),
+                model.state.value.dualPageIdentity?.content?.map { it.sourceOrientation },
+            )
+            assertEquals(identity.pageListRevision, model.state.value.dualPageIdentity?.pageListRevision)
+            assertEquals(location, model.state.value.dualPageLocation)
+            assertEquals(1, paths.count { it == "/image/0" })
+            assertEquals(1, paths.count { it == "/image/1" })
+            pumpUntil {
+                sceneNodes(scene).any {
+                    it.config.contains(DualPageSlotIdKey) &&
+                        it.config[DualPageSlotIdKey].pageId?.sourcePageIndex == 1 && it.boundsInRoot.width == 350f
+                }
+            }
+            assertEquals(
+                mihon.domain.reader.ReaderPortraitSingleSlot.RIGHT,
+                model.state.value.dualPageUnits.last().slots.single().position,
+            )
+            assertTrue(
+                sceneNodes(scene).any {
+                    it.config.contains(DualPageSlotIdKey) &&
+                        it.config[DualPageSlotIdKey].pageId?.sourcePageIndex == 1 && it.boundsInRoot.width == 350f &&
+                        it.boundsInRoot.left == 350f
+                },
+            )
+        } finally {
+            gate.countDown()
+            scene.close()
+            collector.cancel()
+            model.onDispose()
+            runtime.close()
+            scope.cancel()
+            server.close()
+            legacy.removeNode()
+        }
+    }
+
+    @Test
+    fun `cold tail actual runtime supplements backward headers within shared budget`() = runBlocking {
+        val dispatcher = StandardTestDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val dimensions =
+            requireNotNull(javaClass.classLoader?.getResourceAsStream("reader/shared-dual-page-real-b1.csv"))
+                .bufferedReader(Charsets.UTF_8).useLines { lines ->
+                    lines.filter { it.isNotBlank() && !it.startsWith("#") }
+                        .map { row -> row.split(',').map(String::toInt).let { it[1] to it[2] } }.toList()
+                }
+        val images = dimensions.distinct().associateWith { size ->
+            val image = BufferedImage(size.first, size.second, BufferedImage.TYPE_INT_RGB)
+            ByteArrayOutputStream().also { ImageIO.write(image, "png", it) }.toByteArray().also { image.flush() }
+        }
+        val paths = CopyOnWriteArrayList<String>()
+        val enteredPrefix = java.util.concurrent.CountDownLatch(1)
+        val releasePrefix = java.util.concurrent.CountDownLatch(1)
+        val server = mockwebserver3.MockWebServer().apply {
+            this.dispatcher = object : mockwebserver3.Dispatcher() {
+                override fun dispatch(request: mockwebserver3.RecordedRequest): mockwebserver3.MockResponse {
+                    paths += request.url.encodedPath
+                    val index = request.url.encodedPath.substringAfterLast('/').toInt()
+                    if (index == 14) {
+                        enteredPrefix.countDown()
+                        check(releasePrefix.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                    }
+                    return mockwebserver3.MockResponse.Builder().body(
+                        okio.Buffer().write(images.getValue(dimensions[index])),
+                    ).build()
+                }
+            }
+            start()
+        }
+        val source = mockk<CatalogueSource>(relaxed = true) { every { id } returns 42L }
+        coEvery { source.getPageList(any()) } returns List(17) {
+            Page(
+                it,
+                imageUrl =
+                server.url("/image/$it").toString(),
+            )
+        }
+        val legacy = Preferences.userRoot().node("/mihon/cold-header-supplement/${System.nanoTime()}")
+        val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply {
+            readingMode = ReadingMode.RTL
+            isDualPage = true
+            isAutoSpreadMatching = false
+            nextChapterPrefetchMode = NextChapterPrefetchMode.OFF
+        }
+        val factory = DesktopReaderRuntimeFactory(
+            prefs,
+            DesktopDownloadProvider(tempDir.resolve("cold-tail-downloads")),
+            sourceManager(listOf(source)),
+            NetworkHelper(OkHttpClient()),
+            mockk<ReaderProgressTracker>(relaxed = true),
+            null,
+            tempDir.resolve("cold-tail-encoded"),
+        )
+        val runtime = factory.createRuntime(
+            DesktopReaderChapterContext(
+                96, 42, "/chapter/96", "Manga", "Tail", 96.0, 0,
+                16, false,
+            ),
+            scope,
+        )
+        val model = factory.createModel(runtime, false, 0, null)
+        val collector = scope.launch { runtime.session.state.collect { model.acceptSessionState(it) } }
+        val scene = mountReaderScene(runtime, model, scope, legacy)
+        suspend fun pumpUntil(condition: () -> Boolean) {
+            val end = System.nanoTime() + 5_000_000_000L
+            while (!condition() && System.nanoTime() < end) {
+                dispatcher.scheduler.runCurrent()
+                scene.render(dispatcher.scheduler.currentTime * 1_000_000L).close()
+                dispatcher.scheduler.advanceTimeBy(16)
+                delay(10)
+            }
+        }
+        try {
+            pumpUntil { model.state.value.session.activeChapter.pages.size == 17 }
+            val tail = model.state.value.session.activeChapter.pages.last().id
+            // Normal visible loading keeps its existing scheduler ownership; optional facts must
+            // supplement the still-unknown prefix, never manufacture a rendered reading event.
+            pumpUntil {
+                enteredPrefix.count == 0L && sceneNodes(scene).any { node ->
+                    node.config.contains(ReaderPagerNativePresentationKey) &&
+                        node.config[ReaderPagerNativePresentationKey].describe().contains("reported=true")
+                }
+            }
+            assertEquals(0L, enteredPrefix.count, "The original optional request must actually be in flight")
+            assertTrue(
+                sceneNodes(scene).any {
+                    it.config.contains(ReaderPagerNativePresentationKey) &&
+                        it.config[ReaderPagerNativePresentationKey].describe().contains("reported=true")
+                },
+                "The original tail pixels must actually have been drawn and settled while optional work is in flight",
+            )
+            val location = model.state.value.dualPageLocation
+            releasePrefix.countDown()
+            pumpUntil {
+                model.state.value.dualPageUnits.any {
+                    it.pageIds.singleOrNull()?.sourcePageIndex == 9 &&
+                        it.certain
+                }
+            }
+            assertTrue(
+                paths.contains("/image/9"),
+                "The actual content route must supplement the needed wide boundary; paths=$paths",
+            )
+            pumpUntil {
+                model.state.value.dualPageUnits.singleOrNull {
+                    it.pageIds.singleOrNull()?.sourcePageIndex == 16
+                }?.slots?.singleOrNull()?.position == mihon.domain.reader.ReaderPortraitSingleSlot.RIGHT
+            }
+            val units = model.state.value.dualPageUnits
+            assertEquals(
+                mihon.domain.reader.ReaderPortraitSingleSlot.RIGHT,
+                units.single { it.pageIds.singleOrNull()?.sourcePageIndex == 16 }.slots.single().position,
+            )
+            assertTrue(units.any { it.pageIds.map { id -> id.sourcePageIndex } == listOf(14, 15) })
+            assertEquals(16, model.state.value.dualPageLocation?.pageId?.sourcePageIndex)
+            assertEquals(location, model.state.value.dualPageLocation)
+            assertEquals(
+                1,
+                paths.count { it == "/image/14" },
+                "Metadata and drawn settlement must retain the original in-flight request",
+            )
+            assertEquals(1, paths.count { it == "/image/16" }, "Metadata must not restart normal visible image work")
+            pumpUntil {
+                sceneNodes(scene).any {
+                    it.config.contains(DualPageSlotIdKey) &&
+                        it.config[DualPageSlotIdKey].pageId == tail && it.boundsInRoot.width == 350f &&
+                        it.boundsInRoot.left == 350f
+                }
+            }
+            assertTrue(
+                sceneNodes(scene).any {
+                    it.config.contains(DualPageSlotIdKey) &&
+                        it.config[DualPageSlotIdKey].pageId == tail && it.boundsInRoot.width == 350f &&
+                        it.boundsInRoot.left == 350f
+                },
+            )
+        } finally {
+            releasePrefix.countDown()
+            scene.close()
+            collector.cancel()
+            model.onDispose()
+            runtime.close()
+            scope.cancel()
+            server.close()
+            legacy.removeNode()
+        }
+    }
+
+    @Test
+    fun `selected cold native viewport schedules pixels before a rendered settlement`() = runTest {
+        val source = mockk<CatalogueSource>(relaxed = true) { every { id } returns 42L }
+        val server = mockwebserver3.MockWebServer().apply { start() }
+        server.enqueue(mockwebserver3.MockResponse.Builder().body(okio.Buffer().write(pngBytes())).build())
+        coEvery { source.getPageList(any()) } returns listOf(Page(0, imageUrl = server.url("/visible.png").toString()))
+        val legacy = Preferences.userRoot().node("/mihon/cold-presentation-start/${System.nanoTime()}")
+        val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply {
+            readingMode = ReadingMode.RTL
+            isDualPage = true
+            isAutoSpreadMatching = false
+            nextChapterPrefetchMode = NextChapterPrefetchMode.OFF
+        }
+        val factory = DesktopReaderRuntimeFactory(
+            prefs,
+            DesktopDownloadProvider(tempDir.resolve("cold-start-downloads")),
+            sourceManager(listOf(source)),
+            NetworkHelper(OkHttpClient()),
+            mockk<ReaderProgressTracker>(relaxed = true),
+            null,
+            tempDir.resolve("cold-start-encoded"),
+        )
+        val context = DesktopReaderChapterContext(95, 42, "/chapter/95", "Manga", "Cold chapter", 95.0, 0, 0, false)
+        val runtime = factory.createRuntime(context, this)
+        val model = factory.createModel(runtime, false, 0, null)
+        try {
+            advanceUntilIdle()
+            model.acceptSessionState(runtime.session.state.value)
+            val presentation = model.state.value.dualPresentationSnapshot(false, false)
+            val unit = presentation.displayUnits.single { it.slots.any { slot -> slot.page != null } }
+            val visible = presentation.resolveDualVisiblePages(unit.id)
+            assertNotNull(model.beginPagerViewport(visible, false))
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5_000) {
+                    runtime.session.state.first {
+                        it.snapshot.activeChapter.pages.single().loadState is ReaderPageLoadState.Ready
+                    }
+                }
+            }
+            assertEquals(
+                1,
+                server.requestCount,
+                "Starting actual presentation must schedule normal image work before pixels exist",
+            )
+            assertInstanceOf(
+                ReaderPageLoadState.Ready::class.java,
+                runtime.session.state.value.snapshot.activeChapter.pages.single().loadState,
+            )
+        } finally {
+            model.onDispose()
+            runtime.close()
+            server.close()
+            legacy.removeNode()
+        }
+    }
+
+    @Test
+    fun `production header leases bound actual encoded reads independently of full image`() = runTest {
+        val file = tempDir.resolve("header-bounded.png").apply { writeBytes(pngBytes() + ByteArray(1536 * 1024)) }
+        val factory = DesktopReaderRuntimeFactory(
+            ReaderPreferences(),
+            DesktopDownloadProvider(tempDir.resolve("header-downloads")),
+            mockk<SourceManager>(relaxed = true),
+            NetworkHelper(OkHttpClient()),
+            mockk<ReaderProgressTracker>(relaxed = true),
+            null,
+            tempDir.resolve("header-encoded"),
+        )
+        val runtime = factory.createRuntime(localContext(92, file.parentFile), this)
+        val request = ReaderPageContentOpenRequest(
+            ReaderPageId(ReaderChapterId(92), 0),
+            1,
+            mihon.domain.reader.session.EncodedPageRef(file.toURI().toString()),
+        )
+        try {
+            val full = requireNotNull(runtime.pageContentOwner.acquire(request))
+            val header = requireNotNull(runtime.pageContentOwner.acquireHeader(request))
+            try {
+                assertTrue(
+                    header.content.size <= mihon.domain.reader.ReaderDualPageFactLimits.MAX_HEADER_BYTES,
+                    "Header open must read at most 512KiB from the actual encoded file",
+                )
+                assertEquals(file.length(), full.content.size.toLong())
+                assertEquals(2, runtime.pageContentOwner.snapshot().activeLeaseCounts.size)
+                header.close()
+                assertEquals(1, runtime.pageContentOwner.snapshot().activeLeaseCounts.size)
+            } finally {
+                header.close()
+                full.close()
+            }
+            assertTrue(runtime.pageContentOwner.snapshot().activeLeaseCounts.isEmpty())
+        } finally {
+            runtime.close()
+        }
+    }
+
+    @Test
+    fun `real B2 directory materialization publishes shared slots before Compose holders`() = runBlocking {
+        val dispatcher = StandardTestDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val dimensions =
+            requireNotNull(javaClass.classLoader?.getResourceAsStream("reader/shared-dual-page-real-b2.csv"))
+                .bufferedReader(Charsets.UTF_8).useLines { lines ->
+                    lines.filter { it.isNotBlank() && !it.startsWith("#") }
+                        .map { row -> row.split(',').map(String::toInt).let { it[1] to it[2] } }.toList()
+                }
+        val directory = tempDir.resolve("real-b2-dimensions").apply { mkdirs() }
+        dimensions.forEachIndexed { index, size ->
+            val image = BufferedImage(size.first, size.second, BufferedImage.TYPE_INT_ARGB)
+            ImageIO.write(image, "png", directory.resolve("%02d.png".format(index + 1)))
+            image.flush()
+        }
+        val legacy = Preferences.userRoot().node("/mihon/shared-b2-content/${System.nanoTime()}")
+        val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply {
+            readingMode = ReadingMode.RTL
+            isDualPage = true
+            isAutoSpreadMatching = false
+            nextChapterPrefetchMode = NextChapterPrefetchMode.OFF
+        }
+        val factory = DesktopReaderRuntimeFactory(
+            prefs,
+            DesktopDownloadProvider(tempDir.resolve("downloads-b2-facts")),
+            mockk<SourceManager>(relaxed = true),
+            NetworkHelper(OkHttpClient()),
+            mockk<ReaderProgressTracker>(relaxed = true),
+            null,
+            tempDir.resolve("encoded-b2-facts"),
+        )
+        val runtime = factory.createRuntime(localContext(91, directory), scope)
+        val model = factory.createModel(runtime, false, 0, null)
+        val collector = scope.launch { runtime.session.state.collect { model.acceptSessionState(it) } }
+        val scene = mountReaderScene(runtime, model, scope, legacy)
+        suspend fun pumpUntil(condition: () -> Boolean) {
+            val end = System.nanoTime() + 5_000_000_000L
+            while (!condition() && System.nanoTime() < end) {
+                dispatcher.scheduler.runCurrent()
+                scene.render(dispatcher.scheduler.currentTime * 1_000_000L).close()
+                dispatcher.scheduler.advanceTimeBy(16)
+                delay(10)
+            }
+        }
+        try {
+            pumpUntil { model.state.value.dualPageUnits.size > 0 && model.state.value.dualPageUnits.all { it.certain } }
+            assertEquals(22, model.state.value.session.activeChapter.pages.size)
+            assertTrue(
+                model.state.value.dualPageUnits.all { it.certain },
+                "Actual encoded header publisher must confirm dimensions before a holder exists",
+            )
+            val units = model.state.value.dualPageUnits
+            assertEquals(
+                mihon.domain.reader.ReaderPortraitSingleSlot.LEFT,
+                units.single { it.pageIds.singleOrNull()?.sourcePageIndex == 1 }.slots.single().position,
+            )
+            assertEquals(
+                mihon.domain.reader.ReaderPortraitSingleSlot.FULL,
+                units.single { it.pageIds.singleOrNull()?.sourcePageIndex == 19 }.slots.single().position,
+            )
+            for ((index, expectedWidth) in listOf(1 to 350f, 19 to 700f)) {
+                model.goToPage(index)
+                pumpUntil {
+                    sceneNodes(scene).any {
+                        it.config.contains(DualPageSlotIdKey) &&
+                            it.config[DualPageSlotIdKey].pageId?.sourcePageIndex == index &&
+                            it.boundsInRoot.width == expectedWidth && it.boundsInRoot.left == 0f
+                    }
+                }
+                val slot = sceneNodes(scene).single {
+                    it.config.contains(DualPageSlotIdKey) &&
+                        it.config[DualPageSlotIdKey].pageId?.sourcePageIndex == index
+                }
+                assertEquals(expectedWidth, slot.boundsInRoot.width, "Actual B2 page ${index + 1} Compose slot")
+                assertEquals(0f, slot.boundsInRoot.left)
+                assertEquals(index, model.state.value.dualPageLocation?.pageId?.sourcePageIndex)
+            }
+        } finally {
+            scene.close()
+            collector.cancel()
+            model.onDispose()
+            runtime.close()
+            scope.cancel()
+            legacy.removeNode()
+        }
+    }
+
+    @Test
+    fun `runtime applies filename preference to initial and live partial identities`() = runTest {
         val context = DesktopReaderChapterContext(
             chapterId = 59L,
             sourceId = 42L,
@@ -165,7 +813,7 @@ class DesktopReaderRuntimeFactoryTest {
     }
 
     @Test
-    fun `next chapter prefetch freezes the same filename identity before reusing its partial page table`() = runTest {
+    fun `next chapter prefetch preserves filename identity in the partial page table`() = runTest {
         val legacy = Preferences.userRoot().node("/mihon/runtime-partial-prefetch-identity/${System.nanoTime()}")
         val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply {
             nextChapterPrefetchMode = NextChapterPrefetchMode.FIRST_VIEWPORT
@@ -269,7 +917,7 @@ class DesktopReaderRuntimeFactoryTest {
     }
 
     @Test
-    fun `runtime factory reaches partial page lists only through explicit lookup injection`() = runTest {
+    fun `runtime factory reaches partial page lists through explicit lookup injection`() = runTest {
         val context = DesktopReaderChapterContext(
             chapterId = 60L,
             sourceId = 42L,
@@ -406,7 +1054,7 @@ class DesktopReaderRuntimeFactoryTest {
     }
 
     @Test
-    fun `production runtime preference changes drive off first viewport and full request sets`() = runTest {
+    fun `production runtime preference changes drive the full viewport request sets`() = runTest {
         val legacy = Preferences.userRoot().node("/mihon/runtime-prefetch-requests/${System.nanoTime()}")
         val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply {
             nextChapterPrefetchMode = NextChapterPrefetchMode.OFF
@@ -780,7 +1428,13 @@ class DesktopReaderRuntimeFactoryTest {
 
             assertNotNull(runtime.session.core)
             assertSame(runtime.session.core.snapshot, sessionState.snapshot)
-            assertEquals(sessionState, mihon.desktop.reader.DesktopReaderSessionState(model.state.value.context, model.state.value.session))
+            assertEquals(
+                sessionState,
+                mihon.desktop.reader.DesktopReaderSessionState(
+                    model.state.value.context,
+                    model.state.value.session,
+                ),
+            )
             assertInstanceOf(
                 ReaderChapterLoadState.LoadingPageList::class.java,
                 model.state.value.session.activeChapter.loadState,
@@ -900,7 +1554,7 @@ class DesktopReaderRuntimeFactoryTest {
                         event.type == ReaderIoEventType.OPEN_PAGE &&
                             event.pageId == page.id &&
                             event.generation == snapshot.generation
-                        },
+                    },
                 )
                 assertEquals(
                     1,
@@ -1057,6 +1711,38 @@ class DesktopReaderRuntimeFactoryTest {
                 output.closeEntry()
             }
         }
+    }
+
+    private fun mountReaderScene(
+        runtime: DesktopReaderRuntime,
+        model: ReaderScreenModel,
+        scope: CoroutineScope,
+        legacy: Preferences,
+    ): ImageComposeScene {
+        val appPrefs = DesktopAppPreferences(InMemoryPreferenceStore(), legacy.node("app"))
+        val dependencies = mockk<DesktopUiDependencies> { every { appPreferences } returns appPrefs }
+        model.toggleUI()
+        return ImageComposeScene(700, 400, coroutineContext = scope.coroutineContext) {}.apply {
+            setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    MaterialTheme {
+                        val current by model.state.collectAsState()
+                        val focus = remember { FocusRequester() }
+                        Box(Modifier.requiredSize(700.dp, 400.dp)) {
+                            ReaderViewport(
+                                current, model, mockk(relaxed = true), focus, scope, "", "",
+                                runtime.presentationImageOwner, null, {}, {},
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun sceneNodes(scene: ImageComposeScene): List<SemanticsNode> {
+        fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+        return scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
     }
 
     private fun pngBytes(): ByteArray {

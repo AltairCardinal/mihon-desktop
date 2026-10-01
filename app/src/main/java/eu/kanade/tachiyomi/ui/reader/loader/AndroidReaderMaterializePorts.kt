@@ -16,6 +16,8 @@ import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderPageDescriptor
 import mihon.domain.reader.storage.EncodedPageStoreWriteResult
 import mihon.domain.reader.storage.ReaderEncodedPageStore
+import okhttp3.ResponseBody
+import okio.buffer
 import tachiyomi.domain.source.service.toSourceAppError
 import java.io.IOException
 import java.io.InputStream
@@ -36,6 +38,7 @@ internal class AndroidReaderChapterContentPort(
                     page.encodedPageRef = page.encodedPageRef ?: EncodedPageRef(
                         "android-reader:${request.chapterId.value}:${request.generation}:${page.index}",
                     )
+                    page.publishHeaderFact()
                 }
             }
         } catch (error: CancellationException) {
@@ -75,10 +78,22 @@ internal class AndroidReaderPageFetchPort(
     override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
         val imageUrl = request.requireImageUrl()
         page.imageUrl = imageUrl
-        val response = sourceCall { source.getImage(page) }
+        val originalResponse = sourceCall { source.getImage(page) }
+        val response = request.factReadPermit?.let { permit ->
+            val originalBody = originalResponse.body
+            val boundedSource = permit.bound(originalBody.source(), System::nanoTime).buffer()
+            originalResponse.newBuilder().body(object : ResponseBody() {
+                override fun contentType() = originalBody.contentType()
+                override fun contentLength() = originalBody.contentLength()
+                override fun source() = boundedSource
+            }).build()
+        } ?: originalResponse
         val result = try {
             encodedPageStore.store(EncodedPageRef(imageUrl)) {
                 if (!chapterCache.putImageToCache(imageUrl, response)) {
+                    if (request.factReadPermit?.exhausted == true) {
+                        throw CancellationException("Optional page facts reached their read budget")
+                    }
                     throw IOException("Chapter cache rejected the image write: $imageUrl")
                 }
                 chapterCache.getImageFile(imageUrl).length()

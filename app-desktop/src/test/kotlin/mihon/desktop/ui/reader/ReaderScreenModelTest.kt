@@ -1,9 +1,10 @@
 package mihon.desktop.ui.reader
 
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.DesktopChapterPairingCoordinator
+import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.DesktopReaderSessionState
 import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderColorFilter
@@ -20,9 +21,9 @@ import mihon.desktop.ui.reader.presentation.VisiblePageSet
 import mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor
 import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
 import mihon.domain.error.AppError
-import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.ChapterPairingRepository
 import mihon.domain.reader.ChapterPairingSnapshot
+import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.ReaderChapterModel
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderChapterTransitionModel
@@ -48,15 +49,32 @@ import java.util.prefs.Preferences
 
 class ReaderScreenModelTest {
     @Test
-    fun `manual pairing survives switching dual page mode off and on`() {
-        val reader = desktopReaderSessionState(chapterId = 7L, pageCount = 8)
-        val model = ReaderScreenModel(initialSessionState = reader, dualPageOverride = true)
-        model.setForcedSinglePages(setOf(1, 4))
-
+    fun `manual pairing survives switching dual page mode off and on`() = runTest {
+        val initial = desktopReaderSessionState(chapterId = 7L, pageCount = 8)
+        val reader = initial.copy(context = initial.context.copy(mangaId = 1))
+        val repository = object : ChapterPairingRepository {
+            override suspend fun load(chapterId: Long, mangaId: Long) = ChapterPairingSnapshot(
+                mihon.domain.reader.ChapterPairingRecord(1, 8, setOf(1, 4)),
+                1,
+            )
+            override suspend fun replace(
+                chapterId: Long,
+                mangaId: Long,
+                expectedRevision: Long,
+                pageCount: Int,
+                forcedSinglePages: Set<Int>,
+            ): ChapterPairingSnapshot = error("No write")
+        }
+        val model = ReaderScreenModel(
+            initialSessionState = reader,
+            dualPageOverride = true,
+            pairingCoordinator = DesktopChapterPairingCoordinator(repository, backgroundScope),
+        )
+        runCurrent()
         model.setDualPageMode(false)
         model.setDualPageMode(true)
-
         assertEquals(setOf(1, 4), model.state.value.forcedSinglePages)
+        model.onDispose()
     }
 
     @Test
@@ -223,14 +241,15 @@ class ReaderScreenModelTest {
         val settled = mutableListOf<Pair<Set<ReaderPageId>, ReaderPageId>>()
         val model = ReaderScreenModel(
             initialSessionState = queued,
+            dualPageOverride = false,
             onViewportSettled = { pages, active -> settled += pages to active },
         )
         val pageId = queued.snapshot.activeChapter.pages.first().id
         val displayUnit = DisplayUnitId(
             mode = ReaderPresentationMode.SINGLE_PAGED,
-            slots = listOf(DisplaySlotId(pageId, PageSplitHalf.RIGHT)),
+            slots = listOf(DisplaySlotId(pageId)),
         )
-        model.settleSinglePage(VisiblePageSet(displayUnit, setOf(pageId), pageId))
+        model.presentReadyPagerViewport()
 
         model.acceptSessionState(desktopReaderSessionState(chapterId = 7L, pageCount = 2))
 
@@ -260,9 +279,9 @@ class ReaderScreenModelTest {
             setOf(pages[0]),
             pages[0],
         )
-        singleModel.settleSinglePage(singleViewport)
+        singleModel.presentReadyPagerViewport()
         singleModel.acceptSessionState(ready)
-        singleModel.settleSinglePage(singleViewport)
+        singleModel.presentReadyPagerViewport()
         assertEquals(1, singleSettlements)
 
         var webtoonSettlements = 0
@@ -293,13 +312,13 @@ class ReaderScreenModelTest {
             pages.toSet(),
             pages[1],
         )
-        dualModel.settleDualPage(dualViewport)
+        dualModel.presentReadyPagerViewport()
         dualModel.acceptSessionState(ready)
-        dualModel.settleDualPage(dualViewport)
+        dualModel.presentReadyPagerViewport()
         assertEquals(1, dualSettlements)
 
         singleModel.acceptSessionState(desktopReaderSessionState(chapterId = 7L, generation = 2L, pageCount = 2))
-        singleModel.settleSinglePage(singleViewport)
+        singleModel.presentReadyPagerViewport()
         assertEquals(2, singleSettlements, "A new session generation must establish a fresh viewport")
     }
 
@@ -309,8 +328,7 @@ class ReaderScreenModelTest {
         val model = ReaderScreenModel(initialSessionState = first)
         val pageId = first.snapshot.activeChapter.pages.first().id
         val displayUnit = DisplayUnitId(ReaderPresentationMode.SINGLE_PAGED, listOf(DisplaySlotId(pageId)))
-        model.settleSinglePage(VisiblePageSet(displayUnit, setOf(pageId), pageId))
-        model.setForcedSinglePages(setOf(0))
+        model.presentReadyPagerViewport()
 
         model.acceptSessionState(desktopReaderSessionState(chapterId = 8L, pageCount = 1))
 
@@ -344,10 +362,12 @@ class ReaderScreenModelTest {
             ReaderPresentationMode.DUAL_PAGED,
             listOf(DisplaySlotId(pages[2]), DisplaySlotId(pages[3])),
         )
-        model.settleDualPage(VisiblePageSet(dualUnit, setOf(pages[2], pages[3]), pages[3]))
+        model.setDualPageMode(true)
+        model.goToPage(3)
+        model.presentReadyPagerViewport()
         assertEquals(3, model.state.value.currentPage)
         assertNull(model.state.value.webtoonScrollAnchor)
-        assertEquals(setOf(pages[2], pages[3]) to pages[3], settled.last())
+        assertEquals(setOf(pages[3]) to pages[3], settled.last())
     }
 
     @Test
@@ -449,7 +469,6 @@ class ReaderScreenModelTest {
         model.setReadingMode(ReadingMode.LTR, prefs)
         model.setDualPageMode(true, prefs)
         model.setSpreadPages(setOf(1, 3))
-        model.setForcedSinglePages(setOf(2))
         model.setBackgroundTheme(ReaderBackgroundTheme.BLACK, prefs)
         model.setScaleType(ScaleType.FIT_WIDTH, prefs)
         model.setColorFilter(filter, prefs)
@@ -461,7 +480,6 @@ class ReaderScreenModelTest {
         assertEquals(ReadingMode.LTR, state.readingMode)
         assertTrue(state.dualPageMode)
         assertEquals(setOf(1, 3), state.spreadPages)
-        assertEquals(setOf(2), state.forcedSinglePages)
         assertEquals(ReaderBackgroundTheme.BLACK, prefs.backgroundTheme)
         assertEquals(ScaleType.FIT_WIDTH, prefs.scaleType)
         assertEquals(filter, state.colorFilter)
@@ -469,15 +487,10 @@ class ReaderScreenModelTest {
     }
 
     @Test
-    fun `webtoon mode is pinned and disabling dual page retains forced singles`() {
+    fun `webtoon mode is pinned`() {
         val webtoon = ReaderScreenModel(isWebtoon = true)
         webtoon.setReadingMode(ReadingMode.LTR)
         assertEquals(ReadingMode.WEBTOON, webtoon.state.value.readingMode)
-
-        val model = ReaderScreenModel(prefs = testPreferences { readingMode = ReadingMode.RTL })
-        model.setForcedSinglePages(setOf(0, 2))
-        model.setDualPageMode(false)
-        assertEquals(setOf(0, 2), model.state.value.forcedSinglePages)
     }
 
     @Test

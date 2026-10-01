@@ -862,7 +862,9 @@ open class ReaderActivity : BaseActivity() {
         visiblePages: List<ReaderPage>,
     ) {
         if (installedViewer != null && viewModel.state.value.viewer !== source) return
-        if (changingLayout || protectedLayoutPage === page) return
+        // The dual viewer has already accepted its original shared presentation capability.
+        // A metadata-only rearrangement may still carry an unconsumed user navigation.
+        if (changingLayout) return
         viewModel.onDualViewportSettled(page, visiblePages)
     }
 

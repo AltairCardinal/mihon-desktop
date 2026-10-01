@@ -50,6 +50,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -312,6 +313,125 @@ class DualPageProgressProductionWiringTest {
     }
 
     @Test
+    fun `ordinary native RTL pager keeps unrendered and failed images out of actual VM progress`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val single = R2LPagerViewer(readerActivity)
+        try {
+            val holder = mountSingle(single)
+            runCurrent()
+            assertNull(
+                "Selection before image presentation cannot create a reading event",
+                withContext(Dispatchers.Default) { withTimeoutOrNull(200) { events.receive() } },
+            )
+            assertPersistedProgress(0, false)
+            holder.onImageLoadError(IllegalStateException("fixture decode failed"))
+            runCurrent()
+            assertNull(withContext(Dispatchers.Default) { withTimeoutOrNull(200) { events.receive() } })
+            assertEquals(0L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+            bindSingle(holder)
+            holder.onImageLoaded()
+            assertSinglePresented(holder)
+            assertEquals(1, requireNotNull(awaitRenderedEvent()).lastPageRead)
+            withContext(Dispatchers.IO) { progressCoordinator.awaitAccepted(1) }
+            runCurrent()
+            assertPersistedProgress(1, false)
+            holder.onImageLoaded()
+            runCurrent()
+            assertEquals(1L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
+        } finally {
+            single.destroy()
+        }
+    }
+
+    @Test
+    fun `ordinary native LTR pager rejects old image completion after actual content replacement`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val single = L2RPagerViewer(readerActivity)
+        try {
+            val holder = mountSingle(single)
+            bindSingle(holder)
+            val page = holder.page
+            val replacement = readerTestPng(40, 60)
+            page.stream = { replacement.inputStream() }
+            page.publishHeaderFact()
+            runCurrent()
+            holder.onImageLoaded()
+            runCurrent()
+            assertNull(
+                "Old decoded pixels cannot commit newly bound content",
+                withContext(Dispatchers.Default) { withTimeoutOrNull(200) { events.receive() } },
+            )
+            assertPersistedProgress(0, false)
+            bindSingle(holder)
+            holder.onImageLoaded()
+            assertSinglePresented(holder)
+            assertEquals(1, requireNotNull(awaitRenderedEvent()).lastPageRead)
+        } finally {
+            single.destroy()
+        }
+    }
+
+    @Test
+    fun `explicit second logical page survives real VM mode change after dual rearrangement`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        mountReadyViewer(renderFirstGroup = false, imageBytes = readerTestPng(1125, 1600))
+        val pages = requireNotNull(current.pages)
+        withContext(Dispatchers.IO) { pages.forEach { it.publishHeaderFact() } }
+        runCurrent()
+        viewer.pager.measure(
+            View.MeasureSpec.makeMeasureSpec(1440, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(3120, View.MeasureSpec.EXACTLY),
+        )
+        viewer.pager.layout(0, 0, 1440, 3120)
+        assertTrue(
+            "Fixture must expose the paired second logical page",
+            viewer.adapter.items.any {
+                it is DisplayPage.Double && it.visiblePages.map(ReaderPage::index) == listOf(3, 4)
+            },
+        )
+        viewer.moveToPage(pages[4])
+        runCurrent()
+        val selected = viewer.adapter.items[viewer.pager.currentItem] as DisplayPage
+        assertEquals(
+            "Actual selected viewport must be group four-five",
+            listOf(3, 4),
+            selected.visiblePages.map(ReaderPage::index),
+        )
+        assertSame(
+            "VM must retain explicit logical page five, even inside group four-five",
+            pages[4],
+            model.currentReaderPage,
+        )
+        viewer.adapter.updatePageDimensions(pages[0], 1800, 1000)
+        runCurrent()
+        assertSame(pages[4], model.currentReaderPage)
+        val rtl = eu.kanade.tachiyomi.ui.reader.setting.ReadingMode.RIGHT_TO_LEFT
+        coEvery { getMangaUseCase.await(1) } returns
+            requireNotNull(model.manga).copy(viewerFlags = rtl.flagValue.toLong())
+        model.setMangaReadingMode(rtl)
+        withContext(Dispatchers.IO) {
+            withTimeout(5000) {
+                model.state.first {
+                    it.manga?.viewerFlags ==
+                        rtl.flagValue.toLong()
+                }
+            }
+        }
+        assertEquals(4, current.requestedPage)
+        val single = eu.kanade.tachiyomi.ui.reader.setting.ReadingMode.toViewer(
+            model.getMangaReadingMode(),
+            readerActivity,
+        )
+        try {
+            model.onViewerLoaded(single)
+            single.setChapters(requireNotNull(model.state.value.viewerChapters))
+            assertSame(pages[4], model.currentReaderPage)
+        } finally {
+            single.destroy()
+        }
+    }
+
+    @Test
     fun `queued dual viewport does not persist progress before both images are displayed`() = runBlocking {
         val pages = requireNotNull(current.pages)
         viewer.onDisplayPageSelected(DisplayPage.Double(pages[3], pages[4]))
@@ -373,6 +493,8 @@ class DualPageProgressProductionWiringTest {
         val last = requireNotNull(awaitRenderedEvent())
         assertEquals(4, last.lastPageRead)
         assertTrue(last.isRead)
+        withContext(Dispatchers.IO) { progressCoordinator.awaitAccepted(1) }
+        runCurrent()
         assertTrue(current.chapter.read)
         assertEquals(4, current.chapter.last_page_read)
         assertEquals(3, viewer.activity.viewModel.currentReaderPage?.index)
@@ -802,7 +924,7 @@ class DualPageProgressProductionWiringTest {
     }
 
     @Test
-    fun `Android mounted reader drains an accepted blocked write after close through the shared contract`() = runTest {
+    fun `Android mounted reader drains accepted writes after close through the shared contract`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val started = CompletableDeferred<Unit>().also { pendingWriteStarted = it }
         val release = CompletableDeferred<Unit>().also { releasePendingWrite = it }
@@ -849,7 +971,7 @@ class DualPageProgressProductionWiringTest {
     }
 
     @Test
-    fun `same manga A completion then B viewport preserves B resume and both real sync journal operations`() = runTest {
+    fun `same manga A completion preserves B resume and both real sync operations`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val release = CompletableDeferred<Unit>().also { releaseMiddleWrite = it }
         try {
@@ -1082,16 +1204,120 @@ class DualPageProgressProductionWiringTest {
         }
     }
 
-    private suspend fun mountReadyViewer(renderFirstGroup: Boolean = true, nextChapter: ReaderChapter? = null) {
+    private suspend fun TestScope.mountSingle(single: PagerViewer): PagerPageHolder {
         val pages = requireNotNull(current.pages)
-        val bytes = ByteArrayOutputStream().also { output ->
-            Bitmap.createBitmap(1125, 1600, Bitmap.Config.ARGB_8888)
-                .compress(Bitmap.CompressFormat.PNG, 100, output)
-        }.toByteArray()
+        val bytes = readerTestPng(40, 60)
+        pages.forEach { page ->
+            page.stream = { bytes.inputStream() }
+            page.status = Page.State.Ready
+            page.publishHeaderFact()
+        }
+        current.requestedPage = 1
+        model.onViewerLoaded(single)
+        single.config.navigationModeChangedListener = null
+        host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible().get().also {
+            it.setContentView(single.pager)
+        }
+        single.setChapters(ViewerChapters(current, null, null))
+        single.pager.measure(
+            View.MeasureSpec.makeMeasureSpec(1440, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(3120, View.MeasureSpec.EXACTLY),
+        )
+        single.pager.layout(0, 0, 1440, 3120)
+        // Initial preference emissions refresh the real adapter. Capture its attached holder only
+        // after that initialization, rather than reporting pixels through a disposed predecessor.
+        runCurrent()
+        single.pager.measure(
+            View.MeasureSpec.makeMeasureSpec(1440, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(3120, View.MeasureSpec.EXACTLY),
+        )
+        single.pager.layout(0, 0, 1440, 3120)
+        assertSame(pages[1], model.currentReaderPage)
+        return single.pager.children.filterIsInstance<PagerPageHolder>().single { it.page === pages[1] }
+    }
+
+    private suspend fun bindSingle(holder: PagerPageHolder) {
+        val method = PagerPageHolder::class.java.declaredMethods.single {
+            it.name == "setImage" &&
+                it.parameterCount == 1
+        }
+            .apply { isAccessible = true }
+        suspendCoroutineUninterceptedOrReturn<Unit> { continuation ->
+            val result = method.invoke(holder, continuation)
+            if (result === COROUTINE_SUSPENDED) COROUTINE_SUSPENDED else Unit
+        }
+    }
+
+    private fun assertSinglePresented(holder: PagerPageHolder) {
+        val error = ReflectionHelpers.getField<eu.kanade.tachiyomi.databinding.ReaderErrorBinding?>(
+            holder,
+            "errorLayout",
+        )
+        assertTrue(
+            "Actual single pixels must be rendered, error=${error?.errorMessage?.text}",
+            holder.hasRenderedPage(),
+        )
+        assertTrue(
+            "The actual selected holder must carry its original presentation scope",
+            holder.presentationScope != null,
+        )
+        assertSame(holder.page, ReflectionHelpers.getField<ReaderPage>(holder.viewer, "currentPage"))
+        assertFalse(
+            "Actual native presenter must remain alive",
+            ReflectionHelpers.getField<Boolean>(holder.viewer, "destroyed"),
+        )
+        val actualAdapter = ReflectionHelpers.getField<PagerViewerAdapter>(holder.viewer, "adapter")
+        assertSame(
+            "Actual current adapter position must identify these rendered pixels",
+            holder.page,
+            actualAdapter.items.getOrNull(holder.viewer.pager.currentItem),
+        )
+        assertSame(
+            "Actual callback must use the attached selected holder",
+            holder,
+            holder.viewer.pager.children.filterIsInstance<PagerPageHolder>().firstOrNull { it.item == holder.page },
+        )
+        assertTrue(
+            "The actual single pager must be idle before it reports rendering",
+            ReflectionHelpers.getField<Boolean>(holder.viewer, "isIdle"),
+        )
+        val (owner, ticket) = requireNotNull(holder.presentationScope)
+        assertSame(
+            "Selected native scope must retain the actual store owner",
+            model.dualPagePairings.chapters[holder.page.chapter]?.session,
+            owner,
+        )
+        assertFalse("Selected native owner must still be open", ReflectionHelpers.getField<Boolean>(owner, "closed"))
+        assertSame(
+            "Selected native callback must return the still-issued original ticket",
+            ReflectionHelpers.getField<Any?>(owner, "issuedViewport"),
+            ticket,
+        )
+        assertEquals(owner.layoutRevision, ticket.layoutRevision)
+        assertEquals(owner.location!!.sequence, ticket.locationSequence)
+        assertEquals(owner.targetUnit!!.id, ticket.unitId)
+        assertTrue(ticket.readingEligible)
+        assertEquals(
+            "Shared owner must have accepted the original actual single callback; " +
+                "layout=${owner.layoutRevision}/${ticket.layoutRevision}, location=${owner.location}, " +
+                "VMpending=${ReflectionHelpers.getField<Any?>(model, "pendingDualViewport")}",
+            ticket.locationSequence as Any,
+            ReflectionHelpers.getField<Long?>(owner, "lastReadLocationSequence"),
+        )
+    }
+
+    private suspend fun mountReadyViewer(
+        renderFirstGroup: Boolean = true,
+        nextChapter: ReaderChapter? = null,
+        imageBytes: ByteArray? = null,
+    ) {
+        val pages = requireNotNull(current.pages)
+        val bytes = imageBytes ?: readerTestPng(1125, 1600)
         pages.forEach { page ->
             page.stream = { bytes.inputStream() }
             page.status = Page.State.Ready
         }
+        withContext(Dispatchers.IO) { pages.forEach { it.publishHeaderFact() } }
         nextChapter?.pages?.forEach { page -> page.stream = { bytes.inputStream() } }
         current.requestedPage = 1
         host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible().get().also {

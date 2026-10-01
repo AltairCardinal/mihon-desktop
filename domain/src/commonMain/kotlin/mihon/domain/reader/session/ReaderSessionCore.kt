@@ -40,12 +40,21 @@ class ReaderSessionCore(
         private set
 
     private var settlementSequence = 0L
+    private var scheduledViewport: ScheduledViewport? = null
+
+    private data class ScheduledViewport(
+        val generation: Long,
+        val visiblePageIds: Set<ReaderPageId>,
+        val anchorPageId: ReaderPageId,
+        val orderedPageIds: List<ReaderPageId>,
+    )
 
     init {
         require(sessionId.isNotBlank()) { "sessionId must not be blank" }
     }
 
     fun openChapter(chapterId: ReaderChapterId): ReaderSessionCoreUpdate {
+        scheduledViewport = null
         val schedulePlan = requestScheduler.moveTo(chapterId, currentPage = 0, pageCount = 0)
         val reduction = ReaderSessionReducer.reduce(snapshot, ReaderSessionIntent.OpenChapter(chapterId))
         snapshot = reduction.snapshot
@@ -90,12 +99,22 @@ class ReaderSessionCore(
             "Every visible page must belong to the active chapter page list"
         }
 
-        val schedulePlan = requestScheduler.moveTo(
-            chapterId = chapter.id,
-            visiblePageIndices = visiblePageIds.map(ReaderPageId::sourcePageIndex),
-            anchorPage = anchorPageId.sourcePageIndex,
-            pageIndicesInOrder = chapter.pages.map { page -> page.id.sourcePageIndex },
+        val viewport = ScheduledViewport(
+            snapshot.generation,
+            visiblePageIds.toSet(),
+            anchorPageId,
+            chapter.pages.map(ReaderPageSession::id),
         )
+        val schedulePlan = if (scheduledViewport == viewport) {
+            null
+        } else {
+            requestScheduler.moveTo(
+                chapterId = chapter.id,
+                visiblePageIndices = visiblePageIds.map(ReaderPageId::sourcePageIndex),
+                anchorPage = anchorPageId.sourcePageIndex,
+                pageIndicesInOrder = chapter.pages.map { page -> page.id.sourcePageIndex },
+            ).also { scheduledViewport = viewport }
+        }
         val progressEffect = if (recordProgress) {
             settlementSequence++
             ReaderProgressPolicy.reduce(
@@ -139,6 +158,16 @@ class ReaderSessionCore(
             "Adjacent page work must not target the active chapter"
         }
         return requestScheduler.enqueue(pageId, ReaderRequestKind.ADJACENT_BACKGROUND)
+    }
+
+    fun enqueueFactPage(pageId: ReaderPageId): ReaderEnqueueResult {
+        require(snapshot.activeChapter.pages.any { it.id == pageId })
+        return requestScheduler.enqueue(pageId, ReaderRequestKind.CURRENT_BACKGROUND)
+    }
+
+    fun cancelFactPageRequest(key: ReaderRequestKey) {
+        requestScheduler.cancelPending(key)
+        requestScheduler.complete(key)
     }
 
     fun cancelChapterPageRequests(chapterId: ReaderChapterId): ReaderRequestCancellation =
@@ -226,6 +255,7 @@ class ReaderSessionCore(
     fun schedulerSnapshot(): ReaderSchedulerSnapshot = requestScheduler.snapshot()
 
     fun close(): ReaderSessionCoreUpdate {
+        scheduledViewport = null
         val schedulePlan = requestScheduler.moveTo(
             chapterId = snapshot.activeChapter.id,
             currentPage = 0,

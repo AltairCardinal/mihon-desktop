@@ -4,9 +4,11 @@
 
 正式版日期：2026-06-30
 
-- active-child-plan: [作者页体验迭代](./2026-09-18-author-experience-iteration-roadmap.md)（2026-09-18开始；旧作者身份专项保持完成）
+- active-child-plan: [双端共享双页规则与阅读器修复](./2026-10-01-shared-dual-page-rules-and-repair-roadmap.md)（2026-10-01 用户授权，在干净的独立 worktree `0877/mihon` 激活；从 DP01 开始，其他专项不在本 worktree 恢复）
 
-- 已完成专项：[阅读器双页与继续阅读行为迭代](./2026-09-24-reader-dual-page-and-continue-iteration-roadmap.md)（2026-09-26，COMPLETE；不改变当前作者页活动计划）。
+- 原作者页体验计划保留历史实施和待修复记录；本 worktree 激活前没有作者代码或其他未提交改动，切换不覆盖其他 worktree 的工作。
+
+- 已完成专项：[阅读器双页与继续阅读行为迭代](./2026-09-24-reader-dual-page-and-continue-iteration-roadmap.md)（2026-09-26，COMPLETE；完成时未改变当时的作者页活动计划）。
 
 - 此前完成专项：[Android 新版扩展系统完整兼容 Roadmap](./2026-09-12-android-extension-v2-compatibility-roadmap.md)（2026-09-16，COMPLETE）。产品提交 `b3d81b34dc`；rc9正式Android/ARM业务及Windows/macOS限定回归已验收。MangaPlus live仍未验证成功，明确限制和证据以子计划为准。
 

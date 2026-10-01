@@ -1,8 +1,5 @@
 package mihon.desktop.ui.reader
 
-import tachiyomi.i18n.MR
-import java.util.Locale
-
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +14,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +52,8 @@ import mihon.desktop.ui.reader.presentation.resolveDualVisiblePages
 import mihon.domain.reader.ReaderNavigationCommand
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
+import tachiyomi.i18n.MR
+import java.util.Locale
 
 internal enum class DualPageLoadingIndicatorPlacement {
     None,
@@ -204,6 +204,7 @@ private fun DisplaySlot.isLoading(): Boolean = when (page?.loadState) {
 @Composable
 internal fun DualPagePagerViewer(
     presentation: ReaderPresentationSnapshot,
+    pagerPresentationBinding: ReaderPagerPresentationBinding? = null,
     currentPageId: ReaderPageId,
     currentDisplayUnitId: DisplayUnitId?,
     isRtl: Boolean,
@@ -232,6 +233,9 @@ internal fun DualPagePagerViewer(
     val maxPagerIndex = displayUnits.lastIndex
     fun unitToPager(unitIndex: Int): Int = if (isRtl) maxPagerIndex - unitIndex else unitIndex
     fun pagerToUnit(pagerIndex: Int): Int = if (isRtl) maxPagerIndex - pagerIndex else pagerIndex
+    fun pageToPager(pageId: ReaderPageId): Int? =
+        displayUnits.indexOfFirst { unit -> unit.slots.any { it.page?.id == pageId } }
+            .takeIf { it >= 0 }?.let(::unitToPager)
 
     val initialUnitIndex = presentation.restoreDisplayUnitIndex(currentPageId, currentDisplayUnitId)
         .coerceAtLeast(0)
@@ -243,45 +247,80 @@ internal fun DualPagePagerViewer(
     val scope = rememberCoroutineScope()
     val animateTurns by rememberUpdatedState(pageTurnAnimation)
     val programmaticTarget = remember { mutableStateOf<Int?>(null) }
-    val userTurnTarget = remember { mutableStateOf<Int?>(null) }
+    val userTurnTarget = remember { mutableStateOf<ReaderPageId?>(null) }
+    val navigationIntent = remember { mutableStateOf<ReaderPagerNavigationIntent?>(null) }
+    val nativeUnits by rememberUpdatedState(displayUnits.indices.map { displayUnits[pagerToUnit(it)].id })
 
     LaunchedEffect(pagerState.interactionSource) {
         pagerState.interactionSource.interactions.collect { interaction ->
             if (interaction is DragInteraction.Start) {
+                navigationIntent.value = ReaderPagerNavigationIntent(nativeUnits, pagerState.currentPage)
                 programmaticTarget.value = null
                 userTurnTarget.value = null
+            } else if (interaction is DragInteraction.Stop) {
+                navigationIntent.value = navigationIntent.value?.copy(dragReleased = true)
+            } else if (interaction is DragInteraction.Cancel) {
+                navigationIntent.value = null
             }
         }
     }
 
-    LaunchedEffect(currentPageId, currentDisplayUnitId, displayUnits.map(DisplayUnit::id), isRtl, pageTurnAnimation) {
+    LaunchedEffect(
+        currentPageId,
+        displayUnits[initialUnitIndex].id,
+        displayUnits.map(DisplayUnit::id),
+        isRtl,
+        pageTurnAnimation,
+    ) {
         val targetUnit = presentation.restoreDisplayUnitIndex(currentPageId, currentDisplayUnitId)
             .coerceAtLeast(0)
             .coerceIn(displayUnits.indices)
         val targetPager = unitToPager(targetUnit)
-        userTurnTarget.value = null
+        if (userTurnTarget.value != currentPageId) userTurnTarget.value = null
         programmaticTarget.value = targetPager
         pagerState.turnToPage(targetPager, animateTurns)
         programmaticTarget.value = null
+        if (userTurnTarget.value == currentPageId) userTurnTarget.value = null
     }
 
-    DualPageSettledVisiblePageReporter(
-        presentation = presentation,
-        isRtl = isRtl,
-        positionRequest = currentPageId to currentDisplayUnitId,
-        settledPagerIndex = { pagerState.settledPage },
-        shouldReportSettledPage = { pagerIndex ->
-            programmaticTarget.value?.let { it == pagerIndex } ?: true
-        },
+    val selectedIndex = pagerState.currentPage.coerceIn(displayUnits.indices)
+    val selectedUnit = displayUnits[pagerToUnit(selectedIndex)]
+    val nativePresentation = rememberPagerNativePresentation(
+        unit = selectedUnit,
+        visible = presentation.resolveDualVisiblePages(selectedUnit.id),
+        binding = pagerPresentationBinding,
+        userNavigation = navigationIntent.value?.selects(selectedIndex, selectedUnit.id) == true,
+        idle = !pagerState.isScrollInProgress && pagerState.settledPage == selectedIndex &&
+            (programmaticTarget.value?.let { it == selectedIndex } ?: true),
         onVisiblePagesChanged = onVisiblePagesChanged,
     )
 
+    SideEffect {
+        val intent = navigationIntent.value
+        if (intent != null && !pagerState.isScrollInProgress && pagerState.settledPage == selectedIndex &&
+            intent.finished(selectedIndex)
+        ) {
+            navigationIntent.value = null
+        }
+    }
+
     fun executeTapCommand(command: ReaderNavigationCommand) {
-        val basePage = userTurnTarget.value ?: if (programmaticTarget.value != null) pagerState.settledPage else pagerState.currentPage
+        val basePage =
+            userTurnTarget.value?.let(::pageToPager)
+                ?: if (programmaticTarget.value != null) pagerState.settledPage else pagerState.currentPage
         when (val action = ReaderKeyboardAction.forPagerCommand(command, isRtl, basePage, displayUnits.size)) {
             is ReaderPageAction.GoToPage -> {
-                userTurnTarget.value = action.page
+                navigationIntent.value = ReaderPagerNavigationIntent(nativeUnits, basePage, action.page)
+                val targetPage = presentation.resolveDualVisiblePages(displayUnits[pagerToUnit(action.page)].id)
+                    .activePageId
+                userTurnTarget.value = targetPage
                 programmaticTarget.value = action.page
+                if (pagerPresentationBinding != null && targetPage != null) {
+                    // Record the user's logical destination before animation or metadata can reflow
+                    // the native indices. The location-driven effect remaps and animates that page.
+                    pagerPresentationBinding.model.goToPage(targetPage.sourcePageIndex)
+                    return
+                }
                 scope.launch {
                     pagerState.turnToPage(action.page, animateTurns)
                     if (programmaticTarget.value == action.page) {
@@ -306,7 +345,9 @@ internal fun DualPagePagerViewer(
     HorizontalPager(
         state = pagerState,
         beyondViewportPageCount = if (allowAdjacentViewport) 1 else 0,
-        modifier = Modifier.fillMaxSize().readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl) {
+        modifier = Modifier.fillMaxSize().readerMountedGeometry(
+            pagerPresentationBinding,
+        ).readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl) {
             when (it) {
                 TapNavRegion.PREV -> executeTapCommand(ReaderNavigationCommand.Previous)
                 TapNavRegion.NEXT -> executeTapCommand(ReaderNavigationCommand.Next)
@@ -316,7 +357,11 @@ internal fun DualPagePagerViewer(
         key = { pagerIndex -> displayUnits[pagerToUnit(pagerIndex)].id },
     ) { pagerIndex ->
         val unit = displayUnits[pagerToUnit(pagerIndex)]
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxSize().semantics {
+                if (unit.id == selectedUnit.id) this[ReaderPagerNativePresentationKey] = nativePresentation
+            },
+        ) {
             DualPageDisplayUnitFrame(
                 unit = unit,
                 onRetry = onRetryPage,
@@ -331,6 +376,11 @@ internal fun DualPagePagerViewer(
                     sourceBounds = slot.sourceBounds,
                 )
                 ZoomablePageBox(
+                    onPageDrawn = if (unit.id == selectedUnit.id) {
+                        { nativePresentation.drawn(slot.id) }
+                    } else {
+                        null
+                    },
                     presentationImage = presentationImage,
                     pageLabel = MR.strings.desktop_ui_page_number.localized(
                         Locale.getDefault(),

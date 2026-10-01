@@ -1,9 +1,6 @@
 package mihon.desktop.ui.reader
 
 import androidx.compose.ui.graphics.asSkiaBitmap
-import java.awt.image.BufferedImage
-import java.io.ByteArrayOutputStream
-import javax.imageio.ImageIO
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -25,7 +22,6 @@ import mihon.desktop.reader.DesktopReaderPageImagePipeline
 import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.DesktopReaderPresentationImageSlotIdentity
 import mihon.desktop.reader.DesktopReaderPresentationImageState
-import mihon.desktop.reader.EdgePixelMatcher
 import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.SkiaImageDecoder
 import mihon.domain.reader.PageDecodePurpose
@@ -37,249 +33,19 @@ import mihon.domain.reader.content.ReaderPageContentOpenRequest
 import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
-import mihon.domain.reader.splitPageBounds
 import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
+import mihon.domain.reader.splitPageBounds
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
+import javax.imageio.ImageIO
 
 class ReaderPageCacheIntegrationTest {
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    @Test
-    fun `cache revision observer ignores pipeline closure after presentation owner closes`() = runTest {
-        val reporter = ReaderIoReporter(ReaderIoProbe.None, ReaderMonotonicClock(System::nanoTime))
-        val contentOwner = DesktopReaderPageContentOwner(
-            scope = this,
-            encodedPageReader = { error("The cache observer must not open page content") },
-            ioReporter = reporter,
-        )
-        val pipeline = DesktopReaderPageImagePipeline(
-            scope = this,
-            pageContentOwner = contentOwner,
-            ioReporter = reporter,
-        )
-        val presentationOwner = DesktopReaderPresentationImageOwner(
-            scope = this,
-            pageImagePipeline = pipeline,
-            pageIoObserver = ReaderPageIoObserver(reporter),
-        )
-        val initialUpdate = CompletableDeferred<Unit>()
-        var callbackCount = 0
-        val observer = async(start = CoroutineStart.UNDISPATCHED) {
-            observeDesktopMatchedPairs(
-                presentationImageOwner = presentationOwner,
-                autoSpreadMatching = true,
-                dualPageMode = true,
-                pageCount = 2,
-                retainedMatchedPairs = emptySet(),
-                findMatchedPairs = { _, _ -> emptySet() },
-                onMatchedPairsChanged = {
-                    callbackCount++
-                    initialUpdate.complete(Unit)
-                },
-            )
-        }
-
-        try {
-            initialUpdate.await()
-            assertEquals(1, callbackCount)
-
-            presentationOwner.close()
-            pipeline.close()
-            runCurrent()
-
-            assertTrue(observer.isActive, "Pipeline closure must not fail the active cache observer")
-            assertEquals(1, callbackCount, "A closed presentation owner must not publish another matched-pair update")
-        } finally {
-            observer.cancelAndJoin()
-            presentationOwner.close()
-            pipeline.close()
-            contentOwner.close()
-        }
-    }
-
-    @Test
-    fun `cache revision observer matches late pages preserves pairs after eviction and never loads`() = runTest {
-        val width = 40
-        val height = 100
-        fun seamColor(y: Int): Int {
-            val red = 40 + (y * 170 / (height - 1))
-            val green = 220 - (y * 150 / (height - 1))
-            return (0xFF shl 24) or (red shl 16) or (green shl 8) or 90
-        }
-        val refs = listOf("cover", "left-half", "right-half").map(::EncodedPageRef)
-        val bytesByRef = mapOf(
-            refs[0] to pngBytes(width, height) { _, _ -> 0xFF777777.toInt() },
-            refs[1] to pngBytes(width, height) { x, y -> if (x >= width - 5) seamColor(y) else RED },
-            refs[2] to pngBytes(width, height) { x, y -> if (x < 5) seamColor(y) else BLUE },
-        )
-        val fetchCounts = mutableMapOf<EncodedPageRef, Int>()
-        val reporter = ReaderIoReporter(ReaderIoProbe.None, ReaderMonotonicClock(System::nanoTime))
-        val contentOwner = DesktopReaderPageContentOwner(
-            scope = this,
-            encodedPageReader = { ref ->
-                synchronized(fetchCounts) { fetchCounts[ref] = fetchCounts.getOrDefault(ref, 0) + 1 }
-                bytesByRef.getValue(ref)
-            },
-            ioReporter = reporter,
-        )
-        val pipeline = DesktopReaderPageImagePipeline(
-            scope = this,
-            pageContentOwner = contentOwner,
-            ioReporter = reporter,
-        )
-        val presentationOwner = DesktopReaderPresentationImageOwner(
-            scope = this,
-            pageImagePipeline = pipeline,
-            pageIoObserver = ReaderPageIoObserver(reporter),
-        )
-        val updates = Channel<Pair<Long, Set<Pair<Int, Int>>>>(Channel.UNLIMITED)
-
-        try {
-            presentationOwner.beginGeneration(GENERATION)
-            backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
-                observeDesktopMatchedPairs(
-                    presentationImageOwner = presentationOwner,
-                    autoSpreadMatching = true,
-                    dualPageMode = true,
-                    pageCount = refs.size,
-                    retainedMatchedPairs = emptySet(),
-                    findMatchedPairs = { count, pageAt -> EdgePixelMatcher().findMatchedPairs(count, pageAt) },
-                ) { pairs ->
-                    updates.trySend(presentationOwner.cacheRevision.value to pairs)
-                }
-            }
-
-            suspend fun awaitUpdate(revision: Long, expected: Set<Pair<Int, Int>>) {
-                withContext(Dispatchers.Default) {
-                    withTimeout(5_000) {
-                        while (true) {
-                            val (observedRevision, pairs) = updates.receive()
-                            if (observedRevision >= revision && pairs == expected) return@withTimeout
-                        }
-                    }
-                }
-            }
-
-            awaitUpdate(presentationOwner.cacheRevision.value, emptySet())
-            assertTrue(fetchCounts.isEmpty(), "The matcher must not load an uncached page")
-
-            refs.indices.forEach { pageIndex ->
-                val pageId = ReaderPageId(ReaderChapterId(1L), pageIndex)
-                val key = fullPageKey(pageId, refs[pageIndex])
-                val holder = presentationOwner.createHolder(
-                    identity = presentationIdentity(pageId),
-                    decodeKey = key,
-                )
-                try {
-                    holder.acquire()
-                    assertTrue(holder.state.first(::isTerminalPresentation) is DesktopReaderPresentationImageState.Ready)
-                } finally {
-                    holder.close()
-                }
-            }
-            awaitUpdate(presentationOwner.cacheRevision.value, setOf(1 to 2))
-            assertEquals(3, synchronized(fetchCounts) { fetchCounts.values.sum() })
-
-            pipeline.clear()
-            presentationOwner.retainCachedFullPageAssets().useAll { cached -> assertTrue(cached.isEmpty()) }
-            awaitUpdate(presentationOwner.cacheRevision.value, setOf(1 to 2))
-            assertEquals(3, synchronized(fetchCounts) { fetchCounts.values.sum() })
-            assertEquals(refs.toSet(), synchronized(fetchCounts) { fetchCounts.keys.toSet() })
-        } finally {
-            presentationOwner.close()
-            pipeline.close()
-            contentOwner.close()
-        }
-    }
-
-    @Test
-    fun `retry revision suppresses a stale edge match that completes after invalidation`() = runTest {
-        val refs = listOf(EncodedPageRef("left"), EncodedPageRef("right"))
-        val bytesByRef = refs.associateWith { pngBytes(8, 12) { _, _ -> RED } }
-        val reporter = ReaderIoReporter(ReaderIoProbe.None, ReaderMonotonicClock(System::nanoTime))
-        val contentOwner = DesktopReaderPageContentOwner(
-            scope = this,
-            encodedPageReader = bytesByRef::get,
-            ioReporter = reporter,
-        )
-        val pipeline = DesktopReaderPageImagePipeline(
-            scope = this,
-            pageContentOwner = contentOwner,
-            ioReporter = reporter,
-        )
-        val presentationOwner = DesktopReaderPresentationImageOwner(
-            scope = this,
-            pageImagePipeline = pipeline,
-            pageIoObserver = ReaderPageIoObserver(reporter),
-        )
-        val matcherEntered = CompletableDeferred<Unit>()
-        val releaseStaleMatcher = CompletableDeferred<Unit>()
-        val updates = Channel<Set<Pair<Int, Int>>>(Channel.UNLIMITED)
-
-        try {
-            presentationOwner.beginGeneration(GENERATION)
-            refs.forEachIndexed { pageIndex, ref ->
-                val pageId = ReaderPageId(ReaderChapterId(1L), pageIndex)
-                val holder = presentationOwner.createHolder(
-                    identity = presentationIdentity(pageId),
-                    decodeKey = fullPageKey(pageId, ref),
-                )
-                try {
-                    holder.acquire()
-                    assertTrue(holder.state.first(::isTerminalPresentation) is DesktopReaderPresentationImageState.Ready)
-                } finally {
-                    holder.close()
-                }
-            }
-
-            backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
-                var invocation = 0
-                observeDesktopMatchedPairs(
-                    presentationImageOwner = presentationOwner,
-                    autoSpreadMatching = true,
-                    dualPageMode = true,
-                    pageCount = refs.size,
-                    retainedMatchedPairs = emptySet(),
-                    findMatchedPairs = { _, _ ->
-                        if (invocation++ == 0) {
-                            matcherEntered.complete(Unit)
-                            withContext(NonCancellable) { releaseStaleMatcher.await() }
-                            setOf(0 to 1)
-                        } else {
-                            emptySet()
-                        }
-                    },
-                    onMatchedPairsChanged = { pairs -> updates.trySend(pairs) },
-                )
-            }
-
-            matcherEntered.await()
-            assertTrue(
-                pipeline.beginPageAttempt(
-                    pageId = ReaderPageId(ReaderChapterId(1L), 0),
-                    generation = GENERATION,
-                    attemptGeneration = 1L,
-                ),
-            )
-            releaseStaleMatcher.complete(Unit)
-
-            assertEquals(emptySet<Pair<Int, Int>>(), withTimeout(5_000) { updates.receive() })
-            val snapshot = pipeline.snapshot()
-            assertEquals(1, snapshot.cache.entryCount)
-            assertEquals(0L, snapshot.memory.pinnedBytes)
-            assertEquals(snapshot.memory.cacheBytes, snapshot.memory.residentBytes)
-        } finally {
-            releaseStaleMatcher.complete(Unit)
-            presentationOwner.close()
-            pipeline.close()
-            contentOwner.close()
-        }
-    }
 
     @Test
     fun `cache hit applies left right and rotated virtual page source bounds`() {

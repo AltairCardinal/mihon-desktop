@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.core.view.children
 import androidx.recyclerview.widget.LinearLayoutManager
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.ui.UiPreferences
@@ -28,6 +29,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.model.completePageListForTest
 import eu.kanade.tachiyomi.ui.reader.model.openPageListForTest
 import eu.kanade.tachiyomi.ui.reader.model.publishLoadedPageListForTest
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
@@ -43,8 +45,10 @@ import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -77,13 +81,12 @@ import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.registry.default.DefaultRegistrar
 import java.io.ByteArrayOutputStream
-import java.io.DataOutputStream
 import java.io.File
 import java.time.Duration
-import java.util.zip.CRC32
-import java.util.zip.DeflaterOutputStream
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
+import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView as NativeImageView
+import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView.OnImageEventListener as NativeImageListener
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -91,6 +94,383 @@ import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 class DualPagerPageHolderLayoutTest {
     private lateinit var previousInjekt: InjektScope
     private lateinit var viewer: DualPageR2LPagerViewer
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `actual dual holder consumes each confirmed encoded direction instead of default raw pixels`() = runTest {
+        val raw = requireNotNull(javaClass.classLoader?.getResourceAsStream("reader/exif-corners-raw.jpg")).use {
+            it.readBytes()
+        }
+        mihon.domain.reader.ReaderImageOrientation.entries.forEach { orientation ->
+            val exif = "45786966000049492a0008000000010012010300010000000100000000000000"
+                .chunked(2).map { it.toInt(16).toByte() }.toByteArray().also { it[24] = orientation.exifValue.toByte() }
+            val encoded = raw.copyOfRange(0, 2) + byteArrayOf(-1, -31, 0, (exif.size + 2).toByte()) + exif +
+                raw.copyOfRange(2, raw.size)
+            val chapter = ReaderChapter(Chapter.create().copy(id = 201, mangaId = 1))
+            val page = ReaderPage(0, stream = { encoded.inputStream() }).apply {
+                this.chapter = chapter
+                status = Page.State.Ready
+            }
+            chapter.publishLoadedPageListForTest(listOf(page))
+            page.publishHeaderFact()
+            assertEquals(orientation, page.pageFact.value.sourceOrientation)
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            runCurrent()
+            val holder = DualPagerPageHolder(
+                viewer.activity,
+                viewer,
+                viewer.adapter.items.filterIsInstance<DisplayPage>().single(),
+            )
+            try {
+                load(holder, page, "CENTER")
+                val image = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
+                assertEquals(
+                    "Production dual holder must pass the encoded direction",
+                    orientation,
+                    ReflectionHelpers.getField<ReaderPageImageView.Config>(image, "config").sourceOrientation,
+                )
+                assertEquals(orientation, viewer.adapter.session(chapter)!!.identity.content.single().sourceOrientation)
+                val native =
+                    descendants(image).filterIsInstance<NativeImageView>().single()
+                assertEquals(if (orientation.mirrorHorizontally) -1f else 1f, native.scaleX, 0.001f)
+            } finally {
+                detach(holder)
+            }
+        }
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `actual ordinary holder consumes encoded direction before its native image binding`() = runTest {
+        val raw = requireNotNull(javaClass.classLoader?.getResourceAsStream("reader/exif-corners-raw.jpg")).use {
+            it.readBytes()
+        }
+        val exif = "45786966000049492a0008000000010012010300010000000100000000000000"
+            .chunked(2).map { it.toInt(16).toByte() }.toByteArray().also { it[24] = 6 }
+        val encoded = raw.copyOfRange(0, 2) + byteArrayOf(-1, -31, 0, (exif.size + 2).toByte()) + exif +
+            raw.copyOfRange(2, raw.size)
+        val chapter = ReaderChapter(Chapter.create().copy(id = 202, mangaId = 1))
+        val page = ReaderPage(0, stream = { encoded.inputStream() }).apply {
+            this.chapter = chapter
+            status = Page.State.Ready
+        }
+        chapter.publishLoadedPageListForTest(listOf(page))
+        page.publishHeaderFact()
+        val ordinary = R2LPagerViewer(viewer.activity).apply { config.navigationModeChangedListener = null }
+        try {
+            ordinary.setChapters(ViewerChapters(chapter, null, null))
+            val holder = PagerPageHolder(viewer.activity, ordinary, page)
+            val method = PagerPageHolder::class.java.declaredMethods.single {
+                it.name == "setImage" &&
+                    it.parameterCount == 1
+            }.apply { isAccessible = true }
+            suspendCoroutineUninterceptedOrReturn<Unit> { continuation ->
+                val result = method.invoke(holder, continuation)
+                if (result === COROUTINE_SUSPENDED) COROUTINE_SUSPENDED else Unit
+            }
+            assertEquals(
+                mihon.domain.reader.ReaderImageOrientation.CLOCKWISE,
+                ReflectionHelpers.getField<ReaderPageImageView.Config>(holder, "config").sourceOrientation,
+            )
+            ReflectionHelpers.callInstanceMethod<Unit>(holder, "onDetachedFromWindow")
+        } finally {
+            ordinary.destroy()
+        }
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `ordinary mirrored fit composes after EXIF while original source classification remains wide`() = runTest {
+        Injekt.get<ReaderPreferences>().dualPageRotateToFit().set(true)
+        val raw = requireNotNull(javaClass.classLoader?.getResourceAsStream("reader/exif-corners-raw.jpg")).use {
+            it.readBytes()
+        }
+        val exif = "45786966000049492a0008000000010012010300010000000100000000000000"
+            .chunked(2).map { it.toInt(16).toByte() }.toByteArray().also { it[24] = 2 }
+        val encoded = raw.copyOfRange(0, 2) + byteArrayOf(-1, -31, 0, (exif.size + 2).toByte()) + exif +
+            raw.copyOfRange(2, raw.size)
+        val chapter = ReaderChapter(Chapter.create().copy(id = 203, mangaId = 1))
+        val page = ReaderPage(0, stream = { encoded.inputStream() }).apply {
+            this.chapter = chapter
+            status = Page.State.Ready
+        }
+        chapter.publishLoadedPageListForTest(listOf(page))
+        page.publishHeaderFact()
+        val ordinary = R2LPagerViewer(viewer.activity).apply { config.navigationModeChangedListener = null }
+        try {
+            runCurrent()
+            assertTrue(ordinary.config.dualPageRotateToFit)
+            ordinary.setChapters(ViewerChapters(chapter, null, null))
+            val holder = PagerPageHolder(viewer.activity, ordinary, page)
+            bindOrdinary(holder)
+            assertEquals(
+                mihon.domain.reader.ReaderImageOrientation.TRANSVERSE,
+                ReflectionHelpers.getField<ReaderPageImageView.Config>(holder, "config").sourceOrientation,
+            )
+            assertEquals(mihon.domain.reader.ReaderPageFactState.SPREAD, page.pageFact.value.state)
+            assertEquals(
+                mihon.domain.reader.ReaderImageOrientation.MIRROR_HORIZONTAL,
+                page.pageFact.value.sourceOrientation,
+            )
+            ReflectionHelpers.callInstanceMethod<Unit>(holder, "onDetachedFromWindow")
+        } finally {
+            ordinary.destroy()
+        }
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `ordinary mirrored odd split binds raw source region and keeps every center pixel`() = runTest {
+        Injekt.get<ReaderPreferences>().dualPageSplitPaged().set(true)
+        val png = readerTestPng(61, 41)
+        val tiff = "49492a0008000000010012010300010000000200000000000000".chunked(2).map {
+            it.toInt(16).toByte()
+        }.toByteArray()
+        val type = "eXIf".toByteArray(Charsets.US_ASCII)
+        val crc = java.util.zip.CRC32().apply {
+            update(type)
+            update(tiff)
+        }.value.toInt()
+        val chunk = java.nio.ByteBuffer.allocate(
+            12 +
+                tiff.size,
+        ).putInt(tiff.size).put(type).put(tiff).putInt(crc).array()
+        val encoded = png.copyOfRange(0, 33) + chunk + png.copyOfRange(33, png.size)
+        val chapter = ReaderChapter(Chapter.create().copy(id = 204, mangaId = 1))
+        val page = ReaderPage(0, stream = { encoded.inputStream() }).apply {
+            this.chapter = chapter
+            status = Page.State.Ready
+        }
+        chapter.publishLoadedPageListForTest(listOf(page))
+        page.publishHeaderFact()
+        assertEquals(
+            mihon.domain.reader.ReaderImageOrientation.MIRROR_HORIZONTAL,
+            page.pageFact.value.sourceOrientation,
+        )
+        val ordinary = R2LPagerViewer(viewer.activity).apply { config.navigationModeChangedListener = null }
+        try {
+            runCurrent()
+            assertTrue(ordinary.config.dualPageSplit)
+            ordinary.setChapters(ViewerChapters(chapter, null, null))
+            val holder = PagerPageHolder(viewer.activity, ordinary, page)
+            bindOrdinary(holder)
+            val native =
+                descendants(holder).filterIsInstance<NativeImageView>().single()
+            assertEquals(Rect(0, 0, 31, 41), ReflectionHelpers.getField<Rect?>(native, "sRegion"))
+            assertEquals(61, page.pageFact.value.width)
+            ReflectionHelpers.callInstanceMethod<Unit>(holder, "onDetachedFromWindow")
+        } finally {
+            ordinary.destroy()
+        }
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `owned crop region files follow the actual holder replacement error and recycle lifecycle`() = runTest {
+        val preferences = Injekt.get<ReaderPreferences>()
+        preferences.dualPageSplitPaged().set(true)
+        preferences.cropBorders().set(true)
+        val raw = requireNotNull(javaClass.classLoader?.getResourceAsStream("reader/exif-corners-raw.jpg")).use {
+            it.readBytes()
+        }
+        val exif = "45786966000049492a0008000000010012010300010000000200000000000000"
+            .chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val encoded = raw.copyOfRange(0, 2) + byteArrayOf(-1, -31, 0, (exif.size + 2).toByte()) + exif +
+            raw.copyOfRange(2, raw.size)
+        val chapter = ReaderChapter(Chapter.create().copy(id = 205, mangaId = 1))
+        val page = ReaderPage(0, stream = { encoded.inputStream() }).apply {
+            this.chapter = chapter
+            status = Page.State.Ready
+        }
+        chapter.publishLoadedPageListForTest(listOf(page))
+        page.publishHeaderFact()
+        val ordinary = R2LPagerViewer(viewer.activity).apply { config.navigationModeChangedListener = null }
+        val files = mutableListOf<File>()
+        val deletions = mutableListOf<Pair<String, String>>()
+        var holder: PagerPageHolder? = null
+        try {
+            runCurrent()
+            assertTrue(ordinary.config.dualPageSplit && ordinary.config.imageCropBorders)
+            ordinary.setChapters(ViewerChapters(chapter, null, null))
+            val current = PagerPageHolder(viewer.activity, ordinary, page) { _, bounds, directory ->
+                assertEquals(mihon.domain.reader.PixelBounds(0, 0, 30, 40), bounds)
+                val created = File.createTempFile("holder-half-", ".png", directory)
+                created.writeBytes(readerTestPng(bounds.width, bounds.height))
+                object : File(created.path) {
+                    override fun delete(): Boolean {
+                        val result = runCatching { java.nio.file.Files.delete(toPath()) }
+                        deletions += name to result.fold(
+                            onSuccess = { "released" },
+                            onFailure = { "${it.javaClass.simpleName}: ${it.message}" },
+                        )
+                        return result.isSuccess
+                    }
+                }.also { files += it }
+            }
+            holder = current
+            bindOrdinary(current)
+            val original = ReflectionHelpers.getField<File>(current, "displayedRegionFile")
+            assertTrue(original.isFile)
+            val configuration = ReflectionHelpers.getField<ReaderPageImageView.Config>(current, "config")
+            assertNull(configuration.sourceBounds)
+            assertTrue(configuration.cropBorders)
+            assertEquals(mihon.domain.reader.ReaderImageOrientation.MIRROR_HORIZONTAL, configuration.sourceOrientation)
+            fun listener(): NativeImageListener {
+                val native =
+                    descendants(current).filterIsInstance<NativeImageView>().single()
+                return NativeImageView::class.java.declaredFields
+                    .single { it.type == NativeImageListener::class.java }
+                    .apply {
+                        isAccessible =
+                            true
+                    }.get(native) as NativeImageListener
+            }
+            val oldListener = listener()
+            page.stream = { encoded.inputStream() }
+            page.publishHeaderFact()
+            assertEquals(
+                mihon.domain.reader.ReaderImageOrientation.MIRROR_HORIZONTAL,
+                page.pageFact.value.sourceOrientation,
+            )
+            val replacementDeadline = System.nanoTime() + 2_000_000_000L
+            while (System.nanoTime() < replacementDeadline) {
+                runCurrent()
+                val file = ReflectionHelpers.getField<File?>(current, "displayedRegionFile")
+                if (file?.isFile == true && file != original) break
+                withContext(Dispatchers.Default) { delay(10) }
+            }
+            val replacement = ReflectionHelpers.getField<File>(current, "displayedRegionFile")
+            assertTrue(
+                "The actual content collector must first bind replacement region pixels",
+                replacement.isFile &&
+                    replacement != original,
+            )
+            val released = !original.exists()
+            assertTrue(
+                "Replacing the presentation releases its original temporary encoded region; " +
+                    "original=${original.name}; replacement=${replacement.name}; " +
+                    "created=${files.map { it.name to it.exists() }}; firstDelete=$deletions",
+                released,
+            )
+            assertTrue(deletions.contains(original.name to "released"))
+            oldListener.onImageLoadError(java.io.IOException("old content callback"))
+            assertTrue("An old child failure cannot delete the new presentation's file", replacement.isFile)
+            listener().onImageLoadError(java.io.IOException("current region callback"))
+            assertTrue("A current decode failure releases the owned file immediately", !replacement.exists())
+            val pendingInitializations = mutableListOf<Runnable>()
+            val native = descendants(current).filterIsInstance<NativeImageView>().single()
+            native.setExecutor { pendingInitializations += it }
+            bindOrdinary(current)
+            val recycled = ReflectionHelpers.getField<File>(current, "displayedRegionFile")
+            assertTrue(recycled.isFile)
+            assertTrue("The original native initialization is still queued", pendingInitializations.isNotEmpty())
+            val originalStream = ReflectionHelpers.getField<java.io.InputStream>(current, "regionInputStream")
+            assertTrue(
+                "The presentation owns its original handle before initialization",
+                originalStream.available() > 0,
+            )
+            val recycledListener = listener()
+            current.recycle()
+            org.junit.Assert.assertThrows(java.io.IOException::class.java) { originalStream.read() }
+            org.junit.Assert.assertThrows(java.io.IOException::class.java) { originalStream.available() }
+            assertNull(ReflectionHelpers.getField<java.io.InputStream?>(current, "regionInputStream"))
+            assertTrue("Explicit holder recycle must release its original temporary encoded region", !recycled.exists())
+            assertTrue(!current.hasRenderedPage())
+            recycledListener.onReady()
+            assertTrue(
+                "The original native listener cannot resurrect pixels after explicit holder recycle",
+                !current.hasRenderedPage(),
+            )
+            assertNull(ReflectionHelpers.getField<ReaderErrorBinding?>(current, "errorLayout"))
+            recycledListener.onImageLoadError(java.io.IOException("recycled old callback"))
+            assertNull(
+                "The original native error callback cannot recreate errors after holder recycle",
+                ReflectionHelpers.getField<ReaderErrorBinding?>(current, "errorLayout"),
+            )
+        } finally {
+            holder?.let { ReflectionHelpers.callInstanceMethod<Unit>(it, "onDetachedFromWindow") }
+            ordinary.destroy()
+            files.forEach { it.delete() }
+        }
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `recycled holder never takes ownership of a region still being encoded by its original work`() = runTest {
+        val preferences = Injekt.get<ReaderPreferences>()
+        preferences.dualPageSplitPaged().set(true)
+        preferences.cropBorders().set(true)
+        val raw = requireNotNull(javaClass.classLoader?.getResourceAsStream("reader/exif-corners-raw.jpg")).use {
+            it.readBytes()
+        }
+        val exif = "45786966000049492a0008000000010012010300010000000200000000000000"
+            .chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val encoded = raw.copyOfRange(0, 2) + byteArrayOf(-1, -31, 0, (exif.size + 2).toByte()) + exif +
+            raw.copyOfRange(2, raw.size)
+        val chapter = ReaderChapter(Chapter.create().copy(id = 206, mangaId = 1))
+        val page = ReaderPage(0, stream = { encoded.inputStream() }).apply {
+            this.chapter = chapter
+            status = Page.State.Ready
+        }
+        chapter.publishLoadedPageListForTest(listOf(page))
+        page.publishHeaderFact()
+        val ordinary = R2LPagerViewer(viewer.activity).apply { config.navigationModeChangedListener = null }
+        val entered = kotlinx.coroutines.CompletableDeferred<File>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var holder: PagerPageHolder? = null
+        try {
+            runCurrent()
+            ordinary.setChapters(ViewerChapters(chapter, null, null))
+            val current = PagerPageHolder(viewer.activity, ordinary, page) { _, bounds, directory ->
+                val file = File.createTempFile(
+                    "holder-pending-half-",
+                    ".png",
+                    directory,
+                ).apply { writeBytes(readerTestPng(bounds.width, bounds.height)) }
+                entered.complete(file)
+                release.await()
+                file
+            }
+            holder = current
+            val work = async { bindOrdinary(current) }
+            val deadline = System.nanoTime() + 2_000_000_000L
+            while (!entered.isCompleted && System.nanoTime() < deadline) {
+                runCurrent()
+                withContext(Dispatchers.Default) { delay(10) }
+            }
+            assertTrue(
+                "The actual original encoder must be in flight before the holder is recycled",
+                entered.isCompleted,
+            )
+            val original = entered.await()
+            assertTrue(original.isFile)
+            current.recycle()
+            release.complete(Unit)
+            work.await()
+            assertNull(ReflectionHelpers.getField<File?>(current, "displayedRegionFile"))
+            assertTrue(
+                "No presentation owner can receive work retired while its original encoder was in flight",
+                !original.exists(),
+            )
+            assertTrue(!current.hasRenderedPage())
+        } finally {
+            release.complete(Unit)
+            holder?.let { ReflectionHelpers.callInstanceMethod<Unit>(it, "onDetachedFromWindow") }
+            ordinary.destroy()
+            if (entered.isCompleted) entered.getCompleted().delete()
+        }
+    }
+
+    private suspend fun bindOrdinary(holder: PagerPageHolder) {
+        val method = PagerPageHolder::class.java.declaredMethods.single {
+            it.name == "setImage" &&
+                it.parameterCount == 1
+        }.apply { isAccessible = true }
+        suspendCoroutineUninterceptedOrReturn<Unit> { continuation ->
+            val result = method.invoke(holder, continuation)
+            if (result === COROUTINE_SUSPENDED) COROUTINE_SUSPENDED else Unit
+        }
+    }
 
     @Test
     fun `global settings composition offers automatic but never recursive default`() {
@@ -219,7 +599,7 @@ class DualPagerPageHolderLayoutTest {
         val chapter = loadedChapter(11, 4)
         viewer.adapter.setChapters(ViewerChapters(chapter, null, null), false)
         for (page in requireNotNull(chapter.pages)) decodeForAdapter(page)
-        viewer.adapter.adjustPairing(0)
+        viewer.adapter.adjustPairing()
         val units = viewer.adapter.items.filterIsInstance<DisplayPage>().sortedBy { it.firstPage.index }
         assertEquals(listOf(0, 1, 3), units.map { it.firstPage.index })
         assertTrue(units[1] is DisplayPage.Double)
@@ -242,7 +622,7 @@ class DualPagerPageHolderLayoutTest {
         val chapter = loadedChapter(11, 1)
         viewer.adapter.setChapters(ViewerChapters(chapter, null, null), false)
         decodeForAdapter(requireNotNull(chapter.pages).single())
-        viewer.adapter.adjustPairing(0)
+        viewer.adapter.adjustPairing()
         val single = viewer.adapter.items.filterIsInstance<DisplayPage>().single() as DisplayPage.Single
         val holder = DualPagerPageHolder(viewer.activity, viewer, single)
         load(holder, single.page, "CENTER")
@@ -589,7 +969,7 @@ class DualPagerPageHolderLayoutTest {
         val chapters = ViewerChapters(chapter, null, null)
         viewer.adapter.setChapters(chapters, false)
         for (page in requireNotNull(chapter.pages)) decodeForAdapter(page)
-        viewer.adapter.adjustPairing(0)
+        viewer.adapter.adjustPairing()
         val before = viewer.adapter.items.filterIsInstance<DisplayPage>()
         viewer.adapter.setChapters(chapters, false)
         assertEquals(before, viewer.adapter.items.filterIsInstance<DisplayPage>())
@@ -911,6 +1291,548 @@ class DualPagerPageHolderLayoutTest {
     }
 
     @Test
+    fun `content replaced during native dimensions cannot install the old decoded image`() = runTest {
+        val (_, page, _) = pair()
+        val holder = DualPagerPageHolder(viewer.activity, viewer, DisplayPage.Single(page))
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        every { ImageUtil.getImageDimensions(any<okio.BufferedSource>()) } answers {
+            entered.countDown()
+            check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            720 to 1024
+        }
+        try {
+            val binding = async { load(holder, page, "CENTER") }
+            withContext(Dispatchers.IO) {
+                check(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            }
+            page.stream = { byteArrayOf(1, 2, 3).inputStream() }
+            release.countDown()
+            binding.await()
+            assertEquals(
+                "The old decoded pixels must never enter the actual native view after replacement",
+                0,
+                descendants(holder).filterIsInstance<ReaderPageImageView>().count(),
+            )
+        } finally {
+            release.countDown()
+            unmockkObject(ImageUtil)
+            detach(holder)
+        }
+    }
+
+    @Test
+    fun `rendered native pixels do not survive a same page content replacement`() = runTest {
+        val (holder, right, left) = pair()
+        load(holder, right, "RIGHT")
+        load(holder, left, "LEFT")
+        right.status = Page.State.Ready
+        left.status = Page.State.Ready
+        ReflectionHelpers.getField<ReaderPageImageView>(holder, "rightHolder").onImageLoaded()
+        ReflectionHelpers.getField<ReaderPageImageView>(holder, "leftHolder").onImageLoaded()
+        assertTrue(holder.hasRenderedVisiblePages())
+        right.stream = { byteArrayOf(1, 2, 3).inputStream() }
+        assertTrue(
+            "Pixels rendered for the old content cannot settle the replacement viewport",
+            !holder.hasRenderedVisiblePages(),
+        )
+        detach(holder)
+    }
+
+    @Test
+    fun `failed old stream cannot install an error after the same page content was replaced`() = runTest {
+        val (_, page, _) = pair()
+        val replacement = requireNotNull(page.stream)
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        page.stream = {
+            entered.countDown()
+            check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            throw java.io.IOException("old content read failed")
+        }
+        val holder = DualPagerPageHolder(viewer.activity, viewer, DisplayPage.Single(page))
+        try {
+            val binding = async { runCatching { load(holder, page, "CENTER") } }
+            withContext(Dispatchers.IO) { check(entered.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
+            page.stream = replacement
+            release.countDown()
+            val result = binding.await()
+            assertNull(
+                "A late failure from old content cannot show an error for its replacement",
+                ReflectionHelpers.getField<ReaderErrorBinding?>(holder, "errorLayout"),
+            )
+            assertTrue(result.isSuccess)
+        } finally {
+            release.countDown()
+            detach(holder)
+        }
+    }
+
+    @Test
+    fun `known one page and wide cover retain reading cause when stable full slot refreshes`() = runTest {
+        for (wideCover in listOf(false, true)) {
+            val chapter = loadedChapter(if (wideCover) 12 else 11, if (wideCover) 3 else 1)
+            val page = requireNotNull(chapter.pages).first()
+            if (wideCover) page.stream = pair(rightWidth = 1440, rightHeight = 720).second.stream
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            val host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible()
+            try {
+                host.get().setContentView(viewer.pager)
+                measure(viewer.pager, 1440, 3120)
+                runCurrent()
+                measure(viewer.pager, 1440, 3120)
+                val holder = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+                    .first { it.displayPage.containsPage(page) }
+                val previous = requireNotNull(holder.presentationScope).second
+                page.status = Page.State.Ready
+                load(holder, page, "CENTER")
+                measure(viewer.pager, 1440, 3120)
+                ReflectionHelpers.getField<ReaderPageImageView>(holder, "rightHolder").onImageLoaded()
+                assertEquals(
+                    viewer.adapter.session(chapter)?.layoutRevision,
+                    holder.presentationScope?.second?.layoutRevision,
+                )
+                io.mockk.verify(exactly = 1) { viewer.activity.viewModel.onDualViewportSettled(page, listOf(page)) }
+                assertEquals(0, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
+                assertEquals(0L, viewer.adapter.session(chapter)?.location?.sequence)
+                assertTrue(requireNotNull(holder.presentationScope).second.layoutRevision > previous.layoutRevision)
+            } finally {
+                host.get().setContentView(View(host.get()))
+                host.pause().stop().destroy()
+            }
+        }
+    }
+
+    @Test
+    fun `late tail slot resolution preserves pending navigation but cannot repeat consumed reading`() = runTest {
+        val chapter = loadedChapter(13, 4)
+        val pages = requireNotNull(chapter.pages)
+        val target = pages.last()
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        pages.dropLast(1).forEach { decodeForAdapter(it) }
+        viewer.moveToPage(target)
+        val host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible()
+        try {
+            host.get().setContentView(viewer.pager)
+            measure(viewer.pager, 1440, 3120)
+            runCurrent()
+            measure(viewer.pager, 1440, 3120)
+            val original = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+                .first { it.displayPage.containsPage(target) }
+            assertEquals(ReaderPortraitSingleSlot.FULL, (original.displayPage as DisplayPage.Single).slot)
+            val sequence = viewer.adapter.session(chapter)?.location?.sequence
+            target.status = Page.State.Ready
+            load(original, target, "CENTER")
+            measure(viewer.pager, 1440, 3120)
+            val resolved = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+                .first { it.displayPage.containsPage(target) }
+            assertEquals(ReaderPortraitSingleSlot.RIGHT, (resolved.displayPage as DisplayPage.Single).slot)
+            load(resolved, target, "CENTER")
+            ReflectionHelpers.getField<ReaderPageImageView>(resolved, "rightHolder").onImageLoaded()
+            io.mockk.verify(exactly = 1) { viewer.activity.viewModel.onDualViewportSettled(target, listOf(target)) }
+            assertEquals(sequence, viewer.adapter.session(chapter)?.location?.sequence)
+            assertEquals(3, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
+            resolved.beginPresentation()
+            ReflectionHelpers.getField<ReaderPageImageView>(resolved, "rightHolder").onImageLoaded()
+            io.mockk.verify(exactly = 1) { viewer.activity.viewModel.onDualViewportSettled(target, listOf(target)) }
+        } finally {
+            host.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `offscreen neighboring chapter cannot revoke the visible pending presentation`() = runTest {
+        val chapter = loadedChapter(14, 1)
+        val adjacent = loadedChapter(15, 1)
+        val page = requireNotNull(chapter.pages).single()
+        viewer.setChapters(ViewerChapters(chapter, null, adjacent))
+        val host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible()
+        try {
+            host.get().setContentView(viewer.pager)
+            measure(viewer.pager, 1440, 3120)
+            runCurrent()
+            measure(viewer.pager, 1440, 3120)
+            val visible = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+                .first { it.displayPage.containsPage(page) }
+            page.status = Page.State.Ready
+            load(visible, page, "CENTER")
+            val original = requireNotNull(visible.presentationScope)
+            val offscreen = DualPagerPageHolder(
+                viewer.activity,
+                viewer,
+                DisplayPage.Single(requireNotNull(adjacent.pages).single()),
+            )
+            assertTrue(requireNotNull(offscreen.presentationScope).first !== original.first)
+            ReflectionHelpers.getField<ReaderPageImageView>(visible, "rightHolder").onImageLoaded()
+            io.mockk.verify(exactly = 1) { viewer.activity.viewModel.onDualViewportSettled(page, listOf(page)) }
+            val adjacentTicket = requireNotNull(offscreen.presentationScope)
+            viewer.destroy()
+            assertTrue(original.first.captureViewport() !== original.second)
+            assertTrue(adjacentTicket.first.captureViewport() !== adjacentTicket.second)
+        } finally {
+            host.get().setContentView(View(host.get()))
+            host.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `explicit jump inside a retained full item starts its new presentation before pixels settle`() = runTest {
+        val chapter = loadedChapter(17, 1)
+        val page = requireNotNull(chapter.pages).single()
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        val host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible()
+        try {
+            host.get().setContentView(viewer.pager)
+            measure(viewer.pager, 1440, 3120)
+            runCurrent()
+            measure(viewer.pager, 1440, 3120)
+            val holder = viewer.pager.children.filterIsInstance<DualPagerPageHolder>().single()
+            page.status = Page.State.Ready
+            load(holder, page, "CENTER")
+            val original = requireNotNull(holder.presentationScope).second
+            viewer.moveToPage(page)
+            assertEquals(original.locationSequence + 1, viewer.adapter.session(chapter)?.location?.sequence)
+            assertEquals(
+                viewer.adapter.session(chapter)?.location?.sequence,
+                holder.presentationScope?.second?.locationSequence,
+            )
+            ReflectionHelpers.getField<ReaderPageImageView>(holder, "rightHolder").onImageLoaded()
+            io.mockk.verify(exactly = 1) { viewer.activity.viewModel.onDualViewportSettled(page, listOf(page)) }
+        } finally {
+            host.get().setContentView(View(host.get()))
+            host.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `cold real B1 dimensions flow from HTTP encoded headers to late tail native slot`() = runBlocking {
+        val main = StandardTestDispatcher()
+        Dispatchers.setMain(main)
+        val directory = File.createTempFile("reader-http-b1-", ".tmp").apply {
+            delete()
+            mkdir()
+        }
+        val wideEntered = java.util.concurrent.CountDownLatch(1)
+        val releaseWide = java.util.concurrent.CountDownLatch(1)
+        val portrait = readerTestPng(1127, 1600)
+        val wide = readerTestPng(1500, 1067)
+        val requestedPaths = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val server = mockwebserver3.MockWebServer().apply {
+            dispatcher = object : mockwebserver3.Dispatcher() {
+                override fun dispatch(request: mockwebserver3.RecordedRequest): mockwebserver3.MockResponse {
+                    val path = request.url.encodedPath
+                    requestedPaths += path
+                    if (path == "/chapter") return mockwebserver3.MockResponse(body = "pages:17")
+                    if (path == "/image/10") {
+                        wideEntered.countDown()
+                        check(releaseWide.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                    }
+                    return mockwebserver3.MockResponse.Builder().body(
+                        okio.Buffer().write(
+                            if (path == "/image/10") wide else portrait,
+                        ),
+                    ).build()
+                }
+            }
+            start()
+        }
+        val cache = mockk<eu.kanade.tachiyomi.data.cache.ChapterCache>(relaxed = true)
+        fun encodedFile(url: String) = File(directory, "${url.substringAfterLast('/')}.png")
+        every { cache.getPageListFromCache(any()) } throws java.io.IOException("cold actual cache")
+        every { cache.getImageFile(any()) } answers { encodedFile(firstArg()) }
+        every { cache.isImageInCache(any()) } answers { encodedFile(firstArg()).length() > 0 }
+        every { cache.putImageToCache(any(), any()) } answers {
+            val file = encodedFile(firstArg())
+            secondArg<okhttp3.Response>().use { response ->
+                file.outputStream().use { output -> response.body.byteStream().use { it.copyTo(output) } }
+            }
+            true
+        }
+        val chapter = ReaderChapter(Chapter.create().copy(id = 31, mangaId = 1, url = "/chapter")).apply {
+            requestedPage = 16
+        }
+        val loader = eu.kanade.tachiyomi.ui.reader.loader.HttpPageLoader(
+            chapter,
+            eu.kanade.tachiyomi.ui.reader.loader.HttpReaderMaterializeAdapterIntegrationTest.TestHttpSource(server),
+            cache,
+        )
+        val pageListGeneration = chapter.openPageListForTest()
+        assertTrue(chapter.installPageLoader(pageListGeneration, loader))
+        val host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible()
+        suspend fun pumpUntil(message: String, condition: () -> Boolean) {
+            try {
+                withTimeout(10_000) {
+                    while (!condition()) {
+                        main.scheduler.runCurrent()
+                        shadowOf(Looper.getMainLooper()).idle()
+                        measure(viewer.pager, 1440, 3120)
+                        delay(10)
+                    }
+                }
+            } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
+                throw AssertionError(
+                    "$message; paths=$requestedPaths, location=${viewer.adapter.session(chapter)?.location}, " +
+                        "deps=${viewer.adapter.session(chapter)?.factDependencies()}, " +
+                        "remainingBudget=${viewer.adapter.session(
+                            chapter,
+                        )?.factBudget?.remainingWaitMillis(System.nanoTime() / 1_000_000L)}, " +
+                        "virtualTime=${main.scheduler.currentTime}, selected=${viewer.pager.currentItem}, " +
+                        "pages=${chapter.pages?.map { it.index to (it.status to it.pageFact.value.state) }}",
+                    error,
+                )
+            }
+            assertTrue(message, condition())
+        }
+        try {
+            val port = eu.kanade.tachiyomi.ui.reader.loader.AndroidReaderChapterContentPort(chapter, loader)
+            withContext(Dispatchers.IO) {
+                port.loadChapterContent(
+                    mihon.domain.reader.materialize.ReaderChapterContentRequest(
+                        mihon.domain.reader.session.ReaderChapterId(31),
+                        1,
+                    ),
+                )
+            }
+            assertEquals(17, port.materializedPages.size)
+            assertTrue(
+                port.materializedPages.all {
+                    it.pageFact.value.state ==
+                        mihon.domain.reader.ReaderPageFactState.UNKNOWN
+                },
+            )
+            chapter.completePageListForTest(pageListGeneration, port.materializedPages)
+            assertTrue(
+                "The real chapter generation must retain its live installed HTTP loader",
+                chapter.pageLoader === loader && !loader.isRecycled,
+            )
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            host.get().setContentView(viewer.pager)
+            val tail = port.materializedPages[16]
+            loader.onPageSelected(tail)
+            pumpUntil("Actual optional materialization must reach the delayed wide boundary") {
+                wideEntered.count == 0L && tail.status == Page.State.Ready
+            }
+            assertEquals(
+                mihon.domain.reader.ReaderPortraitSingleSlot.FULL,
+                (viewer.adapter.items[viewer.pager.currentItem] as DisplayPage.Single).slot,
+            )
+            assertEquals(16, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
+            releaseWide.countDown()
+            pumpUntil("Late encoded wide header must reflow the original tail target") {
+                val display = viewer.adapter.items.getOrNull(viewer.pager.currentItem) as? DisplayPage.Single
+                display?.page === tail && display.slot == mihon.domain.reader.ReaderPortraitSingleSlot.RIGHT
+            }
+            assertEquals(
+                mihon.domain.reader.ReaderPageFact.dimensions(1500, 1067),
+                port.materializedPages[9].pageFact.value,
+            )
+            val owner = requireNotNull(viewer.adapter.session(chapter))
+            assertTrue(owner.units.any { it.pageIds.map { id -> id.sourcePageIndex } == listOf(14, 15) })
+            assertEquals(16, owner.location?.pageId?.sourcePageIndex)
+            val holder =
+                viewer.pager.children.filterIsInstance<DualPagerPageHolder>().first {
+                    it.displayPage.containsPage(tail)
+                }
+            val decoding = async { load(holder, tail, "CENTER") }
+            pumpUntil("The actual encoded tail must reach its native image view") { decoding.isCompleted }
+            decoding.await()
+            measure(viewer.pager, 1440, 3120)
+            val image = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
+            assertEquals(720, image.width)
+            var left = image.left
+            var parent = image.parent
+            while (parent is View && parent !== holder) {
+                left += parent.left
+                parent = parent.parent
+            }
+            assertEquals(720, left)
+        } finally {
+            releaseWide.countDown()
+            viewer.destroy()
+            main.scheduler.runCurrent()
+            loader.recycle()
+            host.get().setContentView(View(host.get()))
+            host.pause().stop().destroy()
+            server.close()
+            directory.listFiles()?.forEach { it.delete() }
+            directory.delete()
+        }
+    }
+
+    @Test
+    fun `real B2 dimension fixture travels through directory materialization into measured native slots`() = runTest {
+        val directory = File.createTempFile("reader-real-b2-", ".tmp").apply {
+            delete()
+            mkdir()
+        }
+        val loader = eu.kanade.tachiyomi.ui.reader.loader.DirectoryPageLoader(
+            requireNotNull(com.hippo.unifile.UniFile.fromFile(directory)),
+        )
+        val host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible()
+        try {
+            val dimensions =
+                requireNotNull(javaClass.classLoader?.getResourceAsStream("reader/shared-dual-page-real-b2.csv"))
+                    .bufferedReader(Charsets.UTF_8).useLines { lines ->
+                        lines.filter { it.isNotBlank() && !it.startsWith("#") }
+                            .map { row -> row.split(',').map(String::toInt).let { it[1] to it[2] } }.toList()
+                    }
+            val images = mutableMapOf<Pair<Int, Int>, ByteArray>()
+            dimensions.forEachIndexed { index, dimension ->
+                // Synthetic encoded pixels carry only the independently acquired real dimensions.
+                val bytes = images.getOrPut(dimension) {
+                    readerTestPng(dimension.first, dimension.second)
+                }
+                File(directory, "%02d.png".format(index + 1)).writeBytes(bytes)
+            }
+            val chapter = ReaderChapter(Chapter.create().copy(id = 16, mangaId = 1)).apply {
+                pageLoader = loader
+                requestedPage = 1
+            }
+            val port = eu.kanade.tachiyomi.ui.reader.loader.AndroidReaderChapterContentPort(chapter, loader)
+            withContext(Dispatchers.IO) {
+                port.loadChapterContent(
+                    mihon.domain.reader.materialize.ReaderChapterContentRequest(
+                        mihon.domain.reader.session.ReaderChapterId(16),
+                        1,
+                    ),
+                )
+            }
+            dimensions.forEachIndexed { index, size ->
+                assertEquals(
+                    "Encoded fixture header must match real CSV page ${index + 1}",
+                    mihon.domain.reader.ReaderPageFact.dimensions(size.first, size.second),
+                    port.materializedPages[index].pageFact.value,
+                )
+            }
+            chapter.publishLoadedPageListForTest(port.materializedPages)
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            host.get().setContentView(viewer.pager)
+            for ((index, expectedWidth, expectedLeft) in listOf(Triple(1, 720, 0), Triple(19, 1440, 0))) {
+                val page = port.materializedPages[index]
+                viewer.moveToPage(page)
+                measure(viewer.pager, 1440, 3120)
+                runCurrent()
+                measure(viewer.pager, 1440, 3120)
+                val holder = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+                    .first { it.displayPage.containsPage(page) }
+                load(holder, page, "CENTER")
+                measure(viewer.pager, 1440, 3120)
+                val image = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
+                var left = image.left
+                var parent = image.parent
+                while (parent is View && parent !== holder) {
+                    left += parent.left
+                    parent = parent.parent
+                }
+                assertEquals("Real B2 page ${index + 1} physical image width", expectedWidth, image.width)
+                assertEquals("Real B2 page ${index + 1} physical image left", expectedLeft, left)
+                assertEquals(index, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
+            }
+        } finally {
+            host.get().setContentView(View(host.get()))
+            host.pause().stop().destroy()
+            loader.recycle()
+            directory.listFiles()?.forEach { it.delete() }
+            directory.delete()
+        }
+    }
+
+    @Test
+    fun `old native child listener cannot report replacement pixels through the new holder`() = runTest {
+        val chapter = ReaderChapter(Chapter.create().copy(id = 28, mangaId = 1))
+        val first = readerTestPng(40, 60)
+        val replacement = readerTestPng(50, 70)
+        val page = ReaderPage(0, stream = { first.inputStream() }).apply {
+            this.chapter = chapter
+            status = Page.State.Ready
+        }
+        chapter.publishLoadedPageListForTest(listOf(page))
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        runCurrent()
+        val holder = DualPagerPageHolder(
+            viewer.activity,
+            viewer,
+            viewer.adapter.items.filterIsInstance<DisplayPage>().single(),
+        )
+        try {
+            load(holder, page, "CENTER")
+            val child = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
+            val native =
+                descendants(child).filterIsInstance<NativeImageView>().single()
+            val listenerField = NativeImageView::class.java.declaredFields
+                .single { it.type == NativeImageListener::class.java }
+                .apply { isAccessible = true }
+            val original =
+                listenerField.get(native) as NativeImageListener
+            page.stream = { replacement.inputStream() }
+            page.publishHeaderFact()
+            runCurrent()
+            load(holder, page, "CENTER")
+            assertTrue(!holder.hasRenderedVisiblePages())
+            original.onReady()
+            assertTrue(
+                "Saved old native listener cannot invoke the replacement holder's new rendered callback",
+                !holder.hasRenderedVisiblePages(),
+            )
+            original.onImageLoadError(IllegalStateException("fixture stale native decode"))
+            assertTrue(ReflectionHelpers.getField<ReaderErrorBinding?>(holder, "errorLayout") == null)
+            val current =
+                listenerField.get(native) as NativeImageListener
+            current.onReady()
+            assertTrue(holder.hasRenderedVisiblePages())
+        } finally {
+            detach(holder)
+        }
+    }
+
+    @Test
+    fun `existing native error retry renews fact work without manufacturing a navigation`() = runTest {
+        val chapter = ReaderChapter(Chapter.create().copy(id = 27, mangaId = 1))
+        val page = ReaderPage(0, stream = { error("fixture image unavailable") }).apply {
+            this.chapter = chapter
+            status = Page.State.Error(IllegalStateException("fixture image unavailable"))
+        }
+        chapter.publishLoadedPageListForTest(listOf(page))
+        var retryCalls = 0
+        chapter.pageLoader = object : PageLoader() {
+            override var isLocal = false
+            override suspend fun getPages() = listOf(page)
+            override fun retryPage(page: ReaderPage) {
+                super.retryPage(page)
+                retryCalls++
+            }
+        }
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        runCurrent()
+        val display = viewer.adapter.items.filterIsInstance<DisplayPage>().single()
+        val holder = DualPagerPageHolder(viewer.activity, viewer, display)
+        try {
+            load(holder, page, "CENTER")
+            runCurrent()
+            val errorField = DualPagerPageHolder::class.java.getDeclaredField("errorLayout").apply {
+                isAccessible =
+                    true
+            }
+            withContext(Dispatchers.Default) {
+                withTimeout(5000) { while (errorField.get(holder) == null) delay(10) }
+            }
+            val owner = requireNotNull(viewer.adapter.session(chapter))
+            val location = owner.location
+            val originalBudget = owner.factBudget
+            val originalRequest = owner.requestFact(owner.identity.pageIds.single())
+            val binding = ReflectionHelpers.getField<ReaderErrorBinding>(holder, "errorLayout")
+            assertTrue(binding.actionRetry.performClick())
+            runCurrent()
+            assertEquals(1, retryCalls)
+            assertEquals(location, owner.location)
+            assertTrue("Actual retry event must renew only optional fact work", originalBudget !== owner.factBudget)
+            assertTrue(!owner.acceptFact(originalRequest, mihon.domain.reader.ReaderPageFact.dimensions(20, 40)))
+        } finally {
+            detach(holder)
+        }
+    }
+
+    @Test
     fun `single page keeps full viewport and its own image touch target`() = runTest {
         val (_, page, _) = pair()
         val holder = DualPagerPageHolder(viewer.activity, viewer, DisplayPage.Single(page))
@@ -1000,41 +1922,8 @@ class DualPagerPageHolderLayoutTest {
         rightHeight: Int = 1600,
     ): Triple<DualPagerPageHolder, ReaderPage, ReaderPage> {
         val chapter = ReaderChapter(Chapter.create().copy(id = 1, mangaId = 1))
-        fun bytes(w: Int, h: Int): ByteArray {
-            // Encode transparent scanlines without allocating a full bitmap for every vector.
-            val compressed = ByteArrayOutputStream()
-            DeflaterOutputStream(compressed).use { output ->
-                val row = ByteArray(1 + w * 4)
-                repeat(h) { output.write(row) }
-            }
-            val image = ByteArrayOutputStream()
-            DataOutputStream(image).use { output ->
-                output.write(byteArrayOf(137.toByte(), 80, 78, 71, 13, 10, 26, 10))
-                fun chunk(name: String, payload: ByteArray) {
-                    val type = name.toByteArray(Charsets.US_ASCII)
-                    val crc = CRC32().apply {
-                        update(type)
-                        update(payload)
-                    }
-                    output.writeInt(payload.size)
-                    output.write(type)
-                    output.write(payload)
-                    output.writeInt(crc.value.toInt())
-                }
-                val header = ByteArrayOutputStream()
-                DataOutputStream(header).use {
-                    it.writeInt(w)
-                    it.writeInt(h)
-                    it.write(byteArrayOf(8, 6, 0, 0, 0))
-                }
-                chunk("IHDR", header.toByteArray())
-                chunk("IDAT", compressed.toByteArray())
-                chunk("IEND", byteArrayOf())
-            }
-            return image.toByteArray()
-        }
-        val rightBytes = bytes(rightWidth, rightHeight)
-        val leftBytes = bytes(leftWidth, leftHeight)
+        val rightBytes = readerTestPng(rightWidth, rightHeight)
+        val leftBytes = readerTestPng(leftWidth, leftHeight)
         val right = ReaderPage(0, stream = { rightBytes.inputStream() }).apply { this.chapter = chapter }
         val left = ReaderPage(1, stream = { leftBytes.inputStream() }).apply { this.chapter = chapter }
         return Triple(DualPagerPageHolder(viewer.activity, viewer, DisplayPage.Double(right, left)), right, left)

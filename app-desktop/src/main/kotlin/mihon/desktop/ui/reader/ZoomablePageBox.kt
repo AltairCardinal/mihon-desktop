@@ -6,7 +6,6 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -15,7 +14,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asComposeImageBitmap
+import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -30,8 +32,6 @@ import org.jetbrains.skia.Bitmap as SkiaBitmap
 import org.jetbrains.skia.Canvas as SkiaCanvas
 import org.jetbrains.skia.Image as SkiaImage
 import org.jetbrains.skia.Rect as SkiaRect
-import androidx.compose.ui.graphics.asComposeImageBitmap
-import androidx.compose.ui.graphics.asSkiaBitmap
 
 internal data class ZoomableGestureCapabilities(
     val transformEnabled: Boolean,
@@ -81,6 +81,7 @@ internal fun zoomableGestureCapabilities(
 @Composable
 internal fun ZoomablePageBox(
     presentationImage: ReaderPresentationImage,
+    onPageDrawn: (() -> Unit)? = null,
     pageLabel: String,
     zoomState: ZoomState,
     onZoomChange: (ZoomState) -> Unit,
@@ -145,8 +146,16 @@ internal fun ZoomablePageBox(
                             }
                             val pressedChanges = event.changes.filter { it.pressed }
                             if (pressedChanges.isNotEmpty()) {
-                                val panX = pressedChanges.sumOf { (it.position.x - it.previousPosition.x).toDouble() }.toFloat() / pressedChanges.size
-                                val panY = pressedChanges.sumOf { (it.position.y - it.previousPosition.y).toDouble() }.toFloat() / pressedChanges.size
+                                val panX =
+                                    pressedChanges.sumOf {
+                                        (it.position.x - it.previousPosition.x).toDouble()
+                                    }.toFloat() /
+                                        pressedChanges.size
+                                val panY =
+                                    pressedChanges.sumOf {
+                                        (it.position.y - it.previousPosition.y).toDouble()
+                                    }.toFloat() /
+                                        pressedChanges.size
                                 if (panX != 0f || panY != 0f) {
                                     val current = latestZoom
                                     onZoomChange(current.pan(panX, panY))
@@ -182,10 +191,12 @@ internal fun ZoomablePageBox(
                                             // Pan when zoomed in
                                             if (latestZoom.scale > 1f) {
                                                 val current = latestZoom
-                                                onZoomChange(current.pan(
-                                                    change.position.x - change.previousPosition.x,
-                                                    change.position.y - change.previousPosition.y,
-                                                ))
+                                                onZoomChange(
+                                                    current.pan(
+                                                        change.position.x - change.previousPosition.x,
+                                                        change.position.y - change.previousPosition.y,
+                                                    ),
+                                                )
                                             }
                                         }
                                     }
@@ -307,7 +318,15 @@ internal fun ZoomablePageBox(
                     translationX = zoomState.offsetX,
                     translationY = zoomState.offsetY,
                 )
-                .observeReaderPageDraw(renderedImage?.acknowledgeDraw)
+                .observeReaderPageDraw(
+                    renderedImage?.let { image ->
+                        {
+                            val accepted = image.acknowledgeDraw()
+                            if (onPageDrawn != null && image.currentPixels()) onPageDrawn.invoke()
+                            accepted
+                        }
+                    },
+                )
             if (renderedImage != null && !fullDecodeFailed && !presentationClosed) {
                 Image(
                     bitmap = renderedImage.bitmap,
@@ -383,8 +402,8 @@ internal fun transformCachedPageBitmapWithSourceBounds(
         ?: return ReaderPresentationBitmapTransform(bounded, boundedSource)
     return ReaderPresentationBitmapTransform(
         bitmap = selectPresentationCropResult(
-        base = bitmap,
-        bounded = bounded,
+            base = bitmap,
+            bounded = bounded,
             cropped = cropped.bitmap,
         ),
         renderedSourceBounds = cropped.bounds.mapBitmapBoundsToSource(
@@ -483,22 +502,42 @@ private fun cropBordersFromSkiaBitmap(src: SkiaBitmap): CroppedPresentationBitma
 
     var top = 0
     outer@ for (y in 0 until h) {
-        for (x in 0 until w) { if (!isLight(x, y)) { top = y; break@outer } }
+        for (x in 0 until w) {
+            if (!isLight(x, y)) {
+                top = y
+                break@outer
+            }
+        }
         if (y == h - 1) top = 0
     }
     var bottom = h
     outer@ for (y in h - 1 downTo 0) {
-        for (x in 0 until w) { if (!isLight(x, y)) { bottom = y + 1; break@outer } }
+        for (x in 0 until w) {
+            if (!isLight(x, y)) {
+                bottom = y + 1
+                break@outer
+            }
+        }
         if (y == 0) bottom = h
     }
     var left = 0
     outer@ for (x in 0 until w) {
-        for (y in top until bottom) { if (!isLight(x, y)) { left = x; break@outer } }
+        for (y in top until bottom) {
+            if (!isLight(x, y)) {
+                left = x
+                break@outer
+            }
+        }
         if (x == w - 1) left = 0
     }
     var right = w
     outer@ for (x in w - 1 downTo 0) {
-        for (y in top until bottom) { if (!isLight(x, y)) { right = x + 1; break@outer } }
+        for (y in top until bottom) {
+            if (!isLight(x, y)) {
+                right = x + 1
+                break@outer
+            }
+        }
         if (x == 0) right = w
     }
 

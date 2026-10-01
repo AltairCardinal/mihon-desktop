@@ -18,13 +18,42 @@ class ReaderPairingAdjustmentContractTest {
 
     @Test
     fun `updating pairing options retains decoded wide pages and unrelated manual boundaries`() {
-        val options = PagePairingOptions(pairAdjacentPortraitPages = true, forceFirstPageSingle = true)
-        val state = ReaderPairingState(8, false, options = options, defaultLayout = PageLayout.PORTRAIT)
-        state.updateDimensions(4, 200, 100)
-        state.updateOptions(options.copy(forcedSinglePages = setOf(1, 6)))
+        val ids =
+            List(8) { mihon.domain.reader.session.ReaderPageId(mihon.domain.reader.session.ReaderChapterId(7), it) }
+        val state =
+            SharedDualPageSession(
+                ReaderDualPageIdentity(
+                    1,
+                    1,
+                    ids.map {
+                        ReaderDualPageContentIdentity(it, "fixture")
+                    },
+                ),
+                ReaderDirection.LTR,
+                ids.first(),
+                1,
+            )
+        ids.forEach { id ->
+            val request = state.requestFact(id)
+            state.acceptFact(
+                request,
+                if (id.sourcePageIndex ==
+                    4
+                ) {
+                    ReaderPageFact.dimensions(200, 100)
+                } else {
+                    ReaderPageFact.dimensions(100, 200)
+                },
+            )
+        }
+        state.acceptPairingRestore(
+            requireNotNull(state.beginPairingRestore()),
+            ChapterPairingSnapshot(ChapterPairingRecord(1, 8, setOf(1, 6)), 1),
+        )
         assertEquals(
             listOf(listOf(0), listOf(1), listOf(2, 3), listOf(4), listOf(5), listOf(6), listOf(7)),
-            state.pairings.map(IntArray::toList),
+            state.units.map { it.pageIds.map { id -> id.sourcePageIndex } },
         )
+        state.close()
     }
 }

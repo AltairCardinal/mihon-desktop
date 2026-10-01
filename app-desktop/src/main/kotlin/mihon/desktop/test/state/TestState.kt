@@ -153,51 +153,165 @@ val historyState = HistoryState()
  */
 class ReaderState {
     private var openGeneration: Long = 0L
+    private var openedChapterId: Long = 0L
+
+    @Volatile private var mounted: mihon.desktop.ui.reader.ReaderScreenModel? = null
+
+    @Volatile private var previous: (() -> Unit)? = null
+
+    @Volatile private var next: (() -> Unit)? = null
+
+    @Volatile internal var geometry: ReaderMountedGeometry? = null
+        private set
+    private var geometryPublisher: Any? = null
+
+    @Volatile internal var ownerFocused: Boolean = false
+        private set
+
+    @Volatile internal var composeWindowFocused: Boolean = false
+        private set
+
+    internal fun mountedSnapshot() = mounted?.state?.value
+    internal fun mount(model: mihon.desktop.ui.reader.ReaderScreenModel) {
+        if (isOpen && model.state.value.context.chapterId == openedChapterId) mounted = model
+    }
+    internal fun unmount(model: mihon.desktop.ui.reader.ReaderScreenModel) {
+        if (mounted !== model) return
+        mounted = null
+        previous = null
+        next = null
+        geometry = null
+        geometryPublisher = null
+        ownerFocused = false
+        composeWindowFocused = false
+    }
+    internal fun updateActions(
+        model: mihon.desktop.ui.reader.ReaderScreenModel,
+        previous: (() -> Unit)?,
+        next: (() -> Unit)?,
+    ) {
+        if (mounted !== model) return
+        this.previous = previous
+        this.next = next
+    }
+    internal fun updateGeometry(
+        model: mihon.desktop.ui.reader.ReaderScreenModel,
+        publisher: Any,
+        value: ReaderMountedGeometry,
+    ) {
+        if (mounted !== model) return
+        geometryPublisher = publisher
+        geometry = value
+    }
+    internal fun clearGeometry(model: mihon.desktop.ui.reader.ReaderScreenModel, publisher: Any) {
+        if (mounted !== model || geometryPublisher !== publisher) return
+        geometry = null
+        geometryPublisher = null
+    }
+    internal fun updateFocus(
+        model: mihon.desktop.ui.reader.ReaderScreenModel,
+        owner: Boolean? = null,
+        window: Boolean? = null,
+    ) {
+        if (mounted !== model) return
+        owner?.let { ownerFocused = it }
+        window?.let { composeWindowFocused = it }
+    }
+
+    /** HTTP is an application action, never evidence of physical key/mouse delivery. */
+    internal suspend fun perform(action: String, page: Int? = null): Boolean =
+        kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+            java.awt.EventQueue.invokeLater {
+                if (!continuation.isActive) return@invokeLater
+                val model = mounted
+                val result = if (model == null) {
+                    false
+                } else {
+                    val state = model.state.value
+                    when (action) {
+                        "go_to_page" -> if (page != null && page in state.session.activeChapter.pages.indices) {
+                            model.goToPage(page)
+                            true
+                        } else {
+                            false
+                        }
+                        "next_chapter" -> next?.let {
+                            it()
+                            true
+                        } ?: false
+                        "prev_chapter" -> previous?.let {
+                            it()
+                            true
+                        } ?: false
+                        "next_page", "prev_page" -> {
+                            val position = mihon.desktop.ui.reader.readerKeyboardNavigationPosition(
+                                state,
+                                previous != null,
+                                next != null,
+                            )
+                            val command = if (action == "next_page") {
+                                mihon.desktop.reader.ReaderKeyboardAction.forNext(position.current, position.total)
+                            } else {
+                                mihon.desktop.reader.ReaderKeyboardAction.forPrevious(position.current)
+                            }
+                            mihon.desktop.ui.reader.applyReaderPageAction(
+                                command,
+                                state,
+                                model,
+                                { previous?.invoke() },
+                                { next?.invoke() },
+                                previous != null,
+                                next != null,
+                            )
+                        }
+                        else -> false
+                    }
+                }
+                continuation.resumeWith(Result.success(result))
+            }
+        }
 
     var isOpen: Boolean = false
         private set
+
     @Volatile
     var closeRequested: Boolean = false
         private set
+
     @Volatile
     var productionClosed: Boolean = false
         private set
-    var currentChapterId: Long = 0L
-        private set
-    var currentPage: Int = 0
-        private set
-    var totalPages: Int = 0
-        private set
-    var isWebtoon: Boolean = false
-        private set
+    val currentChapterId: Long get() = mountedSnapshot()?.context?.chapterId ?: 0L
+    val currentPage: Int get() = mountedSnapshot()?.currentPage ?: 0
+    val totalPages: Int get() = mountedSnapshot()?.session?.activeChapter?.pages?.size ?: 0
+    val isWebtoon: Boolean get() = mountedSnapshot()?.readingMode == mihon.desktop.reader.ReadingMode.WEBTOON
     var mangaTitle: String = ""
         private set
     var chapterTitle: String = ""
         private set
-    var hasNextChapter: Boolean = false
-        private set
-    var hasPrevChapter: Boolean = false
-        private set
+    val hasNextChapter: Boolean get() = next != null
+    val hasPrevChapter: Boolean get() = previous != null
 
     @Synchronized
-    fun open(chapterId: Long, page: Int, totalPages: Int, isWebtoon: Boolean, mangaTitle: String, chapterTitle: String, hasNext: Boolean, hasPrev: Boolean): Long {
+    fun open(
+        chapterId: Long,
+        page: Int,
+        totalPages: Int,
+        isWebtoon: Boolean,
+        mangaTitle: String,
+        chapterTitle: String,
+        hasNext: Boolean,
+        hasPrev: Boolean,
+    ): Long {
         openGeneration += 1L
         this.isOpen = true
         this.closeRequested = false
         this.productionClosed = false
-        this.currentChapterId = chapterId
-        this.currentPage = page
-        this.totalPages = totalPages
-        this.isWebtoon = isWebtoon
+        this.openedChapterId = chapterId
+        mounted?.let(::unmount)
         this.mangaTitle = mangaTitle
         this.chapterTitle = chapterTitle
-        this.hasNextChapter = hasNext
-        this.hasPrevChapter = hasPrev
         return openGeneration
-    }
-
-    fun updatePage(page: Int) {
-        this.currentPage = page
     }
 
     fun requestClose() {
@@ -208,9 +322,8 @@ class ReaderState {
     fun markProductionClosed(generation: Long) {
         if (generation != openGeneration) return
         isOpen = false
-        currentChapterId = 0L
-        currentPage = 0
-        totalPages = 0
+        mounted?.let(::unmount)
+        openedChapterId = 0L
         mangaTitle = ""
         chapterTitle = ""
         productionClosed = true
@@ -222,16 +335,19 @@ class ReaderState {
         isOpen = false
         closeRequested = false
         productionClosed = false
-        currentChapterId = 0L
-        currentPage = 0
-        totalPages = 0
-        isWebtoon = false
+        mounted?.let(::unmount)
+        openedChapterId = 0L
         mangaTitle = ""
         chapterTitle = ""
-        hasNextChapter = false
-        hasPrevChapter = false
     }
 }
+
+/** Actual pager bounds are physical Compose pixels; screen points use the mounted AWT content origin. */
+internal data class ReaderMountedGeometry(
+    val bounds: androidx.compose.ui.geometry.Rect,
+    val density: Float,
+    val window: java.awt.Window?,
+)
 
 /**
  * Global reader state accessible for testing.

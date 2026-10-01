@@ -1,0 +1,22 @@
+# real-source topology, acquired 2026-10-01 from the production source/encoded route
+# Source: 漫画柜; 《地下忍者》169话; page numbers are one based
+# Acquisition runtime: Windows 0.11.19.65.1a3246a; RTL, dual page, auto matching enabled, no manual boundaries
+# This fixture contains dimensions only; it is not a synthetic width-fourteen example or repair runtime evidence
+# page,width,height
+1,1127,1600
+2,1127,1600
+3,1127,1600
+4,1127,1600
+5,1127,1600
+6,1127,1600
+7,1127,1600
+8,1127,1600
+9,1127,1600
+10,1500,1067
+11,1127,1600
+12,1127,1600
+13,1127,1600
+14,1127,1600
+15,1127,1600
+16,1127,1600
+17,1127,1600

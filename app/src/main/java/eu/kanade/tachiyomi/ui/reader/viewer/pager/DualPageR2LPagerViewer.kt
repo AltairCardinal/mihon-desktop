@@ -23,7 +23,11 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.ReaderAdjacentChapterPolicy
+import mihon.domain.reader.ReaderDualPageSettlement
+import mihon.domain.reader.ReaderDualPageSettlementReason
+import mihon.domain.reader.ReaderDualPageViewportTicket
 import mihon.domain.reader.ReaderPairingAdjustment
+import mihon.domain.reader.SharedDualPageSession
 import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.injectLazy
 import kotlin.math.min
@@ -54,10 +58,9 @@ class DualPageR2LPagerViewer(
     val adapter = DualPageViewerAdapter(this, pairingStore)
 
     private var currentPage: Any? = null
-    private var layoutOnlyDisplayPage: DisplayPage? = null
-    private var reportedDisplayPage: DisplayPage? = null
     private var replacingPairing = false
     private var destroyed = false
+    private val presentedViewports = mutableMapOf<SharedDualPageSession, ReaderDualPageViewportTicket>()
 
     private var awaitingIdleViewerChapters: ViewerChapters? = null
 
@@ -136,6 +139,7 @@ class DualPageR2LPagerViewer(
         }
 
         config.imagePropertyChangedListener = { refreshAdapter() }
+        config.automaticSpreadMatchingChangedListener = adapter::matchingSettingChanged
 
         config.navigationModeChangedListener = {
             val showOnStart = config.navigationOverlayOnStart || config.forceNavigationOverlay
@@ -145,7 +149,10 @@ class DualPageR2LPagerViewer(
 
     override fun destroy() {
         destroyed = true
+        presentedViewports.toMap().forEach { (owner, ticket) -> owner.releaseViewport(ticket) }
+        presentedViewports.clear()
         pager.removeOnPageChangeListener(pagerListener)
+        adapter.close()
         scope.cancel()
     }
 
@@ -169,7 +176,9 @@ class DualPageR2LPagerViewer(
         if (pager.isGone) {
             logcat { "Pager first layout" }
             val pages = chapters.currChapter.pages ?: return
-            moveToPage(pages[min(chapters.currChapter.requestedPage, pages.lastIndex)])
+            val target = adapter.session(chapters.currChapter)?.location?.pageId?.sourcePageIndex
+                ?: chapters.currChapter.requestedPage
+            positionPage(pages[min(target, pages.lastIndex)])
             pager.isVisible = true
         }
 
@@ -178,6 +187,11 @@ class DualPageR2LPagerViewer(
     }
 
     override fun moveToPage(page: ReaderPage) {
+        adapter.selectPage(page)
+        positionPage(page)
+    }
+
+    private fun positionPage(page: ReaderPage) {
         // Find the ViewPager position of the display unit containing this page
         val position = adapter.items.indexOfFirst { item ->
             item is DisplayPage && item.containsPage(page)
@@ -270,17 +284,15 @@ class DualPageR2LPagerViewer(
         val item = adapter.items.getOrNull(position)
         // A window rebuild can keep the same selected pair while an adjacent chapter loads.
         // Preserve that selection so its pending rendered viewport can still settle.
-        if (layoutOnly && item is DisplayPage && item != currentPage) layoutOnlyDisplayPage = item
         if (item != null && currentPage != item) {
             currentPage = item
-            reportedDisplayPage = null
-            if (!layoutOnly) layoutOnlyDisplayPage = null
             when (item) {
                 is DisplayPage -> onDisplayPageSelected(item, layoutOnly)
                 is ChapterTransition -> onTransitionSelected(item)
             }
         } else if (item != null) {
             currentPage = item
+            if (item is DisplayPage) onDisplayPageSelected(item, layoutOnly)
         }
         reportSettledDualViewport()
     }
@@ -289,11 +301,19 @@ class DualPageR2LPagerViewer(
         val page = displayPage.firstPage
         val pages = page.chapter.pages ?: return
         logcat { "onDisplayPageSelected: ${page.number}/${pages.size}" }
-        if (displayPage is DisplayPage.Double) {
-            activity.onViewerPageAnchorSelected(this, page, layoutOnly)
-        } else {
-            activity.onViewerPageSelected(this, page, layoutOnly, displayPage.visiblePages)
+        if (!layoutOnly) {
+            val session = adapter.session(page.chapter)
+            if (session?.location?.pageId !in
+                displayPage.visiblePages.map { session?.identity?.pageIds?.get(it.index) }
+            ) {
+                adapter.selectPage(page)
+            }
         }
+        capturePresentation(displayPage)
+        refreshPresentation()
+        val logicalPage =
+            pages.getOrNull(adapter.session(page.chapter)?.location?.pageId?.sourcePageIndex ?: page.index) ?: page
+        activity.onViewerPageAnchorSelected(this, logicalPage, layoutOnly)
         if (layoutOnly) return
 
         // Preload next chapter when near the end
@@ -309,16 +329,69 @@ class DualPageR2LPagerViewer(
         if (holder.displayPage == currentPage) reportSettledDualViewport()
     }
 
+    /** Starts the new presentation scope even if the selected native page and its slots were retained. */
+    internal fun refreshPresentation() {
+        discardObsoletePresentations()
+        val selected = currentPage as? DisplayPage ?: return
+        pager.children.filterIsInstance<DualPagerPageHolder>()
+            .filter { it.displayPage == selected }.forEach { it.beginPresentation() }
+    }
+
+    internal fun capturePresentation(
+        displayPage: DisplayPage,
+    ): Pair<SharedDualPageSession, ReaderDualPageViewportTicket>? {
+        if (destroyed) return null
+        discardObsoletePresentations()
+        val owner = adapter.session(displayPage.firstPage.chapter) ?: return null
+        val unit = owner.targetUnit ?: return null
+        val visible = displayPage.visiblePages.map { owner.identity.pageIds[it.index] }
+        if (visible != unit.pageIds) return null
+        return owner.captureViewport()?.let { ticket ->
+            // Each chapter owner keeps one issued scope. An offscreen chapter never revokes its neighbour.
+            presentedViewports[owner] = ticket
+            owner to ticket
+        }
+    }
+
+    internal fun releasePresentation(scope: Pair<SharedDualPageSession, ReaderDualPageViewportTicket>) {
+        val (owner, ticket) = scope
+        owner.releaseViewport(ticket)
+        if (presentedViewports[owner] === ticket) presentedViewports.remove(owner)
+    }
+
+    private fun discardObsoletePresentations() {
+        presentedViewports.keys.toList().filterNot(adapter::ownsSession).forEach { owner ->
+            presentedViewports.remove(owner)?.let(owner::releaseViewport)
+        }
+    }
+
     private fun reportSettledDualViewport() {
         if (destroyed || replacingPairing || !isIdle) return
-        val displayPage = adapter.items.getOrNull(pager.currentItem) as? DisplayPage.Double ?: return
-        if (displayPage != currentPage || displayPage == layoutOnlyDisplayPage) return
+        val displayPage = adapter.items.getOrNull(pager.currentItem) as? DisplayPage ?: return
+        if (displayPage != currentPage) return
         val holder = pager.children.filterIsInstance<DualPagerPageHolder>()
             .firstOrNull { it.displayPage == displayPage } ?: return
         if (!holder.hasRenderedVisiblePages()) return
-        if (reportedDisplayPage == displayPage) return
-        reportedDisplayPage = displayPage
-        activity.onViewerViewportSettled(this, displayPage.firstPage, displayPage.visiblePages)
+        val (owner, ticket) = holder.presentationScope ?: return
+        val effect = owner.settle(
+            ReaderDualPageSettlement(
+                ticket.identity,
+                ticket.layoutRevision,
+                ticket.locationSequence,
+                ticket.unitId,
+                displayPage.visiblePages.mapTo(mutableSetOf()) { ticket.identity.pageIds[it.index] },
+                settled = true,
+                reason = ReaderDualPageSettlementReason.USER_NAVIGATION,
+                settlementSequence = ticket.locationSequence,
+                ticket = ticket,
+            ),
+            wasRead = displayPage.firstPage.chapter.chapter.read,
+            sessionId = "android-dual-${ticket.identity.generation}",
+        ) ?: return
+        val logicalPage =
+            displayPage.firstPage.chapter.pages?.getOrNull(owner.location?.pageId?.sourcePageIndex ?: return)
+                ?: return
+        activity.onViewerViewportSettled(this, logicalPage, displayPage.visiblePages)
     }
 
     internal fun onTransitionSelected(transition: ChapterTransition) {
@@ -347,8 +420,8 @@ class DualPageR2LPagerViewer(
      * which pages appear together on screen.
      */
     fun adjustPagePairing() {
-        val currentFirstPageIndex = (currentPage as? DisplayPage)?.firstPage?.index ?: return
-        adapter.adjustPairing(currentFirstPageIndex)
+        if (currentPage !is DisplayPage) return
+        adapter.adjustPairing()
     }
 
     fun pairingAdjustmentRequest(): PairingAdjustmentRequest? {
@@ -356,20 +429,12 @@ class DualPageR2LPagerViewer(
         val chapter = selected.firstPage.chapter
         if (chapter !== adapter.currentChapter) return null
         val pages = chapter.pages ?: return null
-        val adjustment = adapter.previewAdjustment(selected.firstPage.index) ?: return null
-        if (adjustment.forcedSinglePages == adapter.appliedForcedSinglePages()) return null
-        return PairingAdjustmentRequest(chapter, pages, selected.firstPage.index, adjustment)
+        val owner = adapter.session(chapter) ?: return null
+        val save = adapter.beginPairingAdjustment() ?: return null
+        return PairingAdjustmentRequest(chapter, pages, owner, save)
     }
 
-    fun applySavedPairing(request: PairingAdjustmentRequest, snapshot: ChapterPairingSnapshot) {
-        val selected = currentPage as? DisplayPage
-        val target = request.pages.getOrNull(request.adjustment.currentPage)
-            ?.takeIf {
-                selected?.firstPage?.chapter === request.chapter &&
-                    selected.firstPage.index == request.anchorIndex
-            }
-        adapter.applySavedPairing(request.chapter, request.pages, snapshot, target)
-    }
+    fun refreshPairing() = adapter.refreshPairing()
 
     internal fun replacePairing(anchor: ReaderPage?, layoutOnly: Boolean, replace: () -> Unit) {
         replacingPairing = true
@@ -403,6 +468,6 @@ class DualPageR2LPagerViewer(
 data class PairingAdjustmentRequest(
     val chapter: ReaderChapter,
     val pages: List<ReaderPage>,
-    val anchorIndex: Int,
-    val adjustment: ReaderPairingAdjustment,
+    val owner: SharedDualPageSession,
+    val save: mihon.domain.reader.ReaderPairingPersistenceRequest.Save,
 )
