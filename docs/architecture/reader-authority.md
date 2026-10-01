@@ -1,5 +1,17 @@
 # 阅读器权威、上游跟踪与 Fork 偏差
 
+## 双页规则的新产品约束
+
+2026-10-01 用户明确要求双端双页规则全部收归共享层，包含 `preserveParityAfterSpread`、
+宽图封面、页面分类、单页槽位和自动跨页匹配。规划权威转为
+[共享双页设计](../2026-10-01-shared-dual-page-rules-and-repair-design.md)与
+[实施 roadmap](../roadmap/2026-10-01-shared-dual-page-rules-and-repair-roadmap.md)。
+下文将 cover-single、edge matching、landscape parity 等描述为 Desktop options 的段落保留为
+当前源码/历史迁移事实；不再授权生产双页使用平台独立规则。共享实现仍属于 Fork 增强，不能反向归因给固定上游。
+
+当前只完成设计，尚未实施或改变 parity manifest 状态。实施时以新的共享 owner、双端真实消费及有效证据
+更新相关归属和条目；不得删除合法自动对齐能力、降低验收或仅修改状态来宣称一致。
+
 ## 权威边界
 
 阅读器迁移同时使用三条不能混淆的证据线：

@@ -1,5 +1,18 @@
 # 阅读器共享核心架构
 
+## 双页规则统一计划
+
+2026-10-01 用户要求 Windows Desktop 与 Android 的全部双页业务规则只维护一套。
+后续设计以[双端共享双页规则与修复设计](../2026-10-01-shared-dual-page-rules-and-repair-design.md)
+及[配套 roadmap](../roadmap/2026-10-01-shared-dual-page-rules-and-repair-roadmap.md)为准：
+分类、配对、宽图后策略、槽位、自动匹配、定位意图与异步重排决策均由共享 presentation 层拥有，
+平台仅提供事实、执行端口和原生呈现。新策略修复旧奇偶推测覆盖匹配的问题，保留自动对齐及手动调整能力。
+
+该计划尚未实施。下文的 Desktop landscape parity option、宽图封面特例、平台槽位映射、
+UNKNOWN 预当纵页及 Desktop 独有匹配等是当前实现事实，不再是允许继续维持差异的目标约束。
+迁移完成时按实际 production wiring 和契约测试更新本文；单页、Webtoon、同步、进度和其他 reader
+架构边界继续有效，不把新设计误写成已经完成的 capability。
+
 ## 状态与目的
 
 本文描述 reader migration 的最终架构和当前边界。当前状态是

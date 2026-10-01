@@ -1,5 +1,10 @@
 # 阅读器双页与继续阅读迭代方案
 
+2026-10-01 后续规划：[双端共享双页规则与修复设计](2026-10-01-shared-dual-page-rules-and-repair-design.md)
+及[roadmap](roadmap/2026-10-01-shared-dual-page-rules-and-repair-roadmap.md)取代本文关于双页规则可分平台保留、
+横向封面呈现例外以及仅凭最终显示组判断单页槽位的目标约定。新规划尚未实施；本文保留本次迭代的历史行为与证据，
+继续阅读目标选择和已读进度等未被新设计替代的规则仍有效。
+
 日期：2026-09-24。状态：**已实施**；三项主需求及单页章节例外已按配套 Roadmap 实现。Android 仍只提供现有 RTL 双页入口；横向宽图沿用既有呈现，Android LTR 双页入口不在本轮范围。
 
 - 配套执行计划：[开发 Roadmap](roadmap/2026-09-24-reader-dual-page-and-continue-iteration-roadmap.md)。本文定义行为、入口和边界；Roadmap 定义任务、依赖、红绿测试、审查与发布。两者冲突时先修正文档，再实施，不以任务描述反向改写产品行为。
