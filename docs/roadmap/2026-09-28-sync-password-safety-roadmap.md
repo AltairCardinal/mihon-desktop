@@ -1,6 +1,6 @@
 # 同步空间默认无密码与遗忘风险提示 Roadmap
 
-日期：2026-09-28；生产执行启动：2026-09-30。状态：S1 共享生产闭环、双端接线、必要红绿回归与独立审查已完成，随本批提交交付；S2 已完成先前正式候选及部分平台运行验收，当前续验 Android 真机与测试仓库隔离；真实双端及密码页等门槛仍未完成。完成状态由下列复选框及第 4 节证据共同约束，接口存在不等于已完成发布验收。
+日期：2026-09-28；生产执行启动：2026-09-30。状态：S1 已完成。S2 最新完整测试、三平台正式候选、Android 原证书升级安装、无密码真实三端加入及 Desktop 重启读回已通过；有密码创建、错误拒绝、帮助清理及 Android 窄屏双主题已验证。已保存测试密码与原测试空间不匹配，正确密码加入及后续交换仍未通过；已保留失败并准备新的隔离库与 Debug，原生续验等待设备解锁/前台。最新事实见第 4 节末尾 2026-10-01 记录，S2 保持未勾选。
 
 设计权威：[同步密码安全设计](../2026-09-28-sync-password-safety-design.md)，尤其第 3–5 节产品交互和第 10–12 节开发/失败/验证契约。审阅基线：`cdc1b9f1b3`；[并列 HTML DEMO](../prototypes/multi-device-sync/password-review.html)与[原型说明](../prototypes/multi-device-sync/README.md)。本文件是产品 child plan，从第一个未勾选项推导进度，不声明 active-task，不切换其他专项父计划的 active-child-plan。
 
@@ -289,3 +289,49 @@ GitHub CLI 当前账号已有非空私有 `mihon-sync`，因此不能以原仓�
 2026-10-01 身份确认后续验：用户自行完成 Confirm access。主代理在手机 Firefox 管理页观察原授权仅包含原仓库；真实添加上述 none 与 password 两个测试库，保持 Only select repositories 和原授权。保存前核对三项集合，点击 Save 后观察 GitHub 更新成功提示；重新加载再次核对三项仍在、仅选定模式仍选中。返回隔离 Debug，真实点击“我已完成，重新检查”后进入“创建同步空间”，目标访问阻塞已解除。菜单搜索尝试曾误入全局搜索，及时关闭，未改变权限；后来从完整可见目标行选择完成。原子点击保护因保存按钮嵌套可点击节点停止一次，重新核对确切按钮边界后才保存，未取消页面保护。
 
 原生非提交验收：真实点击密码开关后出现空的遮蔽输入框、遗忘风险说明和确认项；向上滚动后创建按钮可见且禁用。真实勾选风险确认后，空密码仍使“设置密码并开启同步”禁用；切回无密码模式后输入框消失、“创建并开启同步”恢复可见。未输入密码、未点击任一创建按钮；随后 CLI 只读核对两个测试库仍为 private=true、isEmpty=true，临时网页及应用截图均已删除。当前 Debug 书架已有内容；为避免把用户内容当合成验收数据上传，保留本地数据并请求确认上传范围。此结果不代表实际创建、密码解锁、重启恢复、双主题或窄屏密码布局通过，S2 保持未勾选。Desktop 本轮延期不变。
+
+
+### S2 续验与正式升级（2026-10-01）
+
+用户授权自动完成全部待验收内容，覆盖此前暂缓的 Desktop 收口、正式 Android 升级、备份核验后的 Debug 数据隔离及获准测试空间。本轮复用一个原代理，无新增代理、产品修改或独立审查；完整 Android/Desktop 各一次，官方构建串行，原估计 1–3 小时。密码材料不匹配后仅追加一次更换测试目标的官方 Debug 构建，没有重复全量。过程记录仍只在忽略的 `.gradle-coordinator/` 与专用外部目录，本文是唯一任务报告。
+
+| 收口范围 | 本轮实际结果 |
+| --- | --- |
+| Android 全量与 E2E | `password-s2-final-android`，`:app:testReleaseUnitTest :test-desktop:test spotlessCheck --max-workers=2 --no-parallel --continue`，退出码 0、19 分 18 秒。Android 673 项、0 失败、7 跳过（666 执行）；E2E 客户端 52/52，格式通过。既有跳过不记通过。 |
+| Windows 全量与正式构建 | `password-s2-final-windows` 调用官方 `scripts/build-desktop.sh`，退出码 0。Desktop 3249 项、0 失败、3 跳过（3246 执行），完整测试 6 分 15 秒；本地 integration 纳入，live-network、network-survey、final-parity 按脚本默认排除。正式打包 2 分 38 秒，真实发布运行时版本及 production 扩展 APK 安装（1 个源）通过。 |
+| macOS 正式构建与运行 | 相同产品源码 `7a66e7949f`，仅正常版本分配差异；官方 `build-desktop.sh build-only`，退出码 0、2 分 42 秒，复用有效 Desktop 全量。经 LaunchServices 启动正式 `.app`，实际版本及 production 扩展安装通过。正式 OS store 写/读 → 正常退出 → 同 profile 重启读/删通过，原生与 headless 证据分别记录。 |
+| Android 正式候选与安装 | 官方 `check --signing` → `candidate`（3 分 20 秒）→ `verify` → 独立 `install` 均通过。版本 `0.19.4-aex.20` / code 38，高于设备既有 code 37，沿用原正式身份/证书，R8 启用，无测试库覆盖。安装后身份核验通过，不清正式数据。正式包启动、关于页与升级后既有内容检查尚待解锁，不由安装成功推定。 |
+
+本轮正式产物已经核实存在：
+
+- Windows `0.11.19.72.7a66e79`：[实际 Final unpacked EXE](../../app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.72.7a66e79-unpacked/Mihon%20Desktop.exe)；[Windows ZIP](../../app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.72.7a66e79-windows.zip)，SHA-256 `e2f170c2f33304ac19cba3378245fb3443d5d9a08a04c1ae16efd17ca795f007`。
+- macOS `0.11.19.73.7a66e79`：[macOS ZIP](../../app-desktop/artifacts/macos/Mihon-Desktop-0.11.19.73.7a66e79-macos.zip)，SHA-256 `bf799e6ca5834343886ae77f54539140f0e6c3210f2dcc97edcc388271d132f7`。实际 `.app` 为 Mac 专用部署目录 `/private/tmp/mihon-password-final-7a66e79/deploy/Mihon Desktop.app`，未替换日常应用。正常生成的 BUILD 73 同步回本 worktree，STAGE/FEATURE 不变。
+- Android：[正式 code 38 APK](../../app/artifacts/android/0.19.4-aex.20-vc38-7a66e7949f-release/Mihon-Fork-0.19.4-aex.20-vc38-release-universal.apk)，SHA-256 `3db5ac7b6ee662ebf96408128fee616f8f2240d00c493e8c69458b967959c6f2`。候选目录保留正式签名/构建元数据；原证书未更换，测试源码未混入正式候选。
+
+| 真实业务 / 原生范围 | 已取得证据与边界 |
+| --- | --- |
+| GitHub 权限与隔离 | 手机 Firefox 的正常管理页保存并重新加载，原授权保留，两个初始测试库可访问。CLI 登录不冒充应用 OAuth；后续 Android/Windows/macOS 均通过正常 device 授权页面授权。未提取网页登录凭据、cookie 或令牌；身份确认由用户完成。日常 `mihon-sync` 未写入或替换。 |
+| 无密码创建及读回 | 初始 none 测试库真实创建，Android 显示同步完成、确认 14429 条、待确认队列空，冷启动仍显示“同步密码：未设置”。其中是经用户同意上传的既有 Debug 内容，不能称为合成书架。Windows/Mac 正式应用分别正常授权直接加入，无密码输入，当前书架列表 963 行；同 profile 正常退出并重启，无需再 OAuth，连接与 963 行读回保留、队列空。未把 `lastExchange=null` 编造为 SUCCESS。 |
+| 数据保护与 Debug 切换 | 正常“更多 → 数据与存储 → 创建备份”经 SAF 保存，外部副本 1656909 字节，手机/副本 SHA 一致、gzip 有效；正常恢复预览能启用恢复，未实际执行恢复。默认备份不含私人设置。副本存于 Git 外专用目录，核验后仅清 `.dev`，正式数据未清，备份文件未删除。 |
+| Android 创建页门禁 | 默认密码关闭；非空未确认不能提交，确认启用，编辑撤销确认；显隐切换并在内存核对一次显示值，关开和离开清空。原生键盘 Tab 到确认项、Space 勾选、Tab 到启用的提交按钮、Enter 创建成功，远端保护模式 password。直接向密码框发送硬件 Enter 未证明真实 IME Done；该项仅沿用共享 Compose IME 契约，不追加“真机 IME 通过”的结论。 |
+| Android 窄屏及主题 | 真实 640×1280、density 320、320dp 宽、fontScale 2.0 下，深/浅主题均能滚动到密码、风险、确认及提交，空密码禁用。原 wm override/density/字号/旋转/night 逐项恢复。系统配置变化引起 Activity 重建和面板关闭，此证据不证明跨 Activity 保存秘密；同 composition 重绘保持由已有 production Compose 契约覆盖。临时截图均删除。 |
+| Android 有密码业务 | 原测试空间实际创建并显示“同步密码：已设置”；设置帮助 → 返回设置通过。正常本地图源加入唯一合成漫画并打开 1/1 页，真实同步确认收藏/阅读 2 条、队列空。更换空间正常重发现后，错误密码被拒绝；带未提交输入进入帮助，再返回输入页，草稿清空且提交禁用。 |
+| 有密码材料阻塞 | 原保存的 32 位测试材料两次被拒绝；第二次在原生显示状态内存核对输入与材料精确相等后提交。远端 descriptor 未变。独立密码包裹诊断及已交付 crypto 类诊断都无法用该材料解开原空间；后者自身新建/解锁 roundtrip 通过，仅作为诊断，不代替真实应用验收。历史创建前存在安全 IME 遮挡下点击、硬件 Enter 等输入；这些是否改变最终密码尚未证实，不归因于产品，也不宣称正确加入通过。没有覆盖、删除或降级原测试空间。 |
+| 新的受控复验输入 | 新建私有空库 `mihon-sync-acceptance-20261001-password-7a66e794`，保留两个原测试库及其授权。对应官方 Debug（仅目标不同）构建/verify 退出码 0、51 秒；`.dev`、code 38，尚未安装、尚未加入 GitHub App 访问范围，尚未初始化。下一次创建须在最终提交前核对实际值与受保护材料一致，避免把先前揭示结果套用到之后的输入。 |
+| Desktop 原生与限制 | Mac 最新 none 实例真实鼠标入口、五控件正反 Tab 回环、Escape 还焦、Enter/Space 重开通过；密码实例 OAuth 后 UNLOCK、尚未输入。之后机器重新报告锁屏，在 AX 内容/输入前停止。Windows 密码页 UNLOCK，但实际 Win32 前台不是本次 PID；AWT 局部 focused=true 不能覆盖此事实，键盘保护停止。密码页原生焦点/内部滚动/输入仍待两端前置可用。 |
+| 故障与恢复层级 | 初始化响应丢失、竞争不覆盖及保护模式保持继续由已有共享 production MockWebServer/恢复契约覆盖，不称真实 GitHub 故障注入。本轮两种远端 descriptor 仍保持原保护模式；有密码正确加入、跨端日常交换与其重启恢复尚未完成，不能把 none 重启代用。Mac none 重启实例的 202 关停超过外部 45 秒期限，随后实际应用及包装器自行退出；超时证据保留，原因未定位。 |
+
+新的 Debug 为 [隔离密码复验 APK](../../app/artifacts/android/0.19.4-aex.20-vc38-7a66e7949f-debug-3317bd407492/Mihon-Fork-0.19.4-aex.20-vc38-debug-universal.apk)，SHA-256 `bf6f1eaebdc16a1d393483e75d21ada7e75236bd81622294a2c5e0d0877f4e46`。Debug 证书与正式证书不同，不能当成正式交付或正式升级证据。安装前先在旧目标的正常设置中断开测试连接，保留本地合成数据，再使用官方 install；不能用新目标触发的安全拒绝去清内部绑定。
+
+当前剩余步骤（不申请重复授权）：
+
+- [ ] 手机解锁后：旧 Debug 正常断开 → 新库加入 App 访问范围（保留已有集合）→ 安装已 verify 的新 Debug → 正常 OAuth → 受控创建有密码空间 → 原生正确解锁、设置/输入帮助、冷启动保留及双端读回。
+- [ ] Mac 解锁并将本次窗口置前台后：确认真实 AX 安全文本焦点与命中，再输入/提交；在新已初始化目标的独立 profile 验证错误/正确密码、帮助返回、键盘/滚动及同 profile 重启。不得盲输入原材料或把旧 AX 未执行分支称通过。
+- [ ] Windows 将本次正式测试窗口置前台后：重新核对实际 foreground PID，完成同一新空间的正确加入及密码页原生键盘/焦点；日常用户实例保留。
+- [ ] 有密码空间 Android → Desktop 读回合成收藏/阅读 → Desktop 正常产品动作 → Android 交换读回，待确认队列空，descriptor 及保护模式不变。
+- [ ] 手机正式 code 38 正常启动 → 关于页版本/书架既有内容与入口核对，不在正式配置中写测试目标。
+- [ ] 收尾只关本次精确实例、释放临时防休眠、核验最终证据；全部必要门槛满足后再与相关交付同批勾选 S2，不拆纯状态提交。
+
+用户已被请求保持手机/Mac 解锁及 Windows 测试窗口前台；截至本轮记录尚未收到新的就绪反馈。授权已经充分，剩余依赖是实际设备状态，不再次索取权限、密码或验证码。macOS 可复用经验已从项目既有独立文档同步到本 worktree 的 [macOS 验收经验](../automation/MACOS_ACCEPTANCE.md)，并在 AGENTS 链接及保留采用者维护约束。
+
+收尾只读核验：实际 JUnit XML 与上述测试/失败/跳过数一致；UTF-8、新文档本地链接、正常版本、S2 未勾选、四个最新归档的 SHA-256、Final unpacked EXE 存在及 `git diff --check` 均通过。设备最终检查仍为 Android/Mac 锁屏、Windows 其他程序前台。仅释放本次临时防休眠辅助进程，Mac/Windows 测试窗口保留供续验，无运行中的重型 Gradle；正式 Android 已安装 code 38，Debug 仍为旧目标 code 36，新 Debug 尚未安装。没有新增产品修复，不把材料或工具失败写成已修复的产品 bug。
