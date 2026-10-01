@@ -233,3 +233,27 @@ Mac 11/1 的原快速 Late Author50 失败仍保留。新确定性 mounted 契�
 Mac `authors-viewport-mac-refactor` 实际 **12 tests / 0 failures / 0 errors / 0 skipped**（95468/95469，29秒），与Windows `authors-viewport-refactor` 的12/0及四文件格式对应：root3、mounted3、限定Wiring6。实际三份XML及case清单保存在 `authors-viewport-mac-refactor-*.xml` / `authors-viewport-mac-refactor-results.json`。原快速Late19/50、空加载帧、详情返回、搜索/清除、新activation重入断言均保持；确定性保存49/1而inactive viewport0的正确红证明必须执行真实恢复，新增用户真实滚0后retry仍0证明不会随后台refresh回放旧目标。此前Mac11/1、27/2及基线2/2失败证据保留，不以单次偶然绿作为依据。
 
 主代理完成获批本轮限定独立审查的作者部分：导航activation身份、独立范围的LazyColumn与双list state、真实model位置权威、scope/query版本一致且ready后一次恢复、恢复前瞬时0写回抑制、用户后续滚动/分页/刷新、搜索重置和详情返回均已核对；原ProductionWiring大段格式仅imports/空白/标点整理，业务差异为两处第七参数matcher及中文fixture回归，未改production语言或查询。真实factory、SQLite mounted契约和两平台12项实际XML/格式/结构回执有效；没有剩余代码审查阻塞。迁移功能已提交 `07bb4e22eaff2b05272281e53c539b8cdbc29584`；作者功能随四源码/测试及本报告提交，随后才能使用已批准的一次Desktop full。HR02继续未勾选，正式构建/native与其他最终矩阵仍未执行。
+
+
+### 第三次 Desktop full 与作者 SQLite owner 关停修复
+
+迁移及作者恢复提交完成后，已批准的第三次 Desktop full 在`c6ed1458871a1bc7c22376ae6ad7d33de82829d5`运行。`history-reader-final-desktop-shutdown-recheck` 实际 **3274 tests / 1 failure / 0 errors / 3 skipped**，5分36秒，worker/process **49888 / 54548**，FAILED。完整原trace保留`.gradle-coordinator/history-reader-final-desktop-shutdown-recheck-failures.json`；此前两次full失败也保留。本次没有再次出现原迁移NoSuchFileException或作者LateAuthor50恢复失败，仍不能把完整套件记为通过。
+
+唯一失败为DesktopSourcesScreenModelTest开始前的UncaughtExceptionsBeforeTest；suppressed为真实SQLite `SQLException: stmt pointer is closed`，执行栈包含GetPresentationExclusionsQuery→JvmDatabaseHandler.awaitList/dispatch，附Cancelled StandaloneCoroutine/Dispatchers.Default。Desktop production直接调用该查询的是AuthorDetailScreenModel的archive collector；身份编辑器使用同一detail scope。root/detail各自SupervisorJob的onDispose只cancel，作者挂载夹具此前在scene.close后只处理最新root，随即关闭handler，没有等待详情、旧root或实际SQL退出。完整套件中哪个旧fixture首发该异常仍无法从trace唯一确定。
+
+**SOURCE/PROJECT_POLICY与正确红**：复用现有ScreenModel、factory及真实CreatorRepositoryImpl/JvmDatabaseHandler/SQLite；数据库owner关停前必须等自己创建的作者model查询退出，原Voyager同步onDispose及UI恢复规则保持。新增两个明确Unit返回的实际SQL契约，在生产卡片查询或presentation-exclusion查询已进入真实SQL cursor mapper时用受控闸门暂停；先dispose，再调用可编译且仅复用旧cancel行为的closeAndJoin。两项均因等待入口提前返回正确失败，红XML保存`authors-query-shutdown-red.xml`。闸门证明cancel-only不能保证真实SQL闭包退出，未把它说成full首发用例已定位。
+
+最小实现为root/detail新增closeAndJoin，先复用onDispose取消，再等待各自scope的Job及全部子协程结束；身份editor共用detail scope，已取消/重复关闭也能等待。原同步Voyager disposal没有阻塞，viewport恢复、查询策略、Jdbc和迁移代码均未改。test-only factory helper用callOriginal记录全部真实root/detail，包括退栈与重新激活前实例；scene.close后在NonCancellable上下文逐个等待，在finally解绑全局factory mock，再关闭fixture SQLite。相同作者文件的真实SQL直建/重建、身份shared contract及挂载fixture沿用此顺序，原用户事件/断言保持。原mounted场景还确认owner确实保留多个root及被Back移除的detail。
+
+| key | 实际结果 | worker / process |
+|---|---|---|
+| authors-query-shutdown-red | 两项生产SQL已进入mapper，dispose后关停提前返回，正确2/2；36秒 | 63428 / 57456 |
+| authors-query-shutdown-green | test helper两处callOriginal多余泛型导致编译失败，未执行测试；不计业务红/绿 | 58180 / 55616 |
+| authors-query-shutdown-green-confirm | root/detail关停2+原mounted3，共5/0/0/0 | 64144 / 3520 |
+| authors-query-shutdown-format | FileCollection实际4个Kotlin文件格式化通过 | 44956 / 44068 |
+| authors-query-shutdown-refactor | 四类限定26/0/0/0及4文件spotlessCheck；24秒 | 29564 / 65144 |
+| authors-query-shutdown-mac-refactor | 同稳定四源码与17 selectors，26/0/0/0；33秒，主代理执行 | 40269 / 40270 |
+
+受影响集合为AuthorsScreenModelsTest **5**、AuthorCardProductionWiringTest **3**、AuthorsProductionWiringTest的14 selectors匹配 **15** 项、DesktopSourcesScreenModelTest **3**；共26，Wiring没有执行完整类，其他模块没有执行完整测试。两份精确case清单及Mac四份XML保留在忽略过程目录；新的关停契约名称为`root close waits for its actual SQLite card query after disposal`及`detail close waits for actual presentation exclusion SQLite query after disposal`。实际四文件格式沿用已披露Desktop行长例外；这四个路径没有现有manifest锚点，manifest未改。
+
+用户在本修复稳定后明确批准追加限定独立复审1轮及Desktop full1次，预计20–35分钟，无新代理；范围为本作者SQL owner关停及相关fixture，不扩其他能力。主代理已完成这次限定独立复审：owned SupervisorJob、同步取消与重复关闭、SQL正确红、真实factory全部实例捕获、NonCancellable等待/解绑/DB关闭顺序、身份shared contract仅bind一次、两平台实际26项及四文件格式均核对，通过且无需修复。原full首发fixture仍未确定。四Kotlin与必要文档随本修复功能提交，Windows/Mac无运行Gradle；提交及已批准Desktop full由主代理接管，本节记录时该full尚未执行。HR02未勾选，剩余最终矩阵及正式构建/native验收仍待执行，不把focused或本次复审替代它们。

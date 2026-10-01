@@ -353,6 +353,12 @@ class AuthorsRootScreenModel(
     }
 
     override fun onDispose() = scope.cancel()
+
+    // Database owners await children after Voyager's synchronous disposal has cancelled them.
+    suspend fun closeAndJoin() {
+        onDispose()
+        checkNotNull(scope.coroutineContext[Job]).join()
+    }
 }
 
 private data class CreatorListRefreshSnapshot(
@@ -742,6 +748,12 @@ internal class AuthorDetailScreenModel(
     fun clearError() = mutableState.update { it.copy(error = null) }
 
     override fun onDispose() = scope.cancel()
+
+    // Database owners await children after Voyager's synchronous disposal has cancelled them.
+    suspend fun closeAndJoin() {
+        onDispose()
+        checkNotNull(scope.coroutineContext[Job]).join()
+    }
 
     private suspend fun load() {
         val requestedId = activeCreatorId

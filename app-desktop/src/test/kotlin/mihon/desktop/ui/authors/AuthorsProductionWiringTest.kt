@@ -220,7 +220,7 @@ class AuthorsProductionWiringTest {
             model.markWorkSeenAfterNavigation(opened.creatorId, opened.sourceWork)
             assertTrue(repository.getUnreadWorkDiscoveries(10L).isEmpty())
         } finally {
-            model.onDispose()
+            model.closeAndJoin()
             driver.close()
         }
     }
@@ -274,16 +274,16 @@ class AuthorsProductionWiringTest {
             add(10L, "/new-traditional", "《詭譎屋》")
             withTimeout(5_000) { checkNotNull(detail).state.first { it.presentationGroups.singleOrNull()?.sourceCount == 3 } }
             assertEquals("詭譎屋", checkNotNull(detail).state.value.presentationGroups.single().title)
-            detail?.onDispose()
+            detail?.closeAndJoin()
             detail = model(tachiyomi.domain.creator.service.WorkTitleNormalizer.DisplayScript.TRADITIONAL)
             withTimeout(5_000) { checkNotNull(detail).state.first { it.presentationGroups.singleOrNull()?.sourceCount == 3 } }
             assertEquals("詭譎屋", checkNotNull(detail).state.value.presentationGroups.single().title)
-            detail?.onDispose()
+            detail?.closeAndJoin()
             detail = model(tachiyomi.domain.creator.service.WorkTitleNormalizer.DisplayScript.SIMPLIFIED)
             withTimeout(5_000) { checkNotNull(detail).state.first { it.presentationGroups.singleOrNull()?.sourceCount == 3 } }
             assertEquals("诡谲屋", checkNotNull(detail).state.value.presentationGroups.single().title)
         } finally {
-            detail?.onDispose()
+            detail?.closeAndJoin()
             handler.close()
             driver.close()
             preferenceNode.removeNode()
@@ -337,6 +337,7 @@ class AuthorsProductionWiringTest {
             every { saveSourceMangaForDetails } returns mockk()
             every { libraryPreferences } returns LibraryPreferences(DesktopPreferenceStore(preferenceNode))
         }
+        val modelOwner = AuthorsModelsFixtureOwner()
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         fun tagged(tag: String) = nodes(scene, unmerged = true).first { node ->
             node.config.getOrElse(SemanticsProperties.TestTag) { "" } == tag
@@ -391,10 +392,14 @@ class AuthorsProductionWiringTest {
             )
             assertTrue(tagged(newCard).config.getOrElse(SemanticsProperties.Focused) { false })
         } finally {
-            scene.close()
-            handler.close()
-            driver.close()
-            preferenceNode.removeNode()
+            try {
+                scene.close()
+            } finally {
+                modelOwner.closeAndJoin()
+                handler.close()
+                driver.close()
+                preferenceNode.removeNode()
+            }
         }
     }
 
@@ -433,6 +438,7 @@ class AuthorsProductionWiringTest {
             every { saveSourceMangaForDetails } returns mockk(relaxed = true)
             every { libraryPreferences } returns preferences
         }
+        val modelOwner = AuthorsModelsFixtureOwner()
         val scene = ImageComposeScene(320, 900, coroutineContext = coroutineContext) {}
         try {
             scene.setContent {
@@ -458,9 +464,13 @@ class AuthorsProductionWiringTest {
                 "The mounted author detail should expose its display mode control",
             )
         } finally {
-            scene.close()
-            handler.close()
-            preferenceNode.removeNode()
+            try {
+                scene.close()
+            } finally {
+                modelOwner.closeAndJoin()
+                handler.close()
+                preferenceNode.removeNode()
+            }
         }
     }
 
@@ -535,6 +545,7 @@ class AuthorsProductionWiringTest {
             every { libraryPreferences } returns preferences
         }
 
+        val modelOwner = AuthorsModelsFixtureOwner()
         fun mount() = ImageComposeScene(320, 960, coroutineContext = coroutineContext) {}.also { scene ->
             scene.setContent {
                 androidx.compose.material3.MaterialTheme {
@@ -642,9 +653,13 @@ class AuthorsProductionWiringTest {
                 "Comfortable grid must place the title below its cover after the shelf mode changes and remounts",
             )
         } finally {
-            scene.close()
-            handler.close()
-            preferenceNode.removeNode()
+            try {
+                scene.close()
+            } finally {
+                modelOwner.closeAndJoin()
+                handler.close()
+                preferenceNode.removeNode()
+            }
         }
     }
 
@@ -759,6 +774,7 @@ class AuthorsProductionWiringTest {
         fun sourceLabel(id: Int) = "Source $id long edition · ${MR.strings.desktop_ui_source_missing.localized()}"
         fun cardSourceName(id: Int) = "Source $id long edition (${MR.strings.desktop_ui_source_missing.localized()})"
         val allSourceNames = (1..3).joinToString(" · ") { cardSourceName(it) }
+        val modelOwner = AuthorsModelsFixtureOwner()
         try {
             for (dark in listOf(false, true)) {
                 val scene = ImageComposeScene(320, if (grouped) 1100 else 2200, coroutineContext = coroutineContext) {}
@@ -917,6 +933,7 @@ class AuthorsProductionWiringTest {
                 }
             }
         } finally {
+            modelOwner.closeAndJoin()
             handler.close()
             coverServer.close()
             preferenceNode.removeNode()
@@ -952,7 +969,7 @@ class AuthorsProductionWiringTest {
                 AuthorsScreenModelFactory.detail(id, false, dependencies).also { model = it }.identityEditor
             }
         } finally {
-            model?.onDispose()
+            model?.closeAndJoin()
             handler.close()
         }
     }
@@ -997,6 +1014,7 @@ class AuthorsProductionWiringTest {
             every { saveSourceMangaForDetails } returns mockk()
             every { libraryPreferences } returns null
         }
+        val modelOwner = AuthorsModelsFixtureOwner()
         val scene = ImageComposeScene(600, 800, coroutineContext = coroutineContext) {}
         try {
             scene.setContent {
@@ -1086,8 +1104,12 @@ class AuthorsProductionWiringTest {
                 }
             }
         } finally {
-            scene.close()
-            handler.close()
+            try {
+                scene.close()
+            } finally {
+                modelOwner.closeAndJoin()
+                handler.close()
+            }
         }
     }
 
@@ -1487,7 +1509,7 @@ class AuthorsProductionWiringTest {
                     archiveRepository.getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any())
                 }
             } finally {
-                model.onDispose()
+                model.closeAndJoin()
             }
         } finally {
             node.removeNode()

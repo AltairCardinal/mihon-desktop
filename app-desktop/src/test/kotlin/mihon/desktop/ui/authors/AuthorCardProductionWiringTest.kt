@@ -29,9 +29,11 @@ import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
@@ -73,6 +75,7 @@ import tachiyomi.i18n.MR
 import java.io.File
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
 
 @OptIn(ExperimentalComposeUiApi::class)
 class AuthorCardProductionWiringTest {
@@ -203,18 +206,12 @@ class AuthorCardProductionWiringTest {
             every { appPreferences } returns desktopPreferences
             every { customCoverStore } returns desktopCoverStore
         }
-        var model: AuthorsRootScreenModel? = null
+        val modelOwner = AuthorsModelsFixtureOwner()
         val observeModel = gateRestoredScope || seedSavedScope
-        if (observeModel) {
-            mockkObject(AuthorsScreenModelFactory)
-            every { AuthorsScreenModelFactory.root(dependencies) } answers {
-                callOriginal().also { model = it }
-            }
-        }
         suspend fun awaitScope(followedOnly: Boolean) {
             if (observeModel) {
                 withTimeout(5_000) {
-                    checkNotNull(model).state.first { it.followedOnly == followedOnly && !it.loading }
+                    checkNotNull(modelOwner.latestRoot).state.first { it.followedOnly == followedOnly && !it.loading }
                 }
             }
         }
@@ -283,10 +280,10 @@ class AuthorCardProductionWiringTest {
 
             if (seedSavedScope) {
                 // The persisted viewport can outlive the inactive Compose list's measured position.
-                checkNotNull(model).saveScrollPosition(false, index = 49, offset = 1, lastVisibleIndex = 51)
+                checkNotNull(modelOwner.latestRoot).saveScrollPosition(false, index = 49, offset = 1, lastVisibleIndex = 51)
                 clickableTagNode(scene, "creator-tab-all").config[SemanticsActions.OnClick].action?.invoke()
                 awaitScope(followedOnly = false)
-                assertEquals(52, checkNotNull(model).state.value.cards.size)
+                assertEquals(52, checkNotNull(modelOwner.latestRoot).state.value.cards.size)
                 val restored = runCatching {
                     withTimeout(5_000) {
                         while (lateCreator.displayName !in texts(scene)) {
@@ -296,18 +293,18 @@ class AuthorCardProductionWiringTest {
                     }
                 }.isSuccess
                 assertTrue(restored, "The mounted scope must apply its saved nonzero viewport, not its initial zero")
-                assertTrue(checkNotNull(model).scrollPosition(false).index > 0)
+                assertTrue(checkNotNull(modelOwner.latestRoot).scrollPosition(false).index > 0)
                 val restoredList = nodes(scene).single { node ->
                     node.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-author-list"
                 }
                 checkNotNull(restoredList.config[SemanticsActions.ScrollToIndex].action).invoke(0)
                 withTimeout(5_000) {
-                    while (checkNotNull(model).scrollPosition(false).index != 0) {
+                    while (checkNotNull(modelOwner.latestRoot).scrollPosition(false).index != 0) {
                         scene.render()
                         delay(10)
                     }
                 }
-                checkNotNull(model).retry()
+                checkNotNull(modelOwner.latestRoot).retry()
                 awaitScope(followedOnly = false)
                 withTimeout(5_000) {
                     while (otherCreator.displayName !in texts(scene)) {
@@ -315,7 +312,7 @@ class AuthorCardProductionWiringTest {
                         delay(10)
                     }
                 }
-                assertEquals(0, checkNotNull(model).scrollPosition(false).index, "Refresh must preserve subsequent user scrolling")
+                assertEquals(0, checkNotNull(modelOwner.latestRoot).scrollPosition(false).index, "Refresh must preserve subsequent user scrolling")
                 assertTrue(lateCreator.displayName !in texts(scene), "Refresh must not replay the scope's previous restore target")
                 return@coroutineScope
             }
@@ -397,7 +394,7 @@ class AuthorCardProductionWiringTest {
             )
             assertTrue(lateCreator.displayName in texts(scene), "Returning from detail should restore the selected author row")
 
-            val savedAllPosition = model?.scrollPosition(followedOnly = false)
+            val savedAllPosition = modelOwner.latestRoot?.scrollPosition(followedOnly = false)
             clickableTagNode(scene, "creator-tab-following")
                 .config[SemanticsActions.OnClick].action?.invoke()
             awaitScope(followedOnly = true)
@@ -434,14 +431,14 @@ class AuthorCardProductionWiringTest {
             if (gateRestoredScope) {
                 assertEquals(
                     savedAllPosition,
-                    checkNotNull(model).scrollPosition(followedOnly = false),
+                    checkNotNull(modelOwner.latestRoot).scrollPosition(followedOnly = false),
                     "Mounting Following must preserve the inactive All viewport",
                 )
             }
             if (gateRestoredScope) pageGate = CompletableDeferred()
             clickableTagNode(scene, "creator-tab-all").config[SemanticsActions.OnClick].action?.invoke()
             if (gateRestoredScope) {
-                withTimeout(5_000) { checkNotNull(model).state.first { !it.followedOnly && it.loading } }
+                withTimeout(5_000) { checkNotNull(modelOwner.latestRoot).state.first { !it.followedOnly && it.loading } }
                 withTimeout(5_000) {
                     while (nodes(scene).any {
                             it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-author-list"
@@ -579,15 +576,17 @@ class AuthorCardProductionWiringTest {
                     delay(10)
                 }
             }
+            assertTrue(modelOwner.rootCount >= 2, "The fixture must retain both the disposed root and its reentry replacement")
+            assertTrue(modelOwner.detailCount >= 1, "The fixture must retain the real detail model removed by Back")
         } finally {
-            scene.close()
-            if (observeModel) {
-                unmockkObject(AuthorsScreenModelFactory)
-                model?.onDispose()
+            try {
+                scene.close()
+            } finally {
+                modelOwner.closeAndJoin()
+                indexer.stop()
+                handler.close()
+                preferenceNode.removeNode()
             }
-            indexer.stop()
-            handler.close()
-            preferenceNode.removeNode()
         }
     }
 
@@ -653,5 +652,33 @@ private object AwayAuthorTab : Tab {
     @Composable
     override fun Content() {
         Text("Away author tab")
+    }
+}
+
+// Observe actual factory results, including models removed by navigation or tab reentry.
+internal class AuthorsModelsFixtureOwner {
+    private val roots = CopyOnWriteArrayList<AuthorsRootScreenModel>()
+    private val details = CopyOnWriteArrayList<AuthorDetailScreenModel>()
+    val latestRoot: AuthorsRootScreenModel? get() = roots.lastOrNull()
+    val rootCount: Int get() = roots.size
+    val detailCount: Int get() = details.size
+
+    init {
+        mockkObject(AuthorsScreenModelFactory)
+        every { AuthorsScreenModelFactory.root(any()) } answers {
+            callOriginal().also(roots::add)
+        }
+        every { AuthorsScreenModelFactory.detail(any(), any(), any()) } answers {
+            callOriginal().also(details::add)
+        }
+    }
+
+    suspend fun closeAndJoin() = withContext(NonCancellable) {
+        try {
+            roots.forEach { it.closeAndJoin() }
+            details.forEach { it.closeAndJoin() }
+        } finally {
+            unmockkObject(AuthorsScreenModelFactory)
+        }
     }
 }
