@@ -208,3 +208,28 @@ Windows/Mac 上述进程均已结束。未运行剩余 Android/domain/data/test-
 主代理已独立核对迁移最终production diff及其实际DI消费者：UI依赖与DesktopAppRuntime接收同一controller单例；runtime.awaitClosed调用其awaitStopped，即使runtime未启动也会等待controller自己的任务；不join外部scope。LAZY先登记、stop后的launch抑制、暂停与取消时保留任务句柄、完成时按对象身份移除同ID槽位已核对。实际原子文件门控与暂停/替换门控的正确红、Windows限定79/0及Mac相同controller六项6/0 XML均有效；manifest只改既有class硬line76→78，递归删除line后状态完全一致。迁移部分没有剩余独立审查阻塞，随controller/test/manifest及必要文档功能提交，不勾选HR02，不提前full。
 
 随后Mac `authors-locale-mac-refactor` 精确11项实际 **11 tests / 1 failure / 0 errors**（85919/85920，28秒）：root3/0、Wiring6/0，mounted2/1。第七参数修正已使两原Mac失败/重试fixture及中文复用全部通过；原快速mounted场景却再次在切回All的LateAuthor50断言失败，新gated空加载帧场景通过。三份真实XML保存 `authors-locale-mac-refactor-AuthorCardProductionWiringTest.xml`、`authors-locale-mac-refactor-AuthorsScreenModelsTest.xml`、`authors-locale-mac-refactor-AuthorsProductionWiringTest.xml`。说明此前单次mounted绿不足以关闭原快速恢复问题，scope key并非充分修复；不以放宽断言、增大sleep/超时或重复full换取通过。作者源码保持未提交，同一实施者继续原已授权范围内修复；本轮作者独立审查尚未签收。新增Desktop full额度未使用，原剩余完整矩阵及正式产物/native运行仍未执行。
+
+
+### 作者显式 viewport 恢复：Windows 正确红绿，待 Mac 验证
+
+Mac 11/1 的原快速 Late Author50 失败仍保留。新确定性 mounted 契约复用同一真实 SQLite/factory/root：Following 已挂载、inactive All LazyListState 初始位置为0时，通过生产 model 保存 All49/1/51，真实切 All 并确认实际52张卡片已经加载，然后要求实际 Late Author50 行可见。`authors-saved-viewport-red` 实际1/1，失败在“保存的非零 viewport 必须应用，不能停在初始0”断言；不是分页缺失或未就绪前置失败。红日志保留，后续focused会覆盖模块当前XML。它证明已有模型目标与Compose位置分离时缺少有效恢复；结合Mac实际52卡/位置49→0序列支持本次修复，仍不能断定特定LazyColumn内部缓存是全部失败的唯一原因。
+
+`SOURCE` 仍为现有每范围模型位置、双LazyListState、分页和Voyager身份；`PROJECT_POLICY` 仍为实际Late19/50、详情返回、搜索重置、重新激活和随后的用户滚动。此前“没有滚动补偿”只是上个未闭合候选的实现事实，不是固定验收。最小修复在当前scope/query revision的加载完成后，仅一次把捕获的模型index/offset应用到当前列表；目录变短时限定到实际最后项。恢复前、加载中及非活动范围不保存临时layout位置，手动存位与活动观察器均再次核对当前model的scope/query revision，防止旧composition覆盖搜索清零。effect不以cards/loading/后台refresh为key，后续分页或重试不能重放旧目标；原两份列表、scope实例key及activation导航身份保持。
+
+原快速和gated用例的Late19/50、详情返回、搜索/清除、分页、重入强断言保持；没有扩大等待上限或增加sleep。新确定性用例随后执行真实ScrollToIndex(0)，调用原model.retry并断言实际顶部和保存位置仍为0、不回放49的恢复目标。两处第七matcher/中文Locale真实重试用例保持，production locale/query及迁移关停已提交代码未改。
+
+| key | 实际结果 | worker / process |
+|---|---|---|
+| authors-saved-viewport-red | 新实际mounted目录52但viewport0，正确1/1；23秒 | 57572 / 50720 |
+| authors-viewport-green | 原快速、gated空帧、新确定性恢复3/0 | 16076 / 55352 |
+| authors-viewport-format | FileCollection实际4个作者源码/测试文件格式通过 | 63472 / 59404 |
+| authors-viewport-refactor | Root3、mounted3、限定Wiring6共12/0/0/0，4文件spotlessCheck；43秒 | 58608 / 46740 |
+
+实际testcase清单保留`authors-viewport-refactor-results.json`。相对Mac已应用f2bfd作者四文件补丁的两文件delta为`authors-viewport-delta.patch`，UTF-8/LF、CR字节0、10149B、SHA256 `4b4e645ba1883e9c67fbffe93dc2ece2849af0df2e7464c282119912a77029a4`，当前源码反向check通过；完整四文件补丁另保留，均为忽略的过程产物，不是正式交付。当前作者四文件内容差异及较大既有格式仍属于同一作者恢复/相关fixture功能批次，未增加独立UI能力或改变manifest状态。迁移已提交`07bb4e22eaff`并保持不变。Windows无运行Gradle；作者仍未提交、Mac相同12项及本轮限定独立审查待主代理完成，本段不宣称跨平台bug关闭或full通过。
+
+
+### 作者最终限定独立审查与两平台恢复验证通过
+
+Mac `authors-viewport-mac-refactor` 实际 **12 tests / 0 failures / 0 errors / 0 skipped**（95468/95469，29秒），与Windows `authors-viewport-refactor` 的12/0及四文件格式对应：root3、mounted3、限定Wiring6。实际三份XML及case清单保存在 `authors-viewport-mac-refactor-*.xml` / `authors-viewport-mac-refactor-results.json`。原快速Late19/50、空加载帧、详情返回、搜索/清除、新activation重入断言均保持；确定性保存49/1而inactive viewport0的正确红证明必须执行真实恢复，新增用户真实滚0后retry仍0证明不会随后台refresh回放旧目标。此前Mac11/1、27/2及基线2/2失败证据保留，不以单次偶然绿作为依据。
+
+主代理完成获批本轮限定独立审查的作者部分：导航activation身份、独立范围的LazyColumn与双list state、真实model位置权威、scope/query版本一致且ready后一次恢复、恢复前瞬时0写回抑制、用户后续滚动/分页/刷新、搜索重置和详情返回均已核对；原ProductionWiring大段格式仅imports/空白/标点整理，业务差异为两处第七参数matcher及中文fixture回归，未改production语言或查询。真实factory、SQLite mounted契约和两平台12项实际XML/格式/结构回执有效；没有剩余代码审查阻塞。迁移功能已提交 `07bb4e22eaff2b05272281e53c539b8cdbc29584`；作者功能随四源码/测试及本报告提交，随后才能使用已批准的一次Desktop full。HR02继续未勾选，正式构建/native与其他最终矩阵仍未执行。

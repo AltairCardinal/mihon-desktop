@@ -26,10 +26,11 @@ import cafe.adriel.voyager.navigator.tab.TabNavigator
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import io.mockk.every
 import io.mockk.mockk
-import java.io.File
-import java.util.Locale
-import java.util.UUID
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
@@ -37,6 +38,7 @@ import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.settings.DesktopAppPreferences
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -56,15 +58,21 @@ import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
+import tachiyomi.domain.creator.model.CreatorCardProjectionPage
 import tachiyomi.domain.creator.model.CreatorRelationOrigin
 import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorLibraryMangaSource
 import tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter
 import tachiyomi.domain.creator.service.CreatorLibraryIndexer
+import tachiyomi.domain.creator.service.WorkTitleNormalizer
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
+import java.io.File
+import java.util.Locale
+import java.util.UUID
 
 @OptIn(ExperimentalComposeUiApi::class)
 class AuthorCardProductionWiringTest {
@@ -74,6 +82,20 @@ class AuthorCardProductionWiringTest {
 
     @Test
     fun `mounted authors root defaults to followed and shows real repository representative work`(): Unit = runBlocking {
+        mountedAuthorsScenario(gateRestoredScope = false)
+    }
+
+    @Test
+    fun `scope restoration survives an empty loading frame before remount`(): Unit = runBlocking {
+        mountedAuthorsScenario(gateRestoredScope = true)
+    }
+
+    @Test
+    fun `mounted root applies saved scope viewport when its list state starts at zero`(): Unit = runBlocking {
+        mountedAuthorsScenario(gateRestoredScope = false, seedSavedScope = true)
+    }
+
+    private suspend fun mountedAuthorsScenario(gateRestoredScope: Boolean, seedSavedScope: Boolean = false) = kotlinx.coroutines.coroutineScope {
         val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
             app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
         )
@@ -89,6 +111,29 @@ class AuthorCardProductionWiringTest {
         val handler = JvmDatabaseHandler(database, driver)
         val repository = CreatorRepositoryImpl(handler)
 
+        var pageGate: CompletableDeferred<Unit>? = null
+        val archiveRepository = object : CreatorArchiveRepository by repository {
+            override suspend fun getCreatorCardProjectionPage(
+                offset: Int,
+                limit: Int,
+                followedOnly: Boolean,
+                preferredLanguages: Set<String>,
+                customCoverExists: (Long) -> Boolean,
+                query: String,
+                preferredDisplayScript: WorkTitleNormalizer.DisplayScript?,
+            ): CreatorCardProjectionPage {
+                pageGate?.await()
+                return repository.getCreatorCardProjectionPage(
+                    offset,
+                    limit,
+                    followedOnly,
+                    preferredLanguages,
+                    customCoverExists,
+                    query,
+                    preferredDisplayScript,
+                )
+            }
+        }
         val followedCreator = repository.upsertCreator(
             "A Very Long Followed Author Name That Must Wrap Before Its Representative Covers",
         )
@@ -148,7 +193,7 @@ class AuthorCardProductionWiringTest {
             every { getCreatorDetails } returns GetCreatorDetails(repository)
             every { setCreatorFollow } returns SetCreatorFollow(repository)
             every { creatorArchiveRepository } returns repository
-            every { creatorArchive } returns CreatorArchive(repository, repository)
+            every { creatorArchive } returns CreatorArchive(repository, archiveRepository)
             every { manageCreatorIdentity } returns ManageCreatorIdentity(repository)
             every { creatorLibraryIndexer } returns indexer
             every { creatorDiscoveryPreferences } returns null
@@ -157,6 +202,21 @@ class AuthorCardProductionWiringTest {
             every { libraryPreferences } returns null
             every { appPreferences } returns desktopPreferences
             every { customCoverStore } returns desktopCoverStore
+        }
+        var model: AuthorsRootScreenModel? = null
+        val observeModel = gateRestoredScope || seedSavedScope
+        if (observeModel) {
+            mockkObject(AuthorsScreenModelFactory)
+            every { AuthorsScreenModelFactory.root(dependencies) } answers {
+                callOriginal().also { model = it }
+            }
+        }
+        suspend fun awaitScope(followedOnly: Boolean) {
+            if (observeModel) {
+                withTimeout(5_000) {
+                    checkNotNull(model).state.first { it.followedOnly == followedOnly && !it.loading }
+                }
+            }
         }
         val scene = ImageComposeScene(320, 560, coroutineContext = coroutineContext) {}
         try {
@@ -221,7 +281,46 @@ class AuthorCardProductionWiringTest {
                 }
             }
 
+            if (seedSavedScope) {
+                // The persisted viewport can outlive the inactive Compose list's measured position.
+                checkNotNull(model).saveScrollPosition(false, index = 49, offset = 1, lastVisibleIndex = 51)
+                clickableTagNode(scene, "creator-tab-all").config[SemanticsActions.OnClick].action?.invoke()
+                awaitScope(followedOnly = false)
+                assertEquals(52, checkNotNull(model).state.value.cards.size)
+                val restored = runCatching {
+                    withTimeout(5_000) {
+                        while (lateCreator.displayName !in texts(scene)) {
+                            scene.render()
+                            delay(10)
+                        }
+                    }
+                }.isSuccess
+                assertTrue(restored, "The mounted scope must apply its saved nonzero viewport, not its initial zero")
+                assertTrue(checkNotNull(model).scrollPosition(false).index > 0)
+                val restoredList = nodes(scene).single { node ->
+                    node.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-author-list"
+                }
+                checkNotNull(restoredList.config[SemanticsActions.ScrollToIndex].action).invoke(0)
+                withTimeout(5_000) {
+                    while (checkNotNull(model).scrollPosition(false).index != 0) {
+                        scene.render()
+                        delay(10)
+                    }
+                }
+                checkNotNull(model).retry()
+                awaitScope(followedOnly = false)
+                withTimeout(5_000) {
+                    while (otherCreator.displayName !in texts(scene)) {
+                        scene.render()
+                        delay(10)
+                    }
+                }
+                assertEquals(0, checkNotNull(model).scrollPosition(false).index, "Refresh must preserve subsequent user scrolling")
+                assertTrue(lateCreator.displayName !in texts(scene), "Refresh must not replay the scope's previous restore target")
+                return@coroutineScope
+            }
             clickableTagNode(scene, "creator-tab-all").config[SemanticsActions.OnClick].action?.invoke()
+            awaitScope(followedOnly = false)
             withTimeout(5_000) {
                 while (otherCreator.displayName !in texts(scene)) {
                     scene.render()
@@ -298,8 +397,10 @@ class AuthorCardProductionWiringTest {
             )
             assertTrue(lateCreator.displayName in texts(scene), "Returning from detail should restore the selected author row")
 
+            val savedAllPosition = model?.scrollPosition(followedOnly = false)
             clickableTagNode(scene, "creator-tab-following")
                 .config[SemanticsActions.OnClick].action?.invoke()
+            awaitScope(followedOnly = true)
             val followingScopeRestored = runCatching {
                 withTimeout(5_000) {
                     while (!clickableTagNode(scene, "creator-tab-following")
@@ -330,7 +431,30 @@ class AuthorCardProductionWiringTest {
                     "selected=$followingScopeRestored, scrollRange=$returnedListRange, " +
                     "visibleTexts=${texts(scene).joinToString(" | ")}",
             )
+            if (gateRestoredScope) {
+                assertEquals(
+                    savedAllPosition,
+                    checkNotNull(model).scrollPosition(followedOnly = false),
+                    "Mounting Following must preserve the inactive All viewport",
+                )
+            }
+            if (gateRestoredScope) pageGate = CompletableDeferred()
             clickableTagNode(scene, "creator-tab-all").config[SemanticsActions.OnClick].action?.invoke()
+            if (gateRestoredScope) {
+                withTimeout(5_000) { checkNotNull(model).state.first { !it.followedOnly && it.loading } }
+                withTimeout(5_000) {
+                    while (nodes(scene).any {
+                            it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-author-list"
+                        }
+                    ) {
+                        scene.render()
+                        delay(10)
+                    }
+                }
+                checkNotNull(pageGate).complete(Unit)
+                pageGate = null
+            }
+            awaitScope(followedOnly = false)
             val allScopeRestored = runCatching {
                 withTimeout(5_000) {
                     while (!clickableTagNode(scene, "creator-tab-all")
@@ -457,6 +581,10 @@ class AuthorCardProductionWiringTest {
             }
         } finally {
             scene.close()
+            if (observeModel) {
+                unmockkObject(AuthorsScreenModelFactory)
+                model?.onDispose()
+            }
             indexer.stop()
             handler.close()
             preferenceNode.removeNode()
@@ -515,8 +643,8 @@ private object AwayAuthorTab : Tab {
             val icon = rememberVectorPainter(Icons.Default.Person)
             return remember {
                 TabOptions(
-                index = 99u,
-                title = "Away author tab",
+                    index = 99u,
+                    title = "Away author tab",
                     icon = icon,
                 )
             }

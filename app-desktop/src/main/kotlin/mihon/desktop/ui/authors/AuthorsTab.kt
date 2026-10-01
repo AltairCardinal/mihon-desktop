@@ -1,9 +1,7 @@
 package mihon.desktop.ui.authors
 
-import tachiyomi.i18n.MR
-import mihon.desktop.LocalDesktopUiDependencies
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,27 +13,27 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.outlined.CollectionsBookmark
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -47,8 +45,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -66,56 +64,57 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.core.model.rememberScreenModel
+import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
+import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.tachiyomi.source.model.SManga
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.CreatorDiscoveryRunScope
+import mihon.desktop.image.desktopSourceImageModel
 import mihon.desktop.ui.library.MangaDetailScreen
 import mihon.domain.task.TaskStatus
-import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
+import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.DiscoveryCandidate
-import tachiyomi.domain.creator.model.MangaCreator
 import tachiyomi.domain.creator.model.LanguageDimension
+import tachiyomi.domain.creator.model.MangaCreator
 import tachiyomi.domain.creator.model.SourceDateQualityStatus
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WorkPresentationGroup
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
-import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.library.model.LibraryDisplayMode
-import mihon.desktop.image.desktopSourceImageModel
+import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.i18n.MR
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
-
-
-
 
 object AuthorsTab : Tab {
 
@@ -155,6 +154,9 @@ object AuthorsTab : Tab {
 
 class AuthorsRootScreen(private val tabActivationToken: String = "initial") : Screen {
 
+    // Reentry owns a fresh Voyager model; returning from detail keeps the same activation.
+    override val key: String = "AuthorsRootScreen:$tabActivationToken"
+
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
@@ -169,13 +171,13 @@ class AuthorsRootScreen(private val tabActivationToken: String = "initial") : Sc
 
         val followedPosition = model.scrollPosition(followedOnly = true)
         val allAuthorsPosition = model.scrollPosition(followedOnly = false)
-        val followedListState = androidx.compose.runtime.key(state.queryResetRevision) {
+        val followedListState = androidx.compose.runtime.key(tabActivationToken, state.queryResetRevision) {
             androidx.compose.foundation.lazy.rememberLazyListState(
                 initialFirstVisibleItemIndex = followedPosition.index,
                 initialFirstVisibleItemScrollOffset = followedPosition.offset,
             )
         }
-        val allAuthorsListState = androidx.compose.runtime.key(state.queryResetRevision) {
+        val allAuthorsListState = androidx.compose.runtime.key(tabActivationToken, state.queryResetRevision) {
             androidx.compose.foundation.lazy.rememberLazyListState(
                 initialFirstVisibleItemIndex = allAuthorsPosition.index,
                 initialFirstVisibleItemScrollOffset = allAuthorsPosition.offset,
@@ -183,53 +185,64 @@ class AuthorsRootScreen(private val tabActivationToken: String = "initial") : Sc
         }
         val listState = if (state.followedOnly) followedListState else allAuthorsListState
 
+        val activeScope = state.followedOnly
+        val queryRevision = state.queryResetRevision
+        val latestState by rememberUpdatedState(state)
+        val restoreTarget = remember(listState, activeScope, queryRevision) {
+            model.scrollPosition(activeScope)
+        }
+        var viewportReady by remember(listState, activeScope, queryRevision) { mutableStateOf(false) }
+
+        // Pagination restores the saved range before the viewport is applied. A transient
+        // first layout must not replace that target with the top of the list.
+        LaunchedEffect(listState, activeScope, queryRevision) {
+            val readyState = androidx.compose.runtime.snapshotFlow { latestState }.first {
+                it.followedOnly == activeScope && it.queryResetRevision == queryRevision && !it.loading && it.cards.isNotEmpty()
+            }
+            listState.scrollToItem(
+                index = restoreTarget.index.coerceAtMost(readyState.cards.lastIndex),
+                scrollOffset = restoreTarget.offset,
+            )
+            viewportReady = true
+        }
+
         fun saveActiveScrollPosition() {
+            val currentState = model.state.value
+            if (!viewportReady || currentState.loading || currentState.followedOnly != activeScope ||
+                currentState.queryResetRevision != queryRevision
+            ) {
+                return
+            }
             val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return
             model.saveScrollPosition(
-                followedOnly = state.followedOnly,
+                followedOnly = activeScope,
                 index = listState.firstVisibleItemIndex,
                 offset = listState.firstVisibleItemScrollOffset,
                 lastVisibleIndex = lastVisibleIndex,
             )
         }
 
-        LaunchedEffect(followedListState) {
+        LaunchedEffect(listState, activeScope, queryRevision, viewportReady) {
+            if (!viewportReady) return@LaunchedEffect
             androidx.compose.runtime.snapshotFlow {
-                followedListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { lastVisibleIndex ->
-                    Triple(
-                        followedListState.firstVisibleItemIndex,
-                        followedListState.firstVisibleItemScrollOffset,
-                        lastVisibleIndex,
-                    )
+                val currentState = latestState
+                if (currentState.followedOnly != activeScope || currentState.queryResetRevision != queryRevision ||
+                    currentState.loading || currentState.cards.isEmpty()
+                ) {
+                    null
+                } else {
+                    listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { lastVisibleIndex ->
+                        Triple(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, lastVisibleIndex)
+                    }
                 }
             }.distinctUntilChanged().collect { position ->
-                position?.let { (index, offset, lastVisibleIndex) ->
-                    model.saveScrollPosition(
-                        followedOnly = true,
-                        index = index,
-                        offset = offset,
-                        lastVisibleIndex = lastVisibleIndex,
-                    )
-                }
-            }
-        }
-        LaunchedEffect(allAuthorsListState) {
-            androidx.compose.runtime.snapshotFlow {
-                allAuthorsListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { lastVisibleIndex ->
-                    Triple(
-                        allAuthorsListState.firstVisibleItemIndex,
-                        allAuthorsListState.firstVisibleItemScrollOffset,
-                        lastVisibleIndex,
-                    )
-                }
-            }.distinctUntilChanged().collect { position ->
-                position?.let { (index, offset, lastVisibleIndex) ->
-                    model.saveScrollPosition(
-                        followedOnly = false,
-                        index = index,
-                        offset = offset,
-                        lastVisibleIndex = lastVisibleIndex,
-                    )
+                val currentState = model.state.value
+                if (currentState.followedOnly == activeScope && currentState.queryResetRevision == queryRevision &&
+                    !currentState.loading
+                ) {
+                    position?.let { (index, offset, lastVisibleIndex) ->
+                        model.saveScrollPosition(activeScope, index, offset, lastVisibleIndex)
+                    }
                 }
             }
         }
@@ -369,20 +382,23 @@ class AuthorsRootScreen(private val tabActivationToken: String = "initial") : Sc
                 }
 
                 if (state.cards.isNotEmpty()) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.weight(1f).fillMaxWidth().testTag("creator-author-list"),
-                        contentPadding = PaddingValues(vertical = 4.dp),
-                    ) {
-                        items(state.cards, key = { it.creator.id }) { card ->
-                            CreatorCardRow(card, dependencies.customCoverStore) {
-                                saveActiveScrollPosition()
-                                navigator.push(AuthorDetailScreen(card.creator.id))
+                    // Keep each scope's item-provider and measurement state with its own viewport.
+                    androidx.compose.runtime.key(state.followedOnly) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.weight(1f).fillMaxWidth().testTag("creator-author-list"),
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                        ) {
+                            items(state.cards, key = { it.creator.id }) { card ->
+                                CreatorCardRow(card, dependencies.customCoverStore) {
+                                    saveActiveScrollPosition()
+                                    navigator.push(AuthorDetailScreen(card.creator.id))
+                                }
                             }
-                        }
-                        if (state.loadingMore) {
-                            item(key = "creator-loading-more") {
-                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(16.dp))
+                            if (state.loadingMore) {
+                                item(key = "creator-loading-more") {
+                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(16.dp))
+                                }
                             }
                         }
                     }
@@ -495,7 +511,12 @@ data class AuthorDetailScreen(
             AlertDialog(
                 onDismissRequest = { confirmUnfollow = false },
                 text = { Text(MR.strings.creator_unfollow_confirm.localized()) },
-                confirmButton = { TextButton(onClick = { confirmUnfollow = false; model.toggleFollow() }) { Text(MR.strings.action_ok.localized()) } },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmUnfollow = false
+                        model.toggleFollow()
+                    }) { Text(MR.strings.action_ok.localized()) }
+                },
                 dismissButton = { TextButton(onClick = { confirmUnfollow = false }) { Text(MR.strings.action_cancel.localized()) } },
             )
         }
@@ -634,9 +655,11 @@ data class AuthorDetailScreen(
                     Column(Modifier.weight(1f)) {
                         CreatorIdentityHeader(model.identityEditor, creator?.displayName.orEmpty())
                         Text(
-                        MR.strings.creator_work_version_count.localized(Locale.getDefault(),
+                            MR.strings.creator_work_version_count.localized(
+                                Locale.getDefault(),
                                 state.presentationGroups.size + state.workArchive.rejected.size,
-                                state.presentationGroups.sumOf { it.sourceCount } + state.workArchive.rejected.size),
+                                state.presentationGroups.sumOf { it.sourceCount } + state.workArchive.rejected.size,
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -765,12 +788,14 @@ data class AuthorDetailScreen(
                 HorizontalDivider()
 
                 CreatorWorkFilters(
-                    state.workFilter.query, state.workFilter.sourceId,
+                    state.workFilter.query,
+                    state.workFilter.sourceId,
                     (state.workArchive.works.flatMap { it.versions } + state.workArchive.pending + state.workArchive.rejected)
                         .map { it.naturalKey.sourceId }.distinct().sorted().associateWith {
                             desktopDependencies.sourceManager.getOrStub(it).name
                         },
-                    model::searchWorks, model::filterSource,
+                    model::searchWorks,
+                    model::filterSource,
                 )
                 Text(
                     MR.strings.creator_unique_work_count.localized(Locale.getDefault(), presentationCards.size),
@@ -939,7 +964,9 @@ private fun authorVersionLabel(
     val name = sourceManager.getOrStub(version.naturalKey.sourceId).name
     return if (sourceManager.get(version.naturalKey.sourceId) == null) {
         "$name · ${MR.strings.desktop_ui_source_missing.localized()}"
-    } else name
+    } else {
+        name
+    }
 }
 
 private fun earliestFirstSeenDate(
@@ -949,19 +976,19 @@ private fun earliestFirstSeenDate(
 private fun groupDateLabel(group: tachiyomi.domain.creator.model.WorkPresentationGroup): String? {
     val publishedDateAt = group.publishedDateAt
     return when {
-    group.publishedDateQuality == SourceDateQualityStatus.TRUSTED && publishedDateAt != null ->
-        MR.strings.creator_work_published_date.localized(
+        group.publishedDateQuality == SourceDateQualityStatus.TRUSTED && publishedDateAt != null ->
+            MR.strings.creator_work_published_date.localized(
+                Locale.getDefault(),
+                sourceDateDisplayDate(publishedDateAt),
+            )
+        publishedDateAt != null -> MR.strings.creator_work_published_date_retained.localized(
             Locale.getDefault(),
             sourceDateDisplayDate(publishedDateAt),
         )
-    publishedDateAt != null -> MR.strings.creator_work_published_date_retained.localized(
-        Locale.getDefault(),
-        sourceDateDisplayDate(publishedDateAt),
-    )
-    else -> group.firstSeenDate?.let { date ->
-        MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), date)
+        else -> group.firstSeenDate?.let { date ->
+            MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), date)
+        }
     }
-}
 }
 
 private fun chapterCountLabel(version: SourceWorkArchiveVersion): String = when (version.chapterCompleteness) {
@@ -1054,39 +1081,39 @@ private fun CreatorWorkSourceChooserDialog(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.Top,
                             ) {
-                            Box(Modifier.width(48.dp).height(68.dp)) {
-                                coil3.compose.AsyncImage(
-                                    model = mihon.desktop.image.desktopSourceImageModel(
-                                        version.thumbnailUrl,
-                                        version.naturalKey.sourceId,
-                                    ),
-                                    contentDescription = version.title,
-                                    fallback = rememberVectorPainter(Icons.AutoMirrored.Filled.MenuBook),
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                                if (version.inLibrary) {
-                                    Icon(
-                                        creatorFavoriteBadgeIcon(),
-                                        contentDescription = MR.strings.desktop_ui_in_library.localized(),
-                                        modifier = Modifier.align(Alignment.TopStart).padding(2.dp).size(16.dp),
+                                Box(Modifier.width(48.dp).height(68.dp)) {
+                                    coil3.compose.AsyncImage(
+                                        model = mihon.desktop.image.desktopSourceImageModel(
+                                            version.thumbnailUrl,
+                                            version.naturalKey.sourceId,
+                                        ),
+                                        contentDescription = version.title,
+                                        fallback = rememberVectorPainter(Icons.AutoMirrored.Filled.MenuBook),
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize(),
                                     )
+                                    if (version.inLibrary) {
+                                        Icon(
+                                            creatorFavoriteBadgeIcon(),
+                                            contentDescription = MR.strings.desktop_ui_in_library.localized(),
+                                            modifier = Modifier.align(Alignment.TopStart).padding(2.dp).size(16.dp),
+                                        )
+                                    }
                                 }
-                            }
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(sourceName, style = MaterialTheme.typography.labelLarge)
-                                if (sourceMissing) {
-                                    Text(
-                                        MR.strings.desktop_ui_source_missing.localized(),
-                                        color = MaterialTheme.colorScheme.error,
-                                        style = MaterialTheme.typography.bodySmall,
-                                    )
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(sourceName, style = MaterialTheme.typography.labelLarge)
+                                    if (sourceMissing) {
+                                        Text(
+                                            MR.strings.desktop_ui_source_missing.localized(),
+                                            color = MaterialTheme.colorScheme.error,
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    }
+                                    Text(version.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    Text(chapterCountLabel(version), style = MaterialTheme.typography.bodySmall)
+                                    Text(publishedDateLabel(version), style = MaterialTheme.typography.bodySmall)
+                                    Text(latestChapterDateLabel(version), style = MaterialTheme.typography.bodySmall)
                                 }
-                                Text(version.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text(chapterCountLabel(version), style = MaterialTheme.typography.bodySmall)
-                                Text(publishedDateLabel(version), style = MaterialTheme.typography.bodySmall)
-                                Text(latestChapterDateLabel(version), style = MaterialTheme.typography.bodySmall)
-                            }
                             }
                             if (onSeparate != null && group.canonicalWorkId == null && group.members.size > 1) {
                                 TextButton(
@@ -1281,12 +1308,18 @@ private fun CreatorArchiveWorkRow(
     key: String,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        coil3.compose.AsyncImage(thumbnailUrl, null,
+    Row(
+        Modifier.fillMaxWidth().padding(16.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        coil3.compose.AsyncImage(
+            thumbnailUrl,
+            null,
             fallback = rememberVectorPainter(Icons.AutoMirrored.Filled.MenuBook),
             modifier = Modifier.width(64.dp).height(88.dp).testTag("creator-cover-$key"),
-            contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+        )
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("creator-work-$key"))
             content()

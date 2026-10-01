@@ -1,6 +1,7 @@
 package mihon.desktop.ui.authors
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import cafe.adriel.voyager.core.screen.Screen
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -8,6 +9,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.data.Database
@@ -35,6 +37,15 @@ import tachiyomi.domain.manga.model.Manga
 import java.util.concurrent.CopyOnWriteArrayList
 
 class AuthorsScreenModelsTest {
+    @Test
+    fun `root screen identity preserves one activation and separates reentry`() {
+        val first: Screen = AuthorsRootScreen("first-entry")
+        val sameEntry: Screen = AuthorsRootScreen("first-entry")
+        val nextEntry: Screen = AuthorsRootScreen("next-entry")
+        assertEquals(first.key, sameEntry.key, "Returning to the same root must retain its navigation identity")
+        assertNotEquals(first.key, nextEntry.key, "A new tab activation must use a fresh screen model and saveable identity")
+    }
+
     @Test
     fun `scope switch publishes cards and loading for the same scope atomically`() = runBlocking {
         val handler = createDatabaseHandler()
