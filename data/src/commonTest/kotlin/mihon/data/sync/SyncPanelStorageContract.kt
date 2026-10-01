@@ -7,7 +7,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.encodeToString
@@ -78,6 +82,149 @@ import java.nio.file.Path as NioPath
 abstract class SyncPanelStorageContract {
     protected abstract fun open(): SyncRuntimeStorageContract.Storage
     private val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync-v1")
+
+    @Test
+    fun `visible panel observes durable plan confirmations and cancels isolated run subscriptions`() = runBlocking {
+        open().use { storage ->
+            val subscriptions = java.util.concurrent.atomic.AtomicInteger()
+            val readGate = java.util.concurrent.atomic.AtomicReference<
+                Pair<CompletableDeferred<Unit>, CompletableDeferred<Unit>>?,
+                >(null)
+            val tracked = SyncRuntimeStorageContract.Storage(
+                storage.driver,
+                object : DatabaseHandler by storage.handler {
+                    override suspend fun <T> await(inTransaction: Boolean, block: suspend Database.() -> T): T {
+                        val result = storage.handler.await(inTransaction, block)
+                        if (result is mihon.data.sync.runtime.SyncRunSnapshot) {
+                            readGate.getAndSet(null)?.let { (entered, release) ->
+                                entered.complete(Unit)
+                                release.await()
+                            }
+                        }
+                        return result
+                    }
+                    override fun <T : Any> subscribeToOneOrNull(block: Database.() -> app.cash.sqldelight.Query<T>) =
+                        storage.handler.subscribeToOneOrNull(block)
+                            .onStart { subscriptions.incrementAndGet() }
+                            .onCompletion { subscriptions.decrementAndGet() }
+                },
+            )
+            SyncOnboardingFixture(tracked).use { f ->
+                tracked.connect("plan-observer", repository)
+                val runs = f.runtime.runStore
+                val run = runs.start("space", 1, mihon.domain.sync.runtime.SyncTrigger.MANUAL)
+                assertTrue(runs.claim(run.runId, "owner", 1))
+                f.panel.act(SyncPanelAction.Open)
+                withTimeout(5000) { f.panel.state.first { it.visible && it.run?.runId == run.runId } }
+                withTimeout(5000) { while (subscriptions.get() < 2) kotlinx.coroutines.delay(10) }
+                val planRead = CompletableDeferred<Unit>()
+                val planRelease = CompletableDeferred<Unit>()
+                readGate.set(planRead to planRelease)
+                val stalePlanRefresh = async { f.panel.act(SyncPanelAction.Open) }
+                withTimeout(5000) { planRead.await() }
+                runs.freezePlan(
+                    run.runId,
+                    "owner",
+                    listOf(
+                        mihon.data.sync.runtime.SyncRunPlanBatch(
+                            mihon.data.sync.runtime.SyncProgressDirection.UPLOAD,
+                            "first",
+                            3,
+                        ),
+                        mihon.data.sync.runtime.SyncRunPlanBatch(
+                            mihon.data.sync.runtime.SyncProgressDirection.UPLOAD,
+                            "second",
+                            2,
+                        ),
+                    ),
+                )
+                withTimeout(5000) { f.panel.state.first { it.run?.plannedItems == 5L } }
+                planRelease.complete(Unit)
+                stalePlanRefresh.await()
+                assertEquals(5L, f.panel.state.value.run!!.plannedItems)
+                assertEquals(0L, f.panel.state.value.run!!.confirmedItems)
+                val frames = mutableListOf<Pair<Long?, Long>>()
+                val observing = launch {
+                    f.panel.state.collect { current ->
+                        current.run?.takeIf { it.runId == run.runId }?.let {
+                            frames +=
+                                it.plannedItems to it.confirmedItems
+                        }
+                    }
+                }
+                val countRead = CompletableDeferred<Unit>()
+                val countRelease = CompletableDeferred<Unit>()
+                readGate.set(countRead to countRelease)
+                val staleCountRefresh = async { f.panel.act(SyncPanelAction.Open) }
+                withTimeout(5000) { countRead.await() }
+                runs.confirmed(run.runId, "owner", mihon.data.sync.runtime.SyncProgressDirection.UPLOAD, "first", 3)
+                withTimeout(5000) { f.panel.state.first { it.run?.confirmedItems == 3L } }
+                countRelease.complete(Unit)
+                staleCountRefresh.await()
+                assertEquals(3L, f.panel.state.value.run!!.confirmedItems)
+                repeat(10) { f.panel.act(SyncPanelAction.Open) }
+                assertEquals(5L, f.panel.state.value.run!!.plannedItems)
+                f.panel.act(SyncPanelAction.Close)
+                withTimeout(5000) { while (subscriptions.get() != 1) kotlinx.coroutines.delay(10) }
+                runs.confirmed(run.runId, "owner", mihon.data.sync.runtime.SyncProgressDirection.UPLOAD, "second", 2)
+                kotlinx.coroutines.delay(50)
+                assertEquals(3L, f.panel.state.value.run!!.confirmedItems)
+                f.panel.act(SyncPanelAction.Open)
+                assertEquals(5L, f.panel.state.value.run!!.confirmedItems)
+                runs.finish(run.runId, mihon.data.sync.runtime.SyncRunState.SUCCEEDED)
+                f.panel.act(SyncPanelAction.Open)
+                assertEquals(mihon.data.sync.runtime.SyncRunState.SUCCEEDED, f.panel.state.value.run!!.state)
+                observing.cancelAndJoin()
+                assertTrue(frames.isNotEmpty())
+                assertTrue(frames.all { it.first == 5L }, frames.toString())
+                assertTrue(
+                    frames.zipWithNext().all { (before, after) ->
+                        before.second <= after.second
+                    },
+                    frames.toString(),
+                )
+                val next = runs.start("space", 1, mihon.domain.sync.runtime.SyncTrigger.MANUAL)
+                assertTrue(runs.claim(next.runId, "next-owner", 1))
+                f.panel.act(SyncPanelAction.Open)
+                withTimeout(5000) { f.panel.state.first { it.run?.runId == next.runId } }
+                runs.freezePlan(
+                    next.runId,
+                    "next-owner",
+                    listOf(
+                        mihon.data.sync.runtime.SyncRunPlanBatch(
+                            mihon.data.sync.runtime.SyncProgressDirection.UPLOAD,
+                            "old-space",
+                            2,
+                        ),
+                    ),
+                )
+                withTimeout(5000) { f.panel.state.first { it.run?.plannedItems == 2L } }
+                assertEquals(0L, f.panel.state.value.run!!.confirmedItems)
+                storage.handler.await { sync_journalQueries.disconnectSpace("space", 1) }
+                tracked.baseline.connectAndImport("other-space", 2, repository, "other-observer", 1)
+                val other = runs.start("other-space", 2, mihon.domain.sync.runtime.SyncTrigger.MANUAL)
+                assertTrue(runs.claim(other.runId, "other-owner", 1))
+                f.panel.act(SyncPanelAction.Open)
+                withTimeout(5000) { f.panel.state.first { it.run?.runId == other.runId } }
+                runs.freezePlan(other.runId, "other-owner", emptyList())
+                withTimeout(5000) { f.panel.state.first { it.run?.plannedItems == 0L } }
+                runs.confirmed(
+                    next.runId,
+                    "next-owner",
+                    mihon.data.sync.runtime.SyncProgressDirection.UPLOAD,
+                    "old-space",
+                    2,
+                )
+                kotlinx.coroutines.delay(50)
+                assertEquals(other.runId, f.panel.state.value.run!!.runId)
+                assertEquals("other-space", f.panel.state.value.run!!.spaceId)
+                assertEquals(2L, f.panel.state.value.run!!.generation)
+                assertEquals(0L, f.panel.state.value.run!!.confirmedItems)
+                f.panel.act(SyncPanelAction.Close)
+                withTimeout(5000) { while (subscriptions.get() != 1) kotlinx.coroutines.delay(10) }
+            }
+        }
+    }
 
     @Test
     fun `diagnostic snapshot reads actual disconnected history and excludes sensitive output`() = runBlocking {
@@ -1450,6 +1597,67 @@ abstract class SyncPanelStorageContract {
                 assertEquals(0L, panel.state.value.run!!.confirmedItems)
                 assertEquals(mihon.data.sync.runtime.SyncRunState.CANCELLED, runtime.runStore.get(old.runId)!!.state)
                 assertEquals(1536L, runtime.runStore.get(old.runId)!!.confirmedItems)
+            }
+        }
+    }
+
+    @Test
+    fun `process recovery reclaims the existing partial frozen plan instead of starting another run`() = runBlocking {
+        open().use { storage ->
+            storage.connect("actor", repository)
+            withPanel(storage) { _, runtime ->
+                val run = runtime.runStore.start("space", 1, mihon.domain.sync.runtime.SyncTrigger.MANUAL)
+                assertTrue(runtime.runStore.claim(run.runId, "owner", 1))
+                runtime.runStore.freezePlan(
+                    run.runId,
+                    "owner",
+                    listOf(
+                        mihon.data.sync.runtime.SyncRunPlanBatch(
+                            mihon.data.sync.runtime.SyncProgressDirection.UPLOAD,
+                            "remaining-upload",
+                            3,
+                        ),
+                    ),
+                )
+                runtime.runStore.finish(run.runId, mihon.data.sync.runtime.SyncRunState.PARTIAL, ownerSession = "owner")
+                assertTrue(runtime.hasResumableRun())
+                assertTrue(runtime.isRecoveryDue())
+                runtime.coordinator.synchronize(mihon.domain.sync.runtime.SyncTrigger.RECOVERY)
+                assertEquals(run.runId, runtime.runStore.latest("space", 1)!!.runId)
+                assertEquals(3L, runtime.runStore.get(run.runId)!!.plannedItems)
+                assertEquals(2L, runtime.runStore.get(run.runId)!!.attemptId)
+                // This fixture has no secure connection material; recovery must retain that existing guard.
+                assertEquals(mihon.data.sync.runtime.SyncRunState.BLOCKED, runtime.runStore.get(run.runId)!!.state)
+            }
+        }
+    }
+
+    @Test
+    fun `process recovery does not automatically retry a partial run containing only pending receipts`() = runBlocking {
+        open().use { storage ->
+            storage.connect("actor", repository)
+            withPanel(storage) { _, runtime ->
+                val run = runtime.runStore.start("space", 1, mihon.domain.sync.runtime.SyncTrigger.MANUAL)
+                assertTrue(runtime.runStore.claim(run.runId, "owner", 1))
+                runtime.runStore.freezePlan(
+                    run.runId,
+                    "owner",
+                    listOf(
+                        mihon.data.sync.runtime.SyncRunPlanBatch(
+                            mihon.data.sync.runtime.SyncProgressDirection.DOWNLOAD,
+                            "pending-receipt",
+                            1,
+                        ),
+                    ),
+                )
+                runtime.runStore.expectDownload(run.runId, "owner", "pending-receipt", 1)
+                runtime.runStore.finish(run.runId, mihon.data.sync.runtime.SyncRunState.PARTIAL, ownerSession = "owner")
+                assertFalse(runtime.hasResumableRun())
+                assertFalse(runtime.isRecoveryDue())
+                val result = runtime.coordinator.synchronize(mihon.domain.sync.runtime.SyncTrigger.RECOVERY)
+                assertEquals(mihon.domain.sync.runtime.SyncRunStatus.SKIPPED, result.status)
+                assertEquals(run.runId, runtime.runStore.latest("space", 1)!!.runId)
+                assertEquals(1L, runtime.runStore.get(run.runId)!!.attemptId)
             }
         }
     }

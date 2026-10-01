@@ -96,6 +96,24 @@ class DesktopSyncPanelTest {
             click("sync-open")
             assertTrue(panel.state.value.visible)
             panel.state.value = panel.state.value.copy(
+                run = SyncRunSnapshot(
+                    "compact-run", "space", 1, SyncTrigger.MANUAL, SyncRunState.RUNNING, SyncRunPhase.UPLOADING,
+                    6, 100, 0, 0, 0, attemptId = 1, nextRetryAt = 0, lastProgressAt = 1000,
+                    stopReason = null, ownerSession = "fixture", createdAt = 1000, updatedAt = 1000,
+                    confirmedItems = 4, plannedItems = 10,
+                ),
+            )
+            render()
+            assertEquals(0.4f, find("sync-progress-track")!!.config[SemanticsProperties.ProgressBarRangeInfo].current)
+            assertTrue(find("sync-progress-status")!!.config[SemanticsProperties.Text].single().text.contains("4/10"))
+            assertTrue(find("sync-round-time") != null)
+            assertTrue(find("sync-progress-details-toggle") == null)
+            assertTrue(find("sync-pending-list") != null)
+            panel.state.value = panel.state.value.copy(page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.MERGING)
+            render()
+            assertEquals(0.4f, find("sync-progress-track")!!.config[SemanticsProperties.ProgressBarRangeInfo].current)
+            click("sync-back")
+            panel.state.value = panel.state.value.copy(
                 connection = mihon.data.sync.runtime.SyncConnection(
                     "space", 1, mihon.domain.sync.transport.SyncRepository("owner", "repo", "sync"), false,
                 ),

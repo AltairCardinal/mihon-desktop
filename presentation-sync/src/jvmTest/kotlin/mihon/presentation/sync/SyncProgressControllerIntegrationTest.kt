@@ -18,6 +18,7 @@ import mihon.data.sync.runtime.SyncProgressFact
 import mihon.data.sync.runtime.SyncProgressHold
 import mihon.data.sync.runtime.SyncProgressStage
 import mihon.data.sync.runtime.SyncRunPhase
+import mihon.data.sync.runtime.SyncRunPlanBatch
 import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.domain.sync.SyncBatch
@@ -131,9 +132,26 @@ class SyncProgressControllerIntegrationTest {
             runtime.baseline.connectAndImport("space", 1, SyncRepository("fixture", "sync", "main"), "actor", 1)
             val run = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
             runtime.runStore.progress(run.runId, SyncRunPhase.UPLOADING, 0, 1)
+            assertTrue(runtime.runStore.claim(run.runId, "fixture-owner", 1))
+            manga.update(MangaUpdate(item.id, favorite = false, syncContext = SyncMutationContext.User))
+            val uploadRound = mihon.data.sync.journal.SyncOutboxStore(handler).freezeRound("space", 1)
+            assertEquals(1L, uploadRound.totalItems)
             mount()
             runtime.panel.dispatch(SyncPanelAction.Open)
             withTimeout(5000) { runtime.panel.state.first { it.loaded && it.run?.runId == run.runId } }
+            withTimeout(5000) { while (node("sync-round-time") == null) render() }
+            assertNotNull(node("sync-round-time"))
+            assertNull(node("sync-progress-track"))
+            runtime.runStore.freezePlan(
+                run.runId,
+                "fixture-owner",
+                uploadRound.batchItems.map { (id, count) -> SyncRunPlanBatch(SyncProgressDirection.UPLOAD, id, count) },
+            )
+            withTimeout(5000) { runtime.panel.state.first { it.run?.plannedItems == 1L } }
+            withTimeout(5000) { while (node("sync-progress-track") == null) render() }
+            assertEquals(0f, node("sync-progress-track")!!.config[SemanticsProperties.ProgressBarRangeInfo].current)
+            assertEquals(0L, runtime.panel.state.value.run!!.confirmedItems)
+            assertTrue(node("sync-progress-status")!!.config[SemanticsProperties.Text].single().text.contains("0/1"))
             // Feed the production runtime observation stream, retaining the actual controller and database.
             @Suppress("UNCHECKED_CAST")
             val observations = runtime.liveProgress as kotlinx.coroutines.flow.MutableStateFlow<SyncProgressFact?>
@@ -144,7 +162,6 @@ class SyncProgressControllerIntegrationTest {
             click("sync-pause-run")
             withTimeout(5000) { runtime.panel.state.first { it.run?.state == SyncRunState.PAUSED_USER } }
             assertEquals(SyncRunState.PAUSED_USER, runtime.runStore.get(run.runId)!!.state)
-            click("sync-progress-details-toggle")
             click("sync-pause-import")
             withTimeout(5000) { runtime.panel.state.first { it.importPaused } }
             assertTrue(runtime.preferences.importPaused.get())

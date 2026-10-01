@@ -110,6 +110,43 @@ class AndroidSyncPanelTest {
     }
 
     @Test
+    fun `native shared sheet renders the same compact plan in main and setup merging`() {
+        panel.state.value = panel.state.value.copy(
+            run = SyncRunSnapshot(
+                "compact-run", "space", 1, SyncTrigger.MANUAL, SyncRunState.RUNNING, SyncRunPhase.DOWNLOADING,
+                6, 100, 0, 0, 0, attemptId = 1, nextRetryAt = 0, lastProgressAt = 1000,
+                stopReason = null, ownerSession = "fixture", createdAt = 1000, updatedAt = 1000,
+                confirmedItems = 4, plannedItems = 10,
+            ),
+        )
+        showToolbar()
+        compose.onNodeWithTag("sync-open").performClick()
+        fun assertCompact() {
+            val track = compose.onNodeWithTag("sync-progress-track", useUnmergedTree = true).fetchSemanticsNode()
+            assertEquals(
+                0.4f,
+                track.config[androidx.compose.ui.semantics.SemanticsProperties.ProgressBarRangeInfo].current,
+            )
+            val status = compose.onNodeWithTag("sync-progress-status", useUnmergedTree = true).fetchSemanticsNode()
+            assertTrue(
+                status.config[androidx.compose.ui.semantics.SemanticsProperties.Text].single().text.contains("4/10"),
+            )
+            compose.onNodeWithTag("sync-round-time", useUnmergedTree = true).assertExists()
+            compose.onNodeWithTag("sync-progress-details-toggle", useUnmergedTree = true).assertDoesNotExist()
+        }
+        assertCompact()
+        compose.runOnIdle {
+            panel.state.value = panel.state.value.copy(page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.MERGING)
+        }
+        assertCompact()
+        compose.onNodeWithTag("sync-back").performClick()
+        compose.onNodeWithTag("sync-pause-run").performClick()
+        compose.runOnIdle { assertEquals(SyncPanelAction.PauseSync, panel.actions.last()) }
+        compose.onNodeWithTag("sync-close").performClick()
+        compose.runOnIdle { assertFalse(panel.state.value.visible) }
+    }
+
+    @Test
     fun `native wrapper routes disconnected cancelled history to shared setup`() {
         panel.state.value = panel.state.value.copy(
             connection = panel.state.value.connection!!.copy(enabled = false),

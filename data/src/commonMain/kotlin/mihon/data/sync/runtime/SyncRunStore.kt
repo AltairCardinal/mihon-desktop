@@ -7,6 +7,7 @@ import mihon.data.sync.http.SyncHttpBodyDirection
 import mihon.data.sync.http.SyncHttpBodyObserver
 import mihon.data.sync.journal.SyncImportProgress
 import mihon.domain.sync.runtime.SyncTrigger
+import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
 import java.util.UUID
 
@@ -53,7 +54,18 @@ data class SyncRunSnapshot(
     val uploadedBaseline: Long = 0,
     val downloadedBaseline: Long = 0,
     val confirmedItems: Long = 0,
+    val plannedItems: Long? = null,
 )
+
+data class SyncRunPlanBatch(
+    val direction: SyncProgressDirection,
+    val batchId: String,
+    val itemCount: Long,
+    val confirmed: Boolean = false,
+)
+data class SyncRunPlan(val batches: List<SyncRunPlanBatch>) {
+    val totalItems: Long get() = batches.sumOf { it.itemCount }
+}
 
 data class SyncRunLog(
     val runId: String,
@@ -99,6 +111,16 @@ interface SyncProgressReporter {
     suspend fun confirmReceived(): List<Pair<String, Long>> = emptyList()
 
     suspend fun hasUnconfirmedDownloads(): Boolean = false
+
+    val supportsFrozenPlan: Boolean get() = false
+
+    suspend fun plan(): SyncRunPlan? = null
+
+    suspend fun freezePlan(batches: List<SyncRunPlanBatch>): SyncRunPlan? = null
+
+    suspend fun hasUnfinishedPlan(): Boolean = false
+
+    suspend fun reconcilePublishedPlan() = Unit
 }
 
 /** One claimed run owns this volatile display stream; durable run state remains in SyncRunStore. */
@@ -285,6 +307,17 @@ private class StoreProgressReporter(
     private val runId: String,
     private val ownerSession: String,
 ) : SyncProgressReporter {
+    override val supportsFrozenPlan: Boolean get() = true
+
+    override suspend fun plan(): SyncRunPlan? = store.plan(runId)
+
+    override suspend fun freezePlan(batches: List<SyncRunPlanBatch>): SyncRunPlan =
+        store.freezePlan(runId, ownerSession, batches)
+
+    override suspend fun hasUnfinishedPlan(): Boolean = store.hasUnfinishedPlan(runId, ownerSession)
+
+    override suspend fun reconcilePublishedPlan() = store.reconcilePublishedPlan(runId, ownerSession)
+
     override suspend fun phase(
         phase: SyncRunPhase,
         processed: Long,
@@ -336,6 +369,86 @@ class SyncRunStore(
     private val clock: () -> Long = System::currentTimeMillis,
     private val maxLogEntries: Int = 500,
 ) {
+    suspend fun plan(runId: String): SyncRunPlan? = handler.await {
+        if (sync_runtimeQueries.getRuntimePlanMarker(runId).executeAsOneOrNull() == null) return@await null
+        readPlan(runId)
+    }
+
+    private fun Database.readPlan(runId: String): SyncRunPlan = SyncRunPlan(
+        sync_runtimeQueries.getRuntimePlanMembers(runId).executeAsList().map {
+            SyncRunPlanBatch(
+                SyncProgressDirection.valueOf(it.direction),
+                it.batch_id,
+                it.item_count,
+                it.status == "CONFIRMED",
+            )
+        },
+    )
+
+    suspend fun freezePlan(runId: String, ownerSession: String, batches: List<SyncRunPlanBatch>): SyncRunPlan =
+        handler.await(inTransaction = true) {
+            val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOne()
+            require(run.owner_session == ownerSession) { "sync plan owner changed" }
+            require(
+                sync_journalQueries.getSpace(run.space_id, run.generation).executeAsOneOrNull()?.let {
+                    it.active && it.exchange_enabled
+                } == true,
+            ) { "sync plan space is no longer active" }
+            if (sync_runtimeQueries.getRuntimePlanMarker(runId).executeAsOneOrNull() == null) {
+                require(batches.map { it.direction to it.batchId }.distinct().size == batches.size)
+                batches.forEach { batch ->
+                    require(batch.itemCount > 0 && batch.batchId.isNotBlank())
+                    val previous = sync_runtimeQueries.getRuntimeConfirmation(
+                        runId,
+                        batch.direction.name,
+                        batch.batchId,
+                    ).executeAsOneOrNull()
+                    if (previous == null) {
+                        sync_runtimeQueries.insertRuntimeConfirmation(
+                            runId,
+                            batch.direction.name,
+                            batch.batchId,
+                            batch.itemCount,
+                            "PLANNED",
+                        )
+                    } else {
+                        require(previous.item_count == batch.itemCount)
+                    }
+                }
+                sync_runtimeQueries.insertRuntimeConfirmation(runId, "PLAN", "round", 0, "PLANNED")
+                // Publish the fixed denominator through the existing run observation stream.
+                sync_runtimeQueries.addRuntimeConfirmedItemsOwned(0, clock(), runId, ownerSession)
+            }
+            readPlan(runId)
+        }
+
+    /** Only the outbox's committed safe acknowledgement can recover a missing run confirmation. */
+    suspend fun reconcilePublishedPlan(runId: String, ownerSession: String) = handler.await(inTransaction = true) {
+        val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOne()
+        require(run.owner_session == ownerSession) { "sync plan owner changed" }
+        if (sync_runtimeQueries.getRuntimePlanMarker(runId).executeAsOneOrNull() == null) return@await
+        sync_runtimeQueries.getRuntimePlanMembers(runId).executeAsList()
+            .filter { it.direction == "UPLOAD" && it.status == "PLANNED" }
+            .forEach { member ->
+                val batch = sync_journalQueries.getBatch(run.space_id, run.generation, member.batch_id)
+                    .executeAsOneOrNull()
+                if (batch?.status == "PUBLISHED") {
+                    require(batch.event_count == member.item_count) { "published plan batch count changed" }
+                    sync_runtimeQueries.markRuntimeConfirmation(runId, member.direction, member.batch_id)
+                    sync_runtimeQueries.addRuntimeConfirmedItemsOwned(member.item_count, clock(), runId, ownerSession)
+                }
+            }
+    }
+
+    suspend fun hasPlannedWork(runId: String): Boolean = handler.await {
+        sync_runtimeQueries.hasPlannedRuntimeWork(runId).executeAsOneOrNull() != null
+    }
+
+    suspend fun hasUnfinishedPlan(runId: String, ownerSession: String): Boolean = handler.await {
+        require(sync_runtimeQueries.getRuntimeRun(runId).executeAsOne().owner_session == ownerSession)
+        sync_runtimeQueries.hasUnfinishedRuntimePlan(runId).executeAsOneOrNull() != null
+    }
+
     suspend fun accountHttpNotBefore(accountId: Long): Long {
         require(accountId > 0L) { "GitHub account id must be positive" }
         return handler.await {
@@ -378,7 +491,9 @@ class SyncRunStore(
     }
 
     suspend fun get(runId: String): SyncRunSnapshot? = handler.await {
-        sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull()?.toSnapshot()
+        sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull()?.let {
+            it.toSnapshot(sync_runtimeQueries.getRuntimePlannedItems(it.run_id).executeAsOneOrNull())
+        }
     }
 
     suspend fun terminalSummary(runId: String): SyncTerminalSummary? = handler.await {
@@ -401,11 +516,15 @@ class SyncRunStore(
     }
 
     suspend fun active(spaceId: String, generation: Long): SyncRunSnapshot? = handler.await {
-        sync_runtimeQueries.getActiveRuntimeRun(spaceId, generation).executeAsOneOrNull()?.toSnapshot()
+        sync_runtimeQueries.getActiveRuntimeRun(spaceId, generation).executeAsOneOrNull()?.let {
+            it.toSnapshot(sync_runtimeQueries.getRuntimePlannedItems(it.run_id).executeAsOneOrNull())
+        }
     }
 
     suspend fun latest(spaceId: String, generation: Long): SyncRunSnapshot? = handler.await {
-        sync_runtimeQueries.getLatestRuntimeRun(spaceId, generation).executeAsOneOrNull()?.toSnapshot()
+        sync_runtimeQueries.getLatestRuntimeRun(spaceId, generation).executeAsOneOrNull()?.let {
+            it.toSnapshot(sync_runtimeQueries.getRuntimePlannedItems(it.run_id).executeAsOneOrNull())
+        }
     }
 
     suspend fun progress(
@@ -497,12 +616,16 @@ class SyncRunStore(
         val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOne()
         require(run.owner_session == ownerSession) { "sync confirmation owner changed" }
         val previous = sync_runtimeQueries.getRuntimeConfirmation(runId, direction.name, batchId).executeAsOneOrNull()
+        val hasPlan = sync_runtimeQueries.getRuntimePlanMarker(runId).executeAsOneOrNull() != null
+        require(!hasPlan || previous != null) { "batch is outside the frozen sync plan" }
         if (previous == null) {
             sync_runtimeQueries.insertRuntimeConfirmation(runId, direction.name, batchId, itemCount, "CONFIRMED")
             sync_runtimeQueries.addRuntimeConfirmedItemsOwned(itemCount, clock(), runId, ownerSession)
         } else {
             require(previous.item_count == itemCount) { "confirmed batch count changed" }
-            if (previous.status == "PENDING") {
+            if (previous.status == "PENDING" ||
+                (previous.status == "PLANNED" && direction == SyncProgressDirection.UPLOAD)
+            ) {
                 sync_runtimeQueries.markRuntimeConfirmation(runId, direction.name, batchId)
                 sync_runtimeQueries.addRuntimeConfirmedItemsOwned(itemCount, clock(), runId, ownerSession)
             }
@@ -519,6 +642,9 @@ class SyncRunStore(
                 SyncProgressDirection.DOWNLOAD.name,
                 batchId,
             ).executeAsOneOrNull()
+            require(sync_runtimeQueries.getRuntimePlanMarker(runId).executeAsOneOrNull() == null || previous != null) {
+                "download is outside the frozen sync plan"
+            }
             if (previous == null) {
                 sync_runtimeQueries.insertRuntimeConfirmation(
                     runId,
@@ -529,6 +655,7 @@ class SyncRunStore(
                 )
             } else {
                 require(previous.item_count == itemCount)
+                sync_runtimeQueries.expectPlannedRuntimeDownload(runId, batchId)
             }
         }
     }
@@ -606,7 +733,17 @@ class SyncRunStore(
         state: SyncRunState,
         reason: String? = null,
         ownerSession: String? = null,
-    ) = state(runId, state, reason, ownerSession)
+    ) {
+        val unfinished = state == SyncRunState.SUCCEEDED && handler.await {
+            sync_runtimeQueries.hasUnfinishedRuntimePlan(runId).executeAsOneOrNull() != null
+        }
+        state(
+            runId,
+            if (unfinished) SyncRunState.PARTIAL else state,
+            if (unfinished) "planned_work_pending" else reason,
+            ownerSession,
+        )
+    }
 
     fun reporter(runId: String, ownerSession: String): SyncProgressReporter =
         StoreProgressReporter(this, runId, ownerSession)
@@ -688,7 +825,7 @@ class SyncRunStore(
 
     fun observe(runId: String): Flow<SyncRunSnapshot?> = handler.subscribeToOneOrNull {
         sync_runtimeQueries.getRuntimeRun(runId)
-    }.map { it?.toSnapshot() }
+    }.map { it?.let { run -> get(run.run_id) } }
 
     private suspend fun state(
         runId: String,
@@ -713,7 +850,7 @@ class SyncRunStore(
     }
 }
 
-private fun tachiyomi.data.Sync_runtime_runs.toSnapshot() = SyncRunSnapshot(
+private fun tachiyomi.data.Sync_runtime_runs.toSnapshot(planned: Long? = null) = SyncRunSnapshot(
     runId = run_id,
     spaceId = space_id,
     generation = generation,
@@ -728,6 +865,7 @@ private fun tachiyomi.data.Sync_runtime_runs.toSnapshot() = SyncRunSnapshot(
     uploaded = uploaded,
     downloaded = downloaded,
     confirmedItems = confirmed_items,
+    plannedItems = planned,
     uploadedBaseline = uploaded_baseline,
     downloadedBaseline = downloaded_baseline,
     attemptId = attempt_id,

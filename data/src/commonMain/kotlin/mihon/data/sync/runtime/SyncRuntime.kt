@@ -219,11 +219,14 @@ class SyncRuntime(
         if (panelDelegate.isInitialized()) panelDelegate.value.stop()
     }
 
+    private suspend fun isResumable(run: SyncRunSnapshot): Boolean = run.state in RESUMABLE_STATES ||
+        (run.state == SyncRunState.PARTIAL && runStore.hasPlannedWork(run.runId))
+
     /** Resumes only an accepted system-interrupted run; a user pause remains paused. */
     suspend fun hasResumableRun(): Boolean {
         val connection = connection() ?: return false
         return runStore.active(connection.spaceId, connection.generation)?.let {
-            it.state in RESUMABLE_STATES
+            isResumable(it)
         } == true
     }
 
@@ -231,7 +234,7 @@ class SyncRuntime(
     suspend fun isRecoveryDue(): Boolean {
         val connection = connection() ?: return false
         return runStore.active(connection.spaceId, connection.generation)?.let {
-            it.state in RESUMABLE_STATES && maxOf(it.nextRetryAt, scheduledAccountHttpNotBefore(connection)) <= clock()
+            isResumable(it) && maxOf(it.nextRetryAt, scheduledAccountHttpNotBefore(connection)) <= clock()
         } == true
     }
 
@@ -239,7 +242,7 @@ class SyncRuntime(
     suspend fun recoveryDelayMillis(): Long {
         val connection = connection() ?: return 0L
         return runStore.active(connection.spaceId, connection.generation)?.let {
-            if (it.state in RESUMABLE_STATES) {
+            if (isResumable(it)) {
                 (maxOf(it.nextRetryAt, scheduledAccountHttpNotBefore(connection)) - clock()).coerceAtLeast(0L)
             } else {
                 0L
@@ -274,7 +277,7 @@ class SyncRuntime(
             completePendingSetupIfSettled()
         }
         val run = runStore.active(connection.spaceId, connection.generation) ?: return false
-        if (run.state !in RESUMABLE_STATES) return false
+        if (!isResumable(run)) return false
         if (maxOf(run.nextRetryAt, scheduledAccountHttpNotBefore(connection)) > clock()) return true
         if (!coordinator.activity.value.running && run.state in setOf(
                 SyncRunState.RUNNING,
@@ -408,7 +411,7 @@ class SyncRuntime(
         ) {
             return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
         }
-        if (trigger == SyncTrigger.RECOVERY && active?.state !in RESUMABLE_STATES) {
+        if (trigger == SyncTrigger.RECOVERY && (active == null || !isResumable(active))) {
             return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
         }
         if (trigger in setOf(SyncTrigger.RECOVERY, SyncTrigger.PERIODIC) &&
@@ -433,7 +436,7 @@ class SyncRuntime(
         }
         val existing = active?.takeIf {
             it.state == SyncRunState.QUEUED ||
-                (trigger in setOf(SyncTrigger.RECOVERY, SyncTrigger.PERIODIC) && it.state in RESUMABLE_STATES) ||
+                (trigger in setOf(SyncTrigger.RECOVERY, SyncTrigger.PERIODIC) && isResumable(it)) ||
                 (
                     trigger in setOf(SyncTrigger.MANUAL, SyncTrigger.PERIODIC) &&
                         it.state == SyncRunState.PARTIAL

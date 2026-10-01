@@ -65,6 +65,36 @@ insertRuntimeConfirmation:
 INSERT INTO sync_runtime_confirmations(run_id, direction, batch_id, item_count, status)
 VALUES (?, ?, ?, ?, ?);
 
+getRuntimePlanMarker:
+SELECT 1 FROM sync_runtime_confirmations WHERE run_id = ? AND direction = 'PLAN' AND batch_id = 'round';
+
+getRuntimePlanMembers:
+SELECT * FROM sync_runtime_confirmations WHERE run_id = ? AND direction IN ('UPLOAD', 'DOWNLOAD')
+ORDER BY direction, batch_id;
+
+getRuntimePlannedItems:
+SELECT COALESCE(SUM(item_count), 0)
+FROM sync_runtime_confirmations WHERE run_id = :runId AND direction IN ('UPLOAD', 'DOWNLOAD')
+HAVING EXISTS (
+    SELECT 1 FROM sync_runtime_confirmations WHERE run_id = :runId AND direction = 'PLAN' AND batch_id = 'round'
+);
+
+hasPlannedRuntimeWork:
+SELECT 1 FROM sync_runtime_confirmations
+WHERE run_id = :runId AND direction IN ('UPLOAD', 'DOWNLOAD') AND status = 'PLANNED'
+AND EXISTS (SELECT 1 FROM sync_runtime_confirmations WHERE run_id = :runId AND direction = 'PLAN' AND batch_id = 'round')
+LIMIT 1;
+
+hasUnfinishedRuntimePlan:
+SELECT 1 FROM sync_runtime_confirmations
+WHERE run_id = :runId AND direction IN ('UPLOAD', 'DOWNLOAD') AND status != 'CONFIRMED'
+AND EXISTS (SELECT 1 FROM sync_runtime_confirmations WHERE run_id = :runId AND direction = 'PLAN' AND batch_id = 'round')
+LIMIT 1;
+
+expectPlannedRuntimeDownload:
+UPDATE sync_runtime_confirmations SET status = 'PENDING'
+WHERE run_id = ? AND direction = 'DOWNLOAD' AND batch_id = ? AND status = 'PLANNED';
+
 getPendingRuntimeReceipts:
 SELECT * FROM sync_runtime_confirmations WHERE run_id = ? AND direction = 'DOWNLOAD' AND status = 'PENDING';
 
@@ -128,7 +158,8 @@ WHERE run_id = ? AND direction = 'DOWNLOAD' AND status = 'PENDING' LIMIT 1;
 
 markRuntimeConfirmation:
 UPDATE sync_runtime_confirmations SET status = 'CONFIRMED'
-WHERE run_id = ? AND direction = ? AND batch_id = ? AND status = 'PENDING';
+WHERE run_id = ? AND direction = ? AND batch_id = ?
+AND (status = 'PENDING' OR (status = 'PLANNED' AND direction = 'UPLOAD'));
 
 addRuntimeConfirmedItemsOwned:
 UPDATE sync_runtime_runs SET confirmed_items = confirmed_items + ?, updated_at = ?
@@ -141,7 +172,9 @@ WHERE space_id = ? AND generation = ?
     state IN ('QUEUED', 'RUNNING', 'WAITING_NETWORK', 'WAITING_RETRY', 'WAITING_SYSTEM', 'BLOCKED', 'PAUSED_USER')
     OR (state = 'PARTIAL' AND EXISTS (
       SELECT 1 FROM sync_runtime_confirmations c
-      WHERE c.run_id = sync_runtime_runs.run_id AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING'
+      WHERE c.run_id = sync_runtime_runs.run_id
+      AND ((c.direction = 'DOWNLOAD' AND c.status = 'PENDING')
+           OR (c.direction IN ('UPLOAD', 'DOWNLOAD') AND c.status = 'PLANNED'))
     ))
   )
 ORDER BY updated_at DESC, rowid DESC LIMIT 1;
@@ -171,7 +204,9 @@ WHERE run_id = ?
     state IN ('QUEUED', 'RUNNING', 'WAITING_NETWORK', 'WAITING_RETRY', 'WAITING_SYSTEM')
     OR (state = 'PARTIAL' AND EXISTS (
       SELECT 1 FROM sync_runtime_confirmations c
-      WHERE c.run_id = sync_runtime_runs.run_id AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING'
+      WHERE c.run_id = sync_runtime_runs.run_id
+      AND ((c.direction = 'DOWNLOAD' AND c.status = 'PENDING')
+           OR (c.direction IN ('UPLOAD', 'DOWNLOAD') AND c.status = 'PLANNED'))
     ))
   )
   AND (owner_session IS NULL OR owner_session = ?);

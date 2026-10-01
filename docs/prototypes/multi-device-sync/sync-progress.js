@@ -51,7 +51,7 @@
       const completionPercent = total !== null && completed !== null
         ? total > 0 ? completed / total * 100 : f.state === 'succeeded' ? 100 : 0
         : null;
-      const title = f.state === 'running' ? f.direction.includes('上传') ? '上传中' : '下载中' : titles[f.state];
+      const title = titles[f.state];
       const eta = f.eta === duration(f.wholeEta) && Number.isFinite(f.wholeEta) ? clockText(f.wholeEta) : '—';
       return { ...f, completionPercent, summary: `${title}，已完成${completed ?? '—'}/${total ?? '—'}条`, time: `已用${f.elapsed}，剩余估时${eta}` };
     };

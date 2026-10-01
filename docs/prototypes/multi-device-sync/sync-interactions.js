@@ -217,6 +217,7 @@
       const f = newProgress({ compact: true, action: '上传', direction: '本轮上传', scope: 'review-upload', confirmed: 8192, total: 16384, wholeEta: 20, startedAt: Date.now() - 600000 });
       data().progressScenario = name;
       if (name === 'compact-download') { f.direction = '本轮下载'; f.action = '接收'; }
+      if (name === 'compact-bidirectional') { f.direction = '双向同步'; f.scope = 'review-whole-run'; f.confirmed = 0; f.total = 24576; f.startedAt = Date.now(); }
       if (name === 'compact-start') { f.confirmed = 0; f.startedAt = Date.now(); }
       if (name === 'compact-unknown') { f.total = null; f.confirmed = 0; f.wholeEta = null; }
       if (name === 'compact-paused') f.state = 'paused';
@@ -509,7 +510,7 @@
       if (!name.startsWith('ix-')) return false;
       const actionName = name.slice(3); const d = data();
       if (actionName === 'progress-details') { d.progressDetails = !d.progressDetails; }
-      else if (actionName === 'progress-restart') compactScenario(data().progressScenario === 'compact-download' ? 'compact-download' : 'compact-start');
+      else if (actionName === 'progress-restart') compactScenario(['compact-download', 'compact-bidirectional'].includes(data().progressScenario) ? data().progressScenario : 'compact-start');
       else if (actionName === 'progress-failures') d.failureLogOpen = !d.failureLogOpen;
       else if (actionName === 'progress-pause') { clearTimeout(progressTimer); clearTimeout(state.ui.timerId); state.ui.timerId = null; state.ui.busy = false; d.progress.state = 'paused'; }
       else if (actionName === 'progress-resume' || actionName === 'progress-retry') { if (d.progress.compact) { d.progress.state = 'running'; d.progress.endedAt = null; d.progress.lastProgressAt = Date.now(); if (d.progress.total !== null) scheduleCompactTick(); } else if (d.progress.source === 'manual') { window.__mihonSyncDemo.scheduleSync('manual'); } else { d.progress.state = 'recovering'; d.progress.percent = null; progressTimer = setTimeout(() => { d.progress.state = 'running'; if (d.progressScenario === 'rapid') rapidTick(d.progress.demoStep || 0); else continuousTick(d.progress.demoStep || 0); paintProgress(); }, 1000); } }

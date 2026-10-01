@@ -818,6 +818,11 @@ class SyncScaleAcceptanceTest {
                     ) {
                         senderRuntime.coordinator.synchronize(SyncTrigger.MANUAL)
                     }
+                    println("SYNC_CONTROLLED_RESULT sample=$sample controlled=$controlledFirst result=$first")
+                    assertEquals(SyncRunStatus.SUCCESS, first.status, first.toString())
+                    assertEquals(scenario.events, first.uploaded)
+                    assertEquals(scenario.events.toLong(), sender.storage.eventCount())
+                    assertTrue(SyncLocalJournal(sender.storage.handler).pendingEvents("space", 1).isEmpty())
                     val allConfirmedSinceConnectMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - acceptedAt)
                     val importCompleteMillis = importComplete.await()
                     val firstConfirmedMillis = firstConfirmed.await()
@@ -825,10 +830,6 @@ class SyncScaleAcceptanceTest {
                     assertEquals(scenario.events.toLong(), observedImport.importTotalItems)
                     assertNull(observedImport.totalItems)
                     assertEquals(0L, observedImport.completedItems)
-                    assertEquals(SyncRunStatus.SUCCESS, first.status, first.toString())
-                    assertEquals(scenario.events, first.uploaded)
-                    assertEquals(scenario.events.toLong(), sender.storage.eventCount())
-                    assertTrue(SyncLocalJournal(sender.storage.handler).pendingEvents("space", 1).isEmpty())
                     println(
                         "SYNC_SCALE " + buildJsonObject {
                             put("initialEvents", scenario.events)

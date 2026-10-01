@@ -140,6 +140,29 @@ class SyncPanelController(
             }
         }
         scope.launch {
+            state.map { current -> current.run?.runId?.takeIf { current.visible } }
+                .distinctUntilChanged().collectLatest { runId ->
+                    if (runId != null) {
+                        runtime.runStore.observe(runId).collect { observed ->
+                            mutableState.update { current ->
+                                val selected = current.run
+                                if (current.visible && selected?.runId == runId && observed != null) {
+                                    val counts = observed.withObservedCounts(selected)
+                                    current.copy(
+                                        run = selected.copy(
+                                            plannedItems = counts.plannedItems,
+                                            confirmedItems = counts.confirmedItems,
+                                        ),
+                                    )
+                                } else {
+                                    current
+                                }
+                            }
+                        }
+                    }
+                }
+        }
+        scope.launch {
             val prefs = runtime.preferences
             merge(
                 prefs.startup.changes().map { Unit },
@@ -363,7 +386,7 @@ class SyncPanelController(
                 importRemaining = imports,
                 importPaused = prefs.importPaused.get(),
                 records = runtime.records().asReversed(),
-                run = run,
+                run = run?.withObservedCounts(it.run),
                 runSource = when {
                     activeRun != null -> SyncPanelRunSource.ACTIVE
                     run != null -> SyncPanelRunSource.LATEST
@@ -377,6 +400,15 @@ class SyncPanelController(
                 problem = persistedProblem ?: it.problem,
             )
         }
+    }
+
+    /** Same-run query races cannot erase an immutable plan or regress committed confirmations. */
+    private fun SyncRunSnapshot.withObservedCounts(previous: SyncRunSnapshot?): SyncRunSnapshot {
+        if (previous?.runId != runId || previous.spaceId != spaceId || previous.generation != generation) return this
+        return copy(
+            plannedItems = plannedItems ?: previous.plannedItems,
+            confirmedItems = maxOf(confirmedItems, previous.confirmedItems),
+        )
     }
 
     private fun restoredProgress(run: SyncRunSnapshot): SyncProgressFact {

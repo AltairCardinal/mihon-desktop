@@ -1992,4 +1992,12 @@
     <string name="sync_diagnostic_unknown">连接或任务事实尚无法确认</string>
     <string name="sync_diagnostic_running">当前正在执行同步</string>
     <string name="sync_diagnostic_idle">当前没有执行同步，请查看任务状态</string>
+    <string name="sync_round_active">同步中</string>
+    <string name="sync_round_counting">正在统计数据</string>
+    <string name="sync_round_progress">%1$s，已完成%2$d/%3$s条</string>
+    <string name="sync_round_time">已用%1$s，剩余估时%2$s</string>
+    <string name="sync_pause_import">暂停首次合并</string>
+    <string name="sync_resume_import">继续首次合并</string>
+    <string name="sync_pause_bulk">暂停已选处理</string>
+    <string name="sync_resume_bulk">继续已选处理</string>
 </resources>

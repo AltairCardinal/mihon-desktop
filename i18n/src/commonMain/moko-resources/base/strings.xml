@@ -2203,4 +2203,12 @@
     <string name="sync_diagnostic_unknown">Connection or task facts could not be confirmed</string>
     <string name="sync_diagnostic_running">Sync is executing now</string>
     <string name="sync_diagnostic_idle">No sync is executing now; check the task status</string>
+    <string name="sync_round_active">Syncing</string>
+    <string name="sync_round_counting">Counting data</string>
+    <string name="sync_round_progress">%1$s, completed %2$d/%3$s items</string>
+    <string name="sync_round_time">Elapsed %1$s, estimated remaining %2$s</string>
+    <string name="sync_pause_import">Pause initial merge</string>
+    <string name="sync_resume_import">Resume initial merge</string>
+    <string name="sync_pause_bulk">Pause selected processing</string>
+    <string name="sync_resume_bulk">Resume selected processing</string>
 </resources>

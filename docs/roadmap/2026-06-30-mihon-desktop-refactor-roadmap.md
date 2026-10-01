@@ -4,7 +4,7 @@
 
 正式版日期：2026-06-30
 
-- active-child-plan: [同步终态恢复与真机DEBUG](./2026-09-30-sync-terminal-recovery-debug-roadmap.md)（2026-09-30，本轮恢复修复与真机/双平台验收已完成；原进度展示及其他历史验收状态保留）
+- active-child-plan: [同步进度整轮计数与简洁展示](./2026-09-28-sync-progress-display-roadmap.md)（2026-10-02，SP04已交付；当前待SP03原生人工验收）
 
 - 已完成专项：[阅读器双页与继续阅读行为迭代](./2026-09-24-reader-dual-page-and-continue-iteration-roadmap.md)（2026-09-26，COMPLETE；不改变当前作者页活动计划）。
 
