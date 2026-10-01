@@ -91,6 +91,9 @@
       } : null);
     }
   });
-  const progressScene = new URLSearchParams(location.search).get('progress');
+  const progressScene = new URLSearchParams(location.search).get('progress') || document.body.dataset.progressScene;
+  const progressChoice = root.querySelector('#progress-scene');
+  progressChoice.insertAdjacentHTML('afterbegin', `<optgroup label="新版：两行信息＋完成进度"><option value="compact-upload">上传中 · 连续完成进度</option><option value="compact-start">首次上传 · 从0开始</option><option value="compact-download">下载中 · 连续完成进度</option><option value="compact-paused">暂停与继续 · 保留比例</option><option value="compact-unknown">总数未确定 · 静止轨道</option><option value="compact-complete">同步完成 · 100%</option><option value="compact-failed">连接中断 · 继续同步</option></optgroup>`);
+  progressChoice.value = progressScene || 'continuous';
   mountFrames(progressScene ? frame => { frame.contentWindow.__mihonSyncDemo.showInteractionScenario('progress-' + progressScene); } : null);
 })();

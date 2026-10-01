@@ -236,6 +236,9 @@
     const result = state.ui.syncResult;
     const batchResult = state.ui.batchResult;
     const busy = state.ui.busy && state.ui.busyDeviceId === current.id;
+    if (state.ui.interactions?.progress?.compact) {
+      return `<section class="sync-content" data-testid="sync-panel">${interactions.status({ total: current.pendingOutgoing.length, membership, reading, pending, busy, online: state.online })}</section>`;
+    }
     return `<section class="sync-content" data-testid="sync-panel">
       ${interactions.status({ total: current.pendingOutgoing.length, membership, reading, pending, busy, online: state.online })}
       ${result && !interactions.hasProgress() ? `<div class="snackbar-inline ${result.ok ? 'success' : 'failure'}" data-testid="sync-result">${view.icon(result.ok ? 'check' : 'info')}<span>${esc(result.message)}</span></div>` : ''}

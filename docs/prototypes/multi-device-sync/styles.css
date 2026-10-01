@@ -345,3 +345,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .progress-review-tools { border-left: 3px solid var(--primary); padding-left: 12px; }
 @keyframes sync-progress-slide { from { transform: translateX(0); } to { transform: translateX(210%); } }
 @media (prefers-reduced-motion: reduce) { .sync-progress-track span { animation: none !important; } }
+.sync-compact-content { display: grid; gap: 16px; padding: 20px; min-width: 0; }
+.sync-compact-content p { margin: 0; line-height: 1.6; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.sync-compact-content p:first-child { font-weight: 600; }
+.sync-compact-content p:last-child { font-size: .9em; color: var(--outline); }
+.sync-compact-card .sync-progress-track { height: 6px; }
+.sync-compact-card .sync-progress-track span { animation: none !important; }
+.sync-compact-controls { display: flex; justify-content: flex-end; padding: 0 12px 8px; }
+.sync-compact-card > .ix-note { padding: 0 20px; }

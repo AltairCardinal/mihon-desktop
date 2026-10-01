@@ -104,10 +104,12 @@
       return `<section class="sync-item-log" data-testid="sync-item-log" aria-label="同步条目日志"><div class="sync-item-log-heading"><strong>条目记录</strong><span>最近 ${entries.length} 项</span></div><ol>${entries.map(entry => { const [label, icon] = status[entry.status] || status.pending; return `<li class="sync-log-item ${entry.status}"><span class="sync-log-status" aria-label="${label}">${view.icon(icon)}</span><div><strong>${esc(entry.title)}</strong><small>${esc(entry.detail)}</small></div><em>${label}</em></li>`; }).join('')}</ol></section>`;
     }
     let display = window.MihonSyncProgress.createDisplay();
+    let compactDisplay = window.MihonSyncProgress.createCompactDisplay();
     let progressTimer = null;
     let lastPaint = 0;
     function newProgress(fact = {}) {
       display = window.MihonSyncProgress.createDisplay();
+      compactDisplay = window.MihonSyncProgress.createCompactDisplay();
       const now = Date.now();
       data().progress = { state: 'running', action: '接收', direction: '本轮下载', scope: 'download-1', confirmed: 0, startedAt: now, lastProgressAt: now, ...fact };
       data().progressDetails = false;
@@ -126,6 +128,7 @@
     }
     function progressPage() { importFact(); return progressCard(); }
     function primary(f) {
+      if (f.compact && f.state === 'succeeded') return ['立即同步', 'ix-progress-restart'];
       if (f.source === 'import') return f.state === 'succeeded' ? ['查看同步', 'ix-import-done'] : f.state === 'paused' ? ['继续同步', 'ix-import-resume'] : f.state === 'failed' ? ['重试同步', 'ix-import-retry'] : ['暂停同步', 'ix-import-pause'];
       return f.state === 'paused' ? ['继续同步', 'ix-progress-resume'] : f.state === 'blocked' ? ['重新连接', 'ix-reconnect'] : ['failed', 'partial'].includes(f.state) ? ['重试同步', 'ix-progress-retry'] : f.state === 'succeeded' || f.state === 'cancelled' ? ['立即同步', 'sync-manual'] : ['暂停同步', 'ix-progress-pause'];
     }
@@ -133,10 +136,30 @@
       const f = data().progress;
       if (!f) return null;
       if (f.source === 'import') importFact();
-      return display(f);
+      return f.compact ? compactDisplay(f) : display(f);
+    }
+    function compactCard(f) {
+      const [label, name] = primary(f);
+      const percent = f.completionPercent;
+      const disabled = ['pausing', 'retry', 'network', 'system', 'recovering'].includes(f.state);
+      return `<section class="sync-progress-card sync-compact-card" data-testid="sync-progress-card"><div class="sync-compact-content"><p data-compact-line data-testid="sync-compact-summary">${esc(f.summary)}</p><div class="sync-progress-track" data-testid="sync-progress-track" role="progressbar" aria-label="同步完成进度" aria-valuemin="0" aria-valuemax="100" ${percent === null ? '' : `aria-valuenow="${percent}"`}><span style="width:${percent ?? 0}%"></span></div><p data-compact-line data-testid="sync-compact-time">${esc(f.time)}</p></div>${f.state === 'failed' ? `<p class="ix-note">${esc(f.reason || '同步未完成，已完成的进度已保留。')}</p>` : ''}<div class="sync-compact-controls"><button class="m-button m-button-text" data-testid="sync-progress-primary" data-action="${name}" ${disabled ? 'disabled' : ''}><span data-progress-control-label>${label}</span></button></div></section>`;
+    }
+    function paintCompact(card, f) {
+      card.querySelector('[data-testid="sync-compact-summary"]').textContent = f.summary;
+      card.querySelector('[data-testid="sync-compact-time"]').textContent = f.time;
+      const track = card.querySelector('[data-testid="sync-progress-track"]');
+      if (f.completionPercent === null) track.removeAttribute('aria-valuenow');
+      else track.setAttribute('aria-valuenow', f.completionPercent);
+      track.firstElementChild.style.width = `${f.completionPercent ?? 0}%`;
+      const control = card.querySelector('[data-testid="sync-progress-primary"]');
+      const [label, name] = primary(f);
+      control.querySelector('[data-progress-control-label]').textContent = label;
+      control.dataset.action = name;
+      control.disabled = ['pausing', 'retry', 'network', 'system', 'recovering'].includes(f.state);
     }
     function progressCard() {
       const f = progressValues(); if (!f) return '';
+      if (f.compact) return compactCard(f);
       const [label, name] = primary(f);
       return `<section class="sync-progress-card" data-testid="sync-progress-card"><div class="sync-progress-summary" data-testid="sync-progress-summary"><div class="sync-progress-heading"><h3 data-testid="sync-progress-title" aria-live="polite">${f.title}</h3><button class="m-button m-button-text" data-testid="sync-progress-primary" data-action="${name}"><span data-progress-control-label data-testid="${name === 'sync-manual' || f.source === 'manual' && f.state === 'failed' ? 'manual-sync' : name}">${label}</span></button></div><strong class="sync-progress-confirmed" data-testid="sync-progress-confirmed">${confirmedText(f)}</strong><div class="sync-progress-action" data-testid="sync-progress-action">${esc(f.action)}</div><div class="sync-progress-track" data-testid="sync-progress-track"><span></span></div><div class="sync-progress-time"><span>已用 <b data-testid="sync-progress-elapsed">${f.elapsed}</b></span><span>整体剩余：<b data-testid="sync-progress-eta">${f.eta}</b></span></div><p class="sync-progress-explanation" data-testid="sync-progress-explanation">${state.ui.syncResult ? `<span data-testid="sync-result">${esc(f.explanation)}</span>` : esc(f.explanation)}</p><button class="m-button m-button-text progress-toggle" data-testid="sync-progress-toggle" data-action="ix-progress-details" aria-expanded="${Boolean(data().progressDetails)}">${data().progressDetails ? '收起详情' : '查看详情'}${view.icon('chevron')}</button></div><div class="sync-progress-problems" data-testid="sync-progress-problems" ${f.state === 'partial' ? '' : 'hidden'}>待手动决定 ${f.decisions || 0} 项 · ${f.pendingBatches || 0} 个批次待核对（涉及 ${f.pendingChanges || 0} 条变动，不代表失败）<br>${f.failures || 0} 项无法还原 <button class="m-button m-button-text" data-action="ix-progress-failures" data-testid="sync-progress-failures">打开失败日志</button></div><div data-testid="sync-failure-log" class="sync-failure-log" ${data().failureLogOpen ? '' : 'hidden'}>失败日志 · 本地演示<br>《远山来信》阅读记录：无法还原，缺少作品身份与必要描述。<br>《夜行纪事》收藏：无法还原，记录未通过校验。</div><div class="sync-progress-details" data-testid="sync-progress-details" ${data().progressDetails ? '' : 'hidden'} tabindex="0" aria-label="同步详情">${progressDetails(f)}</div></section>`;
     }
@@ -154,6 +177,7 @@
       const card = document.querySelector('[data-testid="sync-progress-card"]');
       if (!card || !data().progress || !state.ui.syncOpen) return;
       const f = progressValues();
+      if (f.compact) { paintCompact(card, f); return; }
       const put = (id, value) => { const node = card.querySelector(`[data-testid="${id}"]`); if (node && node.textContent !== value) node.textContent = value; };
       put('sync-progress-title', f.title); put('sync-progress-confirmed', confirmedText(f)); put('sync-progress-action', f.action); put('sync-progress-elapsed', f.elapsed); put('sync-progress-eta', f.eta);
       const explanation = card.querySelector('[data-testid="sync-result"]') || card.querySelector('[data-testid="sync-progress-explanation"]'); if (explanation.textContent !== f.explanation) explanation.textContent = f.explanation;
@@ -172,6 +196,7 @@
     window.setInterval(() => { if (Date.now() - lastPaint >= 1000) { paintProgress(); lastPaint = Date.now(); } }, 250);
     function progressScenario(name) {
       clearTimeout(progressTimer);
+      if (name.startsWith('compact-')) { compactScenario(name); return; }
       const f = newProgress({ confirmed: 1280, prepared: 1600, received: 1320, checked: 960, transferred: 1320, action: '上传', direction: '本轮上传', scope: 'upload-1', percent: 64, startedAt: Date.now() - 102000 });
       data().progressScenario = name;
       const now = Date.now();
@@ -187,6 +212,29 @@
       if (name === 'continuous') continuousTick(0);
       if (name === 'retry') progressTimer = setTimeout(() => { f.state = 'recovering'; paintProgress(); progressTimer = setTimeout(() => { f.state = 'running'; continuousTick(0); }, 1000); }, 15000);
       if (name === 'transfer-complete') progressTimer = setTimeout(() => { f.action = '核对'; f.percent = null; f.lastProgressAt = Date.now(); paintProgress(); }, 3000);
+    }
+    function compactScenario(name) {
+      const f = newProgress({ compact: true, action: '上传', direction: '本轮上传', scope: 'review-upload', confirmed: 8192, total: 16384, wholeEta: 20, startedAt: Date.now() - 600000 });
+      data().progressScenario = name;
+      if (name === 'compact-download') { f.direction = '本轮下载'; f.action = '接收'; }
+      if (name === 'compact-start') { f.confirmed = 0; f.startedAt = Date.now(); }
+      if (name === 'compact-unknown') { f.total = null; f.confirmed = 0; f.wholeEta = null; }
+      if (name === 'compact-paused') f.state = 'paused';
+      if (name === 'compact-failed') { f.state = 'failed'; f.endedAt = Date.now(); f.reason = '连接暂时中断，可继续同步。'; }
+      if (name === 'compact-complete') { f.state = 'succeeded'; f.confirmed = f.total; f.endedAt = Date.now(); }
+      if (f.state === 'running' && f.total !== null) scheduleCompactTick();
+    }
+    function scheduleCompactTick() {
+      progressTimer = setTimeout(() => {
+        const f = data().progress;
+        if (!f?.compact || f.state !== 'running' || f.total === null) return;
+        f.confirmed = Math.min(f.total, f.confirmed + 512);
+        f.lastProgressAt = Date.now();
+        f.wholeEta = Math.ceil((f.total - f.confirmed) / 512 * 1.2);
+        if (f.confirmed === f.total) { f.state = 'succeeded'; f.endedAt = Date.now(); }
+        paintProgress();
+        if (f.state === 'running') scheduleCompactTick();
+      }, 1200);
     }
     function rapidTick(step) {
       const f = data().progress; if (!f || f.state !== 'running') return;
@@ -461,9 +509,10 @@
       if (!name.startsWith('ix-')) return false;
       const actionName = name.slice(3); const d = data();
       if (actionName === 'progress-details') { d.progressDetails = !d.progressDetails; }
+      else if (actionName === 'progress-restart') compactScenario(data().progressScenario === 'compact-download' ? 'compact-download' : 'compact-start');
       else if (actionName === 'progress-failures') d.failureLogOpen = !d.failureLogOpen;
       else if (actionName === 'progress-pause') { clearTimeout(progressTimer); clearTimeout(state.ui.timerId); state.ui.timerId = null; state.ui.busy = false; d.progress.state = 'paused'; }
-      else if (actionName === 'progress-resume' || actionName === 'progress-retry') { if (d.progress.source === 'manual') { window.__mihonSyncDemo.scheduleSync('manual'); } else { d.progress.state = 'recovering'; d.progress.percent = null; progressTimer = setTimeout(() => { d.progress.state = 'running'; if (d.progressScenario === 'rapid') rapidTick(d.progress.demoStep || 0); else continuousTick(d.progress.demoStep || 0); paintProgress(); }, 1000); } }
+      else if (actionName === 'progress-resume' || actionName === 'progress-retry') { if (d.progress.compact) { d.progress.state = 'running'; d.progress.endedAt = null; d.progress.lastProgressAt = Date.now(); if (d.progress.total !== null) scheduleCompactTick(); } else if (d.progress.source === 'manual') { window.__mihonSyncDemo.scheduleSync('manual'); } else { d.progress.state = 'recovering'; d.progress.percent = null; progressTimer = setTimeout(() => { d.progress.state = 'running'; if (d.progressScenario === 'rapid') rapidTick(d.progress.demoStep || 0); else continuousTick(d.progress.demoStep || 0); paintProgress(); }, 1000); } }
       else if (['frequency', 'device', 'disconnect', 'switch', 'issue', 'activity', 'privacy'].includes(actionName)) { go(actionName); }
       else if (actionName === 'setup' || actionName === 'reconnect') { if (actionName === 'setup' && d.setupStage) d.stack = [d.setupStage]; else startAuth(actionName === 'reconnect'); }
       else if (actionName === 'open-github') openAuthorization();

@@ -38,7 +38,25 @@
       return { ...fact, title: fact.state === 'succeeded' && fact.noWork ? '已是最新' : titles[fact.state], action, percent, elapsed, eta, explanation, active, terminal, age };
     };
   }
-  const api = { createDisplay, terminalStates, duration };
+  const clockText = seconds => {
+    const value = Math.max(0, Math.ceil(seconds));
+    return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
+  };
+  function createCompactDisplay(clock = Date.now) {
+    const display = createDisplay(clock);
+    return fact => {
+      const f = display(fact);
+      const completed = Number.isSafeInteger(f.confirmed) && f.confirmed >= 0 ? f.confirmed : null;
+      const total = Number.isSafeInteger(f.total) && f.total >= 0 && (completed === null || completed <= f.total) ? f.total : null;
+      const completionPercent = total !== null && completed !== null
+        ? total > 0 ? completed / total * 100 : f.state === 'succeeded' ? 100 : 0
+        : null;
+      const title = f.state === 'running' ? f.direction.includes('上传') ? '上传中' : '下载中' : titles[f.state];
+      const eta = f.eta === duration(f.wholeEta) && Number.isFinite(f.wholeEta) ? clockText(f.wholeEta) : '—';
+      return { ...f, completionPercent, summary: `${title}，已完成${completed ?? '—'}/${total ?? '—'}条`, time: `已用${f.elapsed}，剩余估时${eta}` };
+    };
+  }
+  const api = { createDisplay, createCompactDisplay, terminalStates, duration };
   if (typeof module === 'object') module.exports = api;
   else root.MihonSyncProgress = api;
 })(typeof window === 'object' ? window : globalThis);
