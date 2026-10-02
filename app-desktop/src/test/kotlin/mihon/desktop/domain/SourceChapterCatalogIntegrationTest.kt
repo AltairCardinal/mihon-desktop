@@ -1,11 +1,18 @@
 package mihon.desktop.domain
 
 import app.cash.sqldelight.db.SqlDriver
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.SMangaUpdate
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import mihon.desktop.di.inMemoryDesktopPreferenceStore
 import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.domain.fakes.FakeCatalogueSource
+import mihon.desktop.extension.SourceCallResult
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -18,12 +25,19 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
+import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.creator.service.CreatorLibraryIndexState
+import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.MangaRepository
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 @Isolated
 class SourceChapterCatalogIntegrationTest {
@@ -270,6 +284,83 @@ class SourceChapterCatalogIntegrationTest {
         assertEquals(old, chapters.getChapterById(old.id))
         assertEquals(listOf(old.id), chapters.getChapterByMangaId(manga.id).map { it.id })
         assertNull(Injekt.get<DatabaseHandler>().await { author_archiveQueries.getArchiveSourceWorkByKey(42, "/work").executeAsOneOrNull() })
+    }
+
+    @Test
+    fun `nonfavorite complete catalogue survives production library cleanup and database reopen without source calls`(@TempDir folder: File) {
+        var expected = emptyList<Chapter>()
+        fixture(folder) {
+            val manga = seed()
+            assertFalse(manga.favorite)
+            Injekt.get<SaveSourceMangaForDetails>().await(listed(), 42, remote(), fetchDetails = false)
+            expected = Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id)
+            assertEquals(manga.id, catalogObservation().manga_id)
+            coroutineScope {
+                val indexer = Injekt.get<CreatorLibraryIndexer>()
+                indexer.start(this)
+                val state = withTimeout(5_000) { indexer.state.first { it is CreatorLibraryIndexState.Empty || it is CreatorLibraryIndexState.Failed } }
+                assertInstanceOf(CreatorLibraryIndexState.Empty::class.java, state)
+            }
+            assertNull(catalogObservation().manga_id, "Library cleanup detaches a nonfavorite work without erasing its source catalogue")
+            assertEquals("COMPLETE", catalogObservation().chapter_count_state)
+        }
+        fixture(folder) {
+            val manga = requireNotNull(Injekt.get<MangaRepository>().getMangaByUrlAndSourceId("/work", 42))
+            val calls = AtomicInteger()
+            val prepared = Injekt.get<SaveSourceMangaForDetails>().awaitPrepared(countingSource(calls), manga)
+            assertInstanceOf(SourceCallResult.Success::class.java, prepared)
+            assertEquals(0, calls.get(), "Exact COMPLETE source evidence and intact local chapters must survive an unbound library association across processes")
+            assertEquals(expected, Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id))
+            assertNull(catalogObservation().manga_id, "A cache hit must not rebind the library association")
+        }
+    }
+
+    @Test
+    fun `unbound catalogue still validates raw chapters and rejects a foreign manga binding`(@TempDir folder: File) = fixture(folder) {
+        val manga = seed()
+        val owner = Injekt.get<SaveSourceMangaForDetails>()
+        val archive = Injekt.get<CreatorArchiveRepository>()
+        val chapters = Injekt.get<ChapterRepository>()
+        val calls = AtomicInteger()
+        val source = countingSource(calls)
+        owner.await(listed(), 42, remote(), fetchDetails = false)
+        val invalidations: List<suspend () -> Unit> = listOf(
+            { archive.updateSourceWorkCatalog(SourceWorkNaturalKey(42, manga.url), 2, ChapterCatalogCompleteness.COMPLETE, null, System.currentTimeMillis()) },
+            { archive.updateSourceWorkCatalog(SourceWorkNaturalKey(42, manga.url), 3, ChapterCatalogCompleteness.UNKNOWN, null, System.currentTimeMillis()) },
+            { chapters.update(ChapterUpdate(chapters.getChapterByMangaId(manga.id).first().id, sourceOrder = 9)) },
+            { chapters.update(ChapterUpdate(chapters.getChapterByMangaId(manga.id).first().id, dateFetch = 0)) },
+        )
+        invalidations.forEachIndexed { index, invalidate ->
+            archive.removeStaleLibraryMangaIndexes()
+            assertNull(catalogObservation().manga_id)
+            invalidate()
+            assertInstanceOf(SourceCallResult.Success::class.java, owner.awaitPrepared(source, manga))
+            assertEquals(index + 1, calls.get(), "An unbound association cannot bypass incomplete or inconsistent local catalogue evidence")
+            assertEquals("COMPLETE", catalogObservation().chapter_count_state)
+            assertFalse(Injekt.get<SourceChapterCatalogWriter>().needsRefresh(manga))
+        }
+        val other = Injekt.get<MangaRepository>().insertNetworkManga(listOf(Manga.create().copy(source = 42, url = "/other", title = "Other"))).single()
+        archive.upsertSourceWork(42, manga.url, other.id, "Other", null, null, null, detailsFetchedAt = null)
+        val before = chapters.getChapterByMangaId(manga.id)
+        val failure = assertInstanceOf(SourceCallResult.Error::class.java, owner.awaitPrepared(source, manga))
+        assertInstanceOf(mihon.domain.error.AppError.Storage::class.java, failure.error)
+        assertEquals(invalidations.size, calls.get(), "Foreign exact identity must fail before calling the source")
+        assertEquals(before, chapters.getChapterByMangaId(manga.id))
+        assertEquals(other.id, catalogObservation().manga_id)
+    }
+
+    private suspend fun catalogObservation() = Injekt.get<DatabaseHandler>().await {
+        author_archiveQueries.getArchiveSourceWorkByKey(42, "/work").executeAsOne()
+    }
+
+    private fun countingSource(calls: AtomicInteger): Source {
+        val delegate = FakeCatalogueSource(listed(), remote())
+        return object : Source by delegate {
+            override suspend fun getMangaUpdate(manga: SManga, chapters: List<SChapter>, fetchDetails: Boolean, fetchChapters: Boolean): SMangaUpdate {
+                calls.incrementAndGet()
+                return delegate.getMangaUpdate(manga, chapters, fetchDetails, fetchChapters)
+            }
+        }
     }
 
     private fun fixture(folder: File, action: suspend () -> Unit) = runBlocking {

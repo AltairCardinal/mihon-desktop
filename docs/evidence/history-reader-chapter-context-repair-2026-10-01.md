@@ -257,3 +257,83 @@ Mac `authors-viewport-mac-refactor` 实际 **12 tests / 0 failures / 0 errors / 
 受影响集合为AuthorsScreenModelsTest **5**、AuthorCardProductionWiringTest **3**、AuthorsProductionWiringTest的14 selectors匹配 **15** 项、DesktopSourcesScreenModelTest **3**；共26，Wiring没有执行完整类，其他模块没有执行完整测试。两份精确case清单及Mac四份XML保留在忽略过程目录；新的关停契约名称为`root close waits for its actual SQLite card query after disposal`及`detail close waits for actual presentation exclusion SQLite query after disposal`。实际四文件格式沿用已披露Desktop行长例外；这四个路径没有现有manifest锚点，manifest未改。
 
 用户在本修复稳定后明确批准追加限定独立复审1轮及Desktop full1次，预计20–35分钟，无新代理；范围为本作者SQL owner关停及相关fixture，不扩其他能力。主代理已完成这次限定独立复审：owned SupervisorJob、同步取消与重复关闭、SQL正确红、真实factory全部实例捕获、NonCancellable等待/解绑/DB关闭顺序、身份shared contract仅bind一次、两平台实际26项及四文件格式均核对，通过且无需修复。原full首发fixture仍未确定。四Kotlin与必要文档随本修复功能提交，Windows/Mac无运行Gradle；提交及已批准Desktop full由主代理接管，本节记录时该full尚未执行。HR02未勾选，剩余最终矩阵及正式构建/native验收仍待执行，不把focused或本次复审替代它们。
+
+### 作者关停修复提交后的 Desktop 全量通过
+
+修复、两平台26项定向验证、限定独立复审和必要文档一并提交为 `be457511dba89d5842927fee81fbc9b30efc076d`。Windows工作树干净；Mac隔离工作区反向撤销同一已验证四文件补丁后导入该提交，tracked源码一致，保留已有测试临时文件。`history-reader-final-desktop-authors-shutdown-recheck` 经项目 `build-desktop.sh full-tests` 执行，实际 **3276 tests / 0 failures / 0 errors / 3 skipped**，5分32秒，worker/process **38220 / 51280**，PASSED。实际全部XML计数、跳过名称和源码记录保存在 `.gradle-coordinator/history-reader-final-desktop-authors-shutdown-recheck-results.json`；先前三次失败证据保留，不以该通过反向断定原始泄漏fixture唯一身份。
+
+三项跳过为MacOsNativeSharePortTest的production JXA delegate、DesktopWindowPrivacyTest的windows frame affinity及LibraryPageCompositionTest的explicit non release custom interval；本次H01–H15对应测试没有跳过。完整Desktop证据覆盖当前已提交产品源码，后续正式构建可用 `build-only` 避免重复full，Mac仍需本轮正式运行。原计划尚未使用的一次domain/data JVM、data Android、Android app Release单元、test-desktop及全局格式组合由主代理接续执行；HR02仍未勾选，本文此节不宣称它们或正式产物/native已通过。
+
+### 其余一次最终完整矩阵通过
+
+`history-reader-final` 在同一提交 `be457511dba89d5842927fee81fbc9b30efc076d` 串行执行 `:domain:jvmTest :data:jvmTest :data:testDebugUnitTest :app:testReleaseUnitTest :test-desktop:test spotlessCheck --max-workers=2 --no-parallel`，最终 **PASSED**，35分24秒，413 tasks（136执行、152来自缓存、125 up-to-date），worker/process **49556 / 61016**。外层run等待曾超时并返回RUNNING；主代理未重复启动，核对原key最终退出0及进程结束后才启动正式构建。规模SQLite回归、Android编译及测试使本组合超过启动时10–30分钟的估计。
+
+| 完整目标 | tests | failures / errors | skipped |
+|---|---:|---:|---:|
+| domain JVM | 568 | 0 / 0 | 0 |
+| data JVM | 754 | 0 / 0 | 1 |
+| data Android Debug 单元 | 345 | 0 / 0 | 0 |
+| Android app Release 单元 | 672 | 0 / 0 | 7 |
+| test-desktop | 52 | 0 / 0 | 0 |
+| 合计 | 2391 | 0 / 0 | 8 |
+
+全局spotlessCheck通过；Desktop本次实际修改文件另有对应FileCollection格式证据。8项跳过属于SyncGitCompareAcceptanceTest的真实Git导入/重放、AndroidSyncPanelTest的三个失败报告系统入口及AndroidLegacySyncMigrationTest的四个旧版回调测试；精确名称保存在 `.gradle-coordinator/history-reader-final-results.json`，本次H01–H15共享目录契约及阅读器目标没有跳过。此矩阵没有构建或安装Android APK，也没有运行finalParityAudit。
+
+Windows/Mac已开始相同源码的项目脚本 `build-only`，各自将BUILD从68分配为69，完整版本 `0.11.19.69.be45751`；Windows协调器 `history-reader-windows-build`（59656/58172）、Mac协调器 `history-reader-mac-build`（97406/97407）。Mac部署目标解析并核对在本任务独立缓存内、与dist不重叠且启动前不存在，日常 `/Applications/Mihon Desktop.app` 保留。此节仅记录构建启动，实际产物、production运行及原生输入尚待完成；HR02保持未勾选。
+
+
+### 正式候选构建与运行中的新增阻塞（尚未完成 HR02）
+
+Windows `history-reader-windows-build` 与显式入口重试 `history-reader-windows-build-entry-retry` 均在 Bash→PowerShell 分派阶段退出127，未进入脚本主体；原因尚未定位，不能归因于扩展名或 PATH。沿用项目支持的 `scripts/build-windows.ps1`，用 PowerShell `-Command` 调用及已分配版本参数，`history-reader-windows-build-script-entry` 最终 PASSED（64492/56460，约2分34秒）。没有直接调用 Gradle 打包，未重新执行完整测试。脚本实际核对正式运行版本和 production APK 安装，扩展真实安装链路通过。
+
+正式版本 **0.11.19.69.be45751**；`Final unpacked EXE:` 为 `D:/Codex/worktrees/f235/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.69.be45751-unpacked/Mihon Desktop.exe`，已确认存在；Windows ZIP SHA-256 `bf35d20dbfd81045f2ec5a227a4bb0c2bc1b9c4badcb18e5055d3332d8578c0a`。Mac `history-reader-mac-build` 同源码通过，正式 `.app` 为 `/Users/altair/Library/Caches/mihon-history-reader-20261001-f235/app/Mihon Desktop.app`，实际包可执行文件存在且 Info.plist 版本11.19.69；日常应用保留。两平台源码为 be457511 + BUILD69 元数据，产品代码与全量通过时一致。
+
+Windows 正式 EXE 非headless、隔离 profile `runtime-profiles/windows-native`、HTTP58931/JMX58932，实际PID59008/包装器55952，已核对进程路径和启动参数。真实同步接收最初只创建章2/页1，chapterId1、historyId1、未收藏、UNKNOWN；真实 history_select 完成一次源目录请求后目录 COMPLETE3，refs为[2,1,3]，索引1、initialPage1与同步 heads 保留。实际 page list、图片 HTTP、DECODE 和 FIRST_PAGE_PRESENTED 已通过；随后真实阅读写页2来自双页呈现，属于正常 tracker 行为，不是目录准备伪造进度。
+
+真实 incoming advance 已经由 journal/inbox/projector 接收章3/页2，打开中的中间章1/页1与 resumeHeadIds 保持不变，证据 `history-windows-incoming.json`。新的同步历史项可以改变当前最新 historyId，此变化不能误报为初次目录准备重建原ID。
+
+**未通过项**：正式实例 `/test/reader/prev_chapter` 连续返回500空body，当前session仍Loaded。当前推断指向本批 ProductionReaderBinding 的 Dispatchers.Main；精确候选只读 jcmd classloader 实际看到 AndroidDispatcherFactory 与 MissingMainCoroutineDispatcher 已加载，但此项尚待因果诊断，不把它当作最终根因。打包运行时没有 jdk.jfr，异常录制不可用。原实施者仅接到限定只读诊断任务，未修改代码、未追加full或构建。
+
+Windows 原生工具检查到前台PID57632属于另一任务隔离实例，未发送任何原生按键。Mac候选经LaunchServices启动，实际PID20338，独立mac-native profile，HTTP58941/JMX58942；用户明确确认已解锁、测试作品与候选可见。输入工具重新检查onConsole、精确窗口1024×768、输入权限与前台PID，通过；仅发送空按键列表预检，尚无键盘通过证据。外部AXFocusedUIElement读取先后返回-25202/-25204，不能稳定获得焦点几何，未将其认定为权限失败；已请求现场进行取消与焦点观察。HR02仍保持未勾选，以上构建通过不能替代未完成的正式切章和原生验收。
+
+
+同 Windows 候选正常 shutdown 后确认原实际PID59008与包装器55952退出，精确同profile重启为包装器34204/实际39812。启动fixture COMPLETE3、dateFetch正、连续sourceOrder、chapterCalls0；真实历史再次进入采用最新同步章3、initialPage2与sender:1:2 heads，图片实际呈现。但 chapterCalls 升为1，跨进程“不重新请求目录”的runtime断言失败，保留 `history-windows-cache-runtime.json`。只读真实SQLite确切source-work行随后为/manga/history-catalog、manga_id1、COMPLETE3；仍需核对生产bootstrap/DI/调用顺序，未据此将重复请求归为正常或已修复。原实施者只读诊断范围增加这项，未开始新的修复或full。
+
+
+### Windows 正式候选中已完成的失败、重试及详情路径
+
+同一正式69候选、独立标记profile，逐项串行启动和正常关停；从未触碰其他任务实例或日常profile。HTTP500、empty、missing_target 三项真实source parser→准备→SQLite→history_select均拒绝（409）；原chapterId1/historyId1/页1保留，准备阶段outgoingUserEvents0。显式 history_read_existing 均挂载production reader并实际呈现四页图片；missing_target只提供refs[1]、两侧无邻章，源返回2章的COMPLETE观测不被伪装成包含旧目标的3章目录。固定过程证据为 `history-windows-http500-runtime.json`、`history-windows-empty-runtime.json`、`history-windows-missing_target-runtime.json`。
+
+目标消失场景的profile正常关停并恢复默认成功源后，history_retry走真实请求，目录观测恢复COMPLETE3，refs[2,1,3]、当前原chapterId1正确、图片呈现，source目录调用1次；证据 `history-windows-retry-runtime.json`。这一证据属于失败恢复；不会把它说成冷启动缓存复用已经通过。
+
+H03详情专项也从真实两个文件数据库同步接收初始中间章。为进入已有Library详情入口，仅在该隔离实例关停后，将固定测试作品的SQLite favorite设为1；明确属于fixture前置数据，不作为收藏业务或同步收藏验收。重启时仍一章、dateFetch0、目录调用0；实际open_manga_detail进入既有生产详情链路，自动补成三章、源调用1次、COMPLETE3，原chapterId/historyId/页1与outgoingUserEvents保留，favorite仍true。证据 `history-windows-details-runtime.json` 同时保存前置数据说明、入口动作、真实detail state和补载结果。没有用手工三章代替源目录补载。
+
+进一步冷启动诊断 `history-windows-cache-diagnostic.json` 完整保存 select前、精确SQLite观测和select后：COMPLETE3且章节连续/正首取时间，启动时真实 source-work.manga_id=null，打开后源调用0→1；因此 needsRefresh 保护性拒绝复用是直接触发条件。清空绑定的启动producer尚待定位，不能放宽判定或声称缓存修复。Main调度必要修复已交原实施者先做无setMain的真实HTTP/mounted定向红绿；未授权新的full、复审或候选重建，旧69候选实际失败证据保留。
+
+
+Mac外部焦点诊断补充：实际 AXIsProcessTrusted=true；改用精确应用 AXUIElementCreateApplication(PID20338) 的只读查询后，FocusedUIElement/owner PID可取得，但AXPosition仍返回-25202。没有发送原生按键或改变系统权限，焦点观察继续待现场回复，不把只读接口失败解释为输入权限缺失。
+
+
+### 正式运行必要修复：两平台定向通过，追加验收待批准
+
+只复用原实施者，未新增代理。Main路径正确红：移除真实 SyncedHistoryReaderIntegrationTest 的setMain覆盖、保持两个文件数据库/真实source HTTP/实际挂载reader及强断言，`history-reader-desktop-dispatch-red` 1/1失败（66492/57856，21秒），实际HTTP next_chapter期望200但返回500；生产代码未改。三处ProductionReaderBinding动作改为显式已有 Dispatchers.Swing 后，同1项最小绿（63464/56728），再Synced2+HistoryHTTP3及两文件格式重构5/0。候选真实MissingMain类加载、打包Android factory/stub字节码与该机制一致；正式应用完整异常因果链没有抓获，JFR模块不可用的限制保持。
+
+缓存正确红：真实CreatorLibraryMangaIndexer.start/backfill→removeStaleLibraryMangaIndexes→detachStaleArchiveSourceWorksFromLibrary对favorite=false清manga_id，目录自然键/COMPLETE3保留；关停fixture后同DB重开真实DI与准备owner，sourceCalls应0但实际1。`history-reader-cache-detached-red` 新2项/1失败（57160/5316，18秒）；完整性边界项原代码已绿。只在SourceChapterCatalogWriter.needsRefresh允许null关联的确切自然键观测，保留COMPLETE/raw count/连续顺序/正首取时间全部约束，非空异manga仍Storage且无源调用；同2项最小绿（65604/57564）。不改library detach producer、共享协议、schema、源parser或详情字段。维护设计已同步说明书架关联可解除、自然键目录仍可按严格证据复用。
+
+| 受影响重构范围 | 实际结果 | worker / process |
+|---|---|---|
+| Windows history-reader-runtime-repair-refactor | Synced2、HistoryHTTP3、Catalog13，共18/0/0/0；实际4文件spotlessCheck通过，25秒 | 50668 / 64260 |
+| Mac history-reader-runtime-repair-mac-refactor | 相同三类、实际18/0/0/0 | 58337 / 58338 |
+
+四源码/测试diff110增加/13删除；两平台实际patch SHA-256一致 `f860ba7248a2d893e040f78d437c0d8a1fabf2fa05cb5ec1ba29991e6224b3f6`。真实XML、case清单和结构回执保留 `.gradle-coordinator/history-reader-runtime-repair-*`，回执校验PASS；Windows/Mac无运行Gradle，协调权交回主代理。Windows本轮隔离详情候选实际64988/包装器61192已正常退出；Mac69候选20338保留等待现场观察。旧69候选没有上述两个源码修改，不能作为新代码最终验收或交付。
+
+主代理现申请 **限定独立复审1次 + Desktop完整测试1次 + Windows/macOS各正式重建1次 + 必要正式运行复验**，预计20–35分钟、不含现场等待、无新代理；此段记录时尚未批准，未开始复审/full/重建或提交。此前定向/full没有覆盖真实Main默认选择及生产startup cleanup后的缓存重开，两项新契约关闭这两个验证缺口；不是因为预算用完才追加。共享domain/data/Android/test-desktop产品源码未改变，原完整矩阵证据可保持；仅Desktop需更新完整证据。HR02仍未勾选，Mac原生取消、Tab/Shift+Tab及焦点观察仍待回复。
+
+
+### 2026-10-03 获批追加验收与限定独立复审
+
+用户在说明前次full3276/0已经通过、随后正式运行发现的两项验证缺口及不能保证下一轮绝无新问题后，明确回复“批准”。授权范围为限定独立复审1次、Desktop完整测试1次、Windows/macOS各正式重建1次及相关正式运行复验，预计20–35分钟、不含现场原生等待；不新增代理，失败不自动追加full。原domain/data/Android/test-desktop源码未改，已有最终矩阵继续有效。
+
+主代理本轮独立复审核对四文件稳定diff、生产DI及Screen binding、真实SQLite归档自然键读取与legacy兼容、fixture关停重开、两个正确红XML及两平台各18/0/0/0实际case清单。通过：Swing三动作仅改变既有Desktop适配线程，不改变业务导航或进度；null缓存仅接受真实确切sourceId/URL观测，非空异manga仍拒绝，非空raw章节/count/COMPLETE/连续order/dateFetch检查全部保留，不重绑书架关联。新增测试执行真实indexer清理、文件DB重开和production owner，不替换Main，不放宽原业务断言。未发现剩余审查阻塞；未进行第二轮复审。
+
+本功能批次包含4个Kotlin文件及必要设计、Mac经验、唯一报告、roadmap与已有69版本分配元数据，共9文件；超过8文件提示的理由是代码修复、因果测试和正式运行验证边界必须联合记录，未扩产品能力或schema。修复及必要文档先提交，再执行此次批准的唯一Desktop full；HR02仍未勾选。

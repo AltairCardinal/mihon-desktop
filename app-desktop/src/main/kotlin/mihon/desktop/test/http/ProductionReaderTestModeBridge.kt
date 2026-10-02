@@ -1,6 +1,7 @@
 package mihon.desktop.test.http
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.swing.Swing
 import kotlinx.coroutines.withContext
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
@@ -49,10 +50,10 @@ internal class ProductionReaderBinding(
             state.context.resumeSnapshot?.heads?.values?.flatten()?.map { it.eventId.stableKey + ":" + it.effectId }?.sorted().orEmpty(),
         )
     }
-    suspend fun adjacent(direction: ReaderTransitionDirection): Boolean = withContext(Dispatchers.Main) {
+    suspend fun adjacent(direction: ReaderTransitionDirection): Boolean = withContext(Dispatchers.Swing) {
         transition(direction, navigator())
     }
-    suspend fun page(index: Int): Boolean = withContext(Dispatchers.Main) {
+    suspend fun page(index: Int): Boolean = withContext(Dispatchers.Swing) {
         if (index !in 0 until model.state.value.session.activeChapter.pages.size) {
             false
         } else {
@@ -60,7 +61,7 @@ internal class ProductionReaderBinding(
             true
         }
     }
-    suspend fun close() = withContext(Dispatchers.Main) { closeReader() }
+    suspend fun close() = withContext(Dispatchers.Swing) { closeReader() }
 }
 
 internal object ProductionReaderTestModeBridge {

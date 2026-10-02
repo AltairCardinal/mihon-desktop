@@ -16,14 +16,9 @@ import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.tachiyomi.network.NetworkHelper
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
@@ -65,7 +60,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 
 @Isolated
-@OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalComposeUiApi::class)
 class SyncedHistoryReaderIntegrationTest {
     @Test
     fun `projection during source wait selects coherent latest resume and metadata never revives cleared history`(@TempDir folder: File) = runBlocking {
@@ -145,7 +140,6 @@ class SyncedHistoryReaderIntegrationTest {
     @Test
     fun `two file databases project sparse history then actual reader loads adjacent pages and holds session baseline`(@TempDir folder: File) = runBlocking {
         val context = initDesktopDIForTest(folder, inMemoryDesktopPreferenceStore())
-        Dispatchers.setMain(UnconfinedTestDispatcher())
         val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) { testHttpServer() }.start()
         val base = "http://127.0.0.1:${server.resolvedConnectors().single().port}"
         val fixture = HistoryCatalogTestFixture(folder, Injekt.get<DatabaseHandler>(), Injekt.get<SyncRuntime>(), Injekt.get<NetworkHelper>().client, base, verifyProfile = { check(folder.isDirectory) })
@@ -220,6 +214,17 @@ class SyncedHistoryReaderIntegrationTest {
             settle(scene) { ProductionReaderTestModeBridge.snapshot()?.let { loaded(it, last.id) } == true }
             assertFalse(requireNotNull(ProductionReaderTestModeBridge.snapshot()).hasNextChapter)
             assertTrue(fixture.pageCalls.get() >= 3)
+            // Exercise the production Desktop dispatcher without replacing Dispatchers.Main.
+            assertEquals(200, post(base, "/test/reader/go_to_page", """{"page":2}""").statusCode())
+            assertEquals(2, ProductionReaderTestModeBridge.snapshot()?.currentPage)
+            assertEquals(200, post(base, "/test/reader/prev_page").statusCode())
+            assertEquals(1, ProductionReaderTestModeBridge.snapshot()?.currentPage)
+            assertEquals(200, post(base, "/test/reader/next_page").statusCode())
+            assertEquals(2, ProductionReaderTestModeBridge.snapshot()?.currentPage)
+            assertEquals(200, post(base, "/test/reader/prev_chapter").statusCode())
+            settle(scene) { ProductionReaderTestModeBridge.snapshot()?.let { loaded(it, middle.id) } == true }
+            assertEquals(200, post(base, "/test/reader/next_chapter").statusCode())
+            settle(scene) { ProductionReaderTestModeBridge.snapshot()?.let { loaded(it, last.id) } == true }
             // Real key events at the beginning of the chapter consume the existing transition unit.
             scene.sendKeyEvent(composeKeyEvent(Key.MoveHome, KeyEventType.KeyDown))
             repeat(3) {
@@ -254,7 +259,6 @@ class SyncedHistoryReaderIntegrationTest {
             ProductionReaderTestModeBridge.reset()
             server.stop(0, 0)
             context.closeAndJoin()
-            Dispatchers.resetMain()
         }
     }
 
@@ -270,7 +274,7 @@ class SyncedHistoryReaderIntegrationTest {
         }
         settle(scene) { nodes(scene).any { labels(it).contains(label) } }
     }
-    private fun post(base: String, path: String) = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create(base + path)).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString("{}")).build(), HttpResponse.BodyHandlers.ofString())
+    private fun post(base: String, path: String, body: String = "{}") = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create(base + path)).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString())
     private suspend fun settle(scene: ImageComposeScene, predicate: () -> Boolean) = withTimeout(15_000) {
         while (!predicate()) {
             scene.render().close()

@@ -45,9 +45,10 @@ class SourceChapterCatalogWriter(
     suspend fun needsRefresh(manga: Manga): Boolean {
         val stored = chapters.getChapterByMangaId(manga.id)
         check(stored.map { it.url }.distinct().size == stored.size) { "Duplicate local chapter identity" }
+        // Library indexing can detach nonfavorite works; exact natural-key evidence remains usable.
         val observation = archive?.getSourceWorkCatalog(key(manga), manga.id)
         return stored.isEmpty() || observation?.completeness != ChapterCatalogCompleteness.COMPLETE ||
-            observation.mangaId != manga.id ||
+            (observation.mangaId != null && observation.mangaId != manga.id) ||
             observation.chapterCount != stored.size.toLong() || stored.any { it.dateFetch <= 0 } ||
             stored.map { it.sourceOrder }.sorted() != stored.indices.map { it.toLong() }
     }
