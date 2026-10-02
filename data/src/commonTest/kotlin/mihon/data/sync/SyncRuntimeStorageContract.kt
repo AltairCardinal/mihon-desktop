@@ -59,6 +59,36 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 
 abstract class SyncRuntimeStorageContract {
+    @Test
+    fun `pause clock persists repeated pauses and ignores duplicate pause and rejected ownership`() = runBlocking {
+        open().use { storage ->
+            var now = 1_000L
+            val store = SyncRunStore(storage.handler, clock = { now })
+            val run = store.start("space", 1, SyncTrigger.MANUAL)
+            assertTrue(store.claim(run.runId, "owner", 1))
+            now = 11_000
+            store.pause(run.runId)
+            assertEquals(11_000L, store.get(run.runId)!!.pausedAt)
+            now = 21_000
+            store.pause(run.runId)
+            assertEquals(11_000L, store.get(run.runId)!!.pausedAt)
+            val reopened = SyncRunStore(storage.handler, clock = { now })
+            now = 71_000
+            assertTrue(reopened.resumeIfAllowed(run.runId))
+            assertEquals(60_000L, reopened.get(run.runId)!!.pausedMillis)
+            assertNull(reopened.get(run.runId)!!.pausedAt)
+            now = 76_000
+            reopened.pause(run.runId)
+            now = 96_000
+            reopened.finish(run.runId, SyncRunState.FAILED, ownerSession = "stale")
+            assertEquals(SyncRunState.PAUSED_USER, reopened.get(run.runId)!!.state)
+            reopened.cancel(run.runId)
+            assertEquals(80_000L, reopened.get(run.runId)!!.pausedMillis)
+            assertNull(reopened.get(run.runId)!!.pausedAt)
+            assertEquals(15_000L, reopened.get(run.runId)!!.let { it.updatedAt - it.createdAt - it.pausedMillis })
+        }
+    }
+
     protected abstract fun open(): Storage
     protected val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
     protected val secret = SyncSecret.fromBytes(ByteArray(32) { (it + 1).toByte() })

@@ -40,6 +40,8 @@ class SyncProgressDisplaySession {
     private var attempt: Long? = null
     private var elapsedOriginMillis = 0L
     private var elapsedBaselineSeconds = 0L
+    private var elapsedPaused = false
+    private var excludedPauseMillis = 0L
     private val roundRate = SyncRoundConfirmationRate()
     private var previousFact: SyncProgressFact? = null
     private val stages = mutableMapOf<SyncProgressStage, Pair<Long, Long?>>()
@@ -51,11 +53,26 @@ class SyncProgressDisplaySession {
         val fact = state.progress?.takeIf {
             run != null && (it.scope == run.runId || it.scope.startsWith("${run.runId}:"))
         }
-        if (!initialized || identity != nextIdentity) {
+        val paused = run?.state == SyncRunState.PAUSED_USER
+        if (!initialized || identity != nextIdentity || elapsedPaused != paused ||
+            excludedPauseMillis != (run?.pausedMillis ?: 0L)
+        ) {
             elapsedOriginMillis = monotonicMillis
-            elapsedBaselineSeconds = ((state.nowMillis - (run?.createdAt ?: state.nowMillis)).coerceAtLeast(0)) / 1000
-            stages.clear()
+            val elapsedUntil = if (paused) {
+                run!!.pausedAt ?: run.updatedAt
+            } else {
+                maxOf(
+                    state.nowMillis,
+                    run?.updatedAt ?: 0,
+                )
+            }
+            elapsedBaselineSeconds = (
+                elapsedUntil - (run?.createdAt ?: elapsedUntil) - (run?.pausedMillis ?: 0)
+                ).coerceAtLeast(0) / 1000
         }
+        if (!initialized || identity != nextIdentity) stages.clear()
+        elapsedPaused = paused
+        excludedPauseMillis = run?.pausedMillis ?: 0L
         if (identity != nextIdentity || attempt != run?.attemptId) roundRate.reset()
         if (previousFact?.scope != fact?.scope || previousFact?.direction != fact?.direction) stages.clear()
         val terminal = run?.state in TERMINAL_STATES
@@ -110,14 +127,16 @@ class SyncProgressDisplaySession {
         attempt = run?.attemptId
         previousFact = fact
         val elapsed = if (terminal && run != null) {
-            (run.updatedAt - run.createdAt).coerceAtLeast(0) / 1000
+            (run.updatedAt - run.createdAt - run.pausedMillis).coerceAtLeast(0) / 1000
+        } else if (paused) {
+            elapsedBaselineSeconds
         } else {
             elapsedBaselineSeconds + (monotonicMillis - elapsedOriginMillis).coerceAtLeast(0) / 1000
         }
         return SyncProgressPresentation(
             status, action, run?.confirmedItems, fraction, if (active) wholeRemaining else null,
             false, null, active, fact, stages.toMap(),
-            if (!terminal && (run != null || state.busy)) monotonicMillis + NUMBER_INTERVAL else null,
+            if (!terminal && !paused && (run != null || state.busy)) monotonicMillis + NUMBER_INTERVAL else null,
             elapsed,
         )
     }

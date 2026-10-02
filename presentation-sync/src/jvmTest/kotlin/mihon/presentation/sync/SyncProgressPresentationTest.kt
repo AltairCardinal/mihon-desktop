@@ -16,6 +16,27 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class SyncProgressPresentationTest {
+    @Test fun `paused elapsed freezes across reopening and resumes without adding the pause`() {
+        val session = SyncProgressDisplaySession()
+        val running = state().copy(nowMillis = 10_000)
+        assertEquals(10L, session.project(running, 0).elapsedSeconds)
+        val paused = running.copy(
+            nowMillis = 15_000,
+            run = run.copy(state = SyncRunState.PAUSED_USER, updatedAt = 15_000, pausedAt = 15_000),
+        )
+        assertEquals(15L, session.project(paused, 5_000).elapsedSeconds)
+        assertNull(session.project(paused, 5_000).nextDeadlineMillis)
+        assertEquals(15L, session.project(paused.copy(nowMillis = 75_000), 65_000).elapsedSeconds)
+        assertEquals(15L, SyncProgressDisplaySession().project(paused.copy(nowMillis = 75_000), 0).elapsedSeconds)
+        val resumed = running.copy(nowMillis = 75_000, run = run.copy(updatedAt = 75_000, pausedMillis = 60_000))
+        assertEquals(15L, session.project(resumed, 65_000).elapsedSeconds)
+        assertEquals(17L, session.project(resumed, 67_000).elapsedSeconds)
+        assertEquals(15L, SyncProgressDisplaySession().project(resumed, 0).elapsedSeconds)
+        val finished = resumed.copy(run = resumed.run!!.copy(state = SyncRunState.SUCCEEDED, updatedAt = 78_000))
+        assertEquals(18L, session.project(finished, 68_000).elapsedSeconds)
+        assertEquals(18L, session.project(finished.copy(nowMillis = 100_000), 100_000).elapsedSeconds)
+    }
+
     private val run = SyncRunSnapshot(
         "run", "space", 1, SyncTrigger.MANUAL, SyncRunState.RUNNING,
         SyncRunPhase.UPLOADING, 0, 0, 0, 0, 0, attemptId = 1, nextRetryAt = 0,

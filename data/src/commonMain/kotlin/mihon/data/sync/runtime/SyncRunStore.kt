@@ -55,6 +55,8 @@ data class SyncRunSnapshot(
     val downloadedBaseline: Long = 0,
     val confirmedItems: Long = 0,
     val plannedItems: Long? = null,
+    val pausedMillis: Long = 0,
+    val pausedAt: Long? = null,
 )
 
 data class SyncRunPlanBatch(
@@ -492,7 +494,10 @@ class SyncRunStore(
 
     suspend fun get(runId: String): SyncRunSnapshot? = handler.await {
         sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull()?.let {
-            it.toSnapshot(sync_runtimeQueries.getRuntimePlannedItems(it.run_id).executeAsOneOrNull())
+            it.toSnapshot(
+                sync_runtimeQueries.getRuntimePlannedItems(it.run_id).executeAsOneOrNull(),
+                sync_runtimeQueries.getRuntimePauseClock(it.run_id).executeAsOneOrNull(),
+            )
         }
     }
 
@@ -517,13 +522,19 @@ class SyncRunStore(
 
     suspend fun active(spaceId: String, generation: Long): SyncRunSnapshot? = handler.await {
         sync_runtimeQueries.getActiveRuntimeRun(spaceId, generation).executeAsOneOrNull()?.let {
-            it.toSnapshot(sync_runtimeQueries.getRuntimePlannedItems(it.run_id).executeAsOneOrNull())
+            it.toSnapshot(
+                sync_runtimeQueries.getRuntimePlannedItems(it.run_id).executeAsOneOrNull(),
+                sync_runtimeQueries.getRuntimePauseClock(it.run_id).executeAsOneOrNull(),
+            )
         }
     }
 
     suspend fun latest(spaceId: String, generation: Long): SyncRunSnapshot? = handler.await {
         sync_runtimeQueries.getLatestRuntimeRun(spaceId, generation).executeAsOneOrNull()?.let {
-            it.toSnapshot(sync_runtimeQueries.getRuntimePlannedItems(it.run_id).executeAsOneOrNull())
+            it.toSnapshot(
+                sync_runtimeQueries.getRuntimePlannedItems(it.run_id).executeAsOneOrNull(),
+                sync_runtimeQueries.getRuntimePauseClock(it.run_id).executeAsOneOrNull(),
+            )
         }
     }
 
@@ -850,7 +861,10 @@ class SyncRunStore(
     }
 }
 
-private fun tachiyomi.data.Sync_runtime_runs.toSnapshot(planned: Long? = null) = SyncRunSnapshot(
+private fun tachiyomi.data.Sync_runtime_runs.toSnapshot(
+    planned: Long? = null,
+    pauseClock: tachiyomi.data.Sync_runtime_pause_clock? = null,
+) = SyncRunSnapshot(
     runId = run_id,
     spaceId = space_id,
     generation = generation,
@@ -866,6 +880,8 @@ private fun tachiyomi.data.Sync_runtime_runs.toSnapshot(planned: Long? = null) =
     downloaded = downloaded,
     confirmedItems = confirmed_items,
     plannedItems = planned,
+    pausedMillis = pauseClock?.paused_millis ?: 0,
+    pausedAt = pauseClock?.paused_at,
     uploadedBaseline = uploaded_baseline,
     downloadedBaseline = downloaded_baseline,
     attemptId = attempt_id,

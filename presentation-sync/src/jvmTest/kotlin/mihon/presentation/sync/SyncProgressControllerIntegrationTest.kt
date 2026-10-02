@@ -1,6 +1,9 @@
 package mihon.presentation.sync
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
@@ -87,8 +90,10 @@ class SyncProgressControllerIntegrationTest {
         )
         val preferences = DesktopPreferenceStore(preferenceNode)
         val client = OkHttpClient()
+        var clockMillis = 1_000L
+        var displayMillis by mutableStateOf(0L)
         fun runtime() = SyncRuntime(
-            handler, bootstrap, creators, creators, { true }, secure, preferences, client, clock = { 1000 },
+            handler, bootstrap, creators, creators, { true }, secure, preferences, client, clock = { clockMillis },
         )
         var runtime = runtime()
         val scene = ImageComposeScene(400, 800, coroutineContext = coroutineContext) {}
@@ -125,7 +130,14 @@ class SyncProgressControllerIntegrationTest {
         fun mount() {
             val panel = runtime.panel
             scene.setContent {
-                MaterialTheme { SyncPanelContent(panel, onOpenBrowser = {}, onCopyCode = {}) }
+                MaterialTheme {
+                    SyncPanelContent(
+                        panel,
+                        onOpenBrowser = {},
+                        onCopyCode = {},
+                        displayMonotonicMillis = { displayMillis },
+                    )
+                }
             }
         }
         try {
@@ -159,9 +171,25 @@ class SyncProgressControllerIntegrationTest {
                 "${run.runId}:fixture", SyncProgressStage.TRANSFERRING,
                 SyncProgressDirection.UPLOAD, 0, 1, 0, 0, 100, 0, SyncProgressHold.ACTIVE, null, null,
             )
+            clockMillis = 11_000
+            displayMillis = 10_000
             click("sync-pause-run")
             withTimeout(5000) { runtime.panel.state.first { it.run?.state == SyncRunState.PAUSED_USER } }
             assertEquals(SyncRunState.PAUSED_USER, runtime.runStore.get(run.runId)!!.state)
+            render()
+            fun displayedTime() = node("sync-round-time")!!.config[SemanticsProperties.Text].single().text
+            assertTrue(displayedTime().contains("00:10"), displayedTime())
+            clockMillis = 71_000
+            displayMillis = 70_000
+            render()
+            assertTrue(displayedTime().contains("00:10"), displayedTime())
+            runtime.panel.dispatch(SyncPanelAction.Close)
+            withTimeout(5000) { runtime.panel.state.first { !it.visible } }
+            render()
+            runtime.panel.dispatch(SyncPanelAction.Open)
+            withTimeout(5000) { runtime.panel.state.first { it.visible && it.loaded } }
+            withTimeout(5000) { while (node("sync-round-time") == null) render() }
+            assertTrue(displayedTime().contains("00:10"), displayedTime())
             click("sync-pause-import")
             withTimeout(5000) { runtime.panel.state.first { it.importPaused } }
             assertTrue(runtime.preferences.importPaused.get())

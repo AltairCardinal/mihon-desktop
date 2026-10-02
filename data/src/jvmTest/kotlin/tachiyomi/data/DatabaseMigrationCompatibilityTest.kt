@@ -33,7 +33,7 @@ class DatabaseMigrationCompatibilityTest {
 
         DatabaseMigration.migrateAtomically(driver, 39, Database.Schema.version)
 
-        queryLong(driver, "PRAGMA user_version") shouldBe 40L
+        queryLong(driver, "PRAGMA user_version") shouldBe 41L
         queryLong(driver, "SELECT last_page_read FROM chapters WHERE _id=11") shouldBe 5L
         queryLong(driver, "SELECT bookmark FROM chapters WHERE _id=11") shouldBe 1L
         queryLong(driver, "SELECT COUNT(*) FROM sqlite_master WHERE name='chapter_pairings'") shouldBe 1L
@@ -113,7 +113,7 @@ class DatabaseMigrationCompatibilityTest {
 
     @Test
     fun `current schema reserves compatibility migration after published sync schema`() {
-        Database.Schema.version shouldBe 40L
+        Database.Schema.version shouldBe 41L
     }
 
     @Test
@@ -132,7 +132,7 @@ class DatabaseMigrationCompatibilityTest {
 
         DatabaseMigration.migrateAtomically(driver, 38, Database.Schema.version)
 
-        queryLong(driver, "PRAGMA user_version") shouldBe 40L
+        queryLong(driver, "PRAGMA user_version") shouldBe 41L
         queryLong(
             driver,
             "SELECT COUNT(*) FROM pragma_table_info('author_archive_source_works') " +
@@ -169,7 +169,7 @@ class DatabaseMigrationCompatibilityTest {
 
         queryLong(driver, "SELECT confirmed_items FROM sync_runtime_runs WHERE run_id = 'SUCCEEDED'") shouldBe 5L
         queryLong(driver, "SELECT confirmed_items FROM sync_runtime_runs WHERE run_id = 'RUNNING'") shouldBe 2L
-        queryLong(driver, "PRAGMA user_version") shouldBe 40L
+        queryLong(driver, "PRAGMA user_version") shouldBe 41L
     }
 
     @Test
@@ -206,7 +206,7 @@ class DatabaseMigrationCompatibilityTest {
             driver,
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'sync_snapshot_manifest_entries'",
         ) shouldBe 1L
-        queryLong(driver, "PRAGMA user_version") shouldBe 40L
+        queryLong(driver, "PRAGMA user_version") shouldBe 41L
     }
 
     @Test
@@ -296,7 +296,7 @@ class DatabaseMigrationCompatibilityTest {
 
         DatabaseMigration.migrateAtomically(driver, 34, Database.Schema.version)
 
-        queryLong(driver, "PRAGMA user_version") shouldBe 40L
+        queryLong(driver, "PRAGMA user_version") shouldBe 41L
         queryLong(driver, "SELECT attempt_id FROM sync_runtime_runs WHERE run_id = 'legacy-run'") shouldBe 2L
         queryLong(driver, "SELECT network_failure_count FROM sync_runtime_runs WHERE run_id = 'legacy-run'") shouldBe 2L
         queryLong(
@@ -332,7 +332,7 @@ class DatabaseMigrationCompatibilityTest {
         queryLong(driver, "SELECT COUNT(*) FROM sync_runtime_runs") shouldBe 1L
         queryLong(driver, "SELECT COUNT(*) FROM author_archive_representative_work_cache") shouldBe 0L
         queryLong(driver, "SELECT COUNT(*) FROM author_archive_source_date_quality") shouldBe 0L
-        queryLong(driver, "PRAGMA user_version") shouldBe 40L
+        queryLong(driver, "PRAGMA user_version") shouldBe 41L
     }
 
     @Test
@@ -345,7 +345,7 @@ class DatabaseMigrationCompatibilityTest {
         queryLong(driver, "SELECT COUNT(*) FROM author_archive_creators") shouldBe 1L
         queryLong(driver, "SELECT COUNT(*) FROM sync_runtime_runs") shouldBe 0L
         queryLong(driver, "SELECT COUNT(*) FROM sync_runtime_logs") shouldBe 0L
-        queryLong(driver, "PRAGMA user_version") shouldBe 40L
+        queryLong(driver, "PRAGMA user_version") shouldBe 41L
     }
 
     @Test
