@@ -18,7 +18,7 @@ test('完整审阅：完成后显示下一次时间，设置即时生效且双�
     await pc.getByTestId('ix-activity').click();
     await pc.getByTestId('sync-settings-back').click();
     await pc.getByTestId('sync-settings').click();
-    await pc.getByTestId('periodic-setting').click();
+    await pc.getByTestId('sync-period-0').click();
     await pc.getByTestId('sync-settings-back').click();
     assert.match(await pc.getByTestId('sync-next-auto').innerText(), /自动同步已关闭/);
     const completed = await pc.getByTestId('sync-compact-summary').innerText();
@@ -27,9 +27,7 @@ test('完整审阅：完成后显示下一次时间，设置即时生效且双�
     assert.equal(await pc.getByTestId('sync-compact-summary').innerText(), completed);
     assert.match(await phone.getByTestId('sync-next-auto').innerText(), /明天 00:30/);
     await pc.getByTestId('sync-settings').click();
-    await pc.getByTestId('periodic-setting').click();
-    await pc.getByTestId('ix-frequency').click();
-    await pc.locator('[data-action="ix-period"][data-minutes="15"]').click();
+    await pc.getByTestId('sync-period-15').click();
     await pc.getByTestId('sync-settings-back').click();
     assert.match(await pc.getByTestId('sync-next-auto').innerText(), /今天 23:45/);
     await page.clock.fastForward(60000);
@@ -62,7 +60,7 @@ test('连续过程：同步与暂停隐藏安排，完成才重新计时并恢�
     assert.equal(await pc.getByTestId('sync-next-auto').count(), 0);
     await pc.getByTestId('sync-progress-primary').click();
     await page.clock.runFor(21000);
-    assert.match(await pc.getByTestId('sync-compact-summary').innerText(), /同步完成/);
+    assert.match(await pc.getByTestId('sync-compact-summary').innerText(), /上次同步已完成/);
     assert.match(await pc.getByTestId('sync-next-auto').innerText(), /今天 13:01/);
     await pc.getByTestId('ix-activity').click();
     await pc.getByTestId('sync-settings-back').click();

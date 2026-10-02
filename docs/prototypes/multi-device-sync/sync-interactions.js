@@ -4,10 +4,12 @@
   // UI storyboards only. Authorization, password protection, lookup and import do not call a service.
   window.MihonSyncInteractions = { create };
   function create({ state, currentDevice, isWindows, esc, view, button, render, queueStats }) {
-    const titles = { authorize: '连接 GitHub', password: '同步密码', lookup: '查找同步空间', creating: '创建同步空间', 'setup-error': '同步空间未连接', import: '首次合并', importing: '合并进度', imported: '合并完成', frequency: '同步频率', device: '设备名称', disconnect: '断开同步', switch: '更换同步空间', issue: '同步详情', activity: '同步记录', privacy: '阅读与历史' };
+    const native = Boolean(window.parent.MihonPreview?.fullSyncReview);
+    const titles = { authorize: '连接 GitHub', password: '同步密码', lookup: '查找同步空间', creating: '创建同步空间', 'setup-error': '同步空间未连接', import: '首次合并', importing: '合并进度', imported: '合并完成', frequency: '同步频率', device: '设备名称', disconnect: '断开同步', switch: '更换同步空间', issue: '同步详情', activity: '同步记录', privacy: '阅读与历史', diagnostics: '同步诊断' };
     const cancellationExample = Object.values(state.devices).flatMap(device => device.confirmations)[0];
     function data() {
       if (!state.ui.interactions) state.ui.interactions = { connected: true, stack: [], fields: { repo: 'reader/mihon-sync', password: '', device: currentDevice().name }, automatic: false, message: '', issue: null, mode: 'join', importKind: 'merge', lastSync: '14:32', authStatus: 'idle', spaceScenario: 'new', setupStage: null, passwordProtected: false };
+      if (native && !state.ui.interactions.nativeInitialized) { state.ui.interactions.nativeInitialized = true; state.ui.interactions.fields.device = ''; }
       if (state.ui.interactions.nextSyncAt == null) state.ui.interactions.nextSyncAt = Date.now() + currentDevice().settings.periodMinutes * 60000;
       return state.ui.interactions;
     }
@@ -23,6 +25,7 @@
       return `下次自动同步${isWindows() ? '' : '（预计）'}：${day} ${time} · ${countdownTitle()}`;
     }
     function nextAuto() {
+      if (native && window.parent.MihonPreview.reviewMode === 'baseline') return '';
       return `<p class="ix-note sync-next-auto" data-testid="sync-next-auto">${esc(nextAutoText())}</p>`;
     }
     function countdownTitle() {
@@ -52,6 +55,46 @@
     const row = (label, value, name, icon = 'chevron') => `<button class="ix-setting-row" data-action="ix-${name}" data-testid="ix-${name}"><span><strong>${label}</strong>${value ? `<small>${esc(value)}</small>` : ''}</span>${view.icon(icon)}</button>`;
     const pair = (label, value) => `<div class="ix-pair"><span>${label}</span><strong>${esc(value)}</strong></div>`;
     const choice = (label, detail, name, attrs = '') => `<button class="ix-choice" data-action="ix-${name}" data-testid="ix-${name}" ${attrs}><strong>${label}</strong><small>${detail}</small>${view.icon('chevron')}</button>`;
+    function nativeSettings() {
+      const d = data(); const settings = currentDevice().settings;
+      return `<div class="sheet-settings-content sync-settings-page native-settings">${action('同步诊断', 'diagnostics')}
+        <div><h3>GitHub 账号与空间</h3><p>${esc(d.fields.repo)}</p>${action('重新连接 GitHub', 'reconnect')}</div>
+        <div class="native-startup"><span>启动时同步</span><button class="native-switch ${settings.startupSync ? 'is-on' : ''}" role="switch" aria-label="启动时同步" aria-checked="${settings.startupSync}" data-action="startup-setting" data-testid="startup-setting"><span></span></button></div>
+        <div><h3>定期同步</h3><div role="radiogroup" aria-label="定期同步">${[0, 15, 60, 360, 1440].map(minutes => `<button class="native-period" role="radio" aria-checked="${minutes === (settings.periodicSync ? settings.periodMinutes : 0)}" data-action="ix-period" data-minutes="${minutes}" data-testid="sync-period-${minutes}"><span class="native-radio"></span><span>${minutes === 0 ? '关闭' : minutes < 60 ? minutes + ' 分' : minutes < 1440 ? minutes / 60 + ' 小时' : '1 天'}</span></button>`).join('')}</div></div>
+        <label class="native-outlined-field"><span>设备名称</span><input data-ix-field="device" data-testid="sync-device-name" value="${esc(d.fields.device)}" autocomplete="off"></label>
+        <p>${d.passwordProtected ? '密码保护：已开启' : '密码保护：未开启'}</p>
+        ${action('同步记录', 'activity')}${action('断开此设备', 'disconnect')}${action('更换同步空间', 'switch')}
+      </div>`;
+    }
+    function nativeDiagnostics() {
+      const d = data();
+      return note('采集本机同步事实，不包含账号、仓库、凭据或作品信息。仅保留本进程最近128次观察到的状态变化；JSON导出上限256KiB，超限会标明截断。可再次采集比较变化。') + action('采集快照', 'diagnostic-capture') + `<p data-testid="native-diagnostic-feedback">${esc(d.diagnosticFeedback || '')}</p>` + note('自愿开启后，最多24小时内可跨应用重启比较别名。私有缓存仅保留随机盐与上一快照关联摘要；不开启时只保证本进程内别名可比较。') + action(d.diagnosticSession ? '结束诊断会话' : '开启24小时诊断会话', 'diagnostic-session') + (d.diagnosticSnapshot ? note(d.connected ? '同步连接已启用' : '同步连接未启用') + note('当前没有执行同步，请查看任务状态') + action('保存诊断JSON', 'diagnostic-export') + (d.diagnosticUrl ? action('打开或分享本机文件', 'diagnostic-open') : '') + `<pre class="native-diagnostic-json" data-testid="native-diagnostic-details">${esc(JSON.stringify(d.diagnosticSnapshot, null, 2))}</pre>` : '');
+    }
+    function nativeRecords() {
+      const records = currentDevice().lastResult;
+      return records ? `<article class="native-record"><small>${data().lastSync}</small><p>上传 ${records.sent || 0} 项，接收 ${records.received || 0} 项，待确认 ${currentDevice().confirmations.length} 项</p>${records.ok ? '' : `<p>${esc(records.message)}</p>`}</article>` : '<p>暂无同步记录</p>';
+    }
+    function nativeQueue() {
+      const { membership, reading } = queueStats();
+      return `<div class="sync-queue-summary">${[['待上传操作', `${currentDevice().pendingOutgoing.length} 项`], ['收藏与关注', `${membership.favorites} 条收藏 · ${membership.authors} 条关注`], ['阅读记录', `${reading} 条阅读记录`]].map(([label, value]) => `<div class="native-list-row"><strong>${label}</strong><span>${value}</span></div>`).join('')}</div>`;
+    }
+    function nativeHistoryCard(f) {
+      const [label, name] = primary(f);
+      const title = { succeeded: '上次同步已完成', failed: '上次同步未完成', partial: '上次同步已结束，部分数据待处理', cancelled: '上次同步已取消', blocked: '同步需要处理' }[f.state] || f.title;
+      const reserved = (text, candidate, id, cls = '') => `<div class="native-reserved ${cls}"><span class="native-reservation" aria-hidden="true">${candidate}</span><span data-testid="${id}">${esc(text)}</span></div>`;
+      return `<section class="sync-progress-card native-history-card" data-testid="sync-progress-card" data-state="${f.state}"><div data-testid="sync-native-history">
+        <div class="native-history-heading"><h3 data-testid="sync-progress-title"><span data-testid="sync-compact-summary">${title}</span></h3><button class="m-button m-button-text" data-testid="sync-progress-primary" data-action="${name}"><span data-progress-control-label>${label}</span></button></div>
+        ${reserved(`上次已确认 ${f.confirmed ?? 0} 条`, '上次已确认 9223372036854775807 条', 'sync-progress-confirmed')}
+        ${reserved('已确认结果会保留', '正在接收并校验数据', 'sync-progress-action', 'native-history-action')}
+        <div class="sync-progress-track" data-testid="sync-progress-track" role="progressbar" aria-label="同步完成进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${f.state === 'succeeded' ? 100 : 0}"><span style="width:${f.state === 'succeeded' ? 100 : 0}%"></span></div>
+        <div class="native-history-time"><div data-testid="sync-progress-elapsed">上次历时 ${f.elapsed}</div><div data-testid="sync-progress-eta">整体剩余 · —</div></div>
+        ${reserved(f.state === 'failed' ? f.reason || '本次同步未完成，进度已保留' : '—', '连接或任务事实尚无法确认。已有数据需要处理，进度会保留。', 'sync-progress-explanation', 'native-history-explanation')}
+        <button class="m-button m-button-text progress-toggle" data-action="ix-progress-details" data-testid="sync-progress-toggle" aria-expanded="${Boolean(data().progressDetails)}">${data().progressDetails ? '收起详情' : '查看详情'}</button>
+        ${f.pendingBatches || f.failures ? `<div data-testid="sync-progress-problems">${f.pendingBatches ? `<p>${f.pendingBatches} 个批次待核对（涉及 ${f.pendingChanges || 0} 条变动）</p><p>待核对不代表失败，已有进度会保留。</p>` : ''}${f.failures ? `<p>${f.failures} 项无法还原</p><button class="m-button m-button-text" data-action="ix-progress-failures" data-testid="sync-progress-failures">打开失败日志</button>` : ''}</div>` : ''}
+        ${data().failureLogOpen ? '<div data-testid="sync-failure-log">失败日志 · 本地演示<br>《远山来信》阅读记录：无法还原，缺少作品身份与必要描述。<br>《夜行纪事》收藏：无法还原，记录未通过校验。</div>' : ''}
+        <div class="sync-progress-details native-details" data-testid="sync-progress-details" ${data().progressDetails ? '' : 'hidden'} tabindex="0">${nativeQueue()}</div>
+      </div></section>${f.state === 'succeeded' ? nextAuto() : ''}`;
+    }
     function settings() {
       const d = data();
       return section('同步账号') + row(d.connected ? 'GitHub · reader' : '连接 GitHub', d.connected ? '已连接 · ' + d.fields.repo : '在浏览器中登录并授权', d.connected ? 'connection-info' : 'setup', 'cloud') + (d.connected ? row('检查连接', d.issue ? '上次连接未完成' : '本设备可以访问同步空间', 'test') + row('重新连接 GitHub', '更换账号或重新授权', 'reconnect') + pair('同步密码', d.passwordProtected ? '密码保护已开启' : '密码保护未开启') : '') + message() + section('此设备') + row('设备名称', d.fields.device, 'device');
@@ -133,11 +176,14 @@
     }
     function importFact() {
       const d = data();
-      if (!d.progress || d.progress.source !== 'import') newProgress({ source: 'import', confirmed: d.importProcessed ?? null, direction: '首次合并', action: '合并' });
+      if (!d.progress || d.progress.source !== 'import') newProgress({ source: 'import', compact: native, confirmed: d.importProcessed ?? null, direction: '首次合并', action: '合并' });
       const f = d.progress;
       const confirmed = d.importProcessed ?? null;
       if (f.confirmed !== confirmed) f.lastProgressAt = Date.now();
+      const previousState = f.state;
       Object.assign(f, { confirmed, state: d.importReady ? 'succeeded' : d.importWaitingNetwork ? 'network' : d.importRecovery === 'retry-exhausted' ? 'failed' : d.importPaused ? 'paused' : d.importRecovery === 'resuming' ? 'recovering' : 'running', exhausted: d.importRecovery === 'retry-exhausted', total: d.importTotal, prepared: d.importTotal, transferred: confirmed, checked: confirmed, received: confirmed, action: d.importUnknownTotal ? '接收' : '合并' });
+      if (native && f.state === 'paused' && previousState !== 'paused') f.pausedAt = Date.now();
+      if (native && previousState === 'paused' && f.state !== 'paused') { f.pausedMillis = (f.pausedMillis || 0) + Date.now() - f.pausedAt; f.pausedAt = null; }
       if (f.state === 'succeeded' && !f.endedAt) f.endedAt = Date.now();
       return f;
     }
@@ -153,19 +199,22 @@
       if (f.source === 'import') importFact();
       return f.compact ? compactDisplay(f) : display(f);
     }
+    function compactSummary(f) { return native && f.state === 'running' && f.total == null ? '正在统计数据' : f.summary; }
     function compactCard(f) {
       const [label, name] = primary(f);
       const percent = f.completionPercent;
       const disabled = ['pausing', 'retry', 'network', 'system', 'recovering'].includes(f.state);
-      return `<section class="sync-progress-card sync-compact-card" data-state="${f.state}" data-testid="sync-progress-card"><div class="sync-compact-content"><p data-compact-line data-testid="sync-compact-summary">${esc(f.summary)}</p><div class="sync-progress-track" data-testid="sync-progress-track" role="progressbar" aria-label="同步完成进度" aria-valuemin="0" aria-valuemax="100" ${percent === null ? '' : `aria-valuenow="${percent}"`}><span style="width:${percent ?? 0}%"></span></div><p data-compact-line data-testid="sync-compact-time">${esc(f.time)}</p></div>${f.state === 'succeeded' ? nextAuto() : ''}${f.state === 'failed' ? `<p class="ix-note">${esc(f.reason || '同步未完成，已完成的进度已保留。')}</p>` : ''}<div class="sync-compact-controls"><button class="m-button m-button-text" data-testid="sync-progress-primary" data-action="${name}" ${disabled ? 'disabled' : ''}><span data-progress-control-label>${label}</span></button></div></section>`;
+      return `<section class="sync-progress-card sync-compact-card" data-state="${f.state}" data-testid="sync-progress-card"><div class="sync-compact-content"><p data-compact-line data-testid="sync-compact-summary">${esc(compactSummary(f))}</p>${native && percent === null ? '' : `<div class="sync-progress-track" data-testid="sync-progress-track" role="progressbar" aria-label="同步完成进度" aria-valuemin="0" aria-valuemax="100" ${percent === null ? '' : `aria-valuenow="${percent}"`}><span style="width:${percent ?? 0}%"></span></div>`}<p data-compact-line data-testid="sync-compact-time">${esc(f.time)}</p></div>${f.state === 'succeeded' ? nextAuto() : ''}${f.state === 'failed' ? `<p class="ix-note">${esc(f.reason || '同步未完成，已完成的进度已保留。')}</p>` : ''}<div class="sync-compact-controls"><button class="m-button m-button-text" data-testid="sync-progress-primary" data-action="${name}" ${disabled ? 'disabled' : ''}><span data-progress-control-label>${label}</span></button></div></section>`;
     }
     function paintCompact(card, f) {
-      card.querySelector('[data-testid="sync-compact-summary"]').textContent = f.summary;
+      card.querySelector('[data-testid="sync-compact-summary"]').textContent = compactSummary(f);
       card.querySelector('[data-testid="sync-compact-time"]').textContent = f.time;
       const track = card.querySelector('[data-testid="sync-progress-track"]');
-      if (f.completionPercent === null) track.removeAttribute('aria-valuenow');
-      else track.setAttribute('aria-valuenow', f.completionPercent);
-      track.firstElementChild.style.width = `${f.completionPercent ?? 0}%`;
+      if (track) {
+        if (f.completionPercent === null) track.removeAttribute('aria-valuenow');
+        else track.setAttribute('aria-valuenow', f.completionPercent);
+        track.firstElementChild.style.width = `${f.completionPercent ?? 0}%`;
+      }
       const control = card.querySelector('[data-testid="sync-progress-primary"]');
       const [label, name] = primary(f);
       control.querySelector('[data-progress-control-label]').textContent = label;
@@ -174,6 +223,7 @@
     }
     function progressCard() {
       const f = progressValues(); if (!f) return '';
+      if (native && f.terminal) return nativeHistoryCard(f);
       if (f.compact) return compactCard(f);
       const [label, name] = primary(f);
       return `<section class="sync-progress-card" data-testid="sync-progress-card"><div class="sync-progress-summary" data-testid="sync-progress-summary"><div class="sync-progress-heading"><h3 data-testid="sync-progress-title" aria-live="polite">${f.title}</h3><button class="m-button m-button-text" data-testid="sync-progress-primary" data-action="${name}"><span data-progress-control-label data-testid="${name === 'sync-manual' || f.source === 'manual' && f.state === 'failed' ? 'manual-sync' : name}">${label}</span></button></div><strong class="sync-progress-confirmed" data-testid="sync-progress-confirmed">${confirmedText(f)}</strong><div class="sync-progress-action" data-testid="sync-progress-action">${esc(f.action)}</div><div class="sync-progress-track" data-testid="sync-progress-track"><span></span></div><div class="sync-progress-time"><span>已用 <b data-testid="sync-progress-elapsed">${f.elapsed}</b></span><span>整体剩余：<b data-testid="sync-progress-eta">${f.eta}</b></span></div><p class="sync-progress-explanation" data-testid="sync-progress-explanation">${state.ui.syncResult ? `<span data-testid="sync-result">${esc(f.explanation)}</span>` : esc(f.explanation)}</p><button class="m-button m-button-text progress-toggle" data-testid="sync-progress-toggle" data-action="ix-progress-details" aria-expanded="${Boolean(data().progressDetails)}">${data().progressDetails ? '收起详情' : '查看详情'}${view.icon('chevron')}</button></div><div class="sync-progress-problems" data-testid="sync-progress-problems" ${f.state === 'partial' ? '' : 'hidden'}>待手动决定 ${f.decisions || 0} 项 · ${f.pendingBatches || 0} 个批次待核对（涉及 ${f.pendingChanges || 0} 条变动，不代表失败）<br>${f.failures || 0} 项无法还原 <button class="m-button m-button-text" data-action="ix-progress-failures" data-testid="sync-progress-failures">打开失败日志</button></div><div data-testid="sync-failure-log" class="sync-failure-log" ${data().failureLogOpen ? '' : 'hidden'}>失败日志 · 本地演示<br>《远山来信》阅读记录：无法还原，缺少作品身份与必要描述。<br>《夜行纪事》收藏：无法还原，记录未通过校验。</div><div class="sync-progress-details" data-testid="sync-progress-details" ${data().progressDetails ? '' : 'hidden'} tabindex="0" aria-label="同步详情">${progressDetails(f)}</div></section>`;
@@ -192,6 +242,10 @@
       const card = document.querySelector('[data-testid="sync-progress-card"]');
       if (!card || !data().progress || !state.ui.syncOpen) return;
       const f = progressValues();
+      if (native && f.terminal) {
+        if (!card.querySelector('[data-testid="sync-native-history"]')) render();
+        return;
+      }
       if (f.compact) {
         if (card.dataset.state !== f.state) { render(); return; }
         paintCompact(card, f); return;
@@ -216,13 +270,14 @@
       clearTimeout(progressTimer);
       if (name.startsWith('compact-')) { compactScenario(name); return; }
       const f = newProgress({ confirmed: 1280, prepared: 1600, received: 1320, checked: 960, transferred: 1320, action: '上传', direction: '本轮上传', scope: 'upload-1', percent: 64, startedAt: Date.now() - 102000 });
+      if (native) { f.compact = true; f.total = 1600; }
       data().progressScenario = name;
       const now = Date.now();
       if (name === 'whole-eta') f.wholeEta = 18;
       if (name === 'local-eta') { f.stageEta = 12; f.bodyEta = 4; f.bodyPercent = 72; f.percent = null; }
       if (name === 'wait-10' || name === 'wait-60') { f.lastProgressAt = now - (name === 'wait-10' ? 10000 : 60000); f.wholeEta = 18; f.action = '核对'; f.percent = null; }
       if (name === 'transfer-complete') { f.percent = 100; f.action = '上传'; }
-      if (name === 'paused') f.state = 'paused';
+      if (name === 'paused') { f.state = 'paused'; f.pausedAt = Date.now(); }
       if (name === 'retry') { f.state = 'retry'; f.nextRetryAt = now + 15000; }
       if (name === 'partial') Object.assign(f, { state: 'partial', confirmed: 0, decisions: currentDevice().confirmations.length, pendingBatches: 2, pendingChanges: 40, failures: 2, endedAt: now });
       if (name === 'succeeded' || name === 'latest') Object.assign(f, { state: 'succeeded', noWork: name === 'latest', confirmed: name === 'latest' ? 0 : 1600, endedAt: now });
@@ -240,7 +295,7 @@
       if (name === 'compact-unknown') { f.total = null; f.confirmed = 0; f.wholeEta = null; }
       if (name === 'compact-paused') { f.state = 'paused'; f.pausedAt = Date.now(); }
       if (name === 'compact-failed') { f.state = 'failed'; f.endedAt = Date.now(); f.reason = '连接暂时中断，可继续同步。'; }
-      if (name === 'compact-complete') { f.state = 'succeeded'; f.confirmed = f.total; f.endedAt = Date.now(); didSync(true); }
+      if (name === 'compact-complete') { f.state = 'succeeded'; f.confirmed = f.total; f.endedAt = Date.now(); if (native) { f.confirmed = 14434; f.total = 14434; f.startedAt = f.endedAt - 39713000; } didSync(true); }
       if (f.state === 'running' && f.total !== null) scheduleCompactTick();
     }
     function scheduleCompactTick() {
@@ -323,7 +378,8 @@
         case 'switch':
         case 'disconnect': body = `<h3>${screen() === 'switch' ? '连接另一个同步空间？' : '断开此设备？'}</h3>` + note('本机书架、关注和阅读记录会保留。其他设备与远端数据不受影响，尚未上传的操作不会继续上传到此空间。') + (screen() === 'switch' ? note('将重新登录 GitHub，自动查找该账号的专用同步空间；受密码保护时需输入正确密码。') : '') + actions(action('返回设置', 'back') + action(screen() === 'switch' ? '更换空间' : '断开连接', 'disconnect-confirm', true)); break;
         case 'issue': body = issuePage(); break;
-        case 'activity': body = activityPage(); break;
+        case 'activity': body = native ? nativeRecords() : activityPage(); break;
+        case 'diagnostics': body = nativeDiagnostics(); break;
         case 'privacy': body = `<h3>阅读记录的同步范围</h3>` + note('续读位置、章节已读与明确未读、阅读历史会参与同步。阅读模式与其他阅读器显示设置仅保存在本设备。') + section('无痕阅读') + note('在“更多 → 无痕模式”开启。无痕期间的阅读不加入上传队列，退出后也不会补上传。') + section('清除历史') + note('只清除此设备的历史，不删除其他设备的记录。已清除的历史不会因旧记录再次到达而立即出现。'); break;
       }
       return `<div class="sheet-settings-content sync-settings-page ix-page" data-ix-screen="${screen()}">${body}</div>`;
@@ -384,7 +440,10 @@
           const completed = Math.floor(d.importProcessed / total * d.importLog.length);
           d.importLog.forEach((entry, index) => { entry.status = index < completed ? 'done' : index === completed ? 'active' : 'pending'; });
         }
-        if (d.importProgress === 100) { d.connected = true; d.importReady = true; if (d.setupStage) { d.progress = null; d.setupStage = null; d.importProgress = null; d.importReady = false; if (screen() === 'importing') home(state.ui.syncOpen ? '同步已开启' : ''); } else if (screen() === 'importing') d.stack[d.stack.length - 1] = 'imported'; }
+        if (d.importProgress === 100 && native) {
+          importFact(); Object.assign(d.progress, { state: 'succeeded', endedAt: Date.now(), source: 'manual' });
+          d.connected = true; d.importReady = true; d.setupStage = null; d.importProgress = null; didSync(true); home();
+        } else if (d.importProgress === 100) { d.connected = true; d.importReady = true; if (d.setupStage) { d.progress = null; d.setupStage = null; d.importProgress = null; d.importReady = false; if (screen() === 'importing') home(state.ui.syncOpen ? '同步已开启' : ''); } else if (screen() === 'importing') d.stack[d.stack.length - 1] = 'imported'; }
         else advanceImport();
         if (d.importProgress === 100 || d.importProgress === null) render(); else paintProgress();
       }, 650);
@@ -538,7 +597,7 @@
       else if (actionName === 'progress-failures') d.failureLogOpen = !d.failureLogOpen;
       else if (actionName === 'progress-pause') { clearTimeout(progressTimer); clearTimeout(state.ui.timerId); state.ui.timerId = null; state.ui.busy = false; d.progress.state = 'paused'; d.progress.pausedAt = Date.now(); }
       else if (actionName === 'progress-resume' || actionName === 'progress-retry') { if (d.progress.compact && d.progress.source !== 'manual') { if (d.progress.pausedAt != null) d.progress.pausedMillis = (d.progress.pausedMillis || 0) + Date.now() - d.progress.pausedAt; d.progress.pausedAt = null; d.progress.state = 'running'; d.progress.endedAt = null; d.progress.lastProgressAt = Date.now(); if (d.progress.total !== null) scheduleCompactTick(); } else if (d.progress.source === 'manual') { window.__mihonSyncDemo.scheduleSync('manual'); } else { d.progress.state = 'recovering'; d.progress.percent = null; progressTimer = setTimeout(() => { d.progress.state = 'running'; if (d.progressScenario === 'rapid') rapidTick(d.progress.demoStep || 0); else continuousTick(d.progress.demoStep || 0); paintProgress(); }, 1000); } }
-      else if (['frequency', 'device', 'disconnect', 'switch', 'issue', 'activity', 'privacy'].includes(actionName)) { go(actionName); }
+      else if (['frequency', 'device', 'disconnect', 'switch', 'issue', 'activity', 'privacy', 'diagnostics'].includes(actionName)) { go(actionName); }
       else if (actionName === 'setup' || actionName === 'reconnect') { if (actionName === 'setup' && d.setupStage) d.stack = [d.setupStage]; else startAuth(actionName === 'reconnect'); }
       else if (actionName === 'open-github') openAuthorization();
       else if (actionName === 'auth-restart') { d.authStatus = 'ready'; authWindow?.close(); authWindow = null; authRequest += 1; }
@@ -555,9 +614,13 @@
         else if (d.mode === 'join' && d.fields.password !== 'mihon-demo') d.message = '密码不正确，请重试。';
         else { d.passwordProtected = d.fields.password !== ''; d.fields.password = ''; d.showPassword = false; d.issue = null; if (d.mode === 'create') createSpace(); else beginImport(); }
       }
-      else if (actionName === 'back') back();
+      else if (actionName === 'back') { if (native) { const diagnostics = screen() === 'diagnostics'; home(); state.ui.syncSettingsOpen = diagnostics; } else back(); }
       else if (actionName === 'home') home();
       else if (actionName === 'connection-info') { d.message = '当前账号 reader，已连接到 ' + d.fields.repo + '。'; }
+      else if (actionName === 'diagnostic-capture') { d.diagnosticSnapshot = { prototype: true, connected: d.connected, state: d.progress?.state || 'idle', crossProcessComparable: Boolean(d.diagnosticSession) }; d.diagnosticFeedback = '快照已采集'; }
+      else if (actionName === 'diagnostic-session') { d.diagnosticSession = !d.diagnosticSession; if (d.diagnosticSnapshot) d.diagnosticSnapshot.crossProcessComparable = d.diagnosticSession; d.diagnosticFeedback = d.diagnosticSession ? '诊断会话已开启' : '诊断会话已结束，私有缓存已清除'; }
+      else if (actionName === 'diagnostic-export') { if (d.diagnosticUrl) URL.revokeObjectURL(d.diagnosticUrl); d.diagnosticUrl = URL.createObjectURL(new Blob([JSON.stringify(d.diagnosticSnapshot, null, 2)], { type: 'application/json' })); const link = document.createElement('a'); link.href = d.diagnosticUrl; link.download = 'mihon-sync-demo-diagnostics.json'; link.click(); d.diagnosticFeedback = '诊断JSON已保存'; }
+      else if (actionName === 'diagnostic-open') window.open(d.diagnosticUrl, '_blank', 'noopener');
       else if (actionName === 'test') d.message = d.issue === 'access' ? '暂时无法访问同步空间，请重新连接 GitHub。' : '连接正常，可以同步。';
       else if (actionName === 'import-start') { d.connected = true; d.importProgress = 0; d.importReady = false; go('importing'); advanceImport(); }
       else if (actionName === 'import-resume') { d.importRecovery = 'resuming'; advanceImport(); }
@@ -565,7 +628,7 @@
       else if (actionName === 'import-retry') { d.importWaitingNetwork = false; d.importRecovery = 'resuming'; advanceImport(); }
       else if (actionName === 'import-done') { d.progress = null; d.automatic = true; d.importReady = false; d.importProgress = null; home(); }
       else if (actionName === 'import-view') go(d.importReady ? 'imported' : 'importing');
-      else if (actionName === 'period') { currentDevice().settings.periodMinutes = Number(target.dataset.minutes); resetCountdown(); back(); }
+      else if (actionName === 'period') { const minutes = Number(target.dataset.minutes); currentDevice().settings.periodicSync = minutes > 0; if (minutes > 0) currentDevice().settings.periodMinutes = minutes; resetCountdown(); if (!native) back(); }
       else if (actionName === 'device-save') { if (!d.fields.device.trim()) d.fields.device = currentDevice().name; currentDevice().name = d.fields.device; back(); }
       else if (actionName === 'disconnect-confirm') { const switching = screen() === 'switch'; d.connected = false; d.fields.password = ''; d.setupStage = null; home(); if (switching) startAuth(); }
       else if (actionName === 'initialize') { d.mode = 'create'; d.issue = null; setupPage('password'); }
@@ -581,7 +644,7 @@
       data().fields[target.dataset.ixField] = target.value;
       if (target.dataset.ixField === 'password') { const submit = document.querySelector('[data-testid="ix-password-confirm"]'); if (submit) { submit.textContent = data().mode === 'join' ? '连接同步空间' : target.value === '' ? '不设置密码' : '确认密码'; submit.disabled = data().mode === 'join' && target.value === ''; } }
     }
-    return { beginSync, finishSync, paintProgress, hasProgress: () => Boolean(data().progress), screen, title: () => titles[screen()], back, close, settings, settingsFooter, renderScreen, unconfigured, connected: () => data().connected, status, didSync, resetCountdown, summary, handle, input, showScenario, networkChanged, startBatch, batchActive: () => data().batch && data().batch.done < data().batch.total,
+    return { nativeSettings, beginSync, finishSync, paintProgress, hasProgress: () => Boolean(data().progress), screen, title: () => titles[screen()], back, close, settings, settingsFooter, renderScreen, unconfigured, connected: () => data().connected, status, didSync, resetCountdown, summary, handle, input, showScenario, networkChanged, startBatch, batchActive: () => data().batch && data().batch.done < data().batch.total,
       importStatus: () => data().importProgress != null && !data().progress ? row(data().importReady ? '合并已完成' : data().importWaitingNetwork ? '等待网络连接' : data().importPaused ? '合并尚未完成' : '正在合并数据', '查看进度与继续操作', 'import-view') : '',
       busy: () => data().issue === 'unknown' || (data().importProgress != null && !data().importPaused && !data().importReady),
     };

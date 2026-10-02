@@ -98,9 +98,7 @@ test('未知总数静态轨道，320px大字可读，主题切换与设置返回
     const phone = page.frameLocator('#preview-android');
     const track = phone.getByTestId('sync-progress-track');
     await phone.getByTestId('sync-compact-summary').waitFor();
-    assert.equal(await track.getAttribute('aria-valuenow'), null);
-    assert.equal(await track.locator('span').evaluate(el => getComputedStyle(el).animationName), 'none');
-    assert.equal(await track.locator('span').evaluate(el => el.style.width), '0%');
+    assert.equal(await track.count(), 0, '实机未知总数不绘制比例轨道');
     await phone.locator('body').evaluate(el => {
       const style = document.createElement('style');
       style.textContent = '.sync-compact-card {font-size:28px;}';
@@ -111,7 +109,7 @@ test('未知总数静态轨道，320px大字可读，主题切换与设置返回
     await page.getByTestId('theme-light').click();
     await phone.getByTestId('sync-settings').click();
     await phone.getByTestId('sync-settings-back').click();
-    assert.match(await phone.getByTestId('sync-compact-summary').innerText(), /已完成0\/—条/);
+    assert.match(await phone.getByTestId('sync-compact-summary').innerText(), /正在统计数据/);
   } finally { await browser.close(); }
 });
 
