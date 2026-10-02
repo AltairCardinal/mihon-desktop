@@ -21,14 +21,15 @@ class DesktopReaderPageContentOwner internal constructor(
     private val coordinator = ReaderPageContentOpenCoordinator(
         scope = scope,
         port = ReaderPageContentOpenPort<ByteArray> { request ->
+            val limit = request.maxBytes
             ioReporter.report(
-                type = ReaderIoEventType.OPEN_PAGE,
+                type = if (limit == null) ReaderIoEventType.OPEN_PAGE else ReaderIoEventType.HEADER_READ,
                 chapterId = request.pageId.chapterId,
                 pageId = request.pageId,
                 generation = request.generation,
                 purpose = ReaderIoPurpose.CURRENT_PAGE,
+                byteLimit = limit,
             )
-            val limit = request.maxBytes
             if (limit == null) {
                 encodedPageReader(request.encodedPageRef)
             } else {

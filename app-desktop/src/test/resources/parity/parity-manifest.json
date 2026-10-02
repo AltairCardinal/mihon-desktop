@@ -29189,6 +29189,7 @@
         ],
         "description": "DP01 replaces the historical Desktop half-screen landscape cover with the shared whole-page FULL viewport contract; portrait edge slots still follow structural reasons and reading direction.",
         "resolutionStatus": "REMOVED",
+        "closureTask": "DP01",
         "resolutionEvidence": {
           "productionBehaviorTest": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt#landscape cover remains whole across the complete viewport for one and many page chapters"
         }
@@ -29320,7 +29321,7 @@
       "legacyReaderExecutors": "REMOVED",
       "readerArchitectureGuard": "ENFORCED"
     },
-    "verificationScope": "Existing VERIFIED capability provenance remains fixed-original wide-page transforms and Webtoon last-end-visible/NO_POSITION, with explicit Fork shared adjacent pairing and Desktop presentation policies. DP01 A-D and E focused production wiring evidence is aggregated in docs/evidence/shared-dual-page-rules-and-repair-2026-10-01.md; DP01 final independent batch signoff/commit and DP02 formal Windows/macOS/Android ART/native input acceptance remain required. Metadata guards do not replace behavior, pixels or native input evidence.",
+    "verificationScope": "Existing VERIFIED capability provenance remains fixed-original wide-page transforms and Webtoon last-end-visible/NO_POSITION, with explicit Fork shared adjacent pairing and Desktop presentation policies. DP01 A-D and E focused production wiring evidence is aggregated in docs/evidence/shared-dual-page-rules-and-repair-2026-10-01.md; DP01 independent batch signoff and commit 2a0e7570b7 are complete; DP02 formal Windows/macOS/Android ART/native input acceptance remains required. Metadata guards do not replace behavior, pixels or native input evidence.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -29417,7 +29418,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt",
           "symbol": "setMaxTileSize",
-          "line": 251
+          "line": 305
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -29721,7 +29722,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt",
           "symbol": "private val requestScheduler",
-          "line": 56
+          "line": 58
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -29741,13 +29742,13 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutor.kt",
           "symbol": "object CanonicalReaderMaterializeExecutor",
-          "line": 100
+          "line": 102
         },
         {
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSessionCore.kt",
           "symbol": "fun enqueueAdjacentPage",
-          "line": 137
+          "line": 156
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -29764,12 +29765,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderMaterializePorts.kt",
           "symbol": "class DesktopReaderPageFetchPort",
-          "line": 188
+          "line": 193
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
           "symbol": "class DesktopReaderRuntimeFactory",
-          "line": 115
+          "line": 116
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderPreferences.kt",
@@ -29779,7 +29780,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
           "symbol": "private fun enqueueAdjacentImagesLocked",
-          "line": 857
+          "line": 912
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/ReaderSettingsScreen.kt",
@@ -30259,12 +30260,12 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
           "symbol": "private suspend fun loadChapter",
-          "line": 456
+          "line": 481
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt",
           "symbol": "internal suspend fun loadChapter",
-          "line": 58
+          "line": 59
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt",
@@ -30317,27 +30318,27 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
           "symbol": "class DesktopReaderSession",
-          "line": 122
+          "line": 126
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
           "symbol": "class DesktopReaderRuntimeFactory",
-          "line": 115
+          "line": 116
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
           "symbol": "fun acceptSessionState",
-          "line": 165
+          "line": 609
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt",
           "symbol": "fun chapterTransitionDisplayUnit",
-          "line": 147
+          "line": 148
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
           "symbol": "fun ReaderChapterTransitionItem",
-          "line": 351
+          "line": 375
         }
       ],
       "FIXTURE": [
@@ -30718,7 +30719,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt",
           "symbol": "readerPreferences.grayscale().changes()",
-          "line": 1074
+          "line": 1076
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt",
@@ -30731,29 +30732,29 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt",
           "symbol": "data class ReaderColorFilterParams",
-          "line": 247
+          "line": 111
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "ReaderViewportColorLayer(state.colorFilter)",
-          "line": 567
+          "line": 541
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "internal fun ReaderViewportColorLayer",
-          "line": 693
+          "line": 674
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
           "symbol": "internal fun Modifier.readerColorTransform",
-          "line": 88
+          "line": 95
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
           "symbol": "internal fun readerColorMatrix",
-          "line": 98
+          "line": 105
         }
       ],
       "FIXTURE": [
@@ -30915,7 +30916,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
           "symbol": "val submission = handle.submit(",
-          "line": 959
+          "line": 1031
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderProgressCoordinator.kt",
@@ -30951,7 +30952,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
           "symbol": "class DesktopReaderSession",
-          "line": 122
+          "line": 126
         }
       ],
       "FIXTURE": [
@@ -31007,8 +31008,8 @@
         {
           "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#dual presentation settles both source pages through screen model and session progress port",
           "productionMarkers": [
-            "DualPagedPresentation.present",
-            "model.settleDualPage",
+            "model.acceptDualFact",
+            "model.presentReadyPagerViewport",
             "progress.single"
           ]
         },
@@ -31204,7 +31205,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
           "symbol": "filterAndroidReaderChapters(",
-          "line": 289
+          "line": 310
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/util/chapter/ChapterGetNextUnread.kt",
@@ -45495,7 +45496,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "internal fun wireDesktopOpenUriEvents",
-          "line": 629
+          "line": 642
         }
       ],
       "FIXTURE": [
@@ -54435,7 +54436,7 @@
         {
           "path": "app/build.gradle.kts",
           "symbol": "implementation(projects.domain)",
-          "line": 301
+          "line": 302
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -54450,7 +54451,7 @@
         {
           "path": "app-desktop/build.gradle.kts",
           "symbol": "implementation(projects.domain)",
-          "line": 139
+          "line": 143
         }
       ],
       "FIXTURE": [

@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
@@ -22,9 +24,6 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.unit.dp
 import io.mockk.every
 import io.mockk.mockk
-import java.io.File
-import java.util.Locale
-import java.util.prefs.Preferences
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.runCurrent
@@ -47,6 +46,7 @@ import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.reader.presentation.DesktopReaderPresentationRegistry
 import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
 import mihon.desktop.ui.reader.presentation.desktopReaderPresentationRequest
+import mihon.desktop.ui.reader.presentation.withSharedOwner
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.observability.ReaderIoProbe
@@ -55,7 +55,6 @@ import mihon.domain.reader.observability.ReaderMonotonicClock
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.EncodedImageFormat
-import org.jetbrains.skia.Image as SkiaImage
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -63,6 +62,10 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.i18n.MR
+import java.io.File
+import java.util.Locale
+import java.util.prefs.Preferences
+import org.jetbrains.skia.Image as SkiaImage
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class ReaderChapterTransitionPresentationTest {
@@ -231,7 +234,7 @@ class ReaderChapterTransitionPresentationTest {
             direction = if (rtl) ReaderDirection.RTL else ReaderDirection.LTR,
             hasPreviousChapter = false,
             hasNextChapter = false,
-        )
+        ).withSharedOwner()
         val presentation = DesktopReaderPresentationRegistry.require(mode).present(request)
         val transition = presentation.displayUnits.first { it.transitionDirection == ReaderTransitionDirection.NEXT }
         val initialState = desktopReaderSessionState(chapterId = 41L, pageCount = 1)
@@ -246,10 +249,30 @@ class ReaderChapterTransitionPresentationTest {
             dualPageMode = mode == ReaderPresentationMode.DUAL_PAGED,
             backgroundTheme = backgroundTheme,
         )
+        val progressPages = mutableListOf<Int>()
         val model = ReaderScreenModel(
-            initialSessionState = initialState,
-            prefs = ReaderPreferences(InMemoryPreferenceStore()),
+            onViewportSettled = { _, page -> progressPages += page.sourcePageIndex },
+            initialSessionState = initialState.copy(
+                context = context,
+                snapshot = initialState.snapshot.copy(activeChapter = chapter),
+            ),
+            dualPageOverride = mode == ReaderPresentationMode.DUAL_PAGED,
+            isWebtoon = mode == ReaderPresentationMode.WEBTOON,
+            prefs = ReaderPreferences(InMemoryPreferenceStore()).apply {
+                this.readingMode = readingMode
+                this.backgroundTheme = backgroundTheme
+                isAutoSpreadMatching = false
+            },
         )
+        model.state.value.session.activeChapter.pages.forEach { page ->
+            assertTrue(
+                model.acceptDualFact(
+                    requireNotNull(model.captureDualFact(page.id)),
+                    mihon.domain.reader.ReaderPageFact.dimensions(32, 32),
+                ),
+            )
+        }
+        model.selectDisplayUnit(transition.id)
         var nextChapterRequests = 0
         val appPreferences = DesktopAppPreferences(
             InMemoryPreferenceStore(),
@@ -270,13 +293,14 @@ class ReaderChapterTransitionPresentationTest {
         try {
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    val mountedState by model.state.collectAsState()
                     Box(
                         Modifier.fillMaxSize().background(
                             if (backgroundTheme == ReaderBackgroundTheme.WHITE) Color.White else Color.Black,
                         ),
                     ) {
                         ReaderContent(
-                            state = state,
+                            state = if (mode == ReaderPresentationMode.WEBTOON) state else mountedState,
                             model = model,
                             contextMenuScope = testScope,
                             mangaTitle = context.mangaTitle,
@@ -294,9 +318,20 @@ class ReaderChapterTransitionPresentationTest {
             if (mode == ReaderPresentationMode.WEBTOON) {
                 writePng(scene, "reader-boundary-layout-black-webtoon.png")
             }
-            assertTrue(MR.strings.transition_finished.localized() in renderedText, "mode=$modeName rtl=$rtl rendered=$renderedText")
-            assertTrue(renderedText.any { context.chapterTitle in it }, "mode=$modeName rtl=$rtl rendered=$renderedText")
-            assertTrue(MR.strings.transition_no_next.localized() in renderedText, "mode=$modeName rtl=$rtl rendered=$renderedText")
+            assertTrue(
+                MR.strings.transition_finished.localized() in renderedText,
+                "mode=$modeName rtl=$rtl rendered=$renderedText",
+            )
+            assertTrue(
+                renderedText.any {
+                    context.chapterTitle in it
+                },
+                "mode=$modeName rtl=$rtl rendered=$renderedText",
+            )
+            assertTrue(
+                MR.strings.transition_no_next.localized() in renderedText,
+                "mode=$modeName rtl=$rtl rendered=$renderedText",
+            )
             val titleNode = nodes(scene).first { node ->
                 node.config.contains(SemanticsProperties.Text) &&
                     node.config[SemanticsProperties.Text].any { it.text.contains(context.chapterTitle) }
@@ -335,7 +370,11 @@ class ReaderChapterTransitionPresentationTest {
 
                 val previousX = if (rtl) 620f else 20f
                 scene.sendPointerEvent(PointerEventType.Press, Offset(previousX, 240f), button = PointerButton.Primary)
-                scene.sendPointerEvent(PointerEventType.Release, Offset(previousX, 240f), button = PointerButton.Primary)
+                scene.sendPointerEvent(
+                    PointerEventType.Release,
+                    Offset(previousX, 240f),
+                    button = PointerButton.Primary,
+                )
                 repeat(60) { renderFrame() }
                 val noNextNodes = nodes(scene).filter { node ->
                     node.config.contains(SemanticsProperties.Text) &&
@@ -360,6 +399,58 @@ class ReaderChapterTransitionPresentationTest {
                         node.boundsInRoot.right > 0f && node.boundsInRoot.left < 640f
                 }
                 assertTrue(pageNodes.isNotEmpty(), "Settled manga page must remain visible: $pageNodes")
+
+                val progressBeforeTransition = progressPages.toList()
+                scene.sendPointerEvent(PointerEventType.Press, Offset(nextX, 240f), button = PointerButton.Primary)
+                scene.sendPointerEvent(PointerEventType.Release, Offset(nextX, 240f), button = PointerButton.Primary)
+                var activeTransition: ReaderPagerNativePresentation? = null
+                for (frame in 0 until 40) {
+                    renderFrame()
+                    if (model.state.value.currentDisplayUnitId == transition.id) {
+                        activeTransition = nodes(scene).firstOrNull { node ->
+                            node.config.contains(ReaderPagerNativePresentationKey) &&
+                                node.config[ReaderPagerNativePresentationKey].describe().contains("idle=false")
+                        }?.config?.get(ReaderPagerNativePresentationKey)
+                    }
+                    if (activeTransition != null) break
+                }
+                assertTrue(
+                    activeTransition != null && activeTransition!!.describe().contains("idle=false"),
+                    "The actual tap must select a transition while the native animation is still active",
+                )
+                assertEquals(progressBeforeTransition, progressPages, "A transition cannot record reading")
+                model.goToPage(0)
+                repeat(60) { renderFrame() }
+                assertTrue(
+                    nodes(scene).filter { node ->
+                        node.config.contains(SemanticsProperties.Text) &&
+                            node.config[SemanticsProperties.Text].any {
+                                it.text == MR.strings.transition_no_next.localized()
+                            }
+                    }.all { it.boundsInRoot.right <= 0f || it.boundsInRoot.left >= 640f },
+                    "Latest goto during the actual transition animation must remain on its logical manga page",
+                )
+                assertEquals(0, model.state.value.currentPage)
+                assertTrue(
+                    model.state.value.currentDisplayUnitId != transition.id,
+                    "An older tap intent cannot restore the outgoing transition",
+                )
+                assertTrue(progressPages.all { it == 0 }, "Boundary feedback cannot record another source page")
+
+                scene.sendPointerEvent(PointerEventType.Press, Offset(nextX, 240f), button = PointerButton.Primary)
+                scene.sendPointerEvent(PointerEventType.Release, Offset(nextX, 240f), button = PointerButton.Primary)
+                repeat(60) { renderFrame() }
+                assertEquals(
+                    transition.id,
+                    model.state.value.currentDisplayUnitId,
+                    "A new tap still enters the transition",
+                )
+                val afterTransition = progressPages.toList()
+                scene.sendPointerEvent(PointerEventType.Press, Offset(nextX, 240f), button = PointerButton.Primary)
+                scene.sendPointerEvent(PointerEventType.Release, Offset(nextX, 240f), button = PointerButton.Primary)
+                repeat(40) { renderFrame() }
+                assertEquals(2, nextChapterRequests)
+                assertEquals(afterTransition, progressPages, "Terminal next action cannot record reading")
             }
         } finally {
             scene.close()

@@ -13,6 +13,7 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.loader.HttpPageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.readerTestPng
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -32,12 +33,17 @@ import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageLoadState
 import okhttp3.Response
+import org.junit.Rule
+import org.junit.Test
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
+import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.download.service.DownloadPreferences
@@ -56,10 +62,12 @@ import java.io.IOException
 import java.nio.file.Path
 import java.util.Collections
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35], manifest = Config.NONE)
 class AndroidReaderCoreProductionContractTest {
 
-    @TempDir
-    lateinit var tempDir: Path
+    @get:Rule val temporaryFolder = TemporaryFolder()
+    private val tempDir: Path get() = temporaryFolder.root.toPath()
 
     @Test
     fun `online ReaderViewModel executes shared session scheduler encoded cache and progress chain`() = runTest {
@@ -88,7 +96,7 @@ class AndroidReaderCoreProductionContractTest {
             every { cache.getImageFile(any()) } answers { cacheFile(firstArg()) }
             every { cache.isImageInCache(any()) } answers { cacheFile(firstArg()).exists() }
             every { cache.putImageToCache(any(), any()) } answers {
-                cacheFile(firstArg()).writeBytes(byteArrayOf(1, 2, 3))
+                cacheFile(firstArg()).writeBytes(readerTestPng(32, 48))
                 true
             }
             every { cache.removeImageFromCache(any()) } answers { cacheFile(firstArg()).delete() }
@@ -102,7 +110,7 @@ class AndroidReaderCoreProductionContractTest {
             val previousInjekt = Injekt
             Injekt = InjektScope(DefaultRegistrar())
             try {
-                Injekt.addSingleton<Application>(mockk(relaxed = true))
+                Injekt.addSingleton<Application>(RuntimeEnvironment.getApplication())
                 Injekt.addSingleton<ChapterCache>(cache)
                 val viewModel = productionReaderViewModel(
                     manga = manga,

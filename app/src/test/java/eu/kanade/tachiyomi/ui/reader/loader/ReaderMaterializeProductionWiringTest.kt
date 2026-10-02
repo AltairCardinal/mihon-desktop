@@ -10,6 +10,7 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.publishLoadedPageListForTest
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.readerTestPng
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -36,24 +37,29 @@ import mihon.domain.reader.storage.EncodedPageStoreLifecycleResult
 import mihon.domain.reader.storage.EncodedPageStoreWriteResult
 import mihon.domain.reader.storage.ReaderEncodedPageStore
 import okhttp3.Response
+import org.junit.Test
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35], manifest = Config.NONE)
 class ReaderMaterializeProductionWiringTest {
 
     @Test
     fun `chapter loader publishes the canonical executor descriptors`() = runTest {
         val executor = RecordingExecutor()
         val platformPage = ReaderPage(0, url = "").apply {
-            stream = { ByteArrayInputStream(byteArrayOf(1)) }
+            stream = { ByteArrayInputStream(readerTestPng(32, 48)) }
             status = Page.State.Ready
         }
         val pageLoader = object : PageLoader() {

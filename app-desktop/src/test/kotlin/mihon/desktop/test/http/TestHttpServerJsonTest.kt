@@ -88,7 +88,12 @@ class TestHttpServerJsonTest {
             val state = Json.parseToJsonElement(response.body()).jsonObject
 
             assertEquals(listOf("SentinelScreen"), state.getValue("screens").jsonArray.map { it.jsonPrimitive.content })
-            assertEquals(listOf("sentinel_action"), state.getValue("actions").jsonArray.map { it.jsonPrimitive.content })
+            assertEquals(
+                listOf("sentinel_action"),
+                state.getValue("actions").jsonArray.map {
+                    it.jsonPrimitive.content
+                },
+            )
         } finally {
             server.stop(0, 0)
             applicationState.registerScreens(previousScreens)
@@ -184,7 +189,8 @@ class TestHttpServerJsonTest {
                 val state = Json.parseToJsonElement(stateResponse.body()).jsonObject
                 val fixture = state.getValue("readerFixture").jsonObject
 
-                assertEquals(180, state.getValue("totalPages").jsonPrimitive.content.toInt(), source)
+                assertEquals(0, state.getValue("totalPages").jsonPrimitive.content.toInt(), source)
+                assertEquals(kotlinx.serialization.json.JsonNull, state.getValue("mountedReader"), source)
                 assertEquals(source, fixture.getValue("source").jsonPrimitive.content)
                 assertEquals(180, fixture.getValue("pageCount").jsonPrimitive.content.toInt())
                 assertEquals(2400, fixture.getValue("width").jsonPrimitive.content.toInt())
@@ -199,7 +205,10 @@ class TestHttpServerJsonTest {
                 HttpResponse.BodyHandlers.ofString(),
             )
             assertEquals(400, invalidMode.statusCode())
-            assertEquals(42L, (TestNavigationController.pendingScreenRequest.value?.screen as DesktopReaderScreen).mangaId)
+            assertEquals(
+                42L,
+                (TestNavigationController.pendingScreenRequest.value?.screen as DesktopReaderScreen).mangaId,
+            )
         } finally {
             server.stop(0, 0)
             TestNavigationController.reset()

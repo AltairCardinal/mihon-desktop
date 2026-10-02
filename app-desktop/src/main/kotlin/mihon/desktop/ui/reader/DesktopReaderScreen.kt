@@ -923,7 +923,7 @@ internal fun ReaderContent(
                         state.dualPageMode,
                     )
                     val pagerBinding = remember(model, presentationEpoch) {
-                        ReaderPagerPresentationBinding(presentationEpoch, model)
+                        ReaderPagerPresentationBinding(presentationEpoch, model, state.dualPageLocation)
                     }
                     ZoomablePagerViewer(
                         dualPageUnits = state.dualPageUnits,

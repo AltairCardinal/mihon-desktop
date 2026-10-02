@@ -166,7 +166,9 @@ class SharedDualPageAndroidWiringTest {
                 }
             }
             preferences.automaticSpreadMatching().set(true)
-            pump { reads == beforeFailure + 1 && reads == releases }
+            fun samplePassFinished() =
+                ReflectionHelpers.getField<kotlinx.coroutines.Job?>(viewer.adapter, "matchingJob")?.isCompleted != false
+            pump { reads == beforeFailure + 1 && reads == releases && samplePassFinished() }
             assertEquals(beforeFailure + 1, reads)
             repeat(3) {
                 viewer.setChapters(ViewerChapters(chapter, null, null))
@@ -174,8 +176,10 @@ class SharedDualPageAndroidWiringTest {
             }
             assertEquals("Unrelated rebuilds must not loop a failed edge", beforeFailure + 1, reads)
             page.retryHeaderFact()
-            pump { reads == beforeFailure + 2 && reads == releases }
+            pump { reads == beforeFailure + 2 && reads == releases && samplePassFinished() }
+
             assertEquals("Original image retry admits one new bounded sample", beforeFailure + 2, reads)
+            assertTrue("The failed sample cannot restore an earlier positive match", listOf(2, 3) !in groups())
             val entered = java.util.concurrent.CountDownLatch(1)
             val release = java.util.concurrent.CountDownLatch(1)
             viewer.adapter.spreadDecoderFactory = { stream ->
@@ -436,9 +440,25 @@ class SharedDualPageAndroidWiringTest {
         assertEquals("Restoring native presentation is not an explicit navigation", before, retained.location)
         val restored = requireNotNull(retained.captureViewport())
         assertEquals(original.identity, restored.identity)
-        assertEquals(original.layoutRevision, restored.layoutRevision)
+        assertTrue(
+            "Native close/reopen changes presentation mode and revokes its layout scope",
+            restored.layoutRevision > original.layoutRevision,
+        )
         assertEquals(original.unitId, restored.unitId)
         assertTrue("The detached native viewport capability must be revoked", restored !== original)
+        assertEquals(
+            null,
+            retained.settle(
+                mihon.domain.reader.ReaderDualPageSettlement(
+                    original.identity, original.layoutRevision, original.locationSequence, original.unitId,
+                    retained.targetUnit!!.pageIds.toSet(), true,
+                    mihon.domain.reader.ReaderDualPageSettlementReason.USER_NAVIGATION,
+                    original.locationSequence, original,
+                ),
+                false,
+                "detached-native-recreation",
+            ),
+        )
     }
 
     @Test

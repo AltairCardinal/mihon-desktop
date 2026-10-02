@@ -156,6 +156,31 @@ identity 仍匹配的队列项。
 }
 ```
 
+`currentPage`、`totalPages`、`currentChapterId`、`isWebtoon` 和相邻章可用性直接读取实际 mounted
+`ReaderScreenModel`。打开导航请求不等于 reader 已挂载；未挂载时页数/章 ID 为 `0`，
+`mountedReader:null`，不能靠 fixture 的初始页码或 `hasNext` 影子状态执行阅读动作。
+
+同一响应还包括以下只读观测，不能用于注入或自行重建分组：
+
+| 字段 | 实际来源及边界 |
+|---|---|
+| `mountedReader` | 当前 owner 的 `chapterId`、`generation`、`layoutRevision`、`locationSequence`、`pairingStatus`；实际 `readingMode`、`dualPageMode`、`autoSpreadMatching` 及 `currentDisplayPageIndices`、`visiblePageIndices`。未挂载为 `null`。 |
+| `sharedUnits` | 实际共享 owner 当前 units 中的源页索引数组，保留 UNKNOWN/临时单页等真实结果；不是 HTTP 服务端计算的预期分组。 |
+| `nativeInput` | mounted pager 的实际几何与窗口/焦点信息，详见下文。 |
+
+`nativeInput` 返回 `available`、`geometryAvailable`、`windowPresent`、`windowShowing`、
+`windowFocused`、`ownerFocused`、`reason` 和 `density`。`viewportPixels` 为 Compose 物理像素；
+`viewportScreenPoints` 和三行三列 `tapPoints` 从实际 AWT 内容区屏幕原点及 density 换算，
+`coordinateSpace` 为 `awt_screen_points`。每个点击点携带实际导航模式对应的 `action`。
+pager 因条漫/加载/错误卸载后，旧几何清除；无实际窗口、有效几何、选中呈现或 reader 焦点，
+以及设置面板打开时，`available:false`。离屏 Scene 可以有 Compose 几何，但不构成可输入的原生窗口。
+正式键鼠工具必须核对 `available` 和本次窗口/焦点；此接口不读取屏幕像素，也不提供截图。
+
+`productionEvents` 保留真实 Reader I/O 顺序及 page/generation。完整编码消费者记录
+`OPEN_PAGE`；有界头部读取单独记录 `HEADER_READ`，`byteLimit` 为实际请求上限（目前至多
+512 KiB）。其它事件的 `byteLimit` 可为 `null`；客户端应兼容缺失/未知字段，不能把
+头部读取当作完整编码命中或删去它来满足首帧成本断言。
+
 partial fixture 还返回以下页级观测字段：
 
 - `route`、`currentPageIndex`、`snapshotGeneration`；
@@ -170,11 +195,24 @@ probe/open/copy 且图片网络为 0；缺失页才允许一个物理图片请�
 
 ### `POST /reader/next_page`
 
-当前页小于最后一页时递增页码；已在最后一页时返回 `success:false`。
+在 UI EventQueue 调用当前 mounted model 的实际下一页动作。双页模式按共享 display unit 翻动，
+例如实际当前组为 `[1,2]`、下一组为 `[3,4]` 时，逻辑目标到 `3`，不是源页索引加 `1`。
+单页拆分和章节边界继续使用原生产导航语义；不能假定每次响应都移动一个源页。
 
 ### `POST /reader/prev_page`
 
-当前页大于 0 时递减页码；已在第一页时返回 `success:false`。
+调用同一 mounted model 的实际上一页动作，按当前 display unit 和阅读模式定位，
+不是源页索引减 `1`。章节边界由实际导航处理。
+
+上述动作返回 `success`、`action`、实际 `page`、`totalPages` 和
+`inputKind:"application_action"`。`success` 表示原应用动作已分派，不是物理按键/鼠标送达或
+动画已停稳的证据；验收翻动结果应继续读取 mounted owner、display/visible 页索引。
+未挂载时返回 `success:false`，不记录成功动作。
+
+### `POST /reader/next_chapter` / `POST /reader/prev_chapter`
+
+调用真实 mounted reader 的相邻章 callback。没有实际 callback 时返回 `success:false`，
+fixture 初始相邻章标志不能创建导航目标。
 
 ### `POST /reader/go_to_page`
 
@@ -182,7 +220,8 @@ probe/open/copy 且图片网络为 0；缺失页才允许一个物理图片请�
 {"page": 5}
 ```
 
-页码为 0-indexed。越界返回 `400 Bad Request`。
+页码为 0-indexed 的源页索引，定位同一 mounted model 的逻辑目标；双页时由实际 owner
+选择包含目标的单元。越界、参数无效或未挂载返回 `400 Bad Request`、`success:false`。
 
 ### `POST /reader/close`
 

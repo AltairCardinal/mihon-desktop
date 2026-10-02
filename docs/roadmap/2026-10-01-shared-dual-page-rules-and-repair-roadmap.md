@@ -123,7 +123,7 @@ EXIF追加边界：沿用既有SSIV分块解码和图片所有权，优先在ada
 
 ### E 全链路回归与批次交付
 
-实施说明：A–D 已独立签收；E 保存/恢复、动画目标和 mounted 生命周期已局部签收。旧独立配对/无票据 settle 清理、原 MangaDex parser HTTP 错误与恢复、正式几何和 Android ART 入口已落地；本批已完成 affected focused 业务217项、metadata3项和41产品/测试Kotlin限定格式及ART入口编译；最终独审/提交前 DP01 保持未勾选。源/像素/触摸、物理键鼠及正式构建仍在 DP02，不以入口编译或 HTTP 动作替代。
+实施说明：A–E 已独立签收并随功能提交 `2a0e7570b7f359c4899e45f95769cc13e553f228` 完成 DP01。旧独立配对/无票据 settle 清理、原 MangaDex parser HTTP 错误与恢复、正式几何和 Android ART 入口已落地；本批已完成 affected focused 业务217项、metadata3项和41产品/测试Kotlin限定格式及ART入口编译。DP02 首次完整矩阵失败及后续限定修复证据见唯一报告，再次完整验证须另获批准。源/像素/触摸、物理键鼠及正式构建仍在 DP02，不以入口编译或 HTTP 动作替代。
 
 **目标**：完成A–D共同能力、实际进度/持久化链路和一轮独立审查的剩余部分。
 

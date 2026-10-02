@@ -249,12 +249,14 @@ internal fun DualPagePagerViewer(
     val programmaticTarget = remember { mutableStateOf<Int?>(null) }
     val userTurnTarget = remember { mutableStateOf<ReaderPageId?>(null) }
     val navigationIntent = remember { mutableStateOf<ReaderPagerNavigationIntent?>(null) }
+    val nativeLocation by rememberUpdatedState(pagerPresentationBinding?.model?.state?.value?.dualPageLocation)
     val nativeUnits by rememberUpdatedState(displayUnits.indices.map { displayUnits[pagerToUnit(it)].id })
 
     LaunchedEffect(pagerState.interactionSource) {
         pagerState.interactionSource.interactions.collect { interaction ->
             if (interaction is DragInteraction.Start) {
-                navigationIntent.value = ReaderPagerNavigationIntent(nativeUnits, pagerState.currentPage)
+                navigationIntent.value =
+                    ReaderPagerNavigationIntent(nativeUnits, pagerState.currentPage, logicalLocation = nativeLocation)
                 programmaticTarget.value = null
                 userTurnTarget.value = null
             } else if (interaction is DragInteraction.Stop) {
@@ -267,6 +269,7 @@ internal fun DualPagePagerViewer(
 
     LaunchedEffect(
         currentPageId,
+        nativeLocation,
         displayUnits[initialUnitIndex].id,
         displayUnits.map(DisplayUnit::id),
         isRtl,
@@ -289,7 +292,7 @@ internal fun DualPagePagerViewer(
         unit = selectedUnit,
         visible = presentation.resolveDualVisiblePages(selectedUnit.id),
         binding = pagerPresentationBinding,
-        userNavigation = navigationIntent.value?.selects(selectedIndex, selectedUnit.id) == true,
+        userNavigation = navigationIntent.value?.selects(selectedIndex, selectedUnit.id, nativeLocation) == true,
         idle = !pagerState.isScrollInProgress && pagerState.settledPage == selectedIndex &&
             (programmaticTarget.value?.let { it == selectedIndex } ?: true),
         onVisiblePagesChanged = onVisiblePagesChanged,
@@ -310,7 +313,8 @@ internal fun DualPagePagerViewer(
                 ?: if (programmaticTarget.value != null) pagerState.settledPage else pagerState.currentPage
         when (val action = ReaderKeyboardAction.forPagerCommand(command, isRtl, basePage, displayUnits.size)) {
             is ReaderPageAction.GoToPage -> {
-                navigationIntent.value = ReaderPagerNavigationIntent(nativeUnits, basePage, action.page)
+                navigationIntent.value =
+                    ReaderPagerNavigationIntent(nativeUnits, basePage, action.page, logicalLocation = nativeLocation)
                 val targetPage = presentation.resolveDualVisiblePages(displayUnits[pagerToUnit(action.page)].id)
                     .activePageId
                 userTurnTarget.value = targetPage

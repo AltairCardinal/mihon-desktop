@@ -99,7 +99,9 @@ class ReaderArchitectureGuardTest {
     private fun assertRegexOwners(marker: Regex, expectedPaths: Set<String>) {
         val actualPaths = productionReaderRoots
             .flatMap { sourceRoot ->
-                kotlinSources(sourceRoot).filterValues { content -> marker.containsMatchIn(executableSource(content)) }.keys
+                kotlinSources(sourceRoot).filterValues { content ->
+                    marker.containsMatchIn(executableSource(content))
+                }.keys
             }
             .toSet()
         assertEquals(expectedPaths, actualPaths, "Unexpected production decision declaration for ${marker.pattern}")
@@ -332,6 +334,7 @@ class ReaderArchitectureGuardTest {
 
         val progressPolicyOwners = setOf(
             "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSessionCore.kt",
+            "domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageSession.kt",
             "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
         )
 

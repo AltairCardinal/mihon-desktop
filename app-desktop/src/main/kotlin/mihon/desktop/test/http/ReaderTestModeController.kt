@@ -1,5 +1,20 @@
 package mihon.desktop.test.http
 
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.Serializable
+import mihon.desktop.download.CbzCreator
+import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.download.DownloadIoEvent
+import mihon.desktop.download.DownloadIoOperation
+import mihon.desktop.download.DownloadIoProbe
+import mihon.desktop.download.DownloadItem
+import mihon.desktop.download.DownloadStatus
+import mihon.domain.reader.content.DownloadChapterIdentity
+import mihon.domain.reader.observability.ReaderIoEvent
+import mihon.domain.reader.observability.ReaderIoEventType
+import mihon.domain.reader.observability.ReaderIoProbe
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
@@ -12,21 +27,6 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import javax.imageio.ImageIO
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeout
-import kotlinx.serialization.Serializable
-import mihon.desktop.download.CbzCreator
-import mihon.desktop.download.DesktopDownloadManager
-import mihon.desktop.download.DesktopDownloadProvider
-import mihon.desktop.download.DownloadItem
-import mihon.desktop.download.DownloadStatus
-import mihon.desktop.download.DownloadIoEvent
-import mihon.desktop.download.DownloadIoOperation
-import mihon.desktop.download.DownloadIoProbe
-import mihon.domain.reader.content.DownloadChapterIdentity
-import mihon.domain.reader.observability.ReaderIoEvent
-import mihon.domain.reader.observability.ReaderIoEventType
-import mihon.domain.reader.observability.ReaderIoProbe
 
 @Serializable
 data class ReaderIoTestEvent(
@@ -36,6 +36,7 @@ data class ReaderIoTestEvent(
     val pageIndex: Int?,
     val generation: Long,
     val purpose: String,
+    val byteLimit: Int? = null,
 )
 
 enum class ReaderTestFixtureKind {
@@ -148,7 +149,8 @@ class ReaderTestModeController(
     private val downloadEvents = CopyOnWriteArrayList<ScenarioDownloadEvent>()
     private val scenario = AtomicLong(0L)
     private val fixtureRoot = Files.createTempDirectory("mihon-reader-test-mode-").toFile()
-    private val downloadProvider = configuredDownloadProvider ?: DesktopDownloadProvider(fixtureRoot.resolve("downloads"))
+    private val downloadProvider =
+        configuredDownloadProvider ?: DesktopDownloadProvider(fixtureRoot.resolve("downloads"))
     private val imageBytes = ConcurrentHashMap<ImageKey, ByteArray>()
     private val currentFixture = AtomicReference<ReaderTestFixtureDescriptor?>()
     private val sourcePageListCalls = AtomicInteger()
@@ -193,6 +195,7 @@ class ReaderTestModeController(
                     pageIndex = event.pageId?.sourcePageIndex,
                     generation = event.generation,
                     purpose = event.purpose.name,
+                    byteLimit = event.byteLimit,
                 ),
             )
         }
@@ -608,7 +611,11 @@ class ReaderTestModeController(
             deleteOwnedDirectory(artifact.chapterDirectory)
             artifact.cbz?.let(::deleteOwnedFile)
             if (artifact.mangaDirectoryCreated) runCatching { artifact.chapterDirectory.parentFile.delete() }
-            if (artifact.sourceDirectoryCreated) runCatching { artifact.chapterDirectory.parentFile.parentFile.delete() }
+            if (artifact.sourceDirectoryCreated) {
+                runCatching {
+                    artifact.chapterDirectory.parentFile.parentFile.delete()
+                }
+            }
         }
         createdDownloadArtifacts.clear()
         val fixtureRootPath = fixtureRoot.toPath().toAbsolutePath().normalize()

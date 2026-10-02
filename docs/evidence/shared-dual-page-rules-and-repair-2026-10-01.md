@@ -1,6 +1,6 @@
 # 双端共享双页规则与修复证据
 
-状态：DP01 A–D 已完成 focused 重构并通过主代理独立审查；E 保存/输入和 mounted 接口已局部签收，E 受影响业务、metadata、原限定格式及 ART 入口编译已完成；最终独审、整合和统一提交尚待收口。正式产物、ART 像素与原生输入验收属于 DP02，当前未完成。基线 `31a6ab7269967cc615ed54ac2ca58fe8d9b3f1db`。本报告为本次唯一聚合证据；事实与构造夹具分别记录。
+状态：DP01 A–E 已完成实施、同轮独立审查、相关验证及功能提交 `2a0e7570b7f359c4899e45f95769cc13e553f228`。DP02 首次完整矩阵失败，相关修复已完成正确红绿、限定重构复验和同轮独立验收，将随本报告统一修复提交。全局格式首次检查发现一处行尾问题，修正后受影响格式目标已通过。再次完整验证尚未获批准，正式产物、ART 像素与原生输入验收仍未完成。基线 `31a6ab7269967cc615ed54ac2ca58fe8d9b3f1db`。本报告为本次唯一聚合证据；事实与构造夹具分别记录，最新修复结果见末节。
 
 ## A 输入事实
 
@@ -316,3 +316,235 @@ udp-e-scoped-format-stable 自然 PASSED/0：app7、domain8、Desktop25 共40产
 2026-10-02 主代理完成同轮独立审查，复用已签收的 A–D 与 E1/E2/E3/E4/E5 里程碑，核对 E 最终限定验证、ART 原 public getter 身份控制、cap43/45 局部引用及维护文档。domain fresh62 和 Android fresh8 零 fail/error/skip；Desktop147业务计数复用冻结批次当轮核验，metadata修复后fresh3通过。原组合失败保留，不重称全绿。41文件限定格式及 git diff --check 通过，无在途协调器任务。
 
 DP01 在同一完整功能提交中勾选，正式 ART/R8、真实源正式产物和 Windows/macOS 物理键鼠仍是 DP02 必做项；此签收不宣称两个用户案例已在新正式产物修复。范围跨共享 owner、两端 adapter 与测试，保持一个可编译验收功能批次。Mac 最新只读容量约8.9GiB；超时息屏不等同密码锁屏，正式时先醒屏，再核会话/窗口/焦点。
+
+### DP02 首轮完整矩阵（失败保留，未正式构建）
+
+功能提交 `2a0e7570b7f359c4899e45f95769cc13e553f228` 后进入 DP02。构建脚本 `full-tests` 已核对为 Windows `-TestOnly -FullTests`，真实 `:app-desktop:jvmTest -PincludeIntegrationTests=true`；未递增 Desktop 版本。
+
+- `udp-final-desktop-full`：启动阶段 exit255，GRADLE_OPTS 中未引号保护的 nonProxyHosts 管道被 cmd 解析；Gradle/测试未启动，不能记业务红或完整测试次数。改为带引号属性后执行下一 key，不改变代理 bypass。
+- `udp-final-desktop-full-execution`：7分41秒自然 FAILED/exit1；fresh XML 3,250 项、35失败、0错误、3条件跳过。失败包括当前 authority/证据守卫引用、standalone双页缺 shared units、未mounted TestMode旧影子断言、runtime model回收、在线保存呈现、章节切换，以及实际首帧/OPEN I/O门禁；AuthorCard一项关系未证实，留待单项复现，不扩无关产品范围。
+- `udp-final-shared-android-full`：19分49秒自然 FAILED/exit1；domain JVM 102 suites/620项及 Android目标86 suites/525项，均0失败/错误/跳过。app fresh708项/25独立失败/0错误/7条件跳过。失败涉及metadata-only额外图片读取、裸JUnit Android resources环境、邻章恢复、双页native重建/定位/进度/反馈、旧UNKNOWN双槽预期及activity CREATED前状态恢复。不能一概称夹具失败；原因和正确红按后续具体诊断记录。
+
+首轮完整失败保留在上述协调器日志及原模块测试报告；不重新称全绿，不新增巨型diff或逐测试快照。后续只修复相关路径并执行用户已批准的必要 focused；追加完整模块/矩阵仍需说明具体范围与成本并取得批准。正式构建、R8/ART、真实源新产物、Windows/macOS外部键鼠均未执行，DP02保持未勾选。
+
+跨工作树公开版本只读核对：当前任务Android code35/aex.17，其他本仓库工作树已分配至code38/aex.20；候选开始前再次串行核对并分配更高code，同证书不变。Mac真实输入CBZ原字节/原序包装仅在忽略目录，17页SHA-256 `fec7ffef2dc6773c0c917b5e9961fff745cca5eb9eaccc82deee2dffe26b522b`、22页SHA-256 `760c81b12dee475288833b29b1f965fa097d4dbafbc36b6cc62f3e2d5a9ac439`，Mac传输后哈希相同；未注入预期分组。最新Mac可用约8.5GiB，正式构建前复核。
+
+- `udp-final-e2e-client-full`：16秒自然 PASSED/exit0，`:test-desktop:test` 由 Gradle FROM-CACHE 复用未改变客户端输入的完整结果；8 suites/52项/0失败/0错误/0跳过。不声称本轮新执行了物理 E2E；实际正式窗口与键鼠仍待 DP02。全局 spotlessCheck 留至修复冻结后执行一次。
+
+
+### DP02 首轮完整失败后的限定修复
+
+完整矩阵原始失败保留上文，不以 focused 覆盖为全量通过。原 Desktop prefix/full 同报 OPEN 与
+首帧前非当前有界 header 为正确业务红：`udp-final-repair-header-red` 自然 FAILED/1，fresh2/2fail。
+原1.5MiB文件仍真实执行512KiB有界读取与完整读取；修复使用独立 HEADER_READ/byteLimit 观测，
+不缩减完整当前页 OPEN1、物理copy/network 或首帧非当前I/O门禁。
+`udp-final-repair-header-green` 自然 FAILED/1，domain观测2绿/Desktop20中16绿，剩余4为呈现/时点夹具；
+`udp-final-repair-header-green2` 自然 FAILED/1，fresh4中 SharedSpread 与180页首帧对照2绿，
+RuntimeFactory EXIF/B2的原事实与结构断言通过，实际goto slots仍待诊断，未称整轮绿。
+
+Android原 metadata-only expected0/actual1 和邻章恢复失败仍展示内容/丢恢复入口是正确业务红。
+ChapterLoader adapter按原PREFETCH purpose禁止自动header，双页邻章门禁改用原store.isRestored实际共享状态；
+保持保存失败仍可读、默认未验证可读但禁保存。`udp-final-repair-restore-and-slot-green` 自然FAILED/1，
+5m56，fresh Android22/0fail/error/skip（WindowEffect3、PairingPersistence19），无失败重试；
+仅Desktop RuntimeFactory2个实际slot失败。原metadata-only imageOPEN0与RTL恢复选择、current保留均通过。
+当前裸JUnit5 Android资源/伪bytes及未安装model的adapter Activity属于环境/夹具缺口，迁移真实
+Robolectric资源/合法PNG与其实际model边界，不作为产品红，也不删除原scheduler/progress预期。
+
+`udp-final-repair-fixtures-green` 自然FAILED/1、45s：freshDesktop3中EXIF/B2两例的原方向、结构和
+真实槽宽/位置均通过。两例明确关闭动画，仅证明facts→shared→Compose槽位；原E2动画窗口证据
+仍复用，DP02真实B1/B2原生输入保持正常动画。AuthorCard原独立单项仍Late Author50恢复失败，
+未证明shared关联，未改product或弱化断言。freshAndroid13：Core3与Materialize4资源迁移绿，
+Adjacent6中4缺真实model owner；随后已给adapter fixture原store/model。
+
+`udp-final-repair-progress-green` 自然FAILED/1、3m52，freshAndroid94/7fail/0error/skip，
+Progress29中24绿、Holder47中46绿、SharedAndroid12全绿、Adjacent6中5绿。原B完成删除A、
+A失败不删、邻章失败图片retry、同漫画resume/sync、新实例读取accepted write及原触摸/方向/资源
+门禁有效绿保留。UNKNOWN不再假配对：原无方向/尺寸先为不确定FULL单槽，真实header后仍要求实际
+portrait成对；native recreation保location/unit并核旧ticket拒绝，模式关闭/开启依法增加layoutRevision。
+剩余原B封面3事件、layout single、Activity toast、loaded transition和dual idle逐项限定修复；
+前者Explicit decode夹具需真实Ready前置，decode=false仍不得settle。Author临时只读诊断签名编译错误
+没有测试执行，不算业务红，已修正。没有新增完整模块或全量验证。
+
+`udp-final-repair-seven-and-author-diagnostic` 自然FAILED/1、1m28：freshAndroid7中4绿，
+B封面三条实际事件与layout-only→真正绘制single门禁通过；Activity toast仅旧helper位置前置、
+loaded transition和single idle仍红。idle两次实际调用堆栈来自setChaptersInternal初次positionPage
+同索引手动通知和尾部原事件，不是两条网络响应；保持原exact1请求期望进行最小修复。
+loaded transition因旧current-owner位置优先实际transition.loadedEntryPage，不能改邻章预期绕过。
+Author原单项在临时只读factory/model观测下fresh1/0fail/error/skip：三个阶段cards52、All saved
+index49/lastVisible51且loading=false；此轮没有位置覆盖，未确认产品根因。临时观测已移除，
+没有改变Authors product/原断言；波动结果由主代理告知用户，不能据此称作者页已修复。
+
+
+`udp-final-repair-native-three-green` 自然FAILED/1、50s，fresh3中idle/原loaded入口两绿，
+Toast真实native pager尚未idle属夹具前置；后改原helper无动画定位，仍经真实Activity setup、
+native adapter/holder呈现和原持久化失败Toast，不把layout-only当已读。
+`udp-final-repair-owner-window-red` 自然FAILED/1、40s：Toast原方法1绿，原loaded-transition
+方法新增旧窗口晚到→新窗口位置向量正确红，actual旧transition替代新chapter page2。
+`udp-final-repair-owner-window-green` 自然PASSED/0、25s，fresh原方法1/0fail/error/skip：
+显式target优先，只有from/to均属于当前窗口实例且共享恢复通过的selected transition才优先entry；
+普通logicalTarget保留。初次同索引定位仅抑制额外通知，尾部原事件及外部moveToPage语义保留。
+以上native delta已由主代理同轮局部签收；临时请求调用堆栈已清理，没有新增公共状态机制。
+
+新增 HEADER_READ 必须被原 Python HTTP consumer 消费：
+`udp-final-repair-http-header-red` 自然FAILED/1（Gradle6s），fresh1正确失败 expected exit1/actual0；
+首帧前非当前有界header没有被原门禁拒绝。原shared validator最小增加noncurrent HEADER_READ拒绝，
+`udp-final-repair-http-header-green` 自然PASSED/0（9s），fresh FinalParityReaderClient13、
+PerformanceRunner5共18/0fail/error/skip。合法当前header、byteLimit512KiB及未来可选字段兼容；
+完整current OPEN1/DECODE1与原20样本/预算/错误合同未缩减。新增消费端诊断及修复约10分钟；
+原client完整FROM-CACHE52仅保历史，不能覆盖改变后的输入。
+
+#### 限定修复冻结范围与首轮失败映射
+
+本批内聚于首轮共享迁移遗漏、首帧实际header I/O、恢复/窗口身份与实际mounted测试入口，
+超过8文件/400行主要来自既有wiring夹具的真实owner/合法图像补齐和原断言迁移；
+固定原版来源与behaviorVectors未改。风险集中在首帧读取、邻章恢复和进度权威，
+由正确业务红、真实production门禁、同轮接口独审及下列限定复验处理，不扩Authors产品。
+
+| 原Desktop失败类（原数量） | 本批验证或复用 |
+| --- | --- |
+| ReaderArchitectureGuardTest(1)、DesktopProductCapabilityContractTest(1) | 原boundary/exact contract两个方法 |
+| ReaderDeviationGovernanceTest(1)、ReaderFixedMainAuthorityTest(3) | deviation原合同及mutation两方法；RD01两/RD02一与fixture绑定、exact git objects两方法 |
+| DesktopChapterPairingComposePersistenceTest(1)、DesktopReaderRegionPresentationWiringTest(1) | 原online first pair与Dual实际tiles两个方法 |
+| DesktopReaderRuntimeFactoryTest(2) | 原next-prefetch filename与one shared core两个方法；有界header/overlap/cold17及EXIF/B2原focused有效绿复用 |
+| ReaderCriticalPathProductionTest(2)、ReaderIoProductionWiringTest(1)、ReaderPresentationPipelineProductionTest(9) | header-green/green2自然终态中原首帧成本、I/O顺序和single/dual/webtoon×dir/cbz/online有效绿复用，无后续相关语义改变 |
+| ReaderScenarioSmokeTestSuite(3)、TestHttpServerJsonTest(1) | 原read/goto/closed action三方法及fixture routes一方法 |
+| AdaptiveReaderViewportTest(1) | 原resize/page/progress/real next tap方法 |
+| ReaderChapterTransitionPresentationTest(5) | 原parameterized metadata方法全7向量（共享夹具影响其single/dual，保原两Webtoon合法向量） |
+| ReaderKeyboardNavigationPositionTest(1)、ReaderDecodedImageRetryWiringTest(1) | 原last pair keyboard与Dual Retry两个方法 |
+| AuthorCardProductionWiringTest(1) | 未修改产品或原断言；原单项失败与临时只读诊断PASS均保留，不归共享修复完成 |
+
+原Desktop35中34在本批范围，另1 Authors仍波动且未证明原因。
+Android原25映射：Core(1)与Materialize(1)的合法资源原7绿、WindowEffect(1)原3绿复用；
+PairingPersistence(2)进入原全类19；Progress(9)原全类29；HolderLayout(6)原全类47；
+SharedAndroid(1)原全类12；AdjacentViewer(4)原全类6。最终Android限定113项，
+保原完成/失败/重开/邻章/恢复/资源与真实native动作边界；不运行未限定app模块。
+
+冻结命令 key `udp-final-repair-frozen-related`：
+`:app-desktop:jvmTest` 仅上述尚待复验的21个方法过滤（参数化实际预计27项）；
+`:app:testReleaseUnitTest` 仅上述5个原类（预计113项），临时候选include与--tests一致、maxRetries=0；
+`:test-desktop:test` 仅原FinalParityReaderClient/PerformanceRunner两个类（18项）。
+共同 `-PincludeIntegrationTests=true --offline --continue`，不是完整模块/全量/finalParityAudit。
+domain观测原2、ReaderTestModeHttp真实JSON/GET字段及SharedSpread原有效绿仍复用，
+格式后客户端18同范围复验作为重构阶段。限定31个本批Kotlin文件Apply/Check，
+长路径capability合同仅局部diff-check；全局spotlessCheck留主代理最终一次。
+
+#### 冻结批实际终态与剩余原范围闭环
+
+`udp-final-repair-frozen-related` 4m38自然FAILED/1：fresh Desktop27/9fail/0error/0skip，
+Android113/1fail/0error/0skip，两个client合同18/0fail/error/skip。未称158项全绿；
+Android其余112项有效绿继续复用，不重新执行113。剩余Desktop9及Android原sampler1逐项限定处理。
+`udp-final-repair-ten-diagnostic` 自然FAILED/1、37s：Desktop10中online/RD02等4绿、metadata1与
+transition5仍失败；sampler1的只读时序诊断通过。sampler原exact20语义保留：lease释放不代表原
+matching job已经发布负结果，原pump改等待该job自然完成再显式retry，并保无无进展循环及错误
+样本不得恢复旧positive的匹配门禁；没有改变sampler production或用累计调用数替代匹配结果。
+
+online原20s失败实证为夹具一直扣住NON_CURRENT gate导致共享必要neighbor facts不能就绪；
+仅实际FIRST_PAGE_PRESENTED之后放行原gate，保首帧非当前I/O为零，不增加等待上限。
+Adaptive真实尺寸/共享unit前置补齐后，原第二logical页保持2，双页unit实际为[1,2]；
+原resize/backsingle/progress/真实tap保护不变，未把OPEN1改为2/3。
+`udp-final-repair-remaining-green` 自然PASSED/0、41s：fresh Desktop11（metadata1/RD02一/
+online1/Adaptive1/transition7）及Android原sampler1全绿。
+
+最终current-role引用核对更新26个失效行位（cap44/45/47/51/53/54/81/95）；固定原版git ref、
+provenance、behaviorVectors及capability状态不改。cap53旧未消费settle方法引用改为该原方法实际
+执行的acceptDualFact/presentReadyPagerViewport/progress断言。真实exact合同复验，不以字符串核对
+代替行为。cap43 verificationScope记录已提交DP01与仍待DP02的边界。
+
+#### 正常动画中最新跳转与旧真实输入的逻辑身份
+
+在原ReaderChapterTransitionPresentationTest参数化方法内新增真实tap进入NEXT且native idle=false，
+动画未结束时goto同logical页；要求物理回漫画页、旧输入不重新打开边界，新tap仍可进入transition，
+过渡和terminal回调不误记进度。`udp-final-repair-transition-intent-red` fresh7中5个single/dual
+向量因最新goto目标丢失正确失败，两个Webtoon原合法向量仍绿；这不是先停稳后晚到反馈的替代用例。
+
+仅Compose intent predicate的green、仅mutation fence的green2仍各5失败；没有把它们称通过。
+原单项native诊断证明shared已unit=null/location.sequence=2，但native仍idle于旧transition，
+因为同页goto合并后原effect key不重启。最小修复沿已有shared logicalLocation：
+原tap/Drag.Start intent保实际输入开始位置，composition原binding传该位置，
+model在begin mutation点重新核owner.location；原goto effect消费同一位置变化。
+metadata同location不撤合法目标，没有新增平行owner或公共状态机制。
+`udp-final-repair-transition-intent-green3` 自然PASSED/0、24s，fresh原7向量零失败/错误/跳过，
+主代理同轮独立核对该接口后允许原E2/快速输入/turn下游复验。所有临时打印与堆栈诊断已删除。
+
+限定31个changed Kotlin严格Apply/Check的`udp-final-repair-scoped-format-final`自然PASSED/0；
+后续10个delta文件`udp-final-repair-delta-format`因原长行及临时诊断文案失败，非业务红，
+断行及移除临时观测后`udp-final-repair-delta-format2`自然PASSED/0、6s，严格120列Apply/Check。
+未应用模块Spotless的长路径capability合同保原格式，以局部diff-check及实际exact合同验证；
+没有执行全局Spotless。新增consumer红绿约10分钟、实际动画身份限定定位约30–40分钟，
+均为原范围具体失败修复，无新代理/审查轮次或完整测试。
+
+#### 修复交接的最终限定重构验证
+
+`udp-final-repair-input-refactor` 自然PASSED/exit0、57s：
+fresh Desktop6 suites/35项/0fail/0error/0skip，
+分别为原E2真实未停稳tap/key/drag facts或matching及rapid/latestgoto11、
+原page-turn外部请求/快速请求/外部动画中新输入/连续tap14、
+原chapter transition全7、Adaptive1、online1、exact metadata1。
+正常动画窗口实测通过；Drag.Start后begin推进共享位置仍能停稳，新输入可正常选择，
+metadata同location不撤目标。Android原sampler1由Gradle UP-TO-DATE有效复用
+（原remaining-green的fresh XML1/0/0/0，无后续相关产品改变），没有虚报为本轮新执行。
+client冻结批fresh18继续有效；原完整52仅修复前历史，当前仍需主代理申请完整复验。
+
+实际命令（协调器无并行，临时init仅限制候选与retry=0；此处只选sampler方法）：
+
+```text
+scripts/gradle-coordinator.py
+start
+--key
+udp-final-repair-input-refactor
+--
+.\gradlew.bat
+:app-desktop:jvmTest
+--tests
+*DualPageCurrentPageWiringTest.native input target survives facts or matching during the unsettled animation*
+--tests
+*DualPageCurrentPageWiringTest.mounted rapid taps and latest external goto retain their logical destinations*
+--tests
+*ReaderPageTurnPresentationTest.external page requests animate just like taps*
+--tests
+*ReaderPageTurnPresentationTest.latest rapid page request wins over settled page feedback*
+--tests
+*ReaderPageTurnPresentationTest.user turn during external animation clears stale programmatic feedback*
+--tests
+*ReaderPageTurnPresentationTest.rapid taps advance from the latest user turn target*
+--tests
+*ReaderChapterTransitionPresentationTest.ReaderContent mounts transition metadata in every viewer direction*
+--tests
+*AdaptiveReaderViewportTest.production reader resize preserves page and progress and real next tap resumes reporting*
+--tests
+*DesktopChapterPairingComposePersistenceTest.online reader with saved chapter identity presents its first paired pages*
+--tests
+*DesktopProductCapabilityContractTest.parity manifest defines the exact roadmap contract*
+:app:testReleaseUnitTest
+--tests
+*SharedDualPageAndroidWiringTest.matching preference reaches actual encoded sampler shared session and native display pages
+-I
+app-desktop/tmp/udp-final-repair-related.init.gradle
+-PincludeIntegrationTests=true
+--offline
+--continue
+```
+
+唯一evidence、架构/API和机器manifest局部同步；UTF-8两份JSON解析、原Python consumer AST及
+git diff --check均通过。限定Kotlin格式已通过，长路径合同保原格式并经实际exact合同。
+全部临时诊断已清理，Authors product及原断言无diff。修复以单次限定集合加仍适用的有效绿
+覆盖原Desktop34个共享相关失败、Android25个相关失败，不声称首轮完整35/25已重新全量通过；
+作者页独立1项仍保波动与未确认原因。无完整模块重跑、finalParityAudit、正式build、R8/ART、
+实体安装或原生HTTP冒充输入。DP02仍未勾，下一步由主代理完成同轮剩余整合/全局格式/唯一repair
+提交，并向用户申请具体追加完整验证与正式平台验收范围。子代理不单独提交。
+
+#### 主代理整合与格式收口
+
+主代理完成同轮接口与证据核对后接回唯一 Gradle 执行权。
+`udp-final-global-spotless` 执行 `gradlew.bat spotlessCheck --offline`，
+自然 FAILED/1、28s；其他格式目标通过，唯一失败为此前 DP01 文件
+`DualPagePairingStore.kt` 的 CRLF 行尾。仅将该文件改为 UTF-8/LF，
+Git 归一化后无产品内容差异，不改变行为或重新执行业务测试。
+`udp-final-global-format-repair` 执行 `:app:spotlessKotlinCheck --offline`，
+自然 PASSED/0、8s；为完成原失败后未执行的 app XML 与聚合目标，
+`udp-final-app-format-complete` 执行 `:app:spotlessCheck --offline`，
+自然 PASSED/0、11s。未第二次执行全局格式或完整业务矩阵。
+Desktop 未纳入普通模块 Spotless 的范围继续使用已通过的严格限定格式证据。
+唯一报告开头及 roadmap E 段的旧“未提交”描述已与 DP01 实际提交同步。
+本次修复整合完成；DP02 保持未勾选，作者页历史失败的原因仍未确认，
+不宣称其已修复，也未混入作者页产品或测试变更。

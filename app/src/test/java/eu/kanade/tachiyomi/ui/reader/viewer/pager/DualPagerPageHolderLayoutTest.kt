@@ -495,6 +495,9 @@ class DualPagerPageHolderLayoutTest {
     fun `new activity retains current and pairing while global changes update the real viewer`() = runTest {
         val preferences = Injekt.get<ReaderPreferences>()
         val chapter = loadedChapter(11, 9)
+        withContext(Dispatchers.IO) {
+            listOf(chapter).flatMap { it.pages.orEmpty() }.forEach { it.publishHeaderFact() }
+        }
         chapter.chapter.last_page_read = 7
         val model = mockk<ReaderViewModel>(relaxed = true)
         val store = DualPagePairingStore()
@@ -518,6 +521,7 @@ class DualPagerPageHolderLayoutTest {
             state.value = state.value.copy(currentPage = page.number)
         }
         every { model.onLayoutPageSelected(any()) } answers { select(firstArg()) }
+        every { model.onPageSelected(any(), any(), false) } answers { select(firstArg()) }
         every { model.onPageSelected(any()) } answers {
             reports += firstArg<ReaderPage>()
             select(firstArg())
@@ -533,7 +537,7 @@ class DualPagerPageHolderLayoutTest {
         val first = activity(1400)
         runCurrent()
         val oldViewer = state.value.viewer as DualPageR2LPagerViewer
-        assertEquals(1, current?.index)
+        assertEquals("The original logical second page must survive the first paired viewport", 2, current?.index)
         oldViewer.adjustPagePairing()
         assertEquals(2, current?.index)
         val second = activity(1300)
@@ -572,9 +576,27 @@ class DualPagerPageHolderLayoutTest {
         val pages = List(3) { ReaderPage(it).apply { chapter = next } }
         next.publishLoadedPageListForTest(pages)
         val activity = viewer.activity as RecordingReaderActivity
-        activity.selectedPages.clear()
+        activity.selectedAnchors.clear()
         viewer.setChapters(chapters)
-        assertTrue(activity.selectedPages.any { it === pages[0] })
+        assertTrue(activity.selectedAnchors.any { it === pages[0] })
+        assertTrue("An unpainted adjacent page is only a navigation anchor", activity.selectedPages.isEmpty())
+
+        // An old selected transition can finish loading just as its entire chapter window is
+        // replaced. Its entry must never override the new owner's original logical position.
+        val staleNext = ReaderChapter(Chapter.create().copy(id = 13, mangaId = 1))
+        viewer.setChapters(ViewerChapters(current, null, staleNext))
+        val staleTransition = viewer.adapter.items.indexOfFirst { it is ChapterTransition.Next }
+        viewer.pager.setCurrentItem(staleTransition, false)
+        staleNext.publishLoadedPageListForTest(List(3) { ReaderPage(it).apply { chapter = staleNext } })
+        val replacement = loadedChapter(21, 3).apply { requestedPage = 2 }
+        activity.selectedAnchors.clear()
+        viewer.setChapters(ViewerChapters(replacement, null, null))
+        val selected = viewer.adapter.items[viewer.pager.currentItem]
+        assertTrue(
+            "Old transition must not displace the replacement owner: $selected",
+            selected is DisplayPage && selected.containsPage(requireNotNull(replacement.pages)[2]),
+        )
+        assertTrue(activity.selectedAnchors.any { it === requireNotNull(replacement.pages)[2] })
     }
 
     @Test
@@ -664,6 +686,9 @@ class DualPagerPageHolderLayoutTest {
     @Test
     fun `pairing adjustment keeps paired right page and does not report layout progress`() = runTest {
         val chapter = loadedChapter(11, 9)
+        withContext(Dispatchers.IO) {
+            listOf(chapter).flatMap { it.pages.orEmpty() }.forEach { it.publishHeaderFact() }
+        }
         viewer.setChapters(ViewerChapters(chapter, null, null))
         viewer.moveToPage(requireNotNull(chapter.pages)[1])
         val activity = viewer.activity as RecordingReaderActivity
@@ -849,6 +874,9 @@ class DualPagerPageHolderLayoutTest {
     fun `next page input advances R2L groups and crosses into next chapter while previous returns`() = runTest {
         val chapter = loadedChapter(11, 4)
         val next = loadedChapter(12)
+        withContext(Dispatchers.IO) {
+            listOf(chapter, next).flatMap { it.pages.orEmpty() }.forEach { it.publishHeaderFact() }
+        }
         viewer.adapter.setChapters(ViewerChapters(chapter, loadedChapter(10), next), false)
         viewer.moveToPage(requireNotNull(chapter.pages)[0])
         viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PAGE_DOWN))
@@ -878,10 +906,14 @@ class DualPagerPageHolderLayoutTest {
     }
 
     @Test
-    fun `unknown image sizes already reserve dual slots until a real wide image is known`() = runTest {
+    fun `unknown image sizes remain uncertain whole singles until actual facts arrive`() = runTest {
         val chapter = loadedChapter(11, 4)
         viewer.adapter.setChapters(ViewerChapters(chapter, null, null), false)
-        assertEquals(1, viewer.adapter.items.filterIsInstance<DisplayPage.Double>().size)
+        assertEquals(0, viewer.adapter.items.filterIsInstance<DisplayPage.Double>().size)
+        val singles = viewer.adapter.items.filterIsInstance<DisplayPage.Single>()
+        assertEquals(4, singles.size)
+        assertTrue(singles.all { it.slot == ReaderPortraitSingleSlot.FULL })
+        assertTrue(viewer.adapter.session(chapter)!!.units.all { !it.certain })
     }
 
     @Test
@@ -945,13 +977,22 @@ class DualPagerPageHolderLayoutTest {
         val chapters = ViewerChapters(current, previous, next)
         viewer.adapter.setChapters(chapters, false)
         fun chapterIds() = viewer.adapter.items.filterIsInstance<DisplayPage>().map { it.firstPage.chapter.chapter.id }
-        assertEquals(listOf(12L, 12L, 11L, 11L, 10L, 10L), chapterIds())
+        assertEquals(listOf(12L, 12L, 12L, 11L, 11L, 11L, 10L, 10L, 10L), chapterIds())
         val wideBytes = ByteArrayOutputStream().also {
             Bitmap.createBitmap(400, 200, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it)
         }.toByteArray()
         requireNotNull(next.pages)[1].stream = { wideBytes.inputStream() }
         for (page in requireNotNull(next.pages)) decodeForAdapter(page)
-        assertEquals(listOf(12L, 12L, 12L, 11L, 11L, 10L, 10L), chapterIds())
+        assertEquals(listOf(12L, 12L, 12L, 11L, 11L, 11L, 10L, 10L, 10L), chapterIds())
+        assertEquals(
+            0,
+            viewer.adapter.items.filterIsInstance<DisplayPage.Double>().count {
+                it.firstPage.chapter ==
+                    current
+            },
+        )
+        for (page in requireNotNull(current.pages)) decodeForAdapter(page)
+        assertEquals(listOf(12L, 12L, 12L, 11L, 11L, 10L, 10L, 10L), chapterIds())
         assertEquals(
             1,
             viewer.adapter.items.filterIsInstance<DisplayPage.Double>().count {
@@ -959,8 +1000,6 @@ class DualPagerPageHolderLayoutTest {
                     current
             },
         )
-        for (page in requireNotNull(current.pages)) decodeForAdapter(page)
-        assertEquals(listOf(12L, 12L, 12L, 11L, 11L, 10L, 10L), chapterIds())
     }
 
     @Test
@@ -1026,6 +1065,9 @@ class DualPagerPageHolderLayoutTest {
         val model = mockk<ReaderViewModel>(relaxed = true)
         every { model.dualPagePairings } returns DualPagePairingStore()
         every { model.state } returns MutableStateFlow(ReaderViewModel.State())
+        every { model.onPageSelected(any(), any(), false) } answers
+            { activity.selectedAnchors += firstArg<ReaderPage>() }
+        every { model.onLayoutPageSelected(any()) } answers { activity.selectedAnchors += firstArg<ReaderPage>() }
         ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
         viewer = DualPageR2LPagerViewer(activity)
         // This fixture mounts the reader viewport, not the activity's navigation help overlay.

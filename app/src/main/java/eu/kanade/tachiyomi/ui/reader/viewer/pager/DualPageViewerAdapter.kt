@@ -270,14 +270,21 @@ class DualPageViewerAdapter(
         val currentPairing = chapterPairings[chapters.currChapter]
         val logicalTarget = currentPairing?.session?.location?.pageId?.sourcePageIndex
             ?.let { currentPairing.pages.getOrNull(it) }
-        val anchor = targetPage ?: logicalTarget ?: when (selected) {
+        val window = listOfNotNull(chapters.prevChapter, chapters.currChapter, chapters.nextChapter)
+        val selectedTransition = (selected as? ChapterTransition)?.takeIf { transition ->
+            window.any { it === transition.from } && window.any { it === transition.to } &&
+                isReadyForDisplay(transition.to)
+        }
+        // Only this window's restored transition may supersede the current owner's position.
+        val anchor = targetPage ?: selectedTransition?.loadedEntryPage() ?: logicalTarget ?: when (selected) {
             is DisplayPage -> selected.firstPage
-            is ChapterTransition -> selected.loadedEntryPage()
             else -> null
         }
         val logical = buildList<Any> {
             chapters.prevChapter?.let { chapter ->
-                chapterPairings[chapter]?.let { addAll(buildDisplayPages(it.pages, it.session)) }
+                if (isReadyForDisplay(chapter)) {
+                    chapterPairings[chapter]?.let { addAll(buildDisplayPages(it.pages, it.session)) }
+                }
             }
             if (readerChapterBoundary(
                     chapters.prevChapter != null,
@@ -296,7 +303,9 @@ class DualPageViewerAdapter(
                 add(requireNotNull(nextTransition))
             }
             chapters.nextChapter?.let { chapter ->
-                chapterPairings[chapter]?.let { addAll(buildDisplayPages(it.pages, it.session)) }
+                if (isReadyForDisplay(chapter)) {
+                    chapterPairings[chapter]?.let { addAll(buildDisplayPages(it.pages, it.session)) }
+                }
             }
         }
         val replacement = logical.asReversed().toMutableList()
@@ -467,7 +476,7 @@ class DualPageViewerAdapter(
 
     private fun isReadyForDisplay(chapter: ReaderChapter?): Boolean =
         chapter?.state is ReaderChapter.State.Loaded &&
-            (!store.requiresRestoration || chapterPairings[chapter]?.pages === chapter.pages)
+            (!store.requiresRestoration || chapter.pages?.let { store.isRestored(chapter, it) } == true)
 
     private fun buildDisplayPages(pages: List<ReaderPage>, session: SharedDualPageSession): List<DisplayPage> {
         return session.units.map { unit ->

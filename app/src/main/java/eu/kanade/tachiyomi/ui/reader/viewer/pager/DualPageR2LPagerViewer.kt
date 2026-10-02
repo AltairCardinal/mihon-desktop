@@ -178,7 +178,7 @@ class DualPageR2LPagerViewer(
             val pages = chapters.currChapter.pages ?: return
             val target = adapter.session(chapters.currChapter)?.location?.pageId?.sourcePageIndex
                 ?: chapters.currChapter.requestedPage
-            positionPage(pages[min(target, pages.lastIndex)])
+            positionPage(pages[min(target, pages.lastIndex)], notifyIfUnchanged = false)
             pager.isVisible = true
         }
 
@@ -191,7 +191,7 @@ class DualPageR2LPagerViewer(
         positionPage(page)
     }
 
-    private fun positionPage(page: ReaderPage) {
+    private fun positionPage(page: ReaderPage, notifyIfUnchanged: Boolean = true) {
         // Find the ViewPager position of the display unit containing this page
         val position = adapter.items.indexOfFirst { item ->
             item is DisplayPage && item.containsPage(page)
@@ -199,7 +199,7 @@ class DualPageR2LPagerViewer(
         if (position != -1) {
             val currentPosition = pager.currentItem
             pager.setCurrentItem(position, true)
-            if (currentPosition == position) {
+            if (currentPosition == position && notifyIfUnchanged) {
                 onPageChange(position)
             }
         } else {

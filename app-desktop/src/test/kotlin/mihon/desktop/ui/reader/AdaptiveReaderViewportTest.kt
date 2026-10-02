@@ -60,15 +60,30 @@ class AdaptiveReaderViewportTest {
         prefs.readingMode = ReadingMode.AUTO
         val reports = mutableListOf<Int>()
         val model = ReaderScreenModel(
-            prefs = prefs, initialSessionState = desktopReaderSessionState(pageCount = 5, initialPage = 2),
+            prefs = prefs,
+            initialSessionState = desktopReaderSessionState(pageCount = 5, initialPage = 2),
             onViewportSettled = { _, active -> reports += active.sourcePageIndex },
         )
+        // This isolated renderer supplies its original dimensions through the real shared ticket.
+        model.state.value.session.activeChapter.pages.forEach { page ->
+            assertTrue(
+                model.acceptDualFact(
+                    requireNotNull(model.captureDualFact(page.id)),
+                    mihon.domain.reader.ReaderPageFact.dimensions(10, 14),
+                ),
+            )
+        }
         val reporter = ReaderIoReporter(ReaderIoProbe.None, ReaderMonotonicClock { 0L })
         val content = DesktopReaderPageContentOwner(this, { byteArrayOf(1) }, reporter)
-        val pipeline = DesktopReaderPageImagePipeline(this, content, reporter, decoder = DesktopReaderPageImageDecoder { _, _ ->
-            val bitmap = Bitmap().apply { allocN32Pixels(10, 14) }
-            DesktopReaderImageAsset(bitmap.asComposeImageBitmap(), 10, 14, 560L, false, disposer = bitmap::close)
-        })
+        val pipeline = DesktopReaderPageImagePipeline(
+            this,
+            content,
+            reporter,
+            decoder = DesktopReaderPageImageDecoder { _, _ ->
+                val bitmap = Bitmap().apply { allocN32Pixels(10, 14) }
+                DesktopReaderImageAsset(bitmap.asComposeImageBitmap(), 10, 14, 560L, false, disposer = bitmap::close)
+            },
+        )
         val owner = DesktopReaderPresentationImageOwner(this, pipeline, ReaderPageIoObserver(reporter))
         owner.beginGeneration(1L)
         val appPrefs = DesktopAppPreferences(DesktopPreferenceStore(root.node("app")), root.node("legacy-app"))
@@ -96,7 +111,14 @@ class AdaptiveReaderViewportTest {
             width = 160.dp
             frames()
             assertTrue(model.state.value.dualPageMode)
-            assertEquals(1, model.state.value.currentPage)
+            assertEquals(
+                listOf(1, 2),
+                model.state.value.dualPageUnits.single { unit ->
+                    unit.pageIds.any { it.sourcePageIndex == 2 }
+                }.pageIds.map { it.sourcePageIndex },
+            )
+            assertEquals(2, model.state.value.dualPageLocation?.pageId?.sourcePageIndex)
+            assertEquals(2, model.state.value.currentPage)
             assertEquals(listOf(2), reports)
             model.toggleUI()
             frames()
@@ -104,23 +126,23 @@ class AdaptiveReaderViewportTest {
             width = 100.dp
             frames()
             assertFalse(model.state.value.dualPageMode)
-            assertEquals(1, model.state.value.currentPage)
+            assertEquals(2, model.state.value.currentPage)
             assertEquals(listOf(2), reports)
             val pageBounds = scene.semanticsOwners.flatMap { flatten(it.unmergedRootSemanticsNode) }
                 .first { node ->
                     node.config.contains(ReaderDisplayUnitIdKey) &&
-                        node.config[ReaderDisplayUnitIdKey].slots.any { it.pageId?.sourcePageIndex == 1 }
+                        node.config[ReaderDisplayUnitIdKey].slots.any { it.pageId?.sourcePageIndex == 2 }
                 }.boundsInRoot
             val nextTap = Offset(pageBounds.left + 5f, pageBounds.center.y)
             scene.sendPointerEvent(PointerEventType.Press, nextTap, button = PointerButton.Primary)
             scene.sendPointerEvent(PointerEventType.Release, nextTap, button = PointerButton.Primary)
             frames()
-            assertEquals(2, model.state.value.currentPage)
+            assertEquals(3, model.state.value.currentPage)
             scene.sendPointerEvent(PointerEventType.Press, nextTap, button = PointerButton.Primary)
             scene.sendPointerEvent(PointerEventType.Release, nextTap, button = PointerButton.Primary)
             frames()
-            assertEquals(3, model.state.value.currentPage)
-            assertEquals(listOf(2, 3), reports)
+            assertEquals(4, model.state.value.currentPage)
+            assertEquals(listOf(2, 3, 4), reports)
         } finally {
             scene.close()
             owner.close()
@@ -141,11 +163,19 @@ class AdaptiveReaderViewportTest {
         val model = ReaderScreenModel(prefs = prefs)
         model.updateViewportSize(1600, 1000, this)
         val scene = ImageComposeScene(700, 1200, coroutineContext = coroutineContext) {}
-        fun render() = repeat(4) { scene.render().close(); runCurrent() }
+        fun render() = repeat(4) {
+            scene.render().close()
+            runCurrent()
+        }
         fun choice(label: String) = nodes(scene).first {
             it.config.contains(SemanticsActions.OnClick) && flatten(it).any { child -> label in text(child) }
         }
-        fun click(label: String) { requireNotNull(choice(label).config[SemanticsActions.OnClick].action).invoke(); render() }
+        fun click(
+            label: String,
+        ) {
+            requireNotNull(choice(label).config[SemanticsActions.OnClick].action).invoke()
+            render()
+        }
         fun selected(label: String) = flatten(choice(label)).any {
             it.config.contains(SemanticsProperties.Selected) && it.config[SemanticsProperties.Selected]
         }
@@ -201,6 +231,7 @@ class AdaptiveReaderViewportTest {
 
     private fun text(node: SemanticsNode): List<String> = if (node.config.contains(SemanticsProperties.Text)) {
         node.config[SemanticsProperties.Text].map { it.text }
-    } else emptyList()
-
+    } else {
+        emptyList()
+    }
 }

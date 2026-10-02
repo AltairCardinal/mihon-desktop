@@ -1750,7 +1750,9 @@ class DesktopProductCapabilityContractTest {
             43 to
                 setOf(
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/SharedDualPageAndroidWiringTest.kt",
                     "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/SharedDualPageSessionContractTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/SharedSpreadDesktopWiringTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt",

@@ -2,16 +2,6 @@ package mihon.test.desktop
 
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
-import java.net.InetSocketAddress
-import java.nio.charset.StandardCharsets
-import java.nio.file.Files
-import java.nio.file.Path
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
-import kotlin.io.path.createTempDirectory
-import kotlin.io.path.exists
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -24,11 +14,23 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.net.InetSocketAddress
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.io.path.createTempDirectory
+import kotlin.io.path.exists
 
 class DesktopFinalParityReaderClientContractTest {
     private val repositoryRoot: Path = Path.of(System.getProperty("user.dir")).parent
     private val client = repositoryRoot.resolve("test-desktop/src/main/python/mihon_desktop_final_parity_client.py")
-    private val inventory = repositoryRoot.resolve("app-desktop/src/test/resources/parity/test-mode-coverage-inventory.json")
+    private val inventory = repositoryRoot.resolve(
+        "app-desktop/src/test/resources/parity/test-mode-coverage-inventory.json",
+    )
     private val fixtureSources =
         listOf("downloaded_directory", "downloaded_cbz", "local_archive", "online", "partial_download")
 
@@ -121,6 +123,22 @@ class DesktopFinalParityReaderClientContractTest {
 
             assertEquals(1, result.exitCode, result.output)
             assertTrue(result.output.contains("onlineImageRequests"), result.output)
+        }
+    }
+
+    @Test
+    fun `external client rejects non-current bounded header before the first frame`() {
+        FakeReaderTestMode(
+            brokenProductionContent = false,
+            nonCurrentHeaderBeforeFirstFrame = true,
+        ).use { server ->
+            val output = createTempDirectory("mihon-reader-client-non-current-header").resolve("summary.json")
+
+            val result = runClient(server.baseUrl, output)
+
+            assertEquals(1, result.exitCode, result.output)
+            assertTrue(result.output.contains("HEADER_READ"), result.output)
+            assertTrue(result.output.contains("non-current"), result.output)
         }
     }
 
@@ -373,6 +391,7 @@ class DesktopFinalParityReaderClientContractTest {
 
     private inner class FakeReaderTestMode(
         private val brokenProductionContent: Boolean,
+        private val nonCurrentHeaderBeforeFirstFrame: Boolean = false,
         private val downloadedDirectoryLeaksOnlineIo: Boolean = false,
         private val invalidDecode: InvalidDecode? = null,
         private val firstPresentedPageIndex: Int = 0,
@@ -460,6 +479,15 @@ class DesktopFinalParityReaderClientContractTest {
                 buildList {
                     add(event("OPEN_READER_INTENT", 100L, null, "READER_OPEN", request.chapterId))
                     add(event("PAGE_LIST_READY", 110L, null, "PAGE_LIST", request.chapterId))
+                    add(
+                        event(
+                            "HEADER_READ",
+                            115L,
+                            if (nonCurrentHeaderBeforeFirstFrame) 1 else 0,
+                            "PAIRING_FACT",
+                            request.chapterId,
+                        ),
+                    )
                     add(event("OPEN_PAGE", 120L, 0, "CURRENT_PAGE", request.chapterId))
                     add(event("DECODE", 130L, 0, "VISIBLE_DECODE", request.chapterId))
                     when (invalidDecode) {
@@ -539,6 +567,10 @@ class DesktopFinalParityReaderClientContractTest {
             put("pageIndex", pageIndex?.let(::JsonPrimitive) ?: JsonNull)
             put("generation", JsonPrimitive(1L))
             put("purpose", JsonPrimitive(purpose))
+            if (type == "HEADER_READ") {
+                put("byteLimit", JsonPrimitive(512 * 1024))
+                put("futureHeaderMetadata", JsonPrimitive("compatible"))
+            }
         }
 
         private fun HttpExchange.respond(body: String, status: Int = 200) {

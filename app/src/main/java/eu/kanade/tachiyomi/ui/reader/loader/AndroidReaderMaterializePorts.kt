@@ -25,6 +25,7 @@ import java.io.InputStream
 internal class AndroidReaderChapterContentPort(
     private val chapter: ReaderChapter,
     private val loader: PageLoader,
+    private val publishHeaderFacts: Boolean = true,
 ) : ReaderChapterContentPort {
 
     var materializedPages: List<ReaderPage> = emptyList()
@@ -38,7 +39,7 @@ internal class AndroidReaderChapterContentPort(
                     page.encodedPageRef = page.encodedPageRef ?: EncodedPageRef(
                         "android-reader:${request.chapterId.value}:${request.generation}:${page.index}",
                     )
-                    page.publishHeaderFact()
+                    if (publishHeaderFacts) page.publishHeaderFact()
                 }
             }
         } catch (error: CancellationException) {

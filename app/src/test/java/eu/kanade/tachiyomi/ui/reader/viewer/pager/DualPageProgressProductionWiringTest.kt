@@ -522,7 +522,7 @@ class DualPageProgressProductionWiringTest {
             assertTrue(ReflectionHelpers.getField<Boolean>(pending, "settled"))
             assertPersistedProgress(2, false)
 
-            selectGroup(requireNotNull(next.pages)[0], decode = false)
+            selectGroup(requireNotNull(next.pages)[0])
             withContext(Dispatchers.Default) {
                 withTimeout(10_000) { model.state.first { it.currentChapter === next } }
             }
@@ -554,7 +554,7 @@ class DualPageProgressProductionWiringTest {
             val completion = requireNotNull(awaitRenderedEvent())
             assertEquals(4, completion.lastPageRead)
             assertTrue(completion.isRead)
-            selectGroup(requireNotNull(next.pages)[0], decode = false)
+            selectGroup(requireNotNull(next.pages)[0])
             awaitNextChapterEvent()
             model.onActivityFinish()
 
@@ -774,7 +774,20 @@ class DualPageProgressProductionWiringTest {
         readerController.setup()
         runCurrent()
         failWritePage = 4
-        model.onPageSelected(requireNotNull(current.pages)[4])
+        val installed = model.state.value.viewer as PagerViewer
+        mountSingle(installed, positionWithoutAnimation = true)
+        val last = requireNotNull(current.pages)[4]
+        val actualAdapter = installed.pager.adapter as PagerViewerAdapter
+        installed.pager.setCurrentItem(actualAdapter.items.indexOf(last), false)
+        installed.pager.measure(
+            View.MeasureSpec.makeMeasureSpec(1440, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(3120, View.MeasureSpec.EXACTLY),
+        )
+        installed.pager.layout(0, 0, 1440, 3120)
+        val holder = installed.pager.children.filterIsInstance<PagerPageHolder>().single { it.page === last }
+        bindSingle(holder)
+        holder.onImageLoaded()
+        assertSinglePresented(holder)
 
         val deadline = System.nanoTime() + 10_000_000_000L
         while (ShadowToast.getTextOfLatestToast() == null && System.nanoTime() < deadline) {
@@ -1011,7 +1024,7 @@ class DualPageProgressProductionWiringTest {
         selectGroup(requireNotNull(current.pages)[3], decode = false)
         val pending = ReflectionHelpers.getField<Any>(model, "pendingDualViewport")
         assertFalse(ReflectionHelpers.getField<Boolean>(pending, "settled"))
-        selectGroup(requireNotNull(next.pages)[0], decode = false)
+        selectGroup(requireNotNull(next.pages)[0])
         awaitNextChapterEvent()
         model.onActivityFinish()
 
@@ -1157,7 +1170,9 @@ class DualPageProgressProductionWiringTest {
     }
 
     @Test
-    fun `layout only pairing never records progress and a single page reports itself`() = runBlocking {
+    fun `layout only pairing never records progress and a single page reports itself`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        mountReadyViewer(renderFirstGroup = false)
         val pages = requireNotNull(current.pages)
         viewer.onDisplayPageSelected(DisplayPage.Double(pages[3], pages[4]), layoutOnly = true)
         assertTrue(events.tryReceive().isFailure)
@@ -1165,8 +1180,10 @@ class DualPageProgressProductionWiringTest {
         assertPersistedProgress(0, false)
         assertEquals(0L, database.reading_eventsQueries.countByChapter(2).executeAsOne())
 
-        viewer.onDisplayPageSelected(DisplayPage.Single(pages[0]))
-        val single = withTimeout(5_000) { events.receive() }
+        selectGroup(pages[0], decode = false)
+        assertTrue(events.tryReceive().isFailure)
+        decodeAndSignal(pages[0])
+        val single = requireNotNull(awaitRenderedEvent())
         assertEquals(0, single.lastPageRead)
         assertFalse(single.isRead)
         assertPersistedProgress(0, false)
@@ -1204,7 +1221,10 @@ class DualPageProgressProductionWiringTest {
         }
     }
 
-    private suspend fun TestScope.mountSingle(single: PagerViewer): PagerPageHolder {
+    private suspend fun TestScope.mountSingle(
+        single: PagerViewer,
+        positionWithoutAnimation: Boolean = false,
+    ): PagerPageHolder {
         val pages = requireNotNull(current.pages)
         val bytes = readerTestPng(40, 60)
         pages.forEach { page ->
@@ -1215,8 +1235,10 @@ class DualPageProgressProductionWiringTest {
         current.requestedPage = 1
         model.onViewerLoaded(single)
         single.config.navigationModeChangedListener = null
-        host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible().get().also {
-            it.setContentView(single.pager)
+        if (single.pager.parent == null) {
+            host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible().get().also {
+                it.setContentView(single.pager)
+            }
         }
         single.setChapters(ViewerChapters(current, null, null))
         single.pager.measure(
@@ -1227,6 +1249,14 @@ class DualPageProgressProductionWiringTest {
         // Initial preference emissions refresh the real adapter. Capture its attached holder only
         // after that initialization, rather than reporting pixels through a disposed predecessor.
         runCurrent()
+        // An already-installed Activity has a real restored owner; requestedPage alone cannot
+        // replace its logical position. Use the actual viewer action for this fixture's target.
+        if (positionWithoutAnimation) {
+            val actualAdapter = single.pager.adapter as PagerViewerAdapter
+            single.pager.setCurrentItem(actualAdapter.items.indexOf(pages[1]), false)
+        } else {
+            single.moveToPage(pages[1])
+        }
         single.pager.measure(
             View.MeasureSpec.makeMeasureSpec(1440, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(3120, View.MeasureSpec.EXACTLY),
@@ -1318,7 +1348,12 @@ class DualPageProgressProductionWiringTest {
             page.status = Page.State.Ready
         }
         withContext(Dispatchers.IO) { pages.forEach { it.publishHeaderFact() } }
-        nextChapter?.pages?.forEach { page -> page.stream = { bytes.inputStream() } }
+        // The adjacent fixture has cached encoded content but remains Queued/unrendered. Real
+        // bounded header facts establish its groups without manufacturing a displayed image.
+        nextChapter?.pages?.let { adjacent ->
+            adjacent.forEach { page -> page.stream = { bytes.inputStream() } }
+            withContext(Dispatchers.IO) { adjacent.forEach { it.publishHeaderFact() } }
+        }
         current.requestedPage = 1
         host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible().get().also {
             it.setContentView(viewer.pager)
@@ -1344,7 +1379,11 @@ class DualPageProgressProductionWiringTest {
         assertTrue(position >= 0)
         viewer.pager.setCurrentItem(position, false)
         viewer.pager.layout(0, 0, 1440, 3120)
-        if (decode) decodeAndSignal(page, failLeft)
+        if (decode) {
+            val displayed = viewer.adapter.items[position] as DisplayPage
+            displayed.visiblePages.forEach { it.status = Page.State.Ready }
+            decodeAndSignal(page, failLeft)
+        }
     }
 
     /** Bind the mounted image views, then simulate their external decode completion callbacks. */

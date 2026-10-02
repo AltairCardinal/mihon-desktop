@@ -277,7 +277,12 @@ class ReaderScreenModel(
             if (factPublisherJob != null || disposeRequested) return
             val parallelism = kotlinx.coroutines.sync.Semaphore(2)
             factPublisherJob = scope.launch {
-                state.collect { current ->
+                kotlinx.coroutines.flow.combine(state, runtime.presentationImageOwner.firstPresentedGeneration) {
+                        current,
+                        presentedGeneration,
+                    ->
+                    current to presentedGeneration
+                }.collect { (current, presentedGeneration) ->
                     synchronized(productionRuntimeLifecycleLock) {
                         val owner = ensureDualSession() ?: return@synchronized
                         if (current.dualPageIdentity != owner.identity ||
@@ -286,7 +291,8 @@ class ReaderScreenModel(
                             return@synchronized
                         }
                         val work = current.session.activeChapter.pages.filter {
-                            it.loadState is mihon.domain.reader.session.ReaderPageLoadState.Ready
+                            it.loadState is mihon.domain.reader.session.ReaderPageLoadState.Ready &&
+                                (presentedGeneration == current.session.generation || it.id == owner.location?.pageId)
                         }
                             .mapNotNull { page ->
                                 page.encodedPageRef?.let { ref ->
@@ -786,13 +792,19 @@ class ReaderScreenModel(
     internal fun beginPagerViewport(
         visiblePages: VisiblePageSet,
         userNavigation: Boolean,
+        logicalLocation: mihon.domain.reader.ReaderDualPageLocationIntent? = _state.value.dualPageLocation,
     ): mihon.domain.reader.ReaderDualPageViewportTicket? = synchronized(productionRuntimeLifecycleLock) {
         val owner = ensureDualSession() ?: return@synchronized null
+        val currentUserNavigation = userNavigation && logicalLocation == owner.location
         if (visiblePages.transitionDirection != null) {
+            // An outgoing native transition cannot replace a newer logical-page navigation.
+            if (!currentUserNavigation && _state.value.currentDisplayUnitId != visiblePages.displayUnitId) {
+                return@synchronized null
+            }
             _state.update { it.copy(currentDisplayUnitId = visiblePages.displayUnitId, visiblePageIds = emptySet()) }
             return@synchronized null
         }
-        if (userNavigation && owner.location?.pageId !in visiblePages.pageIds) {
+        if (currentUserNavigation && owner.location?.pageId !in visiblePages.pageIds) {
             val anchor = visiblePages.activePageId ?: return@synchronized null
             if (!owner.goToPage(anchor)) return@synchronized null
             publishDualSession(owner)

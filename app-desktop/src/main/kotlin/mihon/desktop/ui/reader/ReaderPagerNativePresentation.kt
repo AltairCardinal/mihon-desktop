@@ -14,10 +14,15 @@ import mihon.desktop.ui.reader.presentation.DisplaySlotId
 import mihon.desktop.ui.reader.presentation.DisplayUnit
 import mihon.desktop.ui.reader.presentation.DisplayUnitId
 import mihon.desktop.ui.reader.presentation.VisiblePageSet
+import mihon.domain.reader.ReaderDualPageLocationIntent
 import mihon.domain.reader.ReaderDualPageViewportTicket
 
 /** Binds the native presenter's lifetime to the shared owner's original capability. */
-internal class ReaderPagerPresentationBinding(val epoch: Any, val model: ReaderScreenModel)
+internal class ReaderPagerPresentationBinding(
+    val epoch: Any,
+    val model: ReaderScreenModel,
+    val logicalLocation: ReaderDualPageLocationIntent? = model.state.value.dualPageLocation,
+)
 
 internal val ReaderPagerNativePresentationKey =
     SemanticsPropertyKey<ReaderPagerNativePresentation>("ReaderPagerNativePresentation")
@@ -51,9 +56,15 @@ internal data class ReaderPagerNavigationIntent(
     val origin: Int,
     val target: Int? = null,
     val dragReleased: Boolean = false,
+    val logicalLocation: ReaderDualPageLocationIntent? = null,
 ) {
-    fun selects(index: Int, unit: DisplayUnitId): Boolean =
-        units.getOrNull(index) == unit && (target?.let { it == index } ?: (index != origin))
+    fun selects(
+        index: Int,
+        unit: DisplayUnitId,
+        currentLocation: ReaderDualPageLocationIntent? = null,
+    ): Boolean =
+        logicalLocation == currentLocation &&
+            units.getOrNull(index) == unit && (target?.let { it == index } ?: (index != origin))
 
     fun finished(index: Int): Boolean = target?.let { it == index } ?: dragReleased
 }
@@ -76,7 +87,7 @@ internal class ReaderPagerNativePresentation(
 
     fun begin(userNavigation: Boolean) {
         active = true
-        ticket = binding?.model?.beginPagerViewport(visible, userNavigation)
+        ticket = binding?.model?.beginPagerViewport(visible, userNavigation, binding.logicalLocation)
     }
 
     fun close() {

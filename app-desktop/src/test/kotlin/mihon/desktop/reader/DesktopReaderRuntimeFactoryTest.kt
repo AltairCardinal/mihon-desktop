@@ -307,13 +307,13 @@ class DesktopReaderRuntimeFactoryTest {
         val runtime = factory.createRuntime(
             DesktopReaderChapterContext(
                 98, 42, "/chapter/98", "Manga", "EXIF", 98.0, 0,
-                1, false,
+                0, false,
             ),
             scope,
         )
         val model = factory.createModel(runtime, false, 0, null)
         val collector = scope.launch { runtime.session.state.collect { model.acceptSessionState(it) } }
-        val scene = mountReaderScene(runtime, model, scope, legacy)
+        val scene = mountReaderScene(runtime, model, scope, legacy, animated = false)
         suspend fun pumpUntil(condition: () -> Boolean) {
             val end = System.nanoTime() + 5_000_000_000L
             while (!condition() && System.nanoTime() < end) {
@@ -338,6 +338,7 @@ class DesktopReaderRuntimeFactoryTest {
                 ReaderImageOrientation.CLOCKWISE,
                 model.state.value.dualPageIdentity?.content?.firstOrNull()?.sourceOrientation,
             )
+            model.goToPage(1)
             val identity = requireNotNull(model.state.value.dualPageIdentity)
             val location = model.state.value.dualPageLocation
             gate.countDown()
@@ -373,6 +374,10 @@ class DesktopReaderRuntimeFactoryTest {
                         it.config[DualPageSlotIdKey].pageId?.sourcePageIndex == 1 && it.boundsInRoot.width == 350f &&
                         it.boundsInRoot.left == 350f
                 },
+                "Actual EXIF viewport: page=${model.state.value.currentPage}, " +
+                    "unit=${model.state.value.currentDisplayUnitId}, " +
+                    "slots=" + sceneNodes(scene).filter { it.config.contains(DualPageSlotIdKey) }
+                        .map { it.config[DualPageSlotIdKey] to it.boundsInRoot },
             )
         } finally {
             gate.countDown()
@@ -597,6 +602,7 @@ class DesktopReaderRuntimeFactoryTest {
     @Test
     fun `production header leases bound actual encoded reads independently of full image`() = runTest {
         val file = tempDir.resolve("header-bounded.png").apply { writeBytes(pngBytes() + ByteArray(1536 * 1024)) }
+        val events = CopyOnWriteArrayList<ReaderIoEvent>()
         val factory = DesktopReaderRuntimeFactory(
             ReaderPreferences(),
             DesktopDownloadProvider(tempDir.resolve("header-downloads")),
@@ -605,6 +611,7 @@ class DesktopReaderRuntimeFactoryTest {
             mockk<ReaderProgressTracker>(relaxed = true),
             null,
             tempDir.resolve("header-encoded"),
+            readerIoProbe = ReaderIoProbe(events::add),
         )
         val runtime = factory.createRuntime(localContext(92, file.parentFile), this)
         val request = ReaderPageContentOpenRequest(
@@ -621,6 +628,27 @@ class DesktopReaderRuntimeFactoryTest {
                     "Header open must read at most 512KiB from the actual encoded file",
                 )
                 assertEquals(file.length(), full.content.size.toLong())
+                assertEquals(
+                    1,
+                    events.count {
+                        it.type == ReaderIoEventType.OPEN_PAGE
+                    },
+                    "Full physical opens remain separate from bounded prefixes",
+                )
+                assertEquals(
+                    1,
+                    events.count {
+                        it.type.name == "HEADER_READ"
+                    },
+                    "The actual prefix read must remain observable",
+                )
+                val headerEvent = events.single { it.type == ReaderIoEventType.HEADER_READ }
+                assertEquals(request.pageId, headerEvent.pageId)
+                assertEquals(request.generation, headerEvent.generation)
+                assertEquals(
+                    mihon.domain.reader.ReaderDualPageFactLimits.MAX_HEADER_BYTES.toInt(),
+                    headerEvent.byteLimit,
+                )
                 assertEquals(2, runtime.pageContentOwner.snapshot().activeLeaseCounts.size)
                 header.close()
                 assertEquals(1, runtime.pageContentOwner.snapshot().activeLeaseCounts.size)
@@ -669,7 +697,7 @@ class DesktopReaderRuntimeFactoryTest {
         val runtime = factory.createRuntime(localContext(91, directory), scope)
         val model = factory.createModel(runtime, false, 0, null)
         val collector = scope.launch { runtime.session.state.collect { model.acceptSessionState(it) } }
-        val scene = mountReaderScene(runtime, model, scope, legacy)
+        val scene = mountReaderScene(runtime, model, scope, legacy, animated = false)
         suspend fun pumpUntil(condition: () -> Boolean) {
             val end = System.nanoTime() + 5_000_000_000L
             while (!condition() && System.nanoTime() < end) {
@@ -687,6 +715,18 @@ class DesktopReaderRuntimeFactoryTest {
                 "Actual encoded header publisher must confirm dimensions before a holder exists",
             )
             val units = model.state.value.dualPageUnits
+            assertTrue(
+                units.any {
+                    it.pageIds.singleOrNull()?.sourcePageIndex == 1
+                },
+                "B2 page two must have its real structural singleton: $units",
+            )
+            assertTrue(
+                units.any {
+                    it.pageIds.singleOrNull()?.sourcePageIndex == 19
+                },
+                "B2 page twenty must have its real full singleton: $units",
+            )
             assertEquals(
                 mihon.domain.reader.ReaderPortraitSingleSlot.LEFT,
                 units.single { it.pageIds.singleOrNull()?.sourcePageIndex == 1 }.slots.single().position,
@@ -704,10 +744,14 @@ class DesktopReaderRuntimeFactoryTest {
                             it.boundsInRoot.width == expectedWidth && it.boundsInRoot.left == 0f
                     }
                 }
-                val slot = sceneNodes(scene).single {
-                    it.config.contains(DualPageSlotIdKey) &&
-                        it.config[DualPageSlotIdKey].pageId?.sourcePageIndex == index
-                }
+                val slots = sceneNodes(scene).filter { it.config.contains(DualPageSlotIdKey) }
+                assertTrue(
+                    slots.any { it.config[DualPageSlotIdKey].pageId?.sourcePageIndex == index },
+                    "Actual B2 viewport: target=$index, page=${model.state.value.currentPage}, " +
+                        "unit=${model.state.value.currentDisplayUnitId}, " +
+                        "slots=" + slots.map { it.config[DualPageSlotIdKey] to it.boundsInRoot },
+                )
+                val slot = slots.single { it.config[DualPageSlotIdKey].pageId?.sourcePageIndex == index }
                 assertEquals(expectedWidth, slot.boundsInRoot.width, "Actual B2 page ${index + 1} Compose slot")
                 assertEquals(0f, slot.boundsInRoot.left)
                 assertEquals(index, model.state.value.dualPageLocation?.pageId?.sourcePageIndex)
@@ -892,9 +936,10 @@ class DesktopReaderRuntimeFactoryTest {
             partialDownloadSnapshotLookup = lookup,
         )
         val runtime = factory.createRuntime(currentContext, this)
+        var model: ReaderScreenModel? = null
         try {
             advanceUntilIdle()
-            val model = factory.createModel(runtime, isWebtoon = false, mangaViewerFlags = 0L, dualPageOverride = null)
+            model = factory.createModel(runtime, isWebtoon = false, mangaViewerFlags = 0L, dualPageOverride = null)
 
             model.updateNextChapterPrefetch(nextContext, firstViewportPageCount = 1)
             val currentReaderPage = runtime.session.state.value.snapshot.activeChapter.pages.first()
@@ -911,7 +956,7 @@ class DesktopReaderRuntimeFactoryTest {
             assertTrue(observedNextIdentities.all { it.disallowNonAsciiFilenames })
             coVerify(exactly = 0) { source.getPageList(any()) }
         } finally {
-            runtime.close()
+            model?.onDispose() ?: runtime.close()
             legacy.removeNode()
         }
     }
@@ -1417,9 +1462,10 @@ class DesktopReaderRuntimeFactoryTest {
         )
 
         val runtime = factory.createRuntime(context, this)
+        var model: ReaderScreenModel? = null
         try {
             val sessionState = runtime.session.state.value
-            val model = factory.createModel(
+            model = factory.createModel(
                 runtime = runtime,
                 isWebtoon = false,
                 mangaViewerFlags = 0L,
@@ -1457,7 +1503,7 @@ class DesktopReaderRuntimeFactoryTest {
                 model.state.value.session.activeChapter.loadState,
             )
         } finally {
-            runtime.close()
+            model?.onDispose() ?: runtime.close()
         }
     }
 
@@ -1718,8 +1764,11 @@ class DesktopReaderRuntimeFactoryTest {
         model: ReaderScreenModel,
         scope: CoroutineScope,
         legacy: Preferences,
+        animated: Boolean = true,
     ): ImageComposeScene {
-        val appPrefs = DesktopAppPreferences(InMemoryPreferenceStore(), legacy.node("app"))
+        val appPrefs = DesktopAppPreferences(InMemoryPreferenceStore(), legacy.node("app")).apply {
+            pageTurnAnimation.set(animated)
+        }
         val dependencies = mockk<DesktopUiDependencies> { every { appPreferences } returns appPrefs }
         model.toggleUI()
         return ImageComposeScene(700, 400, coroutineContext = scope.coroutineContext) {}.apply {

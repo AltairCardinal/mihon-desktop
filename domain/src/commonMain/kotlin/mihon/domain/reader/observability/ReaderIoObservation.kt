@@ -7,6 +7,7 @@ enum class ReaderIoEventType {
     OPEN_READER_INTENT,
     PAGE_LIST_READY,
     OPEN_PAGE,
+    HEADER_READ,
     DECODE,
     FIRST_PAGE_PRESENTED,
     CACHE_RECONCILE,
@@ -30,6 +31,7 @@ data class ReaderIoEvent(
     val pageId: ReaderPageId? = null,
     val generation: Long,
     val purpose: ReaderIoPurpose,
+    val byteLimit: Int? = null,
 ) {
     init {
         require(monotonicNanos >= 0L) { "monotonicNanos must be non-negative" }
@@ -70,6 +72,7 @@ class ReaderIoReporter(
         pageId: ReaderPageId? = null,
         generation: Long,
         purpose: ReaderIoPurpose,
+        byteLimit: Int? = null,
     ) {
         if (!enabled) return
         probe.record(
@@ -80,6 +83,7 @@ class ReaderIoReporter(
                 pageId = pageId,
                 generation = generation,
                 purpose = purpose,
+                byteLimit = byteLimit,
             ),
         )
     }

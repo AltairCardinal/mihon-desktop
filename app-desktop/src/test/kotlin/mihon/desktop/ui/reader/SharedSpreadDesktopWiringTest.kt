@@ -2,6 +2,7 @@ package mihon.desktop.ui.reader
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -10,6 +11,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import eu.kanade.tachiyomi.network.NetworkHelper
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -18,6 +20,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
+import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.reader.DesktopReaderChapterContext
@@ -27,6 +31,7 @@ import mihon.desktop.reader.NextChapterPrefetchMode
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.SkiaDesktopReaderPageImageDecoder
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.session.ReaderPageLoadState
 import okhttp3.OkHttpClient
@@ -108,7 +113,7 @@ class SharedSpreadDesktopWiringTest {
         val collector = scope.launch { runtime.session.state.collect { model.acceptSessionState(it) } }
         runtime.session.start()
         val scene = ImageComposeScene(700, 1200, coroutineContext = scope.coroutineContext) {}
-        scene.setContent {
+        fun mountSettings() = scene.setContent {
             MaterialTheme {
                 Column {
                     val state by model.state.collectAsState()
@@ -143,8 +148,31 @@ class SharedSpreadDesktopWiringTest {
         }
         fun groups() = model.state.value.dualPageUnits.map { unit -> unit.pageIds.map { it.sourcePageIndex } }
         try {
+            val appPreferences = DesktopAppPreferences(InMemoryPreferenceStore())
+            val dependencies =
+                mockk<DesktopUiDependencies> { every { this@mockk.appPreferences } returns appPreferences }
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    MaterialTheme {
+                        val state by model.state.collectAsState()
+                        ReaderContent(
+                            state, model, scope, "M", "C", runtime.presentationImageOwner,
+                            readerNav = null, onPrevChapter = {}, onNextChapter = {},
+                        )
+                    }
+                }
+            }
             pump { model.state.value.dualPageUnits.all { it.certain } && model.state.value.dualPageUnits.size == 3 }
             assertEquals(listOf(listOf(0), listOf(1, 2), listOf(3, 4)), groups())
+            assertEquals(
+                model.state.value.session.generation,
+                runtime.presentationImageOwner.firstPresentedGeneration.value,
+            )
+            mountSettings()
+            pump { true }
+            // Remove the initial real presentation and its decoded cache; the matching pass must
+            // still consume only original encoded region leases, without a displayed full bitmap.
+            runtime.pageImagePipeline.clear()
             clickMatching()
             pump { listOf(2, 3) in groups() }
             assertTrue(prefs.isAutoSpreadMatching, "Real setting event must persist through existing preference")

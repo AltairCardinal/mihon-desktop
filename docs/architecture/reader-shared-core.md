@@ -445,6 +445,14 @@ encodedVersion 只随真实 stream/ref 替换递增；呈现 version 还随首�
 其他未改变页的原事实请求继续有效；普通 `acceptFact` 要求方向与原请求一致，不能绕过身份更新。
 真实 bytes 替换仍走完整 rebind，不允许旧请求跨 owner 或同身份重建。
 Desktop 头部工作按 owner 实例、workRevision 和物理 ContentOpenRequest 标识，其他页方向确认不得撤销正常或可选消费者。
+实际首帧之前只读取当前逻辑页的有界 header；原 firstPresentedGeneration flow 确认真实呈现后，
+所有已经 Ready 的原编码继续贡献事实，仍遵守 512 KiB/两并发限制。缓存命中不消耗新增网络额度，
+未缓存的 cold 补齐继续由共享 factDependencies 与原页数/字节/等待预算决定。该 collector 随 model dispose 取消。
+完整内容 open 与有界 header 是独立的实际 lease/I/O，分别记录 OPEN_PAGE 和 HEADER_READ；后者携带
+实际 page/generation 与 byteLimit，不以改名隐藏首帧前的非当前读取。Android metadata-only PREFETCH
+只获得页表，不在 ChapterContentPort 自动打开图片；实际当前/已物化页的正常内容链仍发布 header facts。
+邻章 Loaded 不等于配对已恢复，双页 adapter 仅用实际共享持久化状态开放邻章内容，恢复失败保留 transition。
+
 
 ### 自动匹配的共同样本 owner 与双端接线（DP01 D）
 
@@ -496,3 +504,10 @@ Windows Robolectric 仅替换不能加载的 JNI region 边界，执行真实编
 Desktop tap 在动画前记录逻辑 PageId，key/drag 继续沿原 navigation intent；尺寸或匹配重排用新 owner units 映射同一目标，不把 delayed native index 变成新用户意图。实际 renderer 只有原 viewport ticket、完整槽位已画和 native idle 才能记录 single/dual 阅读；布局反馈不制造进度。Webtoon 单独保留原恢复 anchor，仅条漫恢复/模式入口设置，由实际条漫 settle 消费，不能给 single/dual 绕过 ticket。
 
 Test Mode 读取 actual mounted model 并在 EventQueue 调用原动作。分页几何来自真实 modifier 和本 publisher 生命周期，pager 卸载时清除；实际窗口/owner focus 缺失时不能报告可原生输入。HTTP 动作与外部 physical key/mouse 证据分开。DP02 Android instrumentation 的原 View/SSIV Canvas 像素、EXIF split/fit/crop/触摸及原已安装扩展 parser 入口仅供隔离 ART 验收；Windows 编译和受控 HTTP 响应路由不能替代正式 ART、TLS/代理或真实源产物验收。
+
+Desktop 原生 tap/drag intent 与 composition binding 都保存原共享逻辑位置，
+不把 native index 或布尔 userNavigation 当作当前操作权威。intent 选择和 model 写回分别核对
+原 generation/sequence，避免旧动画在新 goto 后重新选中过渡页；同页 goto 推进 sequence，
+因此原 pager 定位 effect 同时消费逻辑位置。事实或 matching 重排不改变该位置，
+仍保留动画中的用户目标。旧反馈拒绝不阻止新发生的 tap/drag 正常进入章节过渡，
+且过渡与 terminal 回调不产生阅读进度。
