@@ -1,5 +1,17 @@
 # Mihon 双端原生界面同步演示
 
+## 远程验收站点（2026-10-02）
+
+[打开完整同步交互 DEMO](https://mihon-sync-ui-review.windy-lover-ds.chatgpt.site)。Sites已发布成功，访问范围为拥有者本人；请使用创建此站点的ChatGPT账号登录。这里的访问登录与DEMO内的模拟GitHub授权相互独立，原型不会连接真实GitHub或同步数据。
+
+首页直接展示新版双端交互，可切换“当前实机”对照；完整入口保留在 `/progress-review.html`，旧并列预览保留在 `/legacy.html`。配置绑定保存在 [.openai/hosting.json](./.openai/hosting.json)，后续须复用其中的 `project_id`，不重复创建站点或改变访问范围。
+
+发布来源为本仓库 `7da9f233ab0fa1de787fb78e9d7e455e7cfa5741` 的HTML/JS/CSS/PNG资产，独立站点源码提交为 `8e90e2cc771ccedf01edb1f4d8a2621f04363a4b`。仅发布15个静态文件与托管配置，不上传主应用、测试、日志或凭据。临时独立源码仓库位于忽略目录 `.gradle-coordinator/sync-site-source`，发布包位于 `.gradle-coordinator/sync-site-deploy.tar.gz`；托管格式为 `{"static":{"directory":"dist"}}`。
+
+更新方式：把当前原型静态资产复制到独立站点源码的 `dist/`，将原 `index.html` 备份为 `legacy.html`、以 `progress-review.html` 作为站点 `index.html`，复制本目录托管配置到站点源码根的 `.openai/hosting.json`；提交并推送该独立源码，再从同一已推送提交打包 `.openai/` 和 `dist/`，通过Sites保存并私有部署。临时写入凭据只经进程内存使用，不写入源码或Git配置。部署失败时保留站点ID；若返回已保存版本ID则重试该版本，不能重复建站。本地修改不会自动发布。
+
+验收证据：静态HTTP服务下真实Chrome验证双端入口、完成态、设置频率和返回，页面无JavaScript错误；16个打包文件与推送提交一致（Windows文本换行归一化比较）。Sites部署状态为 `succeeded`；线上匿名请求受到访问保护，HTML登录页标题为“Mihon 同步交互验收”，含ChatGPT登录入口。未绕过登录进行拥有者会话内的在线自动化验收。交互本身沿用上一轮61/61回归结果，此轮无交互代码修改。
+
 ## 同步界面整理提案（2026-10-02，当前审阅）
 
 入口仍是 [完整同步 DEMO](./progress-review.html)，默认“新版设计”，可切换“当前实机”对照。此轮优化信息层级和操作呈现，沿用完整双端原型的状态与事件，不把设计提案描述为现有原生UI。旧审阅记录保留在下方。
