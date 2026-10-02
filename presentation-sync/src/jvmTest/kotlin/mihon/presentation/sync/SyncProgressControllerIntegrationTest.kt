@@ -190,11 +190,13 @@ class SyncProgressControllerIntegrationTest {
             withTimeout(5000) { runtime.panel.state.first { it.visible && it.loaded } }
             withTimeout(5000) { while (node("sync-round-time") == null) render() }
             assertTrue(displayedTime().contains("00:10"), displayedTime())
-            click("sync-pause-import")
+            assertNull(node("sync-pause-import"))
+            runtime.panel.dispatch(SyncPanelAction.PauseImport)
             withTimeout(5000) { runtime.panel.state.first { it.importPaused } }
             assertTrue(runtime.preferences.importPaused.get())
             assertEquals(SyncRunState.PAUSED_USER, runtime.runStore.get(run.runId)!!.state)
-            click("sync-resume-import")
+            assertNull(node("sync-resume-import"))
+            runtime.panel.dispatch(SyncPanelAction.ResumeImport)
             withTimeout(5000) { runtime.panel.state.first { !it.importPaused } }
             assertFalse(runtime.preferences.importPaused.get())
             assertEquals(SyncRunState.PAUSED_USER, runtime.runStore.get(run.runId)!!.state)

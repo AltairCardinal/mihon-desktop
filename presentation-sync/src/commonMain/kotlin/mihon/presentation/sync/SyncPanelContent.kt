@@ -457,7 +457,7 @@ private fun MainPage(
                     Action("sync-dismiss-notice", MR.strings.sync_dismiss) { dispatch(SyncPanelAction.DismissNotice) }
                 }
             }
-            if (state.run == null && state.importRemaining > 0) {
+            if (detailsExpanded && state.run == null && state.importRemaining > 0) {
                 Column(Modifier.padding(horizontal = 24.dp)) {
                     Text(syncString(MR.strings.sync_import_remaining, state.importRemaining))
                     if (state.importPaused) {
@@ -1529,19 +1529,6 @@ private fun SyncCompactProgressCard(
                     style = textStyle,
                 )
                 SyncMainOperation(state, presentation, false, {}, dispatch)
-                if (state.importRemaining > 0) {
-                    Action(
-                        if (state.importPaused) "sync-resume-import" else "sync-pause-import",
-                        if (state.importPaused) MR.strings.sync_resume_import else MR.strings.sync_pause_import,
-                    ) {
-                        val action = if (state.importPaused) {
-                            SyncPanelAction.ResumeImport
-                        } else {
-                            SyncPanelAction.PauseImport
-                        }
-                        dispatch(action)
-                    }
-                }
                 state.bulk?.takeIf { it.remaining > 0 }?.let { bulk ->
                     Action(
                         if (bulk.running) "sync-pause-bulk" else "sync-resume-bulk",

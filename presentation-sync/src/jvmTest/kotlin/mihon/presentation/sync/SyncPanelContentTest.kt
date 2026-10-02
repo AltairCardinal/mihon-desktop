@@ -1517,9 +1517,39 @@ class SyncPanelContentTest {
     }
 
     @Test
-    fun `baseline pause and resume remain separate from an active exchange`() = rendered(
-        connected().copy(importRemaining = 9, busy = true),
+    fun `initial import running card exposes only whole run pause and resume`() = rendered(
+        connected().copy(
+            importRemaining = 9,
+            busy = true,
+            run = visualRun(SyncRunPhase.IMPORTING),
+            progress = compactFact(),
+        ),
     ) {
+        awaitTag("sync-pause-run")
+        assertFalse(hasTag("sync-pause-import"))
+        assertFalse(hasTag("sync-resume-import"))
+        click("sync-pause-run")
+        assertEquals(SyncPanelAction.PauseSync, actions.last())
+        panel.state.value = panel.state.value.copy(
+            busy = false,
+            run = visualRun(SyncRunPhase.IMPORTING).copy(state = SyncRunState.PAUSED_USER),
+            importPaused = true,
+        )
+        render()
+        assertFalse(hasTag("sync-pause-import"))
+        assertFalse(hasTag("sync-resume-import"))
+        click("sync-resume-run")
+        assertEquals(SyncPanelAction.ResumeSync, actions.last())
+    }
+
+    @Test
+    fun `baseline pause and resume remain available only in expanded idle details`() = rendered(
+        connected().copy(importRemaining = 9),
+    ) {
+        awaitTag("sync-progress-details-toggle")
+        assertFalse(hasTag("sync-pause-import"))
+        click("sync-progress-details-toggle")
+        render()
         awaitTag("sync-pause-import")
         click("sync-pause-import")
         assertEquals(SyncPanelAction.PauseImport, actions.last())
