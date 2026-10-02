@@ -1014,7 +1014,9 @@ class ChapterDirectorySyncIntegrationTest {
                     runBlocking { checker.checkForUpdates(manga, source(listOf(remote("/new", "Chapter 1", 1.0)))) }
                 }
                 val pending = requireNotNull(chapters.pendingDirectoryPhase(manga.id))
-                assertEquals(true, pending.downloadsPending)
+                assertEquals(false, pending.downloadsPending)
+                assertEquals(true, pending.predictionPending)
+                assertEquals(true, pending.effects.prediction != null)
                 accepted =
                     Injekt.get<mihon.desktop.download.DesktopDownloadManager>().queue.value.single()
                 assertEquals(pending.downloadIds.single(), accepted!!.chapterId)
@@ -1328,7 +1330,7 @@ class ChapterDirectorySyncIntegrationTest {
             }
         }
 
-    private class Storage(path: File, create: Boolean = true) : AutoCloseable {
+    internal class Storage(path: File, create: Boolean = true) : AutoCloseable {
         val driver = JdbcSqliteDriver(
             "jdbc:sqlite:${path.absolutePath}",
             java.util.Properties().apply { setProperty("foreign_keys", "true") },

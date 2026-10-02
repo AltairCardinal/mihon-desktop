@@ -21,7 +21,17 @@ data class ChapterDirectoryEffects(
     val downloadUnreadOnly: Boolean = false,
     val observe: Boolean = false,
     val disallowNonAsciiFilenames: Boolean = false,
+    val taskReceipt: DirectoryTaskReceipt? = null,
+    val prediction: DirectoryPrediction? = null,
 )
+
+/** A device-local task checkpoint handshake; never a persistent queue or sync protocol identity. */
+@Serializable
+data class DirectoryTaskReceipt(val occurrenceKey: String, val unitId: Long)
+
+/** The original SOURCE prediction inputs for this single local post-commit operation. */
+@Serializable
+data class DirectoryPrediction(val dateTime: String, val windowLower: Long, val windowUpper: Long)
 
 @Serializable
 data class DirectoryChapterDate(val url: String, val date: Long)
@@ -55,8 +65,12 @@ data class ChapterDirectoryPhase(
     val downloadIds: List<Long>,
     val observationPending: Boolean,
     val downloadsPending: Boolean,
+    val checkpointPending: Boolean = effects.taskReceipt != null,
+    val predictionPending: Boolean = false,
 ) {
-    val complete: Boolean get() = files.isEmpty() && !observationPending && !downloadsPending
+    val effectsComplete: Boolean get() = files.isEmpty() && !observationPending && !downloadsPending &&
+        !predictionPending
+    val complete: Boolean get() = effectsComplete && !checkpointPending
 }
 
 /** Each acknowledgement follows the actual platform operation; a failed acknowledgement is safely retried. */

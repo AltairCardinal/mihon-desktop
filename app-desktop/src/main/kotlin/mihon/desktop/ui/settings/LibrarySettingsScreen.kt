@@ -37,7 +37,6 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
-import mihon.desktop.settings.LibraryUpdateInterval
 import mihon.desktop.ui.library.categoryDialogEscape
 import tachiyomi.domain.category.model.Category
 import tachiyomi.i18n.MR
@@ -113,39 +112,43 @@ class LibrarySettingsScreen : Screen {
                     modifier = Modifier.desktopSettingsAnchor(updateTitle).padding(horizontal = 16.dp, vertical = 8.dp),
                 )
 
-                val intervalLabels = mapOf(
-                    LibraryUpdateInterval.OFF to MR.strings.update_never.localized(),
-                    LibraryUpdateInterval.EVERY_6H to MR.strings.update_6hour.localized(),
-                    LibraryUpdateInterval.EVERY_12H to MR.strings.update_12hour.localized(),
-                    LibraryUpdateInterval.EVERY_24H to MR.strings.update_24hour.localized(),
-                    LibraryUpdateInterval.WEEKLY to MR.strings.update_weekly.localized(),
+                val intervalTitle = MR.strings.pref_library_update_interval.localized()
+                Text(
+                    intervalTitle,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.desktopSettingsAnchor(
+                        intervalTitle,
+                    ).padding(horizontal = 16.dp, vertical = 8.dp),
                 )
-                LibraryUpdateInterval.entries.forEach { interval ->
+                val intervalLabels = mapOf(
+                    0 to MR.strings.update_never.localized(),
+                    6 to MR.strings.update_6hour.localized(),
+                    12 to MR.strings.update_12hour.localized(),
+                    24 to MR.strings.update_24hour.localized(),
+                    48 to MR.strings.update_48hour.localized(),
+                    72 to MR.strings.update_72hour.localized(),
+                    168 to MR.strings.update_weekly.localized(),
+                )
+                intervalLabels.forEach { (hours, label) ->
                     RadioSettingsItem(
-                        title = intervalLabels[interval] ?: interval.name,
-                        selected = updateInterval == interval.hours.toInt(),
+                        title = label,
+                        selected = updateInterval == hours,
                         onClick = {
                             libraryPreferences?.let {
                                 intervalFailed =
-                                    !mihon.desktop.settings.saveDesktopPreference(
-                                        it.autoUpdateInterval(),
-                                        interval.hours.toInt(),
-                                    )
+                                    !mihon.desktop.settings.saveDesktopPreference(it.autoUpdateInterval(), hours)
                                 if (!intervalFailed) {
                                     try {
                                         prefs.libraryUpdateIntervalMigrationInvalid.delete()
-                                    } catch (
-                                        _: Exception,
-                                    ) {
-                                        intervalFailed =
-                                            true
+                                    } catch (_: Exception) {
+                                        intervalFailed = true
                                     }
                                 }
                             }
                         },
                     )
                 }
-                if (updateInterval !in LibraryUpdateInterval.entries.map { it.hours.toInt() }) {
+                if (updateInterval !in intervalLabels) {
                     Text(
                         "${MR.strings.pref_library_update_interval.localized()}: $updateInterval h",
                         Modifier.padding(horizontal = 16.dp),
@@ -158,6 +161,7 @@ class LibrarySettingsScreen : Screen {
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
+                libraryPreferences?.let { LibrarySmartUpdateSettings(it) }
                 LocalDesktopUiDependencies.current.libraryCategoryPolicy?.let { policy ->
                     libraryPreferences?.let { LibraryUpdateCategorySettings(policy, it, categories, categoriesLoaded) }
                 }
@@ -384,4 +388,57 @@ private fun DefaultLibraryCategorySettings(
             },
         )
     }
+}
+
+@Composable
+private fun LibrarySmartUpdateSettings(preferences: tachiyomi.domain.library.service.LibraryPreferences) {
+    val restrictionPreference = remember(preferences) { preferences.autoUpdateMangaRestrictions() }
+    val restrictions by restrictionPreference.changes().collectAsState(initial = restrictionPreference.get())
+    val metadataPreference = remember(preferences) { preferences.autoUpdateMetadata() }
+    val metadata by metadataPreference.changes().collectAsState(initial = metadataPreference.get())
+    val titlePreference = remember(preferences) { preferences.updateMangaTitles() }
+    val titles by titlePreference.changes().collectAsState(initial = titlePreference.get())
+    var failed by remember { mutableStateOf(false) }
+    val rules = listOf(
+        tachiyomi.domain.library.service.LibraryPreferences.MANGA_NON_COMPLETED to
+            MR.strings.pref_update_only_non_completed,
+        tachiyomi.domain.library.service.LibraryPreferences.MANGA_HAS_UNREAD to
+            MR.strings.pref_update_only_completely_read,
+        tachiyomi.domain.library.service.LibraryPreferences.MANGA_NON_READ to MR.strings.pref_update_only_started,
+        tachiyomi.domain.library.service.LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD to
+            MR.strings.pref_update_only_in_release_period,
+    )
+    val smartTitle = MR.strings.pref_library_update_smart_update.localized()
+    Text(
+        smartTitle,
+        style = MaterialTheme.typography.labelLarge,
+        modifier = Modifier.desktopSettingsAnchor(smartTitle).padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+    rules.forEach { (key, resource) ->
+        CheckboxSettingsRow(resource.localized(), key in restrictions, onCheckedChange = { checked ->
+            val current = restrictionPreference.get()
+            failed = !mihon.desktop.settings.saveDesktopPreference(
+                restrictionPreference,
+                if (checked) current + key else current - key,
+            )
+        })
+    }
+    val metadataTitle = MR.strings.pref_library_update_refresh_metadata.localized()
+    CheckboxSettingsRow(
+        metadataTitle,
+        metadata,
+        modifier = Modifier.desktopSettingsAnchor(metadataTitle),
+        onCheckedChange = { failed = !mihon.desktop.settings.saveDesktopPreference(metadataPreference, it) },
+    )
+    Text(
+        MR.strings.pref_library_update_refresh_metadata_summary.localized(),
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.padding(horizontal = 16.dp),
+    )
+    CheckboxSettingsRow(
+        MR.strings.pref_update_library_manga_titles.localized(),
+        titles,
+        onCheckedChange = { failed = !mihon.desktop.settings.saveDesktopPreference(titlePreference, it) },
+    )
+    if (failed) Text(MR.strings.internal_error.localized(), color = MaterialTheme.colorScheme.error)
 }

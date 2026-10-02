@@ -104,6 +104,163 @@ import coil3.PlatformContext as CoilPlatformContext
 @Isolated
 class LibraryInteractionTest {
     @Test
+    fun `persisted library results reopen on Root and retry only the failed original work`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val oldLocale = java.util.Locale.getDefault()
+        java.util.Locale.setDefault(java.util.Locale.ENGLISH)
+        try {
+            MockWebServer().use { server ->
+                val requests = java.util.concurrent.ConcurrentHashMap<String, Int>()
+                server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        val work = requireNotNull(
+                            request.url,
+                        ).encodedPath.substringAfter("/manga/").substringBefore("/")
+                        val attempt = requests.merge(work, 1, Int::plus)!!
+                        if (work == "b" && attempt == 1) return MockResponse(code = 500)
+                        return updateFeed(work)
+                    }
+                }
+                server.start()
+                val source = mihon.desktop.source.MangaDexSource(
+                    OkHttpClient(),
+                    kotlinx.serialization.json.Json,
+                    server.url("/").toString().trimEnd('/'),
+                    browserJsonFetcher = null,
+                )
+                withLibrary(root, builtInSources = listOf(source)) { scene, navigator, _, model, _ ->
+                    seedUpdateLibrary(source.id)
+                    render(scene)
+                    clickLabel(scene, MR.strings.action_menu.localized())
+                    render(scene)
+                    clickLabel(scene, MR.strings.action_update_library.localized())
+                    renderUntil(scene) {
+                        Injekt.get<LibraryUpdateScheduler>().taskSnapshot()?.status ==
+                            mihon.domain.task.TaskStatus.Failed
+                    }
+                    assertTrue(
+                        nodes(scene).any {
+                            "2 succeeded, 0 skipped, 1 failed, 0 unprocessed" in copy(it)
+                        },
+                        "Root renders actual persisted per-work results",
+                    )
+                    val originalOwner = model()
+                    navigator().replaceAll(mihon.desktop.ui.settings.LibrarySettingsScreen())
+                    render(scene)
+                    navigator().replaceAll(LibraryRootScreen())
+                    renderUntil(scene) { model() !== originalOwner && !model().state.value.isLoading }
+                    assertFalse(originalOwner === model())
+                    assertTrue(nodes(scene).any { "2 succeeded, 0 skipped, 1 failed, 0 unprocessed" in copy(it) })
+                    clickLabel(scene, "Update results")
+                    render(scene)
+                    assertTrue(nodes(scene).any { "Work b" in copy(it) })
+                    assertTrue(
+                        nodes(scene).any {
+                            MR.strings.desktop_ui_download_server_error.localized(java.util.Locale.ENGLISH, 500) in
+                                copy(it)
+                        },
+                        "Persisted failure details explain the real HTTP error",
+                    )
+                    clickLabel(scene, MR.strings.desktop_ui_retry_failed.localized())
+                    renderUntil(scene) {
+                        Injekt.get<LibraryUpdateScheduler>().taskSnapshot()?.status ==
+                            mihon.domain.task.TaskStatus.Completed
+                    }
+                    assertEquals(mapOf("a" to 1, "b" to 2, "c" to 1), requests.toMap())
+                    for (work in listOf("a", "b", "c")) {
+                        val manga = Injekt.get<MangaRepository>().getMangaByUrlAndSourceId("/manga/$work", source.id)!!
+                        assertEquals(1, Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id).size)
+                    }
+                    val retried = Injekt.get<LibraryUpdateScheduler>().taskSnapshot()!!.libraryUpdate!!.units.single()
+                    assertEquals(1, retried.newChapterCount)
+                }
+            }
+        } finally {
+            java.util.Locale.setDefault(oldLocale)
+        }
+    }
+
+    @Test
+    fun `Root shows a refused new durable update instead of replaying old completed feedback`(
+        @TempDir root: File,
+    ) = runBlocking {
+        var reject = false
+        MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = updateFeed("a")
+            }
+            server.start()
+            val source = mihon.desktop.source.MangaDexSource(
+                OkHttpClient(),
+                kotlinx.serialization.json.Json,
+                server.url("/").toString().trimEnd('/'),
+                browserJsonFetcher = null,
+            )
+            withLibrary(root, builtInSources = listOf(source), taskStoreFactory = { file ->
+                mihon.desktop.task.FileTaskCheckpointStore(file) { temporary, target ->
+                    if (reject) throw java.io.IOException("acceptance refused")
+                    Files.move(temporary, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                    true
+                }
+            }) { scene, _, _, _, _ ->
+                seedUpdateLibrary(source.id, listOf("a"))
+                render(scene)
+                clickLabel(scene, MR.strings.action_menu.localized())
+                render(scene)
+                clickLabel(scene, MR.strings.action_update_library.localized())
+                renderUntil(scene) {
+                    Injekt.get<LibraryUpdateScheduler>().taskSnapshot()?.status ==
+                        mihon.domain.task.TaskStatus.Completed
+                }
+                val completed = Injekt.get<LibraryUpdateScheduler>().taskSnapshot()
+                val previousRequests = server.requestCount
+                reject = true
+                clickLabel(scene, MR.strings.action_menu.localized())
+                render(scene)
+                clickLabel(scene, MR.strings.action_update_library.localized())
+                renderUntil(scene) { Injekt.get<LibraryUpdateScheduler>().currentUpdateJob() == null }
+                assertEquals(completed, Injekt.get<LibraryUpdateScheduler>().taskSnapshot())
+                assertEquals(previousRequests, server.requestCount)
+                assertTrue(
+                    nodes(scene).any {
+                        MR.strings.desktop_ui_library_update_failed.localized() in copy(it)
+                    },
+                    "The new attempt has visible failure feedback",
+                )
+            }
+        }
+    }
+
+    private fun updateFeed(work: String) = MockResponse(
+        body = """
+        {"result":"ok",
+        "data":[{"id":"$work-chapter",
+        "type":"chapter",
+        "attributes":{"chapter":"1",
+        "title":"Chapter 1",
+        "translatedLanguage":"en",
+        "createdAt":"2026-09-01T00:00:00Z",
+        "updatedAt":"2026-09-01T00:00:00Z",
+        "publishAt":"2026-09-01T00:00:00Z"},
+        "relationships":[]}],
+        "total":1,
+        "limit":500,
+        "offset":0}
+        """,
+    )
+
+    private suspend fun seedUpdateLibrary(sourceId: Long, works: List<String> = listOf("a", "b", "c")) {
+        val repository = Injekt.get<MangaRepository>()
+        val inserted = repository.insertNetworkManga(
+            works.map { work ->
+                Manga.create().copy(source = sourceId, url = "/manga/$work", title = "Work $work", initialized = true)
+            },
+        )
+        repository.updateMembershipsAtomically(inserted.map { LibraryMembershipUpdate(it.id, true, 1, emptyList()) })
+    }
+
+    @Test
     fun `continue root respects bookmark download global and scanlator filters with the matching synchronized page`(
         @TempDir root: File,
     ) = runBlocking {
@@ -1334,6 +1491,8 @@ class LibraryInteractionTest {
         root: File,
         systemTheme: SystemTheme? = null,
         httpSource: Boolean = false,
+        builtInSources: List<eu.kanade.tachiyomi.source.CatalogueSource>? = null,
+        taskStoreFactory: ((java.nio.file.Path) -> mihon.desktop.task.FileTaskCheckpointStore)? = null,
         downloadManagerFactory: (
             (mihon.desktop.download.DesktopDownloadManager) -> mihon.desktop.download.DesktopDownloadManager
         )? = null,
@@ -1346,7 +1505,20 @@ class LibraryInteractionTest {
         ) -> Unit,
     ) {
         val node = Preferences.userRoot().node("mihon-tests/library-interaction-${UUID.randomUUID()}")
-        val context = initDesktopDIForTest(root, DesktopPreferenceStore(node), startDownloadWorker = false)
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        val context = try {
+            initDesktopDIForTest(
+                root,
+                DesktopPreferenceStore(node),
+                startDownloadWorker = false,
+                builtInSources = builtInSources,
+                taskStoreFactory = taskStoreFactory,
+            )
+        } catch (error: Exception) {
+            Dispatchers.resetMain()
+            node.removeNode()
+            throw error
+        }
         val replacementManager = downloadManagerFactory?.invoke(Injekt.get())
         if (replacementManager !=
             null
@@ -1360,7 +1532,6 @@ class LibraryInteractionTest {
             )
             Injekt.addFactory<tachiyomi.domain.source.service.SourceManager> { sources }
         }
-        Dispatchers.setMain(UnconfinedTestDispatcher())
         val dependencies = DesktopUiDependencies.fromInjekt()
         val scene = ImageComposeScene(1200, 900, coroutineContext = Dispatchers.Unconfined) {}
         lateinit var navigator: Navigator
@@ -1406,6 +1577,13 @@ class LibraryInteractionTest {
         )
         repository.updateMembershipsAtomically(items.map { LibraryMembershipUpdate(it.id, true, 1, emptyList()) })
         return items
+    }
+
+    private suspend fun renderUntil(scene: ImageComposeScene, predicate: () -> Boolean) {
+        kotlinx.coroutines.withTimeout(10_000) {
+            while (!predicate()) render(scene)
+        }
+        render(scene)
     }
 
     private suspend fun render(scene: ImageComposeScene) {

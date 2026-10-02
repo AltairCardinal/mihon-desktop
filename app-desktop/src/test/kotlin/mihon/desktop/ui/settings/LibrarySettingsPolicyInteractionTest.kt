@@ -73,6 +73,297 @@ import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 @Isolated
 class LibrarySettingsPolicyInteractionTest {
     @Test
+    fun `new periodic smart metadata settings search reaches the real shared preference controls`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withSettings(root) { scene ->
+            val titles =
+                listOf(
+                    MR.strings.pref_library_update_interval.localized(),
+                    MR.strings.pref_library_update_smart_update.localized(),
+                    MR.strings.pref_library_update_refresh_metadata.localized(),
+                )
+            scene.mountSettings()
+            scene.renderUntil { MR.strings.action_search_settings.localized() in scene.text() }
+            for (title in titles) {
+                scene.click(MR.strings.action_search_settings.localized())
+                scene.renderUntil { scene.nodes().any { it.config.contains(SemanticsActions.SetText) } }
+                scene.setText(title)
+                scene.renderUntil { true }
+                assertTrue(
+                    scene.nodes().any {
+                        title in scene.labels(it) && it.config.contains(SemanticsActions.OnClick)
+                    },
+                    "Search exposes $title",
+                )
+                scene.click(title)
+                scene.renderUntil {
+                    scene.nodes().any { it.config.getOrElse(DesktopSettingsAnchorHighlighted) { false } }
+                }
+                assertTrue(
+                    scene.navigator.lastItem is SettingsRootScreen,
+                    "The ordinary settings child route remains inside its actual Root navigator",
+                )
+                assertTrue(
+                    scene.nodes().any {
+                        title in scene.labels(it) &&
+                            it.config.getOrElse(DesktopSettingsAnchorHighlighted) { false }
+                    },
+                )
+                if (title == titles.first()) {
+                    scene.click(MR.strings.update_48hour.localized())
+                    scene.renderUntil { Injekt.get<LibraryPreferences>().autoUpdateInterval().get() == 48 }
+                } else if (title == titles.last()) {
+                    scene.click(title)
+                    scene.renderUntil { Injekt.get<LibraryPreferences>().autoUpdateMetadata().get() }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `periodic smart and metadata settings retain authority after pre and post write refusal`(
+        @TempDir root: File,
+    ) = runBlocking {
+        for (afterWrite in listOf(false, true)) {
+            var reject: String? = null
+            fun <T> guarded(key: String, pref: Preference<T>) = object : Preference<T> by pref {
+                override fun set(value: T) {
+                    if (reject == key) {
+                        reject = null
+                        if (afterWrite) pref.set(value)
+                        throw IOException("Preference save refused")
+                    }
+                    pref.set(value)
+                }
+            }
+            withSettings(File(root, "settings-refusal-$afterWrite"), storeAdapter = { actual ->
+                object : PreferenceStore by actual {
+                    override fun getInt(key: String, defaultValue: Int) = guarded(key, actual.getInt(key, defaultValue))
+                    override fun getBoolean(
+                        key: String,
+                        defaultValue: Boolean,
+                    ) = guarded(key, actual.getBoolean(key, defaultValue))
+                    override fun getStringSet(
+                        key: String,
+                        defaultValue: Set<String>,
+                    ) = guarded(key, actual.getStringSet(key, defaultValue))
+                }
+            }) { scene ->
+                val preferences = Injekt.get<LibraryPreferences>()
+                preferences.autoUpdateMangaRestrictions().set(setOf(LibraryPreferences.MANGA_NON_COMPLETED))
+                val checks = listOf(
+                    Triple(
+                        "pref_library_update_interval_key",
+                        MR.strings.update_48hour.localized(),
+                        preferences.autoUpdateInterval(),
+                    ),
+                    Triple(
+                        "library_update_manga_restriction",
+                        MR.strings.pref_update_only_non_completed.localized(),
+                        preferences.autoUpdateMangaRestrictions(),
+                    ),
+                    Triple(
+                        "auto_update_metadata",
+                        MR.strings.pref_library_update_refresh_metadata.localized(),
+                        preferences.autoUpdateMetadata(),
+                    ),
+                    Triple(
+                        "pref_update_library_manga_titles",
+                        MR.strings.pref_update_library_manga_titles.localized(),
+                        preferences.updateMangaTitles(),
+                    ),
+                )
+                for ((key, label, pref) in checks) {
+                    scene.mountLibrary()
+                    scene.renderUntil { label in scene.text() }
+                    val before = pref.get()
+                    reject = key
+                    scene.click(label)
+                    scene.renderUntil { MR.strings.internal_error.localized() in scene.text() }
+                    assertEquals(before, pref.get(), "Failed saves restore the original authority for $key")
+                    scene.mountLibrary()
+                    scene.renderUntil { label in scene.text() }
+                    assertEquals(before, pref.get())
+                    scene.click(label)
+                    scene.renderUntil { pref.get() != before }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `native update results at 320 font200 retain modal keyboard bounds and return focus`(
+        @TempDir root: File,
+    ) = runBlocking {
+        for (dark in listOf(false, true)) {
+            withSettings(
+                File(root, "results-$dark"),
+                size = IntSize(320, 680),
+                fontScale = 2f,
+                updateManga = {
+                    LibraryUpdateChecker.UpdateResult(0, sourceError = mihon.domain.error.AppError.Server(500))
+                },
+            ) { scene ->
+                Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().themeMode.set(
+                    if (dark) eu.kanade.domain.ui.model.ThemeMode.DARK else eu.kanade.domain.ui.model.ThemeMode.LIGHT,
+                )
+                val repository = Injekt.get<MangaRepository>()
+                val mangas = repository.insertNetworkManga(
+                    (1..18).map {
+                        Manga.create().copy(
+                            source = 123,
+                            url = "/manga/$it",
+                            title = "Failed work $it",
+                            favorite = true,
+                        )
+                    },
+                )
+                val scheduler = Injekt.get<LibraryUpdateScheduler>()
+                scheduler.runNow().join()
+                assertEquals(mihon.domain.task.TaskStatus.Failed, scheduler.taskSnapshot()!!.status)
+                scene.mountRoot()
+                val title = MR.strings.desktop_library_update_results.localized()
+                scene.renderUntil {
+                    scene.nodes().any {
+                        title in scene.labels(it) &&
+                            it.config.contains(SemanticsActions.OnClick)
+                    }
+                }
+                scene.requestFocus(title)
+                scene.key(Key.Spacebar)
+                scene.renderUntil { scene.ownerCount() == 2 }
+                for (label in listOf(
+                    MR.strings.action_close.localized(),
+                    MR.strings.desktop_ui_retry_failed.localized(),
+                    MR.strings.action_resume.localized(),
+                )) {
+                    val action = scene.activeNodes().last {
+                        label in scene.labels(it) &&
+                            it.config.contains(SemanticsActions.OnClick)
+                    }
+                    assertTrue(
+                        action.boundsInRoot != Rect.Zero && action.boundsInRoot.left >= 0 &&
+                            action.boundsInRoot.right <= 320 &&
+                            action.boundsInRoot.top >= 0 &&
+                            action.boundsInRoot.bottom <= 680,
+                        "Large font modal action stays reachable: $label",
+                    )
+                }
+                for (shift in listOf(false, true)) {
+                    scene.requestFocus(MR.strings.action_close.localized())
+                    scene.renderUntil { scene.activeFocused() != null }
+                    val start = scene.activeFocused()!!.id
+                    val visited = mutableSetOf<Int>()
+                    var loop = false
+                    repeat(8) {
+                        scene.key(Key.Tab, shift)
+                        scene.renderUntil { scene.activeFocused() != null }
+                        val focused = scene.activeFocused()!!
+                        visited += focused.id
+                        if (focused.id == start && visited.size >= 3) loop = true
+                    }
+                    assertTrue(loop, "Native bidirectional Tab remains in the result modal")
+                }
+                val list = scene.activeNodes().single { it.config.contains(SemanticsActions.ScrollToIndex) }
+                assertTrue(requireNotNull(list.config[SemanticsActions.ScrollToIndex].action).invoke(17))
+                scene.renderUntil {
+                    scene.activeNodes().any {
+                        "Failed work 18" in scene.labels(it) &&
+                            it.boundsInRoot != Rect.Zero
+                    }
+                }
+                scene.savePng(
+                    File(
+                        System.getenv("MIHON_RI14_VISUAL_DIR") ?: File(root, "visual").absolutePath,
+                        "ri14-update-results-${if (dark) "dark" else "light"}-320-font200.png",
+                    ),
+                )
+                val before = scene.navigator.lastItem
+                scene.pointerClick(androidx.compose.ui.geometry.Offset(12f, 70f))
+                scene.renderUntil { true }
+                assertEquals(before, scene.navigator.lastItem, "Modal blocks background navigation")
+                assertEquals(2, scene.ownerCount())
+                scene.key(Key.Escape)
+                scene.renderUntil { scene.ownerCount() == 1 }
+                scene.renderUntil {
+                    scene.nodes().any {
+                        title in scene.labels(it) &&
+                            it.config.getOrElse(SemanticsProperties.Focused) { false }
+                    }
+                }
+                assertEquals(18, scheduler.taskSnapshot()!!.libraryUpdate!!.units.size)
+                assertEquals(
+                    mangas.map(Manga::id).toSet(),
+                    scheduler.taskSnapshot()!!.libraryUpdate!!.units.map {
+                        it.mangaId
+                    }.toSet(),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `library settings expose all real periodic smart and metadata preferences`(@TempDir root: File) = runBlocking {
+        withSettings(root) { scene ->
+            val preferences = Injekt.get<LibraryPreferences>()
+            preferences.autoUpdateMangaRestrictions().set(
+                setOf(
+                    LibraryPreferences.MANGA_NON_COMPLETED,
+                    LibraryPreferences.MANGA_HAS_UNREAD,
+                    LibraryPreferences.MANGA_NON_READ,
+                    LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD,
+                ),
+            )
+            scene.mountLibrary()
+            scene.renderUntil("periodic controls must mount") { MR.strings.update_never.localized() in scene.text() }
+            for ((hours, label) in listOf(
+                48 to MR.strings.update_48hour.localized(),
+                72 to MR.strings.update_72hour.localized(),
+            )) {
+                assertTrue(
+                    scene.nodes().any {
+                        label in scene.labels(it) && it.config.contains(SemanticsActions.OnClick)
+                    },
+                    "The supported interval has a real control: $hours",
+                )
+                scene.click(label)
+                scene.renderUntil("save interval $hours") { preferences.autoUpdateInterval().get() == hours }
+            }
+            val rules = listOf(
+                LibraryPreferences.MANGA_NON_COMPLETED to MR.strings.pref_update_only_non_completed.localized(),
+                LibraryPreferences.MANGA_HAS_UNREAD to MR.strings.pref_update_only_completely_read.localized(),
+                LibraryPreferences.MANGA_NON_READ to MR.strings.pref_update_only_started.localized(),
+                LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD to
+                    MR.strings.pref_update_only_in_release_period.localized(),
+            )
+            for ((key, label) in rules) {
+                assertTrue(
+                    scene.nodes().any {
+                        label in scene.labels(it) && it.config.contains(SemanticsActions.OnClick)
+                    },
+                )
+                scene.click(label)
+                scene.renderUntil("save smart rule $key") { key !in preferences.autoUpdateMangaRestrictions().get() }
+            }
+            val metadata = MR.strings.pref_library_update_refresh_metadata.localized()
+            assertTrue(
+                scene.nodes().any {
+                    metadata in scene.labels(it) && it.config.contains(SemanticsActions.OnClick)
+                },
+            )
+            assertFalse(preferences.autoUpdateMetadata().get())
+            scene.click(metadata)
+            scene.renderUntil("save metadata switch") { preferences.autoUpdateMetadata().get() }
+            scene.mountLibrary()
+            scene.renderUntil("periodic controls must mount") { MR.strings.update_never.localized() in scene.text() }
+            assertEquals(72, preferences.autoUpdateInterval().get())
+            assertTrue(preferences.autoUpdateMetadata().get())
+            assertTrue(preferences.autoUpdateMangaRestrictions().get().isEmpty())
+        }
+    }
+
+    @Test
     fun `shared extended interval shows its actual hours and a valid legacy option corrects the migration warning`(
         @TempDir root: File,
     ) = runBlocking {
@@ -84,7 +375,19 @@ class LibrarySettingsPolicyInteractionTest {
                 app.libraryUpdateInterval.set(mihon.desktop.settings.LibraryUpdateInterval.OFF)
                 app.libraryUpdateIntervalMigrationInvalid.set(true)
                 scene.mountLibrary()
-                scene.renderUntil { scene.text().any { it.endsWith(": $hours h") } }
+                val label = if (hours ==
+                    48
+                ) {
+                    MR.strings.update_48hour.localized()
+                } else {
+                    MR.strings.update_72hour.localized()
+                }
+                scene.renderUntil {
+                    scene.nodes().any {
+                        label in scene.labels(it) &&
+                            it.config.getOrElse(SemanticsProperties.Selected) { false }
+                    }
+                }
                 assertTrue(scene.text().contains(MR.strings.desktop_library_update_interval_invalid.localized()))
                 scene.click(MR.strings.update_6hour.localized())
                 scene.renderUntil {
@@ -1368,12 +1671,30 @@ class LibrarySettingsPolicyInteractionTest {
                 }
             }
         }
+        fun mountRoot() = scene.setContent {
+            CompositionLocalProvider(
+                LocalDesktopUiDependencies provides DesktopUiDependencies.fromInjekt(),
+                LocalDensity provides Density(1f, fontScale),
+            ) {
+                DesktopTheme {
+                    Navigator(mihon.desktop.ui.library.LibraryRootScreen()) {
+                        navigator = it
+                        CurrentScreen()
+                    }
+                }
+            }
+        }
         fun mountSettings() = scene.setContent {
             CompositionLocalProvider(
                 LocalDesktopUiDependencies provides DesktopUiDependencies.fromInjekt(),
                 LocalDensity provides Density(1f, fontScale),
             ) {
-                DesktopTheme { Navigator(SettingsRootScreen()) { CurrentScreen() } }
+                DesktopTheme {
+                    Navigator(SettingsRootScreen()) {
+                        navigator = it
+                        CurrentScreen()
+                    }
+                }
             }
         }
         fun mountDetail(id: Long) = scene.setContent {

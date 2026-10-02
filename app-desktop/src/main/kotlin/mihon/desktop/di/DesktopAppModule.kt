@@ -261,6 +261,7 @@ internal suspend fun initDesktopDIForTest(
     categoryRepositoryOverride: ((CategoryRepository) -> CategoryRepository)? = null,
     mangaRepositoryOverride: ((MangaRepository) -> MangaRepository)? = null,
     builtInSources: List<CatalogueSource>? = null,
+    taskStoreFactory: ((java.nio.file.Path) -> FileTaskCheckpointStore)? = null,
 ): DesktopTestDIContext {
     activeDesktopTestDIContext?.closeAndJoin()
     patchInjekt()
@@ -285,6 +286,7 @@ internal suspend fun initDesktopDIForTest(
         profileDirectoryOpener,
         nativeSharePort,
         trackerConnectivity,
+        taskStoreFactory,
     )
     return DesktopTestDIContext(
         handler = handler as JvmDatabaseHandler,
@@ -791,6 +793,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
                 Injekt.get<mihon.desktop.download.DesktopDownloadProvider>().renameDirectoryChapter(phase, change)
             },
             downloadPolicy = { manga -> Injekt.get<FilterChaptersForDownload>().snapshot(manga) },
+            confirmTaskReceipt = { phase -> Injekt.get<DesktopTaskScheduler>().confirmLibraryReceipt(phase) },
             downloadCommitted = { manga, chapters ->
                 val manager = Injekt.get<mihon.desktop.download.DesktopDownloadManager>()
                 chapters.forEach { chapter ->
@@ -852,6 +855,9 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
                     .contains(LibraryPreferences.MARK_DUPLICATE_CHAPTER_READ_NEW)
             },
             disallowNonAsciiFilenames = { Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get() },
+            libraryPreferences = { Injekt.get<LibraryPreferences>() },
+            fetchInterval = tachiyomi.domain.manga.interactor.FetchInterval(Injekt.get<GetChaptersByMangaId>()),
+            hasCustomCover = { Injekt.get<DesktopCustomCoverStore>().customCoverExists(it) },
         ),
     )
     val creatorDiscoverySourcePort = CatalogueCreatorDiscoverySourceAdapter(
@@ -910,6 +916,7 @@ internal fun initUILayer(
     nativeSharePort: DesktopNativeSharePort = defaultDesktopNativeSharePort(),
     trackerConnectivity: mihon.desktop.tracking.DesktopNetworkConnectivity =
         mihon.desktop.tracking.JvmDesktopNetworkConnectivity,
+    taskStoreFactory: ((java.nio.file.Path) -> FileTaskCheckpointStore)? = null,
 ) {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val passphraseVerifier = DesktopPassphraseVerifier(
@@ -1053,6 +1060,7 @@ internal fun initUILayer(
         updateManga,
         trackerConnectivity,
         applicationScope,
+        taskStoreFactory,
     )
     lateinit var trackSync: ReadingProgressTrackSync
     val trackerSyncScheduler =
@@ -1213,13 +1221,14 @@ private fun registerDesktopLibrary(
     connectivity: mihon.desktop.tracking.DesktopNetworkConnectivity =
         mihon.desktop.tracking.JvmDesktopNetworkConnectivity,
     applicationScope: CoroutineScope,
+    taskStoreFactory: ((java.nio.file.Path) -> FileTaskCheckpointStore)? = null,
 ): DesktopNotificationService {
     Injekt.addSingleton(paths)
     Injekt.addSingleton(DesktopCustomCoverStore(paths.coversDir))
     val notificationService = DesktopNotificationService()
     Injekt.addSingleton(notificationService)
-    val taskScheduler =
-        DesktopTaskScheduler(FileTaskCheckpointStore(paths.configDir.toPath().resolve("background-tasks.json")))
+    val taskFile = paths.configDir.toPath().resolve("background-tasks.json")
+    val taskScheduler = DesktopTaskScheduler(taskStoreFactory?.invoke(taskFile) ?: FileTaskCheckpointStore(taskFile))
     val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)
     Injekt.addSingleton(taskScheduler)
     Injekt.addSingleton(taskNotifier)
@@ -1286,6 +1295,7 @@ private fun registerDesktopLibrary(
             categoryPolicy = libraryCategoryPolicy,
             libraryPreferences = libraryPreferences,
             getLibraryManga = Injekt.get<GetLibraryManga>(),
+            getManga = Injekt.get<GetManga>(),
             sourceManager = Injekt.get<SourceManager>(),
             creatorDiscoveryScheduler = creatorDiscoveryScheduler,
             taskScheduler = taskScheduler,

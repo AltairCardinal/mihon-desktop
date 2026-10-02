@@ -24,7 +24,7 @@ class FetchInterval(
             zone = dateTime.zone,
         )
         val currentWindow = if (window.first == 0L && window.second == 0L) {
-            getWindow(ZonedDateTime.now())
+            getWindow(dateTime)
         } else {
             window
         }
@@ -33,12 +33,7 @@ class FetchInterval(
         return MangaUpdate(id = manga.id, nextUpdate = nextUpdate, fetchInterval = interval)
     }
 
-    fun getWindow(dateTime: ZonedDateTime): Pair<Long, Long> {
-        val today = dateTime.toLocalDate().atStartOfDay(dateTime.zone)
-        val lowerBound = today.minusDays(GRACE_PERIOD)
-        val upperBound = today.plusDays(GRACE_PERIOD)
-        return Pair(lowerBound.toEpochSecond() * 1000, upperBound.toEpochSecond() * 1000 - 1)
-    }
+    fun getWindow(dateTime: ZonedDateTime): Pair<Long, Long> = window(dateTime)
 
     internal fun calculateInterval(chapters: List<Chapter>, zone: ZoneId): Int {
         val chapterWindow = if (chapters.size <= 8) 3 else 10
@@ -95,7 +90,7 @@ class FetchInterval(
         }
 
         val latestDate = ZonedDateTime.ofInstant(
-            if (manga.lastUpdate > 0) Instant.ofEpochMilli(manga.lastUpdate) else Instant.now(),
+            if (manga.lastUpdate > 0) Instant.ofEpochMilli(manga.lastUpdate) else dateTime.toInstant(),
             dateTime.zone,
         )
             .toLocalDate()
@@ -124,5 +119,12 @@ class FetchInterval(
         const val MAX_INTERVAL = 28
 
         private const val GRACE_PERIOD = 1L
+
+        fun window(dateTime: ZonedDateTime): Pair<Long, Long> {
+            val today = dateTime.toLocalDate().atStartOfDay(dateTime.zone)
+            val lowerBound = today.minusDays(GRACE_PERIOD)
+            val upperBound = today.plusDays(GRACE_PERIOD)
+            return Pair(lowerBound.toEpochSecond() * 1000, upperBound.toEpochSecond() * 1000 - 1)
+        }
     }
 }

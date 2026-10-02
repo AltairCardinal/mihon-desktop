@@ -42,9 +42,16 @@ class ChapterRepositoryImpl(
             check(
                 phase.files.all { it in existing.files } &&
                     (!phase.observationPending || existing.observationPending) &&
-                    (!phase.downloadsPending || existing.downloadsPending),
+                    (!phase.downloadsPending || existing.downloadsPending) &&
+                    (!phase.checkpointPending || existing.checkpointPending) &&
+                    (!phase.predictionPending || existing.predictionPending),
             ) {
                 "Directory acknowledgement would repeat completed work"
+            }
+            if (existing.checkpointPending && !phase.checkpointPending) {
+                check(existing.effectsComplete && phase.effectsComplete && existing.effects.taskReceipt != null) {
+                    "Task receipts cannot acknowledge unfinished directory effects"
+                }
             }
             if (phase.complete) {
                 chapter_directory_phasesQueries.removePhase(phase.mangaId, phase.id)
@@ -197,6 +204,10 @@ class ChapterRepositoryImpl(
                     mangaId = request.mangaId, effects = effects, currentTitle = currentTitle, files = files,
                     addedIds = added.map { it.id }, downloadIds = downloadIds,
                     observationPending = effects.observe, downloadsPending = effects.downloadEnabled,
+                    predictionPending = effects.prediction?.let {
+                        plan.changed || effects.origin == "DETAIL_REFRESH" || manga.calculate_interval == 0L ||
+                            (manga.next_update ?: 0L) < it.windowLower
+                    } == true,
                 ).also { phase ->
                     if (!phase.complete) {
                         chapter_directory_phasesQueries.insertPhase(

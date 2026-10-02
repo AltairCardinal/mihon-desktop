@@ -29,6 +29,301 @@ class LibraryUpdateRecoveryIntegrationTest {
     @TempDir lateinit var directory: Path
 
     @Test
+    fun `cancelled initialization cannot advance the durable check time`() = runTest {
+        val node = java.util.prefs.Preferences.userRoot().node("mihon-ri14-init-${java.util.UUID.randomUUID()}")
+        val store = tachiyomi.core.common.preference.DesktopPreferenceStore(node)
+        val preferences = tachiyomi.domain.library.service.LibraryPreferences(store)
+        preferences.lastUpdatedTimestamp().set(123)
+        val tasks = DesktopTaskScheduler(FileTaskCheckpointStore(directory.resolve("initialization.json")))
+        val now = java.time.Instant.parse("2026-10-02T00:00:00Z")
+        val clock = object : java.time.Clock() {
+            override fun getZone() = java.time.ZoneOffset.UTC
+            override fun withZone(zone: java.time.ZoneId): java.time.Clock = this
+            override fun instant() = now
+            override fun millis(): Long {
+                assertTrue(tasks.cancelRunning(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK.id))
+                return now.toEpochMilli()
+            }
+        }
+        val calls = mutableListOf<Long>()
+        val scheduler = LibraryUpdateScheduler(
+            DesktopAppPreferences(store), null, null, null,
+            taskScheduler = tasks, scope = this, libraryPreferences = preferences, clock = clock,
+            libraryProvider = { listOf(libraryManga(1)) },
+            updateManga = {
+                calls += it.id
+                UpdateResult(0)
+            },
+        )
+        try {
+            scheduler.runNow().join()
+            assertEquals(mihon.domain.task.TaskStatus.Cancelled, scheduler.taskSnapshot()?.status)
+            assertEquals(123L, preferences.lastUpdatedTimestamp().get())
+            assertTrue(calls.isEmpty())
+        } finally {
+            scheduler.stopAndJoin()
+            node.removeNode()
+        }
+    }
+
+    @Test
+    fun `library occurrence continues after a failed middle unit and retains later success`() = runTest {
+        val calls = mutableListOf<Long>()
+        val scheduler = scheduler(directory.resolve("continue.json"), calls, this) { id ->
+            if (id == 2L) UpdateResult(0, error = "failed B") else UpdateResult(0)
+        }
+
+        scheduler.runNow().join()
+
+        assertEquals(listOf(1L, 2L, 3L), calls)
+        assertEquals(setOf(1L, 3L), scheduler.taskSnapshot()?.completedUnitIds)
+        assertEquals(listOf("manga:2"), scheduler.taskSnapshot()?.failedUnits)
+    }
+
+    @Test
+    fun `legacy occurrence without a fixed workset cannot expand into the current library`() = runTest {
+        val file = directory.resolve("legacy.json")
+        DesktopTaskScheduler(FileTaskCheckpointStore(file)).register(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK)
+        val calls = mutableListOf<Long>()
+        val scheduler = scheduler(file, calls, this) { UpdateResult(0) }
+        try {
+            scheduler.start().join()
+            assertEquals(emptyList<Long>(), calls)
+            assertEquals(mihon.domain.task.TaskStatus.Failed, scheduler.taskSnapshot()?.status)
+        } finally {
+            scheduler.stopAndJoin()
+        }
+    }
+
+    @Test
+    fun `fresh category occurrence replaces a previous failed workset instead of inheriting it`() = runTest {
+        val file = directory.resolve("fresh-category.json")
+        val calls = mutableListOf<Long>()
+        val scheduler = LibraryUpdateScheduler(
+            appPreferences = DesktopAppPreferences(InMemoryPreferenceStore()),
+            updateChecker = null,
+            getLibraryManga = null,
+            sourceManager = null,
+            taskScheduler = DesktopTaskScheduler(FileTaskCheckpointStore(file)),
+            scope = this,
+            libraryProvider = {
+                (1L..3L).map { id -> libraryManga(id).copy(categories = listOf(if (id == 3L) 20L else 10L)) }
+            },
+            updateManga = { manga ->
+                calls += manga.id
+                if (manga.id == 2L) UpdateResult(0, error = "failed B") else UpdateResult(0)
+            },
+        )
+
+        scheduler.runNow(10L).join()
+        scheduler.runNow(20L).join()
+
+        assertEquals(listOf(1L, 2L, 3L), calls)
+        assertEquals(listOf(3L), scheduler.taskSnapshot()?.workset)
+        assertEquals(setOf(3L), scheduler.taskSnapshot()?.completedUnitIds)
+    }
+
+    @Test
+    fun `accepted library query can be cancelled before its fixed workset has loaded`() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val calls = mutableListOf<Long>()
+        val scheduler = LibraryUpdateScheduler(
+            DesktopAppPreferences(InMemoryPreferenceStore()),
+            null,
+            null,
+            null,
+            taskScheduler = DesktopTaskScheduler(FileTaskCheckpointStore(directory.resolve("loading.json"))),
+            scope = this,
+            libraryProvider = {
+                entered.complete(Unit)
+                release.await()
+                listOf(libraryManga(1))
+            },
+            updateManga = {
+                calls += it.id
+                UpdateResult(0)
+            },
+        )
+        val job = scheduler.runNow()
+        try {
+            kotlinx.coroutines.withTimeout(5_000) { kotlinx.coroutines.withTimeout(5_000) { entered.await() } }
+            assertTrue(scheduler.cancelUpdate(), "The accepted job is cancellable while its repository read waits")
+        } finally {
+            release.complete(Unit)
+            job.join()
+        }
+        assertEquals(emptyList<Long>(), calls)
+        assertEquals(mihon.domain.task.TaskStatus.Cancelled, scheduler.taskSnapshot()?.status)
+    }
+
+    @Test
+    fun `library unit completion cannot replace the originally accepted source and URL identity`() {
+        val tasks = DesktopTaskScheduler(FileTaskCheckpointStore(directory.resolve("identity.json")))
+        val original = mihon.desktop.task.LibraryUpdateUnit(1, 42, "/original")
+        val task = LibraryUpdateScheduler.LIBRARY_UPDATE_TASK.copy(idempotencyKey = "identity-occurrence")
+        tasks.beginLibraryUpdate(
+            task,
+            mihon.desktop.task.LibraryUpdateContext(
+                mihon.desktop.task.LibraryUpdateTrigger.MANUAL,
+                mihon.desktop.task.LibraryUpdateScope.ALL,
+                units = listOf(original),
+            ),
+        )
+        tasks.start(task.id)
+        val accepted = tasks.recordLibraryUnit(
+            task.id,
+            task.idempotencyKey,
+            original.copy(
+                sourceId = 43,
+                mangaUrl = "/replacement",
+                status = mihon.desktop.task.LibraryUnitStatus.SUCCESS,
+            ),
+        )
+        assertEquals(false, accepted)
+        assertEquals(original, tasks.snapshot(task.id)!!.libraryUpdate!!.units.single())
+    }
+
+    @Test
+    fun `failed only retry cannot resume cancelled unprocessed units`() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val calls = mutableListOf<Long>()
+        val scheduler = scheduler(directory.resolve("cancelled-retry.json"), calls, this) { id ->
+            if (id == 2L) {
+                entered.complete(Unit)
+                release.await()
+            }
+            UpdateResult(1)
+        }
+        val accepted = scheduler.runNow()
+        try {
+            kotlinx.coroutines.withTimeout(5_000) { entered.await() }
+            assertTrue(scheduler.cancelUpdate())
+        } finally {
+            release.complete(Unit)
+            accepted.join()
+        }
+        val cancelled = scheduler.taskSnapshot()
+        scheduler.retryFailed().join()
+        assertEquals(listOf(1L, 2L), calls, "Only resume can execute the cancelled original remainder")
+        assertEquals(cancelled, scheduler.taskSnapshot())
+        scheduler.resumeUpdate().join()
+        assertEquals(listOf(1L, 2L, 2L, 3L), calls)
+        assertEquals(mihon.domain.task.TaskStatus.Completed, scheduler.taskSnapshot()?.status)
+    }
+
+    @Test
+    fun `initial durable acceptance failure preserves old completion and reports this launch failure`() = runTest {
+        var reject = false
+        val file = directory.resolve("acceptance.json")
+        val tasks = DesktopTaskScheduler(
+            FileTaskCheckpointStore(file) { source, target ->
+                if (reject) throw java.io.IOException("checkpoint unavailable")
+                java.nio.file.Files.move(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                true
+            },
+        )
+        val calls = mutableListOf<Long>()
+        val delivered = mutableListOf<DesktopNotification>()
+        val scheduler = LibraryUpdateScheduler(
+            DesktopAppPreferences(InMemoryPreferenceStore()), null, null, null,
+            taskScheduler = tasks,
+            taskNotifier = DesktopSystemNotifier(system = {
+                delivered += it
+                true
+            }, fallback = DesktopNotificationService()),
+            scope = this,
+            libraryProvider = { listOf(libraryManga(1)) },
+            updateManga = {
+                calls += it.id
+                UpdateResult(1)
+            },
+        )
+        scheduler.runNow().join()
+        val completed = scheduler.taskSnapshot()
+        delivered.clear()
+        reject = true
+        scheduler.runNow().join()
+        assertEquals(listOf(1L), calls, "Refused acceptance performs no source or directory operation")
+        assertEquals(completed, scheduler.taskSnapshot())
+        assertEquals(
+            1,
+            delivered.count {
+                it.title == "Library update failed"
+            },
+            "This launch must not report the old completion",
+        )
+    }
+
+    @Test
+    fun `periodic restart uses durable actual check time and controlled backwards and sleep clocks`() = runTest {
+        val node = java.util.prefs.Preferences.userRoot().node("mihon-ri14-clock-${java.util.UUID.randomUUID()}")
+        val store = tachiyomi.core.common.preference.DesktopPreferenceStore(node)
+        val preferences = tachiyomi.domain.library.service.LibraryPreferences(store)
+        preferences.autoUpdateInterval().set(48)
+        var now = java.time.Instant.parse("2026-10-02T00:00:00Z").toEpochMilli()
+        val originalTime = now
+        preferences.lastUpdatedTimestamp().set(now)
+        val clock = object : java.time.Clock() {
+            override fun getZone() = java.time.ZoneOffset.UTC
+            override fun withZone(zone: java.time.ZoneId) = this
+            override fun instant() = java.time.Instant.ofEpochMilli(now)
+        }
+        val calls = mutableListOf<Long>()
+        fun newScheduler() = LibraryUpdateScheduler(
+            DesktopAppPreferences(store), null, null, null,
+            taskScheduler = DesktopTaskScheduler(FileTaskCheckpointStore(directory.resolve("periodic.json"))),
+            scope = this,
+            libraryProvider = { listOf(libraryManga(1)) },
+            updateManga = {
+                calls += it.id
+                UpdateResult(0)
+            },
+            libraryPreferences = preferences,
+            clock = clock,
+        )
+        var scheduler = newScheduler()
+        try {
+            scheduler.start().join()
+            advanceTimeBy(61_000)
+            runCurrent()
+            assertEquals(emptyList<Long>(), calls, "Restart cannot treat an ordinary poll as a due check")
+            now -= 86_400_000
+            advanceTimeBy(61_000)
+            runCurrent()
+            assertEquals(emptyList<Long>(), calls, "Backwards clocks preserve the persisted due boundary")
+            now = originalTime + 48 * 3_600_000L
+            advanceTimeBy(61_000)
+            runCurrent()
+            assertEquals(listOf(1L), calls)
+            assertEquals(now, preferences.lastUpdatedTimestamp().get())
+            assertEquals(
+                mihon.desktop.task.LibraryUpdateTrigger.SCHEDULED,
+                scheduler.taskSnapshot()!!.libraryUpdate!!.trigger,
+            )
+            scheduler.stopAndJoin()
+            scheduler = newScheduler()
+            scheduler.start().join()
+            advanceTimeBy(61_000)
+            runCurrent()
+            assertEquals(listOf(1L), calls, "A completed check remains not due after reopening")
+            now += 7 * 86_400_000L
+            advanceTimeBy(61_000)
+            runCurrent()
+            assertEquals(listOf(1L, 1L), calls, "A wake after several missed intervals runs one occurrence")
+            preferences.autoUpdateInterval().set(0)
+            now += 7 * 86_400_000L
+            advanceTimeBy(61_000)
+            runCurrent()
+            assertEquals(listOf(1L, 1L), calls)
+        } finally {
+            scheduler.stopAndJoin()
+            node.removeNode()
+        }
+    }
+
+    @Test
     fun `original timer consumes shared extended interval and explicit off without legacy dual writes`() = runTest {
         for (hours in listOf(48, 72)) {
             val node = java.util.prefs.Preferences.userRoot().node(
@@ -84,7 +379,7 @@ class LibraryUpdateRecoveryIntegrationTest {
         val second = scheduler(taskStore, calls, this) { UpdateResult(0) }
         second.start().join()
 
-        assertEquals(listOf(1L, 2L, 2L, 3L), calls)
+        assertEquals(listOf(1L, 2L, 3L, 2L), calls)
         assertTrue(second.taskSnapshot()?.status?.isTerminal == true)
         second.stop()
     }
@@ -93,7 +388,7 @@ class LibraryUpdateRecoveryIntegrationTest {
     fun `pending task without checkpoint resumes immediately on startup`() = runTest {
         val calls = mutableListOf<Long>()
         val file = directory.resolve("tasks.json")
-        DesktopTaskScheduler(FileTaskCheckpointStore(file)).register(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK)
+        seedPendingWorkset(file)
 
         val scheduler = scheduler(file, calls, this) { UpdateResult(0) }
         scheduler.start().join()
@@ -104,8 +399,21 @@ class LibraryUpdateRecoveryIntegrationTest {
 
     @Test
     fun `startup without pending work completes initial recovery immediately`() = runTest {
-        val scheduler = scheduler(directory.resolve("tasks.json"), mutableListOf(), this) { UpdateResult(0) }
+        val file = directory.resolve("tasks.json")
+        val calls = mutableListOf<Long>()
+        val emptyProfile = scheduler(file, calls, this) { UpdateResult(0) }
+        emptyProfile.start().join()
+        assertTrue(calls.isEmpty())
+        assertEquals(null, emptyProfile.taskSnapshot())
+        emptyProfile.stop()
+        val scheduler = scheduler(file, calls, this) { UpdateResult(0) }
         scheduler.runNow().join()
+        val completed = scheduler.taskSnapshot()
+        val reopened = scheduler(file, calls, this) { UpdateResult(0) }
+        reopened.start().join()
+        assertEquals(completed, reopened.taskSnapshot())
+        assertEquals(listOf(1L, 2L, 3L), calls)
+        reopened.stop()
 
         val initialRecovery = scheduler.start()
 
@@ -117,7 +425,7 @@ class LibraryUpdateRecoveryIntegrationTest {
     @Test
     fun `stop cancels initial recovery and its update`() = runTest {
         val file = directory.resolve("tasks.json")
-        DesktopTaskScheduler(FileTaskCheckpointStore(file)).register(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK)
+        seedPendingWorkset(file)
         val entered = CompletableDeferred<Unit>()
         val neverRelease = CompletableDeferred<Unit>()
         val scheduler = scheduler(file, mutableListOf(), this) {
@@ -126,7 +434,7 @@ class LibraryUpdateRecoveryIntegrationTest {
             UpdateResult(0)
         }
         val initialRecovery = scheduler.start()
-        entered.await()
+        kotlinx.coroutines.withTimeout(5_000) { entered.await() }
 
         scheduler.stop()
         initialRecovery.join()
@@ -138,7 +446,7 @@ class LibraryUpdateRecoveryIntegrationTest {
     @Test
     fun `stopAndJoin cancels and joins initial recovery`() = runTest {
         val file = directory.resolve("tasks.json")
-        DesktopTaskScheduler(FileTaskCheckpointStore(file)).register(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK)
+        seedPendingWorkset(file)
         val entered = CompletableDeferred<Unit>()
         val neverRelease = CompletableDeferred<Unit>()
         val schedulerScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -148,7 +456,9 @@ class LibraryUpdateRecoveryIntegrationTest {
             UpdateResult(0)
         }
         val initialRecovery = scheduler.start()
-        entered.await()
+        kotlinx.coroutines.withContext(Dispatchers.Default) {
+            kotlinx.coroutines.withTimeout(5_000) { entered.await() }
+        }
 
         scheduler.stopAndJoin()
 
@@ -159,7 +469,7 @@ class LibraryUpdateRecoveryIntegrationTest {
     @Test
     fun `runNow during initial recovery shares the recovery occurrence`() = runTest {
         val file = directory.resolve("tasks.json")
-        DesktopTaskScheduler(FileTaskCheckpointStore(file)).register(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK)
+        seedPendingWorkset(file)
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val scheduler = scheduler(file, mutableListOf(), this) {
@@ -168,7 +478,7 @@ class LibraryUpdateRecoveryIntegrationTest {
             UpdateResult(0)
         }
         val initialRecovery = scheduler.start()
-        entered.await()
+        kotlinx.coroutines.withTimeout(5_000) { entered.await() }
 
         val concurrent = scheduler.runNow()
         release.complete(Unit)
@@ -193,7 +503,7 @@ class LibraryUpdateRecoveryIntegrationTest {
         }
 
         scheduler.runNow()
-        entered.await()
+        kotlinx.coroutines.withTimeout(5_000) { entered.await() }
         assertTrue(scheduler.cancelUpdate())
         release.complete(Unit)
         runCurrent()
@@ -218,7 +528,7 @@ class LibraryUpdateRecoveryIntegrationTest {
         }
 
         val job = scheduler.runNow()
-        entered.await()
+        kotlinx.coroutines.withTimeout(5_000) { entered.await() }
         assertTrue(scheduler.cancelUpdate())
         release.complete(Unit)
         job.join()
@@ -245,7 +555,7 @@ class LibraryUpdateRecoveryIntegrationTest {
         }
 
         val job = scheduler.runNow()
-        entered.await()
+        kotlinx.coroutines.withTimeout(5_000) { entered.await() }
         assertTrue(scheduler.cancelUpdate())
         release.complete(Unit)
         job.join()
@@ -336,11 +646,23 @@ class LibraryUpdateRecoveryIntegrationTest {
     fun `missing cursor after deletion restarts safely and skips completed ids`() = runTest {
         val file = directory.resolve("tasks.json")
         val firstCalls = mutableListOf<Long>()
-        scheduler(file, firstCalls, this) { id -> if (id == 2L) error("stop") else UpdateResult(0) }.runNow().join()
+        val thirdEntered = CompletableDeferred<Unit>()
+        val first = scheduler(file, firstCalls, this) { id ->
+            if (id == 2L) error("stop")
+            if (id == 3L) {
+                thirdEntered.complete(Unit)
+                kotlinx.coroutines.awaitCancellation()
+            }
+            UpdateResult(0)
+        }
+        val original = first.runNow()
+        kotlinx.coroutines.withTimeout(5_000) { thirdEntered.await() }
+        assertTrue(first.cancelUpdate())
+        original.join()
         val resumedCalls = mutableListOf<Long>()
         val resumed = scheduler(file, resumedCalls, this, ids = listOf(3L, 1L)) { UpdateResult(0) }
 
-        resumed.runNow().join()
+        resumed.resumeUpdate().join()
 
         assertEquals(listOf(3L), resumedCalls)
         assertEquals(mihon.domain.task.TaskStatus.Completed, resumed.taskSnapshot()?.status)
@@ -356,7 +678,7 @@ class LibraryUpdateRecoveryIntegrationTest {
         first.runNow().join()
         val resumed = scheduler(file, mutableListOf(), this, ids = listOf(3L)) { UpdateResult(0) }
 
-        resumed.runNow().join()
+        resumed.resumeUpdate().join()
 
         assertEquals(1f, resumed.taskSnapshot()?.task?.checkpoint?.progress)
         assertEquals(mihon.domain.task.TaskStatus.Completed, resumed.taskSnapshot()?.status)
@@ -366,15 +688,21 @@ class LibraryUpdateRecoveryIntegrationTest {
     fun `initialized empty workset does not absorb manga added during recovery`() = runTest {
         val file = directory.resolve("tasks.json")
         DesktopTaskScheduler(FileTaskCheckpointStore(file)).apply {
-            register(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK)
+            beginLibraryUpdate(
+                LibraryUpdateScheduler.LIBRARY_UPDATE_TASK,
+                mihon.desktop.task.LibraryUpdateContext(
+                    mihon.desktop.task.LibraryUpdateTrigger.MANUAL,
+                    mihon.desktop.task.LibraryUpdateScope.ALL,
+                    units = emptyList(),
+                ),
+            )
             start(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK.id)
-            setWorkset(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK.id, emptyList())
             fail(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK.id, mihon.domain.error.AppError.Unknown())
         }
         val calls = mutableListOf<Long>()
         val resumed = scheduler(file, calls, this, ids = listOf(4L)) { UpdateResult(0) }
 
-        resumed.runNow().join()
+        resumed.resumeUpdate().join()
 
         assertTrue(calls.isEmpty())
         assertEquals(mihon.domain.task.TaskStatus.Completed, resumed.taskSnapshot()?.status)
@@ -393,7 +721,7 @@ class LibraryUpdateRecoveryIntegrationTest {
         }
 
         val jobs = (1..20).map { async { scheduler.runNow() } }.awaitAll()
-        entered.await()
+        kotlinx.coroutines.withTimeout(5_000) { entered.await() }
         assertEquals(1, jobs.distinct().size)
         release.complete(Unit)
         jobs.first().join()
@@ -447,6 +775,17 @@ class LibraryUpdateRecoveryIntegrationTest {
         assertEquals(1, delivered.count { it.title == "Library update failed" })
     }
 
+    private fun seedPendingWorkset(file: Path) {
+        DesktopTaskScheduler(FileTaskCheckpointStore(file)).beginLibraryUpdate(
+            LibraryUpdateScheduler.LIBRARY_UPDATE_TASK,
+            mihon.desktop.task.LibraryUpdateContext(
+                mihon.desktop.task.LibraryUpdateTrigger.MANUAL,
+                mihon.desktop.task.LibraryUpdateScope.ALL,
+                units = (1L..3L).map { id -> mihon.desktop.task.LibraryUpdateUnit(id, 42, "/manga/$id") },
+            ),
+        )
+    }
+
     private fun scheduler(
         file: Path,
         calls: MutableList<Long>,
@@ -476,7 +815,7 @@ class LibraryUpdateRecoveryIntegrationTest {
     }
 
     private fun libraryManga(id: Long) = LibraryManga(
-        manga = Manga.create().copy(id = id, title = "M$id", favorite = true),
+        manga = Manga.create().copy(id = id, source = 42, url = "/manga/$id", title = "M$id", favorite = true),
         categories = emptyList(),
         totalChapters = 0,
         readCount = 0,

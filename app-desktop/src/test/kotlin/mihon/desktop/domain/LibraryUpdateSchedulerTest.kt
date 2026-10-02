@@ -3,41 +3,41 @@ package mihon.desktop.domain
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.DelicateCoroutinesApi
+import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.newSingleThreadContext
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.newSingleThreadContext
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import io.kotest.matchers.shouldBe
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.LibraryUpdateInterval
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTimeoutPreemptively
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.time.Duration
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
-import tachiyomi.domain.manga.interactor.GetLibraryManga
-import tachiyomi.domain.library.model.LibraryManga
-import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.manga.interactor.GetLibraryManga
+import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourceManager
+import java.time.Duration
 
 @OptIn(ExperimentalCoroutinesApi::class, DelicateCoroutinesApi::class)
 class LibraryUpdateSchedulerTest {
@@ -65,7 +65,7 @@ class LibraryUpdateSchedulerTest {
 
     @Test
     fun `new chapters are forwarded to shared auto download policy`() = runTest {
-        val manga = Manga.create().copy(id = 10, title = "Manga", favorite = true)
+        val manga = Manga.create().copy(id = 10, source = 42, url = "/manga/10", title = "Manga", favorite = true)
         val chapter = Chapter.create().copy(id = 20, mangaId = manga.id, name = "Chapter", url = "/20")
         var forwarded: Pair<Manga, List<Chapter>>? = null
         val scheduler = LibraryUpdateScheduler(
@@ -88,8 +88,8 @@ class LibraryUpdateSchedulerTest {
     fun `manual update can be scoped to the active library category`() = runTest {
         prefs.updateCategoryIncludes.set("2")
         prefs.updateCategoryExcludes.set("1")
-        val first = Manga.create().copy(id = 10L, title = "First", favorite = true)
-        val second = Manga.create().copy(id = 20L, title = "Second", favorite = true)
+        val first = Manga.create().copy(id = 10L, source = 42, url = "/manga/10", title = "First", favorite = true)
+        val second = Manga.create().copy(id = 20L, source = 42, url = "/manga/20", title = "Second", favorite = true)
         val updated = mutableListOf<Long>()
         val scheduler = LibraryUpdateScheduler(
             appPreferences = prefs,
@@ -124,7 +124,20 @@ class LibraryUpdateSchedulerTest {
             getLibraryManga = null,
             sourceManager = null,
             scope = backgroundScope,
-            libraryProvider = { listOf(LibraryManga(Manga.create().copy(id = 1), listOf(0), 0, 0, 0, 0, 0, 0)) },
+            libraryProvider = {
+                listOf(
+                    LibraryManga(
+                        Manga.create().copy(id = 1, source = 42, url = "/manga/1", favorite = true),
+                        listOf(0),
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                    ),
+                )
+            },
             updateManga = {
                 entered.complete(Unit)
                 release.await()
@@ -139,7 +152,10 @@ class LibraryUpdateSchedulerTest {
         release.complete(Unit)
         first.join()
         assertEquals(null, scheduler.currentUpdateJob())
-        assertTrue(scheduler.runNow() !== first)
+        val next = scheduler.runNow()
+        assertTrue(next !== first)
+        next.join()
+        scheduler.stopAndJoin()
     }
 
     @Test
@@ -192,7 +208,7 @@ class LibraryUpdateSchedulerTest {
             scope = this,
         )
         scheduler.start()
-        scheduler.start()  // should be a no-op
+        scheduler.start() // should be a no-op
         assertTrue(scheduler.isRunning)
         scheduler.stop()
         assertFalse(scheduler.isRunning)
@@ -286,7 +302,7 @@ class LibraryUpdateSchedulerTest {
             sourceManager = noopSourceManager,
             scope = this,
         )
-        scheduler.stop()  // must not throw
+        scheduler.stop() // must not throw
         assertFalse(scheduler.isRunning)
     }
 

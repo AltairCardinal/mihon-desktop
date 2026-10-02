@@ -3127,7 +3127,11 @@
     ],
     "sharedImplementationPaths": [
       "domain/src/commonMain/kotlin/mihon/domain/task/BackgroundTask.kt",
-      "domain/src/commonMain/kotlin/tachiyomi/domain/library/service/LibraryPreferences.kt"
+      "domain/src/commonMain/kotlin/tachiyomi/domain/library/service/LibraryPreferences.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/library/service/LibraryUpdateSkipReason.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaMetadata.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/FetchInterval.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterDirectoryPhase.kt"
     ],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt"
@@ -3137,7 +3141,9 @@
       "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/settings/DesktopLibraryCategoryPolicy.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/settings/LibraryPreferenceMigration.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibrarySettingsScreen.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibrarySettingsScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateChecker.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryUpdateResultsDialog.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -3152,12 +3158,12 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
           "symbol": "class LibraryUpdateJob",
-          "line": 88
+          "line": 83
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
           "symbol": "override suspend fun doWork(): Result {",
-          "line": 106
+          "line": 101
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -3178,18 +3184,24 @@
           "symbol": "class LibraryPreferenceMigration(",
           "kind": "ADAPTER",
           "line": 19
+        },
+        {
+          "path": "domain/src/commonMain/kotlin/tachiyomi/domain/library/service/LibraryUpdateSkipReason.kt",
+          "symbol": "fun libraryUpdateSkipReason(",
+          "line": 18,
+          "kind": "SHARED"
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt",
           "symbol": "class DesktopTaskScheduler",
-          "line": 136
+          "line": 177
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibrarySettingsScreen.kt",
           "symbol": "class LibrarySettingsScreen : Screen {",
-          "line": 45
+          "line": 44
         }
       ],
       "FIXTURE": [
@@ -4194,7 +4206,12 @@
       "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateScopeTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/settings/LibraryPreferenceMigrationTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/settings/LibraryPreferenceMigrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateOccurrenceIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateEligibilityTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/FetchIntervalClockTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMangaMetadataTest.kt"
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt": [
@@ -4232,7 +4249,84 @@
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD",
-    "verificationScope": "The Library interaction repair shares selectLibraryMangaForUpdate between the real Android LibraryUpdateJob and Desktop LibraryUpdateScheduler: explicit categories bypass whole-library include/exclude, while whole-library exclusion wins (including default category 0). Real Root -> factory -> scheduler fixtures cover search-independent scope, duplicate requests, detail navigation/return and actual job completion; persisted stale Running is not treated as an active occurrence. The existing executor, automatic device restrictions, scheduling and migration gaps remain under LU-01 and are not promoted by this manual-entry repair. Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI12 adds a complete validated category snapshot used by the production Desktop scheduler, default-category 0, exclusion precedence and explicit category bypass. Finite interrupted-write recovery blocks malformed or half-migrated scope; V3 preserves six-hour legacy and valid explicit shared values, with raw/isSet restoration and marker-last. Existing interval UI and timer consume the shared key without legacy dual writes; 48/72-hour values are retained, while new options and full Clock/smart/metadata behavior remain RI14 and device behavior RI16. Actual Android Worker deletion recovery and the 66 unique focused passes are documented in docs/evidence/desktop-interaction-iteration-2026-09-30.md; no current final full tests, release or hardware acceptance is implied."
+    "verificationScope": "The Library interaction repair shares selectLibraryMangaForUpdate between the real Android LibraryUpdateJob and Desktop LibraryUpdateScheduler: explicit categories bypass whole-library include/exclude, while whole-library exclusion wins (including default category 0). Real Root -> factory -> scheduler fixtures cover search-independent scope, duplicate requests, detail navigation/return and actual job completion; persisted stale Running is not treated as an active occurrence. The existing executor, automatic device restrictions, scheduling and migration gaps remain under LU-01 and are not promoted by this manual-entry repair. Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI12 adds a complete validated category snapshot used by the production Desktop scheduler, default-category 0, exclusion precedence and explicit category bypass. Finite interrupted-write recovery blocks malformed or half-migrated scope; V3 preserves six-hour legacy and valid explicit shared values, with raw/isSet restoration and marker-last. Existing interval UI and timer consume the shared key without legacy dual writes; 48/72-hour values are retained, while new options and full Clock/smart/metadata behavior remain RI14 and device behavior RI16. Actual Android Worker deletion recovery and the 66 unique focused passes are documented in docs/evidence/desktop-interaction-iteration-2026-09-30.md; no current final full tests, release or hardware acceptance is implied. RI14 adds original library occurrence scopes, durable per-unit results and receipt recovery while preserving generic task lifecycle and legacy JSON refusal without scope expansion. Periodic time uses the shared persistent preference and injected Clock; SINGLE does not advance the whole-library clock. Device constraints remain RI16.",
+    "interactionIterationEvidence": {
+      "RI14": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateOccurrenceIntegrationTest.kt": [
+            "production SINGLE local refresh consumes the existing file discovery without remote or automatic download",
+            "cancelled committed receipt is repaired before fresh scope without redelivery or misattributed counts",
+            "production SINGLE refreshes only the actual favorite or nonfavorite and ignores batch policy",
+            "production prediction Boolean refusal retains the original phase for network free recovery",
+            "production prediction exception retains the original phase for network free recovery",
+            "checker metadata preserves user title custom cover and atomic directory",
+            "real repository candidates preserve all smart skips even for an explicit category",
+            "completed effects survive checkpoint refusal and restart without another response or redelivery",
+            "explicit failed retry repairs an already committed unit without another source response",
+            "durable completed unit retains its result when final phase acknowledgement fails and restarts",
+            "fresh library occurrence first restores an older non task directory phase using its original effects"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": [
+            "cancelled initialization cannot advance the durable check time",
+            "library occurrence continues after a failed middle unit and retains later success",
+            "legacy occurrence without a fixed workset cannot expand into the current library",
+            "fresh category occurrence replaces a previous failed workset instead of inheriting it",
+            "accepted library query can be cancelled before its fixed workset has loaded",
+            "library unit completion cannot replace the originally accepted source and URL identity",
+            "failed only retry cannot resume cancelled unprocessed units",
+            "initial durable acceptance failure preserves old completion and reports this launch failure",
+            "periodic restart uses durable actual check time and controlled backwards and sleep clocks",
+            "original timer consumes shared extended interval and explicit off without legacy dual writes",
+            "new instance resumes after cursor and never repeats successful manga",
+            "pending task without checkpoint resumes immediately on startup",
+            "startup without pending work completes initial recovery immediately",
+            "stop cancels initial recovery and its update",
+            "stopAndJoin cancels and joins initial recovery",
+            "runNow during initial recovery shares the recovery occurrence",
+            "cancelling running update prevents following items",
+            "cancelling during non cancellable final source update emits cancelled only",
+            "cancelling while non cancellable final source returns error never emits failure",
+            "library update success triggers discovery due reevaluation without changing library terminal",
+            "library update failure does not block independent discovery due run",
+            "missing cursor after deletion restarts safely and skips completed ids",
+            "resumed progress uses original workset after completed manga are filtered out",
+            "initialized empty workset does not absorb manga added during recovery",
+            "concurrent runNow calls share one occurrence",
+            "real update emits progress and one terminal success event",
+            "failed manga is persisted as a structured failed unit",
+            "outer failure records failed state instead of being swallowed"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt": [
+            "persisted library results reopen on Root and retry only the failed original work",
+            "Root shows a refused new durable update instead of replaying old completed feedback"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
+            "new periodic smart metadata settings search reaches the real shared preference controls",
+            "periodic smart and metadata settings retain authority after pre and post write refusal",
+            "native update results at 320 font200 retain modal keyboard bounds and return focus",
+            "library settings expose all real periodic smart and metadata preferences"
+          ],
+          "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateEligibilityTest.kt": [
+            "each smart restriction and zero chapter exception retain source priority",
+            "fetch once is unconditional only after at least one stored chapter"
+          ],
+          "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/FetchIntervalClockTest.kt": [
+            "zero window preserves an existing prediction inside the supplied date window",
+            "zero window and unknown last update use the supplied time instead of wall clock"
+          ],
+          "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMangaMetadataTest.kt": [
+            "source metadata respects favorite title policy while consuming source fields and platform cover version",
+            "empty source cover and absent title do not erase persisted values"
+          ],
+          "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt": [
+            "actual library worker characterizes smart restrictions fetch once and zero chapter eligibility",
+            "metadata worker reaches real combined detail update and stores memo"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "110 unique affected methods passed (Desktop102/domain6/Android2), 0 skipped; scoped format passed. Original failed runs and targeted repairs remain in the report. Final full matrix/release/hardware evidence remains RI18."
+      }
+    }
   },
   {
     "id": 11,
@@ -4292,7 +4386,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 1223
+          "line": 1232
         }
       ],
       "FIXTURE": [
@@ -5439,7 +5533,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
           "symbol": "override suspend fun doWork(): Result {",
-          "line": 106
+          "line": 101
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/App.kt",
@@ -6424,7 +6518,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibrarySettingsScreen.kt",
           "symbol": "class LibrarySettingsScreen : Screen {",
-          "line": 45
+          "line": 44
         }
       ],
       "FIXTURE": [
@@ -10034,12 +10128,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "val available = tachiyomi.domain.library.selectManualDownloadChapters(",
-          "line": 1170
+          "line": 1226
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1259
+          "line": 1315
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/LibraryScreenModelFactory.kt",
@@ -11625,7 +11719,7 @@
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibrarySettingsScreen.kt",
           "symbol": "private fun DefaultLibraryCategorySettings(",
           "kind": "ADAPTER",
-          "line": 319
+          "line": 323
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -11647,7 +11741,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1259
+          "line": 1315
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailMembershipDialogs.kt",
@@ -20776,7 +20870,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "initialChapterFlags = { Injekt.get<SetMangaDefaultChapterFlags>().initialFlags() },",
-          "line": 761
+          "line": 763
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
@@ -31289,7 +31383,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "private fun eligibleReaderChapters(",
-          "line": 1219
+          "line": 1275
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
@@ -33987,7 +34081,10 @@
     ],
     "sharedImplementationPaths": [
       "domain/src/commonMain/kotlin/mihon/domain/chapter/interactor/FilterChaptersForDownload.kt",
-      "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterDirectoryPhase.kt"
+      "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterDirectoryPhase.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/library/service/LibraryUpdateSkipReason.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaMetadata.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/FetchInterval.kt"
     ],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
@@ -33998,7 +34095,9 @@
       "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateChecker.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryUpdateResultsDialog.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -34033,7 +34132,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "downloadPolicy = { manga -> Injekt.get<FilterChaptersForDownload>().snapshot(manga) }",
-          "line": 793
+          "line": 795
         }
       ],
       "FIXTURE": [
@@ -34056,7 +34155,15 @@
       "app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/domain/ChapterDirectorySyncIntegrationTest.kt",
-      "app/src/test/java/eu/kanade/tachiyomi/data/download/DirectoryDownloadAcceptanceTest.kt"
+      "app/src/test/java/eu/kanade/tachiyomi/data/download/DirectoryDownloadAcceptanceTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateOccurrenceIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateEligibilityTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/FetchIntervalClockTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMangaMetadataTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt"
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt": [
@@ -34099,9 +34206,84 @@
         },
         "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
         "verification": "108 unique affected methods passed; 0 skipped; exact historical behaviorMethods retained."
+      },
+      "RI14": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateOccurrenceIntegrationTest.kt": [
+            "production SINGLE local refresh consumes the existing file discovery without remote or automatic download",
+            "cancelled committed receipt is repaired before fresh scope without redelivery or misattributed counts",
+            "production SINGLE refreshes only the actual favorite or nonfavorite and ignores batch policy",
+            "production prediction Boolean refusal retains the original phase for network free recovery",
+            "production prediction exception retains the original phase for network free recovery",
+            "checker metadata preserves user title custom cover and atomic directory",
+            "real repository candidates preserve all smart skips even for an explicit category",
+            "completed effects survive checkpoint refusal and restart without another response or redelivery",
+            "explicit failed retry repairs an already committed unit without another source response",
+            "durable completed unit retains its result when final phase acknowledgement fails and restarts",
+            "fresh library occurrence first restores an older non task directory phase using its original effects"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": [
+            "cancelled initialization cannot advance the durable check time",
+            "library occurrence continues after a failed middle unit and retains later success",
+            "legacy occurrence without a fixed workset cannot expand into the current library",
+            "fresh category occurrence replaces a previous failed workset instead of inheriting it",
+            "accepted library query can be cancelled before its fixed workset has loaded",
+            "library unit completion cannot replace the originally accepted source and URL identity",
+            "failed only retry cannot resume cancelled unprocessed units",
+            "initial durable acceptance failure preserves old completion and reports this launch failure",
+            "periodic restart uses durable actual check time and controlled backwards and sleep clocks",
+            "original timer consumes shared extended interval and explicit off without legacy dual writes",
+            "new instance resumes after cursor and never repeats successful manga",
+            "pending task without checkpoint resumes immediately on startup",
+            "startup without pending work completes initial recovery immediately",
+            "stop cancels initial recovery and its update",
+            "stopAndJoin cancels and joins initial recovery",
+            "runNow during initial recovery shares the recovery occurrence",
+            "cancelling running update prevents following items",
+            "cancelling during non cancellable final source update emits cancelled only",
+            "cancelling while non cancellable final source returns error never emits failure",
+            "library update success triggers discovery due reevaluation without changing library terminal",
+            "library update failure does not block independent discovery due run",
+            "missing cursor after deletion restarts safely and skips completed ids",
+            "resumed progress uses original workset after completed manga are filtered out",
+            "initialized empty workset does not absorb manga added during recovery",
+            "concurrent runNow calls share one occurrence",
+            "real update emits progress and one terminal success event",
+            "failed manga is persisted as a structured failed unit",
+            "outer failure records failed state instead of being swallowed"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt": [
+            "persisted library results reopen on Root and retry only the failed original work",
+            "Root shows a refused new durable update instead of replaying old completed feedback"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
+            "new periodic smart metadata settings search reaches the real shared preference controls",
+            "periodic smart and metadata settings retain authority after pre and post write refusal",
+            "native update results at 320 font200 retain modal keyboard bounds and return focus",
+            "library settings expose all real periodic smart and metadata preferences"
+          ],
+          "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateEligibilityTest.kt": [
+            "each smart restriction and zero chapter exception retain source priority",
+            "fetch once is unconditional only after at least one stored chapter"
+          ],
+          "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/FetchIntervalClockTest.kt": [
+            "zero window preserves an existing prediction inside the supplied date window",
+            "zero window and unknown last update use the supplied time instead of wall clock"
+          ],
+          "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMangaMetadataTest.kt": [
+            "source metadata respects favorite title policy while consuming source fields and platform cover version",
+            "empty source cover and absent title do not erase persisted values"
+          ],
+          "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt": [
+            "actual library worker characterizes smart restrictions fetch once and zero chapter eligibility",
+            "metadata worker reaches real combined detail update and stores memo"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "110 unique affected methods passed (Desktop102/domain6/Android2), 0 skipped; scoped format passed. Original failed runs and targeted repairs remain in the report. Final full matrix/release/hardware evidence remains RI18."
       }
     },
-    "verificationScope": " RI13 captures original eligible new IDs and download policy, refuses affected accepted queue identities before SQL, and acknowledges actual queue acceptance with retry after restart. Browse cannot replace an older pending policy; scheduling is unchanged until RI14.",
+    "verificationScope": " RI13 captures original eligible new IDs and download policy, refuses affected accepted queue identities before SQL, and acknowledges actual queue acceptance with retry after restart. Browse cannot replace an older pending policy; scheduling is unchanged until RI14. RI14 checkpoints only after the original directory effects and prediction finish. Recovery retains original added IDs/counts, quality observations and accepted queue identities without refetch/redelivery. Local SINGLE uses existing file discovery and must not schedule remote downloads.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -35279,16 +35461,22 @@
       "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterDirectoryPhase.kt",
       "data/src/commonMain/kotlin/tachiyomi/data/chapter/ChapterRepositoryImpl.kt",
       "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaUpdateService.kt",
-      "source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/model/SMangaUpdate.kt"
+      "source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/model/SMangaUpdate.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/library/service/LibraryUpdateSkipReason.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaMetadata.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/FetchInterval.kt"
     ],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
-      "app/src/main/java/eu/kanade/domain/chapter/interactor/SyncChaptersWithSource.kt"
+      "app/src/main/java/eu/kanade/domain/chapter/interactor/SyncChaptersWithSource.kt",
+      "app/src/main/java/eu/kanade/domain/manga/interactor/UpdateManga.kt"
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateChecker.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/domain/SaveSourceMangaForDetails.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/SaveSourceMangaForDetails.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryUpdateResultsDialog.kt"
     ],
     "deviations": [
       {
@@ -35313,12 +35501,17 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
           "symbol": "override suspend fun doWork",
-          "line": 106
+          "line": 101
         },
         {
           "path": "app/src/main/java/eu/kanade/domain/chapter/interactor/SyncChaptersWithSource.kt",
           "symbol": "class SyncChaptersWithSource(",
           "line": 24
+        },
+        {
+          "path": "app/src/main/java/eu/kanade/domain/manga/interactor/UpdateManga.kt",
+          "symbol": "return tachiyomi.domain.source.service.sourceMangaMetadata(",
+          "line": 191
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -35338,19 +35531,47 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterDirectoryPhase.kt",
           "symbol": "data class ChapterDirectoryPhase(",
-          "line": 48
+          "line": 58
+        },
+        {
+          "path": "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterDirectoryPhase.kt",
+          "symbol": "data class DirectoryPrediction(",
+          "line": 34,
+          "kind": "SHARED"
+        },
+        {
+          "path": "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaMetadata.kt",
+          "symbol": "fun sourceMangaMetadata(",
+          "line": 8,
+          "kind": "SHARED"
+        },
+        {
+          "path": "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/FetchInterval.kt",
+          "symbol": "class FetchInterval(",
+          "line": 13,
+          "kind": "SHARED"
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt",
           "symbol": "fun runNow",
-          "line": 83
+          "line": 103
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateChecker.kt",
           "symbol": "class LibraryUpdateChecker(",
           "line": 28
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt",
+          "symbol": "fun confirmLibraryReceipt(",
+          "line": 257
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryUpdateResultsDialog.kt",
+          "symbol": "internal fun LibraryUpdateResultsDialog(",
+          "line": 41
         }
       ],
       "FIXTURE": [
@@ -35374,7 +35595,13 @@
       "app/src/test/java/eu/kanade/tachiyomi/data/backup/SourceUpdateMemoBackupIntegrationTest.kt",
       "data/src/commonTest/kotlin/mihon/data/sync/SyncReadingStorageContract.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt",
-      "app/src/test/java/eu/kanade/tachiyomi/data/backup/SourceUpdateMemoPageConsumersIntegrationTest.kt"
+      "app/src/test/java/eu/kanade/tachiyomi/data/backup/SourceUpdateMemoPageConsumersIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateOccurrenceIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateEligibilityTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/FetchIntervalClockTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMangaMetadataTest.kt"
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": [
@@ -35435,9 +35662,84 @@
         },
         "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
         "verification": "108 unique affected methods passed; 0 skipped; exact historical behaviorMethods retained."
+      },
+      "RI14": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateOccurrenceIntegrationTest.kt": [
+            "production SINGLE local refresh consumes the existing file discovery without remote or automatic download",
+            "cancelled committed receipt is repaired before fresh scope without redelivery or misattributed counts",
+            "production SINGLE refreshes only the actual favorite or nonfavorite and ignores batch policy",
+            "production prediction Boolean refusal retains the original phase for network free recovery",
+            "production prediction exception retains the original phase for network free recovery",
+            "checker metadata preserves user title custom cover and atomic directory",
+            "real repository candidates preserve all smart skips even for an explicit category",
+            "completed effects survive checkpoint refusal and restart without another response or redelivery",
+            "explicit failed retry repairs an already committed unit without another source response",
+            "durable completed unit retains its result when final phase acknowledgement fails and restarts",
+            "fresh library occurrence first restores an older non task directory phase using its original effects"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": [
+            "cancelled initialization cannot advance the durable check time",
+            "library occurrence continues after a failed middle unit and retains later success",
+            "legacy occurrence without a fixed workset cannot expand into the current library",
+            "fresh category occurrence replaces a previous failed workset instead of inheriting it",
+            "accepted library query can be cancelled before its fixed workset has loaded",
+            "library unit completion cannot replace the originally accepted source and URL identity",
+            "failed only retry cannot resume cancelled unprocessed units",
+            "initial durable acceptance failure preserves old completion and reports this launch failure",
+            "periodic restart uses durable actual check time and controlled backwards and sleep clocks",
+            "original timer consumes shared extended interval and explicit off without legacy dual writes",
+            "new instance resumes after cursor and never repeats successful manga",
+            "pending task without checkpoint resumes immediately on startup",
+            "startup without pending work completes initial recovery immediately",
+            "stop cancels initial recovery and its update",
+            "stopAndJoin cancels and joins initial recovery",
+            "runNow during initial recovery shares the recovery occurrence",
+            "cancelling running update prevents following items",
+            "cancelling during non cancellable final source update emits cancelled only",
+            "cancelling while non cancellable final source returns error never emits failure",
+            "library update success triggers discovery due reevaluation without changing library terminal",
+            "library update failure does not block independent discovery due run",
+            "missing cursor after deletion restarts safely and skips completed ids",
+            "resumed progress uses original workset after completed manga are filtered out",
+            "initialized empty workset does not absorb manga added during recovery",
+            "concurrent runNow calls share one occurrence",
+            "real update emits progress and one terminal success event",
+            "failed manga is persisted as a structured failed unit",
+            "outer failure records failed state instead of being swallowed"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt": [
+            "persisted library results reopen on Root and retry only the failed original work",
+            "Root shows a refused new durable update instead of replaying old completed feedback"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
+            "new periodic smart metadata settings search reaches the real shared preference controls",
+            "periodic smart and metadata settings retain authority after pre and post write refusal",
+            "native update results at 320 font200 retain modal keyboard bounds and return focus",
+            "library settings expose all real periodic smart and metadata preferences"
+          ],
+          "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateEligibilityTest.kt": [
+            "each smart restriction and zero chapter exception retain source priority",
+            "fetch once is unconditional only after at least one stored chapter"
+          ],
+          "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/FetchIntervalClockTest.kt": [
+            "zero window preserves an existing prediction inside the supplied date window",
+            "zero window and unknown last update use the supplied time instead of wall clock"
+          ],
+          "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMangaMetadataTest.kt": [
+            "source metadata respects favorite title policy while consuming source fields and platform cover version",
+            "empty source cover and absent title do not erase persisted values"
+          ],
+          "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt": [
+            "actual library worker characterizes smart restrictions fetch once and zero chapter eligibility",
+            "metadata worker reaches real combined detail update and stores memo"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "110 unique affected methods passed (Desktop102/domain6/Android2), 0 skipped; scoped format passed. Original failed runs and targeted repairs remain in the report. Final full matrix/release/hardware evidence remains RI18."
       }
     },
-    "verificationScope": "The Library interaction repair shares selectLibraryMangaForUpdate between the real Android LibraryUpdateJob and Desktop LibraryUpdateScheduler: explicit categories bypass whole-library include/exclude, while whole-library exclusion wins (including default category 0). Real Root -> factory -> scheduler fixtures cover search-independent scope, duplicate requests, detail navigation/return and actual job completion; persisted stale Running is not treated as an active occurrence. The existing executor, automatic device restrictions, scheduling and migration gaps remain under LU-01 and are not promoted by this manual-entry repair. Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI13 uses the shared complete-directory plan and one-manga SQL commit with latest user state, original identity and finite post-commit work. Empty remote, explicit incomplete and failed source responses retain old data. Unmarked legacy truncation cannot be detected. Workset scheduling remains RI14."
+    "verificationScope": "The Library interaction repair shares selectLibraryMangaForUpdate between the real Android LibraryUpdateJob and Desktop LibraryUpdateScheduler: explicit categories bypass whole-library include/exclude, while whole-library exclusion wins (including default category 0). Real Root -> factory -> scheduler fixtures cover search-independent scope, duplicate requests, detail navigation/return and actual job completion; persisted stale Running is not treated as an active occurrence. The existing executor, automatic device restrictions, scheduling and migration gaps remain under LU-01 and are not promoted by this manual-entry repair. Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI13 uses the shared complete-directory plan and one-manga SQL commit with latest user state, original identity and finite post-commit work. Empty remote, explicit incomplete and failed source responses retain old data. Unmarked legacy truncation cannot be detected. Workset scheduling remains RI14. RI14 implements continue-after-failure, original ALL/CATEGORY/SINGLE worksets, four per-unit states, cancellation, failure-only retry versus fresh scope, legacy scope refusal and persistent real Root results. Actual Android and Desktop consumers share eligibility and source metadata policy. Default batch metadata remains disabled; explicit SINGLE details use favorite-title policy and custom-cover preservation. Original prediction date/window and refused writes remain in the finite directory phase until successfully saved. Completed effects survive checkpoint refusal and reopen without re-fetching. No new scheduler or global outbox is introduced."
   },
   {
     "id": 62,
@@ -49443,7 +49745,11 @@
     ],
     "sharedImplementationPaths": [
       "domain/src/commonMain/kotlin/mihon/domain/settings/SettingsSearchPolicy.kt",
-      "domain/src/commonMain/kotlin/mihon/domain/settings/SearchablePreference.kt"
+      "domain/src/commonMain/kotlin/mihon/domain/settings/SearchablePreference.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/library/service/LibraryUpdateSkipReason.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaMetadata.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/FetchInterval.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterDirectoryPhase.kt"
     ],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSearchScreen.kt",
@@ -49457,7 +49763,11 @@
       "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopSettingsAnchor.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/MoreRootScreen.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibrarySettingsScreen.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibraryUpdateCategorySettings.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibraryUpdateCategorySettings.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateChecker.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryUpdateResultsDialog.kt"
     ],
     "deviations": [
       {
@@ -49469,7 +49779,14 @@
       "domain/src/commonTest/kotlin/mihon/domain/settings/SettingsSearchPolicyTest.kt",
       "app/src/test/java/eu/kanade/presentation/more/settings/screen/SettingsSearchConsumerBehaviorTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateOccurrenceIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateEligibilityTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/FetchIntervalClockTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMangaMetadataTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt"
     ],
     "behaviorMethods": {
       "domain/src/commonTest/kotlin/mihon/domain/settings/SettingsSearchPolicyTest.kt": [
@@ -49555,9 +49872,86 @@
         ]
       }
     },
-    "verificationScope": "VERIFIED: exact fixed-main search ownership, shared policy, Android projection, Desktop Settings directory entry/feedback/navigation, and behavior methods are bound. RI12 indexes default category, update-category policy and categorized-sort controls. Actual Root search navigates to each persistent control, highlights it and executes real store/SQL changes; the existing library update anchor and shared interval write remain protected. Native and focused evidence are in the iteration report, without claiming current full release acceptance.",
+    "verificationScope": "VERIFIED: exact fixed-main search ownership, shared policy, Android projection, Desktop Settings directory entry/feedback/navigation, and behavior methods are bound. RI12 indexes default category, update-category policy and categorized-sort controls. Actual Root search navigates to each persistent control, highlights it and executes real store/SQL changes; the existing library update anchor and shared interval write remain protected. Native and focused evidence are in the iteration report, without claiming current full release acceptance. RI14 shared interval options include 48/72 hours, smart and metadata controls, searchable real settings anchors and authoritative preference-write feedback; native result dialogs retain focus and reachability at 320px and fontScale=2. Final release and hardware proofs remain RI18.",
     "platformExemptionEvidence": "NONE",
-    "targetVersion": "TBD"
+    "targetVersion": "TBD",
+    "interactionIterationEvidence": {
+      "RI14": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateOccurrenceIntegrationTest.kt": [
+            "production SINGLE local refresh consumes the existing file discovery without remote or automatic download",
+            "cancelled committed receipt is repaired before fresh scope without redelivery or misattributed counts",
+            "production SINGLE refreshes only the actual favorite or nonfavorite and ignores batch policy",
+            "production prediction Boolean refusal retains the original phase for network free recovery",
+            "production prediction exception retains the original phase for network free recovery",
+            "checker metadata preserves user title custom cover and atomic directory",
+            "real repository candidates preserve all smart skips even for an explicit category",
+            "completed effects survive checkpoint refusal and restart without another response or redelivery",
+            "explicit failed retry repairs an already committed unit without another source response",
+            "durable completed unit retains its result when final phase acknowledgement fails and restarts",
+            "fresh library occurrence first restores an older non task directory phase using its original effects"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": [
+            "cancelled initialization cannot advance the durable check time",
+            "library occurrence continues after a failed middle unit and retains later success",
+            "legacy occurrence without a fixed workset cannot expand into the current library",
+            "fresh category occurrence replaces a previous failed workset instead of inheriting it",
+            "accepted library query can be cancelled before its fixed workset has loaded",
+            "library unit completion cannot replace the originally accepted source and URL identity",
+            "failed only retry cannot resume cancelled unprocessed units",
+            "initial durable acceptance failure preserves old completion and reports this launch failure",
+            "periodic restart uses durable actual check time and controlled backwards and sleep clocks",
+            "original timer consumes shared extended interval and explicit off without legacy dual writes",
+            "new instance resumes after cursor and never repeats successful manga",
+            "pending task without checkpoint resumes immediately on startup",
+            "startup without pending work completes initial recovery immediately",
+            "stop cancels initial recovery and its update",
+            "stopAndJoin cancels and joins initial recovery",
+            "runNow during initial recovery shares the recovery occurrence",
+            "cancelling running update prevents following items",
+            "cancelling during non cancellable final source update emits cancelled only",
+            "cancelling while non cancellable final source returns error never emits failure",
+            "library update success triggers discovery due reevaluation without changing library terminal",
+            "library update failure does not block independent discovery due run",
+            "missing cursor after deletion restarts safely and skips completed ids",
+            "resumed progress uses original workset after completed manga are filtered out",
+            "initialized empty workset does not absorb manga added during recovery",
+            "concurrent runNow calls share one occurrence",
+            "real update emits progress and one terminal success event",
+            "failed manga is persisted as a structured failed unit",
+            "outer failure records failed state instead of being swallowed"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt": [
+            "persisted library results reopen on Root and retry only the failed original work",
+            "Root shows a refused new durable update instead of replaying old completed feedback"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
+            "new periodic smart metadata settings search reaches the real shared preference controls",
+            "periodic smart and metadata settings retain authority after pre and post write refusal",
+            "native update results at 320 font200 retain modal keyboard bounds and return focus",
+            "library settings expose all real periodic smart and metadata preferences"
+          ],
+          "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateEligibilityTest.kt": [
+            "each smart restriction and zero chapter exception retain source priority",
+            "fetch once is unconditional only after at least one stored chapter"
+          ],
+          "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/FetchIntervalClockTest.kt": [
+            "zero window preserves an existing prediction inside the supplied date window",
+            "zero window and unknown last update use the supplied time instead of wall clock"
+          ],
+          "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMangaMetadataTest.kt": [
+            "source metadata respects favorite title policy while consuming source fields and platform cover version",
+            "empty source cover and absent title do not erase persisted values"
+          ],
+          "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt": [
+            "actual library worker characterizes smart restrictions fetch once and zero chapter eligibility",
+            "metadata worker reaches real combined detail update and stores memo"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "110 unique affected methods passed (Desktop102/domain6/Android2), 0 skipped; scoped format passed. Original failed runs and targeted repairs remain in the report. Final full matrix/release/hardware evidence remains RI18."
+      }
+    }
   },
   {
     "id": 91,

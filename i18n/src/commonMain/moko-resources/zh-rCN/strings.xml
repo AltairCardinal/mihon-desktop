@@ -1977,4 +1977,13 @@
     <string name="desktop_library_update_scope_invalid">请重新选择更新分类后再更新。</string>
     <string name="desktop_library_update_interval_invalid">无法识别原更新周期，已关闭自动更新。请重新选择更新周期。</string>
     <string name="desktop_directory_download_conflict">请先完成或取消受影响章节的下载，然后重试更新。</string>
+    <string name="desktop_library_update_results_count">%1$d 成功，%2$d 跳过，%3$d 失败，%4$d 未处理</string>
+    <string name="desktop_library_update_results">更新结果</string>
+    <string name="desktop_library_update_cleanup_needed">部分已完成的更新需要恢复。请继续原更新以完成结果保存。</string>
+    <string name="desktop_library_update_item_missing">原书架作品已不可用</string>
+    <string name="desktop_library_update_unit_success">已更新 · %1$d 个新章节</string>
+    <string name="desktop_library_update_unit_skipped">已跳过</string>
+    <string name="desktop_library_update_unit_failed">失败</string>
+    <string name="desktop_library_update_unit_unprocessed">未处理</string>
+    <string name="desktop_library_update_local_failed">本地更新失败。请检查作品的本地文件后重试。</string>
 </resources>

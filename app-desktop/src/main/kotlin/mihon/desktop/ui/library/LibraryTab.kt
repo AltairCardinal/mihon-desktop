@@ -237,6 +237,8 @@ class LibraryRootScreen : Screen {
         val optionsFocusRequester = remember { FocusRequester() }
         val categoryFocusRequester = remember { FocusRequester() }
         val removalFocusRequester = remember { FocusRequester() }
+        val updateResultsFocusRequester = remember { FocusRequester() }
+        var showUpdateResults by remember { mutableStateOf(false) }
         var selectionReturnFocus by remember { mutableStateOf(categoryFocusRequester) }
         var restoreSelectionFocus by remember { mutableIntStateOf(0) }
         fun returnSelectionFocus(trigger: FocusRequester) {
@@ -561,6 +563,20 @@ class LibraryRootScreen : Screen {
             )
         }
 
+        if (showUpdateResults && state.updateTask?.libraryUpdate != null) {
+            LibraryUpdateResultsDialog(
+                task = requireNotNull(state.updateTask),
+                running = state.isUpdating,
+                onRetryFailed = model::retryFailedLibraryUpdate,
+                onResume = model::resumeLibraryUpdate,
+                onCancel = { model.cancelLibraryUpdate() },
+                onDismiss = {
+                    showUpdateResults = false
+                    returnSelectionFocus(updateResultsFocusRequester)
+                },
+            )
+        }
+
         if (showFilterMenu) {
             LibraryOptionsPanel(
                 model = model,
@@ -772,6 +788,12 @@ class LibraryRootScreen : Screen {
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     )
+                    if (state.updateTask?.libraryUpdate != null) {
+                        TextButton(
+                            onClick = { showUpdateResults = true },
+                            modifier = Modifier.focusRequester(updateResultsFocusRequester),
+                        ) { Text(MR.strings.desktop_library_update_results.localized()) }
+                    }
                 }
 
                 if (batchCategoryResultMessage != null) {
@@ -797,7 +819,7 @@ class LibraryRootScreen : Screen {
                         categoryWheelSegment,
                         enabled = !editingSearch && !toolbarPopupVisible && !selectionPopupVisible && !showFilterMenu &&
                             !showBatchCategoryDialog && removalTarget == null && contextMenuManga == null &&
-                            !syncPanelVisible &&
+                            !syncPanelVisible && !showUpdateResults &&
                             model.manualTracking?.prompts?.collectAsState()?.value?.isNotEmpty() != true &&
                             navigator.lastItem is LibraryRootScreen && windowInfo.isWindowFocused,
                     ) { direction ->

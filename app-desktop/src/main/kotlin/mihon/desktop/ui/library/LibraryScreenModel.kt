@@ -150,6 +150,11 @@ class LibraryScreenModel(
             LibraryRemovalFiles,
         ) -> LibraryRemovalDeletionResult
     )? = null,
+    private val backgroundUpdateObservations: Flow<mihon.desktop.domain.LibraryUpdateObservation>? = null,
+    private val backgroundUpdateSnapshot: (() -> mihon.desktop.task.StoredTask?)? = null,
+    private val backgroundUpdateLaunchFailure: (() -> String?)? = null,
+    private val retryFailedBackgroundUpdate: (() -> Job)? = null,
+    private val resumeBackgroundUpdate: (() -> Job)? = null,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(LibraryState())
@@ -157,6 +162,7 @@ class LibraryScreenModel(
     private var categoryProjectionInitialized = false
     private var pendingInitialCategoryIndex: Int? = null
     private var observedBackgroundUpdate: Job? = null
+    private var observesBackgroundUpdate = false
     private val browsePositions = mutableMapOf<Long?, LibraryBrowsePosition>()
 
     internal fun browsePosition(categoryId: Long?) = browsePositions[categoryId]
@@ -175,10 +181,31 @@ class LibraryScreenModel(
 
     init {
         applySharedPreferences(categoryId = null)
-        syncBackgroundUpdate()
+        if (backgroundUpdateObservations == null) syncBackgroundUpdate()
     }
 
     fun syncBackgroundUpdate() {
+        if (!observesBackgroundUpdate) {
+            backgroundUpdateObservations?.let { observations ->
+                observesBackgroundUpdate = true
+                screenModelScope.launch {
+                    observations.collect { observed ->
+                        _state.update { current ->
+                            current.copy(
+                                updateTask = observed.task,
+                                updateLaunchFailed = observed.launchFailure != null,
+                                isUpdating = observed.task?.status == TaskStatus.Running,
+                                updateStatusText = if (observed.launchFailure != null) {
+                                    MR.strings.desktop_ui_library_update_failed.localized()
+                                } else {
+                                    observed.task?.let(::libraryUpdateSummary)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
         val runningJob = backgroundUpdateJob?.invoke()?.takeIf(Job::isActive) ?: return
         setIsUpdating(true)
         setUpdateStatusText(MR.strings.desktop_ui_checking_for_updates.localized())
@@ -915,10 +942,39 @@ class LibraryScreenModel(
         }
     }
 
-    private fun backgroundUpdateResultText(): String = when (backgroundUpdateStatus?.invoke()) {
-        TaskStatus.Failed -> MR.strings.desktop_ui_library_update_failed.localized()
-        TaskStatus.Cancelled -> MR.strings.desktop_ui_library_update_cancelled.localized()
-        else -> MR.strings.desktop_ui_library_update_finished.localized()
+    private fun backgroundUpdateResultText(): String {
+        if (backgroundUpdateLaunchFailure?.invoke() !=
+            null
+        ) {
+            return MR.strings.desktop_ui_library_update_failed.localized()
+        }
+        backgroundUpdateSnapshot?.invoke()?.let { task -> libraryUpdateSummary(task)?.let { return it } }
+        return when (backgroundUpdateStatus?.invoke()) {
+            TaskStatus.Failed -> MR.strings.desktop_ui_library_update_failed.localized()
+            TaskStatus.Cancelled -> MR.strings.desktop_ui_library_update_cancelled.localized()
+            else -> MR.strings.desktop_ui_library_update_finished.localized()
+        }
+    }
+
+    fun retryFailedLibraryUpdate() {
+        runRecoveryUpdate(retryFailedBackgroundUpdate)
+    }
+
+    fun resumeLibraryUpdate() {
+        runRecoveryUpdate(resumeBackgroundUpdate)
+    }
+
+    private fun runRecoveryUpdate(start: (() -> Job)?) {
+        if (_state.value.isUpdating || start == null) return
+        screenModelScope.launch {
+            setIsUpdating(true)
+            try {
+                start().join()
+                setUpdateStatusText(backgroundUpdateResultText())
+            } finally {
+                setIsUpdating(false)
+            }
+        }
     }
 
     fun cancelLibraryUpdate(): Boolean = cancelBackgroundUpdate?.invoke() == true
@@ -1358,4 +1414,15 @@ private fun SharedLibraryDisplayMode.toDesktopDisplayMode() = when (this) {
     SharedLibraryDisplayMode.ComfortableGrid -> LibraryDisplayMode.COMFORTABLE_GRID
     SharedLibraryDisplayMode.List -> LibraryDisplayMode.LIST
     SharedLibraryDisplayMode.CoverOnlyGrid -> LibraryDisplayMode.COVER_ONLY_GRID
+}
+
+internal fun libraryUpdateSummary(task: mihon.desktop.task.StoredTask): String? {
+    val units = task.libraryUpdate?.units ?: return null
+    return MR.strings.desktop_library_update_results_count.localized(
+        Locale.getDefault(),
+        units.count { it.status == mihon.desktop.task.LibraryUnitStatus.SUCCESS },
+        units.count { it.status == mihon.desktop.task.LibraryUnitStatus.SKIPPED },
+        units.count { it.status == mihon.desktop.task.LibraryUnitStatus.FAILED },
+        units.count { it.status == mihon.desktop.task.LibraryUnitStatus.UNPROCESSED },
+    )
 }

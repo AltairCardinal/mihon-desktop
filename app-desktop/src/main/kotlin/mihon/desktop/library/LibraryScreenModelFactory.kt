@@ -83,6 +83,11 @@ object LibraryScreenModelFactory {
             cancelBackgroundUpdate = updateScheduler::cancelUpdate,
             backgroundUpdateStatus = { updateScheduler.taskSnapshot()?.status },
             backgroundUpdateJob = updateScheduler::currentUpdateJob,
+            backgroundUpdateObservations = updateScheduler.observations,
+            backgroundUpdateSnapshot = updateScheduler::taskSnapshot,
+            backgroundUpdateLaunchFailure = updateScheduler::lastLaunchFailure,
+            retryFailedBackgroundUpdate = updateScheduler::retryFailed,
+            resumeBackgroundUpdate = updateScheduler::resumeUpdate,
             libraryPreferences = runCatching {
                 Injekt.get<tachiyomi.domain.library.service.LibraryPreferences>()
             }.getOrNull(),

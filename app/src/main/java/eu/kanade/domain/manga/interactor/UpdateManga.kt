@@ -172,21 +172,6 @@ class UpdateManga(
         coverCache: CoverCache,
         libraryPreferences: LibraryPreferences,
     ): MangaUpdate {
-        val remoteTitle = try {
-            remoteManga.title
-        } catch (_: UninitializedPropertyAccessException) {
-            ""
-        }
-
-        // if the manga isn't a favorite (or 'update titles' preference is enabled), set its title from source and
-        // update in db
-        val title =
-            if (remoteTitle.isNotEmpty() && (!localManga.favorite || libraryPreferences.updateMangaTitles().get())) {
-                remoteTitle
-            } else {
-                null
-            }
-
         val coverLastModified =
             when {
                 // Never refresh covers if the url is empty to avoid "losing" existing covers
@@ -203,21 +188,11 @@ class UpdateManga(
                 }
             }
 
-        val thumbnailUrl = remoteManga.thumbnail_url?.takeIf { it.isNotEmpty() }
-
-        return MangaUpdate(
-            id = localManga.id,
-            title = title,
-            coverLastModified = coverLastModified,
-            author = remoteManga.author,
-            artist = remoteManga.artist,
-            description = remoteManga.description,
-            genre = remoteManga.getGenres(),
-            thumbnailUrl = thumbnailUrl,
-            status = remoteManga.status.toLong(),
-            updateStrategy = remoteManga.update_strategy,
-            initialized = true,
-            memo = remoteManga.memo,
+        return tachiyomi.domain.source.service.sourceMangaMetadata(
+            localManga,
+            remoteManga,
+            libraryPreferences.updateMangaTitles().get(),
+            coverLastModified,
         )
     }
 

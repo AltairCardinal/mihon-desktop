@@ -43,6 +43,8 @@ data class LibraryState(
     // ── Update status ─────────────────────────────────────────────────────────
     val isUpdating: Boolean = false,
     val updateStatusText: String? = null,
+    val updateTask: mihon.desktop.task.StoredTask? = null,
+    val updateLaunchFailed: Boolean = false,
     val isLoading: Boolean = true,
     val loadError: String? = null,
 

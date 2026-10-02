@@ -24,8 +24,6 @@ import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.notification.Notifications
-import eu.kanade.tachiyomi.source.model.SManga
-import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import eu.kanade.tachiyomi.util.storage.getUriCompat
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
 import eu.kanade.tachiyomi.util.system.isConnectedToWifi
@@ -60,10 +58,7 @@ import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.DEVICE_CHARGING
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.DEVICE_NETWORK_NOT_METERED
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.DEVICE_ONLY_ON_WIFI
-import tachiyomi.domain.library.service.LibraryPreferences.Companion.MANGA_HAS_UNREAD
-import tachiyomi.domain.library.service.LibraryPreferences.Companion.MANGA_NON_COMPLETED
-import tachiyomi.domain.library.service.LibraryPreferences.Companion.MANGA_NON_READ
-import tachiyomi.domain.library.service.LibraryPreferences.Companion.MANGA_OUTSIDE_RELEASE_PERIOD
+import tachiyomi.domain.library.service.LibraryUpdateSkipReason
 import tachiyomi.domain.library.service.selectLibraryMangaForUpdate
 import tachiyomi.domain.manga.interactor.FetchInterval
 import tachiyomi.domain.manga.interactor.GetLibraryManga
@@ -206,38 +201,24 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
 
         mangaToUpdate = listToUpdate
             .filter {
-                when {
-                    it.manga.updateStrategy == UpdateStrategy.ONLY_FETCH_ONCE && it.totalChapters > 0L -> {
-                        skippedUpdates.add(
-                            it.manga to context.stringResource(MR.strings.skipped_reason_not_always_update),
-                        )
-                        false
+                val reason = tachiyomi.domain.library.service.libraryUpdateSkipReason(
+                    it,
+                    restrictions,
+                    fetchWindowUpperBound,
+                )
+                if (reason != null) {
+                    val message = when (reason) {
+                        LibraryUpdateSkipReason.ONLY_FETCH_ONCE -> MR.strings.skipped_reason_not_always_update
+                        LibraryUpdateSkipReason.COMPLETED -> MR.strings.skipped_reason_completed
+                        LibraryUpdateSkipReason.HAS_UNREAD -> MR.strings.skipped_reason_not_caught_up
+                        LibraryUpdateSkipReason.NOT_STARTED -> MR.strings.skipped_reason_not_started
+                        LibraryUpdateSkipReason.OUTSIDE_RELEASE_PERIOD -> {
+                            MR.strings.skipped_reason_not_in_release_period
+                        }
                     }
-
-                    MANGA_NON_COMPLETED in restrictions && it.manga.status.toInt() == SManga.COMPLETED -> {
-                        skippedUpdates.add(it.manga to context.stringResource(MR.strings.skipped_reason_completed))
-                        false
-                    }
-
-                    MANGA_HAS_UNREAD in restrictions && it.unreadCount != 0L -> {
-                        skippedUpdates.add(it.manga to context.stringResource(MR.strings.skipped_reason_not_caught_up))
-                        false
-                    }
-
-                    MANGA_NON_READ in restrictions && it.totalChapters > 0L && !it.hasStarted -> {
-                        skippedUpdates.add(it.manga to context.stringResource(MR.strings.skipped_reason_not_started))
-                        false
-                    }
-
-                    MANGA_OUTSIDE_RELEASE_PERIOD in restrictions && it.manga.nextUpdate > fetchWindowUpperBound -> {
-                        skippedUpdates.add(
-                            it.manga to context.stringResource(MR.strings.skipped_reason_not_in_release_period),
-                        )
-                        false
-                    }
-
-                    else -> true
+                    skippedUpdates.add(it.manga to context.stringResource(message))
                 }
+                reason == null
             }
             .sortedBy { it.manga.title }
 
