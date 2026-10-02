@@ -378,6 +378,7 @@ class AndroidSyncPanelTest {
             every { anyConstructed<AndroidSyncPanelActions>().openDiagnostics(path) } returns Unit
             showToolbar()
             compose.onNodeWithTag("sync-open").performClick()
+            compose.onNodeWithTag("sync-diagnostic-details-toggle").performClick()
             compose.onNodeWithTag("sync-diagnostics-list", useUnmergedTree = true)
                 .performScrollToNode(hasTestTag("sync-diagnostic-open"))
             compose.onNodeWithTag("sync-diagnostic-open").performClick()
@@ -392,12 +393,16 @@ class AndroidSyncPanelTest {
         showToolbar()
         compose.onNodeWithTag("sync-open").performClick()
         compose.onNodeWithTag("sync-settings").performClick()
-        compose.onNodeWithTag("sync-settings-diagnostics").performClick()
+        compose.onNodeWithTag("sync-settings-list", useUnmergedTree = true)
+            .performScrollToNode(hasTestTag("sync-settings-diagnostics"))
+        compose.onNodeWithTag("sync-settings-diagnostics").assertIsDisplayed().performClick()
         compose.onNodeWithTag("sync-diagnostic-capture").assertIsDisplayed().performClick()
         compose.runOnUiThread {
             (ShadowDialog.getLatestDialog() as ComponentDialog).onBackPressedDispatcher.onBackPressed()
         }
         compose.runOnIdle { assertEquals(SyncPanelPage.SETTINGS, panel.state.value.page) }
+        compose.onNodeWithTag("sync-settings-list", useUnmergedTree = true)
+            .performScrollToNode(hasTestTag("sync-settings-diagnostics"))
         compose.onNodeWithTag("sync-settings-diagnostics").assertIsDisplayed()
         compose.onNodeWithTag("sync-back").performClick()
         compose.runOnIdle {

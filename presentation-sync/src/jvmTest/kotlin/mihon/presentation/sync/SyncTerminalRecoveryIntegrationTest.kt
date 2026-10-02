@@ -200,12 +200,12 @@ class SyncTerminalRecoveryIntegrationTest {
 
     @Test fun `R06 R07 reopen reads newest identity and ignores late old progress`() = fixture {
         open()
-        assertTrue(texts().contains("上次历时 291:54"))
+        assertTrue(texts().any { it.contains("用时291:54") })
         now += 60000
         panel.dispatch(SyncPanelAction.Close)
         withTimeout(5000) { panel.state.first { !it.visible } }
         open()
-        assertTrue(texts().contains("上次历时 291:54"))
+        assertTrue(texts().any { it.contains("用时291:54") })
         assertNull(panel.state.value.notice)
         runtime.baseline.connectAndImport("other-space", 2, SyncRepository("fixture", "sync", "main"), "actor2", 1)
         val newRun = runtime.runStore.start("other-space", 2, SyncTrigger.MANUAL)
@@ -254,6 +254,8 @@ class SyncTerminalRecoveryIntegrationTest {
         open()
         click("sync-settings")
         click("sync-settings-diagnostics")
+        click("sync-diagnostic-details-toggle")
+        scrollDiagnostics(2)
         click("sync-diagnostic-session")
         withTimeout(5000) { panel.state.first { it.diagnosticSnapshot?.crossProcessComparable == true } }
         click("sync-diagnostic-session")
@@ -434,7 +436,16 @@ class SyncTerminalRecoveryIntegrationTest {
         suspend fun scrollDiagnostics(index: Int) {
             render()
             awaitNode("sync-diagnostics-list")
-            requireNotNull(node("sync-diagnostics-list")!!.config[SemanticsActions.ScrollToIndex].action).invoke(index)
+            if (index >= 2 && node("sync-diagnostic-session") == null) click("sync-diagnostic-details-toggle")
+            requireNotNull(node("sync-diagnostics-list")!!.config[SemanticsActions.ScrollToIndex].action).invoke(
+                if (index >=
+                    2
+                ) {
+                    index + 2
+                } else {
+                    index
+                },
+            )
             render()
         }
         suspend fun close() {

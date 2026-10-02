@@ -79,6 +79,252 @@ import java.util.Locale
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelContentTest {
     @Test
+    fun `modern settings groups and frequency chips stay reachable at 200 percent`() = runBlocking {
+        val original = Locale.getDefault()
+        val directory = System.getProperty("mihon.sync.visualDir")?.let(::File)
+        try {
+            for (locale in listOf(Locale.US, Locale.SIMPLIFIED_CHINESE)) {
+                Locale.setDefault(locale)
+                val fixture = Fixture(
+                    connected().copy(page = SyncPanelPage.SETTINGS),
+                    ImageComposeScene(320, 1100, coroutineContext = currentCoroutineContext()) {},
+                    fontScale = 2f,
+                    dark = locale == Locale.US,
+                )
+                try {
+                    fixture.setContent()
+                    fixture.awaitTag("sync-settings-auto-group")
+                    for (minutes in listOf(0, 15, 60, 360, 1440)) {
+                        val tag = "sync-period-$minutes"
+                        val bounds = fixture.geometry(tag)
+                        assertTrue(bounds.height >= 48f && bounds.right <= 320 && bounds.left >= 0)
+                        fixture.click(tag)
+                        assertEquals(SyncPanelAction.SetPeriod(minutes), fixture.actions.last())
+                    }
+                    suspend fun snapshot(name: String) {
+                        directory?.let {
+                            it.mkdirs()
+                            fixture.scene.render().use { image ->
+                                requireNotNull(image.encodeToData(EncodedImageFormat.PNG)).use { data ->
+                                    File(
+                                        it,
+                                        "modern-settings-320-2.0-${locale.language}-$name.png",
+                                    ).writeBytes(data.bytes)
+                                }
+                            }
+                        }
+                    }
+                    snapshot("auto")
+                    fixture.scroll("sync-settings-list", 1)
+                    fixture.awaitTag("sync-device-name")
+                    assertTrue(fixture.geometry("sync-device-name").right <= 320)
+                    snapshot("account")
+                    fixture.scroll("sync-settings-list", 2)
+                    fixture.awaitTag("sync-settings-diagnostics")
+                    fixture.click("sync-settings-diagnostics")
+                    assertEquals(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS), fixture.actions.last())
+                    for ((index, tag, question) in listOf(
+                        Triple(3, "sync-disconnect", SyncPanelQuestion.DISCONNECT),
+                        Triple(4, "sync-switch", SyncPanelQuestion.SWITCH_SPACE),
+                    )) {
+                        fixture.scroll("sync-settings-list", index)
+                        fixture.click(tag)
+                        assertEquals(SyncPanelAction.Ask(question), fixture.actions.last())
+                    }
+                } finally {
+                    fixture.scene.close()
+                }
+            }
+        } finally {
+            Locale.setDefault(original)
+        }
+    }
+
+    @Test
+    fun `modern failed schedule reflects network and immediate frequency changes`() = renderedEnglish(
+        connected().copy(
+            run = visualRun(SyncRunPhase.COMPLETE).copy(state = SyncRunState.FAILED),
+            problem = SyncRunProblem.NETWORK,
+            periodMinutes = 60,
+            nowMillis = 100_000,
+            nextSyncAtMillis = 3_700_000,
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(hasTag("sync-next-auto"))
+        assertTrue(texts().any { it.contains("waiting for the connection") })
+        panel.state.value = panel.state.value.copy(problem = null, periodMinutes = 360, nextSyncAtMillis = 21_700_000)
+        render()
+        assertTrue(texts().any { it.contains(syncScheduleDateTime(21_700_000)) && it.contains("6") })
+        panel.state.value = panel.state.value.copy(periodMinutes = 0)
+        render()
+        assertTrue(texts().contains("Automatic sync is off"))
+    }
+
+    @Test
+    fun `modern pending actions wrap at large text and retain the safe decision snapshot`() = runBlocking {
+        val fixture = Fixture(
+            connected().copy(pendingTotal = 1, pending = listOf(item(1))),
+            ImageComposeScene(320, 1200, coroutineContext = currentCoroutineContext()) {},
+            fontScale = 2f,
+        )
+        try {
+            fixture.setContent()
+            fixture.awaitTag("sync-keep-1")
+            for (tag in listOf("sync-keep-1", "sync-remove-1")) {
+                val bounds = fixture.geometry(tag)
+                assertTrue(bounds.height >= 48f)
+                assertTrue(bounds.left >= 0 && bounds.right <= 320, "$tag $bounds")
+            }
+            assertTrue(
+                fixture.geometry("sync-remove-1").top >= fixture.geometry("sync-keep-1").bottom,
+                "Large-text decisions each have enough width",
+            )
+            fixture.click("sync-keep-1")
+            assertEquals(
+                SyncPanelAction.PrepareDecision(
+                    SyncCancellationDecision.KEEP_LOCAL,
+                    mihon.data.sync.runtime.SyncDecisionScope.ITEM,
+                    1,
+                ),
+                fixture.actions.last(),
+            )
+        } finally {
+            fixture.scene.close()
+        }
+    }
+
+    @Test
+    fun `modern completed card is compact and details remain actionable`() = renderedEnglish(
+        connected().copy(
+            run = visualRun(SyncRunPhase.COMPLETE).copy(state = SyncRunState.SUCCEEDED, confirmedItems = 14434),
+            periodMinutes = 60,
+            nowMillis = 100_000,
+            nextSyncAtMillis = 3_700_000,
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertFalse(hasTag("sync-progress"), "A completed result has no running track")
+        assertFalse(hasTag("sync-whole-eta-value"))
+        assertTrue(texts().contains("Sync completed"))
+        assertTrue(geometry("sync-progress-card").height < 240f)
+        assertTrue(hasTag("sync-next-auto"))
+        assertFalse(hasTag("sync-queue-summary"))
+        click("sync-progress-details-toggle")
+        render()
+        assertTrue(hasTag("sync-queue-summary"))
+        click("sync-now")
+        assertEquals(SyncPanelAction.Synchronize, actions.last())
+    }
+
+    @Test
+    fun `modern idle queue is folded and schedule uses the durable deadline`() = renderedEnglish(
+        connected().copy(periodMinutes = 60, nowMillis = 100_000, nextSyncAtMillis = 3_700_000),
+    ) {
+        awaitTag("sync-now")
+        assertFalse(hasTag("sync-queue-summary"))
+        assertTrue(hasTag("sync-next-auto"))
+        val original = node("sync-next-auto").config[SemanticsProperties.Text].toString()
+        click("sync-progress-details-toggle")
+        render()
+        assertTrue(hasTag("sync-queue-summary"))
+        assertEquals(original, node("sync-next-auto").config[SemanticsProperties.Text].toString())
+        panel.state.value = panel.state.value.copy(nowMillis = 160_000)
+        render()
+        assertNotEquals(original, node("sync-next-auto").config[SemanticsProperties.Text].toString())
+    }
+
+    @Test
+    fun `modern diagnostics technical controls are folded and survive feedback`() = renderedEnglish(
+        connected().copy(page = SyncPanelPage.DIAGNOSTICS),
+    ) {
+        awaitTag("sync-diagnostic-capture")
+        assertFalse(hasTag("sync-diagnostic-session"))
+        click("sync-diagnostic-details-toggle")
+        render()
+        click("sync-diagnostic-session")
+        assertEquals(SyncPanelAction.BeginDiagnosticSession, actions.last())
+        panel.state.value = panel.state.value.copy(diagnosticBusy = true)
+        render()
+        assertTrue(hasTag("sync-diagnostic-session"))
+        assertTrue(node("sync-diagnostic-session").config.contains(SemanticsProperties.Disabled))
+    }
+
+    @Test
+    fun `modern settings group frequency and preserve every original action`() = renderedEnglish(
+        connected().copy(page = SyncPanelPage.SETTINGS),
+    ) {
+        awaitTag("sync-settings-auto-group")
+        assertTrue(hasTag("sync-settings-auto-group"))
+        assertTrue(texts().contains("Periodic sync"))
+        click("sync-period-360")
+        assertEquals(SyncPanelAction.SetPeriod(360), actions.last())
+        scroll("sync-settings-list", 1)
+        awaitTag("sync-device-name")
+        assertTrue(hasTag("sync-settings-account-group"))
+        scroll("sync-settings-list", 2)
+        awaitTag("sync-settings-diagnostics")
+        assertTrue(hasTag("sync-settings-more-group"))
+        click("sync-settings-diagnostics")
+        assertEquals(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS), actions.last())
+    }
+
+    @Test
+    fun `modern completed layout fits narrow large text and preserves schedule after expiry`() = runBlocking {
+        val originalLocale = Locale.getDefault()
+        val directory = System.getProperty("mihon.sync.visualDir")?.let(::File)
+        try {
+            for (locale in listOf(Locale.US, Locale.SIMPLIFIED_CHINESE)) {
+                Locale.setDefault(locale)
+                for (width in listOf(320, 390, 560)) {
+                    val fixture = Fixture(
+                        connected().copy(
+                            run = visualRun(
+                                SyncRunPhase.COMPLETE,
+                            ).copy(state = SyncRunState.SUCCEEDED, confirmedItems = 1280, updatedAt = 62_000),
+                            periodMinutes = 60,
+                            nowMillis = 100_000,
+                            nextSyncAtMillis = 3_700_000,
+                        ),
+                        ImageComposeScene(width, 900, coroutineContext = currentCoroutineContext()) {},
+                        fontScale = 2f,
+                        dark = locale == Locale.US,
+                    )
+                    try {
+                        fixture.setContent()
+                        fixture.awaitTag("sync-progress-card")
+                        fixture.assertTextFits("sync-progress-status")
+                        fixture.assertTextFits("sync-confirmed-count")
+                        assertTrue(fixture.geometry("sync-now").height >= 48f)
+                        assertTrue(fixture.geometry("sync-progress-card").width <= width)
+                        fixture.reveal("sync-next-auto", 900)
+                        fixture.assertTextFits("sync-next-auto")
+                        directory?.let {
+                            it.mkdirs()
+                            fixture.scene.render().use { image ->
+                                requireNotNull(image.encodeToData(EncodedImageFormat.PNG)).use { data ->
+                                    File(it, "modern-$width-2.0-${locale.language}.png").writeBytes(data.bytes)
+                                }
+                            }
+                        }
+                        fixture.panel.state.value = fixture.panel.state.value.copy(nowMillis = 3_800_000)
+                        fixture.render()
+                        val text = fixture.node("sync-next-auto").config[SemanticsProperties.Text].joinToString {
+                            it.text
+                        }
+                        assertTrue(text.contains("system") || text.contains("系统"))
+                        assertEquals(3_700_000, fixture.panel.state.value.nextSyncAtMillis)
+                    } finally {
+                        fixture.scene.close()
+                    }
+                }
+            }
+        } finally {
+            Locale.setDefault(originalLocale)
+        }
+    }
+
+    @Test
     fun `compact running card shows only whole run count time and real fraction`() = renderedEnglish(
         connected().copy(
             run = visualRun(SyncRunPhase.UPLOADING).copy(plannedItems = 100, confirmedItems = 40),
@@ -393,13 +639,13 @@ class SyncPanelContentTest {
     ) {
         awaitTag("sync-progress-card")
         assertTrue(texts().contains("本次同步已结束，部分数据待处理"))
-        assertTrue(texts().contains("本次已确认 26778 条"))
+        assertTrue(texts().any { it.contains("已完成26778条") })
         assertTrue(texts().contains("2 个下载批次待确认，涉及 512 条变动"))
         assertTrue(texts().contains("批次内变动仍待核对，不代表这些变动都已失败"))
         assertTrue(texts().contains("上次有 10 项核对内容因漫画源不可用而未能恢复"))
         assertTrue(texts().contains("请重试同步，重新检查并恢复已保存的数据"))
-        assertTrue(texts().contains("已用 00:05"))
-        assertTrue(hasTag("sync-progress"))
+        assertTrue(texts().any { it.contains("用时00:05") })
+        assertFalse(hasTag("sync-progress"))
         assertFalse(texts().contains("正在接收并校验数据"))
         assertFalse(texts().any { it.contains("已确认 0 / 0") })
         click("sync-retry-run")
@@ -461,9 +707,9 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
-        assertTrue(hasTag("sync-progress"))
+        assertFalse(hasTag("sync-progress"))
         assertFalse(texts().contains("正在合并数据"))
-        assertEquals(1, nodes().count { it.config.contains(SemanticsProperties.ProgressBarRangeInfo) })
+        assertEquals(0, nodes().count { it.config.contains(SemanticsProperties.ProgressBarRangeInfo) })
         for (terminal in listOf(
             SyncRunState.SUCCEEDED,
             SyncRunState.FAILED,
@@ -475,7 +721,7 @@ class SyncPanelContentTest {
                 run = panel.state.value.run?.copy(state = terminal),
             )
             render()
-            assertTrue(hasTag("sync-progress"), terminal.name)
+            assertFalse(hasTag("sync-progress"), terminal.name)
             assertFalse(texts().contains("正在接收并校验数据"), terminal.name)
         }
     }
@@ -582,7 +828,7 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-progress-card")
-        assertTrue(texts().contains("上次历时 00:30"))
+        assertTrue(texts().any { it.contains("用时00:30") })
         assertFalse(texts().contains("已用 01:59"))
     }
 
@@ -985,7 +1231,7 @@ class SyncPanelContentTest {
         connected().copy(page = SyncPanelPage.SETTINGS),
     ) {
         awaitTag("sync-settings-list")
-        scroll("sync-settings-list", 5)
+        scroll("sync-settings-list", 1)
         assertFalse(hasTag("sync-show-recovery"))
         assertTrue(hasTag("sync-password-status"))
         assertTrue(texts().contains(MR.strings.sync_password_disabled.localized(Locale.getDefault())))
@@ -1022,11 +1268,12 @@ class SyncPanelContentTest {
         SyncPanelState(visible = true, page = SyncPanelPage.SETTINGS),
     ) {
         awaitTag("sync-settings-list")
-        scroll("sync-settings-list", 5)
-        for (tag in listOf("sync-disconnect", "sync-switch")) {
+        scroll("sync-settings-list", 1)
+        assertTrue(hasTag("sync-password-status"))
+        for ((index, tag) in listOf(3 to "sync-disconnect", 4 to "sync-switch")) {
+            scroll("sync-settings-list", index)
             assertTrue(node(tag).config.contains(SemanticsProperties.Disabled), tag)
         }
-        assertTrue(hasTag("sync-password-status"))
         assertFalse(hasTag("sync-show-recovery"))
     }
 
@@ -1242,14 +1489,14 @@ class SyncPanelContentTest {
     ) {
         awaitTag("sync-progress-card")
         assertTrue(texts().contains("上次同步已取消"))
-        assertTrue(texts().contains("已确认结果会保留"))
-        assertTrue(texts().contains("上次历时 291:54"))
-        assertTrue(node("sync-whole-eta-value").config[SemanticsProperties.Text].any { it.text.contains("—") })
-        assertEquals("", node("sync-progress").config[SemanticsProperties.StateDescription])
+        assertFalse(texts().contains("已确认结果会保留"))
+        assertTrue(texts().any { it.contains("用时291:54") })
+        assertFalse(hasTag("sync-whole-eta-value"))
+        assertFalse(hasTag("sync-progress"))
         panel.state.value = panel.state.value.copy(nowMillis = 20_060_000)
         displayMillis = 60_000
         render()
-        assertTrue(texts().contains("上次历时 291:54"))
+        assertTrue(texts().any { it.contains("用时291:54") })
         assertFalse(texts().contains("已用 291:54"))
     }
 
@@ -1402,7 +1649,7 @@ class SyncPanelContentTest {
     ) {
         awaitTag("sync-progress-card")
         assertTrue(texts().contains("有数据尚未完成核对，请稍后重试同步"))
-        assertTrue(texts().contains("本次已确认 0 条"))
+        assertTrue(texts().any { it.contains("已完成0条") })
         assertFalse(texts().contains("仍有数据待处理，请在下方查看"))
     }
 
@@ -1689,9 +1936,10 @@ class SyncPanelContentTest {
         captureVisuals("settings")
         click("sync-period-0")
         assertEquals(SyncPanelAction.SetPeriod(0), actions.last())
-        scroll("sync-settings-list", 5)
+        scroll("sync-settings-list", 1)
         assertTrue(hasTag("sync-password-status"))
         assertFalse(hasTag("sync-show-recovery"))
+        scroll("sync-settings-list", 3)
         click("sync-disconnect")
         assertEquals(SyncPanelAction.Ask(SyncPanelQuestion.DISCONNECT), actions.last())
         click("sync-back")
@@ -2066,7 +2314,7 @@ class SyncPanelContentTest {
                 run = panel.state.value.run!!.copy(state = SyncRunState.SUCCEEDED, confirmedItems = 7),
             )
         render()
-        assertTrue(texts().contains("上次同步已完成"))
+        assertTrue(texts().contains("同步已完成"))
         assertFalse(hasTag("sync-round-time"))
     }
 
@@ -2097,8 +2345,8 @@ class SyncPanelContentTest {
                 run = panel.state.value.run!!.copy(state = SyncRunState.SUCCEEDED, confirmedItems = 7),
             )
         render()
-        assertTrue(texts().contains("上次同步已完成"))
-        assertTrue(texts().contains("上次已确认 7 条"))
+        assertTrue(texts().contains("同步已完成"))
+        assertTrue(texts().any { it.contains("已完成7条") })
         assertFalse(hasTag("sync-progress-details"))
     }
 
@@ -2381,7 +2629,8 @@ class SyncPanelContentTest {
                         fixture.render()
                         fixture.awaitTag("sync-view-reason")
                         readable("sync-view-reason")
-                        assertEquals(original, fixture.geometry("sync-view-reason"))
+                        assertTrue(fixture.geometry("sync-view-reason").height >= 48f)
+                        assertTrue(fixture.geometry("sync-view-reason").right <= width)
                         if (directory != null && languageTheme in listOf("zh-light", "en-dark")) {
                             directory.mkdirs()
                             fixture.scene.render().use { image ->

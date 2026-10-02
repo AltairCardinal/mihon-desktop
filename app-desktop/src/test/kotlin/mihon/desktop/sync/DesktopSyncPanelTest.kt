@@ -136,6 +136,8 @@ class DesktopSyncPanelTest {
             render()
             click("sync-settings")
             assertEquals(SyncPanelPage.SETTINGS, panel.state.value.page)
+            requireNotNull(find("sync-settings-list")!!.config[SemanticsActions.ScrollToIndex].action).invoke(2)
+            render()
             click("sync-settings-diagnostics")
             click("sync-diagnostic-capture")
             requireNotNull(find("sync-diagnostic-capture")!!.config[SemanticsActions.RequestFocus].action).invoke()
@@ -148,6 +150,9 @@ class DesktopSyncPanelTest {
                 escapeFactory.invoke(null, Key.Escape.keyCode, escapeType, 0, false, false, false, false, null)))
             render()
             assertEquals(SyncPanelPage.SETTINGS, panel.state.value.page)
+            requireNotNull(find("sync-settings-list")!!.config[SemanticsActions.ScrollToIndex].action).invoke(2)
+            render()
+            assertTrue(find("sync-settings-diagnostics") != null)
             assertTrue(panel.actions.contains(SyncPanelAction.CaptureDiagnostics))
             click("sync-back")
             assertEquals(SyncPanelPage.MAIN, panel.state.value.page)
@@ -222,8 +227,9 @@ class DesktopSyncPanelTest {
                         status = mihon.data.sync.runtime.SyncDiagnosticStatus.OK),
                     diagnosticPath = "sync-diagnostic-fixture.json")
                 render()
+                click("sync-diagnostic-details-toggle")
                 val list = find("sync-diagnostics-list")!!
-                requireNotNull(list.config[SemanticsActions.ScrollToIndex].action).invoke(4)
+                requireNotNull(list.config[SemanticsActions.ScrollToIndex].action).invoke(6)
                 render()
                 click("sync-diagnostic-open")
                 verify(exactly = 1) { DesktopSyncDiagnosticOpener.open("sync-diagnostic-fixture.json", any(), any()) }

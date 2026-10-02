@@ -2000,4 +2000,18 @@
     <string name="sync_resume_import">继续首次合并</string>
     <string name="sync_pause_bulk">暂停已选处理</string>
     <string name="sync_resume_bulk">继续已选处理</string>
+    <string name="sync_result_completed">同步已完成</string>
+    <string name="sync_result_summary">已完成%1$d条 · 用时%2$s</string>
+    <string name="sync_auto_group">自动同步</string>
+    <string name="sync_account_devices">账号与设备</string>
+    <string name="sync_more_group">更多</string>
+    <string name="sync_auto_off">自动同步已关闭</string>
+    <string name="sync_auto_network">自动同步等待网络恢复</string>
+    <string name="sync_auto_due">自动同步已到期，等待系统安排</string>
+    <string name="sync_auto_next">预计下次自动同步：%1$s · %2$s后</string>
+    <string name="sync_review_heading">待确认 · %1$d</string>
+    <string name="sync_review_explanation">其他设备取消了以下内容。确认前，本设备仍会保留。</string>
+    <string name="sync_diagnostic_intro">采集本机同步状态，帮助排查问题。不包含账号、凭据或作品信息。</string>
+    <string name="sync_diagnostic_details_toggle">诊断内容与隐私说明</string>
+    <string name="sync_periodic_label">定期同步</string>
 </resources>

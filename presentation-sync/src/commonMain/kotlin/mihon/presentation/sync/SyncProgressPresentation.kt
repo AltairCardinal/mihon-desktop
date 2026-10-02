@@ -83,7 +83,7 @@ class SyncProgressDisplaySession {
         val wholeRemaining = roundRate.estimate(run?.plannedItems, run?.confirmedItems, active, monotonicMillis)
         val status = when {
             terminal -> when (run?.state) {
-                SyncRunState.SUCCEEDED -> MR.strings.sync_last_succeeded
+                SyncRunState.SUCCEEDED -> MR.strings.sync_result_completed
                 SyncRunState.PARTIAL -> if (historical) {
                     MR.strings.sync_last_partial
                 } else {

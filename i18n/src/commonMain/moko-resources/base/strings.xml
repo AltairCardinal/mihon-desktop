@@ -2211,4 +2211,18 @@
     <string name="sync_resume_import">Resume initial merge</string>
     <string name="sync_pause_bulk">Pause selected processing</string>
     <string name="sync_resume_bulk">Resume selected processing</string>
+    <string name="sync_result_completed">Sync completed</string>
+    <string name="sync_result_summary">Completed %1$d items · Time %2$s</string>
+    <string name="sync_auto_group">Automatic sync</string>
+    <string name="sync_account_devices">Account and device</string>
+    <string name="sync_more_group">More</string>
+    <string name="sync_auto_off">Automatic sync is off</string>
+    <string name="sync_auto_network">Automatic sync is waiting for the connection to recover</string>
+    <string name="sync_auto_due">Automatic sync is due; waiting for the system to schedule it</string>
+    <string name="sync_auto_next">Next automatic sync (estimated): %1$s · in %2$s</string>
+    <string name="sync_review_heading">To review · %1$d</string>
+    <string name="sync_review_explanation">Another device removed these items. This device keeps them until you decide.</string>
+    <string name="sync_diagnostic_intro">Collect local sync status to help investigate problems. Account, credentials and book details are excluded.</string>
+    <string name="sync_diagnostic_details_toggle">Diagnostic details and privacy</string>
+    <string name="sync_periodic_label">Periodic sync</string>
 </resources>

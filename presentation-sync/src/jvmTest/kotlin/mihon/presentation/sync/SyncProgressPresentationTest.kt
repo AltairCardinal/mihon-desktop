@@ -113,7 +113,7 @@ class SyncProgressPresentationTest {
         assertTrue(complete.active)
         assertEquals(tachiyomi.i18n.MR.strings.sync_busy, complete.status)
         val terminal = state(100).copy(run = run.copy(state = SyncRunState.SUCCEEDED, confirmedItems = 100))
-        assertEquals(tachiyomi.i18n.MR.strings.sync_last_succeeded, session.project(terminal, 3).status)
+        assertEquals(tachiyomi.i18n.MR.strings.sync_result_completed, session.project(terminal, 3).status)
         assertNull(session.project(terminal, 3).wholeEta)
     }
 

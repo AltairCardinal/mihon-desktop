@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,7 +36,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Sync
@@ -49,6 +54,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -95,6 +102,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
@@ -360,7 +368,17 @@ private fun MainPage(
         item("summary") {
             if (state.run == null && !state.busy) {
                 SyncStatusHeader(state, continuingSetup, dispatch)
-                SyncQueueSummary(state)
+                TextButton(
+                    toggleDetails,
+                    Modifier.padding(horizontal = 24.dp).testTag("sync-progress-details-toggle"),
+                ) {
+                    Text(
+                        syncString(
+                            if (detailsExpanded) MR.strings.sync_details_collapse else MR.strings.sync_details_expand,
+                        ),
+                    )
+                }
+                if (detailsExpanded) SyncQueueSummary(state)
             }
             if (state.run != null || state.busy) {
                 SyncProgressCard(
@@ -372,6 +390,9 @@ private fun MainPage(
                     dispatch,
                     onOpenFailureLog,
                 )
+            }
+            if (!state.showingCompactRun) {
+                NextAutomaticSync(state)
             }
             if (state.run == null && state.problem == SyncRunProblem.AUTHORIZATION) {
                 Action("sync-reconnect", MR.strings.sync_reconnect) { dispatch(SyncPanelAction.Authorize) }
@@ -462,7 +483,26 @@ private fun MainPage(
         }
         if (!state.showingCompactRun && state.pending.isEmpty()) {
             item("empty") {
-                Text(syncString(MR.strings.sync_empty), Modifier.padding(24.dp))
+                Row(
+                    Modifier.fillMaxWidth().padding(
+                        horizontal = 24.dp,
+                        vertical = 16.dp,
+                    ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Outlined.CheckCircle,
+                        null,
+                        Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        syncString(MR.strings.sync_empty),
+                        Modifier.padding(start = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
         if (!state.showingCompactRun) {
@@ -484,8 +524,13 @@ private fun MainPage(
         }
         if (!state.showingCompactRun) {
             item("history") {
-                Action("sync-history", MR.strings.sync_records) {
-                    dispatch(SyncPanelAction.Navigate(SyncPanelPage.HISTORY))
+                TextButton(
+                    { dispatch(SyncPanelAction.Navigate(SyncPanelPage.HISTORY)) },
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 56.dp).testTag("sync-history"),
+                ) {
+                    Icon(Icons.Outlined.History, null)
+                    Text(syncString(MR.strings.sync_records), Modifier.weight(1f).padding(horizontal = 12.dp))
+                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null)
                 }
             }
         }
@@ -527,56 +572,49 @@ private fun SyncStatusHeader(
     dispatch: (SyncPanelAction) -> Unit,
 ) {
     val operation = connectionOperation(state)
-    Row(
+    Surface(
         Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Surface(
-            modifier = Modifier.size(48.dp).testTag("sync-status-icon"),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.Sync, syncString(MR.strings.sync_title), Modifier.size(28.dp))
-            }
-        }
-        Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
-            Text(statusText(state), style = MaterialTheme.typography.titleMedium)
-            Text(
-                syncString(MR.strings.sync_detail, state.queuedMembership, state.queuedReading),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        Button(
-            onClick = {
-                dispatch(
-                    operation?.action ?: if (continuingSetup) {
-                        SyncPanelAction.BeginSetup
-                    } else {
-                        SyncPanelAction.Synchronize
-                    },
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Sync, null, Modifier.size(28.dp).testTag("sync-status-icon"))
+                Text(
+                    statusText(state),
+                    Modifier.weight(1f).padding(start = 12.dp),
+                    style = MaterialTheme.typography.titleLarge,
                 )
-            },
-            enabled = operation?.enabled ?: (
-                (!state.busy && state.run?.state != SyncRunState.PAUSED_USER) || continuingSetup
-                ),
-            modifier = Modifier.testTag("sync-now"),
-        ) {
-            Text(
-                syncString(
-                    when {
-                        operation != null && (
-                            !state.loaded || state.setupProblem == SyncDiscoveryProblem.INCOMPATIBLE ||
-                                state.connection?.unsupportedFormat == true
-                            ) -> operation.label
-                        continuingSetup -> MR.strings.sync_setup_continue
-                        operation != null -> operation.label
-                        else -> MR.strings.sync_now
-                    },
-                ),
-            )
+            }
+            Button(
+                onClick = {
+                    dispatch(
+                        operation?.action ?: if (continuingSetup) {
+                            SyncPanelAction.BeginSetup
+                        } else {
+                            SyncPanelAction.Synchronize
+                        },
+                    )
+                },
+                enabled = operation?.enabled ?: (
+                    (!state.busy && state.run?.state != SyncRunState.PAUSED_USER) || continuingSetup
+                    ),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("sync-now"),
+            ) {
+                Text(
+                    syncString(
+                        when {
+                            operation != null && (
+                                !state.loaded || state.setupProblem == SyncDiscoveryProblem.INCOMPATIBLE ||
+                                    state.connection?.unsupportedFormat == true
+                                ) -> operation.label
+                            continuingSetup -> MR.strings.sync_setup_continue
+                            operation != null -> operation.label
+                            else -> MR.strings.sync_now
+                        },
+                    ),
+                )
+            }
         }
     }
 }
@@ -623,7 +661,20 @@ private fun SelectionBar(state: SyncPanelState, dispatch: (SyncPanelAction) -> U
         modifier = Modifier.testTag("sync-selection-bar"),
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Text(syncString(MR.strings.sync_pending), style = MaterialTheme.typography.titleSmall)
+            Text(
+                syncString(
+                    MR.strings.sync_review_heading,
+                    state.pendingTotal,
+                ),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            if (!state.selecting) {
+                Text(
+                    syncString(MR.strings.sync_review_explanation),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     syncString(
@@ -713,7 +764,11 @@ private fun SelectionBar(state: SyncPanelState, dispatch: (SyncPanelAction) -> U
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
+@OptIn(
+    ExperimentalFoundationApi::class,
+    ExperimentalComposeUiApi::class,
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+)
 @Composable
 private fun PendingRow(item: SyncPendingItem, state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit) {
     var shift by remember(item.id) { mutableStateOf(false) }
@@ -735,7 +790,13 @@ private fun PendingRow(item: SyncPendingItem, state: SyncPanelState, dispatch: (
             ).padding(horizontal = 24.dp, vertical = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (state.selecting) Checkbox(item.id in state.selected, onCheckedChange = null)
+            if (state.selecting) {
+                Checkbox(
+                    item.id in state.selected,
+                    onCheckedChange = null,
+                    modifier = Modifier.size(48.dp),
+                )
+            }
             Column(Modifier.weight(1f)) {
                 Text(
                     item.title,
@@ -756,8 +817,12 @@ private fun PendingRow(item: SyncPendingItem, state: SyncPanelState, dispatch: (
             }
         }
         if (!state.selecting) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Action("sync-keep-${item.id}", MR.strings.sync_keep, state.decisionsEnabled) {
+            FlowRow(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Action("sync-keep-${item.id}", MR.strings.sync_keep, state.decisionsEnabled, tonal = true) {
                     dispatch(
                         SyncPanelAction.PrepareDecision(
                             SyncCancellationDecision.KEEP_LOCAL,
@@ -782,77 +847,99 @@ private fun PendingRow(item: SyncPendingItem, state: SyncPanelState, dispatch: (
 }
 
 @Composable
+private fun SettingsGroup(label: StringResource, tag: String, content: @Composable () -> Unit) {
+    Surface(
+        Modifier.fillMaxWidth().testTag(tag),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(syncString(label), style = MaterialTheme.typography.titleMedium)
+            content()
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
 private fun SettingsPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit, modifier: Modifier) {
     LazyColumn(
         modifier.padding(horizontal = 24.dp).testTag("sync-settings-list"),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { Spacer(Modifier.height(4.dp)) }
-        item {
-            Action("sync-settings-diagnostics", MR.strings.sync_diagnostics) {
-                dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
-            }
-        }
-        item {
-            Text(syncString(MR.strings.sync_account), style = MaterialTheme.typography.titleMedium)
-            state.connection?.let { Text("${it.repository.owner}/${it.repository.name}") }
-            Action("sync-settings-connect", MR.strings.sync_reconnect) { dispatch(SyncPanelAction.Authorize) }
-        }
-        item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(syncString(MR.strings.sync_startup), Modifier.weight(1f))
-                Switch(
-                    state.startup,
-                    { dispatch(SyncPanelAction.SetStartup(it)) },
-                    Modifier.testTag("sync-startup"),
-                )
-            }
-        }
-        item {
-            Text(syncString(MR.strings.sync_frequency), style = MaterialTheme.typography.titleMedium)
-            for (minutes in listOf(0, 15, 60, 360, 1440)) {
+        item("automatic") {
+            SettingsGroup(MR.strings.sync_auto_group, "sync-settings-auto-group") {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(
-                        state.periodMinutes == minutes,
-                        { dispatch(SyncPanelAction.SetPeriod(minutes)) },
-                        Modifier.testTag("sync-period-$minutes"),
+                    Text(syncString(MR.strings.sync_startup), Modifier.weight(1f))
+                    Switch(
+                        state.startup,
+                        { dispatch(SyncPanelAction.SetStartup(it)) },
+                        Modifier.testTag("sync-startup"),
                     )
-                    Text(if (minutes == 0) syncString(MR.strings.sync_off) else duration(minutes.toLong()))
+                }
+                Text(syncString(MR.strings.sync_periodic_label), style = MaterialTheme.typography.titleSmall)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    for (minutes in listOf(0, 15, 60, 360, 1440)) {
+                        FilterChip(
+                            selected = state.periodMinutes == minutes,
+                            onClick = { dispatch(SyncPanelAction.SetPeriod(minutes)) },
+                            label = {
+                                Text(
+                                    if (minutes == 0) syncString(MR.strings.sync_off) else duration(minutes.toLong()),
+                                )
+                            },
+
+                            modifier = Modifier.heightIn(min = 48.dp).testTag("sync-period-$minutes"),
+                        )
+                    }
                 }
             }
         }
-        item {
-            OutlinedTextField(
-                state.deviceName,
-                { dispatch(SyncPanelAction.SetDeviceName(it)) },
-                Modifier.fillMaxWidth().testTag("sync-device-name"),
-                label = { Text(syncString(MR.strings.sync_device_name)) },
-                singleLine = true,
-            )
-        }
-        item {
-            Text(
-                syncString(
-                    when (state.connection?.protectionMode) {
-                        "password" -> MR.strings.sync_password_enabled
-                        "none" -> MR.strings.sync_password_disabled
-                        else -> MR.strings.sync_password_unavailable
-                    },
-                ),
-                Modifier.testTag("sync-password-status"),
-            )
-        }
-        item {
-            Action("sync-settings-history", MR.strings.sync_records) {
-                dispatch(SyncPanelAction.Navigate(SyncPanelPage.HISTORY))
+        item("account") {
+            SettingsGroup(MR.strings.sync_account_devices, "sync-settings-account-group") {
+                Text(syncString(MR.strings.sync_account), style = MaterialTheme.typography.titleSmall)
+                state.connection?.let { Text("${it.repository.owner}/${it.repository.name}") }
+                Action("sync-settings-connect", MR.strings.sync_reconnect) { dispatch(SyncPanelAction.Authorize) }
+                OutlinedTextField(
+                    state.deviceName,
+                    { dispatch(SyncPanelAction.SetDeviceName(it)) },
+                    Modifier.fillMaxWidth().testTag("sync-device-name"),
+                    label = { Text(syncString(MR.strings.sync_device_name)) },
+                    singleLine = true,
+                )
+                Text(
+                    syncString(
+                        when (state.connection?.protectionMode) {
+                            "password" -> MR.strings.sync_password_enabled
+                            "none" -> MR.strings.sync_password_disabled
+                            else -> MR.strings.sync_password_unavailable
+                        },
+                    ),
+                    Modifier.testTag("sync-password-status"),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
-        item {
+        item("more") {
+            SettingsGroup(MR.strings.sync_more_group, "sync-settings-more-group") {
+                Action("sync-settings-history", MR.strings.sync_records) {
+                    dispatch(SyncPanelAction.Navigate(SyncPanelPage.HISTORY))
+                }
+                Action("sync-settings-diagnostics", MR.strings.sync_diagnostics) {
+                    dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+                }
+            }
+        }
+        item("disconnect") {
             Action("sync-disconnect", MR.strings.sync_disconnect, state.connection != null) {
                 dispatch(SyncPanelAction.Ask(SyncPanelQuestion.DISCONNECT))
             }
         }
-        item {
+        item("switch") {
             Action("sync-switch", MR.strings.sync_switch, state.connection != null) {
                 dispatch(SyncPanelAction.Ask(SyncPanelQuestion.SWITCH_SPACE))
             }
@@ -867,13 +954,19 @@ private fun DiagnosticPage(
     onOpenDiagnostic: (String) -> Unit,
     modifier: Modifier,
 ) {
+    var technicalExpanded by remember { mutableStateOf(false) }
     LazyColumn(
         modifier.padding(24.dp).testTag("sync-diagnostics-list"),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item { Text(syncString(MR.strings.sync_diagnostic_description)) }
+        item { Text(syncString(MR.strings.sync_diagnostic_intro)) }
         item {
-            Action("sync-diagnostic-capture", MR.strings.sync_diagnostic_capture, !state.diagnosticBusy) {
+            Action(
+                "sync-diagnostic-capture",
+                MR.strings.sync_diagnostic_capture,
+                !state.diagnosticBusy,
+                primary = true,
+            ) {
                 dispatch(SyncPanelAction.CaptureDiagnostics)
             }
             if (state.diagnosticBusy) Text(syncString(MR.strings.sync_diagnostic_busy))
@@ -895,59 +988,80 @@ private fun DiagnosticPage(
             }
         }
         item {
-            Text(syncString(MR.strings.sync_diagnostic_session_description))
-            val comparable = state.diagnosticSnapshot?.crossProcessComparable == true
-            Action(
-                "sync-diagnostic-session",
-                if (comparable) {
-                    MR.strings.sync_diagnostic_session_end
-                } else {
-                    MR.strings.sync_diagnostic_session_start
-                },
-                !state.diagnosticBusy,
+            TextButton(
+                { technicalExpanded = !technicalExpanded },
+                Modifier.heightIn(min = 48.dp).testTag("sync-diagnostic-details-toggle"),
             ) {
-                dispatch(
-                    if (comparable) SyncPanelAction.EndDiagnosticSession else SyncPanelAction.BeginDiagnosticSession,
-                )
+                Text(syncString(MR.strings.sync_diagnostic_details_toggle))
             }
         }
-        state.diagnosticSnapshot?.let { snapshot ->
+        if (technicalExpanded) {
             item {
                 Text(
-                    syncString(
-                        when {
-                            snapshot.status != SyncDiagnosticStatus.OK -> MR.strings.sync_diagnostic_unknown
-                            snapshot.connection.panelConnectionEnabled == true -> MR.strings.sync_diagnostic_connected
-                            else -> MR.strings.sync_diagnostic_disconnected
-                        },
-                    ),
-                )
-                Text(
-                    syncString(
-                        if (snapshot.coordinatorRunning) {
-                            MR.strings.sync_diagnostic_running
-                        } else {
-                            MR.strings.sync_diagnostic_idle
-                        },
-                    ),
-                )
-            }
-            item {
-                Action("sync-diagnostic-export", MR.strings.sync_diagnostic_export, !state.diagnosticBusy) {
-                    dispatch(SyncPanelAction.ExportDiagnostics)
-                }
-                state.diagnosticPath?.let { path ->
-                    Action("sync-diagnostic-open", MR.strings.sync_diagnostic_open, !state.diagnosticBusy) {
-                        onOpenDiagnostic(path)
-                    }
-                }
-            }
-            item {
-                Text(
-                    snapshot.json(),
-                    Modifier.testTag("sync-diagnostic-details"),
+                    syncString(MR.strings.sync_diagnostic_description),
                     style = MaterialTheme.typography.bodySmall,
                 )
+            }
+            item {
+                Text(syncString(MR.strings.sync_diagnostic_session_description))
+                val comparable = state.diagnosticSnapshot?.crossProcessComparable == true
+                Action(
+                    "sync-diagnostic-session",
+                    if (comparable) {
+                        MR.strings.sync_diagnostic_session_end
+                    } else {
+                        MR.strings.sync_diagnostic_session_start
+                    },
+                    !state.diagnosticBusy,
+                ) {
+                    dispatch(
+                        if (comparable) {
+                            SyncPanelAction.EndDiagnosticSession
+                        } else {
+                            SyncPanelAction.BeginDiagnosticSession
+                        },
+                    )
+                }
+            }
+            state.diagnosticSnapshot?.let { snapshot ->
+                item {
+                    Text(
+                        syncString(
+                            when {
+                                snapshot.status != SyncDiagnosticStatus.OK -> MR.strings.sync_diagnostic_unknown
+                                snapshot.connection.panelConnectionEnabled == true ->
+                                    MR.strings.sync_diagnostic_connected
+                                else -> MR.strings.sync_diagnostic_disconnected
+                            },
+                        ),
+                    )
+                    Text(
+                        syncString(
+                            if (snapshot.coordinatorRunning) {
+                                MR.strings.sync_diagnostic_running
+                            } else {
+                                MR.strings.sync_diagnostic_idle
+                            },
+                        ),
+                    )
+                }
+                item {
+                    Action("sync-diagnostic-export", MR.strings.sync_diagnostic_export, !state.diagnosticBusy) {
+                        dispatch(SyncPanelAction.ExportDiagnostics)
+                    }
+                    state.diagnosticPath?.let { path ->
+                        Action("sync-diagnostic-open", MR.strings.sync_diagnostic_open, !state.diagnosticBusy) {
+                            onOpenDiagnostic(path)
+                        }
+                    }
+                }
+                item {
+                    Text(
+                        snapshot.json(),
+                        Modifier.testTag("sync-diagnostic-details"),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         }
     }
@@ -1464,414 +1578,207 @@ private fun SyncProgressCard(
     val run = state.run
     val fact = presentation.fact
     val terminal = run?.state in TERMINAL_STATES
-    val historical = state.showingHistoricalResult
-    val confirmedLabel = if (historical) {
-        MR.strings.sync_last_confirmed
-    } else {
-        MR.strings.sync_items_confirmed_this_run
-    }
-    val operationHeight = syncMainOperationHeight()
     val triggerFocus = remember { FocusRequester() }
     var detailsHaveFocus by remember { mutableStateOf(false) }
-    val reducedMotion = rememberCoroutineScope().coroutineContext[MotionDurationScale]?.scaleFactor == 0f
     Surface(
         Modifier.fillMaxWidth().padding(horizontal = horizontalPadding, vertical = 16.dp).testTag("sync-progress-card"),
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        BoxWithConstraints(Modifier.padding(18.dp)) {
-            val fontScale = LocalDensity.current.fontScale
-            val confirmedHeight = reservedTextHeight(
-                listOf(
-                    syncString(MR.strings.sync_items_confirmed_this_run, Long.MAX_VALUE),
-                    syncString(MR.strings.sync_last_confirmed, Long.MAX_VALUE),
-                    syncString(MR.strings.sync_confirmed_checking),
-                ),
-                constraints.maxWidth,
-                MaterialTheme.typography.bodyLarge,
-            )
-            val actionHeight = reservedTextHeight(
-                listOf(
-                    MR.strings.sync_stage_prepare, MR.strings.sync_exchanging_data, MR.strings.sync_phase_uploading,
-                    MR.strings.sync_phase_downloading, MR.strings.sync_checking_github_saved,
-                    MR.strings.sync_merging_received_data, MR.strings.sync_receiving_and_verifying,
-                    MR.strings.sync_pausing_save, MR.strings.sync_recovering_progress,
-                    MR.strings.sync_waiting_network, MR.strings.sync_waiting_system, MR.strings.sync_waiting_retry,
-                    MR.strings.sync_waiting_rate_limit, MR.strings.sync_paused, MR.strings.sync_wait_start,
-                    MR.strings.sync_terminal_partial, MR.strings.sync_not_completed, MR.strings.sync_blocked,
-                    MR.strings.sync_phase_complete, MR.strings.sync_terminal_cancelled,
-                    MR.strings.sync_confirmed_retained,
-                ).map { syncString(it) },
-                constraints.maxWidth,
-                MaterialTheme.typography.bodyMedium,
-            )
-            val etaCandidates = listOf(
-                syncEtaDuration(20),
-                syncEtaDuration(Long.MAX_VALUE - 30),
-                syncString(MR.strings.sync_eta_unknown),
-                syncString(MR.strings.sync_eta_unavailable),
-            )
-            val elapsedHeight = reservedTextHeight(
-                listOf(
-                    syncString(MR.strings.sync_elapsed, "153722867280912:59"),
-                    syncString(MR.strings.sync_last_elapsed, "153722867280912:59"),
-                ),
-                constraints.maxWidth,
-                MaterialTheme.typography.bodyLarge,
-            )
-            val etaHeight = if (fontScale > 1.4f) {
-                reservedTextHeight(
-                    listOf(syncString(MR.strings.sync_eta_remaining)),
-                    constraints.maxWidth,
-                    MaterialTheme.typography.bodyLarge,
-                ) +
-                    reservedTextHeight(etaCandidates, constraints.maxWidth, MaterialTheme.typography.bodyLarge)
-            } else {
-                reservedTextHeight(
-                    etaCandidates.map { "${syncString(MR.strings.sync_eta_remaining)} · $it" },
-                    constraints.maxWidth,
-                    MaterialTheme.typography.bodyLarge,
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    if (run?.state == SyncRunState.SUCCEEDED) Icons.Outlined.CheckCircle else Icons.Outlined.Info,
+                    null,
+                    Modifier.size(28.dp),
+                )
+                Text(
+                    syncString(presentation.status),
+                    Modifier.weight(1f).padding(start = 12.dp).testTag("sync-progress-status").semantics {
+                        liveRegion = LiveRegionMode.Polite
+                    },
+                    style = MaterialTheme.typography.titleLarge,
                 )
             }
-            val explanationHeight = reservedTextHeight(
-                listOf(
-                    MR.strings.sync_no_progress_minute, MR.strings.sync_waiting_step_generic,
-                    MR.strings.sync_import_paused_summary, MR.strings.sync_bulk_paused_summary,
-                    MR.strings.sync_retry_exhausted, MR.strings.sync_projection_pending,
-                    MR.strings.sync_pending_decisions, MR.strings.sync_additional_work,
-                    MR.strings.sync_running_explanation, MR.strings.sync_retry_ready,
-                    MR.strings.sync_connection_disconnected, MR.strings.sync_connection_owned_run,
-                    MR.strings.sync_setup_incompatible,
-                ).map { syncString(it) } + listOf(
-                    syncString(MR.strings.sync_pending_decisions_count, Int.MAX_VALUE),
-                    syncString(MR.strings.sync_retry_after_seconds, 59),
-                    syncString(MR.strings.sync_retry_after_minutes, Long.MAX_VALUE / 60000 + 1),
-                ),
-                constraints.maxWidth,
-                MaterialTheme.typography.bodySmall,
-            ) + 48.dp
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    if (maxWidth < 380.dp || fontScale > 1.4f) {
-                        Column {
-                            Text(
-                                syncString(presentation.status),
-                                Modifier.fillMaxWidth().height(
-                                    (64 * fontScale).dp,
-                                ).testTag("sync-progress-status").semantics {
-                                    liveRegion =
-                                        LiveRegionMode.Polite
-                                },
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            Box(
-                                Modifier.fillMaxWidth().height(operationHeight),
-                                contentAlignment = Alignment.CenterEnd,
-                            ) {
-                                SyncMainOperation(state, presentation, detailsExpanded, toggleDetails, dispatch)
-                            }
-                        }
-                    } else {
-                        Row(
-                            Modifier.fillMaxWidth().height(maxOf((64 * fontScale).dp, operationHeight)),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                syncString(presentation.status),
-                                Modifier.weight(1f).testTag("sync-progress-status").semantics {
-                                    liveRegion =
-                                        LiveRegionMode.Polite
-                                },
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            SyncMainOperation(state, presentation, detailsExpanded, toggleDetails, dispatch)
-                        }
-                    }
-                }
-                Text(
-                    presentation.confirmed?.let {
-                        syncString(confirmedLabel, it)
-                    }
-                        ?: syncString(MR.strings.sync_confirmed_checking),
-                    Modifier.fillMaxWidth().height(confirmedHeight).testTag("sync-confirmed-count"),
+            val seconds = (
+                (run?.updatedAt ?: state.nowMillis) - (run?.createdAt ?: state.nowMillis) - (run?.pausedMillis ?: 0L)
+                ).coerceAtLeast(0) / 1000
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val text = syncString(
+                    MR.strings.sync_result_summary,
+                    presentation.confirmed ?: 0L,
+                    syncClockDuration(seconds),
                 )
                 Text(
-                    syncString(presentation.action),
-                    Modifier.fillMaxWidth().height(actionHeight).testTag("sync-progress-action"),
-                    style = MaterialTheme.typography.bodyMedium,
+                    text,
+                    Modifier.fillMaxWidth().heightIn(
+                        min = reservedTextHeight(
+                            listOf(text),
+                            constraints.maxWidth,
+                            MaterialTheme.typography.bodyLarge,
+                        ),
+                    ).testTag("sync-confirmed-count"),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                val progressDescription = presentation.fraction?.let {
+            }
+            if (run?.state == SyncRunState.FAILED && run.stopReason == "retry_exhausted") {
+                Text(syncString(MR.strings.sync_retry_exhausted))
+            } else if (run?.state == SyncRunState.BLOCKED ||
+                (run?.state in setOf(SyncRunState.FAILED, SyncRunState.PARTIAL) && state.problem != null)
+            ) {
+                Text(problemText(state.problem ?: SyncRunProblem.UNKNOWN), Modifier.testTag("sync-blocked-reason"))
+            } else if (run?.state == SyncRunState.PARTIAL) {
+                Text(
                     syncString(
-                        MR.strings.sync_transfer_percent,
-                        (
-                            it *
-                                100
-                            ).toInt(),
-                    )
-                }.orEmpty()
-                val progressModifier = Modifier.fillMaxWidth().testTag("sync-progress").semantics {
-                    stateDescription = progressDescription
-                }
-                if (presentation.fraction != null) {
-                    LinearProgressIndicator(progress = { presentation.fraction }, modifier = progressModifier)
-                } else if (presentation.active && !reducedMotion) {
-                    LinearProgressIndicator(progressModifier)
-                } else {
-                    LinearProgressIndicator(progress = {
-                        if (run?.state ==
-                            SyncRunState.SUCCEEDED
-                        ) {
-                            1f
-                        } else {
-                            0f
-                        }
-                    }, modifier = progressModifier)
-                }
-                val elapsedSeconds =
-                    (
-                        (if (terminal) run?.updatedAt ?: state.nowMillis else state.nowMillis) -
-                            (run?.createdAt ?: state.nowMillis)
-                        ).coerceAtLeast(0) /
-                        1000
-                val elapsed = "${(elapsedSeconds / 60).toString().padStart(
-                    2,
-                    '0',
-                )}:${(elapsedSeconds % 60).toString().padStart(2, '0')}"
-                val etaValue = when {
-                    terminal -> syncString(MR.strings.sync_eta_none)
-                    presentation.wholeEta != null -> syncEtaDuration(presentation.wholeEta)
-                    presentation.estimating -> syncString(MR.strings.sync_eta_unknown)
-                    else -> syncString(MR.strings.sync_eta_unavailable)
-                }
-                Column(Modifier.fillMaxWidth().height(elapsedHeight + etaHeight)) {
-                    Text(syncString(if (historical) MR.strings.sync_last_elapsed else MR.strings.sync_elapsed, elapsed))
-                    if (fontScale > 1.4f) {
-                        Text(syncString(MR.strings.sync_eta_remaining))
-                        Text(etaValue, Modifier.fillMaxWidth().testTag("sync-whole-eta-value"))
-                    } else {
-                        Text(
-                            "${syncString(MR.strings.sync_eta_remaining)} · $etaValue",
-                            Modifier.fillMaxWidth().testTag("sync-whole-eta-value"),
-                        )
-                    }
-                }
-                Column(Modifier.fillMaxWidth().height(explanationHeight)) {
-                    androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodySmall) {
                         when {
-                            state.connection?.unsupportedFormat == true ||
-                                state.setupProblem == SyncDiscoveryProblem.INCOMPATIBLE ->
-                                Text(syncString(MR.strings.sync_setup_incompatible))
-                            run?.state == SyncRunState.WAITING_RETRY -> Text(
-                                retryLabel(run, state.nowMillis),
-                                Modifier.testTag("sync-retry-countdown"),
-                            )
-                            state.connection?.enabled != true -> Text(
-                                syncString(
-                                    if (terminal) {
-                                        MR.strings.sync_connection_disconnected
-                                    } else {
-                                        MR.strings.sync_connection_owned_run
-                                    },
-                                ),
-                            )
-                            presentation.idleSeconds?.let {
-                                it >= 60
-                            } == true -> Text(syncString(MR.strings.sync_no_progress_minute))
-                            presentation.idleSeconds?.let {
-                                it >= 10
-                            } == true -> Text(syncString(MR.strings.sync_waiting_step_generic))
-                            state.importPaused && state.importRemaining > 0 -> Text(
-                                syncString(MR.strings.sync_import_paused_summary),
-                            )
-                            state.bulk?.let {
-                                !it.running && it.remaining > 0
-                            } == true -> Text(syncString(MR.strings.sync_bulk_paused_summary))
-                            run?.state == SyncRunState.FAILED && run.stopReason == "retry_exhausted" -> Text(
-                                syncString(MR.strings.sync_retry_exhausted),
-                            )
-                            run?.state == SyncRunState.BLOCKED ||
-                                (
-                                    run?.state in setOf(
-                                        SyncRunState.FAILED,
-                                        SyncRunState.PARTIAL,
-                                    ) && state.problem != null
-                                    ) -> Text(
-                                problemText(state.problem ?: SyncRunProblem.UNKNOWN),
-                                Modifier.testTag("sync-blocked-reason"),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            run?.state == SyncRunState.PARTIAL -> Text(
-                                syncString(
-                                    when {
-                                        run.stopReason == "projection_pending" -> MR.strings.sync_projection_pending
-                                        state.pendingTotal > 0 -> MR.strings.sync_pending_decisions_count
-                                        else -> MR.strings.sync_pending_decisions
-                                    },
-                                    *if (state.pendingTotal > 0 &&
-                                        run.stopReason != "projection_pending"
-                                    ) {
-                                        arrayOf(state.pendingTotal)
-                                    } else {
-                                        emptyArray()
-                                    },
-                                ),
-                            )
-                            fact?.additionalWork == true -> Text(syncString(MR.strings.sync_additional_work))
-                            presentation.active -> Text(
-                                syncString(MR.strings.sync_running_explanation),
-                                Modifier.fillMaxWidth().testTag("sync-running-explanation"),
-                            )
-                            else -> Text("—")
-                        }
-                    }
-                    if ((state.importPaused && state.importRemaining > 0) ||
-                        state.bulk?.let { !it.running && it.remaining > 0 } == true
-                    ) {
-                        Action("sync-view-processing", MR.strings.sync_view_processing) {
-                            if (!detailsExpanded) toggleDetails()
-                        }
-                    }
-                }
-                TextButton({
-                    toggleDetails()
-                    if (detailsExpanded &&
-                        detailsHaveFocus
-                    ) {
-                        triggerFocus.requestFocus()
-                    }
-                }, Modifier.testTag("sync-progress-details-toggle").focusRequester(triggerFocus)) {
+                            run.stopReason == "projection_pending" -> MR.strings.sync_projection_pending
+                            state.pendingTotal > 0 -> MR.strings.sync_pending_decisions_count
+                            else -> MR.strings.sync_pending_decisions
+                        },
+                        *if (state.pendingTotal > 0 && run.stopReason != "projection_pending") {
+                            arrayOf(state.pendingTotal)
+                        } else {
+                            emptyArray()
+                        },
+
+                    ),
+                )
+            }
+            SyncMainOperation(state, presentation, detailsExpanded, toggleDetails, dispatch)
+            TextButton({
+                toggleDetails()
+                if (detailsExpanded && detailsHaveFocus) triggerFocus.requestFocus()
+            }, Modifier.heightIn(min = 48.dp).testTag("sync-progress-details-toggle").focusRequester(triggerFocus)) {
+                Text(
+                    syncString(
+                        if (detailsExpanded) MR.strings.sync_details_collapse else MR.strings.sync_details_expand,
+                    ),
+                )
+            }
+            if (terminal && run != null) {
+                val summary = state.terminalSummary?.takeIf { it.runId == run.runId }
+                summary?.takeIf { it.pendingDownloadBatches > 0 }?.let {
                     Text(
                         syncString(
-                            if (detailsExpanded) MR.strings.sync_details_collapse else MR.strings.sync_details_expand,
+                            MR.strings.sync_terminal_pending_receipts,
+                            it.pendingDownloadBatches,
+                            it.pendingDownloadEvents,
                         ),
                     )
+                    Text(syncString(MR.strings.sync_terminal_pending_explanation))
                 }
-                if (terminal && run != null) {
-                    val summary = state.terminalSummary?.takeIf { it.runId == run.runId }
-                    summary?.takeIf { it.pendingDownloadBatches > 0 }?.let {
+                summary?.takeIf { it.sourceUnavailableFields > 0 }?.let {
+                    Text(syncString(MR.strings.sync_terminal_source_fields, it.sourceUnavailableFields))
+                    Text(syncString(MR.strings.sync_terminal_source_retry))
+                }
+                when (val log = state.failureLog?.takeIf { it.runId == run.runId }) {
+                    is SyncFailureLogStatus.Ready -> {
+                        Text(syncString(MR.strings.sync_failure_log_count, log.failedEntries))
+                        Action("sync-failure-log-open", MR.strings.sync_failure_log_open) {
+                            onOpenFailureLog(log.path)
+                        }
+                    }
+                    is SyncFailureLogStatus.SaveFailed -> Text(
+                        if (log.failedEntries >
+                            0
+                        ) {
+                            syncString(MR.strings.sync_failure_log_save_failed, log.failedEntries)
+                        } else {
+                            syncString(MR.strings.sync_failure_log_save_failed_unknown)
+                        },
+                    )
+                    null -> Unit
+                }
+            }
+            if (detailsExpanded) {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(max = 260.dp).verticalScroll(detailScroll).onFocusChanged {
+                        detailsHaveFocus =
+                            it.hasFocus
+                    }.focusGroup().testTag("sync-progress-details"),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (run?.state == SyncRunState.BLOCKED ||
+                        (run?.state in setOf(SyncRunState.FAILED, SyncRunState.PARTIAL) && state.problem != null)
+                    ) {
+                        Text(
+                            problemText(state.problem ?: SyncRunProblem.UNKNOWN),
+                            Modifier.testTag("sync-full-reason"),
+                        )
+                    }
+                    if (fact != null && run != null &&
+                        !terminal
+                    ) {
+                        SyncStageProgress(
+                            run,
+                            fact.copy(secondsWithoutProgress = presentation.idleSeconds),
+                            presentation.stages,
+                        )
+                    }
+                    if (run != null && fact == null && !terminal) {
                         Text(
                             syncString(
-                                MR.strings.sync_terminal_pending_receipts,
-                                it.pendingDownloadBatches,
-                                it.pendingDownloadEvents,
+                                MR.strings.sync_progress_detail,
+                                run.completed,
+                                run.skipped,
+                                run.failed,
+                                (run.total - run.completed - run.skipped - run.failed).coerceAtLeast(0),
+                            ),
+                            Modifier.testTag("sync-progress-detail"),
+                        )
+                    }
+                    SyncQueueSummary(state)
+                    if (state.importRemaining > 0) {
+                        Text(syncString(MR.strings.sync_import_remaining, state.importRemaining))
+                        Action(
+                            if (state.importPaused) "sync-resume-import" else "sync-pause-import",
+                            if (state.importPaused) MR.strings.sync_resume else MR.strings.sync_pause,
+                        ) {
+                            dispatch(
+                                if (state.importPaused) {
+                                    SyncPanelAction.ResumeImport
+                                } else {
+                                    SyncPanelAction.PauseImport
+                                },
+                            )
+                        }
+                    }
+                    state.bulk?.takeIf { it.remaining > 0 }?.let { bulk ->
+                        Text(
+                            syncString(
+                                MR.strings.sync_bulk,
+                                bulk.completed,
+                                bulk.remaining,
+                                bulk.skipped,
+                                bulk.failed,
                             ),
                         )
-                        Text(syncString(MR.strings.sync_terminal_pending_explanation))
-                    }
-                    summary?.takeIf { it.sourceUnavailableFields > 0 }?.let {
-                        Text(syncString(MR.strings.sync_terminal_source_fields, it.sourceUnavailableFields))
-                        Text(syncString(MR.strings.sync_terminal_source_retry))
-                    }
-                    when (val log = state.failureLog?.takeIf { it.runId == run.runId }) {
-                        is SyncFailureLogStatus.Ready -> {
-                            Text(syncString(MR.strings.sync_failure_log_count, log.failedEntries))
-                            Action("sync-failure-log-open", MR.strings.sync_failure_log_open) {
-                                onOpenFailureLog(log.path)
-                            }
+                        Action(
+                            if (bulk.running) "sync-pause-bulk" else "sync-resume-bulk",
+                            if (bulk.running) MR.strings.sync_pause else MR.strings.sync_resume,
+                        ) {
+                            dispatch(if (bulk.running) SyncPanelAction.PauseBulk else SyncPanelAction.ResumeBulk)
                         }
-                        is SyncFailureLogStatus.SaveFailed -> Text(
-                            if (log.failedEntries >
-                                0
-                            ) {
-                                syncString(MR.strings.sync_failure_log_save_failed, log.failedEntries)
-                            } else {
-                                syncString(MR.strings.sync_failure_log_save_failed_unknown)
-                            },
+                    }
+                    (state.failureLog as? SyncFailureLogStatus.Ready)?.takeIf {
+                        it.runId == run?.runId && terminal
+                    }?.let {
+                        Text(
+                            it.path,
+                            Modifier.testTag("sync-failure-log-path").clickable { onOpenFailureLog(it.path) },
                         )
-                        null -> Unit
                     }
-                }
-                if (detailsExpanded) {
-                    Column(
-                        Modifier.fillMaxWidth().heightIn(max = 260.dp).verticalScroll(detailScroll).onFocusChanged {
-                            detailsHaveFocus =
-                                it.hasFocus
-                        }.focusGroup().testTag("sync-progress-details"),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        if (run?.state == SyncRunState.BLOCKED ||
-                            (run?.state in setOf(SyncRunState.FAILED, SyncRunState.PARTIAL) && state.problem != null)
-                        ) {
-                            Text(
-                                problemText(state.problem ?: SyncRunProblem.UNKNOWN),
-                                Modifier.testTag("sync-full-reason"),
-                            )
-                        }
-                        if (fact != null && run != null &&
-                            !terminal
-                        ) {
-                            SyncStageProgress(
-                                run,
-                                fact.copy(secondsWithoutProgress = presentation.idleSeconds),
-                                presentation.stages,
-                            )
-                        }
-                        if (run != null && fact == null && !terminal) {
-                            Text(
-                                syncString(
-                                    MR.strings.sync_progress_detail,
-                                    run.completed,
-                                    run.skipped,
-                                    run.failed,
-                                    (run.total - run.completed - run.skipped - run.failed).coerceAtLeast(0),
-                                ),
-                                Modifier.testTag("sync-progress-detail"),
-                            )
-                        }
-                        SyncQueueSummary(state)
-                        if (state.importRemaining > 0) {
-                            Text(syncString(MR.strings.sync_import_remaining, state.importRemaining))
-                            Action(
-                                if (state.importPaused) "sync-resume-import" else "sync-pause-import",
-                                if (state.importPaused) MR.strings.sync_resume else MR.strings.sync_pause,
-                            ) {
-                                dispatch(
-                                    if (state.importPaused) {
-                                        SyncPanelAction.ResumeImport
-                                    } else {
-                                        SyncPanelAction.PauseImport
-                                    },
-                                )
+                    state.logs.filter { it.runId == run?.runId }.forEach { log ->
+                        androidx.compose.runtime.key(log.runId, log.key) {
+                            Column(Modifier.testTag("sync-log-${log.key}")) {
+                                Text(log.title)
+                                Text(log.detail)
                             }
                         }
-                        state.bulk?.takeIf { it.remaining > 0 }?.let { bulk ->
-                            Text(
-                                syncString(
-                                    MR.strings.sync_bulk,
-                                    bulk.completed,
-                                    bulk.remaining,
-                                    bulk.skipped,
-                                    bulk.failed,
-                                ),
-                            )
-                            Action(
-                                if (bulk.running) "sync-pause-bulk" else "sync-resume-bulk",
-                                if (bulk.running) MR.strings.sync_pause else MR.strings.sync_resume,
-                            ) {
-                                dispatch(if (bulk.running) SyncPanelAction.PauseBulk else SyncPanelAction.ResumeBulk)
-                            }
-                        }
-                        (state.failureLog as? SyncFailureLogStatus.Ready)?.takeIf {
-                            it.runId == run?.runId && terminal
-                        }?.let {
-                            Text(
-                                it.path,
-                                Modifier.testTag("sync-failure-log-path").clickable { onOpenFailureLog(it.path) },
-                            )
-                        }
-                        state.logs.filter { it.runId == run?.runId }.forEach { log ->
-                            androidx.compose.runtime.key(log.runId, log.key) {
-                                Column(Modifier.testTag("sync-log-${log.key}")) {
-                                    Text(log.title)
-                                    Text(log.detail)
-                                }
-                            }
-                        }
-                        if (state.logsHasMore) {
-                            Action("sync-log-more", MR.strings.sync_load_more) {
-                                dispatch(SyncPanelAction.LoadMoreLogs)
-                            }
+                    }
+                    if (state.logsHasMore) {
+                        Action("sync-log-more", MR.strings.sync_load_more) {
+                            dispatch(SyncPanelAction.LoadMoreLogs)
                         }
                     }
                 }
@@ -1880,7 +1787,7 @@ private fun SyncProgressCard(
     }
 }
 
-/** Measure the finite resource set once per layout configuration, never from the current number. */
+/** Running slots reserve stable candidates; terminal text measures only the actual finished result. */
 @Composable
 private fun reservedTextHeight(texts: List<String>, width: Int, style: TextStyle): Dp {
     val measurer = rememberTextMeasurer()
@@ -1929,21 +1836,29 @@ private fun SyncMainOperation(
     val operation = connectionOperation(state)
     val operationHeight = syncMainOperationHeight()
     val operationShape = MaterialTheme.shapes.small
-    Box(Modifier.width(168.dp).height(operationHeight), contentAlignment = Alignment.CenterEnd) {
+    val buttonModifier = if (terminal) {
+        Modifier.fillMaxWidth().heightIn(min = 48.dp)
+    } else {
+        Modifier.fillMaxWidth().height(operationHeight)
+    }
+    val containerModifier = if (terminal) Modifier.fillMaxWidth() else Modifier.width(168.dp).height(operationHeight)
+    Box(containerModifier, contentAlignment = Alignment.CenterEnd) {
         when {
             terminal && state.busy -> Action(
                 "sync-wait",
                 MR.strings.sync_wait_start,
                 false,
                 shape = operationShape,
-                modifier = Modifier.fillMaxWidth().height(operationHeight),
+                primary = terminal,
+                modifier = buttonModifier,
             ) {}
             terminal && operation != null -> Action(
                 if (state.connection?.unsupportedFormat == true) "sync-view-reason" else "sync-now",
                 operation.label,
                 operation.enabled,
                 shape = operationShape,
-                modifier = Modifier.fillMaxWidth().height(operationHeight),
+                primary = terminal,
+                modifier = buttonModifier,
             ) {
                 dispatch(operation.action)
             }
@@ -1952,7 +1867,8 @@ private fun SyncMainOperation(
                 MR.strings.sync_resume_run,
                 state.connection?.enabled == true,
                 shape = operationShape,
-                modifier = Modifier.fillMaxWidth().height(operationHeight),
+                primary = terminal,
+                modifier = buttonModifier,
             ) {
                 dispatch(SyncPanelAction.ResumeSync)
             }
@@ -1960,7 +1876,8 @@ private fun SyncMainOperation(
                 "sync-retry-run",
                 MR.strings.sync_retry_run,
                 shape = operationShape,
-                modifier = Modifier.fillMaxWidth().height(operationHeight),
+                primary = terminal,
+                modifier = buttonModifier,
             ) {
                 dispatch(SyncPanelAction.RetrySync)
             }
@@ -1969,7 +1886,8 @@ private fun SyncMainOperation(
                     "sync-reconnect",
                     MR.strings.sync_reconnect,
                     shape = operationShape,
-                    modifier = Modifier.fillMaxWidth().height(operationHeight),
+                    primary = terminal,
+                    modifier = buttonModifier,
                 ) {
                     dispatch(SyncPanelAction.Authorize)
                 }
@@ -1980,7 +1898,8 @@ private fun SyncMainOperation(
                         "sync-reenter-password",
                         MR.strings.sync_password_connect,
                         shape = operationShape,
-                        modifier = Modifier.fillMaxWidth().height(operationHeight),
+                        primary = terminal,
+                        modifier = buttonModifier,
                     ) {
                         dispatch(SyncPanelAction.BeginSetup)
                     }
@@ -1989,7 +1908,8 @@ private fun SyncMainOperation(
                         "sync-view-reason",
                         MR.strings.sync_view_reason,
                         shape = operationShape,
-                        modifier = Modifier.fillMaxWidth().height(operationHeight),
+                        primary = terminal,
+                        modifier = buttonModifier,
                     ) {
                         if (!detailsExpanded) toggleDetails()
                     }
@@ -1998,7 +1918,8 @@ private fun SyncMainOperation(
                     "sync-view-reason",
                     MR.strings.sync_view_reason,
                     shape = operationShape,
-                    modifier = Modifier.fillMaxWidth().height(operationHeight),
+                    primary = terminal,
+                    modifier = buttonModifier,
                 ) {
                     if (!detailsExpanded) toggleDetails()
                 }
@@ -2008,7 +1929,8 @@ private fun SyncMainOperation(
                 MR.strings.sync_now,
                 state.connection?.enabled == true,
                 shape = operationShape,
-                modifier = Modifier.fillMaxWidth().height(operationHeight),
+                primary = terminal,
+                modifier = buttonModifier,
             ) {
                 dispatch(SyncPanelAction.Synchronize)
             }
@@ -2016,7 +1938,8 @@ private fun SyncMainOperation(
                 "sync-pause-run",
                 MR.strings.sync_pause_run,
                 shape = operationShape,
-                modifier = Modifier.fillMaxWidth().height(operationHeight),
+                primary = terminal,
+                modifier = buttonModifier,
             ) {
                 dispatch(SyncPanelAction.PauseSync)
             }
@@ -2031,7 +1954,8 @@ private fun SyncMainOperation(
                 },
                 false,
                 shape = operationShape,
-                modifier = Modifier.fillMaxWidth().height(operationHeight),
+                primary = terminal,
+                modifier = buttonModifier,
             ) {}
         }
     }
@@ -2283,18 +2207,38 @@ private fun encodeQueryParameter(value: String): String = buildString {
     }
 }
 
+internal expect fun syncScheduleDateTime(millis: Long): String
+
+@Composable
+private fun NextAutomaticSync(state: SyncPanelState) {
+    val text = when {
+        state.connection?.enabled != true -> return
+        state.periodMinutes <= 0 -> syncString(MR.strings.sync_auto_off)
+        state.problem == SyncRunProblem.NETWORK -> syncString(MR.strings.sync_auto_network)
+        state.nextSyncAtMillis <= state.nowMillis -> syncString(MR.strings.sync_auto_due)
+        else -> syncString(
+            MR.strings.sync_auto_next,
+            syncScheduleDateTime(state.nextSyncAtMillis),
+            duration(((state.nextSyncAtMillis - state.nowMillis - 1) / 60_000) + 1),
+        )
+    }
+    Text(
+        text,
+        Modifier.fillMaxWidth().padding(
+            horizontal = 24.dp,
+            vertical = 8.dp,
+        ).testTag("sync-next-auto"),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
 @Composable
 private fun statusText(state: SyncPanelState): String = when {
     state.setupProblem != null -> state.setupProblem?.let { setupProblemText(it) }.orEmpty()
     state.busy -> syncString(MR.strings.sync_busy)
     state.problem != null -> state.problem?.let { problemText(it) }.orEmpty()
     state.connection?.enabled != true -> syncString(MR.strings.sync_connect)
-    state.periodMinutes > 0 -> if (state.nextSyncAtMillis <= state.nowMillis) {
-        syncString(MR.strings.sync_soon)
-    } else {
-        val minutes = ((state.nextSyncAtMillis - state.nowMillis - 1) / 60_000) + 1
-        syncString(MR.strings.sync_next, duration(minutes))
-    }
     state.queuedTotal > 0 -> syncString(MR.strings.sync_queued, state.queuedTotal)
     state.pendingTotal > 0 -> syncString(MR.strings.sync_exchanged)
     else -> syncString(MR.strings.sync_synced)
@@ -2353,11 +2297,46 @@ private fun Action(
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
     shape: Shape? = null,
+    primary: Boolean = false,
+    tonal: Boolean = false,
     onClick: () -> Unit,
 ) {
-    if (shape == null) {
-        TextButton(onClick, modifier.testTag(tag), enabled = enabled) { Text(syncString(label)) }
+    if (tonal) {
+        FilledTonalButton(
+            onClick,
+            modifier.heightIn(min = 48.dp).testTag(tag),
+            enabled = enabled,
+        ) { Text(syncString(label)) }
+    } else if (primary) {
+        Button(
+            onClick,
+            modifier.heightIn(min = 48.dp).testTag(tag),
+            enabled = enabled,
+            shape = shape ?: MaterialTheme.shapes.medium,
+        ) {
+            BoxWithConstraints {
+                val text = syncString(label)
+                Text(
+                    text,
+                    Modifier.fillMaxWidth().heightIn(
+                        min = reservedTextHeight(
+                            listOf(text),
+                            constraints.maxWidth,
+                            MaterialTheme.typography.labelLarge,
+                        ),
+                    ),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    } else if (shape == null) {
+        TextButton(onClick, modifier.heightIn(min = 48.dp).testTag(tag), enabled = enabled) { Text(syncString(label)) }
     } else {
-        TextButton(onClick, modifier.testTag(tag), enabled = enabled, shape = shape) { Text(syncString(label)) }
+        TextButton(
+            onClick,
+            modifier.heightIn(min = 48.dp).testTag(tag),
+            enabled = enabled,
+            shape = shape,
+        ) { Text(syncString(label)) }
     }
 }
