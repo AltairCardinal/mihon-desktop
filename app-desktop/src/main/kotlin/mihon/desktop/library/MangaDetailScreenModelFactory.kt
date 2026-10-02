@@ -40,6 +40,20 @@ object MangaDetailScreenModelFactory {
             readingProgress = Injekt.get<tachiyomi.domain.reader.interactor.RecordReadingProgress>(),
             readerPreferences = Injekt.get<mihon.desktop.reader.ReaderPreferences>(),
             mangaId = mangaId,
+            migrateManga = { targetSourceId, item ->
+                val source = Injekt.get<tachiyomi.domain.manga.interactor.GetManga>().await(mangaId)
+                    ?: error("Source manga no longer exists")
+                require(source.source != targetSourceId || source.url != item.url) {
+                    "Cannot migrate onto the same manga"
+                }
+                val targetSource =
+                    Injekt.get<SourceManager>().get(targetSourceId) as? eu.kanade.tachiyomi.source.CatalogueSource
+                        ?: error("Target source is not installed")
+                val useCase = Injekt.get<mihon.desktop.domain.DesktopMigrateMangaUseCase>()
+                val options = mihon.desktop.domain.MigrationOptions(copyNotes = source.notes.isNotBlank())
+                val accepted = useCase.accept(source, options, true)
+                useCase.await(source, item, targetSourceId, targetSource.getChapterList(item), options, true, accepted)
+            },
             manualTracking = mihon.desktop.tracking.DesktopManualTracking.fromInjekt(),
             getMangaWithChapters = Injekt.get<GetMangaWithChapters>(),
             sourceManager = Injekt.get<SourceManager>(),

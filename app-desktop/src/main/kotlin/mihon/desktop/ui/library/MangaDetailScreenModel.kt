@@ -65,6 +65,7 @@ import tachiyomi.i18n.MR
  */
 class MangaDetailScreenModel(
     val mangaId: Long,
+    private val migrateManga: (suspend (Long, SManga) -> Manga)? = null,
     private val getMangaWithChapters: GetMangaWithChapters? = null,
     private val sourceManager: SourceManager? = null,
     private val updateChecker: LibraryUpdateChecker? = null,
@@ -972,16 +973,9 @@ class MangaDetailScreenModel(
     }
 
     suspend fun migrateTo(targetSourceId: Long, item: SManga, fallbackTitle: String?) {
-        requireNotNull(updateManga) { "UpdateManga is required" }
-            .await(
-                MangaUpdate(
-                    id = mangaId,
-                    source = targetSourceId,
-                    url = item.url,
-                    title = item.title.takeIf { it.isNotBlank() } ?: fallbackTitle,
-                    thumbnailUrl = item.thumbnail_url,
-                ),
-            )
+        val target = item
+        if (target.title.isBlank()) target.title = fallbackTitle.orEmpty()
+        requireNotNull(migrateManga) { "Independent migration is required" }.invoke(targetSourceId, target)
     }
 
     suspend fun linkCreator(name: String, role: CreatorRole): Long {

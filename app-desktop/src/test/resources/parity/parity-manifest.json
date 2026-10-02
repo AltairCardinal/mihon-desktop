@@ -4386,7 +4386,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 1232
+          "line": 1294
         }
       ],
       "FIXTURE": [
@@ -10059,7 +10059,11 @@
     ],
     "sharedImplementationPaths": [
       "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt",
-      "domain/src/commonMain/kotlin/tachiyomi/domain/library/LibraryDownloadSelection.kt"
+      "domain/src/commonMain/kotlin/tachiyomi/domain/library/LibraryDownloadSelection.kt",
+      "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationCommit.kt",
+      "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationOrchestrator.kt",
+      "data/src/commonMain/kotlin/tachiyomi/data/manga/MangaRepositoryImpl.kt",
+      "data/src/commonMain/kotlin/tachiyomi/data/manga/MigrationReceiptStorage.kt"
     ],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryTab.kt",
@@ -10070,7 +10074,15 @@
       "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/library/LibraryScreenModelFactory.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadProvider.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadProvider.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationSearchScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCase.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopMigrationFiles.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/MigrationFileStaging.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopMigrationFileMove.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/migration/DesktopBatchMigrationController.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationBatchQueueScreen.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -11580,7 +11592,14 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/NavigationContractTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryOptionsInteractionTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/migration/MigrationSearchInteractionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseChapterAdapterTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/MigrationFileStagingTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationControllerTest.kt",
+      "data/src/commonTest/kotlin/mihon/data/sync/SyncReadingStorageContract.kt",
+      "app/src/test/java/mihon/domain/migration/usecases/MigrateMangaUseCaseChapterAdapterTest.kt"
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt": [
@@ -11615,7 +11634,91 @@
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD",
-    "verificationScope": "Confirmation transactions are reviewed and tested in be44ddd6e through real Root -> dialogs -> production DI/SQLDelight and the existing persistent migration controller. The migration entry is verified only through supported options and confirm/cancel; the full configuration/search port remains PARTIAL under MG-01 by explicit user scope decision. Action provenance remains the immutable 95b82fc inventory baseline. Download retirement and navigation lifetime are reviewed in 6b204c085 with real Root/Home -> factory -> SQLDelight, existing producer/lease regressions, persistence failure and actual file fixtures. A production worker/MockWebServer PNG test also verifies the visible downloaded-filter and numeric-badge result before and after confirmed download-only deletion. The final Root mark-read fixture executes the production per-chapter download deletion port and preserves already-read and unrelated chapter files. Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI06 native Root mouse/range, category-wheel ownership, source selection UI and frozen batch SQL/file actions are covered by focused production tests; asynchronous completion preserves later selection and partial failures retain valid retries. Physical input and final release runtime remain RI18 acceptance requirements; this evidence does not claim those checks passed. RI10 protects the mounted raw manual candidate range, actual manager acceptance, fixed membership/file snapshot and failure-only retry without touching later artifacts or replacing queue generations. Actual focused/affected results, independent review and limitations are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; this does not claim final full tests or release/runtime/hardware acceptance."
+    "verificationScope": "Confirmation transactions are reviewed and tested in be44ddd6e through real Root -> dialogs -> production DI/SQLDelight and the existing persistent migration controller. The migration entry is verified only through supported options and confirm/cancel; the full configuration/search port remains PARTIAL under MG-01 by explicit user scope decision. Action provenance remains the immutable 95b82fc inventory baseline. Download retirement and navigation lifetime are reviewed in 6b204c085 with real Root/Home -> factory -> SQLDelight, existing producer/lease regressions, persistence failure and actual file fixtures. A production worker/MockWebServer PNG test also verifies the visible downloaded-filter and numeric-badge result before and after confirmed download-only deletion. The final Root mark-read fixture executes the production per-chapter download deletion port and preserves already-read and unrelated chapter files. Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI06 native Root mouse/range, category-wheel ownership, source selection UI and frozen batch SQL/file actions are covered by focused production tests; asynchronous completion preserves later selection and partial failures retain valid retries. Physical input and final release runtime remain RI18 acceptance requirements; this evidence does not claim those checks passed. RI10 protects the mounted raw manual candidate range, actual manager acceptance, fixed membership/file snapshot and failure-only retry without touching later artifacts or replacing queue generations. Actual focused/affected results, independent review and limitations are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; this does not claim final full tests or release/runtime/hardware acceptance. RI15 library batch targets enter the existing nested Screen flow, retain the accepted five-field confirmation and expose real per-item failures and retry without expanding scope.",
+    "interactionIterationEvidence": {
+      "RI15": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/migration/MigrationSearchInteractionTest.kt": [
+            "actual migration search exposes source paging and recoverable HTTP errors",
+            "actual confirmation includes applicable cover downloads and cancellation keeps original membership",
+            "actual batch migration continues after HTTP failure and retries only original failed item",
+            "actual SQL refusal keeps confirmation retryable and Cancel restores original context",
+            "actual batch checkpoint refusal retains committed SQL and retry avoids another HTTP migration",
+            "actual batch carries all applicable file flags and excludes HTTP late downloads",
+            "empty source notes hide copying and preserve existing target notes through actual Copy",
+            "changing target source discards stale result selection before next query renders",
+            "legacy detail factory callback migrates to independent target without rewriting original identity",
+            "actual DI startup restores prepared files before opening new migration runtime",
+            "changed accepted files explain reconfirmation and retain original favorite",
+            "committed cleanup failure permits Close without rolling back or reapplying SQL",
+            "cancel after durable batch SQL keeps Cancelled task and acknowledges original committed result",
+            "cancelled committed migration exposes original cleanup retry after checkpoint refusal",
+            "narrow confirmation supports both theme keyboard traversal Escape and trigger focus"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt": [
+            "prepared migration restores finite original files before new owner starts downloads",
+            "committed migration cannot acknowledge missing original file sidecar",
+            "prepared serialized confirmation with missing sidecar cannot cancel its recovery anchor",
+            "private cleanup and SQL acknowledgement refusal preserve original committed result for retry",
+            "actual committed SQL cancellation keeps installed files and new owner finishes original cleanup",
+            "actual migration consumes accepted files and cover without adopting HTTP late arrivals",
+            "actual SQL refusal restores original files and cover while same confirmation can retry",
+            "actual migration waits for accepted task checkpoint without replaying committed SQL or files",
+            "accepted migration receipt survives SQL success without reapplying source date or target state",
+            "prepared migration owns original source before any second target can be accepted",
+            "prepared migration phase cannot be consumed or acknowledged as an ordinary directory",
+            "membership rejection cannot leave copied target chapter state",
+            "same source URL identity cannot migrate a work onto itself",
+            "category failure rolls back source and target migration membership",
+            "copy categories and replace move real library membership without half state",
+            "copy categories false and replace false preserve source and recalculate target date",
+            "copy categories false preserves categories already assigned to favorite target",
+            "migration persists source chapter and viewer flags on target",
+            "copy notes true replaces target notes with source notes",
+            "copy notes false preserves existing target notes",
+            "copy migration replaces existing target date with invocation time",
+            "replace migration returns the final persisted source date and flags",
+            "chapter adapter preserves target read progress beyond source and unknown numbers",
+            "chapter adapter copies matched metadata and preserves unmatched target metadata"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseChapterAdapterTest.kt": [
+            "Desktop production adapter delegates chapter state to the atomic migration repository"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/MigrationFileStagingTest.kt": [
+            "file appearing after the destination check is not overwritten by an atomic move",
+            "migration uses the actual cover store reservation against manual write and delete",
+            "preparation rejection preserves untouched target cover with the same bytes as accepted source",
+            "migration reservation refuses active reads and blocks later leases without retiring them",
+            "accepted files are staged before SQL and restored on rejected commit",
+            "accepted cover and download snapshot excludes later files and source cover edits"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationControllerTest.kt": [
+            "target accepted while original waiting event is publishing starts once after that worker exits",
+            "successful migration acknowledges only after original checkpoint is durable",
+            "checkpoint write refusal leaves visible retry instead of a running phantom",
+            "resume waits for cancelled original migration before another worker can start",
+            "runtime stop awaits noncancellable original migration before database can close",
+            "queue persists waiting selection options failures and continues other items",
+            "restart converts running to queued and resumes from checkpoint",
+            "pause cancel item cancel all and retry failed are durable",
+            "cancelling a paused queue persists a desktop cancelled terminal"
+          ],
+          "data/src/commonTest/kotlin/mihon/data/sync/SyncReadingStorageContract.kt": [
+            "shared migration chapter refusal rolls back selected metadata and independent membership",
+            "shared migration rolls back chapter patches with rejected membership",
+            "shared migration reads latest user state and preserves unselected target fields"
+          ],
+          "app/src/test/java/mihon/domain/migration/usecases/MigrateMangaUseCaseChapterAdapterTest.kt": [
+            "Android chapter adapter only writes read when shared patch changes target",
+            "missing target source returns an explicit migration failure",
+            "rejected target directory cannot report a completed migration",
+            "rejected atomic membership cannot report a completed migration"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "Focused red/green and affected verification only; final full matrix/release/hardware evidence remains RI18."
+      }
+    }
   },
   {
     "id": 22,
@@ -11731,7 +11834,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun toggleLibrary",
-          "line": 496
+          "line": 497
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
@@ -11756,12 +11859,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt",
           "symbol": "getDuplicateLibraryManga = Injekt.get",
-          "line": 81
+          "line": 95
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt",
           "symbol": "captureMangaDownloadDeletion = if",
-          "line": 154
+          "line": 168
         }
       ],
       "FIXTURE": [
@@ -20860,7 +20963,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun markSelectedBookmark",
-          "line": 470
+          "line": 471
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaChapterOptionsPanel.kt",
@@ -20910,12 +21013,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt",
           "symbol": "captureDownloadDeletion = if",
-          "line": 83
+          "line": 97
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt",
           "symbol": "enqueueAccepted = downloadManager",
-          "line": 60
+          "line": 74
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt",
@@ -33661,27 +33764,27 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "stateMachine.schedule(",
-          "line": 780
+          "line": 825
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(retryAttempt++) ?: break",
-          "line": 1222
+          "line": 1267
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(publishAttempt++) ?: break",
-          "line": 970
+          "line": 1015
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "fun startDownloadNow(",
-          "line": 669
+          "line": 714
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "suspend fun deleteCapturedDownloadFiles(",
-          "line": 324
+          "line": 369
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadProvider.kt",
@@ -34132,7 +34235,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "downloadPolicy = { manga -> Injekt.get<FilterChaptersForDownload>().snapshot(manga) }",
-          "line": 795
+          "line": 796
         }
       ],
       "FIXTURE": [
@@ -39606,7 +39709,10 @@
       }
     ],
     "sharedImplementationPaths": [
-      "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationOrchestrator.kt"
+      "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationOrchestrator.kt",
+      "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationCommit.kt",
+      "data/src/commonMain/kotlin/tachiyomi/data/manga/MangaRepositoryImpl.kt",
+      "data/src/commonMain/kotlin/tachiyomi/data/manga/MigrationReceiptStorage.kt"
     ],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/mihon/domain/migration/usecases/MigrateMangaUseCase.kt",
@@ -39614,7 +39720,14 @@
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCase.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationMangaScreen.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationMangaScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationSearchScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopMigrationFiles.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/MigrationFileStaging.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopMigrationFileMove.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/migration/DesktopBatchMigrationController.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationBatchQueueScreen.kt"
     ],
     "deviations": [
       {
@@ -39639,7 +39752,12 @@
       "app/src/test/java/mihon/domain/migration/usecases/MigrateMangaUseCaseChapterAdapterTest.kt",
       "data/src/jvmTest/kotlin/tachiyomi/data/manga/MangaRepositoryMembershipIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopMigrationParityTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/migration/MigrationSearchInteractionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseChapterAdapterTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/MigrationFileStagingTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationControllerTest.kt",
+      "data/src/commonTest/kotlin/mihon/data/sync/SyncReadingStorageContract.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -39654,7 +39772,7 @@
         {
           "path": "app/src/main/java/mihon/domain/migration/usecases/MigrateMangaUseCase.kt",
           "symbol": "class MigrateMangaUseCase(",
-          "line": 29
+          "line": 19
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -39663,13 +39781,40 @@
           "path": "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationOrchestrator.kt",
           "symbol": "class MigrationOrchestrator",
           "line": 51
+        },
+        {
+          "path": "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationCommit.kt",
+          "symbol": "data class MigrationCommit(",
+          "line": 7,
+          "kind": "SHARED"
+        },
+        {
+          "path": "data/src/commonMain/kotlin/tachiyomi/data/manga/MangaRepositoryImpl.kt",
+          "symbol": "override suspend fun commitMigration(",
+          "line": 122,
+          "kind": "SHARED"
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCase.kt",
           "symbol": "class DesktopMigrateMangaUseCase(",
-          "line": 33
+          "line": 39
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationSearchScreen.kt",
+          "symbol": "data class MigrationSearchScreen(",
+          "line": 87
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopMigrationFiles.kt",
+          "symbol": "class DesktopMigrationFiles(",
+          "line": 12
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/MigrationFileStaging.kt",
+          "symbol": "class MigrationFileStaging(",
+          "line": 14
         }
       ],
       "FIXTURE": [
@@ -39710,7 +39855,92 @@
       }
     },
     "platformExemptionEvidence": "NONE",
-    "targetVersion": "TBD"
+    "targetVersion": "TBD",
+    "interactionIterationEvidence": {
+      "RI15": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/migration/MigrationSearchInteractionTest.kt": [
+            "actual migration search exposes source paging and recoverable HTTP errors",
+            "actual confirmation includes applicable cover downloads and cancellation keeps original membership",
+            "actual batch migration continues after HTTP failure and retries only original failed item",
+            "actual SQL refusal keeps confirmation retryable and Cancel restores original context",
+            "actual batch checkpoint refusal retains committed SQL and retry avoids another HTTP migration",
+            "actual batch carries all applicable file flags and excludes HTTP late downloads",
+            "empty source notes hide copying and preserve existing target notes through actual Copy",
+            "changing target source discards stale result selection before next query renders",
+            "legacy detail factory callback migrates to independent target without rewriting original identity",
+            "actual DI startup restores prepared files before opening new migration runtime",
+            "changed accepted files explain reconfirmation and retain original favorite",
+            "committed cleanup failure permits Close without rolling back or reapplying SQL",
+            "cancel after durable batch SQL keeps Cancelled task and acknowledges original committed result",
+            "cancelled committed migration exposes original cleanup retry after checkpoint refusal",
+            "narrow confirmation supports both theme keyboard traversal Escape and trigger focus"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt": [
+            "prepared migration restores finite original files before new owner starts downloads",
+            "committed migration cannot acknowledge missing original file sidecar",
+            "prepared serialized confirmation with missing sidecar cannot cancel its recovery anchor",
+            "private cleanup and SQL acknowledgement refusal preserve original committed result for retry",
+            "actual committed SQL cancellation keeps installed files and new owner finishes original cleanup",
+            "actual migration consumes accepted files and cover without adopting HTTP late arrivals",
+            "actual SQL refusal restores original files and cover while same confirmation can retry",
+            "actual migration waits for accepted task checkpoint without replaying committed SQL or files",
+            "accepted migration receipt survives SQL success without reapplying source date or target state",
+            "prepared migration owns original source before any second target can be accepted",
+            "prepared migration phase cannot be consumed or acknowledged as an ordinary directory",
+            "membership rejection cannot leave copied target chapter state",
+            "same source URL identity cannot migrate a work onto itself",
+            "category failure rolls back source and target migration membership",
+            "copy categories and replace move real library membership without half state",
+            "copy categories false and replace false preserve source and recalculate target date",
+            "copy categories false preserves categories already assigned to favorite target",
+            "migration persists source chapter and viewer flags on target",
+            "copy notes true replaces target notes with source notes",
+            "copy notes false preserves existing target notes",
+            "copy migration replaces existing target date with invocation time",
+            "replace migration returns the final persisted source date and flags",
+            "chapter adapter preserves target read progress beyond source and unknown numbers",
+            "chapter adapter copies matched metadata and preserves unmatched target metadata"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseChapterAdapterTest.kt": [
+            "Desktop production adapter delegates chapter state to the atomic migration repository"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/MigrationFileStagingTest.kt": [
+            "file appearing after the destination check is not overwritten by an atomic move",
+            "migration uses the actual cover store reservation against manual write and delete",
+            "preparation rejection preserves untouched target cover with the same bytes as accepted source",
+            "migration reservation refuses active reads and blocks later leases without retiring them",
+            "accepted files are staged before SQL and restored on rejected commit",
+            "accepted cover and download snapshot excludes later files and source cover edits"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationControllerTest.kt": [
+            "target accepted while original waiting event is publishing starts once after that worker exits",
+            "successful migration acknowledges only after original checkpoint is durable",
+            "checkpoint write refusal leaves visible retry instead of a running phantom",
+            "resume waits for cancelled original migration before another worker can start",
+            "runtime stop awaits noncancellable original migration before database can close",
+            "queue persists waiting selection options failures and continues other items",
+            "restart converts running to queued and resumes from checkpoint",
+            "pause cancel item cancel all and retry failed are durable",
+            "cancelling a paused queue persists a desktop cancelled terminal"
+          ],
+          "data/src/commonTest/kotlin/mihon/data/sync/SyncReadingStorageContract.kt": [
+            "shared migration chapter refusal rolls back selected metadata and independent membership",
+            "shared migration rolls back chapter patches with rejected membership",
+            "shared migration reads latest user state and preserves unselected target fields"
+          ],
+          "app/src/test/java/mihon/domain/migration/usecases/MigrateMangaUseCaseChapterAdapterTest.kt": [
+            "Android chapter adapter only writes read when shared patch changes target",
+            "missing target source returns an explicit migration failure",
+            "rejected target directory cannot report a completed migration",
+            "rejected atomic membership cannot report a completed migration"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "Focused red/green and affected verification only; final full matrix/release/hardware evidence remains RI18."
+      }
+    },
+    "verificationScope": " RI15 uses the shared actual atomic migration repository for latest chapter/category/flags/notes/membership, independent target identities and original invocation date. Desktop finite accepted files are staged with no replacement, restored before workers on prepared startup, and only cleaned after SQL commit; missing original recovery records refuse acknowledgement. Android retains its existing platform file adapters and does not claim the Desktop restart protocol."
   },
   {
     "id": 68,
@@ -40363,7 +40593,10 @@
       }
     ],
     "sharedImplementationPaths": [
-      "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationOrchestrator.kt"
+      "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationOrchestrator.kt",
+      "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationCommit.kt",
+      "data/src/commonMain/kotlin/tachiyomi/data/manga/MangaRepositoryImpl.kt",
+      "data/src/commonMain/kotlin/tachiyomi/data/manga/MigrationReceiptStorage.kt"
     ],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/mihon/feature/migration/list/AndroidBatchMigrationRunner.kt",
@@ -40372,7 +40605,13 @@
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/migration/DesktopBatchMigrationController.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationBatchQueueScreen.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationBatchQueueScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationSearchScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCase.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopMigrationFiles.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/MigrationFileStaging.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopMigrationFileMove.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"
     ],
     "deviations": [
       {
@@ -40402,7 +40641,13 @@
       "app/src/test/java/mihon/feature/migration/list/MigrationListScreenModelBatchWiringTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationControllerTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationQueueTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationTestModeTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationTestModeTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/migration/MigrationSearchInteractionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseChapterAdapterTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/MigrationFileStagingTest.kt",
+      "data/src/commonTest/kotlin/mihon/data/sync/SyncReadingStorageContract.kt",
+      "app/src/test/java/mihon/domain/migration/usecases/MigrateMangaUseCaseChapterAdapterTest.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -40432,7 +40677,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/migration/DesktopBatchMigrationController.kt",
           "symbol": "class DesktopBatchMigrationController(",
-          "line": 76
+          "line": 83
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/migration/DesktopBatchMigrationController.kt",
+          "symbol": "fun checkpointAccepts(",
+          "line": 563
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationBatchQueueScreen.kt",
+          "symbol": "data class MigrationBatchQueueScreen(",
+          "line": 41
         }
       ],
       "FIXTURE": [
@@ -40467,7 +40722,92 @@
       }
     },
     "platformExemptionEvidence": "NONE",
-    "targetVersion": "TBD"
+    "targetVersion": "TBD",
+    "interactionIterationEvidence": {
+      "RI15": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/migration/MigrationSearchInteractionTest.kt": [
+            "actual migration search exposes source paging and recoverable HTTP errors",
+            "actual confirmation includes applicable cover downloads and cancellation keeps original membership",
+            "actual batch migration continues after HTTP failure and retries only original failed item",
+            "actual SQL refusal keeps confirmation retryable and Cancel restores original context",
+            "actual batch checkpoint refusal retains committed SQL and retry avoids another HTTP migration",
+            "actual batch carries all applicable file flags and excludes HTTP late downloads",
+            "empty source notes hide copying and preserve existing target notes through actual Copy",
+            "changing target source discards stale result selection before next query renders",
+            "legacy detail factory callback migrates to independent target without rewriting original identity",
+            "actual DI startup restores prepared files before opening new migration runtime",
+            "changed accepted files explain reconfirmation and retain original favorite",
+            "committed cleanup failure permits Close without rolling back or reapplying SQL",
+            "cancel after durable batch SQL keeps Cancelled task and acknowledges original committed result",
+            "cancelled committed migration exposes original cleanup retry after checkpoint refusal",
+            "narrow confirmation supports both theme keyboard traversal Escape and trigger focus"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt": [
+            "prepared migration restores finite original files before new owner starts downloads",
+            "committed migration cannot acknowledge missing original file sidecar",
+            "prepared serialized confirmation with missing sidecar cannot cancel its recovery anchor",
+            "private cleanup and SQL acknowledgement refusal preserve original committed result for retry",
+            "actual committed SQL cancellation keeps installed files and new owner finishes original cleanup",
+            "actual migration consumes accepted files and cover without adopting HTTP late arrivals",
+            "actual SQL refusal restores original files and cover while same confirmation can retry",
+            "actual migration waits for accepted task checkpoint without replaying committed SQL or files",
+            "accepted migration receipt survives SQL success without reapplying source date or target state",
+            "prepared migration owns original source before any second target can be accepted",
+            "prepared migration phase cannot be consumed or acknowledged as an ordinary directory",
+            "membership rejection cannot leave copied target chapter state",
+            "same source URL identity cannot migrate a work onto itself",
+            "category failure rolls back source and target migration membership",
+            "copy categories and replace move real library membership without half state",
+            "copy categories false and replace false preserve source and recalculate target date",
+            "copy categories false preserves categories already assigned to favorite target",
+            "migration persists source chapter and viewer flags on target",
+            "copy notes true replaces target notes with source notes",
+            "copy notes false preserves existing target notes",
+            "copy migration replaces existing target date with invocation time",
+            "replace migration returns the final persisted source date and flags",
+            "chapter adapter preserves target read progress beyond source and unknown numbers",
+            "chapter adapter copies matched metadata and preserves unmatched target metadata"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseChapterAdapterTest.kt": [
+            "Desktop production adapter delegates chapter state to the atomic migration repository"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/MigrationFileStagingTest.kt": [
+            "file appearing after the destination check is not overwritten by an atomic move",
+            "migration uses the actual cover store reservation against manual write and delete",
+            "preparation rejection preserves untouched target cover with the same bytes as accepted source",
+            "migration reservation refuses active reads and blocks later leases without retiring them",
+            "accepted files are staged before SQL and restored on rejected commit",
+            "accepted cover and download snapshot excludes later files and source cover edits"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationControllerTest.kt": [
+            "target accepted while original waiting event is publishing starts once after that worker exits",
+            "successful migration acknowledges only after original checkpoint is durable",
+            "checkpoint write refusal leaves visible retry instead of a running phantom",
+            "resume waits for cancelled original migration before another worker can start",
+            "runtime stop awaits noncancellable original migration before database can close",
+            "queue persists waiting selection options failures and continues other items",
+            "restart converts running to queued and resumes from checkpoint",
+            "pause cancel item cancel all and retry failed are durable",
+            "cancelling a paused queue persists a desktop cancelled terminal"
+          ],
+          "data/src/commonTest/kotlin/mihon/data/sync/SyncReadingStorageContract.kt": [
+            "shared migration chapter refusal rolls back selected metadata and independent membership",
+            "shared migration rolls back chapter patches with rejected membership",
+            "shared migration reads latest user state and preserves unselected target fields"
+          ],
+          "app/src/test/java/mihon/domain/migration/usecases/MigrateMangaUseCaseChapterAdapterTest.kt": [
+            "Android chapter adapter only writes read when shared patch changes target",
+            "missing target source returns an explicit migration failure",
+            "rejected target directory cannot report a completed migration",
+            "rejected atomic membership cannot report a completed migration"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "Focused red/green and affected verification only; final full matrix/release/hardware evidence remains RI18."
+      }
+    },
+    "verificationScope": " RI15 persists accepted original operation and queue owner before HTTP. SUCCESS is read back from the actual original TaskStore before receipt acknowledgement; checkpoint and cleanup refusal preserve committed results without another fetch or SQL application. Resume waits for the original noncancellable worker and runtime shutdown joins it."
   },
   {
     "id": 69,

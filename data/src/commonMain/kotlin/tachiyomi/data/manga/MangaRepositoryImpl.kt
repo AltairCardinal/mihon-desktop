@@ -2,12 +2,15 @@ package tachiyomi.data.manga
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.json.Json
 import logcat.LogPriority
 import mihon.data.sync.journal.appendFavoriteOperation
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
+import tachiyomi.data.chapter.applyChapterUpdate
+import tachiyomi.domain.chapter.service.ChapterDirectoryPhase
 import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
 import tachiyomi.domain.creator.model.CreatorLibraryIndexEntry
 import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
@@ -26,6 +29,59 @@ class MangaRepositoryImpl(
     private val creatorIndexWriter: CreatorLibraryIndexWriter,
     private val extractCreators: ExtractCreatorsFromManga = ExtractCreatorsFromManga(),
 ) : MangaRepository, CreatorLibraryMangaSource {
+    override suspend fun prepareMigration(commit: mihon.domain.migration.MigrationCommit) =
+        handler.await(inTransaction = true) { prepareMigrationReceipt(commit) }
+
+    override suspend fun pendingMigrations() = handler.await {
+        chapter_directory_phasesQueries.getPending().executeAsList()
+            .mapNotNull {
+                Json.decodeFromString<ChapterDirectoryPhase>(
+                    it,
+                ).migrationReceipt
+            }
+    }
+
+    override suspend fun migrationReceipt(sourceMangaId: Long) =
+        handler.await { pendingMigration(sourceMangaId)?.migrationReceipt }
+
+    override suspend fun markMigrationFilesReady(commit: mihon.domain.migration.MigrationCommit) {
+        handler.await(inTransaction = true) {
+            validateMigrationIdentity(commit)
+            val phase = requireMigration(commit)
+            val receipt = requireNotNull(phase.migrationReceipt)
+            check(!receipt.committed) { "Migration is already committed" }
+            writeMigrationReceipt(phase, receipt.copy(filesReady = true))
+        }
+    }
+
+    override suspend fun completeMigrationFiles(commit: mihon.domain.migration.MigrationCommit) {
+        handler.await(inTransaction = true) {
+            validateMigrationIdentity(commit)
+            val phase = requireMigration(commit)
+            val receipt = requireNotNull(phase.migrationReceipt)
+            check(receipt.committed && receipt.filesReady) { "Migration has not committed" }
+            writeMigrationReceipt(phase, receipt.copy(filesComplete = true))
+        }
+    }
+
+    override suspend fun acknowledgeMigration(commit: mihon.domain.migration.MigrationCommit) {
+        handler.await(inTransaction = true) {
+            validateMigrationIdentity(commit)
+            val phase = requireMigration(commit)
+            val receipt = requireNotNull(phase.migrationReceipt)
+            check(receipt.committed && receipt.filesComplete) { "Migration effects are not complete" }
+            chapter_directory_phasesQueries.removePhase(phase.mangaId, phase.id)
+        }
+    }
+
+    override suspend fun abortPreparedMigration(commit: mihon.domain.migration.MigrationCommit) {
+        handler.await(inTransaction = true) {
+            val phase = requireMigration(commit)
+            check(phase.migrationReceipt?.committed == false) { "Committed migration cannot be rolled back" }
+            chapter_directory_phasesQueries.removePhase(phase.mangaId, phase.id)
+        }
+    }
+
     override suspend fun updateAtomically(update: LibraryMembershipUpdate) {
         updateMembershipsAtomically(listOf(update))
     }
@@ -33,31 +89,143 @@ class MangaRepositoryImpl(
     override suspend fun updateMembershipsAtomically(updates: List<LibraryMembershipUpdate>) {
         handler.await(inTransaction = true) {
             updates.forEach { update ->
-                mangasQueries.update(
-                    source = null,
-                    url = null,
-                    artist = null,
-                    updateArtist = false,
-                    author = null,
-                    updateAuthor = false,
-                    description = null,
-                    genre = null, title = null, status = null, thumbnailUrl = null,
-                    favorite = update.favorite, lastUpdate = null, nextUpdate = null,
-                    calculateInterval = null, initialized = null, viewer = update.viewerFlags,
-                    chapterFlags = update.chapterFlags,
-                    coverLastModified = null, dateAdded = update.dateAdded, mangaId = update.mangaId,
-                    updateStrategy = null, version = null, isSyncing = 0, notes = update.notes,
-                    memo = null,
-                )
-                reconcileCreatorIndex(update.mangaId)
-                appendFavoriteOperation(update.mangaId, update.favorite, update.syncContext)
-                if (update.updateCategories) {
-                    mangas_categoriesQueries.deleteMangaCategoryByMangaId(update.mangaId)
-                    update.categoryIds.forEach { mangas_categoriesQueries.insert(update.mangaId, it) }
-                }
+                applyMembership(update)
             }
         }
     }
+
+    private suspend fun tachiyomi.data.Database.applyMembership(update: LibraryMembershipUpdate) {
+        mangasQueries.update(
+            source = null,
+            url = null,
+            artist = null,
+            updateArtist = false,
+            author = null,
+            updateAuthor = false,
+            description = null,
+            genre = null, title = null, status = null, thumbnailUrl = null,
+            favorite = update.favorite, lastUpdate = null, nextUpdate = null,
+            calculateInterval = null, initialized = null, viewer = update.viewerFlags,
+            chapterFlags = update.chapterFlags,
+            coverLastModified = null, dateAdded = update.dateAdded, mangaId = update.mangaId,
+            updateStrategy = null, version = null, isSyncing = 0, notes = update.notes,
+            memo = null,
+        )
+        reconcileCreatorIndex(update.mangaId)
+        appendFavoriteOperation(update.mangaId, update.favorite, update.syncContext)
+        if (update.updateCategories) {
+            mangas_categoriesQueries.deleteMangaCategoryByMangaId(update.mangaId)
+            update.categoryIds.forEach { mangas_categoriesQueries.insert(update.mangaId, it) }
+        }
+    }
+
+    override suspend fun commitMigration(commit: mihon.domain.migration.MigrationCommit): Manga =
+        handler.await(inTransaction = true) {
+            val migrationPhase = if (commit.operationId != null) requireMigration(commit) else null
+            if (migrationPhase != null) {
+                validateMigrationIdentity(commit)
+                val receipt = requireNotNull(migrationPhase.migrationReceipt)
+                if (receipt.committed) {
+                    return@await mangasQueries.getMangaById(commit.targetMangaId, MangaMapper::mapManga).executeAsOne()
+                }
+                check(receipt.filesReady) { "Migration files have not been prepared" }
+            }
+            require(commit.sourceMangaId != commit.targetMangaId) { "Cannot migrate onto the same manga" }
+            val source = mangasQueries.getMangaById(commit.sourceMangaId, MangaMapper::mapManga).executeAsOne()
+            val target = mangasQueries.getMangaById(commit.targetMangaId, MangaMapper::mapManga).executeAsOne()
+            require(source.source == commit.sourceId && source.url == commit.sourceUrl) { "Source identity changed" }
+            require(target.source == commit.targetSourceId && target.url == commit.targetUrl) {
+                "Target identity changed"
+            }
+            require(source.source != target.source || source.url != target.url) { "Cannot migrate onto the same manga" }
+            if (commit.coverVersion != null) {
+                require(mihon.domain.migration.models.MigrationFlag.CUSTOM_COVER in commit.flags)
+                check(target.coverLastModified == commit.previousCoverVersion) {
+                    "Target cover changed after preparation"
+                }
+            }
+            val orchestrator = mihon.domain.migration.MigrationOrchestrator()
+            if (mihon.domain.migration.models.MigrationFlag.CHAPTER in commit.flags) {
+                fun chapters(id: Long) = chaptersQueries.getChaptersByMangaId(id, 0) {
+                        chapterId,
+                        _,
+                        _,
+                        _,
+                        _,
+                        read,
+                        bookmark,
+                        _,
+                        number,
+                        _,
+                        fetched,
+                        _,
+                        _,
+                        _,
+                        _,
+                        _,
+                    ->
+                    mihon.domain.migration.MigrationChapter(chapterId, number, read, bookmark, fetched)
+                }.executeAsList()
+                orchestrator.chapterUpdates(chapters(source.id), chapters(target.id)).forEach {
+                    applyChapterUpdate(
+                        tachiyomi.domain.chapter.model.ChapterUpdate(
+                            id = it.id,
+                            read = it.read,
+                            bookmark = it.bookmark,
+                            dateFetch = it.dateFetch,
+                        ),
+                    )
+                }
+            }
+            val copyCategories = mihon.domain.migration.models.MigrationFlag.CATEGORY in commit.flags
+            val categories = if (copyCategories) {
+                categoriesQueries.getCategoriesByMangaId(source.id) { id, _, _, _ -> id }.executeAsList()
+            } else {
+                emptyList()
+            }
+            val plan = orchestrator.libraryPlan(
+                mihon.domain.migration.MigrationMangaMetadata(
+                    source.id,
+                    categories,
+                    source.chapterFlags,
+                    source.viewerFlags,
+                    source.dateAdded,
+                    source.notes,
+                ),
+                target.id,
+                commit.flags,
+                commit.replace,
+                commit.now,
+            )
+            applyMembership(
+                LibraryMembershipUpdate(
+                    target.id,
+                    true,
+                    plan.targetDateAdded,
+                    plan.targetCategoryIds,
+                    copyCategories,
+                    plan.targetChapterFlags,
+                    plan.targetViewerFlags,
+                    plan.targetNotes,
+                ),
+            )
+            if (plan.removeCurrentFromLibrary) {
+                applyMembership(LibraryMembershipUpdate(source.id, false, 0, emptyList()))
+            }
+            commit.coverVersion?.let {
+                applyMangaUpdateFields(MangaUpdate(target.id, coverLastModified = it))
+            }
+            if (migrationPhase != null) {
+                writeMigrationReceipt(
+                    migrationPhase,
+                    requireNotNull(migrationPhase.migrationReceipt).copy(
+                        committed = true,
+                        targetDateAdded = plan.targetDateAdded,
+                    ),
+                )
+            }
+            mangasQueries.getMangaById(target.id, MangaMapper::mapManga).executeAsOne()
+        }
 
     override suspend fun getMangaById(id: Long): Manga {
         return handler.awaitOne { mangasQueries.getMangaById(id, MangaMapper::mapManga) }

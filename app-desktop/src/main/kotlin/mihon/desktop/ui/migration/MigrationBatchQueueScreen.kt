@@ -1,8 +1,5 @@
 package mihon.desktop.ui.migration
 
-import tachiyomi.i18n.MR
-import java.util.Locale
-
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -38,11 +35,14 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.migration.BatchMigrationItemState
 import mihon.desktop.migration.BatchMigrationItemStatus
+import tachiyomi.i18n.MR
+import java.util.Locale
 
 data class MigrationBatchQueueScreen(val queueId: String) : Screen {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
+        val cleanupLabel = MR.strings.desktop_migration_continue_cleanup.localized()
         val navigator = LocalNavigator.currentOrThrow
         val batchMigrationController = LocalDesktopUiDependencies.current.batchMigrationController
         val queues by batchMigrationController.queues.collectAsState()
@@ -80,14 +80,20 @@ data class MigrationBatchQueueScreen(val queueId: String) : Screen {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
                                 onClick = {
-                                    if (queue.paused) batchMigrationController.resume(queueId)
-                                    else batchMigrationController.pause(queueId)
+                                    if (queue.paused) {
+                                        batchMigrationController.resume(queueId)
+                                    } else {
+                                        batchMigrationController.pause(queueId)
+                                    }
                                 },
                                 enabled = !queue.cancelled,
                             ) {
                                 Text(
-                                    if (queue.paused) MR.strings.action_resume.localized()
-                                    else MR.strings.action_pause.localized(),
+                                    if (queue.paused) {
+                                        MR.strings.action_resume.localized()
+                                    } else {
+                                        MR.strings.action_pause.localized()
+                                    },
                                 )
                             }
                             TextButton(
@@ -109,22 +115,47 @@ data class MigrationBatchQueueScreen(val queueId: String) : Screen {
                         items(queue.items, key = { it.mangaId }) { item ->
                             ListItem(
                                 headlineContent = { Text(item.title) },
-                                supportingContent = { Text(statusLabel(item)) },
+                                supportingContent = {
+                                    Column {
+                                        Text(statusLabel(item))
+                                        if (item.cleanupPending) {
+                                            Text(
+                                                MR.strings.desktop_migration_recovery_pending.localized(),
+                                            )
+                                        }
+                                    }
+                                },
                                 trailingContent = {
                                     Row {
-                                        when (item.status) {
-                                            BatchMigrationItemStatus.WAITING_FOR_USER -> TextButton(
-                                                onClick = {
-                                                    navigator.push(MigrationSearchScreen(item.mangaId, item.title, queueId))
-                                                },
-                                            ) { Text(MR.strings.desktop_ui_choose_target.localized()) }
-                                            BatchMigrationItemStatus.ERROR -> TextButton(
-                                                onClick = { batchMigrationController.retryItem(queueId, item.mangaId) },
-                                            ) { Text(MR.strings.action_retry.localized()) }
-                                            else -> Unit
+                                        if (item.cleanupPending) {
+                                            TextButton(onClick = {
+                                                batchMigrationController.retryCleanup(queueId, item.mangaId)
+                                            }) {
+                                                Text(cleanupLabel)
+                                            }
+                                        } else {
+                                            when (item.status) {
+                                                BatchMigrationItemStatus.WAITING_FOR_USER -> TextButton(
+                                                    onClick = {
+                                                        navigator.push(
+                                                            MigrationSearchScreen(item.mangaId, item.title, queueId),
+                                                        )
+                                                    },
+                                                ) { Text(MR.strings.desktop_ui_choose_target.localized()) }
+                                                BatchMigrationItemStatus.ERROR -> TextButton(
+                                                    onClick = {
+                                                        batchMigrationController.retryItem(queueId, item.mangaId)
+                                                    },
+                                                ) { Text(MR.strings.action_retry.localized()) }
+                                                else -> Unit
+                                            }
                                         }
-                                        if (item.status !in setOf(BatchMigrationItemStatus.SUCCESS, BatchMigrationItemStatus.CANCELLED)) {
-                                            TextButton(onClick = { batchMigrationController.cancelItem(queueId, item.mangaId) }) {
+                                        if (item.status !in
+                                            setOf(BatchMigrationItemStatus.SUCCESS, BatchMigrationItemStatus.CANCELLED)
+                                        ) {
+                                            TextButton(onClick = {
+                                                batchMigrationController.cancelItem(queueId, item.mangaId)
+                                            }) {
                                                 Text(MR.strings.action_cancel.localized())
                                             }
                                         }

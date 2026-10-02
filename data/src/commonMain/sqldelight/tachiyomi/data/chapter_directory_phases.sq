@@ -7,6 +7,9 @@ CREATE TABLE chapter_directory_phases (
 getForManga:
 SELECT payload FROM chapter_directory_phases WHERE manga_id = :mangaId;
 
+getPending:
+SELECT payload FROM chapter_directory_phases;
+
 insertPhase:
 INSERT INTO chapter_directory_phases(manga_id, phase_id, payload) VALUES (?, ?, ?);
 

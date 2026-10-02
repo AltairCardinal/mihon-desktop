@@ -67,8 +67,10 @@ data class ChapterDirectoryPhase(
     val downloadsPending: Boolean,
     val checkpointPending: Boolean = effects.taskReceipt != null,
     val predictionPending: Boolean = false,
+    val migrationReceipt: mihon.domain.migration.MigrationReceipt? = null,
 ) {
-    val effectsComplete: Boolean get() = files.isEmpty() && !observationPending && !downloadsPending &&
+    val effectsComplete: Boolean get() = migrationReceipt == null && files.isEmpty() && !observationPending &&
+        !downloadsPending &&
         !predictionPending
     val complete: Boolean get() = effectsComplete && !checkpointPending
 }
@@ -101,6 +103,7 @@ suspend fun ChapterRepository.finishDirectoryFiles(
     phase: ChapterDirectoryPhase,
     rename: suspend (ChapterDirectoryPhase, DirectoryFileChange) -> Unit,
 ): ChapterDirectoryPhase {
+    check(phase.migrationReceipt == null) { "A migration must be recovered by its original confirmation" }
     var pending = phase
     for (change in phase.files) {
         val current = requireNotNull(getChapterById(change.after.id)) { "Pending directory chapter no longer exists" }

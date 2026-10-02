@@ -76,6 +76,50 @@ class DownloadManagerTest {
         provider = DesktopDownloadProvider(baseDir = tempDir),
     )
 
+    @Test
+    fun `migration of an originally completed artifact rejects a same bytes later completed generation`() =
+        runBlocking {
+            val server = mockwebserver3.MockWebServer()
+            repeat(2) {
+                server.enqueue(mockwebserver3.MockResponse.Builder().body(okio.Buffer().write(jpegBytes())).build())
+            }
+            server.start()
+            val provider = DesktopDownloadProvider(File(tempDir, "migration-generation"))
+            val manager = DesktopDownloadManager(provider, networkHelper = NetworkHelper(OkHttpClient()))
+            val item = DownloadItem(
+                42,
+                "Work",
+                "One",
+                410,
+                mangaId = 10,
+                pageUrls = listOf(server.url("/same.jpg").toString()),
+            )
+            try {
+                assertTrue(manager.enqueue(item))
+                manager.start()
+                withTimeout(5_000) { manager.queue.first { it.isEmpty() } }
+                assertTrue(provider.isChapterDownloaded(42, "Work", "One"))
+                val accepted = manager.captureMigrationGenerations(setOf(item.chapterId))
+                assertTrue(provider.deleteChapterDownload(42, "Work", "One"))
+                assertTrue(manager.enqueue(item))
+                withTimeout(5_000) {
+                    manager.queue.first { it.isEmpty() }
+                    while (!provider.isChapterDownloaded(42, "Work", "One")) delay(10)
+                }
+                val original = provider.chapterDownloadDir(42, "Work", "One")
+                org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException::class.java) {
+                    runBlocking {
+                        manager.withMigrationArtifacts(setOf(item.chapterId), listOf(original), accepted) { }
+                    }
+                }
+                assertTrue(provider.isChapterDownloaded(42, "Work", "One"))
+                assertEquals(2, server.requestCount)
+            } finally {
+                manager.stopAndJoin()
+                server.close()
+            }
+        }
+
     private fun manager(provider: DesktopDownloadProvider, scope: TestScope) = DesktopDownloadManager(
         provider = provider,
         networkHelper = NetworkHelper(OkHttpClient()),

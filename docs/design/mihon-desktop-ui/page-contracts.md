@@ -245,7 +245,13 @@ RI08复用前置核对：Android现用`libs.richeditor.compose`版本1.0.0-rc13�
 - `PROJECT_POLICY`：目标源与作品 URL、chapter ID 及目录独立；先成功取得目标真实目录，再消费 RI13 共用同步边界。旧章节不能仅更改 sourceId／URL 挂到目标，既有目标也不能被旧快照覆盖用户读态。目标相同、无效或不适用时有真实反馈，取消和目标网络失败保旧作品／下载，网络不入 SQL 事务。
 - `SOURCE`：确认草稿覆盖章节状态、分类、自定义封面、笔记及旧下载策略；共享 MigrationFlag 已有 CUSTOM_COVER／REMOVE_DOWNLOAD，Desktop 当前只有前三种数据选项，须补适用消费。复制保留原收藏，迁移完成后移出原收藏；两者 dateAdded 和字段选择沿 shared libraryPlan，不将用户未选字段归零。章号识别、已读上界、书签及dateFetch复用现 chapterUpdates，不替换为标题近似或普通一对一复制算法。
 - `PROJECT_POLICY`：收藏／分类／选定字段的一次提交边界与目录变更协调，失败不能移出旧收藏或留下假成功。自定义封面与旧下载文件只按确认时的有限范围，复用既有store、provider与RI10 retirement；文件不伪装 SQL 原子，所需恢复限定本次迁移及有界对象。拒绝／中断保原有效文件，恢复和重试不重复迁移／自动下载，不扩张后来新增文件。
+- `PROJECT_POLICY`：本次确认的恢复仅复用既有单本directory phase及平台有限staging；迁移receipt默认空兼容旧记录，prepared在首次文件移动前落盘，SQL committed与chapter／membership同一事务写入。普通目录消费者不能提前消费或清除迁移receipt；同源新确认先恢复旧会话。仅选移除旧下载时，本次受影响章节的QUEUED／活动producer／retirement可明确拒绝并提示先完成或取消相关下载，不取消或重排原队列；未选文件或其他作品不阻断。原generation和租约屏障不允许旧会话影响替换任务；不持队列锁等待IO。拒绝恢复不覆盖后来同址文件，冲突保留原staging并反馈；提交后仅清理失败时显示已提交／待清理，不能以普通失败重做迁移。批量原TaskStore接受结果后才ACK，重启／重试保原dateAdded且不重复章节／封面／自动下载，不新增表、备份／同步wire或全局outbox。此项是实施边界，不代表证据已完成。
+- `SOURCE／PROJECT_POLICY`：Android真实wrapper共用迁移SQL事务与章号／身份／latest-state契约，原CoverCache／DownloadManager及URI文件功能保留。Desktop有限staging／重启恢复留在平台adapter，Android URI／local原语无法直接复用其同父noreplace移动；本轮不新增Android原生依赖或完整文件协议，也不宣称Android提供新增Desktop文件恢复保证。
 - 验收：真实 source→目标持久化／目录→共享迁移→membership／封面／文件→UI，覆盖选项组合、既有目标、复制与迁移、取消、源失败、SQL／文件故障、重试及批量单项失败继续；导航类型／factory／DI与窄窗草稿可达性均执行。数据／文件边界经同批独立验收后勾选，不以只改源名或入口存在作为完成。
+
+- `PROJECT_POLICY`：搜索复用既有SourceBrowseQueryCoordinator及同一查询实例，分页只append真实下一页，换源／改词不允许陈旧结果选择；失败页Next禁用，Retry消费原request。确认草稿按适用性显示五字段，已接受范围在HTTP前保存，原会话重试锁定字段／操作；全局config沿旧三数据默认值，两个文件选项在实际目标确认中可选，不另建设置流程。
+- `PROJECT_POLICY`：批量确认保存原queue owner／item／operation，实际TaskStore接受并读回SUCCESS及nextIndex后才ACK；write返回false可为相同值未变化，必须核actual内容而非只看Boolean。pause／resume与关闭runtime等待原NonCancellable任务结束，不能出现两个执行者。释放私有capture在SQL ACK之前，清理或ACK失败保receipt及原dateAdded／later用户状态，缺sidecar且文件未完成时禁止普通恢复／取消吞凭据。
+- `PROJECT_POLICY`：启动先创建下载manager而不start，同一DI图恢复有限prepared原文件并取消旧prepare，再启动真实worker；committed只补清理与原cursor确认，不重做SQL。冲突／缺原恢复记录不能安全恢复时保receipt并明确失败，当前初始化会停止，不能宣称仍可正常运行。提交前失败Cancel恢复有限原对象，提交后显示已提交／待清理并保原结果，允许关闭／返回而不回滚；Close及取消队列继续清理入口已由实际UI／TaskStore拒绝与原owner恢复验证；cleanupPending默认false兼容旧cursor，继续清理不翻Cancelled。等待发布不能覆盖已接受目标，原owner正常完成后仅接原当前QUEUED，取消／runtime stop后不得重新启动。正式发布／平台与硬件验收仍RI18。
 
 ## 2026-10-01 Windows设备条件与等待契约（RI16，实施前固定）
 

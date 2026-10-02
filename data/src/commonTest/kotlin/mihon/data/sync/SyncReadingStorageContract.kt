@@ -37,6 +37,141 @@ import java.util.Date
 abstract class SyncReadingStorageContract {
 
     @Test
+    fun `shared migration chapter refusal rolls back selected metadata and independent membership`() = runBlocking {
+        open().use { s ->
+            val original = s.seed()
+            val source = s.mangas.getMangaById(original.mangaId)
+            s.chapters.update(
+                ChapterUpdate(original.id, chapterNumber = 1.5, read = true, bookmark = true, dateFetch = 50),
+            )
+            s.mangas.updateAtomically(
+                tachiyomi.domain.manga.repository.LibraryMembershipUpdate(
+                    source.id,
+                    true,
+                    40,
+                    emptyList(),
+                    notes = "Source note",
+                    chapterFlags = 17,
+                ),
+            )
+            val target = s.mangas.insertNetworkManga(
+                listOf(Manga.create().copy(source = 2, url = "/target", title = "Target")),
+            ).single()
+            val chapter = s.chapters.addAll(
+                listOf(
+                    Chapter.create().copy(mangaId = target.id, url = "/target-1", name = "1.5", chapterNumber = 1.5),
+                ),
+            ).single()
+            assertTrue(original.id != chapter.id)
+            s.driver.execute(
+                null,
+                "CREATE TRIGGER reject_patch BEFORE UPDATE OF read ON chapters " +
+                    "WHEN OLD._id=${chapter.id} BEGIN SELECT RAISE(ABORT,'patch refused'); END",
+                0,
+            )
+            val command = mihon.domain.migration.MigrationCommit(
+                source.id, source.source, source.url, target.id, target.source, target.url,
+                setOf(
+                    mihon.domain.migration.models.MigrationFlag.CHAPTER,
+                    mihon.domain.migration.models.MigrationFlag.NOTES,
+                ),
+                true, 100,
+            )
+            assertTrue(runCatching { s.mangas.commitMigration(command) }.isFailure)
+            assertEquals(chapter, s.chapters.getChapterById(chapter.id))
+            assertEquals("", s.mangas.getMangaById(target.id).notes)
+            assertEquals(0, s.mangas.getMangaById(target.id).chapterFlags)
+            assertTrue(s.mangas.getMangaById(source.id).favorite)
+            s.driver.execute(null, "DROP TRIGGER reject_patch", 0)
+            s.mangas.commitMigration(command)
+            assertTrue(s.chapters.getChapterById(chapter.id)!!.read)
+            assertTrue(s.chapters.getChapterById(chapter.id)!!.bookmark)
+            assertEquals(50, s.chapters.getChapterById(chapter.id)!!.dateFetch)
+            assertEquals("Source note", s.mangas.getMangaById(target.id).notes)
+            assertTrue(runCatching { s.mangas.commitMigration(command.copy(targetUrl = "/replaced")) }.isFailure)
+        }
+    }
+
+    @Test
+    fun `shared migration rolls back chapter patches with rejected membership`() = runBlocking {
+        open().use { s ->
+            val original = s.seed()
+            val source = s.mangas.getMangaById(original.mangaId)
+            s.chapters.update(ChapterUpdate(original.id, chapterNumber = 1.0, read = true, bookmark = true))
+            s.mangas.updateAtomically(
+                tachiyomi.domain.manga.repository.LibraryMembershipUpdate(source.id, true, 40, emptyList()),
+            )
+            val target = s.mangas.insertNetworkManga(
+                listOf(Manga.create().copy(source = 2, url = "/target", title = "Target")),
+            ).single()
+            val chapter = s.chapters.addAll(
+                listOf(
+                    Chapter.create().copy(
+                        mangaId = target.id,
+                        url = "/target-1",
+                        name = "1",
+                        chapterNumber = 1.0,
+                        lastPageRead = 7,
+                    ),
+                ),
+            ).single()
+            s.driver.execute(
+                null,
+                "CREATE TRIGGER reject_migration BEFORE UPDATE OF favorite ON mangas " +
+                    "WHEN OLD._id=${source.id} AND NEW.favorite=0 BEGIN SELECT RAISE(ABORT,'refused'); END",
+                0,
+            )
+            val command = mihon.domain.migration.MigrationCommit(
+                source.id, source.source, source.url, target.id, target.source, target.url,
+                setOf(mihon.domain.migration.models.MigrationFlag.CHAPTER), true, 100,
+            )
+            assertTrue(runCatching { s.mangas.commitMigration(command) }.isFailure)
+            assertEquals(chapter, s.chapters.getChapterById(chapter.id))
+            assertTrue(s.mangas.getMangaById(source.id).favorite)
+            assertFalse(s.mangas.getMangaById(target.id).favorite)
+            s.driver.execute(null, "DROP TRIGGER reject_migration", 0)
+            s.mangas.commitMigration(command)
+            assertTrue(s.chapters.getChapterById(chapter.id)!!.read)
+            assertTrue(s.chapters.getChapterById(chapter.id)!!.bookmark)
+            assertEquals(7, s.chapters.getChapterById(chapter.id)!!.lastPageRead)
+            assertFalse(s.mangas.getMangaById(source.id).favorite)
+        }
+    }
+
+    @Test
+    fun `shared migration reads latest user state and preserves unselected target fields`() = runBlocking {
+        open().use { s ->
+            val original = s.seed()
+            val source = s.mangas.getMangaById(original.mangaId)
+            val target = s.mangas.insertNetworkManga(
+                listOf(Manga.create().copy(source = 2, url = "/target", title = "Target")),
+            ).single()
+            val chapter = s.chapters.addAll(
+                listOf(
+                    Chapter.create().copy(mangaId = target.id, url = "/target-1", name = "1", chapterNumber = 1.0),
+                ),
+            ).single()
+            val command = mihon.domain.migration.MigrationCommit(
+                source.id, source.source, source.url, target.id, target.source, target.url,
+                setOf(mihon.domain.migration.models.MigrationFlag.CHAPTER), false, 100,
+            )
+            s.mangas.update(tachiyomi.domain.manga.model.MangaUpdate(source.id, chapterFlags = 77, viewerFlags = 31))
+            s.mangas.update(tachiyomi.domain.manga.model.MangaUpdate(target.id, notes = "Latest target notes"))
+            s.chapters.update(ChapterUpdate(chapter.id, read = true, bookmark = true, lastPageRead = 9))
+            s.mangas.commitMigration(command)
+            val saved = s.mangas.getMangaById(target.id)
+            assertEquals(77, saved.chapterFlags)
+            assertEquals(31, saved.viewerFlags)
+            assertEquals("Latest target notes", saved.notes)
+            assertTrue(s.chapters.getChapterById(chapter.id)!!.read)
+            assertTrue(s.chapters.getChapterById(chapter.id)!!.bookmark)
+            assertEquals(9, s.chapters.getChapterById(chapter.id)!!.lastPageRead)
+            assertEquals(100, saved.dateAdded)
+            assertTrue(runCatching { s.mangas.commitMigration(command.copy(sourceUrl = "/replaced")) }.isFailure)
+        }
+    }
+
+    @Test
     fun `shared complete directory adds renames reorders removes and inherits latest number state`() = runBlocking {
         open().use { s ->
             val original = s.seed()

@@ -917,7 +917,15 @@ class MangaDetailScreenModelTest {
     @Test
     fun `migrateTo persists target source and manga identity`() = runTest {
         val mangaRepository = FakeMangaRepository()
-        val model = MangaDetailScreenModel(mangaId = 1L, updateManga = UpdateManga(mangaRepository))
+        var actualTarget: Pair<Long, SManga>? = null
+        val model =
+            MangaDetailScreenModel(mangaId = 1L, updateManga = UpdateManga(mangaRepository), migrateManga = {
+                    sourceId,
+                    target,
+                ->
+                actualTarget = sourceId to target
+                Manga.create().copy(id = 2, source = sourceId, url = target.url, title = target.title)
+            })
         val target = SManga.create().apply {
             url = "/new"
             title = "New title"
@@ -926,9 +934,12 @@ class MangaDetailScreenModelTest {
 
         model.migrateTo(targetSourceId = 9L, item = target, fallbackTitle = "Old")
 
-        assertEquals(9L, mangaRepository.updates.single().source)
-        assertEquals("/new", mangaRepository.updates.single().url)
-        assertEquals("New title", mangaRepository.updates.single().title)
+        assertEquals(
+            9L to target,
+            actualTarget,
+            "Old detail callback must delegate to the independent target migration",
+        )
+        assertTrue(mangaRepository.updates.isEmpty(), "Migration cannot rewrite the original manga source or URL")
     }
 
     @Test

@@ -245,7 +245,16 @@ class DesktopDownloadManager(
 
     /** Reserves only this directory operation's existing chapter identities. */
     suspend fun <T> withDirectoryChanges(chapterIds: Set<Long>, operation: suspend () -> T): T {
+        return withDirectoryReservation(chapterIds, {}, operation)
+    }
+
+    private suspend fun <T> withDirectoryReservation(
+        chapterIds: Set<Long>,
+        validate: () -> Unit,
+        operation: suspend () -> T,
+    ): T {
         synchronized(queueStateLock) {
+            validate()
             if (_queue.value.any { it.chapterId in chapterIds } ||
                 chapterIds.any { it in enqueuePreflights || it in retirementsByChapter } ||
                 activeProducers.keys.any { it.chapterId in chapterIds }
@@ -260,6 +269,42 @@ class DesktopDownloadManager(
             synchronized(queueStateLock) { enqueuePreflights.removeAll(chapterIds) }
         }
     }
+
+    internal suspend fun <T> withMigrationRollback(
+        chapterIds: Set<Long>,
+        artifacts: List<File>,
+        operation: suspend () -> T,
+    ): T =
+        withDirectoryChanges(chapterIds) {
+            partialArtifactLifecycleCoordinator.reserveMigrationArtifacts(artifacts).use { operation() }
+        }
+
+    internal suspend fun <T> withMigrationArtifacts(
+        chapterIds: Set<Long>,
+        artifacts: List<File>,
+        acceptedGenerations: Map<Long, CapturedDownloadGeneration> = emptyMap(),
+        operation: suspend () -> T,
+    ): T = withDirectoryReservation(chapterIds, {
+        check(acceptedGenerations.keys == chapterIds && acceptedGenerations.values.none { it.replaced }) {
+            "A later download generation replaced the migration's accepted files"
+        }
+    }) {
+        partialArtifactLifecycleCoordinator.reserveMigrationArtifacts(artifacts).use { operation() }
+    }
+
+    internal fun captureMigrationGenerations(chapterIds: Set<Long>): Map<Long, CapturedDownloadGeneration> =
+        synchronized(queueStateLock) {
+            capturedGenerations.entries.removeAll { (_, handles) ->
+                handles.removeAll { it.get() == null }
+                handles.isEmpty()
+            }
+            chapterIds.associateWith { id ->
+                val generation = queueGenerations[id] ?: Long.MIN_VALUE
+                val handles = capturedGenerations.getOrPut(id) { mutableListOf() }
+                handles.firstNotNullOfOrNull { it.get()?.takeIf { value -> value.generation == generation } }
+                    ?: CapturedDownloadGeneration(generation).also { handles.add(java.lang.ref.WeakReference(it)) }
+            }
+        }
 
     /** Add a chapter to the download queue (no-op if already queued or downloaded). */
     fun enqueue(item: DownloadItem): Boolean {

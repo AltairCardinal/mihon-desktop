@@ -2197,4 +2197,9 @@
     <string name="desktop_library_update_unit_failed">Failed</string>
     <string name="desktop_library_update_unit_unprocessed">Unprocessed</string>
     <string name="desktop_library_update_local_failed">Local update failed. Check the manga’s local files and try again.</string>
+    <string name="desktop_migration_cleanup_pending">Migration is committed. Original file cleanup is still pending; retry to finish cleanup.</string>
+    <string name="desktop_migration_checkpoint_failed">Migration progress could not be saved. The original operation may already be committed; retry to finish it safely.</string>
+    <string name="desktop_migration_files_changed">The confirmed files changed or are still in use. Finish reading or downloading, then cancel and confirm again.</string>
+    <string name="desktop_migration_continue_cleanup">Continue cleanup</string>
+    <string name="desktop_migration_recovery_pending">Recovery of this migration is still pending. Continue cleanup of the original operation.</string>
 </resources>

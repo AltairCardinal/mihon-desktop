@@ -1986,4 +1986,9 @@
     <string name="desktop_library_update_unit_failed">失败</string>
     <string name="desktop_library_update_unit_unprocessed">未处理</string>
     <string name="desktop_library_update_local_failed">本地更新失败。请检查作品的本地文件后重试。</string>
+    <string name="desktop_migration_cleanup_pending">迁移已提交，原文件清理尚未完成。请重试完成清理。</string>
+    <string name="desktop_migration_checkpoint_failed">迁移进度未能保存。原操作可能已经提交，请重试安全完成原操作。</string>
+    <string name="desktop_migration_files_changed">已确认的文件发生变化或仍在使用。请结束相关阅读或下载，然后取消并重新确认。</string>
+    <string name="desktop_migration_continue_cleanup">继续清理</string>
+    <string name="desktop_migration_recovery_pending">本次迁移恢复尚未完成，请继续清理原操作。</string>
 </resources>

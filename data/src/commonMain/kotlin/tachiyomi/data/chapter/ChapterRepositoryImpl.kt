@@ -35,6 +35,9 @@ class ChapterRepositoryImpl(
             )
                 .let { Json.decodeFromString<tachiyomi.domain.chapter.service.ChapterDirectoryPhase>(it) }
             check(existing.id == phase.id) { "Directory phase was replaced" }
+            check(existing.migrationReceipt == null && phase.migrationReceipt == null) {
+                "A migration requires its own acknowledgement"
+            }
             check(
                 existing.effects == phase.effects && existing.currentTitle == phase.currentTitle &&
                     existing.addedIds == phase.addedIds && existing.downloadIds == phase.downloadIds,
@@ -262,24 +265,7 @@ class ChapterRepositoryImpl(
     private suspend fun partialUpdate(vararg chapterUpdates: ChapterUpdate) {
         handler.await(inTransaction = true) {
             chapterUpdates.forEach { chapterUpdate ->
-                chaptersQueries.update(
-                    mangaId = chapterUpdate.mangaId,
-                    url = chapterUpdate.url,
-                    name = chapterUpdate.name,
-                    scanlator = chapterUpdate.scanlator,
-                    read = chapterUpdate.read,
-                    bookmark = chapterUpdate.bookmark,
-                    lastPageRead = chapterUpdate.lastPageRead,
-                    chapterNumber = chapterUpdate.chapterNumber,
-                    sourceOrder = chapterUpdate.sourceOrder,
-                    dateFetch = chapterUpdate.dateFetch,
-                    dateUpload = chapterUpdate.dateUpload,
-                    chapterId = chapterUpdate.id,
-                    version = chapterUpdate.version,
-                    isSyncing = 0,
-                    memo = chapterUpdate.memo?.let(tachiyomi.data.MemoColumnAdapter::encode),
-                )
-                chapterUpdate.read?.let { appendChapterReadOperation(chapterUpdate.id, it, chapterUpdate.syncContext) }
+                applyChapterUpdate(chapterUpdate)
             }
         }
     }

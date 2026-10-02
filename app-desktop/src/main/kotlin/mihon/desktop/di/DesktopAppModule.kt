@@ -775,10 +775,11 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
     Injekt.addSingleton(
         DesktopMigrateMangaUseCase(
             saveSourceMangaForDetails = saveSourceMangaForDetails,
-            getChaptersByMangaId = Injekt.get<GetChaptersByMangaId>(),
-            updateChapter = updateChapter,
-            getCategories = Injekt.get<GetCategories>(),
             mangaRepository = mangaRepository,
+            migrationFiles = { Injekt.get<mihon.desktop.domain.DesktopMigrationFiles>() },
+            checkpointAccepted = { receipt ->
+                DesktopBatchMigrationController.checkpointAccepts(Injekt.get(), receipt)
+            },
         ),
     )
     Injekt.addSingleton(UpdateMangaNotes(mangaRepository))
@@ -1022,7 +1023,7 @@ internal fun initUILayer(
         downloadPreferences = downloadPreferences,
         database = database,
         libraryPreferences = libraryPreferences,
-        startWorker = startDownloadWorker,
+        startWorker = false,
         fileOperations = downloadFileOperations,
     )
     val readingProgress = RecordReadingProgress(SqlDelightReadingProgressRepository(database))
@@ -1062,6 +1063,19 @@ internal fun initUILayer(
         applicationScope,
         taskStoreFactory,
     )
+    Injekt.addSingleton(
+        mihon.desktop.domain.DesktopMigrationFiles(
+            paths.configDir,
+            Injekt.get(),
+            downloadManager,
+            Injekt.get<DesktopCustomCoverStore>(),
+            Injekt.get(),
+            Injekt.get<GetChaptersByMangaId>(),
+        ),
+    )
+    // Restore the original finite prepared file list before any producer is started.
+    kotlinx.coroutines.runBlocking(Dispatchers.IO) { Injekt.get<DesktopMigrateMangaUseCase>().recoverPendingFiles() }
+    if (startDownloadWorker) downloadManager.start()
     lateinit var trackSync: ReadingProgressTrackSync
     val trackerSyncScheduler =
         DesktopTrackerSyncScheduler(Injekt.get<DesktopTaskScheduler>(), connectivity = trackerConnectivity) {
@@ -1081,32 +1095,80 @@ internal fun initUILayer(
     Injekt.addSingleton(libraryTestController)
     mihon.desktop.test.http.LibraryMangaTestModeBridge.install(libraryTestController)
 
-    val batchMigrationController = DesktopBatchMigrationController(
+    lateinit var batchMigrationController: DesktopBatchMigrationController
+    batchMigrationController = DesktopBatchMigrationController(
         scheduler = Injekt.get(),
         executeMigration = { mangaId, target, options ->
-            val sourceManga = Injekt.get<GetManga>().await(mangaId) ?: error("Source manga no longer exists")
-            val targetSource = Injekt.get<SourceManager>().get(target.sourceId) as? CatalogueSource
-                ?: error("Target source is not installed")
-            val targetManga = SManga.create().apply {
-                url = target.url
-                title = target.title
-                thumbnail_url = target.thumbnailUrl
-                author = target.author
-                artist = target.artist
-                description = target.description
-                genre = target.genre?.joinToString(", ")
-                status = target.status
-            }
-            Injekt.get<DesktopMigrateMangaUseCase>().await(
-                sourceManga = sourceManga,
-                targetSManga = targetManga,
-                targetSourceId = target.sourceId,
-                targetChapters = targetSource.getChapterList(targetManga),
-                options = MigrationOptions(options.copyChapters, options.copyCategories, options.copyNotes),
-                replace = options.replace,
+            val useCase = Injekt.get<DesktopMigrateMangaUseCase>()
+            val owner = requireNotNull(options.checkpointOwner)
+            val migrationOptions = MigrationOptions(
+                options.copyChapters,
+                options.copyCategories,
+                options.copyNotes,
+                options.copyCustomCover,
+                options.removeDownloads,
             )
+            val accepted = options.accepted ?: run {
+                val sourceManga = Injekt.get<GetManga>().await(mangaId) ?: error("Source manga no longer exists")
+                val capture = useCase.accept(sourceManga, migrationOptions, options.replace, checkpointOwner = owner)
+                try {
+                    batchMigrationController.attachAccepted(owner, mangaId, capture)
+                } catch (error: Throwable) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                        useCase.cancelAccepted(capture)
+                    }
+                    throw error
+                }
+                capture
+            }
+            if (useCase.recoverAccepted(accepted, deferAcknowledgement = true) == null) {
+                val targetSource = Injekt.get<SourceManager>().get(target.sourceId) as? CatalogueSource
+                    ?: error("Target source is not installed")
+                val targetManga = SManga.create().apply {
+                    url = target.url
+                    title = target.title
+                    thumbnail_url = target.thumbnailUrl
+                    author = target.author
+                    artist = target.artist
+                    description = target.description
+                    genre = target.genre?.joinToString(", ")
+                    status = target.status
+                }
+                useCase.await(
+                    accepted.source,
+                    targetManga,
+                    target.sourceId,
+                    targetSource.getChapterList(targetManga),
+                    migrationOptions,
+                    options.replace,
+                    accepted,
+                    deferAcknowledgement = true,
+                )
+            }
         },
         scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+        onCommittedCheckpoint = { mangaId, options ->
+            val accepted = requireNotNull(options.accepted)
+            Injekt.get<DesktopMigrateMangaUseCase>().acknowledge(mangaId, accepted.operationId)
+        },
+        onInterruptedMigration = { mangaId, options ->
+            val accepted = options.accepted
+            val repository = Injekt.get<MangaRepository>()
+            val receipt = repository.migrationReceipt(mangaId)
+            if (accepted != null && receipt?.committed == true && receipt.request.operationId == accepted.operationId) {
+                val useCase = Injekt.get<DesktopMigrateMangaUseCase>()
+                useCase.recoverAccepted(accepted, deferAcknowledgement = true)
+                batchMigrationController.recordCommittedReceipt(requireNotNull(repository.migrationReceipt(mangaId)))
+                useCase.acknowledge(mangaId, accepted.operationId)
+            } else if (accepted != null && (receipt == null || receipt.request.operationId == accepted.operationId)) {
+                Injekt.get<DesktopMigrateMangaUseCase>().cancelAccepted(accepted)
+                batchMigrationController.clearAccepted(
+                    requireNotNull(accepted.checkpointOwner),
+                    mangaId,
+                    accepted.operationId,
+                )
+            }
+        },
     )
     Injekt.addSingleton(batchMigrationController)
     MigrationBatchTestBridge.controller = batchMigrationController
