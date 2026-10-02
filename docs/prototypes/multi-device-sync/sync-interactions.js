@@ -4,6 +4,7 @@
   // UI storyboards only. Authorization, password protection, lookup and import do not call a service.
   window.MihonSyncInteractions = { create };
   function create({ state, currentDevice, isWindows, esc, view, button, render, queueStats }) {
+    const modern = () => native && window.parent.MihonPreview.reviewMode === 'proposal';
     const native = Boolean(window.parent.MihonPreview?.fullSyncReview);
     const titles = { authorize: '连接 GitHub', password: '同步密码', lookup: '查找同步空间', creating: '创建同步空间', 'setup-error': '同步空间未连接', import: '首次合并', importing: '合并进度', imported: '合并完成', frequency: '同步频率', device: '设备名称', disconnect: '断开同步', switch: '更换同步空间', issue: '同步详情', activity: '同步记录', privacy: '阅读与历史', diagnostics: '同步诊断' };
     const cancellationExample = Object.values(state.devices).flatMap(device => device.confirmations)[0];
@@ -57,6 +58,13 @@
     const choice = (label, detail, name, attrs = '') => `<button class="ix-choice" data-action="ix-${name}" data-testid="ix-${name}" ${attrs}><strong>${label}</strong><small>${detail}</small>${view.icon('chevron')}</button>`;
     function nativeSettings() {
       const d = data(); const settings = currentDevice().settings;
+      if (modern()) return `<div class="sheet-settings-content sync-settings-page modern-settings">
+        <section class="modern-group"><h3>自动同步</h3><div class="native-startup"><span>启动时同步</span><button class="native-switch ${settings.startupSync ? 'is-on' : ''}" role="switch" aria-label="启动时同步" aria-checked="${settings.startupSync}" data-action="startup-setting" data-testid="startup-setting"><span></span></button></div>
+        <p class="modern-muted">${isWindows() ? '应用运行期间自动同步' : '系统允许时自动同步，时间可能延后'}</p><h4>定期同步</h4><div class="modern-periods" role="radiogroup" aria-label="定期同步">${[0, 15, 60, 360, 1440].map(minutes => `<button class="native-period" role="radio" aria-checked="${minutes === (settings.periodicSync ? settings.periodMinutes : 0)}" data-action="ix-period" data-minutes="${minutes}" data-testid="sync-period-${minutes}">${minutes === 0 ? '关闭' : minutes < 60 ? minutes + ' 分钟' : minutes < 1440 ? minutes / 60 + ' 小时' : '1 天'}</button>`).join('')}</div></section>
+        <section class="modern-group"><h3>账号与设备</h3>${row('GitHub 同步空间', d.fields.repo, 'connection-info', 'cloud')}${row('重新连接', '更换账号或重新授权', 'reconnect')}
+        <label class="native-outlined-field"><span>设备名称</span><input data-ix-field="device" data-testid="sync-device-name" value="${esc(d.fields.device)}" autocomplete="off" placeholder="为这台设备命名"></label><p class="modern-muted">密码保护${d.passwordProtected ? '已开启' : '未开启'}</p></section>
+        <section class="modern-group"><h3>更多</h3>${row('同步记录', '', 'activity', 'history')}${row('同步诊断', '排查连接或同步问题', 'diagnostics')}</section>
+        <div class="modern-danger-zone">${action('断开此设备', 'disconnect')}${action('更换同步空间', 'switch')}</div></div>`;
       return `<div class="sheet-settings-content sync-settings-page native-settings">${action('同步诊断', 'diagnostics')}
         <div><h3>GitHub 账号与空间</h3><p>${esc(d.fields.repo)}</p>${action('重新连接 GitHub', 'reconnect')}</div>
         <div class="native-startup"><span>启动时同步</span><button class="native-switch ${settings.startupSync ? 'is-on' : ''}" role="switch" aria-label="启动时同步" aria-checked="${settings.startupSync}" data-action="startup-setting" data-testid="startup-setting"><span></span></button></div>
@@ -68,6 +76,7 @@
     }
     function nativeDiagnostics() {
       const d = data();
+      if (modern()) return note('采集本机同步状态，帮助排查问题。不会包含账号、凭据或作品信息。') + action('采集快照', 'diagnostic-capture', true) + `<p data-testid="native-diagnostic-feedback">${esc(d.diagnosticFeedback || '')}</p><details class="modern-diagnostic" ${d.diagnosticDetailsOpen ? 'open' : ''}><summary data-testid="modern-diagnostic-summary">诊断内容与隐私说明</summary>` + note('仅保留本进程最近128次状态变化；JSON导出上限256KiB，超限会标明截断。') + note('自愿开启诊断会话后，最多24小时内可跨应用重启比较别名；私有缓存仅保留随机盐与上一快照关联摘要。') + action(d.diagnosticSession ? '结束诊断会话' : '开启24小时诊断会话', 'diagnostic-session') + (d.diagnosticSnapshot ? action('保存诊断JSON', 'diagnostic-export') + (d.diagnosticUrl ? action('打开或分享本机文件', 'diagnostic-open') : '') + `<pre class="native-diagnostic-json" data-testid="native-diagnostic-details">${esc(JSON.stringify(d.diagnosticSnapshot, null, 2))}</pre>` : '') + '</details>';
       return note('采集本机同步事实，不包含账号、仓库、凭据或作品信息。仅保留本进程最近128次观察到的状态变化；JSON导出上限256KiB，超限会标明截断。可再次采集比较变化。') + action('采集快照', 'diagnostic-capture') + `<p data-testid="native-diagnostic-feedback">${esc(d.diagnosticFeedback || '')}</p>` + note('自愿开启后，最多24小时内可跨应用重启比较别名。私有缓存仅保留随机盐与上一快照关联摘要；不开启时只保证本进程内别名可比较。') + action(d.diagnosticSession ? '结束诊断会话' : '开启24小时诊断会话', 'diagnostic-session') + (d.diagnosticSnapshot ? note(d.connected ? '同步连接已启用' : '同步连接未启用') + note('当前没有执行同步，请查看任务状态') + action('保存诊断JSON', 'diagnostic-export') + (d.diagnosticUrl ? action('打开或分享本机文件', 'diagnostic-open') : '') + `<pre class="native-diagnostic-json" data-testid="native-diagnostic-details">${esc(JSON.stringify(d.diagnosticSnapshot, null, 2))}</pre>` : '');
     }
     function nativeRecords() {
@@ -77,6 +86,20 @@
     function nativeQueue() {
       const { membership, reading } = queueStats();
       return `<div class="sync-queue-summary">${[['待上传操作', `${currentDevice().pendingOutgoing.length} 项`], ['收藏与关注', `${membership.favorites} 条收藏 · ${membership.authors} 条关注`], ['阅读记录', `${reading} 条阅读记录`]].map(([label, value]) => `<div class="native-list-row"><strong>${label}</strong><span>${value}</span></div>`).join('')}</div>`;
+    }
+    function modernHistoryCard(f) {
+      const [label, name] = primary(f);
+      const title = { succeeded: '同步已完成', failed: '同步未完成', partial: '部分同步已完成', cancelled: '同步已取消', blocked: '同步需要处理' }[f.state] || f.title;
+      const elapsed = f.time?.match(/已用([^，]+)/)?.[1] || f.elapsed;
+      return `<section class="sync-progress-card modern-status-card" data-testid="sync-progress-card" data-state="${f.state}"><div data-testid="sync-native-history">
+        <div class="modern-status-heading"><span class="modern-status-icon">${view.icon(f.state === 'succeeded' ? 'check' : 'info')}</span><h3 data-testid="sync-progress-title"><span data-testid="sync-compact-summary">${esc(title)}</span></h3></div>
+        <p class="modern-muted" data-testid="sync-progress-confirmed">已完成${f.confirmed ?? 0}条 · 用时${esc(elapsed)}</p>
+        ${['failed', 'partial', 'blocked'].includes(f.state) ? `<p data-testid="sync-progress-explanation">${esc(f.reason || (f.state === 'partial' ? '部分内容仍需处理，你可以稍后重试。' : '连接暂时不可用，已完成的进度已保留。'))}</p>` : ''}
+        ${f.pendingBatches || f.failures ? `<div data-testid="sync-progress-problems">${f.pendingBatches ? `<p>还有${f.pendingChanges || 0}条数据等待核对</p>` : ''}${f.failures ? `<p>${f.failures}项内容未能恢复</p><button class="m-button m-button-text" data-action="ix-progress-failures" data-testid="sync-progress-failures">查看失败日志</button>` : ''}</div>` : ''}
+        ${data().failureLogOpen ? '<div data-testid="sync-failure-log">失败日志 · 本地演示<br>《远山来信》阅读记录：缺少作品身份与必要描述。<br>《夜行纪事》收藏：记录未通过校验。</div>' : ''}
+        <div class="modern-status-actions"><button class="m-button m-button-primary" data-testid="sync-progress-primary" data-action="${name}"><span data-progress-control-label>${label}</span></button><button class="m-button m-button-text progress-toggle" data-action="ix-progress-details" data-testid="sync-progress-toggle" aria-expanded="${Boolean(data().progressDetails)}">同步详情${view.icon('chevron')}</button></div>
+        <div class="sync-progress-details native-details" data-testid="sync-progress-details" ${data().progressDetails ? '' : 'hidden'} tabindex="0">${nativeQueue()}</div>
+      </div></section>${f.state === 'succeeded' ? nextAuto() : ''}`;
     }
     function nativeHistoryCard(f) {
       const [label, name] = primary(f);
@@ -142,6 +165,10 @@
         ['收藏与关注', `${favorites} 条收藏 · ${authors} 条关注`],
         ['阅读记录', `${reading} 条阅读记录`],
       ].map(([label, value]) => `<div class="native-list-row"><div class="row-copy"><strong>${label}</strong></div><span class="row-value">${value}</span></div>`).join('')}</div>`;
+      if (modern()) {
+        const headline = showCountdown ? (total ? '有内容待同步' : '已是最新') : title;
+        return `<section class="modern-status-card" data-testid="sync-status-row"><div class="modern-status-heading"><span class="modern-status-icon">${view.icon('sync')}</span><h3>${esc(headline)}</h3></div><p class="modern-muted">${esc(detail)}</p><div class="modern-status-actions">${button('立即同步', 'data-action="sync-manual" data-testid="manual-sync"', 'm-button-primary')}<button class="m-button m-button-text" data-action="ix-progress-details" data-testid="sync-progress-toggle" aria-expanded="${Boolean(d.progressDetails)}">同步详情${view.icon('chevron')}</button></div><div class="sync-progress-details" data-testid="sync-progress-details" ${d.progressDetails ? '' : 'hidden'}>${queue}</div></section>${!busy && !d.issue ? nextAuto() : ''}`;
+      }
       return `<div class="native-sync-status sync-status-single" data-testid="sync-status-row"><div class="sync-symbol">${view.icon('sync')}</div><div class="sync-status-copy"><strong${showCountdown ? ' data-sync-countdown' : ''}>${title}</strong><small>${detail}</small></div>${button('立即同步', 'data-action="sync-manual" data-testid="manual-sync"', 'm-button-primary')}</div>${queue}`;
     }
     function didSync(ok) { if (ok) { data().changes = null; data().lastSync = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }); resetCountdown(); } }
@@ -223,7 +250,7 @@
     }
     function progressCard() {
       const f = progressValues(); if (!f) return '';
-      if (native && f.terminal) return nativeHistoryCard(f);
+      if (native && f.terminal) return modern() ? modernHistoryCard(f) : nativeHistoryCard(f);
       if (f.compact) return compactCard(f);
       const [label, name] = primary(f);
       return `<section class="sync-progress-card" data-testid="sync-progress-card"><div class="sync-progress-summary" data-testid="sync-progress-summary"><div class="sync-progress-heading"><h3 data-testid="sync-progress-title" aria-live="polite">${f.title}</h3><button class="m-button m-button-text" data-testid="sync-progress-primary" data-action="${name}"><span data-progress-control-label data-testid="${name === 'sync-manual' || f.source === 'manual' && f.state === 'failed' ? 'manual-sync' : name}">${label}</span></button></div><strong class="sync-progress-confirmed" data-testid="sync-progress-confirmed">${confirmedText(f)}</strong><div class="sync-progress-action" data-testid="sync-progress-action">${esc(f.action)}</div><div class="sync-progress-track" data-testid="sync-progress-track"><span></span></div><div class="sync-progress-time"><span>已用 <b data-testid="sync-progress-elapsed">${f.elapsed}</b></span><span>整体剩余：<b data-testid="sync-progress-eta">${f.eta}</b></span></div><p class="sync-progress-explanation" data-testid="sync-progress-explanation">${state.ui.syncResult ? `<span data-testid="sync-result">${esc(f.explanation)}</span>` : esc(f.explanation)}</p><button class="m-button m-button-text progress-toggle" data-testid="sync-progress-toggle" data-action="ix-progress-details" aria-expanded="${Boolean(data().progressDetails)}">${data().progressDetails ? '收起详情' : '查看详情'}${view.icon('chevron')}</button></div><div class="sync-progress-problems" data-testid="sync-progress-problems" ${f.state === 'partial' ? '' : 'hidden'}>待手动决定 ${f.decisions || 0} 项 · ${f.pendingBatches || 0} 个批次待核对（涉及 ${f.pendingChanges || 0} 条变动，不代表失败）<br>${f.failures || 0} 项无法还原 <button class="m-button m-button-text" data-action="ix-progress-failures" data-testid="sync-progress-failures">打开失败日志</button></div><div data-testid="sync-failure-log" class="sync-failure-log" ${data().failureLogOpen ? '' : 'hidden'}>失败日志 · 本地演示<br>《远山来信》阅读记录：无法还原，缺少作品身份与必要描述。<br>《夜行纪事》收藏：无法还原，记录未通过校验。</div><div class="sync-progress-details" data-testid="sync-progress-details" ${data().progressDetails ? '' : 'hidden'} tabindex="0" aria-label="同步详情">${progressDetails(f)}</div></section>`;
@@ -376,7 +403,7 @@
         case 'frequency': body = note(isWindows() ? '应用运行期间按此频率执行。' : '系统允许时执行，所选时间是期望间隔。') + [15, 60, 360, 1440].map(minutes => choice(`${minutes === currentDevice().settings.periodMinutes ? '✓ ' : ''}${minutes < 60 ? minutes + ' 分钟' : minutes / 60 + ' 小时'}`, minutes === 60 ? '默认' : '仅此设备', 'period', `data-minutes="${minutes}"`)).join(''); break;
         case 'device': body = field('device', '此设备的名称') + note('此名称帮助你识别待处理条目来自哪台设备。') + actions(action('保存名称', 'device-save', true)); break;
         case 'switch':
-        case 'disconnect': body = `<h3>${screen() === 'switch' ? '连接另一个同步空间？' : '断开此设备？'}</h3>` + note('本机书架、关注和阅读记录会保留。其他设备与远端数据不受影响，尚未上传的操作不会继续上传到此空间。') + (screen() === 'switch' ? note('将重新登录 GitHub，自动查找该账号的专用同步空间；受密码保护时需输入正确密码。') : '') + actions(action('返回设置', 'back') + action(screen() === 'switch' ? '更换空间' : '断开连接', 'disconnect-confirm', true)); break;
+        case 'disconnect': body = `<h3>${screen() === 'switch' ? '连接另一个同步空间？' : '断开此设备？'}</h3>` + note('本机书架、关注和阅读记录会保留。其他设备与远端数据不受影响，尚未上传的操作不会继续上传到此空间。') + (screen() === 'switch' ? note('将重新登录 GitHub，自动查找该账号的专用同步空间；受密码保护时需输入正确密码。') : '') + actions(action(modern() ? '返回同步' : '返回设置', 'back') + action(screen() === 'switch' ? '更换空间' : '断开连接', 'disconnect-confirm', true)); break;
         case 'issue': body = issuePage(); break;
         case 'activity': body = native ? nativeRecords() : activityPage(); break;
         case 'diagnostics': body = nativeDiagnostics(); break;

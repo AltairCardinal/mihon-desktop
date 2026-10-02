@@ -40,7 +40,7 @@
   </details><div class="parallel-scroll"><div class="device-pair"></div></div>`;
 
   if (window.MihonPreview.fullSyncReview) {
-    root.querySelector('.preview-tool-panel').insertAdjacentHTML('afterbegin', `<div class="tool-group"><label for="sync-review-mode">对照</label><select id="sync-review-mode"><option value="proposal">本轮提案 · 增加下次时间</option><option value="baseline">实机源码基线</option></select><label for="sync-palette">配色</label><select id="sync-palette"><option value="amoled">黑色表面＋粉色（截图参考）</option><option value="default">默认 Tachiyomi</option></select><label for="android-review-width">Android宽度</label><select id="android-review-width"><option value="390">390px 手机</option><option value="560">560px 宽屏</option><option value="320">320px 窄屏</option></select></div>`);
+    root.querySelector('.preview-tool-panel').insertAdjacentHTML('afterbegin', `<div class="tool-group"><label for="sync-review-mode">对照</label><select id="sync-review-mode"><option value="proposal">新版设计 · 整理信息与操作</option><option value="baseline">当前实机 · 对照</option></select><label for="sync-palette">配色</label><select id="sync-palette"><option value="amoled">黑色表面＋粉色（截图参考）</option><option value="default">默认 Tachiyomi</option></select><label for="android-review-width">Android宽度</label><select id="android-review-width"><option value="390">390px 手机</option><option value="560">560px 宽屏</option><option value="320">320px 窄屏</option></select></div>`);
     root.addEventListener('change', event => {
       if (event.target.id === 'sync-review-mode') window.MihonPreview.reviewMode = event.target.value;
       else if (event.target.id === 'sync-palette') window.MihonPreview.syncPalette = event.target.value;

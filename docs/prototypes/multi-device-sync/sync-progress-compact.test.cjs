@@ -82,7 +82,8 @@ test('新入口双端两行信息与真实完成比例，无详情无循环动�
     assert.equal(await phone.getByTestId('sync-compact-summary').innerText(), paused);
     await page.selectOption('#progress-scene', 'compact-complete');
     await page.getByTestId('show-progress-both').click();
-    assert.equal(await pc.getByTestId('sync-progress-track').getAttribute('aria-valuenow'), '100');
+    assert.equal(await pc.getByTestId('sync-progress-track').count(), 0, '新版完成态不保留运行轨道');
+    assert.match(await pc.getByTestId('sync-compact-summary').innerText(), /同步已完成/);
     await pc.getByTestId('sync-progress-primary').click();
     assert.match(await pc.getByTestId('sync-compact-summary').innerText(), /同步中，已完成0\/\d+条/);
     assert.equal(await pc.getByTestId('sync-progress-track').getAttribute('aria-valuenow'), '0');

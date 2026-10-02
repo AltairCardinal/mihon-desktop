@@ -96,7 +96,7 @@
     const shell = platform === 'android' ? 'android-shell' : 'windows-shell';
     const frame = platform === 'android' ? `<div class="android-statusbar"><span>9:41</span><span class="status-icons">${view.icon('wifi')}${view.icon('signal')}${view.icon('battery')}</span></div>` : `<div class="desktop-windowbar"><span class="desktop-title"><img src="./mihon-desktop.png" alt="Mihon Desktop 图标"><span>Mihon Desktop 0.11.19.33 · 本地原型</span></span><span class="window-controls" aria-hidden="true"><i></i><i></i><i class="window-close"></i></span></div>`;
     const nav = state.ui.reader || (state.ui.detail && platform === 'android') ? '' : view.renderNav(spec(), state.ui.route, navIndicators());
-    return `<section class="app-window ${shell}" data-platform="${platform}" data-native-sync="${Boolean(preview?.fullSyncReview)}" data-sync-palette="${preview?.syncPalette || 'default'}" data-testid="app-window">${frame}<div class="app-body">${content}</div>${nav}${platform === 'android' ? '<div class="gesture-area" aria-hidden="true"></div>' : ''}${state.ui.syncOpen ? renderSyncSheet() : ''}${extensions.modal()}</section>`;
+    return `<section class="app-window ${shell}" data-platform="${platform}" data-sync-design="${preview?.fullSyncReview && preview.reviewMode === 'proposal' ? 'modern' : 'source'}" data-native-sync="${Boolean(preview?.fullSyncReview)}" data-sync-palette="${preview?.syncPalette || 'default'}" data-testid="app-window">${frame}<div class="app-body">${content}</div>${nav}${platform === 'android' ? '<div class="gesture-area" aria-hidden="true"></div>' : ''}${state.ui.syncOpen ? renderSyncSheet() : ''}${extensions.modal()}</section>`;
   }
 
   function renderUpdatesActions() {
@@ -181,14 +181,14 @@
   }
   function renderSyncHeader(settings) {
     const subpage = interactions.screen();
-    return `<header class="sheet-header">${subpage || settings ? iconButton('back', '返回上一页', `data-action="${subpage ? 'ix-back' : 'close-sync-settings'}" data-testid="sync-settings-back"`) : ''}<div class="sheet-title"><h2 id="sync-sheet-title">${subpage ? preview?.fullSyncReview ? ({ activity: '同步记录', diagnostics: '同步诊断' }[interactions.screen()] || '同步') : interactions.title() : settings ? '同步设置' : '同步'}</h2><p>${esc(preview?.fullSyncReview ? (settings || subpage) ? '' : state.ui.interactions?.fields.device || '' : currentDevice().name)}${preview?.fullSyncReview && (!state.ui.interactions?.fields.device || settings || subpage) ? '' : ' · 书架'}</p></div><div class="appbar-actions">${subpage || settings ? '' : iconButton('settings', '同步设置', 'data-action="sync-settings" data-testid="sync-settings"')}${iconButton('close', '关闭同步', 'data-action="close-sync" data-testid="sync-close"')}</div></header>`;
+    return `<header class="sheet-header">${subpage || settings ? iconButton('back', '返回上一页', `data-action="${subpage ? 'ix-back' : 'close-sync-settings'}" data-testid="sync-settings-back"`) : ''}<div class="sheet-title"><h2 id="sync-sheet-title">${subpage ? preview?.fullSyncReview ? (preview.reviewMode === 'proposal' ? interactions.title() : ({ activity: '同步记录', diagnostics: '同步诊断' }[interactions.screen()] || '同步')) : interactions.title() : settings ? '同步设置' : '同步'}</h2><p>${esc(preview?.fullSyncReview ? (settings || subpage) ? '' : state.ui.interactions?.fields.device || '' : currentDevice().name)}${preview?.fullSyncReview && (!state.ui.interactions?.fields.device || settings || subpage) ? '' : ' · 书架'}</p></div><div class="appbar-actions">${subpage || settings ? '' : iconButton('settings', '同步设置', 'data-action="sync-settings" data-testid="sync-settings"')}${iconButton('close', '关闭同步', 'data-action="close-sync" data-testid="sync-close"')}</div></header>`;
   }
   function renderPendingToolbar(pending) {
     if (state.ui.selecting) {
       const selectionHeader = `<div class="sheet-header selection-header">${iconButton('close', '退出选择', 'data-action="selection-cancel" data-testid="selection-cancel"')}<div class="sheet-title"><h2 id="selection-title" data-testid="selection-count">已选 ${(state.ui.selectedIds || []).length} 项</h2></div><div class="appbar-actions">${iconButton('selectAll', '全选', 'data-action="selection-all" data-testid="selection-all"')}${iconButton('flipToBack', '反选', 'data-action="selection-invert" data-testid="selection-invert"')}</div></div>`;
       return `<div class="pending-toolbar">${selectionHeader}${renderBatchBar()}</div>`;
     }
-    return `<div class="pending-toolbar"><div class="pending-toolbar-heading"><strong>待手动处理的同步 · ${pending}</strong>${renderBatchTools()}</div></div>`;
+    return `<div class="pending-toolbar"><div class="pending-toolbar-heading"><strong>${preview?.fullSyncReview && preview.reviewMode === 'proposal' ? '待确认' : '待手动处理的同步'} · ${pending}</strong>${renderBatchTools()}</div></div>`;
   }
 
   function renderBatchTools() {
@@ -209,7 +209,7 @@
 
   function closeSyncLayer() {
     if (state.ui.batchReview) state.ui.batchReview = null;
-    else if (interactions.screen()) interactions.back();
+    else if (interactions.screen()) interactions.handle('ix-back', {});
     else if (state.ui.selecting) clearBatchSelection();
     else if (state.ui.syncSettingsOpen) state.ui.syncSettingsOpen = false;
     else state.ui.syncOpen = false;
@@ -238,6 +238,15 @@
     const busy = state.ui.busy && state.ui.busyDeviceId === current.id;
     if (state.ui.interactions?.progress?.compact && !(preview?.fullSyncReview ? ['succeeded', 'failed', 'partial', 'blocked', 'cancelled'].includes(state.ui.interactions.progress.state) : state.ui.interactions.progress.state === 'succeeded')) {
       return `<section class="sync-content" data-testid="sync-panel">${interactions.status({ total: current.pendingOutgoing.length, membership, reading, pending, busy, online: state.online })}</section>`;
+    }
+    if (preview?.fullSyncReview && preview.reviewMode === 'proposal') {
+      return `<section class="sync-content modern-main" data-testid="sync-panel">
+        ${interactions.status({ total: current.pendingOutgoing.length, membership, reading, pending, busy, online: state.online })}
+        ${interactions.summary()}${interactions.importStatus()}
+        ${batchResult ? `<div class="snackbar-inline" data-testid="batch-result">${esc(batchResult.message)}</div>` : ''}
+        ${pending ? `<section class="sync-list pending-list">${renderPendingToolbar(pending)}<p class="modern-muted">其他设备取消了以下内容。确认前，本设备仍会保留。</p>${current.confirmations.map(renderConfirmation).join('')}</section>` : '<div class="modern-empty">' + view.icon('check') + '没有待确认的内容</div>'}
+        <button class="modern-record-link" data-action="ix-activity" data-testid="ix-activity">${view.icon('history')}<span>同步记录</span>${view.icon('chevron')}</button>
+      </section>`;
     }
     return `<section class="sync-content" data-testid="sync-panel">
       ${interactions.status({ total: current.pendingOutgoing.length, membership, reading, pending, busy, online: state.online })}
@@ -297,7 +306,7 @@
     const title = isAuthor ? `取消关注「${creator(item.objectId).name}」` : `取消收藏《${book(item.objectId).title}》`;
     if (preview?.fullSyncReview) {
       const nativeTitle = isAuthor ? creator(item.objectId).name : book(item.objectId).title;
-      return `<article class="native-confirmation native-pending-row ${selected ? 'is-selected' : ''}" data-pending-id="${esc(item.id)}" data-testid="confirmation-${esc(item.id)}"><div class="native-pending-copy">${state.ui.selecting ? `<button role="checkbox" aria-label="选择${esc(nativeTitle)}" aria-checked="${selected}" data-select-id="${esc(item.id)}">${selected ? '☑' : '☐'}</button>` : ''}<div><strong>${esc(nativeTitle)}</strong><small>${isAuthor ? '作者' : '漫画'}</small></div></div>${state.ui.selecting ? '' : `<div class="confirmation-actions">${button('保留在此设备', `data-ignore="${esc(item.id)}" data-testid="ignore-${esc(item.id)}"`, 'm-button-text')}${button('在此设备取消', `data-confirm="${esc(item.id)}" data-testid="confirm-${esc(item.id)}"`, 'm-button-text')}</div>`}</article>`;
+      return `<article class="native-confirmation native-pending-row ${selected ? 'is-selected' : ''}" data-pending-id="${esc(item.id)}" data-testid="confirmation-${esc(item.id)}"><div class="native-pending-copy">${state.ui.selecting ? `<button role="checkbox" aria-label="选择${esc(nativeTitle)}" aria-checked="${selected}" data-select-id="${esc(item.id)}">${selected ? '☑' : '☐'}</button>` : ''}<div><strong>${esc(nativeTitle)}</strong><small>${preview.reviewMode === 'proposal' ? (isAuthor ? '作者关注' : '漫画收藏') : (isAuthor ? '作者' : '漫画')}${preview.reviewMode === 'proposal' ? ' · 来自 ' + esc(item.sourceName || '其他设备') : ''}</small></div></div>${state.ui.selecting ? '' : `<div class="confirmation-actions">${button('保留在此设备', `data-ignore="${esc(item.id)}" data-testid="ignore-${esc(item.id)}"`, 'm-button-text')}${button('在此设备取消', `data-confirm="${esc(item.id)}" data-testid="confirm-${esc(item.id)}"`, 'm-button-text')}</div>`}</article>`;
     }
     return `<article class="native-confirmation ${selected ? 'is-selected' : ''}" data-pending-id="${esc(item.id)}" data-testid="confirmation-${esc(item.id)}"><button class="confirmation-icon selection-toggle" role="checkbox" aria-label="选择${esc(title)}" aria-checked="${selected}" data-select-id="${esc(item.id)}" data-testid="select-${esc(item.id)}">${view.icon(selected ? 'check' : isAuthor ? 'authors' : 'bookmark')}</button><div class="row-copy"><strong>${esc(title)}</strong><small>来自 ${esc(item.sourceName)} · 确认前保留本设备状态</small></div>${state.ui.selecting ? '' : `<div class="confirmation-actions">${button('在此设备取消', `data-confirm="${esc(item.id)}" data-testid="confirm-${esc(item.id)}"`, 'm-button-danger')}${button('保留在此设备', `data-ignore="${esc(item.id)}" data-testid="ignore-${esc(item.id)}"`, 'm-button-text')}</div>`}</article>`;
   }
@@ -403,6 +412,8 @@
     if (scroll) state.ui.syncScroll = scroll.scrollTop;
     const progressScroll = root.querySelector('[data-testid="sync-progress-details"]')?.scrollTop || 0;
     const subpageScroll = root.querySelector('.ix-page')?.scrollTop || 0;
+    const diagnostic = root.querySelector('details.modern-diagnostic');
+    if (diagnostic && state.ui.interactions) state.ui.interactions.diagnosticDetailsOpen = diagnostic.open;
     root.innerHTML = `<div class="prototype-root platform-${state.ui.platform} theme-${state.ui.theme}">${renderPreviewTools()}${renderWindowShell(renderRoute())}<div class="prototype-notice ${state.ui.tone}">${view.icon(state.ui.tone === 'failure' ? 'info' : 'cloud')}<span data-testid="notice">${esc(state.ui.notice)}</span></div></div>`;
     if (state.ui.syncOpen) {
       root.querySelectorAll('.app-window > .app-body, .app-window > .native-navigation, .app-window > .gesture-area').forEach(el => { el.inert = true; });

@@ -60,7 +60,7 @@ test('连续过程：同步与暂停隐藏安排，完成才重新计时并恢�
     assert.equal(await pc.getByTestId('sync-next-auto').count(), 0);
     await pc.getByTestId('sync-progress-primary').click();
     await page.clock.runFor(21000);
-    assert.match(await pc.getByTestId('sync-compact-summary').innerText(), /上次同步已完成/);
+    assert.match(await pc.getByTestId('sync-compact-summary').innerText(), /同步已完成/);
     assert.match(await pc.getByTestId('sync-next-auto').innerText(), /今天 13:01/);
     await pc.getByTestId('ix-activity').click();
     await pc.getByTestId('sync-settings-back').click();

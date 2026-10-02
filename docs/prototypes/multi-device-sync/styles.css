@@ -440,3 +440,73 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .native-large-text [data-native-sync="true"] .m-button-text { font-size: 28px; line-height: 40px; }
 
 .native-large-text [data-native-sync="true"] .sync-compact-content p { line-height: 1.5; }
+
+/* HTML_ADAPTER: reviewed proposal only; source comparison keeps its native baseline. */
+[data-sync-design="modern"] { --modern-card: color-mix(in srgb, var(--on-surface) 4%, var(--native-sheet)); --modern-muted: color-mix(in srgb, var(--on-surface) 72%, var(--native-sheet)); }
+.theme-dark [data-sync-design="modern"][data-sync-palette="amoled"] { --on-primary: #20000d; }
+[data-sync-design="modern"] .sync-panel-sheet { border-radius: 20px 20px 0 0; }
+[data-sync-design="modern"] .sheet-header { padding: 16px; min-height: 72px; gap: 8px; }
+[data-sync-design="modern"] .sheet-title h2 { font-size: 22px; line-height: 1.35; }
+[data-sync-design="modern"] .sheet-title p { font-size: 13px; }
+[data-sync-design="modern"] .sync-content, [data-sync-design="modern"] .sheet-settings-content { padding: 16px 16px 24px; }
+[data-sync-design="modern"] .modern-status-card { padding: 20px; border: 0; border-radius: 20px; background: var(--modern-card); margin: 0; }
+[data-sync-design="modern"] .modern-status-heading { display: flex; gap: 12px; align-items: center; }
+[data-sync-design="modern"] .modern-status-heading h3 { margin: 0; font-size: 20px; line-height: 1.4; font-weight: 650; }
+[data-sync-design="modern"] .modern-status-icon { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 36px; border-radius: 12px; color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
+[data-sync-design="modern"] .modern-muted, [data-sync-design="modern"] .ix-note { color: var(--modern-muted); font-size: 14px; line-height: 1.6; margin: 12px 0; }
+[data-sync-design="modern"] .modern-status-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+[data-sync-design="modern"] .m-button { min-height: 48px; padding: 12px 16px; font-size: 14px; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; text-align: center; }
+[data-sync-design="modern"] .m-button-primary { color: var(--on-primary); background: var(--primary); border-radius: 14px; font-weight: 650; }
+[data-sync-design="modern"] .m-button-text { color: var(--modern-muted); border-radius: 12px; }
+[data-sync-design="modern"] .modern-status-actions .m-button-primary { flex: 1 1 144px; }
+[data-sync-design="modern"] .sync-next-auto { margin: 16px 0 24px; padding: 0 4px; color: var(--modern-muted); font-size: 14px; line-height: 1.6; }
+[data-sync-design="modern"] .pending-list { border: 0; margin-top: 24px; }
+[data-sync-design="modern"] .pending-toolbar-heading { align-items: center; gap: 8px; }
+[data-sync-design="modern"] .pending-toolbar-heading > strong { font-size: 18px; font-weight: 650; }
+[data-sync-design="modern"] .native-pending-row { padding: 16px 0; gap: 12px; }
+[data-sync-design="modern"] .native-pending-copy strong { font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
+[data-sync-design="modern"] .native-pending-copy small { color: var(--modern-muted); font-size: 13px; line-height: 1.6; }
+[data-sync-design="modern"] .confirmation-actions { flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
+[data-sync-design="modern"] .confirmation-actions [data-ignore] { background: var(--modern-card); color: var(--on-surface); }
+[data-sync-design="modern"] .modern-empty { display: flex; align-items: center; gap: 8px; color: var(--modern-muted); font-size: 14px; padding: 8px 4px 20px; }
+[data-sync-design="modern"] .modern-empty .MihonIcon { width: 18px; height: 18px; }
+[data-sync-design="modern"] .modern-record-link { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 16px 4px; border: 0; border-top: 1px solid color-mix(in srgb, var(--outline-variant) 40%, transparent); color: var(--on-surface); background: transparent; text-align: left; font: inherit; font-size: 16px; }
+[data-sync-design="modern"] .modern-record-link span { flex: 1; }
+[data-sync-design="modern"] .modern-group { padding: 20px 16px; border-radius: 16px; background: var(--modern-card); margin-bottom: 16px; }
+[data-sync-design="modern"] .modern-group h3 { margin: 0 0 16px; font-size: 18px; line-height: 1.5; }
+[data-sync-design="modern"] .native-startup { min-height: 48px; margin-bottom: 8px; gap: 12px; }
+[data-sync-design="modern"] .native-switch { width: 56px; min-width: 56px; height: 48px; padding: 0 6px; border: 0; position: relative; background: transparent; }
+[data-sync-design="modern"] .native-switch::before { content: ''; position: absolute; inset: 8px 2px; background: var(--outline-variant); border-radius: 24px; }
+[data-sync-design="modern"] .native-switch.is-on::before { background: var(--primary); }
+[data-sync-design="modern"] .native-switch span { position: relative; }
+[data-sync-design="modern"] .modern-periods { display: flex; flex-wrap: wrap; gap: 8px; }
+[data-sync-design="modern"] .native-period { width: auto; min-height: 48px; padding: 12px 16px; border: 0; border-radius: 12px; background: color-mix(in srgb, var(--on-surface) 5%, transparent); color: var(--modern-muted); font-size: 14px; line-height: 1.5; }
+[data-sync-design="modern"] .native-period[aria-checked="true"] { color: var(--on-surface); background: color-mix(in srgb, var(--primary) 18%, var(--native-sheet)); outline: 1px solid color-mix(in srgb, var(--primary) 60%, transparent); }
+[data-sync-design="modern"] .ix-setting-row { min-height: 56px; padding: 12px 0; gap: 12px; color: var(--on-surface); }
+[data-sync-design="modern"] .ix-setting-row strong { font-size: 16px; line-height: 1.5; }
+[data-sync-design="modern"] .ix-setting-row small { color: var(--modern-muted); font-size: 14px; line-height: 1.5; }
+[data-sync-design="modern"] .native-outlined-field { display: block; width: 100%; box-sizing: border-box; border-radius: 12px; border-color: var(--outline-variant); min-height: 56px; margin-top: 24px; }
+[data-sync-design="modern"] .modern-danger-zone { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+[data-sync-design="modern"] .modern-danger-zone .m-button { color: var(--danger); }
+[data-sync-design="modern"] .ix-page { padding: 16px 24px 24px; font-size: 16px; line-height: 1.6; }
+[data-sync-design="modern"] .ix-page h3 { font-size: 20px; line-height: 1.4; font-weight: 650; margin: 16px 0; }
+[data-sync-design="modern"] .ix-page .ix-note { color: var(--modern-muted); font-size: 14px; line-height: 1.6; }
+[data-sync-design="modern"] .ix-field input, [data-sync-design="modern"] .ix-choice { min-height: 48px; border-radius: 12px; font-size: 16px; }
+[data-sync-design="modern"] .ix-actions { flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+[data-sync-design="modern"] .sync-compact-card { border: 0; border-radius: 20px; background: var(--modern-card); padding: 20px; }
+[data-sync-design="modern"] .sync-compact-content { min-height: 0; }
+[data-sync-design="modern"] .sync-compact-content p { min-height: 0; padding: 0; }
+[data-sync-design="modern"] .sync-compact-controls { min-height: 0; margin-top: 16px; }
+[data-sync-design="modern"] .sync-compact-controls .m-button { color: var(--on-primary); background: var(--primary); border-radius: 14px; }
+[data-sync-design="modern"] .native-details { font-size: 14px; }
+.native-large-text [data-sync-design="modern"] .modern-status-heading h3 { font-size: 32px; line-height: 1.5; }
+.native-large-text [data-sync-design="modern"] .modern-muted, .native-large-text [data-sync-design="modern"] .m-button { font-size: 28px; line-height: 1.5; }
+.native-large-text [data-sync-design="modern"] .modern-status-heading { align-items: flex-start; }
+[data-sync-design="modern"] .modern-main, [data-sync-design="modern"] .modern-settings, [data-sync-design="modern"] .ix-page { overflow-wrap: anywhere; }
+
+[data-sync-design="modern"] .modern-group h4 { margin: 20px 0 12px; font-size: 16px; font-weight: 600; }
+[data-sync-design="modern"] .native-outlined-field > span { background: var(--surface); }
+[data-sync-design="modern"] .modern-diagnostic { margin-top: 24px; }
+[data-sync-design="modern"] .modern-diagnostic summary { min-height: 48px; padding: 12px 0; cursor: pointer; }
+
+[data-sync-design="modern"] .native-pending-copy > button, [data-sync-design="modern"] .pending-toolbar .icon-button { min-width: 48px; min-height: 48px; }

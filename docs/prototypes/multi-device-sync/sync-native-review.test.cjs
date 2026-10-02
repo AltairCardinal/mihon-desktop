@@ -4,13 +4,14 @@ const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_CORE_PATH);
 const url = 'file://' + path.resolve(__dirname, 'progress-review.html').replace(/\\/g, '/');
 
-test('源码对齐：历史结果、顶栏操作、普通空态和记录入口，提案只增加调度说明', async () => {
+test('源码对齐：历史结果、顶栏操作、普通空态和记录入口，新版切换不改变基线', async () => {
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1180 } });
     page.setDefaultTimeout(5000);
     await page.clock.install();
     await page.goto(url);
+    await page.selectOption('#sync-review-mode', 'baseline');
     const pc = page.frameLocator('#preview-windows');
     const phone = page.frameLocator('#preview-android');
     for (const frame of [pc, phone]) {
@@ -55,6 +56,7 @@ test('源码设置：内联单选、即时设备名、启动开关和返回，32
     page.setDefaultTimeout(5000);
     await page.clock.install();
     await page.goto(url);
+    await page.selectOption('#sync-review-mode', 'baseline');
     const phone = page.frameLocator('#preview-android');
     await phone.getByTestId('sync-settings').click();
     assert.equal(await phone.locator('[role="radio"]').count(), 5);
@@ -76,7 +78,8 @@ test('源码设置：内联单选、即时设备名、启动开关和返回，32
     assert.match(await phone.getByTestId('native-diagnostic-details').innerText(), /prototype/);
     const [download] = await Promise.all([page.waitForEvent('download'), phone.getByTestId('ix-diagnostic-export').click()]);
     assert.equal(download.suggestedFilename(), 'mihon-sync-demo-diagnostics.json');
-    await phone.getByTestId('sync-settings-back').click();
+    await phone.getByTestId('sync-settings-back').focus();
+    await page.keyboard.press('Escape');
     assert.equal(await phone.locator('[role="radio"]').count(), 5);
     await phone.getByTestId('sync-settings-back').click();
     await page.locator('#preview-android').evaluate(el => el.style.width = '320px');
@@ -100,6 +103,7 @@ test('待确认需二次确认；首次合并暂停和完成遵循同一个实�
     page.setDefaultTimeout(5000);
     await page.clock.install();
     await page.goto(url);
+    await page.selectOption('#sync-review-mode', 'baseline');
     const pc = page.frameLocator('#preview-windows');
     await pc.locator('[data-ignore]').click();
     await pc.getByRole('alertdialog').waitFor();
