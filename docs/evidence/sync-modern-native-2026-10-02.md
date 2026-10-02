@@ -59,3 +59,16 @@ Android JDK21、SDK36 与原正式签名预检通过。macOS SSH 可达，但仅
 真实 Compose 回归先确认首次合并按钮仍出现而失败，再修改生产组件。针对主卡与真实 controller 的 90 项测试及 presentation-sync 格式检查通过（sync-single-pause-green4）；主卡点击分派 PauseSync/ResumeSync，真实 controller 测试验证持久暂停与计时冻结。用户要求快速完成，本次不重复上一轮全量测试，也不涉及 macOS 或实体设备操作。
 
 Windows 正式脚本构建 0.11.19.75.b08d06d，发布运行版本与真实扩展安装验收通过（sync-single-pause-windows）。发布 EXE 为 `app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.75.b08d06d-unpacked/Mihon Desktop.exe`。Android 正式候选 0.19.4-aex.25/vc43 构建及独立 verify 通过，v2/v3 签名连续，R8/资源压缩开启；APK 位于 `app/artifacts/android/0.19.4-aex.25-vc43-b08d06d76f-release/`。构建基线为 b08d06d，包含本次已验证的未提交功能 diff；Android 真机 UI 仍由用户安装验收。
+
+
+## 2026-10-03：重新授权后的错误反馈
+
+用户验收报告重新登录 GitHub 后同步设置页只有“重试”。源码观察：SetupPage 使用全局 showingCompactRun 隐藏 setupProblem/安装范围提醒，而 setupFailed 保留旧同步记录；重新授权/发现失败但旧 run 仍非终态时，错误步骤可被误判为应隐藏说明。截图本身不包含底层失败类型，不能据此认定为账户、权限、网络或空间数据损坏。
+
+固定验收：只有真正首次合并（MERGING）且渲染紧凑进度卡时隐藏额外说明；SIGN_IN、DISCOVERING、ERROR 等设置步骤必须独立呈现当前反馈，旧 run 不得遮蔽原因。保留持久同步记录及原 RetrySetup/Authorize 恢复动作，不改同步协议、计数或凭据处理。一个实施代理负责红绿及 focused 验证，主代理独立核对改动与正式构建，不重复无关全量测试或操作实体设备。
+
+
+实现只修改 SetupPage 的两处抑制条件。红测确认旧非终态记录会隐藏错误；真实 OAuth 设备授权测试确认新凭据更新、旧 PAUSED_USER 记录保留后，setup-error 缺失导致正确失败。最终 5/5 focused 测试通过（Content 2、Onboarding integration 3），包括真实 RetrySetup 请求和安装范围警告、授权管理入口以及 MERGING 简洁卡反例；presentation-sync 格式和 diff 检查通过（sync-setup-blank-final，8 秒）。主代理独立核对生产条件、凭据更新断言、重试 HTTP 与持久记录断言，未发现待修项。
+
+
+Windows 正式脚本构建 0.11.19.76.6924d21，并通过版本及真实扩展安装的发布运行验收（sync-setup-blank-windows）。发布 EXE 为 `app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.76.6924d21-unpacked/Mihon Desktop.exe`。Android 正式候选 0.19.4-aex.26/vc44 构建及独立 verify 通过，v2/v3 原证书连续，R8/资源压缩开启，APK 位于 `app/artifacts/android/0.19.4-aex.26-vc44-6924d2112b-release/`。构建基线 6924d2112b 包含已验证的本次未提交功能 diff；Android 真机和实际 GitHub 检查原因仍由用户升级后验收，未执行 macOS 构建。

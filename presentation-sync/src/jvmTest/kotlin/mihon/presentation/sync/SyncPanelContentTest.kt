@@ -79,6 +79,32 @@ import java.util.Locale
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelContentTest {
     @Test
+    fun `setup retryable error remains visible beside an old nonterminal run`() {
+        renderedEnglish(
+            connected().copy(
+                page = SyncPanelPage.SETUP,
+                setupStep = SyncSetupStep.ERROR,
+                setupProblem = SyncDiscoveryProblem.RETRYABLE,
+                run = visualRun(SyncRunPhase.UPLOADING),
+            ),
+        ) {
+            awaitTag("sync-setup-retry")
+            assertTrue(hasTag("sync-setup-error"), "current discovery error must not be hidden by an older run")
+            click("sync-setup-retry")
+            assertTrue(actions.contains(SyncPanelAction.RetrySetup))
+            panel.state.value = panel.state.value.copy(
+                setupInstallation = SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 2),
+            )
+            render()
+            assertTrue(hasTag("sync-installation-scope-warning"))
+            panel.state.value = panel.state.value.copy(setupStep = SyncSetupStep.MERGING)
+            awaitTag("sync-progress-card")
+            assertFalse(hasTag("sync-setup-error"))
+            assertFalse(hasTag("sync-installation-scope-warning"))
+        }
+    }
+
+    @Test
     fun `modern settings groups and frequency chips stay reachable at 200 percent`() = runBlocking {
         val original = Locale.getDefault()
         val directory = System.getProperty("mihon.sync.visualDir")?.let(::File)

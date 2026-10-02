@@ -1128,10 +1128,10 @@ private fun SetupPage(
         ) {
             item { CircularProgressIndicator(Modifier.size(24.dp)) }
         }
-        state.setupProblem?.takeUnless { state.showingCompactRun }
+        state.setupProblem?.takeUnless { state.setupStep == SyncSetupStep.MERGING && state.showingCompactRun }
             ?.let { item { Text(setupProblemText(it), Modifier.testTag("sync-setup-error")) } }
         state.setupInstallation?.takeUnless {
-            state.showingCompactRun
+            state.setupStep == SyncSetupStep.MERGING && state.showingCompactRun
         }?.let(::installationScopeWarning)?.let { warning ->
             item {
                 Text(syncString(warning), Modifier.testTag("sync-installation-scope-warning"))
