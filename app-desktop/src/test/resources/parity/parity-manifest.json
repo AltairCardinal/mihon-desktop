@@ -3143,7 +3143,13 @@
       "app-desktop/src/main/kotlin/mihon/desktop/settings/LibraryPreferenceMigration.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibrarySettingsScreen.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateChecker.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryUpdateResultsDialog.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryUpdateResultsDialog.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopDeviceConditions.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/platform/WindowsDeviceConditions.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/platform/WindowsNativeDeviceCalls.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibraryDeviceUpdateSettings.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/test/http/LibraryMangaTestModeController.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -3190,13 +3196,31 @@
           "symbol": "fun libraryUpdateSkipReason(",
           "line": 18,
           "kind": "SHARED"
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopDeviceConditions.kt",
+          "symbol": "interface DesktopDeviceConditions",
+          "line": 26,
+          "kind": "PLATFORM_ADAPTER"
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/platform/WindowsDeviceConditions.kt",
+          "symbol": "class WindowsDeviceConditions(",
+          "line": 17,
+          "kind": "PLATFORM_ADAPTER"
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/platform/WindowsNativeDeviceCalls.kt",
+          "symbol": "class WindowsNativeDeviceCalls(",
+          "line": 18,
+          "kind": "PLATFORM_ADAPTER"
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt",
           "symbol": "class DesktopTaskScheduler",
-          "line": 177
+          "line": 180
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibrarySettingsScreen.kt",
@@ -4211,7 +4235,10 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt",
       "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateEligibilityTest.kt",
       "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/FetchIntervalClockTest.kt",
-      "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMangaMetadataTest.kt"
+      "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMangaMetadataTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryDeviceWaitingIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopDeviceConditionsTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/platform/WindowsDeviceConditionsTest.kt"
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt": [
@@ -4249,7 +4276,7 @@
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD",
-    "verificationScope": "The Library interaction repair shares selectLibraryMangaForUpdate between the real Android LibraryUpdateJob and Desktop LibraryUpdateScheduler: explicit categories bypass whole-library include/exclude, while whole-library exclusion wins (including default category 0). Real Root -> factory -> scheduler fixtures cover search-independent scope, duplicate requests, detail navigation/return and actual job completion; persisted stale Running is not treated as an active occurrence. The existing executor, automatic device restrictions, scheduling and migration gaps remain under LU-01 and are not promoted by this manual-entry repair. Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI12 adds a complete validated category snapshot used by the production Desktop scheduler, default-category 0, exclusion precedence and explicit category bypass. Finite interrupted-write recovery blocks malformed or half-migrated scope; V3 preserves six-hour legacy and valid explicit shared values, with raw/isSet restoration and marker-last. Existing interval UI and timer consume the shared key without legacy dual writes; 48/72-hour values are retained, while new options and full Clock/smart/metadata behavior remain RI14 and device behavior RI16. Actual Android Worker deletion recovery and the 66 unique focused passes are documented in docs/evidence/desktop-interaction-iteration-2026-09-30.md; no current final full tests, release or hardware acceptance is implied. RI14 adds original library occurrence scopes, durable per-unit results and receipt recovery while preserving generic task lifecycle and legacy JSON refusal without scope expansion. Periodic time uses the shared persistent preference and injected Clock; SINGLE does not advance the whole-library clock. Device constraints remain RI16.",
+    "verificationScope": "The Library interaction repair shares selectLibraryMangaForUpdate between the real Android LibraryUpdateJob and Desktop LibraryUpdateScheduler: explicit categories bypass whole-library include/exclude, while whole-library exclusion wins (including default category 0). Real Root -> factory -> scheduler fixtures cover search-independent scope, duplicate requests, detail navigation/return and actual job completion; persisted stale Running is not treated as an active occurrence. The existing executor, automatic device restrictions, scheduling and migration gaps remain under LU-01 and are not promoted by this manual-entry repair. Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI12 adds a complete validated category snapshot used by the production Desktop scheduler, default-category 0, exclusion precedence and explicit category bypass. Finite interrupted-write recovery blocks malformed or half-migrated scope; V3 preserves six-hour legacy and valid explicit shared values, with raw/isSet restoration and marker-last. Existing interval UI and timer consume the shared key without legacy dual writes; 48/72-hour values are retained, while new options and full Clock/smart/metadata behavior remain RI14 and device behavior RI16. Actual Android Worker deletion recovery and the 66 unique focused passes are documented in docs/evidence/desktop-interaction-iteration-2026-09-30.md; no current final full tests, release or hardware acceptance is implied. RI14 adds original library occurrence scopes, durable per-unit results and receipt recovery while preserving generic task lifecycle and legacy JSON refusal without scope expansion. Periodic time uses the shared persistent preference and injected Clock; SINGLE does not advance the whole-library clock. Device constraints remain RI16. RI16 automatic device conditions use one DI-owned Windows native port. Original scheduled work waits on selected UNKNOWN/unmet conditions, rechecks only between units and resumes the same occurrence; manual/failed-only retry can replace a waiting owner after cancellation and join. Pure waiting does not advance the actual periodic marker. Unsupported platforms retain preferences and ignore unavailable conditions.",
     "interactionIterationEvidence": {
       "RI14": {
         "behaviorMethods": {
@@ -4325,6 +4352,47 @@
         },
         "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
         "verification": "110 unique affected methods passed (Desktop102/domain6/Android2), 0 skipped; scoped format passed. Original failed runs and targeted repairs remain in the report. Final full matrix/release/hardware evidence remains RI18."
+      },
+      "RI16": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryDeviceWaitingIntegrationTest.kt": [
+            "automatic unknown wifi holds the original workset without consuming the periodic check",
+            "manual refresh supersedes an automatic wait without running concurrent work",
+            "conditions recheck only between units and restart resumes the same fixed workset once",
+            "device state refusal cannot run a source under a replaced occurrence",
+            "shutdown waits for a superseded automatic owner that is still inside native query",
+            "retained unsupported restrictions and unselected unknown states never block automatic work",
+            "automatic condition snapshot is fixed while explicit failed retry bypasses only that wait",
+            "actual task checkpoint refusal before a device boundary cannot start the source"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopDeviceConditionsTest.kt": [
+            "only selected conditions block and unknown never means satisfied"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/platform/WindowsDeviceConditionsTest.kt": [
+            "UP tunnel with unknown media is retained as routing ambiguity in actual MIB row bytes",
+            "single virtual ethernet is not evidence of one physical Internet route",
+            "WLAN uses enumerated GUID and releases buffers and handle on query rejection",
+            "unsupported platform never loads Windows DLL or applies retained Windows options",
+            "actual Windows native query returns bounded states without changing system configuration",
+            "native power bytes do not equate no battery with external power",
+            "wifi queries the single active native GUID and cost unknown is not unrestricted",
+            "multiple active connections and tunnels never claim any wifi as actual routing",
+            "AC status is authoritative and failure or 255 remains unknown"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
+            "device conditions are resolved once through actual DI UI and scheduler",
+            "Windows device settings expose real persistent options and settings search route",
+            "actual Root manual refresh bypasses an automatic wait and retains the new checking owner",
+            "actual DI diagnostics expose the same device adapter as automatic checks",
+            "automatic resume keeps actual Root waiting feedback without a false checking spinner",
+            "actual waiting task explains unmet conditions and keeps modal keyboard ownership",
+            "native supported conditions at 320 font200 retain bounds keyboard and preference failure retry",
+            "unsupported settings retain Windows preferences without exposing unavailable controls",
+            "native waiting results at 320 font200 keep cancellation keyboard and Escape focus reachable"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "64 unique affected Desktop methods passed, 0 failures/skips, including all 27 new production behavior/wiring methods; scoped 18 Kotlin and 2 XML format checks passed. Full matrix, packaged runtime and hardware remain RI18; capability status is unchanged."
       }
     }
   },
@@ -4386,7 +4454,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 1294
+          "line": 1303
         }
       ],
       "FIXTURE": [
@@ -10140,12 +10208,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "val available = tachiyomi.domain.library.selectManualDownloadChapters(",
-          "line": 1226
+          "line": 1234
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1315
+          "line": 1323
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/LibraryScreenModelFactory.kt",
@@ -11822,7 +11890,7 @@
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibrarySettingsScreen.kt",
           "symbol": "private fun DefaultLibraryCategorySettings(",
           "kind": "ADAPTER",
-          "line": 323
+          "line": 328
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -11844,7 +11912,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1315
+          "line": 1323
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailMembershipDialogs.kt",
@@ -20973,7 +21041,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "initialChapterFlags = { Injekt.get<SetMangaDefaultChapterFlags>().initialFlags() },",
-          "line": 763
+          "line": 765
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
@@ -31486,7 +31554,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "private fun eligibleReaderChapters(",
-          "line": 1275
+          "line": 1283
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
@@ -34235,7 +34303,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "downloadPolicy = { manga -> Injekt.get<FilterChaptersForDownload>().snapshot(manga) }",
-          "line": 796
+          "line": 798
         }
       ],
       "FIXTURE": [
@@ -35579,7 +35647,13 @@
       "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateChecker.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/domain/SaveSourceMangaForDetails.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryUpdateResultsDialog.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryUpdateResultsDialog.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopDeviceConditions.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/platform/WindowsDeviceConditions.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/platform/WindowsNativeDeviceCalls.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibraryDeviceUpdateSettings.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/test/http/LibraryMangaTestModeController.kt"
     ],
     "deviations": [
       {
@@ -35659,7 +35733,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt",
           "symbol": "fun runNow",
-          "line": 103
+          "line": 104
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateChecker.kt",
@@ -35669,12 +35743,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt",
           "symbol": "fun confirmLibraryReceipt(",
-          "line": 257
+          "line": 279
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryUpdateResultsDialog.kt",
           "symbol": "internal fun LibraryUpdateResultsDialog(",
-          "line": 41
+          "line": 43
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt",
+          "symbol": "fun recordLibraryDeviceBoundary(",
+          "line": 259
         }
       ],
       "FIXTURE": [
@@ -35704,7 +35783,10 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt",
       "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateEligibilityTest.kt",
       "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/FetchIntervalClockTest.kt",
-      "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMangaMetadataTest.kt"
+      "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMangaMetadataTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryDeviceWaitingIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopDeviceConditionsTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/platform/WindowsDeviceConditionsTest.kt"
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": [
@@ -35840,9 +35922,50 @@
         },
         "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
         "verification": "110 unique affected methods passed (Desktop102/domain6/Android2), 0 skipped; scoped format passed. Original failed runs and targeted repairs remain in the report. Final full matrix/release/hardware evidence remains RI18."
+      },
+      "RI16": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryDeviceWaitingIntegrationTest.kt": [
+            "automatic unknown wifi holds the original workset without consuming the periodic check",
+            "manual refresh supersedes an automatic wait without running concurrent work",
+            "conditions recheck only between units and restart resumes the same fixed workset once",
+            "device state refusal cannot run a source under a replaced occurrence",
+            "shutdown waits for a superseded automatic owner that is still inside native query",
+            "retained unsupported restrictions and unselected unknown states never block automatic work",
+            "automatic condition snapshot is fixed while explicit failed retry bypasses only that wait",
+            "actual task checkpoint refusal before a device boundary cannot start the source"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopDeviceConditionsTest.kt": [
+            "only selected conditions block and unknown never means satisfied"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/platform/WindowsDeviceConditionsTest.kt": [
+            "UP tunnel with unknown media is retained as routing ambiguity in actual MIB row bytes",
+            "single virtual ethernet is not evidence of one physical Internet route",
+            "WLAN uses enumerated GUID and releases buffers and handle on query rejection",
+            "unsupported platform never loads Windows DLL or applies retained Windows options",
+            "actual Windows native query returns bounded states without changing system configuration",
+            "native power bytes do not equate no battery with external power",
+            "wifi queries the single active native GUID and cost unknown is not unrestricted",
+            "multiple active connections and tunnels never claim any wifi as actual routing",
+            "AC status is authoritative and failure or 255 remains unknown"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
+            "device conditions are resolved once through actual DI UI and scheduler",
+            "Windows device settings expose real persistent options and settings search route",
+            "actual Root manual refresh bypasses an automatic wait and retains the new checking owner",
+            "actual DI diagnostics expose the same device adapter as automatic checks",
+            "automatic resume keeps actual Root waiting feedback without a false checking spinner",
+            "actual waiting task explains unmet conditions and keeps modal keyboard ownership",
+            "native supported conditions at 320 font200 retain bounds keyboard and preference failure retry",
+            "unsupported settings retain Windows preferences without exposing unavailable controls",
+            "native waiting results at 320 font200 keep cancellation keyboard and Escape focus reachable"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "64 unique affected Desktop methods passed, 0 failures/skips, including all 27 new production behavior/wiring methods; scoped 18 Kotlin and 2 XML format checks passed. Full matrix, packaged runtime and hardware remain RI18; capability status is unchanged."
       }
     },
-    "verificationScope": "The Library interaction repair shares selectLibraryMangaForUpdate between the real Android LibraryUpdateJob and Desktop LibraryUpdateScheduler: explicit categories bypass whole-library include/exclude, while whole-library exclusion wins (including default category 0). Real Root -> factory -> scheduler fixtures cover search-independent scope, duplicate requests, detail navigation/return and actual job completion; persisted stale Running is not treated as an active occurrence. The existing executor, automatic device restrictions, scheduling and migration gaps remain under LU-01 and are not promoted by this manual-entry repair. Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI13 uses the shared complete-directory plan and one-manga SQL commit with latest user state, original identity and finite post-commit work. Empty remote, explicit incomplete and failed source responses retain old data. Unmarked legacy truncation cannot be detected. Workset scheduling remains RI14. RI14 implements continue-after-failure, original ALL/CATEGORY/SINGLE worksets, four per-unit states, cancellation, failure-only retry versus fresh scope, legacy scope refusal and persistent real Root results. Actual Android and Desktop consumers share eligibility and source metadata policy. Default batch metadata remains disabled; explicit SINGLE details use favorite-title policy and custom-cover preservation. Original prediction date/window and refused writes remain in the finite directory phase until successfully saved. Completed effects survive checkpoint refusal and reopen without re-fetching. No new scheduler or global outbox is introduced."
+    "verificationScope": "The Library interaction repair shares selectLibraryMangaForUpdate between the real Android LibraryUpdateJob and Desktop LibraryUpdateScheduler: explicit categories bypass whole-library include/exclude, while whole-library exclusion wins (including default category 0). Real Root -> factory -> scheduler fixtures cover search-independent scope, duplicate requests, detail navigation/return and actual job completion; persisted stale Running is not treated as an active occurrence. The existing executor, automatic device restrictions, scheduling and migration gaps remain under LU-01 and are not promoted by this manual-entry repair. Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI13 uses the shared complete-directory plan and one-manga SQL commit with latest user state, original identity and finite post-commit work. Empty remote, explicit incomplete and failed source responses retain old data. Unmarked legacy truncation cannot be detected. Workset scheduling remains RI14. RI14 implements continue-after-failure, original ALL/CATEGORY/SINGLE worksets, four per-unit states, cancellation, failure-only retry versus fresh scope, legacy scope refusal and persistent real Root results. Actual Android and Desktop consumers share eligibility and source metadata policy. Default batch metadata remains disabled; explicit SINGLE details use favorite-title policy and custom-cover preservation. Original prediction date/window and refused writes remain in the finite directory phase until successfully saved. Completed effects survive checkpoint refusal and reopen without re-fetching. No new scheduler or global outbox is introduced. RI16 device-boundary persistence and original occurrence readback authorize source execution; refusal cannot call the source. Completed units and original prediction time/window survive wait and restart. Runtime shutdown joins replaced native-query owners. Formal packaged runtime and hardware acceptance remains RI18."
   },
   {
     "id": 62,
@@ -50107,7 +50230,13 @@
       "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateChecker.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryUpdateResultsDialog.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryUpdateResultsDialog.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopDeviceConditions.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/platform/WindowsDeviceConditions.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/platform/WindowsNativeDeviceCalls.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibraryDeviceUpdateSettings.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/test/http/LibraryMangaTestModeController.kt"
     ],
     "deviations": [
       {
@@ -50126,7 +50255,10 @@
       "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateEligibilityTest.kt",
       "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/FetchIntervalClockTest.kt",
       "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMangaMetadataTest.kt",
-      "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt"
+      "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryDeviceWaitingIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopDeviceConditionsTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/platform/WindowsDeviceConditionsTest.kt"
     ],
     "behaviorMethods": {
       "domain/src/commonTest/kotlin/mihon/domain/settings/SettingsSearchPolicyTest.kt": [
@@ -50174,6 +50306,16 @@
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsSearchScreen.kt",
           "symbol": "DesktopSettingsCatalog.search",
           "line": 55
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibraryDeviceUpdateSettings.kt",
+          "symbol": "internal fun LibraryDeviceUpdateSettings(",
+          "line": 26
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/test/http/LibraryMangaTestModeController.kt",
+          "symbol": "class LibraryMangaTestModeController(",
+          "line": 95
         }
       ],
       "FIXTURE": [
@@ -50212,7 +50354,7 @@
         ]
       }
     },
-    "verificationScope": "VERIFIED: exact fixed-main search ownership, shared policy, Android projection, Desktop Settings directory entry/feedback/navigation, and behavior methods are bound. RI12 indexes default category, update-category policy and categorized-sort controls. Actual Root search navigates to each persistent control, highlights it and executes real store/SQL changes; the existing library update anchor and shared interval write remain protected. Native and focused evidence are in the iteration report, without claiming current full release acceptance. RI14 shared interval options include 48/72 hours, smart and metadata controls, searchable real settings anchors and authoritative preference-write feedback; native result dialogs retain focus and reachability at 320px and fontScale=2. Final release and hardware proofs remain RI18.",
+    "verificationScope": "VERIFIED: exact fixed-main search ownership, shared policy, Android projection, Desktop Settings directory entry/feedback/navigation, and behavior methods are bound. RI12 indexes default category, update-category policy and categorized-sort controls. Actual Root search navigates to each persistent control, highlights it and executes real store/SQL changes; the existing library update anchor and shared interval write remain protected. Native and focused evidence are in the iteration report, without claiming current full release acceptance. RI14 shared interval options include 48/72 hours, smart and metadata controls, searchable real settings anchors and authoritative preference-write feedback; native result dialogs retain focus and reachability at 320px and fontScale=2. Final release and hardware proofs remain RI18. RI16 Settings > Library exposes persisted supported Windows conditions and visible unknown/unmet/manual-bypass feedback; unsupported conditions are absent from controls and search. Actual Root waiting results retain Cancel/automatic Resume and reachable original work rows at 320dp/fontScale2; Test Mode diagnostics resolve the same DI adapter.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD",
     "interactionIterationEvidence": {
@@ -50290,6 +50432,47 @@
         },
         "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
         "verification": "110 unique affected methods passed (Desktop102/domain6/Android2), 0 skipped; scoped format passed. Original failed runs and targeted repairs remain in the report. Final full matrix/release/hardware evidence remains RI18."
+      },
+      "RI16": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryDeviceWaitingIntegrationTest.kt": [
+            "automatic unknown wifi holds the original workset without consuming the periodic check",
+            "manual refresh supersedes an automatic wait without running concurrent work",
+            "conditions recheck only between units and restart resumes the same fixed workset once",
+            "device state refusal cannot run a source under a replaced occurrence",
+            "shutdown waits for a superseded automatic owner that is still inside native query",
+            "retained unsupported restrictions and unselected unknown states never block automatic work",
+            "automatic condition snapshot is fixed while explicit failed retry bypasses only that wait",
+            "actual task checkpoint refusal before a device boundary cannot start the source"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopDeviceConditionsTest.kt": [
+            "only selected conditions block and unknown never means satisfied"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/platform/WindowsDeviceConditionsTest.kt": [
+            "UP tunnel with unknown media is retained as routing ambiguity in actual MIB row bytes",
+            "single virtual ethernet is not evidence of one physical Internet route",
+            "WLAN uses enumerated GUID and releases buffers and handle on query rejection",
+            "unsupported platform never loads Windows DLL or applies retained Windows options",
+            "actual Windows native query returns bounded states without changing system configuration",
+            "native power bytes do not equate no battery with external power",
+            "wifi queries the single active native GUID and cost unknown is not unrestricted",
+            "multiple active connections and tunnels never claim any wifi as actual routing",
+            "AC status is authoritative and failure or 255 remains unknown"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
+            "device conditions are resolved once through actual DI UI and scheduler",
+            "Windows device settings expose real persistent options and settings search route",
+            "actual Root manual refresh bypasses an automatic wait and retains the new checking owner",
+            "actual DI diagnostics expose the same device adapter as automatic checks",
+            "automatic resume keeps actual Root waiting feedback without a false checking spinner",
+            "actual waiting task explains unmet conditions and keeps modal keyboard ownership",
+            "native supported conditions at 320 font200 retain bounds keyboard and preference failure retry",
+            "unsupported settings retain Windows preferences without exposing unavailable controls",
+            "native waiting results at 320 font200 keep cancellation keyboard and Escape focus reachable"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "64 unique affected Desktop methods passed, 0 failures/skips, including all 27 new production behavior/wiring methods; scoped 18 Kotlin and 2 XML format checks passed. Full matrix, packaged runtime and hardware remain RI18; capability status is unchanged."
       }
     }
   },

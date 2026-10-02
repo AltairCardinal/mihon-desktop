@@ -11,3 +11,47 @@ Privacy adapters expose their capability rather than treating every operating sy
 When adding an operating system, first add a platform adapter with a stable unsupported/limited failure result, then wire it through DI and a production-facing test.  Update the parity manifest with the fixed-main source, shared contract, Android and Desktop consumers, adapter, protection test, and any deviation.  Promote a candidate only after the applicable real OS behavior is accepted.  For updater support, publish canonical signed artifacts and trust configuration before enabling automatic handoff; rollback keeps the verified artifact available for manual installation and changes the capability back to manual-only if verification cannot be trusted.
 
 New-OS maintenance sequence: define the capability result, add the adapter and DI consumer, cover the user-facing state and failure, validate the target OS, then update the manifest scope from candidate to accepted evidence.
+
+
+## Automatic library-update device conditions
+
+`DesktopDeviceConditions` is one DI-owned platform port shared by the library scheduler,
+Library settings, and the existing Test Mode `/test/state` library snapshot. Capabilities
+and observed states are separate: a Windows query failure remains `UNKNOWN` for a
+supported condition. An unsupported platform has no capabilities, retains the shared
+Windows preferences, hides their controls, and ignores them when scheduling. No Windows
+DLL is loaded by the unsupported-platform factory.
+
+Windows observes WLAN interface state through the enumerated native GUID, without
+requesting SSID/BSSID or location access, and frees query/list buffers and closes the
+handle. MIB interface rows use JNA ABI layout. Multiple active interfaces, active
+unknown-media tunnels, and virtual interfaces prevent a claim that one physical
+connection determines routing. Machine-wide NLM `GetCost(NULL)` is used only with one
+confirmed physical connected Ethernet/WLAN interface; unknown cost, native failure,
+and unresolved routing remain unknown. This is deliberately conservative and does
+not infer a route from an interface name. AC line status uses 0/1/255; a missing battery
+is not evidence of external power. COM initialization and release belong to each
+query's calling thread.
+
+A scheduled occurrence freezes its selected conditions together with its original
+workset. The scheduler checks them between works, never interrupts an accepted source
+unit, and persists waiting reasons in the existing library task context. Selected
+unknown/unmet conditions wait; unselected or unsupported conditions do not. A failed
+checkpoint cannot authorize a source request. Continuous waits preserve the occurrence,
+completed units, original prediction time/window, and do not consume the periodic check
+marker. The marker and shared last-check preference are recorded once before the first
+real source check; an empty/all-skipped completed check also consumes the period. Sleep
+or restart resumes the same persisted work rather than creating a parallel occurrence.
+
+Manual refresh and explicit failed-only retry can supersede an automatic wait. They
+cancel and join its old owner before starting their own authorized scope; ordinary
+active checking remains busy. Shutdown also waits for replaced owners that are still
+inside a native query or cancellation cleanup. Automatic resume retains automatic
+conditions and displays waiting, not a checking spinner. Task activity drives Cancel;
+checking activity drives the spinner. The result modal retains a bounded scroll path
+to original work rows, including at narrow windows and large font sizes.
+
+Development tests cover real DI/HTTP diagnostic wiring, actual FileTaskCheckpointStore
+failure/reopen, native byte shapes and the Windows adapter's real query. These are not
+claims about every router, hardware configuration, macOS runtime, or a packaged release;
+formal production runtime and hardware acceptance remain the final iteration matrix.

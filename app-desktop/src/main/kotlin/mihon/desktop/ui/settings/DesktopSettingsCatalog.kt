@@ -136,6 +136,18 @@ object DesktopSettingsCatalog {
             MR.strings.categorized_display_settings,
             MR.strings.desktop_appearance_library_grid,
             MR.strings.pref_library_columns,
+            *(
+                if (com.sun.jna.Platform.isWindows()) {
+                    arrayOf(
+                        MR.strings.pref_library_update_restriction,
+                        MR.strings.connected_to_wifi,
+                        MR.strings.network_not_metered,
+                        MR.strings.desktop_device_external_power,
+                    )
+                } else {
+                    emptyArray()
+                }
+                ),
         ),
         screen(
             route(ReaderSettingsScreen::class),

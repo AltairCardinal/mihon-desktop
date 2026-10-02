@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -73,7 +75,13 @@ internal fun LibraryUpdateResultsDialog(
                 dialogFocus = focusManager
                 onDispose { dialogFocus = null }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val scroll = rememberScrollState()
+            val waiting =
+                task.status == TaskStatus.Running && task.libraryUpdate?.waitingForDevice?.isNotEmpty() == true
+            Column(
+                modifier = if (waiting) Modifier.heightIn(max = 340.dp).verticalScroll(scroll) else Modifier,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Text(requireNotNull(libraryUpdateSummary(task)))
                 if (task.status == TaskStatus.Failed && units.none { it.status == LibraryUnitStatus.FAILED }) {
                     Text(MR.strings.desktop_library_update_cleanup_needed.localized())
@@ -120,7 +128,8 @@ internal fun LibraryUpdateResultsDialog(
             FlowRow {
                 if (running) {
                     TextButton(onClick = onCancel) { Text(MR.strings.action_cancel.localized()) }
-                } else {
+                }
+                if (!running || task.libraryUpdate?.waitingForDevice?.isNotEmpty() == true) {
                     if (units.any { it.status == LibraryUnitStatus.FAILED }) {
                         TextButton(onClick = onRetryFailed) { Text(MR.strings.desktop_ui_retry_failed.localized()) }
                     }

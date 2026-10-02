@@ -14,21 +14,21 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
-import mihon.domain.task.TaskState
 import mihon.desktop.domain.SortMode
 import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.ui.library.LibraryFilterField
 import mihon.desktop.ui.library.LibraryScreenModel
 import mihon.desktop.ui.library.MangaDetailScreenModel
-import tachiyomi.domain.library.interactor.LibraryFilter
-import tachiyomi.domain.library.model.LibraryManga
+import mihon.domain.task.TaskState
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.chapter.interactor.BatchChapterResult
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.library.interactor.LibraryFilter
+import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.interactor.LibraryMembershipResult
-import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 @Serializable
 data class LibraryTestRow(
@@ -45,6 +45,9 @@ data class LibraryTestSnapshot(
     val sortAscending: Boolean,
     val selectedCategoryIndex: Int,
     val rows: List<LibraryTestRow>,
+    val supportedDeviceConditions: Set<String> = emptySet(),
+    val deviceConditions: Map<String, String>? = null,
+    val waitingForDevice: Map<String, String> = emptyMap(),
 )
 
 @Serializable
@@ -94,19 +97,25 @@ class LibraryMangaTestModeController(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     private val libraryLoadTimeoutMillis: Long = 1_000L,
     private val detailLoadTimeoutMillis: Long = 2_000L,
+    private val deviceConditions: mihon.desktop.platform.DesktopDeviceConditions? = null,
     private val detailFactory: (Long) -> MangaDetailScreenModel = MangaDetailScreenModelFactory::create,
 ) {
     @Volatile
     internal var detailModel: MangaDetailScreenModel? = null
         private set
+
     @Volatile
     private var libraryLoadState = OwnerLoadState.LOADING
+
     @Volatile
     private var libraryLoadError: String? = null
+
     @Volatile
     private var detailLoadState = OwnerLoadState.CLOSED
+
     @Volatile
     private var detailLoadError: String? = null
+
     @Volatile
     private var detailAttempted = false
     private var categoryIds = emptyList<Long>()
@@ -114,6 +123,7 @@ class LibraryMangaTestModeController(
     private var lastFailedChapterIds = emptyList<Long>()
     private val closed = AtomicBoolean(false)
     private val libraryReady = CompletableDeferred<LibraryMangaActionFailureCode?>()
+
     @Volatile
     private var libraryDependencyFailure: String? = null
     private var detailJob: Job? = null
@@ -163,6 +173,14 @@ class LibraryMangaTestModeController(
         sortAscending = libraryModel.state.value.sortAscending,
         selectedCategoryIndex = libraryModel.state.value.selectedCategoryIndex,
         rows = visibleItems().map { LibraryTestRow(it.id, it.manga.title) },
+        supportedDeviceConditions = deviceConditions?.supported?.mapTo(mutableSetOf()) { it.preferenceKey }.orEmpty(),
+        deviceConditions = deviceConditions?.let { port ->
+            val current = port.query()
+            port.supported.associate { it.preferenceKey to current.state(it).name }
+        },
+        waitingForDevice = libraryModel.state.value.updateTask?.takeIf {
+            it.status == mihon.domain.task.TaskStatus.Running
+        }?.libraryUpdate?.waitingForDevice.orEmpty(),
     )
 
     fun detailSnapshot(): MangaDetailTestSnapshot? = detailModel?.let { model ->
@@ -285,7 +303,11 @@ class LibraryMangaTestModeController(
         val index = params["index"]?.toIntOrNull() ?: return LibraryMangaActionFailureCode.MISSING_PARAMETER
         when (params["type"]) {
             "category" -> {
-                if (index !in libraryModel.state.value.categories.indices) return LibraryMangaActionFailureCode.ROW_NOT_FOUND
+                if (index !in
+                    libraryModel.state.value.categories.indices
+                ) {
+                    return LibraryMangaActionFailureCode.ROW_NOT_FOUND
+                }
                 libraryModel.setSelectedCategoryIndex(index)
                 libraryModel.applyCategoryPreferences(libraryModel.state.value.categories[index].id)
                 return null
@@ -479,7 +501,7 @@ class LibraryMangaTestModeController(
         params: Map<String, String>,
     ): LibraryMangaActionFailureCode? {
         val requiresLibrary = action in setOf("search", "filter", "sort", "open_manga_detail") ||
-            action == "select" && params["type"] != "chapter"
+            (action == "select" && params["type"] != "chapter")
         if (!requiresLibrary) return null
         return when (libraryLoadState) {
             OwnerLoadState.LOADING -> {
@@ -504,7 +526,7 @@ class LibraryMangaTestModeController(
             "detail_chapter",
             "detail_cover",
             "download",
-        ) || action == "select" && params["type"] == "chapter"
+        ) || (action == "select" && params["type"] == "chapter")
         if (!requiresDetail) return null
         if (!detailAttempted) return LibraryMangaActionFailureCode.DETAIL_NOT_OPEN
         return when (detailLoadState) {
@@ -516,7 +538,6 @@ class LibraryMangaTestModeController(
             }
         }
     }
-
 }
 
 object LibraryMangaTestModeBridge {

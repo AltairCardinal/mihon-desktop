@@ -194,7 +194,8 @@ class LibraryScreenModel(
                             current.copy(
                                 updateTask = observed.task,
                                 updateLaunchFailed = observed.launchFailure != null,
-                                isUpdating = observed.task?.status == TaskStatus.Running,
+                                isUpdating = observed.task?.status == TaskStatus.Running &&
+                                    observed.task.libraryUpdate?.waitingForDevice.isNullOrEmpty(),
                                 updateStatusText = if (observed.launchFailure != null) {
                                     MR.strings.desktop_ui_library_update_failed.localized()
                                 } else {
@@ -207,8 +208,9 @@ class LibraryScreenModel(
             }
         }
         val runningJob = backgroundUpdateJob?.invoke()?.takeIf(Job::isActive) ?: return
-        setIsUpdating(true)
-        setUpdateStatusText(MR.strings.desktop_ui_checking_for_updates.localized())
+        val waiting = backgroundUpdateSnapshot?.invoke()?.libraryUpdate?.waitingForDevice?.isNotEmpty() == true
+        setIsUpdating(!waiting)
+        setUpdateStatusText(backgroundUpdateResultText())
         if (observedBackgroundUpdate === runningJob) return
         observedBackgroundUpdate = runningJob
         screenModelScope.launch {
@@ -870,8 +872,9 @@ class LibraryScreenModel(
 
     suspend fun refreshLibrary(items: List<LibraryManga>, categoryId: Long? = null) {
         if (
-            _state.value.isUpdating ||
-            backgroundUpdateJob?.invoke()?.isActive == true
+            !backgroundIsWaitingForDevice() && (
+                _state.value.isUpdating || backgroundUpdateJob?.invoke()?.isActive == true
+                )
         ) {
             syncBackgroundUpdate()
             setUpdateStatusText(MR.strings.update_already_running.localized())
@@ -964,10 +967,15 @@ class LibraryScreenModel(
         runRecoveryUpdate(resumeBackgroundUpdate)
     }
 
+    private fun backgroundIsWaitingForDevice(): Boolean =
+        backgroundUpdateSnapshot?.invoke()?.let {
+            it.status == TaskStatus.Running && it.libraryUpdate?.waitingForDevice?.isNotEmpty() == true
+        } == true
+
     private fun runRecoveryUpdate(start: (() -> Job)?) {
-        if (_state.value.isUpdating || start == null) return
+        if ((_state.value.isUpdating && !backgroundIsWaitingForDevice()) || start == null) return
         screenModelScope.launch {
-            setIsUpdating(true)
+            setIsUpdating(!backgroundIsWaitingForDevice())
             try {
                 start().join()
                 setUpdateStatusText(backgroundUpdateResultText())
@@ -1418,11 +1426,33 @@ private fun SharedLibraryDisplayMode.toDesktopDisplayMode() = when (this) {
 
 internal fun libraryUpdateSummary(task: mihon.desktop.task.StoredTask): String? {
     val units = task.libraryUpdate?.units ?: return null
-    return MR.strings.desktop_library_update_results_count.localized(
+    val counts = MR.strings.desktop_library_update_results_count.localized(
         Locale.getDefault(),
         units.count { it.status == mihon.desktop.task.LibraryUnitStatus.SUCCESS },
         units.count { it.status == mihon.desktop.task.LibraryUnitStatus.SKIPPED },
         units.count { it.status == mihon.desktop.task.LibraryUnitStatus.FAILED },
         units.count { it.status == mihon.desktop.task.LibraryUnitStatus.UNPROCESSED },
     )
+    return libraryDeviceWaitingSummary(task)?.let { "$counts\n$it" } ?: counts
+}
+
+internal fun libraryDeviceWaitingSummary(task: mihon.desktop.task.StoredTask): String? {
+    if (task.status != TaskStatus.Running) return null
+    val waiting = task.libraryUpdate?.waitingForDevice.orEmpty()
+    if (waiting.isEmpty()) return null
+    val conditions = waiting.mapNotNull { (key, state) ->
+        val label = when (key) {
+            "wifi" -> MR.strings.connected_to_wifi
+            "network_not_metered" -> MR.strings.network_not_metered
+            "ac" -> MR.strings.desktop_device_external_power
+            else -> return@mapNotNull null
+        }.localized()
+        val reason = if (state == "UNKNOWN") {
+            MR.strings.desktop_device_condition_unknown
+        } else {
+            MR.strings.desktop_device_condition_unmet
+        }
+        "$label: ${reason.localized()}"
+    }
+    return (listOf(MR.strings.desktop_library_update_waiting.localized()) + conditions).joinToString("\n")
 }

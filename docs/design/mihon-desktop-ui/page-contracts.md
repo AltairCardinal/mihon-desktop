@@ -262,6 +262,10 @@ RI08复用前置核对：Android现用`libs.richeditor.compose`版本1.0.0-rc13�
 
 - `SOURCE`：原生API实施依据为微软[WlanQueryInterface](https://learn.microsoft.com/en-us/windows/win32/api/wlanapi/nf-wlanapi-wlanqueryinterface)、[GetSystemPowerStatus](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getsystempowerstatus)、[SYSTEM_POWER_STATUS](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-system_power_status)与[INetworkCostManager.GetCost](https://learn.microsoft.com/en-us/windows/win32/api/netlistmgr/nf-netlistmgr-inetworkcostmanager-getcost)。WLAN查询必须用实际接口GUID、检查ERROR_SUCCESS并释放系统内存；电源查询失败为未知，ACLineStatus为0／1／255分别断开／接通／未知，BatteryFlag无电池不能自行等同电源接通。GetCost传NULL反映machine-wide Internet成本，不证明任意源／VPN路由；多连接无法可靠对应实际业务路径时应保守未知。
 
+- `PROJECT_POLICY`：实际Windows连接清单使用GetIfTable2，保留UP且非明确断开的连接，未知媒体／虚拟／tunnel参与歧义判断；只有唯一物理、已连接的Ethernet或Wi-Fi可将machine-wide成本归到该连接。WLAN仅查询实际枚举GUID的interface_state（opcode6），不读取BSSID、不扫描或请求位置设置；cost0及未知flag为未知，固定／可变及高位成本限制为不满足。查询的原生buffer、WLAN handle与COM引用均在原调用边界释放，COM已初始化的不同apartment不擅自撤销。
+- `PROJECT_POLICY`：等待状态写入同一原occurrence的context并读回确认；等待写拒绝或原occurrence已被替换，不得继续调用source。周期实际检查标记仅在首个真实检查或空／全跳过的实际完成时推进，纯等待保持原值与预测时刻。手动从真实Root入口可替换等待中的自动owner，但新owner必须等待旧owner退出；runtime关闭亦等待被替换的旧查询owner，避免关闭资源后晚到回调。
+- `PROJECT_POLICY`：等待仍是可取消的Running任务，详情结果面板同时允许取消及原自动Resume；Resume保留自动条件、原范围和时刻，显式失败重试与新手动更新沿既定绕过语义。界面只在真实检查时显示正在检查，等待显示选中条件及未知／不满足原因；Test Mode可选诊断字段读取production同一DI port，旧客户端字段及操作保持兼容。上述接口的有效focused及发布／硬件边界以唯一迭代证据为准，未表示最终实机门禁已完成。
+
 ## 2026-10-01 两段顶部刷新契约（RI17，实施前固定）
 
 - `PROJECT_POLICY`：按最终设计4.5共用纯状态机，书架和详情各自拥有滚动与作用域。内容容器顶部无修饰原生向起点未消费量才参与；滚到顶本身不刷新。Idle→Hinting显示准备提示，第一段归一化80dp后Armed；提示可见至少300ms、两段间隔至少400ms、3秒绝对有效期内新段48dp才提交一次。惯性不能延长Armed有效期；任务真实完成后连续800ms无滚动才回Idle，运行中不重复请求。

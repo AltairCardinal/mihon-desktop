@@ -2202,4 +2202,9 @@
     <string name="desktop_migration_files_changed">The confirmed files changed or are still in use. Finish reading or downloading, then cancel and confirm again.</string>
     <string name="desktop_migration_continue_cleanup">Continue cleanup</string>
     <string name="desktop_migration_recovery_pending">Recovery of this migration is still pending. Continue cleanup of the original operation.</string>
+    <string name="desktop_device_external_power">Connected to external power</string>
+    <string name="desktop_device_condition_unknown">This condition could not be verified. Automatic updates will wait.</string>
+    <string name="desktop_device_condition_unmet">This condition is not met. Automatic updates will wait.</string>
+    <string name="desktop_device_conditions_summary">Conditions apply only to automatic updates. Manual updates can proceed.</string>
+    <string name="desktop_library_update_waiting">Automatic updates are waiting for these device conditions:</string>
 </resources>

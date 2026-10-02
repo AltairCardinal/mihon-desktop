@@ -52,6 +52,7 @@ class LibraryUpdateScheduler(
     private val libraryPreferences: tachiyomi.domain.library.service.LibraryPreferences? = null,
     private val clock: java.time.Clock = java.time.Clock.systemDefaultZone(),
     private val getManga: tachiyomi.domain.manga.interactor.GetManga? = null,
+    private val deviceConditions: mihon.desktop.platform.DesktopDeviceConditions? = null,
 ) {
     private val scope = scope ?: CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var schedulerJob: Job? = null
@@ -116,8 +117,18 @@ class LibraryUpdateScheduler(
         singleMangaId: Long? = null,
     ): Job =
         synchronized(updateLock) {
-            updateJob?.takeIf { it.isActive }?.let { return@synchronized it }
+            val previous = updateJob?.takeIf { it.isActive }
+            if (previous != null) {
+                val waiting = taskSnapshot()?.libraryUpdate?.waitingForDevice?.isNotEmpty() == true
+                if (!waiting || trigger != LibraryUpdateTrigger.MANUAL || resume) return@synchronized previous
+                taskScheduler?.cancelRunning(LIBRARY_UPDATE_TASK.id)
+                if (stoppingJobs.add(previous)) {
+                    previous.invokeOnCompletion { synchronized(updateLock) { stoppingJobs.remove(previous) } }
+                }
+                previous.cancel()
+            }
             scope.launch(start = CoroutineStart.LAZY) {
+                previous?.join()
                 runLibraryUpdate(categoryId, resume, failedOnly, trigger, singleMangaId)
             }.also {
                 updateJob = it
@@ -304,6 +315,7 @@ class LibraryUpdateScheduler(
                         }
                         ).map { LibraryUpdateUnit(it.id, it.source, it.url, title = it.title) },
                     restrictions = libraryPreferences?.autoUpdateMangaRestrictions()?.get().orEmpty(),
+                    deviceRestrictions = libraryPreferences?.autoUpdateDeviceRestrictions()?.get().orEmpty(),
                     fetchWindowUpperBound = window.second,
                     checkStartedAt = clock.millis(),
                 )
@@ -314,7 +326,9 @@ class LibraryUpdateScheduler(
                     val initialized = taskScheduler?.initializeLibraryUpdate(task.id, task.idempotencyKey, context)
                     if (taskScheduler?.isCancelled(task.id) == true) throw CancellationException()
                     check(initialized != false) { "The original library occurrence cannot begin checking" }
-                    if (!single) libraryPreferences?.lastUpdatedTimestamp()?.set(requireNotNull(context.checkStartedAt))
+                    if (!single && context.trigger != LibraryUpdateTrigger.SCHEDULED) {
+                        libraryPreferences?.lastUpdatedTimestamp()?.set(requireNotNull(context.checkStartedAt))
+                    }
                 }
             }
             if (restore) {
@@ -323,6 +337,7 @@ class LibraryUpdateScheduler(
             }
             val failures = mutableListOf<AppError>()
             val failedUnits = mutableListOf<AppError.FailedUnit>()
+            var periodicTimestampWritten = false
             for (unit in context.units) {
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 if (taskScheduler?.isCancelled(task.id) == true) throw CancellationException()
@@ -366,6 +381,14 @@ class LibraryUpdateScheduler(
                         ),
                     )
                     continue
+                }
+                awaitDeviceConditions(task, context, bypass = failedOnly)
+                if (!single && context.trigger == LibraryUpdateTrigger.SCHEDULED && !periodicTimestampWritten) {
+                    val startedAt = taskSnapshot()?.libraryUpdate?.periodicCheckStartedAt ?: clock.millis()
+                    recordDeviceBoundary(task, emptyMap(), startedAt)
+                    if (taskScheduler?.isCancelled(task.id) == true) throw CancellationException()
+                    libraryPreferences?.lastUpdatedTimestamp()?.let { if (it.get() != startedAt) it.set(startedAt) }
+                    periodicTimestampWritten = true
                 }
                 val completed = taskSnapshot()?.completedUnitIds?.size ?: 0
                 taskNotifier?.notify(
@@ -427,6 +450,13 @@ class LibraryUpdateScheduler(
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
             if (taskScheduler?.isCancelled(task.id) == true) throw CancellationException()
             if (failures.isEmpty()) {
+                if (!single && context.trigger == LibraryUpdateTrigger.SCHEDULED &&
+                    taskSnapshot()?.libraryUpdate?.periodicCheckStartedAt == null
+                ) {
+                    val startedAt = clock.millis()
+                    recordDeviceBoundary(task, emptyMap(), startedAt)
+                    libraryPreferences?.lastUpdatedTimestamp()?.set(startedAt)
+                }
                 if (taskScheduler?.complete(task.id) == true) {
                     val count = taskSnapshot()?.libraryUpdate?.units?.sumOf { it.newChapterCount } ?: 0
                     taskNotifier?.notify(
@@ -473,6 +503,37 @@ class LibraryUpdateScheduler(
     }
 
     private class LibraryUnitUpdateException(val error: AppError) : IllegalStateException(error.toString())
+
+    private suspend fun awaitDeviceConditions(
+        task: BackgroundTask,
+        context: LibraryUpdateContext,
+        bypass: Boolean,
+    ) {
+        if (bypass || context.trigger != LibraryUpdateTrigger.SCHEDULED) return
+        val port = deviceConditions ?: return
+        val selected = port.supported.filterTo(mutableSetOf()) { it.preferenceKey in context.deviceRestrictions }
+        if (selected.isEmpty()) return
+        while (true) {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            if (taskScheduler?.isCancelled(task.id) == true) throw CancellationException()
+            val status = port.query()
+            val blocked = status.blocking(selected).associate { it.preferenceKey to status.state(it).name }
+            recordDeviceBoundary(task, blocked)
+            if (blocked.isEmpty()) return
+            delay(CHECK_INTERVAL_MS)
+        }
+    }
+
+    private fun recordDeviceBoundary(task: BackgroundTask, waiting: Map<String, String>, checkingAt: Long? = null) {
+        val scheduler = taskScheduler ?: return
+        scheduler.recordLibraryDeviceBoundary(task.id, task.idempotencyKey, waiting, checkingAt)
+        val actual = scheduler.snapshot(task.id)
+        check(
+            actual?.status == TaskStatus.Running && actual.task.idempotencyKey == task.idempotencyKey &&
+                actual.worksetInitialized && actual.libraryUpdate?.waitingForDevice == waiting &&
+                (checkingAt == null || actual.libraryUpdate.periodicCheckStartedAt == checkingAt),
+        ) { "The original library occurrence no longer accepts its device state" }
+    }
 
     private suspend fun update(
         manga: Manga,

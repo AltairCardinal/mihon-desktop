@@ -1991,4 +1991,9 @@
     <string name="desktop_migration_files_changed">已确认的文件发生变化或仍在使用。请结束相关阅读或下载，然后取消并重新确认。</string>
     <string name="desktop_migration_continue_cleanup">继续清理</string>
     <string name="desktop_migration_recovery_pending">本次迁移恢复尚未完成，请继续清理原操作。</string>
+    <string name="desktop_device_external_power">连接外部电源</string>
+    <string name="desktop_device_condition_unknown">暂时无法确认此条件，自动更新将等待。</string>
+    <string name="desktop_device_condition_unmet">此条件尚未满足，自动更新将等待。</string>
+    <string name="desktop_device_conditions_summary">这些条件仅限制自动更新，手动更新可以继续。</string>
+    <string name="desktop_library_update_waiting">自动更新正在等待以下设备条件：</string>
 </resources>

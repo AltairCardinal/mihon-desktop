@@ -262,6 +262,7 @@ internal suspend fun initDesktopDIForTest(
     mangaRepositoryOverride: ((MangaRepository) -> MangaRepository)? = null,
     builtInSources: List<CatalogueSource>? = null,
     taskStoreFactory: ((java.nio.file.Path) -> FileTaskCheckpointStore)? = null,
+    deviceConditionsOverride: mihon.desktop.platform.DesktopDeviceConditions? = null,
 ): DesktopTestDIContext {
     activeDesktopTestDIContext?.closeAndJoin()
     patchInjekt()
@@ -287,6 +288,7 @@ internal suspend fun initDesktopDIForTest(
         nativeSharePort,
         trackerConnectivity,
         taskStoreFactory,
+        deviceConditionsOverride,
     )
     return DesktopTestDIContext(
         handler = handler as JvmDatabaseHandler,
@@ -918,7 +920,11 @@ internal fun initUILayer(
     trackerConnectivity: mihon.desktop.tracking.DesktopNetworkConnectivity =
         mihon.desktop.tracking.JvmDesktopNetworkConnectivity,
     taskStoreFactory: ((java.nio.file.Path) -> FileTaskCheckpointStore)? = null,
+    deviceConditionsOverride: mihon.desktop.platform.DesktopDeviceConditions? = null,
 ) {
+    Injekt.addSingleton<mihon.desktop.platform.DesktopDeviceConditions>(
+        deviceConditionsOverride ?: mihon.desktop.platform.createDesktopDeviceConditions(),
+    )
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val passphraseVerifier = DesktopPassphraseVerifier(
         DesktopCredentialStore(credentialBackendFactory(CredentialNamespace.APP_LOCK_V1)),
@@ -1090,7 +1096,10 @@ internal fun initUILayer(
     Injekt.addSingleton(trackerSyncScheduler)
 
     val libraryScreenModel = mihon.desktop.library.LibraryScreenModelFactory.create()
-    val libraryTestController = mihon.desktop.test.http.LibraryMangaTestModeController(libraryScreenModel)
+    val libraryTestController = mihon.desktop.test.http.LibraryMangaTestModeController(
+        libraryScreenModel,
+        deviceConditions = Injekt.get(),
+    )
     Injekt.addSingleton(libraryScreenModel)
     Injekt.addSingleton(libraryTestController)
     mihon.desktop.test.http.LibraryMangaTestModeBridge.install(libraryTestController)
@@ -1364,6 +1373,7 @@ private fun registerDesktopLibrary(
             taskNotifier = taskNotifier,
             libraryProvider = libraryProvider,
             updateManga = updateManga,
+            deviceConditions = Injekt.get(),
         ),
     )
     Injekt.addSingleton(UpdatesPreferences(preferenceStore))

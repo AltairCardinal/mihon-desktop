@@ -39,6 +39,7 @@ import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.settings.DesktopLibraryCategoryPolicy
+import mihon.desktop.test.http.testHttpServer
 import mihon.desktop.ui.library.MangaDetailScreen
 import mihon.desktop.ui.theme.DesktopTheme
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
@@ -72,6 +73,562 @@ import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 @OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 @Isolated
 class LibrarySettingsPolicyInteractionTest {
+    @Test
+    fun `device conditions are resolved once through actual DI UI and scheduler`(@TempDir root: File) = runBlocking {
+        withSettings(root) {
+            val port = Injekt.get<mihon.desktop.platform.DesktopDeviceConditions>()
+            org.junit.jupiter.api.Assertions.assertSame(port, DesktopUiDependencies.fromInjekt().deviceConditions)
+            val field = LibraryUpdateScheduler::class.java.getDeclaredField("deviceConditions").apply {
+                isAccessible =
+                    true
+            }
+            org.junit.jupiter.api.Assertions.assertSame(port, field.get(Injekt.get<LibraryUpdateScheduler>()))
+        }
+    }
+
+    @Test
+    fun `Windows device settings expose real persistent options and settings search route`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withSettings(root) { scene ->
+            scene.mountLibrary()
+            scene.renderUntil { scene.categoryEntryReady() }
+            val title = MR.strings.pref_library_update_restriction.localized()
+            assertTrue(scene.text().contains(title), "Library settings expose supported automatic device restrictions")
+            scene.click(MR.strings.connected_to_wifi.localized())
+            scene.renderUntil {
+                LibraryPreferences.DEVICE_ONLY_ON_WIFI in
+                    Injekt.get<LibraryPreferences>().autoUpdateDeviceRestrictions().get()
+            }
+            scene.mountSettings()
+            scene.renderUntil { MR.strings.action_search_settings.localized() in scene.text() }
+            scene.click(MR.strings.action_search_settings.localized())
+            scene.renderUntil { scene.nodes().any { it.config.contains(SemanticsActions.SetText) } }
+            scene.setText(title)
+            scene.renderUntil { true }
+            assertTrue(scene.nodes().any { title in scene.labels(it) && it.config.contains(SemanticsActions.OnClick) })
+            scene.click(title)
+            scene.renderUntil { scene.nodes().any { it.config.getOrElse(DesktopSettingsAnchorHighlighted) { false } } }
+        }
+    }
+
+    @Test
+    fun `actual Root manual refresh bypasses an automatic wait and retains the new checking owner`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val port = object : mihon.desktop.platform.DesktopDeviceConditions {
+            override val supported = setOf(mihon.desktop.platform.DeviceCondition.WIFI)
+            override fun query() = mihon.desktop.platform.DeviceConditionsSnapshot()
+        }
+        try {
+            withSettings(root, deviceConditions = port, updateManga = {
+                entered.complete(Unit)
+                release.await()
+                LibraryUpdateChecker.UpdateResult(0)
+            }) { scene ->
+                val manga = Injekt.get<MangaRepository>().insertNetworkManga(
+                    listOf(
+                        Manga.create().copy(
+                            source = 123,
+                            url = "/waiting-work",
+                            title = "Waiting work",
+                            favorite = true,
+                        ),
+                    ),
+                ).single()
+                val tasks = Injekt.get<mihon.desktop.task.DesktopTaskScheduler>()
+                tasks.beginLibraryUpdate(
+                    LibraryUpdateScheduler.LIBRARY_UPDATE_TASK,
+                    mihon.desktop.task.LibraryUpdateContext(
+                        mihon.desktop.task.LibraryUpdateTrigger.SCHEDULED,
+                        mihon.desktop.task.LibraryUpdateScope.ALL,
+                        units = listOf(mihon.desktop.task.LibraryUpdateUnit(manga.id, manga.source, manga.url)),
+                        deviceRestrictions = setOf("wifi"),
+                        waitingForDevice = mapOf("wifi" to "UNKNOWN"),
+                    ),
+                )
+                val scheduler = Injekt.get<LibraryUpdateScheduler>()
+                val oldOwner = scheduler.resumeUpdate()
+                scene.mountRoot()
+                scene.renderUntil {
+                    "Waiting work" in scene.text() && MR.strings.action_menu.localized() in scene.text()
+                }
+                scene.click(MR.strings.action_menu.localized())
+                scene.renderUntil { MR.strings.action_update_library.localized() in scene.text() }
+                scene.click(MR.strings.action_update_library.localized())
+                scene.renderUntil {
+                    entered.isCompleted || MR.strings.update_already_running.localized() in scene.text()
+                }
+                assertTrue(
+                    entered.isCompleted,
+                    "Actual manual menu reaches the scheduler while automatic conditions wait",
+                )
+                scene.renderUntil { oldOwner.isCompleted }
+                val model = requireNotNull(scene.rootModel)
+                assertTrue(
+                    model.state.value.isUpdating,
+                    "Old waiting owner completion must preserve the new manual spinner",
+                )
+                assertEquals(mihon.domain.task.TaskStatus.Running, scheduler.taskSnapshot()!!.status)
+                assertEquals(
+                    mihon.desktop.task.LibraryUpdateTrigger.MANUAL,
+                    scheduler.taskSnapshot()!!.libraryUpdate!!.trigger,
+                )
+                release.complete(Unit)
+                scene.renderUntil { scheduler.taskSnapshot()?.status == mihon.domain.task.TaskStatus.Completed }
+                scene.renderUntil { !model.state.value.isUpdating }
+                assertEquals(1, scheduler.taskSnapshot()!!.completedUnitIds.size)
+            }
+        } finally {
+            release.complete(Unit)
+        }
+    }
+
+    @Test
+    fun `actual DI diagnostics expose the same device adapter as automatic checks`(@TempDir root: File) = runBlocking {
+        val port = object : mihon.desktop.platform.DesktopDeviceConditions {
+            override val supported = mihon.desktop.platform.DeviceCondition.entries.toSet()
+            override fun query() = mihon.desktop.platform.DeviceConditionsSnapshot(
+                mihon.desktop.platform.DeviceConditionState.UNSATISFIED,
+                mihon.desktop.platform.DeviceConditionState.UNKNOWN,
+                mihon.desktop.platform.DeviceConditionState.SATISFIED,
+            )
+        }
+        withSettings(root, deviceConditions = port) {
+            val diagnostic = Injekt.get<mihon.desktop.test.http.LibraryMangaTestModeController>().snapshot()
+            assertEquals(setOf("wifi", "network_not_metered", "ac"), diagnostic.supportedDeviceConditions)
+            assertEquals(
+                mapOf("wifi" to "UNSATISFIED", "network_not_metered" to "UNKNOWN", "ac" to "SATISFIED"),
+                diagnostic.deviceConditions,
+            )
+            assertTrue(diagnostic.waitingForDevice.isEmpty())
+            val server = io.ktor.server.engine.embeddedServer(io.ktor.server.cio.CIO, host = "127.0.0.1", port = 0) {
+                testHttpServer()
+            }.start()
+            try {
+                val address = "http://127.0.0.1:${server.resolvedConnectors().single().port}/test/state"
+                val response = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    java.net.http.HttpClient.newHttpClient().send(
+                        java.net.http.HttpRequest.newBuilder(java.net.URI(address)).GET().build(),
+                        java.net.http.HttpResponse.BodyHandlers.ofString(),
+                    )
+                }
+                assertEquals(200, response.statusCode())
+                val state = kotlinx.serialization.json.Json.parseToJsonElement(
+                    response.body(),
+                ) as kotlinx.serialization.json.JsonObject
+                val library = state.getValue("library") as kotlinx.serialization.json.JsonObject
+                val current = library.getValue("deviceConditions") as kotlinx.serialization.json.JsonObject
+                assertEquals("SATISFIED", (current.getValue("ac") as kotlinx.serialization.json.JsonPrimitive).content)
+                assertEquals(
+                    "UNKNOWN",
+                    (current.getValue("network_not_metered") as kotlinx.serialization.json.JsonPrimitive).content,
+                )
+            } finally {
+                server.stop(0, 0)
+            }
+        }
+    }
+
+    @Test
+    fun `automatic resume keeps actual Root waiting feedback without a false checking spinner`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val port = object : mihon.desktop.platform.DesktopDeviceConditions {
+            override val supported = setOf(mihon.desktop.platform.DeviceCondition.WIFI)
+            override fun query() = mihon.desktop.platform.DeviceConditionsSnapshot()
+        }
+        withSettings(root, deviceConditions = port) { scene ->
+            val manga = Injekt.get<MangaRepository>().insertNetworkManga(
+                listOf(
+                    Manga.create().copy(source = 123, url = "/resume-wait", title = "Resume wait", favorite = true),
+                ),
+            ).single()
+            Injekt.get<mihon.desktop.task.DesktopTaskScheduler>().beginLibraryUpdate(
+                LibraryUpdateScheduler.LIBRARY_UPDATE_TASK,
+                mihon.desktop.task.LibraryUpdateContext(
+                    mihon.desktop.task.LibraryUpdateTrigger.SCHEDULED,
+                    mihon.desktop.task.LibraryUpdateScope.ALL,
+                    units = listOf(mihon.desktop.task.LibraryUpdateUnit(manga.id, manga.source, manga.url)),
+                    deviceRestrictions = setOf("wifi"),
+                    waitingForDevice = mapOf("wifi" to "UNKNOWN"),
+                ),
+            )
+            val scheduler = Injekt.get<LibraryUpdateScheduler>()
+            scheduler.resumeUpdate()
+            scene.mountRoot()
+            scene.renderUntil { "Resume wait" in scene.text() && scene.rootModel?.state?.value?.isUpdating == false }
+            val owner = scheduler.taskSnapshot()!!.task.idempotencyKey
+            requireNotNull(scene.rootModel).resumeLibraryUpdate()
+            scene.renderUntil { true }
+            assertTrue(
+                !requireNotNull(scene.rootModel).state.value.isUpdating,
+                "Automatic resume must not call an unchanged device wait a source check",
+            )
+            assertEquals(owner, scheduler.taskSnapshot()!!.task.idempotencyKey)
+            assertEquals(
+                mihon.desktop.task.LibraryUpdateTrigger.SCHEDULED,
+                scheduler.taskSnapshot()!!.libraryUpdate!!.trigger,
+            )
+            assertTrue(scheduler.taskSnapshot()!!.completedUnitIds.isEmpty())
+        }
+    }
+
+    @Test
+    fun `actual waiting task explains unmet conditions and keeps modal keyboard ownership`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val port = object : mihon.desktop.platform.DesktopDeviceConditions {
+            override val supported = mihon.desktop.platform.DeviceCondition.entries.toSet()
+            override fun query() = mihon.desktop.platform.DeviceConditionsSnapshot()
+        }
+        withSettings(root, deviceConditions = port) { scene ->
+            val manga = Injekt.get<MangaRepository>().insertNetworkManga(
+                listOf(
+                    Manga.create().copy(
+                        source = 123,
+                        url = "/waiting-feedback",
+                        title = "Waiting feedback",
+                        favorite = true,
+                    ),
+                ),
+            ).single()
+            Injekt.get<mihon.desktop.task.DesktopTaskScheduler>().beginLibraryUpdate(
+                LibraryUpdateScheduler.LIBRARY_UPDATE_TASK,
+                mihon.desktop.task.LibraryUpdateContext(
+                    mihon.desktop.task.LibraryUpdateTrigger.SCHEDULED,
+                    mihon.desktop.task.LibraryUpdateScope.ALL,
+                    units = listOf(
+                        mihon.desktop.task.LibraryUpdateUnit(manga.id, manga.source, manga.url, title = manga.title),
+                    ),
+                    deviceRestrictions = setOf("wifi"),
+                    waitingForDevice = mapOf("wifi" to "UNKNOWN"),
+                ),
+            )
+            val scheduler = Injekt.get<LibraryUpdateScheduler>()
+            scheduler.resumeUpdate()
+            scene.mountRoot()
+            val results = MR.strings.desktop_library_update_results.localized()
+            scene.renderUntil {
+                scene.nodes().any {
+                    results in scene.labels(it) &&
+                        it.config.contains(SemanticsActions.OnClick)
+                }
+            }
+            assertTrue(
+                scene.text().any { MR.strings.desktop_library_update_waiting.localized() in it },
+                "Actual task feedback explains why automatic source checks are waiting",
+            )
+            scene.requestFocus(results)
+            scene.key(Key.Spacebar)
+            scene.renderUntil { scene.ownerCount() == 2 }
+            assertTrue(
+                scene.activeNodes().any {
+                    scene.labels(it).any { label ->
+                        MR.strings.connected_to_wifi.localized() in
+                            label
+                    }
+                },
+            )
+            assertTrue(
+                scene.activeNodes().any {
+                    scene.labels(it).any { label ->
+                        MR.strings.desktop_device_condition_unknown.localized() in
+                            label
+                    }
+                },
+            )
+            assertTrue(
+                scene.activeNodes().any {
+                    MR.strings.action_cancel.localized() in scene.labels(it) &&
+                        it.config.contains(SemanticsActions.OnClick)
+                },
+                "Automatic waiting is still cancellable through the actual result modal",
+            )
+            scene.click(MR.strings.action_resume.localized())
+            scene.renderUntil { true }
+            assertTrue(!requireNotNull(scene.rootModel).state.value.isUpdating)
+            assertEquals(
+                mihon.desktop.task.LibraryUpdateTrigger.SCHEDULED,
+                scheduler.taskSnapshot()!!.libraryUpdate!!.trigger,
+            )
+            val before = scene.navigator.lastItem
+            scene.pointerClick(androidx.compose.ui.geometry.Offset(12f, 70f))
+            scene.renderUntil { true }
+            assertEquals(before, scene.navigator.lastItem)
+            if (scene.ownerCount() == 1) {
+                scene.requestFocus(results)
+                scene.key(Key.Spacebar)
+                scene.renderUntil { scene.ownerCount() == 2 }
+            }
+            for (shift in listOf(false, true)) {
+                scene.requestFocus(MR.strings.action_close.localized())
+                scene.key(Key.Tab, shift)
+                scene.renderUntil { scene.activeFocused() != null }
+                assertTrue(scene.activeNodes().any { it.id == scene.activeFocused()!!.id })
+            }
+            scene.key(Key.Escape)
+            scene.renderUntil { scene.ownerCount() == 1 }
+            scene.renderUntil { scene.activeFocused()?.let { results in scene.labels(it) } == true }
+            assertTrue(scheduler.currentUpdateJob()?.isActive == true)
+            assertTrue(scheduler.taskSnapshot()!!.completedUnitIds.isEmpty())
+        }
+    }
+
+    @Test
+    fun `native supported conditions at 320 font200 retain bounds keyboard and preference failure retry`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val port = object : mihon.desktop.platform.DesktopDeviceConditions {
+            override val supported = mihon.desktop.platform.DeviceCondition.entries.toSet()
+            override fun query() = mihon.desktop.platform.DeviceConditionsSnapshot(
+                mihon.desktop.platform.DeviceConditionState.SATISFIED,
+                mihon.desktop.platform.DeviceConditionState.SATISFIED,
+                mihon.desktop.platform.DeviceConditionState.SATISFIED,
+            )
+        }
+        for (dark in listOf(false, true)) {
+            var reject = false
+            withSettings(
+                File(root, "device-native-$dark"),
+                size = IntSize(320, 680),
+                fontScale = 2f,
+                deviceConditions = port,
+                storeAdapter = { actual ->
+                    object : PreferenceStore by actual {
+                        override fun getStringSet(key: String, defaultValue: Set<String>): Preference<Set<String>> {
+                            val preference = actual.getStringSet(key, defaultValue)
+                            if (key != "library_update_restriction") return preference
+                            return object : Preference<Set<String>> by preference {
+                                override fun set(value: Set<String>) {
+                                    if (reject) {
+                                        reject = false
+                                        if (dark) preference.set(value)
+                                        throw IOException("Device preference storage rejected")
+                                    }
+                                    preference.set(value)
+                                }
+                            }
+                        }
+                    }
+                },
+            ) { scene ->
+                Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().themeMode.set(
+                    if (dark) eu.kanade.domain.ui.model.ThemeMode.DARK else eu.kanade.domain.ui.model.ThemeMode.LIGHT,
+                )
+                val preference = Injekt.get<LibraryPreferences>().autoUpdateDeviceRestrictions()
+                preference.set(emptySet())
+                DesktopSettingsAnchorOwner.publish(
+                    LibrarySettingsScreen(),
+                    MR.strings.pref_library_update_restriction.localized(),
+                )
+                scene.mountLibrary(withParent = true)
+                scene.renderUntil { scene.categoryEntryReady() }
+                val labels =
+                    listOf(
+                        MR.strings.connected_to_wifi.localized(),
+                        MR.strings.network_not_metered.localized(),
+                        MR.strings.desktop_device_external_power.localized(),
+                    )
+                scene.scrollToControl(labels.first())
+                scene.requestFocus(labels.first())
+                reject = true
+                scene.key(Key.Spacebar)
+                scene.renderUntil { MR.strings.internal_error.localized() in scene.text() }
+                assertTrue(
+                    preference.get().isEmpty(),
+                    "Write-before and write-after refusal preserve the shared option",
+                )
+                for ((index, label) in labels.withIndex()) {
+                    scene.scrollToControl(label)
+                    scene.requestFocus(label)
+                    scene.key(Key.Spacebar)
+                    val key = listOf("wifi", "network_not_metered", "ac")[index]
+                    scene.renderUntil { key in preference.get() }
+                    val node = scene.nodes().last {
+                        label in scene.labels(it) &&
+                            it.config.contains(SemanticsActions.OnClick)
+                    }
+                    assertTrue(
+                        node.boundsInRoot != Rect.Zero &&
+                            node.boundsInRoot.left >= 0 && node.boundsInRoot.right <= 320 &&
+                            node.boundsInRoot.top >= 64 && node.boundsInRoot.bottom <= 680,
+                        "Actual condition row stays fully visible: $label",
+                    )
+                }
+                for (shift in listOf(false, true)) {
+                    scene.scrollToControl(if (shift) labels.last() else labels.first())
+                    scene.requestFocus(if (shift) labels.last() else labels.first())
+                    val visited = mutableSetOf<String>()
+                    repeat(4) {
+                        scene.renderUntil { scene.activeFocused() != null }
+                        val focused = scene.activeFocused()!!
+                        visited += labels.filter { it in scene.labels(focused) }
+                        scene.key(Key.Tab, shift)
+                    }
+                    assertTrue(visited.containsAll(labels), "Native Tab reaches every condition in both directions")
+                }
+                assertEquals(setOf("wifi", "network_not_metered", "ac"), preference.get())
+                scene.requestFocus(labels.first())
+                scene.renderUntil { scene.activeFocused()?.let { labels.first() in scene.labels(it) } == true }
+                scene.scrollToControl(labels.first())
+                if (!dark) {
+                    scene.savePng(
+                        File(
+                            System.getenv("MIHON_RI16_VISUAL_DIR") ?: File(root, "visual").absolutePath,
+                            "ri16-device-settings-light-320-font200.png",
+                        ),
+                    )
+                }
+                scene.click(MR.strings.action_bar_up_description.localized())
+                scene.renderUntil { scene.navigator.size == 1 }
+                assertEquals("library-settings-parent", scene.navigator.lastItem.key)
+            }
+        }
+    }
+
+    @Test
+    fun `unsupported settings retain Windows preferences without exposing unavailable controls`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val port = mihon.desktop.platform.createDesktopDeviceConditions(windows = false) {
+            error("Windows native calls on unsupported OS")
+        }
+        withSettings(root, deviceConditions = port) { scene ->
+            val preference = Injekt.get<LibraryPreferences>().autoUpdateDeviceRestrictions()
+            val original = setOf("wifi", "network_not_metered", "ac")
+            preference.set(original)
+            scene.mountLibrary()
+            scene.renderUntil { scene.categoryEntryReady() }
+            assertTrue(MR.strings.pref_library_update_restriction.localized() !in scene.text())
+            assertTrue(MR.strings.connected_to_wifi.localized() !in scene.text())
+            assertEquals(original, preference.get())
+        }
+    }
+
+    @Test
+    fun `native waiting results at 320 font200 keep cancellation keyboard and Escape focus reachable`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val port = object : mihon.desktop.platform.DesktopDeviceConditions {
+            override val supported = setOf(mihon.desktop.platform.DeviceCondition.WIFI)
+            override fun query() = mihon.desktop.platform.DeviceConditionsSnapshot()
+        }
+        withSettings(root, deviceConditions = port, size = IntSize(320, 680), fontScale = 2f) { scene ->
+            Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().themeMode.set(
+                eu.kanade.domain.ui.model.ThemeMode.DARK,
+            )
+            val manga = Injekt.get<MangaRepository>().insertNetworkManga(
+                listOf(
+                    Manga.create().copy(source = 123, url = "/native-wait", title = "Native wait", favorite = true),
+                ),
+            ).single()
+            Injekt.get<mihon.desktop.task.DesktopTaskScheduler>().beginLibraryUpdate(
+                LibraryUpdateScheduler.LIBRARY_UPDATE_TASK,
+                mihon.desktop.task.LibraryUpdateContext(
+                    mihon.desktop.task.LibraryUpdateTrigger.SCHEDULED,
+                    mihon.desktop.task.LibraryUpdateScope.ALL,
+                    units = listOf(
+                        mihon.desktop.task.LibraryUpdateUnit(manga.id, manga.source, manga.url, title = manga.title),
+                    ),
+                    deviceRestrictions = setOf("wifi"),
+                    waitingForDevice = mapOf("wifi" to "UNKNOWN"),
+                ),
+            )
+            val scheduler = Injekt.get<LibraryUpdateScheduler>()
+            scheduler.resumeUpdate()
+            scene.mountRoot()
+            val results = MR.strings.desktop_library_update_results.localized()
+            scene.renderUntil {
+                scene.nodes().any {
+                    results in scene.labels(it) &&
+                        it.config.contains(SemanticsActions.OnClick)
+                }
+            }
+            scene.requestFocus(results)
+            scene.key(Key.Spacebar)
+            scene.renderUntil { scene.ownerCount() == 2 }
+            val labels =
+                listOf(
+                    MR.strings.action_cancel.localized(),
+                    MR.strings.action_resume.localized(),
+                    MR.strings.action_close.localized(),
+                )
+            for (label in labels) {
+                val node = scene.activeNodes().last {
+                    label in scene.labels(it) &&
+                        it.config.contains(SemanticsActions.OnClick)
+                }
+                assertTrue(
+                    node.boundsInRoot != Rect.Zero &&
+                        node.boundsInRoot.left >= 0 && node.boundsInRoot.right <= 320 &&
+                        node.boundsInRoot.top >= 0 && node.boundsInRoot.bottom <= 680,
+                    "Waiting action remains visible at large font: $label",
+                )
+            }
+            for (shift in listOf(false, true)) {
+                scene.requestFocus(labels.last())
+                val visited = mutableSetOf<String>()
+                repeat(8) {
+                    scene.renderUntil { scene.activeFocused() != null }
+                    visited += labels.filter { it in scene.labels(scene.activeFocused()!!) }
+                    scene.key(Key.Tab, shift)
+                }
+                assertTrue(visited.containsAll(labels))
+            }
+            fun originalWorkVisible() = scene.activeNodes().any {
+                it.config.getOrElse(SemanticsProperties.Text) {
+                    emptyList()
+                }.any { text -> text.text == manga.title } &&
+                    it.boundsInRoot != Rect.Zero && it.boundsInRoot.height > 0
+            }
+            if (!originalWorkVisible()) {
+                val scroll = scene.activeNodes().firstOrNull {
+                    it.config.contains(SemanticsActions.ScrollBy) &&
+                        it.boundsInRoot.height > 0
+                }
+                assertTrue(scroll != null, "Waiting explanations preserve a real scroll path to the original work row")
+                assertTrue(requireNotNull(scroll!!.config[SemanticsActions.ScrollBy].action).invoke(0f, 10000f))
+                scene.renderUntil { originalWorkVisible() }
+            }
+            // Return the explanation to the top for this evidence image; all original work remains reachable.
+            scene.activeNodes().firstOrNull {
+                it.config.contains(SemanticsActions.ScrollBy) &&
+                    it.boundsInRoot.height > 0
+            }?.let {
+                requireNotNull(it.config[SemanticsActions.ScrollBy].action).invoke(0f, -10000f)
+                scene.renderUntil { true }
+            }
+            scene.savePng(
+                File(
+                    System.getenv("MIHON_RI16_VISUAL_DIR") ?: File(root, "visual").absolutePath,
+                    "ri16-device-waiting-dark-320-font200.png",
+                ),
+            )
+            val before = scene.navigator.lastItem
+            scene.pointerClick(androidx.compose.ui.geometry.Offset(12f, 70f))
+            scene.renderUntil { true }
+            assertEquals(before, scene.navigator.lastItem)
+            if (scene.ownerCount() == 1) {
+                scene.requestFocus(results)
+                scene.key(Key.Spacebar)
+                scene.renderUntil { scene.ownerCount() == 2 }
+            }
+            scene.key(Key.Escape)
+            scene.renderUntil { scene.ownerCount() == 1 }
+            scene.renderUntil { scene.activeFocused()?.let { results in scene.labels(it) } == true }
+            assertTrue(scheduler.currentUpdateJob()?.isActive == true)
+            scene.key(Key.Spacebar)
+            scene.renderUntil { scene.ownerCount() == 2 }
+            scene.click(MR.strings.action_cancel.localized())
+            scene.renderUntil { scheduler.taskSnapshot()?.status == mihon.domain.task.TaskStatus.Cancelled }
+            assertTrue(scheduler.taskSnapshot()!!.completedUnitIds.isEmpty())
+            assertEquals(listOf(manga.id), scheduler.taskSnapshot()!!.workset)
+        }
+    }
+
     @Test
     fun `new periodic smart metadata settings search reaches the real shared preference controls`(
         @TempDir root: File,
@@ -1583,6 +2140,7 @@ class LibrarySettingsPolicyInteractionTest {
         updateManga: (suspend (Manga) -> LibraryUpdateChecker.UpdateResult)? = null,
         size: IntSize = IntSize(900, 760),
         fontScale: Float = 1f,
+        deviceConditions: mihon.desktop.platform.DesktopDeviceConditions? = null,
         block: suspend (PolicyScene) -> Unit,
     ) {
         val node = Preferences.userRoot().node("mihon-tests/library-policy-${UUID.randomUUID()}")
@@ -1592,6 +2150,7 @@ class LibrarySettingsPolicyInteractionTest {
             startDownloadWorker = false,
             categoryRepositoryOverride = categoryAdapter,
             updateManga = updateManga,
+            deviceConditionsOverride = deviceConditions,
         )
         Dispatchers.setMain(UnconfinedTestDispatcher())
         val scene = PolicyScene(kotlinx.coroutines.currentCoroutineContext(), size, fontScale)
@@ -1616,6 +2175,7 @@ class LibrarySettingsPolicyInteractionTest {
         private val owners = linkedSetOf<SemanticsOwner>()
         private var windowSize by androidx.compose.runtime.mutableStateOf(size)
         private val bitmap = ImageBitmap(900, 900)
+        var rootModel: mihon.desktop.ui.library.LibraryScreenModel? = null
         lateinit var navigator: Navigator
         private val canvas = Canvas(bitmap)
         private val scene = CanvasLayersComposeScene(
@@ -1673,6 +2233,9 @@ class LibrarySettingsPolicyInteractionTest {
         }
         fun mountRoot() = scene.setContent {
             CompositionLocalProvider(
+                mihon.desktop.ui.library.LocalLibraryScreenModelFactory provides {
+                    mihon.desktop.library.LibraryScreenModelFactory.create().also { rootModel = it }
+                },
                 LocalDesktopUiDependencies provides DesktopUiDependencies.fromInjekt(),
                 LocalDensity provides Density(1f, fontScale),
             ) {
@@ -1765,6 +2328,18 @@ class LibrarySettingsPolicyInteractionTest {
                 buttons = androidx.compose.ui.input.pointer.PointerButtons(),
                 button = androidx.compose.ui.input.pointer.PointerButton.Primary,
             )
+        }
+        suspend fun scrollToControl(label: String) {
+            repeat(4) {
+                renderUntil { true }
+                val target = nodes().last { label in labels(it) && it.config.contains(SemanticsActions.OnClick) }
+                val bounds = target.boundsInRoot
+                if (bounds.top >= 80 && bounds.bottom <= windowSize.height - 8) return
+                val scroll = nodes().single { it.config.contains(SemanticsActions.ScrollBy) }
+                val amount = if (bounds.top < 80) bounds.top - 80 else bounds.bottom - (windowSize.height - 8)
+                assertTrue(requireNotNull(scroll.config[SemanticsActions.ScrollBy].action).invoke(0f, amount))
+            }
+            renderUntil { true }
         }
         fun labels(node: SemanticsNode): List<String> = flatten(node).flatMap {
             buildList {

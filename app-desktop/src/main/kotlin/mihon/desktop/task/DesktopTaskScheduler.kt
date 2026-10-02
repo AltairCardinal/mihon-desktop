@@ -85,6 +85,9 @@ data class LibraryUpdateContext(
     val fetchWindowUpperBound: Long = Long.MAX_VALUE,
     val checkStartedAt: Long? = null,
     val singleMangaId: Long? = null,
+    val deviceRestrictions: Set<String> = emptySet(),
+    val waitingForDevice: Map<String, String> = emptyMap(),
+    val periodicCheckStartedAt: Long? = null,
 )
 
 object StoredAppErrorCompatSerializer : KSerializer<StoredAppError?> {
@@ -249,6 +252,25 @@ class DesktopTaskScheduler(private val store: FileTaskCheckpointStore) {
                 },
                 worksetInitialized = true,
                 libraryUpdate = context,
+            )
+        }
+    }
+
+    fun recordLibraryDeviceBoundary(
+        id: String,
+        occurrence: String,
+        waiting: Map<String, String>,
+        checkingAt: Long? = null,
+    ): Boolean = transition(id) {
+        val context = it.libraryUpdate
+        if (it.status != TaskStatus.Running || it.task.idempotencyKey != occurrence || context == null) {
+            it
+        } else {
+            it.copy(
+                libraryUpdate = context.copy(
+                    waitingForDevice = waiting,
+                    periodicCheckStartedAt = context.periodicCheckStartedAt ?: checkingAt,
+                ),
             )
         }
     }

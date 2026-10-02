@@ -566,7 +566,7 @@ class LibraryRootScreen : Screen {
         if (showUpdateResults && state.updateTask?.libraryUpdate != null) {
             LibraryUpdateResultsDialog(
                 task = requireNotNull(state.updateTask),
-                running = state.isUpdating,
+                running = state.updateTask?.status == mihon.domain.task.TaskStatus.Running,
                 onRetryFailed = model::retryFailedLibraryUpdate,
                 onResume = model::resumeLibraryUpdate,
                 onCancel = { model.cancelLibraryUpdate() },

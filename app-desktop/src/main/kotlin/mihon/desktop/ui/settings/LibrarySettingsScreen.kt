@@ -161,7 +161,12 @@ class LibrarySettingsScreen : Screen {
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
-                libraryPreferences?.let { LibrarySmartUpdateSettings(it) }
+                libraryPreferences?.let { preferences ->
+                    LocalDesktopUiDependencies.current.deviceConditions?.let {
+                        LibraryDeviceUpdateSettings(preferences, it)
+                    }
+                    LibrarySmartUpdateSettings(preferences)
+                }
                 LocalDesktopUiDependencies.current.libraryCategoryPolicy?.let { policy ->
                     libraryPreferences?.let { LibraryUpdateCategorySettings(policy, it, categories, categoriesLoaded) }
                 }
