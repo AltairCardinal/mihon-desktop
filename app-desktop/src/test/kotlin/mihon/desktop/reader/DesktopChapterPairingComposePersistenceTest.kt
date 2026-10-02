@@ -8,7 +8,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -18,6 +18,7 @@ import mihon.desktop.ui.reader.DualPageDisplayUnitIdKey
 import mihon.domain.reader.ChapterPairingRepository
 import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.content.DownloadChapterIdentity
+import mihon.domain.reader.observability.ReaderIoEventType
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -155,16 +156,18 @@ class DesktopChapterPairingComposePersistenceTest {
             try {
                 fixture.releaseBackgroundGates(excluding = setOf(ReaderIoGatePoint.NON_CURRENT_PAGE))
                 awaitDecodedPages(fixture, completedDecodes, setOf(4, 5))
+                assertTrue(fixture.events().any { it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name })
+                fixture.releaseBackgroundGates()
+                var frameTimeNanos = 0L
                 val visibleFrames = withTimeout(10_000) {
-                    var frames = visibleFrames(fixture)
-                    repeat(200) {
-                        if (frames.isNotEmpty()) return@withTimeout frames
-                        fixture.scene.render().close()
-                        frames = visibleFrames(fixture)
+                    do {
+                        frameTimeNanos += 16_000_000L
+                        fixture.scene.render(frameTimeNanos).close()
                         yield()
-                    }
-                    assertTrue(frames.isNotEmpty(), "Reopened reader did not present a spread")
-                    frames
+                    } while (fixture.visiblePagesAtViewportCenter() != setOf(4, 5) ||
+                        !fixture.renderContainsFixturePixels(frameTimeNanos)
+                    )
+                    visibleFrames(fixture)
                 }
                 assertEquals(1, visibleFrames.size, "One settled spread must contain the viewport center")
                 assertEquals(
@@ -182,7 +185,7 @@ class DesktopChapterPairingComposePersistenceTest {
         }
     }
 
-    private fun mounted(
+    private suspend fun mounted(
         root: File,
         coordinator: DesktopChapterPairingCoordinator?,
         initialPage: Int,
@@ -191,7 +194,7 @@ class DesktopChapterPairingComposePersistenceTest {
     ) =
         MountedReaderPresentationFixture(
             root = root,
-            coroutineContext = Dispatchers.Default.limitedParallelism(1),
+            coroutineContext = currentCoroutineContext(),
             case = MountedReaderPresentationCase(MountedReaderPresentationMode.DUAL, route),
             pageCount = 8,
             mangaId = 10,

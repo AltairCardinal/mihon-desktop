@@ -97,9 +97,13 @@ class SourcePageFetcher(
                         if (factReadPermit == null) {
                             response.body.byteStream().copyTo(out)
                         } else {
-                            factReadPermit.bound(response.body.source(), System::nanoTime).buffer().use { input ->
-                                input.inputStream().copyTo(out)
-                            }
+                            factReadPermit.bound(
+                                DesktopReaderFactBodySource.unbuffered(response.body.source()),
+                                System::nanoTime,
+                            )
+                                .buffer().use { input ->
+                                    input.inputStream().copyTo(out)
+                                }
                         }
                     }
                     check(destFile.isDecodableImage()) {

@@ -48,7 +48,7 @@ class SourcePageFetcherFactBudgetTest {
         budget.reserve(listOf(id), nowMillis())
         val permit = ReaderDualPageFactReadPermit(budget, id, ::nowMillis)
         try {
-            server.enqueue(MockResponse.Builder().body(Buffer().write(encoded)).build())
+            server.enqueue(MockResponse.Builder().chunkedBody(Buffer().write(encoded), 4_864).build())
             var cancelled = false
             try {
                 fetcher.fetchToDestination(page, optionalFile, permit)
@@ -80,6 +80,87 @@ class SourcePageFetcherFactBudgetTest {
                 server.requestCount,
                 "An existing valid encoded cache must not consume optional network quota",
             )
+            val smallEncoded = png()
+            val prefixFile = directory.resolve("prefilled.png")
+            val prefixBudget = ReaderDualPageFactBudget()
+            val prefixId = ReaderPageId(ReaderChapterId(1), 1)
+            prefixBudget.reserve(listOf(prefixId), nowMillis())
+            val prefixPermit = ReaderDualPageFactReadPermit(prefixBudget, prefixId, ::nowMillis)
+            try {
+                server.enqueue(
+                    MockResponse.Builder().body(Buffer().write(smallEncoded))
+                        .addHeader("X-Reader-Body", "prefilled").build(),
+                )
+                readBytes.set(0)
+                assertInstanceOf(
+                    SourcePageFetchResult.Success::class.java,
+                    fetcher.fetchToDestination(page, prefixFile, prefixPermit),
+                )
+                org.junit.jupiter.api.Assertions.assertArrayEquals(smallEncoded, prefixFile.readBytes())
+                assertEquals(smallEncoded.size.toLong(), readBytes.get())
+            } finally {
+                prefixBudget.close()
+            }
+
+            val opaqueFile = directory.resolve("opaque.png")
+            val opaqueBudget = ReaderDualPageFactBudget()
+            val opaqueId = ReaderPageId(ReaderChapterId(1), 2)
+            opaqueBudget.reserve(listOf(opaqueId), nowMillis())
+            val opaquePermit = ReaderDualPageFactReadPermit(opaqueBudget, opaqueId, ::nowMillis)
+            try {
+                server.enqueue(
+                    MockResponse.Builder().body(Buffer().write(smallEncoded))
+                        .addHeader("X-Reader-Body", "opaque").build(),
+                )
+                readBytes.set(0)
+                assertInstanceOf(
+                    SourcePageFetchResult.Failure::class.java,
+                    fetcher.fetchToDestination(page, opaqueFile, opaquePermit),
+                )
+                assertEquals(0L, readBytes.get(), "An opaque optional body must fail before any adapter body read")
+                assertFalse(opaqueFile.exists())
+                server.enqueue(
+                    MockResponse.Builder().body(Buffer().write(smallEncoded))
+                        .addHeader("X-Reader-Body", "opaque").build(),
+                )
+                assertInstanceOf(
+                    SourcePageFetchResult.Success::class.java,
+                    fetcher.fetchToDestination(page, opaqueFile),
+                )
+                org.junit.jupiter.api.Assertions.assertArrayEquals(smallEncoded, opaqueFile.readBytes())
+                assertEquals(smallEncoded.size.toLong(), readBytes.get())
+            } finally {
+                opaqueBudget.close()
+            }
+
+            val excessFile = directory.resolve("preconsumed-excess.png")
+            val excessBudget = ReaderDualPageFactBudget()
+            val excessId = ReaderPageId(ReaderChapterId(1), 3)
+            excessBudget.reserve(listOf(excessId), nowMillis())
+            val excessPermit = ReaderDualPageFactReadPermit(excessBudget, excessId, ::nowMillis)
+            excessPermit.reserve(ReaderDualPageFactLimits.MAX_NEW_BYTES - 1)
+            try {
+                server.enqueue(
+                    MockResponse.Builder().body(Buffer().write(smallEncoded))
+                        .addHeader("X-Reader-Body", "prefilled").build(),
+                )
+                readBytes.set(0)
+                var excessCancelled = false
+                try {
+                    fetcher.fetchToDestination(page, excessFile, excessPermit)
+                } catch (_: CancellationException) {
+                    excessCancelled = true
+                }
+                assertTrue(excessCancelled)
+                assertFalse(excessFile.exists())
+                assertEquals(
+                    smallEncoded.size.toLong(),
+                    readBytes.get(),
+                    "Original response prebuffering already consumed these bytes; adapter must not continue reading",
+                )
+            } finally {
+                excessBudget.close()
+            }
         } finally {
             budget.close()
             server.close()
@@ -130,10 +211,19 @@ class SourcePageFetcherFactBudgetTest {
                 byteCount: Long,
             ): Long = super.read(sink, byteCount).also { if (it > 0) bytes.addAndGet(it) }
         }.buffer()
+        if (response.header("X-Reader-Body") == "prefilled") counted.request(1)
+        val adapted = if (response.header("X-Reader-Body") == "opaque") {
+            java.lang.reflect.Proxy.newProxyInstance(
+                okio.BufferedSource::class.java.classLoader,
+                arrayOf(okio.BufferedSource::class.java),
+            ) { _, method, args -> method.invoke(counted, *(args ?: emptyArray())) } as okio.BufferedSource
+        } else {
+            counted
+        }
         response.newBuilder().body(object : ResponseBody() {
             override fun contentType() = body.contentType()
             override fun contentLength() = body.contentLength()
-            override fun source() = counted
+            override fun source() = adapted
         }).build()
     }.build()
 

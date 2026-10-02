@@ -1,6 +1,6 @@
 # 双端共享双页规则与修复证据
 
-状态：DP01 A–E 已完成实施、同轮独立审查、相关验证及功能提交 `2a0e7570b7f359c4899e45f95769cc13e553f228`。DP02 首次完整矩阵失败，相关修复已完成正确红绿、限定重构复验和同轮独立验收，将随本报告统一修复提交。全局格式首次检查发现一处行尾问题，修正后受影响格式目标已通过。再次完整验证尚未获批准，正式产物、ART 像素与原生输入验收仍未完成。基线 `31a6ab7269967cc615ed54ac2ca58fe8d9b3f1db`。本报告为本次唯一聚合证据；事实与构造夹具分别记录，最新修复结果见末节。
+状态：DP01 A–E 已完成实施、同轮独立审查、相关验证及功能提交 `2a0e7570b7f359c4899e45f95769cc13e553f228`。DP02 首次完整矩阵失败后的限定修复、同轮独立验收和格式收口已提交为 `f95ffeb1e0c75a11f9e2326cd06b1500dd434e7c`。用户随后批准的一次追加完整矩阵已结束：Desktop 仍有5项失败，共享两个目标、Android 应用及客户端完整测试通过。未启动第三次完整验证；追加修复提交和针对读取边界的复审待用户决定。正式产物、ART 像素与原生输入验收未完成。基线 `31a6ab7269967cc615ed54ac2ca58fe8d9b3f1db`。本报告为本次唯一聚合证据；事实与构造夹具分别记录，最新结果见末节。
 
 ## A 输入事实
 
@@ -548,3 +548,136 @@ Desktop 未纳入普通模块 Spotless 的范围继续使用已通过的严格�
 唯一报告开头及 roadmap E 段的旧“未提交”描述已与 DP01 实际提交同步。
 本次修复整合完成；DP02 保持未勾选，作者页历史失败的原因仍未确认，
 不宣称其已修复，也未混入作者页产品或测试变更。
+
+### DP02 用户批准的追加完整矩阵（第二轮）
+
+用户明确回复“批准”后，冻结产品源码为 `f95ffeb1e0c75a11f9e2326cd06b1500dd434e7c`。
+以下时间均为北京时间 2026-10-02。三条命令串行执行，无测试过滤、临时 init 或并发 Gradle；
+复用已通过且无后续相关变更的格式证据，未重复全局格式。
+
+| key / 命令范围 | 自然终态与有效 XML |
+| --- | --- |
+| `udp-final-approved-desktop-full` / 项目 `build-desktop.sh full-tests` | 12:22:20–12:28:49；自然 FAILED/1，Gradle6m25s；434 suites/3250项，5失败、0错误、3条件跳过 |
+| `udp-final-approved-shared-android-full` / `:domain:jvmTest :domain:testDebugUnitTest :app:testReleaseUnitTest --offline --continue` | 12:29:34–12:51:15；自然 PASSED/0，21m40s；domain JVM102 suites/620项与Android目标86 suites/525项均0失败/错误/跳过；app124 suites/708项、0失败/错误、7条件跳过 |
+| `udp-final-approved-client-full` / `:test-desktop:test --offline` | 12:53:02–12:53:25；自然 PASSED/0，22s；fresh8 suites/53项、0失败/错误/跳过，实际执行test任务，非先前完整52项的缓存复用 |
+
+共享/Android命令的外层900秒等待曾返回 RUNNING/exit1，worker与Gradle继续正常运行。
+主代理只查原进程与日志并等待，自然终态0为真实结果，没有重启命令或把外层超时当测试失败。
+本轮Desktop作者页原用例通过，但保留上轮失败及诊断PASS的波动事实，未证明旧失败根因。
+
+#### Desktop剩余5项：实际失败与只读定位
+
+| 原用例 | 本轮失败证据 | 只读定位结论与仍待证明项 |
+| --- | --- | --- |
+| DesktopChapterPairingComposePersistenceTest / real reader adjustment button saves to file and reopened screen restores containing spread | expected源索引[4,5]，actual[5] | helper只等待累计decode与任意可见帧，可能提前观察合法未确认单槽；最终恢复错误未证实，后续核实际恢复、事实、确定分组与native停稳，保原[4,5]要求 |
+| ReaderPresentationPipelineProductionTest / dual-directory | 可见页1 OPEN expected1，actual2 | region预览在decoded缓存查询前先pin原内容；UNKNOWN单槽到确认双页的unit重排会换holder，存在重新打开已释放原内容的生产路径；需原向量核contentKey/cache hit/重排时点，不放宽OPEN1 |
+| ReaderProductionMutationEvidenceTest / dual-directory canonical decoder | 报呈现但未画出注入decoder的实际蓝色像素 | helper依据历史FIRST与累计decoderKeys结束，未核当前重排后的holder就绪；尚未证明永久丢内容或绕行decoder，须核当前unit/holder/idle/真实当帧像素，保像素断言 |
+| ReaderProductionMutationEvidenceTest / dual-directory rejecting decoder | 200 pumps仍未到观察点 | 夹具固定等待邻页decoder，但当前页拒绝decode后没有首帧，邻页不得提前挂载；观察前提冲突已由源码确认，须绑定实际挂载单位，仍要求零FIRST/零绕行像素 |
+| SourcePageFetcherFactBudgetTest / actual optional HTTP reads stop at shared byte quota while cached and normal reads survive | 实际网络body source字节expected33554432，actual33557760，多3328 | permit包在buffered source外侧，限制返回字节不能阻止下层预取；XML证实超额，具体3328来源仍需原单项requested/returned/缓冲余量诊断，不能增加32MiB容差 |
+
+原实施者复用为只读诊断，没有改文件或启动新Gradle；未把Windows曾低至0.84GiB的空闲内存
+当作上述失败原因，也未发现OOM证据。已知读取边界、观察前置及未证实因果分开记录。
+
+Mac只完成同源准备：从本地分支建立20,476,016B Git bundle，以Mac已有c84ed331fa为前置验证，
+建立干净隔离工作目录 `/Users/altair/Library/Caches/mihon-shared-dual-page-20261002-f95ffeb/repo`，
+HEAD同为f95ffeb1e0；原日常worktree/应用未覆盖，没有Mac正式构建或键鼠验收。
+Windows/Android正式构建、模拟器启动和正式原生验收均未开始。
+
+用户随后批准这5项限定修复、一个额外repair提交、一次针对两处读取边界的独立复审，
+以及修复后一次Desktop完整验证，预计总1–2小时。实施子代理独占Gradle串行focused，主代理
+独审并统一提交/full。范围限Desktop预览/content lease、fetcher body读取及原5项；
+原reopen所需Dual定位effect单点亦由主代理确认在该范围内，不修改共享、Android或客户端。
+保留原分组[4,5]、像素、OPEN1和实际body字节硬上限；夹具错误不计业务红。
+
+#### 批准的第二次限定修复：红绿与观察前置
+
+`udp-second-repair-read-boundaries-red` 自然FAILED/1、30s，fresh Pipeline9项/3失败。
+三条dual路径实际UNKNOWN[1]→确认[1,2]重挂holder；原当前页HEADER1/OPEN1/DECODE1/
+FIRST之后出现第二次OPEN1而无第二次DECODE1，证实decoded cache命中前pin造成额外原内容打开。
+同轮quota1绿不证明当时偶发超额已经消失。最小cache先acquireCached，小图hit不pin；
+静态大图hit仍pin，miss仍原pin/decode，旧generation/attempt/关闭准入不变。
+
+`udp-second-repair-body-chunk-red` 自然PASSED/0、31s（原quota1项），计数seam限制5000
+返回仍被buffer按5000+3192拼成8192，未产生有效红；临时限制已撤。
+`udp-second-repair-body-diagnostic` 自然FAILED/1、46s，fresh19项/1失败：Pipeline9与
+Mutation8绿，quota1绿；reopen仍失败。canonical改为当前真实unit与蓝色已画门禁；reject
+改为当前真实挂载单位，不要求拒绝首帧后仍提前挂载非当前页，保零FIRST/零绕行蓝色。
+这些两项观察前置修正不是生产decoder缺口红。
+`udp-second-repair-body-arrival-red` 自然FAILED/1、41s，fresh2项/1失败；HTTP仍exact
+32MiB，reopen10s超时。该HTTP包到达诊断没有证明预算反例，不按业务红累计。
+
+`udp-second-repair-chunked-diagnostic` 自然FAILED/1、29s，fresh2项/2失败：真实
+MockWebServer chunked4864B与原counted source产生33556736B（超2304），最后permit只余2560
+而原body source仍实际返回4864，证实外层permit无法限制下层refill。原exact32MiB不改。
+reopen10s内事实0..7已确认、decoded4..7齐全，native NEXT仍占满viewport；此前“只是早观察”
+推断被否定。`udp-second-repair-reopen-owner-diagnostic` 自然FAILED/1、32s，fresh1失败；
+实际shared logical5、committed forcedSingle1/revision1均正确，native定位漂移仍在，未更改共享。
+
+Java JVM叶适配器仅optional分支包原RealBufferedSource.source，先drain原buffer前缀，
+原timeout/close/部分文件删除保留；normal/cache/source getImage与原client/headers不改。
+`udp-second-repair-boundaries-green` 自然FAILED/1、40s，仅Kotlin sealed BufferedSource
+匿名委托夹具编译失败；Java adapter已编译，不算行为红绿。opaque夹具改JDK Proxy包同真实
+counted source，不为夹具改生产协议。
+`udp-second-repair-boundaries-green2` 自然FAILED/1、1m13：worker77476发生Skiko
+EXCEPTION_ACCESS_VIOLATION；native栈为DefaultDispatcher上的scrollToPage→forceRemeasure→
+createGraphicsLayer，原fixture render/close在runBlocking线程。日志2项/1失败/1跳过，XML
+未刷新，不称当前业务绿；未发现OOM证据，也不将空闲内存作为原因。沿既有fixture模式
+将原Persistence Scene上下文改currentCoroutineContext，不修改生产调度。
+
+`udp-second-repair-thread-counterfactual` 自然FAILED/1、1m09，fresh3项/1失败：撤本次
+Dual equal-index scroll实施后，同线程reopen仍10s失败且NEXT全屏，正确业务红有效；HTTP2
+零失败/错误/跳过，实际chunked exact32MiB、buffer前缀顺序、opaque optional零续读/普通路径
+可读、预消费超额不续读并删除partial、15sdeadline回收均在原两方法执行。
+`udp-second-repair-reopen-green` 自然FAILED/1、28s，fresh1失败：最小equal-index
+scrollToPage仍未关闭native漂移，不把它称为修复。下一原方法仅记录实际effect调用顺序，
+若换公开下一次measure定位接口，仍须原[4,5]中心+真实像素及正常动画input35绿后收口。
+这些focused没有完整模块、正式build或ART；后续稳定结果追加于此。
+
+#### 第二次限定修复最终分类与冻结结果
+
+`udp-second-repair-reopen-effect-order` 自然FAILED/1、34s，fresh原1失败。实际effect顺序：
+初始target6/current6/offset0完成；最终READY分组的[4,5]位于index4，target4/current6进入原
+非相等animateScrollToPage，未出现after。并非equal-index分支阻塞。锁定Compose1.10.2
+ImageComposeScene.render默认time=0；原方法所有render没有推进帧，已有PageTurn夹具每帧
+增加16,000,000ns。因果对照纠正此前“业务定位错误”的归类：同线程反例仍未推进动画帧，
+不能作为更改Dual产品逻辑的正确红。所有本轮Dual实施与临时effect/TestState手动open诊断
+已撤，shared/location/保存及正常动画产品逻辑保持原实现。
+
+原reopen循环沿已有16ms实际帧推进，同一线程render/effect/close；等待当前实际中心[4,5]
+并画出原蓝色内容，保原10s窗口、原保存forcedSingle1与进度5断言。
+`udp-second-repair-reopen-frame-green` 自然PASSED/0、24s，fresh1项零失败/错误/跳过。
+此前“只是早观察”推断仍保否定；更准确原因是从UNKNOWN确认重排后真实动画未被测试推进，
+不是源事实没有补齐，也不是需要更改共享组或永久禁止动画。
+
+`udp-second-repair-scoped-format` 自然PASSED/0、20s，使用已有app插件上下文init，
+严格Apply/Check仅8个实际改变的Kotlin文件，无max_line_length放宽、无模块全量格式。
+`udp-second-repair-related-refactor` 自然PASSED/0、48s，实际执行jvmTest，fresh7suites/
+31项（各单次），零失败/错误/跳过：
+
+| affected类 | 原方法过滤范围与fresh数量 |
+| --- | --- |
+| DesktopChapterPairingComposePersistenceTest | 原reopen与online，2 |
+| ReaderPresentationPipelineProductionTest | 原mounted visible/adjacent decode-window九条路由，9 |
+| ReaderProductionMutationEvidenceTest | 原canonical与reject八条路由，8 |
+| SourcePageFetcherFactBudgetTest | 原实际quota及15sdeadline，2 |
+| DesktopReaderRegionPresentationOwnerTest | 原preview/tiles single-flight、generation/final-holder、ordinary/animated，3 |
+| DesktopReaderRegionPresentationLifecycleTest | 原generation、detach、owner-close旧tile票据，3 |
+| DesktopReaderPageImagePipelineTest | 原cache hit、cache identity、attempt/generation disposer、late close，4 |
+
+冻结命令为 `:app-desktop:jvmTest` 加上述原方法 `--tests`、
+`-PincludeIntegrationTests=true --offline`，完整argv保留于原协调器key。原5个失败向量
+全由本轮有效fresh XML覆盖；cache lifecycle方法补actual cached大图holder：旧holder关闭
+时该cached holder仍保encoded lease，最后holder关闭后lease为空。原OPEN exact1、蓝色像素、
+reject零FIRST/零绕行、实际body exact32MiB、normal33MiB/cached无新network、15s回收均保。
+本轮Dual/Single/shared/Android/client无产品diff；主代理确认原input35正常动画证据仍有效，
+因此没有重复该无相关变化范围或完整模块。Java adapter已由实际compileJvmMainJava与原quota
+向量消费，具体JVM版本/opaque/preconsumption/TCP边界见架构说明，不声称任意源预消费可撤回。
+
+原生崩溃原件移入已忽略的协调器过程目录：
+`.gradle-coordinator/udp-second-repair-boundaries-green2-hs_err_pid77476.log`，保留未删除。
+未据一次合法同线程运行不崩溃证明Skiko内部根因，更不据此称OOM或资源不足。
+全部临时诊断删除，未新增报告/快照/公共状态框架；本批产品变化仅两处Desktop读取边界。
+唯一repair提交与批准的一次Desktop完整验证由主代理接权后统一执行，DP02正式ART/原生
+键鼠/发布构建仍待验收。此前真实Copy生产缓存已找到完整22contents/22words原成功响应，
+仅ignored私有目录保留，可派生缺失/空/截断受控边界；尚未执行Android原parser或ART，
+不将Windows JVM成功替代该平台证据，也不声称成功响应未找到。

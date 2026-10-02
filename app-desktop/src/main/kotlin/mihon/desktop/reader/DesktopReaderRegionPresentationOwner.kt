@@ -381,8 +381,18 @@ internal class DesktopReaderRegionPresentationHolder internal constructor(
         val runningJob = checkNotNull(currentCoroutineContext()[Job])
         var acquiredLease: DesktopReaderImageAssetLease? = null
         try {
-            contentSession.pin()
-            acquiredLease = pageImagePipeline.acquire(previewKey)
+            acquiredLease = pageImagePipeline.acquireCached(previewKey)
+            val cachedAsset = acquiredLease?.asset
+            if (cachedAsset == null) {
+                contentSession.pin()
+                acquiredLease = pageImagePipeline.acquire(previewKey)
+            } else if (DesktopReaderLargeImagePolicy.requiresRegionTiles(
+                    width = cachedAsset.sourceWidth,
+                    height = cachedAsset.sourceHeight,
+                ) && cachedAsset.animationMetadata == null
+            ) {
+                contentSession.pin()
+            }
             val lease = acquiredLease
             if (lease == null) {
                 owner.publishPreviewFailure(this, runningJob)

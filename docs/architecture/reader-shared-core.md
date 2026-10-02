@@ -511,3 +511,24 @@ Desktop 原生 tap/drag intent 与 composition binding 都保存原共享逻辑�
 因此原 pager 定位 effect 同时消费逻辑位置。事实或 matching 重排不改变该位置，
 仍保留动画中的用户目标。旧反馈拒绝不阻止新发生的 tap/drag 正常进入章节过渡，
 且过渡与 terminal 回调不产生阅读进度。
+
+### Desktop 响应体配额与预览缓存的 JVM 边界
+
+小图预览重挂载先获取已有 decoded lease，避免确认分组时仅为缓存命中重新打开 encoded 内容；
+缓存未命中仍保留原 pin→decode 路径。缓存中的静态大图仍 pin 原内容，直到最后 region holder/tiles
+释放；generation/attempt 的原缓存准入和旧 lease 拒绝规则不变。双页恢复仍沿原动画路径与共享位置
+门禁；原生 Compose 离屏夹具必须推进实际帧时间并在同一线程 render/effect/close，不能用 time=0
+的历史呈现帧判定重排后的动画已经停稳。
+
+可选事实 HTTP 读取通过 DesktopReaderFactBodySource Java 叶适配器，在 Okio JVM
+RealBufferedSource 的公开 source 字段之前施加原 permit，避免 buffered refill 超出剩余字节。
+原 buffer 前缀按原字节顺序先消费并计额度，timeout/close 回到同一原响应；部分文件仍由原失败/取消
+路径删除。普通 visible、encoded cache、HttpSource.getImage/child-loader 反射、源 client 与 headers
+不改。此 adapter 依赖当前锁定的 Okio 3.17.0 JVM 公开字段，不通过反射或抑制 Kotlin internal；
+升级 Okio 必须复验真实 chunked、已 buffered 前缀、opaque、预消费超额和 deadline 原向量。
+
+量测与限制对象是宿主响应 body 的实际源读取，不声称限制 TCP/socket 预取，也不能撤回或计量源在
+返回 Response 之前自行消费且未留下的字节。已 buffered 前缀超过剩余额度时禁止继续上游读取并
+取消可选工作、删除 partial；既已发生的预消费必须独立记录，不能称其被 adapter 消除。
+非 RealBufferedSource 的 opaque 响应明确失败，不静默改为无界可选读取；正常 visible 请求仍可
+使用原 source 链。这些限制不能替代真实源、代理/TLS 或 ART 验收。

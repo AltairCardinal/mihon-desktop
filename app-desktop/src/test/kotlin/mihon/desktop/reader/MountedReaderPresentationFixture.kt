@@ -3,6 +3,10 @@ package mihon.desktop.reader
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.asSkiaBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.semantics.SemanticsNode
 import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
 import eu.kanade.tachiyomi.network.NetworkHelper
@@ -14,19 +18,16 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import io.mockk.every
 import io.mockk.mockk
-import java.io.File
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
-import kotlin.coroutines.CoroutineContext
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.test.http.ReaderIoTestModeBridge
 import mihon.desktop.test.http.ReaderTestModeController
 import mihon.desktop.ui.reader.DesktopReaderScreen
-import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.ui.reader.DualPageDisplayUnitIdKey
 import mihon.domain.reader.observability.ReaderMonotonicClock
 import mockwebserver3.MockResponse
 import okhttp3.OkHttpClient
@@ -34,6 +35,11 @@ import okio.Buffer
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
+import java.awt.Color
+import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import kotlin.coroutines.CoroutineContext
 
 enum class MountedReaderPresentationMode(
     val isWebtoon: Boolean,
@@ -163,6 +169,27 @@ internal class MountedReaderPresentationFixture(
     }
 
     fun events() = controller.snapshot()
+
+    fun visiblePagesAtViewportCenter(): Set<Int> {
+        fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+        return scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+            .filter { it.config.contains(DualPageDisplayUnitIdKey) && it.boundsInRoot.contains(Offset(320f, 200f)) }
+            .flatMap { it.config[DualPageDisplayUnitIdKey].slots.mapNotNull { slot -> slot.pageId?.sourcePageIndex } }
+            .toSet()
+    }
+
+    fun renderContainsFixturePixels(frameTimeNanos: Long = 0L): Boolean {
+        val rendered = scene.render(frameTimeNanos).toComposeImageBitmap().asSkiaBitmap()
+        return try {
+            (0 until rendered.height).any { y ->
+                (0 until rendered.width).any { x ->
+                    (rendered.getColor(x, y) and 0x00FFFFFF) == (Color.BLUE.rgb and 0x00FFFFFF)
+                }
+            }
+        } finally {
+            rendered.close()
+        }
+    }
 
     fun httpRequestCount() = productionFixture.server.requestCount
 
