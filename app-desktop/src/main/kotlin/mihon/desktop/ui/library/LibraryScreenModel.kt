@@ -155,6 +155,7 @@ class LibraryScreenModel(
     private val backgroundUpdateLaunchFailure: (() -> String?)? = null,
     private val retryFailedBackgroundUpdate: (() -> Job)? = null,
     private val resumeBackgroundUpdate: (() -> Job)? = null,
+    private val acceptScopedBackgroundUpdate: ((Long?) -> mihon.desktop.domain.AcceptedLibraryUpdate?)? = null,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(LibraryState())
@@ -870,7 +871,7 @@ class LibraryScreenModel(
         }
     }
 
-    suspend fun refreshLibrary(items: List<LibraryManga>, categoryId: Long? = null) {
+    suspend fun refreshLibrary(items: List<LibraryManga>, categoryId: Long? = null): Boolean {
         if (
             !backgroundIsWaitingForDevice() && (
                 _state.value.isUpdating || backgroundUpdateJob?.invoke()?.isActive == true
@@ -878,7 +879,32 @@ class LibraryScreenModel(
         ) {
             syncBackgroundUpdate()
             setUpdateStatusText(MR.strings.update_already_running.localized())
-            return
+            return false
+        }
+        acceptScopedBackgroundUpdate?.let { accept ->
+            val accepted = accept(categoryId)
+            if (accepted == null) {
+                setUpdateStatusText(MR.strings.update_already_running.localized())
+                return false
+            }
+            setIsUpdating(true)
+            setUpdateStatusText(MR.strings.desktop_ui_checking_for_updates.localized())
+            try {
+                val result = accepted.awaitCompletion()
+                setUpdateStatusText(
+                    if (result.requestCancelled) {
+                        MR.strings.desktop_ui_library_update_cancelled.localized()
+                    } else if (result.launchFailure != null) {
+                        MR.strings.desktop_ui_library_update_failed.localized()
+                    } else {
+                        result.task?.let(::libraryUpdateSummary)
+                            ?: MR.strings.desktop_ui_library_update_finished.localized()
+                    },
+                )
+            } finally {
+                setIsUpdating(false)
+            }
+            return true
         }
         val startUpdate = startScopedBackgroundUpdate?.let { scoped ->
             { scoped(categoryId) }
@@ -889,7 +915,12 @@ class LibraryScreenModel(
             setIsUpdating(true)
             setUpdateStatusText(MR.strings.desktop_ui_checking_for_updates.localized())
             try {
-                start().join()
+                val acceptedJob = start()
+                if (acceptedJob == null) {
+                    setUpdateStatusText(MR.strings.update_already_running.localized())
+                    return false
+                }
+                acceptedJob.join()
                 setUpdateStatusText(backgroundUpdateResultText())
             } catch (error: CancellationException) {
                 throw error
@@ -898,7 +929,7 @@ class LibraryScreenModel(
             } finally {
                 setIsUpdating(false)
             }
-            return
+            return true
         }
         val sourceManager = requireNotNull(sourceManager) { "SourceManager is required" }
         val updateChecker = requireNotNull(updateChecker) { "LibraryUpdateChecker is required" }
@@ -943,6 +974,7 @@ class LibraryScreenModel(
         } finally {
             setIsUpdating(false)
         }
+        return true
     }
 
     private fun backgroundUpdateResultText(): String {

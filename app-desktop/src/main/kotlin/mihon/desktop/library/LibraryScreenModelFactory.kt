@@ -80,6 +80,7 @@ object LibraryScreenModelFactory {
             trackerServiceRegistry = Injekt.get<tachiyomi.domain.track.service.TrackerServiceRegistry>(),
             startBackgroundUpdate = updateScheduler::runNow,
             startScopedBackgroundUpdate = updateScheduler::runNow,
+            acceptScopedBackgroundUpdate = updateScheduler::acceptNow,
             cancelBackgroundUpdate = updateScheduler::cancelUpdate,
             backgroundUpdateStatus = { updateScheduler.taskSnapshot()?.status },
             backgroundUpdateJob = updateScheduler::currentUpdateJob,

@@ -40,6 +40,7 @@ object MangaDetailScreenModelFactory {
             readingProgress = Injekt.get<tachiyomi.domain.reader.interactor.RecordReadingProgress>(),
             readerPreferences = Injekt.get<mihon.desktop.reader.ReaderPreferences>(),
             mangaId = mangaId,
+            acceptedSingleRefresh = Injekt.get<mihon.desktop.domain.LibraryUpdateScheduler>()::acceptSingle,
             migrateManga = { targetSourceId, item ->
                 val source = Injekt.get<tachiyomi.domain.manga.interactor.GetManga>().await(mangaId)
                     ?: error("Source manga no longer exists")

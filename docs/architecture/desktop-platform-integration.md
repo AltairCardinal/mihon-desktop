@@ -55,3 +55,39 @@ Development tests cover real DI/HTTP diagnostic wiring, actual FileTaskCheckpoin
 failure/reopen, native byte shapes and the Windows adapter's real query. These are not
 claims about every router, hardware configuration, macOS runtime, or a packaged release;
 formal production runtime and hardware acceptance remain the final iteration matrix.
+
+
+## Two-stage content wheel refresh
+
+Library and manga detail content owners share `TwoStageRefreshGesture`. Only native,
+unmodified vertical wheel input that started at the top and remained unconsumed after
+child dispatch can contribute distance. Reaching the top from the middle does not arm.
+The first 80dp prepares refresh; a separate 48dp segment after at least 400ms submits
+once. The hint has at least 300ms before submission, and the armed deadline is an
+absolute three seconds. Actual accepted task completion starts an 800ms quiet period;
+wheel activity and real lazy viewport movement restart that period. Programmatic
+positioning, scrollbar actions, modified wheel, keyboard navigation, focus departure,
+selection, modal ownership, and scope changes cannot submit a refresh.
+
+`DesktopRefreshGesture` deliberately uses Compose Foundation Desktop 1.10.2's internal
+`platformScrollConfig` / `Density.calculateMouseWheelScroll` behind a file-local
+visibility suppression. Foundation skips nested scroll dispatch for upward wheel when
+already at the top; the adapter therefore records old top eligibility in Initial and
+observes the same unconsumed event in Final. The platform configuration remains the
+authority for AWT precise rotation, scroll amount, viewport dimensions and density.
+An upgrade must preserve this API and rerun actual native wheel/density/child-consumption
+contracts; compilation or those behavioral contracts must fail rather than silently
+substitute a guessed multiplier. Nested scroll records activity and revokes intentions.
+
+The library submits its complete current category through the existing scheduler,
+independent of UI query/filter projection. Detail uses only the current persisted manga,
+with the right chapter pane in wide mode and the content pane in narrow mode. Accepted
+handles retain the original occurrence's terminal observation, including initial store
+refusal and cancellation before the lazy body starts. Busy rejection does not borrow
+another scope's job or enter completed cooldown. The original detail More/Retry source
+refresh remains on its existing source-owner chain. No additional updater, persisted
+gesture state, HTTP client, or task registry is introduced.
+
+Offscreen Compose/AWT and SQL/HTTP tests establish wiring and input contracts. Physical
+mouse, touchpad, natural scrolling, and packaged Windows DPI acceptance remain the
+release matrix; synthetic precise AWT input is not a touchpad hardware claim.

@@ -860,6 +860,16 @@ class LibraryRootScreen : Screen {
                         }
                     } else {
                         BoxWithConstraints(Modifier.fillMaxSize()) {
+                            val refreshEnabled = !state.isLoading && state.loadError == null && !isUpdating &&
+                                !selectionState.isInSelectionMode && !toolbarPopupVisible && !selectionPopupVisible &&
+                                !showFilterMenu && !showBatchCategoryDialog && removalTarget == null &&
+                                contextMenuManga == null && !syncPanelVisible && !showUpdateResults &&
+                                model.manualTracking?.prompts?.collectAsState()?.value?.isNotEmpty() != true &&
+                                navigator.lastItem is LibraryRootScreen && windowInfo.isWindowFocused
+                            val refresh = mihon.desktop.ui.refresh.rememberRefreshGesture(
+                                listOf(selectedCategoryId, searchQuery, filter),
+                                refreshEnabled,
+                            ) { model.refreshLibrary(model.state.value.allItems, selectedCategoryId) }
                             key(
                                 selectedCategoryId,
                                 displayMode,
@@ -871,114 +881,135 @@ class LibraryRootScreen : Screen {
                             ) {
                                 val viewport =
                                     rememberLibraryViewportState(model, selectedCategoryId, displayedItems, displayMode)
-                                when (displayMode) {
-                                    LibraryDisplayMode.COMPACT_GRID ->
-                                        LibraryGrid(
-                                            items = displayedItems,
-                                            scrollState = viewport.grid,
-                                            minCardWidth = 120.dp,
-                                            portraitColumns = state.portraitColumns,
-                                            landscapeColumns = state.landscapeColumns,
-                                            selectionState = selectionState,
-                                            downloadedMangaIds = downloadedMangaIds,
-                                            downloadCountsByManga = state.downloadCountsByManga,
-                                            sourceLanguagesByManga = state.sourceLanguagesByManga,
-                                            trackerMeansByManga = state.trackerMeansByManga,
-                                            showTrackerScore = state.sortMode == SortMode.TRACKER_MEAN,
-                                            showDownloadBadge = state.showDownloadBadge,
-                                            showUnreadBadge = state.showUnreadBadge,
-                                            showLocalBadge = state.showLocalBadge,
-                                            showLanguageBadge = state.showLanguageBadge,
-                                            showContinueReadingButton = state.showContinueReadingButton,
-                                            syncedResumeMangaIds = state.syncedResumeMangaIds,
-                                            continueReadingMangaIds = state.continueReadingMangaIds,
-                                            resolveCoverModel = desktopDependencies.customCoverStore::resolveModel,
-                                            localMangaIds = state.localMangaIds,
-                                            onContextMenu = { item -> model.setContextMenuManga(item) },
-                                            onItemClick = onItemPrimaryClick,
-                                            onItemLongClick = onItemLongClick,
-                                            onContinueReading = onContinueReading,
-                                        )
-                                    LibraryDisplayMode.COMFORTABLE_GRID ->
-                                        LibraryGrid(
-                                            items = displayedItems,
-                                            scrollState = viewport.grid,
-                                            minCardWidth = 160.dp,
-                                            comfortable = true,
-                                            portraitColumns = state.portraitColumns,
-                                            landscapeColumns = state.landscapeColumns,
-                                            selectionState = selectionState,
-                                            downloadedMangaIds = downloadedMangaIds,
-                                            downloadCountsByManga = state.downloadCountsByManga,
-                                            sourceLanguagesByManga = state.sourceLanguagesByManga,
-                                            trackerMeansByManga = state.trackerMeansByManga,
-                                            showTrackerScore = state.sortMode == SortMode.TRACKER_MEAN,
-                                            showDownloadBadge = state.showDownloadBadge,
-                                            showUnreadBadge = state.showUnreadBadge,
-                                            showLocalBadge = state.showLocalBadge,
-                                            showLanguageBadge = state.showLanguageBadge,
-                                            showContinueReadingButton = state.showContinueReadingButton,
-                                            syncedResumeMangaIds = state.syncedResumeMangaIds,
-                                            continueReadingMangaIds = state.continueReadingMangaIds,
-                                            resolveCoverModel = desktopDependencies.customCoverStore::resolveModel,
-                                            localMangaIds = state.localMangaIds,
-                                            onContextMenu = { item -> model.setContextMenuManga(item) },
-                                            onItemClick = onItemPrimaryClick,
-                                            onItemLongClick = onItemLongClick,
-                                            onContinueReading = onContinueReading,
-                                        )
-                                    LibraryDisplayMode.LIST ->
-                                        LibraryList(
-                                            items = displayedItems,
-                                            scrollState = viewport.list,
-                                            selectionState = selectionState,
-                                            downloadedMangaIds = downloadedMangaIds,
-                                            downloadCountsByManga = state.downloadCountsByManga,
-                                            sourceLanguagesByManga = state.sourceLanguagesByManga,
-                                            trackerMeansByManga = state.trackerMeansByManga,
-                                            showTrackerScore = state.sortMode == SortMode.TRACKER_MEAN,
-                                            showDownloadBadge = state.showDownloadBadge,
-                                            showUnreadBadge = state.showUnreadBadge,
-                                            showLocalBadge = state.showLocalBadge,
-                                            showLanguageBadge = state.showLanguageBadge,
-                                            showContinueReadingButton = state.showContinueReadingButton,
-                                            syncedResumeMangaIds = state.syncedResumeMangaIds,
-                                            continueReadingMangaIds = state.continueReadingMangaIds,
-                                            resolveCoverModel = desktopDependencies.customCoverStore::resolveModel,
-                                            localMangaIds = state.localMangaIds,
-                                            onContextMenu = { item -> model.setContextMenuManga(item) },
-                                            onItemClick = onItemPrimaryClick,
-                                            onItemLongClick = onItemLongClick,
-                                            onContinueReading = onContinueReading,
-                                        )
-                                    LibraryDisplayMode.COVER_ONLY_GRID ->
-                                        LibraryGrid(
-                                            items = displayedItems,
-                                            scrollState = viewport.grid,
-                                            minCardWidth = 120.dp,
-                                            coverOnly = true,
-                                            portraitColumns = state.portraitColumns,
-                                            landscapeColumns = state.landscapeColumns,
-                                            selectionState = selectionState,
-                                            downloadedMangaIds = downloadedMangaIds,
-                                            downloadCountsByManga = state.downloadCountsByManga,
-                                            sourceLanguagesByManga = state.sourceLanguagesByManga,
-                                            trackerMeansByManga = state.trackerMeansByManga,
-                                            showTrackerScore = state.sortMode == SortMode.TRACKER_MEAN,
-                                            showDownloadBadge = state.showDownloadBadge,
-                                            showUnreadBadge = state.showUnreadBadge,
-                                            showLocalBadge = state.showLocalBadge,
-                                            showLanguageBadge = state.showLanguageBadge,
-                                            showContinueReadingButton = state.showContinueReadingButton,
-                                            syncedResumeMangaIds = state.syncedResumeMangaIds,
-                                            continueReadingMangaIds = state.continueReadingMangaIds,
-                                            resolveCoverModel = desktopDependencies.customCoverStore::resolveModel,
-                                            localMangaIds = state.localMangaIds,
-                                            onContextMenu = { item -> model.setContextMenuManga(item) },
-                                            onItemClick = onItemPrimaryClick,
-                                            onItemLongClick = onItemLongClick,
-                                            onContinueReading = onContinueReading,
-                                        )
+                                mihon.desktop.ui.refresh.RefreshGestureContent(
+                                    refresh,
+                                    refreshEnabled,
+                                    atTop = if (displayMode == LibraryDisplayMode.LIST) {
+                                        !viewport.list.canScrollBackward
+                                    } else {
+                                        !viewport.grid.canScrollBackward
+                                    },
+                                    title =
+                                    selectedCategory?.name?.takeIf { it.isNotBlank() }
+                                        ?: MR.strings.label_default.localized(),
+                                    modifier = Modifier.fillMaxSize(),
+                                    activityKey = if (displayMode == LibraryDisplayMode.LIST) {
+                                        viewport.list.firstVisibleItemIndex to
+                                            viewport.list.firstVisibleItemScrollOffset
+                                    } else {
+                                        viewport.grid.firstVisibleItemIndex to
+                                            viewport.grid.firstVisibleItemScrollOffset
+                                    },
+                                ) {
+                                    when (displayMode) {
+                                        LibraryDisplayMode.COMPACT_GRID ->
+                                            LibraryGrid(
+                                                items = displayedItems,
+                                                scrollState = viewport.grid,
+                                                minCardWidth = 120.dp,
+                                                portraitColumns = state.portraitColumns,
+                                                landscapeColumns = state.landscapeColumns,
+                                                selectionState = selectionState,
+                                                downloadedMangaIds = downloadedMangaIds,
+                                                downloadCountsByManga = state.downloadCountsByManga,
+                                                sourceLanguagesByManga = state.sourceLanguagesByManga,
+                                                trackerMeansByManga = state.trackerMeansByManga,
+                                                showTrackerScore = state.sortMode == SortMode.TRACKER_MEAN,
+                                                showDownloadBadge = state.showDownloadBadge,
+                                                showUnreadBadge = state.showUnreadBadge,
+                                                showLocalBadge = state.showLocalBadge,
+                                                showLanguageBadge = state.showLanguageBadge,
+                                                showContinueReadingButton = state.showContinueReadingButton,
+                                                syncedResumeMangaIds = state.syncedResumeMangaIds,
+                                                continueReadingMangaIds = state.continueReadingMangaIds,
+                                                resolveCoverModel = desktopDependencies.customCoverStore::resolveModel,
+                                                localMangaIds = state.localMangaIds,
+                                                onContextMenu = { item -> model.setContextMenuManga(item) },
+                                                onItemClick = onItemPrimaryClick,
+                                                onItemLongClick = onItemLongClick,
+                                                onContinueReading = onContinueReading,
+                                            )
+                                        LibraryDisplayMode.COMFORTABLE_GRID ->
+                                            LibraryGrid(
+                                                items = displayedItems,
+                                                scrollState = viewport.grid,
+                                                minCardWidth = 160.dp,
+                                                comfortable = true,
+                                                portraitColumns = state.portraitColumns,
+                                                landscapeColumns = state.landscapeColumns,
+                                                selectionState = selectionState,
+                                                downloadedMangaIds = downloadedMangaIds,
+                                                downloadCountsByManga = state.downloadCountsByManga,
+                                                sourceLanguagesByManga = state.sourceLanguagesByManga,
+                                                trackerMeansByManga = state.trackerMeansByManga,
+                                                showTrackerScore = state.sortMode == SortMode.TRACKER_MEAN,
+                                                showDownloadBadge = state.showDownloadBadge,
+                                                showUnreadBadge = state.showUnreadBadge,
+                                                showLocalBadge = state.showLocalBadge,
+                                                showLanguageBadge = state.showLanguageBadge,
+                                                showContinueReadingButton = state.showContinueReadingButton,
+                                                syncedResumeMangaIds = state.syncedResumeMangaIds,
+                                                continueReadingMangaIds = state.continueReadingMangaIds,
+                                                resolveCoverModel = desktopDependencies.customCoverStore::resolveModel,
+                                                localMangaIds = state.localMangaIds,
+                                                onContextMenu = { item -> model.setContextMenuManga(item) },
+                                                onItemClick = onItemPrimaryClick,
+                                                onItemLongClick = onItemLongClick,
+                                                onContinueReading = onContinueReading,
+                                            )
+                                        LibraryDisplayMode.LIST ->
+                                            LibraryList(
+                                                items = displayedItems,
+                                                scrollState = viewport.list,
+                                                selectionState = selectionState,
+                                                downloadedMangaIds = downloadedMangaIds,
+                                                downloadCountsByManga = state.downloadCountsByManga,
+                                                sourceLanguagesByManga = state.sourceLanguagesByManga,
+                                                trackerMeansByManga = state.trackerMeansByManga,
+                                                showTrackerScore = state.sortMode == SortMode.TRACKER_MEAN,
+                                                showDownloadBadge = state.showDownloadBadge,
+                                                showUnreadBadge = state.showUnreadBadge,
+                                                showLocalBadge = state.showLocalBadge,
+                                                showLanguageBadge = state.showLanguageBadge,
+                                                showContinueReadingButton = state.showContinueReadingButton,
+                                                syncedResumeMangaIds = state.syncedResumeMangaIds,
+                                                continueReadingMangaIds = state.continueReadingMangaIds,
+                                                resolveCoverModel = desktopDependencies.customCoverStore::resolveModel,
+                                                localMangaIds = state.localMangaIds,
+                                                onContextMenu = { item -> model.setContextMenuManga(item) },
+                                                onItemClick = onItemPrimaryClick,
+                                                onItemLongClick = onItemLongClick,
+                                                onContinueReading = onContinueReading,
+                                            )
+                                        LibraryDisplayMode.COVER_ONLY_GRID ->
+                                            LibraryGrid(
+                                                items = displayedItems,
+                                                scrollState = viewport.grid,
+                                                minCardWidth = 120.dp,
+                                                coverOnly = true,
+                                                portraitColumns = state.portraitColumns,
+                                                landscapeColumns = state.landscapeColumns,
+                                                selectionState = selectionState,
+                                                downloadedMangaIds = downloadedMangaIds,
+                                                downloadCountsByManga = state.downloadCountsByManga,
+                                                sourceLanguagesByManga = state.sourceLanguagesByManga,
+                                                trackerMeansByManga = state.trackerMeansByManga,
+                                                showTrackerScore = state.sortMode == SortMode.TRACKER_MEAN,
+                                                showDownloadBadge = state.showDownloadBadge,
+                                                showUnreadBadge = state.showUnreadBadge,
+                                                showLocalBadge = state.showLocalBadge,
+                                                showLanguageBadge = state.showLanguageBadge,
+                                                showContinueReadingButton = state.showContinueReadingButton,
+                                                syncedResumeMangaIds = state.syncedResumeMangaIds,
+                                                continueReadingMangaIds = state.continueReadingMangaIds,
+                                                resolveCoverModel = desktopDependencies.customCoverStore::resolveModel,
+                                                localMangaIds = state.localMangaIds,
+                                                onContextMenu = { item -> model.setContextMenuManga(item) },
+                                                onItemClick = onItemPrimaryClick,
+                                                onItemLongClick = onItemLongClick,
+                                                onContinueReading = onContinueReading,
+                                            )
+                                    }
                                 }
                             }
                         }

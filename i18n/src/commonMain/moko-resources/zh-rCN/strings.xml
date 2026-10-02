@@ -1996,4 +1996,6 @@
     <string name="desktop_device_condition_unmet">此条件尚未满足，自动更新将等待。</string>
     <string name="desktop_device_conditions_summary">这些条件仅限制自动更新，手动更新可以继续。</string>
     <string name="desktop_library_update_waiting">自动更新正在等待以下设备条件：</string>
+    <string name="desktop_refresh_hint">继续向上滚动，准备刷新。</string>
+    <string name="desktop_refresh_armed">再次向上滚动，刷新「%1$s」。</string>
 </resources>

@@ -13,6 +13,7 @@ import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.InputModeManager
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.nativeKeyLocation
+import androidx.compose.ui.input.pointer.PointerKeyboardModifiers
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.PlatformContext
 import androidx.compose.ui.platform.WindowInfo
@@ -73,6 +74,179 @@ import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 @OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 @Isolated
 class LibrarySettingsPolicyInteractionTest {
+    @Test
+    fun `actual Root two wheel segments refresh the complete category beyond visible search`(
+        @TempDir root: File,
+    ) = runBlocking {
+        val updated = mutableListOf<Long>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        withSettings(root, fontScale = 2f, updateManga = { manga ->
+            updated += manga.id
+            release.await()
+            LibraryUpdateChecker.UpdateResult(0)
+        }) { scene ->
+            val categories = Injekt.get<CategoryRepository>()
+            categories.insert(Category(0, "Wheel current", 0, 0))
+            val category = categories.getAll().single { it.name == "Wheel current" }
+            val repository = Injekt.get<MangaRepository>()
+            val manga = repository.insertNetworkManga(
+                listOf("Visible", "Hidden", "Outside").map { title ->
+                    Manga.create().copy(source = 123, url = "/$title", title = title, favorite = true)
+                },
+            )
+            manga.take(2).forEach {
+                repository.updateAtomically(LibraryMembershipUpdate(it.id, true, 100, listOf(category.id)))
+            }
+            try {
+                scene.mountRoot()
+                scene.renderUntil { scene.rootModel?.state?.value?.allItems?.size == 3 }
+                val model = requireNotNull(scene.rootModel)
+                scene.renderUntil { model.state.value.categories.any { it.id == category.id } }
+                model.setSelectedCategoryIndex(model.state.value.categories.indexOfFirst { it.id == category.id })
+                model.setSearchQuery("Visible")
+                scene.renderUntil {
+                    model.visibleItems().size == 1 && "Visible" in scene.text() &&
+                        "Hidden" !in scene.text() && "Outside" !in scene.text() &&
+                        scene.activeFocused()?.config?.getOrElse(SemanticsProperties.EditableText) {
+                            androidx.compose.ui.text.AnnotatedString("")
+                        }?.text == "Visible"
+                }
+                scene.wheel(androidx.compose.ui.geometry.Offset(450f, 420f), -4f)
+                delay(200)
+                scene.renderUntil { true }
+                assertTrue(
+                    scene.nodes().any {
+                        MR.strings.desktop_refresh_armed.localized(java.util.Locale.getDefault(), category.name) in
+                            scene.labels(it)
+                    },
+                    "Actual Root wheel must expose the current category armed hint",
+                )
+                assertTrue(updated.isEmpty(), "The first segment never refreshes")
+                delay(500)
+                scene.wheel(androidx.compose.ui.geometry.Offset(450f, 420f), -3f)
+                scene.renderUntil { updated.isNotEmpty() }
+                assertTrue(model.state.value.isUpdating)
+                scene.wheel(androidx.compose.ui.geometry.Offset(450f, 420f), -10f)
+                release.complete(Unit)
+                scene.renderUntil { updated.size == 2 && !model.state.value.isUpdating }
+                assertEquals(manga.take(2).map { it.id }.toSet(), updated.toSet())
+                val context = requireNotNull(Injekt.get<LibraryUpdateScheduler>().taskSnapshot()?.libraryUpdate)
+                assertEquals(mihon.desktop.task.LibraryUpdateScope.CATEGORY, context.scope)
+                assertEquals(category.id, context.categoryId)
+                assertEquals(2, updated.size, "Running wheel input cannot request another occurrence")
+                Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().themeMode.set(
+                    eu.kanade.domain.ui.model.ThemeMode.LIGHT,
+                )
+                scene.resize(320, 680)
+                scene.renderUntil { true }
+                delay(900)
+                scene.wheel(androidx.compose.ui.geometry.Offset(150f, 420f), -6f)
+                val hint = MR.strings.desktop_refresh_armed.localized(java.util.Locale.getDefault(), category.name)
+                scene.renderUntil { hint in scene.text() }
+                assertTrue(
+                    scene.nodes().any {
+                        hint in scene.labels(it) && it.boundsInRoot != Rect.Zero &&
+                            it.boundsInRoot.right <= 320f &&
+                            it.boundsInRoot.bottom <= 680f
+                    },
+                )
+                scene.savePng(
+                    File(
+                        System.getenv("MIHON_RI17_VISUAL_DIR") ?: File(root, "visual").absolutePath,
+                        "ri17-library-light-320-font200.png",
+                    ),
+                )
+            } finally {
+                release.complete(Unit)
+            }
+        }
+    }
+
+    @Test
+    fun `Root wheel intent is revoked by actual menu selection query and focus owners`(
+        @TempDir root: File,
+    ) = runBlocking {
+        for (boundary in listOf("menu", "selection", "query", "focus")) {
+            var requests = 0
+            withSettings(File(root, boundary), updateManga = {
+                requests++
+                LibraryUpdateChecker.UpdateResult(0)
+            }) { scene ->
+                scene.mountRoot()
+                scene.renderUntil { scene.rootModel?.state?.value?.isLoading == false }
+                val point = androidx.compose.ui.geometry.Offset(450f, 420f)
+                scene.wheel(point, -4f)
+                scene.renderUntil { true }
+                assertFalse(scene.text().any { it.startsWith("Scroll up again") }, "Empty content cannot arm")
+                Injekt.get<MangaRepository>().insertNetworkManga(
+                    listOf(Manga.create().copy(source = 123, url = "/revoke", title = "Visible", favorite = true)),
+                )
+                scene.renderUntil { scene.rootModel?.state?.value?.allItems?.size == 1 && "Visible" in scene.text() }
+                val model = requireNotNull(scene.rootModel)
+                fun armed() = scene.text().any { it.startsWith("Scroll up again") }
+                scene.wheel(point, -4f)
+                scene.renderUntil("Original intent is armed before $boundary") { armed() }
+                when (boundary) {
+                    "menu" -> {
+                        scene.click(MR.strings.action_menu.localized())
+                        scene.renderUntil("Menu owns focus and revokes intent") {
+                            !armed() &&
+                                scene.activeFocused()?.let {
+                                    MR.strings.action_update_library.localized() in
+                                        scene.labels(it)
+                                } ==
+                                true
+                        }
+                        scene.wheel(point, -4f)
+                        scene.renderUntil { true }
+                        assertFalse(armed(), "An open menu owns background wheel input")
+                        scene.key(Key.Escape)
+                        scene.renderUntil("Menu dismissed by Escape") {
+                            MR.strings.action_update_library.localized() !in
+                                scene.text()
+                        }
+                    }
+                    "selection" -> {
+                        val row = scene.nodes().last {
+                            "Visible" in scene.labels(it) &&
+                                it.config.contains(SemanticsActions.OnClick) &&
+                                it.boundsInRoot != Rect.Zero
+                        }
+                        scene.pointerClick(
+                            row.boundsInRoot.center,
+                            PointerKeyboardModifiers(isCtrlPressed = true),
+                        )
+                        scene.renderUntil("Selection revokes the original intent") { !armed() }
+                        scene.wheel(point, -4f)
+                        scene.renderUntil { true }
+                        assertFalse(armed(), "Selected content cannot rearm")
+                    }
+                    "query" -> {
+                        model.setSearchQuery("No matching work")
+                        scene.renderUntil {
+                            model.visibleItems().isEmpty() &&
+                                MR.strings.no_results_found.localized() in scene.text()
+                        }
+                        assertFalse(armed())
+                        scene.wheel(point, -4f)
+                        scene.renderUntil { true }
+                        assertFalse(armed(), "Empty query results cannot arm")
+                    }
+                    "focus" -> {
+                        scene.windowFocused = false
+                        scene.renderUntil("Window focus loss revokes intent") { !armed() }
+                        scene.windowFocused = true
+                        scene.renderUntil { true }
+                    }
+                }
+                delay(500)
+                scene.wheel(point, -2f)
+                scene.renderUntil { true }
+                assertEquals(0, requests, "The old armed segment cannot survive $boundary")
+            }
+        }
+    }
+
     @Test
     fun `device conditions are resolved once through actual DI UI and scheduler`(@TempDir root: File) = runBlocking {
         withSettings(root) {
@@ -2175,6 +2349,7 @@ class LibrarySettingsPolicyInteractionTest {
         private val owners = linkedSetOf<SemanticsOwner>()
         private var windowSize by androidx.compose.runtime.mutableStateOf(size)
         private val bitmap = ImageBitmap(900, 900)
+        var windowFocused by androidx.compose.runtime.mutableStateOf(true)
         var rootModel: mihon.desktop.ui.library.LibraryScreenModel? = null
         lateinit var navigator: Navigator
         private val canvas = Canvas(bitmap)
@@ -2183,7 +2358,7 @@ class LibrarySettingsPolicyInteractionTest {
             coroutineContext = context,
             platformContext = object : PlatformContext {
                 override val windowInfo = object : WindowInfo {
-                    override val isWindowFocused = true
+                    override val isWindowFocused get() = windowFocused
                     override val containerSize get() = windowSize
                 }
                 override val inputModeManager = object : InputModeManager {
@@ -2315,16 +2490,29 @@ class LibrarySettingsPolicyInteractionTest {
             windowSize = IntSize(width, height)
             scene.size = windowSize
         }
-        fun pointerClick(position: androidx.compose.ui.geometry.Offset) {
+        fun wheel(position: androidx.compose.ui.geometry.Offset, delta: Float) {
+            scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, position)
+            scene.sendPointerEvent(
+                androidx.compose.ui.input.pointer.PointerEventType.Scroll,
+                position,
+                scrollDelta = androidx.compose.ui.geometry.Offset(0f, delta),
+            )
+        }
+        fun pointerClick(
+            position: androidx.compose.ui.geometry.Offset,
+            modifiers: PointerKeyboardModifiers = PointerKeyboardModifiers(),
+        ) {
             scene.sendPointerEvent(
                 androidx.compose.ui.input.pointer.PointerEventType.Press,
                 position,
+                keyboardModifiers = modifiers,
                 buttons = androidx.compose.ui.input.pointer.PointerButtons(isPrimaryPressed = true),
                 button = androidx.compose.ui.input.pointer.PointerButton.Primary,
             )
             scene.sendPointerEvent(
                 androidx.compose.ui.input.pointer.PointerEventType.Release,
                 position,
+                keyboardModifiers = modifiers,
                 buttons = androidx.compose.ui.input.pointer.PointerButtons(),
                 button = androidx.compose.ui.input.pointer.PointerButton.Primary,
             )
@@ -2358,6 +2546,7 @@ class LibrarySettingsPolicyInteractionTest {
                 }
             }
         }
+        val ownerCount get() = owners.size
         fun text() = nodes().flatMap(::labels)
         fun categoryEntryReady() = nodes().any {
             MR.strings.categories.localized() in labels(it) && it.config.contains(SemanticsActions.OnClick) &&

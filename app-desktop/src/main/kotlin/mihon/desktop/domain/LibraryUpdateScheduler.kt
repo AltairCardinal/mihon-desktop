@@ -94,20 +94,49 @@ class LibraryUpdateScheduler(
                     }?.checkStartedAt
                     ?: 0L
                 if (lastCheck == 0L || (now >= lastCheck && now - lastCheck >= intervalMs)) {
-                    launchUpdate(null, resume = false, trigger = LibraryUpdateTrigger.SCHEDULED).join()
+                    requireNotNull(launchUpdate(null, resume = false, trigger = LibraryUpdateTrigger.SCHEDULED)).join()
                 }
             }
         }
         requireNotNull(initialRecoveryJob)
     }
 
-    fun runNow(categoryId: Long? = null): Job = launchUpdate(categoryId, resume = false)
+    fun runNow(categoryId: Long? = null): Job = requireNotNull(launchUpdate(categoryId, resume = false))
 
-    fun runSingle(mangaId: Long): Job = launchUpdate(null, resume = false, singleMangaId = mangaId)
+    fun runSingle(mangaId: Long): Job = requireNotNull(launchUpdate(null, resume = false, singleMangaId = mangaId))
 
-    fun resumeUpdate(): Job = launchUpdate(null, resume = true)
+    fun tryRunNow(categoryId: Long? = null): Job? =
+        launchUpdate(categoryId, resume = false, rejectBusy = true)
 
-    fun retryFailed(): Job = launchUpdate(null, resume = false, failedOnly = true)
+    fun tryRunSingle(mangaId: Long): Job? =
+        launchUpdate(null, resume = false, singleMangaId = mangaId, rejectBusy = true)
+
+    fun acceptNow(categoryId: Long? = null): AcceptedLibraryUpdate? = acceptUpdate(categoryId, null)
+
+    fun acceptSingle(mangaId: Long): AcceptedLibraryUpdate? = acceptUpdate(null, mangaId)
+
+    private fun acceptUpdate(categoryId: Long?, mangaId: Long?): AcceptedLibraryUpdate? {
+        val result = kotlinx.coroutines.CompletableDeferred<LibraryUpdateObservation>()
+        val job = launchUpdate(
+            categoryId,
+            resume = false,
+            singleMangaId = mangaId,
+            rejectBusy = true,
+            onFinished = { result.complete(it) },
+        ) ?: return null
+        job.invokeOnCompletion { cause ->
+            if (!result.isCompleted) {
+                result.complete(
+                    LibraryUpdateObservation(null, requestCancelled = cause is CancellationException),
+                )
+            }
+        }
+        return AcceptedLibraryUpdate(job, result)
+    }
+
+    fun resumeUpdate(): Job = requireNotNull(launchUpdate(null, resume = true))
+
+    fun retryFailed(): Job = requireNotNull(launchUpdate(null, resume = false, failedOnly = true))
 
     private fun launchUpdate(
         categoryId: Long?,
@@ -115,12 +144,16 @@ class LibraryUpdateScheduler(
         failedOnly: Boolean = false,
         trigger: LibraryUpdateTrigger = LibraryUpdateTrigger.MANUAL,
         singleMangaId: Long? = null,
-    ): Job =
+        rejectBusy: Boolean = false,
+        onFinished: ((LibraryUpdateObservation) -> Unit)? = null,
+    ): Job? =
         synchronized(updateLock) {
             val previous = updateJob?.takeIf { it.isActive }
             if (previous != null) {
                 val waiting = taskSnapshot()?.libraryUpdate?.waitingForDevice?.isNotEmpty() == true
-                if (!waiting || trigger != LibraryUpdateTrigger.MANUAL || resume) return@synchronized previous
+                if (!waiting || trigger != LibraryUpdateTrigger.MANUAL || resume) {
+                    return@synchronized if (rejectBusy) null else previous
+                }
                 taskScheduler?.cancelRunning(LIBRARY_UPDATE_TASK.id)
                 if (stoppingJobs.add(previous)) {
                     previous.invokeOnCompletion { synchronized(updateLock) { stoppingJobs.remove(previous) } }
@@ -128,8 +161,14 @@ class LibraryUpdateScheduler(
                 previous.cancel()
             }
             scope.launch(start = CoroutineStart.LAZY) {
-                previous?.join()
-                runLibraryUpdate(categoryId, resume, failedOnly, trigger, singleMangaId)
+                var started = false
+                try {
+                    previous?.join()
+                    started = true
+                    runLibraryUpdate(categoryId, resume, failedOnly, trigger, singleMangaId, onFinished)
+                } finally {
+                    if (!started) onFinished?.invoke(LibraryUpdateObservation(null, requestCancelled = true))
+                }
             }.also {
                 updateJob = it
                 it.start()
@@ -181,7 +220,9 @@ class LibraryUpdateScheduler(
         failedOnly: Boolean,
         trigger: LibraryUpdateTrigger,
         singleMangaId: Long?,
+        onFinished: ((LibraryUpdateObservation) -> Unit)? = null,
     ) {
+        var cancellationObserved = false
         var acceptedOccurrence: String? = null
         launchFailure.value = null
         try {
@@ -478,6 +519,7 @@ class LibraryUpdateScheduler(
                 )
             }
         } catch (cancelled: CancellationException) {
+            cancellationObserved = true
             throw cancelled
         } catch (error: Exception) {
             val existing = taskSnapshot()
@@ -499,6 +541,12 @@ class LibraryUpdateScheduler(
                     "The update could not be started or saved. Retry from Library.",
                 ),
             )
+        } finally {
+            val owned = taskSnapshot()?.takeIf {
+                acceptedOccurrence != null &&
+                    it.task.idempotencyKey == acceptedOccurrence
+            }
+            onFinished?.invoke(LibraryUpdateObservation(owned, lastLaunchFailure(), cancellationObserved))
         }
     }
 
@@ -609,4 +657,15 @@ val TaskStatus.isTerminal: Boolean
     get() = this in setOf(TaskStatus.Completed, TaskStatus.Failed, TaskStatus.Cancelled)
 
 /** The task is durable authority; launchFailure describes a refused request without replacing that authority. */
-data class LibraryUpdateObservation(val task: StoredTask?, val launchFailure: String? = null)
+data class LibraryUpdateObservation(
+    val task: StoredTask?,
+    val launchFailure: String? = null,
+    val requestCancelled: Boolean = false,
+)
+
+class AcceptedLibraryUpdate(val job: Job, private val result: kotlinx.coroutines.Deferred<LibraryUpdateObservation>) {
+    suspend fun awaitCompletion(): LibraryUpdateObservation {
+        job.join()
+        return result.await()
+    }
+}

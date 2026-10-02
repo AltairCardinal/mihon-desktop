@@ -394,6 +394,21 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         }
 
         val canRefresh = !isUpdating && sourceRefreshState !is SourceMangaRefreshState.Loading
+        val refreshWindow = androidx.compose.ui.platform.LocalWindowInfo.current
+        val gestureEnabled = canRefresh && manga != null && chapters.isNotEmpty() &&
+            chapterContentState == MangaDetailChapterContentState.CONTENT && !selectionState.isActive &&
+            !showFilterMenu && !showNotesDialog && !showFetchIntervalDialog && !showCoverViewer &&
+            !categoryMenuExpanded && !downloadMenuExpanded && categoryDialogMode == null &&
+            removalSnapshot == null && chapterDeletion == null && deleteConfirmChapter == null &&
+            !markAllReadConfirm && !showMigrateSourcePicker && migrateSearchResults == null &&
+            migrateConfirmItem == null && duplicateEntries == null &&
+            model.manualTracking?.prompts?.collectAsState()?.value?.isNotEmpty() != true &&
+            refreshWindow.isWindowFocused && navigator.lastItem == this@MangaDetailScreen
+        val refreshGesture = mihon.desktop.ui.refresh.rememberRefreshGesture(
+            listOf(manga?.id, manga?.source, manga?.url, manga?.chapterFlags, excludedScanlators, downloadedOnly),
+            gestureEnabled,
+        ) { model.refreshByGesture() }
+
         fun openExternalChapter(url: String) {
             val result = dependencies.externalUrlOpener(url)
             val message = if (result.isSuccess) {
@@ -1463,7 +1478,15 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 contentPadding = PaddingValues(bottom = 16.dp),
                                 content = informationItems,
                             )
-                            Box(Modifier.weight(1f).fillMaxHeight().testTag("manga-detail-chapters")) {
+                            mihon.desktop.ui.refresh.RefreshGestureContent(
+                                refreshGesture,
+                                gestureEnabled,
+                                !chapterState.canScrollBackward,
+                                manga?.title.orEmpty(),
+                                Modifier.weight(1f).fillMaxHeight().testTag("manga-detail-chapters"),
+                                activityKey =
+                                chapterState.firstVisibleItemIndex to chapterState.firstVisibleItemScrollOffset,
+                            ) {
                                 LazyColumn(
                                     modifier = Modifier.fillMaxSize().padding(end = 12.dp),
                                     state = chapterState,
@@ -1477,13 +1500,23 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             }
                         }
                     } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize().testTag("manga-detail-content"),
-                            state = chapterState,
-                            contentPadding = PaddingValues(bottom = 16.dp),
+                        mihon.desktop.ui.refresh.RefreshGestureContent(
+                            refreshGesture,
+                            gestureEnabled,
+                            !chapterState.canScrollBackward,
+                            manga?.title.orEmpty(),
+                            Modifier.fillMaxSize().testTag("manga-detail-content"),
+                            activityKey =
+                            chapterState.firstVisibleItemIndex to chapterState.firstVisibleItemScrollOffset,
                         ) {
-                            informationItems()
-                            chapterItems()
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                state = chapterState,
+                                contentPadding = PaddingValues(bottom = 16.dp),
+                            ) {
+                                informationItems()
+                                chapterItems()
+                            }
                         }
                     }
                 }

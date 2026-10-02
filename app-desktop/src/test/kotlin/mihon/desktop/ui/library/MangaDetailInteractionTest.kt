@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.InternalComposeUiApi
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asSkiaBitmap
@@ -94,6 +95,261 @@ import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 @Isolated
 @OptIn(ExperimentalComposeUiApi::class, InternalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class MangaDetailInteractionTest {
+
+    @Test
+    fun `actual detail legacy and duplicate dialogs revoke the original armed content intent`(
+        @TempDir root: File,
+    ) = runBlocking {
+        withDetail(root, httpSource = true) { scene, model, manga, _ ->
+            val repository = Injekt.get<MangaRepository>()
+            repository.insertNetworkManga(
+                listOf(
+                    Manga.create().copy(
+                        source = 99,
+                        url = "/wheel-duplicate",
+                        title = manga.title,
+                        favorite = true,
+                        initialized = true,
+                    ),
+                ),
+            )
+            val retained = mutableListOf<Boolean>()
+            fun armed() = nodes(scene).any {
+                MR.strings.desktop_refresh_armed.localized(java.util.Locale.getDefault(), manga.title) in
+                    labels(it)
+            }
+            for (kind in 0..2) {
+                scene.wheel(Offset(900f, 400f), -4f)
+                render(scene)
+                assertTrue(armed(), "Each actual modal starts from Armed")
+                when (kind) {
+                    0 -> model.setMarkAllReadConfirm(true)
+                    1 -> model.setMigrateSearchResults(
+                        listOf(
+                            eu.kanade.tachiyomi.source.model.SManga.create().apply {
+                                url =
+                                    "/match"
+                                title = "Match"
+                            },
+                        ),
+                    )
+                    else -> click(scene, MR.strings.add_to_library.localized())
+                }
+                render(scene)
+                withTimeout(3000) {
+                    while (activeNodes(scene).none { MR.strings.action_cancel.localized() in labels(it) }) {
+                        render(scene)
+                        delay(10)
+                    }
+                }
+                retained += armed()
+                click(scene, MR.strings.action_cancel.localized())
+                render(scene)
+                scene.windowFocused = false
+                render(scene)
+                scene.windowFocused = true
+                render(scene)
+            }
+            org.junit.jupiter.api.Assertions.assertAll(
+                retained.mapIndexed { index, remains ->
+                    org.junit.jupiter.api.function.Executable {
+                        assertFalse(remains, "Actual modal $index revokes the underlying Armed stage")
+                    }
+                },
+            )
+            assertFalse(repository.getMangaById(manga.id).favorite)
+            assertEquals(200, Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id).size)
+        }
+    }
+
+    @Test
+    fun `detail second wheel segment reports rejection when another SQL scope owns the scheduler`(
+        @TempDir root: File,
+    ) = runBlocking {
+        mockwebserver3.MockWebServer().use { server ->
+            server.start()
+            val source = mihon.desktop.source.MangaDexSource(
+                okhttp3.OkHttpClient(),
+                kotlinx.serialization.json.Json,
+                server.url("/").toString().trimEnd('/'),
+                browserJsonFetcher = null,
+            )
+            val release = java.util.concurrent.CountDownLatch(1)
+            server.dispatcher = object : mockwebserver3.Dispatcher() {
+                override fun dispatch(request: mockwebserver3.RecordedRequest): mockwebserver3.MockResponse {
+                    check(release.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                    val body = if (request.url.encodedPath.endsWith("/feed")) {
+                        """{"data":[{"id":"busy-chapter","attributes":{"chapter":"1","title":"Busy result","volume":null},"relationships":[]}],"total":1}"""
+                    } else {
+                        """{"data":{"id":"other-work","attributes":{"title":{"en":"Other"},"description":{"en":"Other"},"status":"ongoing"},"relationships":[]}}"""
+                    }
+                    return mockwebserver3.MockResponse.Builder().body(body).build()
+                }
+            }
+            try {
+                withDetail(root, directorySources = listOf(source), mangaTransform = {
+                    it.copy(source = source.id, url = "/manga/current-work")
+                }) { scene, model, manga, _ ->
+                    scene.wheel(Offset(900f, 400f), -4f)
+                    render(scene)
+                    assertTrue(
+                        nodes(scene).any {
+                            it.config.getOrElse(SemanticsProperties.Text) {
+                                emptyList()
+                            }.any { t -> t.text.contains("Scroll up again") }
+                        },
+                    )
+                    val other = Injekt.get<tachiyomi.domain.manga.repository.MangaRepository>().insertNetworkManga(
+                        listOf(
+                            Manga.create().copy(
+                                source = source.id,
+                                url = "/manga/other-work",
+                                title = "Other",
+                                favorite = true,
+                            ),
+                        ),
+                    ).single()
+                    val scheduler = Injekt.get<mihon.desktop.domain.LibraryUpdateScheduler>()
+                    val original = scheduler.runSingle(other.id)
+                    kotlinx.coroutines.withTimeout(5000) {
+                        while (server.requestCount < 2) {
+                            render(scene)
+                            delay(10)
+                        }
+                    }
+                    delay(500)
+                    scene.wheel(Offset(900f, 400f), -3f)
+                    render(scene)
+                    kotlinx.coroutines.withTimeout(3000) {
+                        while (model.state.value.directoryRefreshFeedback !=
+                            MR.strings.update_already_running.localized()
+                        ) {
+                            render(scene)
+                            delay(10)
+                        }
+                    }
+                    assertEquals(2, server.requestCount, "Rejected current work never issues HTTP")
+                    assertEquals(other.id, scheduler.taskSnapshot()?.libraryUpdate?.singleMangaId)
+                    assertFalse(model.state.value.isUpdating)
+                    assertTrue(
+                        Injekt.get<tachiyomi.domain.chapter.repository.ChapterRepository>().getChapterByMangaId(
+                            manga.id,
+                        ).size ==
+                            200,
+                    )
+                    release.countDown()
+                    original.join()
+                }
+            } finally {
+                release.countDown()
+            }
+        }
+    }
+
+    @Test
+    fun `native detail wheel refresh belongs only to the chapter container and current SQL manga`(
+        @TempDir root: File,
+    ) = runBlocking {
+        mockwebserver3.MockWebServer().use { server ->
+            server.start()
+            val source = mihon.desktop.source.MangaDexSource(
+                okhttp3.OkHttpClient(),
+                kotlinx.serialization.json.Json,
+                server.url("/").toString().trimEnd('/'),
+                browserJsonFetcher = null,
+            )
+            server.dispatcher = object : mockwebserver3.Dispatcher() {
+                override fun dispatch(request: mockwebserver3.RecordedRequest): mockwebserver3.MockResponse {
+                    val body = if (request.url.encodedPath.endsWith("/feed")) {
+                        """{"data":[{"id":"new-wheel-chapter","attributes":{"chapter":"201","title":"Wheel result","volume":null},"relationships":[]}],"total":1}"""
+                    } else {
+                        """{"data":{"id":"wheel-work","attributes":{"title":{"en":"Manga details"},"description":{"en":"Description"},"status":"ongoing"},"relationships":[]}}"""
+                    }
+                    return mockwebserver3.MockResponse.Builder().body(body).build()
+                }
+            }
+            withDetail(root, directorySources = listOf(source), mangaTransform = {
+                it.copy(source = source.id, url = "/manga/wheel-work")
+            }) { scene, model, manga, _ ->
+                scene.wheel(Offset(200f, 400f), -4f)
+                render(scene)
+                delay(500)
+                scene.wheel(Offset(200f, 400f), -4f)
+                render(scene)
+                assertEquals(0, server.requestCount, "Wide information owns no refresh gesture")
+                scene.wheel(Offset(900f, 400f), -4f)
+                render(scene)
+                assertTrue(
+                    nodes(scene).any {
+                        MR.strings.desktop_refresh_armed.localized(java.util.Locale.getDefault(), manga.title) in
+                            labels(it)
+                    },
+                    "Actual chapter wheel must arm its visible current-owner hint",
+                )
+                delay(500)
+                scene.wheel(Offset(900f, 400f), -4f)
+                withTimeout(5000) {
+                    while (Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id).none {
+                            it.url == "/chapter/new-wheel-chapter"
+                        }
+                    ) {
+                        render(scene)
+                        delay(5)
+                    }
+                }
+                assertEquals(manga.id, model.state.value.manga!!.id)
+                assertTrue(Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id).all { it.mangaId == manga.id })
+                assertEquals(2, server.requestCount)
+                val context =
+                    requireNotNull(
+                        Injekt.get<mihon.desktop.domain.LibraryUpdateScheduler>().taskSnapshot()?.libraryUpdate,
+                    )
+                assertEquals(mihon.desktop.task.LibraryUpdateScope.SINGLE, context.scope)
+                assertEquals(manga.id, context.singleMangaId)
+                withTimeout(5000) {
+                    while (model.state.value.isUpdating) {
+                        render(scene)
+                        delay(10)
+                    }
+                }
+                Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().tabletUiMode.set(
+                    eu.kanade.domain.ui.model.TabletUiMode.NEVER,
+                )
+                Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().themeMode.set(
+                    eu.kanade.domain.ui.model.ThemeMode.DARK,
+                )
+                scene.fontScale = 2f
+                scene.resize(320, 680)
+                render(scene)
+                delay(900)
+                scene.wheel(Offset(150f, 400f), -6f)
+                render(scene)
+                val hint = MR.strings.desktop_refresh_armed.localized(
+                    java.util.Locale.getDefault(),
+                    model.state.value.manga!!.title,
+                )
+                withTimeout(3000) {
+                    while (nodes(scene).none { hint in labels(it) }) {
+                        render(scene)
+                        delay(10)
+                    }
+                }
+                assertTrue(
+                    nodes(scene).any {
+                        hint in labels(it) && it.boundsInRoot != Rect.Zero &&
+                            it.boundsInRoot.right <= 320f &&
+                            it.boundsInRoot.bottom <= 680f
+                    },
+                )
+                scene.savePng(
+                    File(
+                        System.getenv("MIHON_RI17_VISUAL_DIR") ?: File(root, "visual").absolutePath,
+                        "ri17-detail-dark-320-font200.png",
+                    ),
+                )
+            }
+        }
+    }
 
     @Test
     fun `early cover share terminal remains authoritative over later Opened acknowledgement`(
@@ -3827,6 +4083,7 @@ class MangaDetailInteractionTest {
             startDownloadWorker = false,
             mangaRepositoryOverride = mangaRepositoryOverride,
             chapterRepositoryOverride = chapterRepositoryOverride,
+            builtInSources = directorySources,
         )
         val replacementManager = downloadManagerFactory?.invoke(Injekt.get())
         if (replacementManager != null) {
@@ -3952,6 +4209,7 @@ class MangaDetailInteractionTest {
         lateinit var navigator: Navigator
         lateinit var colors: androidx.compose.material3.ColorScheme
         private var windowSize by mutableStateOf(IntSize(1200, 900))
+        var windowFocused by mutableStateOf(true)
         var fontScale by mutableFloatStateOf(1f)
         private val bitmap = ImageBitmap(1400, 1000)
         private val canvas = Canvas(bitmap)
@@ -3960,7 +4218,7 @@ class MangaDetailInteractionTest {
             coroutineContext = context,
             platformContext = object : PlatformContext {
                 override val windowInfo = object : WindowInfo {
-                    override val isWindowFocused = true
+                    override val isWindowFocused get() = windowFocused
                     override val containerSize get() = windowSize
                     override val containerDpSize get() = DpSize(windowSize.width.dp, windowSize.height.dp)
                 }
@@ -3986,6 +4244,9 @@ class MangaDetailInteractionTest {
         fun render() {
             androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
             scene.render(canvas, System.nanoTime())
+        }
+        fun wheel(position: Offset, delta: Float) {
+            scene.sendPointerEvent(PointerEventType.Scroll, position, scrollDelta = Offset(0f, delta))
         }
         fun sendKeyEvent(event: ComposeKeyEvent) = scene.sendKeyEvent(event)
         fun pointer(

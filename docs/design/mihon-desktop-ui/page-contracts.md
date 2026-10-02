@@ -272,3 +272,6 @@ RI08复用前置核对：Android现用`libs.richeditor.compose`版本1.0.0-rc13�
 - `PROJECT_POLICY`：反向／离顶／失焦／离页、选择／模态、切分类与查询／筛选变化立即撤销未提交提示；提交前再核scope ID。空库、加载及加载错误不武装，非空不足一屏仍可用。Ctrl／Alt／Shift、横向、Home／PageUp、滚动条拖动与代码定位不触发；归一化与异常delta上限只在Desktop平台adapter，RI06分类Ctrl滚轮不抢占刷新。
 - `SOURCE／PROJECT_POLICY`：复用LibraryTab→LibraryScreenModel.refreshLibrary→现调度器，书架更新完整当前分类而非查询／UI过滤集合；详情复用同一真实目录更新链且只更新当前作品。宽屏仅右侧章节区可触发，左资料栏不触发；窄屏内容区可触发。提示不推挤列表，实际任务状态、失败及重复按钮反馈沿已有权威，不另建更新器或计时假成功。
 - `PROJECT_POLICY`：可控Clock focused红绿覆盖所有阈值和撤销／冷却；真实Compose wheel→页面／Root→scheduler集成覆盖完整分类与单作品、重复事件以及作用域切换。RI18统一补Windows鼠标、精确触控板、自然滚动及125%／150%／200%DPI实机证据；原生离屏事件不能代替实体输入验收。
+- `SOURCE／PROJECT_POLICY`：Desktop adapter固定到Compose Foundation Desktop 1.10.2的实际platformScrollConfig，按AWT精确滚动、scrollAmount、viewport及density得到像素再归一化dp，每事件最多80dp。顶部Foundation不派发nested postScroll，故Initial记录事件前顶部条件，Final只接受同一未消费事件；nested scroll与实际lazy位置变化只记录活动／撤销，不制造刷新量。内部API抑制仅限adapter文件，升级须复验原生单位及消费顺序。RI06分类Ctrl滚轮仍走独立链路。
+- `SOURCE／PROJECT_POLICY`：实际factory分别接同一LibraryUpdateScheduler的acceptNow／acceptSingle，忙碌返回拒绝，接受柄保留原请求的完成／失败／取消结果；不能在join后读取后来任务的全局结果。初始store拒绝不得借历史Completed，未启动取消也须有明确结果。详情原More／SourceRetry继续使用SaveSourceMangaForDetails，刷新可用性同时检查这条原owner链与当前gesture任务。完整分类使用实际category ID，默认分类提示使用本地化名称。
+- 验证边界：用户2026-10-02确认仅有Windows鼠标，精确触控板暂缺；必做实体条目保持未验收，不将fractional AWT、离屏density或其他平台输入当作替代。当前实现／专项证据见唯一迭代报告，最终发布及硬件门禁仍由RI18取得。

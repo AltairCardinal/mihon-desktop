@@ -2207,4 +2207,6 @@
     <string name="desktop_device_condition_unmet">This condition is not met. Automatic updates will wait.</string>
     <string name="desktop_device_conditions_summary">Conditions apply only to automatic updates. Manual updates can proceed.</string>
     <string name="desktop_library_update_waiting">Automatic updates are waiting for these device conditions:</string>
+    <string name="desktop_refresh_hint">Continue scrolling up to prepare a refresh.</string>
+    <string name="desktop_refresh_armed">Scroll up again to refresh %1$s.</string>
 </resources>

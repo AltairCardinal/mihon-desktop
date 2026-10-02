@@ -107,6 +107,7 @@ class MangaDetailScreenModel(
     private val retryAccepted: ((Long) -> Boolean)? = null,
     private val captureDownloadDeletion: ((Manga, List<Chapter>) -> (suspend () -> BatchChapterResult))? = null,
     val manualTracking: mihon.desktop.tracking.DesktopManualTracking? = null,
+    private val acceptedSingleRefresh: ((Long) -> mihon.desktop.domain.AcceptedLibraryUpdate?)? = null,
     private val captureMangaDownloadDeletion: (suspend (Manga) -> (suspend () -> Boolean))? = null,
 ) : ScreenModel {
 
@@ -945,6 +946,32 @@ class MangaDetailScreenModel(
 
     suspend fun searchMigration(source: CatalogueSource, query: String): List<SManga> {
         return source.getSearchManga(1, query, FilterList()).mangas
+    }
+
+    suspend fun refreshByGesture(): Boolean {
+        val current = state.value.manga ?: return false
+        if (state.value.isUpdating) return false
+        val job = requireNotNull(acceptedSingleRefresh) { "Accepted single refresh is required" }.invoke(current.id)
+        if (job == null) {
+            _state.update { it.copy(directoryRefreshFeedback = MR.strings.update_already_running.localized()) }
+            return false
+        }
+        _state.update { it.copy(isUpdating = true, directoryRefreshFeedback = null) }
+        try {
+            val result = job.awaitCompletion()
+            if (result.requestCancelled) {
+                _state.update {
+                    it.copy(directoryRefreshFeedback = MR.strings.desktop_ui_library_update_cancelled.localized())
+                }
+            } else if (result.launchFailure != null || result.task?.status == mihon.domain.task.TaskStatus.Failed) {
+                _state.update {
+                    it.copy(directoryRefreshFeedback = MR.strings.desktop_ui_library_update_failed.localized())
+                }
+            }
+        } finally {
+            _state.update { it.copy(isUpdating = false) }
+        }
+        return true
     }
 
     suspend fun refreshManga(manga: Manga) {
