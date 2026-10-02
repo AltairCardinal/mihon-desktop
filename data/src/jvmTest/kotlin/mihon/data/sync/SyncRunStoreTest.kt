@@ -159,6 +159,14 @@ class SyncRunStoreTest {
     fun `schema 27 migration creates durable runtime tables`() = runBlocking {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(driver)
+        // The simulated historical schema must not retain migration 40 objects from the latest create.
+        listOf("insert_guard", "delete_guard", "insert", "delete").forEach { suffix ->
+            driver.execute(null, "DROP TRIGGER chapter_id_floor_$suffix", 0)
+        }
+        listOf("chapter_url_aliases", "chapter_directory_phases", "chapter_id_floor").forEach { table ->
+            driver.execute(null, "DROP TABLE $table", 0)
+        }
+
         driver.execute(null, "DROP INDEX IF EXISTS sync_runtime_active", 0)
         driver.execute(null, "DROP INDEX IF EXISTS sync_runtime_log_order", 0)
         driver.execute(null, "DROP INDEX IF EXISTS sync_events_by_batch_confirmation", 0)

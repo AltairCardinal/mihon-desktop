@@ -43,7 +43,6 @@ import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetDisplayMode
 import tachiyomi.domain.category.interactor.SetMangaCategories
-import tachiyomi.domain.category.interactor.SetSortModeForCategory
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
@@ -416,7 +415,13 @@ class LibraryScreenModelTest {
             }
             val model = LibraryScreenModel(
                 libraryPreferences = preferences,
-                setSortModeForCategory = SetSortModeForCategory(preferences, repository),
+                categorySortSettings = mihon.desktop.settings.DesktopCategorySortSettings(
+                    isolatedDesktopPreferenceStore(),
+                    preferences,
+                    repository,
+                    tachiyomi.domain.category.interactor.ResetCategoryFlags(preferences, repository),
+                    kotlinx.coroutines.sync.Mutex(),
+                ),
             )
             model.setCategories(listOf(Category(id = 7L, name = "Action", order = 0L, flags = 0L)))
 
@@ -921,7 +926,9 @@ class LibraryScreenModelTest {
         val mangaRepository = FakeMangaRepository()
         mangaRepository.seed(sampleManga(id = 1L).copy(favorite = true))
         mangaRepository.seed(sampleManga(id = 2L).copy(favorite = true))
-        val model = LibraryScreenModel(updateManga = UpdateManga(mangaRepository))
+        val model = LibraryScreenModel(updateManga = UpdateManga(mangaRepository)).apply {
+            setAllItems(listOf(1L, 2L).map { sampleLibraryManga(requireNotNull(mangaRepository.get(it))) })
+        }
 
         model.removeFromLibrary(listOf(1L, 2L))
 
@@ -933,20 +940,28 @@ class LibraryScreenModelTest {
     @Test
     fun `removeFromLibrary counts a partial item failure only once`() = runTest {
         val mangaRepository = FakeMangaRepository()
-        val manga = sampleManga(id = 3L).copy(favorite = true)
+        val manga = sampleManga(id = 3L, source = 7L).copy(favorite = true)
         mangaRepository.seed(manga)
         var downloadsDeleted = false
         val model = LibraryScreenModel(
             updateManga = UpdateManga(mangaRepository),
             deleteCustomCover = { false },
+            captureRemovalFiles = {
+                LibraryRemovalFiles(
+                    mutableSetOf(tempDir.resolve("original-download").toFile()),
+                    mutableListOf(),
+                    emptyMap(),
+                )
+            },
             deleteMangaDownloads = { downloadsDeleted = true },
         ).apply { setAllItems(listOf(sampleLibraryManga(manga))) }
 
         model.removeFromLibrary(listOf(manga.id), deleteDownloads = true)
 
-        assertTrue(downloadsDeleted)
+        assertFalse(downloadsDeleted, "Cover refusal must preserve the remaining original download")
         assertEquals(
-            MR.strings.desktop_ui_items_updated_failed.localized(java.util.Locale.getDefault(), 0, 1),
+            MR.strings.desktop_ui_items_updated_failed.localized(java.util.Locale.getDefault(), 0, 1) + "\n" +
+                MR.strings.desktop_chapter_batch_result.localized(java.util.Locale.getDefault(), 0, 0, 1),
             model.state.value.operationFeedback,
         )
     }

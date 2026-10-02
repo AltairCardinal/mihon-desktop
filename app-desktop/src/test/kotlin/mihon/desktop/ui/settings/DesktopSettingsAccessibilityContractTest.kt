@@ -94,7 +94,22 @@ class DesktopSettingsAccessibilityContractTest {
             val light = semanticBranch(scene, MR.strings.theme_light.localized(Locale.US), Role.RadioButton)
             assertEquals(1, flatten(light).count { it.config.contains(SemanticsActions.OnClick) })
             assertTrue(light.config[SemanticsProperties.Selected])
-            assertEquals(MR.strings.selected.localized(Locale.US), light.config[SemanticsProperties.StateDescription])
+            assertFalse(
+                nodes(scene, true).any {
+                    MR.strings.pref_dark_theme_pure_black.localized(Locale.US) in subtreeText(it)
+                },
+            )
+            click(scene, MR.strings.theme_dark.localized(Locale.US))
+            repeat(5) {
+                scene.render()
+                yield()
+            }
+            val dark = semanticBranch(scene, MR.strings.theme_dark.localized(Locale.US), Role.RadioButton)
+            assertTrue(dark.config[SemanticsProperties.Selected])
+            assertFalse(
+                semanticBranch(scene, MR.strings.theme_light.localized(Locale.US), Role.RadioButton)
+                    .config[SemanticsProperties.Selected],
+            )
 
             val amoled = semanticBranch(
                 scene,
@@ -102,10 +117,10 @@ class DesktopSettingsAccessibilityContractTest {
                 Role.Switch,
             )
             assertEquals(ToggleableState.Off, amoled.config[SemanticsProperties.ToggleableState])
-            assertTrue(amoled.config.contains(SemanticsProperties.Disabled))
+            assertFalse(amoled.config.contains(SemanticsProperties.Disabled))
             assertEquals(MR.strings.off.localized(Locale.US), amoled.config[SemanticsProperties.StateDescription])
             assertEquals(1, flatten(amoled).count { it.config.contains(SemanticsActions.OnClick) })
-            assertEquals(1, nodes(scene, true).count { it.config.contains(SemanticsActions.SetProgress) })
+            assertEquals(0, nodes(scene, true).count { it.config.contains(SemanticsActions.SetProgress) })
         }
     }
 
@@ -123,7 +138,9 @@ class DesktopSettingsAccessibilityContractTest {
         withScene(GeneralSettingsScreen(), preferences, network, height = 2_000) { scene ->
             click(scene, MR.strings.desktop_network_test.localized(Locale.US))
             withTimeout(5_000) {
-                while (MR.strings.desktop_network_testing.localized(Locale.US) !in nodes(scene, true).flatMap(::subtreeText)) {
+                while (MR.strings.desktop_network_testing.localized(Locale.US) !in
+                    nodes(scene, true).flatMap(::subtreeText)
+                ) {
                     scene.render()
                     yield()
                 }
@@ -164,7 +181,8 @@ class DesktopSettingsAccessibilityContractTest {
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns preferences
             every { localeAdapter } returns DesktopLocaleAdapter(preferences.appLanguage)
-            every { libraryPreferences } returns tachiyomi.domain.library.service.LibraryPreferences(InMemoryPreferenceStore())
+            every { libraryPreferences } returns
+                tachiyomi.domain.library.service.LibraryPreferences(InMemoryPreferenceStore())
             every { downloadManager } returns downloads
             every { downloadQueuePort } returns downloads
             every { networkHelper } returns network
@@ -203,7 +221,13 @@ class DesktopSettingsAccessibilityContractTest {
     }
 
     private fun subtreeText(node: SemanticsNode): List<String> = flatten(node).flatMap {
-        if (it.config.contains(SemanticsProperties.Text)) it.config[SemanticsProperties.Text].map { text -> text.text } else emptyList()
+        if (it.config.contains(SemanticsProperties.Text)) {
+            it.config[SemanticsProperties.Text].map { text ->
+                text.text
+            }
+        } else {
+            emptyList()
+        }
     }
 
     private fun nodes(scene: ImageComposeScene, unmerged: Boolean) =

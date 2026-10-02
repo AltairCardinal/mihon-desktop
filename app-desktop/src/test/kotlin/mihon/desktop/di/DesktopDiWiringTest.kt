@@ -199,6 +199,56 @@ import java.util.zip.ZipOutputStream
 @Isolated
 class DesktopDiWiringTest {
     @Test
+    fun `cancelled DI owner releases a suspended category snapshot before recovery or producers`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var created: DesktopTestDIContext? = null
+        val shareCloses = java.util.concurrent.atomic.AtomicInteger()
+        val initializing = async(Dispatchers.IO) {
+            created = initDesktopDIForTest(
+                tempDir,
+                isolatedDesktopPreferenceStore(),
+                startDownloadWorker = false,
+                nativeSharePort = object : DesktopNativeSharePort {
+                    override fun share(content: mihon.desktop.platform.DesktopNativeShareContent) =
+                        mihon.desktop.platform.DesktopNativeShareOutcome.Unavailable
+                    override fun close() {
+                        shareCloses.incrementAndGet()
+                    }
+                },
+                categoryRepositoryOverride = { actual ->
+                    object : tachiyomi.domain.category.repository.CategoryRepository by actual {
+                        override suspend fun getAll(): List<tachiyomi.domain.category.model.Category> {
+                            entered.complete(Unit)
+                            release.await()
+                            return actual.getAll()
+                        }
+                    }
+                },
+            )
+        }
+        try {
+            withTimeout(5_000) { entered.await() }
+            initializing.cancel()
+            val stopped = kotlinx.coroutines.withTimeoutOrNull(500) {
+                initializing.join()
+                true
+            }
+            assertTrue(stopped == true, "Owner cancellation must release the real pending SQL snapshot")
+            assertTrue(created == null, "Cancelled initialization cannot publish a started runtime")
+            assertEquals(1, shareCloses.get(), "The already created native share port belongs to the cancelled owner")
+        } finally {
+            release.complete(Unit)
+            withContext(NonCancellable) {
+                initializing.join()
+                created?.closeAndJoin()
+            }
+        }
+    }
+
+    @Test
     fun `desktop DI applies persisted proxy to shared production client`(@TempDir tempDir: File) = runBlocking {
         val store = isolatedDesktopPreferenceStore()
         DesktopAppPreferences(store).apply {
@@ -870,7 +920,8 @@ class DesktopDiWiringTest {
         val runtime = Injekt.get<DesktopAppRuntime>()
         try {
             runtime.start()
-            updateStarted.await()
+            Injekt.get<LibraryUpdateScheduler>().runNow()
+            withTimeout(5_000) { updateStarted.await() }
             assertNotNull(taskScheduler.snapshot(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK.id))
 
             val closing = async { runtime.closeAndJoin() }
@@ -924,7 +975,8 @@ class DesktopDiWiringTest {
         var closing: kotlinx.coroutines.Deferred<Unit>? = null
         try {
             Injekt.get<DesktopAppRuntime>().start()
-            updateStarted.await()
+            Injekt.get<LibraryUpdateScheduler>().runNow()
+            withTimeout(5_000) { updateStarted.await() }
 
             val closeJob = async { context.closeAndJoin() }
             closing = closeJob
@@ -1070,111 +1122,73 @@ class DesktopDiWiringTest {
 
     @Test
     fun `reinitializing test DI replaces every binding and scheduler context`(@TempDir tempDir: File) = runBlocking {
-        var firstManga = Manga.create().copy(source = 9, url = "/first", title = "First manga", favorite = true)
-        val firstExcludedId = 102L
-        val firstKeptId = 103L
-        val firstStore = DesktopPreferenceStore(
-            Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}"),
-        ).also {
-            val downloadPreferences = DownloadPreferences(it)
-            downloadPreferences.downloadNewChapters().set(true)
-            downloadPreferences.downloadNewUnreadChaptersOnly().set(true)
+        fun directorySource(sourceId: Long, stem: String): eu.kanade.tachiyomi.source.CatalogueSource =
+            object : eu.kanade.tachiyomi.source.CatalogueSource by
+            mihon.desktop.source.FakeSource(sourceId, "en", "$stem source") {
+                override suspend fun getMangaUpdate(
+                    manga: eu.kanade.tachiyomi.source.model.SManga,
+                    chapters: List<eu.kanade.tachiyomi.source.model.SChapter>,
+                    fetchDetails: Boolean,
+                    fetchChapters: Boolean,
+                ) = eu.kanade.tachiyomi.source.model.SMangaUpdate(manga, getChapterList(manga))
+
+                override suspend fun getChapterList(manga: eu.kanade.tachiyomi.source.model.SManga) =
+                    listOf("read", "kept").mapIndexed { index, suffix ->
+                        eu.kanade.tachiyomi.source.model.SChapter.create().apply {
+                            url = "/$stem-$suffix"
+                            name = "$stem $suffix"
+                            chapter_number = (index + 1).toFloat()
+                        }
+                    }
+            }
+        fun preferences() = isolatedDesktopPreferenceStore().also {
+            DownloadPreferences(it).apply {
+                downloadNewChapters().set(true)
+                downloadNewUnreadChaptersOnly().set(true)
+            }
         }
-        val firstContext = initDesktopDIForTest(
-            tempDir.resolve("first"),
-            firstStore,
-            libraryProvider = { listOf(LibraryManga(firstManga, emptyList(), 0, 0, 0, 0, 0, 0)) },
-            updateManga = { manga ->
-                LibraryUpdateChecker.UpdateResult(
-                    2,
-                    listOf(
-                        Chapter.create().copy(
-                            id = firstExcludedId,
-                            mangaId = manga.id,
-                            name = "First excluded",
-                            url = "/102",
-                            chapterNumber = 1.0,
-                        ),
-                        Chapter.create().copy(
-                            id = firstKeptId,
-                            mangaId = manga.id,
-                            name = "First kept",
-                            url = "/103",
-                            chapterNumber = 2.0,
-                        ),
-                    ),
-                )
-            },
-            startDownloadWorker = false,
-        )
-        try {
-            val firstHandler = firstContext.handler
-            firstManga = Injekt.get<MangaRepository>().insertNetworkManga(listOf(firstManga)).single()
+        suspend fun seed(stem: String, sourceId: Long): Manga {
+            val manga = Injekt.get<MangaRepository>().insertNetworkManga(
+                listOf(Manga.create().copy(source = sourceId, url = "/$stem", title = "$stem manga", favorite = true)),
+            ).single()
             Injekt.get<ChapterRepository>().addAll(
                 listOf(
                     Chapter.create().copy(
-                        mangaId = firstManga.id,
-                        name = "First already read",
-                        url = "/first-read",
+                        mangaId = manga.id,
+                        name = "$stem read",
+                        url = "/$stem-read",
                         read = true,
                         chapterNumber = 1.0,
                     ),
                 ),
             )
+            return manga
+        }
+        val firstContext = initDesktopDIForTest(
+            tempDir.resolve("first"),
+            preferences(),
+            startDownloadWorker = false,
+            builtInSources = listOf(directorySource(9, "first")),
+        )
+        try {
+            val firstHandler = firstContext.handler
+            val firstManga = seed("first", 9)
             Injekt.get<LibraryUpdateScheduler>().runNow().join()
-
-            var secondManga = Manga.create().copy(source = 10, url = "/second", title = "Second manga", favorite = true)
-            val secondExcludedId = 202L
-            val secondKeptId = 203L
-            val secondStore = DesktopPreferenceStore(
-                Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}"),
-            ).also {
-                val downloadPreferences = DownloadPreferences(it)
-                downloadPreferences.downloadNewChapters().set(true)
-                downloadPreferences.downloadNewUnreadChaptersOnly().set(true)
-            }
+            val firstChapters = Injekt.get<ChapterRepository>().getChapterByMangaId(firstManga.id)
+            val firstKeptId = firstChapters.single { it.url == "/first-kept" }.id
+            assertTrue(firstChapters.single { it.url == "/first-read" }.read)
+            val secondStore = preferences()
             val secondContext = initDesktopDIForTest(
                 tempDir.resolve("second"),
                 secondStore,
-                libraryProvider = { listOf(LibraryManga(secondManga, emptyList(), 0, 0, 0, 0, 0, 0)) },
-                updateManga = { manga ->
-                    LibraryUpdateChecker.UpdateResult(
-                        2,
-                        listOf(
-                            Chapter.create().copy(
-                                id = secondExcludedId,
-                                mangaId = manga.id,
-                                name = "Second excluded",
-                                url = "/202",
-                                chapterNumber = 1.0,
-                            ),
-                            Chapter.create().copy(
-                                id = secondKeptId,
-                                mangaId = manga.id,
-                                name = "Second kept",
-                                url = "/203",
-                                chapterNumber = 2.0,
-                            ),
-                        ),
-                    )
-                },
                 startDownloadWorker = false,
+                builtInSources = listOf(directorySource(10, "second")),
             )
-
             try {
                 val secondHandler = secondContext.handler
-                secondManga = Injekt.get<MangaRepository>().insertNetworkManga(listOf(secondManga)).single()
-                Injekt.get<ChapterRepository>().addAll(
-                    listOf(
-                        Chapter.create().copy(
-                            mangaId = secondManga.id,
-                            name = "Second already read",
-                            url = "/second-read",
-                            read = true,
-                            chapterNumber = 1.0,
-                        ),
-                    ),
-                )
+                val secondManga = seed("second", 10)
+                assertTrue(firstHandler !== secondHandler)
+                assertTrue(firstManga !== secondManga)
                 assertSame(secondStore, Injekt.get<PreferenceStore>())
                 assertSame(secondHandler, Injekt.get<DatabaseHandler>())
                 assertNotNull(Injekt.get<DesktopAppPreferences>())
@@ -1184,13 +1198,16 @@ class DesktopDiWiringTest {
                 assertNotNull(Injekt.get<LibraryUpdateScheduler>())
                 assertNotNull(Injekt.get<CreatorDiscoveryScheduler>())
                 assertNotNull(Injekt.get<CreatorDiscoveryOutboxService>())
-
                 Injekt.get<LibraryUpdateScheduler>().runNow().join()
-
+                val secondChapters = Injekt.get<ChapterRepository>().getChapterByMangaId(secondManga.id)
+                val secondKeptId = secondChapters.single { it.url == "/second-kept" }.id
+                assertTrue(secondChapters.single { it.url == "/second-read" }.read)
                 val firstEntries = PersistentDownloadStore(firstHandler.db).entries()
                 val secondEntries = PersistentDownloadStore(secondHandler.db).entries()
                 assertEquals(listOf(firstKeptId), firstEntries.map { it.chapterId })
                 assertEquals(listOf(secondKeptId), secondEntries.map { it.chapterId })
+                assertEquals(listOf("/first-kept"), firstEntries.map { it.chapterUrl })
+                assertEquals(listOf("/second-kept"), secondEntries.map { it.chapterUrl })
             } finally {
                 secondContext.closeAndJoin()
             }
@@ -1221,7 +1238,7 @@ class DesktopDiWiringTest {
         )
         try {
             Injekt.get<LibraryUpdateScheduler>().runNow()
-            updateStarted.await()
+            withTimeout(5_000) { updateStarted.await() }
 
             val secondContext = initDesktopDIForTest(
                 tempDir.resolve("running-second"),

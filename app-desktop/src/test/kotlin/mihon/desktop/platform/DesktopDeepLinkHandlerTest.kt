@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
+import uy.kohesive.injekt.api.get
 
 class DesktopDeepLinkHandlerTest {
 
@@ -39,17 +40,31 @@ class DesktopDeepLinkHandlerTest {
     }
 
     @Test
-    fun `chapter URI persists source chapters and returns linked chapter id`() = runTest {
+    fun `chapter URI persists source chapters and returns linked chapter id`(
+        @org.junit.jupiter.api.io.TempDir root: java.io.File,
+    ) = kotlinx.coroutines.runBlocking<Unit> {
         val source = ResolvingSource(7, UriType.Chapter)
-        val fixture = fixture(source)
-
-        val target = fixture.handler.resolve(ExternalActionInput.Search("https://example.org/chapter/2"))
-
-        val chapter = assertInstanceOf(DesktopExternalActionTarget.Chapter::class.java, target)
-        assertEquals(chapter.mangaId, fixture.chapterRepository.getChapterById(chapter.chapterId)?.mangaId)
-        assertEquals("/chapter/2", fixture.chapterRepository.getChapterById(chapter.chapterId)?.url)
-        assertEquals(chapter, fixture.handler.resolve(ExternalActionInput.Search("https://example.org/chapter/2")))
-        assertEquals(1, source.chapterListCalls)
+        val context = mihon.desktop.di.initDesktopDIForTest(
+            root,
+            mihon.desktop.di.isolatedDesktopPreferenceStore(),
+            startDownloadWorker = false,
+            builtInSources = listOf(source),
+        )
+        try {
+            val handler = DesktopDeepLinkHandler(
+                FakeDesktopSourceManager(listOf(source)),
+                uy.kohesive.injekt.Injekt.get<SaveSourceMangaForDetails>(),
+            )
+            val chapters = uy.kohesive.injekt.Injekt.get<tachiyomi.domain.chapter.repository.ChapterRepository>()
+            val target = handler.resolve(ExternalActionInput.Search("https://example.org/chapter/2"))
+            val chapter = assertInstanceOf(DesktopExternalActionTarget.Chapter::class.java, target)
+            assertEquals(chapter.mangaId, chapters.getChapterById(chapter.chapterId)?.mangaId)
+            assertEquals("/chapter/2", chapters.getChapterById(chapter.chapterId)?.url)
+            assertEquals(chapter, handler.resolve(ExternalActionInput.Search("https://example.org/chapter/2")))
+            assertEquals(1, source.chapterListCalls)
+        } finally {
+            context.closeAndJoin()
+        }
     }
 
     @Test
@@ -146,7 +161,13 @@ class DesktopDeepLinkHandlerTest {
         const val REPOSITORY_URI =
             "tachiyomi://add-repo?url=https%3A%2F%2Fexample.org%2Findex.min.json"
 
-        fun manga(url: String, title: String) = SManga.create().also { it.url = url; it.title = title }
-        fun chapter(url: String, name: String) = SChapter.create().also { it.url = url; it.name = name }
+        fun manga(url: String, title: String) = SManga.create().also {
+            it.url = url
+            it.title = title
+        }
+        fun chapter(url: String, name: String) = SChapter.create().also {
+            it.url = url
+            it.name = name
+        }
     }
 }

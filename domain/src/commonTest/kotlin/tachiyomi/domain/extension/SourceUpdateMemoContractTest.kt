@@ -3,6 +3,7 @@ package tachiyomi.domain.extension
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import mihon.domain.manga.model.toDomainManga
@@ -86,7 +87,17 @@ class SourceUpdateMemoContractTest {
     }
 
     @Test
-    fun `empty chapters reach platform handling`() = kotlinx.coroutines.runBlocking<Unit> {
+    fun `empty complete remote directory is rejected without changing known chapters`() = runBlocking<Unit> {
+        var calls = 0
+        val known =
+            listOf(
+                tachiyomi.domain.chapter.model.Chapter.create().copy(
+                    id = 7,
+                    read = true,
+                    bookmark = true,
+                    lastPageRead = 8,
+                ),
+            )
         val source = object : eu.kanade.tachiyomi.source.Source {
             override val id = 42L
             override val name = "Empty"
@@ -95,16 +106,20 @@ class SourceUpdateMemoContractTest {
                 chapters: List<eu.kanade.tachiyomi.source.model.SChapter>,
                 fetchDetails: Boolean,
                 fetchChapters: Boolean,
-            ) = eu.kanade.tachiyomi.source.model.SMangaUpdate(manga, emptyList())
+            ): eu.kanade.tachiyomi.source.model.SMangaUpdate {
+                calls++
+                return eu.kanade.tachiyomi.source.model.SMangaUpdate(manga, emptyList())
+            }
         }
-        val result = tachiyomi.domain.source.service.SourceMangaUpdateService().await(
-            source,
-            Manga.create(),
-            listOf(tachiyomi.domain.chapter.model.Chapter.create()),
-            false,
-            true,
-        )
-        assertEquals(emptyList<eu.kanade.tachiyomi.source.model.SChapter>(), result.chapters)
+        val failure = runCatching {
+            tachiyomi.domain.source.service.SourceMangaUpdateService().await(source, Manga.create(), known, false, true)
+        }.exceptionOrNull()
+        assertEquals(tachiyomi.domain.chapter.model.NoChaptersException::class, failure!!::class)
+        assertEquals(1, calls)
+        assertEquals(7L, known.single().id)
+        assertEquals(true, known.single().read)
+        assertEquals(true, known.single().bookmark)
+        assertEquals(8L, known.single().lastPageRead)
     }
 
     @Test

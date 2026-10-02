@@ -13,6 +13,30 @@ When adding an operating system, first add a platform adapter with a stable unsu
 New-OS maintenance sequence: define the capability result, add the adapter and DI consumer, cover the user-facing state and failure, validate the target OS, then update the manifest scope from candidate to accepted evidence.
 
 
+## Cancelable owner initialization
+
+The synchronous single-instance election only records the elected broker. The elected
+owner then prepares DI and ingress in the calling suspend context; a forwarded process
+never initializes owner dependencies. Category snapshots, finite preference recovery,
+and prepared migration recovery finish before starting the download producer. Initial migration receives the startup category-ID snapshot while no producer has
+started. Policy recovery/retry takes a fresh snapshot inside its operation lock; the
+synchronous fixture callback is not a production cache or a blocking SQL bridge.
+
+Cancellation or failure during UI initialization cancels and joins the application scope,
+awaits its download manager, and closes the native share port already created for that
+owner. Outer DI cleanup closes the database and network resources. Once a runtime has
+been registered, the owner transaction closes and awaits it; the elected broker is also
+released so a later process can elect itself. Cleanup errors are suppressed on the
+original failure. This finite boundary does not claim recovery for failures in older
+configuration, data, extension, or domain initialization before UI preparation.
+
+Category sort commands and their existing SQL/preference compensation live in
+`DesktopCategorySortSettings`, using shared `SetSortModeForCategory`. The UI consumes
+that adapter and the existing category flow; it does not access a category repository or
+perform a new unguarded read after the command. Compensation preserves later non-sort
+flags and restores only the attempted sort bits and the captured preference values.
+
+
 ## Automatic library-update device conditions
 
 `DesktopDeviceConditions` is one DI-owned platform port shared by the library scheduler,
@@ -91,3 +115,21 @@ gesture state, HTTP client, or task registry is introduced.
 Offscreen Compose/AWT and SQL/HTTP tests establish wiring and input contracts. Physical
 mouse, touchpad, natural scrolling, and packaged Windows DPI acceptance remain the
 release matrix; synthetic precise AWT input is not a touchpad hardware claim.
+
+
+## Production coroutine Main dispatcher
+
+Desktop excludes `kotlinx-coroutines-android` at its Gradle configuration boundary and
+uses `kotlinx-coroutines-swing` for `Dispatchers.Main` and Voyager screen-model scopes.
+The shared domain coroutine bundle still serves Android; its transitive Android Main
+factory must not enter the Desktop application. That factory has higher priority than
+Swing and cannot initialize against Desktop extension compatibility `Handler`/`Looper`
+stubs. Those stubs remain extension adapters, not an Android UI event loop.
+
+`DesktopMainDispatcherRuntimeTest` forks a clean JVM with the actual main compilation
+runtime classpath and only its probe class bytes. It excludes the test dispatcher,
+checks the Swing EDT, and runs real DI/factory category sorting through Voyager to
+persisted shared preferences. It does not call `Dispatchers.setMain`. Changes to
+runtime dependencies must preserve this contract and regenerate packaged dependency
+notices; a cached AboutLibraries export is not evidence for a changed dependency set.
+Official packaged runtime acceptance remains a separate release check on each platform.

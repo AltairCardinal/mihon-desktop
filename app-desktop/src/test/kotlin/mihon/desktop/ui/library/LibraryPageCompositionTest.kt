@@ -3,46 +3,44 @@ package mihon.desktop.ui.library
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerButtons
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.text.AnnotatedString
-import io.mockk.every
-import io.mockk.mockk
-import java.nio.file.Files
-import java.util.Locale
-import java.util.UUID
-import java.util.prefs.Preferences
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.yield
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withContext
+import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
-import cafe.adriel.voyager.core.screen.Screen
-import mihon.desktop.domain.SortMode
-import mihon.desktop.DesktopUiDependencies
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 import mihon.desktop.BuildInfo
+import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.domain.DesktopNotification
+import mihon.desktop.domain.DesktopNotificationService
+import mihon.desktop.domain.SortMode
 import mihon.desktop.domain.fakes.FakeCategoryRepository
-import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeHistoryRepository
+import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.source.FakeSource
@@ -51,8 +49,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
-import tachiyomi.core.common.preference.TriState
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
@@ -62,7 +60,6 @@ import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.library.interactor.LibraryFilter
-import tachiyomi.domain.library.model.LibraryDisplayMode as SharedLibraryDisplayMode
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetLibraryManga
@@ -73,9 +70,12 @@ import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackerSessionProvider
 import tachiyomi.i18n.MR
+import java.nio.file.Files
 import java.nio.file.Path
-import mihon.desktop.domain.DesktopNotification
-import mihon.desktop.domain.DesktopNotificationService
+import java.util.Locale
+import java.util.UUID
+import java.util.prefs.Preferences
+import tachiyomi.domain.library.model.LibraryDisplayMode as SharedLibraryDisplayMode
 
 class LibraryPageCompositionTest {
     @TempDir
@@ -116,7 +116,7 @@ class LibraryPageCompositionTest {
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { notificationService } returns notifications
             every { syncPanel } returns null
-                        every { libraryPreferences } returns null
+            every { libraryPreferences } returns null
         }
         val scene = ImageComposeScene(1_200, 900, coroutineContext = coroutineContext) {}
         scene.setContent {
@@ -132,14 +132,21 @@ class LibraryPageCompositionTest {
                 it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnLongClick) &&
                     semanticLabels(it).contains(manga.title)
             }
-            assertTrue(requireNotNull(item.config[androidx.compose.ui.semantics.SemanticsActions.OnLongClick].action).invoke())
+            assertTrue(
+                requireNotNull(item.config[androidx.compose.ui.semantics.SemanticsActions.OnLongClick].action).invoke(),
+            )
             render(scene)
             click(scene, MR.strings.action_mark_as_read.localized())
             entered.await()
 
             scene.close()
             release.complete(Unit)
-            assertTrue(withTimeoutOrNull(1_000) { finished.await(); true } == true)
+            assertTrue(
+                withTimeoutOrNull(1_000) {
+                    finished.await()
+                    true
+                } == true,
+            )
             repeat(3) { yield() }
 
             assertTrue(backing.getChapterById(901L)?.read == true)
@@ -213,6 +220,9 @@ class LibraryPageCompositionTest {
             ),
             setChapterReadStatus = SetChapterReadStatus(getChapters, UpdateChapter(chapters)),
             enqueueDownload = enqueued::add,
+            sourceManager = mihon.desktop.source.FakeDesktopSourceManager(
+                listOf(mihon.desktop.source.FakeHttpSource(7, "en", "Context HTTP source")),
+            ),
         )
         val scene = rootScene(model)
         try {
@@ -257,16 +267,28 @@ class LibraryPageCompositionTest {
             render(scene)
             click(scene, MR.strings.action_search.localized())
             render(scene)
-            val field = nodes(scene).single { it.config.contains(androidx.compose.ui.semantics.SemanticsActions.SetText) }
+            val field = nodes(scene).single {
+                it.config.contains(androidx.compose.ui.semantics.SemanticsActions.SetText)
+            }
             assertTrue(field.config[androidx.compose.ui.semantics.SemanticsProperties.Focused])
-            assertTrue(requireNotNull(field.config[androidx.compose.ui.semantics.SemanticsActions.SetText].action).invoke(AnnotatedString("Visible")))
+            assertTrue(
+                requireNotNull(
+                    field.config[androidx.compose.ui.semantics.SemanticsActions.SetText].action,
+                ).invoke(AnnotatedString("Visible")),
+            )
             render(scene)
             click(scene, MR.strings.action_reset.localized())
             render(scene)
             assertTrue(nodes(scene).any { it.config.contains(androidx.compose.ui.semantics.SemanticsActions.SetText) })
             assertTrue(!semanticLabels(scene).contains(MR.strings.action_global_search.localized()))
-            val clearedField = nodes(scene).single { it.config.contains(androidx.compose.ui.semantics.SemanticsActions.SetText) }
-            assertTrue(requireNotNull(clearedField.config[androidx.compose.ui.semantics.SemanticsActions.SetText].action).invoke(AnnotatedString("Visible")))
+            val clearedField = nodes(scene).single {
+                it.config.contains(androidx.compose.ui.semantics.SemanticsActions.SetText)
+            }
+            assertTrue(
+                requireNotNull(
+                    clearedField.config[androidx.compose.ui.semantics.SemanticsActions.SetText].action,
+                ).invoke(AnnotatedString("Visible")),
+            )
             render(scene)
             click(scene, MR.strings.action_global_search.localized())
             render(scene)
@@ -312,12 +334,21 @@ class LibraryPageCompositionTest {
             render(scene)
             click(scene, MR.strings.action_search.localized())
             render(scene)
-            val field = nodes(scene).single { it.config.contains(androidx.compose.ui.semantics.SemanticsActions.SetText) }
-            assertTrue(requireNotNull(field.config[androidx.compose.ui.semantics.SemanticsActions.SetText].action).invoke(AnnotatedString("Escape")))
-            val item = nodes(scene).first {
-                it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnLongClick) && semanticLabels(it).contains(title)
+            val field = nodes(scene).single {
+                it.config.contains(androidx.compose.ui.semantics.SemanticsActions.SetText)
             }
-            assertTrue(requireNotNull(item.config[androidx.compose.ui.semantics.SemanticsActions.OnLongClick].action).invoke())
+            assertTrue(
+                requireNotNull(
+                    field.config[androidx.compose.ui.semantics.SemanticsActions.SetText].action,
+                ).invoke(AnnotatedString("Escape")),
+            )
+            val item = nodes(scene).first {
+                it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnLongClick) &&
+                    semanticLabels(it).contains(title)
+            }
+            assertTrue(
+                requireNotNull(item.config[androidx.compose.ui.semantics.SemanticsActions.OnLongClick].action).invoke(),
+            )
             render(scene)
 
             scene.sendKeyEvent(composeKeyEvent(Key.Escape, KeyEventType.KeyDown))
@@ -345,7 +376,9 @@ class LibraryPageCompositionTest {
                 it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnLongClick) &&
                     semanticLabels(it).contains(title)
             }
-            assertTrue(requireNotNull(item.config[androidx.compose.ui.semantics.SemanticsActions.OnLongClick].action).invoke())
+            assertTrue(
+                requireNotNull(item.config[androidx.compose.ui.semantics.SemanticsActions.OnLongClick].action).invoke(),
+            )
             render(scene)
 
             assertEquals(1, selectionCount(scene))
@@ -364,9 +397,12 @@ class LibraryPageCompositionTest {
         try {
             render(scene)
             val item = nodes(scene).first {
-                it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnLongClick) && semanticLabels(it).contains(title)
+                it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnLongClick) &&
+                    semanticLabels(it).contains(title)
             }
-            assertTrue(requireNotNull(item.config[androidx.compose.ui.semantics.SemanticsActions.OnLongClick].action).invoke())
+            assertTrue(
+                requireNotNull(item.config[androidx.compose.ui.semantics.SemanticsActions.OnLongClick].action).invoke(),
+            )
             render(scene)
 
             val labels = semanticLabels(scene)
@@ -443,7 +479,9 @@ class LibraryPageCompositionTest {
                 "tracking" -> preferences.filterTracking(2).set(TriState.ENABLED_IS)
                 else -> {
                     preferences.filterIntervalCustom().set(TriState.ENABLED_IS)
-                    preferences.autoUpdateMangaRestrictions().set(setOf(LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD))
+                    preferences.autoUpdateMangaRestrictions().set(
+                        setOf(LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD),
+                    )
                 }
             }
             val model = LibraryScreenModel(
@@ -455,7 +493,10 @@ class LibraryPageCompositionTest {
             val scene = rootScene(model)
             try {
                 render(scene)
-                assertTrue(semanticLabels(scene).contains(MR.strings.error_no_match.localized()), "$kind is an effective local condition")
+                assertTrue(
+                    semanticLabels(scene).contains(MR.strings.error_no_match.localized()),
+                    "$kind is an effective local condition",
+                )
                 assertTrue(!semanticLabels(scene).contains(MR.strings.getting_started_guide.localized()))
                 when (kind) {
                     "unread" -> preferences.filterUnread().set(TriState.DISABLED)
@@ -464,7 +505,10 @@ class LibraryPageCompositionTest {
                     else -> preferences.autoUpdateMangaRestrictions().set(emptySet())
                 }
                 render(scene)
-                assertTrue(semanticLabels(scene).contains(MR.strings.getting_started_guide.localized()), "inactive $kind must permit the genuine empty-library guide")
+                assertTrue(
+                    semanticLabels(scene).contains(MR.strings.getting_started_guide.localized()),
+                    "inactive $kind must permit the genuine empty-library guide",
+                )
                 assertTrue(model.state.value.hasActiveFilters, "global downloaded-only remains effective")
                 if (kind == "tracking") assertEquals(TriState.ENABLED_IS, preferences.filterTracking(2).get())
                 if (kind == "interval") assertEquals(TriState.ENABLED_IS, preferences.filterIntervalCustom().get())
@@ -621,15 +665,24 @@ class LibraryPageCompositionTest {
             )
             val downloadedNode = nodes(scene).first {
                 it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Role) &&
-                    it.config[androidx.compose.ui.semantics.SemanticsProperties.Role] == androidx.compose.ui.semantics.Role.Checkbox &&
+                    it.config[androidx.compose.ui.semantics.SemanticsProperties.Role] ==
+                    androidx.compose.ui.semantics.Role.Checkbox &&
                     semanticLabels(it).contains(MR.strings.label_downloaded.localized())
             }
             assertTrue(downloadedNode.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled))
-            assertEquals(MR.strings.desktop_ui_filter_include.localized(), downloadedNode.config[androidx.compose.ui.semantics.SemanticsProperties.StateDescription])
-            assertTrue(labels.none { it.startsWith(MR.strings.desktop_ui_global_downloaded_only.localized(Locale.getDefault(), "")) })
+            assertEquals(
+                MR.strings.desktop_ui_filter_include.localized(),
+                downloadedNode.config[androidx.compose.ui.semantics.SemanticsProperties.StateDescription],
+            )
+            assertTrue(
+                labels.none {
+                    it.startsWith(MR.strings.desktop_ui_global_downloaded_only.localized(Locale.getDefault(), ""))
+                },
+            )
             val interval = nodes(scene).first {
                 it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Role) &&
-                    it.config[androidx.compose.ui.semantics.SemanticsProperties.Role] == androidx.compose.ui.semantics.Role.Checkbox &&
+                    it.config[androidx.compose.ui.semantics.SemanticsProperties.Role] ==
+                    androidx.compose.ui.semantics.Role.Checkbox &&
                     semanticLabels(it).contains(MR.strings.desktop_ui_custom_interval.localized())
             }
             assertTrue(interval.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled))
@@ -961,8 +1014,9 @@ class LibraryPageCompositionTest {
         } else {
             emptyList()
         }
-        val descriptions = if (node.config.contains(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription)) {
-            node.config[androidx.compose.ui.semantics.SemanticsProperties.ContentDescription]
+        val contentDescription = androidx.compose.ui.semantics.SemanticsProperties.ContentDescription
+        val descriptions = if (node.config.contains(contentDescription)) {
+            node.config[contentDescription]
         } else {
             emptyList()
         }
@@ -985,14 +1039,16 @@ class LibraryPageCompositionTest {
     @OptIn(ExperimentalComposeUiApi::class)
     private fun selectionCount(scene: ImageComposeScene): Int {
         val bar = nodes(scene).single {
-            it.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.TestTag) { "" } == "library-selection-top-bar"
+            it.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.TestTag) { "" } ==
+                "library-selection-top-bar"
         }
         return flatten(bar).filter { it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Text) }
             .flatMap(::semanticLabels).single().toInt()
     }
 
-    private fun flatten(node: androidx.compose.ui.semantics.SemanticsNode): List<androidx.compose.ui.semantics.SemanticsNode> =
-        listOf(node) + node.children.flatMap(::flatten)
+    private fun flatten(
+        node: androidx.compose.ui.semantics.SemanticsNode,
+    ): List<androidx.compose.ui.semantics.SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
 
     private fun semanticLabels(node: androidx.compose.ui.semantics.SemanticsNode): List<String> {
         val text = if (node.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Text)) {
@@ -1000,8 +1056,9 @@ class LibraryPageCompositionTest {
         } else {
             emptyList()
         }
-        val descriptions = if (node.config.contains(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription)) {
-            node.config[androidx.compose.ui.semantics.SemanticsProperties.ContentDescription]
+        val contentDescription = androidx.compose.ui.semantics.SemanticsProperties.ContentDescription
+        val descriptions = if (node.config.contains(contentDescription)) {
+            node.config[contentDescription]
         } else {
             emptyList()
         }
@@ -1049,8 +1106,10 @@ class LibraryPageCompositionTest {
             },
         )
         val model = LibraryScreenModel(
-            getLibraryManga = GetLibraryManga(mangas), getCategories = GetCategories(FakeCategoryRepository()),
-            getChaptersByMangaId = GetChaptersByMangaId(chapters), libraryPreferences = preferences,
+            getLibraryManga = GetLibraryManga(mangas),
+            getCategories = GetCategories(FakeCategoryRepository()),
+            getChaptersByMangaId = GetChaptersByMangaId(chapters),
+            libraryPreferences = preferences,
             readingProgress = progress,
         )
         var destination: Screen? = null
@@ -1070,8 +1129,12 @@ class LibraryPageCompositionTest {
                     }
                 }
             }
-            for (mode in listOf(SharedLibraryDisplayMode.CompactGrid, SharedLibraryDisplayMode.ComfortableGrid,
-                SharedLibraryDisplayMode.List, SharedLibraryDisplayMode.CoverOnlyGrid)) {
+            for (mode in listOf(
+                SharedLibraryDisplayMode.CompactGrid,
+                SharedLibraryDisplayMode.ComfortableGrid,
+                SharedLibraryDisplayMode.List,
+                SharedLibraryDisplayMode.CoverOnlyGrid,
+            )) {
                 preferences.displayMode().set(mode)
                 render(scene)
                 assertTrue(
@@ -1109,12 +1172,18 @@ class LibraryPageCompositionTest {
             object : tachiyomi.domain.reader.repository.ReadingProgressRepository {
                 override suspend fun record(event: tachiyomi.domain.reader.model.ReadingProgressEvent) = Unit
                 override suspend fun resumePosition(mangaId: Long) =
-                    tachiyomi.domain.reader.model.ReadingResumePosition(8201, 2, tachiyomi.domain.reader.model.ReadingSyncSnapshot())
+                    tachiyomi.domain.reader.model.ReadingResumePosition(
+                        8201,
+                        2,
+                        tachiyomi.domain.reader.model.ReadingSyncSnapshot(),
+                    )
             },
         )
         val model = LibraryScreenModel(
-            getLibraryManga = GetLibraryManga(mangas), getCategories = GetCategories(FakeCategoryRepository()),
-            getChaptersByMangaId = GetChaptersByMangaId(chapters), libraryPreferences = preferences,
+            getLibraryManga = GetLibraryManga(mangas),
+            getCategories = GetCategories(FakeCategoryRepository()),
+            getChaptersByMangaId = GetChaptersByMangaId(chapters),
+            libraryPreferences = preferences,
             readingProgress = progress,
         )
         val scene = ImageComposeScene(1200, 900, coroutineContext = coroutineContext) {}
@@ -1130,8 +1199,12 @@ class LibraryPageCompositionTest {
                     }
                 }
             }
-            for (mode in listOf(SharedLibraryDisplayMode.CompactGrid, SharedLibraryDisplayMode.ComfortableGrid,
-                SharedLibraryDisplayMode.List, SharedLibraryDisplayMode.CoverOnlyGrid)) {
+            for (mode in listOf(
+                SharedLibraryDisplayMode.CompactGrid,
+                SharedLibraryDisplayMode.ComfortableGrid,
+                SharedLibraryDisplayMode.List,
+                SharedLibraryDisplayMode.CoverOnlyGrid,
+            )) {
                 preferences.displayMode().set(mode)
                 render(scene)
                 assertTrue(
@@ -1157,9 +1230,10 @@ class LibraryPageCompositionTest {
         val eventType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
             .getMethod(if (type == KeyEventType.KeyDown) "access\$getKeyDown\$cp" else "access\$getKeyUp\$cp")
             .invoke(null)
-        val factory = events.declaredMethods.single { it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default") }
+        val factory = events.declaredMethods.single {
+            it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default")
+        }
         val native = factory.invoke(null, key.keyCode, eventType, 0, false, false, false, false, null)
         return androidx.compose.ui.input.key.KeyEvent(native)
     }
-
 }

@@ -222,6 +222,14 @@ class ExtensionRepoRepositoryPersistenceTest {
         // v18 already contained the full author archive. Keep that history while removing only
         // additions from later migrations, so this test still exercises the complete upgrade.
         Database.Schema.create(driver)
+        // The simulated historical schema must not retain migration 40 objects from the latest create.
+        listOf("insert_guard", "delete_guard", "insert", "delete").forEach { suffix ->
+            driver.execute(null, "DROP TRIGGER chapter_id_floor_$suffix", 0)
+        }
+        listOf("chapter_url_aliases", "chapter_directory_phases", "chapter_id_floor").forEach { table ->
+            driver.execute(null, "DROP TABLE $table", 0)
+        }
+
         driver.execute(null, "DROP TRIGGER IF EXISTS author_archive_source_work_first_seen_defaults", 0)
         listOf(
             "author_archive_source_date_quality_samples",

@@ -122,9 +122,35 @@ class MangaChapterOptionsInteractionTest {
             preferences.setChapterSettingsDefault(manga.copy(chapterFlags = 0L))
             assertEquals(override, service.awaitListed(listed, 42L).chapterFlags)
             assertEquals(override, service.awaitSearchResults(listOf(listed), 42L).single().chapterFlags)
-            assertEquals(override, service.await(listed, 42L, emptyList()).chapterFlags)
+            assertEquals(
+                override,
+                service.await(
+                    listed,
+                    42L,
+                    listOf(
+                        eu.kanade.tachiyomi.source.model.SChapter.create().apply {
+                            url = "/retained-default-chapter"
+                            name = "Chapter 1"
+                            chapter_number = 1f
+                        },
+                    ),
+                ).chapterFlags,
+            )
             repository.update(MangaUpdate(id = saved.id, favorite = true))
-            assertEquals(override, service.await(listed, 42L, emptyList()).chapterFlags)
+            assertEquals(
+                override,
+                service.await(
+                    listed,
+                    42L,
+                    listOf(
+                        eu.kanade.tachiyomi.source.model.SChapter.create().apply {
+                            url = "/retained-default-chapter"
+                            name = "Chapter 1"
+                            chapter_number = 1f
+                        },
+                    ),
+                ).chapterFlags,
+            )
             preferences.setChapterSettingsDefault(manga.copy(chapterFlags = desired))
             val search = eu.kanade.tachiyomi.source.model.SManga.create().apply {
                 url = "/new-default-search"
@@ -137,7 +163,20 @@ class MangaChapterOptionsInteractionTest {
                 title =
                     "Refresh defaults"
             }
-            assertEquals(desired, service.await(refreshed, 42L, emptyList()).chapterFlags)
+            assertEquals(
+                desired,
+                service.await(
+                    refreshed,
+                    42L,
+                    listOf(
+                        eu.kanade.tachiyomi.source.model.SChapter.create().apply {
+                            url = "/new-default-chapter"
+                            name = "Chapter 1"
+                            chapter_number = 1f
+                        },
+                    ),
+                ).chapterFlags,
+            )
             assertEquals(manga.chapterFlags, repository.getMangaById(manga.id).chapterFlags)
         }
     }
@@ -264,10 +303,11 @@ class MangaChapterOptionsInteractionTest {
     fun `native chapter panel traps both tab directions and Escape returns one layer to real triggers`(
         @TempDir root: File,
     ) = runBlocking {
-        withDetail(root) { scene, model, manga, _ ->
+        withDetail(root) { scene, model, manga, chapters ->
             val backgroundAction = nodes(scene).first {
                 it.config.contains(SemanticsActions.OnClick) &&
-                    MR.strings.desktop_ui_mark_all_read.localized() in labels(it)
+                    it.config.contains(SemanticsProperties.Selected) &&
+                    chapters.first().name in labels(it)
             }.boundsInRoot.center
             click(scene, MR.strings.desktop_ui_filter_chapters.localized())
             render(scene)
@@ -315,8 +355,10 @@ class MangaChapterOptionsInteractionTest {
             scene.pointerClick(backgroundAction)
             render(scene)
             assertFalse(
-                model.state.value.markAllReadConfirm,
-                "the modal consumes a pointer aimed at a real background action",
+                nodes(scene).single {
+                    it.config.contains(SemanticsProperties.Selected) && chapters.first().name in labels(it)
+                }.config[SemanticsProperties.Selected],
+                "the modal must not select the actual chapter row behind it",
             )
             assertEquals(1, scene.navigator.size)
             if (!model.state.value.showFilterMenu) {

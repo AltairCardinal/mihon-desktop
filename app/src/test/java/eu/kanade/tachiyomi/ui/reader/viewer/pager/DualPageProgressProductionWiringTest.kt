@@ -373,6 +373,9 @@ class DualPageProgressProductionWiringTest {
         val last = requireNotNull(awaitRenderedEvent())
         assertEquals(4, last.lastPageRead)
         assertTrue(last.isRead)
+        // The repository emits before its receipt resumes the Main-thread UI update.
+        withContext(Dispatchers.Default) { withTimeout(10_000) { progressCoordinator.awaitAccepted(1) } }
+        runCurrent()
         assertTrue(current.chapter.read)
         assertEquals(4, current.chapter.last_page_read)
         assertEquals(3, viewer.activity.viewModel.currentReaderPage?.index)

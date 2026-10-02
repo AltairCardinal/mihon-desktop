@@ -85,6 +85,7 @@ V1初稿统一写2:3，后在实现期间经源码独立复核发现Desktop `Lib
 - SOURCE：共享 AppTheme／AppThemeColorScheme／BaseColorScheme 是两端色表权威，固定身份与顺序沿上游归档。主题卡114dp、9:16、边框4dp、外圆角17dp／内13dp；卡内虚拟 Android Book 封面2:3，产品真实 Desktop 书架／详情仍7:10。选中使用匹配 RoundedFilled.CheckCircle；主题模式消费原生三段单选值，不能复制演示CSS或第二套颜色JSON。
 - PROJECT_POLICY：更多 → 设置 → 外观；窄屏进入普通子页，宽屏沿统一设置宿主双栏。只有当前页持有标题与返回。模式、卡片、语言和即时开关提交真实偏好，更新主题／语言不能重建 Voyager 导航或业务owner，不丢查询、选择、草稿、焦点及滚动。旧列数偏好保留到RI05迁移并接有效搜索入口。
 - Windows平台边界：无真实动态色provider时隐藏可用MONET卡；旧MONET原值保留，渲染安全回退DEFAULT，外观显示原因。手动LIGHT隐藏整行纯黑但保留值，SYSTEM即使当前浅色也显示，只有实际深色消费纯黑覆盖。不能新增壁纸服务或改系统外观设置。
+- 模式三段使用Material3单选分段控件，向辅助技术提供RadioButton角色和Selected状态；点击另一模式后只有该模式选中，每项仅有一个激活动作。保存失败仍由既有偏好回滚和错误反馈处理，不能通过去掉角色断言接受无语义的控件。
 - 语言目录由打包的非空moko资源派生，显示默认及自称名称排序；不永久锁死数量、不复制DEMO语言JSON。选语言留在语言普通子页，资源及日期即时刷新，存储／locale应用失败沿DesktopLocaleAdapter回滚与协调反馈。实际生成目录必须跟随资源输入变化，不能在Gradle配置阶段写入产物。
 - 平板四值沿共享TabletUiMode身份。DesktopUiDependencies持有唯一启动快照，Home／Settings／Detail通过同一窗口adapter判断资格；自动最短边阈值竖屏700dp／横屏600dp。保存只影响下次启动并明确提示手动重启，当前owner布局不变，不改变物理窗口、不kill运行任务。RI03详情仅补真实资格消费，RI08继续完成450dp／65%公式及独立滚动。
 - 日期六值沿UiPreferences，默认空值保持locale默认格式；真实章节消费所存格式与相对时间。相对时间用本地日历日：未来1–7日、今天、过去1–6日，其余绝对；关闭全部绝对。共享日差规则被Android包装和Desktop实际组件消费，跨午夜／时区／DST／闰日不用24小时除法。无上传日期不伪造今天。

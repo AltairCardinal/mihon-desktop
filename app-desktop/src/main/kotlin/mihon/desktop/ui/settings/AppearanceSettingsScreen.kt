@@ -16,11 +16,11 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MultiChoiceSegmentedButtonRow
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -53,9 +53,9 @@ import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.platform.DesktopLocaleAdapter
 import mihon.desktop.platform.DesktopLocaleApplyResult
+import mihon.desktop.settings.saveDesktopPreference
 import mihon.desktop.ui.library.categoryDialogEscape
 import tachiyomi.i18n.MR
-import mihon.desktop.settings.saveDesktopPreference
 import java.time.LocalDate
 import java.util.Locale
 
@@ -127,14 +127,14 @@ class AppearanceSettingsScreen : Screen {
             ) {
                 SectionTitle(MR.strings.pref_category_theme.localized())
                 val modes = listOf(ThemeMode.SYSTEM, ThemeMode.LIGHT, ThemeMode.DARK)
-                MultiChoiceSegmentedButtonRow(
+                SingleChoiceSegmentedButtonRow(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).height(IntrinsicSize.Min),
                 ) {
                     modes.forEachIndexed { index, value ->
                         SegmentedButton(
                             modifier = Modifier.fillMaxHeight(),
-                            checked = mode == value,
-                            onCheckedChange = { if (mode != value) save(prefs.themeMode, value) },
+                            selected = mode == value,
+                            onClick = { if (mode != value) save(prefs.themeMode, value) },
                             shape = SegmentedButtonDefaults.itemShape(index, modes.size),
                             label = {
                                 Text(
@@ -223,7 +223,6 @@ class AppearanceSettingsScreen : Screen {
                     onCheckedChange = { save(prefs.imagesInDescription, it) },
                     modifier = Modifier.desktopSettingsAnchor(MR.strings.pref_display_images_description.localized()),
                 )
-
             }
         }
         when (dialog) {
@@ -356,5 +355,7 @@ internal fun DesktopLocaleFeedbackHost(
     SnackbarHost(hostState = snackbar, modifier = modifier)
 }
 
-private fun <T> saveAppearancePreference(preference: tachiyomi.core.common.preference.Preference<T>, value: T): Boolean =
-    saveDesktopPreference(preference, value)
+private fun <T> saveAppearancePreference(
+    preference: tachiyomi.core.common.preference.Preference<T>,
+    value: T,
+): Boolean = saveDesktopPreference(preference, value)

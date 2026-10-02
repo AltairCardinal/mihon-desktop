@@ -28,10 +28,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
-import mihon.desktop.download.DownloadItem
-import mihon.desktop.download.DownloadStatus
 import mihon.desktop.domain.GetAvailableScanlators
 import mihon.desktop.domain.GetExcludedScanlators
 import mihon.desktop.domain.SaveSourceMangaForDetails
@@ -39,6 +39,8 @@ import mihon.desktop.domain.fakes.FakeCatalogueSource
 import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
+import mihon.desktop.download.DownloadItem
+import mihon.desktop.download.DownloadStatus
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.authors.AuthorDetailScreen
 import mihon.desktop.ui.reader.DesktopReaderScreen
@@ -46,14 +48,21 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.data.Database
+import tachiyomi.data.DateColumnAdapter
+import tachiyomi.data.History
+import tachiyomi.data.JvmDatabaseHandler
+import tachiyomi.data.Mangas
+import tachiyomi.data.StringListColumnAdapter
+import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.model.CreatorIdentityOption
 import tachiyomi.domain.creator.model.CreatorPortableKey
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
-import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
@@ -61,16 +70,6 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
-import tachiyomi.data.UpdateStrategyColumnAdapter
-import tachiyomi.data.StringListColumnAdapter
-import kotlinx.serialization.json.JsonObject
-import tachiyomi.data.JvmDatabaseHandler
-import tachiyomi.data.DateColumnAdapter
-import kotlinx.serialization.json.Json
-import tachiyomi.data.Database
-import tachiyomi.data.History
-import tachiyomi.data.Mangas
-
 
 @OptIn(ExperimentalComposeUiApi::class)
 class MangaDetailLibraryEntryWiringTest {
@@ -79,7 +78,9 @@ class MangaDetailLibraryEntryWiringTest {
     fun `real MangaDetailScreen chapter pointer opens the requested reader entry`() = readerEntry(false)
 
     @Test
-    fun `real MangaDetailScreen continue button opens earliest unread before old synchronized chapter`() = readerEntry(true)
+    fun `real MangaDetailScreen continue button opens earliest unread before old synchronized chapter`() = readerEntry(
+        true,
+    )
 
     private fun readerEntry(resume: Boolean) = runBlocking {
         val mangaRepository = FakeMangaRepository()
@@ -165,7 +166,9 @@ class MangaDetailLibraryEntryWiringTest {
                 // Exercise the actual pointer target in the fixed 1200 x 1200 viewport.
                 scene.render()
                 tap(scene, Offset(1120f, 1154f))
-            } else tap(scene, chapterTitle.boundsInRoot.center)
+            } else {
+                tap(scene, chapterTitle.boundsInRoot.center)
+            }
             withTimeout(5_000) {
                 while (navigator.lastItem !is DesktopReaderScreen) {
                     scene.render()
@@ -253,15 +256,15 @@ class MangaDetailLibraryEntryWiringTest {
             }
             invokeLongClick(scene, firstChapter.name)
             renderUntil(scene) {
-                checkboxStateNear(scene, firstChapter.name) == ToggleableState.On &&
-                    checkboxStateNear(scene, secondChapter.name) == ToggleableState.Off
+                selectedStateNear(scene, firstChapter.name) == true &&
+                    selectedStateNear(scene, secondChapter.name) == false
             }
 
             val secondTitle = nodes(scene).first { it.hasText(secondChapter.name) }
             tap(scene, secondTitle.boundsInRoot.center)
             renderUntil(scene) {
-                checkboxStateNear(scene, firstChapter.name) == ToggleableState.On &&
-                    checkboxStateNear(scene, secondChapter.name) == ToggleableState.On
+                selectedStateNear(scene, firstChapter.name) == true &&
+                    selectedStateNear(scene, secondChapter.name) == true
             }
             assertTrue(navigator.lastItem is MangaDetailScreen)
             assertTrue(
@@ -270,21 +273,23 @@ class MangaDetailLibraryEntryWiringTest {
                 },
             )
 
-            tap(scene, requireNotNull(checkboxNear(scene, firstChapter.name)).boundsInRoot.center)
+            tap(scene, requireNotNull(selectedRowNear(scene, firstChapter.name)).boundsInRoot.center)
             renderUntil(scene) {
-                checkboxStateNear(scene, firstChapter.name) == ToggleableState.Off &&
-                    checkboxStateNear(scene, secondChapter.name) == ToggleableState.On
+                selectedStateNear(scene, firstChapter.name) == false &&
+                    selectedStateNear(scene, secondChapter.name) == true
             }
             assertTrue(navigator.lastItem is MangaDetailScreen)
-            tap(scene, requireNotNull(checkboxNear(scene, firstChapter.name)).boundsInRoot.center)
+            tap(scene, requireNotNull(selectedRowNear(scene, firstChapter.name)).boundsInRoot.center)
             renderUntil(scene) {
-                checkboxStateNear(scene, firstChapter.name) == ToggleableState.On &&
-                    checkboxStateNear(scene, secondChapter.name) == ToggleableState.On
+                selectedStateNear(scene, firstChapter.name) == true &&
+                    selectedStateNear(scene, secondChapter.name) == true
             }
 
             invokeDescriptionClick(scene, MR.strings.desktop_ui_clear_selection.localized())
             renderUntil(scene) {
-                nodes(scene).none { node -> node.config.contains(SemanticsProperties.ToggleableState) }
+                nodes(scene).none { node ->
+                    node.hasContentDescription(MR.strings.desktop_ui_clear_selection.localized())
+                } && nodes(scene).none { it.config.getOrElse(SemanticsProperties.Selected) { false } }
             }
 
             val secondTitleAfterClear = nodes(scene).first { it.hasText(secondChapter.name) }
@@ -378,6 +383,7 @@ class MangaDetailLibraryEntryWiringTest {
                 node.config.contains(SemanticsActions.OnClick) && node.hasContentDescription(retryDescription)
             }
             assertTrue(requireNotNull(retryNode.config[SemanticsActions.OnClick].action).invoke())
+            renderUntil(scene) { retriedChapterId == chapter.id }
             assertEquals(chapter.id, retriedChapterId)
         } finally {
             scene.close()
@@ -385,40 +391,81 @@ class MangaDetailLibraryEntryWiringTest {
     }
 
     @Test
-    fun `real MangaDetailScreen automatically refreshes an initially empty chapter list`() = verifyCombinedSourceRefresh(manual = false)
+    fun `real MangaDetailScreen automatically refreshes an initially empty chapter list`() {
+        verifyCombinedSourceRefresh(manual = false)
+    }
 
     @Test
-    fun `real MangaDetailScreen refresh button uses combined Source-only update and persists memo`() = verifyCombinedSourceRefresh(manual = true)
+    fun `real MangaDetailScreen refresh button uses combined Source-only update and persists memo`() {
+        verifyCombinedSourceRefresh(manual = true)
+    }
 
     private fun verifyCombinedSourceRefresh(manual: Boolean) = runBlocking {
-        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY)
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
+        )
         Database.Schema.create(driver)
-        val database = Database(driver, historyAdapter = History.Adapter(DateColumnAdapter),
-            mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter))
+        val database = Database(
+            driver,
+            historyAdapter = History.Adapter(DateColumnAdapter),
+            mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        )
         val handler = JvmDatabaseHandler(database, driver)
-        val mangaRepository = tachiyomi.data.manga.MangaRepositoryImpl(handler, tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter)
-        val manga = mangaRepository.insertNetworkManga(listOf(Manga.create().copy(
-            id = 45L,
-            source = 42L,
-            url = "/auto-refresh",
-            title = "Auto refresh fixture",
-            initialized = true,
-        ))).single()
+        val mangaRepository = tachiyomi.data.manga.MangaRepositoryImpl(
+            handler,
+            tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter,
+        )
+        val manga = mangaRepository.insertNetworkManga(
+            listOf(
+                Manga.create().copy(
+                    id = 45L,
+                    source = 42L,
+                    url = "/auto-refresh",
+                    title = "Auto refresh fixture",
+                    initialized = true,
+                ),
+            ),
+        ).single()
         val chapterRepository = tachiyomi.data.chapter.ChapterRepositoryImpl(handler)
-        if (manual) chapterRepository.addAll(listOf(Chapter.create().copy(mangaId = manga.id, url = "/auto-refresh/chapter-1", name = "Auto-loaded chapter", read = true, bookmark = true, lastPageRead = 7)))
+        if (manual) {
+            chapterRepository.addAll(
+                listOf(
+                    Chapter.create().copy(
+                        mangaId = manga.id,
+                        url = "/auto-refresh/chapter-1",
+                        name = "Auto-loaded chapter",
+                        read = true,
+                        bookmark = true,
+                        lastPageRead = 7,
+                    ),
+                ),
+            )
+        }
         val memo = Json.parseToJsonElement("""{"token":"Desktop UI"}""") as JsonObject
         var calls = 0
         val source = object : Source {
             override val id = 42L
             override val name = "Combined UI source"
-            override suspend fun getMangaUpdate(manga: SManga, chapters: List<SChapter>, fetchDetails: Boolean, fetchChapters: Boolean): eu.kanade.tachiyomi.source.model.SMangaUpdate {
+            override suspend fun getMangaUpdate(
+                manga: SManga,
+                chapters: List<SChapter>,
+                fetchDetails: Boolean,
+                fetchChapters: Boolean,
+            ): eu.kanade.tachiyomi.source.model.SMangaUpdate {
                 calls++
                 assertEquals(true, fetchDetails)
                 assertEquals(true, fetchChapters)
                 manga.memo = memo
-                return eu.kanade.tachiyomi.source.model.SMangaUpdate(manga, listOf(SChapter.create().apply {
-                    url = "/auto-refresh/chapter-1"; name = "Auto-loaded chapter"; this.memo = memo
-                }))
+                return eu.kanade.tachiyomi.source.model.SMangaUpdate(
+                    manga,
+                    listOf(
+                        SChapter.create().apply {
+                            url = "/auto-refresh/chapter-1"
+                            name = "Auto-loaded chapter"
+                            this.memo = memo
+                        },
+                    ),
+                )
             }
         }
         val sourceManager = SingleSourceManager(source)
@@ -487,16 +534,26 @@ class MangaDetailLibraryEntryWiringTest {
             driver,
             historyAdapter = History.Adapter(DateColumnAdapter),
             mangasAdapter = Mangas.Adapter(
-                StringListColumnAdapter, UpdateStrategyColumnAdapter,
+                StringListColumnAdapter,
+                UpdateStrategyColumnAdapter,
             ),
         )
         val handler = JvmDatabaseHandler(database, driver)
         val mangaRepository = tachiyomi.data.manga.MangaRepositoryImpl(
-            handler, tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter,
+            handler,
+            tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter,
         )
-        val manga = mangaRepository.insertNetworkManga(listOf(Manga.create().copy(
-            source = 42L, url = "/identity", title = "Identity fixture", author = "Jane Doe", favorite = false,
-        ))).single()
+        val manga = mangaRepository.insertNetworkManga(
+            listOf(
+                Manga.create().copy(
+                    source = 42L,
+                    url = "/identity",
+                    title = "Identity fixture",
+                    author = "Jane Doe",
+                    favorite = false,
+                ),
+            ),
+        ).single()
         val chapterRepository = FakeChapterRepository()
         var failOnce = true
         val archiveRepository = tachiyomi.data.creator.CreatorRepositoryImpl(handler, identityMutationHook = {
@@ -561,7 +618,10 @@ class MangaDetailLibraryEntryWiringTest {
             assertEquals(archiveRepository.resolveCreatorIdByExactName("Jane Doe"), opened)
             assertTrue(!mangaRepository.getMangaById(manga.id).favorite)
             handler.await {
-                assertEquals("AUTOMATIC", author_archiveQueries.getArchiveMangaLink(manga.id, opened).executeAsOne().origin)
+                assertEquals(
+                    "AUTOMATIC",
+                    author_archiveQueries.getArchiveMangaLink(manga.id, opened).executeAsOne().origin,
+                )
             }
         } finally {
             scene.close()
@@ -759,15 +819,13 @@ class MangaDetailLibraryEntryWiringTest {
         assertTrue(requireNotNull(node.config[SemanticsActions.OnLongClick].action).invoke())
     }
 
-    private fun checkboxNear(scene: ImageComposeScene, label: String): SemanticsNode? {
-        val title = nodes(scene).firstOrNull { it.hasText(label) } ?: return null
-        return nodes(scene)
-            .filter { it.config.contains(SemanticsProperties.ToggleableState) }
-            .minByOrNull { kotlin.math.abs(it.boundsInRoot.center.y - title.boundsInRoot.center.y) }
-    }
+    private fun selectedRowNear(scene: ImageComposeScene, label: String): SemanticsNode? =
+        nodes(scene).firstOrNull { candidate ->
+            candidate.config.contains(SemanticsProperties.Selected) && flatten(candidate).any { it.hasText(label) }
+        }
 
-    private fun checkboxStateNear(scene: ImageComposeScene, label: String): ToggleableState? =
-        checkboxNear(scene, label)?.config?.get(SemanticsProperties.ToggleableState)
+    private fun selectedStateNear(scene: ImageComposeScene, label: String): Boolean? =
+        selectedRowNear(scene, label)?.config?.get(SemanticsProperties.Selected)
 
     private fun invokeClick(scene: ImageComposeScene, label: String) {
         val node = nodes(scene).first { candidate ->

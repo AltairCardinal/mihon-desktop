@@ -195,8 +195,8 @@ class LibraryRefreshAcceptanceTest {
         try {
             scheduler.runNow()
             runCurrent()
-            assertNull(scheduler.tryRunSingle(2), "A running scope cannot count as acceptance of manga B")
-            assertNull(scheduler.tryRunNow(7), "A running scope cannot count as acceptance of category 7")
+            assertNull(scheduler.acceptSingle(2), "A running scope cannot count as acceptance of manga B")
+            assertNull(scheduler.acceptNow(7), "A running scope cannot count as acceptance of category 7")
         } finally {
             release.complete(Unit)
             scheduler.stopAndJoin()

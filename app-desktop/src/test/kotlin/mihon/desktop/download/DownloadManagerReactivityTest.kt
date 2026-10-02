@@ -2,13 +2,14 @@ package mihon.desktop.download
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.TestScope
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import java.io.File
 
 /**
@@ -25,13 +26,16 @@ import java.io.File
 @OptIn(ExperimentalCoroutinesApi::class)
 class DownloadManagerReactivityTest {
 
+    private val fixtureDownloadPreferences = DesktopDownloadPreferences(InMemoryPreferenceStore())
+
     @TempDir
     lateinit var tempDir: File
 
     private fun manager(scope: TestScope) = DesktopDownloadManager(
+        downloadPreferences = fixtureDownloadPreferences,
         provider = DesktopDownloadProvider(baseDir = tempDir),
         networkHelper = null, // no HTTP — download will reach ERROR, not stay QUEUED
-        workerScope = scope,  // main TestScope: advanceUntilIdle() drives the worker
+        workerScope = scope, // main TestScope: advanceUntilIdle() drives the worker
     )
 
     @Test

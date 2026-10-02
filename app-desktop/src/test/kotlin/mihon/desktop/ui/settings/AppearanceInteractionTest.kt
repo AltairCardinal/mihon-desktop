@@ -601,6 +601,19 @@ class AppearanceInteractionTest {
                 }
                 requireNotNull(date.config[SemanticsActions.RequestFocus].action).invoke()
                 render(scene)
+                // Focus can animate bring-into-view; capture the stable position before changing theme.
+                var previousScroll: Float? = null
+                kotlinx.coroutines.withTimeout(2_000) {
+                    var settled = false
+                    while (!settled) {
+                        val before = previousScroll
+                        render(scene)
+                        previousScroll = nodes(scene).first {
+                            it.config.contains(SemanticsProperties.VerticalScrollAxisRange)
+                        }.config[SemanticsProperties.VerticalScrollAxisRange].value()
+                        settled = previousScroll == before
+                    }
+                }
                 val owner = navigator
                 val page = navigator.lastItem
                 val vertical = nodes(scene).first {
@@ -780,8 +793,8 @@ class AppearanceInteractionTest {
                 )
                 assertTrue(
                     nodes(scene).any {
-                        it.config.contains(SemanticsProperties.ToggleableState) &&
-                            it.config[SemanticsProperties.ToggleableState] == ToggleableState.On &&
+                        it.config.contains(SemanticsProperties.Selected) &&
+                            it.config[SemanticsProperties.Selected] &&
                             MR.strings.theme_light.localized() in copy(it)
                     },
                 )

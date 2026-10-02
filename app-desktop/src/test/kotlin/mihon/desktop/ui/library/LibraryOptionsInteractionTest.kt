@@ -1019,10 +1019,14 @@ class LibraryOptionsInteractionTest {
             } finally {
                 driver.execute(null, "DROP TRIGGER reject_batch_delete", 0)
             }
-            click(scene, MR.strings.action_delete.localized())
-            render(scene)
-            click(nodes(scene).single { it.config.contains(SemanticsProperties.ToggleableState) })
+            // The failure keeps the original confirmation and its checked option for retry.
             click(scene, MR.strings.action_ok.localized())
+            withTimeout(5_000) {
+                while (repository.getMangaById(manga.id).favorite) {
+                    render(scene)
+                    delay(10)
+                }
+            }
             render(scene)
             assertFalse(repository.getMangaById(manga.id).favorite)
             assertTrue(nodes(scene).any { MR.strings.action_search.localized() in labels(it) })
@@ -1501,6 +1505,10 @@ class LibraryOptionsInteractionTest {
                 preferences,
                 model,
             ->
+            preferences.autoUpdateMangaRestrictions().set(
+                preferences.autoUpdateMangaRestrictions().get() + LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD,
+            )
+            render(scene)
             for (afterWrite in listOf(false, true)) {
                 click(scene, MR.strings.action_filter.localized())
                 render(scene)
@@ -2000,7 +2008,7 @@ class LibraryOptionsInteractionTest {
         @TempDir root: File,
     ) = runBlocking {
         val updated = mutableListOf<Long>()
-        withRoot(root, updateManga = { manga ->
+        withRoot(root, mangaSource = 123, updateManga = { manga ->
             updated += manga.id
             LibraryUpdateChecker.UpdateResult(0)
         }) { scene, host, preferences, model ->
@@ -2011,8 +2019,8 @@ class LibraryOptionsInteractionTest {
             val cats = categories.getAll().filterNot { it.isSystemCategory }
             val extra = repository.insertNetworkManga(
                 listOf(
-                    Manga.create().copy(source = 0, url = "/hidden-a", title = "Hidden A", initialized = true),
-                    Manga.create().copy(source = 0, url = "/hidden-b", title = "Hidden B", initialized = true),
+                    Manga.create().copy(source = 123, url = "/hidden-a", title = "Hidden A", initialized = true),
+                    Manga.create().copy(source = 123, url = "/hidden-b", title = "Hidden B", initialized = true),
                 ),
             )
             val first = repository.getLibraryManga().first { it.manga.title == "Options work" }.manga
@@ -2182,6 +2190,10 @@ class LibraryOptionsInteractionTest {
                 SortMode.TRACKER_MEAN to MR.strings.action_sort_tracker_score,
                 SortMode.RANDOM to MR.strings.action_sort_random,
             )
+            preferences.autoUpdateMangaRestrictions().set(
+                preferences.autoUpdateMangaRestrictions().get() + LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD,
+            )
+            render(scene)
             for ((mode, title) in sorts) {
                 fun row() = nodes(scene).first {
                     it.config.contains(SemanticsActions.OnClick) && labels(it).any { text ->
@@ -2310,6 +2322,11 @@ class LibraryOptionsInteractionTest {
             startDownloadWorker = false,
             categoryRepositoryOverride = categoryRepositoryOverride,
             chapterRepositoryOverride = chapterRepositoryOverride,
+            builtInSources = if (mangaSource != 0L) {
+                listOf(mihon.desktop.source.FakeHttpSource(mangaSource, "en", "Options HTTP source"))
+            } else {
+                null
+            },
             updateManga = updateManga,
         )
         Dispatchers.setMain(UnconfinedTestDispatcher())

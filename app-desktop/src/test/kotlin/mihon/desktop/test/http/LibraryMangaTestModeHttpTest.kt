@@ -9,8 +9,8 @@ import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
@@ -23,9 +23,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import mihon.desktop.domain.SortMode
-import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.di.DesktopTestDIContext
+import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.domain.SortMode
 import mihon.desktop.ui.library.LibraryScreenModel
 import mihon.desktop.ui.library.MangaDetailScreenModel
 import org.junit.jupiter.api.AfterEach
@@ -103,7 +103,9 @@ class LibraryMangaTestModeHttpTest {
     }
 
     @Test
-    fun `library filter sort and selection execute production state and expose rows`(@TempDir tempDir: File) = runBlocking {
+    fun `library filter sort and selection execute production state and expose rows`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
         val context = context(tempDir)
         try {
             withServer { baseUrl ->
@@ -129,7 +131,12 @@ class LibraryMangaTestModeHttpTest {
                 val select = post(baseUrl, "/test/action/select", """{"index":"0"}""")
                 assertEquals(200, select.statusCode(), select.body())
                 assertEquals(alpha.id, select.detail().getValue("mangaId").jsonPrimitive.content.toLong())
-                assertEquals(5, select.detail().getValue("chapters").let { it as kotlinx.serialization.json.JsonArray }.size)
+                assertEquals(
+                    5,
+                    select.detail().getValue("chapters").let {
+                        it as kotlinx.serialization.json.JsonArray
+                    }.size,
+                )
             }
         } finally {
             context.closeLibraryFixture()
@@ -194,7 +201,10 @@ class LibraryMangaTestModeHttpTest {
                     """{"categoryIds":"${categoryIds.joinToString(",")}"}""",
                 )
                 assertEquals(200, categories.statusCode(), categories.body())
-                assertEquals(categoryIds.toString().replace(" ", ""), categories.detail().getValue("categoryIds").toString())
+                assertEquals(
+                    categoryIds.toString().replace(" ", ""),
+                    categories.detail().getValue("categoryIds").toString(),
+                )
 
                 val chapter = post(
                     baseUrl,
@@ -284,7 +294,9 @@ class LibraryMangaTestModeHttpTest {
     private fun context(tempDir: File) = runBlocking {
         initDesktopDIForTest(
             tempDir,
-            DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
+            startDownloadWorker = false,
+            builtInSources = listOf(mihon.desktop.source.FakeHttpSource(1, "en", "Test Mode HTTP source")),
+            preferenceStore = DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
         )
     }
 

@@ -26,13 +26,13 @@ class LibraryPreferenceMigration(
 ) {
 
     @Synchronized
-    fun migrate(): Boolean {
+    fun migrate(categoryIds: Set<Long>? = validCategoryIds?.invoke()): Boolean {
         val marker = store.getInt(MARKER_KEY, 0)
         val journal = store.getString(RECOVERY_KEY, "")
         if (journal.get().isNotEmpty()) {
             try {
                 journal.set(journal.get())
-                restore(Json.decodeFromString<Map<String, String?>>(journal.get()))
+                restore(Json.decodeFromString<Map<String, String?>>(journal.get()), categoryIds)
                 journal.delete()
             } catch (_: Exception) {
                 return false
@@ -50,7 +50,7 @@ class LibraryPreferenceMigration(
             migrateDisplay()
             migrateSort()
             migrateColumns()
-            migrateUpdatePolicy(legacy)
+            migrateUpdatePolicy(legacy, categoryIds)
             marker.set(VERSION)
             journal.delete()
             true
@@ -58,7 +58,7 @@ class LibraryPreferenceMigration(
             runCatching {
                 // A flush failure can remove the record in RAM; acknowledge it again before compensating.
                 journal.set(Json.encodeToString(original))
-                restore(original)
+                restore(original, categoryIds)
                 journal.delete()
             }
             false
@@ -77,10 +77,9 @@ class LibraryPreferenceMigration(
         CHOICE_KEY, INTERVAL_INVALID_KEY, MARKER_KEY,
     )
 
-    private fun restore(original: Map<String, String?>) {
+    private fun restore(original: Map<String, String?>, validIds: Set<Long>?) {
         require(original.keys == migrationKeys().toSet()) { "Invalid library migration recovery" }
         val restored = original.toMutableMap()
-        val validIds = validCategoryIds?.invoke()
         if (validIds != null) {
             for (key in listOf(preferences.updateCategories().key(), preferences.updateCategoriesExclude().key())) {
                 val raw = restored[key] ?: continue
@@ -98,9 +97,9 @@ class LibraryPreferenceMigration(
 
     private fun migrateUpdatePolicy(
         legacy: Triple<Preference<String>, Preference<String>, Preference<LibraryUpdateInterval>>?,
+        validIds: Set<Long>?,
     ) {
         val raw = store.getAll()
-        val validIds = validCategoryIds?.invoke()
         var choiceRequired = store.getBoolean(CHOICE_KEY, false).get()
         listOf(
             preferences.updateCategories() to (legacy?.first ?: store.getString("update_category_includes", "")),

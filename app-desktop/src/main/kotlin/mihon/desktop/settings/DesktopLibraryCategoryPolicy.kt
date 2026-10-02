@@ -144,7 +144,8 @@ class DesktopLibraryCategoryPolicy(
 
     private suspend fun recoverMigration(): Boolean {
         if (migration != null && !migration.isComplete()) {
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { migration.migrate() }
+            val validIds = getCategories.await().map { it.id }.toSet() + 0L
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { migration.migrate(validIds) }
             if (!migration.isComplete()) {
                 mutableState.value = State.Unavailable(true)
                 return false

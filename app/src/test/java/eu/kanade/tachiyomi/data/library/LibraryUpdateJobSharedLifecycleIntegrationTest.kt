@@ -268,6 +268,7 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
                         every { it.autoUpdateMetadata().get() } returns false
                         every { it.markDuplicateReadChapterAsRead().get() } returns emptySet()
                         every { it.updateMangaTitles().get() } returns false
+                        every { it.disallowNonAsciiFilenames().get() } returns false
                         every { it.categoryDeletionPending() } returns
                             LibraryPreferences(actualStore).categoryDeletionPending()
                     }
@@ -689,6 +690,17 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
     }
 
     private fun registerWorkerDependencies() {
+        val recoveryStore = tachiyomi.core.common.preference.AndroidPreferenceStore(
+            context,
+            context.getSharedPreferences("startup-recovery-${System.nanoTime()}", Context.MODE_PRIVATE),
+        )
+        Injekt.addSingleton(
+            tachiyomi.domain.category.interactor.DeleteCategory(
+                mockk(relaxed = true),
+                LibraryPreferences(recoveryStore),
+                tachiyomi.domain.download.service.DownloadPreferences(recoveryStore),
+            ),
+        )
         Injekt.addSingleton<SourceManager>(EmptySourceManager())
         Injekt.addSingleton(mockk<SecurityPreferences>(relaxed = true))
         Injekt.addSingleton(mockk<DownloadManager>(relaxed = true))

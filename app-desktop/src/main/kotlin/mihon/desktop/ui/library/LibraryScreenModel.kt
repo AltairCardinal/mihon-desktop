@@ -38,7 +38,6 @@ import tachiyomi.domain.category.interactor.RenameCategory
 import tachiyomi.domain.category.interactor.ReorderCategory
 import tachiyomi.domain.category.interactor.SetDisplayMode
 import tachiyomi.domain.category.interactor.SetMangaCategories
-import tachiyomi.domain.category.interactor.SetSortModeForCategory
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
@@ -101,7 +100,6 @@ internal data class LibraryBrowsePosition(val mangaId: Long, val index: Int, val
 class LibraryScreenModel(
     private val getLibraryManga: GetLibraryManga? = null,
     private val getCategories: GetCategories? = null,
-    private val categoryRepository: tachiyomi.domain.category.repository.CategoryRepository? = null,
     private val createCategory: CreateCategoryWithName? = null,
     private val renameCategory: RenameCategory? = null,
     private val deleteCategory: DeleteCategory? = null,
@@ -129,7 +127,7 @@ class LibraryScreenModel(
     private val backgroundUpdateJob: (() -> Job?)? = null,
     private val libraryPreferences: LibraryPreferences? = null,
     private val setDisplayModeInteractor: SetDisplayMode? = null,
-    private val setSortModeForCategory: SetSortModeForCategory? = null,
+    private val categorySortSettings: mihon.desktop.settings.DesktopCategorySortSettings? = null,
     private val downloadedChapterCount: ((LibraryManga) -> Long)? = null,
     private val deleteMangaDownloads: (suspend (LibraryManga) -> Unit)? = null,
     private val deleteCustomCover: ((Long) -> Boolean)? = null,
@@ -555,54 +553,9 @@ class LibraryScreenModel(
     fun setSortModeAndDirectionForCategory(categoryId: Long?, mode: SortMode, ascending: Boolean) {
         val sharedSort = LibrarySearchFilter.toSharedSort(mode, ascending)
         val preferences = libraryPreferences
-        if (setSortModeForCategory != null && preferences != null) {
+        if (categorySortSettings != null && preferences != null) {
             screenModelScope.launch {
-                val oldSort = preferences.sortingMode().get() to preferences.sortingMode().isSet()
-                val oldSeed = preferences.randomSortSeed().get() to preferences.randomSortSeed().isSet()
-                val previousFlags = try {
-                    categoryRepository?.getAll()?.associate { it.id to it.flags }.orEmpty()
-                } catch (_: Exception) {
-                    reportPreferenceFailure()
-                    return@launch
-                }
-                val local = categoryId?.takeIf { preferences.categorizedDisplaySettings().get() && it in previousFlags }
-                val affected = if (local != null) previousFlags.filterKeys { it == local } else previousFlags
-                try {
-                    setSortModeForCategory.await(categoryId, sharedSort.type, sharedSort.direction)
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: Exception) {
-                    runCatching {
-                        val repository = categoryRepository ?: return@runCatching
-                        val current = repository.getAll().associateBy { it.id }
-                        val mask = sharedSort.mask
-                        val updates = affected.mapNotNull { (id, previous) ->
-                            val actual = current[id] ?: return@mapNotNull null
-                            if (actual.flags and mask != sharedSort.flag) return@mapNotNull null
-                            tachiyomi.domain.category.model.CategoryUpdate(
-                                id = id,
-                                flags = (actual.flags and mask.inv()) or (previous and mask),
-                            )
-                        }
-                        repository.updatePartial(updates)
-                        setCategories(repository.getAll())
-                    }
-                    runCatching {
-                        if (oldSort.second) {
-                            preferences.sortingMode().set(oldSort.first)
-                        } else {
-                            preferences.sortingMode().delete()
-                        }
-                    }
-                    runCatching {
-                        if (oldSeed.second) {
-                            preferences.randomSortSeed().set(oldSeed.first)
-                        } else {
-                            preferences.randomSortSeed().delete()
-                        }
-                    }
-                    reportPreferenceFailure()
-                }
+                if (!categorySortSettings.setSort(categoryId, sharedSort)) reportPreferenceFailure()
                 applySharedPreferences(categoryId)
             }
         } else if (preferences != null) {
@@ -915,12 +868,7 @@ class LibraryScreenModel(
             setIsUpdating(true)
             setUpdateStatusText(MR.strings.desktop_ui_checking_for_updates.localized())
             try {
-                val acceptedJob = start()
-                if (acceptedJob == null) {
-                    setUpdateStatusText(MR.strings.update_already_running.localized())
-                    return false
-                }
-                acceptedJob.join()
+                start().join()
                 setUpdateStatusText(backgroundUpdateResultText())
             } catch (error: CancellationException) {
                 throw error

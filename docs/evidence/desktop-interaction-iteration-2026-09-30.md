@@ -996,7 +996,7 @@ RI17核心最终验收：唯一`interaction-ri17-affected`原36项为34PASS／2�
 
 ### RI18 收口预算及环境前置
 
-RI18收口预算（2026-10-02，前置仍待RI17提交）：复用唯一实施代理，主代理承担同一独立验收、根metadata／契约／报告及跨平台整合；无额外技能、代理或审查轮次。步骤为RI17专项闭合与核心提交→已确认provenance漂移的有限修正与focused guard→冻结全部行为diff→一次完整Android／共享／Desktop／test-desktop矩阵、governance、finalParityAudit及格式→官方build-only、Android candidate／verify及隔离macOS官方构建→实际发布runtime／Test Mode／升级与硬件边界记录→必要checkoff和功能批提交。预计3–6小时加设备等待，主要成本完整测试、R8与各平台正式构建；日志／XML／协调器／构建清单是过程证据，源码／唯一报告与正式产物为交付。macOS不覆盖旧checkout或旧应用，Android不安装或操作实体设备，所有运行使用隔离profile。全量只执行1次，失败先只读诊断及必要focused修复；超过预算或需要第二次完整矩阵／显著追加成本时先说明具体失败及替代方案，不将时间耗尽当通过。实体门禁保持原要求，暂缺触控板不阻断独立构建工作。
+RI18收口预算（2026-10-02，RI17核心已提交1e6a49c0c9）：复用唯一实施代理，主代理承担同一独立验收、根metadata／契约／报告及跨平台整合；无额外技能、代理或审查轮次。步骤为RI17专项闭合与核心提交→已确认provenance漂移的有限修正与focused guard→冻结全部行为diff→一次完整Android／共享／Desktop／test-desktop矩阵、governance、finalParityAudit及格式→官方build-only、Android candidate／verify及隔离macOS官方构建→实际发布runtime／Test Mode／升级与硬件边界记录→必要checkoff和功能批提交。预计3–6小时加设备等待，主要成本完整测试、R8与各平台正式构建；日志／XML／协调器／构建清单是过程证据，源码／唯一报告与正式产物为交付。macOS不覆盖旧checkout或旧应用，Android不安装或操作实体设备，所有运行使用隔离profile。全量只执行1次，失败先只读诊断及必要focused修复；超过预算或需要第二次完整矩阵／显著追加成本时先说明具体失败及替代方案，不将时间耗尽当通过。实体门禁保持原要求，暂缺触控板不阻断独立构建工作。
 
 收口顺序按用户“全部功能实现后再全量”统一：先完成RI00–RI17实现、focused专项及独立审查；RI16／RI17必须依赖最终发布runtime的设备／键鼠证据在RI18构建后取得，相关checkbox保留未勾选，所有原定门禁仍须通过。修正此前“RI18前置包含尚未生成的发布产物证据”的顺序循环，不提前重复全量或发布、不改变验收范围。
 
@@ -1008,6 +1008,122 @@ RI18构建入口补核（只读）：当前build-desktop.sh的build-only会分�
 
 RI18协调器补核（仍为只读）：实际当前build-windows.ps1令$Gradle指向gradlew.bat并直接调用，build-desktop.sh的run_macos也直接调用gradlew；两脚本及两wrapper未发现gradle-coordinator调用。AGENTS所述统一入口已协调不能替代当前源码事实。最终须按届时真实脚本判断：已有内部协调时不嵌套；当前这种直接调用可用外层协调器保护整个正式build脚本，继续经统一构建入口，不改为直接Gradle部署。test-desktop中ExampleE2ETest是注释示例，ReaderPartialDownloadE2ETest是外部校验器契约，不代表已启动真实应用；完整客户端测试与正式产物Test Mode分别记录，不能混充运行验收。这里只读，无版本分配／测试／构建执行。
 
+### RI18 有限清理、治理索引与冻结前核验
+
+RI17核心提交为 `1e6a49c0c9ebee38b3a0eb841f8b53eef9c7bdf2`。RI18移除未被production消费的tryRun端口与非空Job的不可能分支；原busy拒绝测试现在直接调用真实acceptNow／acceptSingle。没有新增产品行为或测试方法。`interaction-ri18-cleanup-focused`（07:03:01.989–07:03:25.124 UTC）11项唯一方法全绿、0跳过，3K scoped格式通过；主代理独查实际3文件diff及XML，不把清理当作新功能红测。
+
+治理首次10项为5通过／5失败；后续仅对仍失败守卫复验：5项2通过／3失败，3项2通过／1失败，最后roadmap单项通过。失败属于后续证据混入精确历史索引、错误ADAPTER种类／共同层及声明路径缺漏，未改守卫断言或产品逻辑。历史root行为契约恢复后，后续methods、path、platform role及fixture均完整保留在interactionIterationEvidence.RI18；ID95实际方法更名同步当前decision，旧Task16C decision原样保留history。没有提升64项status，没有改变fixed-original、upstreamSymbols或NR0 actionInventory／tracked基线；当前351项root锚点与5项迭代role锚点均指向真实源码。
+
+manga.refresh与library-update.manual新增当前ENTRY／EFFECT／FEEDBACK记录于RI18 actionEvidence，绑定实际Root／Detail事件、工厂accepted端口及可见反馈。NR0冻结基线及其PENDING／LU-01历史记录保持原样，不将本轮证据伪装成该独立历史计划已完成。核心focused结果与稍后的完整矩阵、发布runtime及物理输入分别记账。
+
+macOS本轮预检：14.8.4／x86_64／Temurin21.0.10，系统盘剩余4.5GiB，现有独立Mihon进程39908及旧checkout未提交改动保留。仅在新隔离目录构建，限制并发并监测空间；空间不足停止该平台，不清理其他任务。Windows只有鼠标，精确触控板／自然滚动及物理DPI门禁仍待实机证据。
+
+### RI18 最终矩阵首次执行与失败保留
+
+冻结输入后，唯一完整矩阵通过协调器 `interaction-ri18-final-matrix` 执行：`gradlew.bat jvmTest testReleaseUnitTest :test-desktop:test :app-desktop:parityGovernanceCheck :app-desktop:finalParityAudit spotlessCheck -PincludeIntegrationTests=true --offline --continue --console=plain`。实际开始为2026-10-02 07:28:20.700 UTC，结束为08:08:28.606 UTC，终态CANCELLED／exit130。外层15分钟等待超时后，原Gradle仍运行，因此未启动第二个Gradle；有界线程诊断确认Desktop旧启动夹具等待已不再自动启动的更新任务，随后仅停止协调器所记录的进程树。根独立核对worker64196、wrapper82580及test workers72188／74252均已退出，未清理全局Java或其他工作树应用。
+
+根逐个解析实际归档 `.gradle-coordinator/ri18-xml/final-matrix/<module>/build/test-results/<task>`，按模块／任务／类／方法去重，332份XML共2487项＝2481通过、5失败、1跳过。旁路平级目录是重复副本，不叠计。test-desktop的52项来自未改变输入的FROM-CACHE，不称本轮新执行；跳过项是SyncGitCompareAcceptanceTest的显式本地Git比较门禁，不作已验证处理。domain两平台、data两平台及已结束公共模块的结果有效；app-desktop:jvmTest和app:testReleaseUnitTest尚未正常结束，没有本轮完整XML，旧focused XML不能补作本轮全量证据。完整治理、finalParityAudit及Desktop格式任务未取得最终执行结果，矩阵没有全绿。
+
+5个XML失败为两平台SourceUpdateMemoContractTest仍期待空目录交给平台，而当前共享保护已拒绝空目录；三个旧版本数据库夹具从当前schema倒推时遗漏40.sqm整组对象，首次真实错误均为`chapter_url_aliases already exists`。日志另记录Desktop架构守卫两项失败及Android八个唯一失败（自动retry不重复计数）：生产初始化新增runBlocking、UI直接访问CategoryRepository，以及旧Android夹具未完整接入当前分类清理／目录phase链。各原因须由实际修复与聚焦结果分别确认，不把所有日志失败都归因于同一假设。禁止放宽架构基线、删除目录／归档断言或用CREATE IF NOT EXISTS隐藏迁移问题。
+
+按原预算先进行有限修复与focused验证，暂不重复完整矩阵。新增实际DI取消测试 `cancelled DI owner releases a suspended category snapshot before recovery or producers` 在 `interaction-ri18-startup-cancellation-red` 正确失败：08:18:45.678 UTC XML，1失败／0跳过，原初始化在真实category查询挂起后不响应owner取消；finally释放查询并关闭上下文，协调器08:18:49.751正常FAILED／exit1。此业务红是suspend初始化修复的依据，源码扫描守卫不代替行为红。修复后仍须取得两个未完成模块的有效整体验证；需要追加全量次数时，先列出具体失败、拟执行范围和成本，等待用户决定。
+
+RI18有限修复聚焦收口：`repair-focused`保留domain双端及data三个迁移方法共5通过、Android三个通过；Desktop类型缺失仅编译失败，Android余五项实际由新夹具使用未实现StringSet的InMemoryPreferenceStore引发。Sync启动的system-err确认App.startSync在DeleteCategory恢复处遇到同一TODO，不把单独timeout当因果。改用已有平台偏好后，`repair-valid`（09:56:34.605–10:01:00.672 UTC）Android五项通过，Desktop17项中15通过；余两项分别是model新adapter使用同一不完整偏好夹具，以及旧DI重建测试的注入回调只返回未持久化Chapter。后者改走实际注册Source→Checker→目录SQL／phase→持久下载manager，保两context隔离、已读排除与真实队列断言，并核原URL。`repair-last`（10:06:00.901–10:06:41.113 UTC）两个方法全绿，XML10:06:33.649／38.041；scoped格式共21K通过，git diff --check通过。中间suspend函数引用、Robolectric静态方法泛型、局部夹具声明与Spotless重复step配置错误未执行业务，不计业务红或新增通过。
+
+按上述最新有效方法合并，30项唯一PASS／0FAIL／0SKIP：Desktop17、Android app8、domain JVM／Android2、data JVM3。新增两个实际取消方法包含在17内；根独查实际XML、Main选举后初始化、恢复先于producer、原生share port／scope／manager／SQL与网络清理、primary与suppressed错误，以及分类排序共享用例与原补偿边界。UI搬移时新增的一次无保护分类读取已在交付前撤回，继续使用已有flow。架构守卫零债务基线保持；没有改schema、删除业务断言或绕过真实manager。当前capability状态及历史权威不变，15处当前role／action行号按源码更新，重复downloadPolicy锚点通过HEAD上下文确认；新增取消方法登记cap4的RI18 nested证据，空目录契约和排序适配证据亦保留nested。
+
+本批超过8文件／400行仍是一个内聚的最终失败修复：suspend初始化需要贯通Main、DI及函数引用契约，UI排序移动保共享用例，旧夹具同步实际目录／分类／下载链；DI大部分行变化来自新增有限异常边界后的格式缩进。已复用同一实施代理及持续独立验收，没有新增代理或独立审查轮次。上述30项是focused收口，两个未正常结束的模块全量仍未补跑，正式构建／平台运行／物理输入门禁仍待。
+
+RI18原未跑门禁 `interaction-ri18-remaining-gates`（10:09:05.961–10:10:00.903 UTC）PASSED／exit0：parityGovernanceCheck 7项、finalParityAudit 1项全绿／0跳过，NON_TERMINAL_IDS为空，全仓spotlessCheck通过；它们不替代产品行为、发布runtime或硬件门禁。JUnit另明确警告两个旧下载方法返回int／boolean而未执行，不能把这种未发现当XML skip或通过。仅约束两方法runBlocking<Unit>并保持真实HTTP／manager／文件断言，`discovery-green`（10:17:07–10:17:20 UTC）2项PASS／0skip、单文件格式通过，实际XML10:17:18.993Z，警告消失；首轮业务已绿但格式失败的事实保留。修复focused共32唯一PASS，另有8项治理／审计PASS。
+
+2026-10-02用户明确“批准”追加：仅将此前中断的 `:app-desktop:jvmTest` 和 `:app:testReleaseUnitTest`（包含集成）各完整补跑一次，预计30–45分钟；已完成其他模块与刚通过的治理／审计／全仓格式不整组重跑。实施者STOPWRITE，根独查32项及8项归档结果后冻结。当前production／test／manifest输入集合SHA-256为`ae7ccd3132a42458535a9193f6e8e3842f8afcd93d7f7495dd9b57b6afe0db0a`，逐文件记录保存在`.gradle-coordinator/ri18-release-freeze.json`，来源HEAD为`1e6a49c0c9ebee38b3a0eb841f8b53eef9c7bdf2`；报告与其他Markdown不参与该集合哈希，后续构建版本分配单独记录。此前中止矩阵的原冻结及失败证据保留，不冒作本次修改的验证结果。
+
+### RI18 获批补验的失败证据
+
+`interaction-ri18-interrupted-modules` 于10:18:40.760 UTC启动原定两个完整模块；Desktop任务于10:40:39 UTC报FAILED，根独立解析450份当前XML，3652项＝3559通过、90失败、3跳过，失败涉及28个类。归档为`.gradle-coordinator/ri18-xml/interrupted-modules/app-desktop/build/test-results/jvmTest`。本次已取得完整Desktop结果，不能因后续focused修复而改写为当时全绿。Android原协调器此时继续执行，不并发另起同工作树Gradle。
+
+三项跳过分别为MacOsNativeSharePortTest的macOS实际JXA用例（已由下述macOS专项另行通过）、DesktopWindowPrivacyTest的真实Windows窗口affinity用例（当前完整测试强制headless），以及LibraryPageCompositionTest的显式non-release interval用例（当前构建开关不满足其前提）。不把条件跳过计入PASS。
+
+原补验最终于10:47:42.715 UTC正常结束为FAILED／exit1，约29分钟，记录中的worker／wrapper与Desktop test worker已退出。Android完整126份XML共有709次执行；按类／方法去重为707项＝699通过、1失败、7跳过。唯一失败是DualPageProgressProductionWiringTest的`settled dual viewport records last visible page and completes only at actual end`，自动retry共三次均失败，不计成三个独立用例。实际XML失败为376行`current.chapter.read`，前一行`last.isRead`已通过；日志341只是方法入口。7跳过为真实FileProvider要求Unix宿主的3项，以及Release SQLite原生driver不能在host Robolectric加载、只在Debug JVM执行的4项旧数据库回调契约；未宣称这些门禁通过，也未运行实体Android验收。
+
+完整XML揭示下载链中的`Node has been removed`，来自DesktopDownloadManager回退读取Injekt遗留偏好、随后访问已由前序测试删除的节点；多个后续runTest记录同路径的UncaughtExceptionsBeforeTest。设置夹具另有LibraryPreferences.autoUpdateMangaRestrictions调用不完整偏好实现的TODO。上述具体路径与修复效果仍须最小复现和focused证据闭合，不把所有90项失败归为一因。平台证据守卫实际指出ID82新增消费者混入历史精确路径集合；当前分享页面与测试证据必须保留到迭代层，历史精确索引及能力状态不得借修复改变。
+
+### RI18 补验失败的定向修复
+
+下载顺序依赖先保留有效复现：`download-isolation-repro`虽然3项通过，但实际XML显示下载先于DI节点清理执行，不能作为反证。随后仅用JUnit官方ClassName顺序在`isolation-android-red`固定真实DesktopAppRuntime节点清理在先，两项真实下载方法在后，重现相同`Node has been removed`；同轮Android原末页方法也仍在376行失败。修复为五个直接构造manager的夹具各自显式持有DownloadPreferences，保留production默认装配以及文件、冲突、重试断言，绿测结果另记。
+
+Android唯一失败的原因已闭合：测试repository发送进度事件时，应用持有的接受回执及Main线程UI更新尚未完成。仅在原事件断言后等待真实`awaitAccepted(1)`并推进测试Main调度器，保留SQL、末页、回翻及已读断言；实施代理独立核对等待边界。`download-settings-green`归档Android XML时间11:01:12.340 UTC，该原方法1PASS／0FAIL／0SKIP。同一命令Desktop止于三处测试构造参数顺序编译错误，尚未运行Desktop测试，不能将该轮整体记为通过。
+
+Desktop `download-settings-green-valid`（11:03:06.383–11:04:37.921 UTC）148项＝145PASS／3FAIL／0SKIP；真实DI清理前置、五个下载类、身份解析与四个污染受害方法、三个更新范围方法及34项capability契约通过。按原90失败的类／方法精确匹配闭合63项，不将额外通过方法冒作原失败。原ID82历史精确根字段已从RI00父提交核对恢复，后续分享路径／fixture／方法保留在RI18嵌套层，34项守卫通过且64项状态不变。
+
+剩余两处Library设置类型错误来自relaxed依赖的categorySortSettings.failed返回泛型占位对象；资源／无障碍夹具明确不装配该无关可空保存端口后，`theme-role-red`（11:07:16.301–11:07:47.902 UTC）两项通过。该轮第三项则正确复现真实外观模式控件缺少RadioButton角色；本地Material3 1.9.0-beta03实际组件显示MultiChoice分支没有该角色，不能删掉语义断言。最小修复切换既有Material3单选分段控件，保留原保存及同值不写行为，RadioButton／Selected互斥状态、真实点击及原偏好失败消费者的绿测另记。此时原90失败已有65项闭合，正式构建仍未开始。
+
+### RI18 定向闭合与最终源码冻结
+
+补验原始失败保留不变；后续采用受影响方法复验，没有第三次全量。`ui-fixtures-green-valid`执行42项（38PASS／4FAIL），`ui-last-green-valid`执行4项（2PASS／2FAIL），`ui-final-two`执行最后2项全绿及对应scoped格式。最后两项修正测试的真实三态行语义及弹层初始焦点前置，保留完整业务断言；没有将焦点夹具问题记为production缺陷。外观单选分段的RadioButton／Selected修复与其保存失败、无效点击消费者已通过Windows及macOS实际Compose事件验证。
+
+主代理从原归档XML逐项匹配类／方法，原Desktop90项全部获得后续PASS，Android唯一失败亦闭合；两个使用TempDir的方法仅做已核对的参数签名归一化。最终修复后189个唯一方法PASS，连同本批更早的专项为230个唯一方法PASS，均0FAIL／0SKIP；这些是最新方法结果并集，不改写原完整运行FAILED，也不将重复执行累加。原完整矩阵中未受影响的通过结果继续有效。治理／finalParityAudit的8项及完整格式检查已通过，随后改动的Kotlin文件另经scoped格式通过。
+
+实施代理已返回六字段回执并停写，主代理独立核对生产变更、原失败闭合、最新XML及文件范围。正式构建前49个改动文件冻结，行为输入SHA-256为`3590a3d1b53bf6fd7ee05e5f20519568226c3f7f6533a10257578734d35df749`（Markdown与版本分配另记）。macOS隔离checkout先核对旧文件身份，再同步最终49个文件并逐项校验SHA一致。此后进入官方build-only与发布runtime验收，不追加全量测试。
+
+### RI18 macOS 原生专项
+
+在 `mbp-lan` 的独立 checkout `/Users/altair/github/mihon-interaction-ri18-20261002` 核对 HEAD 与25个冻结文件逐项SHA一致，保留旧checkout、已有应用和配置。环境为macOS14.8.4／x86_64、Temurin21.0.10、16GiB内存；限定Gradle2 workers、2GiB heap、Kotlin in-process。初次offline专项在三个UI依赖缺缓存处失败，未执行业务测试；确认本机xray代理后，仅在线重试相同专项，未重跑全量。
+
+`interaction-ri18-macos-focused-online`（10:26:06.480–10:30:03.812 UTC）9项PASS／0FAIL／0SKIP：MigrationFileStagingTest原生文件保护6项，MacOsNativeSharePortTest实际production JXA delegate终态与自然退出1项，AppearanceInteractionTest真实Compose浅色隐藏纯黑设置并保偏好、Home内语言普通子页导航2项。JXA用例注入实际delegate回调，不声称已向另一个应用或真实账号分享。归档为`.gradle-coordinator/ri18-xml/macos-focused`。
+
+`interaction-ri18-macos-permissions`（10:31:19.420–10:31:46.301 UTC）3项PASS／0FAIL／0SKIP，执行既定POSIX权限分支：LibraryInteractionTest真实磁盘封面失败保字节／版本并可重试，MangaDetailInteractionTest封面替换／取消／删除的实际文件和像素，LibraryOptionsInteractionTest固定删除集合与部分失败后的有效重试。归档为`.gradle-coordinator/ri18-xml/macos-permissions`。根独立读取两组6份XML合计12项；磁盘剩余约3.7GiB，未清理其他业务。这些是开发JVM／原生离屏专项，正式macOS应用装配、发布runtime、实体输入及账号验收仍分别待补。
+
+新增主题角色修复在Mac按受影响范围复验：仅同步Appearance生产页和对应无障碍测试，两文件SHA逐项与Windows输入一致。`interaction-ri18-macos-theme`（11:12:24.446–11:16:14.651 UTC）3PASS／0FAIL／0SKIP：真实RadioButton／Selected互斥、单激活动作、Light隐藏纯黑并保值，以及真实Home语言子页导航；归档`.gradle-coordinator/ri18-xml/macos-theme`。后两项属于前述专项的修复后复验，Mac累计13个唯一通过方法，不能把重复执行计成15个。生产代码编译导致本次耗时约3分49秒；仍是开发JVM专项，尚未替代正式应用装配及发布runtime验收。
+
+### RI18 首次正式构建与发布运行发现
+
+官方入口分配Desktop `0.11.19.69.1e6a49c`。Windows后台启动PowerShell两次未进入构建（入口exit127，明确Windows PowerShell委托exit4294967295），不计作编译失败；保持已分配版本，使用协调器foreground及明确pwsh.exe继续官方`build-windows.ps1 -SkipTests -VersionAllocated -ExpectedVersion`后进入编译。Mac在隔离dist／deploy目录运行官方`build-desktop.sh build-only`成功，日志为`interaction-ri18-macos-release`；未覆盖旧安装。
+
+实际Mac发布应用使用独立modern Test Mode profile启动，真实库模型READY，Windows专属设备条件在Mac为空。应用先正常退出，再向其实际数据库与文件目录种入有限的中断准备receipt；重新启动production后精确恢复原文件字节、删除receipt与staged文件，两个manga身份保留，真实搜索也成功。验收脚本最初将日志放入未标记profile及误用GET shutdown的两处操作错误已经纠正，不能归为产品缺陷；所有启动进程均已按本轮端口正常退出。
+
+随后真实`POST /test/action/sort`返回500，正式包同时带入`kotlinx-coroutines-android`与Swing；AndroidDispatcherFactory优先被选中，因Android兼容层没有`Handler.createAsync(Looper)`导致`Dispatchers.Main`不可用，真实Voyager screenModelScope排序链失败。这是发布运行发现，不能用此前UI测试替代。Windows同源构建于11:40:27 UTC仅停止本轮协调器进程树（CANCELLED130），未发布该缺陷包。后续修复及最终产物另记。
+
+Android正式候选前已只读核对Git登记且实际存在的工作树版本与候选目录，最高已交付code40，故本轮分配code41／`0.19.4-aex.23`，应用ID与原证书不变。再次`build-android.py check --signing`通过；版本分配不等于候选构建或安装完成。
+
+### RI18 发布调度器修复闭合
+
+仅在`app-desktop`依赖边界排除传递的`kotlinx-coroutines-android`，保留Swing、共享domain与Android依赖、扩展Handler／Looper兼容层。新增`DesktopMainDispatcherRuntimeTest`将真实main compilation runtime classpath与探针字节码交给独立JVM；明确不含coroutines-test，不调用setMain，先验证真实Swing EDT，再经DI／Library factory／Voyager排序链断言共享偏好持久化。
+
+首次红测因Windows CreateProcess206命令行过长未执行，不计业务红；改用UTF-8 classpath文件与Java argfile后，`main-dispatcher-red-valid`的11:47:34.367 UTC XML正确复现同一Handler.createAsync错误。最小排除修复后11:47:59.173 XML通过；`main-dispatcher-affected`10项均PASS／0SKIP（新增fork、真实排序、许可资源与UI、6项既有Handler／Looper行为），原命令仅因两文件CRLF格式失败，规范化后`main-dispatcher-format`于11:51:24 PASS。主代理独立读五文件变更和10项XML，确认没有用测试dispatcher掩盖正式装配。
+
+本批修复后的最新结果合计237项（按平台区分同一共享契约，236个源码方法），全部通过；10项受影响回归中3项与此前结果重复，新增7项不重复计数。Android与JVM各自运行的共享空目录契约保留两份平台证据。原完整矩阵及补验FAILED记录仍保留，不宣称又执行了一次全绿全量。
+
+重新生成许可数据后实际204项，runtime provider与UI均通过原内容断言；先前203与中间205的缓存不能作为当前发布清单。最终53文件再次冻结，行为输入SHA-256为`47afc518d98f7293fbb18bed628c75e1cd6eebcfdc43627e4eb19e70ab05af73`，版本字段单独记录。Mac逐项同步校验后发现export仍FROM-CACHE恢复旧203项，停止该轮、仅删除本任务隔离目录下已确认的生成JSON并关闭该次构建缓存，再走官方build-only；实际生成204项且无Android dispatcher条目。没有修改生成插件或其他项目缓存。Windows官方脚本自身使用rerun-tasks重新生成。
+
+### RI18 最终正式产物与实际运行
+
+Windows官方构建入口分配`0.11.19.70.1e6a49c`；Bash委托启动再次exit127且未进入编译后，保持该版本、用已验证的foreground方式继续其官方PowerShell脚本。`interaction-ri18-windows-release-final-resume`于11:56:29.182–12:00:35.370 UTC PASSED，完成所有正式构建步骤、真实扩展APK安装／源解析验收、发布未打包目录及ZIP。完成报告使用日志中最终`Final unpacked EXE:`，文件存在；不使用tmp目录作交付。
+
+macOS最终`interaction-ri18-macos-release-fresh`于11:57:34.060–11:59:38.943 UTC PASSED，版本`0.11.19.71.1e6a49c`。Mac因中间缓存清单构建被中止而额外分配一次BUILD；两端功能源码一致，版本分配分别记录，不把71误报成Windows版本。实际应用位于本轮独立目录，未覆盖旧checkout或现有安装；使用系统ditto完整归档应用包并传回Windows，SHA-256一致。直接核对Windows发布JAR及Mac归档内实际JAR，两端许可数据均204项，不含Android dispatcher；不是仅查生成目录。
+
+两个平台各完成正常准备恢复和文件冲突恢复两种实际发布runtime场景。每种使用新modern profile，由发布应用先创建数据库，再正常退出并写入有限中断准备夹具。重新启动后验证精确原字节、暂存文件／receipt清理、两作品身份保留；通过真实Test Mode模型搜索／排序、再次退出重启后排序持久化。冲突场景实际报`A later download prevents rollback`，原字节、冲突文件和receipt均保留，移除仅本轮已核对的冲突文件后可重试成功。没有以系统JDK／独立HTTP或SQL客户端代替production恢复链。
+
+Windows的冲突拒绝会保留jpackage启动器错误对话框，因此首次脚本等待自然退出超时；不能把该轮自动脚本记为通过。主代理核实本轮父子进程的发布EXE路径与独立profile后，仅关闭子进程的`Mihon Desktop.exe`错误窗口，确认进程退出，再从同一保存完好的receipt继续验证，恢复／排序／重启均通过。此证据证明拒绝覆盖与可恢复，不声称Windows错误路径能无窗口自动退出。所有验收实例最后已正常退出或按上述方式关闭，未操作其他Mihon实例。
+
+Windows同一production DI设备端口的真实发布查询返回`ac=SATISFIED`、`wifi=UNKNOWN`、`network_not_metered=UNKNOWN`，三项能力均暴露；Mac能力集合为空。只报告查询实值，不推断未知的根因，不修改真实网络／供电状态；条件切换、等待续跑的物理验收仍待完成。这里的headless模型链不等于实际窗口、鼠标／触控板或DPI验收。
+
+Android统一`candidate`流程内部协调器于12:01:34.301–12:05:14.454 UTC PASSED，正式候选在12:05:20.686 UTC生成，随后独立`verify --artifact`通过。原应用ID、证书连续，code41／`0.19.4-aex.23`、v2／v3签名、非debuggable、四ABI、min26／target36，R8／资源压缩开启，遥测／更新器关闭，mapping哈希已校验。R8日志包含Window extensions／sidecar与RE2类warning，但正式任务成功；没有安装设备或声称ART运行／原设备升级完成。
+
+| 平台 | 本轮可交付产物 | SHA-256 |
+| --- | --- | --- |
+| Windows | [最终未打包EXE](<D:/Codex/worktrees/99ac/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.70.1e6a49c-unpacked/Mihon Desktop.exe>)；[完整ZIP](D:/Codex/worktrees/99ac/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.70.1e6a49c-windows.zip) | ZIP `7b82af8d263b4b0e382ab6830e34ba411fcdd65617a3f37323edd712cb270acc` |
+| macOS Intel | [完整应用ZIP](D:/Codex/worktrees/99ac/mihon/app-desktop/artifacts/macos/Mihon-Desktop-0.11.19.71.1e6a49c-macos-x64.zip) | `2a7fc88e40873128406970fbc22e7df830b334a383d71fe2e23978bcc81f5d68` |
+| Android | [正式签名候选APK](D:/Codex/worktrees/99ac/mihon/app/artifacts/android/0.19.4-aex.23-vc41-1e6a49c0c9-release/Mihon-Fork-0.19.4-aex.23-vc41-release-universal.apk)；[候选清单](D:/Codex/worktrees/99ac/mihon/app/artifacts/android/0.19.4-aex.23-vc41-1e6a49c0c9-release/artifact.json) | `913d654eca0fdee2d95b04db30a1b934b525c6b99c793daba8f73e0b21420853` |
+
+正式构建均来自基线`1e6a49c0c9ebee38b3a0eb841f8b53eef9c7bdf2`加本功能批差异；冻结行为输入、各平台版本与Android候选productionInputsSha256由上述冻结文件／候选清单分别保存。构建后仅修正ID95当前角色索引从139到148（依赖边界和必要格式造成行漂移），不修改历史固定锚点、能力状态或冻结actionInventory；功能源码未改变。原索引契约单方法已由`interaction-ri18-final-locator-valid`复验PASS／0SKIP（XML 2026-10-02T12:08:21.159Z）；首次命令因PowerShell拆分未引号的Gradle属性参数而未执行测试，修正传参后仅重试该方法，没有追加audit或全量。该方法已包含在前述237项中，不重复累计。
+
+本功能批涉及54个文件，超过原估算的内聚性在于同一最终收口：启动／迁移清理、现有分类排序适配与主题语义、发布依赖边界，以及真实矩阵揭示的旧夹具和必要索引修正。没有按文件拆成状态提交，也未扩展到其他功能；风险分别通过原生产集成测试、干净运行时fork、同批独立核验和两端真实发布运行覆盖。过程日志／XML／临时验收脚本保持忽略，交付为代码、既有文档和正式产物。
+
 ## 未完成与限制
 
-RI00／RI01 的实现、focused、唯一独立审查及必要修复复审已完成，代码、测试、索引修复和必要 checkoff 随本功能批同一提交。首簇提交为 `14a8ce15695cf69ab2e468b825e88ec91641e08a`。用户继续要求完成剩余 roadmap，现复用原实施代理串行推进后续批次，每批按既有审查与必要修复复审流程执行；完整验证仍只在 RI18。RI02 实现、focused、唯一修复复审和格式／索引检查均通过，必要 checkoff 与代码／测试在本批同一提交；RI03 实现、唯一修复复审、140项有效focused证据、格式与索引检查已闭合，必要checkoff随本批同一提交；RI04实现、140项有效focused、唯一独立初审及必要修正核验、格式及索引已闭合，必要checkoff随本批同一提交；RI05实现、唯一独立初审及必要修复核验、132项去重focused证据、格式及索引检查已闭合，必要checkoff随本批同一提交；RI06实现、同一独立初审及必要修正核验、122项有效去重focused证据、scoped格式与273条当前索引检查已闭合，实施代理已回执停写、无存活Gradle进程，必要checkoff随本批同一提交；RI07实现、同一独立初审与必要修正核验、169项去重focused证据、scoped格式及279条当前索引已闭合，必要checkoff与代码／测试在本批同一提交；RI08实现、同一独立初审及必要修正核验、159项有效去重focused、scoped格式和287条当前索引已闭合，必要checkoff随本批同一提交；RI09实现、同一独立初审与必要修正核验、65项有效去重focused、scoped格式及293条当前索引已闭合，必要checkoff随本批同一提交；RI10实现、同一独立初审及必要修正核验、118项有效去重focused、35Kotlin／2XML scoped格式与306条当前索引已闭合，必要checkoff随本批同一提交；RI11已提交 `6ea1078420970a4d827f1a06dd72b54d7116e4b3`；RI12已提交 `4fe9aab0d9d8cb4c7d3a04b323e74ebaee1deb7d`，66项去重focused、25Kotlin／2XML scoped格式、323条当前索引及同批独立验收已闭合；RI13实现、108项去重focused、唯一独立初审与必要修正核验、scoped格式及332条当前索引已闭合，必要checkoff随本功能批提交；RI14实现、110项去重focused、持续独立初审及必要修正核验、29K／2XML scoped格式与339当前索引已闭合，必要checkoff随本功能批提交；RI15实现、98项有效focused、同批独立验收及必要修正核验、32K／2XML scoped格式与346当前索引已闭合，必要checkoff随本功能批提交；RI16核心实现、64项唯一focused、scoped18K／2XML格式和同批独立验收已闭合，但RI16正式发布runtime及硬件门禁未取得，checkbox未勾选；RI17核心实现、36项唯一focused、14K／2XML格式及同批独立验收已闭合，正式发布及实体输入门禁未取得，checkbox未勾选；RI18继续收口；最终全量、正式构建及运行验收尚未执行。本轮没有 Android正式候选／macOS正式构建、真实鼠标／触控板／硬件条件验收，没有交付 EXE/APK，没有把 HTML 勾选更新为 native 完成。
+RI00–RI15已按既有功能批完成并提交。RI16与RI17核心实现和专项验证已提交（`17ca343a`、`1e6a49c0c9`）；本轮RI18已完成可执行的代码修复、独立核验、原失败定向闭合、正式构建和上述发布运行验收，代码／测试／版本／必要文档随本功能批提交。两次完整执行的CANCELLED／FAILED及所有跳过记录保留，没有第三次完整矩阵，也没有改写为全量一次全绿。
+
+RI16／RI17／RI18 checkbox保持未勾选：用户目前仅有Windows鼠标，尚未取得实际鼠标、精确触控板／自然滚动、125%／150%／200%物理DPI、实际网络／供电切换及休眠恢复、真实追踪／源登录账号、设备升级保留数据等完整门禁。离屏与Test Mode、模型／MockWebServer、签名候选和本轮隔离新数据库恢复均不替代这些要求；Android没有安装或操作实体设备，macOS没有覆盖现有配置。
+
+用户可先用上表Windows最终EXE验收设置→外观单选、书架排序保存／重启、正常鼠标两段顶部刷新及左栏不误触；精确触控板和不同物理DPI仍需相应设备条件。完整手动条目沿用roadmap第6.3节，不另建进度权威或缩减原验收。

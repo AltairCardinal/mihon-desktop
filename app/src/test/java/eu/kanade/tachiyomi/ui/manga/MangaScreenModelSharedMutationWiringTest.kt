@@ -624,8 +624,15 @@ class MangaScreenModelSharedMutationWiringTest {
         }
         val getChapters = tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(chapters)
         val update = UpdateManga(mangas, tachiyomi.domain.manga.interactor.FetchInterval(getChapters))
+        val downloads = mockk<eu.kanade.tachiyomi.data.download.DownloadManager>(relaxed = true)
+        coEvery {
+            downloads.withDirectoryChanges(
+                any(),
+                any<suspend () -> tachiyomi.domain.chapter.service.ChapterDirectoryResult>(),
+            )
+        } coAnswers { secondArg<suspend () -> tachiyomi.domain.chapter.service.ChapterDirectoryResult>()() }
         val sync = eu.kanade.domain.chapter.interactor.SyncChaptersWithSource(
-            mockk(relaxed = true), mockk(relaxed = true), chapters,
+            downloads, mockk(relaxed = true), chapters,
             tachiyomi.domain.chapter.interactor.ShouldUpdateDbChapter(), update, UpdateChapter(chapters), getChapters,
             GetExcludedScanlators(handler), LibraryPreferences(preferenceStore),
         )
@@ -651,11 +658,13 @@ class MangaScreenModelSharedMutationWiringTest {
             withContext(Dispatchers.Default) {
                 withTimeout(5_000) {
                     called.await()
-                    while (mangas.getMangaById(MANGA_ID).memo != memo) delay(10)
+                    if (!emptyChapters) {
+                        while (mangas.getMangaById(MANGA_ID).memo != memo) delay(10)
+                    }
                 }
             }
             coVerify(exactly = 1) { source.getMangaUpdate(any(), any(), true, true) }
-            assertEquals(memo, mangas.getMangaById(MANGA_ID).memo)
+            if (!emptyChapters) assertEquals(memo, mangas.getMangaById(MANGA_ID).memo)
             coVerify(exactly = 0) { source.getMangaDetails(any()) }
             coVerify(exactly = 0) { source.getChapterList(any()) }
             if (emptyChapters) {
@@ -669,6 +678,7 @@ class MangaScreenModelSharedMutationWiringTest {
                     }
                 }
                 assertEquals("No chapters found", snackbar.visuals.message)
+                assertEquals(manga.memo, mangas.getMangaById(MANGA_ID).memo)
                 snackbar.dismiss()
                 testScheduler.runCurrent()
                 assertEquals(false, (model.state.value as MangaScreenModel.State.Success).isRefreshingData)

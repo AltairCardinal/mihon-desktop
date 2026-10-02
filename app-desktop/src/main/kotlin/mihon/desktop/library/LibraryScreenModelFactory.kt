@@ -20,7 +20,6 @@ import tachiyomi.domain.category.interactor.RenameCategory
 import tachiyomi.domain.category.interactor.ReorderCategory
 import tachiyomi.domain.category.interactor.SetDisplayMode
 import tachiyomi.domain.category.interactor.SetMangaCategories
-import tachiyomi.domain.category.interactor.SetSortModeForCategory
 import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
@@ -48,7 +47,6 @@ object LibraryScreenModelFactory {
             readerPreferences = Injekt.get<mihon.desktop.reader.ReaderPreferences>(),
             getLibraryManga = Injekt.get<GetLibraryManga>(),
             getCategories = Injekt.get<GetCategories>(),
-            categoryRepository = Injekt.get<tachiyomi.domain.category.repository.CategoryRepository>(),
             createCategory = Injekt.get<CreateCategoryWithName>(),
             renameCategory = Injekt.get<RenameCategory>(),
             deleteCategory = Injekt.get<DeleteCategory>(),
@@ -93,7 +91,7 @@ object LibraryScreenModelFactory {
                 Injekt.get<tachiyomi.domain.library.service.LibraryPreferences>()
             }.getOrNull(),
             setDisplayModeInteractor = runCatching { Injekt.get<SetDisplayMode>() }.getOrNull(),
-            setSortModeForCategory = runCatching { Injekt.get<SetSortModeForCategory>() }.getOrNull(),
+            categorySortSettings = Injekt.get<mihon.desktop.settings.DesktopCategorySortSettings>(),
             downloadedChapterCount = if (downloadProvider != null && downloadIdentityResolver != null) {
                 { item ->
                     downloadProvider.downloadedChapterCount(

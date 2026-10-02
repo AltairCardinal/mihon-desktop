@@ -1271,17 +1271,16 @@ class LibrarySettingsPolicyInteractionTest {
                 scene.requestFocus(title)
                 scene.key(Key.Spacebar)
                 scene.renderUntil(message = "Native stage 15: default=$defaultDialog") { scene.ownerCount() == 2 }
+                scene.renderUntil(message = "Native dialog initial focus: default=$defaultDialog") {
+                    scene.activeFocused() != null
+                }
                 for (shift in listOf(false, true)) {
                     scene.requestFocus(MR.strings.action_cancel.localized())
                     scene.renderUntil(message = "Native stage 18: default=$defaultDialog") {
-                        scene.activeFocused()?.let {
-                            MR.strings.action_cancel.localized() in
-                                scene.labels(it)
-                        } ==
-                            true
+                        scene.activeFocused()?.let(scene::labels) == listOf(MR.strings.action_cancel.localized())
                     }
-                    val start = requireNotNull(scene.activeFocused()).id
-                    val visited = mutableSetOf<Int>()
+                    val start = scene.labels(requireNotNull(scene.activeFocused()))
+                    val visited = mutableSetOf<List<String>>()
                     var closedLoop = false
                     for (step in 0 until 80) {
                         scene.key(Key.Tab, shift = shift)
@@ -1290,15 +1289,17 @@ class LibrarySettingsPolicyInteractionTest {
                                 null
                         }
                         val focused = requireNotNull(scene.activeFocused())
-                        visited += focused.id
-                        if (focused.id == start && visited.size > 1) {
+                        val identity = scene.labels(focused)
+                        visited += identity
+                        if (identity == start && visited.size > 1) {
                             closedLoop = true
                             break
                         }
                     }
                     assertTrue(
                         closedLoop && visited.size >= 3,
-                        "Native Tab and Shift+Tab must complete their dialog focus loop",
+                        "Native focus loop default=$defaultDialog shift=$shift start=$start visited=$visited " +
+                            "actual=" + scene.activeFocused()?.let(scene::labels),
                     )
                 }
                 val lazy = scene.activeNodes().single { it.config.contains(SemanticsActions.ScrollToIndex) }
@@ -1326,11 +1327,7 @@ class LibrarySettingsPolicyInteractionTest {
                 scene.renderUntil(message = "Native stage 41: default=$defaultDialog") { scene.activeFocused() != null }
                 scene.resize(300, 620)
                 scene.renderUntil(message = "Cancel focus survives resize") {
-                    scene.activeFocused()?.let {
-                        MR.strings.action_cancel.localized() in
-                            scene.labels(it)
-                    } ==
-                        true
+                    scene.activeFocused()?.let(scene::labels) == listOf(MR.strings.action_cancel.localized())
                 }
                 assertEquals(2, scene.ownerCount())
                 assertTrue(
@@ -1437,7 +1434,7 @@ class LibrarySettingsPolicyInteractionTest {
             val b = categories.getAll().single { it.name == "Import exclude" }.id
             val repository = Injekt.get<MangaRepository>()
             val manga = repository.insertNetworkManga(
-                listOf(Manga.create().copy(source = 0, url = "/migration", title = "Migration scope")),
+                listOf(Manga.create().copy(source = 123, url = "/migration", title = "Migration scope")),
             ).single()
             repository.updateAtomically(LibraryMembershipUpdate(manga.id, true, 100, listOf(a)))
             context.closeAndJoin()
@@ -1694,7 +1691,7 @@ class LibrarySettingsPolicyInteractionTest {
             val category = categories.getAll().single { it.name == "Current actual" }
             val repository = Injekt.get<MangaRepository>()
             val manga = repository.insertNetworkManga(
-                listOf(Manga.create().copy(source = 0, url = "/current", title = "Current")),
+                listOf(Manga.create().copy(source = 123, url = "/current", title = "Current")),
             ).single()
             repository.updateAtomically(LibraryMembershipUpdate(manga.id, true, 100, listOf(category.id)))
             Injekt.get<LibraryPreferences>().updateCategories().set(setOf("BROKEN"))
@@ -1975,7 +1972,7 @@ class LibrarySettingsPolicyInteractionTest {
                         index,
                         title,
                     ->
-                    Manga.create().copy(source = 0, url = "/scope-$index", title = title)
+                    Manga.create().copy(source = 123, url = "/scope-$index", title = title)
                 },
             )
             val memberships = listOf(listOf(a), listOf(b), listOf(a, b), emptyList())

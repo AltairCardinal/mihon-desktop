@@ -12,19 +12,21 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
-import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.DesktopLocalizedNavigatorContent
+import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.di.isolatedDesktopPreferenceStore
 import mihon.desktop.platform.DesktopExternalActionTarget
+import mihon.desktop.submitDesktopExternalAction
 import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.test.state.TestState
 import mihon.desktop.test.state.applicationState
-import mihon.desktop.submitDesktopExternalAction
 import mihon.desktop.ui.home.ExternalActionFeedbackDispatcher
 import mihon.desktop.ui.home.HomeScreen
 import mihon.desktop.ui.library.LibraryNavigationHost
@@ -42,10 +44,10 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
+import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
-import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
@@ -58,8 +60,22 @@ import java.util.Locale
 @Isolated
 @OptIn(ExperimentalComposeUiApi::class)
 class ExternalActionFeedbackWiringTest {
+    @org.junit.jupiter.api.BeforeEach
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun prepareMainDispatcher() {
+        kotlinx.coroutines.Dispatchers.setMain(kotlinx.coroutines.test.UnconfinedTestDispatcher())
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun restoreMainDispatcher() {
+        kotlinx.coroutines.Dispatchers.resetMain()
+    }
+
     @Test
-    fun `accepted library success and failure survive tab switches with Home feedback`(@TempDir tempDir: File) = runBlocking {
+    fun `accepted library success and failure survive tab switches with Home feedback`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
         var entered = CompletableDeferred<Unit>()
         var release = CompletableDeferred<Unit>()
         var failUpdate = false
@@ -105,7 +121,7 @@ class ExternalActionFeedbackWiringTest {
             }
             longClickText(scene, manga.title)
             scene.render()
-            clickText(scene, MR.strings.desktop_ui_mark_read.localized())
+            clickText(scene, MR.strings.action_mark_as_read.localized())
             withTimeout(2_000) { entered.await() }
 
             clickText(scene, MR.strings.browse.localized())
@@ -127,7 +143,7 @@ class ExternalActionFeedbackWiringTest {
             }
             longClickText(scene, manga.title)
             scene.render()
-            clickText(scene, MR.strings.desktop_ui_mark_unread.localized())
+            clickText(scene, MR.strings.action_mark_as_unread.localized())
             withTimeout(2_000) { entered.await() }
             clickText(scene, MR.strings.browse.localized())
             scene.render()
@@ -166,21 +182,41 @@ class ExternalActionFeedbackWiringTest {
 
             clickText(scene, MR.strings.label_library.localized())
             scene.render()
-            val downloadedFilter = MR.strings.desktop_ui_filter_value.localized(
-                Locale.getDefault(),
-                MR.strings.label_downloaded.localized(),
-                TriState.DISABLED.label(),
-            )
-            assertTrue(hasText(scene, downloadedFilter))
+            fun hasDownloadedFilter(): Boolean = scene.semanticsOwners.any { owner ->
+                owner.unmergedRootSemanticsNode.flatten().any { node ->
+                    node.config.contains(SemanticsProperties.Role) &&
+                        node.config[SemanticsProperties.Role] == androidx.compose.ui.semantics.Role.Checkbox &&
+                        node.config.getOrElse(SemanticsProperties.StateDescription) {
+                            ""
+                        } == TriState.DISABLED.label() &&
+                        node.flatten().any { child ->
+                            child.config.getOrElse(SemanticsProperties.Text) { emptyList() }
+                                .any { it.text == MR.strings.label_downloaded.localized() }
+                        }
+                }
+            }
+            withTimeout(5_000) {
+                while (!hasDownloadedFilter()) {
+                    scene.render()
+                    yield()
+                }
+            }
+            assertTrue(hasDownloadedFilter())
 
             clickText(scene, MR.strings.browse.localized())
             scene.render()
             clickText(scene, MR.strings.label_library.localized())
             scene.render()
-            assertFalse(hasText(scene, downloadedFilter))
+            assertFalse(hasDownloadedFilter())
             clickText(scene, MR.strings.label_library.localized())
             scene.render()
-            assertTrue(hasText(scene, downloadedFilter))
+            withTimeout(5_000) {
+                while (!hasDownloadedFilter()) {
+                    scene.render()
+                    yield()
+                }
+            }
+            assertTrue(hasDownloadedFilter())
         } finally {
             scene.close()
             context.closeAndJoin()
@@ -223,7 +259,9 @@ class ExternalActionFeedbackWiringTest {
     }
 
     @Test
-    fun `production root navigator replaces an open reader after test mode reset`(@TempDir tempDir: File) = runBlocking {
+    fun `production root navigator replaces an open reader after test mode reset`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
         val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore(), startDownloadWorker = false)
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
         lateinit var navigator: Navigator
@@ -309,7 +347,11 @@ class ExternalActionFeedbackWiringTest {
         Locale.setDefault(locale)
         try {
             val results = ArrayDeque<Result<DesktopExternalActionTarget>>().apply {
-                add(Result.success(DesktopExternalActionTarget.Rejected(DesktopExternalActionTarget.Rejection.ParserRejected)))
+                add(
+                    Result.success(
+                        DesktopExternalActionTarget.Rejected(DesktopExternalActionTarget.Rejection.ParserRejected),
+                    ),
+                )
                 add(Result.failure(IllegalStateException("resolver failed")))
             }
             val state = TestState()
@@ -325,8 +367,16 @@ class ExternalActionFeedbackWiringTest {
                 controller.consumePending(fixture.navigator, feedback::add)
             }
             assertEquals(1, fixture.navigator.size)
-            assertEquals(listOf(MR.strings.error_no_match.localized(locale), MR.strings.unknown_error.localized(locale)), feedback)
-            assertEquals(listOf("ExternalActionRejected", "ExternalActionFailed"), state.actionHistory.value.map { it.action }.filterNot { it.endsWith("Pending") })
+            assertEquals(
+                listOf(MR.strings.error_no_match.localized(locale), MR.strings.unknown_error.localized(locale)),
+                feedback,
+            )
+            assertEquals(
+                listOf("ExternalActionRejected", "ExternalActionFailed"),
+                state.actionHistory.value.map {
+                    it.action
+                }.filterNot { it.endsWith("Pending") },
+            )
             fixture.close()
         } finally {
             Locale.setDefault(previousLocale)
@@ -357,7 +407,9 @@ class ExternalActionFeedbackWiringTest {
             }
             scene.render()
             withTimeout(5_000) {
-                applicationState.actionHistory.first { records -> records.any { it.action == "ExternalActionRejected" } }
+                applicationState.actionHistory.first { records ->
+                    records.any { it.action == "ExternalActionRejected" }
+                }
             }
             val feedback = MR.strings.error_no_match.localized()
             withTimeout(5_000) {
@@ -399,7 +451,9 @@ class ExternalActionFeedbackWiringTest {
 
             dependencies.externalActionNavigator.submit(ExternalActionInput.Search("after-feedback"))
             withTimeout(1_000) {
-                applicationState.actionHistory.first { records -> records.any { it.action == "ExternalActionSucceeded" } }
+                applicationState.actionHistory.first { records ->
+                    records.any { it.action == "ExternalActionSucceeded" }
+                }
             }
             scene.render()
 
@@ -444,7 +498,10 @@ class ExternalActionFeedbackWiringTest {
             scene.render()
             val initialFeedback = MR.strings.invalid_backup_file.localized()
             withTimeout(5_000) {
-                while (!scene.semanticsOwners.joinToString { semantics(it.rootSemanticsNode) }.contains(initialFeedback)) {
+                while (!scene.semanticsOwners.joinToString {
+                        semantics(it.rootSemanticsNode)
+                    }.contains(initialFeedback)
+                ) {
                     scene.render()
                     yield()
                 }
@@ -482,9 +539,17 @@ class ExternalActionFeedbackWiringTest {
                 listOf(Chapter.create().copy(mangaId = manga.id, url = "/chapter", name = "Chapter 7")),
             ).single()
             val controller = DesktopUiDependencies.fromInjekt().externalActionNavigator
-            val screen = controller.destination(DesktopExternalActionTarget.Chapter(manga.id, chapter.id)) as mihon.desktop.ui.reader.DesktopReaderScreen
-            assertEquals(listOf(manga.id, chapter.id, manga.source), listOf(screen.mangaId, screen.chapterId, screen.sourceId))
-            assertEquals(listOf(manga.title, chapter.name, chapter.url), listOf(screen.mangaTitle, screen.chapterTitle, screen.chapterUrl))
+            val screen = controller.destination(
+                DesktopExternalActionTarget.Chapter(manga.id, chapter.id),
+            ) as mihon.desktop.ui.reader.DesktopReaderScreen
+            assertEquals(
+                listOf(manga.id, chapter.id, manga.source),
+                listOf(screen.mangaId, screen.chapterId, screen.sourceId),
+            )
+            assertEquals(
+                listOf(manga.title, chapter.name, chapter.url),
+                listOf(screen.mangaTitle, screen.chapterTitle, screen.chapterUrl),
+            )
             assertEquals(chapter.id, screen.chapters.single().id)
         } finally {
             context.closeAndJoin()

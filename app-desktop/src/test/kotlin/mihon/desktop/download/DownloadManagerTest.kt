@@ -69,10 +69,13 @@ import kotlin.concurrent.thread
 @OptIn(ExperimentalCoroutinesApi::class)
 class DownloadManagerTest {
 
+    private val fixtureDownloadPreferences = DesktopDownloadPreferences(InMemoryPreferenceStore())
+
     @TempDir
     lateinit var tempDir: File
 
     private fun manager() = DesktopDownloadManager(
+        downloadPreferences = fixtureDownloadPreferences,
         provider = DesktopDownloadProvider(baseDir = tempDir),
     )
 
@@ -85,7 +88,12 @@ class DownloadManagerTest {
             }
             server.start()
             val provider = DesktopDownloadProvider(File(tempDir, "migration-generation"))
-            val manager = DesktopDownloadManager(provider, networkHelper = NetworkHelper(OkHttpClient()))
+            val manager =
+                DesktopDownloadManager(
+                    provider,
+                    downloadPreferences = fixtureDownloadPreferences,
+                    networkHelper = NetworkHelper(OkHttpClient()),
+                )
             val item = DownloadItem(
                 42,
                 "Work",
@@ -121,6 +129,7 @@ class DownloadManagerTest {
         }
 
     private fun manager(provider: DesktopDownloadProvider, scope: TestScope) = DesktopDownloadManager(
+        downloadPreferences = fixtureDownloadPreferences,
         provider = provider,
         networkHelper = NetworkHelper(OkHttpClient()),
         workerScope = scope,
@@ -165,7 +174,8 @@ class DownloadManagerTest {
             var rejectSecond = false
             val provider = DesktopDownloadProvider(tempDir.resolve("captured-files"))
             val manager = DesktopDownloadManager(
-                provider,
+                downloadPreferences = fixtureDownloadPreferences,
+                provider = provider,
                 networkHelper = NetworkHelper(OkHttpClient()),
                 store = store,
                 queuePersister = { entries ->
@@ -247,7 +257,12 @@ class DownloadManagerTest {
             server.enqueue(mockwebserver3.MockResponse.Builder().body(okio.Buffer().write(jpegBytes())).build())
             server.start()
             val provider = DesktopDownloadProvider(tempDir.resolve("completed-replacement"))
-            val manager = DesktopDownloadManager(provider, networkHelper = NetworkHelper(OkHttpClient()))
+            val manager =
+                DesktopDownloadManager(
+                    provider,
+                    downloadPreferences = fixtureDownloadPreferences,
+                    networkHelper = NetworkHelper(OkHttpClient()),
+                )
             val item = DownloadItem(
                 42,
                 "Completed",
@@ -289,15 +304,20 @@ class DownloadManagerTest {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
         var retry = false
-        val manager = DesktopDownloadManager(provider, artifactCleaner = { file ->
-            if (!retry) {
-                false
-            } else {
-                entered.countDown()
-                check(release.await(5, TimeUnit.SECONDS))
-                file.deleteRecursively()
-            }
-        })
+        val manager =
+            DesktopDownloadManager(
+                provider,
+                downloadPreferences = fixtureDownloadPreferences,
+                artifactCleaner = { file ->
+                    if (!retry) {
+                        false
+                    } else {
+                        entered.countDown()
+                        check(release.await(5, TimeUnit.SECONDS))
+                        file.deleteRecursively()
+                    }
+                },
+            )
         try {
             assertTrue(manager.enqueue(item))
             artifact.mkdirs()
@@ -338,7 +358,8 @@ class DownloadManagerTest {
         val store = tachiyomi.data.download.PersistentDownloadStore(database)
         var rejectAfterWrite = false
         val manager = DesktopDownloadManager(
-            DesktopDownloadProvider(tempDir.resolve("priority-files")),
+            downloadPreferences = fixtureDownloadPreferences,
+            provider = DesktopDownloadProvider(tempDir.resolve("priority-files")),
             store = store,
             queuePersister = { entries ->
                 store.replaceAll(entries)
@@ -403,6 +424,7 @@ class DownloadManagerTest {
             val store = tachiyomi.data.download.PersistentDownloadStore(database)
             var reject = true
             val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
                 provider = DesktopDownloadProvider(File(tempDir, "files-$afterWrite")),
                 store = store,
                 queuePersister = { entries ->
@@ -469,6 +491,7 @@ class DownloadManagerTest {
         val releaseProbe = CountDownLatch(1)
         val ioEvents = CopyOnWriteArrayList<DownloadIoEvent>()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = DesktopDownloadProvider(tempDir.resolve("enqueue-preflight")),
             workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
             enqueueFileOperations = object : DownloadEnqueueFileOperations {
@@ -613,6 +636,7 @@ class DownloadManagerTest {
         val sourceClient = OkHttpClient()
         var observedClient: OkHttpClient? = null
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(globalClient) { sourceId ->
                 if (sourceId == 42L) sourceClient else globalClient
@@ -679,6 +703,7 @@ class DownloadManagerTest {
             val persistedQueues = CopyOnWriteArrayList<List<DownloadQueueEntry>>()
             val workerParent = SupervisorJob()
             val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
                 provider = provider,
                 networkHelper = NetworkHelper(OkHttpClient()),
                 workerScope = CoroutineScope(workerParent + Dispatchers.IO),
@@ -824,6 +849,7 @@ class DownloadManagerTest {
             val executedUrls = CopyOnWriteArrayList<String>()
             val workerParent = SupervisorJob()
             val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
                 provider = DesktopDownloadProvider(tempDir.resolve("child-loader-downloads")),
                 networkHelper = NetworkHelper(OkHttpClient()),
                 workerScope = CoroutineScope(workerParent + Dispatchers.IO),
@@ -967,6 +993,7 @@ class DownloadManagerTest {
             disallowNonAsciiFilenames = false,
         )
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = this,
@@ -1027,6 +1054,7 @@ class DownloadManagerTest {
         val secondBytes = jpegBytes() + 0x02.toByte()
         val writtenGenerations = mutableListOf<Byte>()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = this,
@@ -1265,6 +1293,7 @@ class DownloadManagerTest {
         val releaseFirstCleanup = CompletableDeferred<Unit>()
         val workerParent = SupervisorJob()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = DesktopDownloadProvider(tempDir.resolve("batch-retirement")),
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -1306,6 +1335,7 @@ class DownloadManagerTest {
             val releaseCleanup = CompletableDeferred<Unit>()
             val workerParent = SupervisorJob()
             val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
                 provider = provider,
                 networkHelper = NetworkHelper(OkHttpClient()),
                 workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -1349,6 +1379,7 @@ class DownloadManagerTest {
         val workerParent = SupervisorJob()
         var failEmptyQueuePersistence = false
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -1404,6 +1435,7 @@ class DownloadManagerTest {
                 fallback = mihon.desktop.domain.DesktopNotificationService(),
             )
             val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
                 provider = DesktopDownloadProvider(tempDir.resolve("notification-generation")),
                 networkHelper = NetworkHelper(OkHttpClient()),
                 workerScope = CoroutineScope(workerParent + dispatcher),
@@ -1471,6 +1503,7 @@ class DownloadManagerTest {
         val replacementExecuted = CompletableDeferred<Unit>()
         val workerParent = SupervisorJob()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -1546,6 +1579,7 @@ class DownloadManagerTest {
         val workerParent = SupervisorJob()
         val staleFinal = provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -1624,6 +1658,7 @@ class DownloadManagerTest {
         var cleanupAllowed = false
         val workerParent = SupervisorJob()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -1690,6 +1725,7 @@ class DownloadManagerTest {
         val staleFinal = provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
         val workerParent = SupervisorJob()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -1749,6 +1785,7 @@ class DownloadManagerTest {
             var executeCalls = 0
             val workerParent = SupervisorJob()
             val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
                 provider = provider,
                 networkHelper = NetworkHelper(OkHttpClient()),
                 workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -1827,6 +1864,7 @@ class DownloadManagerTest {
         )
         var persistenceOutage = false
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = this,
@@ -1869,6 +1907,7 @@ class DownloadManagerTest {
         )
         var cleanupCalls = 0
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             queuePersister = { entries ->
                 if (entries.isEmpty()) throw java.io.IOException("persist cancellation failed")
@@ -1903,6 +1942,7 @@ class DownloadManagerTest {
         val releaseCleanup = CompletableDeferred<Unit>()
         val workerParent = SupervisorJob()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
             artifactCleaner = { artifact ->
@@ -1942,6 +1982,7 @@ class DownloadManagerTest {
             val finallyEntered = CompletableDeferred<Unit>()
             val releaseFinally = CompletableDeferred<Unit>()
             val mgr = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
                 provider = DesktopDownloadProvider(tempDir),
                 networkHelper = NetworkHelper(OkHttpClient()),
                 workerScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + dispatcher),

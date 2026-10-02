@@ -105,12 +105,6 @@ class LibraryUpdateScheduler(
 
     fun runSingle(mangaId: Long): Job = requireNotNull(launchUpdate(null, resume = false, singleMangaId = mangaId))
 
-    fun tryRunNow(categoryId: Long? = null): Job? =
-        launchUpdate(categoryId, resume = false, rejectBusy = true)
-
-    fun tryRunSingle(mangaId: Long): Job? =
-        launchUpdate(null, resume = false, singleMangaId = mangaId, rejectBusy = true)
-
     fun acceptNow(categoryId: Long? = null): AcceptedLibraryUpdate? = acceptUpdate(categoryId, null)
 
     fun acceptSingle(mangaId: Long): AcceptedLibraryUpdate? = acceptUpdate(null, mangaId)

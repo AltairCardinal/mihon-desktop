@@ -14,7 +14,7 @@ class GeneratedDependencyNoticesResourceTest {
         val notices = assertInstanceOf(LicenseNoticeResult.Success::class.java, result).notices
         val names = notices.map { it.name }
 
-        assertEquals(199, notices.size)
+        assertEquals(204, notices.size)
         assertEquals(
             names.sortedWith(compareBy<String> { it.lowercase() }.thenBy { it }),
             names,

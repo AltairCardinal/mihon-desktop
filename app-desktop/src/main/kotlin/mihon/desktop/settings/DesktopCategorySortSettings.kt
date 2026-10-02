@@ -26,6 +26,52 @@ class DesktopCategorySortSettings(
     private val failedState = MutableStateFlow(false)
     val failed = failedState.asStateFlow()
 
+    /** Shared sort command with the existing finite preference/SQL compensation boundary. */
+    suspend fun setSort(categoryId: Long?, sharedSort: tachiyomi.domain.library.model.LibrarySort): Boolean {
+        val oldSort = preferences.sortingMode().get() to preferences.sortingMode().isSet()
+        val oldSeed = preferences.randomSortSeed().get() to preferences.randomSortSeed().isSet()
+        val previousFlags = try {
+            repository.getAll().associate { it.id to it.flags }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return false
+        }
+        val local = categoryId?.takeIf { preferences.categorizedDisplaySettings().get() && it in previousFlags }
+        val affected = if (local != null) previousFlags.filterKeys { it == local } else previousFlags
+        return try {
+            tachiyomi.domain.category.interactor.SetSortModeForCategory(preferences, repository)
+                .await(categoryId, sharedSort.type, sharedSort.direction)
+            true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            runCatching {
+                val current = repository.getAll().associateBy { it.id }
+                val mask = sharedSort.mask
+                val updates = affected.mapNotNull { (id, previous) ->
+                    val actual = current[id] ?: return@mapNotNull null
+                    if (actual.flags and mask != sharedSort.flag) return@mapNotNull null
+                    CategoryUpdate(id = id, flags = (actual.flags and mask.inv()) or (previous and mask))
+                }
+                repository.updatePartial(updates)
+            }
+            runCatching {
+                if (oldSort.second) preferences.sortingMode().set(oldSort.first) else preferences.sortingMode().delete()
+            }
+            runCatching {
+                if (oldSeed.second) {
+                    preferences.randomSortSeed().set(
+                        oldSeed.first,
+                    )
+                } else {
+                    preferences.randomSortSeed().delete()
+                }
+            }
+            false
+        }
+    }
+
     suspend fun recover(): Boolean = operations.withLock {
         try {
             val pending = journal.get()

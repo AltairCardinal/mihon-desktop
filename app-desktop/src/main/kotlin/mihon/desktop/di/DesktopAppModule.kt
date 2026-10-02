@@ -205,13 +205,13 @@ import java.util.Properties
  * Initializes all desktop DI bindings.
  * Call once at application startup before showing any UI.
  */
-fun initDesktopDI() {
+suspend fun initDesktopDI() {
     val paths = DesktopPlatformPaths.current(createDirectories = false)
     val preferenceStore = DesktopPreferenceStore()
     initDesktopDI(paths, preferenceStore)
 }
 
-internal fun initDesktopDI(
+internal suspend fun initDesktopDI(
     paths: DesktopPlatformPaths,
     preferenceStore: DesktopPreferenceStore,
 ) {
@@ -222,7 +222,21 @@ internal fun initDesktopDI(
     val handler = initDataLayer(paths)
     initExtensionLayer(paths, networkHelper, handler)
     initDomainLayer(handler)
-    initUILayer(paths, preferenceStore, networkHelper, handler)
+    try {
+        initUILayer(paths, preferenceStore, networkHelper, handler)
+    } catch (failure: Throwable) {
+        try {
+            (handler as JvmDatabaseHandler).close()
+        } catch (cleanup: Throwable) {
+            failure.addSuppressed(cleanup)
+        }
+        try {
+            networkHelper.close()
+        } catch (cleanup: Throwable) {
+            failure.addSuppressed(cleanup)
+        }
+        throw failure
+    }
 }
 
 internal fun initDesktopConfigurationForTest(appDir: File, preferenceStore: PreferenceStore) {
@@ -274,22 +288,36 @@ internal suspend fun initDesktopDIForTest(
     val handler = initDataLayer(paths, chapterRepositoryOverride, categoryRepositoryOverride, mangaRepositoryOverride)
     initExtensionLayer(paths, networkHelper, handler, artifactAuthenticator, trackerServiceRegistry, builtInSources)
     initDomainLayer(handler)
-    initUILayer(
-        paths,
-        preferenceStore,
-        networkHelper,
-        handler,
-        libraryProvider,
-        updateManga,
-        startDownloadWorker,
-        downloadFileOperations,
-        credentialBackendFactory,
-        profileDirectoryOpener,
-        nativeSharePort,
-        trackerConnectivity,
-        taskStoreFactory,
-        deviceConditionsOverride,
-    )
+    try {
+        initUILayer(
+            paths,
+            preferenceStore,
+            networkHelper,
+            handler,
+            libraryProvider,
+            updateManga,
+            startDownloadWorker,
+            downloadFileOperations,
+            credentialBackendFactory,
+            profileDirectoryOpener,
+            nativeSharePort,
+            trackerConnectivity,
+            taskStoreFactory,
+            deviceConditionsOverride,
+        )
+    } catch (failure: Throwable) {
+        try {
+            (handler as JvmDatabaseHandler).close()
+        } catch (cleanup: Throwable) {
+            failure.addSuppressed(cleanup)
+        }
+        try {
+            networkHelper.close()
+        } catch (cleanup: Throwable) {
+            failure.addSuppressed(cleanup)
+        }
+        throw failure
+    }
     return DesktopTestDIContext(
         handler = handler as JvmDatabaseHandler,
         networkHelper = networkHelper,
@@ -903,7 +931,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
 // reader progress tracker, preferences used by UI.
 // Depends on: all lower layers.
 
-internal fun initUILayer(
+internal suspend fun initUILayer(
     paths: DesktopPlatformPaths,
     preferenceStore: PreferenceStore,
     networkHelper: DesktopNetworkHelper,
@@ -926,361 +954,388 @@ internal fun initUILayer(
         deviceConditionsOverride ?: mihon.desktop.platform.createDesktopDeviceConditions(),
     )
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val passphraseVerifier = DesktopPassphraseVerifier(
-        DesktopCredentialStore(credentialBackendFactory(CredentialNamespace.APP_LOCK_V1)),
-    )
-    val appLock = DesktopAppLock(
-        Injekt.get(),
-        passphraseVerifier,
-        profileDirectory = paths.configDir,
-        openProfileDirectory = profileDirectoryOpener,
-    )
-    Injekt.addSingleton(passphraseVerifier)
-    Injekt.addSingleton(appLock)
-    val windowPrivacy = DesktopWindowPrivacy()
-    Injekt.addSingleton(windowPrivacy)
-    Injekt.addSingleton(DesktopWindowPrivacyController(Injekt.get(), Injekt.get(), windowPrivacy))
-    Injekt.addSingleton<DesktopNativeSharePort>(nativeSharePort)
-    Injekt.addSingleton(DesktopShareService(nativeSharePort = nativeSharePort))
-    Injekt.addSingleton<DependencyNoticeProvider>(ClasspathDependencyNoticeProvider())
-    val releaseService = ReleaseServiceImpl(networkHelper.client, Injekt.get<Json>(), Injekt.get<PlatformInfo>())
-    Injekt.addSingleton<ReleaseService>(releaseService)
-    val releaseChecker = GetApplicationRelease(releaseService, preferenceStore)
-    val updateDownloader = DesktopUpdateDownloader(
-        networkHelper.client,
-        paths.networkCacheDir.toPath().resolve("update"),
-        maxBytes = 512L * 1024 * 1024,
-        maxRedirects = 3,
-    )
-    val installerTrust = InstallerTrust(
-        windowsPublisher = BuildInfo.INSTALLER_WINDOWS_PUBLISHER.takeIf(String::isNotBlank),
-        macTeamId = BuildInfo.INSTALLER_MAC_TEAM_ID.takeIf(String::isNotBlank),
-    )
-    val updateInstaller = DesktopUpdateInstaller(
-        Injekt.get<PlatformInfo>().releaseTarget(isFoss = false),
-        installerTrust,
-    )
-    Injekt.addSingleton(releaseChecker)
-    Injekt.addSingleton(updateDownloader)
-    Injekt.addSingleton(installerTrust)
-    Injekt.addSingleton(updateInstaller)
-    val updateController = DesktopUpdateController(releaseChecker, updateDownloader, updateInstaller)
-    Injekt.addSingleton(updateController)
-    val updateScreenModel = DesktopUpdateScreenModel(updateController, applicationScope)
-    Injekt.addSingleton(updateScreenModel)
-    val mangaRepository = Injekt.get<MangaRepository>()
-    val chapterRepository = Injekt.get<ChapterRepository>()
-    val categoryRepository = Injekt.get<CategoryRepository>()
-    val historyRepository = Injekt.get<HistoryRepository>()
-    val appPreferences = Injekt.get<DesktopAppPreferences>()
-    Injekt.addSingleton<DesktopFilePicker>(SwingDesktopFilePicker())
-    Injekt.addSingleton<DesktopDirectoryOpenPort>(
-        DesktopDirectoryOpenPort(mihon.desktop.ui.settings.DesktopDirectoryOpener::openResult),
-    )
-    Injekt.addSingleton(
-        BackupRestoreScreenModelFactory(
-            mangaRepository = mangaRepository,
-            chapterRepository = chapterRepository,
-            categoryRepository = categoryRepository,
-            historyRepository = historyRepository,
-            getExcludedScanlators = Injekt.get(),
-            setExcludedScanlators = Injekt.get(),
-            trackRepository = Injekt.get(),
-            preferenceStore = preferenceStore,
-            extensionRepoRepository = Injekt.get(),
-            authorArchiveBackupContributor = Injekt.get(),
-            backupRestoreSync = Injekt.get(),
-        ),
-    )
-
-    val database = (handler as JvmDatabaseHandler).db
-    val libraryPreferences = LibraryPreferences(preferenceStore)
-    Injekt.addSingleton(
-        SetMangaDefaultChapterFlags(libraryPreferences, Injekt.get(), Injekt.get()),
-    )
-    Injekt.addSingleton(libraryPreferences)
-    val libraryPreferenceMigration = LibraryPreferenceMigration(
-        preferenceStore,
-        libraryPreferences,
-        legacyUpdatePreferences = {
-            val app = Injekt.get<DesktopAppPreferences>()
-            Triple(app.updateCategoryIncludes, app.updateCategoryExcludes, app.libraryUpdateInterval)
-        },
-        validCategoryIds = {
-            kotlinx.coroutines.runBlocking {
-                Injekt.get<CategoryRepository>().getAll().map { it.id }.toSet() +
-                    0L
-            }
-        },
-        legacyColumns = { Injekt.get<DesktopAppPreferences>().libraryGridColumns },
-    )
-    libraryPreferenceMigration.migrate()
-    Injekt.addSingleton(libraryPreferenceMigration)
-    val downloadPreferences = DesktopDownloadPreferences(preferenceStore)
-    val downloadDirectoryPreference = downloadPreferences.downloadDirectory(paths.downloadsDir)
-    val downloadDirectoryState = downloadDirectoryPreference.state()
-    val downloadDirectoryController = DesktopDownloadDirectoryController(
-        preference = downloadDirectoryPreference,
-        startupState = downloadDirectoryState,
-    )
-    val downloadManager = registerDesktopDownload(
-        directoryState = downloadDirectoryState,
-        directoryController = downloadDirectoryController,
-        downloadPreferences = downloadPreferences,
-        database = database,
-        libraryPreferences = libraryPreferences,
-        startWorker = false,
-        fileOperations = downloadFileOperations,
-    )
-    val readingProgress = RecordReadingProgress(SqlDelightReadingProgressRepository(database))
-    Injekt.addSingleton<mihon.domain.download.DownloadRepository>(downloadManager)
-    Injekt.addSingleton(mihon.domain.download.EnqueueDownload(downloadManager))
-    Injekt.addSingleton(mihon.domain.download.IsChapterDownloaded(downloadManager))
-    Injekt.addSingleton(mihon.domain.download.ObserveDownloadQueue(downloadManager))
-    Injekt.addSingleton(mihon.domain.download.CancelDownload(downloadManager))
-    Injekt.addSingleton(mihon.domain.download.RetryDownload(downloadManager))
-    Injekt.addSingleton(mihon.domain.download.TransitionDownload(downloadManager))
-    Injekt.addSingleton(mihon.domain.download.RecoverDownloads(downloadManager))
-    Injekt.addSingleton(readingProgress)
-    val sharedDownloadPreferences = DownloadPreferences(preferenceStore)
-    if (
-        preferenceStore.getBoolean("auto_download_new_chapters", false).get() &&
-        !sharedDownloadPreferences.downloadNewChapters().get()
-    ) {
-        sharedDownloadPreferences.downloadNewChapters().set(true)
-    }
-    val filterChaptersForDownload = FilterChaptersForDownload(
-        Injekt.get(),
-        sharedDownloadPreferences,
-        Injekt.get(),
-    )
-    Injekt.addSingleton(sharedDownloadPreferences)
-    Injekt.addSingleton(filterChaptersForDownload)
-    val notificationService = registerDesktopLibrary(
-        paths,
-        preferenceStore,
-        categoryRepository,
-        appPreferences,
-        filterChaptersForDownload,
-        Injekt.get(),
-        libraryProvider,
-        updateManga,
-        trackerConnectivity,
-        applicationScope,
-        taskStoreFactory,
-    )
-    Injekt.addSingleton(
-        mihon.desktop.domain.DesktopMigrationFiles(
-            paths.configDir,
+    var initializedDownloadManager: mihon.desktop.download.DesktopDownloadManager? = null
+    try {
+        val passphraseVerifier = DesktopPassphraseVerifier(
+            DesktopCredentialStore(credentialBackendFactory(CredentialNamespace.APP_LOCK_V1)),
+        )
+        val appLock = DesktopAppLock(
             Injekt.get(),
-            downloadManager,
-            Injekt.get<DesktopCustomCoverStore>(),
-            Injekt.get(),
-            Injekt.get<GetChaptersByMangaId>(),
-        ),
-    )
-    // Restore the original finite prepared file list before any producer is started.
-    kotlinx.coroutines.runBlocking(Dispatchers.IO) { Injekt.get<DesktopMigrateMangaUseCase>().recoverPendingFiles() }
-    if (startDownloadWorker) downloadManager.start()
-    lateinit var trackSync: ReadingProgressTrackSync
-    val trackerSyncScheduler =
-        DesktopTrackerSyncScheduler(Injekt.get<DesktopTaskScheduler>(), connectivity = trackerConnectivity) {
-            trackSync
-        }
-    trackSync = SyncReadingProgressWithTrack(
-        repository = Injekt.get<TrackRepository>(),
-        registry = Injekt.get<TrackerServiceRegistry>(),
-        retryScheduler = trackerSyncScheduler,
-    )
-    Injekt.addSingleton<ReadingProgressTrackSync>(trackSync)
-    Injekt.addSingleton(trackerSyncScheduler)
+            passphraseVerifier,
+            profileDirectory = paths.configDir,
+            openProfileDirectory = profileDirectoryOpener,
+        )
+        Injekt.addSingleton(passphraseVerifier)
+        Injekt.addSingleton(appLock)
+        val windowPrivacy = DesktopWindowPrivacy()
+        Injekt.addSingleton(windowPrivacy)
+        Injekt.addSingleton(DesktopWindowPrivacyController(Injekt.get(), Injekt.get(), windowPrivacy))
+        Injekt.addSingleton<DesktopNativeSharePort>(nativeSharePort)
+        Injekt.addSingleton(DesktopShareService(nativeSharePort = nativeSharePort))
+        Injekt.addSingleton<DependencyNoticeProvider>(ClasspathDependencyNoticeProvider())
+        val releaseService = ReleaseServiceImpl(networkHelper.client, Injekt.get<Json>(), Injekt.get<PlatformInfo>())
+        Injekt.addSingleton<ReleaseService>(releaseService)
+        val releaseChecker = GetApplicationRelease(releaseService, preferenceStore)
+        val updateDownloader = DesktopUpdateDownloader(
+            networkHelper.client,
+            paths.networkCacheDir.toPath().resolve("update"),
+            maxBytes = 512L * 1024 * 1024,
+            maxRedirects = 3,
+        )
+        val installerTrust = InstallerTrust(
+            windowsPublisher = BuildInfo.INSTALLER_WINDOWS_PUBLISHER.takeIf(String::isNotBlank),
+            macTeamId = BuildInfo.INSTALLER_MAC_TEAM_ID.takeIf(String::isNotBlank),
+        )
+        val updateInstaller = DesktopUpdateInstaller(
+            Injekt.get<PlatformInfo>().releaseTarget(isFoss = false),
+            installerTrust,
+        )
+        Injekt.addSingleton(releaseChecker)
+        Injekt.addSingleton(updateDownloader)
+        Injekt.addSingleton(installerTrust)
+        Injekt.addSingleton(updateInstaller)
+        val updateController = DesktopUpdateController(releaseChecker, updateDownloader, updateInstaller)
+        Injekt.addSingleton(updateController)
+        val updateScreenModel = DesktopUpdateScreenModel(updateController, applicationScope)
+        Injekt.addSingleton(updateScreenModel)
+        val mangaRepository = Injekt.get<MangaRepository>()
+        val chapterRepository = Injekt.get<ChapterRepository>()
+        val categoryRepository = Injekt.get<CategoryRepository>()
+        val historyRepository = Injekt.get<HistoryRepository>()
+        val appPreferences = Injekt.get<DesktopAppPreferences>()
+        Injekt.addSingleton<DesktopFilePicker>(SwingDesktopFilePicker())
+        Injekt.addSingleton<DesktopDirectoryOpenPort>(
+            DesktopDirectoryOpenPort(mihon.desktop.ui.settings.DesktopDirectoryOpener::openResult),
+        )
+        Injekt.addSingleton(
+            BackupRestoreScreenModelFactory(
+                mangaRepository = mangaRepository,
+                chapterRepository = chapterRepository,
+                categoryRepository = categoryRepository,
+                historyRepository = historyRepository,
+                getExcludedScanlators = Injekt.get(),
+                setExcludedScanlators = Injekt.get(),
+                trackRepository = Injekt.get(),
+                preferenceStore = preferenceStore,
+                extensionRepoRepository = Injekt.get(),
+                authorArchiveBackupContributor = Injekt.get(),
+                backupRestoreSync = Injekt.get(),
+            ),
+        )
 
-    val libraryScreenModel = mihon.desktop.library.LibraryScreenModelFactory.create()
-    val libraryTestController = mihon.desktop.test.http.LibraryMangaTestModeController(
-        libraryScreenModel,
-        deviceConditions = Injekt.get(),
-    )
-    Injekt.addSingleton(libraryScreenModel)
-    Injekt.addSingleton(libraryTestController)
-    mihon.desktop.test.http.LibraryMangaTestModeBridge.install(libraryTestController)
-
-    lateinit var batchMigrationController: DesktopBatchMigrationController
-    batchMigrationController = DesktopBatchMigrationController(
-        scheduler = Injekt.get(),
-        executeMigration = { mangaId, target, options ->
-            val useCase = Injekt.get<DesktopMigrateMangaUseCase>()
-            val owner = requireNotNull(options.checkpointOwner)
-            val migrationOptions = MigrationOptions(
-                options.copyChapters,
-                options.copyCategories,
-                options.copyNotes,
-                options.copyCustomCover,
-                options.removeDownloads,
-            )
-            val accepted = options.accepted ?: run {
-                val sourceManga = Injekt.get<GetManga>().await(mangaId) ?: error("Source manga no longer exists")
-                val capture = useCase.accept(sourceManga, migrationOptions, options.replace, checkpointOwner = owner)
-                try {
-                    batchMigrationController.attachAccepted(owner, mangaId, capture)
-                } catch (error: Throwable) {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
-                        useCase.cancelAccepted(capture)
-                    }
-                    throw error
-                }
-                capture
-            }
-            if (useCase.recoverAccepted(accepted, deferAcknowledgement = true) == null) {
-                val targetSource = Injekt.get<SourceManager>().get(target.sourceId) as? CatalogueSource
-                    ?: error("Target source is not installed")
-                val targetManga = SManga.create().apply {
-                    url = target.url
-                    title = target.title
-                    thumbnail_url = target.thumbnailUrl
-                    author = target.author
-                    artist = target.artist
-                    description = target.description
-                    genre = target.genre?.joinToString(", ")
-                    status = target.status
-                }
-                useCase.await(
-                    accepted.source,
-                    targetManga,
-                    target.sourceId,
-                    targetSource.getChapterList(targetManga),
-                    migrationOptions,
-                    options.replace,
-                    accepted,
-                    deferAcknowledgement = true,
-                )
-            }
-        },
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
-        onCommittedCheckpoint = { mangaId, options ->
-            val accepted = requireNotNull(options.accepted)
-            Injekt.get<DesktopMigrateMangaUseCase>().acknowledge(mangaId, accepted.operationId)
-        },
-        onInterruptedMigration = { mangaId, options ->
-            val accepted = options.accepted
-            val repository = Injekt.get<MangaRepository>()
-            val receipt = repository.migrationReceipt(mangaId)
-            if (accepted != null && receipt?.committed == true && receipt.request.operationId == accepted.operationId) {
-                val useCase = Injekt.get<DesktopMigrateMangaUseCase>()
-                useCase.recoverAccepted(accepted, deferAcknowledgement = true)
-                batchMigrationController.recordCommittedReceipt(requireNotNull(repository.migrationReceipt(mangaId)))
-                useCase.acknowledge(mangaId, accepted.operationId)
-            } else if (accepted != null && (receipt == null || receipt.request.operationId == accepted.operationId)) {
-                Injekt.get<DesktopMigrateMangaUseCase>().cancelAccepted(accepted)
-                batchMigrationController.clearAccepted(
-                    requireNotNull(accepted.checkpointOwner),
-                    mangaId,
-                    accepted.operationId,
-                )
-            }
-        },
-    )
-    Injekt.addSingleton(batchMigrationController)
-    MigrationBatchTestBridge.controller = batchMigrationController
-
-    Injekt.addSingleton(DesktopJsEngine())
-    Injekt.addSingleton(
-        LocalSourceScanService(
-            prefs = appPreferences,
-            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-        ),
-    )
-    val readerProgressTracker = ReaderProgressTracker(
-        recordReadingProgress = readingProgress,
-        appPreferences = appPreferences,
-        downloadPreferences = downloadPreferences,
-        downloadManager = downloadManager,
-        trackSync = trackSync,
-        extensionPackageForSource = Injekt.get<DesktopExtensionManager>()::getExtensionPackage,
-    )
-    Injekt.addSingleton(readerProgressTracker)
-    val pairingRepository = tachiyomi.data.chapter.ChapterPairingRepositoryImpl(handler)
-    val pairingCoordinator = mihon.desktop.reader.DesktopChapterPairingCoordinator(pairingRepository)
-    Injekt.addSingleton<mihon.domain.reader.ChapterPairingRepository>(pairingRepository)
-    Injekt.addSingleton(pairingCoordinator)
-    Injekt.addSingleton(
-        DesktopReaderRuntimeFactory(
-            prefs = Injekt.get(),
-            downloadProvider = Injekt.get(),
-            sourceManager = Injekt.get(),
-            networkHelper = Injekt.get(),
-            progressTracker = readerProgressTracker,
-            mangaRepository = mangaRepository,
-            encodedCacheDirectory = paths.networkCacheDir.resolve("reader-encoded"),
-            chapterRepository = chapterRepository,
-            pairingCoordinator = pairingCoordinator,
-            readerIoProbe = mihon.desktop.test.http.ReaderIoTestModeBridge,
-            disallowNonAsciiFilenames = {
-                Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get()
+        val database = (handler as JvmDatabaseHandler).db
+        val libraryPreferences = LibraryPreferences(preferenceStore)
+        Injekt.addSingleton(
+            SetMangaDefaultChapterFlags(libraryPreferences, Injekt.get(), Injekt.get()),
+        )
+        Injekt.addSingleton(libraryPreferences)
+        val libraryPreferenceMigration = LibraryPreferenceMigration(
+            preferenceStore,
+            libraryPreferences,
+            legacyUpdatePreferences = {
+                val app = Injekt.get<DesktopAppPreferences>()
+                Triple(app.updateCategoryIncludes, app.updateCategoryExcludes, app.libraryUpdateInterval)
             },
-            partialDownloadSnapshotLookup = downloadManager,
-            partialPageReadLeaseSource = downloadManager.partialPageReadLeaseSource,
-            partialDownloadIoProbe = mihon.desktop.test.http.ReaderIoTestModeBridge,
-        ),
-    )
-
-    val syncSecureStore = mihon.desktop.sync.DesktopSyncSecureStore(
-        File(paths.configDir, "sync-secrets"),
-        credentialBackendFactory(CredentialNamespace.SYNC_V1),
-    )
-    Injekt.addSingleton<mihon.domain.sync.security.SyncSecureStore>(syncSecureStore)
-    val syncRuntime = mihon.data.sync.runtime.SyncRuntime(
-        handler = handler,
-        bootstrap = Injekt.get(),
-        creatorIndexWriter = Injekt.get(),
-        creatorRepository = Injekt.get(),
-        sourceAvailable = { Injekt.get<SourceManager>().get(it) != null },
-        secureStore = syncSecureStore,
-        preferenceStore = preferenceStore,
-        productionClient = networkHelper.client,
-        persistentObjectCacheDirectory = paths.networkCacheDir.resolve("mihon-sync-objects").toOkioPath(),
-        failureLogDirectory = paths.logsDir.resolve("sync-failures").toOkioPath(),
-    )
-    Injekt.addSingleton(syncRuntime)
-    val syncScheduler = mihon.desktop.sync.DesktopSyncScheduler(
-        syncRuntime.coordinator,
-        syncRuntime.preferences,
-        applicationScope,
-        onStopped = syncRuntime::stopPanel,
-        resumeIfNeeded = syncRuntime::resumeIfNeeded,
-        recoveryDelayMillis = syncRuntime::recoveryDelayMillis,
-    )
-    Injekt.addSingleton(syncScheduler)
-    val autoBackupScheduler = registerDesktopBackup(
-        appPreferences,
-        mangaRepository,
-        chapterRepository,
-        categoryRepository,
-        historyRepository,
-    )
-    val runtime = mihon.desktop.DesktopAppRuntime.create(
-        libraryUpdateScheduler = Injekt.get<LibraryUpdateScheduler>(),
-        localSourceScanService = Injekt.get<LocalSourceScanService>(),
-        autoBackupScheduler = autoBackupScheduler,
-        readerModeMemoryCleaner = Injekt.get<ReaderModeMemoryCleaner>(),
-        trackerSyncScheduler = trackerSyncScheduler,
-        batchMigrationController = batchMigrationController,
-        creatorLibraryIndexService = mihon.desktop.CreatorLibraryIndexRuntimeService(
+            legacyColumns = { Injekt.get<DesktopAppPreferences>().libraryGridColumns },
+        )
+        libraryPreferenceMigration.migrate(categoryRepository.getAll().map { it.id }.toSet() + 0L)
+        Injekt.addSingleton(libraryPreferenceMigration)
+        val downloadPreferences = DesktopDownloadPreferences(preferenceStore)
+        val downloadDirectoryPreference = downloadPreferences.downloadDirectory(paths.downloadsDir)
+        val downloadDirectoryState = downloadDirectoryPreference.state()
+        val downloadDirectoryController = DesktopDownloadDirectoryController(
+            preference = downloadDirectoryPreference,
+            startupState = downloadDirectoryState,
+        )
+        val downloadManager = registerDesktopDownload(
+            directoryState = downloadDirectoryState,
+            directoryController = downloadDirectoryController,
+            downloadPreferences = downloadPreferences,
+            database = database,
+            libraryPreferences = libraryPreferences,
+            startWorker = false,
+            fileOperations = downloadFileOperations,
+        )
+        initializedDownloadManager = downloadManager
+        val readingProgress = RecordReadingProgress(SqlDelightReadingProgressRepository(database))
+        Injekt.addSingleton<mihon.domain.download.DownloadRepository>(downloadManager)
+        Injekt.addSingleton(mihon.domain.download.EnqueueDownload(downloadManager))
+        Injekt.addSingleton(mihon.domain.download.IsChapterDownloaded(downloadManager))
+        Injekt.addSingleton(mihon.domain.download.ObserveDownloadQueue(downloadManager))
+        Injekt.addSingleton(mihon.domain.download.CancelDownload(downloadManager))
+        Injekt.addSingleton(mihon.domain.download.RetryDownload(downloadManager))
+        Injekt.addSingleton(mihon.domain.download.TransitionDownload(downloadManager))
+        Injekt.addSingleton(mihon.domain.download.RecoverDownloads(downloadManager))
+        Injekt.addSingleton(readingProgress)
+        val sharedDownloadPreferences = DownloadPreferences(preferenceStore)
+        if (
+            preferenceStore.getBoolean("auto_download_new_chapters", false).get() &&
+            !sharedDownloadPreferences.downloadNewChapters().get()
+        ) {
+            sharedDownloadPreferences.downloadNewChapters().set(true)
+        }
+        val filterChaptersForDownload = FilterChaptersForDownload(
             Injekt.get(),
+            sharedDownloadPreferences,
+            Injekt.get(),
+        )
+        Injekt.addSingleton(sharedDownloadPreferences)
+        Injekt.addSingleton(filterChaptersForDownload)
+        val notificationService = registerDesktopLibrary(
+            paths,
+            preferenceStore,
+            categoryRepository,
+            appPreferences,
+            filterChaptersForDownload,
+            Injekt.get(),
+            libraryProvider,
+            updateManga,
+            trackerConnectivity,
             applicationScope,
-        ),
-        creatorDiscoveryScheduler = Injekt.get<mihon.desktop.domain.CreatorDiscoveryScheduler>(),
-        creatorDiscoveryOutboxService = Injekt.get<mihon.desktop.domain.CreatorDiscoveryOutboxService>(),
-        syncService = syncScheduler,
-        chapterPairingService = pairingCoordinator,
-        appLock = appLock,
-        scope = applicationScope,
-        updateScreenModel = updateScreenModel,
-    )
-    runtime.attachCloseable(nativeSharePort)
-    Injekt.addSingleton(runtime)
+            taskStoreFactory,
+        )
+        Injekt.addSingleton(
+            mihon.desktop.domain.DesktopMigrationFiles(
+                paths.configDir,
+                Injekt.get(),
+                downloadManager,
+                Injekt.get<DesktopCustomCoverStore>(),
+                Injekt.get(),
+                Injekt.get<GetChaptersByMangaId>(),
+            ),
+        )
+        // Restore the original finite prepared file list before any producer is started.
+        kotlinx.coroutines.withContext(Dispatchers.IO) {
+            Injekt.get<DesktopMigrateMangaUseCase>().recoverPendingFiles()
+        }
+        if (startDownloadWorker) downloadManager.start()
+        lateinit var trackSync: ReadingProgressTrackSync
+        val trackerSyncScheduler =
+            DesktopTrackerSyncScheduler(Injekt.get<DesktopTaskScheduler>(), connectivity = trackerConnectivity) {
+                trackSync
+            }
+        trackSync = SyncReadingProgressWithTrack(
+            repository = Injekt.get<TrackRepository>(),
+            registry = Injekt.get<TrackerServiceRegistry>(),
+            retryScheduler = trackerSyncScheduler,
+        )
+        Injekt.addSingleton<ReadingProgressTrackSync>(trackSync)
+        Injekt.addSingleton(trackerSyncScheduler)
+
+        val libraryScreenModel = mihon.desktop.library.LibraryScreenModelFactory.create()
+        val libraryTestController = mihon.desktop.test.http.LibraryMangaTestModeController(
+            libraryScreenModel,
+            deviceConditions = Injekt.get(),
+        )
+        Injekt.addSingleton(libraryScreenModel)
+        Injekt.addSingleton(libraryTestController)
+        mihon.desktop.test.http.LibraryMangaTestModeBridge.install(libraryTestController)
+
+        lateinit var batchMigrationController: DesktopBatchMigrationController
+        batchMigrationController = DesktopBatchMigrationController(
+            scheduler = Injekt.get(),
+            executeMigration = { mangaId, target, options ->
+                val useCase = Injekt.get<DesktopMigrateMangaUseCase>()
+                val owner = requireNotNull(options.checkpointOwner)
+                val migrationOptions = MigrationOptions(
+                    options.copyChapters,
+                    options.copyCategories,
+                    options.copyNotes,
+                    options.copyCustomCover,
+                    options.removeDownloads,
+                )
+                val accepted = options.accepted ?: run {
+                    val sourceManga = Injekt.get<GetManga>().await(mangaId) ?: error("Source manga no longer exists")
+                    val capture = useCase.accept(
+                        sourceManga,
+                        migrationOptions,
+                        options.replace,
+                        checkpointOwner = owner,
+                    )
+                    try {
+                        batchMigrationController.attachAccepted(owner, mangaId, capture)
+                    } catch (error: Throwable) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                            useCase.cancelAccepted(capture)
+                        }
+                        throw error
+                    }
+                    capture
+                }
+                if (useCase.recoverAccepted(accepted, deferAcknowledgement = true) == null) {
+                    val targetSource = Injekt.get<SourceManager>().get(target.sourceId) as? CatalogueSource
+                        ?: error("Target source is not installed")
+                    val targetManga = SManga.create().apply {
+                        url = target.url
+                        title = target.title
+                        thumbnail_url = target.thumbnailUrl
+                        author = target.author
+                        artist = target.artist
+                        description = target.description
+                        genre = target.genre?.joinToString(", ")
+                        status = target.status
+                    }
+                    useCase.await(
+                        accepted.source,
+                        targetManga,
+                        target.sourceId,
+                        targetSource.getChapterList(targetManga),
+                        migrationOptions,
+                        options.replace,
+                        accepted,
+                        deferAcknowledgement = true,
+                    )
+                }
+            },
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            onCommittedCheckpoint = { mangaId, options ->
+                val accepted = requireNotNull(options.accepted)
+                Injekt.get<DesktopMigrateMangaUseCase>().acknowledge(mangaId, accepted.operationId)
+            },
+            onInterruptedMigration = { mangaId, options ->
+                val accepted = options.accepted
+                val repository = Injekt.get<MangaRepository>()
+                val receipt = repository.migrationReceipt(mangaId)
+                if (accepted != null && receipt?.committed == true &&
+                    receipt.request.operationId == accepted.operationId
+                ) {
+                    val useCase = Injekt.get<DesktopMigrateMangaUseCase>()
+                    useCase.recoverAccepted(accepted, deferAcknowledgement = true)
+                    batchMigrationController.recordCommittedReceipt(
+                        requireNotNull(repository.migrationReceipt(mangaId)),
+                    )
+                    useCase.acknowledge(mangaId, accepted.operationId)
+                } else if (accepted != null &&
+                    (receipt == null || receipt.request.operationId == accepted.operationId)
+                ) {
+                    Injekt.get<DesktopMigrateMangaUseCase>().cancelAccepted(accepted)
+                    batchMigrationController.clearAccepted(
+                        requireNotNull(accepted.checkpointOwner),
+                        mangaId,
+                        accepted.operationId,
+                    )
+                }
+            },
+        )
+        Injekt.addSingleton(batchMigrationController)
+        MigrationBatchTestBridge.controller = batchMigrationController
+
+        Injekt.addSingleton(DesktopJsEngine())
+        Injekt.addSingleton(
+            LocalSourceScanService(
+                prefs = appPreferences,
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            ),
+        )
+        val readerProgressTracker = ReaderProgressTracker(
+            recordReadingProgress = readingProgress,
+            appPreferences = appPreferences,
+            downloadPreferences = downloadPreferences,
+            downloadManager = downloadManager,
+            trackSync = trackSync,
+            extensionPackageForSource = Injekt.get<DesktopExtensionManager>()::getExtensionPackage,
+        )
+        Injekt.addSingleton(readerProgressTracker)
+        val pairingRepository = tachiyomi.data.chapter.ChapterPairingRepositoryImpl(handler)
+        val pairingCoordinator = mihon.desktop.reader.DesktopChapterPairingCoordinator(pairingRepository)
+        Injekt.addSingleton<mihon.domain.reader.ChapterPairingRepository>(pairingRepository)
+        Injekt.addSingleton(pairingCoordinator)
+        Injekt.addSingleton(
+            DesktopReaderRuntimeFactory(
+                prefs = Injekt.get(),
+                downloadProvider = Injekt.get(),
+                sourceManager = Injekt.get(),
+                networkHelper = Injekt.get(),
+                progressTracker = readerProgressTracker,
+                mangaRepository = mangaRepository,
+                encodedCacheDirectory = paths.networkCacheDir.resolve("reader-encoded"),
+                chapterRepository = chapterRepository,
+                pairingCoordinator = pairingCoordinator,
+                readerIoProbe = mihon.desktop.test.http.ReaderIoTestModeBridge,
+                disallowNonAsciiFilenames = {
+                    Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get()
+                },
+                partialDownloadSnapshotLookup = downloadManager,
+                partialPageReadLeaseSource = downloadManager.partialPageReadLeaseSource,
+                partialDownloadIoProbe = mihon.desktop.test.http.ReaderIoTestModeBridge,
+            ),
+        )
+
+        val syncSecureStore = mihon.desktop.sync.DesktopSyncSecureStore(
+            File(paths.configDir, "sync-secrets"),
+            credentialBackendFactory(CredentialNamespace.SYNC_V1),
+        )
+        Injekt.addSingleton<mihon.domain.sync.security.SyncSecureStore>(syncSecureStore)
+        val syncRuntime = mihon.data.sync.runtime.SyncRuntime(
+            handler = handler,
+            bootstrap = Injekt.get(),
+            creatorIndexWriter = Injekt.get(),
+            creatorRepository = Injekt.get(),
+            sourceAvailable = { Injekt.get<SourceManager>().get(it) != null },
+            secureStore = syncSecureStore,
+            preferenceStore = preferenceStore,
+            productionClient = networkHelper.client,
+            persistentObjectCacheDirectory = paths.networkCacheDir.resolve("mihon-sync-objects").toOkioPath(),
+            failureLogDirectory = paths.logsDir.resolve("sync-failures").toOkioPath(),
+        )
+        Injekt.addSingleton(syncRuntime)
+        val syncScheduler = mihon.desktop.sync.DesktopSyncScheduler(
+            syncRuntime.coordinator,
+            syncRuntime.preferences,
+            applicationScope,
+            onStopped = syncRuntime::stopPanel,
+            resumeIfNeeded = syncRuntime::resumeIfNeeded,
+            recoveryDelayMillis = syncRuntime::recoveryDelayMillis,
+        )
+        Injekt.addSingleton(syncScheduler)
+        val autoBackupScheduler = registerDesktopBackup(
+            appPreferences,
+            mangaRepository,
+            chapterRepository,
+            categoryRepository,
+            historyRepository,
+        )
+        val runtime = mihon.desktop.DesktopAppRuntime.create(
+            libraryUpdateScheduler = Injekt.get<LibraryUpdateScheduler>(),
+            localSourceScanService = Injekt.get<LocalSourceScanService>(),
+            autoBackupScheduler = autoBackupScheduler,
+            readerModeMemoryCleaner = Injekt.get<ReaderModeMemoryCleaner>(),
+            trackerSyncScheduler = trackerSyncScheduler,
+            batchMigrationController = batchMigrationController,
+            creatorLibraryIndexService = mihon.desktop.CreatorLibraryIndexRuntimeService(
+                Injekt.get(),
+                applicationScope,
+            ),
+            creatorDiscoveryScheduler = Injekt.get<mihon.desktop.domain.CreatorDiscoveryScheduler>(),
+            creatorDiscoveryOutboxService = Injekt.get<mihon.desktop.domain.CreatorDiscoveryOutboxService>(),
+            syncService = syncScheduler,
+            chapterPairingService = pairingCoordinator,
+            appLock = appLock,
+            scope = applicationScope,
+            updateScreenModel = updateScreenModel,
+        )
+        runtime.attachCloseable(nativeSharePort)
+        Injekt.addSingleton(runtime)
+    } catch (failure: Throwable) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+            applicationScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+            applicationScope.coroutineContext[kotlinx.coroutines.Job]?.join()
+            try {
+                initializedDownloadManager?.stopAndJoin()
+            } catch (cleanup: Throwable) {
+                if (cleanup !== failure) failure.addSuppressed(cleanup)
+            }
+            try {
+                nativeSharePort.close()
+            } catch (cleanup: Throwable) {
+                if (cleanup !== failure) failure.addSuppressed(cleanup)
+            }
+        }
+        throw failure
+    }
 }
 
-private fun registerDesktopLibrary(
+private suspend fun registerDesktopLibrary(
     paths: DesktopPlatformPaths,
     preferenceStore: PreferenceStore,
     categoryRepository: CategoryRepository,
@@ -1342,7 +1397,7 @@ private fun registerDesktopLibrary(
         applicationScope,
         migration = Injekt.get<LibraryPreferenceMigration>(),
     )
-    kotlinx.coroutines.runBlocking { libraryCategoryPolicy.recover() }
+    libraryCategoryPolicy.recover()
     Injekt.addSingleton(libraryCategoryPolicy)
     val resetCategoryFlags = tachiyomi.domain.category.interactor.ResetCategoryFlags(
         libraryPreferences,
@@ -1356,7 +1411,7 @@ private fun registerDesktopLibrary(
         resetCategoryFlags,
         categoryPreferenceOperations,
     )
-    kotlinx.coroutines.runBlocking { categorySortSettings.recover() }
+    categorySortSettings.recover()
     Injekt.addSingleton(categorySortSettings)
     Injekt.addSingleton(ReorderCategory(categoryRepository))
     Injekt.addSingleton(

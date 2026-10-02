@@ -1232,7 +1232,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "initDesktopDI()",
-          "line": 101
+          "line": 102
         }
       ],
       "FIXTURE": [
@@ -1247,7 +1247,45 @@
     },
     "verificationScope": "VERIFIED: platform-specific composition roots, Desktop production bootstrap, dependency resolution, ownership replacement and deterministic teardown are executable.",
     "platformExemptionEvidence": "NONE",
-    "targetVersion": "TBD"
+    "targetVersion": "TBD",
+    "interactionIterationEvidence": {
+      "RI18": {
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "desktopConsumerAdapterPaths": [
+          "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
+          "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"
+        ],
+        "protectionTests": [
+          "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt",
+          "app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt"
+        ],
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt": [
+            "cancelled DI owner releases a suspended category snapshot before recovery or producers"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt": [
+            "cancelled elected ingress closes its registered runtime and permits broker re election"
+          ]
+        },
+        "roleEvidence": {
+          "SHARED_OR_ADAPTER": [
+            {
+              "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
+              "symbol": "internal suspend fun startProductionDesktopApplication(",
+              "kind": "PLATFORM_ADAPTER",
+              "line": 92
+            },
+            {
+              "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
+              "symbol": "internal suspend fun initUILayer(",
+              "kind": "PLATFORM_ADAPTER",
+              "line": 934
+            }
+          ]
+        },
+        "verification": "The two new cancellation methods pass in interaction-ri18-repair-valid through real DI and production owner election. Initialization awaits category and finite recovery before producers; cancellation closes already-owned resources and releases the instance broker. Final module-wide, release-runtime and hardware gates are not claimed by focused results; capability status and historical authority are unchanged."
+      }
+    }
   },
   {
     "id": 7,
@@ -3182,13 +3220,13 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/settings/DesktopLibraryCategoryPolicy.kt",
           "symbol": "class DesktopLibraryCategoryPolicy(",
-          "kind": "ADAPTER",
+          "kind": "PLATFORM_ADAPTER",
           "line": 19
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/settings/LibraryPreferenceMigration.kt",
           "symbol": "class LibraryPreferenceMigration(",
-          "kind": "ADAPTER",
+          "kind": "PLATFORM_ADAPTER",
           "line": 19
         },
         {
@@ -4243,34 +4281,6 @@
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt": [
         "checkpoint and cancellation obey legal terminal transitions"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
-        "shared extended interval shows its actual hours and a valid legacy option corrects the migration warning",
-        "persistent migration recovery refusal blocks real scheduler across restart until a complete retry",
-        "category scope cannot open before the actual category snapshot arrives",
-        "invalid whole library scope still permits an explicit current category update",
-        "failed correction of invalid include and exclude cannot activate a sanitized policy",
-        "real category policy dialog retains draft and complete old values after pre and post write failures",
-        "interrupted old snapshot cannot revive deleted category or widen scope across two startups",
-        "shared update categories drive the actual scheduler with exclusion taking precedence",
-        "persistent startup recovery refusal blocks the actual update task instead of consuming half cleared scope",
-        "update categories edit one three state draft and cancel leaves both shared keys unchanged"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/settings/LibraryPreferenceMigrationTest.kt": [
-        "v3 reads the actual lazy old app scope and interval bridge while preserving shared explicit values",
-        "a journal reaching only RAM must be acknowledged before migration restoration or any new writes",
-        "concurrent migration cannot restore the journal of a still running first migration",
-        "v3 marker failures restore full original values and retain all legacy inputs",
-        "unknown legacy interval is explicitly disabled and remains visible for correction",
-        "v3 imports complete legacy scope and six hour interval without imposing old unused restrictions",
-        "v3 preserves explicit shared empty scope and extended interval over conflicting legacy",
-        "v3 failed scope writes restore original raw authority before retry or restart"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": [
-        "original timer consumes shared extended interval and explicit off without legacy dual writes"
-      ],
-      "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt": [
-        "library worker recovers category deletion before scope and retries persistent refusal"
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
@@ -4406,6 +4416,40 @@
         },
         "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
         "verification": "36 unique affected methods passed, 0 failures/skips (domain 3, Desktop 33), including all 17 new production behavior/wiring methods; two initial fixture prerequisites corrected and exactly reverified, scoped 14 Kotlin and 2 XML format checks passed. Full matrix, packaged runtime and physical input remain RI18; capability status is unchanged."
+      },
+      "RI18": {
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "Retains later iteration evidence separately from the exact historical capability contract; no capability status promotion or new test result is claimed.",
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
+            "shared extended interval shows its actual hours and a valid legacy option corrects the migration warning",
+            "persistent migration recovery refusal blocks real scheduler across restart until a complete retry",
+            "category scope cannot open before the actual category snapshot arrives",
+            "invalid whole library scope still permits an explicit current category update",
+            "failed correction of invalid include and exclude cannot activate a sanitized policy",
+            "real category policy dialog retains draft and complete old values after pre and post write failures",
+            "interrupted old snapshot cannot revive deleted category or widen scope across two startups",
+            "shared update categories drive the actual scheduler with exclusion taking precedence",
+            "persistent startup recovery refusal blocks the actual update task instead of consuming half cleared scope",
+            "update categories edit one three state draft and cancel leaves both shared keys unchanged"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/settings/LibraryPreferenceMigrationTest.kt": [
+            "v3 reads the actual lazy old app scope and interval bridge while preserving shared explicit values",
+            "a journal reaching only RAM must be acknowledged before migration restoration or any new writes",
+            "concurrent migration cannot restore the journal of a still running first migration",
+            "v3 marker failures restore full original values and retain all legacy inputs",
+            "unknown legacy interval is explicitly disabled and remains visible for correction",
+            "v3 imports complete legacy scope and six hour interval without imposing old unused restrictions",
+            "v3 preserves explicit shared empty scope and extended interval over conflicting legacy",
+            "v3 failed scope writes restore original raw authority before retry or restart"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": [
+            "original timer consumes shared extended interval and explicit off without legacy dual writes"
+          ],
+          "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt": [
+            "library worker recovers category deletion before scope and retries persistent refusal"
+          ]
+        }
       }
     }
   },
@@ -4467,7 +4511,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 1303
+          "line": 1358
         }
       ],
       "FIXTURE": [
@@ -5045,7 +5089,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "CrashHandler.install()",
-          "line": 81
+          "line": 82
         }
       ],
       "FIXTURE": [
@@ -5640,7 +5684,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "private val createCategory",
-          "line": 105
+          "line": 103
         }
       ],
       "FIXTURE": [
@@ -6493,38 +6537,48 @@
     "behaviorMethods": {
       "app/src/test/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModelBehaviorTest.kt": [
         "production interactors drive category CRUD ordering and preference cleanup",
-        "each failed production mutation emits the explicit internal error boundary",
-        "category owner recovers deletion before exposing categories and cancel preserves remaining IDs",
-        "recovery refusal cannot expose the category list or remain permanently loading",
-        "actual App resumes original sync scope after category owner retries refused recovery",
-        "actual App start scope resolves deletion recovery before starting sync scheduling"
+        "each failed production mutation emits the explicit internal error boundary"
       ],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt": [
         "category dialog intents perform create rename reorder and delete through production DI"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
-        "confirmed deletion reacknowledges a pending ID that only reached memory after failed flush",
-        "persistent startup recovery refusal blocks the actual update task instead of consuming half cleared scope",
-        "delete committed category returns failure and retries all five references after preference rejection",
-        "delete retry resumes references without deleting an already committed category again",
-        "real startup resumes deleted category references before consumers read them"
-      ],
-      "domain/src/commonTest/kotlin/tachiyomi/domain/category/interactor/DeleteCategoryRecoveryContractTest.kt": [
-        "confirmed IDs resume SQL and five references without repeating an already committed deletion",
-        "unacknowledged pending writes block both confirmation retry and recovery before SQL"
-      ],
-      "app/src/test/java/eu/kanade/tachiyomi/ui/category/CategoryRecoveryScreenWiringTest.kt": [
-        "actual category Screen blocks unrecovered consumers then retries through existing error action"
-      ],
-      "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt": [
-        "library worker recovers category deletion before scope and retries persistent refusal"
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "additionalBehaviorVerificationTask": ":app:testReleaseUnitTest --tests \"eu.kanade.tachiyomi.ui.category.CategoryScreenModelBehaviorTest\"",
     "verificationScope": "VERIFIED for the documented category behavior: current Android executes real CategoryScreenModel CRUD interactors; Desktop Root/dialog -> production DI -> SQLDelight now covers create, rename, reorder, delete confirmation/cancellation and mixed batch membership transactions (be44ddd6e). Action provenance remains the immutable 95b82fc inventory baseline; current implementation status is supported by the Library interaction roadmap. Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI12 adds bounded confirmed-ID deletion recovery: acknowledge before SQL, resume default and five category references plus order, and avoid repeating committed SQL deletion. The shared repository-seam contract supplements actual Desktop SQL and Android Worker SQL/store integration. Android Category error/Retry/Back, original App sync resume and Worker retry gate execute the same interactor. Desktop policy and sort reset share a local operation lock. SQL and preferences remain separate boundaries; persistent refusal retains recovery/error state. Focused/native evidence and limitations are recorded in the iteration report.",
     "platformExemptionEvidence": "NONE",
-    "targetVersion": "TBD"
+    "targetVersion": "TBD",
+    "interactionIterationEvidence": {
+      "RI18": {
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "Retains later iteration evidence separately from the exact historical capability contract; no capability status promotion or new test result is claimed.",
+        "behaviorMethods": {
+          "app/src/test/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModelBehaviorTest.kt": [
+            "category owner recovers deletion before exposing categories and cancel preserves remaining IDs",
+            "recovery refusal cannot expose the category list or remain permanently loading",
+            "actual App resumes original sync scope after category owner retries refused recovery",
+            "actual App start scope resolves deletion recovery before starting sync scheduling"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
+            "confirmed deletion reacknowledges a pending ID that only reached memory after failed flush",
+            "persistent startup recovery refusal blocks the actual update task instead of consuming half cleared scope",
+            "delete committed category returns failure and retries all five references after preference rejection",
+            "delete retry resumes references without deleting an already committed category again",
+            "real startup resumes deleted category references before consumers read them"
+          ],
+          "domain/src/commonTest/kotlin/tachiyomi/domain/category/interactor/DeleteCategoryRecoveryContractTest.kt": [
+            "confirmed IDs resume SQL and five references without repeating an already committed deletion",
+            "unacknowledged pending writes block both confirmation retry and recovery before SQL"
+          ],
+          "app/src/test/java/eu/kanade/tachiyomi/ui/category/CategoryRecoveryScreenWiringTest.kt": [
+            "actual category Screen blocks unrecovered consumers then retries through existing error action"
+          ],
+          "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt": [
+            "library worker recovers category deletion before scope and retries persistent refusal"
+          ]
+        }
+      }
+    }
   },
   {
     "id": 17,
@@ -6582,12 +6636,6 @@
           "symbol": "class ResetCategoryFlags(",
           "kind": "SHARED",
           "line": 7
-        },
-        {
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/settings/DesktopCategorySortSettings.kt",
-          "symbol": "class DesktopCategorySortSettings(",
-          "kind": "ADAPTER",
-          "line": 18
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -10098,28 +10146,53 @@
       ],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": [
         "complete filter flags flow from state to visible list including local and tracking boundaries"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
-        "new library settings search enters actual Root destinations and highlights their persistent controls",
-        "category sorting preference pre and post write errors restore enabled and its original SQL sorts",
-        "disabling category sorting resets actual SQL flags before switching the shared preference",
-        "SQL reset rejection and post commit error keep category sorting enabled and retryable"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/settings/LibraryPreferenceMigrationTest.kt": [
-        "v3 reads the actual lazy old app scope and interval bridge while preserving shared explicit values",
-        "a journal reaching only RAM must be acknowledged before migration restoration or any new writes",
-        "concurrent migration cannot restore the journal of a still running first migration",
-        "v3 marker failures restore full original values and retain all legacy inputs",
-        "unknown legacy interval is explicitly disabled and remains visible for correction",
-        "v3 imports complete legacy scope and six hour interval without imposing old unused restrictions",
-        "v3 preserves explicit shared empty scope and extended interval over conflicting legacy",
-        "v3 failed scope writes restore original raw authority before retry or restart"
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD",
-    "verificationScope": "Current Library repairs 7aaea9f2e and 0337e7a40 are covered by real Root/Home, production DI/SQLDelight, shared contracts and current Android consumer tests documented in docs/roadmap/2026-09-08-desktop-library-interaction-parity-roadmap.md. Categorized settings branch sorting persistence; display mode remains global as in the fixed original. Default add-to-library category and duplicate-read chapter-sync policy remain out of scope. Action provenance remains the immutable 95b82fc inventory baseline. Download/delete visible-state integration is reviewed in 6b204c085: the real worker completes a PNG download, Root shows the numeric badge and downloaded filter result, and confirmed download-only deletion removes that result while keeping the favorite. Real Root random-detail-back navigation also preserves query/category while the production update job remains active; Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI07 protects the existing hide-missing preference through the mounted detail total and row indicators, retaining shared recognition of cached volume numbers; focused/native evidence is recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md. This does not advance the remaining library update or settings consumers. RI12 closes categorized-sort disable through the real shared ResetCategoryFlags and SQL before preference publication. Finite failure compensation preserves enabled state, original sort bits and unrelated display/global/random values, with acknowledged recovery and retry; re-enable does not revive old category sorts. V3 migration, actual settings search and native event evidence are in the iteration report. This supplements the earlier Library repair that excluded default-add policy; RI12 default membership is separately bound in capability 22. Complete update/scheduling/metadata/device semantics remain RI14/RI16 and final runtime remains RI18."
+    "verificationScope": "Current Library repairs 7aaea9f2e and 0337e7a40 are covered by real Root/Home, production DI/SQLDelight, shared contracts and current Android consumer tests documented in docs/roadmap/2026-09-08-desktop-library-interaction-parity-roadmap.md. Categorized settings branch sorting persistence; display mode remains global as in the fixed original. Default add-to-library category and duplicate-read chapter-sync policy remain out of scope. Action provenance remains the immutable 95b82fc inventory baseline. Download/delete visible-state integration is reviewed in 6b204c085: the real worker completes a PNG download, Root shows the numeric badge and downloaded filter result, and confirmed download-only deletion removes that result while keeping the favorite. Real Root random-detail-back navigation also preserves query/category while the production update job remains active; Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI07 protects the existing hide-missing preference through the mounted detail total and row indicators, retaining shared recognition of cached volume numbers; focused/native evidence is recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md. This does not advance the remaining library update or settings consumers. RI12 closes categorized-sort disable through the real shared ResetCategoryFlags and SQL before preference publication. Finite failure compensation preserves enabled state, original sort bits and unrelated display/global/random values, with acknowledged recovery and retry; re-enable does not revive old category sorts. V3 migration, actual settings search and native event evidence are in the iteration report. This supplements the earlier Library repair that excluded default-add policy; RI12 default membership is separately bound in capability 22. Complete update/scheduling/metadata/device semantics remain RI14/RI16 and final runtime remains RI18.",
+    "interactionIterationEvidence": {
+      "RI18": {
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "Retains later iteration evidence separately from the exact historical capability contract; no capability status promotion or new test result is claimed.",
+        "roleEvidence": {
+          "SHARED_OR_ADAPTER": [
+            {
+              "path": "app-desktop/src/main/kotlin/mihon/desktop/settings/DesktopCategorySortSettings.kt",
+              "symbol": "class DesktopCategorySortSettings(",
+              "kind": "PLATFORM_ADAPTER",
+              "line": 18
+            }
+          ]
+        },
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
+            "new library settings search enters actual Root destinations and highlights their persistent controls",
+            "category sorting preference pre and post write errors restore enabled and its original SQL sorts",
+            "disabling category sorting resets actual SQL flags before switching the shared preference",
+            "SQL reset rejection and post commit error keep category sorting enabled and retryable"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/settings/LibraryPreferenceMigrationTest.kt": [
+            "v3 reads the actual lazy old app scope and interval bridge while preserving shared explicit values",
+            "a journal reaching only RAM must be acknowledged before migration restoration or any new writes",
+            "concurrent migration cannot restore the journal of a still running first migration",
+            "v3 marker failures restore full original values and retain all legacy inputs",
+            "unknown legacy interval is explicitly disabled and remains visible for correction",
+            "v3 imports complete legacy scope and six hour interval without imposing old unused restrictions",
+            "v3 preserves explicit shared empty scope and extended interval over conflicting legacy",
+            "v3 failed scope writes restore original raw authority before retry or restart"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": [
+            "category sorting uses shared interactor without overwriting global sorting"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryOptionsInteractionTest.kt": [
+            "SQLite rejection and post commit sort failure restore sort bits for real and empty categories"
+          ]
+        },
+        "repairVerification": "Thirty unique affected methods pass across Desktop (17), Android app (8), domain JVM/Android (2), and data JVM (3), using the latest applicable repair-focused, repair-valid and repair-last XML. Scoped formatting covers 21 Kotlin files. Earlier failures and fixture/compiler corrections remain in the report. This is focused evidence and does not replace the two incomplete whole-module checks or release/runtime gates."
+      }
+    }
   },
   {
     "id": 19,
@@ -10221,17 +10294,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "val available = tachiyomi.domain.library.selectManualDownloadChapters(",
-          "line": 1266
+          "line": 1214
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1355
+          "line": 1303
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/library/LibraryScreenModelFactory.kt",
           "symbol": "enqueueAccepted = downloadManager",
-          "line": 64
+          "line": 62
         }
       ],
       "FIXTURE": [
@@ -11696,20 +11769,6 @@
       ],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/NavigationContractTest.kt": [
         "library migration queue and item search use the nested Screen navigator"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryOptionsInteractionTest.kt": [
-        "accepted mark completion never clears a later mouse selection and its actual SQL target stays frozen",
-        "root six download choices enqueue real remote chapter snapshots and failure keeps mixed retry selection",
-        "native batch category whole rows preserve mixed membership and discard canceled drafts",
-        "opened deletion freezes IDs and partial real file failure prunes removed IDs but keeps hidden valid retries",
-        "root ctrl wheel retains a burst across category composition and consumes boundaries without refresh"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt": [
-        "real four layout mouse modifiers select shrink append and never navigate while selecting",
-        "manual removal freezes opened chapter artifacts and leaves later files and cancelled membership untouched",
-        "manual removal partial file failure keeps fixed retry after membership leaves the live library",
-        "manual library enqueue consumes the actual manager refusal without fake acceptance",
-        "manual library factory uses raw scanlator range read bookmarks and narrative order"
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
@@ -11798,6 +11857,26 @@
         },
         "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
         "verification": "Focused red/green and affected verification only; final full matrix/release/hardware evidence remains RI18."
+      },
+      "RI18": {
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "Retains later iteration evidence separately from the exact historical capability contract; no capability status promotion or new test result is claimed.",
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryOptionsInteractionTest.kt": [
+            "accepted mark completion never clears a later mouse selection and its actual SQL target stays frozen",
+            "root six download choices enqueue real remote chapter snapshots and failure keeps mixed retry selection",
+            "native batch category whole rows preserve mixed membership and discard canceled drafts",
+            "opened deletion freezes IDs and partial real file failure prunes removed IDs but keeps hidden valid retries",
+            "root ctrl wheel retains a burst across category composition and consumes boundaries without refresh"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt": [
+            "real four layout mouse modifiers select shrink append and never navigate while selecting",
+            "manual removal freezes opened chapter artifacts and leaves later files and cancelled membership untouched",
+            "manual removal partial file failure keeps fixed retry after membership leaves the live library",
+            "manual library enqueue consumes the actual manager refusal without fake acceptance",
+            "manual library factory uses raw scanlator range read bookmarks and narrative order"
+          ]
+        }
       }
     }
   },
@@ -11898,12 +11977,6 @@
           "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt",
           "symbol": "class SetMangaCategories",
           "line": 7
-        },
-        {
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibrarySettingsScreen.kt",
-          "symbol": "private fun DefaultLibraryCategorySettings(",
-          "kind": "ADAPTER",
-          "line": 328
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -11925,7 +11998,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1355
+          "line": 1303
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailMembershipDialogs.kt",
@@ -13195,31 +13268,48 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailLibraryEntryWiringTest.kt": [
         "real MangaDetailScreen add action mounts category dialog and commits selection",
         "add to library dialog passes selected category ids through the production caller"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt": [
-        "duplicate dialog views and migrates actual existing screens then adds with the shared default category",
-        "remove favorite reports actual fixed download deletion refusal and permits retry without expanding snapshot",
-        "favorite removal unchecked and cancelled download choices preserve actual files",
-        "duplicate modal owns Escape and returns the actual membership trigger without adding"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
-        "default category dialog preserves unset authority on pre and post write failures and retry",
-        "native category dialogs at 320 font200 keep scrolling keyboard modal isolation and Escape focus return",
-        "actual detail asks and cancels before membership then consumes system and custom defaults",
-        "actual Library settings selects shared default category without moving existing favorites"
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "verificationScope": "VERIFIED: fixed-main membership semantics, shared atomic transition, current Android add-with-category production wiring, mounted Desktop MangaDetailScreen entry/dialog persistence, Desktop removal and repository rollback are executable. RI08 (2026-10-01) adds mounted real-factory duplicate detection, existing Screen view/migration navigation, shared default-category membership, native modal cancellation/focus, and fixed downloaded-file removal snapshots. Partial file deletion is reported; retry writes membership once and never expands to later downloads. Independent review and 159 unique affected test passes are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md. Files and membership are separate boundaries; full migration transactions remain RI15 and full download execution RI10; no final release or hardware acceptance is implied. RI10 closes actual favorite-removal file execution using the original finite manga artifacts and queue handles, including scanner-hidden and unlisted artifacts. Membership and files remain separate boundaries; a partial retry never repeats completed membership or deletes new files at a successful path. Actual focused/affected results, independent review and limitations are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; this does not claim final full tests or release/runtime/hardware acceptance. RI12 exposes the single shared default-category key through actual settings and add-to-library membership: -1 asks when custom categories exist, 0 selects the system default, custom IDs persist, cancellation does not add and existing favorites do not move. The SOURCE no-custom-category fallback directly adds to default on both platforms. Real fault/retry, deletion fallback, native long-list keyboard/focus and narrow/font200 evidence are recorded in the iteration report; final release/hardware acceptance remains RI18.",
     "platformExemptionEvidence": "NONE",
-    "targetVersion": "TBD"
+    "targetVersion": "TBD",
+    "interactionIterationEvidence": {
+      "RI18": {
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "Retains later iteration evidence separately from the exact historical capability contract; no capability status promotion or new test result is claimed.",
+        "roleEvidence": {
+          "SHARED_OR_ADAPTER": [
+            {
+              "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibrarySettingsScreen.kt",
+              "symbol": "private fun DefaultLibraryCategorySettings(",
+              "kind": "PLATFORM_ADAPTER",
+              "line": 328
+            }
+          ]
+        },
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt": [
+            "duplicate dialog views and migrates actual existing screens then adds with the shared default category",
+            "remove favorite reports actual fixed download deletion refusal and permits retry without expanding snapshot",
+            "favorite removal unchecked and cancelled download choices preserve actual files",
+            "duplicate modal owns Escape and returns the actual membership trigger without adding"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
+            "default category dialog preserves unset authority on pre and post write failures and retry",
+            "native category dialogs at 320 font200 keep scrolling keyboard modal isolation and Escape focus return",
+            "actual detail asks and cancels before membership then consumes system and custom defaults",
+            "actual Library settings selects shared default category without moving existing favorites"
+          ]
+        }
+      }
+    }
   },
   {
     "id": 24,
     "group": "书库与详情",
     "tags": [
-      "SHARE-EXTRACT",
-      "PLATFORM-ADAPTER"
+      "SHARE-EXTRACT"
     ],
     "actionInventory": {
       "schemaVersion": 2,
@@ -20972,7 +21062,8 @@
       "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadProvider.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopManualTracking.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/refresh/DesktopRefreshGesture.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/refresh/DesktopRefreshGesture.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -21047,12 +21138,6 @@
           "path": "domain/src/commonMain/kotlin/tachiyomi/domain/library/service/TwoStageRefreshGesture.kt",
           "symbol": "class TwoStageRefreshGesture",
           "line": 4
-        },
-        {
-          "kind": "PLATFORM_ADAPTER",
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/refresh/DesktopRefreshGesture.kt",
-          "symbol": "private class RefreshWheelNode(",
-          "line": 191
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -21069,7 +21154,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "initialChapterFlags = { Injekt.get<SetMangaDefaultChapterFlags>().initialFlags() },",
-          "line": 765
+          "line": 793
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
@@ -21275,86 +21360,14 @@
     ],
     "behaviorMethods": {
       "domain/src/commonTest/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChaptersTest.kt": [
-        "continues after failure and reports each item",
-        "batch cancellation propagates and never processes the next chapter"
+        "continues after failure and reports each item"
       ],
       "app/src/test/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModelSharedMutationWiringTest.kt": [
-        "Android bookmark batch continues after write failure and shows localized result",
-        "Android previous actual wrapper preserves stable duplicate prefix in both directions",
-        "Android previous first valid pointer clears selection with no writes stale pointer does not",
-        "Android bookmark actual wrapper propagates cancellation without writes or snackbar",
-        "Android manual download uses raw repository range and stable ascending candidates before limit",
-        "Android actual manual read uses highest valid shared progress after local write",
-        "Android manual read local storage failure never starts remote refresh or progress"
+        "Android bookmark batch continues after write failure and shows localized result"
       ],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": [
         "selected read action exposes partial failure in state",
         "markSelectedBookmark uses true when any selected chapter is not bookmarked"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt": [
-        "production wide header uses source content ratio and narrow header uses source maximum",
-        "right scrollbar pointer drag reaches the actual last chapter without scrolling information",
-        "detail title enters the actual nested global search and returns to the same owner",
-        "missing source metadata remains actionable through current source recovery screen",
-        "five notes formats persist real markdown and render styled text after reopening",
-        "notes native modal keeps five formats save cancel and bidirectional focus reachable at 320 font200",
-        "deleted viewport anchor falls to a chapter entity with its bounded offset rather than missing row",
-        "actual persisted prediction is distinct from default custom and automatic check intervals",
-        "narrow large font primary actions have real in-window bounds and sequential keyboard reachability",
-        "chapter result explicit read preserves shared User intent for matching local state",
-        "chapter result bookmark processes only applicable objects and shows success skip failure",
-        "chapter result deletion confirms frozen actual files cancels and preserves partial failures for retry",
-        "chapter result mixed download queue uses eligible snapshot without duplicate or local writes",
-        "chapter native context actual right click marks and bookmarks without entering Reader",
-        "chapter native selection Escape exits one layer restores focus and all inverse stay visible",
-        "chapter native selected row uses SOURCE effective theme alpha and transient long press label",
-        "chapter native long press shows transient SOURCE name without executing action",
-        "chapter final deletion modal traps keys and background returns trigger before selection Escape",
-        "chapter final native 320 font200 SOURCE controls remain reachable in light and dark",
-        "chapter final ALWAYS 320 preserves whole page half width and every 48dp action target",
-        "chapter batch previous follows four shared sorts stable ties and excludes current",
-        "chapter batch native partial bookmark keeps failed selection for retry",
-        "chapter batch late successful write does not clear a later native selection",
-        "chapter batch SOURCE available actions follow actual selected object conditions",
-        "chapter selection real ctrl shift and stale pointer stay in the same detail owner",
-        "chapter selection real long press appends interval without a trailing reader click",
-        "chapter selection SOURCE bars hide ordinary controls checkbox and occupy right half of full page",
-        "single downloaded chapter deletion confirms actual refusal and retries only its fixed file",
-        "external chapter delegates the actual browser result without Reader navigation and retries visible failure",
-        "download queue cancel refusal preserves persistent work and gives retry feedback",
-        "download queue retry persistence error remains visible and retry reuses chapter identity",
-        "download queue queued chapter context starts now by real factory without Reader or identity replacement",
-        "download queue missing source inline gesture reports reason without accepting work",
-        "download queue actual preflight no op is skipped rather than accepted by selection wiring",
-        "download manual accepted scope stays fixed while raw repository read is suspended",
-        "download manual raw query failure reports retry and cancellation remains cancellation",
-        "download manual next limits use eligible narrative candidates before taking",
-        "download manual read bookmarks and real skip filtered preference share the mounted candidate range",
-        "download manual scope label reflects the actual Reader preference before accepting work",
-        "download manual skip preference controls excluded scanlator raw input without changing visible rows",
-        "download manual local and missing source never enqueue meaningless remote work",
-        "download manual nonfavorite accepted work offers optional actual library membership"
-      ],
-      "domain/src/jvmTest/kotlin/tachiyomi/domain/chapter/service/ChapterPreviousSelectionTest.kt": [
-        "previous uses stable identity for equal comparisons independent of display direction",
-        "previous reuses each actual shared comparator with literal eligible prefixes"
-      ],
-      "domain/src/jvmTest/kotlin/tachiyomi/domain/library/ManualDownloadSelectionTest.kt": [
-        "manual eligibility precedes each limit and bookmark commands retain read chapters",
-        "manual stable original ties do not change with display direction"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/tracking/TrackingInteractionTest.kt": [
-        "manual read success refreshes actual remote state and advances through existing sync workflow",
-        "manual Never avoids remote IO while Ask keeps local read and cancel never writes progress",
-        "Library actual factory manual read shares remote update rather than only local SQL",
-        "empty manual batch performs no remote IO after no local successes",
-        "manual progress feedback reports actual service cap rather than raw source number",
-        "Ask confirms persisted post refresh identity and ignores a later rematch",
-        "Ask accepted identity cannot target a rematch before shared sync reload",
-        "Ask provider completion cannot replace a rematched SQL library identity",
-        "manual multiple providers continue actual SQL refresh after the first provider fails",
-        "Ask never prompts after fresh service cap already reached",
-        "manual Ask native modal traps both Tab directions Escape preserves read and restores detail Back"
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
@@ -21390,6 +21403,125 @@
         },
         "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
         "verification": "36 unique affected methods passed, 0 failures/skips (domain 3, Desktop 33), including all 17 new production behavior/wiring methods; two initial fixture prerequisites corrected and exactly reverified, scoped 14 Kotlin and 2 XML format checks passed. Full matrix, packaged runtime and physical input remain RI18; capability status is unchanged."
+      },
+      "RI18": {
+        "behaviorMethods": {
+          "domain/src/commonTest/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChaptersTest.kt": [
+            "batch cancellation propagates and never processes the next chapter"
+          ],
+          "app/src/test/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModelSharedMutationWiringTest.kt": [
+            "Android previous actual wrapper preserves stable duplicate prefix in both directions",
+            "Android previous first valid pointer clears selection with no writes stale pointer does not",
+            "Android bookmark actual wrapper propagates cancellation without writes or snackbar",
+            "Android manual download uses raw repository range and stable ascending candidates before limit",
+            "Android actual manual read uses highest valid shared progress after local write",
+            "Android manual read local storage failure never starts remote refresh or progress"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt": [
+            "production wide header uses source content ratio and narrow header uses source maximum",
+            "right scrollbar pointer drag reaches the actual last chapter without scrolling information",
+            "detail title enters the actual nested global search and returns to the same owner",
+            "missing source metadata remains actionable through current source recovery screen",
+            "five notes formats persist real markdown and render styled text after reopening",
+            "notes native modal keeps five formats save cancel and bidirectional focus reachable at 320 font200",
+            "deleted viewport anchor falls to a chapter entity with its bounded offset rather than missing row",
+            "actual persisted prediction is distinct from default custom and automatic check intervals",
+            "narrow large font primary actions have real in-window bounds and sequential keyboard reachability",
+            "chapter result explicit read preserves shared User intent for matching local state",
+            "chapter result bookmark processes only applicable objects and shows success skip failure",
+            "chapter result deletion confirms frozen actual files cancels and preserves partial failures for retry",
+            "chapter result mixed download queue uses eligible snapshot without duplicate or local writes",
+            "chapter native context actual right click marks and bookmarks without entering Reader",
+            "chapter native selection Escape exits one layer restores focus and all inverse stay visible",
+            "chapter native selected row uses SOURCE effective theme alpha and transient long press label",
+            "chapter native long press shows transient SOURCE name without executing action",
+            "chapter final deletion modal traps keys and background returns trigger before selection Escape",
+            "chapter final native 320 font200 SOURCE controls remain reachable in light and dark",
+            "chapter final ALWAYS 320 preserves whole page half width and every 48dp action target",
+            "chapter batch previous follows four shared sorts stable ties and excludes current",
+            "chapter batch native partial bookmark keeps failed selection for retry",
+            "chapter batch late successful write does not clear a later native selection",
+            "chapter batch SOURCE available actions follow actual selected object conditions",
+            "chapter selection real ctrl shift and stale pointer stay in the same detail owner",
+            "chapter selection real long press appends interval without a trailing reader click",
+            "chapter selection SOURCE bars hide ordinary controls checkbox and occupy right half of full page",
+            "single downloaded chapter deletion confirms actual refusal and retries only its fixed file",
+            "external chapter delegates the actual browser result without Reader navigation and retries visible failure",
+            "download queue cancel refusal preserves persistent work and gives retry feedback",
+            "download queue retry persistence error remains visible and retry reuses chapter identity",
+            "download queue queued chapter context starts now by real factory without Reader or identity replacement",
+            "download queue missing source inline gesture reports reason without accepting work",
+            "download queue actual preflight no op is skipped rather than accepted by selection wiring",
+            "download manual accepted scope stays fixed while raw repository read is suspended",
+            "download manual raw query failure reports retry and cancellation remains cancellation",
+            "download manual next limits use eligible narrative candidates before taking",
+            "download manual read bookmarks and real skip filtered preference share the mounted candidate range",
+            "download manual scope label reflects the actual Reader preference before accepting work",
+            "download manual skip preference controls excluded scanlator raw input without changing visible rows",
+            "download manual local and missing source never enqueue meaningless remote work",
+            "download manual nonfavorite accepted work offers optional actual library membership"
+          ],
+          "domain/src/jvmTest/kotlin/tachiyomi/domain/chapter/service/ChapterPreviousSelectionTest.kt": [
+            "previous uses stable identity for equal comparisons independent of display direction",
+            "previous reuses each actual shared comparator with literal eligible prefixes"
+          ],
+          "domain/src/jvmTest/kotlin/tachiyomi/domain/library/ManualDownloadSelectionTest.kt": [
+            "manual eligibility precedes each limit and bookmark commands retain read chapters",
+            "manual stable original ties do not change with display direction"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/tracking/TrackingInteractionTest.kt": [
+            "manual read success refreshes actual remote state and advances through existing sync workflow",
+            "manual Never avoids remote IO while Ask keeps local read and cancel never writes progress",
+            "Library actual factory manual read shares remote update rather than only local SQL",
+            "empty manual batch performs no remote IO after no local successes",
+            "manual progress feedback reports actual service cap rather than raw source number",
+            "Ask confirms persisted post refresh identity and ignores a later rematch",
+            "Ask accepted identity cannot target a rematch before shared sync reload",
+            "Ask provider completion cannot replace a rematched SQL library identity",
+            "manual multiple providers continue actual SQL refresh after the first provider fails",
+            "Ask never prompts after fresh service cap already reached",
+            "manual Ask native modal traps both Tab directions Escape preserves read and restores detail Back"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "Provenance continuation retains every later current method removed from the historical root mapping. Earlier iteration execution evidence is preserved in the report; this metadata correction does not claim a new test run or change capability status. Final matrix pending.",
+        "roleEvidence": {
+          "SHARED_OR_ADAPTER": [
+            {
+              "kind": "PLATFORM_ADAPTER",
+              "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/refresh/DesktopRefreshGesture.kt",
+              "symbol": "private class RefreshWheelNode(",
+              "line": 191
+            }
+          ]
+        },
+        "actionEvidence": {
+          "manga.refresh": {
+            "revision": "RI18 frozen working tree based on 1e6a49c0c9; exact final diff digest is recorded in the evidence report",
+            "roles": {
+              "ENTRY": {
+                "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
+                "symbol": ") { model.refreshByGesture() }",
+                "line": 410
+              },
+              "EFFECT": {
+                "path": "app-desktop/src/main/kotlin/mihon/desktop/library/MangaDetailScreenModelFactory.kt",
+                "symbol": "acceptedSingleRefresh = Injekt.get<mihon.desktop.domain.LibraryUpdateScheduler>()::acceptSingle,",
+                "line": 43
+              },
+              "FEEDBACK": {
+                "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
+                "symbol": "state.directoryRefreshFeedback?.let { categorySnackbar.showSnackbar(it) }",
+                "line": 193
+              }
+            },
+            "behaviorEvidenceEpoch": "RI17",
+            "boundaries": [
+              "RI17 current manga only chapters gesture joins its original accepted occurrence while More/source retry keeps its original SaveSourceMangaForDetails chain."
+            ],
+            "verification": "Focused production event and wiring evidence is retained under RI17; final matrix, released runtime and physical input are separate gates."
+          }
+        }
       }
     }
   },
@@ -22372,20 +22504,28 @@
         "cover update success exposes feedback and refreshed model",
         "cover permission failure is visible and does not refresh cache",
         "cover delete success refreshes model and reports feedback"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt": [
-        "cover editing keeps actual file and pixels on rejection cancellation and deletes back to source",
-        "detail consumes actual persisted cover version in the real Coil request and pixels",
-        "cover primary click opens actual viewer with zoom and Escape restores the visible trigger",
-        "cover viewer saves the actual loaded typed image with overwrite cancellation failure retry and focus",
-        "early cover share terminal remains authoritative over later Opened acknowledgement",
-        "actual cover viewer shares loaded typed pixels and retains snapshot until every native terminal"
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "verificationScope": "VERIFIED: current Android retains the fixed-main Uri/Context cover path, while Desktop confines file selection to an adapter and routes selection, permission and storage outcomes through the shared UpdateCustomCover result and visible Manga detail feedback. RI08 (2026-10-01) adds the actual mounted typed/versioned Coil viewer, zoom/edit and native close/focus, real selected/cancelled/locked replacement/deletion files, source fallback pixels, and repository-authoritative cover version consumption. The same reviewed 159-test evidence applies; file save and platform sharing remain RI10/RI11. Atomic file replacement does not claim a cross-file/database transaction; no final release or hardware acceptance is implied. RI10 Save consumes the actual successful typed Coil image and custom/versioned request, not a second HTTP/cache pipeline; chooser cancellation, overwrite refusal, partial writer failure and retry preserve the original destination. Narrow-window 200-percent font light/dark native captures and bidirectional keyboard/refocus evidence are recorded; image sharing remains RI11. Actual focused/affected results, independent review and limitations are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; this does not claim final full tests or release/runtime/hardware acceptance. RI11 adds Share to the same successful typed cover image, retaining its PNG until the real native terminal and protecting early terminal and retired viewer owners. Focused/affected/scoped evidence and native 320dp/font200 light tracking and dark ASK captures are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; no final full tests, hardware, real-account or release-runtime acceptance is claimed.",
     "platformExemptionEvidence": "NONE",
-    "targetVersion": "TBD"
+    "targetVersion": "TBD",
+    "interactionIterationEvidence": {
+      "RI18": {
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "Retains later iteration evidence separately from the exact historical capability contract; no capability status promotion or new test result is claimed.",
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt": [
+            "cover editing keeps actual file and pixels on rejection cancellation and deletes back to source",
+            "detail consumes actual persisted cover version in the real Coil request and pixels",
+            "cover primary click opens actual viewer with zoom and Escape restores the visible trigger",
+            "cover viewer saves the actual loaded typed image with overwrite cancellation failure retry and focus",
+            "early cover share terminal remains authoritative over later Opened acknowledgement",
+            "actual cover viewer shares loaded typed pixels and retains snapshot until every native terminal"
+          ]
+        }
+      }
+    }
   },
   {
     "id": 28,
@@ -32276,7 +32416,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "private fun eligibleReaderChapters(",
-          "line": 1315
+          "line": 1263
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
@@ -32339,11 +32479,11 @@
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": [
         "read filtered and duplicate skip rules can be combined"
       ],
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt": [
-        "current Android ReaderViewModel applies shared skip policy before exposing adjacent chapters"
-      ],
       "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt": [
         "reader navigator combines read filtered and duplicate skip flags"
+      ],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt": [
+        "current Android ReaderViewModel applies shared skip policy before exposing adjacent chapters"
       ],
       "domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt": [
         "reader entry chooses the story earliest unfinished chapter from ascending or descending input"
@@ -32357,12 +32497,6 @@
       ],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": [
         "continueReadingRequest uses oldest unfinished chapter and keeps navigation newest first"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt": [
-        "continue root respects bookmark download global and scanlator filters with the matching synchronized page"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt": [
-        "actual Reader mode writes isolate Manga flags reject visibly and persist through real detail return"
       ]
     },
     "statusDecisionHistory": [
@@ -32408,7 +32542,21 @@
     },
     "verificationScope": "VERIFIED for shared chapter filtering/adjacent navigation and story-earliest unfinished reader entry selection across ascending/descending Android and Desktop production inputs; Desktop navigation now activates the target inside the Desktop canonical ReaderSessionCore and retains explicit boundary feedback. RI10 closes actual entry filtering, synchronized page/snapshot identity and last-eligible-file button disappearance without overwriting local filters. Real Reader mode SQL writes reject visibly, restore only their still-current attempted flags and preserve other manga/global settings through detail return/reentry. Formal process restart remains RI18; no Reader paging algorithm or sync protocol change is claimed. Actual focused/affected results, independent review and limitations are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; this does not claim final full tests or release/runtime/hardware acceptance.",
     "platformExemptionEvidence": "NONE",
-    "targetVersion": "TBD"
+    "targetVersion": "TBD",
+    "interactionIterationEvidence": {
+      "RI18": {
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt": [
+            "continue root respects bookmark download global and scanlator filters with the matching synchronized page"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt": [
+            "actual Reader mode writes isolate Manga flags reject visibly and persist through real detail return"
+          ]
+        },
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "Provenance continuation retains every later current method removed from the historical root mapping. Earlier iteration execution evidence is preserved in the report; this metadata correction does not claim a new test run or change capability status. Final matrix pending."
+      }
+    }
   },
   {
     "id": 56,
@@ -34621,17 +34769,6 @@
       ],
       "app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadRetryIntegrationTest.kt": [
         "HTTP failures use 2 4 8 retry policy without sleeping"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadManagerTest.kt": [
-        "captured retirement drains original producer and retries rejected generation without cancelling new work",
-        "captured original handle rejects an already completed replacement and preserves its real files",
-        "captured failed retirement reserves the existing preflight throughout retry cleanup",
-        "manual priority write failure preserves pause and restart order without moving active identity",
-        "manual enqueue reports only actually accepted entries and leaves no duplicate acceptance",
-        "manual enqueue rejected persistent writes never publish or recover ghost work"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadProviderTest.kt": [
-        "opened manga artifact snapshot rejects failed enumeration and never disguises it as an empty success"
       ]
     },
     "statusDecision": {
@@ -34650,7 +34787,26 @@
     },
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
-    "targetVersion": "TBD"
+    "targetVersion": "TBD",
+    "interactionIterationEvidence": {
+      "RI18": {
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "Retains later iteration evidence separately from the exact historical capability contract; no capability status promotion or new test result is claimed.",
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadManagerTest.kt": [
+            "captured retirement drains original producer and retries rejected generation without cancelling new work",
+            "captured original handle rejects an already completed replacement and preserves its real files",
+            "captured failed retirement reserves the existing preflight throughout retry cleanup",
+            "manual priority write failure preserves pause and restart order without moving active identity",
+            "manual enqueue reports only actually accepted entries and leaves no duplicate acceptance",
+            "manual enqueue rejected persistent writes never publish or recover ghost work"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadProviderTest.kt": [
+            "opened manga artifact snapshot rejects failed enumeration and never disguises it as an empty success"
+          ]
+        }
+      }
+    }
   },
   {
     "id": 59,
@@ -35025,7 +35181,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "downloadPolicy = { manga -> Injekt.get<FilterChaptersForDownload>().snapshot(manga) }",
-          "line": 798
+          "line": 826
         }
       ],
       "FIXTURE": [
@@ -36727,6 +36883,42 @@
         },
         "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
         "verification": "36 unique affected methods passed, 0 failures/skips (domain 3, Desktop 33), including all 17 new production behavior/wiring methods; two initial fixture prerequisites corrected and exactly reverified, scoped 14 Kotlin and 2 XML format checks passed. Full matrix, packaged runtime and physical input remain RI18; capability status is unchanged."
+      },
+      "RI18": {
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "actionEvidence": {
+          "library-update.manual": {
+            "revision": "RI18 frozen working tree based on 1e6a49c0c9; exact final diff digest is recorded in the evidence report",
+            "roles": {
+              "ENTRY": {
+                "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryTab.kt",
+                "symbol": ") { model.refreshLibrary(model.state.value.allItems, selectedCategoryId) }",
+                "line": 872
+              },
+              "EFFECT": {
+                "path": "app-desktop/src/main/kotlin/mihon/desktop/library/LibraryScreenModelFactory.kt",
+                "symbol": "acceptScopedBackgroundUpdate = updateScheduler::acceptNow,",
+                "line": 81
+              },
+              "FEEDBACK": {
+                "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryTab.kt",
+                "symbol": "text = updateStatusText!!,",
+                "line": 786
+              }
+            },
+            "behaviorEvidenceEpoch": "RI17",
+            "boundaries": [
+              "Current category uses complete persisted category membership rather than the filtered visible projection; global More entry remains global."
+            ],
+            "verification": "Focused production event and wiring evidence is retained under RI17; final matrix, released runtime and physical input are separate gates."
+          }
+        },
+        "behaviorMethods": {
+          "domain/src/commonTest/kotlin/tachiyomi/domain/extension/SourceUpdateMemoContractTest.kt": [
+            "empty complete remote directory is rejected without changing known chapters"
+          ]
+        },
+        "repairVerification": "Thirty unique affected methods pass across Desktop (17), Android app (8), domain JVM/Android (2), and data JVM (3), using the latest applicable repair-focused, repair-valid and repair-last XML. Scoped formatting covers 21 Kotlin files. Earlier failures and fixture/compiler corrections remain in the report. This is focused evidence and does not replace the two incomplete whole-module checks or release/runtime gates."
       }
     },
     "verificationScope": "The Library interaction repair shares selectLibraryMangaForUpdate between the real Android LibraryUpdateJob and Desktop LibraryUpdateScheduler: explicit categories bypass whole-library include/exclude, while whole-library exclusion wins (including default category 0). Real Root -> factory -> scheduler fixtures cover search-independent scope, duplicate requests, detail navigation/return and actual job completion; persisted stale Running is not treated as an active occurrence. The existing executor, automatic device restrictions, scheduling and migration gaps remain under LU-01 and are not promoted by this manual-entry repair. Final Library repair acceptance completed on Windows and macOS for release 0.11.19.25.ea61d61 (source ea61d6188): full matrices plus focused fixture corrections, manifest audits, official builds and production Test Mode Library load/search/restore checks. Exact first-run failures, platform skips, Windows shutdown wait and real Root integration evidence remain documented in roadmap section 6.4; excluded migration and update-executor capabilities are not promoted. RI13 uses the shared complete-directory plan and one-manga SQL commit with latest user state, original identity and finite post-commit work. Empty remote, explicit incomplete and failed source responses retain old data. Unmarked legacy truncation cannot be detected. Workset scheduling remains RI14. RI14 implements continue-after-failure, original ALL/CATEGORY/SINGLE worksets, four per-unit states, cancellation, failure-only retry versus fresh scope, legacy scope refusal and persistent real Root results. Actual Android and Desktop consumers share eligibility and source metadata policy. Default batch metadata remains disabled; explicit SINGLE details use favorite-title policy and custom-cover preservation. Original prediction date/window and refused writes remain in the finite directory phase until successfully saved. Completed effects survive checkpoint refusal and reopen without re-fetching. No new scheduler or global outbox is introduced. RI16 device-boundary persistence and original occurrence readback authorize source execution; refusal cannot call the source. Completed units and original prediction time/window survive wait and restart. Runtime shutdown joins replaced native-query owners. Formal packaged runtime and hardware acceptance remains RI18."
@@ -43576,7 +43768,9 @@
     "sharedImplementationPaths": [
       "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocol.kt",
       "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerProviderContracts.kt",
-      "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerService.kt"
+      "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerService.kt",
+      "data/src/commonMain/kotlin/tachiyomi/data/track/TrackRepositoryImpl.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/ManualTrackProgress.kt"
     ],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/eu/kanade/tachiyomi/data/track/TrackerManager.kt",
@@ -43599,8 +43793,7 @@
       "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerSyncScheduler.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopManualTracking.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/ManualTrackingDialog.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/TrackingSettingsScreen.kt",
-      "data/src/commonMain/kotlin/tachiyomi/data/track/TrackRepositoryImpl.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/TrackingSettingsScreen.kt"
     ],
     "deviations": [
       {
@@ -43696,7 +43889,7 @@
           "line": 7
         },
         {
-          "kind": "ADAPTER",
+          "kind": "SHARED",
           "path": "data/src/commonMain/kotlin/tachiyomi/data/track/TrackRepositoryImpl.kt",
           "symbol": "override suspend fun insertIfMatches(",
           "line": 48
@@ -47454,7 +47647,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "internal fun wireDesktopOpenUriEvents",
-          "line": 629
+          "line": 659
         }
       ],
       "FIXTURE": [
@@ -47850,9 +48043,7 @@
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopShareService.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageContextMenu.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaCoverViewerDialog.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt"
     ],
     "deviations": [
       {
@@ -47861,9 +48052,7 @@
       }
     ],
     "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaShareWiringTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopShareServiceTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaShareWiringTest.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -47908,12 +48097,6 @@
             "MangaDetailActionRow",
             "DesktopShareService"
           ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt#actual cover viewer shares loaded typed pixels and retains snapshot until every native terminal",
-          "productionMarkers": [
-            "withDetail("
-          ]
         }
       ]
     },
@@ -47953,22 +48136,50 @@
         }
       }
     ],
-    "behaviorMethods": {
-      "app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopShareServiceTest.kt": [
-        "finite image saving confirms overwrite and cancel preserves the original destination",
-        "finite image saving preserves original bytes after a real partial write failure in both entry points"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt": [
-        "cover viewer saves the actual loaded typed image with overwrite cancellation failure retry and focus",
-        "early cover share terminal remains authoritative over later Opened acknowledgement",
-        "detail website consumes actual browser Result and reports refusal then retry",
-        "actual cover viewer shares loaded typed pixels and retains snapshot until every native terminal",
-        "actual detail share link fallback reports copied link and clipboard refusal is retryable"
-      ]
-    },
     "verificationScope": "CANDIDATE and ready for Task 18 promotion: repository-local host-share implementation, fallback feedback, and evidence are closed; final Windows/macOS build and runtime acceptance runs once in Task 19. RI10 Save shares one finite staged atomic replacement writer across picker and explicit-destination entry points; unsupported atomic replacement is an honest failure preserving old bytes, and Save notifications report actual outcome. Share lifecycle remains protected by the existing service tests; source/image sharing UI closes in RI11. Actual focused/affected results, independent review and limitations are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; this does not claim final full tests or release/runtime/hardware acceptance. RI11 actual text sharing reports copied-link fallback and retryable clipboard refusal; typed cover sharing honors native terminal and temporary-file lifetime, and browser actions consume actual Result feedback. Focused/affected/scoped evidence and native 320dp/font200 light tracking and dark ASK captures are recorded in docs/evidence/desktop-interaction-iteration-2026-09-30.md; no final full tests, hardware, real-account or release-runtime acceptance is claimed.",
     "platformExemptionEvidence": "NONE",
-    "targetVersion": "TBD"
+    "targetVersion": "TBD",
+    "interactionIterationEvidence": {
+      "RI18": {
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "desktopConsumerAdapterPaths": [
+          "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopShareService.kt",
+          "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageContextMenu.kt",
+          "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
+          "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaCoverViewerDialog.kt",
+          "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt"
+        ],
+        "protectionTests": [
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaShareWiringTest.kt",
+          "app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopShareServiceTest.kt",
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt"
+        ],
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopShareServiceTest.kt": [
+            "finite image saving confirms overwrite and cancel preserves the original destination",
+            "finite image saving preserves original bytes after a real partial write failure in both entry points"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt": [
+            "cover viewer saves the actual loaded typed image with overwrite cancellation failure retry and focus",
+            "early cover share terminal remains authoritative over later Opened acknowledgement",
+            "detail website consumes actual browser Result and reports refusal then retry",
+            "actual cover viewer shares loaded typed pixels and retains snapshot until every native terminal",
+            "actual detail share link fallback reports copied link and clipboard refusal is retryable"
+          ]
+        },
+        "roleEvidence": {
+          "FIXTURE": [
+            {
+              "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailInteractionTest.kt#actual cover viewer shares loaded typed pixels and retains snapshot until every native terminal",
+              "productionMarkers": [
+                "withDetail("
+              ]
+            }
+          ]
+        },
+        "verification": "Preserves RI10 and RI11 production sharing and finite image-saving evidence separately from the exact historical platform index. Final full-test failures and subsequent focused verification are recorded in the iteration report; this does not claim real-account or release-runtime acceptance."
+      }
+    }
   },
   {
     "id": 83,
@@ -50972,11 +51183,7 @@
     ],
     "sharedImplementationPaths": [
       "domain/src/commonMain/kotlin/mihon/domain/settings/SettingsSearchPolicy.kt",
-      "domain/src/commonMain/kotlin/mihon/domain/settings/SearchablePreference.kt",
-      "domain/src/commonMain/kotlin/tachiyomi/domain/library/service/LibraryUpdateSkipReason.kt",
-      "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaMetadata.kt",
-      "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/FetchInterval.kt",
-      "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterDirectoryPhase.kt"
+      "domain/src/commonMain/kotlin/mihon/domain/settings/SearchablePreference.kt"
     ],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSearchScreen.kt",
@@ -50988,19 +51195,7 @@
       "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsSearchScreen.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsRootScreen.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopSettingsAnchor.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/MoreRootScreen.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibrarySettingsScreen.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibraryUpdateCategorySettings.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateChecker.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryUpdateResultsDialog.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopDeviceConditions.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/platform/WindowsDeviceConditions.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/platform/WindowsNativeDeviceCalls.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibraryDeviceUpdateSettings.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/test/http/LibraryMangaTestModeController.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/MoreRootScreen.kt"
     ],
     "deviations": [
       {
@@ -51011,18 +51206,7 @@
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/settings/SettingsSearchPolicyTest.kt",
       "app/src/test/java/eu/kanade/presentation/more/settings/screen/SettingsSearchConsumerBehaviorTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateOccurrenceIntegrationTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt",
-      "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateEligibilityTest.kt",
-      "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/FetchIntervalClockTest.kt",
-      "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMangaMetadataTest.kt",
-      "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryDeviceWaitingIntegrationTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopDeviceConditionsTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/platform/WindowsDeviceConditionsTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt"
     ],
     "behaviorMethods": {
       "domain/src/commonTest/kotlin/mihon/domain/settings/SettingsSearchPolicyTest.kt": [
@@ -51034,11 +51218,7 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt": [
         "catalog delegates search to shared policy",
         "search has feedback focus submission keys and result navigation",
-        "More settings entry opens the settings directory",
-        "library search anchor scrolls highlights once and preserves update writes"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
-        "new library settings search enters actual Root destinations and highlights their persistent controls"
+        "More settings entry opens the settings directory"
       ]
     },
     "roleEvidence": {
@@ -51070,16 +51250,6 @@
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsSearchScreen.kt",
           "symbol": "DesktopSettingsCatalog.search",
           "line": 55
-        },
-        {
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibraryDeviceUpdateSettings.kt",
-          "symbol": "internal fun LibraryDeviceUpdateSettings(",
-          "line": 26
-        },
-        {
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/test/http/LibraryMangaTestModeController.kt",
-          "symbol": "class LibraryMangaTestModeController(",
-          "line": 95
         }
       ],
       "FIXTURE": [
@@ -51087,14 +51257,6 @@
           "artifact": "domain/src/commonTest/kotlin/mihon/domain/settings/SettingsSearchPolicyTest.kt#fixed main excludes disabled blank info and disabled or blank groups",
           "productionMarkers": [
             "SettingsSearchPolicy.search"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt#new library settings search enters actual Root destinations and highlights their persistent controls",
-          "productionMarkers": [
-            "scene.mountSettings",
-            "scene.setText",
-            "scene.click"
           ]
         }
       ]
@@ -51237,6 +51399,75 @@
         },
         "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
         "verification": "64 unique affected Desktop methods passed, 0 failures/skips, including all 27 new production behavior/wiring methods; scoped 18 Kotlin and 2 XML format checks passed. Full matrix, packaged runtime and hardware remain RI18; capability status is unchanged."
+      },
+      "RI18": {
+        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
+        "verification": "Retains later iteration evidence separately from the exact historical capability contract; no capability status promotion or new test result is claimed.",
+        "sharedImplementationPaths": [
+          "domain/src/commonMain/kotlin/tachiyomi/domain/library/service/LibraryUpdateSkipReason.kt",
+          "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaMetadata.kt",
+          "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/FetchInterval.kt",
+          "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/service/ChapterDirectoryPhase.kt"
+        ],
+        "desktopConsumerAdapterPaths": [
+          "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibrarySettingsScreen.kt",
+          "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibraryUpdateCategorySettings.kt",
+          "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt",
+          "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateChecker.kt",
+          "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt",
+          "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryUpdateResultsDialog.kt",
+          "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopDeviceConditions.kt",
+          "app-desktop/src/main/kotlin/mihon/desktop/platform/WindowsDeviceConditions.kt",
+          "app-desktop/src/main/kotlin/mihon/desktop/platform/WindowsNativeDeviceCalls.kt",
+          "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibraryDeviceUpdateSettings.kt",
+          "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
+          "app-desktop/src/main/kotlin/mihon/desktop/test/http/LibraryMangaTestModeController.kt"
+        ],
+        "protectionTests": [
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt",
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateOccurrenceIntegrationTest.kt",
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt",
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryInteractionTest.kt",
+          "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateEligibilityTest.kt",
+          "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/FetchIntervalClockTest.kt",
+          "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMangaMetadataTest.kt",
+          "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt",
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryDeviceWaitingIntegrationTest.kt",
+          "app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopDeviceConditionsTest.kt",
+          "app-desktop/src/test/kotlin/mihon/desktop/platform/WindowsDeviceConditionsTest.kt"
+        ],
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt": [
+            "library search anchor scrolls highlights once and preserves update writes"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt": [
+            "new library settings search enters actual Root destinations and highlights their persistent controls"
+          ]
+        },
+        "roleEvidence": {
+          "DESKTOP_CONSUMER": [
+            {
+              "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LibraryDeviceUpdateSettings.kt",
+              "symbol": "internal fun LibraryDeviceUpdateSettings(",
+              "line": 26
+            },
+            {
+              "path": "app-desktop/src/main/kotlin/mihon/desktop/test/http/LibraryMangaTestModeController.kt",
+              "symbol": "class LibraryMangaTestModeController(",
+              "line": 95
+            }
+          ],
+          "FIXTURE": [
+            {
+              "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/LibrarySettingsPolicyInteractionTest.kt#new library settings search enters actual Root destinations and highlights their persistent controls",
+              "productionMarkers": [
+                "scene.mountSettings",
+                "scene.setText",
+                "scene.click"
+              ]
+            }
+          ]
+        }
       }
     }
   },
@@ -56604,7 +56835,7 @@
         {
           "path": "app-desktop/build.gradle.kts",
           "symbol": "implementation(projects.domain)",
-          "line": 139
+          "line": 148
         }
       ],
       "FIXTURE": [
@@ -56627,12 +56858,12 @@
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": [
         "production library stream exposes only logged in tracker rows and reacts to login logout",
-        "mark manga unread resets progress and skips chapters already unread at start",
+        "mark manga unread preserves explicit intent for chapters already unread",
         "enqueueNextUnreadDownload honors manga chapter sort and scanlator filter",
         "next downloads honor manga chapter sort and scanlator filter"
       ],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": [
-        "selected unread resets progress skips unchanged and exposes write failure",
+        "selected unread preserves same value user intent and exposes write failure",
         "chapter sort and display persist through chapter flags use case"
       ],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/authors/AuthorDetailBehaviorTest.kt": [
@@ -56693,22 +56924,70 @@
             "android main source must not depend on desktop runtime or awt swing"
           ]
         }
+      },
+      {
+        "task": "Task 16C",
+        "decision": "PROMOTE_VERIFIED",
+        "followUp": "NONE",
+        "gap": "NONE",
+        "behaviorMethods": {
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": [
+            "production library stream exposes only logged in tracker rows and reacts to login logout",
+            "mark manga unread resets progress and skips chapters already unread at start",
+            "enqueueNextUnreadDownload honors manga chapter sort and scanlator filter",
+            "next downloads honor manga chapter sort and scanlator filter"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": [
+            "selected unread resets progress skips unchanged and exposes write failure",
+            "chapter sort and display persist through chapter flags use case"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/authors/AuthorDetailBehaviorTest.kt": [
+            "author production interactors preserve list details candidate and follow behavior"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingScreenModelTest.kt": [
+            "load merges persisted manga tracks with every registered service",
+            "bind uses real service result and persists returned track",
+            "update accepts only provider choices and chapter boundary then persists atomically",
+            "unbind removes and refreshes local binding before optional remote delete settles"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt": [
+            "cookie header commits through the real jar before exact source retry"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/cloudflare/DesktopChallengeLoginWiringTest.kt": [
+            "controller manual solver cancel and retry actions obey state and current resolver"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionDetailsPreferencesWiringTest.kt": [
+            "details waits for authoritative removal and keeps desktop capabilities"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopNetworkHelperTest.kt": [
+            "extension cookie port clears only valid source domains",
+            "network maintenance port validates imports canonical host and clears all cookies"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt": [
+            "desktop DI shares one OAuth broker and production tracker clients with UI"
+          ],
+          "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt": [
+            "compiled production UI dependency graph matches finite violation inventory",
+            "compiled fixtures reject a forbidden manager and a disconnected use case",
+            "platform adapter allowlist requires compiled edges and nonblank reasons"
+          ]
+        }
       }
     ],
     "statusDecision": {
-      "task": "Task 16C",
-      "decision": "PROMOTE_VERIFIED",
+      "task": "RI18",
+      "decision": "KEEP_VERIFIED",
       "followUp": "NONE",
       "gap": "NONE",
       "behaviorMethods": {
         "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": [
           "production library stream exposes only logged in tracker rows and reacts to login logout",
-          "mark manga unread resets progress and skips chapters already unread at start",
+          "mark manga unread preserves explicit intent for chapters already unread",
           "enqueueNextUnreadDownload honors manga chapter sort and scanlator filter",
           "next downloads honor manga chapter sort and scanlator filter"
         ],
         "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": [
-          "selected unread resets progress skips unchanged and exposes write failure",
+          "selected unread preserves same value user intent and exposes write failure",
           "chapter sort and display persist through chapter flags use case"
         ],
         "app-desktop/src/test/kotlin/mihon/desktop/ui/authors/AuthorDetailBehaviorTest.kt": [
@@ -56741,7 +57020,9 @@
           "compiled fixtures reject a forbidden manager and a disconnected use case",
           "platform adapter allowlist requires compiled edges and nonblank reasons"
         ]
-      }
+      },
+      "reason": "Reaffirm the existing terminal status with current explicit User unread-intent behavior methods. Original Task 16C decision is preserved unchanged in history; no capability promotion.",
+      "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md"
     },
     "architectureBoundaryAudit": {
       "task": "Task 16C",
@@ -57238,12 +57519,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.initialize",
-          "line": 237
+          "line": 251
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.startApp",
-          "line": 239
+          "line": 253
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",

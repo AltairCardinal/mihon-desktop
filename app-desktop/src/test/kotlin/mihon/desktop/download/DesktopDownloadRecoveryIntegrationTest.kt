@@ -3,10 +3,18 @@ package mihon.desktop.download
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import eu.kanade.tachiyomi.network.NetworkHelper
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import mihon.domain.download.DownloadQueueEntry
 import mihon.domain.download.DownloadQueueStatus
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
+import mihon.domain.error.AppError
 import mihon.domain.reader.content.DownloadChapterIdentity
 import mihon.domain.reader.partial.PartialPageTable
 import mihon.domain.reader.partial.PartialPageTableCompleteness
@@ -16,18 +24,9 @@ import mihon.domain.reader.partial.PartialReaderPageListEvaluation
 import mihon.domain.reader.partial.PartialReaderPageListFallbackReason
 import mihon.domain.reader.partial.PartialReaderPageListOrigin
 import mihon.domain.reader.partial.PartialReaderPageListPolicy
-import okhttp3.OkHttpClient
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
@@ -37,6 +36,9 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.data.Database
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
@@ -44,19 +46,23 @@ import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.data.download.PersistentDownloadStore
 import java.io.File
 import java.io.IOException
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import mihon.domain.error.AppError
 
 class DesktopDownloadRecoveryIntegrationTest {
+
+    private val fixtureDownloadPreferences = DesktopDownloadPreferences(InMemoryPreferenceStore())
+
     @TempDir lateinit var directory: File
 
     @Test
     fun `queue and partial page progress survive a database restart`() {
         val dbFile = File(directory, "mihon.db")
-        persistentStore(dbFile).replaceAll(listOf(entry(status = DownloadQueueStatus.DOWNLOADING, progress = 1, retryCount = 2)))
+        persistentStore(
+            dbFile,
+        ).replaceAll(listOf(entry(status = DownloadQueueStatus.DOWNLOADING, progress = 1, retryCount = 2)))
 
         val recovered = persistentStore(dbFile).recover()
 
@@ -68,9 +74,13 @@ class DesktopDownloadRecoveryIntegrationTest {
     @Test
     fun `structured failure survives database restart and legacy null remains compatible`() {
         val dbFile = File(directory, "failure.db")
-        persistentStore(dbFile).replaceAll(listOf(entry(DownloadQueueStatus.ERROR, 0).copy(
-            failure = AppError.RateLimited(37, IllegalStateException("slow down")),
-        )))
+        persistentStore(dbFile).replaceAll(
+            listOf(
+                entry(DownloadQueueStatus.ERROR, 0).copy(
+                    failure = AppError.RateLimited(37, IllegalStateException("slow down")),
+                ),
+            ),
+        )
 
         val restored = persistentStore(dbFile).entries().single()
         (restored.failure as AppError.RateLimited).retryAfterSeconds shouldBe 37
@@ -100,7 +110,10 @@ class DesktopDownloadRecoveryIntegrationTest {
         assertEquals(identity, restored.downloadIdentity)
         assertEquals(PartialPageTableCompleteness.COMPLETE, restored.pageTable.completeness)
         assertEquals(listOf(3, 17, 90), restored.pageTable.entries.map(PartialPageTableEntry::sourcePageIndex))
-        assertEquals(listOf("https://img/1.jpg", null, "https://img/3.jpg"), restored.pageTable.entries.map(PartialPageTableEntry::imageUrl))
+        assertEquals(
+            listOf("https://img/1.jpg", null, "https://img/3.jpg"),
+            restored.pageTable.entries.map(PartialPageTableEntry::imageUrl),
+        )
         assertTrue(restored.failure is AppError.Storage)
     }
 
@@ -163,7 +176,12 @@ class DesktopDownloadRecoveryIntegrationTest {
         val driver = JdbcSqliteDriver("jdbc:sqlite:${dbFile.absolutePath}")
         driver.execute(null, "CREATE TABLE delete_audit(count INTEGER NOT NULL)", 0)
         driver.execute(null, "INSERT INTO delete_audit VALUES(0)", 0)
-        driver.execute(null, "CREATE TRIGGER audit_queue_delete AFTER DELETE ON download_queue BEGIN UPDATE delete_audit SET count = count + 1; END", 0)
+        driver.execute(
+            null,
+            "CREATE TRIGGER audit_queue_delete AFTER DELETE ON download_queue BEGIN" +
+                " UPDATE delete_audit SET count = count + 1; END",
+            0,
+        )
 
         persistentStore(dbFile).recover()
 
@@ -177,11 +195,16 @@ class DesktopDownloadRecoveryIntegrationTest {
     @Test
     fun `manager restores failure state after restart`() {
         val dbFile = File(directory, "manager-failure.db")
-        persistentStore(dbFile).replaceAll(listOf(entry(DownloadQueueStatus.ERROR, 0).copy(
-            failure = AppError.Storage(IllegalStateException("disk full")),
-        )))
+        persistentStore(dbFile).replaceAll(
+            listOf(
+                entry(DownloadQueueStatus.ERROR, 0).copy(
+                    failure = AppError.Storage(IllegalStateException("disk full")),
+                ),
+            ),
+        )
 
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = DesktopDownloadProvider(File(directory, "downloads-failure")),
             store = persistentStore(dbFile),
         )
@@ -214,6 +237,7 @@ class DesktopDownloadRecoveryIntegrationTest {
         val identityResolverCalls = AtomicInteger()
         val executedUrls = CopyOnWriteArrayList<String>()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             store = store,
             httpClient = OkHttpClient(),
@@ -289,62 +313,73 @@ class DesktopDownloadRecoveryIntegrationTest {
     }
 
     @Test
-    fun `recovery upsert failure for one item does not starve a later sibling or rewrite the queue`(): Unit = runBlocking {
-        val dbFile = File(directory, "recovery-persistence-isolation.db")
-        val store = persistentStore(dbFile)
-        val table = versionedTable()
-        val first = entry(DownloadQueueStatus.ERROR, 1, chapterId = 1L).copy(
-            chapterName = "First",
-            chapterUrl = "/first",
-            pageTable = table,
-            downloadIdentity = null,
-        )
-        val second = entry(DownloadQueueStatus.ERROR, 1, chapterId = 2L).copy(
-            chapterName = "Second",
-            chapterUrl = "/second",
-            pageTable = table,
-            downloadIdentity = null,
-        )
-        store.replaceAll(listOf(first, second))
-        val provider = DesktopDownloadProvider(File(directory, "recovery-persistence-isolation-downloads"))
-        provider.chapterTmpDir(3L, "Manga", "First").apply {
-            mkdirs()
-            resolve("001.gif").writeText(GIF)
-        }
-        provider.chapterTmpDir(3L, "Manga", "Second").apply {
-            mkdirs()
-            resolve("001.gif").writeText(GIF)
-        }
-        val firstIdentity = identity().copy(chapterName = "First", chapterUrl = "/first")
-        val secondIdentity = identity().copy(chapterName = "Second", chapterUrl = "/second")
-        val entryPersistenceCalls = AtomicInteger()
-        val bulkPersistenceCalls = AtomicInteger()
-        val manager = DesktopDownloadManager(
-            provider = provider,
-            store = store,
-            workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
-            downloadIdentityResolver = { item -> if (item.chapterId == 1L) firstIdentity else secondIdentity },
-            queuePersister = { entries ->
-                store.replaceAll(entries)
-                bulkPersistenceCalls.incrementAndGet()
-            },
-            queueEntryPersister = { entry ->
-                if (entryPersistenceCalls.incrementAndGet() == 1) throw IOException("injected first-row persistence failure")
-                store.upsert(entry)
-            },
-        )
-        try {
-            manager.awaitPartialIndexRecovery()
+    fun `recovery upsert failure for one item does not starve a later sibling or rewrite the queue`(): Unit =
+        runBlocking {
+            val dbFile = File(directory, "recovery-persistence-isolation.db")
+            val store = persistentStore(dbFile)
+            val table = versionedTable()
+            val first = entry(DownloadQueueStatus.ERROR, 1, chapterId = 1L).copy(
+                chapterName = "First",
+                chapterUrl = "/first",
+                pageTable = table,
+                downloadIdentity = null,
+            )
+            val second = entry(DownloadQueueStatus.ERROR, 1, chapterId = 2L).copy(
+                chapterName = "Second",
+                chapterUrl = "/second",
+                pageTable = table,
+                downloadIdentity = null,
+            )
+            store.replaceAll(listOf(first, second))
+            val provider = DesktopDownloadProvider(File(directory, "recovery-persistence-isolation-downloads"))
+            provider.chapterTmpDir(3L, "Manga", "First").apply {
+                mkdirs()
+                resolve("001.gif").writeText(GIF)
+            }
+            provider.chapterTmpDir(3L, "Manga", "Second").apply {
+                mkdirs()
+                resolve("001.gif").writeText(GIF)
+            }
+            val firstIdentity = identity().copy(chapterName = "First", chapterUrl = "/first")
+            val secondIdentity = identity().copy(chapterName = "Second", chapterUrl = "/second")
+            val entryPersistenceCalls = AtomicInteger()
+            val bulkPersistenceCalls = AtomicInteger()
+            val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
+                provider = provider,
+                store = store,
+                workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+                downloadIdentityResolver = { item -> if (item.chapterId == 1L) firstIdentity else secondIdentity },
+                queuePersister = { entries ->
+                    store.replaceAll(entries)
+                    bulkPersistenceCalls.incrementAndGet()
+                },
+                queueEntryPersister = { entry ->
+                    if (entryPersistenceCalls.incrementAndGet() ==
+                        1
+                    ) {
+                        throw IOException("injected first-row persistence failure")
+                    }
+                    store.upsert(entry)
+                },
+            )
+            try {
+                manager.awaitPartialIndexRecovery()
 
-            assertNull(manager.snapshot(1L, firstIdentity))
-            assertEquals(listOf(0), checkNotNull(manager.snapshot(2L, secondIdentity)).committedPages.map { it.readerOrdinal })
-            assertEquals(secondIdentity, store.entries().single { it.chapterId == 2L }.downloadIdentity)
-            assertEquals(2, entryPersistenceCalls.get())
-            assertEquals(0, bulkPersistenceCalls.get())
-        } finally {
-            manager.stopAndJoin()
+                assertNull(manager.snapshot(1L, firstIdentity))
+                assertEquals(
+                    listOf(0),
+                    checkNotNull(manager.snapshot(2L, secondIdentity)).committedPages.map {
+                        it.readerOrdinal
+                    },
+                )
+                assertEquals(secondIdentity, store.entries().single { it.chapterId == 2L }.downloadIdentity)
+                assertEquals(2, entryPersistenceCalls.get())
+                assertEquals(0, bulkPersistenceCalls.get())
+            } finally {
+                manager.stopAndJoin()
+            }
         }
-    }
 
     @Test
     fun `cancelling recovery does not continue to later legacy rows`(): Unit = runBlocking {
@@ -359,6 +394,7 @@ class DesktopDownloadRecoveryIntegrationTest {
         val resolverStarted = CompletableDeferred<Unit>()
         val resolverCalls = AtomicInteger()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = DesktopDownloadProvider(File(directory, "recovery-cancellation-downloads")),
             store = store,
             workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
@@ -382,84 +418,89 @@ class DesktopDownloadRecoveryIntegrationTest {
     }
 
     @Test
-    fun `worker retries a failed recovery reconcile and reuses the committed page without network`(): Unit = runBlocking {
-        val dbFile = File(directory, "recovery-reconcile-retry.db")
-        val store = persistentStore(dbFile)
-        val identity = identity()
-        val table = PartialPageTable.complete(
-            listOf(PartialPageTableEntry(0, 23, "/page/one", "https://fixture.invalid/one.jpg")),
-        )
-        store.replaceAll(
-            listOf(
-                entry(DownloadQueueStatus.DOWNLOADING, 1).copy(
-                    pageTable = table,
-                    downloadIdentity = identity,
+    fun `worker retries a failed recovery reconcile and reuses the committed page without network`(): Unit =
+        runBlocking {
+            val dbFile = File(directory, "recovery-reconcile-retry.db")
+            val store = persistentStore(dbFile)
+            val identity = identity()
+            val table = PartialPageTable.complete(
+                listOf(PartialPageTableEntry(0, 23, "/page/one", "https://fixture.invalid/one.jpg")),
+            )
+            store.replaceAll(
+                listOf(
+                    entry(DownloadQueueStatus.DOWNLOADING, 1).copy(
+                        pageTable = table,
+                        downloadIdentity = identity,
+                    ),
                 ),
-            ),
-        )
-        val provider = DesktopDownloadProvider(File(directory, "recovery-reconcile-retry-downloads"))
-        provider.canonicalChapterTmpDir(identity).apply {
-            mkdirs()
-            resolve("001.gif").writeText(GIF)
-        }
-        val firstListEntered = CountDownLatch(1)
-        val releaseFirstList = CountDownLatch(1)
-        val listCalls = AtomicInteger()
-        val imageRequests = AtomicInteger()
-        val manager = DesktopDownloadManager(
-            provider = provider,
-            store = store,
-            httpClient = OkHttpClient(),
-            workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
-            retryDelay = {},
-            partialIndexFileOperations = object : PartialDownloadIndexFileOperations {
-                override fun isDirectory(directory: File): Boolean = directory.isDirectory
+            )
+            val provider = DesktopDownloadProvider(File(directory, "recovery-reconcile-retry-downloads"))
+            provider.canonicalChapterTmpDir(identity).apply {
+                mkdirs()
+                resolve("001.gif").writeText(GIF)
+            }
+            val firstListEntered = CountDownLatch(1)
+            val releaseFirstList = CountDownLatch(1)
+            val listCalls = AtomicInteger()
+            val imageRequests = AtomicInteger()
+            val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
+                provider = provider,
+                store = store,
+                httpClient = OkHttpClient(),
+                workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+                retryDelay = {},
+                partialIndexFileOperations = object : PartialDownloadIndexFileOperations {
+                    override fun isDirectory(directory: File): Boolean = directory.isDirectory
 
-                override fun listFiles(directory: File): List<File> {
-                    if (listCalls.incrementAndGet() == 1) {
-                        firstListEntered.countDown()
-                        check(releaseFirstList.await(5, TimeUnit.SECONDS))
-                        throw IOException("injected recovery list failure")
+                    override fun listFiles(directory: File): List<File> {
+                        if (listCalls.incrementAndGet() == 1) {
+                            firstListEntered.countDown()
+                            check(releaseFirstList.await(5, TimeUnit.SECONDS))
+                            throw IOException("injected recovery list failure")
+                        }
+                        return directory.listFiles().orEmpty().toList()
                     }
-                    return directory.listFiles().orEmpty().toList()
+
+                    override fun isValidCommittedPage(provider: DesktopDownloadProvider, file: File): Boolean =
+                        provider.isValidDownloadedImage(file)
+                },
+                fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                    override fun execute(client: OkHttpClient, url: String): Response {
+                        imageRequests.incrementAndGet()
+                        return Response.Builder()
+                            .request(Request.Builder().url(url).build())
+                            .protocol(Protocol.HTTP_1_1)
+                            .code(200)
+                            .message("OK")
+                            .body(GIF.encodeToByteArray().toResponseBody())
+                            .build()
+                    }
+                },
+            )
+            assertTrue(firstListEntered.await(5, TimeUnit.SECONDS))
+            val worker = manager.start()
+            try {
+                withTimeout(5_000) {
+                    while (manager.queue.value.single().status != DownloadStatus.DOWNLOADING) delay(10)
+                }
+                releaseFirstList.countDown()
+                withTimeout(5_000) {
+                    while (manager.queue.value.isNotEmpty()) delay(10)
                 }
 
-                override fun isValidCommittedPage(provider: DesktopDownloadProvider, file: File): Boolean =
-                    provider.isValidDownloadedImage(file)
-            },
-            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
-                override fun execute(client: OkHttpClient, url: String): Response {
-                    imageRequests.incrementAndGet()
-                    return Response.Builder()
-                        .request(Request.Builder().url(url).build())
-                        .protocol(Protocol.HTTP_1_1)
-                        .code(200)
-                        .message("OK")
-                        .body(GIF.encodeToByteArray().toResponseBody())
-                        .build()
-                }
-            },
-        )
-        assertTrue(firstListEntered.await(5, TimeUnit.SECONDS))
-        val worker = manager.start()
-        try {
-            withTimeout(5_000) {
-                while (manager.queue.value.single().status != DownloadStatus.DOWNLOADING) delay(10)
+                assertEquals(2, listCalls.get())
+                assertEquals(0, imageRequests.get())
+                assertEquals(
+                    listOf("001.gif"),
+                    provider.canonicalChapterDownloadDir(identity).listFiles().orEmpty().map(File::getName),
+                )
+            } finally {
+                releaseFirstList.countDown()
+                worker.cancelAndJoin()
+                manager.stopAndJoin()
             }
-            releaseFirstList.countDown()
-            withTimeout(5_000) {
-                while (manager.queue.value.isNotEmpty()) delay(10)
-            }
-
-            assertEquals(2, listCalls.get())
-            assertEquals(0, imageRequests.get())
-            assertEquals(listOf("001.gif"), provider.canonicalChapterDownloadDir(identity).listFiles().orEmpty().map(File::getName))
-        } finally {
-            releaseFirstList.countDown()
-            worker.cancelAndJoin()
-            manager.stopAndJoin()
         }
-    }
 
     @Test
     fun `worker resumes valid pages removes stale tmp and downloads only missing pages`(): Unit = runBlocking {
@@ -470,14 +511,18 @@ class DesktopDownloadRecoveryIntegrationTest {
         try {
             val dbFile = File(directory, "resume.db")
             val store = persistentStore(dbFile)
-            store.replaceAll(listOf(entry(DownloadQueueStatus.DOWNLOADING, 1, retryCount = 2).copy(
-                pageUrls = listOf(
-                    server.url("/already.png").toString(),
-                    server.url("/duplicate.png").toString(),
-                    server.url("/corrupt.png").toString(),
-                    server.url("/missing.png").toString(),
+            store.replaceAll(
+                listOf(
+                    entry(DownloadQueueStatus.DOWNLOADING, 1, retryCount = 2).copy(
+                        pageUrls = listOf(
+                            server.url("/already.png").toString(),
+                            server.url("/duplicate.png").toString(),
+                            server.url("/corrupt.png").toString(),
+                            server.url("/missing.png").toString(),
+                        ),
+                    ),
                 ),
-            )))
+            )
             val provider = DesktopDownloadProvider(File(directory, "downloads"))
             val tmp = provider.chapterTmpDir(3, "Manga", "Chapter").apply { mkdirs() }
             File(tmp, "001.gif").writeText(GIF)
@@ -495,6 +540,7 @@ class DesktopDownloadRecoveryIntegrationTest {
             }
 
             val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
                 provider = provider,
                 httpClient = OkHttpClient(),
                 store = persistentStore(dbFile),
@@ -517,16 +563,22 @@ class DesktopDownloadRecoveryIntegrationTest {
                 provider.chapterDownloadDir(3, "Manga", "Chapter").listFiles().orEmpty().map(File::getName).sorted(),
             )
             persistentStore(dbFile).entries() shouldBe emptyList()
-        } finally { server.close() }
+        } finally {
+            server.close()
+        }
     }
 
     @Test
     fun `recovered queue resolves canonical identity before resuming its write`(): Unit = runBlocking {
         val dbFile = File(directory, "canonical-recovery.db")
         val store = persistentStore(dbFile)
-        store.replaceAll(listOf(entry(DownloadQueueStatus.QUEUED, 0).copy(
-            pageUrls = listOf("https://fixture.invalid/001.jpg"),
-        )))
+        store.replaceAll(
+            listOf(
+                entry(DownloadQueueStatus.QUEUED, 0).copy(
+                    pageUrls = listOf("https://fixture.invalid/001.jpg"),
+                ),
+            ),
+        )
         val provider = DesktopDownloadProvider(File(directory, "canonical-recovery-downloads"))
         val identity = DownloadChapterIdentity(
             sourceDisplayName = "Recovered Source",
@@ -538,6 +590,7 @@ class DesktopDownloadRecoveryIntegrationTest {
         )
         var resolvedChapterId: Long? = null
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             store = store,
             networkHelper = NetworkHelper(OkHttpClient()),
@@ -603,6 +656,7 @@ class DesktopDownloadRecoveryIntegrationTest {
                     resolve("001.gif").writeText(GIF)
                 }
                 val manager = DesktopDownloadManager(
+                    downloadPreferences = fixtureDownloadPreferences,
                     provider = provider,
                     store = persistentStore(dbFile),
                     httpClient = OkHttpClient(),
@@ -618,7 +672,9 @@ class DesktopDownloadRecoveryIntegrationTest {
                     assertEquals(1, server.requestCount)
                     assertEquals(
                         listOf("001.gif", "002.jpg"),
-                        provider.canonicalChapterDownloadDir(identity).listFiles().orEmpty().map(File::getName).sorted(),
+                        provider.canonicalChapterDownloadDir(
+                            identity,
+                        ).listFiles().orEmpty().map(File::getName).sorted(),
                     )
                     assertFalse(provider.chapterTmpDir(3L, identity.mangaTitle, identity.chapterName).exists())
                 } finally {
@@ -651,6 +707,7 @@ class DesktopDownloadRecoveryIntegrationTest {
         }
         val sourceCalls = AtomicInteger()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             store = persistentStore(dbFile),
             httpClient = OkHttpClient(),
@@ -722,6 +779,7 @@ class DesktopDownloadRecoveryIntegrationTest {
             }
         }
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             store = persistentStore(dbFile),
             workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
@@ -743,7 +801,10 @@ class DesktopDownloadRecoveryIntegrationTest {
             assertFalse(provider.isChapterDownloaded(3L, identity))
 
             assertTrue(manager.retryItem(1L))
-            assertNull(manager.snapshot(1L, identity), "A new generation must not expose the recovered generation index")
+            assertNull(
+                manager.snapshot(1L, identity),
+                "A new generation must not expose the recovered generation index",
+            )
         } finally {
             manager.stopAndJoin()
         }
@@ -772,6 +833,7 @@ class DesktopDownloadRecoveryIntegrationTest {
             resolve("004.jpg").writeText(GIF)
         }
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             store = persistentStore(dbFile),
             workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
@@ -805,6 +867,7 @@ class DesktopDownloadRecoveryIntegrationTest {
         val reconcileEntered = CountDownLatch(1)
         val releaseReconcile = CountDownLatch(1)
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             store = persistentStore(dbFile),
             workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
@@ -868,6 +931,7 @@ class DesktopDownloadRecoveryIntegrationTest {
         val cleanupFinished = CountDownLatch(1)
         val executedUrls = CopyOnWriteArrayList<String>()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             store = persistentStore(dbFile),
             httpClient = OkHttpClient(),

@@ -213,10 +213,10 @@ class LibraryCategoryBehaviorTest {
             val repository = Injekt.get<MangaRepository>()
             val mangas = repository.insertNetworkManga(
                 listOf(
-                    Manga.create().copy(source = 0, url = "/target-a", title = "Target A", initialized = true),
-                    Manga.create().copy(source = 0, url = "/hidden-a", title = "Hidden A", initialized = true),
-                    Manga.create().copy(source = 0, url = "/target-b", title = "Target B", initialized = true),
-                    Manga.create().copy(source = 0, url = "/default", title = "Default target", initialized = true),
+                    Manga.create().copy(source = 123, url = "/target-a", title = "Target A", initialized = true),
+                    Manga.create().copy(source = 123, url = "/hidden-a", title = "Hidden A", initialized = true),
+                    Manga.create().copy(source = 123, url = "/target-b", title = "Target B", initialized = true),
+                    Manga.create().copy(source = 123, url = "/default", title = "Default target", initialized = true),
                 ),
             )
             repository.updateMembershipsAtomically(
@@ -471,7 +471,8 @@ class LibraryCategoryBehaviorTest {
 
             assertTrue(page.exists())
             assertEquals(
-                MR.strings.desktop_ui_items_updated_failed.localized(Locale.getDefault(), 0, 1),
+                MR.strings.desktop_ui_items_updated_failed.localized(Locale.getDefault(), 0, 1) + "\n" +
+                    MR.strings.desktop_chapter_batch_result.localized(Locale.getDefault(), 0, 0, 1),
                 model.state.value.operationFeedback,
             )
         } finally {
