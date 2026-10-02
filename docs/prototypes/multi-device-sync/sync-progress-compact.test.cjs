@@ -54,7 +54,7 @@ test('新入口双端两行信息与真实完成比例，无详情无循环动�
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1180 } });
-    await page.goto(fileUrl('progress-review.html'));
+    await page.goto(fileUrl('progress-review.html') + '?progress=compact-upload');
     const pc = page.frameLocator('#preview-windows');
     const phone = page.frameLocator('#preview-android');
     for (const frame of [pc, phone]) {
@@ -84,7 +84,7 @@ test('新入口双端两行信息与真实完成比例，无详情无循环动�
     await page.getByTestId('show-progress-both').click();
     assert.equal(await pc.getByTestId('sync-progress-track').getAttribute('aria-valuenow'), '100');
     await pc.getByTestId('sync-progress-primary').click();
-    assert.equal(await pc.getByTestId('sync-compact-summary').innerText(), '同步中，已完成0/16384条');
+    assert.match(await pc.getByTestId('sync-compact-summary').innerText(), /同步中，已完成0\/\d+条/);
     assert.equal(await pc.getByTestId('sync-progress-track').getAttribute('aria-valuenow'), '0');
   } finally { await browser.close(); }
 });

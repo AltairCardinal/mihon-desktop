@@ -353,3 +353,5 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .sync-compact-card .sync-progress-track span { animation: none !important; }
 .sync-compact-controls { display: flex; justify-content: flex-end; padding: 0 12px 8px; }
 .sync-compact-card > .ix-note { padding: 0 20px; }
+
+.sync-compact-card .sync-next-auto { font-size: .9em; line-height: 1.6; overflow-wrap: anywhere; }

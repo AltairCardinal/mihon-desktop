@@ -9,6 +9,7 @@
   const localKeys = new Set(['ui', 'selectedDevice']);
   window.MihonPreview = {
     theme: 'dark',
+    fullSyncReview: document.body.dataset.syncReview === 'full',
     connect() {
       const local = {};
       return new Proxy(local, {

@@ -12,6 +12,19 @@
       return state.ui.interactions;
     }
     function resetCountdown() { data().nextSyncAt = Date.now() + currentDevice().settings.periodMinutes * 60000; }
+    function nextAutoText() {
+      if (!currentDevice().settings.periodicSync) return '自动同步已关闭';
+      if (!state.online) return '当前离线，自动同步需等待网络恢复';
+      const now = new Date();
+      const next = new Date(data().nextSyncAt);
+      const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      const day = next.toDateString() === now.toDateString() ? '今天' : next.toDateString() === tomorrow.toDateString() ? '明天' : `${next.getMonth() + 1}月${next.getDate()}日`;
+      const time = `${String(next.getHours()).padStart(2, '0')}:${String(next.getMinutes()).padStart(2, '0')}`;
+      return `下次自动同步${isWindows() ? '' : '（预计）'}：${day} ${time} · ${countdownTitle()}`;
+    }
+    function nextAuto() {
+      return `<p class="ix-note sync-next-auto" data-testid="sync-next-auto">${esc(nextAutoText())}</p>`;
+    }
     function countdownTitle() {
       const minutes = Math.max(0, Math.ceil((data().nextSyncAt - Date.now()) / 60000));
       if (!minutes) return '即将同步';
@@ -22,6 +35,8 @@
     window.setInterval(() => {
       const label = document.querySelector('[data-sync-countdown]');
       if (label) label.textContent = countdownTitle();
+      const next = document.querySelector('[data-testid="sync-next-auto"]');
+      if (next) next.textContent = nextAutoText();
     }, 1000);
     const screen = () => data().stack.at(-1);
     function go(name) { data().stack.push(name); data().message = ''; }
@@ -128,7 +143,7 @@
     }
     function progressPage() { importFact(); return progressCard(); }
     function primary(f) {
-      if (f.compact && f.state === 'succeeded') return ['立即同步', 'ix-progress-restart'];
+      if (f.compact && f.state === 'succeeded' && !window.parent.MihonPreview?.fullSyncReview) return ['立即同步', 'ix-progress-restart'];
       if (f.source === 'import') return f.state === 'succeeded' ? ['查看同步', 'ix-import-done'] : f.state === 'paused' ? ['继续同步', 'ix-import-resume'] : f.state === 'failed' ? ['重试同步', 'ix-import-retry'] : ['暂停同步', 'ix-import-pause'];
       return f.state === 'paused' ? ['继续同步', 'ix-progress-resume'] : f.state === 'blocked' ? ['重新连接', 'ix-reconnect'] : ['failed', 'partial'].includes(f.state) ? ['重试同步', 'ix-progress-retry'] : f.state === 'succeeded' || f.state === 'cancelled' ? ['立即同步', 'sync-manual'] : ['暂停同步', 'ix-progress-pause'];
     }
@@ -142,7 +157,7 @@
       const [label, name] = primary(f);
       const percent = f.completionPercent;
       const disabled = ['pausing', 'retry', 'network', 'system', 'recovering'].includes(f.state);
-      return `<section class="sync-progress-card sync-compact-card" data-testid="sync-progress-card"><div class="sync-compact-content"><p data-compact-line data-testid="sync-compact-summary">${esc(f.summary)}</p><div class="sync-progress-track" data-testid="sync-progress-track" role="progressbar" aria-label="同步完成进度" aria-valuemin="0" aria-valuemax="100" ${percent === null ? '' : `aria-valuenow="${percent}"`}><span style="width:${percent ?? 0}%"></span></div><p data-compact-line data-testid="sync-compact-time">${esc(f.time)}</p></div>${f.state === 'failed' ? `<p class="ix-note">${esc(f.reason || '同步未完成，已完成的进度已保留。')}</p>` : ''}<div class="sync-compact-controls"><button class="m-button m-button-text" data-testid="sync-progress-primary" data-action="${name}" ${disabled ? 'disabled' : ''}><span data-progress-control-label>${label}</span></button></div></section>`;
+      return `<section class="sync-progress-card sync-compact-card" data-state="${f.state}" data-testid="sync-progress-card"><div class="sync-compact-content"><p data-compact-line data-testid="sync-compact-summary">${esc(f.summary)}</p><div class="sync-progress-track" data-testid="sync-progress-track" role="progressbar" aria-label="同步完成进度" aria-valuemin="0" aria-valuemax="100" ${percent === null ? '' : `aria-valuenow="${percent}"`}><span style="width:${percent ?? 0}%"></span></div><p data-compact-line data-testid="sync-compact-time">${esc(f.time)}</p></div>${f.state === 'succeeded' ? nextAuto() : ''}${f.state === 'failed' ? `<p class="ix-note">${esc(f.reason || '同步未完成，已完成的进度已保留。')}</p>` : ''}<div class="sync-compact-controls"><button class="m-button m-button-text" data-testid="sync-progress-primary" data-action="${name}" ${disabled ? 'disabled' : ''}><span data-progress-control-label>${label}</span></button></div></section>`;
     }
     function paintCompact(card, f) {
       card.querySelector('[data-testid="sync-compact-summary"]').textContent = f.summary;
@@ -177,7 +192,10 @@
       const card = document.querySelector('[data-testid="sync-progress-card"]');
       if (!card || !data().progress || !state.ui.syncOpen) return;
       const f = progressValues();
-      if (f.compact) { paintCompact(card, f); return; }
+      if (f.compact) {
+        if (card.dataset.state !== f.state) { render(); return; }
+        paintCompact(card, f); return;
+      }
       const put = (id, value) => { const node = card.querySelector(`[data-testid="${id}"]`); if (node && node.textContent !== value) node.textContent = value; };
       put('sync-progress-title', f.title); put('sync-progress-confirmed', confirmedText(f)); put('sync-progress-action', f.action); put('sync-progress-elapsed', f.elapsed); put('sync-progress-eta', f.eta);
       const explanation = card.querySelector('[data-testid="sync-result"]') || card.querySelector('[data-testid="sync-progress-explanation"]'); if (explanation.textContent !== f.explanation) explanation.textContent = f.explanation;
@@ -220,9 +238,9 @@
       if (name === 'compact-bidirectional') { f.direction = '双向同步'; f.scope = 'review-whole-run'; f.confirmed = 0; f.total = 24576; f.startedAt = Date.now(); }
       if (name === 'compact-start') { f.confirmed = 0; f.startedAt = Date.now(); }
       if (name === 'compact-unknown') { f.total = null; f.confirmed = 0; f.wholeEta = null; }
-      if (name === 'compact-paused') f.state = 'paused';
+      if (name === 'compact-paused') { f.state = 'paused'; f.pausedAt = Date.now(); }
       if (name === 'compact-failed') { f.state = 'failed'; f.endedAt = Date.now(); f.reason = '连接暂时中断，可继续同步。'; }
-      if (name === 'compact-complete') { f.state = 'succeeded'; f.confirmed = f.total; f.endedAt = Date.now(); }
+      if (name === 'compact-complete') { f.state = 'succeeded'; f.confirmed = f.total; f.endedAt = Date.now(); didSync(true); }
       if (f.state === 'running' && f.total !== null) scheduleCompactTick();
     }
     function scheduleCompactTick() {
@@ -232,7 +250,7 @@
         f.confirmed = Math.min(f.total, f.confirmed + 512);
         f.lastProgressAt = Date.now();
         f.wholeEta = Math.ceil((f.total - f.confirmed) / 512 * 1.2);
-        if (f.confirmed === f.total) { f.state = 'succeeded'; f.endedAt = Date.now(); }
+        if (f.confirmed === f.total) { f.state = 'succeeded'; f.endedAt = Date.now(); didSync(true); }
         paintProgress();
         if (f.state === 'running') scheduleCompactTick();
       }, 1200);
@@ -249,7 +267,13 @@
       paintProgress();
       progressTimer = setTimeout(() => { if (step >= 5) { f.state = 'succeeded'; f.confirmed = 1600; f.endedAt = Date.now(); paintProgress(); } else continuousTick(step + 1); }, 4000);
     }
-    function beginSync() { clearTimeout(progressTimer); newProgress({ source: 'manual', confirmed: null, action: '准备' }); }
+    function beginSync(trigger = 'manual') {
+      clearTimeout(progressTimer);
+      const compact = Boolean(window.parent.MihonPreview?.fullSyncReview);
+      // Plan only the local demo model on an isolated copy; never exchange live data early.
+      const planned = compact ? window.__mihonSyncDemo.model.triggerSync(JSON.parse(JSON.stringify(state)), currentDevice().id, trigger) : null;
+      newProgress({ source: 'manual', compact, confirmed: compact ? 0 : null, total: planned?.ok ? (planned.sent || 0) + (planned.applied || 0) : null, action: '准备' });
+    }
     function finishSync(result) { const f = data().progress; if (f?.source !== 'manual') return; Object.assign(f, { state: result.ok ? 'succeeded' : 'failed', confirmed: result.ok ? (result.sent || 0) + (result.applied || 0) : null, noWork: result.ok && !result.skipped && result.sent === 0 && result.received === 0 && currentDevice().confirmations.length === 0, endedAt: Date.now(), reason: result.message }); }
     let authWindow = null;
     let authRequest = 0;
@@ -512,8 +536,8 @@
       if (actionName === 'progress-details') { d.progressDetails = !d.progressDetails; }
       else if (actionName === 'progress-restart') compactScenario(['compact-download', 'compact-bidirectional'].includes(data().progressScenario) ? data().progressScenario : 'compact-start');
       else if (actionName === 'progress-failures') d.failureLogOpen = !d.failureLogOpen;
-      else if (actionName === 'progress-pause') { clearTimeout(progressTimer); clearTimeout(state.ui.timerId); state.ui.timerId = null; state.ui.busy = false; d.progress.state = 'paused'; }
-      else if (actionName === 'progress-resume' || actionName === 'progress-retry') { if (d.progress.compact) { d.progress.state = 'running'; d.progress.endedAt = null; d.progress.lastProgressAt = Date.now(); if (d.progress.total !== null) scheduleCompactTick(); } else if (d.progress.source === 'manual') { window.__mihonSyncDemo.scheduleSync('manual'); } else { d.progress.state = 'recovering'; d.progress.percent = null; progressTimer = setTimeout(() => { d.progress.state = 'running'; if (d.progressScenario === 'rapid') rapidTick(d.progress.demoStep || 0); else continuousTick(d.progress.demoStep || 0); paintProgress(); }, 1000); } }
+      else if (actionName === 'progress-pause') { clearTimeout(progressTimer); clearTimeout(state.ui.timerId); state.ui.timerId = null; state.ui.busy = false; d.progress.state = 'paused'; d.progress.pausedAt = Date.now(); }
+      else if (actionName === 'progress-resume' || actionName === 'progress-retry') { if (d.progress.compact && d.progress.source !== 'manual') { if (d.progress.pausedAt != null) d.progress.pausedMillis = (d.progress.pausedMillis || 0) + Date.now() - d.progress.pausedAt; d.progress.pausedAt = null; d.progress.state = 'running'; d.progress.endedAt = null; d.progress.lastProgressAt = Date.now(); if (d.progress.total !== null) scheduleCompactTick(); } else if (d.progress.source === 'manual') { window.__mihonSyncDemo.scheduleSync('manual'); } else { d.progress.state = 'recovering'; d.progress.percent = null; progressTimer = setTimeout(() => { d.progress.state = 'running'; if (d.progressScenario === 'rapid') rapidTick(d.progress.demoStep || 0); else continuousTick(d.progress.demoStep || 0); paintProgress(); }, 1000); } }
       else if (['frequency', 'device', 'disconnect', 'switch', 'issue', 'activity', 'privacy'].includes(actionName)) { go(actionName); }
       else if (actionName === 'setup' || actionName === 'reconnect') { if (actionName === 'setup' && d.setupStage) d.stack = [d.setupStage]; else startAuth(actionName === 'reconnect'); }
       else if (actionName === 'open-github') openAuthorization();

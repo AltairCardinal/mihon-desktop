@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Mihon · 简洁同步进度审阅</title>
+  <title>Mihon · 完整同步交互审阅</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
-<body data-progress-scene="compact-upload">
-  <p class="prototype-notice">新版同步进度审阅：两行信息＋完成比例进度条。下方为本地加速演示，不连接真实同步空间。</p>
+<body data-sync-review="full" data-progress-scene="compact-complete">
+  <p class="prototype-notice">完整同步交互审阅 · 从同步完成开始，可继续同步、设置自动同步、处理待确认事项，或从演示栏进入授权与异常流程。双端均可独立操作；所有账号、数据与时间安排均为本地模拟。</p>
   <main id="preview" class="parallel-preview theme-dark"></main>
   <script src="./sync-model.js"></script>
   <script src="./ui-view.js"></script>

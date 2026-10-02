@@ -236,7 +236,7 @@
     const result = state.ui.syncResult;
     const batchResult = state.ui.batchResult;
     const busy = state.ui.busy && state.ui.busyDeviceId === current.id;
-    if (state.ui.interactions?.progress?.compact) {
+    if (state.ui.interactions?.progress?.compact && state.ui.interactions.progress.state !== 'succeeded') {
       return `<section class="sync-content" data-testid="sync-panel">${interactions.status({ total: current.pendingOutgoing.length, membership, reading, pending, busy, online: state.online })}</section>`;
     }
     return `<section class="sync-content" data-testid="sync-panel">
@@ -432,8 +432,11 @@
   }
 
   function scheduleSync(trigger) {
+    if (preview?.fullSyncReview && ((trigger === 'periodic' && !currentDevice().settings.periodicSync) || (trigger === 'startup' && !currentDevice().settings.startupSync))) {
+      notice('此设备已关闭这项自动同步。'); render(); return;
+    }
     if (state.ui.busy) { notice('同步正在进行，可以继续切换页面；请稍候查看本轮结果。'); render(); return; }
-    interactions.beginSync();
+    interactions.beginSync(trigger);
     const deviceId = state.selectedDevice; state.ui.busy = true; state.ui.busyDeviceId = deviceId; notice(`${model.TRIGGER_LABELS[trigger]}已开始；页面仍可继续操作。`); render();
     const timer = window.setTimeout(() => {
       if (state.ui.timerId !== timer) return;
