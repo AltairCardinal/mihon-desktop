@@ -47,7 +47,7 @@ class SyncPanelController(
     private val clock: () -> Long = System::currentTimeMillis,
 ) : SyncPanel {
     private val lifetime = SupervisorJob(scope.coroutineContext[Job])
-    private val scope = CoroutineScope(scope.coroutineContext + lifetime)
+    private val panelScope = CoroutineScope(scope.coroutineContext + lifetime)
     private val mutableState = MutableStateFlow(SyncPanelState())
     override val state: StateFlow<SyncPanelState> = mutableState
     private val commands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
@@ -69,11 +69,19 @@ class SyncPanelController(
     private var setupAccount: SyncGitHubAccount? = null
     private var chosenSpace: DiscoveredSyncSpace? = null
     private var emptyRepositoryCandidate: EmptySyncRepositoryCandidate? = null
+    private var createContextSequence = 0L
+    private var discoveryAuthorizationEpoch: Long? = null
+    private var submittedCreateTarget: Pair<Long, Long>? = null
+    private var helpAuthVersion: Long? = null
+    private var helpAuthorizationEpoch: Long? = null
+    private var helpConnection: SyncConnection? = null
+    private var helpSpace: DiscoveredSyncSpace? = null
+    private var passwordHelpReturnSequence = 0L
     private var legacyPending: StoredLegacySyncSetup? = null
     private var observedCompletion = runtime.coordinator.activity.value.completion
 
     init {
-        scope.launch {
+        panelScope.launch {
             for (command in commands) {
                 try {
                     command()
@@ -84,7 +92,7 @@ class SyncPanelController(
                 }
             }
         }
-        scope.launch {
+        panelScope.launch {
             handler.subscribeToOneOrNull { sync_journalQueries.getActiveSpace() }.collectLatest { connection ->
                 queueRefresh()
                 if (connection != null) {
@@ -102,7 +110,7 @@ class SyncPanelController(
                 }
             }
         }
-        scope.launch {
+        panelScope.launch {
             runtime.coordinator.activity.collect { activity ->
                 enqueue {
                     val completed = activity.completion != observedCompletion
@@ -124,7 +132,7 @@ class SyncPanelController(
                 }
             }
         }
-        scope.launch {
+        panelScope.launch {
             runtime.liveProgress.collect { fact ->
                 mutableState.update { current ->
                     if (current.visible && fact != null &&
@@ -137,7 +145,29 @@ class SyncPanelController(
                 }
             }
         }
-        scope.launch {
+        panelScope.launch {
+            runtime.credentials.authorizationEpoch.collect { epoch ->
+                enqueue {
+                    if (epoch != runtime.credentials.authorizationEpoch.value) return@enqueue
+                    if (discoveryAuthorizationEpoch != epoch) {
+                        val wasCreating = state.value.createContextId != null
+                        invalidateCreateContext()
+                        chosenSpace = null
+                        setupAccount = null
+                        if (wasCreating) {
+                            mutableState.update {
+                                it.copy(page = SyncPanelPage.MAIN, passwordProblem = null)
+                            }
+                        }
+                    }
+                    if (state.value.page == SyncPanelPage.PASSWORD_HELP && helpAuthorizationEpoch != epoch) {
+                        clearPasswordHelp()
+                        mutableState.update { it.copy(page = SyncPanelPage.MAIN, passwordHelpReturn = 0) }
+                    }
+                }
+            }
+        }
+        panelScope.launch {
             val prefs = runtime.preferences
             merge(
                 prefs.startup.changes().map { Unit },
@@ -148,7 +178,7 @@ class SyncPanelController(
                 prefs.deviceName.changes().map { Unit },
             ).collect { queueRefresh() }
         }
-        scope.launch {
+        panelScope.launch {
             state.map { it.visible }.distinctUntilChanged().collectLatest { visible ->
                 if (visible) {
                     while (true) {
@@ -203,6 +233,10 @@ class SyncPanelController(
 
     private suspend fun refresh(forceFailureLog: Boolean = false) {
         val connection = runtime.connection()
+        if (state.value.page == SyncPanelPage.PASSWORD_HELP && !passwordHelpValid(connection)) {
+            clearPasswordHelp()
+            mutableState.update { it.copy(page = SyncPanelPage.MAIN, passwordHelpReturn = 0) }
+        }
         if (connection?.unsupportedFormat == true) {
             mutableState.update {
                 it.copy(
@@ -406,23 +440,35 @@ class SyncPanelController(
             }
             SyncPanelAction.Close -> {
                 panelSession++
+                invalidateCreateContext()
+                clearPasswordHelp()
                 cancelAuthorization()
                 cancelConfirmation()
                 clearSelection()
                 mutableState.update {
-                    it.copy(visible = false, notice = null, question = null, deviceCode = null)
+                    it.copy(visible = false, notice = null, question = null, deviceCode = null, passwordHelpReturn = 0)
                 }
             }
-            SyncPanelAction.Back -> if (state.value.page == SyncPanelPage.MAIN) {
+            SyncPanelAction.Back -> if (state.value.page == SyncPanelPage.PASSWORD_HELP) {
+                returnFromPasswordHelp()
+            } else if (state.value.page == SyncPanelPage.MAIN) {
                 handle(SyncPanelAction.Close)
             } else {
-                if (state.value.page == SyncPanelPage.SETUP) cancelAuthorization()
+                if (state.value.page == SyncPanelPage.SETUP) {
+                    invalidateCreateContext()
+                    cancelAuthorization()
+                }
+                clearPasswordHelp()
                 mutableState.update { it.copy(page = SyncPanelPage.MAIN) }
             }
-            is SyncPanelAction.Navigate -> mutableState.update { it.copy(page = action.page) }
+            is SyncPanelAction.Navigate -> if (action.page != SyncPanelPage.PASSWORD_HELP) {
+                if (action.page != SyncPanelPage.SETUP) invalidateCreateContext()
+                clearPasswordHelp()
+                mutableState.update { it.copy(page = action.page, passwordHelpReturn = 0) }
+            }
             SyncPanelAction.Synchronize -> if (state.value.run?.state != SyncRunState.PAUSED_USER) {
                 if (state.value.connection?.enabled == true) {
-                    scope.launch { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
+                    panelScope.launch { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
                 } else {
                     beginSetup()
                 }
@@ -431,20 +477,20 @@ class SyncPanelController(
                 setOf(SyncRunState.FAILED, SyncRunState.PARTIAL)
             ) {
                 mutableState.update { it.copy(problem = null) }
-                scope.launch {
+                panelScope.launch {
                     runtime.coordinator.synchronize(SyncTrigger.MANUAL)
                     refresh()
                 }
             }
-            SyncPanelAction.CancelSync -> scope.launch {
+            SyncPanelAction.CancelSync -> panelScope.launch {
                 runtime.cancelSync()
                 refresh()
             }
-            SyncPanelAction.PauseSync -> scope.launch {
+            SyncPanelAction.PauseSync -> panelScope.launch {
                 runtime.pauseSync()
                 refresh()
             }
-            SyncPanelAction.ResumeSync -> scope.launch {
+            SyncPanelAction.ResumeSync -> panelScope.launch {
                 val resumed = state.value.run?.let { runtime.runStore.resumeIfAllowed(it.runId) } == true
                 if (resumed) runtime.coordinator.synchronize(SyncTrigger.MANUAL)
                 refresh()
@@ -459,7 +505,7 @@ class SyncPanelController(
                 if (state.value.setupStep == SyncSetupStep.MERGING) {
                     discover()
                 } else {
-                    scope.launch { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
+                    panelScope.launch { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
                 }
             }
             is SyncPanelAction.SetPeriod -> {
@@ -537,6 +583,9 @@ class SyncPanelController(
             SyncPanelAction.AbandonLegacyPending -> abandonLegacyPending()
             is SyncPanelAction.ChooseSpace -> if (action.space in state.value.spaces) selectSpace(action.space)
             is SyncPanelAction.SubmitPassword -> submitPassword(action.password)
+            is SyncPanelAction.SubmitCreateSpace -> submitCreateSpace(action)
+            SyncPanelAction.ShowPasswordHelp -> showPasswordHelp()
+            SyncPanelAction.ClearPasswordProblem -> mutableState.update { it.copy(passwordProblem = null) }
             SyncPanelAction.Authorize -> authorize()
             SyncPanelAction.CancelAuthorization -> cancelAuthorization()
             is SyncPanelAction.Ask -> mutableState.update { it.copy(question = action.question) }
@@ -571,7 +620,9 @@ class SyncPanelController(
     }
 
     private suspend fun beginSetup() {
-        mutableState.update { it.copy(page = SyncPanelPage.SETUP, passwordProblem = null) }
+        invalidateCreateContext()
+        clearPasswordHelp()
+        mutableState.update { it.copy(page = SyncPanelPage.SETUP, passwordProblem = null, passwordHelpReturn = 0) }
         if (setupJob?.isActive == true) return
         cancelAuthorization()
         if (runtime.connection()?.unsupportedFormat == true) {
@@ -615,6 +666,9 @@ class SyncPanelController(
     }
 
     private suspend fun authorize() {
+        invalidateCreateContext()
+        clearPasswordHelp()
+        mutableState.update { it.copy(passwordHelpReturn = 0) }
         setupVersion++
         setupJob?.cancelAndJoin()
         setupJob = null
@@ -633,7 +687,7 @@ class SyncPanelController(
                 nowMillis = startedAt,
             )
         }
-        authJob = scope.launch {
+        authJob = panelScope.launch {
             val result = runtime.authorization.authorize(SyncRuntime.CLIENT_ID) { code ->
                 enqueue {
                     if (version == authVersion && state.value.visible) {
@@ -680,11 +734,17 @@ class SyncPanelController(
                 passwordProblem = null,
             )
         }
-        repositoryJob = scope.launch {
+        repositoryJob = panelScope.launch {
             try {
+                // Capture after a normal token refresh; refreshing is not an account change.
+                runtime.accessToken()
+                val authorizationEpoch = runtime.credentials.authorizationEpoch.value
                 when (val pending = runtime.onboarding.pendingForCurrentAccount()) {
                     is SyncPendingSetup.Current -> enqueue {
-                        if (version == authVersion) {
+                        if (version == authVersion &&
+                            authorizationEpoch == runtime.credentials.authorizationEpoch.value
+                        ) {
+                            discoveryAuthorizationEpoch = authorizationEpoch
                             legacyPending = null
                             mutableState.update { it.copy(legacyRecoveryAvailable = false) }
                             if (autoSelect) {
@@ -722,7 +782,14 @@ class SyncPanelController(
                         legacyPending = null
                         val found = runtime.onboarding.discover()
                         enqueue {
-                            if (version == authVersion) handleDiscovery(found, autoSelect)
+                            if (version == authVersion &&
+                                authorizationEpoch == runtime.credentials.authorizationEpoch.value
+                            ) {
+                                discoveryAuthorizationEpoch = authorizationEpoch
+                                handleDiscovery(found, autoSelect)
+                            } else if (version == authVersion) {
+                                setupFailed(SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED))
+                            }
                         }
                     }
                 }
@@ -802,6 +869,9 @@ class SyncPanelController(
                         setupInstallation = result.candidate.installation,
                         setupRepository = result.candidate.repository,
                         spaces = emptyList(),
+                        createContextId = ++createContextSequence,
+                        createResubmissionRequired = submittedCreateTarget ==
+                            (result.candidate.account.id to result.candidate.repositoryId),
                     )
                 }
             }
@@ -835,6 +905,7 @@ class SyncPanelController(
 
     private fun selectSpace(space: DiscoveredSyncSpace) {
         if (setupJob?.isActive == true) return
+        invalidateCreateContext()
         setupAccount = space.account
         chosenSpace = space
         mutableState.update {
@@ -859,9 +930,17 @@ class SyncPanelController(
     }
 
     private fun submitPassword(password: String) {
-        if (setupJob?.isActive == true || state.value.setupBusy) return
+        if (!state.value.visible || state.value.page != SyncPanelPage.SETUP ||
+            setupJob?.isActive == true || state.value.setupBusy
+        ) {
+            return
+        }
         val step = state.value.setupStep
-        if (step != SyncSetupStep.NEW_PASSWORD && step != SyncSetupStep.UNLOCK) return
+        if (step != SyncSetupStep.UNLOCK || chosenSpace == null) return
+        if (password.isEmpty()) {
+            mutableState.update { it.copy(passwordProblem = SyncPasswordProblem.EMPTY) }
+            return
+        }
         try {
             SyncSpaceCrypto.validatePassword(password)
         } catch (failure: SyncPasswordInputException) {
@@ -876,42 +955,149 @@ class SyncPanelController(
             }
             return
         }
-        if (step == SyncSetupStep.NEW_PASSWORD) {
-            val candidate = emptyRepositoryCandidate ?: return
-            runSetup { runtime.onboarding.create(candidate, password) }
-        } else {
-            val space = chosenSpace ?: return
-            runSetup {
-                val material = SyncSpaceCrypto.unlock(space.descriptor, password).getOrElse {
-                    throw IncorrectSyncPassword()
+        val space = chosenSpace ?: return
+        runSetup {
+            val material = SyncSpaceCrypto.unlock(space.descriptor, password).getOrElse {
+                throw IncorrectSyncPassword()
+            }
+            runtime.onboarding.join(space, material)
+        }
+    }
+
+    private suspend fun submitCreateSpace(action: SyncPanelAction.SubmitCreateSpace) {
+        val current = state.value
+        val candidate = emptyRepositoryCandidate ?: return
+        if (!current.visible || current.page != SyncPanelPage.SETUP ||
+            current.setupStep != SyncSetupStep.NEW_PASSWORD || current.createContextId != action.contextId ||
+            current.setupBusy || setupJob?.isActive == true || candidate.account != setupAccount ||
+            candidate.repository != current.setupRepository ||
+            discoveryAuthorizationEpoch != runtime.credentials.authorizationEpoch.value
+        ) {
+            return
+        }
+        val problem = when (action.protection) {
+            SyncCreateProtection.NONE -> if (action.password.isNotEmpty() || action.riskAcknowledged) {
+                SyncPasswordProblem.INCONSISTENT_SELECTION
+            } else {
+                null
+            }
+            SyncCreateProtection.PASSWORD -> when {
+                action.password.isEmpty() -> SyncPasswordProblem.EMPTY
+                !action.riskAcknowledged -> SyncPasswordProblem.ACKNOWLEDGEMENT_REQUIRED
+                else -> try {
+                    SyncSpaceCrypto.validatePassword(action.password)
+                    null
+                } catch (failure: SyncPasswordInputException) {
+                    if (failure.issue == SyncPasswordInputIssue.TOO_LONG) {
+                        SyncPasswordProblem.TOO_LONG
+                    } else {
+                        SyncPasswordProblem.INVALID
+                    }
                 }
-                runtime.onboarding.join(space, material)
             }
         }
+        if (problem != null) {
+            mutableState.update { it.copy(passwordProblem = problem) }
+            return
+        }
+        submittedCreateTarget = candidate.account.id to candidate.repositoryId
+        invalidateCreateContext()
+        val submittedPassword = action.password
+        runSetup { runtime.onboarding.create(candidate, submittedPassword) }
+    }
+
+    private fun invalidateCreateContext() {
+        emptyRepositoryCandidate = null
+        mutableState.update { it.copy(createContextId = null) }
+    }
+
+    private suspend fun showPasswordHelp() {
+        val current = state.value
+        if (!current.visible || current.setupBusy || setupJob?.isActive == true) return
+        val source = when {
+            current.page == SyncPanelPage.SETUP && current.setupStep == SyncSetupStep.UNLOCK &&
+                chosenSpace?.descriptor?.protection is SyncSpaceProtection.Password -> SyncPasswordHelpSource.UNLOCK
+            current.page == SyncPanelPage.SETTINGS && current.connection?.enabled == true &&
+                current.connection.protectionMode == "password" && !current.connection.unsupportedFormat ->
+                SyncPasswordHelpSource.SETTINGS
+            else -> return
+        }
+        helpAuthVersion = authVersion
+        helpAuthorizationEpoch = runtime.credentials.authorizationEpoch.value
+        helpConnection = current.connection
+        helpSpace = chosenSpace
+        mutableState.update {
+            it.copy(page = SyncPanelPage.PASSWORD_HELP, passwordHelpSource = source, passwordProblem = null)
+        }
+    }
+
+    private suspend fun passwordHelpValid(connection: SyncConnection?): Boolean =
+        helpAuthVersion == authVersion && helpAuthorizationEpoch == runtime.credentials.authorizationEpoch.value &&
+            when (state.value.passwordHelpSource) {
+                SyncPasswordHelpSource.UNLOCK ->
+                    chosenSpace == helpSpace && chosenSpace?.account == setupAccount &&
+                        discoveryAuthorizationEpoch == runtime.credentials.authorizationEpoch.value
+                SyncPasswordHelpSource.SETTINGS ->
+                    connection == helpConnection && connection?.enabled == true &&
+                        connection.protectionMode == "password"
+                null -> false
+            }
+
+    private suspend fun returnFromPasswordHelp() {
+        val valid = passwordHelpValid(runtime.connection())
+        val source = state.value.passwordHelpSource
+        val returnToken = if (valid) ++passwordHelpReturnSequence else 0
+        mutableState.update {
+            it.copy(
+                page = if (!valid) {
+                    SyncPanelPage.MAIN
+                } else if (source == SyncPasswordHelpSource.UNLOCK) {
+                    SyncPanelPage.SETUP
+                } else {
+                    SyncPanelPage.SETTINGS
+                },
+                passwordHelpReturn = returnToken,
+                passwordProblem = null,
+            )
+        }
+        clearPasswordHelp()
+    }
+
+    private fun clearPasswordHelp() {
+        helpAuthVersion = null
+        helpAuthorizationEpoch = null
+        helpConnection = null
+        helpSpace = null
+        mutableState.update { it.copy(passwordHelpSource = null) }
     }
 
     private fun runSetup(prepare: suspend () -> StoredSyncSetup) {
         if (setupJob?.isActive == true) return
+        val preparation = SetupPreparation(prepare)
         val version = setupVersion
         val previousStep = state.value.setupStep
         val session = panelSession
         mutableState.update {
             it.copy(setupBusy = true, setupStep = SyncSetupStep.CREATING, setupProblem = null, passwordProblem = null)
         }
-        setupJob = scope.launch {
+        setupJob = panelScope.launch {
             try {
-                val outcome = runtime.onboarding.resume(prepare())
+                val outcome = runtime.onboarding.resume(preparation.execute())
                 when (outcome) {
                     is SyncSetupOutcome.Existing -> enqueue {
                         if (version == setupVersion) {
                             setupJob = null
+                            discoveryAuthorizationEpoch = runtime.credentials.authorizationEpoch.value
                             selectSpace(outcome.space)
                         }
                     }
                     is SyncSetupOutcome.Connected -> {
                         enqueue {
                             if (version == setupVersion) {
-                                mutableState.update { it.copy(setupStep = SyncSetupStep.MERGING) }
+                                submittedCreateTarget = null
+                                mutableState.update {
+                                    it.copy(setupStep = SyncSetupStep.MERGING, createResubmissionRequired = false)
+                                }
                                 refresh()
                             }
                         }
@@ -932,7 +1118,9 @@ class SyncPanelController(
                                     it.copy(
                                         setupBusy = false,
                                         setupStep = if (complete) SyncSetupStep.COMPLETE else SyncSetupStep.MERGING,
-                                        page = if (complete && it.visible && it.page == SyncPanelPage.SETUP) {
+                                        page = if (complete && it.visible && session == panelSession &&
+                                            it.page == SyncPanelPage.SETUP
+                                        ) {
                                             SyncPanelPage.MAIN
                                         } else {
                                             it.page
@@ -971,6 +1159,15 @@ class SyncPanelController(
                     }
                 }
             }
+        }
+    }
+
+    /** The job retains only an empty holder once derivation/unlock returns durable setup material. */
+    private class SetupPreparation(private var operation: (suspend () -> StoredSyncSetup)?) {
+        suspend fun execute(): StoredSyncSetup {
+            val captured = checkNotNull(operation)
+            operation = null
+            return captured()
         }
     }
 
@@ -1044,7 +1241,7 @@ class SyncPanelController(
 
     private fun startBulk(id: String) {
         if (bulkJob?.isActive == true) return
-        bulkJob = scope.launch {
+        bulkJob = panelScope.launch {
             try {
                 val job = handler.await { sync_inboxQueries.getBulkJob(id).executeAsOne() }
                 do {

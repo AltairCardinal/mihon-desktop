@@ -13,6 +13,8 @@ gradle.beforeProject { project ->
                 dependsOn(variant == 'debug' ? 'assembleDebug' : 'assembleRelease')
                 inputs.property('requestId', project.property('android.candidateRequest'))
                 inputs.property('sourceInputs', project.property('android.candidateInputs'))
+                inputs.property('configurationInputs', project.property('android.candidateConfigurationInputs'))
+                inputs.property('syncAcceptanceRepository', project.findProperty('mihon.syncAcceptanceRepository') ?: '')
                 outputs.file(output)
                 doLast {
                     def apk = project.layout.buildDirectory.file("outputs/apk/${variant}/app-universal-${variant}${variant == 'release' ? '-unsigned' : ''}.apk").get().asFile
@@ -33,6 +35,8 @@ gradle.beforeProject { project ->
                     report.setText(JsonOutput.toJson([
                         requestId: project.property('android.candidateRequest'),
                         sourceInputs: project.property('android.candidateInputs'),
+                        configurationInputs: project.property('android.candidateConfigurationInputs'),
+                        syncAcceptanceRepository: (project.android.buildTypes.getByName(variant).buildConfigFields.get('SYNC_ACCEPTANCE_REPOSITORY') ?: project.android.defaultConfig.buildConfigFields.get('SYNC_ACCEPTANCE_REPOSITORY')).value.replace('"', '').with { it ? it : null },
                         variant: variant,
                         apkSha256: hash(apk),
                         mappingSha256: variant == 'release' ? hash(mapping) : null,

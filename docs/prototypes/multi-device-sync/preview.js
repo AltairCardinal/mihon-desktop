@@ -91,6 +91,11 @@
       } : null);
     }
   });
-  const progressScene = new URLSearchParams(location.search).get('progress');
-  mountFrames(progressScene ? frame => { frame.contentWindow.__mihonSyncDemo.showInteractionScenario('progress-' + progressScene); } : null);
+  const params = new URLSearchParams(window.location.search);
+  const progressScene = params.get('progress');
+  mountFrames(params.get('review') === 'password' ? frame => {
+    frame.contentWindow.__mihonSyncDemo.showInteractionScenario('setup-password-review');
+  } : progressScene ? frame => {
+    frame.contentWindow.__mihonSyncDemo.showInteractionScenario('progress-' + progressScene);
+  } : null);
 })();

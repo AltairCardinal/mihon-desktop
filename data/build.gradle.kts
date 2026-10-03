@@ -122,3 +122,14 @@ val verifySqlDelightAuthority by tasks.registering {
 tasks.named("check") {
     dependsOn(verifySqlDelightAuthority)
 }
+// UI integration tests reuse the real storage/onboarding/Git fixture; never part of an app dependency.
+val syncTestSupportJar by tasks.registering(Jar::class) {
+    archiveClassifier.set("sync-test-support")
+    dependsOn("jvmTestClasses")
+    from(kotlin.targets.getByName("jvm").compilations.getByName("test").output.allOutputs)
+}
+configurations.create("syncTestSupport") {
+    isCanBeConsumed = true
+    isCanBeResolved = false
+    outgoing.artifact(syncTestSupportJar)
+}

@@ -40,6 +40,29 @@ http://localhost:8080/test
 }
 ```
 
+## Sync UI observation
+
+### `GET /sync/ui`
+
+只读接口，仅在 Test Mode 运行时观测同步 UI 的固定白名单。数据来自真实挂载的 Compose 控件和绑定的 AWT 主窗口；没有挂载窗口、headless 或停止后返回 `ready: false` 和空控件。它不接受 selector、不读取文本/输入值/密码/令牌，不发送输入事件，也不提供屏幕截图。POST 不支持。
+
+响应字段：
+
+| 字段 | 含义 |
+| --- | --- |
+| `ready`、`pid` | 观测是否就绪、实际应用进程 PID；不能用启动包装器 PID 替代 |
+| `coordinateSystem` | 固定 `awt-screen-points`；控件自身 owner 的 screen pixels 按其 density 转为屏幕点 |
+| `window` | 实际主窗口的 `active`、`focused`、`density`、`contentBounds`；挂载时提供，包含当前 `focusedWindow` 元数据（若存在） |
+| `controls` | 当前实际挂载的白名单控件；每项含 `tag`、`group`（`toolbar` 或 `panel`）、`bounds`（`x/y/width/height`）、`density`、`focused`、`ownerFocused`、`enabled` |
+
+固定 tag 为 `sync-open`、`sync-back`、`sync-close`、`sync-settings`、`sync-now`、`sync-history`、`sync-drag-handle`、`sync-settings-history`、`sync-settings-connect`、`sync-disconnect`、`sync-switch`、`sync-password-help`。未挂载的 tag 不返回；这不是任意页面的完整控件树，不能据此验收白名单未覆盖的密码输入或授权控件。
+
+普通控件的 `focused` 来自 Compose 焦点事件；背景 owner 可能保留该记录。默认 `sync-drag-handle` 的点击/焦点目标位于 Material 外层，其内层 modifier 收不到父焦点事件：Desktop 使用本次窗口及实际拥有的聚焦子窗口的公共 AWT Accessibility `FOCUSED` 状态和几何信息，匹配已观测把手的中心与宽度。该读取有界、去环，不读取名称、角色、文本或值，也不更改默认把手行为。此平台桥接须在真实 Mac 运行中验证，不能仅凭 adapter 单测宣称原生通过。
+
+判定当前可接收原生键盘输入时同时检查 `ownerFocused` 和实际 `window.focusedWindow`。同一 AWT 窗口中的不同 Compose owner 可保留各自局部焦点；面板挂载时检查面板作用域，卸载后检查工具栏，不能把底层 owner 的保留标记当作当前焦点泄漏。坐标由读取时的实际 LayoutCoordinates 取得；移动窗口后须重新读取，不缓存用于下一次点击。`ready` 不代表应用已激活，也不代表用户已看见窗口。
+
+该接口用于外部原生事件验收，不代替生产状态接口 `/sync`。验收工具必须核对 PID、正式应用路径、独立 profile 和场景，再由操作系统发送事件。可复用脚本见 `scripts/mac-sync-native-acceptance.py`；未登录场景不得被当作已连接/密码页或真实远端同步证据。
+
 ## Navigation
 
 ### `GET /screens`

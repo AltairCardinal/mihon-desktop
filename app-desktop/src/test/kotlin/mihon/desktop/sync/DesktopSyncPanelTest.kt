@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
@@ -23,6 +24,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import mihon.data.sync.runtime.SyncPanel
 import mihon.data.sync.runtime.SyncPanelAction
+import mihon.data.sync.runtime.SyncPasswordHelpSource
 import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelState
 import mihon.data.sync.runtime.SyncSetupStep
@@ -48,6 +50,75 @@ import tachiyomi.domain.manga.interactor.GetLibraryManga
 
 @OptIn(ExperimentalComposeUiApi::class)
 class DesktopSyncPanelTest {
+    @Test
+    fun `read only sync observer receives actual layout focus and unmount events`() = runBlocking {
+        val entries = mutableMapOf<Any, mihon.presentation.sync.SyncUiControl>()
+        val observer = object : mihon.presentation.sync.SyncUiObserver {
+            override fun observes(tag: String) = tag in setOf("sync-open", "sync-close", "sync-settings", "sync-now", "sync-history", "sync-drag-handle")
+            override fun update(token: Any, control: mihon.presentation.sync.SyncUiControl) { entries[token] = control }
+            override fun remove(token: Any) { entries.remove(token) }
+        }
+        val panel = TestPanel()
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) { every { syncPanel } returns panel }
+        val scene = ImageComposeScene(1_200, 900, coroutineContext = coroutineContext) {}
+        scene.setContent {
+            MaterialTheme {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies,
+                    mihon.presentation.sync.LocalSyncUiObserver provides observer) {
+                    DesktopLibrarySyncAction()
+                }
+            }
+        }
+        suspend fun render() { repeat(4) { scene.render(); yield() } }
+        fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+        fun node(tag: String) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.first {
+            it.config.getOrElse(SemanticsProperties.TestTag) { "" } == tag
+        }
+        try {
+            render()
+            assertEquals(1, entries.values.count { it.tag == "sync-open" })
+            assertTrue(entries.values.single().width > 0)
+            node("sync-open").config[SemanticsActions.RequestFocus].action!!.invoke()
+            render()
+            assertTrue(entries.values.single().focused)
+            node("sync-open").config[SemanticsActions.OnClick].action!!.invoke()
+            render()
+            assertTrue(entries.values.any { it.tag == "sync-close" })
+            node("sync-close").config[SemanticsActions.RequestFocus].action!!.invoke()
+            render()
+            assertTrue(entries.values.single { it.tag == "sync-close" }.focused)
+            val factory = Class.forName("androidx.compose.ui.input.key.KeyEvent_desktopKt").methods.single {
+                it.name.startsWith("KeyEvent") && it.parameterCount == 8
+            }
+            val eventType = Class.forName("androidx.compose.ui.input.key.KeyEventType").getMethod("access\$getKeyDown\$cp").invoke(null)
+            val tab = androidx.compose.ui.input.key.KeyEvent(factory.invoke(null, Key.Tab.keyCode, eventType, 0, false, false, false, false, null))
+            val seen = mutableSetOf<String>()
+            repeat(8) {
+                val owner = scene.semanticsOwners.map { flatten(it.unmergedRootSemanticsNode) }.single { nodes ->
+                    nodes.any { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "sync-close" }
+                }
+                val focused = owner.single { it.config.getOrElse(SemanticsProperties.Focused) { false } }
+                val tag = flatten(focused).firstNotNullOfOrNull { it.config.getOrElse(SemanticsProperties.TestTag) { "" }.takeIf { tag -> tag.isNotEmpty() } }.orEmpty()
+                assertTrue(tag in entries.values.map { it.tag }, "Focused MAIN control is not observable: $tag, visited=$seen, parentTags=${generateSequence(focused.parent) { it.parent }.map { it.config.getOrElse(SemanticsProperties.TestTag) { "" } }.toList()}, bounds=${focused.boundsInRoot}")
+                val observed = entries.values.single { it.tag == tag }
+                if (tag == "sync-drag-handle") {
+                    assertTrue(focused.boundsInRoot.contains(flatten(focused).first { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == tag }.boundsInRoot.center))
+                } else assertTrue(observed.focused)
+                seen += tag
+                scene.sendKeyEvent(tab)
+                render()
+            }
+            assertTrue(seen.size >= 3)
+            node("sync-close").config[SemanticsActions.RequestFocus].action!!.invoke()
+            render()
+            node("sync-close").config[SemanticsActions.OnClick].action!!.invoke()
+            render()
+            assertFalse(entries.values.any { it.tag == "sync-close" })
+            assertTrue(entries.values.single { it.tag == "sync-open" }.focused)
+        } finally { scene.close() }
+        assertTrue(entries.isEmpty())
+    }
+
     @Test
     fun `actual library root exposes the sync sheet and nested settings without changing navigator`() = runBlocking {
         val panel = TestPanel()
@@ -93,6 +164,10 @@ class DesktopSyncPanelTest {
             render()
         }
         try {
+            withTimeout(2_000) { while (find("sync-open") == null) render() }
+            requireNotNull(find("sync-open")!!.config[SemanticsActions.RequestFocus].action).invoke()
+            render()
+            assertTrue(find("sync-open")!!.config[SemanticsProperties.Focused])
             click("sync-open")
             assertTrue(panel.state.value.visible)
             click("sync-settings")
@@ -132,6 +207,7 @@ class DesktopSyncPanelTest {
                 setupBusy = false,
                 deviceCode = null,
             )
+            click("sync-password-enabled")
             withTimeout(2_000) { while (find("sync-password-input") == null) render() }
             requireNotNull(find("sync-password-input")!!.config[SemanticsActions.RequestFocus].action).invoke()
             render()
@@ -143,6 +219,69 @@ class DesktopSyncPanelTest {
             scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(native))
             render()
             assertEquals(SyncPanelPage.MAIN, panel.state.value.page)
+            panel.state.value = panel.state.value.copy(page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.UNLOCK)
+            render()
+            click("sync-password-help")
+            assertEquals(SyncPanelPage.PASSWORD_HELP, panel.state.value.page)
+            click("sync-back")
+            assertEquals(SyncPanelPage.SETUP, panel.state.value.page)
+            assertTrue(find("sync-password-help")!!.config[SemanticsProperties.Focused])
+            click("sync-password-help")
+            requireNotNull(find("sync-back")!!.config[SemanticsActions.RequestFocus].action).invoke()
+            render()
+            scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(native))
+            render()
+            assertEquals(SyncPanelPage.SETUP, panel.state.value.page)
+            assertTrue(panel.state.value.visible)
+            val tabNative = factory.invoke(null, Key.Tab.keyCode, eventType, 0, false, false, false, false, null)
+            val reverseTabNative = factory.invoke(null, Key.Tab.keyCode, eventType, 0, false, false, false, true, null)
+            val reverseTab = androidx.compose.ui.input.key.KeyEvent(reverseTabNative)
+            assertTrue(reverseTab.isShiftPressed)
+            fun modalFocusedId(): Int {
+                val modal = scene.semanticsOwners.map { flatten(it.rootSemanticsNode) }.single { owner ->
+                    owner.any { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "sync-close" }
+                }
+                return modal.single { it.config.getOrElse(SemanticsProperties.Focused) { false } }.id
+            }
+            suspend fun tabCycle(keyEvent: androidx.compose.ui.input.key.KeyEvent): List<Int> {
+                requireNotNull(find("sync-close")!!.config[SemanticsActions.RequestFocus].action).invoke()
+                render()
+                val first = modalFocusedId()
+                val visited = mutableListOf(first)
+                repeat(20) {
+                    scene.sendKeyEvent(keyEvent)
+                    render()
+                    val focused = modalFocusedId()
+                    visited += focused
+                    if (focused == first) {
+                        assertTrue(visited.dropLast(1).distinct().size >= 4, "Tab must traverse the panel controls")
+                        assertEquals(visited.dropLast(1).size, visited.dropLast(1).distinct().size)
+                        return visited
+                    }
+                }
+                error("Tab must cycle back to its first panel control")
+            }
+            val forward = tabCycle(androidx.compose.ui.input.key.KeyEvent(tabNative))
+            val backward = tabCycle(reverseTab)
+            assertEquals(forward.drop(1).dropLast(1).reversed(), backward.drop(1).dropLast(1))
+            val opensBeforeKeyboard = panel.actions.count { it == SyncPanelAction.Open }
+            val keyUpType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
+                .getMethod("access\$getKeyUp\$cp").invoke(null)
+            for (key in listOf(Key.Enter, Key.Spacebar)) {
+                requireNotNull(find("sync-password-help")!!.config[SemanticsActions.RequestFocus].action).invoke()
+                render()
+                for (type in listOf(eventType, keyUpType)) {
+                    val press = factory.invoke(null, key.keyCode, type, 0, false, false, false, false, null)
+                    scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(press))
+                    render()
+                }
+                assertEquals(SyncPanelPage.PASSWORD_HELP, panel.state.value.page)
+                assertEquals(opensBeforeKeyboard, panel.actions.count { it == SyncPanelAction.Open })
+                scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(native))
+                render()
+                assertEquals(SyncPanelPage.SETUP, panel.state.value.page)
+            }
+            click("sync-back")
             mockkObject(DesktopSyncFailureLogOpener)
             try {
                 every { DesktopSyncFailureLogOpener.open(any(), any()) } returns true
@@ -162,6 +301,7 @@ class DesktopSyncPanelTest {
             }
             click("sync-close")
             assertFalse(panel.state.value.visible)
+            assertTrue(find("sync-open")!!.config[SemanticsProperties.Focused])
         } finally {
             scene.close()
         }
@@ -178,7 +318,10 @@ class DesktopSyncPanelTest {
                 SyncPanelAction.Open -> state.value.copy(visible = true)
                 SyncPanelAction.Close -> state.value.copy(visible = false)
                 is SyncPanelAction.Navigate -> state.value.copy(page = action.page)
-                SyncPanelAction.Back -> state.value.copy(page = SyncPanelPage.MAIN)
+                SyncPanelAction.ShowPasswordHelp -> state.value.copy(page = SyncPanelPage.PASSWORD_HELP, passwordHelpSource = SyncPasswordHelpSource.UNLOCK)
+                SyncPanelAction.Back -> if (state.value.page == SyncPanelPage.PASSWORD_HELP) {
+                    state.value.copy(page = SyncPanelPage.SETUP, passwordHelpReturn = state.value.passwordHelpReturn + 1)
+                } else state.value.copy(page = SyncPanelPage.MAIN)
                 else -> state.value
             }
         }

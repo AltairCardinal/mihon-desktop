@@ -24,6 +24,21 @@ import java.util.prefs.Preferences
 @Isolated
 class DesktopSyncWiringTest {
     @Test
+    fun `isolated graph factory consumes the exact test target`(@TempDir folder: File) = runBlocking {
+        val node = Preferences.userRoot().node("mihon-sync-acceptance-di-" + UUID.randomUUID())
+        val scope = mihon.data.sync.auth.SyncRepositoryScope.acceptance("mihon-sync-acceptance-fixture-none")
+        val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node), syncRepositoryScope = scope)
+        try {
+            val runtime = Injekt.get<SyncRuntime>()
+            assertSame(scope, runtime.repositoryScope)
+            assertEquals(scope.repositoryName, runtime.repositoryScope.repositoryName)
+            assertSame(runtime.panel, mihon.desktop.DesktopUiDependencies.fromInjekt().syncPanel)
+        } finally {
+            context.closeAndJoin()
+            node.removeNode()
+        }
+    }
+    @Test
     fun `ordinary continuation stops when all chapters are read while history retains sync candidate`(@TempDir folder: File) = runBlocking {
         val node = Preferences.userRoot().node("mihon-sync-resume-di-" + UUID.randomUUID())
         val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node))

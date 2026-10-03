@@ -22,6 +22,15 @@ ANDROID_NS = "http://schemas.android.com/apk/res/android"
 ABIS = {"armeabi-v7a", "arm64-v8a", "x86", "x86_64"}
 
 
+def build_configuration(variant, repository=None):
+    if repository is not None:
+        if variant != "debug" or not re.fullmatch(r"mihon-sync-acceptance-[a-z0-9][a-z0-9-]{0,76}", repository):
+            raise ValueError("A dedicated sync acceptance repository is only allowed for Debug")
+    config = {"variant": variant, "syncAcceptanceRepository": repository}
+    encoded = json.dumps(config, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return {**config, "buildConfigurationInputsSha256": hashlib.sha256(encoded).hexdigest()}
+
+
 def run(command, *, cwd=ROOT, check=True):
     result = subprocess.run([str(item) for item in command], cwd=cwd, capture_output=True, text=True, encoding="utf-8")
     if check and result.returncode:
@@ -214,6 +223,10 @@ def verify_artifact(path, tools, root=ROOT):
         if not re.fullmatch(r"[0-9a-f]{40,64}", record.get(field, "")):
             raise ValueError(f"Artifact is missing source provenance: {field}")
     formal = record["variant"] != "debug"
+    if "syncAcceptanceRepository" in record or "buildConfigurationInputsSha256" in record:
+        config = build_configuration(record["variant"], record.get("syncAcceptanceRepository"))
+        if record.get("buildConfigurationInputsSha256") != config["buildConfigurationInputsSha256"]:
+            raise ValueError("Artifact build configuration inputs have changed")
     if any(record.get(key) is not expected for key, expected in {"r8": formal, "resourceShrinking": formal, "telemetry": False, "updater": False}.items()):
         raise ValueError("Artifact build configuration violates the fork baseline")
     if formal:
@@ -226,15 +239,19 @@ def verify_artifact(path, tools, root=ROOT):
     return record
 
 
-def gradle_build(variant, source_inputs, *, offline=False, root=ROOT):
+def gradle_build(variant, source_inputs, *, offline=False, root=ROOT, repository=None):
+    config = build_configuration(variant, repository)
     request = uuid.uuid4().hex
     apk_variant = "debug" if variant == "debug" else "release"
     command = [sys.executable, root / "scripts/gradle-coordinator.py", "run", "--key", "android-candidate", "--timeout-seconds", "3600", "--",
                root / ("gradlew.bat" if os.name == "nt" else "gradlew"), "--no-parallel", "--max-workers=2"]
     if offline:
         command.append("--offline")
+    if repository is not None:
+        command.append(f"-Pmihon.syncAcceptanceRepository={repository}")
     command.extend(["-I", root / "scripts/android-candidate-evidence.init.gradle",
                     f"-Pandroid.candidateRequest={request}", f"-Pandroid.candidateInputs={source_inputs}",
+                    f"-Pandroid.candidateConfigurationInputs={config['buildConfigurationInputsSha256']}",
                     f"-Pandroid.candidateVariant={apk_variant}", ":app:recordAndroidCandidate"])
     print("Gradle log: " + str(root / ".gradle-coordinator/android-candidate.log"), flush=True)
     result = subprocess.run([str(part) for part in command], cwd=root)
@@ -243,6 +260,8 @@ def gradle_build(variant, source_inputs, *, offline=False, root=ROOT):
     evidence = json.loads((root / "app/build/reports/android-candidate.json").read_text(encoding="utf-8"))
     if evidence.get("requestId") != request or evidence.get("sourceInputs") != source_inputs or evidence.get("variant") != apk_variant:
         raise ValueError("Gradle produced no matching evidence for this invocation")
+    if evidence.get("configurationInputs") != config["buildConfigurationInputsSha256"] or evidence.get("syncAcceptanceRepository") != repository:
+        raise ValueError("Gradle build configuration does not match this invocation")
     return evidence
 
 
@@ -250,6 +269,8 @@ def build_candidate(args, tools, root=ROOT):
     release = metadata(root)
     jdk = java_version(root)
     variant = "debug" if args.action == "debug" else ("unsigned" if args.unsigned else "release")
+    repository = getattr(args, "sync_acceptance_repository", None)
+    config = build_configuration(variant, repository)
     if variant == "release":
         signing_preflight(tools, root)
     before = source_snapshot(root)
@@ -263,7 +284,7 @@ def build_candidate(args, tools, root=ROOT):
     if variant == "debug":
         destination = artifact_root / f"{stem}-{before['sourceRevision'][:10]}-debug-{uuid.uuid4().hex[:12]}"
     destination.mkdir()  # Exclusive reservation; failed candidates remain visibly incomplete.
-    evidence = gradle_build(variant, before["productionInputsSha256"], offline=args.offline, root=root)
+    evidence = gradle_build(variant, before["productionInputsSha256"], offline=args.offline, root=root, repository=repository)
     if before != source_snapshot(root):
         raise ValueError("Source inputs changed during the build; candidate rejected")
     apk_variant = "debug" if variant == "debug" else "release"
@@ -308,7 +329,7 @@ def build_candidate(args, tools, root=ROOT):
         mapping_record = {"path": "mapping/mapping.txt", "sha256": copied_hash}
     wrapper = (root / "gradle/wrapper/gradle-wrapper.properties").read_text(encoding="utf-8")
     gradle_version = re.search(r"gradle-([0-9.]+)-(?:bin|all)\.zip", wrapper)
-    record = {**before, **actual, "apk": output.name, "variant": variant,
+    record = {**before, **actual, **config, "apk": output.name, "variant": variant,
               "createdAt": datetime.now(timezone.utc).isoformat(), "jdk": jdk,
               "gradle": gradle_version[1] if gradle_version else "unknown",
               "compileSdk": tools.config["COMPILE_SDK"], "buildTools": tools.build_tools_version,
@@ -387,6 +408,7 @@ def main(argv=None):
     check.add_argument("--serial")
     debug = commands.add_parser("debug")
     debug.add_argument("--offline", action="store_true")
+    debug.add_argument("--sync-acceptance-repository")
     candidate = commands.add_parser("candidate")
     candidate.add_argument("--unsigned", action="store_true")
     candidate.add_argument("--offline", action="store_true")

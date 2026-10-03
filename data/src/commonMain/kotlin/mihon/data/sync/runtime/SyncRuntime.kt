@@ -22,10 +22,12 @@ import mihon.data.sync.journal.SyncLocalJournal
 import mihon.data.sync.projection.SyncRemoteProjectionWriter
 import mihon.data.sync.transport.SyncSnapshotManifestStore
 import mihon.data.sync.transport.SyncSnapshotWriteOwner
+import mihon.domain.sync.auth.GitHubAccessToken
 import mihon.domain.sync.auth.GitHubAuthEndpoints
 import mihon.domain.sync.auth.GitHubAuthException
 import mihon.domain.sync.auth.GitHubAuthFailure
 import mihon.domain.sync.auth.GitHubAuthFailureReason
+import mihon.domain.sync.auth.GitHubCredentialStore
 import mihon.domain.sync.runtime.SyncCoordinator
 import mihon.domain.sync.runtime.SyncPreferences
 import mihon.domain.sync.runtime.SyncRunPort
@@ -75,6 +77,7 @@ class SyncRuntime(
     internal val failureLogDirectory: Path? = null,
     private val syncMetrics: SyncMetrics = NoopSyncMetrics,
     private val progressTelemetryEnabled: Boolean = true,
+    val repositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
 ) : SyncRunPort {
     val preferences = SyncPreferences(preferenceStore)
     val credentials = PersistentGitHubCredentialStore(secureStore)
@@ -106,7 +109,14 @@ class SyncRuntime(
                 clock,
             ),
         )
-    private val refresher = GitHubTokenRefresher(authorization, credentials, clock)
+    private val refresher = GitHubTokenRefresher(
+        authorization,
+        object : GitHubCredentialStore by credentials {
+            override suspend fun replace(expectedRevision: Long?, value: GitHubAccessToken) =
+                credentials.replaceRefreshed(expectedRevision, value)
+        },
+        clock,
+    )
     private val connectionMutex = Mutex()
     private data class FailureReportVersion(val state: SyncRunState, val attemptId: Long, val updatedAt: Long)
 
@@ -161,6 +171,7 @@ class SyncRuntime(
     }
 
     internal suspend fun bindSetup(setup: StoredSyncSetup) {
+        require(repositoryScope.accepts(setup.repository)) { "sync repository is outside the configured scope" }
         coordinator.cancelAndJoin()
         connectionMutex.withLock {
             val material = setup.material.material()
@@ -330,7 +341,7 @@ class SyncRuntime(
             active.space_id,
             active.generation,
             SyncRepository(active.repository_owner, active.repository_name, active.repository_branch),
-            active.exchange_enabled && !unsupported,
+            active.exchange_enabled && !unsupported && repositoryScope.accepts(active.repository_name),
             stored?.material?.material()?.descriptor?.mode,
             stored?.accountLogin,
             unsupportedFormat = unsupported && active.exchange_enabled,

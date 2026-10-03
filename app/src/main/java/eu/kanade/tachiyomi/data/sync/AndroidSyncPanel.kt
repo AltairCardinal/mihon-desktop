@@ -14,10 +14,15 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.components.AdaptiveSheet
@@ -39,7 +44,18 @@ import java.io.File
 internal fun AndroidLibrarySyncAction() {
     val panel = remember { Injekt.get<SyncRuntime>().panel }
     val state by panel.state.collectAsState()
-    SyncToolbarButton(state) { panel.dispatch(SyncPanelAction.Open) }
+    val toolbarFocus = remember { FocusRequester() }
+    var openedFromToolbar by remember { mutableStateOf(false) }
+    LaunchedEffect(state.visible) {
+        if (!state.visible && openedFromToolbar) {
+            toolbarFocus.requestFocus()
+            openedFromToolbar = false
+        }
+    }
+    SyncToolbarButton(state, Modifier.focusRequester(toolbarFocus)) {
+        openedFromToolbar = true
+        panel.dispatch(SyncPanelAction.Open)
+    }
     if (state.visible) AndroidSyncPanelSheet(panel)
     DisposableEffect(panel) {
         onDispose { panel.dispatch(SyncPanelAction.Close) }

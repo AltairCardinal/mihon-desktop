@@ -12,7 +12,9 @@ import mihon.domain.sync.runtime.SyncRunProblem
 import mihon.domain.sync.runtime.SyncRunResult
 import mihon.domain.sync.transport.SyncRepository
 
-enum class SyncPanelPage { MAIN, SETTINGS, HISTORY, SETUP }
+enum class SyncPanelPage { MAIN, SETTINGS, HISTORY, SETUP, PASSWORD_HELP }
+enum class SyncCreateProtection { NONE, PASSWORD }
+enum class SyncPasswordHelpSource { UNLOCK, SETTINGS }
 enum class SyncSetupStep {
     SIGN_IN,
     DISCOVERING,
@@ -24,7 +26,7 @@ enum class SyncSetupStep {
     COMPLETE,
     ERROR,
 }
-enum class SyncPasswordProblem { INCORRECT, TOO_LONG, INVALID }
+enum class SyncPasswordProblem { INCORRECT, TOO_LONG, INVALID, EMPTY, ACKNOWLEDGEMENT_REQUIRED, INCONSISTENT_SELECTION }
 enum class SyncDecisionScope { ITEM, SELECTED, ALL }
 enum class SyncPanelQuestion { DISCONNECT, SWITCH_SPACE, ABANDON_LEGACY }
 
@@ -116,6 +118,12 @@ data class SyncPanelState(
     val authFailure: GitHubAuthFailureReason? = null,
     val setupProblem: SyncDiscoveryProblem? = null,
     val passwordProblem: SyncPasswordProblem? = null,
+    /** Local, non-secret event identity. Never persisted or sent to the service. */
+    val createContextId: Long? = null,
+    val createResubmissionRequired: Boolean = false,
+    val passwordHelpSource: SyncPasswordHelpSource? = null,
+    /** Each return requests focus once; ordinary state refreshes do not request it again. */
+    val passwordHelpReturn: Long = 0,
     val spaces: List<DiscoveredSyncSpace> = emptyList(),
     val setupAccountLogin: String? = null,
     val setupInstallation: SyncAppInstallation? = null,
@@ -152,6 +160,16 @@ sealed interface SyncPanelAction {
     data class SubmitPassword(val password: String) : SyncPanelAction {
         override fun toString(): String = "SubmitPassword(<redacted>)"
     }
+    data class SubmitCreateSpace(
+        val contextId: Long,
+        val protection: SyncCreateProtection,
+        val password: String,
+        val riskAcknowledged: Boolean,
+    ) : SyncPanelAction {
+        override fun toString(): String = "SubmitCreateSpace(contextId=$contextId, protection=$protection, <redacted>)"
+    }
+    data object ShowPasswordHelp : SyncPanelAction
+    data object ClearPasswordProblem : SyncPanelAction
     data class Ask(val question: SyncPanelQuestion) : SyncPanelAction
     data object CancelQuestion : SyncPanelAction
     data object ConfirmQuestion : SyncPanelAction

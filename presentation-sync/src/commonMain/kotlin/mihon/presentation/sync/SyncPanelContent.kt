@@ -26,8 +26,10 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -38,6 +40,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
@@ -75,8 +78,13 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
@@ -91,7 +99,11 @@ import mihon.data.sync.auth.SyncAppInstallation
 import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.auth.SyncInstallationAccountType
 import mihon.data.sync.auth.SyncRepositorySelection
+import mihon.data.sync.crypto.SyncPasswordInputException
+import mihon.data.sync.crypto.SyncPasswordInputIssue
+import mihon.data.sync.crypto.SyncSpaceCrypto
 import mihon.data.sync.inbox.SyncPendingItem
+import mihon.data.sync.runtime.SyncCreateProtection
 import mihon.data.sync.runtime.SyncDecisionScope
 import mihon.data.sync.runtime.SyncFailureLogStatus
 import mihon.data.sync.runtime.SyncPanel
@@ -99,6 +111,7 @@ import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelQuestion
 import mihon.data.sync.runtime.SyncPanelState
+import mihon.data.sync.runtime.SyncPasswordHelpSource
 import mihon.data.sync.runtime.SyncPasswordProblem
 import mihon.data.sync.runtime.SyncProgressDirection
 import mihon.data.sync.runtime.SyncProgressFact
@@ -118,12 +131,12 @@ import mihon.domain.sync.transport.SyncRepositoryTarget
 import tachiyomi.i18n.MR
 
 @Composable
-fun SyncToolbarButton(state: SyncPanelState, onOpen: () -> Unit) {
+fun SyncToolbarButton(state: SyncPanelState, modifier: Modifier = Modifier, onOpen: () -> Unit) {
     val busyDescription = if (state.busy) syncString(MR.strings.sync_busy) else ""
     Box(Modifier.size(48.dp)) {
         IconButton(
             onClick = onOpen,
-            modifier = Modifier.fillMaxSize().testTag("sync-open").semantics {
+            modifier = modifier.fillMaxSize().syncUiTag("sync-open").semantics {
                 stateDescription = busyDescription
             },
         ) {
@@ -165,12 +178,25 @@ fun SyncPanelContent(
 ) {
     val state by panel.state.collectAsState()
     val listState = rememberLazyListState()
+    val settingsListState = rememberLazyListState()
+    val setupListState = rememberLazyListState()
+    var consumedHelpReturn by remember { mutableStateOf(0L) }
+    val restoreHelpFocus = state.passwordHelpReturn > consumedHelpReturn
+    val helpFocusRestored = { consumedHelpReturn = state.passwordHelpReturn }
     Column(modifier.fillMaxSize()) {
         PanelHeader(state, panel::dispatch)
         HorizontalDivider()
         when (state.page) {
+            SyncPanelPage.PASSWORD_HELP -> PasswordHelpPage(state, panel::dispatch, Modifier.weight(1f))
             SyncPanelPage.MAIN -> MainPage(state, panel::dispatch, onOpenFailureLog, listState, Modifier.weight(1f))
-            SyncPanelPage.SETTINGS -> SettingsPage(state, panel::dispatch, Modifier.weight(1f))
+            SyncPanelPage.SETTINGS -> SettingsPage(
+                state,
+                panel::dispatch,
+                Modifier.weight(1f),
+                settingsListState,
+                restoreHelpFocus,
+                helpFocusRestored,
+            )
             SyncPanelPage.HISTORY -> RecordsPage(state, Modifier.weight(1f))
             SyncPanelPage.SETUP -> SetupPage(
                 state,
@@ -180,6 +206,9 @@ fun SyncPanelContent(
                 panel::claimDeviceCodeBrowser,
                 onOpenFailureLog,
                 Modifier.weight(1f),
+                setupListState,
+                restoreHelpFocus,
+                helpFocusRestored,
             )
         }
     }
@@ -243,12 +272,19 @@ fun SyncPanelContent(
 
 @Composable
 private fun PanelHeader(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit) {
+    val helpBackFocus = remember { FocusRequester() }
+    LaunchedEffect(state.page) {
+        if (state.page == SyncPanelPage.PASSWORD_HELP) helpBackFocus.requestFocus()
+    }
     Row(
         Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (state.page != SyncPanelPage.MAIN) {
-            IconButton({ dispatch(SyncPanelAction.Back) }, Modifier.testTag("sync-back")) {
+            IconButton(
+                { dispatch(SyncPanelAction.Back) },
+                Modifier.focusRequester(helpBackFocus).syncUiTag("sync-back"),
+            ) {
                 Icon(Icons.AutoMirrored.Outlined.ArrowBack, syncString(MR.strings.sync_back))
             }
         }
@@ -258,6 +294,7 @@ private fun PanelHeader(state: SyncPanelState, dispatch: (SyncPanelAction) -> Un
                     when (state.page) {
                         SyncPanelPage.SETTINGS -> MR.strings.sync_settings
                         SyncPanelPage.HISTORY -> MR.strings.sync_records
+                        SyncPanelPage.PASSWORD_HELP -> MR.strings.sync_password_help_title
                         else -> MR.strings.sync_title
                     },
                 ),
@@ -275,12 +312,12 @@ private fun PanelHeader(state: SyncPanelState, dispatch: (SyncPanelAction) -> Un
         if (state.page == SyncPanelPage.MAIN) {
             IconButton(
                 { dispatch(SyncPanelAction.Navigate(SyncPanelPage.SETTINGS)) },
-                Modifier.testTag("sync-settings"),
+                Modifier.syncUiTag("sync-settings"),
             ) {
                 Icon(Icons.Outlined.Settings, syncString(MR.strings.sync_settings))
             }
         }
-        IconButton({ dispatch(SyncPanelAction.Close) }, Modifier.testTag("sync-close")) {
+        IconButton({ dispatch(SyncPanelAction.Close) }, Modifier.syncUiTag("sync-close")) {
             Icon(Icons.Outlined.Close, syncString(MR.strings.sync_close))
         }
     }
@@ -452,7 +489,10 @@ private fun SyncStatusHeader(
                 )
             },
             enabled = (!state.busy && state.run?.state != SyncRunState.PAUSED_USER) || continuingSetup,
-            modifier = Modifier.testTag("sync-now"),
+            modifier = Modifier.syncUiTag(
+                "sync-now",
+                (!state.busy && state.run?.state != SyncRunState.PAUSED_USER) || continuingSetup,
+            ),
         ) {
             Text(
                 syncString(
@@ -668,9 +708,28 @@ private fun PendingRow(item: SyncPendingItem, state: SyncPanelState, dispatch: (
 }
 
 @Composable
-private fun SettingsPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit, modifier: Modifier) {
+private fun SettingsPage(
+    state: SyncPanelState,
+    dispatch: (SyncPanelAction) -> Unit,
+    modifier: Modifier,
+    listState: LazyListState,
+    restoreHelpFocus: Boolean,
+    onHelpFocusRestored: () -> Unit,
+) {
+    val helpFocus = remember { FocusRequester() }
+    val connection = state.connection
+    val passwordProtected = connection?.enabled == true &&
+        connection.protectionMode == "password" && !connection.unsupportedFormat
+    LaunchedEffect(restoreHelpFocus) {
+        if (restoreHelpFocus && passwordProtected) {
+            listState.scrollToItem(5)
+            helpFocus.requestFocus()
+            onHelpFocusRestored()
+        }
+    }
     LazyColumn(
         modifier.padding(horizontal = 24.dp).testTag("sync-settings-list"),
+        state = listState,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { Spacer(Modifier.height(4.dp)) }
@@ -722,6 +781,16 @@ private fun SettingsPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> U
                 ),
                 Modifier.testTag("sync-password-status"),
             )
+            when (state.connection?.protectionMode) {
+                "none" -> Text(syncString(MR.strings.sync_password_none_explanation))
+                "password" -> Text(syncString(MR.strings.sync_password_set_explanation))
+            }
+            if (passwordProtected) {
+                TextButton(
+                    { dispatch(SyncPanelAction.ShowPasswordHelp) },
+                    Modifier.focusRequester(helpFocus).syncUiTag("sync-password-help"),
+                ) { Text(syncString(MR.strings.sync_password_help)) }
+            }
         }
         item {
             Action("sync-settings-history", MR.strings.sync_records) {
@@ -737,6 +806,50 @@ private fun SettingsPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> U
             Action("sync-switch", MR.strings.sync_switch, state.connection != null) {
                 dispatch(SyncPanelAction.Ask(SyncPanelQuestion.SWITCH_SPACE))
             }
+        }
+    }
+}
+
+private fun passwordInputProblem(password: String): SyncPasswordProblem? = try {
+    SyncSpaceCrypto.validatePassword(password)
+    null
+} catch (failure: SyncPasswordInputException) {
+    if (failure.issue == SyncPasswordInputIssue.TOO_LONG) SyncPasswordProblem.TOO_LONG else SyncPasswordProblem.INVALID
+}
+
+private fun passwordProblemResource(problem: SyncPasswordProblem): StringResource = when (problem) {
+    SyncPasswordProblem.INCORRECT -> MR.strings.sync_password_incorrect
+    SyncPasswordProblem.TOO_LONG -> MR.strings.sync_password_too_long
+    SyncPasswordProblem.INVALID -> MR.strings.sync_password_invalid
+    SyncPasswordProblem.EMPTY -> MR.strings.sync_password_required
+    SyncPasswordProblem.ACKNOWLEDGEMENT_REQUIRED -> MR.strings.sync_password_ack_required
+    SyncPasswordProblem.INCONSISTENT_SELECTION -> MR.strings.sync_password_selection_invalid
+}
+
+@Composable
+private fun PasswordHelpPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit, modifier: Modifier) {
+    LazyColumn(
+        modifier.padding(24.dp).testTag("sync-password-help-list"),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item { Text(syncString(MR.strings.sync_password_help_summary)) }
+        for (resource in listOf(
+            MR.strings.sync_password_help_records,
+            MR.strings.sync_password_help_device,
+            MR.strings.sync_password_help_backup,
+            MR.strings.sync_password_help_lost,
+        )) {
+            item { Text(syncString(resource)) }
+        }
+        item {
+            Action(
+                "sync-password-help-back",
+                if (state.passwordHelpSource == SyncPasswordHelpSource.UNLOCK) {
+                    MR.strings.sync_password_help_back_input
+                } else {
+                    MR.strings.sync_password_help_back_settings
+                },
+            ) { dispatch(SyncPanelAction.Back) }
         }
     }
 }
@@ -774,7 +887,11 @@ private fun SetupPage(
     claimBrowser: (GitHubDeviceCode) -> Boolean,
     onOpenFailureLog: (String) -> Unit,
     modifier: Modifier,
+    listState: LazyListState,
+    restoreHelpFocus: Boolean,
+    onHelpFocusRestored: () -> Unit,
 ) {
+    val syncPasswordSwitchDescription = syncString(MR.strings.sync_create_password_optional)
     val deviceCode = state.deviceCode
     LaunchedEffect(state.visible, deviceCode?.deviceCode) {
         if (state.visible && state.setupStep == SyncSetupStep.SIGN_IN && deviceCode != null &&
@@ -785,11 +902,22 @@ private fun SetupPage(
         }
     }
     // Session-local text only: closing or leaving this step discards unsubmitted input.
-    var password by remember(state.visible, state.setupStep, state.setupRepository) { mutableStateOf(TextFieldValue()) }
-    var showPassword by remember(state.visible, state.setupStep) { mutableStateOf(false) }
+    var password by remember(state.visible, state.setupStep, state.createContextId) { mutableStateOf(TextFieldValue()) }
+    var passwordEnabled by remember(state.visible, state.setupStep, state.createContextId) { mutableStateOf(false) }
+    var riskAcknowledged by remember(state.visible, state.setupStep, state.createContextId) { mutableStateOf(false) }
+    var showPassword by remember(state.visible, state.setupStep, state.createContextId) { mutableStateOf(false) }
     val passwordFocus = remember { FocusRequester() }
+    val helpFocus = remember { FocusRequester() }
+    LaunchedEffect(restoreHelpFocus) {
+        if (restoreHelpFocus && state.setupStep == SyncSetupStep.UNLOCK) {
+            listState.scrollToItem(if (state.passwordProblem == null) 4 else 5)
+            helpFocus.requestFocus()
+            onHelpFocusRestored()
+        }
+    }
     LazyColumn(
         modifier.fillMaxWidth().padding(24.dp).testTag("sync-setup-list"),
+        state = listState,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         if (state.setupBusy && state.setupStep != SyncSetupStep.SIGN_IN &&
@@ -798,6 +926,11 @@ private fun SetupPage(
             item { CircularProgressIndicator(Modifier.size(24.dp)) }
         }
         state.setupProblem?.let { item { Text(setupProblemText(it), Modifier.testTag("sync-setup-error")) } }
+        if (state.setupStep == SyncSetupStep.NEW_PASSWORD && state.createResubmissionRequired) {
+            item {
+                Text(syncString(MR.strings.sync_create_retry_required), Modifier.testTag("sync-create-retry-required"))
+            }
+        }
         state.setupInstallation?.let(::installationScopeWarning)?.let { warning ->
             item {
                 Text(syncString(warning), Modifier.testTag("sync-installation-scope-warning"))
@@ -883,10 +1016,38 @@ private fun SetupPage(
             }
             SyncSetupStep.NEW_PASSWORD, SyncSetupStep.UNLOCK -> {
                 val creating = state.setupStep == SyncSetupStep.NEW_PASSWORD
+                val inputProblem = passwordInputProblem(password.text)
+                val problem = state.passwordProblem ?: inputProblem
+                val canSubmit = !state.setupBusy && if (creating) {
+                    state.createContextId != null && (
+                        !passwordEnabled ||
+                            (password.text.isNotEmpty() && riskAcknowledged && inputProblem == null)
+                        )
+                } else {
+                    password.text.isNotEmpty() && inputProblem == null
+                }
+                val submit: () -> Unit = {
+                    if (canSubmit) {
+                        val action = if (creating) {
+                            SyncPanelAction.SubmitCreateSpace(
+                                requireNotNull(state.createContextId),
+                                if (passwordEnabled) SyncCreateProtection.PASSWORD else SyncCreateProtection.NONE,
+                                password.text,
+                                riskAcknowledged,
+                            )
+                        } else {
+                            SyncPanelAction.SubmitPassword(password.text)
+                        }
+                        password = TextFieldValue()
+                        showPassword = false
+                        riskAcknowledged = false
+                        dispatch(action)
+                    }
+                }
                 item {
                     Text(
                         syncString(
-                            if (creating) MR.strings.sync_password_new_title else MR.strings.sync_password_unlock_title,
+                            if (creating) MR.strings.sync_create_title else MR.strings.sync_password_unlock_title,
                         ),
                         style = MaterialTheme.typography.titleMedium,
                     )
@@ -894,85 +1055,151 @@ private fun SetupPage(
                 item {
                     Text(
                         syncString(
-                            if (creating) MR.strings.sync_password_new_hint else MR.strings.sync_password_unlock_hint,
+                            if (creating) MR.strings.sync_create_description else MR.strings.sync_password_unlock_hint,
                         ),
                     )
                 }
-                item {
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it },
-                        modifier = Modifier.fillMaxWidth().focusRequester(passwordFocus).testTag("sync-password-input"),
-                        enabled = !state.setupBusy,
-                        label = {
-                            Text(
-                                syncString(
-                                    if (creating) MR.strings.sync_password_optional else MR.strings.sync_password_label,
-                                ),
-                            )
-                        },
-                        keyboardOptions = KeyboardOptions(
-                            autoCorrectEnabled = false,
-                            keyboardType = KeyboardType.Password,
-                        ),
-                        visualTransformation = if (showPassword) {
-                            VisualTransformation.None
-                        } else {
-                            PasswordVisualTransformation()
-                        },
-                        singleLine = true,
-                        isError = state.passwordProblem != null,
-                        trailingIcon = {
-                            IconButton(
-                                onClick = {
-                                    showPassword = !showPassword
-                                    passwordFocus.requestFocus()
+                if (creating) {
+                    item {
+                        Text(syncString(MR.strings.sync_create_unencrypted_boundary))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(syncString(MR.strings.sync_create_password_optional), Modifier.weight(1f))
+                            Switch(
+                                checked = passwordEnabled,
+                                onCheckedChange = {
+                                    passwordEnabled = it
+                                    password = TextFieldValue()
+                                    showPassword = false
+                                    riskAcknowledged = false
+                                    if (state.passwordProblem != null) dispatch(SyncPanelAction.ClearPasswordProblem)
                                 },
                                 enabled = !state.setupBusy,
-                                modifier = Modifier.testTag("sync-password-visibility"),
-                            ) {
-                                Icon(
-                                    if (showPassword) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                                    syncString(
-                                        if (showPassword) {
-                                            MR.strings.sync_password_hide
-                                        } else {
-                                            MR.strings.sync_password_show
-                                        },
-                                    ),
-                                )
-                            }
-                        },
-                    )
+                                modifier = Modifier.testTag("sync-password-enabled").semantics {
+                                    contentDescription = syncPasswordSwitchDescription
+                                },
+                            )
+                        }
+                    }
                 }
-                state.passwordProblem?.let { problem ->
+                if (!creating || passwordEnabled) {
+                    item {
+                        OutlinedTextField(
+                            value = password,
+                            onValueChange = {
+                                if (password.text != it.text) {
+                                    riskAcknowledged = false
+                                    if (state.passwordProblem != null) dispatch(SyncPanelAction.ClearPasswordProblem)
+                                }
+                                password = it
+                            },
+                            modifier = Modifier.fillMaxWidth().focusRequester(passwordFocus)
+                                .testTag("sync-password-input"),
+                            enabled = !state.setupBusy,
+                            label = { Text(syncString(MR.strings.sync_password_label)) },
+                            keyboardOptions = KeyboardOptions(
+                                autoCorrectEnabled = false,
+                                keyboardType = KeyboardType.Password,
+                                imeAction = ImeAction.Done,
+                            ),
+                            keyboardActions = KeyboardActions(onDone = { submit() }),
+                            visualTransformation = if (showPassword) {
+                                VisualTransformation.None
+                            } else {
+                                PasswordVisualTransformation()
+                            },
+                            singleLine = true,
+                            isError = problem != null,
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = {
+                                        showPassword = !showPassword
+                                        passwordFocus.requestFocus()
+                                    },
+                                    enabled = !state.setupBusy,
+                                    modifier = Modifier.testTag("sync-password-visibility"),
+                                ) {
+                                    Icon(
+                                        if (showPassword) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                        syncString(
+                                            if (showPassword) {
+                                                MR.strings.sync_password_hide
+                                            } else {
+                                                MR.strings.sync_password_show
+                                            },
+                                        ),
+                                    )
+                                }
+                            },
+                        )
+                    }
+                    if (creating) {
+                        item {
+                            Surface(
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().testTag("sync-password-risk"),
+                            ) {
+                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Icon(Icons.Outlined.WarningAmber, null)
+                                    Text(
+                                        syncString(MR.strings.sync_password_risk_title),
+                                        style = MaterialTheme.typography.titleMedium,
+                                    )
+                                    Text(syncString(MR.strings.sync_password_risk_body))
+                                }
+                            }
+                        }
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth().toggleable(
+                                    value = riskAcknowledged,
+                                    enabled = !state.setupBusy,
+                                    role = Role.Checkbox,
+                                    onValueChange = { riskAcknowledged = it },
+                                ).testTag("sync-password-ack"),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Checkbox(riskAcknowledged, null, enabled = !state.setupBusy)
+                                Text(syncString(MR.strings.sync_password_risk_ack), Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+                problem?.let { issue ->
                     item {
                         Text(
-                            syncString(
-                                when (problem) {
-                                    SyncPasswordProblem.INCORRECT -> MR.strings.sync_password_incorrect
-                                    SyncPasswordProblem.TOO_LONG -> MR.strings.sync_password_too_long
-                                    SyncPasswordProblem.INVALID -> MR.strings.sync_password_invalid
-                                },
-                            ),
-                            Modifier.testTag("sync-password-error"),
+                            syncString(passwordProblemResource(issue)),
+                            Modifier.testTag("sync-password-error").semantics { liveRegion = LiveRegionMode.Polite },
                             color = MaterialTheme.colorScheme.error,
                         )
                     }
                 }
                 item {
                     Action(
-                        "sync-password-submit",
-                        when {
-                            !creating -> MR.strings.sync_password_connect
-                            password.text.isEmpty() -> MR.strings.sync_password_skip
-                            else -> MR.strings.sync_password_confirm
+                        if (creating) "sync-create-space" else "sync-password-submit",
+                        if (!creating) {
+                            MR.strings.sync_password_connect
+                        } else if (passwordEnabled) {
+                            MR.strings.sync_create_with_password
+                        } else {
+                            MR.strings.sync_create_without_password
                         },
-                        !state.setupBusy && (creating || password.text.isNotEmpty()),
-                    ) {
-                        val submitted = password.text
-                        password = TextFieldValue()
-                        dispatch(SyncPanelAction.SubmitPassword(submitted))
+                        canSubmit,
+                        submit,
+                    )
+                }
+                if (!creating) {
+                    item(key = "password-help") {
+                        TextButton(
+                            {
+                                password = TextFieldValue()
+                                showPassword = false
+                                dispatch(SyncPanelAction.ShowPasswordHelp)
+                            },
+                            Modifier.focusRequester(helpFocus).syncUiTag("sync-password-help", !state.setupBusy),
+                            enabled = !state.setupBusy,
+                        ) { Text(syncString(MR.strings.sync_password_help)) }
                     }
                 }
             }
@@ -1666,5 +1893,5 @@ private val SyncPanelState.decisionsEnabled: Boolean
 
 @Composable
 private fun Action(tag: String, label: StringResource, enabled: Boolean = true, onClick: () -> Unit) {
-    TextButton(onClick, Modifier.testTag(tag), enabled = enabled) { Text(syncString(label)) }
+    TextButton(onClick, Modifier.syncUiTag(tag, enabled), enabled = enabled) { Text(syncString(label)) }
 }

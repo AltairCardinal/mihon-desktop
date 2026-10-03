@@ -36,28 +36,36 @@ for (const platform of ['windows', 'android']) {
       }
       await scene('setup'); await click('setup'); await authorize();
       const password = frame.getByTestId('ix-field-password');
+      await frame.getByTestId('ix-password-enable').waitFor();
+      assert.equal(await password.count(), 0);
+      assert.equal(await frame.getByTestId('ix-password-confirm').innerText(), '创建并开启同步');
+      await click('password-enable');
       await password.waitFor();
-      assert.match(await frame.getByRole('dialog').innerText(), /将创建同步空间，是否需要设置密码/);
-      assert.equal(await frame.getByTestId('ix-password-confirm').innerText(), '不设置密码');
+      assert.match(await frame.getByRole('dialog').innerText(), /请先保存密码/);
+      assert.equal(await frame.getByTestId('ix-password-confirm').innerText(), '设置密码并开启同步');
       await password.pressSequentially('abc 123');
       assert.equal(await password.inputValue(), 'abc 123');
       assert.equal(await password.evaluate(el => el === document.activeElement), true);
-      assert.equal(await frame.getByTestId('ix-password-confirm').innerText(), '确认密码');
+      assert.equal(await frame.getByTestId('ix-password-confirm').isDisabled(), true);
       await password.evaluate(el => el.setSelectionRange(2, 5));
       await click('password-toggle');
       assert.equal(await password.getAttribute('type'), 'text');
       assert.deepEqual(await password.evaluate(el => [el.selectionStart, el.selectionEnd]), [2, 5]);
       assert.equal(await password.evaluate(el => el === document.activeElement), true);
       await password.fill(' ');
-      assert.equal(await frame.getByTestId('ix-password-confirm').innerText(), '确认密码');
+      await frame.getByTestId('ix-password-acknowledge').check();
+      assert.equal(await frame.getByTestId('ix-password-confirm').isDisabled(), false);
       await password.fill('');
-      assert.equal(await frame.getByTestId('ix-password-confirm').innerText(), '不设置密码');
+      assert.equal(await frame.getByTestId('ix-password-confirm').isDisabled(), true);
       await password.fill('discard-me');
       await frame.getByTestId('sync-close').click();
       await frame.getByTestId('library-sync').click();
       await click('setup');
+      assert.equal(await password.count(), 0);
+      await click('password-enable');
       assert.equal(await password.inputValue(), '');
       assert.equal(await password.getAttribute('type'), 'password');
+      await click('password-enable');
       await click('password-confirm');
       await frame.getByTestId('ix-import-pause').waitFor();
       await frame.getByTestId('sync-close').click();
@@ -65,13 +73,13 @@ for (const platform of ['windows', 'android']) {
       await frame.getByTestId('manual-sync').waitFor();
       assert.equal(await frame.locator('[data-ix-screen="imported"]').count(), 0);
       await ready();
-      assert.match(await frame.getByRole('dialog').innerText(), /密码保护未开启/);
+      assert.match(await frame.getByRole('dialog').innerText(), /同步密码\s*未设置/);
 
       await scene('setup'); await click('setup'); await authorize();
-      await password.fill('my demo password'); await click('password-confirm'); await ready();
-      assert.match(await frame.getByRole('dialog').innerText(), /密码保护已开启/);
+      await click('password-enable'); await password.fill('my demo password'); await frame.getByTestId('ix-password-acknowledge').check(); await click('password-confirm'); await ready();
+      assert.match(await frame.getByRole('dialog').innerText(), /同步密码\s*已设置/);
       await scene('setup-existing'); await click('setup'); await authorize(); await ready();
-      assert.match(await frame.getByRole('dialog').innerText(), /密码保护未开启/);
+      assert.match(await frame.getByRole('dialog').innerText(), /同步密码\s*未设置/);
       await scene('setup-protected'); await click('setup'); await authorize();
       await password.waitFor();
       assert.equal(await frame.getByTestId('ix-password-confirm').isDisabled(), true);
@@ -79,18 +87,24 @@ for (const platform of ['windows', 'android']) {
       await password.fill('wrong'); await click('password-confirm');
       assert.match(await frame.locator('.ix-feedback').innerText(), /密码不正确/);
       await password.fill('mihon-demo'); await click('password-confirm'); await ready();
-      assert.match(await frame.getByRole('dialog').innerText(), /密码保护已开启/);
+      assert.match(await frame.getByRole('dialog').innerText(), /同步密码\s*已设置/);
 
       await scene('auth-expired'); await click('auth-restart'); await authorize(true);
-      await click('auth-restart'); await authorize(); await password.waitFor();
+      await click('auth-restart'); await authorize(); await frame.getByTestId('ix-password-enable').waitFor();
       for (const value of ['setup-find-failed', 'setup-create-failed']) {
         await scene(value); await click('setup'); await authorize();
-        if (value === 'setup-create-failed') { await password.waitFor(); await click('password-confirm'); }
+        if (value === 'setup-create-failed') { await click('password-enable'); await password.fill('  exact password  '); await frame.getByTestId('ix-password-acknowledge').check(); await click('password-confirm'); }
         await frame.getByTestId('ix-setup-retry').waitFor();
         assert.match(await frame.getByRole('dialog').innerText(), /未覆盖已有数据/);
+        assert.equal(await frame.locator('[data-ix-field="password"]').count(), 0);
+        assert.equal(await frame.getByTestId('ix-setup-retry').evaluate(() => window.__mihonSyncDemo.state.ui.interactions.fields.password), '', '提交后不保留密码草稿');
+        if (value === 'setup-create-failed') {
+          await frame.getByTestId('sync-close').click(); await frame.getByTestId('library-sync').click(); await click('setup');
+        }
         await click('setup-retry');
-        if (value === 'setup-find-failed') { await password.waitFor(); await click('password-confirm'); }
+        if (value === 'setup-find-failed') { await frame.getByTestId('ix-password-enable').waitFor(); await click('password-confirm'); }
         await ready();
+        assert.match(await frame.getByRole('dialog').innerText(), value === 'setup-create-failed' ? /同步密码\s*已设置/ : /同步密码\s*未设置/);
       }
       assert.deepEqual(errors, []);
     } finally { await browser.close(); }

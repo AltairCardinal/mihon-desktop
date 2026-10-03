@@ -219,6 +219,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .ix-key { padding: 18px; border-radius: 12px; background: var(--surface); color: var(--primary); font-size: 15px; line-height: 1.8; overflow-wrap: anywhere; user-select: all; }
 .ix-check { display: flex; align-items: center; gap: 10px; min-height: 48px; margin: 18px 0; font-size: 13px; }
 .ix-check input { accent-color: var(--primary); width: 18px; height: 18px; }
+.ix-password-switch { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; padding: 16px 0; border: 0; background: transparent; text-align: left; }
+.ix-password-switch strong { display: block; font-size: 14px; font-weight: 600; }
+.ix-password-switch small { display: block; margin-top: 6px; color: var(--outline); font-size: 12px; line-height: 1.5; }
+.ix-switch-track { display: flex; align-items: center; flex: 0 0 44px; height: 26px; border: 2px solid var(--outline); border-radius: 16px; padding: 3px; }
+.ix-switch-track > span { width: 16px; height: 16px; background: var(--outline); border-radius: 50%; }
+.ix-password-switch[aria-checked="true"] .ix-switch-track { border-color: var(--primary); background: var(--primary); justify-content: flex-end; }
+.ix-password-switch[aria-checked="true"] .ix-switch-track > span { background: var(--on-primary); }
+.ix-password-warning { display: flex; align-items: flex-start; gap: 12px; margin: 16px 0; padding: 16px; border: 1px solid var(--danger); border-radius: 12px; color: var(--danger); background: color-mix(in srgb, var(--danger) 9%, var(--surface)); }
+.ix-password-warning > svg { flex: 0 0 24px; width: 24px; height: 24px; fill: currentColor; stroke: none; }
+.ix-password-warning strong { display: block; font-size: 14px; line-height: 1.6; }
+.ix-password-warning p { color: var(--on-surface); font-size: 13px; line-height: 1.7; margin: 8px 0 0; }
+.ix-password-acknowledge { align-items: flex-start; line-height: 1.7; cursor: pointer; }
+.ix-password-acknowledge input { flex: 0 0 18px; margin-top: 2px; }
+[data-action="ix-password-confirm"]:disabled { color: color-mix(in srgb, var(--on-surface) 38%, var(--surface-container)); background: color-mix(in srgb, var(--on-surface) 12%, var(--surface-container)); border-color: transparent; cursor: default; filter: none; }
 .ix-feedback { margin: 14px 0; padding: 12px 14px; border-radius: 8px; background: var(--secondary-container); color: var(--on-secondary-container); font-size: 13px; line-height: 1.6; }
 .ix-hero-icon { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; margin: 16px 0 24px; color: var(--primary); background: var(--surface); }
 .ix-hero-icon svg { width: 28px; height: 28px; }

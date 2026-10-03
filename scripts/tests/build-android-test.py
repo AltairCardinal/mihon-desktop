@@ -20,6 +20,50 @@ SPEC.loader.exec_module(ANDROID)
 
 
 class AndroidEntryTest(unittest.TestCase):
+    def test_acceptance_build_inputs_reject_formal_and_invalid_targets_and_bind_target_hash(self):
+        name = "mihon-sync-acceptance-fixture-none"
+        for variant in ("release", "unsigned"):
+            with self.assertRaises(ValueError):
+                ANDROID.build_configuration(variant, name)
+        for name_invalid in ("mihon-sync", "other", "mihon-sync-acceptance-", "mihon-sync-acceptance-a/b"):
+            with self.assertRaises(ValueError):
+                ANDROID.build_configuration("debug", name_invalid)
+        one = ANDROID.build_configuration("debug", name)
+        two = ANDROID.build_configuration("debug", name + "-two")
+        self.assertEqual(name, one["syncAcceptanceRepository"])
+        self.assertNotEqual(one["buildConfigurationInputsSha256"], two["buildConfigurationInputsSha256"])
+
+    def test_debug_gradle_receipt_consumes_exact_static_target_and_rejects_stale_configuration(self):
+        name = "mihon-sync-acceptance-fixture-none"
+        config = ANDROID.build_configuration("debug", name)
+        with tempfile.TemporaryDirectory(prefix="sync-build-receipt-") as directory:
+            root = Path(directory)
+            reports = root / "app/build/reports"
+            reports.mkdir(parents=True)
+
+            def invocation(command, **kwargs):
+                args = list(map(str, command))
+                self.assertIn(f"-Pmihon.syncAcceptanceRepository={name}", args)
+                self.assertIn(f"-Pandroid.candidateConfigurationInputs={config['buildConfigurationInputsSha256']}", args)
+                receipt = {"requestId": "fresh", "sourceInputs": "f" * 64, "variant": "debug",
+                           "configurationInputs": config["buildConfigurationInputsSha256"], "syncAcceptanceRepository": name}
+                (reports / "android-candidate.json").write_text(json.dumps(receipt), encoding="utf-8")
+                return subprocess.CompletedProcess(command, 0)
+
+            with patch.object(ANDROID.uuid, "uuid4", return_value=SimpleNamespace(hex="fresh")), patch.object(ANDROID.subprocess, "run", side_effect=invocation):
+                self.assertEqual(name, ANDROID.gradle_build("debug", "f" * 64, root=root, repository=name)["syncAcceptanceRepository"])
+            receipt = json.loads((reports / "android-candidate.json").read_text(encoding="utf-8"))
+            receipt["syncAcceptanceRepository"] = "mihon-sync"
+            (reports / "android-candidate.json").write_text(json.dumps(receipt), encoding="utf-8")
+            with patch.object(ANDROID.uuid, "uuid4", return_value=SimpleNamespace(hex="fresh")), patch.object(ANDROID.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)):
+                with self.assertRaisesRegex(ValueError, "configuration"):
+                    ANDROID.gradle_build("debug", "f" * 64, root=root, repository=name)
+
+    def test_formal_cli_never_accepts_debug_repository_parameter(self):
+        for action in ("candidate", "check"):
+            result = subprocess.run([sys.executable, str(ENTRY), action, "--sync-acceptance-repository", "mihon-sync-acceptance-fixture"], capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(2, result.returncode)
+
     def test_uninstalled_package_with_pm_path_exit_one_is_a_safe_new_install(self):
         tools = SimpleNamespace(adb=Path("unused-adb"))
         calls = []
@@ -146,6 +190,17 @@ class AndroidSdkArtifactTest(unittest.TestCase):
         self.assertEqual(result["versionCode"], self.release["versionCode"])
         self.assertEqual(set(result["abis"]), ANDROID.ABIS)
         self.assertTrue(result["signatureVerified"])
+
+    def test_new_configuration_provenance_preserves_old_artifacts_and_refuses_formal_target(self):
+        record = self.write_record()
+        self.assertEqual(record, ANDROID.verify_artifact(self.signed, self.tools, self.root))
+        record.update(ANDROID.build_configuration("release"))
+        (self.root / "artifact.json").write_text(json.dumps(record), encoding="utf-8")
+        self.assertEqual(record, ANDROID.verify_artifact(self.signed, self.tools, self.root))
+        record["syncAcceptanceRepository"] = "mihon-sync-acceptance-fixture-none"
+        (self.root / "artifact.json").write_text(json.dumps(record), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "only allowed for Debug"):
+            ANDROID.verify_artifact(self.signed, self.tools, self.root)
 
     def test_formal_trust_root_is_not_replaceable_by_artifact_metadata(self):
         self.write_record()

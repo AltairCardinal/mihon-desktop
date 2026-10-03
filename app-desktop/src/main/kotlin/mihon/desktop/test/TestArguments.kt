@@ -12,6 +12,7 @@ data class TestArguments(
     val headless: Boolean = false,
     val platformAcceptanceToken: String? = null,
     val testProfile: String? = null,
+    val syncRepository: String? = null,
 ) {
     companion object {
         const val DEFAULT_HTTP_PORT = 8080
@@ -27,9 +28,16 @@ data class TestArguments(
             var headless = false
             var platformAcceptanceToken: String? = null
             var testProfile: String? = null
+            var syncRepository: String? = null
 
             for (arg in args) {
                 when {
+                    arg == "--test-sync-repository" -> require(false) { "Use --test-sync-repository=<dedicated-repository>" }
+                    arg.startsWith("--test-sync-repository=") -> {
+                        require(syncRepository == null) { "Only one acceptance repository may be selected" }
+                        syncRepository = arg.substringAfter('=')
+                        mihon.data.sync.auth.SyncRepositoryScope.acceptance(syncRepository)
+                    }
                     arg == "--test-profile" -> require(false) { "Use --test-profile=<absolute-directory>" }
                     arg.startsWith("--test-profile=") -> {
                         require(testProfile == null) { "Only one test profile may be selected" }
@@ -53,6 +61,9 @@ data class TestArguments(
             }
 
             require(testProfile == null || testMode) { "--test-profile requires --test-mode" }
+            require(syncRepository == null || (testMode && testProfile != null)) {
+                "--test-sync-repository requires --test-mode and --test-profile"
+            }
             return TestArguments(
                 testMode = testMode,
                 httpPort = httpPort,
@@ -60,6 +71,7 @@ data class TestArguments(
                 headless = headless,
                 platformAcceptanceToken = platformAcceptanceToken,
                 testProfile = testProfile,
+                syncRepository = syncRepository,
             )
         }
     }

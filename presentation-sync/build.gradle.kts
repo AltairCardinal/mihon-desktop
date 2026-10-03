@@ -27,6 +27,7 @@ kotlin {
             implementation(project.dependencies.platform(androidCompose.bom))
         }
         jvmTest.dependencies {
+            implementation(project(path = ":data", configuration = "syncTestSupport"))
             implementation(projects.core.common)
             implementation(projects.sourceApi)
             implementation(libs.okhttp.mockwebserver)
