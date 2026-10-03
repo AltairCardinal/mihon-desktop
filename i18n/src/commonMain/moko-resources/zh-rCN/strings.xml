@@ -1695,7 +1695,7 @@
     <string name="sync_problem_storage">安全存储不可用，变动已保留。</string>
     <string name="sync_problem_remote">同步仓库状态发生变化，已暂停同步。请检查 GitHub 中的同步仓库后重试。</string>
     <string name="sync_problem_data">部分远端数据未通过校验。</string>
-    <string name="sync_problem_unknown">同步未能完成，请重试。</string>
+    <string name="sync_problem_unknown">同步未能完成。</string>
     <string name="sync_auth_failed">授权未完成，请重试或取消。</string>
     <string name="sync_auth_request_failed">无法完成 GitHub 授权请求，请检查网络或代理后重试。</string>
     <string name="sync_file_error">无法读取或保存恢复资料。</string>
@@ -2055,4 +2055,11 @@
     <string name="sync_recovery_cancel_switch">取消更换空间</string>
     <string name="sync_recovery_cancel_switch_body">取消本次更换？本机资料和原连接状态会保留。</string>
     <string name="sync_recovery_authorization_unknown">授权尚未检查</string>
+    <string name="sync_error_recovery_hint">可以重试；如果原同步空间已删除或无法继续使用，可以更换同步空间。</string>
+    <string name="sync_error_configure_space">设置同步空间</string>
+    <string name="sync_error_retry_failed">重试未成功。</string>
+    <string name="sync_error_retry_busy">正在重试…</string>
+    <string name="sync_error_recovery_choice">选择更换同步空间的方式。</string>
+    <string name="sync_error_recovery_choice_body">可以创建新的同步空间或连接其他空间。完成确认前，当前连接和本机数据将保留。</string>
+    <string name="sync_error_space_unavailable">原同步空间无法访问，可能已删除或访问权限发生变化。</string>
 </resources>

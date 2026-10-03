@@ -48,6 +48,206 @@ abstract class SyncSpaceRecoveryContract {
     protected abstract fun open(): SyncRuntimeStorageContract.Storage
 
     @Test
+    fun `generic setup error opens neutral recovery and back preserves source`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val binding = setup.runtime.connection()
+                val credential = setup.runtime.credentials.read()
+                setup.git.server.dispatcher = failing(setup.git.server.dispatcher, "/user", 500)
+                setup.panel.act(SyncPanelAction.BeginSetup)
+                withTimeout(5_000) { setup.panel.state.first { it.setupStep == SyncSetupStep.ERROR } }
+                val problem = setup.panel.state.value.setupProblem
+                assertTrue(setup.panel.state.value.canChangeSpace)
+                setup.panel.act(SyncPanelAction.OpenRecovery)
+                assertEquals(SyncPanelPage.RECOVERY, setup.panel.state.value.page)
+                assertEquals(SyncPanelPage.SETUP, setup.panel.state.value.recoveryReturnPage)
+                assertNull(setup.panel.state.value.recovery, "network failure is not proof of a deleted space")
+                assertNull(setup.runtime.activeSwitch())
+                assertEquals(binding, setup.runtime.connection())
+                assertEquals(credential, setup.runtime.credentials.read())
+                setup.panel.act(SyncPanelAction.Back)
+                assertEquals(SyncPanelPage.SETUP, setup.panel.state.value.page)
+                assertEquals(SyncSetupStep.ERROR, setup.panel.state.value.setupStep)
+                assertEquals(problem, setup.panel.state.value.setupProblem)
+                setup.panel.act(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+                setup.panel.act(SyncPanelAction.Back)
+                assertEquals(SyncPanelPage.SETUP, setup.panel.state.value.page)
+                assertEquals(SyncSetupStep.ERROR, setup.panel.state.value.setupStep)
+                assertEquals(problem, setup.panel.state.value.setupProblem)
+            }
+        }
+    }
+
+    @Test
+    fun `setup account authorization failure is verified as recovery while keeping error page`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val binding = setup.runtime.connection()
+                val credential = setup.runtime.credentials.read()
+                setup.git.server.dispatcher = failing(setup.git.server.dispatcher, "/user", 401)
+                setup.panel.act(SyncPanelAction.BeginSetup)
+                withTimeout(5_000) { setup.panel.state.first { it.setupStep == SyncSetupStep.ERROR } }
+                setup.panel.awaitRecoveryIdle()
+                assertEquals(SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED, setup.panel.state.value.recovery?.reason)
+                assertEquals(SyncPanelPage.SETUP, setup.panel.state.value.page)
+                assertEquals(binding, setup.runtime.connection())
+                assertEquals(credential, setup.runtime.credentials.read())
+                assertNull(setup.runtime.activeSwitch())
+            }
+        }
+    }
+
+    @Test
+    fun `setup error diagnostics returns to the same failure page`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                setup.git.server.dispatcher = failing(setup.git.server.dispatcher, "/user", 500)
+                setup.panel.act(SyncPanelAction.BeginSetup)
+                withTimeout(5_000) { setup.panel.state.first { it.setupStep == SyncSetupStep.ERROR } }
+                val problem = setup.panel.state.value.setupProblem
+                setup.panel.act(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+                setup.panel.act(SyncPanelAction.Back)
+                assertEquals(SyncPanelPage.SETUP, setup.panel.state.value.page)
+                assertEquals(SyncSetupStep.ERROR, setup.panel.state.value.setupStep)
+                assertEquals(problem, setup.panel.state.value.setupProblem)
+            }
+        }
+    }
+
+    @Test
+    fun `retrying failed setup records another failure and does not restart a busy request`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val delegate = setup.git.server.dispatcher
+                setup.git.server.dispatcher = failing(delegate, "/user", 500)
+                setup.panel.act(SyncPanelAction.BeginSetup)
+                withTimeout(5_000) { setup.panel.state.first { it.setupStep == SyncSetupStep.ERROR } }
+                assertEquals(false, setup.panel.state.value.setupRetryAttempted)
+                assertEquals(false, setup.panel.state.value.setupRetryFailed)
+                val entered = CountDownLatch(1)
+                val release = CountDownLatch(1)
+                val requests = java.util.concurrent.atomic.AtomicInteger()
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.url.encodedPath == "/user") {
+                            requests.incrementAndGet()
+                            entered.countDown()
+                            check(release.await(5, TimeUnit.SECONDS))
+                            return MockResponse(code = 500, body = "{}")
+                        }
+                        return delegate.dispatch(request)
+                    }
+                }
+                try {
+                    setup.panel.act(SyncPanelAction.RetrySetup)
+                    assertTrue(entered.await(5, TimeUnit.SECONDS))
+                    setup.panel.act(SyncPanelAction.RetrySetup)
+                    assertEquals(1, requests.get())
+                    release.countDown()
+                    withTimeout(5_000) {
+                        setup.panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy }
+                    }
+                    assertTrue(setup.panel.state.value.setupRetryAttempted)
+                    assertTrue(setup.panel.state.value.setupRetryFailed)
+                } finally {
+                    release.countDown()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `recovery entry without binding returns to first setup`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { setup ->
+                setup.panel.act(SyncPanelAction.Open)
+                setup.panel.act(SyncPanelAction.OpenRecovery)
+                assertEquals(SyncPanelPage.SETUP, setup.panel.state.value.page)
+                assertEquals(SyncSetupStep.SIGN_IN, setup.panel.state.value.setupStep)
+                assertEquals(false, setup.panel.state.value.canChangeSpace)
+            }
+        }
+    }
+
+    @Test
+    fun `unreadable or unsupported binding cannot open executable recovery choices`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val key = setup.secure.values.keys.single {
+                    it.startsWith("space-") && !it.contains("-recovery") && !it.contains("-address")
+                }
+                val binding = requireNotNull(setup.secure.values[key])
+                for (value in listOf("{}", "{\"version\":999}", "{\"version\":2}")) {
+                    setup.secure.values[key] = value
+                    setup.panel.act(SyncPanelAction.Open)
+                    setup.panel.act(SyncPanelAction.OpenRecovery)
+                    assertEquals(false, setup.panel.state.value.canChangeSpace)
+                    assertEquals(false, setup.panel.state.value.page == SyncPanelPage.RECOVERY)
+                }
+                setup.secure.values[key] = binding
+                setup.runtime.credentials.clear()
+                setup.panel.act(SyncPanelAction.Open)
+                setup.panel.act(SyncPanelAction.OpenRecovery)
+                assertEquals(false, setup.panel.state.value.canChangeSpace)
+                assertEquals(
+                    SyncPanelPage.SETUP,
+                    setup.panel.state.value.page,
+                    "missing credential cannot open an empty chooser",
+                )
+                assertEquals(SyncSetupStep.ERROR, setup.panel.state.value.setupStep)
+                setup.authorize()
+                setup.secure.readFailure = true
+                setup.panel.act(SyncPanelAction.OpenRecovery)
+                assertEquals(false, setup.panel.state.value.canChangeSpace)
+                assertEquals(SyncPanelPage.SETUP, setup.panel.state.value.page)
+                assertEquals(SyncRunProblem.STORAGE, setup.panel.state.value.problem)
+                setup.secure.readFailure = false
+            }
+        }
+    }
+
+    @Test
+    fun `cold recovery read failure does not assume a first configuration`() = runBlocking {
+        open().use { storage ->
+            val unreadable = object : tachiyomi.data.DatabaseHandler by storage.handler {
+                override suspend fun <T> await(inTransaction: Boolean, block: suspend Database.() -> T): T {
+                    throw mihon.domain.sync.security.SyncSecureStoreException()
+                }
+            }
+            val cold = SyncRuntimeStorageContract.Storage(storage.driver, unreadable)
+            SyncOnboardingFixture(cold).use { setup ->
+                setup.panel.act(SyncPanelAction.Open)
+                assertNull(setup.panel.state.value.connection)
+                setup.panel.act(SyncPanelAction.OpenRecovery)
+                assertEquals(
+                    SyncPanelPage.SETUP,
+                    setup.panel.state.value.page,
+                    "cold storage failure is not first setup",
+                )
+                assertEquals(SyncSetupStep.ERROR, setup.panel.state.value.setupStep)
+                assertEquals(false, setup.panel.state.value.canChangeSpace)
+                assertEquals(SyncRunProblem.STORAGE, setup.panel.state.value.problem)
+                assertEquals(0, setup.git.server.requestCount)
+            }
+        }
+    }
+
+    @Test
     fun `replacement authorization validates real account before replacing original credential`() = runBlocking {
         open().use { storage ->
             SyncOnboardingFixture(storage).use { setup ->

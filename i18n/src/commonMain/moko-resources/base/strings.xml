@@ -2000,7 +2000,7 @@
     <string name="sync_problem_storage">Secure storage is unavailable. Your changes are preserved.</string>
     <string name="sync_problem_remote">The sync repository state changed, so syncing is paused. Check the GitHub repository, then retry.</string>
     <string name="sync_problem_data">Some remote data could not be verified.</string>
-    <string name="sync_problem_unknown">Synchronization could not finish. Try again.</string>
+    <string name="sync_problem_unknown">Synchronization could not finish.</string>
     <string name="sync_auth_failed">Authorization did not finish. Retry or cancel.</string>
     <string name="sync_auth_request_failed">Could not complete the GitHub authorization request. Check your network or proxy, then retry.</string>
     <string name="sync_file_error">Unable to read or save recovery material.</string>
@@ -2266,4 +2266,11 @@
     <string name="sync_recovery_cancel_switch">Cancel space change</string>
     <string name="sync_recovery_cancel_switch_body">Cancel this space change? Local data and the previous connection will be preserved.</string>
     <string name="sync_recovery_authorization_unknown">Authorization has not been checked</string>
+    <string name="sync_error_recovery_hint">Try again, or change your sync space if the original space was deleted or can no longer be used.</string>
+    <string name="sync_error_configure_space">Set up sync space</string>
+    <string name="sync_error_retry_failed">Retry was unsuccessful.</string>
+    <string name="sync_error_retry_busy">Retrying…</string>
+    <string name="sync_error_recovery_choice">Choose how to change your sync space.</string>
+    <string name="sync_error_recovery_choice_body">Create a new sync space or connect another one. Your current connection and local data will be kept until you confirm the change.</string>
+    <string name="sync_error_space_unavailable">The original sync space cannot be accessed. It may have been deleted or its access permissions may have changed.</string>
 </resources>

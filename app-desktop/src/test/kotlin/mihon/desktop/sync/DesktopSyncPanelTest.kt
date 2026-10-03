@@ -96,6 +96,7 @@ class DesktopSyncPanelTest {
             click("sync-open")
             assertTrue(panel.state.value.visible)
             panel.state.value = panel.state.value.copy(
+                canChangeSpace = true,
                 recovery = mihon.data.sync.runtime.SyncSpaceRecovery(
                     mihon.data.sync.runtime.SyncSpaceRecoveryReason.SPACE_UNAVAILABLE,
                 ),

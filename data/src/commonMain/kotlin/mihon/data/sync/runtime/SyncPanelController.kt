@@ -68,6 +68,7 @@ class SyncPanelController(
     private var authVersion = 0L
     private var setupVersion = 0L
     private var panelSession = 0L
+    private var diagnosticReturnPage = SyncPanelPage.SETTINGS
     private var setupExchangeCompletion = -1L
     private var setupAccount: SyncGitHubAccount? = null
     private var chosenSpace: DiscoveredSyncSpace? = null
@@ -251,6 +252,21 @@ class SyncPanelController(
         val connectionFacts = runtime.connectionFacts()
         lastDiagnosticConnection = connectionFacts
         val connection = connectionFacts.projection
+        val canChangeSpace = if (connectionFacts.decode == SyncBindingDecode.OK &&
+            connection?.enabled == true && !connection.unsupportedFormat
+        ) {
+            try {
+                runtime.credentials.read() != null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                false
+            }
+        } else {
+            false
+        }
+        // Clear stale permission before any optional recovery read can fail.
+        mutableState.update { it.copy(canChangeSpace = canChangeSpace) }
         if (connection?.unsupportedFormat == true) {
             mutableState.update {
                 it.copy(
@@ -404,6 +420,7 @@ class SyncPanelController(
                     }
                 },
                 canCancelRecoverySwitch = pendingSwitch?.stage == SyncSpaceSwitchStage.PREPARING,
+                canChangeSpace = canChangeSpace,
                 importRemaining = imports,
                 importPaused = prefs.importPaused.get(),
                 records = runtime.records().asReversed(),
@@ -517,8 +534,55 @@ class SyncPanelController(
     private suspend fun handle(action: SyncPanelAction) {
         when (action) {
             SyncPanelAction.OpenRecovery -> {
-                refresh()
-                mutableState.update { it.copy(page = SyncPanelPage.RECOVERY) }
+                val facts = try {
+                    runtime.connectionFacts()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    recoveryEntryFailed(SyncRunProblem.STORAGE)
+                    return
+                }
+                val connection = facts.projection
+                if (facts.decode == SyncBindingDecode.MISSING && connection == null) {
+                    beginSetup()
+                } else if (facts.decode == SyncBindingDecode.OK && connection?.enabled == true &&
+                    !connection.unsupportedFormat
+                ) {
+                    val source = state.value.takeIf {
+                        it.page == SyncPanelPage.SETUP && it.setupStep == SyncSetupStep.ERROR
+                    }?.page ?: state.value.recoveryReturnPage
+                    try {
+                        refresh()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        recoveryEntryFailed(SyncRunProblem.STORAGE)
+                        return
+                    }
+                    if (state.value.canChangeSpace) {
+                        mutableState.update { it.copy(page = SyncPanelPage.RECOVERY, recoveryReturnPage = source) }
+                    } else {
+                        recoveryEntryFailed(
+                            if (lastDiagnosticConnection.decode == SyncBindingDecode.UNSUPPORTED) {
+                                SyncRunProblem.INVALID_DATA
+                            } else if (lastDiagnosticConnection.decode == SyncBindingDecode.OK &&
+                                state.value.connection?.enabled == true
+                            ) {
+                                SyncRunProblem.AUTHORIZATION
+                            } else {
+                                SyncRunProblem.STORAGE
+                            },
+                        )
+                    }
+                } else {
+                    recoveryEntryFailed(
+                        if (facts.decode == SyncBindingDecode.UNSUPPORTED) {
+                            SyncRunProblem.INVALID_DATA
+                        } else {
+                            SyncRunProblem.STORAGE
+                        },
+                    )
+                }
             }
             SyncPanelAction.RecheckSpace -> recheckSpace()
             SyncPanelAction.CheckAuthorization -> checkAuthorization()
@@ -562,6 +626,11 @@ class SyncPanelController(
             SyncPanelAction.Back -> {
                 if (state.value.question != null) {
                     mutableState.update { it.copy(question = null) }
+                } else if (state.value.page == SyncPanelPage.RECOVERY && state.value.recoveryReturnPage != null) {
+                    cancelRecovery()
+                    mutableState.update {
+                        it.copy(page = requireNotNull(it.recoveryReturnPage), recoveryReturnPage = null)
+                    }
                 } else if (state.value.page == SyncPanelPage.SETUP && switchIntent != null) {
                     val intent = requireNotNull(switchIntent)
                     if (state.value.setupStep == SyncSetupStep.UNLOCK) {
@@ -589,7 +658,7 @@ class SyncPanelController(
                     mutableState.update {
                         it.copy(
                             page = if (it.page == SyncPanelPage.DIAGNOSTICS) {
-                                SyncPanelPage.SETTINGS
+                                diagnosticReturnPage
                             } else {
                                 SyncPanelPage.MAIN
                             },
@@ -634,7 +703,18 @@ class SyncPanelController(
                     )
                 }
             }
-            is SyncPanelAction.Navigate -> mutableState.update { it.copy(page = action.page) }
+            is SyncPanelAction.Navigate -> {
+                if (action.page == SyncPanelPage.DIAGNOSTICS) {
+                    diagnosticReturnPage = if (state.value.page == SyncPanelPage.SETUP &&
+                        state.value.setupStep == SyncSetupStep.ERROR
+                    ) {
+                        SyncPanelPage.SETUP
+                    } else {
+                        SyncPanelPage.SETTINGS
+                    }
+                }
+                mutableState.update { it.copy(page = action.page) }
+            }
             SyncPanelAction.Synchronize -> if (state.value.run?.state != SyncRunState.PAUSED_USER) {
                 if (state.value.connection?.enabled == true) {
                     scope.launch { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
@@ -755,6 +835,12 @@ class SyncPanelController(
             SyncPanelAction.DismissNotice -> mutableState.update { it.copy(notice = null) }
             SyncPanelAction.BeginSetup -> beginSetup()
             SyncPanelAction.RetrySetup -> {
+                if (state.value.setupBusy || setupJob?.isActive == true || repositoryJob?.isActive == true ||
+                    authJob?.isActive == true || recoveryJob?.isActive == true
+                ) {
+                    return
+                }
+                mutableState.update { it.copy(setupRetryAttempted = true, setupRetryFailed = false) }
                 val intent = runtime.activeSwitch()
                 if (intent != null) {
                     resumeSwitch(intent)
@@ -815,6 +901,9 @@ class SyncPanelController(
     }
 
     private suspend fun beginSetup() {
+        mutableState.update {
+            it.copy(setupRetryAttempted = false, setupRetryFailed = false, recoveryReturnPage = null)
+        }
         runtime.activeSwitch()?.let {
             resumeSwitch(it)
             return
@@ -851,6 +940,24 @@ class SyncPanelController(
             )
         }
         if (authorized) discover()
+    }
+
+    private fun recoveryEntryFailed(problem: SyncRunProblem) {
+        mutableState.update {
+            it.copy(
+                canChangeSpace = false,
+                page = SyncPanelPage.SETUP,
+                setupStep = SyncSetupStep.ERROR,
+                setupBusy = false,
+                recoveryReturnPage = null,
+                setupProblem = when (problem) {
+                    SyncRunProblem.INVALID_DATA -> SyncDiscoveryProblem.INCOMPATIBLE
+                    SyncRunProblem.AUTHORIZATION -> SyncDiscoveryProblem.AUTHORIZATION_REQUIRED
+                    else -> SyncDiscoveryProblem.RETRYABLE
+                },
+                problem = problem,
+            )
+        }
     }
 
     private suspend fun cancelAuthorization() {
@@ -1004,7 +1111,7 @@ class SyncPanelController(
         }
     }
 
-    private fun recheckSpace() {
+    private fun recheckSpace(preserveSetupError: Boolean = false) {
         if (recoveryJob?.isActive == true || authJob?.isActive == true) return
         val session = panelSession
         val version = recoveryVersion
@@ -1019,9 +1126,7 @@ class SyncPanelController(
                 SyncSpaceRecoveryCheck(problem = failure.syncProblem())
             }
             enqueue {
-                if (session != panelSession || version != recoveryVersion || !state.value.visible ||
-                    state.value.page != page
-                ) {
+                if (session != panelSession || version != recoveryVersion || !state.value.visible) {
                     return@enqueue
                 }
                 recoveryJob = null
@@ -1029,13 +1134,15 @@ class SyncPanelController(
                 mutableState.update {
                     it.copy(
                         recovery = result.recovery ?: it.recovery.takeIf { result.problem != null },
-                        problem = result.problem,
+                        problem = if (preserveSetupError) it.problem else result.problem,
                         notice = if (result.spaceAddressUpdated) {
                             SyncPanelNotice(spaceAddressUpdated = true)
                         } else {
                             it.notice
                         },
-                        page = if (result.recovery == null && result.problem == null) {
+                        page = if (preserveSetupError || it.page != page) {
+                            it.page
+                        } else if (result.recovery == null && result.problem == null) {
                             SyncPanelPage.MAIN
                         } else {
                             SyncPanelPage.RECOVERY
@@ -1054,6 +1161,7 @@ class SyncPanelController(
     }
 
     internal suspend fun awaitRecoveryIdle() {
+        awaitIdle()
         recoveryJob?.join()
         awaitIdle()
     }
@@ -1493,6 +1601,8 @@ class SyncPanelController(
                                 mutableState.update {
                                     it.copy(
                                         setupBusy = false,
+                                        setupRetryAttempted = if (complete) false else it.setupRetryAttempted,
+                                        setupRetryFailed = if (complete) false else it.setupRetryFailed,
                                         setupStep = if (complete) SyncSetupStep.COMPLETE else SyncSetupStep.MERGING,
                                         page = if (complete && it.visible && it.page == SyncPanelPage.SETUP) {
                                             SyncPanelPage.MAIN
@@ -1527,19 +1637,9 @@ class SyncPanelController(
                     }
                 }
             } catch (failure: Exception) {
-                val recovery = if (failure is mihon.data.sync.http.SyncRequiredResourceUnavailable &&
-                    runtime.connection() != null
-                ) {
-                    runtime.recheckSpace().recovery
-                } else {
-                    null
-                }
                 enqueue {
                     if (version == setupVersion) {
                         setupFailed(failure, state.value.setupAccountLogin, state.value.setupInstallation)
-                        if (recovery != null) {
-                            mutableState.update { it.copy(recovery = recovery, page = SyncPanelPage.RECOVERY) }
-                        }
                     }
                 }
             }
@@ -1554,6 +1654,7 @@ class SyncPanelController(
         mutableState.update {
             it.copy(
                 setupBusy = false,
+                setupRetryFailed = it.setupRetryAttempted,
                 setupStep = SyncSetupStep.ERROR,
                 setupProblem = (failure as? SyncSetupException)?.problem ?: SyncDiscoveryProblem.RETRYABLE,
                 problem = failure.syncProblem(),
@@ -1561,6 +1662,17 @@ class SyncPanelController(
                 setupInstallation = installation,
             )
         }
+        val problem = (failure as? SyncSetupException)?.problem
+        val requiresCheck =
+            failure.syncProblem() in setOf(SyncRunProblem.AUTHORIZATION, SyncRunProblem.SPACE_UNAVAILABLE) ||
+                problem in setOf(
+                    SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE,
+                    SyncDiscoveryProblem.NEEDS_INSTALLATION,
+                    SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS,
+                    SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION,
+                    SyncDiscoveryProblem.INSTALLATION_SUSPENDED,
+                )
+        if (requiresCheck && state.value.canChangeSpace) recheckSpace(preserveSetupError = true)
     }
 
     private class IncorrectSyncPassword : IllegalArgumentException("sync password is incorrect")

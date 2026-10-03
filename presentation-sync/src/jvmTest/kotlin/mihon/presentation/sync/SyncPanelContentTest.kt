@@ -675,6 +675,97 @@ class SyncPanelContentTest {
     }
 
     @Test
+    fun `main unknown failure keeps recovery accessible with and without a failed run`() {
+        for (run in listOf(null, visualRun(SyncRunPhase.UPLOADING).copy(state = SyncRunState.FAILED))) {
+            renderedEnglish(connected().copy(problem = SyncRunProblem.UNKNOWN, run = run, canChangeSpace = true)) {
+                awaitTag("sync-main-recovery-open")
+                click("sync-main-recovery-open")
+                assertTrue(actions.contains(SyncPanelAction.OpenRecovery))
+            }
+        }
+    }
+
+    @Test
+    fun `setup unknown failure offers an immediate safe recovery exit and diagnostics`() = renderedEnglish(
+        connected().copy(
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.ERROR,
+            setupProblem = SyncDiscoveryProblem.RETRYABLE,
+            canChangeSpace = true,
+        ),
+    ) {
+        awaitTag("sync-setup-recovery-open")
+        assertTrue(texts().any { it.contains("deleted or can no longer be used") })
+        click("sync-setup-recovery-open")
+        assertTrue(actions.contains(SyncPanelAction.OpenRecovery))
+        click("sync-setup-error-details")
+        assertTrue(actions.contains(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS)))
+        click("sync-setup-retry")
+        assertTrue(actions.contains(SyncPanelAction.RetrySetup))
+    }
+
+    @Test
+    fun `first setup failure configures space while unreadable existing binding cannot switch`() {
+        renderedEnglish(
+            connected().copy(
+                connection = null,
+                page = SyncPanelPage.SETUP,
+                setupStep = SyncSetupStep.ERROR,
+                setupProblem = SyncDiscoveryProblem.RETRYABLE,
+                canChangeSpace = false,
+            ),
+        ) {
+            awaitTag("sync-setup-configure-space")
+            assertFalse(hasTag("sync-setup-recovery-open"))
+            click("sync-setup-configure-space")
+            assertTrue(actions.contains(SyncPanelAction.BeginSetup))
+        }
+        renderedEnglish(
+            connected().copy(
+                page = SyncPanelPage.SETUP,
+                setupStep = SyncSetupStep.ERROR,
+                setupProblem = SyncDiscoveryProblem.INCOMPATIBLE,
+                canChangeSpace = false,
+            ),
+        ) {
+            awaitTag("sync-setup-error-details")
+            assertFalse(hasTag("sync-setup-recovery-open"))
+            assertFalse(hasTag("sync-setup-configure-space"))
+        }
+    }
+
+    @Test
+    fun `unknown recovery uses a neutral choice rather than claiming the old space failed`() = renderedEnglish(
+        connected().copy(page = SyncPanelPage.RECOVERY, canChangeSpace = true),
+    ) {
+        awaitTag("sync-recovery-neutral")
+        assertTrue(texts().contains("Choose how to change your sync space."))
+        click("sync-recovery-create")
+        assertTrue(actions.contains(SyncPanelAction.CreateNewSpace))
+        click("sync-recovery-connect-other")
+        assertTrue(actions.contains(SyncPanelAction.ConnectOtherSpace))
+        assertFalse(hasTag("sync-recovery-recheck"))
+    }
+
+    @Test
+    fun `failed setup retry has explicit feedback and busy setup disables recovery exit`() = renderedEnglish(
+        connected().copy(
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.ERROR,
+            setupProblem = SyncDiscoveryProblem.RETRYABLE,
+            setupRetryFailed = true,
+            canChangeSpace = true,
+        ),
+    ) {
+        awaitTag("sync-setup-retry-failed")
+        assertTrue(texts().contains("Retry was unsuccessful."))
+        panel.state.value = panel.state.value.copy(setupBusy = true)
+        render()
+        assertTrue(node("sync-setup-recovery-open").config.contains(SemanticsProperties.Disabled))
+        assertTrue(node("sync-setup-retry").config.contains(SemanticsProperties.Disabled))
+    }
+
+    @Test
     fun `setup retryable error remains visible beside an old nonterminal run`() {
         renderedEnglish(
             connected().copy(
@@ -1888,9 +1979,11 @@ class SyncPanelContentTest {
             setupStep = SyncSetupStep.ERROR,
             setupProblem = SyncDiscoveryProblem.AUTHORIZATION_REQUIRED,
         )
-        awaitTag("sync-repo-reconnect")
-        click("sync-repo-reconnect")
-        assertEquals(SyncPanelAction.Authorize, actions.last())
+        awaitTag("sync-setup-recovery-authorization")
+        click("sync-setup-recovery-authorization")
+        assertEquals(SyncPanelAction.CheckAuthorization, actions.last())
+        click("sync-setup-recovery-open")
+        assertEquals(SyncPanelAction.OpenRecovery, actions.last())
     }
 
     @Test
@@ -3342,9 +3435,24 @@ class SyncPanelContentTest {
         updatedAt = 1_000,
     )
 
+    @Test
+    fun `stale unavailable recovery cannot offer replacement after local read failure`() = renderedEnglish(
+        connected().copy(
+            recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE),
+            canChangeSpace = false,
+            problem = SyncRunProblem.STORAGE,
+        ),
+    ) {
+        awaitTag("sync-recovery-card")
+        assertFalse(hasTag("sync-recovery-open"))
+        assertFalse(hasTag("sync-recovery-create"))
+        awaitTag("sync-recovery-details")
+    }
+
     private fun connected() = SyncPanelState(
         visible = true,
         loaded = true,
+        canChangeSpace = true,
         connection = SyncConnection(
             "space",
             1,
