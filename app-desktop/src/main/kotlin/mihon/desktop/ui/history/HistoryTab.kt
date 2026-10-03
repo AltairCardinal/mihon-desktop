@@ -72,7 +72,6 @@ import mihon.desktop.ui.reader.DesktopReaderScreen
 import mihon.desktop.ui.source.desktopSourceErrorMessage
 import tachiyomi.domain.history.model.HistoryWithRelations
 import tachiyomi.i18n.MR
-import uy.kohesive.injekt.api.get
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -198,10 +197,9 @@ class HistoryRootScreen : Screen {
                 }
             }
         }
-        val dateStore = remember { uy.kohesive.injekt.Injekt.get<tachiyomi.core.common.preference.PreferenceStore>() }
         mihon.presentation.history.HistoryContent(
             state = shared,
-            datePreferences = mihon.presentation.history.HistoryDatePreferences(dateStore.getBoolean("relative_time_v2", true).get(), dateStore.getString("app_date_format", "").get()),
+            datePreferences = HistoryScreenModelFactory.datePreferences(),
             onSearchQueryChange = model::updateSearchQuery,
             onCover = { item ->
                 model.controller.cancelReaderRequests()

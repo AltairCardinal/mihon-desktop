@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-HP01 A–E 实现、唯一一轮独立审查、受影响批次及限定格式/元数据检查完成，随本批提交勾选；HP02 尚未进入。稳定批次八个目标共 348 项，失败/错误/跳过均为 0。共享数据接口、两端实际 Reader 消费、共同历史状态与请求资格、排序、收藏追踪及焦点契约已核验；正式三平台验收仍待 HP02。下文保留各阶段的有效红绿、夹具失败和明确撤回，历史段落中的“待完成”不替代本节当前结论。
+HP01 A–E 实现、唯一一轮独立审查、受影响批次及限定格式/元数据检查完成，随本批提交勾选；HP01 提交为 `cbec5e8dbb07c2d3f015bf32fd574547a0ee2132`；HP02 已进入一次最终矩阵。稳定批次八个目标共 348 项，失败/错误/跳过均为 0。共享数据接口、两端实际 Reader 消费、共同历史状态与请求资格、排序、收藏追踪及焦点契约已核验；正式三平台验收仍待 HP02。下文保留各阶段的有效红绿、夹具失败和明确撤回，历史段落中的“待完成”不替代本节当前结论。
 
 ## 执行基线与归属
 
@@ -293,3 +293,27 @@ macOS 只读连通预检：`mbp` SSH 8 秒超时，按有界重试使用已配�
 正式原生输入验证须使用真实窗口/输入法：Test Mode factory 与 UI 使用共同 production 实现，但可能是不同 controller 实例；HTTP 查询快照不能冒充原生文本框输入观测。HP02 必做范围保持固定。三个 protected 文件 SHA-256 与起始完全一致，未写入、格式化或暂存。
 
 提交规模：140 个本任务文件，约 7920 行新增 / 1742 行删除（含共享契约、双端发现 wrapper、必要文档与既有夹具校准）。超过估算仍为同一历史能力的内聚交付，没有新 schema、同步协议或独立产品能力；主要风险通过双端文件库/HTTP/真实 Compose/Reader 批次覆盖。
+
+## HP02 一次最终矩阵
+
+HP01 提交后由主代理接管唯一 Gradle 协调权。`hp02-desktop-full-once` 经项目 `scripts/build-desktop.sh full-tests` 执行完整 Desktop JVM 含集成，worker 30836 / process 41636，日志 `.gradle-coordinator/hp02-desktop-full-once.log`。第一次 `start` 命令被自动执行规则阻止，没有启动进程或运行测试；按 AGENTS 指定改 `run` 后启动原唯一目标，不算重复测试。
+
+运行中观察 `DesktopArchitectureGuardTest#desktop ui DI and repository debt does not grow beyond baseline` 失败（42 行）；原批次已 FAILED / exit 1，6 分 40 秒，原 worker / process 均结束，没有重启或强制终止。已交原实施者只读诊断，禁止扩大债务 baseline 或用源码扫描代替产品行为测试。终态及最小修复、focused 复验待记录；再次完整 Desktop 目标须另获批准。
+
+Android `scripts/build-android.py check --signing` 实际成功：JDK 21.0.11、SDK36/build-tools36.0.0、正式原证书可用；只做预检，没有安装/候选版本分配。当前正式元数据 35 / 0.19.4-aex.17；正式候选待源码稳定与完整矩阵通过。
+
+完整 Desktop 实际 XML 汇总：451 类 / 3321 项，4 失败、0 错误、3 跳过。失败 XML 与摘要在 `.gradle-coordinator/hp02-desktop-full-failures/` 留存，原协调器日志不覆盖。4 项为零新增 UI DI 债务守卫、MangaDetailLibraryEntryWiringTest 的真实续读按钮与章节指针、DesktopReaderChapterTransitionIntegrationTest 的真实组合切换。后三项分别观察到 5 秒导航等待超时和精确 MockK 参数不匹配；已沿实际 mapper 查明旧 ReadingProgressRepository 夹具缺少 openChapter（默认 null），旧 runtime mock 则仍匹配六参数调用的空 refs，生产已传实际 refs/opening。不能由这些夹具失败推导发布应用已修复，也不能修改生产 fallback、排序或会话保持来迁就夹具。
+
+3 个跳过分别为 MacOsNativeSharePortTest 的 production JXA、DesktopWindowPrivacyTest 的 Windows frame native affinity 条件、LibraryPageCompositionTest 的 explicit non-release custom interval 条件。按实际平台/编译条件记录，不将它们计为通过。尚无完整 Desktop 绿证据。
+
+原实施者接管这一修复的 focused 协调权，范围限定三处 UI DI 边界和上述两类旧夹具；主代理只读审查，修复复审使用计划唯一 1 轮。再次完整 Desktop 目标待具体修复/绿测后申请；其他最终目标尚未执行，不能把它们当重复目标。
+
+`hp02-four-failures-focused-green` 实际 FAILED，1 分 3 秒，worker 8256 / process 7128 已退出。主代理读取 XML：guard 7 / 0、Favorite 实际 9 / 0、Accessibility 2 / 0、detail 原两入口 2 / 0；transition 1 / 1，MockK 参数错误已消除后，原预取断言期望 `[2]` 实际 `[null]`，说明尚未闭合。不能把这一轮记录为全绿，也不能删除原预取/组合退出时 runtime 保持断言。继续只修真实模型 refs 的夹具或已证实生产缺口。日期另补既有实际页面的偏好 wiring 断言，防止固定默认 getter 仍通过默认 Today 测试；属于同一窄修复的必要验证，不新增功能或审查轮次。
+
+HP02 最小修复：UI 迁移使用现有 `LocalDesktopUiDependencies` sourceManager / migrateManga，日期偏好移入原 HistoryScreenModelFactory，每次重组读取原两 key/default，未增加 baseline。详情 fake repository 实现五字段原子 opening，原目标/页码/真实按钮与指针断言保留，过时 null snapshot 替为精确 fresh baseline；transition fake factory 返回模型时装配与生产工厂一致的 refs，原前章 2 预取及组合退出 runtime 保持不变。无生产 Reader fallback、导航或存储政策变化。
+
+日期新增实际页面 wiring 用例先在临时固定默认 getter 上取得有效 mutation 红：`hp02-date-consumer-mutation-red` 26 秒，实际 UI 已挂载，但 `Owner date A` header 缺失，1 / 1；立即恢复真实 getter。`hp02-date-transition-focused-green` PASSED 19 秒，主代理读到日期 1 / 0、mounted 1 / 0；日期格式 A→B 和相对时间 true→Today 通过实际 search open/close 重组，证明不是固定默认值。
+
+六个修复文件专用 scopedApply PASSED 7 秒；`hp02-four-failures-refactor-check` PASSED 16 秒（worker 43524 / process 14108 已退出），主代理独立读取明确六文件 KotlinCheck 通过，日期 / mounted XML 各 1 / 0，diffcheck0，protected 三文件 SHA-256 原样。前轮 guard7、favorite9、accessibility2、detail2 已绿且未受后续夹具/格式影响，合计 22 个唯一受影响用例通过；没有为汇总计数重复前四组。唯一修复复审通过，修复随代码/测试/本证据提交；再次完整 Desktop 目标尚未执行或获得批准。
+
+正式候选独立 checkout 已创建在 `D:/Codex/worktrees/f235/hp02-history-candidate`，当前仅 HP01 commit，未构建/分配版本，将在修复提交后快进同一源码；不复制 protected 未提交文件。macOS 旧 checkout HEAD 为 c4adc8ad2afaefe1f7a77ee8edeadb5cdf7e3ecf，确认它是本次提交祖先，可传送小范围 bundle 到新 checkout，旧工作目录/日常应用不改。

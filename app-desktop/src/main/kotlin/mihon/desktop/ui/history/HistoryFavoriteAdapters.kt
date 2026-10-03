@@ -11,16 +11,13 @@ import cafe.adriel.voyager.core.model.rememberScreenModel
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import mihon.desktop.domain.DesktopMigrateMangaUseCase
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.MigrationOptions
 import mihon.desktop.history.HistoryScreenModel
 import mihon.desktop.library.LibraryScreenModelFactory
 import mihon.desktop.ui.library.CategoryManagementDialog
 import mihon.desktop.ui.migration.MigrationConfirmDialog
 import tachiyomi.domain.history.service.HistoryDialog
-import tachiyomi.domain.source.service.SourceManager
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 @Composable
 internal fun HistoryManageCategories(onDismiss: () -> Unit) {
@@ -34,11 +31,12 @@ internal fun HistoryManageCategories(onDismiss: () -> Unit) {
 @Composable
 internal fun HistoryMigrationDialog(dialog: HistoryDialog.Migrate, model: HistoryScreenModel, onDismiss: () -> Unit, onOpenCurrent: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val dependencies = LocalDesktopUiDependencies.current
     fun migrate(options: MigrationOptions, replace: Boolean) {
         scope.launch {
             try {
                 val target = dialog.target
-                val source = requireNotNull(Injekt.get<SourceManager>().get(target.source)) { "Source unavailable" }
+                val source = requireNotNull(dependencies.sourceManager.get(target.source)) { "Source unavailable" }
                 val remote = SManga.create().apply {
                     url = target.url
                     title = target.title
@@ -51,7 +49,7 @@ internal fun HistoryMigrationDialog(dialog: HistoryDialog.Migrate, model: Histor
                 }
                 val chapters = source.getChapterList(remote)
                 require(chapters.isNotEmpty()) { "No chapters" }
-                Injekt.get<DesktopMigrateMangaUseCase>().await(dialog.current, remote, target.source, chapters, options, replace)
+                dependencies.migrateManga.await(dialog.current, remote, target.source, chapters, options, replace)
                 onDismiss()
             } catch (error: CancellationException) {
                 throw error

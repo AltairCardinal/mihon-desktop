@@ -58,6 +58,49 @@ import java.util.Locale
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class HistoryAccessibilityIntegrationTest {
     @Test
+    fun `real history owner reads current date preference keys after recomposition`(@TempDir folder: File) = runBlocking {
+        val previousLocale = Locale.getDefault()
+        Locale.setDefault(Locale.ENGLISH)
+        val preferences = inMemoryDesktopPreferenceStore()
+        val context = initDesktopDIForTest(folder, preferences)
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        val scene = ImageComposeScene(700, 650, coroutineContext = coroutineContext) {}
+        try {
+            preferences.getBoolean("relative_time_v2", true).set(false)
+            preferences.getString("app_date_format", "").set("'Owner date A'")
+            val manga = Injekt.get<SaveSourceMangaForDetails>().awaitListed(
+                eu.kanade.tachiyomi.source.model.SManga.create().apply {
+                    url = "/dates"
+                    title = "Date preferences"
+                },
+                42,
+            )
+            val chapter = Injekt.get<ChapterRepository>().addAll(
+                listOf(Chapter.create().copy(mangaId = manga.id, url = "/1", name = "One")),
+            ).single()
+            Injekt.get<UpsertHistory>().await(HistoryUpdate(chapter.id, Date(), 1))
+            val dependencies = DesktopUiDependencies.fromInjekt()
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    MaterialTheme { Navigator(HistoryRootScreen()) { CurrentScreen() } }
+                }
+            }
+            settle(scene, "configured owner date must be rendered") { nodes(scene).any { "Owner date A" in labels(it) } }
+            preferences.getString("app_date_format", "").set("'Owner date B'")
+            clickTag(scene, "history_search_open")
+            settle(scene, "date format is read again on real query recomposition") { nodes(scene).any { "Owner date B" in labels(it) } }
+            preferences.getBoolean("relative_time_v2", true).set(true)
+            clickTag(scene, "history_search_close")
+            settle(scene, "relative time preference is read again on real query recomposition") { nodes(scene).any { "Today" in labels(it) } }
+        } finally {
+            scene.close()
+            context.closeAndJoin()
+            Dispatchers.resetMain()
+            Locale.setDefault(previousLocale)
+        }
+    }
+
+    @Test
     fun `shared native actions remain reachable in two languages themes narrow window and double font`(@TempDir folder: File) = runBlocking {
         val originalLocale = Locale.getDefault()
         try {
