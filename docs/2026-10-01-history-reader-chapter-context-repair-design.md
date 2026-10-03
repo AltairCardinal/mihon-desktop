@@ -1,9 +1,11 @@
 ---
-status: planned
+status: superseded
 date: 2026-10-01
 ---
 
 # Windows 历史续读与同步后章节目录修复设计
+
+> 2026-10-04：用户明确要求历史页功能与行为对齐官方 Mihon，并由 Android/Desktop 尽量共用代码。后续设计以[历史页上游行为对齐与双端共享设计](2026-10-04-history-upstream-parity-design.md)及其[roadmap](roadmap/2026-10-04-history-upstream-parity-roadmap.md)为准。本文件保留原设计、HR01 实现约束与证据背景；历史页目录预检、行内加载/失败/重试和显式降级流程不再是目标。有效目录落库、身份及状态保护继续保留，逐项承接见新设计第 7 节；不把旧 HR02 改为已完成，也不在本轮实施代码。
 
 ## 1. 目标与事实边界
 
