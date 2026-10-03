@@ -667,8 +667,15 @@ class CreatorRepositoryImpl(
                 fieldKind = identity.field.name,
                 mapper = ::mapSourceDateObservation,
             ).executeAsList()
-            val retained = SourceDateQualityPolicy.retain(existing + observations, now)
-            val snapshot = SourceDateQualityPolicy.evaluate(identity, retained, now)
+            val previousClock = author_archiveQueries.getSourceDateQualitySnapshot(
+                identity.extensionPackage,
+                identity.extensionVersion,
+                identity.sourceId,
+                identity.field.name,
+            ).executeAsOneOrNull()?.updated_at ?: now
+            val evaluationTime = maxOf(now, previousClock, existing.maxOfOrNull { it.observedAt } ?: now)
+            val retained = SourceDateQualityPolicy.retain(existing + observations, evaluationTime)
+            val snapshot = SourceDateQualityPolicy.evaluate(identity, retained, evaluationTime)
             author_archiveQueries.upsertSourceDateQualitySnapshot(
                 extensionPackage = identity.extensionPackage,
                 extensionVersion = identity.extensionVersion,
@@ -684,7 +691,7 @@ class CreatorRepositoryImpl(
                 lastObservedAt = snapshot.lastObservedAt,
                 projectedDateAt = snapshot.projectedDateAt,
                 lastReason = snapshot.lastReason,
-                updatedAt = now,
+                updatedAt = evaluationTime,
             )
             author_archiveQueries.upsertSourceDateQualityCurrent(
                 sourceId = identity.sourceId,

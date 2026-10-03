@@ -4,12 +4,14 @@ import eu.kanade.tachiyomi.source.model.SManga
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.download.DownloadItem
+import mihon.desktop.download.DownloadStatus
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.viewerFlagsWithReadingMode
 import mihon.domain.error.AppError
@@ -23,6 +25,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
@@ -41,6 +44,7 @@ import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.interactor.UpdateManga
@@ -54,6 +58,24 @@ import tachiyomi.domain.manga.model.MangaUpdate
  * lives in a ScreenModel with StateFlow<MangaDetailState>.
  */
 class MangaDetailScreenModelTest {
+    @Test
+    fun `same manga repository emission refreshes authoritative chapter filters`() {
+        val model = MangaDetailScreenModel(mangaId = 1L)
+        val manga = Manga.create().copy(id = 1L)
+        model.setManga(manga)
+        model.setManga(
+            manga.copy(
+                chapterFlags = Manga.CHAPTER_SHOW_READ or Manga.CHAPTER_SHOW_DOWNLOADED or
+                    Manga.CHAPTER_SHOW_BOOKMARKED,
+            ),
+        )
+
+        assertTrue(model.state.value.filterShowRead)
+        assertFalse(model.state.value.filterShowUnread)
+        assertTrue(model.state.value.filterShowDownloaded)
+        assertTrue(model.state.value.filterShowBookmarked)
+    }
+
     @Test
     fun `creator mentions split bibliography and fold author artist overlap`() {
         val model = MangaDetailScreenModel(mangaId = 1L)
@@ -79,7 +101,8 @@ class MangaDetailScreenModelTest {
             driver,
             historyAdapter = tachiyomi.data.History.Adapter(tachiyomi.data.DateColumnAdapter),
             mangasAdapter = tachiyomi.data.Mangas.Adapter(
-                tachiyomi.data.StringListColumnAdapter, tachiyomi.data.UpdateStrategyColumnAdapter,
+                tachiyomi.data.StringListColumnAdapter,
+                tachiyomi.data.UpdateStrategyColumnAdapter,
             ),
         )
         val handler = tachiyomi.data.JvmDatabaseHandler(database, driver)
@@ -161,9 +184,16 @@ class MangaDetailScreenModelTest {
 
     @Test
     fun `cover update success exposes feedback and refreshed model`() = runTest {
+        val repository = FakeMangaRepository().apply {
+            seed(createFakeManga(id = 1L).copy(thumbnailUrl = "remote"))
+        }
         val model = MangaDetailScreenModel(
             mangaId = 1L,
-            coverAdapter = MangaCoverAdapter(CoverFilePicker { byteArrayOf(1) }) { _, _ -> TaskState.Success(Unit) },
+            getMangaWithChapters = GetMangaWithChapters(repository, FakeChapterRepository()),
+            coverAdapter = MangaCoverAdapter(CoverFilePicker { byteArrayOf(1) }) { _, _ ->
+                repository.seed(repository.get(1L)!!.copy(coverLastModified = 42L))
+                TaskState.Success(Unit)
+            },
             deleteCover = { TaskState.Success(Unit) },
             resolveCoverModel = { _, _ -> "custom-cover" },
         )
@@ -173,7 +203,8 @@ class MangaDetailScreenModelTest {
         assertInstanceOf(TaskState.Success::class.java, model.state.value.coverTask)
         assertEquals("Cover updated", model.state.value.coverFeedback)
         assertEquals("custom-cover", model.state.value.coverModel)
-        assertTrue(model.state.value.coverLastModified > 0)
+        assertEquals(42L, model.state.value.coverLastModified)
+        assertEquals(repository.get(1L)!!.coverLastModified, model.state.value.coverLastModified)
     }
 
     @Test
@@ -197,10 +228,17 @@ class MangaDetailScreenModelTest {
 
     @Test
     fun `cover delete success refreshes model and reports feedback`() = runTest {
+        val repository = FakeMangaRepository().apply {
+            seed(createFakeManga(id = 1L).copy(thumbnailUrl = "remote"))
+        }
         val model = MangaDetailScreenModel(
             mangaId = 1L,
+            getMangaWithChapters = GetMangaWithChapters(repository, FakeChapterRepository()),
             coverAdapter = MangaCoverAdapter(CoverFilePicker { null }) { _, _ -> TaskState.Success(Unit) },
-            deleteCover = { TaskState.Success(Unit) },
+            deleteCover = {
+                repository.seed(repository.get(1L)!!.copy(coverLastModified = 43L))
+                TaskState.Success(Unit)
+            },
             resolveCoverModel = { _, fallback -> fallback },
         )
         model.setManga(createFakeManga(id = 1L).copy(thumbnailUrl = "remote"))
@@ -210,7 +248,8 @@ class MangaDetailScreenModelTest {
         assertInstanceOf(TaskState.Success::class.java, model.state.value.coverTask)
         assertEquals("Cover deleted", model.state.value.coverFeedback)
         assertEquals("remote", model.state.value.coverModel)
-        assertTrue(model.state.value.coverLastModified > 0)
+        assertEquals(43L, model.state.value.coverLastModified)
+        assertEquals(repository.get(1L)!!.coverLastModified, model.state.value.coverLastModified)
     }
 
     @Test
@@ -222,7 +261,7 @@ class MangaDetailScreenModelTest {
         val result = model.runChapterBatch(chapters) { if (it.id == 2L) error("write failed") }
 
         assertEquals(listOf(1L), result.succeededIds)
-        assertEquals("1 succeeded, 1 failed", model.state.value.batchActionMessage)
+        assertEquals("1 succeeded, 0 skipped, 1 failed", model.state.value.batchActionMessage)
     }
 
     @Test
@@ -257,7 +296,7 @@ class MangaDetailScreenModelTest {
         assertEquals(listOf(1L, 2L), backing.updates.map { it.id })
         assertTrue(backing.updates.all { it.lastPageRead == 0L })
         assertTrue(backing.updates.all { it.syncContext == mihon.domain.sync.SyncMutationContext.User })
-        assertEquals("2 succeeded, 1 failed", model.state.value.batchActionMessage)
+        assertEquals("2 succeeded, 0 skipped, 1 failed", model.state.value.batchActionMessage)
     }
 
     @Test
@@ -268,7 +307,7 @@ class MangaDetailScreenModelTest {
 
         assertTrue(result.succeededIds.isEmpty())
         assertTrue(result.failures.isEmpty())
-        assertEquals("0 succeeded, 0 failed", model.state.value.batchActionMessage)
+        assertEquals("0 succeeded, 0 skipped, 0 failed", model.state.value.batchActionMessage)
     }
 
     @Test
@@ -290,7 +329,7 @@ class MangaDetailScreenModelTest {
         assertEquals(listOf(1L, 3L), result.succeededIds)
         assertEquals(listOf(2L), result.failures.map { it.id })
         assertEquals(listOf(1L, 3L), enqueued)
-        assertEquals("2 succeeded, 1 failed", model.state.value.batchActionMessage)
+        assertEquals("2 succeeded, 0 skipped, 1 failed", model.state.value.batchActionMessage)
     }
 
     @Test
@@ -298,6 +337,7 @@ class MangaDetailScreenModelTest {
         val deleted = mutableListOf<String>()
         val model = MangaDetailScreenModel(
             mangaId = 1L,
+            isDownloaded = { _, _ -> true },
             deleteDownload = { _, chapter ->
                 if (chapter.name == "Chapter 2") error("delete failed")
                 deleted += chapter.name
@@ -312,7 +352,7 @@ class MangaDetailScreenModelTest {
         assertEquals(listOf(1L, 3L), result.succeededIds)
         assertEquals(listOf(2L), result.failures.map { it.id })
         assertEquals(listOf("Chapter 1", "Chapter 3"), deleted)
-        assertEquals("2 succeeded, 1 failed", model.state.value.batchActionMessage)
+        assertEquals("2 succeeded, 0 skipped, 1 failed", model.state.value.batchActionMessage)
     }
 
     // ── Construction ─────────────────────────────────────────────────────────
@@ -386,36 +426,46 @@ class MangaDetailScreenModelTest {
     // ── Filter toggles ────────────────────────────────────────────────────────
 
     @Test
-    fun `setFilterShowRead toggles filterShowRead`() {
-        val model = MangaDetailScreenModel(mangaId = 1L)
+    fun `setFilterShowRead toggles filterShowRead`() = runTest {
+        val model = chapterPreferenceModel()
         assertTrue(model.state.value.filterShowRead)
-        model.setFilterShowRead(false)
+        model.setChapterReadFilter(TriState.ENABLED_NOT)
         assertFalse(model.state.value.filterShowRead)
-        model.setFilterShowRead(true)
+        model.setChapterReadFilter(TriState.DISABLED)
         assertTrue(model.state.value.filterShowRead)
     }
 
     @Test
-    fun `setFilterShowUnread toggles filterShowUnread`() {
-        val model = MangaDetailScreenModel(mangaId = 1L)
-        model.setFilterShowUnread(false)
+    fun `setFilterShowUnread toggles filterShowUnread`() = runTest {
+        val model = chapterPreferenceModel()
+        model.setChapterReadFilter(TriState.ENABLED_IS)
         assertFalse(model.state.value.filterShowUnread)
     }
 
     @Test
-    fun `setFilterShowBookmarked toggles filterShowBookmarked`() {
-        val model = MangaDetailScreenModel(mangaId = 1L)
+    fun `setFilterShowBookmarked toggles filterShowBookmarked`() = runTest {
+        val model = chapterPreferenceModel()
         assertFalse(model.state.value.filterShowBookmarked)
-        model.setFilterShowBookmarked(true)
+        model.setChapterBookmarkFilter(TriState.ENABLED_IS)
         assertTrue(model.state.value.filterShowBookmarked)
     }
 
     @Test
-    fun `setFilterShowDownloaded toggles filterShowDownloaded`() {
-        val model = MangaDetailScreenModel(mangaId = 1L)
+    fun `setFilterShowDownloaded toggles filterShowDownloaded`() = runTest {
+        val model = chapterPreferenceModel()
         assertFalse(model.state.value.filterShowDownloaded)
-        model.setFilterShowDownloaded(true)
+        model.setChapterDownloadFilter(TriState.ENABLED_IS)
         assertTrue(model.state.value.filterShowDownloaded)
+    }
+
+    private fun chapterPreferenceModel(): MangaDetailScreenModel {
+        val manga = Manga.create().copy(id = 1L)
+        val repository = FakeMangaRepository().apply { seed(manga) }
+        return MangaDetailScreenModel(
+            mangaId = manga.id,
+            getMangaWithChapters = GetMangaWithChapters(repository, FakeChapterRepository()),
+            setMangaChapterFlags = SetMangaChapterFlags(repository),
+        ).also { it.setManga(manga) }
     }
 
     // ── Sort ──────────────────────────────────────────────────────────────────
@@ -603,15 +653,16 @@ class MangaDetailScreenModelTest {
         chapterRepository.addAll(chapters)
         val model = MangaDetailScreenModel(mangaId = 1L, updateChapter = UpdateChapter(chapterRepository))
 
-        model.markSelectedBookmark(chapters)
+        val result = model.markSelectedBookmark(chapters)
 
         assertEquals(
             listOf(
-                ChapterUpdate(id = 1L, bookmark = true),
                 ChapterUpdate(id = 2L, bookmark = true),
             ),
             chapterRepository.updates,
         )
+        assertEquals(listOf(1L), result.skippedIds)
+        assertEquals(listOf(2L), result.succeededIds)
     }
 
     @Test
@@ -778,6 +829,9 @@ class MangaDetailScreenModelTest {
         val model = MangaDetailScreenModel(
             mangaId = 1L,
             retryDownload = { chapterId -> retriedChapterId = chapterId },
+            downloadQueue = MutableStateFlow(
+                listOf(DownloadItem(1L, "M", "Failed chapter", 91L, status = DownloadStatus.ERROR)),
+            ),
         )
 
         model.retryChapterDownload(91L)
@@ -863,7 +917,15 @@ class MangaDetailScreenModelTest {
     @Test
     fun `migrateTo persists target source and manga identity`() = runTest {
         val mangaRepository = FakeMangaRepository()
-        val model = MangaDetailScreenModel(mangaId = 1L, updateManga = UpdateManga(mangaRepository))
+        var actualTarget: Pair<Long, SManga>? = null
+        val model =
+            MangaDetailScreenModel(mangaId = 1L, updateManga = UpdateManga(mangaRepository), migrateManga = {
+                    sourceId,
+                    target,
+                ->
+                actualTarget = sourceId to target
+                Manga.create().copy(id = 2, source = sourceId, url = target.url, title = target.title)
+            })
         val target = SManga.create().apply {
             url = "/new"
             title = "New title"
@@ -872,9 +934,12 @@ class MangaDetailScreenModelTest {
 
         model.migrateTo(targetSourceId = 9L, item = target, fallbackTitle = "Old")
 
-        assertEquals(9L, mangaRepository.updates.single().source)
-        assertEquals("/new", mangaRepository.updates.single().url)
-        assertEquals("New title", mangaRepository.updates.single().title)
+        assertEquals(
+            9L to target,
+            actualTarget,
+            "Old detail callback must delegate to the independent target migration",
+        )
+        assertTrue(mangaRepository.updates.isEmpty(), "Migration cannot rewrite the original manga source or URL")
     }
 
     @Test
@@ -897,13 +962,12 @@ class MangaDetailScreenModelTest {
     @Test
     fun `MangaDetailState has expected fields`() {
         val state = MangaDetailState(
-            filterShowRead = false,
-            filterShowUnread = false,
+            manga = Manga.create().copy(chapterFlags = Manga.CHAPTER_SHOW_UNREAD),
             chapterSortMode = ChapterSortMode.BY_CHAPTER_NUMBER,
             chapterSortAscending = true,
         )
         assertFalse(state.filterShowRead)
-        assertFalse(state.filterShowUnread)
+        assertTrue(state.filterShowUnread)
         assertEquals(ChapterSortMode.BY_CHAPTER_NUMBER, state.chapterSortMode)
         assertTrue(state.chapterSortAscending)
     }

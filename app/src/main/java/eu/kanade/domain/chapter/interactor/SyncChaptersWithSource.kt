@@ -1,7 +1,5 @@
 package eu.kanade.domain.chapter.interactor
 
-import eu.kanade.domain.chapter.model.copyFromSChapter
-import eu.kanade.domain.chapter.model.toSChapter
 import eu.kanade.domain.manga.interactor.GetExcludedScanlators
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.toSManga
@@ -10,21 +8,18 @@ import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.online.HttpSource
-import tachiyomi.data.chapter.ChapterSanitizer
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.ShouldUpdateDbChapter
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.NoChaptersException
-import tachiyomi.domain.chapter.model.toChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
-import tachiyomi.domain.chapter.service.ChapterRecognition
+import tachiyomi.domain.chapter.service.finishDirectoryFiles
+import tachiyomi.domain.chapter.service.finishDirectoryPhase
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.source.local.isLocal
-import java.lang.Long.max
 import java.time.ZonedDateTime
-import java.util.TreeSet
 
 class SyncChaptersWithSource(
     private val downloadManager: DownloadManager,
@@ -52,178 +47,103 @@ class SyncChaptersWithSource(
         source: Source,
         manualFetch: Boolean = false,
         fetchWindow: Pair<Long, Long> = Pair(0, 0),
+        mangaMetadata: tachiyomi.domain.manga.model.MangaUpdate? = null,
+        chapterListComplete: Boolean = true,
+        effects: tachiyomi.domain.chapter.service.ChapterDirectoryEffects? = null,
+        observe: suspend (tachiyomi.domain.chapter.service.ChapterDirectoryPhase) -> Unit = {
+            check(!it.observationPending) { "Original directory observation consumer is required" }
+        },
     ): List<Chapter> {
-        if (rawSourceChapters.isEmpty() && !source.isLocal()) {
-            throw NoChaptersException()
+        chapterRepository.pendingDirectoryPhase(manga.id)?.let { pending ->
+            finishPhase(manga, source, pending, observe)
+            return pending.addedIds.mapNotNull { chapterRepository.getChapterById(it) }
         }
-
+        if (rawSourceChapters.isEmpty() && !source.isLocal()) throw NoChaptersException()
         val now = ZonedDateTime.now()
-        val nowMillis = now.toInstant().toEpochMilli()
-
-        val sourceChapters = rawSourceChapters
-            .distinctBy { it.url }
-            .mapIndexed { i, sChapter ->
-                Chapter.create()
-                    .copyFromSChapter(sChapter)
-                    .copy(name = with(ChapterSanitizer) { sChapter.name.sanitize(manga.title) })
-                    .copy(mangaId = manga.id, sourceOrder = i.toLong())
-            }
-
-        val dbChapters = getChaptersByMangaId.await(manga.id)
-
-        val newChapters = mutableListOf<Chapter>()
-        val updatedChapters = mutableListOf<Chapter>()
-        val removedChapters = dbChapters.filterNot { dbChapter ->
-            sourceChapters.any { sourceChapter ->
-                dbChapter.url == sourceChapter.url
-            }
+        val prepared = tachiyomi.domain.chapter.service.ChapterDirectoryPlan.prepare(
+            manga,
+            rawSourceChapters,
+        ) { chapter ->
+            if (source is HttpSource) source.prepareNewChapter(chapter, manga.toSManga())
         }
-
-        // Used to not set upload date of older chapters
-        // to a higher value than newer chapters
-        var maxSeenUploadDate = 0L
-
-        for (sourceChapter in sourceChapters) {
-            var chapter = sourceChapter
-
-            // Update metadata from source if necessary.
-            if (source is HttpSource) {
-                val sChapter = chapter.toSChapter()
-                source.prepareNewChapter(sChapter, manga.toSManga())
-                chapter = chapter.copyFromSChapter(sChapter)
-            }
-
-            // Recognize chapter number for the chapter.
-            val chapterNumber = ChapterRecognition.parseChapterNumber(manga.title, chapter.name, chapter.chapterNumber)
-            chapter = chapter.copy(chapterNumber = chapterNumber)
-
-            val dbChapter = dbChapters.find { it.url == chapter.url }
-
-            if (dbChapter == null) {
-                val toAddChapter = if (chapter.dateUpload == 0L) {
-                    val altDateUpload = if (maxSeenUploadDate == 0L) nowMillis else maxSeenUploadDate
-                    chapter.copy(dateUpload = altDateUpload)
-                } else {
-                    maxSeenUploadDate = max(maxSeenUploadDate, sourceChapter.dateUpload)
-                    chapter
+        val request = tachiyomi.domain.chapter.service.ChapterDirectoryCommit(
+            mangaId = manga.id,
+            source = prepared,
+            now = now.toInstant().toEpochMilli(),
+            markDuplicateAsRead = libraryPreferences.markDuplicateReadChapterAsRead().get()
+                .contains(LibraryPreferences.MARK_DUPLICATE_CHAPTER_READ_NEW),
+            allowEmpty = source.isLocal(),
+            complete = chapterListComplete,
+            mangaMetadata = mangaMetadata,
+            effects = effects ?: tachiyomi.domain.chapter.service.ChapterDirectoryEffects(
+                source.id,
+                source.toString(),
+                manga.url,
+                manga.title,
+                "ANDROID_DIRECT",
+                now.toInstant().toEpochMilli(),
+                disallowNonAsciiFilenames = libraryPreferences.disallowNonAsciiFilenames().get(),
+            ),
+        )
+        val latestManga = updateManga.mangaForDirectory(manga.id)
+        val stored = chapterRepository.getChapterByMangaId(manga.id)
+        val plan = tachiyomi.domain.chapter.service.ChapterDirectoryPlan.create(
+            stored,
+            prepared,
+            request.now,
+            request.markDuplicateAsRead,
+            emptySet(),
+        )
+        val guarded = plan.affectedDownloadIds(stored, mangaMetadata?.title?.let { it != latestManga.title } == true)
+        val result = downloadManager.withDirectoryChanges(guarded) {
+            val committed = chapterRepository.syncDirectory(request.copy(guardedChapterIds = guarded))
+            committed.phase?.let { phase ->
+                chapterRepository.finishDirectoryFiles(phase) { p, change ->
+                    downloadManager.renameDirectoryChapter(source, latestManga, p, change)
                 }
-                newChapters.add(toAddChapter)
-            } else {
-                if (shouldUpdateDbChapter.await(dbChapter, chapter)) {
-                    val shouldRenameChapter = downloadProvider.isChapterDirNameChanged(dbChapter, chapter) &&
-                        downloadManager.isChapterDownloaded(
-                            dbChapter.name,
-                            dbChapter.scanlator,
-                            dbChapter.url,
-                            manga.title,
-                            manga.source,
-                        )
+            }
+            committed.copy(phase = chapterRepository.pendingDirectoryPhase(manga.id))
+        }
+        result.phase?.let { finishPhase(manga, source, it, observe) }
+        if (result.plan.changed || manualFetch || manga.fetchInterval == 0 || manga.nextUpdate < fetchWindow.first) {
+            updateManga.awaitUpdateFetchInterval(manga, now, fetchWindow)
+        }
+        return result.added
+    }
 
-                    if (shouldRenameChapter) {
-                        downloadManager.renameChapter(source, manga, dbChapter, chapter)
-                    }
-
-                    var toChangeChapter = dbChapter.copy(
-                        name = chapter.name,
-                        chapterNumber = chapter.chapterNumber,
-                        scanlator = chapter.scanlator,
-                        sourceOrder = chapter.sourceOrder,
-                        memo = chapter.memo,
-                    )
-
-                    if (chapter.dateUpload != 0L) {
-                        toChangeChapter = toChangeChapter.copy(dateUpload = chapter.dateUpload)
-                    }
-                    updatedChapters.add(toChangeChapter)
+    suspend fun finishPhase(
+        manga: Manga,
+        source: Source,
+        phase: tachiyomi.domain.chapter.service.ChapterDirectoryPhase,
+        observe: suspend (tachiyomi.domain.chapter.service.ChapterDirectoryPhase) -> Unit,
+    ) {
+        val latest = updateManga.mangaForDirectory(manga.id)
+        check(
+            latest.id == phase.mangaId && source.id == phase.effects.sourceId &&
+                latest.source == phase.effects.sourceId && latest.url == phase.effects.mangaUrl &&
+                latest.title == phase.currentTitle,
+        ) { "Pending directory manga identity changed" }
+        var pending = phase
+        if (pending.files.isNotEmpty()) {
+            downloadManager.withDirectoryChanges(pending.files.map { it.after.id }.toSet()) {
+                pending = chapterRepository.finishDirectoryFiles(pending) { p, change ->
+                    downloadManager.renameDirectoryChapter(source, latest, p, change)
                 }
             }
         }
-
-        // Return if there's nothing to add, delete, or update to avoid unnecessary db transactions.
-        if (newChapters.isEmpty() && removedChapters.isEmpty() && updatedChapters.isEmpty()) {
-            if (manualFetch || manga.fetchInterval == 0 || manga.nextUpdate < fetchWindow.first) {
-                updateManga.awaitUpdateFetchInterval(
-                    manga,
-                    now,
-                    fetchWindow,
-                )
-            }
-            return emptyList()
-        }
-
-        val changedOrDuplicateReadUrls = mutableSetOf<String>()
-
-        val deletedChapterNumbers = TreeSet<Double>()
-        val deletedReadChapterNumbers = TreeSet<Double>()
-        val deletedBookmarkedChapterNumbers = TreeSet<Double>()
-
-        val readChapterNumbers = dbChapters
-            .asSequence()
-            .filter { it.read && it.isRecognizedNumber }
-            .map { it.chapterNumber }
-            .toSet()
-
-        removedChapters.forEach { chapter ->
-            if (chapter.read) deletedReadChapterNumbers.add(chapter.chapterNumber)
-            if (chapter.bookmark) deletedBookmarkedChapterNumbers.add(chapter.chapterNumber)
-            deletedChapterNumbers.add(chapter.chapterNumber)
-        }
-
-        val deletedChapterNumberDateFetchMap = removedChapters.sortedByDescending { it.dateFetch }
-            .associate { it.chapterNumber to it.dateFetch }
-
-        val markDuplicateAsRead = libraryPreferences.markDuplicateReadChapterAsRead().get()
-            .contains(LibraryPreferences.MARK_DUPLICATE_CHAPTER_READ_NEW)
-
-        // Date fetch is set in such a way that the upper ones will have bigger value than the lower ones
-        // Sources MUST return the chapters from most to less recent, which is common.
-        var itemCount = newChapters.size
-        var updatedToAdd = newChapters.map { toAddItem ->
-            var chapter = toAddItem.copy(dateFetch = nowMillis + itemCount--)
-
-            if (chapter.chapterNumber in readChapterNumbers && markDuplicateAsRead) {
-                changedOrDuplicateReadUrls.add(chapter.url)
-                chapter = chapter.copy(read = true)
-            }
-
-            if (!chapter.isRecognizedNumber || chapter.chapterNumber !in deletedChapterNumbers) return@map chapter
-
-            chapter = chapter.copy(
-                read = chapter.chapterNumber in deletedReadChapterNumbers,
-                bookmark = chapter.chapterNumber in deletedBookmarkedChapterNumbers,
-            )
-
-            // Try to to use the fetch date of the original entry to not pollute 'Updates' tab
-            deletedChapterNumberDateFetchMap[chapter.chapterNumber]?.let {
-                chapter = chapter.copy(dateFetch = it)
-            }
-
-            changedOrDuplicateReadUrls.add(chapter.url)
-
-            chapter
-        }
-
-        if (removedChapters.isNotEmpty()) {
-            val toDeleteIds = removedChapters.map { it.id }
-            chapterRepository.removeChaptersWithIds(toDeleteIds)
-        }
-
-        if (updatedToAdd.isNotEmpty()) {
-            updatedToAdd = chapterRepository.addAll(updatedToAdd)
-        }
-
-        if (updatedChapters.isNotEmpty()) {
-            val chapterUpdates = updatedChapters.map { it.toChapterUpdate() }
-            updateChapter.awaitAll(chapterUpdates)
-        }
-        updateManga.awaitUpdateFetchInterval(manga, now, fetchWindow)
-
-        // Set this manga as updated since chapters were changed
-        // Note that last_update actually represents last time the chapter list changed at all
-        updateManga.awaitUpdateLastUpdate(manga.id)
-
-        val excludedScanlators = getExcludedScanlators.await(manga.id).toHashSet()
-
-        return updatedToAdd.filterNot { it.url in changedOrDuplicateReadUrls || it.scanlator in excludedScanlators }
+        chapterRepository.finishDirectoryPhase(
+            pending,
+            rename = { p, change -> downloadManager.renameDirectoryChapter(source, manga, p, change) },
+            observe = observe,
+            download = { _, chapters ->
+                check(
+                    downloadManager.downloadDirectoryChapters(
+                        latest,
+                        chapters,
+                        autoStart = phase.effects.origin != "LIBRARY_UPDATE",
+                    ),
+                ) { "Directory downloads were not durably accepted" }
+            },
+        )
     }
 }

@@ -1,0 +1,41 @@
+CREATE TABLE chapter_url_aliases (
+    chapter_id INTEGER NOT NULL REFERENCES chapters(_id) ON DELETE CASCADE,
+    manga_id INTEGER NOT NULL REFERENCES mangas(_id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    canonical_url TEXT NOT NULL,
+    PRIMARY KEY(manga_id, url),
+    CHECK(length(url) > 0 AND length(canonical_url) > 0)
+);
+
+CREATE INDEX chapter_url_alias_chapter ON chapter_url_aliases(chapter_id);
+
+CREATE TRIGGER consistent_chapter_url_alias_insert BEFORE INSERT ON chapter_url_aliases
+WHEN NOT EXISTS(SELECT 1 FROM chapters WHERE _id = new.chapter_id AND manga_id = new.manga_id)
+OR EXISTS(SELECT 1 FROM chapter_url_aliases WHERE chapter_id = new.chapter_id AND canonical_url != new.canonical_url)
+BEGIN
+    SELECT RAISE(ABORT, 'Inconsistent chapter URL identity');
+END;
+
+CREATE TRIGGER consistent_chapter_url_alias_update BEFORE UPDATE ON chapter_url_aliases
+WHEN NOT EXISTS(SELECT 1 FROM chapters WHERE _id = new.chapter_id AND manga_id = new.manga_id)
+OR EXISTS(SELECT 1 FROM chapter_url_aliases WHERE chapter_id = new.chapter_id AND canonical_url != new.canonical_url)
+BEGIN
+    SELECT RAISE(ABORT, 'Inconsistent chapter URL identity');
+END;
+
+getForChapter:
+SELECT * FROM chapter_url_aliases WHERE chapter_id = :chapterId ORDER BY url;
+
+getOwner:
+SELECT chapter_id FROM chapter_url_aliases WHERE manga_id = :mangaId AND url = :url;
+
+getCanonical:
+SELECT max(canonical_url) FROM chapter_url_aliases WHERE chapter_id = :chapterId
+GROUP BY chapter_id HAVING count(DISTINCT canonical_url) = 1;
+
+insertAlias:
+INSERT INTO chapter_url_aliases(chapter_id, manga_id, url, canonical_url)
+VALUES (:chapterId, :mangaId, :url, :canonicalUrl);
+
+hasDifferentDirectOwner:
+SELECT EXISTS(SELECT 1 FROM chapters WHERE manga_id = :mangaId AND url = :url AND _id != :chapterId);

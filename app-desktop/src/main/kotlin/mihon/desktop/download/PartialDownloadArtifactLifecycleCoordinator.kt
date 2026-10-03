@@ -112,6 +112,39 @@ class PartialDownloadArtifactLifecycleCoordinator : PartialPageReadLeaseSource {
     private val pages = mutableMapOf<CandidateKey, Pair<AttemptState, PageRecord>>()
     private val publishRecords = mutableMapOf<Long, List<PageRecord>>()
     private val artifactLeases = mutableMapOf<String, ArtifactLeaseState>()
+    private val migrationArtifacts = mutableSetOf<File>()
+
+    fun reserveMigrationArtifacts(artifacts: List<File>): AutoCloseable {
+        val accepted = artifacts.map { it.absoluteFile.normalize() }.toSet()
+        synchronized(lock) {
+            check(accepted.none { file -> migrationArtifacts.any { it.overlaps(file) } }) {
+                "Download artifact already has a migration reservation"
+            }
+            check(
+                attempts.values.none { attempt ->
+                    attempt.activeLeases > 0 && attempt.pages.values.any { page ->
+                        accepted.any { it.containsLocation(page.currentLocation) }
+                    }
+                },
+            ) { "Download artifact is still being read" }
+            migrationArtifacts.addAll(accepted)
+        }
+        val closed = AtomicBoolean()
+        return AutoCloseable {
+            if (closed.compareAndSet(false, true)) synchronized(lock) { migrationArtifacts.removeAll(accepted) }
+        }
+    }
+
+    private fun File.overlaps(other: File): Boolean =
+        toPath().startsWith(other.toPath()) || other.toPath().startsWith(toPath())
+
+    private fun File.containsLocation(location: PartialPageReadLocation): Boolean {
+        val file = when (location) {
+            is PartialPageReadLocation.FilePage -> location.file
+            is PartialPageReadLocation.CbzEntry -> location.archive
+        }
+        return file.absoluteFile.normalize().toPath().startsWith(toPath())
+    }
 
     fun registerCommittedPage(
         chapterId: Long,
@@ -150,6 +183,7 @@ class PartialDownloadArtifactLifecycleCoordinator : PartialPageReadLeaseSource {
     override fun acquire(candidate: PartialReaderPageCandidate): PartialPageReadLease? = synchronized(lock) {
         val (attempt, record) = pages[candidate.key()] ?: return@synchronized null
         if (attempt.status == AttemptStatus.RETIRED) return@synchronized null
+        if (migrationArtifacts.any { it.containsLocation(record.currentLocation) }) return@synchronized null
         record.descriptorIssued = true
         if (attempt.activeLeases == 0) attempt.drained = CompletableDeferred()
         attempt.activeLeases++

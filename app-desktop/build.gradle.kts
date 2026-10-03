@@ -11,6 +11,11 @@ plugins {
 pluginManager.apply("org.jetbrains.kotlin.plugin.compose")
 pluginManager.apply("org.jetbrains.kotlin.plugin.serialization")
 
+// Android's higher-priority Main factory cannot run against Desktop extension compatibility stubs.
+configurations.configureEach {
+    exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-android")
+}
+
 // Generate BuildInfo.kt with git commit hash at compile time
 val gitHash: String by lazy {
     val stdout = ByteArrayOutputStream()
@@ -106,8 +111,12 @@ tasks.register("verifyBuildInfoInstallerTrust") {
             "generateBuildInfo must declare installerMacTeamId as a stable task input"
         }
 
-        val buildInfo = layout.buildDirectory.file("generated/src/main/kotlin/mihon/desktop/BuildInfo.kt").get().asFile.readText()
-        check("const val INSTALLER_WINDOWS_PUBLISHER = ${installerWindowsPublisher.asKotlinStringLiteral()}" in buildInfo) {
+        val buildInfo = layout.buildDirectory.file(
+            "generated/src/main/kotlin/mihon/desktop/BuildInfo.kt",
+        ).get().asFile.readText()
+        check(
+            "const val INSTALLER_WINDOWS_PUBLISHER = ${installerWindowsPublisher.asKotlinStringLiteral()}" in buildInfo,
+        ) {
             "generated BuildInfo retained a stale Windows publisher"
         }
         check("const val INSTALLER_MAC_TEAM_ID = ${installerMacTeamId.asKotlinStringLiteral()}" in buildInfo) {
@@ -170,6 +179,8 @@ kotlin {
                 implementation(libs.coil.core)
                 implementation(libs.coil.compose)
                 implementation(libs.coil.network.okhttp)
+                implementation(libs.bundles.markdown)
+                implementation(libs.richeditor.compose)
 
                 // RAR/CBR archive support (RAR4 + RAR5) via 7-Zip JNI bindings
                 // sevenzipjbinding = Java API; sevenzipjbinding-all-platforms = native libs
@@ -200,7 +211,11 @@ kotlin {
             }
         }
         val jvmTest by getting {
-            kotlin.srcDirs("src/test/kotlin", "../data/src/testFixtures/kotlin", "../data/src/creatorEntryContract/kotlin")
+            kotlin.srcDirs(
+                "src/test/kotlin",
+                "../data/src/testFixtures/kotlin",
+                "../data/src/creatorEntryContract/kotlin",
+            )
             resources.srcDir("src/test/resources")
             dependencies {
                 implementation(libs.bundles.test)
@@ -260,6 +275,13 @@ tasks.withType<Test> {
 
 val jvmTestTask = tasks.named<Test>("jvmTest")
 jvmTestTask {
+    doFirst {
+        val main = kotlin.targets.getByName("jvm").compilations.getByName("main")
+        val runtimeClasspath = layout.buildDirectory.file("tmp/production-runtime-classpath.txt").get().asFile
+        runtimeClasspath.parentFile.mkdirs()
+        runtimeClasspath.writeText((main.output.allOutputs + main.runtimeDependencyFiles).asPath, Charsets.UTF_8)
+        systemProperty("mihon.test.productionRuntimeClasspathFile", runtimeClasspath.absolutePath)
+    }
     useJUnitPlatform {
         excludeTags("final-parity-audit", "parity-governance")
     }
@@ -409,7 +431,8 @@ tasks.register<Test>("task4ParityVerification") {
 
 tasks.register<Test>("task5ParityVerification") {
     group = "verification"
-    description = "Runs Task 5 provenance, historical backup fixtures, maintenance, architecture, and compatibility tests."
+    description =
+        "Runs Task 5 provenance, historical backup fixtures, maintenance, architecture, and compatibility tests."
     dependsOn(tasks.named("jvmTestClasses"), ":data:jvmTestClasses")
     testClassesDirs = files(
         jvmTestTask.get().testClassesDirs,

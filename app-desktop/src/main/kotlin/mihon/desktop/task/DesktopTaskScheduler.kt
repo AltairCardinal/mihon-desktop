@@ -1,7 +1,11 @@
 package mihon.desktop.task
 
-import kotlinx.serialization.Serializable
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.encoding.Decoder
@@ -14,6 +18,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
+import mihon.desktop.platform.retryTransientAccessDenied
 import mihon.domain.error.AppError
 import mihon.domain.error.StoredAppError
 import mihon.domain.error.toStoredAppError
@@ -24,7 +29,6 @@ import mihon.domain.task.TaskLifecycleEvent
 import mihon.domain.task.TaskLifecycleOutcome
 import mihon.domain.task.TaskOccurrence
 import mihon.domain.task.TaskStatus
-import mihon.desktop.platform.retryTransientAccessDenied
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -44,6 +48,46 @@ data class StoredTask(
     val workset: List<Long> = emptyList(),
     val worksetInitialized: Boolean = false,
     val completedUnitIds: Set<Long> = emptySet(),
+    val libraryUpdate: LibraryUpdateContext? = null,
+)
+
+@Serializable
+enum class LibraryUpdateTrigger { MANUAL, SCHEDULED }
+
+@Serializable
+enum class LibraryUpdateScope { ALL, CATEGORY, SINGLE }
+
+@Serializable
+enum class LibraryUnitStatus { SUCCESS, FAILED, SKIPPED, UNPROCESSED }
+
+@Serializable
+data class LibraryUpdateUnit(
+    val mangaId: Long,
+    val sourceId: Long,
+    val mangaUrl: String,
+    val status: LibraryUnitStatus = LibraryUnitStatus.UNPROCESSED,
+    val newChapterCount: Int = 0,
+    val message: String? = null,
+    val title: String = "",
+    val failure: StoredAppError? = null,
+    val skipReason: tachiyomi.domain.library.service.LibraryUpdateSkipReason? = null,
+    val localSource: Boolean = false,
+    val sourceUnavailable: Boolean = false,
+)
+
+@Serializable
+data class LibraryUpdateContext(
+    val trigger: LibraryUpdateTrigger,
+    val scope: LibraryUpdateScope,
+    val categoryId: Long? = null,
+    val units: List<LibraryUpdateUnit>,
+    val restrictions: Set<String> = emptySet(),
+    val fetchWindowUpperBound: Long = Long.MAX_VALUE,
+    val checkStartedAt: Long? = null,
+    val singleMangaId: Long? = null,
+    val deviceRestrictions: Set<String> = emptySet(),
+    val waitingForDevice: Map<String, String> = emptyMap(),
+    val periodicCheckStartedAt: Long? = null,
 )
 
 object StoredAppErrorCompatSerializer : KSerializer<StoredAppError?> {
@@ -134,11 +178,21 @@ class FileTaskCheckpointStore(
 }
 
 class DesktopTaskScheduler(private val store: FileTaskCheckpointStore) {
-    fun <R> transaction(transform: (MutableList<StoredTask>) -> R): R = store.transaction(transform)
+    private val published = MutableStateFlow(store.load())
+    private val publicationLock = Any()
+
+    fun observe(id: String): Flow<StoredTask?> = published.map { tasks -> tasks.firstOrNull { it.task.id == id } }
+        .distinctUntilChanged()
+
+    fun <R> transaction(transform: (MutableList<StoredTask>) -> R): R = synchronized(publicationLock) {
+        val result = store.transaction(transform)
+        published.value = store.load()
+        result
+    }
 
     fun register(task: BackgroundTask): StoredTask {
         var result: StoredTask? = null
-        store.update { tasks ->
+        transaction { tasks ->
             val existing = tasks.firstOrNull { it.task.idempotencyKey == task.idempotencyKey }
                 ?: tasks.firstOrNull { it.task.id == task.id }
             val decision = BackgroundTaskLifecycle.reduce(
@@ -167,6 +221,140 @@ class DesktopTaskScheduler(private val store: FileTaskCheckpointStore) {
             }
         }
         return checkNotNull(result)
+    }
+
+    /** Library refreshes own their finite workset; generic tasks retain their existing registration rules. */
+    fun beginLibraryUpdate(
+        task: BackgroundTask,
+        context: LibraryUpdateContext,
+        initialized: Boolean = true,
+    ): StoredTask = transaction { tasks ->
+        val replacement = StoredTask(
+            task = task,
+            workset = context.units.map { it.mangaId },
+            worksetInitialized = initialized,
+            libraryUpdate = context,
+        )
+        tasks.removeAll { it.task.id == task.id }
+        tasks += replacement
+        replacement
+    }
+
+    fun initializeLibraryUpdate(id: String, occurrence: String, context: LibraryUpdateContext): Boolean = transition(
+        id,
+    ) {
+        if (it.status != TaskStatus.Running || it.task.idempotencyKey != occurrence || it.worksetInitialized) {
+            it
+        } else {
+            it.copy(
+                workset = context.units.map { unit ->
+                    unit.mangaId
+                },
+                worksetInitialized = true,
+                libraryUpdate = context,
+            )
+        }
+    }
+
+    fun recordLibraryDeviceBoundary(
+        id: String,
+        occurrence: String,
+        waiting: Map<String, String>,
+        checkingAt: Long? = null,
+    ): Boolean = transition(id) {
+        val context = it.libraryUpdate
+        if (it.status != TaskStatus.Running || it.task.idempotencyKey != occurrence || context == null) {
+            it
+        } else {
+            it.copy(
+                libraryUpdate = context.copy(
+                    waitingForDevice = waiting,
+                    periodicCheckStartedAt = context.periodicCheckStartedAt ?: checkingAt,
+                ),
+            )
+        }
+    }
+
+    /** Explicit recovery may checkpoint a committed unit while keeping an occurrence's terminal status intact. */
+    fun confirmLibraryReceipt(phase: tachiyomi.domain.chapter.service.ChapterDirectoryPhase): Boolean {
+        val receipt = phase.effects.taskReceipt ?: return false
+        if (!phase.effectsComplete || !phase.checkpointPending || receipt.unitId != phase.mangaId) return false
+        val current = snapshot("library-update") ?: return false
+        val context = current.libraryUpdate ?: return false
+        val original = context.units.singleOrNull { it.mangaId == receipt.unitId } ?: return false
+        if (current.task.idempotencyKey != receipt.occurrenceKey || !current.worksetInitialized ||
+            current.workset != context.units.map { it.mangaId } || original.sourceId != phase.effects.sourceId ||
+            original.mangaUrl != phase.effects.mangaUrl
+        ) {
+            return false
+        }
+        if (original.status == LibraryUnitStatus.SUCCESS) return original.newChapterCount == phase.addedIds.size
+        return transition(current.task.id) { latest ->
+            if (latest != current) {
+                latest
+            } else {
+                val units = context.units.map { unit ->
+                    if (unit.mangaId == receipt.unitId) {
+                        unit.copy(
+                            status = LibraryUnitStatus.SUCCESS,
+                            newChapterCount = phase.addedIds.size,
+                            message = null,
+                            failure = null,
+                            sourceUnavailable = false,
+                            localSource = false,
+                            skipReason = null,
+                        )
+                    } else {
+                        unit
+                    }
+                }
+                val completed = units.filter {
+                    it.status in setOf(LibraryUnitStatus.SUCCESS, LibraryUnitStatus.SKIPPED)
+                }
+                latest.copy(
+                    libraryUpdate = context.copy(units = units),
+                    failedUnits = units.filter { it.status == LibraryUnitStatus.FAILED }.map { "manga:${it.mangaId}" },
+                    completedUnitIds = completed.map { it.mangaId }.toSet(),
+                    task = latest.task.copy(
+                        checkpoint = TaskCheckpoint(
+                            receipt.unitId.toString(),
+                            completed.size,
+                            completed.size.toFloat() / units.size,
+                        ),
+                    ),
+                )
+            }
+        }
+    }
+
+    fun recordLibraryUnit(
+        id: String,
+        occurrence: String,
+        unit: LibraryUpdateUnit,
+    ): Boolean = transition(id) { current ->
+        val context = current.libraryUpdate
+        if (current.status != TaskStatus.Running || current.task.idempotencyKey != occurrence ||
+            context == null || context.units.none {
+                it.mangaId == unit.mangaId && it.sourceId == unit.sourceId && it.mangaUrl == unit.mangaUrl
+            }
+        ) {
+            current
+        } else {
+            val updated = context.units.map { if (it.mangaId == unit.mangaId) unit else it }
+            val completed = updated.filter { it.status in setOf(LibraryUnitStatus.SUCCESS, LibraryUnitStatus.SKIPPED) }
+            current.copy(
+                libraryUpdate = context.copy(units = updated),
+                completedUnitIds = completed.map { it.mangaId }.toSet(),
+                failedUnits = updated.filter { it.status == LibraryUnitStatus.FAILED }.map { "manga:${it.mangaId}" },
+                task = current.task.copy(
+                    checkpoint = TaskCheckpoint(
+                        unit.mangaId.toString(),
+                        completed.size,
+                        if (updated.isEmpty()) 1f else completed.size.toFloat() / updated.size,
+                    ),
+                ),
+            )
+        }
     }
 
     fun checkpoint(id: String, checkpoint: TaskCheckpoint): Boolean = lifecycleTransition(
@@ -233,22 +421,30 @@ class DesktopTaskScheduler(private val store: FileTaskCheckpointStore) {
         current.copy(status = occurrence.status)
     }
 
-    fun fail(id: String, error: AppError): Boolean = lifecycleTransition(id, TaskLifecycleEvent.Fail) { current, occurrence ->
+    fun fail(id: String, error: AppError): Boolean = lifecycleTransition(id, TaskLifecycleEvent.Fail) {
+            current,
+            occurrence,
+        ->
         current.copy(
             status = occurrence.status,
             failure = error.toStoredAppError(),
-            failedUnits = (error as? AppError.PartialFailure)?.failedUnits?.map { it.unitId }.orEmpty(),
+            failedUnits = current.libraryUpdate?.units?.filter { it.status == LibraryUnitStatus.FAILED }
+                ?.map { "manga:${it.mangaId}" }
+                ?: (error as? AppError.PartialFailure)?.failedUnits?.map { it.unitId }.orEmpty(),
         )
     }
 
-    fun pendingTasks(): List<BackgroundTask> = store.load().filter { it.status in setOf(TaskStatus.Pending, TaskStatus.Running, TaskStatus.Failed) }.map { it.task }
+    fun pendingTasks(): List<BackgroundTask> = store.load().filter {
+        it.status in
+            setOf(TaskStatus.Pending, TaskStatus.Running, TaskStatus.Failed)
+    }.map { it.task }
     fun allTasks(): List<StoredTask> = store.load()
     fun snapshot(id: String): StoredTask? = store.load().firstOrNull { it.task.id == id }
     fun isCancelled(id: String): Boolean = snapshot(id)?.status == TaskStatus.Cancelled
 
     private fun transition(id: String, change: (StoredTask) -> StoredTask): Boolean {
         var changed = false
-        store.update { tasks ->
+        transaction { tasks ->
             val index = tasks.indexOfFirst { it.task.id == id }
             if (index >= 0) {
                 val next = change(tasks[index])

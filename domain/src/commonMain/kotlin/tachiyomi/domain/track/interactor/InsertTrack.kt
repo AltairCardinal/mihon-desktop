@@ -12,6 +12,9 @@ class InsertTrack(
         trackRepository.insert(track)
     }
 
+    suspend fun awaitIfMatches(previous: Track, refreshed: Track): Boolean =
+        trackRepository.insertIfMatches(previous, refreshed)
+
     suspend fun await(track: Track) {
         try {
             awaitOrThrow(track)

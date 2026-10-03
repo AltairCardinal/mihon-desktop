@@ -1,15 +1,34 @@
 package mihon.desktop.download
 
 import eu.kanade.tachiyomi.network.NetworkHelper
-import eu.kanade.tachiyomi.source.model.SChapter
-import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
+import mihon.desktop.domain.DesktopSystemNotifier
 import mihon.desktop.extension.SourceCallResult
 import mihon.desktop.extension.resolveSourceImageUrl
 import mihon.desktop.extension.safeSourceCall
 import mihon.domain.download.DownloadQueueEntry
-import mihon.domain.download.DownloadQueueStatus
 import mihon.domain.download.DownloadQueueStateMachine
+import mihon.domain.download.DownloadQueueStatus
 import mihon.domain.download.DownloadRepository
 import mihon.domain.error.AppError
 import mihon.domain.reader.content.DownloadChapterIdentity
@@ -22,32 +41,13 @@ import mihon.domain.reader.partial.PartialPageTableEntry
 import mihon.domain.reader.partial.PartialPageTablePolicy
 import mihon.domain.reader.partial.PartialPageTableValidation
 import mihon.domain.reader.partial.PartialReaderPageCandidate
-import mihon.desktop.domain.DesktopSystemNotifier
 import mihon.domain.task.NotificationEvent
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runInterruptible
-import kotlinx.coroutines.flow.update
-import okhttp3.Request
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.Response
+import tachiyomi.data.download.PersistentDownloadStore
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.toSourceChapter
-import tachiyomi.data.download.PersistentDownloadStore
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
@@ -99,7 +99,8 @@ class DesktopDownloadManager(
     },
     private val sourceCallTimeoutMs: Long = 30_000L,
     private val downloadIdentityResolver: suspend (DownloadItem) -> DownloadChapterIdentity? = { null },
-    private val partialIndexFileOperations: PartialDownloadIndexFileOperations = DefaultPartialDownloadIndexFileOperations,
+    private val partialIndexFileOperations: PartialDownloadIndexFileOperations =
+        DefaultPartialDownloadIndexFileOperations,
     private val enqueueFileOperations: DownloadEnqueueFileOperations = DefaultDownloadEnqueueFileOperations,
     private val ioProbe: DownloadIoProbe = DownloadIoProbe.None,
     private val partialArtifactLifecycleCoordinator: PartialDownloadArtifactLifecycleCoordinator =
@@ -192,9 +193,18 @@ class DesktopDownloadManager(
     private val activeProducers = mutableMapOf<DownloadAttemptKey, CompletableDeferred<Unit>>()
     private val retirementsByChapter = mutableMapOf<Long, ChapterRetirement>()
     private val enqueuePreflights = mutableSetOf<Long>()
+    private val capturedGenerations =
+        mutableMapOf<Long, MutableList<java.lang.ref.WeakReference<CapturedDownloadGeneration>>>()
     private val _queue = MutableStateFlow(recoveredItems)
     override val queue: StateFlow<List<DownloadItem>> = _queue.asStateFlow()
-    private val _failures = MutableStateFlow(recoveredItems.mapNotNull { item -> item.failure?.let { item.chapterId to it } }.toMap())
+    private val _failures = MutableStateFlow(
+        recoveredItems.mapNotNull { item ->
+            item.failure?.let {
+                item.chapterId to
+                    it
+            }
+        }.toMap(),
+    )
     val failures: StateFlow<Map<Long, AppError>> = _failures.asStateFlow()
     private val partialIndexRecoveryJob = workerScope.launch(start = CoroutineStart.LAZY) {
         recoveredItems.forEach { item ->
@@ -233,36 +243,120 @@ class DesktopDownloadManager(
     /** True when downloads are paused by the user. */
     val isPaused: StateFlow<Boolean> = _isPaused.asStateFlow()
 
+    /** Reserves only this directory operation's existing chapter identities. */
+    suspend fun <T> withDirectoryChanges(chapterIds: Set<Long>, operation: suspend () -> T): T {
+        return withDirectoryReservation(chapterIds, {}, operation)
+    }
+
+    private suspend fun <T> withDirectoryReservation(
+        chapterIds: Set<Long>,
+        validate: () -> Unit,
+        operation: suspend () -> T,
+    ): T {
+        synchronized(queueStateLock) {
+            validate()
+            if (_queue.value.any { it.chapterId in chapterIds } ||
+                chapterIds.any { it in enqueuePreflights || it in retirementsByChapter } ||
+                activeProducers.keys.any { it.chapterId in chapterIds }
+            ) {
+                throw tachiyomi.domain.chapter.service.ChapterDirectoryDownloadConflictException()
+            }
+            enqueuePreflights.addAll(chapterIds)
+        }
+        try {
+            return operation()
+        } finally {
+            synchronized(queueStateLock) { enqueuePreflights.removeAll(chapterIds) }
+        }
+    }
+
+    internal suspend fun <T> withMigrationRollback(
+        chapterIds: Set<Long>,
+        artifacts: List<File>,
+        operation: suspend () -> T,
+    ): T =
+        withDirectoryChanges(chapterIds) {
+            partialArtifactLifecycleCoordinator.reserveMigrationArtifacts(artifacts).use { operation() }
+        }
+
+    internal suspend fun <T> withMigrationArtifacts(
+        chapterIds: Set<Long>,
+        artifacts: List<File>,
+        acceptedGenerations: Map<Long, CapturedDownloadGeneration> = emptyMap(),
+        operation: suspend () -> T,
+    ): T = withDirectoryReservation(chapterIds, {
+        check(acceptedGenerations.keys == chapterIds && acceptedGenerations.values.none { it.replaced }) {
+            "A later download generation replaced the migration's accepted files"
+        }
+    }) {
+        partialArtifactLifecycleCoordinator.reserveMigrationArtifacts(artifacts).use { operation() }
+    }
+
+    internal fun captureMigrationGenerations(chapterIds: Set<Long>): Map<Long, CapturedDownloadGeneration> =
+        synchronized(queueStateLock) {
+            capturedGenerations.entries.removeAll { (_, handles) ->
+                handles.removeAll { it.get() == null }
+                handles.isEmpty()
+            }
+            chapterIds.associateWith { id ->
+                val generation = queueGenerations[id] ?: Long.MIN_VALUE
+                val handles = capturedGenerations.getOrPut(id) { mutableListOf() }
+                handles.firstNotNullOfOrNull { it.get()?.takeIf { value -> value.generation == generation } }
+                    ?: CapturedDownloadGeneration(generation).also { handles.add(java.lang.ref.WeakReference(it)) }
+            }
+        }
+
     /** Add a chapter to the download queue (no-op if already queued or downloaded). */
-    fun enqueue(item: DownloadItem) {
+    fun enqueue(item: DownloadItem): Boolean {
         val hasRetiringAttempt = synchronized(queueStateLock) {
-            if (_queue.value.any { it.chapterId == item.chapterId } || !enqueuePreflights.add(item.chapterId)) return
+            if (_queue.value.any { it.chapterId == item.chapterId } ||
+                !enqueuePreflights.add(item.chapterId)
+            ) {
+                return false
+            }
             retirementsByChapter.containsKey(item.chapterId)
         }
         try {
-            // Filesystem preflight is deliberately outside queueStateLock. The chapter reservation
-            // prevents two enqueues from cleaning shared paths while either attempt can start.
+            // Probe outside the state lock; the reservation prevents duplicate path cleanup.
             if (!hasRetiringAttempt) {
                 emitIo(DownloadIoOperation.ENQUEUE_DOWNLOADED_PROBE)
-                if (enqueueFileOperations.isChapterDownloaded(provider, item)) return
+                if (enqueueFileOperations.isChapterDownloaded(provider, item)) return false
                 emitIo(DownloadIoOperation.ENQUEUE_TMP_CLEANUP)
                 enqueueFileOperations.cleanupTemporaryDirectory(provider, item)
             }
-            synchronized(queueStateLock) {
-                if (_queue.value.any { it.chapterId == item.chapterId }) return@synchronized
+            return synchronized(queueStateLock) {
+                if (_queue.value.any { it.chapterId == item.chapterId }) return@synchronized false
+                val previous = _queue.value
+                val next = previous + item
+                try {
+                    persistQueue(next)
+                } catch (failure: Exception) {
+                    try {
+                        persistQueue(previous)
+                    } catch (
+                        restoreFailure: Exception,
+                    ) {
+                        failure.addSuppressed(restoreFailure)
+                    }
+                    throw failure
+                }
                 val generation = nextGeneration()
+                markCapturedGenerationReplaced(item.chapterId)
                 queueGenerations[item.chapterId] = generation
                 currentGenerations[item.chapterId] = generation
-                currentStatuses[item.chapterId] = DownloadQueueStatus.valueOf(item.status.name.replace("DONE", "COMPLETED"))
-                _queue.value = _queue.value + item
-                persistQueue()
+                currentStatuses[item.chapterId] =
+                    DownloadQueueStatus.valueOf(item.status.name.replace("DONE", "COMPLETED"))
+                _queue.value = next
+                true
             }
         } finally {
             synchronized(queueStateLock) { enqueuePreflights.remove(item.chapterId) }
         }
     }
 
-    override fun enqueue(entry: DownloadQueueEntry) = enqueue(entry.toItem())
+    override fun enqueue(entry: DownloadQueueEntry) {
+        enqueue(entry.toItem())
+    }
 
     /** Remove a queued item by chapter ID and clean up its _tmp directory. */
     override fun cancel(chapterId: Long): Boolean = cancelForRetirement(chapterId) != null
@@ -270,6 +364,125 @@ class DesktopDownloadManager(
     /** Removes a queued item and waits until its producer and artifact leases are retired. */
     suspend fun cancelAndAwaitRetirement(chapterId: Long): Boolean =
         cancelAndAwaitRetirements(listOf(chapterId))
+
+    /** Executes only the fixed artifacts and original producer generations of this confirmation. */
+    suspend fun deleteCapturedDownloadFiles(files: CapturedDownloadFiles): CapturedDownloadDeletionResult {
+        val existed = files.pendingArtifacts.filterTo(mutableSetOf()) { it.exists() }
+        val refused = cancelCapturedDownloadAttempts(files.pendingAttempts)
+        val retired = files.pendingAttempts.filter { it.item.chapterId !in refused }
+        val retiredPaths = retired.flatMap { files.queuedArtifacts[it.item.chapterId].orEmpty() }.toSet()
+        // The manager already cleaned these original attempts. Do not delete their
+        // aliases again after a replacement producer is allowed to start.
+        val completedPaths = files.pendingArtifacts.intersect(retiredPaths)
+        files.pendingAttempts.removeAll(retired.toSet())
+        files.pendingArtifacts.removeAll(completedPaths)
+        val unsafe = refused.flatMap { files.queuedArtifacts[it].orEmpty() }.toSet()
+        val protectedPaths = files.pendingArtifacts.intersect(unsafe)
+        val remaining = provider.deleteCapturedDownloadArtifacts(files.pendingArtifacts - unsafe) + protectedPaths
+        val succeeded = (completedPaths + (files.pendingArtifacts - remaining.toSet())).count { it in existed }
+        val skipped = (completedPaths + (files.pendingArtifacts - remaining.toSet())).count { it !in existed }
+        return CapturedDownloadDeletionResult(remaining, succeeded, skipped, refused)
+    }
+
+    fun captureDownloadAttempts(chapterIds: Collection<Long>): List<CapturedDownloadAttempt> = synchronized(
+        queueStateLock,
+    ) {
+        capturedGenerations.entries.removeAll { (_, handles) ->
+            handles.removeAll { it.get() == null }
+            handles.isEmpty()
+        }
+        chapterIds.distinct().mapNotNull { id ->
+            val item = _queue.value.firstOrNull { it.chapterId == id }
+            val generation = queueGenerations[id]
+            if (item != null && generation != null) {
+                val handles = capturedGenerations.getOrPut(id) { mutableListOf() }
+                val marker =
+                    handles.firstNotNullOfOrNull { it.get()?.takeIf { value -> value.generation == generation } }
+                        ?: CapturedDownloadGeneration(generation).also { handles.add(java.lang.ref.WeakReference(it)) }
+                CapturedDownloadAttempt(item, generation, marker)
+            } else {
+                null
+            }
+        }
+    }
+
+    suspend fun cancelCapturedDownloadAttempts(targets: List<CapturedDownloadAttempt>): Set<Long> {
+        // Start every original retirement before awaiting an active producer or reader lease.
+        val completions = targets.map { target ->
+            target to synchronized(queueStateLock) {
+                if (target.capturedGeneration.replaced) {
+                    null
+                } else {
+                    target.awaitCompletion ?: run {
+                        val key = DownloadAttemptKey(target.item.chapterId, target.generation)
+                        val current = queueGenerations[key.chapterId]
+                        val original = retirementsByChapter[key.chapterId]?.takeIf { it.key == key }
+                        if (current != null && current != key.generation) {
+                            null // The opened operation cannot cancel a replacement generation.
+                        } else {
+                            val retirement = original ?: if (current == key.generation) {
+                                cancelForRetirement(key.chapterId)
+                            } else {
+                                // A normally completed attempt has no queued generation. Its recorded
+                                // producer and the existing lease coordinator still provide the barrier.
+                                ChapterRetirement(
+                                    key,
+                                    target.item,
+                                    retirementArtifacts(target.item, target.item.downloadIdentity),
+                                    activeProducers[key] ?: completedProducerSignal(),
+                                ).also {
+                                    retirementsByChapter[key.chapterId] = it
+                                    launchRetirementCleanup(it)
+                                }
+                            }
+                            retirement?.let { retained ->
+                                val await = capturedRetirementCompletion(target, retained)
+                                target.awaitCompletion = await
+                                await
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return completions.mapNotNullTo(mutableSetOf()) { (target, completion) ->
+            if (completion?.invoke() == true) null else target.item.chapterId
+        }
+    }
+
+    private fun capturedRetirementCompletion(
+        target: CapturedDownloadAttempt,
+        retained: ChapterRetirement,
+    ): suspend () -> Boolean = {
+        val initial = retained.completion.await()
+        if (initial.success) {
+            true
+        } else {
+            val safe = synchronized(queueStateLock) {
+                val replacement = queueGenerations[target.item.chapterId]
+                !target.capturedGeneration.replaced &&
+                    (replacement == null || replacement == target.generation) &&
+                    enqueuePreflights.add(target.item.chapterId)
+            }
+            if (!safe) {
+                false
+            } else {
+                try {
+                    val retried = cleanupRetirementArtifacts(retained)
+                    if (retried.success) {
+                        synchronized(queueStateLock) {
+                            if (retirementsByChapter[target.item.chapterId] === retained) {
+                                retirementsByChapter.remove(target.item.chapterId)
+                            }
+                        }
+                    }
+                    retried.success
+                } finally {
+                    synchronized(queueStateLock) { enqueuePreflights.remove(target.item.chapterId) }
+                }
+            }
+        }
+    }
 
     /** Starts every requested retirement before waiting, so later targets cannot escape while an earlier one drains. */
     suspend fun cancelAndAwaitRetirements(chapterIds: Collection<Long>): Boolean {
@@ -391,9 +604,21 @@ class DesktopDownloadManager(
         if (expectedGeneration != null && currentGeneration != expectedGeneration) return false
         var changed = false
         val nextQueue = _queue.value.map { item ->
-            if (item.chapterId != chapterId) item else stateMachine.transition(item.toEntry(0), target)?.toItem()
-                ?.let { transitioned -> if (target == DownloadQueueStatus.QUEUED) transitioned.copy(failure = null, retryCount = 0) else transitioned }
-                ?.also { changed = true } ?: item
+            if (item.chapterId != chapterId) {
+                item
+            } else {
+                stateMachine.transition(item.toEntry(0), target)?.toItem()
+                    ?.let { transitioned ->
+                        if (target ==
+                            DownloadQueueStatus.QUEUED
+                        ) {
+                            transitioned.copy(failure = null, retryCount = 0)
+                        } else {
+                            transitioned
+                        }
+                    }
+                    ?.also { changed = true } ?: item
+            }
         }
         if (changed) {
             try {
@@ -412,6 +637,7 @@ class DesktopDownloadManager(
                 committedIndexes.remove(oldKey)
                 reconcileCompletions.remove(oldKey)
                 val nextGeneration = nextGeneration()
+                markCapturedGenerationReplaced(chapterId)
                 queueGenerations[chapterId] = nextGeneration
                 currentGenerations[chapterId] = nextGeneration
                 _failures.update { it - chapterId }
@@ -484,11 +710,43 @@ class DesktopDownloadManager(
         persistQueue()
     }
 
+    /** Prioritize pending work within its source without replacing an active producer. */
+    fun startDownloadNow(chapterId: Long): Boolean = synchronized(queueStateLock) {
+        val items = _queue.value
+        val target = items.firstOrNull { it.chapterId == chapterId } ?: return@synchronized false
+        if (target.status != DownloadStatus.QUEUED) return@synchronized false
+        val indices = items.indices.filter {
+            items[it].sourceId == target.sourceId &&
+                items[it].status != DownloadStatus.DOWNLOADING
+        }
+        val pending = indices.map(items::get).filterNot { it.chapterId == chapterId }
+        val prioritized = listOf(target) + pending
+        val next = items.toMutableList()
+        indices.forEachIndexed { index, queueIndex -> next[queueIndex] = prioritized[index] }
+        try {
+            persistQueue(next)
+        } catch (failure: Exception) {
+            try {
+                persistQueue(items)
+            } catch (restoreFailure: Exception) {
+                failure.addSuppressed(restoreFailure)
+            }
+            throw failure
+        }
+        _queue.value = next
+        resumeAll()
+        true
+    }
+
     /** Pause the download worker (no new downloads will start). */
-    fun pauseAll() { _isPaused.value = true }
+    fun pauseAll() {
+        _isPaused.value = true
+    }
 
     /** Resume the download worker. */
-    fun resumeAll() { _isPaused.value = false }
+    fun resumeAll() {
+        _isPaused.value = false
+    }
 
     /** Delete the on-disk files for a downloaded chapter. */
     fun deleteDownload(sourceId: Long, mangaTitle: String, chapterName: String) {
@@ -498,6 +756,8 @@ class DesktopDownloadManager(
     fun deleteDownload(sourceId: Long, identity: DownloadChapterIdentity) {
         provider.deleteChapterDownload(sourceId, identity)
     }
+
+    val availabilityRevision get() = provider.availabilityRevision
 
     /** Delegates to [DesktopDownloadProvider]. */
     override fun isDownloaded(sourceId: Long, mangaTitle: String, chapterName: String): Boolean =
@@ -560,6 +820,7 @@ class DesktopDownloadManager(
         val limit = (downloadPreferences ?: runCatching { Injekt.get<DesktopDownloadPreferences>() }.getOrNull())
             ?.parallelDownloadLimit?.get()?.coerceIn(1, 5) ?: 1
         while (true) {
+            if (_isPaused.value) break
             val batch = synchronized(queueStateLock) {
                 stateMachine.schedule(
                     _queue.value.mapIndexed { index, queued -> queued.toEntry(index.toLong()) },
@@ -579,7 +840,7 @@ class DesktopDownloadManager(
                     }
                 }
                 synchronized(lifecycleLock) {
-                    if (stopped || !startAttempt(attempt)) {
+                    if (stopped || _isPaused.value || !startAttempt(attempt)) {
                         job.cancel()
                         null
                     } else {
@@ -619,10 +880,12 @@ class DesktopDownloadManager(
                 ?: Injekt.get<NetworkHelper>().clientForSource(item.sourceId)
             val resolvedPages = resolvePageTable(attempt, item) ?: return false
             val pageTable = resolvedPages.pageTable
-            if (pageTable.entries.isEmpty()) return fail(
-                attempt,
-                AppError.MalformedData(IllegalStateException("Source returned no downloadable pages")),
-            )
+            if (pageTable.entries.isEmpty()) {
+                return fail(
+                    attempt,
+                    AppError.MalformedData(IllegalStateException("Source returned no downloadable pages")),
+                )
+            }
             var sourceForMissingImageUrls = resolvedPages.source
             val compatibilityUrls = pageTable.entries
                 .sortedBy(PartialPageTableEntry::readerOrdinal)
@@ -667,12 +930,26 @@ class DesktopDownloadManager(
                             )
                         resolveImageUrl(attempt, source, pageEntry) ?: return false
                     }
-                    if (!downloadAndPublishPage(attempt, client, tmpDir, pageTable, downloadIdentity, pageEntry, imageUrl)) {
+                    if (!downloadAndPublishPage(
+                            attempt,
+                            client,
+                            tmpDir,
+                            pageTable,
+                            downloadIdentity,
+                            pageEntry,
+                            imageUrl,
+                        )
+                    ) {
                         return false
                     }
                 }
 
-                if (!updateAttempt(attempt) { it.copy(progress = pageEntry.readerOrdinal + 1, retryCount = 0) }) return false
+                if (!updateAttempt(attempt) {
+                        it.copy(progress = pageEntry.readerOrdinal + 1, retryCount = 0)
+                    }
+                ) {
+                    return false
+                }
                 clearFailure(attempt)
             }
 
@@ -728,7 +1005,10 @@ class DesktopDownloadManager(
                     publishError = error
                     if (
                         error is ChapterPublishConflictException ||
-                        error is ChapterAtomicPublishException && error.cause is java.nio.file.AtomicMoveNotSupportedException
+                        (
+                            error is ChapterAtomicPublishException &&
+                                error.cause is java.nio.file.AtomicMoveNotSupportedException
+                            )
                     ) {
                         break
                     }
@@ -744,7 +1024,9 @@ class DesktopDownloadManager(
             if (!partialArtifactLifecycleCoordinator.commitDirectoryPublish(publishToken)) {
                 recordFailure(
                     attempt,
-                    AppError.Storage(ChapterAtomicPublishException(tmpDir, finalDir, IOException("Stale publish token"))),
+                    AppError.Storage(
+                        ChapterAtomicPublishException(tmpDir, finalDir, IOException("Stale publish token")),
+                    ),
                 )
                 return false
             }
@@ -756,6 +1038,7 @@ class DesktopDownloadManager(
             return isCurrentAttempt(attempt) && completeAttempt(attempt)
         } finally {
             if (!tokenCommitted) partialArtifactLifecycleCoordinator.abortDirectoryPublish(publishToken)
+            provider.notifyAvailabilityChanged()
         }
     }
 
@@ -803,6 +1086,8 @@ class DesktopDownloadManager(
             if (error is CancellationException) throw error
             recordFailure(attempt, error.toAppError())
             false
+        } finally {
+            provider.notifyAvailabilityChanged()
         }
     }
 
@@ -814,7 +1099,7 @@ class DesktopDownloadManager(
         if (!isCurrentAttempt(attempt)) return false
         emitIo(DownloadIoOperation.CHAPTER_CLEANUP)
         val cleanupError = try {
-            if (!tmpDir.exists() || artifactCleaner(tmpDir) && !tmpDir.exists()) {
+            if (!tmpDir.exists() || (artifactCleaner(tmpDir) && !tmpDir.exists())) {
                 null
             } else {
                 IOException("Unable to remove published private chapter directory: ${tmpDir.absolutePath}")
@@ -888,7 +1173,11 @@ class DesktopDownloadManager(
     ): String? {
         val page = Page(entry.sourcePageIndex, entry.pageUrl, entry.imageUrl)
         emitIo(DownloadIoOperation.SOURCE_IMAGE_URL)
-        return when (val result = safeSourceCall(timeoutMs = sourceCallTimeoutMs) { resolveSourceImageUrl(source, page) }) {
+        return when (
+            val result = safeSourceCall(timeoutMs = sourceCallTimeoutMs) {
+                resolveSourceImageUrl(source, page)
+            }
+        ) {
             is SourceCallResult.Success -> result.value?.takeIf(String::isNotBlank) ?: run {
                 fail(
                     attempt,
@@ -1102,7 +1391,9 @@ class DesktopDownloadManager(
                 }
             }
             val reconciledPages = MutableCommittedPageIndex<CommittedPageRecord>()
-            candidates.entries.sortedBy(Map.Entry<Int, MutableList<File>>::key).forEach { (readerOrdinal, candidateFiles) ->
+            candidates.entries.sortedBy(
+                Map.Entry<Int, MutableList<File>>::key,
+            ).forEach { (readerOrdinal, candidateFiles) ->
                 if (candidateFiles.size != 1) {
                     rejectedByOrdinal.getOrPut(readerOrdinal, ::mutableListOf).addAll(candidateFiles)
                     return@forEach
@@ -1145,7 +1436,9 @@ class DesktopDownloadManager(
                         directory = directory,
                         pages = reconciledPages,
                         rejectedFilesByOrdinal = ConcurrentHashMap(
-                            rejectedByOrdinal.mapValues { (_, rejectedFiles) -> rejectedFiles.distinctBy(File::getAbsolutePath) },
+                            rejectedByOrdinal.mapValues { (_, rejectedFiles) ->
+                                rejectedFiles.distinctBy(File::getAbsolutePath)
+                            },
                         ),
                         rejectedUnmappedFiles = rejectedUnmapped.distinctBy(File::getAbsolutePath),
                     )
@@ -1241,13 +1534,13 @@ class DesktopDownloadManager(
             queueStatus = status,
             pageTable = index.pageTable,
             committedPages = committedPages.map { page ->
-                    PartialCommittedPage(
-                        readerOrdinal = page.readerOrdinal,
-                        sourcePageIndex = page.sourcePageIndex,
-                        opaqueLocation = page.file.absolutePath,
-                        committedRevision = page.committedRevision,
-                    )
-                },
+                PartialCommittedPage(
+                    readerOrdinal = page.readerOrdinal,
+                    sourcePageIndex = page.sourcePageIndex,
+                    opaqueLocation = page.file.absolutePath,
+                    committedRevision = page.committedRevision,
+                )
+            },
         )
     }
 
@@ -1311,6 +1604,12 @@ class DesktopDownloadManager(
     private fun isStopped(): Boolean = synchronized(lifecycleLock) { stopped }
 
     private fun nextGeneration(): Long = generationSequence.incrementAndGet()
+
+    // Only opened operations are observed. Copies retaining a frozen identity share the
+    // marker, and weak references never retain a closed page or removal session.
+    private fun markCapturedGenerationReplaced(chapterId: Long) {
+        capturedGenerations.remove(chapterId)?.forEach { it.get()?.replaced = true }
+    }
 
     private fun isCurrentAttempt(attempt: DownloadAttempt): Boolean = synchronized(queueStateLock) {
         isCurrentAttemptLocked(attempt)
@@ -1419,7 +1718,8 @@ class DesktopDownloadManager(
                 false
             }
             if (!removed && cleanupError == null) {
-                cleanupError = java.io.IOException("Unable to remove retired download artifact: ${artifact.absolutePath}")
+                cleanupError =
+                    java.io.IOException("Unable to remove retired download artifact: ${artifact.absolutePath}")
             }
         }
         if (cleanupError == null) {
@@ -1570,7 +1870,11 @@ class DesktopDownloadManager(
         }
         if (shouldNotify) {
             notifier?.notify(
-                NotificationEvent.Failure("download:$chapterId:${attempt.generation}", "下载失败", error.notificationMessage()),
+                NotificationEvent.Failure(
+                    "download:$chapterId:${attempt.generation}",
+                    "下载失败",
+                    error.notificationMessage(),
+                ),
             )
         }
     }
@@ -1582,11 +1886,13 @@ class DesktopDownloadManager(
 
     private fun Throwable?.toAppError(): AppError {
         val error = this ?: return AppError.Unknown()
-        if (error is DownloadHttpException) return when (error.statusCode) {
-            401, 403 -> AppError.Authentication(error)
-            429 -> AppError.RateLimited(error.retryAfterSeconds, error)
-            in 500..599 -> AppError.Server(error.statusCode, error)
-            else -> AppError.Network(error)
+        if (error is DownloadHttpException) {
+            return when (error.statusCode) {
+                401, 403 -> AppError.Authentication(error)
+                429 -> AppError.RateLimited(error.retryAfterSeconds, error)
+                in 500..599 -> AppError.Server(error.statusCode, error)
+                else -> AppError.Network(error)
+            }
         }
         return when (error) {
             is NetworkDownloadException -> AppError.Network(error.cause ?: error)
@@ -1641,14 +1947,16 @@ class DesktopDownloadManager(
 private fun AppError.notificationMessage(): String = when (this) {
     is AppError.Network -> "网络连接失败，请检查网络后重试"
     is AppError.Authentication -> "服务器拒绝访问（HTTP 403），请检查登录或源设置后重试"
-    is AppError.RateLimited -> retryAfterSeconds?.let { "请求过于频繁，请在 ${it} 秒后重试" } ?: "请求过于频繁，请稍后重试"
+    is AppError.RateLimited -> retryAfterSeconds?.let { "请求过于频繁，请在 $it 秒后重试" } ?: "请求过于频繁，请稍后重试"
     is AppError.Server -> "服务器错误（HTTP $statusCode），请稍后重试"
     is AppError.Permission -> "没有写入权限，请检查下载路径后重试"
     is AppError.Storage -> "磁盘空间不足或无法写入，请检查下载路径后重试"
     else -> "下载失败，请重试"
 }
 
-class DownloadHttpException(val statusCode: Int, val retryAfterSeconds: Long? = null) : java.io.IOException("HTTP $statusCode")
+class DownloadHttpException(val statusCode: Int, val retryAfterSeconds: Long? = null) : java.io.IOException(
+    "HTTP $statusCode",
+)
 class NetworkDownloadException(cause: Throwable) : java.io.IOException(cause)
 
 interface DownloadFileOperations {
@@ -1694,4 +2002,18 @@ class DefaultDownloadFileOperations internal constructor(
         Files.move(tmpDir.toPath(), finalDir.toPath(), StandardCopyOption.ATOMIC_MOVE)
         return true
     }
+}
+
+/** An opened operation's local reference to the manager's existing attempt generation. */
+data class CapturedDownloadAttempt internal constructor(
+    val item: DownloadItem,
+    internal val generation: Long,
+    internal val capturedGeneration: CapturedDownloadGeneration = CapturedDownloadGeneration(generation),
+) {
+    internal var awaitCompletion: (suspend () -> Boolean)? = null
+}
+
+internal class CapturedDownloadGeneration(val generation: Long) {
+    // Accessed only under the owning manager's queueStateLock.
+    var replaced = false
 }

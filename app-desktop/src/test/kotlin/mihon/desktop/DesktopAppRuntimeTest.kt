@@ -1,13 +1,13 @@
 package mihon.desktop
 
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -15,19 +15,19 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
-import mihon.desktop.platform.DesktopExternalActionBroker
-import mihon.desktop.platform.DesktopExternalActionTarget
-import mihon.desktop.platform.DesktopOpenUriEventPort
-import mihon.desktop.platform.DesktopOpenUriInstallResult
-import mihon.desktop.platform.DesktopOpenUriRegistration
-import mihon.desktop.platform.DesktopUriSchemeRegistration
-import mihon.desktop.platform.DesktopOpenUriEnvironment
-import mihon.desktop.platform.DesktopOpenUriPlatform
-import mihon.desktop.platform.DesktopPlatformPaths
-import mihon.desktop.platform.OperatingSystem
-import mihon.desktop.platform.AwtDesktopOpenUriEventPort
 import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.di.isolatedDesktopPreferenceStore
+import mihon.desktop.platform.AwtDesktopOpenUriEventPort
+import mihon.desktop.platform.DesktopExternalActionBroker
+import mihon.desktop.platform.DesktopExternalActionTarget
+import mihon.desktop.platform.DesktopOpenUriEnvironment
+import mihon.desktop.platform.DesktopOpenUriEventPort
+import mihon.desktop.platform.DesktopOpenUriInstallResult
+import mihon.desktop.platform.DesktopOpenUriPlatform
+import mihon.desktop.platform.DesktopOpenUriRegistration
+import mihon.desktop.platform.DesktopPlatformPaths
+import mihon.desktop.platform.DesktopUriSchemeRegistration
+import mihon.desktop.platform.OperatingSystem
 import mihon.desktop.test.TestArguments
 import mihon.desktop.test.TestModeRun
 import mihon.desktop.test.completeTestModeStop
@@ -50,16 +50,16 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.io.File
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.File
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.prefs.Preferences
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -111,7 +111,9 @@ class DesktopAppRuntimeTest {
     }
 
     @Test
-    fun `packaged JVM main uses default production entry to forward secondary action`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
+    fun `packaged JVM main uses default production entry to forward secondary action`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) {
         val originalHome = System.getProperty("user.home")
         val originalOs = System.getProperty("os.name")
         val originalCrashHandler = Thread.getDefaultUncaughtExceptionHandler()
@@ -120,7 +122,9 @@ class DesktopAppRuntimeTest {
         try {
             System.setProperty("user.home", tempDir.path)
             System.setProperty("os.name", "Linux")
-            val broker = DesktopExternalActionBroker(DesktopPlatformPaths.current().instanceStateFile).also { owner = it }
+            val broker = DesktopExternalActionBroker(DesktopPlatformPaths.current().instanceStateFile).also {
+                owner = it
+            }
             assertTrue(broker.startOrForward(null) is DesktopExternalActionBroker.StartResult.Owner)
             broker.setActionConsumer(received::set)
             val entry = Class.forName("mihon.desktop.MainKt").getMethod("main", Array<String>::class.java)
@@ -135,7 +139,9 @@ class DesktopAppRuntimeTest {
     }
 
     @Test
-    fun `secondary acknowledgement exits without starting runtime services`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
+    fun `secondary acknowledgement exits without starting runtime services`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) {
         val stateFile = File(tempDir, "instance.json")
         val owner = DesktopExternalActionBroker(stateFile)
         assertTrue(owner.startOrForward(null) is DesktopExternalActionBroker.StartResult.Owner)
@@ -161,7 +167,9 @@ class DesktopAppRuntimeTest {
     }
 
     @Test
-    fun `owner runtime close releases broker state and repeated close is harmless`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
+    fun `owner runtime close releases broker state and repeated close is harmless`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) {
         val stateFile = File(tempDir, "instance.json")
         val broker = DesktopExternalActionBroker(stateFile)
         val runtime = headlessRuntime()
@@ -188,15 +196,29 @@ class DesktopAppRuntimeTest {
         val cancelled = CompletableDeferred<Unit>()
         val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val controller = DesktopUpdateController(
-            { entered.complete(Unit); try { awaitCancellation() } catch (error: CancellationException) { cancelled.complete(Unit); throw error } },
+            {
+                entered.complete(Unit)
+                try {
+                    awaitCancellation()
+                } catch (
+                    error: CancellationException,
+                ) {
+                    cancelled.complete(Unit)
+                    throw error
+                }
+            },
             { release, _ -> ManualOnly(release.releaseLink) },
             { _, _ -> InstallManualOnly },
             { _, _ -> InstallCancelled },
         )
         val model = DesktopUpdateScreenModel(controller, parentScope)
         val runtime = DesktopAppRuntime(
-            RecordingRuntimeService(), RecordingRuntimeService(), RecordingRuntimeService(),
-            startupCleanup = {}, scope = parentScope, updateScreenModel = model,
+            RecordingRuntimeService(),
+            RecordingRuntimeService(),
+            RecordingRuntimeService(),
+            startupCleanup = {},
+            scope = parentScope,
+            updateScreenModel = model,
         )
         assertTrue(model.intent(DesktopUpdateIntent.CHECK))
         entered.await()
@@ -213,7 +235,9 @@ class DesktopAppRuntimeTest {
     }
 
     @Test
-    fun `startup failure reports only structured reason without starting owner`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
+    fun `startup failure reports only structured reason without starting owner`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) {
         val broker = DesktopExternalActionBroker(File(tempDir, "instance.json"))
         val failures = mutableListOf<DesktopExternalActionBroker.Failure>()
         var ownerStarts = 0
@@ -230,7 +254,9 @@ class DesktopAppRuntimeTest {
     }
 
     @Test
-    fun `owner broker submits forwarded raw string to Task5 ViewUri ingress`(@org.junit.jupiter.api.io.TempDir tempDir: File) = runTest {
+    fun `owner broker submits forwarded raw string to Task5 ViewUri ingress`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) = runTest {
         val stateFile = File(tempDir, "instance.json")
         val owner = DesktopExternalActionBroker(stateFile)
         owner.startOrForward(null)
@@ -342,7 +368,12 @@ class DesktopAppRuntimeTest {
             chapterDestination = { error("not a chapter") },
             testState = TestState(),
         )
-        val registration = (wireDesktopOpenUriEvents(port, navigator) as DesktopOpenUriInstallResult.Installed).registration
+        val registration = (
+            wireDesktopOpenUriEvents(
+                port,
+                navigator,
+            ) as DesktopOpenUriInstallResult.Installed
+            ).registration
         val fixture = navigatorFixture()
         navigator.consumePending(fixture.navigator) {}
         port.emit("tachiyomi://manga?url=second")
@@ -366,8 +397,11 @@ class DesktopAppRuntimeTest {
         assertEquals(2, port.installs)
         fixture.close()
     }
+
     @Test
-    fun `elected owner installs open URI ingress while secondary only forwards`(@org.junit.jupiter.api.io.TempDir tempDir: File) = runTest {
+    fun `elected owner installs open URI ingress while secondary only forwards`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) = runTest {
         val stateFile = File(tempDir, "instance.json")
         val owner = DesktopExternalActionBroker(stateFile)
         val port = QueuingOpenUriPort()
@@ -388,7 +422,11 @@ class DesktopAppRuntimeTest {
             startProductionDesktopApplication(
                 args = emptyArray(),
                 broker = owner,
-                registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar { DesktopUriSchemeRegistration.Result.Unavailable(DesktopUriSchemeRegistration.UnavailableReason.NON_PACKAGED_RUNTIME) },
+                registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar {
+                    DesktopUriSchemeRegistration.Result.Unavailable(
+                        DesktopUriSchemeRegistration.UnavailableReason.NON_PACKAGED_RUNTIME,
+                    )
+                },
                 openUriEventPort = port,
                 ownerIngressDependencies = { transaction ->
                     transaction.registerRuntime(runtime)
@@ -396,7 +434,10 @@ class DesktopAppRuntimeTest {
                 },
                 runWindowEventLoop = { startup, requestClose ->
                     assertSame(uiDependencies, startup.ingress.uiDependencies)
-                    assertSame(uiDependencies.externalActionNavigator, startup.ingress.uiDependencies.externalActionNavigator)
+                    assertSame(
+                        uiDependencies.externalActionNavigator,
+                        startup.ingress.uiDependencies.externalActionNavigator,
+                    )
                     assertTrue(runtime.isRunning)
                     ownerEntered.complete(Unit)
                     releaseOwner.await()
@@ -419,7 +460,9 @@ class DesktopAppRuntimeTest {
                 startProductionDesktopApplication(
                     args = arrayOf("tachiyomi://manga?url=secondary"),
                     broker = secondary,
-                    registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar { error("secondary must not register") },
+                    registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar {
+                        error("secondary must not register")
+                    },
                     openUriEventPort = port,
                     ownerIngressDependencies = { error("secondary must not initialize owner dependencies") },
                     runWindowEventLoop = { _, _ -> error("secondary must not continue owner startup") },
@@ -439,7 +482,49 @@ class DesktopAppRuntimeTest {
     }
 
     @Test
-    fun `production entry closes registered runtime when owner factory fails`(@org.junit.jupiter.api.io.TempDir tempDir: File) = runBlocking {
+    fun `cancelled elected ingress closes its registered runtime and permits broker re election`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) = runBlocking {
+        val runtime = headlessRuntime().also(DesktopAppRuntime::start)
+        val stateFile = File(tempDir, "cancelled-ingress.json")
+        val broker = DesktopExternalActionBroker(stateFile)
+        val entered = CompletableDeferred<Unit>()
+        val initialization = async(Dispatchers.IO) {
+            startProductionDesktopApplication(
+                args = emptyArray(),
+                broker = broker,
+                registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar {
+                    DesktopUriSchemeRegistration.Result.Configured(
+                        DesktopUriSchemeRegistration.Mechanism.WINDOWS_CURRENT_USER_REGISTRY,
+                    )
+                },
+                ownerIngressDependencies = { transaction ->
+                    transaction.registerRuntime(runtime)
+                    entered.complete(Unit)
+                    awaitCancellation()
+                },
+            )
+        }
+        try {
+            withTimeout(5_000) { entered.await() }
+            initialization.cancel()
+            withTimeout(5_000) { initialization.join() }
+            assertFalse(runtime.isRunning)
+            DesktopExternalActionBroker(stateFile).use { replacement ->
+                assertTrue(replacement.startOrForward(null) is DesktopExternalActionBroker.StartResult.Owner)
+            }
+        } finally {
+            initialization.cancel()
+            initialization.join()
+            runtime.closeAndJoin()
+            broker.close()
+        }
+    }
+
+    @Test
+    fun `production entry closes registered runtime when owner factory fails`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) = runBlocking {
         val runtime = headlessRuntime().also(DesktopAppRuntime::start)
         val broker = DesktopExternalActionBroker(File(tempDir, "factory-failure.json"))
         val failure = assertThrows(IllegalStateException::class.java) {
@@ -461,7 +546,9 @@ class DesktopAppRuntimeTest {
     }
 
     @Test
-    fun `production owner factory failure remains primary when broker cleanup also fails`(@org.junit.jupiter.api.io.TempDir tempDir: File) = runBlocking {
+    fun `production owner factory failure remains primary when broker cleanup also fails`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) = runBlocking {
         val primary = IllegalStateException("owner dependency factory failed")
         val cleanup = IllegalArgumentException("broker cleanup failed")
         var closeCalls = 0
@@ -505,11 +592,19 @@ class DesktopAppRuntimeTest {
             override fun stop(): Unit = throw closeFailure
         }
         val runtime = DesktopAppRuntime(
-            failing, RecordingRuntimeService(), RecordingRuntimeService(), startupCleanup = {},
-            closeUpdater = {}, awaitUpdater = { awaits++; throw awaitFailure },
+            failing,
+            RecordingRuntimeService(),
+            RecordingRuntimeService(),
+            startupCleanup = {},
+            closeUpdater = {},
+            awaitUpdater = {
+                awaits++
+                throw awaitFailure
+            },
         ).also(DesktopAppRuntime::start)
         val thrown = runCatching { runtime.closeAndJoin() }.exceptionOrNull()
-        assertSame(closeFailure, thrown); assertEquals(1, awaits)
+        assertSame(closeFailure, thrown)
+        assertEquals(1, awaits)
         assertEquals(listOf(awaitFailure), thrown!!.suppressed.toList())
     }
 
@@ -768,21 +863,29 @@ class DesktopAppRuntimeTest {
     @Test
     fun `bootstrap close retries only unfinished resources before becoming terminal`() = runTest {
         listOf("runtime", "binding").forEach { failedStage ->
-            val failure = IllegalStateException(failedStage); val calls = mutableListOf<String>()
+            val failure = IllegalStateException(failedStage)
+            val calls = mutableListOf<String>()
             var first = true
             fun close(stage: String) {
                 calls += stage
-                if (stage == failedStage && first) { first = false; throw failure }
+                if (stage == failedStage && first) {
+                    first = false
+                    throw failure
+                }
             }
-            val session = DesktopRuntimeBootstrapSession({ close("runtime") }, { calls += "await" }, { close("binding") })
+            val session =
+                DesktopRuntimeBootstrapSession({ close("runtime") }, { calls += "await" }, { close("binding") })
             assertSame(failure, runCatching { session.closeAndJoin() }.exceptionOrNull())
-            session.closeAndJoin(); session.closeAndJoin()
+            session.closeAndJoin()
+            session.closeAndJoin()
             assertEquals(listOf("runtime", "binding", "await", failedStage), calls)
         }
     }
 
     @Test
-    fun `owner ingress does not install open URI handler when broker attachment is rejected`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
+    fun `owner ingress does not install open URI handler when broker attachment is rejected`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) {
         val runtime = headlessRuntime()
         runtime.attachInstanceBroker(DesktopExternalActionBroker(File(tempDir, "attached.json")))
         val port = QueuingOpenUriPort()
@@ -797,6 +900,7 @@ class DesktopAppRuntimeTest {
         assertEquals(0, port.installs)
         runtime.close()
     }
+
     @Test
     fun `AWT open URI adapter installs only on supported macOS and unregisters once`() {
         val platform = RecordingOpenUriPlatform()
@@ -815,16 +919,21 @@ class DesktopAppRuntimeTest {
         assertEquals(1, platform.setCalls)
         assertEquals(1, platform.clearCalls)
     }
+
     @Test
     fun `AWT open URI adapter retries a failed unregister before becoming closed`() {
         val platform = RecordingOpenUriPlatform(clearFailuresRemaining = 1)
-        val registration = (AwtDesktopOpenUriEventPort(FakeOpenUriEnvironment(OperatingSystem.MACOS), platform).install {} as DesktopOpenUriInstallResult.Installed).registration
+        val registration = (
+            AwtDesktopOpenUriEventPort(FakeOpenUriEnvironment(OperatingSystem.MACOS), platform).install {
+            } as DesktopOpenUriInstallResult.Installed
+            ).registration
         val runtime = headlessRuntime().also { it.attachCloseable(registration) }
         assertThrows(IllegalStateException::class.java) { runtime.close() }
         runtime.close()
         runtime.close()
         assertEquals(2, platform.clearCalls)
     }
+
     @Test
     fun `AWT open URI adapter skips unsupported environments and reports install failures`() {
         listOf(
@@ -833,7 +942,11 @@ class DesktopAppRuntimeTest {
             FakeOpenUriEnvironment(OperatingSystem.MACOS, isHeadless = true),
         ).forEach { environment ->
             val platform = RecordingOpenUriPlatform()
-            assertEquals(DesktopOpenUriInstallResult.Unsupported, AwtDesktopOpenUriEventPort(environment, platform).install {})
+            assertEquals(
+                DesktopOpenUriInstallResult.Unsupported,
+                AwtDesktopOpenUriEventPort(environment, platform).install {
+                },
+            )
             assertEquals(0, platform.setCalls)
             assertEquals(0, platform.clearCalls)
         }
@@ -849,6 +962,7 @@ class DesktopAppRuntimeTest {
         ).install {}
         assertTrue(failure is DesktopOpenUriInstallResult.Failed)
     }
+
     @Test
     fun `start launches services and startup cleanup without blocking caller`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -913,7 +1027,8 @@ class DesktopAppRuntimeTest {
                 if (stops == 1) throw IllegalStateException("first stop")
             }
         }
-        val runtime = DesktopAppRuntime(retrying, RecordingRuntimeService(), RecordingRuntimeService(), startupCleanup = {})
+        val runtime =
+            DesktopAppRuntime(retrying, RecordingRuntimeService(), RecordingRuntimeService(), startupCleanup = {})
         runtime.start()
 
         assertThrows(IllegalStateException::class.java) { runtime.close() }
@@ -942,7 +1057,9 @@ class DesktopAppRuntimeTest {
         val ordinaryStops = AtomicInteger()
         val ordinary = object : DesktopRuntimeService {
             override fun start() = Unit
-            override fun stop() { ordinaryStops.incrementAndGet() }
+            override fun stop() {
+                ordinaryStops.incrementAndGet()
+            }
         }
         val retrying = object : DesktopRuntimeService {
             override fun start() = Unit
@@ -951,18 +1068,28 @@ class DesktopAppRuntimeTest {
             }
         }
         val runtime = DesktopAppRuntime(
-            ordinary, ordinary, ordinary,
-            trackerSyncScheduler = retrying, batchMigrationController = successful, startupCleanup = {},
+            ordinary,
+            ordinary,
+            ordinary,
+            trackerSyncScheduler = retrying,
+            batchMigrationController = successful,
+            startupCleanup = {},
         ).also(DesktopAppRuntime::start)
         val ready = CountDownLatch(2)
         val start = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(2)
         try {
             val closes = List(2) {
-                executor.submit<Throwable?> { ready.countDown(); start.await(); runCatching(runtime::close).exceptionOrNull() }
+                executor.submit<Throwable?> {
+                    ready.countDown()
+                    start.await()
+                    runCatching(runtime::close).exceptionOrNull()
+                }
             }
-            assertTrue(ready.await(1, TimeUnit.SECONDS)); start.countDown()
-            entered.await(1, TimeUnit.SECONDS); release.countDown()
+            assertTrue(ready.await(1, TimeUnit.SECONDS))
+            start.countDown()
+            entered.await(1, TimeUnit.SECONDS)
+            release.countDown()
             val failures = closes.map { it.get(2, TimeUnit.SECONDS) }
             assertEquals(1, failures.count { it === failure })
             assertEquals(1, failures.count { it == null }, failures.toString())
@@ -971,23 +1098,34 @@ class DesktopAppRuntimeTest {
             assertEquals(3, ordinaryStops.get())
             assertFalse(runtime.isRunning)
             runtime.close()
-            assertEquals(1, successfulStops.get()); assertEquals(2, failedStops.get())
+            assertEquals(1, successfulStops.get())
+            assertEquals(2, failedStops.get())
         } finally {
-            release.countDown(); executor.shutdownNow()
+            release.countDown()
+            executor.shutdownNow()
         }
     }
 
     @Test
-    fun `close start rejects concurrent restart and late resource attachment`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
+    fun `close start rejects concurrent restart and late resource attachment`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
         val starts = AtomicInteger()
         val stops = AtomicInteger()
         val blocking = object : DesktopRuntimeService {
-            override fun start() { starts.incrementAndGet() }
-            override fun stop() { stops.incrementAndGet(); entered.countDown(); release.await() }
+            override fun start() {
+                starts.incrementAndGet()
+            }
+            override fun stop() {
+                stops.incrementAndGet()
+                entered.countDown()
+                release.await()
+            }
         }
-        val runtime = DesktopAppRuntime(blocking, RecordingRuntimeService(), RecordingRuntimeService(), startupCleanup = {})
+        val runtime =
+            DesktopAppRuntime(blocking, RecordingRuntimeService(), RecordingRuntimeService(), startupCleanup = {})
         runtime.start()
         val stateFile = File(tempDir, "late-broker.json")
         val broker = DesktopExternalActionBroker(stateFile)
@@ -1000,16 +1138,23 @@ class DesktopAppRuntimeTest {
             val lateCalls = listOf(
                 executor.submit<Throwable?> { runCatching(runtime::start).exceptionOrNull() },
                 executor.submit<Throwable?> { runCatching { runtime.attachInstanceBroker(broker) }.exceptionOrNull() },
-                executor.submit<Throwable?> { runCatching { runtime.attachCloseable { closeableCalls.incrementAndGet() } }.exceptionOrNull() },
+                executor.submit<Throwable?> {
+                    runCatching { runtime.attachCloseable { closeableCalls.incrementAndGet() } }.exceptionOrNull()
+                },
             )
             release.countDown()
             assertEquals(null, closing.get(2, TimeUnit.SECONDS))
             assertTrue(lateCalls.map { it.get(2, TimeUnit.SECONDS) }.all { it is IllegalStateException })
             runtime.close()
-            assertEquals(1, starts.get()); assertEquals(1, stops.get())
-            assertFalse(runtime.isRunning); assertTrue(stateFile.exists()); assertEquals(0, closeableCalls.get())
+            assertEquals(1, starts.get())
+            assertEquals(1, stops.get())
+            assertFalse(runtime.isRunning)
+            assertTrue(stateFile.exists())
+            assertEquals(0, closeableCalls.get())
         } finally {
-            release.countDown(); executor.shutdownNow(); broker.close()
+            release.countDown()
+            executor.shutdownNow()
+            broker.close()
         }
     }
 
@@ -1132,7 +1277,9 @@ class DesktopAppRuntimeTest {
     )
 
     private fun idleUpdater(scope: CoroutineScope) = DesktopUpdateScreenModel(
-        DesktopUpdateController({ error("unused") }, { _, _ -> error("unused") }, { _, _ -> error("unused") }, { _, _ -> error("unused") }),
+        DesktopUpdateController({
+            error("unused")
+        }, { _, _ -> error("unused") }, { _, _ -> error("unused") }, { _, _ -> error("unused") }),
         scope,
     )
 

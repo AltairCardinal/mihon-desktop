@@ -1,12 +1,11 @@
 package mihon.desktop.ui.library
 
-import tachiyomi.i18n.MR
-import java.util.Locale
-
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -15,42 +14,62 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.rememberScrollbarAdapter
+import androidx.compose.foundation.selection.triStateToggleable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.ZeroCornerSize
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CollectionsBookmark
-import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SortByAlpha
-import androidx.compose.material3.Badge
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.DoneAll
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.FlipToBack
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.RemoveDone
+import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.SwapCalls
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
 import androidx.compose.material3.BottomAppBar
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -59,17 +78,20 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -77,24 +99,33 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.collectAsState
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
@@ -107,17 +138,20 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.LibrarySearchFilter
-import mihon.desktop.ui.library.pickRandomMangaId
 import mihon.desktop.domain.SortMode
 import mihon.desktop.library.LibraryScreenModelFactory
-import mihon.desktop.ui.reader.DesktopReaderScreen
 import mihon.desktop.ui.browse.GlobalSearchScreen
-import tachiyomi.domain.category.model.Category
-import tachiyomi.domain.library.model.LibraryManga
-import tachiyomi.domain.library.interactor.LibraryFilter
-import tachiyomi.domain.library.projectLibraryBadges
+import mihon.desktop.ui.library.pickRandomMangaId
+import mihon.desktop.ui.reader.DesktopReaderScreen
+import mihon.desktop.ui.theme.LocalDesktopDarkTheme
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.TriState
+import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.library.interactor.LibraryFilter
+import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.library.projectLibraryBadges
+import tachiyomi.i18n.MR
+import java.util.Locale
 
 @Composable
 internal fun LibraryToolbar(
@@ -128,12 +162,12 @@ internal fun LibraryToolbar(
     onSortChange: (SortMode, Boolean) -> Unit,
     filter: LibraryFilter,
     availableTrackerIds: Set<Long>,
+    trackerNamesById: Map<Long, String> = emptyMap(),
     onToggleFilter: (LibraryFilterField) -> Unit,
     onToggleTracking: (Long) -> Unit,
     isUpdating: Boolean,
     displayMode: LibraryDisplayMode,
     onDisplayModeChange: (LibraryDisplayMode) -> Unit,
-    onManageCategories: () -> Unit,
     onOpenGlobalSearch: () -> Unit,
     onOpenSettings: () -> Unit,
     categories: List<Category> = emptyList(),
@@ -144,6 +178,9 @@ internal fun LibraryToolbar(
     showIntervalCustomFilter: Boolean = false,
     showFilterMenu: Boolean = false,
     onShowFilterMenuChange: (Boolean) -> Unit = {},
+    optionsFocusRequester: FocusRequester? = null,
+    onSearchFocusChange: (Boolean) -> Unit = {},
+    onPopupVisibilityChange: (Boolean) -> Unit = {},
     toolbarTitle: String = MR.strings.label_library.localized(),
     onRandomManga: () -> Unit,
     onRefresh: () -> Unit,
@@ -153,253 +190,172 @@ internal fun LibraryToolbar(
     LaunchedEffect(searchQuery != null) {
         if (searchQuery != null) searchFocusRequester.requestFocus()
     }
-    var showSortMenu by remember { mutableStateOf(false) }
-    var showDisplayMenu by remember { mutableStateOf(false) }
+    val localOptionsFocus = remember { FocusRequester() }
+    val optionsFocus = optionsFocusRequester ?: localOptionsFocus
+    val moreFocus = remember { FocusRequester() }
+    val moreFirstFocus = remember { FocusRequester() }
     var showCategoryMenu by remember { mutableStateOf(false) }
-    var showRefreshMenu by remember { mutableStateOf(false) }
-    val displayedFilter = if (filter.globalDownloadedOnly) {
-        filter.copy(downloaded = TriState.ENABLED_IS)
-    } else {
-        filter
+    var showMoreMenu by remember { mutableStateOf(false) }
+    LaunchedEffect(showCategoryMenu, showMoreMenu) {
+        onPopupVisibilityChange(showCategoryMenu || showMoreMenu)
     }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            onSearchFocusChange(false)
+            onPopupVisibilityChange(false)
+        }
+    }
+    LaunchedEffect(showMoreMenu) {
+        if (showMoreMenu) {
+            androidx.compose.runtime.withFrameNanos { }
+            moreFirstFocus.requestFocus()
+        }
+    }
+    var restoreMoreFocus by remember { mutableIntStateOf(0) }
+    LaunchedEffect(restoreMoreFocus) {
+        if (restoreMoreFocus > 0) {
+            androidx.compose.runtime.withFrameNanos { }
+            runCatching { moreFocus.requestFocus() }
+        }
+    }
+    val dismissMore: () -> Unit = {
+        showMoreMenu = false
+        restoreMoreFocus++
+    }
+    val displayedFilter = if (filter.globalDownloadedOnly) filter.copy(downloaded = TriState.ENABLED_IS) else filter
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             if (searchQuery == null) {
-                Text(toolbarTitle, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                mihon.desktop.sync.DesktopLibrarySyncAction()
-                IconButton(onClick = { onSearchChange("") }) {
-                    Icon(Icons.Default.Search, contentDescription = MR.strings.action_search.localized())
-                }
-            } else {
-                IconButton(onClick = { onSearchChange(null) }) {
-                    Icon(Icons.Default.Close, contentDescription = MR.strings.action_cancel.localized())
-                }
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = onSearchChange,
-                    placeholder = { Text(MR.strings.desktop_ui_search_library.localized()) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = MR.strings.action_search.localized()) },
-                    trailingIcon = if (searchQuery.isNotEmpty()) {
-                        {
-                            IconButton(onClick = { onSearchChange("") }) {
-                                Icon(Icons.Default.Close, contentDescription = MR.strings.action_reset.localized())
-                            }
-                        }
-                    } else {
-                        null
-                    },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f).focusRequester(searchFocusRequester),
-                )
-            }
-
-            // Display mode
-            Box {
-                IconButton(onClick = { showDisplayMenu = true }) {
-                    val icon = when (displayMode) {
-                        LibraryDisplayMode.COMPACT_GRID -> Icons.Default.GridOn
-                        LibraryDisplayMode.COMFORTABLE_GRID -> Icons.Default.GridView
-                        LibraryDisplayMode.LIST -> Icons.AutoMirrored.Filled.List
-                        LibraryDisplayMode.COVER_ONLY_GRID -> Icons.Default.GridView
-                    }
-                    Icon(icon, contentDescription = MR.strings.action_display_mode.localized())
-                }
-                DropdownMenu(expanded = showDisplayMenu, onDismissRequest = { showDisplayMenu = false }) {
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                "${if (displayMode == LibraryDisplayMode.COMPACT_GRID) "✓ " else "  "}" +
-                                    MR.strings.desktop_ui_compact_grid.localized(),
-                            )
-                        },
-                        onClick = { onDisplayModeChange(LibraryDisplayMode.COMPACT_GRID); showDisplayMenu = false },
-                    )
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                "${if (displayMode == LibraryDisplayMode.COMFORTABLE_GRID) "✓ " else "  "}" +
-                                    MR.strings.desktop_ui_comfortable_grid.localized(),
-                            )
-                        },
-                        onClick = { onDisplayModeChange(LibraryDisplayMode.COMFORTABLE_GRID); showDisplayMenu = false },
-                    )
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                "${if (displayMode == LibraryDisplayMode.LIST) "✓ " else "  "}" +
-                                    MR.strings.desktop_ui_list.localized(),
-                            )
-                        },
-                        onClick = { onDisplayModeChange(LibraryDisplayMode.LIST); showDisplayMenu = false },
-                    )
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                "${if (displayMode == LibraryDisplayMode.COVER_ONLY_GRID) "✓ " else "  "}" +
-                                    MR.strings.action_display_cover_only_grid.localized(),
-                            )
-                        },
-                        onClick = {
-                            onDisplayModeChange(LibraryDisplayMode.COVER_ONLY_GRID)
-                            showDisplayMenu = false
+                Box(Modifier.weight(1f)) {
+                    Text(
+                        toolbarTitle,
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = if (!showCategoryTabs && categories.size > 1) {
+                            Modifier.clickable { showCategoryMenu = true }
+                        } else {
+                            Modifier
                         },
                     )
-                }
-            }
-
-            // Sort
-            Box {
-                IconButton(onClick = { showSortMenu = true }) {
-                    Icon(Icons.Default.SortByAlpha, contentDescription = MR.strings.action_sort.localized())
-                }
-                DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
-                    SortMode.entries.filter { it != SortMode.TRACKER_MEAN || availableTrackerIds.isNotEmpty() }.forEach { mode ->
-                        DropdownMenuItem(
-                            text = {
-                                val label = when (mode) {
-                                    SortMode.TITLE -> MR.strings.action_sort_alpha.localized()
-                                    SortMode.LAST_READ -> MR.strings.action_sort_last_read.localized()
-                                    SortMode.LAST_UPDATE -> MR.strings.action_sort_last_manga_update.localized()
-                                    SortMode.UNREAD_COUNT -> MR.strings.action_sort_unread_count.localized()
-                                    SortMode.TOTAL_CHAPTERS -> MR.strings.action_sort_total.localized()
-                                    SortMode.LATEST_CHAPTER -> MR.strings.action_sort_latest_chapter.localized()
-                                    SortMode.CHAPTER_FETCH_DATE -> MR.strings.action_sort_chapter_fetch_date.localized()
-                                    SortMode.DATE_ADDED -> MR.strings.action_sort_date_added.localized()
-                                    SortMode.TRACKER_MEAN -> MR.strings.action_sort_tracker_score.localized()
-                                    SortMode.RANDOM -> MR.strings.action_sort_random.localized()
-                                }
-                                val arrow = if (mode == sortMode) (if (sortAscending) " ↑" else " ↓") else ""
-                                Text("$label$arrow")
-                            },
-                            onClick = {
-                                onSortChange(mode, nextSortAscending(mode, sortMode, sortAscending))
-                                showSortMenu = false
-                            },
-                        )
-                    }
-                }
-            }
-
-            // Filter
-            Box {
-                IconButton(onClick = { onShowFilterMenuChange(true) }) {
-                    Icon(Icons.Default.FilterList, contentDescription = MR.strings.action_filter.localized())
-                }
-                LibraryFilterDropdown(
-                    expanded = showFilterMenu,
-                    onDismissRequest = { onShowFilterMenuChange(false) },
-                    filter = filter,
-                    availableTrackerIds = availableTrackerIds,
-                    showIntervalCustomFilter = showIntervalCustomFilter,
-                    onToggleFilter = onToggleFilter,
-                    onToggleTracking = onToggleTracking,
-                )
-            }
-
-            IconButton(onClick = onRandomManga) {
-                Icon(Icons.Default.Shuffle, contentDescription = MR.strings.desktop_ui_random_manga.localized())
-            }
-
-            IconButton(onClick = onManageCategories) {
-                Icon(Icons.Default.CreateNewFolder, contentDescription = MR.strings.desktop_ui_manage_categories_eceede45.localized())
-            }
-
-            if (!showCategoryTabs && categories.size > 1) {
-                Box {
-                    IconButton(onClick = { showCategoryMenu = true }) {
-                        Icon(Icons.Default.CollectionsBookmark, contentDescription = MR.strings.categories.localized())
-                    }
-                    DropdownMenu(
-                        expanded = showCategoryMenu,
-                        onDismissRequest = { showCategoryMenu = false },
-                    ) {
+                    DropdownMenu(expanded = showCategoryMenu, onDismissRequest = { showCategoryMenu = false }) {
                         categories.forEachIndexed { index, category ->
                             DropdownMenuItem(
                                 text = { Text(category.name) },
                                 onClick = {
-                                    onCategoryChange(index)
                                     showCategoryMenu = false
+                                    onCategoryChange(index)
                                 },
                             )
                         }
                     }
                 }
-            }
-
-            if (!searchQuery.isNullOrEmpty()) {
-                IconButton(onClick = onOpenGlobalSearch) {
-                    Icon(Icons.Default.Search, contentDescription = MR.strings.action_global_search.localized())
+                IconButton(onClick = { onSearchChange("") }) {
+                    Icon(Icons.Default.Search, MR.strings.action_search.localized())
+                }
+            } else {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchChange,
+                    singleLine = true,
+                    placeholder = { Text(MR.strings.desktop_ui_search_library.localized()) },
+                    modifier = Modifier.weight(1f).focusRequester(searchFocusRequester)
+                        .onFocusChanged { onSearchFocusChange(it.isFocused) },
+                    trailingIcon = if (searchQuery.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { onSearchChange("") }) {
+                                Icon(Icons.Default.Close, MR.strings.action_reset.localized())
+                            }
+                        }
+                    } else {
+                        null
+                    },
+                )
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = onOpenGlobalSearch) {
+                        Icon(Icons.Default.Search, MR.strings.action_global_search.localized())
+                    }
                 }
             }
-            IconButton(onClick = onOpenSettings) {
-                Icon(Icons.Default.Settings, contentDescription = MR.strings.action_settings.localized())
-            }
-
+            IconButton(
+                onClick = { onShowFilterMenuChange(true) },
+                modifier = Modifier.focusRequester(optionsFocus),
+            ) { Icon(Icons.Default.FilterList, MR.strings.action_filter.localized()) }
+            mihon.desktop.sync.DesktopLibrarySyncAction()
             Box {
                 IconButton(
-                    modifier = Modifier.semantics {
-                        contentDescription = MR.strings.check_for_updates.localized()
-                    },
-                    onClick = {
-                        if (isUpdating) onRefresh() else showRefreshMenu = true
+                    onClick = { showMoreMenu = true },
+                    modifier = Modifier.focusRequester(moreFocus),
+                ) { Icon(Icons.Default.MoreVert, MR.strings.action_menu.localized()) }
+                DropdownMenu(
+                    expanded = showMoreMenu,
+                    onDismissRequest = dismissMore,
+                    modifier = Modifier.onPreviewKeyEvent {
+                        if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) {
+                            dismissMore()
+                            true
+                        } else {
+                            false
+                        }
                     },
                 ) {
-                    if (isUpdating) {
-                        CircularProgressIndicator(modifier = Modifier.padding(8.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.Default.Refresh, contentDescription = MR.strings.check_for_updates.localized())
-                    }
-                }
-                if (!isUpdating) {
-                    DropdownMenu(
-                        expanded = showRefreshMenu,
-                        onDismissRequest = { showRefreshMenu = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(MR.strings.action_update_library.localized()) },
-                            onClick = {
-                                showRefreshMenu = false
-                                onRefresh()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(MR.strings.ext_update_all.localized()) },
-                            onClick = {
-                                showRefreshMenu = false
-                                onRefreshAll()
-                            },
-                        )
-                    }
+                    DropdownMenuItem(
+                        text = { Text(MR.strings.action_update_library.localized()) },
+                        modifier = Modifier.focusRequester(moreFirstFocus),
+                        onClick = {
+                            dismissMore()
+                            onRefreshAll()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(MR.strings.action_update_category.localized()) },
+                        onClick = {
+                            dismissMore()
+                            onRefresh()
+                        },
+                        enabled = categories.isNotEmpty(),
+                    )
+                    DropdownMenuItem(
+                        text = { Text(MR.strings.desktop_ui_random_manga.localized()) },
+                        onClick = {
+                            dismissMore()
+                            onRandomManga()
+                        },
+                    )
                 }
             }
         }
-
         val activeFilters = filterRows(displayedFilter).filter {
             it.second.second != TriState.DISABLED &&
-                isFilterFieldEnabled(filter, it.second.first) &&
-                (it.second.first != LibraryFilterField.INTERVAL_CUSTOM || showIntervalCustomFilter)
+                (it.second.first != LibraryFilterField.INTERVAL_CUSTOM || filter.skipOutsideReleasePeriod)
         }
-        if (activeFilters.isNotEmpty()) {
-            Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        val tracking = availableTrackerIds.sorted().filter {
+            filter.tracking[it].orDisabledForUi() != TriState.DISABLED
+        }
+        if (activeFilters.isNotEmpty() || tracking.isNotEmpty()) {
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 activeFilters.forEach { (label, value) ->
                     FilterChip(
                         selected = true,
-                        onClick = {
-                            onToggleFilter(value.first)
-                        },
-                        label = {
-                            Text(
-                                MR.strings.desktop_ui_filter_value.localized(
-                                    Locale.getDefault(),
-                                    label,
-                                    value.second.label(),
-                                ),
-                            )
-                        },
+                        onClick = { onShowFilterMenuChange(true) },
+                        label = { Text("$label: ${value.second.label()}") },
+                    )
+                }
+                tracking.forEach { id ->
+                    val title = if (availableTrackerIds.size ==
+                        1
+                    ) {
+                        MR.strings.action_filter_tracked.localized()
+                    } else {
+                        trackerNamesById[id].orEmpty()
+                    }
+                    FilterChip(
+                        selected = true,
+                        onClick = { onShowFilterMenuChange(true) },
+                        label = { Text("$title: ${filter.tracking[id].orDisabledForUi().label()}") },
                     )
                 }
             }
@@ -468,46 +424,172 @@ internal fun SelectionActionBar(
     onMarkRead: () -> Unit,
     onMarkUnread: () -> Unit,
     onRemoveFromLibrary: () -> Unit,
+    onPopupVisibilityChange: (Boolean) -> Unit = {},
+    onExitSelection: () -> Unit = {},
+    categoryFocusRequester: FocusRequester? = null,
+    removalFocusRequester: FocusRequester? = null,
 ) {
     var downloadExpanded by remember { mutableStateOf(false) }
-    BottomAppBar(
-        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+    var moreExpanded by remember { mutableStateOf(false) }
+    val downloadFocus = remember { FocusRequester() }
+    val localMoreFocus = remember { FocusRequester() }
+    val moreFocus = removalFocusRequester ?: localMoreFocus
+    val downloadFirstFocus = remember { FocusRequester() }
+    val moreFirstFocus = remember { FocusRequester() }
+    var restoreDownloadFocus by remember { mutableIntStateOf(0) }
+    var restoreMoreFocus by remember { mutableIntStateOf(0) }
+    LaunchedEffect(downloadExpanded, moreExpanded) {
+        onPopupVisibilityChange(downloadExpanded || moreExpanded)
+        if (downloadExpanded || moreExpanded) {
+            androidx.compose.runtime.withFrameNanos { }
+            if (downloadExpanded) downloadFirstFocus.requestFocus() else moreFirstFocus.requestFocus()
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { onPopupVisibilityChange(false) }
+    }
+    LaunchedEffect(restoreDownloadFocus) {
+        if (restoreDownloadFocus > 0) {
+            androidx.compose.runtime.withFrameNanos { }
+            runCatching { downloadFocus.requestFocus() }
+        }
+    }
+    LaunchedEffect(restoreMoreFocus) {
+        if (restoreMoreFocus > 0) {
+            androidx.compose.runtime.withFrameNanos { }
+            runCatching { moreFocus.requestFocus() }
+        }
+    }
+    val dismissDownload: () -> Unit = {
+        downloadExpanded = false
+        restoreDownloadFocus++
+    }
+    val dismissMore: () -> Unit = {
+        moreExpanded = false
+        restoreMoreFocus++
+    }
+    Surface(
+        modifier = Modifier.onPreviewKeyEvent {
+            if (it.key == Key.Escape && it.type == KeyEventType.KeyDown && !downloadExpanded && !moreExpanded) {
+                onExitSelection()
+                true
+            } else {
+                false
+            }
+        },
+        shape = MaterialTheme.shapes.large.copy(bottomEnd = ZeroCornerSize, bottomStart = ZeroCornerSize),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
-        Spacer(Modifier.weight(1f))
-        Box {
-            TextButton(
-                onClick = { downloadExpanded = true },
-                enabled = canDownload,
-            ) { Text(MR.strings.action_download.localized()) }
-            DropdownMenu(expanded = downloadExpanded, onDismissRequest = { downloadExpanded = false }) {
-                listOf(
-                    MangaDetailDownloadAction.NEXT_1_CHAPTER to
-                        MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 1),
-                    MangaDetailDownloadAction.NEXT_5_CHAPTERS to
-                        MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 5),
-                    MangaDetailDownloadAction.NEXT_10_CHAPTERS to
-                        MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 10),
-                    MangaDetailDownloadAction.NEXT_25_CHAPTERS to
-                        MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 25),
-                    MangaDetailDownloadAction.UNREAD_CHAPTERS to MR.strings.desktop_ui_all_unread_chapters.localized(),
-                    MangaDetailDownloadAction.BOOKMARKED_CHAPTERS to MR.strings.desktop_ui_bookmarked_chapters.localized(),
-                ).forEach { (action, label) ->
-                    DropdownMenuItem(
-                        text = { Text(label) },
-                        onClick = {
-                            downloadExpanded = false
-                            actions.download(action)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp)) {
+            IconButton(
+                onClick = onSetCategories,
+                modifier = Modifier
+                    .weight(1f)
+                    .then(categoryFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier),
+            ) {
+                Icon(Icons.AutoMirrored.Outlined.Label, MR.strings.action_move_category.localized())
+            }
+            IconButton(onClick = onMarkRead, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Outlined.DoneAll, MR.strings.action_mark_as_read.localized())
+            }
+            IconButton(onClick = onMarkUnread, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Outlined.RemoveDone, MR.strings.action_mark_as_unread.localized())
+            }
+            if (canDownload) {
+                Box(Modifier.weight(1f)) {
+                    IconButton(
+                        onClick = { downloadExpanded = true },
+                        modifier = Modifier.fillMaxWidth().focusRequester(downloadFocus),
+                    ) {
+                        Icon(Icons.Outlined.Download, MR.strings.action_download.localized())
+                    }
+                    DropdownMenu(
+                        expanded = downloadExpanded,
+                        onDismissRequest = dismissDownload,
+                        modifier = Modifier.onPreviewKeyEvent {
+                            if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) {
+                                dismissDownload()
+                                true
+                            } else {
+                                false
+                            }
                         },
-                    )
+                    ) {
+                        listOf(
+                            MangaDetailDownloadAction.NEXT_1_CHAPTER to
+                                MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 1),
+                            MangaDetailDownloadAction.NEXT_5_CHAPTERS to
+                                MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 5),
+                            MangaDetailDownloadAction.NEXT_10_CHAPTERS to
+                                MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 10),
+                            MangaDetailDownloadAction.NEXT_25_CHAPTERS to
+                                MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 25),
+                            MangaDetailDownloadAction.UNREAD_CHAPTERS to
+                                MR.strings.desktop_ui_all_unread_chapters.localized(),
+                            MangaDetailDownloadAction.BOOKMARKED_CHAPTERS to
+                                MR.strings.desktop_ui_bookmarked_chapters.localized(),
+                        ).forEachIndexed { index, (action, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                modifier = if (index == 0) Modifier.focusRequester(downloadFirstFocus) else Modifier,
+                                onClick = {
+                                    dismissDownload()
+                                    actions.download(action)
+                                },
+                            )
+                        }
+                    }
+                }
+                Box(Modifier.weight(1f)) {
+                    IconButton(
+                        onClick = { moreExpanded = true },
+                        modifier = Modifier.fillMaxWidth().focusRequester(moreFocus),
+                    ) {
+                        Icon(Icons.Outlined.MoreVert, MR.strings.action_menu.localized())
+                    }
+                    DropdownMenu(
+                        expanded = moreExpanded,
+                        onDismissRequest = dismissMore,
+                        modifier = Modifier.onPreviewKeyEvent {
+                            if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) {
+                                dismissMore()
+                                true
+                            } else {
+                                false
+                            }
+                        },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(MR.strings.migrate.localized()) },
+                            enabled = canMigrate,
+                            modifier = Modifier.focusRequester(moreFirstFocus),
+                            onClick = {
+                                dismissMore()
+                                actions.migrate()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(MR.strings.action_delete.localized()) },
+                            onClick = {
+                                dismissMore()
+                                onRemoveFromLibrary()
+                            },
+                        )
+                    }
+                }
+            } else {
+                IconButton(onClick = actions.migrate, enabled = canMigrate, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Outlined.SwapCalls, MR.strings.migrate.localized())
+                }
+                IconButton(
+                    onClick = onRemoveFromLibrary,
+                    modifier = Modifier
+                        .weight(1f)
+                        .then(removalFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier),
+                ) {
+                    Icon(Icons.Outlined.Delete, MR.strings.action_delete.localized())
                 }
             }
-        }
-        TextButton(onClick = actions.migrate, enabled = canMigrate) { Text(MR.strings.action_migrate.localized()) }
-        TextButton(onClick = onSetCategories) { Text(MR.strings.categories.localized()) }
-        TextButton(onClick = onMarkRead) { Text(MR.strings.desktop_ui_mark_read.localized()) }
-        TextButton(onClick = onMarkUnread) { Text(MR.strings.desktop_ui_mark_unread.localized()) }
-        TextButton(onClick = onRemoveFromLibrary) {
-            Text(MR.strings.action_remove.localized(), color = MaterialTheme.colorScheme.error)
         }
     }
 }
@@ -521,7 +603,8 @@ internal fun LibrarySelectionTopBar(
     onInvertSelection: () -> Unit,
 ) {
     TopAppBar(
-        title = { Text(MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), selectedCount)) },
+        modifier = Modifier.testTag("library-selection-top-bar"),
+        title = { Text(selectedCount.toString()) },
         navigationIcon = {
             IconButton(onClick = onClose) {
                 Icon(Icons.Default.Close, contentDescription = MR.strings.desktop_ui_clear_selection.localized())
@@ -529,10 +612,10 @@ internal fun LibrarySelectionTopBar(
         },
         actions = {
             IconButton(onClick = onSelectAll) {
-                Icon(Icons.Default.SelectAll, contentDescription = MR.strings.action_select_all.localized())
+                Icon(Icons.Outlined.SelectAll, contentDescription = MR.strings.action_select_all.localized())
             }
             IconButton(onClick = onInvertSelection) {
-                Icon(Icons.Default.SelectAll, contentDescription = MR.strings.desktop_ui_invert_selection.localized())
+                Icon(Icons.Outlined.FlipToBack, contentDescription = MR.strings.desktop_ui_invert_selection.localized())
             }
         },
     )
@@ -554,20 +637,26 @@ internal fun LibraryGrid(
     downloadCountsByManga: Map<Long, Long> = emptyMap(),
     localMangaIds: Set<Long> = emptySet(),
     sourceLanguagesByManga: Map<Long, String> = emptyMap(),
+    trackerMeansByManga: Map<Long, Double> = emptyMap(),
+    showTrackerScore: Boolean = false,
     showDownloadBadge: Boolean = true,
     showUnreadBadge: Boolean = true,
     showLocalBadge: Boolean = true,
     showLanguageBadge: Boolean = false,
     showContinueReadingButton: Boolean = true,
     syncedResumeMangaIds: Set<Long> = emptySet(),
+    continueReadingMangaIds: Set<Long>? = null,
+    scrollState: LazyGridState = rememberLazyGridState(),
+    resolveCoverModel: (Long, String?) -> String? = { _, url -> url },
     onContextMenu: (LibraryManga) -> Unit,
-    onItemClick: (LibraryManga, shiftPressed: Boolean) -> Unit,
+    onItemClick: (LibraryManga, LibraryClickModifiers) -> Unit,
     onItemLongClick: (LibraryManga) -> Unit,
     onContinueReading: (LibraryManga) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val columns = if (maxWidth < maxHeight) portraitColumns else landscapeColumns
         LazyVerticalGrid(
+            state = scrollState,
             columns = columns.takeIf { it > 0 }?.let(GridCells::Fixed)
                 ?: GridCells.Adaptive(minSize = minCardWidth),
             contentPadding = PaddingValues(8.dp),
@@ -585,12 +674,16 @@ internal fun LibraryGrid(
                     downloadCount = downloadCountsByManga[item.id] ?: if (item.id in downloadedMangaIds) 1L else 0L,
                     isLocal = item.id in localMangaIds,
                     sourceLanguage = sourceLanguagesByManga[item.id].orEmpty(),
+                    trackerScore = trackerMeansByManga[item.id],
+                    showTrackerScore = showTrackerScore,
                     showDownloadBadge = showDownloadBadge,
                     showUnreadBadge = showUnreadBadge,
                     showLocalBadge = showLocalBadge,
                     showLanguageBadge = showLanguageBadge,
                     showContinueReadingButton = showContinueReadingButton,
                     syncedResumeMangaIds = syncedResumeMangaIds,
+                    canContinueReading = continueReadingMangaIds?.contains(item.id) ?: (item.unreadCount > 0),
+                    coverModel = resolveCoverModel(item.id, item.manga.thumbnailUrl),
                     onClick = { shiftPressed -> onItemClick(item, shiftPressed) },
                     onLongClick = { onItemLongClick(item) },
                     onContinueReading = { onContinueReading(item) },
@@ -598,6 +691,10 @@ internal fun LibraryGrid(
                 )
             }
         }
+        VerticalScrollbar(
+            adapter = rememberScrollbarAdapter(scrollState),
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+        )
     }
 }
 
@@ -612,135 +709,154 @@ internal fun LibraryList(
     downloadCountsByManga: Map<Long, Long> = emptyMap(),
     localMangaIds: Set<Long> = emptySet(),
     sourceLanguagesByManga: Map<Long, String> = emptyMap(),
+    trackerMeansByManga: Map<Long, Double> = emptyMap(),
+    showTrackerScore: Boolean = false,
     showDownloadBadge: Boolean = true,
     showUnreadBadge: Boolean = true,
     showLocalBadge: Boolean = true,
     showLanguageBadge: Boolean = false,
     showContinueReadingButton: Boolean = true,
     syncedResumeMangaIds: Set<Long> = emptySet(),
+    continueReadingMangaIds: Set<Long>? = null,
+    scrollState: LazyListState = rememberLazyListState(),
+    resolveCoverModel: (Long, String?) -> String? = { _, url -> url },
     onContextMenu: (LibraryManga) -> Unit,
-    onItemClick: (LibraryManga, shiftPressed: Boolean) -> Unit,
+    onItemClick: (LibraryManga, LibraryClickModifiers) -> Unit,
     onItemLongClick: (LibraryManga) -> Unit,
     onContinueReading: (LibraryManga) -> Unit = {},
 ) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(items, key = { it.id }) { item ->
-            val isSelected = selectionState.isSelected(item.manga.id)
-            val downloadCount = downloadCountsByManga[item.id] ?: if (item.id in downloadedMangaIds) 1L else 0L
-            val badges = projectLibraryBadges(
-                { downloadCount }, { item.unreadCount }, { item.id in localMangaIds },
-                { sourceLanguagesByManga[item.id].orEmpty() }, showDownloadBadge, showUnreadBadge,
-                showLocalBadge, showLanguageBadge,
-            )
-            val showLanguageIndicator = badges.sourceLanguage.isNotBlank()
-            val showTrailingIndicators =
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(state = scrollState, modifier = Modifier.fillMaxSize()) {
+            items(items, key = { it.id }) { item ->
+                val isSelected = selectionState.isSelected(item.manga.id)
+                val downloadCount = downloadCountsByManga[item.id] ?: if (item.id in downloadedMangaIds) 1L else 0L
+                val badges = projectLibraryBadges(
+                    { downloadCount },
+                    { item.unreadCount },
+                    { item.id in localMangaIds },
+                    { sourceLanguagesByManga[item.id].orEmpty() },
+                    showDownloadBadge,
+                    showUnreadBadge,
+                    showLocalBadge,
+                    showLanguageBadge,
+                )
+                val showLanguageIndicator = badges.sourceLanguage.isNotBlank()
+                val showTrailingIndicators =
                     badges.unreadCount > 0L || badges.downloadCount > 0L || badges.isLocal ||
-                    showLanguageIndicator
-            val showContinueReading = showContinueReadingButton &&
-                badges.unreadCount > 0L
-            ListItem(
-                headlineContent = {
-                    Text(
-                        item.manga.title,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                leadingContent = {
-                    Box {
-                        AsyncImage(
-                            model = mihon.desktop.image.desktopSourceImageModel(
-                                item.manga.thumbnailUrl,
-                                item.manga.source,
-                            ),
-                            contentDescription = item.manga.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(48.dp),
-                        )
-                        if (isSelected) {
-                            Box(
-                                Modifier.size(48.dp).background(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                ),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                )
-                            }
-                        }
-                    }
-                },
-                supportingContent = if (badges.unreadCount > 0L) {
-                    {
+                        showLanguageIndicator
+                val showContinueReading = showContinueReadingButton &&
+                    (continueReadingMangaIds?.contains(item.id) ?: (item.unreadCount > 0))
+                val selectionAlpha = if (LocalDesktopDarkTheme.current) 0.16f else 0.22f
+                ListItem(
+                    colors = ListItemDefaults.colors(
+                        containerColor = if (isSelected) {
+                            MaterialTheme.colorScheme.secondary.copy(alpha = selectionAlpha)
+                        } else {
+                            Color.Transparent
+                        },
+                    ),
+                    headlineContent = {
                         Text(
-                            MR.strings.desktop_ui_unread_count.localized(
-                                Locale.getDefault(),
-                                badges.unreadCount,
-                            ),
+                            item.manga.title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                    }
-                } else {
-                    null
-                },
-                trailingContent = if (showContinueReading || showTrailingIndicators) {
-                    {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (badges.unreadCount > 0L) {
-                                Badge { Text(badges.unreadCount.toString()) }
-                            }
-                            if (badges.downloadCount > 0L) {
-                                Badge(
-                                    modifier = Modifier.semantics {
-                                        contentDescription = MR.strings.label_downloaded.localized()
-                                    },
-                                ) { Text(badges.downloadCount.toString()) }
-                            }
-                            if (badges.isLocal || showLanguageIndicator) {
-                                LibraryLanguageBadge(
-                                    isLocal = badges.isLocal,
-                                    sourceLanguage = badges.sourceLanguage,
-                                )
-                            }
-                            if (showContinueReading) {
-                                IconButton(onClick = { onContinueReading(item) }) {
-                                    Icon(
-                                        Icons.Default.PlayArrow,
-                                        contentDescription = MR.strings.desktop_ui_continue_reading.localized(),
+                    },
+                    leadingContent = {
+                        Box {
+                            AsyncImage(
+                                model = rememberMangaCoverRequestState(
+                                    item.id,
+                                    item.manga.source,
+                                    resolveCoverModel(item.id, item.manga.thumbnailUrl),
+                                    item.manga.coverLastModified,
+                                ).request,
+                                contentDescription = item.manga.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(48.dp),
+                            )
+                        }
+                    },
+                    supportingContent = if (badges.unreadCount > 0L || showTrackerScore) {
+                        {
+                            Column {
+                                if (badges.unreadCount > 0L) {
+                                    Text(
+                                        MR.strings.desktop_ui_unread_count.localized(
+                                            Locale.getDefault(),
+                                            badges.unreadCount,
+                                        ),
                                     )
                                 }
+                                if (showTrackerScore) Text(trackerScoreLabel(trackerMeansByManga[item.id]))
                             }
                         }
-                    }
-                } else {
-                    null
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .shiftAwareCombinedClickable(
-                        onClick = { onItemClick(item, it) },
-                        onLongClick = { onItemLongClick(item) },
-                    )
-                    .pointerInput(item.manga.id) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                if (event.type == PointerEventType.Press &&
-                                    event.button == PointerButton.Secondary
-                                ) {
-                                    onContextMenu(item)
+                    } else {
+                        null
+                    },
+                    trailingContent = if (showContinueReading || showTrailingIndicators) {
+                        {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (badges.unreadCount > 0L) {
+                                    Badge(
+                                        containerColor = MaterialTheme.colorScheme.secondary,
+                                        contentColor = MaterialTheme.colorScheme.onSecondary,
+                                    ) { Text(badges.unreadCount.toString()) }
+                                }
+                                if (badges.downloadCount > 0L) {
+                                    Badge(
+                                        containerColor = MaterialTheme.colorScheme.tertiary,
+                                        contentColor = MaterialTheme.colorScheme.onTertiary,
+                                        modifier = Modifier.semantics {
+                                            contentDescription = MR.strings.label_downloaded.localized()
+                                        },
+                                    ) { Text(badges.downloadCount.toString()) }
+                                }
+                                if (badges.isLocal || showLanguageIndicator) {
+                                    LibraryLanguageBadge(
+                                        isLocal = badges.isLocal,
+                                        sourceLanguage = badges.sourceLanguage,
+                                    )
+                                }
+                                if (showContinueReading) {
+                                    IconButton(onClick = { onContinueReading(item) }) {
+                                        Icon(
+                                            Icons.Default.PlayArrow,
+                                            contentDescription = MR.strings.desktop_ui_continue_reading.localized(),
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
-                    .background(
-                        if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                        else Color.Transparent,
-                    ),
-            )
+                    } else {
+                        null
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shiftAwareCombinedClickable(
+                            onClick = { onItemClick(item, it) },
+                            onLongClick = { onItemLongClick(item) },
+                        )
+                        .semantics { selected = isSelected }
+                        .pointerInput(item.manga.id) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    if (event.type == PointerEventType.Press &&
+                                        event.button == PointerButton.Secondary
+                                    ) {
+                                        onContextMenu(item)
+                                    }
+                                }
+                            }
+                        },
+                )
+            }
         }
+        VerticalScrollbar(
+            adapter = rememberScrollbarAdapter(scrollState),
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+        )
     }
 }
 
@@ -757,25 +873,36 @@ internal fun MangaCoverCard(
     downloadCount: Long = if (isDownloaded) 1L else 0L,
     isLocal: Boolean = false,
     sourceLanguage: String = "",
+    trackerScore: Double? = null,
+    showTrackerScore: Boolean = false,
     showDownloadBadge: Boolean = true,
     showUnreadBadge: Boolean = true,
     showLocalBadge: Boolean = true,
     showLanguageBadge: Boolean = false,
     showContinueReadingButton: Boolean = true,
     syncedResumeMangaIds: Set<Long> = emptySet(),
-    onClick: (shiftPressed: Boolean) -> Unit,
+    canContinueReading: Boolean = item.unreadCount > 0,
+    coverModel: String? = item.manga.thumbnailUrl,
+    onClick: (LibraryClickModifiers) -> Unit,
     onLongClick: () -> Unit,
     onContinueReading: () -> Unit,
     onContextMenu: () -> Unit,
 ) {
     val badges = projectLibraryBadges(
-        { downloadCount }, { item.unreadCount }, { isLocal }, { sourceLanguage },
-        showDownloadBadge, showUnreadBadge, showLocalBadge, showLanguageBadge,
+        { downloadCount },
+        { item.unreadCount },
+        { isLocal },
+        { sourceLanguage },
+        showDownloadBadge,
+        showUnreadBadge,
+        showLocalBadge,
+        showLanguageBadge,
     )
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .shiftAwareCombinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .semantics { selected = isSelected }
             .pointerInput(item.manga.id) {
                 awaitPointerEventScope {
                     while (true) {
@@ -788,25 +915,40 @@ internal fun MangaCoverCard(
                     }
                 }
             },
-        colors = if (isSelected) {
-            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        shape = MaterialTheme.shapes.small,
+        color = if (isSelected) {
+            MaterialTheme.colorScheme.secondary
         } else {
-            CardDefaults.cardColors()
+            MaterialTheme.colorScheme.surfaceContainerHighest
         },
+        contentColor = if (isSelected) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurface,
     ) {
-        Column {
+        Column(Modifier.padding(4.dp)) {
             Box {
                 AsyncImage(
-                    model = mihon.desktop.image.desktopSourceImageModel(
-                        item.manga.thumbnailUrl,
+                    model = rememberMangaCoverRequestState(
+                        item.id,
                         item.manga.source,
-                    ),
+                        coverModel,
+                        item.manga.coverLastModified,
+                    ).request,
                     contentDescription = item.manga.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(0.7f),
+                        .aspectRatio(0.7f)
+                        .alpha(if (isSelected) 0.76f else 1f),
                 )
+                if (showTrackerScore) {
+                    Text(
+                        trackerScoreLabel(trackerScore),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.shapes.small)
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                    )
+                }
                 // Gradient overlay (only for compact grid with title inside)
                 if (!comfortable && !coverOnly) {
                     Box(
@@ -841,7 +983,8 @@ internal fun MangaCoverCard(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(4.dp),
-                        containerColor = MaterialTheme.colorScheme.primary,
+                        containerColor = MaterialTheme.colorScheme.secondary,
+                        contentColor = MaterialTheme.colorScheme.onSecondary,
                     ) {
                         Text(
                             text = badges.unreadCount.toString(),
@@ -869,7 +1012,7 @@ internal fun MangaCoverCard(
                 }
 
                 // Continue reading FAB overlay (bottom-start, visible on hover via always-visible small icon)
-                if (showContinueReadingButton && badges.unreadCount > 0L) {
+                if (showContinueReadingButton && canContinueReading) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
@@ -908,24 +1051,6 @@ internal fun MangaCoverCard(
                         Text(
                             MR.strings.action_display_local_badge.localized(),
                             style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
-                }
-
-                // Selection indicator
-                if (isSelected) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(0.7f)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = MR.strings.selected.localized(),
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp),
                         )
                     }
                 }
@@ -1030,22 +1155,39 @@ internal fun LibraryRemovalDialog(
     items: List<LibraryManga>,
     onDismiss: () -> Unit,
     onConfirm: (removeFromLibrary: Boolean, deleteDownloads: Boolean) -> Unit,
+    downloadCount: Int = 0,
+    loading: Boolean = false,
+    busy: Boolean = false,
+    feedback: String? = null,
 ) {
     var removeFromLibrary by remember(items) { mutableStateOf(false) }
     var deleteDownloads by remember(items) { mutableStateOf(false) }
     val policy = libraryRemovalPolicy(items)
+    val cancelFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        androidx.compose.runtime.withFrameNanos { }
+        cancelFocus.requestFocus()
+    }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        modifier = Modifier.categoryDialogEscape(!busy, onDismiss),
+        onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(MR.strings.action_remove.localized()) },
         text = {
             Column {
+                Text(MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), items.size))
+                if (policy.canDeleteDownloads) {
+                    Text(
+                        MR.strings.desktop_library_removal_download_count.localized(Locale.getDefault(), downloadCount),
+                    )
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(MR.strings.manga_from_library.localized(), modifier = Modifier.weight(1f))
                     Checkbox(
+                        enabled = !loading && !busy,
                         checked = removeFromLibrary,
                         onCheckedChange = { removeFromLibrary = it },
                     )
@@ -1057,21 +1199,25 @@ internal fun LibraryRemovalDialog(
                     ) {
                         Text(MR.strings.downloaded_chapters.localized(), modifier = Modifier.weight(1f))
                         Checkbox(
+                            enabled = !loading && !busy,
                             checked = deleteDownloads,
                             onCheckedChange = { deleteDownloads = it },
                         )
                     }
                 }
+                feedback?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
             TextButton(
-                enabled = policy.canConfirm(removeFromLibrary, deleteDownloads),
+                enabled = !loading && !busy && policy.canConfirm(removeFromLibrary, deleteDownloads),
                 onClick = { onConfirm(removeFromLibrary, deleteDownloads) },
             ) { Text(MR.strings.action_ok.localized()) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
+            TextButton(enabled = !busy, onClick = onDismiss, modifier = Modifier.focusRequester(cancelFocus)) {
+                Text(MR.strings.action_cancel.localized())
+            }
         },
     )
 }
@@ -1092,6 +1238,11 @@ internal fun BatchCategoryDialog(
     var currentCategoryIdsByManga by remember { mutableStateOf<Map<Long, Set<Long>>?>(null) }
     var desiredStates by remember { mutableStateOf<List<CheckboxState<Category>>>(emptyList()) }
     var loadFailed by remember { mutableStateOf(false) }
+    val cancelFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        androidx.compose.runtime.withFrameNanos { }
+        cancelFocus.requestFocus()
+    }
 
     LaunchedEffect(Unit) {
         try {
@@ -1113,6 +1264,7 @@ internal fun BatchCategoryDialog(
     }
 
     AlertDialog(
+        modifier = Modifier.categoryDialogEscape(true, onDismiss),
         onDismissRequest = onDismiss,
         title = { Text(MR.strings.action_move_category.localized()) },
         text = {
@@ -1122,30 +1274,33 @@ internal fun BatchCategoryDialog(
                 selectableCategories.isEmpty() -> {
                     Text(MR.strings.desktop_ui_no_categories_create_categories_first.localized())
                 }
-                else -> Column {
+                else -> Column(Modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState())) {
                     desiredStates.forEach { checkbox ->
+                        val checkboxState = when (checkbox) {
+                            is CheckboxState.State.Checked,
+                            is CheckboxState.TriState.Include,
+                            -> ToggleableState.On
+                            is CheckboxState.State.None,
+                            is CheckboxState.TriState.None,
+                            -> ToggleableState.Off
+                            is CheckboxState.TriState.Exclude -> ToggleableState.Indeterminate
+                        }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .triStateToggleable(
+                                    state = checkboxState,
+                                    role = Role.Checkbox,
+                                    onClick = {
+                                        desiredStates = desiredStates.map { current ->
+                                            if (current.value.id == checkbox.value.id) current.next() else current
+                                        }
+                                    },
+                                )
                                 .padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            TriStateCheckbox(
-                                state = when (checkbox) {
-                                    is CheckboxState.State.Checked,
-                                    is CheckboxState.TriState.Include,
-                                    -> ToggleableState.On
-                                    is CheckboxState.State.None,
-                                    is CheckboxState.TriState.None,
-                                    -> ToggleableState.Off
-                                    is CheckboxState.TriState.Exclude -> ToggleableState.Indeterminate
-                                },
-                                onClick = {
-                                    desiredStates = desiredStates.map { current ->
-                                        if (current.value.id == checkbox.value.id) current.next() else current
-                                    }
-                                },
-                            )
+                            TriStateCheckbox(state = checkboxState, onClick = null)
                             Text(checkbox.value.name, modifier = Modifier.padding(start = 8.dp))
                         }
                     }
@@ -1172,8 +1327,13 @@ internal fun BatchCategoryDialog(
                     onDismiss()
                     onEditCategories()
                 }) { Text(MR.strings.action_edit_categories.localized()) }
-                TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
+                TextButton(onClick = onDismiss, modifier = Modifier.focusRequester(cancelFocus)) {
+                    Text(MR.strings.action_cancel.localized())
+                }
             }
         },
     )
 }
+
+private fun trackerScoreLabel(score: Double?): String =
+    score?.let { String.format(Locale.getDefault(), "%.1f / 10", it) } ?: MR.strings.desktop_library_unrated.localized()

@@ -4,13 +4,13 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -23,13 +23,13 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.interactor.GetCategories
+import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.library.model.LibraryManga
-import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
+import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.LibraryMembershipUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
@@ -46,10 +46,15 @@ class LibraryMangaTestModeControllerTest {
         val detailFlow = MutableStateFlow(manga to listOf(first, second))
         val getMangaWithChapters = mockk<GetMangaWithChapters> {
             coEvery { subscribe(1, true) } returns detailFlow
+            coEvery { awaitManga(1) } answers { detailFlow.value.first }
+            coEvery { awaitChapters(1, applyScanlatorFilter = false) } answers { detailFlow.value.second }
         }
         val detail = MangaDetailScreenModel(
             mangaId = 1,
             getMangaWithChapters = getMangaWithChapters,
+            sourceManager = mihon.desktop.source.FakeDesktopSourceManager(
+                listOf(mihon.desktop.source.FakeHttpSource(7, "en", "Detail HTTP source")),
+            ),
             updateLibraryMembership = UpdateLibraryMembership {
                 membershipUpdates += it
                 detailFlow.value = detailFlow.value.first.copy(favorite = it.favorite) to detailFlow.value.second

@@ -1,18 +1,14 @@
 package mihon.desktop.ui.settings
 
-import mihon.desktop.LocalDesktopUiDependencies
-
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -24,9 +20,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
@@ -37,8 +35,9 @@ import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import mihon.desktop.settings.DesktopAppPreferences
-import mihon.desktop.settings.LibraryUpdateInterval
+import kotlinx.coroutines.launch
+import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.ui.library.categoryDialogEscape
 import tachiyomi.domain.category.model.Category
 import tachiyomi.i18n.MR
 
@@ -51,19 +50,14 @@ class LibrarySettingsScreen : Screen {
         val prefs = LocalDesktopUiDependencies.current.appPreferences
         val getCategories = LocalDesktopUiDependencies.current.getCategories
         val libraryPreferences = LocalDesktopUiDependencies.current.libraryPreferences
-        val updateInterval by prefs.libraryUpdateInterval.changes().collectAsState(
-            initial = prefs.libraryUpdateInterval.get(),
-        )
+        val updateInterval by libraryPreferences?.autoUpdateInterval()?.changes()?.collectAsState(
+            initial = libraryPreferences.autoUpdateInterval().get(),
+        ) ?: remember { mutableStateOf(prefs.libraryUpdateInterval.get().hours.toInt()) }
         val hideMissingChapterIndicators by prefs.hideMissingChapterIndicators.changes().collectAsState(
             initial = prefs.hideMissingChapterIndicators.get(),
         )
         var categories by remember { mutableStateOf<List<Category>>(emptyList()) }
-        var excludeIds by remember {
-            mutableStateOf(
-                prefs.updateCategoryExcludes.get()
-                    .split(",").mapNotNull { it.trim().toLongOrNull() }.toSet(),
-            )
-        }
+        var categoriesLoaded by remember { mutableStateOf(false) }
         var showDownloadBadge by remember { mutableStateOf(libraryPreferences?.downloadBadge()?.get() ?: false) }
         var showUnreadBadge by remember { mutableStateOf(libraryPreferences?.unreadBadge()?.get() ?: true) }
         var showLocalBadge by remember { mutableStateOf(libraryPreferences?.localBadge()?.get() ?: true) }
@@ -75,18 +69,25 @@ class LibrarySettingsScreen : Screen {
         var showCategoryCounts by remember {
             mutableStateOf(libraryPreferences?.categoryNumberOfItems()?.get() ?: false)
         }
-        var categorizedDisplaySettings by remember {
-            mutableStateOf(libraryPreferences?.categorizedDisplaySettings()?.get() ?: false)
-        }
-        var portraitColumns by remember { mutableStateOf(libraryPreferences?.portraitColumns()?.get()?.coerceIn(0, 10) ?: 0) }
-        var landscapeColumns by remember {
-            mutableStateOf(libraryPreferences?.landscapeColumns()?.get()?.coerceIn(0, 10) ?: 0)
-        }
+        val categorizedDisplaySettings by libraryPreferences?.categorizedDisplaySettings()?.changes()?.collectAsState(
+            initial = libraryPreferences.categorizedDisplaySettings().get(),
+        ) ?: remember { mutableStateOf(false) }
+        val categorySortSettings = LocalDesktopUiDependencies.current.categorySortSettings
+        val resetFailed by categorySortSettings?.failed?.collectAsState() ?: remember { mutableStateOf(false) }
+        val scope = rememberCoroutineScope()
+        var sortingBusy by remember { mutableStateOf(false) }
+        var intervalFailed by remember { mutableStateOf(false) }
+        val invalidInterval by prefs.libraryUpdateIntervalMigrationInvalid.changes().collectAsState(
+            initial = prefs.libraryUpdateIntervalMigrationInvalid.get(),
+        )
         val updateTitle = MR.strings.pref_category_library_update.localized()
         val displayTitle = MR.strings.pref_category_display.localized()
 
-        LaunchedEffect(Unit) {
-            categories = getCategories.await().filterNot(Category::isSystemCategory)
+        LaunchedEffect(getCategories) {
+            getCategories.subscribe().collect {
+                categories = it.filterNot(Category::isSystemCategory)
+                categoriesLoaded = true
+            }
         }
 
         Scaffold(
@@ -94,12 +95,7 @@ class LibrarySettingsScreen : Screen {
                 TopAppBar(
                     title = { Text(MR.strings.pref_category_library.localized()) },
                     navigationIcon = {
-                        IconButton(onClick = { navigator.pop() }) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = MR.strings.action_bar_up_description.localized(),
-                            )
-                        }
+                        mihon.desktop.ui.settings.SettingsNavigationIcon()
                     },
                 )
             },
@@ -108,6 +104,7 @@ class LibrarySettingsScreen : Screen {
                 route = this@LibrarySettingsScreen,
                 modifier = Modifier.fillMaxSize().padding(padding),
             ) {
+                libraryPreferences?.let { DefaultLibraryCategorySettings(it, categories) }
                 Text(
                     text = updateTitle,
                     style = MaterialTheme.typography.labelLarge,
@@ -115,19 +112,63 @@ class LibrarySettingsScreen : Screen {
                     modifier = Modifier.desktopSettingsAnchor(updateTitle).padding(horizontal = 16.dp, vertical = 8.dp),
                 )
 
-                val intervalLabels = mapOf(
-                    LibraryUpdateInterval.OFF to MR.strings.update_never.localized(),
-                    LibraryUpdateInterval.EVERY_6H to MR.strings.update_6hour.localized(),
-                    LibraryUpdateInterval.EVERY_12H to MR.strings.update_12hour.localized(),
-                    LibraryUpdateInterval.EVERY_24H to MR.strings.update_24hour.localized(),
-                    LibraryUpdateInterval.WEEKLY to MR.strings.update_weekly.localized(),
+                val intervalTitle = MR.strings.pref_library_update_interval.localized()
+                Text(
+                    intervalTitle,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.desktopSettingsAnchor(
+                        intervalTitle,
+                    ).padding(horizontal = 16.dp, vertical = 8.dp),
                 )
-                LibraryUpdateInterval.entries.forEach { interval ->
+                val intervalLabels = mapOf(
+                    0 to MR.strings.update_never.localized(),
+                    6 to MR.strings.update_6hour.localized(),
+                    12 to MR.strings.update_12hour.localized(),
+                    24 to MR.strings.update_24hour.localized(),
+                    48 to MR.strings.update_48hour.localized(),
+                    72 to MR.strings.update_72hour.localized(),
+                    168 to MR.strings.update_weekly.localized(),
+                )
+                intervalLabels.forEach { (hours, label) ->
                     RadioSettingsItem(
-                        title = intervalLabels[interval] ?: interval.name,
-                        selected = updateInterval == interval,
-                        onClick = { prefs.libraryUpdateInterval.set(interval) },
+                        title = label,
+                        selected = updateInterval == hours,
+                        onClick = {
+                            libraryPreferences?.let {
+                                intervalFailed =
+                                    !mihon.desktop.settings.saveDesktopPreference(it.autoUpdateInterval(), hours)
+                                if (!intervalFailed) {
+                                    try {
+                                        prefs.libraryUpdateIntervalMigrationInvalid.delete()
+                                    } catch (_: Exception) {
+                                        intervalFailed = true
+                                    }
+                                }
+                            }
+                        },
                     )
+                }
+                if (updateInterval !in intervalLabels) {
+                    Text(
+                        "${MR.strings.pref_library_update_interval.localized()}: $updateInterval h",
+                        Modifier.padding(horizontal = 16.dp),
+                    )
+                }
+                if (intervalFailed) Text(MR.strings.internal_error.localized(), color = MaterialTheme.colorScheme.error)
+                if (invalidInterval) {
+                    Text(
+                        MR.strings.desktop_library_update_interval_invalid.localized(),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                libraryPreferences?.let { preferences ->
+                    LocalDesktopUiDependencies.current.deviceConditions?.let {
+                        LibraryDeviceUpdateSettings(preferences, it)
+                    }
+                    LibrarySmartUpdateSettings(preferences)
+                }
+                LocalDesktopUiDependencies.current.libraryCategoryPolicy?.let { policy ->
+                    libraryPreferences?.let { LibraryUpdateCategorySettings(policy, it, categories, categoriesLoaded) }
                 }
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -156,7 +197,9 @@ class LibrarySettingsScreen : Screen {
                     text = displayTitle,
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.desktopSettingsAnchor(displayTitle).padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.desktopSettingsAnchor(
+                        displayTitle,
+                    ).padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 val missingChapterIndicatorItem = missingChapterIndicatorSettingsItem(
                     prefs = prefs,
@@ -175,38 +218,12 @@ class LibrarySettingsScreen : Screen {
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
-                Text(
-                    text = "${MR.strings.pref_library_columns.localized()} (portrait): " +
-                        (portraitColumns.takeIf { it > 0 }?.toString() ?: MR.strings.label_auto.localized()),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
-                Slider(
-                    value = portraitColumns.toFloat(),
-                    onValueChange = { value ->
-                        portraitColumns = value.toInt()
-                        libraryPreferences?.portraitColumns()?.set(portraitColumns)
-                    },
-                    valueRange = 0f..10f,
-                    steps = 9,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-                Text(
-                    text = "${MR.strings.pref_library_columns.localized()} (landscape): " +
-                        (landscapeColumns.takeIf { it > 0 }?.toString() ?: MR.strings.label_auto.localized()),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
-                Slider(
-                    value = landscapeColumns.toFloat(),
-                    onValueChange = { value ->
-                        landscapeColumns = value.toInt()
-                        libraryPreferences?.landscapeColumns()?.set(landscapeColumns)
-                    },
-                    valueRange = 0f..10f,
-                    steps = 9,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
+                libraryPreferences?.let { LibraryColumnControls(it) }
                 listOf(
-                    Triple(MR.strings.action_display_download_badge.localized(), showDownloadBadge) { checked: Boolean ->
+                    Triple(
+                        MR.strings.action_display_download_badge.localized(),
+                        showDownloadBadge,
+                    ) { checked: Boolean ->
                         showDownloadBadge = checked
                         libraryPreferences?.downloadBadge()?.set(checked)
                         Unit
@@ -221,18 +238,24 @@ class LibrarySettingsScreen : Screen {
                         libraryPreferences?.localBadge()?.set(checked)
                         Unit
                     },
-                    Triple(MR.strings.action_display_language_badge.localized(), showLanguageBadge) { checked: Boolean ->
+                    Triple(
+                        MR.strings.action_display_language_badge.localized(),
+                        showLanguageBadge,
+                    ) { checked: Boolean ->
                         showLanguageBadge = checked
                         libraryPreferences?.languageBadge()?.set(checked)
                         Unit
                     },
-                    Triple(MR.strings.action_display_show_continue_reading_button.localized(), showContinueReading) { checked: Boolean ->
+                    Triple(
+                        MR.strings.action_display_show_continue_reading_button.localized(),
+                        showContinueReading,
+                    ) { checked: Boolean ->
                         showContinueReading = checked
                         libraryPreferences?.showContinueReadingButton()?.set(checked)
                         Unit
                     },
                 ).forEach { (title, checked, onCheckedChange) ->
-                    CheckboxSettingsRow(title, checked, onCheckedChange)
+                    CheckboxSettingsRow(title, checked, onCheckedChange = onCheckedChange)
                 }
                 CheckboxSettingsRow(
                     title = MR.strings.action_display_show_tabs.localized(),
@@ -253,38 +276,21 @@ class LibrarySettingsScreen : Screen {
                 CheckboxSettingsRow(
                     title = MR.strings.categorized_display_settings.localized(),
                     checked = categorizedDisplaySettings,
+                    modifier = Modifier.desktopSettingsAnchor(MR.strings.categorized_display_settings.localized()),
                     onCheckedChange = { checked ->
-                        categorizedDisplaySettings = checked
-                        libraryPreferences?.categorizedDisplaySettings()?.set(checked)
+                        if (!sortingBusy && categorySortSettings != null) {
+                            sortingBusy = true
+                            scope.launch {
+                                try {
+                                    categorySortSettings.set(checked)
+                                } finally {
+                                    sortingBusy = false
+                                }
+                            }
+                        }
                     },
                 )
-
-                if (categories.isNotEmpty()) {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                    Text(
-                        text = MR.strings.desktop_library_excluded_categories.localized(),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                    Text(
-                        text = MR.strings.desktop_library_excluded_categories_summary.localized(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    )
-                    categories.forEach { cat ->
-                        CheckboxSettingsRow(
-                            title = cat.name,
-                            checked = cat.id in excludeIds,
-                            onCheckedChange = { checked ->
-                                excludeIds = if (checked) excludeIds + cat.id else excludeIds - cat.id
-                                prefs.updateCategoryExcludes.set(excludeIds.joinToString(","))
-                            },
-                        )
-                    }
-                }
+                if (resetFailed) Text(MR.strings.internal_error.localized(), color = MaterialTheme.colorScheme.error)
             }
         }
     }
@@ -294,11 +300,12 @@ class LibrarySettingsScreen : Screen {
 internal fun CheckboxSettingsRow(
     title: String,
     checked: Boolean,
+    modifier: Modifier = Modifier,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     val description = if (checked) MR.strings.on.localized() else MR.strings.off.localized()
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {
                 toggleableState = if (checked) ToggleableState.On else ToggleableState.Off
@@ -315,4 +322,128 @@ internal fun CheckboxSettingsRow(
         )
         Text(title, modifier = Modifier.padding(start = 8.dp))
     }
+}
+
+@Composable
+private fun DefaultLibraryCategorySettings(
+    preferences: tachiyomi.domain.library.service.LibraryPreferences,
+    categories: List<Category>,
+) {
+    val preference = remember(preferences) { preferences.defaultCategory() }
+    val current by preference.changes().collectAsState(initial = preference.get())
+    var visible by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+    var returnFocus by remember { mutableStateOf(0) }
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val dialogFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val title = MR.strings.default_category.localized()
+    val choices =
+        listOf(-1 to MR.strings.default_category_summary.localized(), 0 to MR.strings.label_default.localized()) +
+            categories.map { it.id.toInt() to it.name }
+    fun close() {
+        visible = false
+        returnFocus++
+    }
+    LaunchedEffect(returnFocus) {
+        if (returnFocus > 0) {
+            androidx.compose.runtime.withFrameNanos { }
+            focus.requestFocus()
+        }
+    }
+    LaunchedEffect(visible) {
+        if (visible) {
+            androidx.compose.runtime.withFrameNanos { }
+            dialogFocus.requestFocus()
+        }
+    }
+    androidx.compose.material3.ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(choices.firstOrNull { it.first == current }?.second ?: choices.first().second) },
+        modifier = Modifier.desktopSettingsAnchor(title)
+            .then(Modifier.focusRequester(focus))
+            .desktopSettingsAction(Role.Button) {
+                failed = false
+                visible = true
+            },
+    )
+    if (visible) {
+        androidx.compose.material3.AlertDialog(
+            modifier = Modifier.categoryDialogEscape(true, ::close).focusRequester(dialogFocus).focusable(),
+            onDismissRequest = ::close,
+            title = { Text(title) },
+            text = {
+                androidx.compose.foundation.layout.Column {
+                    if (failed) Text(MR.strings.internal_error.localized(), color = MaterialTheme.colorScheme.error)
+                    androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 400.dp)) {
+                        items(choices.size) { index ->
+                            val choice = choices[index]
+                            RadioSettingsItem(choice.second, choice.first == current, onClick = {
+                                if (choice.first != current) {
+                                    failed = !mihon.desktop.settings.saveDesktopPreference(preference, choice.first)
+                                    if (!failed) close()
+                                }
+                            })
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = ::close) { Text(MR.strings.action_cancel.localized()) }
+            },
+        )
+    }
+}
+
+@Composable
+private fun LibrarySmartUpdateSettings(preferences: tachiyomi.domain.library.service.LibraryPreferences) {
+    val restrictionPreference = remember(preferences) { preferences.autoUpdateMangaRestrictions() }
+    val restrictions by restrictionPreference.changes().collectAsState(initial = restrictionPreference.get())
+    val metadataPreference = remember(preferences) { preferences.autoUpdateMetadata() }
+    val metadata by metadataPreference.changes().collectAsState(initial = metadataPreference.get())
+    val titlePreference = remember(preferences) { preferences.updateMangaTitles() }
+    val titles by titlePreference.changes().collectAsState(initial = titlePreference.get())
+    var failed by remember { mutableStateOf(false) }
+    val rules = listOf(
+        tachiyomi.domain.library.service.LibraryPreferences.MANGA_NON_COMPLETED to
+            MR.strings.pref_update_only_non_completed,
+        tachiyomi.domain.library.service.LibraryPreferences.MANGA_HAS_UNREAD to
+            MR.strings.pref_update_only_completely_read,
+        tachiyomi.domain.library.service.LibraryPreferences.MANGA_NON_READ to MR.strings.pref_update_only_started,
+        tachiyomi.domain.library.service.LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD to
+            MR.strings.pref_update_only_in_release_period,
+    )
+    val smartTitle = MR.strings.pref_library_update_smart_update.localized()
+    Text(
+        smartTitle,
+        style = MaterialTheme.typography.labelLarge,
+        modifier = Modifier.desktopSettingsAnchor(smartTitle).padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+    rules.forEach { (key, resource) ->
+        CheckboxSettingsRow(resource.localized(), key in restrictions, onCheckedChange = { checked ->
+            val current = restrictionPreference.get()
+            failed = !mihon.desktop.settings.saveDesktopPreference(
+                restrictionPreference,
+                if (checked) current + key else current - key,
+            )
+        })
+    }
+    val metadataTitle = MR.strings.pref_library_update_refresh_metadata.localized()
+    CheckboxSettingsRow(
+        metadataTitle,
+        metadata,
+        modifier = Modifier.desktopSettingsAnchor(metadataTitle),
+        onCheckedChange = { failed = !mihon.desktop.settings.saveDesktopPreference(metadataPreference, it) },
+    )
+    Text(
+        MR.strings.pref_library_update_refresh_metadata_summary.localized(),
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.padding(horizontal = 16.dp),
+    )
+    CheckboxSettingsRow(
+        MR.strings.pref_update_library_manga_titles.localized(),
+        titles,
+        onCheckedChange = { failed = !mihon.desktop.settings.saveDesktopPreference(titlePreference, it) },
+    )
+    if (failed) Text(MR.strings.internal_error.localized(), color = MaterialTheme.colorScheme.error)
 }

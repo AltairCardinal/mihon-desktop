@@ -1,9 +1,8 @@
 package mihon.desktop.ui.library
 
-import tachiyomi.i18n.MR
-import java.util.Locale
-
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,6 +19,8 @@ import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DownloadStatus
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.i18n.MR
+import java.util.Locale
 
 internal fun LazyListScope.mangaDetailChapterListItems(
     displayedChapterCount: Int,
@@ -33,21 +34,47 @@ internal fun LazyListScope.mangaDetailChapterListItems(
     onSelectChapter: (Long) -> Unit,
     onDownloadChapter: (Chapter) -> Unit,
     onDeleteDownload: (Chapter) -> Unit,
+    onDeleteDownloadFocus: ((androidx.compose.ui.focus.FocusRequester) -> Unit)? = null,
     onCancelDownload: (Long) -> Unit,
     onRetryDownload: (Long) -> Unit,
+    onStartDownloadNow: ((Long) -> Unit)? = null,
     onToggleBookmark: (Chapter) -> Unit,
     onReadChapter: (Chapter) -> Unit,
+    missingChapterCount: Int = 0,
+    hasActiveFilters: Boolean = false,
+    onOpenSettings: (() -> Unit)? = null,
+    onPrimaryChapterClick: ((Chapter, LibraryClickModifiers) -> Unit)? = null,
+    onToggleRead: ((Chapter) -> Unit)? = null,
 ) {
     item {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().then(
+                if (!isSelectionMode &&
+                    onOpenSettings != null
+                ) {
+                    Modifier.clickable(onClick = onOpenSettings)
+                } else {
+                    Modifier
+                },
+            ).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "Chapters ($displayedChapterCount${if (displayedChapterCount != totalChapterCount) "/$totalChapterCount" else ""})",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f),
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = MR.strings.desktop_ui_chapter_count.localized(Locale.getDefault(), displayedChapterCount),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                if (hasActiveFilters) {
+                    Text(
+                        MR.strings.action_filter.localized(),
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+                if (missingChapterCount > 0) {
+                    Text(missingChapterCountText(missingChapterCount), style = MaterialTheme.typography.labelMedium)
+                }
+            }
         }
         HorizontalDivider()
     }
@@ -85,10 +112,17 @@ internal fun LazyListScope.mangaDetailChapterListItems(
                     onSelect = { onSelectChapter(chapter.id) },
                     onDownload = { onDownloadChapter(chapter) },
                     onDeleteDownload = { onDeleteDownload(chapter) },
+                    onDeleteDownloadFocus = onDeleteDownloadFocus,
                     onCancelDownload = { onCancelDownload(chapter.id) },
                     onRetryDownload = { onRetryDownload(chapter.id) },
+                    onStartDownloadNow = onStartDownloadNow?.let { action -> { action(chapter.id) } },
                     onToggleBookmark = { onToggleBookmark(chapter) },
                     onRead = { onReadChapter(chapter) },
+                    onToggleRead = onToggleRead?.let { toggle -> { toggle(chapter) } },
+                    onPrimaryClick = onPrimaryChapterClick?.let { onPrimary ->
+                        { modifiers -> onPrimary(chapter, modifiers) }
+                    },
+                    downloadEnabled = manga?.source != 0L,
                 )
             }
         }

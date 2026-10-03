@@ -3,7 +3,8 @@ package mihon.desktop.platform
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,6 +12,9 @@ import tachiyomi.core.common.preference.Preference
 import java.util.IllformedLocaleException
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
+
+/** Locale-only invalidation; Screen and ScreenModel owners stay mounted. */
+val LocalDesktopLocaleTag = staticCompositionLocalOf { "" }
 
 data class DesktopLanguageOption(
     val languageTag: String,
@@ -50,11 +54,11 @@ class DesktopLocaleAdapter(
     val pendingFeedback: StateFlow<DesktopLocaleFeedback?> = mutablePendingFeedback.asStateFlow()
     val authoritativeLanguageTags: List<String> get() = fixedMainLanguageTags
 
-    /** Recreates remembered Desktop UI resources whenever the active app locale changes. */
+    /** Recompose localized UI without rebuilding any Voyager navigator or business state. */
     @Composable
     fun Provide(content: @Composable () -> Unit) {
         val activeTag by activeLanguageTag.collectAsState()
-        key(activeTag) { content() }
+        CompositionLocalProvider(LocalDesktopLocaleTag provides activeTag) { content() }
     }
 
     @Synchronized
@@ -123,7 +127,7 @@ class DesktopLocaleAdapter(
                     displayName = displayName(nameLocale, nameLocale),
                     localizedDisplayName = displayName(nameLocale, displayLocale),
                 )
-            }
+            }.sortedBy { it.displayName }
     }
 
     fun consumeFeedback(id: Long) {
@@ -193,7 +197,7 @@ class DesktopLocaleAdapter(
     }
 
     private companion object {
-        val fixedMainLanguageTags = listOf("zh-CN", "zh-TW", "en")
+        val fixedMainLanguageTags = tachiyomi.i18n.ApplicationLocales.languageTags
 
         val authorityTagLookup = fixedMainLanguageTags.associateBy { it.lowercase(Locale.ROOT) }
         val canonicalAuthorityLookup = fixedMainLanguageTags.associateBy {
@@ -226,8 +230,9 @@ class DesktopLocaleAdapter(
                     localeForTag("zh-TW")
                 else -> localeForTag("zh-CN")
             }
-            "en" -> localeForTag("en")
-            else -> localeForTag("zh-CN")
+            else -> normalizeSupported(locale.toLanguageTag())?.let(::localeForTag)
+                ?: normalizeSupported(locale.language)?.let(::localeForTag)
+                ?: localeForTag("zh-CN")
         }
 
         fun fixedMainNameLocale(languageTag: String): Locale = when (languageTag) {

@@ -80,6 +80,7 @@ data class ReaderState(
 
     // ── UI overlay state ─────────────────────────────────────────────────────
     val showSettings: Boolean = false,
+    val settingsFeedback: String? = null,
     val showUI: Boolean = false,
 )
 

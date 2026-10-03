@@ -4,6 +4,7 @@ import eu.kanade.domain.manga.model.hasCustomCover
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.model.SManga
+import tachiyomi.domain.chapter.service.observeDirectoryPhase
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.SourceDateExtensionIdentity
 import tachiyomi.domain.creator.model.SourceDateField
@@ -32,6 +33,8 @@ class UpdateManga(
     },
 ) {
 
+    internal suspend fun mangaForDirectory(id: Long) = mangaRepository.getMangaById(id)
+
     suspend fun awaitFromRemote(
         manga: Manga,
         source: eu.kanade.tachiyomi.source.Source,
@@ -47,6 +50,15 @@ class UpdateManga(
         requireFavorite: Boolean = false,
     ): Pair<Manga, List<tachiyomi.domain.chapter.model.Chapter>> {
         if (!fetchDetails && !fetchChapters) return manga to emptyList()
+        if (fetchChapters) {
+            chapterRepository.pendingDirectoryPhase(manga.id)?.let { pending ->
+                syncChaptersWithSource.finishPhase(mangaRepository.getMangaById(manga.id), source, pending) {
+                    requireNotNull(creatorArchiveRepository).observeDirectoryPhase(it)
+                }
+                return mangaRepository.getMangaById(manga.id) to
+                    pending.addedIds.mapNotNull { chapterRepository.getChapterById(it) }
+            }
+        }
         val chapters = chapterRepository.getChapterByMangaId(manga.id)
         val update = tachiyomi.domain.source.service.SourceMangaUpdateService().await(
             source,
@@ -57,24 +69,67 @@ class UpdateManga(
         )
         val latestManga = mangaRepository.getMangaById(manga.id)
         if (requireFavorite && !latestManga.favorite) return latestManga to emptyList()
-        if (fetchDetails) {
-            check(
-                awaitUpdateFromSource(
-                    latestManga,
-                    update.manga,
-                    manualFetch,
-                    coverCache,
-                    libraryPreferences,
-                    downloadManager,
+        val currentManga: Manga
+        val newChapters: List<tachiyomi.domain.chapter.model.Chapter>
+        if (fetchChapters) {
+            val observedAt = Instant.now().toEpochMilli()
+            val extension = sourceDateExtensionIdentityProvider(latestManga.source)
+            val policy = if ((manualFetch || requireFavorite) && latestManga.favorite &&
+                source is eu.kanade.tachiyomi.source.online.HttpSource
+            ) {
+                Injekt.get<mihon.domain.chapter.interactor.FilterChaptersForDownload>().snapshot(latestManga)
+            } else {
+                mihon.domain.chapter.interactor.DownloadNewChapterPolicy(false, false)
+            }
+            val metadata = if (fetchDetails) {
+                prepareSourceMetadata(latestManga, update.manga, manualFetch, coverCache, libraryPreferences)
+            } else {
+                MangaUpdate(latestManga.id, memo = update.manga.memo)
+            }
+            newChapters = syncChaptersWithSource.await(
+                update.chapters, latestManga, source, manualFetch, fetchWindow,
+                mangaMetadata = metadata, chapterListComplete = update.chapterListComplete,
+                effects = tachiyomi.domain.chapter.service.ChapterDirectoryEffects(
+                    source.id, source.toString(), latestManga.url, latestManga.title,
+                    if (requireFavorite) {
+                        "LIBRARY_UPDATE"
+                    } else if (manualFetch) {
+                        "DETAIL_REFRESH"
+                    } else {
+                        "BROWSE"
+                    },
+                    observedAt, extension.packageName, extension.version,
+                    CreatorSourceWorkKey.stableUrl(
+                        latestManga.url,
+                        latestManga.title,
+                        latestManga.author,
+                        latestManga.artist,
+                    ),
+                    update.chapters.map {
+                        tachiyomi.domain.chapter.service.DirectoryChapterDate(it.url, it.date_upload)
+                    },
+                    policy.enabled, policy.unreadOnly, creatorArchiveRepository != null,
+                    libraryPreferences.disallowNonAsciiFilenames().get(),
                 ),
+                observe = { requireNotNull(creatorArchiveRepository).observeDirectoryPhase(it) },
             )
+            currentManga = mangaRepository.getMangaById(manga.id)
         } else {
-            check(mangaRepository.update(MangaUpdate(manga.id, memo = update.manga.memo)))
-        }
-        val currentManga = mangaRepository.getMangaById(manga.id)
-        val newChapters = if (fetchChapters) {
-            syncChaptersWithSource.await(update.chapters, currentManga, source, manualFetch, fetchWindow)
-        } else {
+            if (fetchDetails) {
+                check(
+                    awaitUpdateFromSource(
+                        latestManga,
+                        update.manga,
+                        manualFetch,
+                        coverCache,
+                        libraryPreferences,
+                        downloadManager,
+                    ),
+                )
+            } else {
+                check(mangaRepository.update(MangaUpdate(manga.id, memo = update.manga.memo)))
+            }
+            currentManga = mangaRepository.getMangaById(manga.id)
             val knownByUrl = chapters.associateBy { it.url }
             chapterRepository.updateAll(
                 update.chapters.mapNotNull { chapter ->
@@ -83,51 +138,7 @@ class UpdateManga(
                     }
                 },
             )
-            emptyList()
-        }
-        if (fetchChapters) {
-            val observedAt = Instant.now().toEpochMilli()
-            val extensionIdentity = sourceDateExtensionIdentityProvider(currentManga.source)
-            val stableSourceUrl = CreatorSourceWorkKey.stableUrl(
-                url = currentManga.url,
-                title = currentManga.title,
-                author = currentManga.author,
-                artist = currentManga.artist,
-            )
-            creatorArchiveRepository?.recordSourceDateQualityObservations(
-                update.chapters.mapNotNull { chapter ->
-                    chapter.url.takeIf(String::isNotBlank)?.let { chapterUrl ->
-                        val value = chapter.date_upload.takeIf { it > 0L }
-                        SourceDateObservation(
-                            identity = SourceDateQualityIdentity(
-                                extensionPackage = extensionIdentity.packageName,
-                                extensionVersion = extensionIdentity.version,
-                                sourceId = currentManga.source,
-                                field = SourceDateField.CHAPTER_UPDATED,
-                            ),
-                            workNaturalKey = stableSourceUrl,
-                            chapterNaturalKey = chapterUrl,
-                            rawValue = value?.toString(),
-                            valueAt = value,
-                            precision = value?.let { SourceDatePrecision.DAY } ?: SourceDatePrecision.UNKNOWN,
-                            observedAt = observedAt,
-                            reason = value?.let { null } ?: "missing-date",
-                        )
-                    }
-                },
-                now = observedAt,
-            )
-            creatorArchiveRepository?.updateSourceWorkCatalog(
-                sourceWork = tachiyomi.domain.creator.model.SourceWorkNaturalKey(
-                    sourceId = currentManga.source,
-                    stableSourceUrl = stableSourceUrl,
-                ),
-                chapterCount = update.chapters.size.toLong(),
-                completeness = ChapterCatalogCompleteness.COMPLETE,
-                latestChapterAt = update.chapters.map { it.date_upload }.filter { it > 0L }.maxOrNull(),
-                observedAt = observedAt,
-                mangaId = currentManga.id,
-            )
+            newChapters = emptyList()
         }
         return mangaRepository.getMangaById(manga.id) to newChapters
     }
@@ -148,20 +159,19 @@ class UpdateManga(
         libraryPreferences: LibraryPreferences = Injekt.get(),
         downloadManager: DownloadManager = Injekt.get(),
     ): Boolean {
-        val remoteTitle = try {
-            remoteManga.title
-        } catch (_: UninitializedPropertyAccessException) {
-            ""
-        }
+        val metadata = prepareSourceMetadata(localManga, remoteManga, manualFetch, coverCache, libraryPreferences)
+        val success = mangaRepository.update(metadata)
+        metadata.title?.takeIf { success }?.let { downloadManager.renameManga(localManga, it) }
+        return success
+    }
 
-        // if the manga isn't a favorite (or 'update titles' preference is enabled), set its title from source and update in db
-        val title =
-            if (remoteTitle.isNotEmpty() && (!localManga.favorite || libraryPreferences.updateMangaTitles().get())) {
-                remoteTitle
-            } else {
-                null
-            }
-
+    private fun prepareSourceMetadata(
+        localManga: Manga,
+        remoteManga: SManga,
+        manualFetch: Boolean,
+        coverCache: CoverCache,
+        libraryPreferences: LibraryPreferences,
+    ): MangaUpdate {
         val coverLastModified =
             when {
                 // Never refresh covers if the url is empty to avoid "losing" existing covers
@@ -178,28 +188,12 @@ class UpdateManga(
                 }
             }
 
-        val thumbnailUrl = remoteManga.thumbnail_url?.takeIf { it.isNotEmpty() }
-
-        val success = mangaRepository.update(
-            MangaUpdate(
-                id = localManga.id,
-                title = title,
-                coverLastModified = coverLastModified,
-                author = remoteManga.author,
-                artist = remoteManga.artist,
-                description = remoteManga.description,
-                genre = remoteManga.getGenres(),
-                thumbnailUrl = thumbnailUrl,
-                status = remoteManga.status.toLong(),
-                updateStrategy = remoteManga.update_strategy,
-                initialized = true,
-                memo = remoteManga.memo,
-            ),
+        return tachiyomi.domain.source.service.sourceMangaMetadata(
+            localManga,
+            remoteManga,
+            libraryPreferences.updateMangaTitles().get(),
+            coverLastModified,
         )
-        if (success && title != null) {
-            downloadManager.renameManga(localManga, title)
-        }
-        return success
     }
 
     suspend fun awaitUpdateFetchInterval(

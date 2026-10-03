@@ -2,22 +2,33 @@ package eu.kanade.tachiyomi.ui.category
 
 import android.content.Context
 import android.content.SharedPreferences
+import eu.kanade.tachiyomi.App
+import eu.kanade.tachiyomi.data.sync.AndroidSyncScheduler
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -35,6 +46,10 @@ import tachiyomi.domain.category.model.CategoryUpdate
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.library.service.LibraryPreferences
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.InjektScope
+import uy.kohesive.injekt.api.addSingleton
+import uy.kohesive.injekt.registry.default.DefaultRegistrar
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], manifest = Config.NONE)
@@ -109,6 +124,143 @@ class CategoryScreenModelBehaviorTest {
     }
 
     @Test
+    fun `category owner recovers deletion before exposing categories and cancel preserves remaining IDs`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val remaining = category(id = 2, name = "Remaining", order = 1)
+        val repository = RecordingCategoryRepository(listOf(remaining))
+        seedPendingDeletion()
+        val model = screenModel(repository)
+        try {
+            runCurrent()
+            assertRecoveredReferences()
+            assertEquals(listOf(remaining.id), model.categories().map(Category::id))
+            model.showDialog(CategoryDialog.Delete(remaining))
+            model.dismissDialog()
+            advanceUntilIdle()
+            assertEquals(listOf(remaining.id), repository.getAll().map(Category::id))
+            assertEquals(null, (model.state.value as CategoryScreenState.Success).dialog)
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `recovery refusal cannot expose the category list or remain permanently loading`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        seedPendingDeletion()
+        val actual = RecordingCategoryRepository(listOf(category(2, "Remaining", 1)))
+        val repository = object : CategoryRepository by actual {
+            override suspend fun getAll(): List<Category> = throw IllegalStateException("Storage rejected recovery")
+        }
+        val model = screenModel(repository)
+        try {
+            runCurrent()
+            assertFalse(
+                "Unrecovered references must not expose category consumers",
+                model.state.value is CategoryScreenState.Success,
+            )
+            assertFalse("Recovery refusal needs a retry state", model.state.value is CategoryScreenState.Loading)
+            assertEquals(setOf("1"), libraryPreferences.categoryDeletionPending().get())
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `actual App resumes original sync scope after category owner retries refused recovery`() = runBlocking {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        val previous = Injekt
+        val actual = RecordingCategoryRepository(listOf(category(2, "Remaining", 1)))
+        var reject = true
+        val reached = CompletableDeferred<Unit>()
+        val repository = object : CategoryRepository by actual {
+            override suspend fun get(id: Long): Category? {
+                if (id == 1L && reject) {
+                    reached.complete(Unit)
+                    error("Recovery rejected")
+                }
+                return actual.get(id)
+            }
+        }
+        seedPendingDeletion()
+        val deletion = DeleteCategory(repository, libraryPreferences, downloadPreferences)
+        val started = CompletableDeferred<Unit>()
+        val scheduler = mockk<AndroidSyncScheduler>()
+        every { scheduler.start(any()) } answers {
+            started.complete(Unit)
+            Job().apply { complete() }
+        }
+        Injekt = InjektScope(DefaultRegistrar()).apply {
+            addSingleton(deletion)
+            addSingleton(scheduler)
+        }
+        var model: CategoryScreenModel? = null
+        try {
+            App().startSync(this)
+            withTimeout(3_000) { reached.await() }
+            assertFalse(started.isCompleted)
+            assertEquals(DeleteCategory.Result.Success, deletion.await(3))
+            assertEquals(setOf("1"), libraryPreferences.categoryDeletionPending().get())
+            assertFalse(
+                "A different category completing cannot bypass old pending cleanup",
+                deletion.recoveryReady.value,
+            )
+            assertFalse(started.isCompleted)
+            model = screenModel(repository, deletion)
+            assertSame(CategoryScreenState.RecoveryError, model.state.value)
+            reject = false
+            model.retryRecovery()
+            assertRecoveredReferences()
+            assertTrue(
+                "Successful foreground retry must resume the original synchronization scope",
+                withTimeoutOrNull(2_000) {
+                    started.await()
+                    true
+                } == true,
+            )
+        } finally {
+            model?.onDispose()
+            Injekt = previous
+        }
+    }
+
+    @Test
+    fun `actual App start scope resolves deletion recovery before starting sync scheduling`() = runBlocking {
+        val previous = Injekt
+        val repository = RecordingCategoryRepository(listOf(category(2, "Remaining", 1)))
+        seedPendingDeletion()
+        val started = CompletableDeferred<Unit>()
+        val scheduler = mockk<AndroidSyncScheduler>()
+        every { scheduler.start(any()) } answers {
+            started.complete(Unit)
+            Job().apply { complete() }
+        }
+        Injekt = InjektScope(DefaultRegistrar()).apply {
+            addSingleton(DeleteCategory(repository, libraryPreferences, downloadPreferences))
+            addSingleton(scheduler)
+        }
+        try {
+            App().startSync(this)
+            withTimeout(3_000) { started.await() }
+            assertRecoveredReferences()
+        } finally {
+            Injekt = previous
+        }
+    }
+
+    private fun seedPendingDeletion() {
+        libraryPreferences.categoryDeletionPending().set(setOf("1"))
+        libraryPreferences.defaultCategory().set(1)
+        categoryPreferences().forEach { it.set(setOf("1", "2")) }
+    }
+
+    private fun assertRecoveredReferences() {
+        assertEquals(-1, libraryPreferences.defaultCategory().get())
+        categoryPreferences().forEach { assertEquals(setOf("2"), it.get()) }
+        assertEquals(emptySet<String>(), libraryPreferences.categoryDeletionPending().get())
+    }
+
+    @Test
     fun `each failed production mutation emits the explicit internal error boundary`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(dispatcher)
@@ -137,11 +289,14 @@ class CategoryScreenModelBehaviorTest {
         }
     }
 
-    private fun screenModel(repository: CategoryRepository): CategoryScreenModel {
+    private fun screenModel(
+        repository: CategoryRepository,
+        deletion: DeleteCategory = DeleteCategory(repository, libraryPreferences, downloadPreferences),
+    ): CategoryScreenModel {
         return CategoryScreenModel(
             getCategories = GetCategories(repository),
             createCategoryWithName = CreateCategoryWithName(repository, libraryPreferences),
-            deleteCategory = DeleteCategory(repository, libraryPreferences, downloadPreferences),
+            deleteCategory = deletion,
             reorderCategory = ReorderCategory(repository),
             renameCategory = RenameCategory(repository),
         )

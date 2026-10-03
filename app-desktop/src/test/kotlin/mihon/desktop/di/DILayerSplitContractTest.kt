@@ -1,12 +1,15 @@
 package mihon.desktop.di
 
 import app.cash.sqldelight.db.SqlDriver
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopPlatformPaths
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -15,17 +18,14 @@ import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.repository.CategoryRepository
-import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
 import tachiyomi.domain.creator.repository.CreatorLibraryMangaSource
-import tachiyomi.domain.manga.repository.MangaRepository
+import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.creator.service.CreatorDiscoverySourcePort
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
-import mihon.desktop.domain.SaveSourceMangaForDetails
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.InjektScope
@@ -76,8 +76,13 @@ class DILayerSplitContractTest {
         val dataFn: (File) -> DatabaseHandler = ::initDataLayer
         val extFn: (DesktopPlatformPaths, DesktopNetworkHelper, DatabaseHandler) -> Unit = ::initExtensionLayer
         val domainFn: (DatabaseHandler) -> Unit = ::initDomainLayer
-        val uiFn: (DesktopPlatformPaths, DesktopPreferenceStore, DesktopNetworkHelper, DatabaseHandler) -> Unit =
-            ::initUILayer
+        val uiFn: suspend (
+            DesktopPlatformPaths,
+            DesktopPreferenceStore,
+            DesktopNetworkHelper,
+            DatabaseHandler,
+        ) -> Unit =
+            { paths, preferences, network, handler -> initUILayer(paths, preferences, network, handler) }
 
         assertNotNull(configFn)
         assertNotNull(networkFn)
@@ -153,7 +158,7 @@ class DILayerSplitContractTest {
     @Test
     fun `initDesktopDI entry point still exists`() {
         // Just verify it's callable without arguments — real call would touch disk/network
-        val fn: () -> Unit = ::initDesktopDI
+        val fn: suspend () -> Unit = ::initDesktopDI
         assertNotNull(fn)
     }
 }

@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -106,7 +105,8 @@ object HistoryTab : Tab {
         @Composable
         get() {
             val icon = rememberVectorPainter(Icons.Default.History)
-            return remember {
+            val localeTag = mihon.desktop.platform.LocalDesktopLocaleTag.current
+            return remember(localeTag) {
                 TabOptions(
                     index = 2u,
                     title = MR.strings.history.localized(),
@@ -117,7 +117,8 @@ object HistoryTab : Tab {
 
     @Composable
     override fun Content() {
-        Navigator(HistoryRootScreen()) {
+        Navigator(HistoryRootScreen()) { navigator ->
+            mihon.desktop.ui.home.ObserveHomeNavigationStack(navigator)
             CurrentScreen()
         }
     }
@@ -214,7 +215,7 @@ class HistoryRootScreen : Screen {
                     }
                 }
             } else {
-                val sections = remember(state.items) { groupHistoryByDate(state.items) }
+                val sections = remember(state.items, mihon.desktop.platform.LocalDesktopLocaleTag.current) { groupHistoryByDate(state.items) }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
@@ -277,7 +278,7 @@ private fun HistoryItem(
     onRead: () -> Unit,
     onRemove: () -> Unit,
 ) {
-    val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy  HH:mm", Locale.getDefault()) }
+    val dateFormat = remember(mihon.desktop.platform.LocalDesktopLocaleTag.current) { SimpleDateFormat("MMM dd, yyyy  HH:mm", Locale.getDefault()) }
 
     Card(
         modifier = Modifier

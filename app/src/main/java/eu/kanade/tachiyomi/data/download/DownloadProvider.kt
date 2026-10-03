@@ -33,6 +33,49 @@ class DownloadProvider(
     private val downloadsDir: UniFile?
         get() = storageManager.getDownloadsDirectory()
 
+    /** Finite directory-sync rename, with retryable refusal and no queue mutation or target overwrite. */
+    internal fun renameDirectoryChapter(
+        source: Source,
+        phase: tachiyomi.domain.chapter.service.ChapterDirectoryPhase,
+        change: tachiyomi.domain.chapter.service.DirectoryFileChange,
+    ) {
+        check(source.id == phase.effects.sourceId)
+        val root = downloadsDir ?: throw IOException("Download storage is unavailable")
+        fun identity(
+            chapter: tachiyomi.domain.chapter.service.DirectoryFileChapter,
+            title: String,
+        ) = DownloadChapterIdentity(
+            phase.effects.sourceName,
+            title,
+            chapter.name,
+            chapter.scanlator,
+            chapter.url,
+            phase.effects.disallowNonAsciiFilenames,
+        )
+        val oldIdentity = identity(change.before, phase.effects.mangaTitle)
+        val newIdentity = identity(change.after, phase.currentTitle)
+        val sourceDirectory = root.findFile(DownloadArtifactNamingPolicy.sourceDirectoryName(oldIdentity)) ?: return
+        val previousName = DownloadArtifactNamingPolicy.mangaDirectoryName(oldIdentity)
+        val currentName = DownloadArtifactNamingPolicy.mangaDirectoryName(newIdentity)
+        val previous = sourceDirectory.findFile(previousName)
+        val current = sourceDirectory.findFile(currentName)
+        val mangaDirectory = previous ?: current ?: return
+        if (previous != null && previousName != currentName) {
+            check(current == null || current.uri == previous.uri) {
+                "A different manga download occupies the target directory"
+            }
+            check(previous.renameTo(currentName)) { "Unable to rename downloaded manga directory" }
+        }
+        val directory = sourceDirectory.findFile(currentName) ?: mangaDirectory
+        val oldDownload = DownloadArtifactNamingPolicy.chapterCandidates(oldIdentity)
+            .asSequence().mapNotNull { directory.findFile(it.name) }.firstOrNull() ?: return
+        val newName = DownloadArtifactNamingPolicy.currentChapterName(newIdentity) +
+            if (oldDownload.isFile && oldDownload.name.orEmpty().endsWith(".cbz", true)) ".cbz" else ""
+        if (oldDownload.name == newName) return
+        check(directory.findFile(newName) == null) { "A different chapter download occupies the target directory" }
+        check(oldDownload.renameTo(newName)) { "Unable to rename downloaded chapter directory" }
+    }
+
     /**
      * Returns the download directory for a manga. For internal use only.
      *

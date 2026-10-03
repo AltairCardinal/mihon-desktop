@@ -1,0 +1,20 @@
+CREATE TABLE chapter_directory_phases (
+    manga_id INTEGER NOT NULL PRIMARY KEY REFERENCES mangas(_id) ON DELETE CASCADE,
+    phase_id TEXT NOT NULL UNIQUE,
+    payload TEXT NOT NULL
+);
+
+getForManga:
+SELECT payload FROM chapter_directory_phases WHERE manga_id = :mangaId;
+
+getPending:
+SELECT payload FROM chapter_directory_phases;
+
+insertPhase:
+INSERT INTO chapter_directory_phases(manga_id, phase_id, payload) VALUES (?, ?, ?);
+
+updatePhase:
+UPDATE chapter_directory_phases SET payload = :payload WHERE manga_id = :mangaId AND phase_id = :phaseId;
+
+removePhase:
+DELETE FROM chapter_directory_phases WHERE manga_id = :mangaId AND phase_id = :phaseId;

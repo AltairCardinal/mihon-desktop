@@ -19,7 +19,8 @@ object MoreTab : Tab {
         @Composable
         get() {
             val icon = rememberVectorPainter(Icons.Default.MoreHoriz)
-            return remember {
+            val localeTag = mihon.desktop.platform.LocalDesktopLocaleTag.current
+            return remember(localeTag) {
                 TabOptions(index = 4u, title = MR.strings.label_more.localized(), icon = icon)
             }
         }
@@ -27,7 +28,8 @@ object MoreTab : Tab {
     @Composable
     override fun Content() {
         // Nested Navigator — same pattern as LibraryTab — so that push(SettingsScreen) works.
-        Navigator(MoreRootScreen()) {
+        Navigator(MoreRootScreen()) { navigator ->
+            mihon.desktop.ui.home.ObserveHomeNavigationStack(navigator)
             CurrentScreen()
         }
     }

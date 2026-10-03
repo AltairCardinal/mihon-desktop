@@ -52,20 +52,40 @@ class SharedPaletteExactTest {
     @Test
     fun `catppuccin palette matches fixed main tokens`() {
         assertEquals(
-            "ffcba6f7,ff11111b,ffcba6f7,ff11111b,ff8839ef,ffcba6f7,ff11111b,ff313244," +
-                "ffcba6f7,ffcba6f7,ff11111b,ff1e1e2e,ffcdd6f4,ff181825,ffcdd6f4,ff181825," +
+            "ffcba6f7,ff11111b,ffcba6f7,ff11111b,ff8839ef,ffb4befe,ff11111b,ff313244," +
+                "ffcba6f7,ffa6e3a1,ff11111b,ff1e1e2e,ffcdd6f4,ff181825,ffcdd6f4,ff181825," +
                 "ffcdd6f4,ff1e1e2e,ffcdd6f4,ffcba6f7,ffeff1f5,ff4c4f69,fff38ba8,ff11111b," +
                 "ffff0558,ffef9fb4,ffcba6f7,ff585b70,ff11111b,ff181825,ff313244,ff181825," +
                 "ff1e1e2e,ff1e1e2e,ff1e1e2e,ff313244",
             CatppuccinColorScheme.darkScheme.exactTokenSnapshot(),
         )
         assertEquals(
-            "ff8839ef,ffdce0e8,ff8839ef,ffdce0e8,ffcba6f7,ff8839ef,ffdce0e8,ffcdd0da," +
-                "ff8839ef,ff8839ef,ffdce0e8,ffeff1f5,ff4c4f69,ffe6e9ef,ff4c4f69,ffe6e9ef," +
+            "ff8839ef,ffdce0e8,ff8839ef,ffdce0e8,ffcba6f7,ff7287fd,ffdce0e8,ffcdd0da," +
+                "ff8839ef,ff40a02b,ffdce0e8,ffeff1f5,ff4c4f69,ffe6e9ef,ff4c4f69,ffe6e9ef," +
                 "ff4c4f69,ffeff1f5,ff4c4f69,ff8839ef,ff1e1e2e,ffcdd6f4,ffd20f39,ffdce0e8," +
                 "ff68001c,ffd61c41,ff8839ef,ffacb0be,ffdce0e8,ffe6e9ef,ffcdd0da,ffe6e9ef," +
                 "ffeff1f5,ffeff1f5,ffeff1f5,ffcdd0da",
             CatppuccinColorScheme.lightScheme.exactTokenSnapshot(),
+        )
+    }
+
+    @Test
+    fun `Tokyo Night complete roles match the frozen source and actual Material3 omitted defaults`() {
+        assertEquals(
+            "ff82aaff,ff1b1d2b,ff444a73,ff9ab8ff,ff3d5c9e,ff86e1fc,ff1b1d2b,ff444a73," +
+                "ffb2ebff,ffc099ff,ff1b1d2b,ff444a73,ffcaabff,ff222436,ffc8d3f5,ff222436," +
+                "ffc8d3f5,ff444a73,ff828bb8,ff82aaff,ffc8d3f5,ff222436,ffff757f,ff1b1d2b," +
+                "ffc53b53,ffff8d94,ff828bb8,ff444a73,ff000000,ff222436,ff434a77,ff1e202f," +
+                "ff292c44,ff2d304b,ff363b5d,ff3f466f",
+            TokyoNightColorScheme.darkScheme.exactTokenSnapshot(),
+        )
+        assertEquals(
+            "ff2e7de9,ffffffff,ff92a6d5,ff15386a,ff7890dd,ff007197,ffffffff,ffa9c6d3," +
+                "ff006a83,ff9854f1,ffffffff,ffcfbfea,ff7847bd,ffe1e2e7,ff3760bf,ffe1e2e7," +
+                "ff3760bf,ffc4c8da,ff6172b0,ff2e7de9,ff3760bf,ffe1e2e7,fff52a65,ffffffff," +
+                "ffe6b4c7,ff6e132d,ff68709a,ffa8aecb,ff000000,ff9195b1,ffe1e2e7,ffe4e5e9," +
+                "ffd0d5e3,ffc1c9df,ffc4c8da,ffa1a6c5",
+            TokyoNightColorScheme.lightScheme.exactTokenSnapshot(),
         )
     }
 
@@ -123,7 +143,7 @@ class SharedPaletteExactTest {
             "ff5e81ac,ff000000,ff5e81ac,ff000000,ff8ca8cd,ff81a1c1,ff2e3440,ff91b4d7," +
                 "ff2e3440,ff88c0d0,ff2e3440,ff88c0d0,ff2e3440,ffeceff4,ff2e3440,ffe5e9f0," +
                 "ff2e3440,ffdae0ea,ff2e3440,ff5e81ac,ff3b4252,ffeceff4,ffb3261e,ffeceff4," +
-                "ffbf616a,ff000000,ff2e3440,ffcac4d0,ff000000,ffded8e1,fffef7ff,ffd1d7e0," +
+                "ffbf616a,ff000000,ff2e3440,ffd8dee9,ff000000,ffded8e1,fffef7ff,ffd1d7e0," +
                 "ffd6dce6,ffdae0ea,ffe9edf3,fff2f4f8",
             NordColorScheme.lightScheme.exactTokenSnapshot(),
         )

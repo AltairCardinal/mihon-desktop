@@ -26,7 +26,7 @@ recordUnit:
 INSERT INTO sync_restore_units(import_id, unit_key) VALUES (?, ?);
 
 getMangaHistory:
-SELECT C._id AS chapter_id, C.url AS chapter_url, H.last_read
+SELECT C._id AS chapter_id, coalesce((SELECT max(A.canonical_url) FROM chapter_url_aliases A WHERE A.chapter_id = C._id HAVING count(DISTINCT A.canonical_url) = 1), C.url) AS chapter_url, H.last_read
 FROM chapters C JOIN mangas M ON M._id = C.manga_id LEFT JOIN history H ON H.chapter_id = C._id
 WHERE M.source = :sourceId AND M.url = :mangaUrl;
 

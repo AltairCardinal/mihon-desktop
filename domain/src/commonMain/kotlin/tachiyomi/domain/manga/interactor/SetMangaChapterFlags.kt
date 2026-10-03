@@ -81,17 +81,35 @@ class SetMangaChapterFlags(
         return mangaRepository.update(
             MangaUpdate(
                 id = mangaId,
-                chapterFlags = 0L.setFlag(unreadFilter, Manga.CHAPTER_UNREAD_MASK)
-                    .setFlag(downloadedFilter, Manga.CHAPTER_DOWNLOADED_MASK)
-                    .setFlag(bookmarkedFilter, Manga.CHAPTER_BOOKMARKED_MASK)
-                    .setFlag(sortingMode, Manga.CHAPTER_SORTING_MASK)
-                    .setFlag(sortingDirection, Manga.CHAPTER_SORT_DIR_MASK)
-                    .setFlag(displayMode, Manga.CHAPTER_DISPLAY_MASK),
+                chapterFlags = composeFlags(
+                    unreadFilter,
+                    downloadedFilter,
+                    bookmarkedFilter,
+                    sortingMode,
+                    sortingDirection,
+                    displayMode,
+                ),
             ),
         )
     }
 
     private fun Long.setFlag(flag: Long, mask: Long): Long {
         return this and mask.inv() or (flag and mask)
+    }
+
+    companion object {
+        fun composeFlags(
+            unreadFilter: Long,
+            downloadedFilter: Long,
+            bookmarkedFilter: Long,
+            sortingMode: Long,
+            sortingDirection: Long,
+            displayMode: Long,
+        ): Long = (unreadFilter and Manga.CHAPTER_UNREAD_MASK) or
+            (downloadedFilter and Manga.CHAPTER_DOWNLOADED_MASK) or
+            (bookmarkedFilter and Manga.CHAPTER_BOOKMARKED_MASK) or
+            (sortingMode and Manga.CHAPTER_SORTING_MASK) or
+            (sortingDirection and Manga.CHAPTER_SORT_DIR_MASK) or
+            (displayMode and Manga.CHAPTER_DISPLAY_MASK)
     }
 }

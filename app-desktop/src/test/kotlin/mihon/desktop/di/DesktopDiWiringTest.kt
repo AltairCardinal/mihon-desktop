@@ -3,88 +3,55 @@ package mihon.desktop.di
 import android.app.Application
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
-import java.awt.GraphicsEnvironment
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.CoroutineScope
+import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.BuildInfo
-import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.DesktopAppRuntime
 import mihon.desktop.DesktopOwnerIngressDependencies
+import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.OwnerUiDependencies
-import mihon.desktop.compat.AndroidCompat
 import mihon.desktop.backup.AutoBackupScheduler
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
-import mihon.desktop.domain.LibraryUpdateScheduler
-import mihon.desktop.domain.LibraryUpdateChecker
-import mihon.desktop.domain.CreatorDiscoveryScheduler
+import mihon.desktop.compat.AndroidCompat
 import mihon.desktop.domain.CreatorDiscoveryOutboxService
+import mihon.desktop.domain.CreatorDiscoveryScheduler
 import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.domain.DesktopSystemNotifier
+import mihon.desktop.domain.LibraryUpdateChecker
+import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.domain.ReaderProgressTracker
-import mihon.desktop.download.DesktopDownloadManager
-import mihon.desktop.download.DesktopDownloadIdentityResolver
-import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DefaultDownloadFileOperations
+import mihon.desktop.download.DesktopDownloadIdentityResolver
+import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadFileOperations
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DownloadStatus
-import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.extension.DesktopArtifactAuthenticator
-import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopAvailableExtension
 import mihon.desktop.extension.DesktopAvailableSource
+import mihon.desktop.extension.DesktopExtensionApi
+import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.extension.FixtureNewSource
-import mihon.desktop.license.DependencyNoticeProvider
-import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
-import mihon.desktop.ui.extension.ExtensionsScreenModel
-import mihon.desktop.ui.settings.DesktopDirectoryOpenPort
-import mihon.desktop.platform.DesktopNetworkHelper
-import mihon.desktop.platform.DesktopFilePicker
-import mihon.desktop.platform.SwingDesktopFilePicker
-import mihon.desktop.platform.DesktopNativeSharePort
-import mihon.desktop.platform.DesktopShareFailureReason
-import mihon.desktop.platform.DesktopShareResult
-import mihon.desktop.platform.DesktopShareService
-import mihon.desktop.platform.DesktopShareUnavailableReason
-import mihon.desktop.platform.MacOsNativeSharePort
-import mihon.desktop.privacy.DesktopWindowPrivacyController
-import eu.kanade.tachiyomi.core.security.SecurityPreferences
-import mihon.desktop.security.DesktopAppLock
-import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.library.LibraryScreenModelFactory
 import mihon.desktop.library.MangaDetailScreenModelFactory
-import mihon.desktop.reader.ReaderPreferences
-import mihon.desktop.reader.DesktopReaderRuntimeFactory
-import mihon.desktop.reader.DesktopChapterPairingCoordinator
-import mihon.domain.reader.ChapterPairingRepository
-import mihon.desktop.settings.DesktopAppPreferences
-import mihon.desktop.ui.more.StatsScreenModel
-import mihon.desktop.update.DesktopUpdateController
-import mihon.desktop.update.DesktopUpdateInstaller
-import mihon.desktop.update.InstallerTrust
-import mihon.desktop.updates.UpdatesScreenModelFactory
-import mihon.desktop.ui.settings.DesktopUpdateScreenModel
-import mihon.desktop.task.DesktopTaskScheduler
-import mihon.desktop.test.http.SourceExtensionTestModeBridge
-import mihon.desktop.test.http.SourceExtensionTestModeController
-import mihon.desktop.test.http.LibraryMangaTestModeController
-import mihon.desktop.test.http.ReaderIoTestModeBridge
-import mihon.desktop.ui.library.LibraryScreenModel
+import mihon.desktop.license.DependencyNoticeProvider
 import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.network.ChallengeRecoveryFailure
 import mihon.desktop.network.ChallengeRecoveryIntent
@@ -94,13 +61,61 @@ import mihon.desktop.network.DesktopAuthenticatedSessionCommitter
 import mihon.desktop.network.DesktopBrowserOpener
 import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
+import mihon.desktop.platform.CredentialBackend
+import mihon.desktop.platform.CredentialNamespace
+import mihon.desktop.platform.DesktopCredentialStore
+import mihon.desktop.platform.DesktopFilePicker
+import mihon.desktop.platform.DesktopNativeSharePort
+import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.platform.DesktopShareFailureReason
+import mihon.desktop.platform.DesktopShareResult
+import mihon.desktop.platform.DesktopShareService
+import mihon.desktop.platform.DesktopShareUnavailableReason
+import mihon.desktop.platform.MacOsNativeSharePort
+import mihon.desktop.platform.SwingDesktopFilePicker
+import mihon.desktop.privacy.DesktopWindowPrivacyController
+import mihon.desktop.reader.DesktopChapterPairingCoordinator
+import mihon.desktop.reader.DesktopReaderRuntimeFactory
+import mihon.desktop.reader.ReaderPreferences
+import mihon.desktop.security.DesktopAppLock
+import mihon.desktop.security.DesktopPassphraseVerifier
+import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.task.DesktopTaskScheduler
+import mihon.desktop.test.http.LibraryMangaTestModeController
+import mihon.desktop.test.http.ReaderIoTestModeBridge
+import mihon.desktop.test.http.SourceExtensionTestModeBridge
+import mihon.desktop.test.http.SourceExtensionTestModeController
+import mihon.desktop.tracking.DesktopNetworkConnectivity
+import mihon.desktop.tracking.DesktopTrackerOAuthCallbackBroker
+import mihon.desktop.tracking.DesktopTrackerSyncScheduler
+import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
+import mihon.desktop.ui.extension.ExtensionsScreenModel
+import mihon.desktop.ui.library.LibraryScreenModel
+import mihon.desktop.ui.more.StatsScreenModel
+import mihon.desktop.ui.settings.DesktopDirectoryOpenPort
+import mihon.desktop.ui.settings.DesktopUpdateScreenModel
+import mihon.desktop.update.DesktopUpdateController
+import mihon.desktop.update.DesktopUpdateInstaller
+import mihon.desktop.update.InstallerTrust
+import mihon.desktop.updates.UpdatesScreenModelFactory
+import mihon.domain.download.DownloadQueueStatus
 import mihon.domain.download.DownloadRepository
 import mihon.domain.download.EnqueueDownload
 import mihon.domain.download.IsChapterDownloaded
-import mihon.domain.download.DownloadQueueStatus
-import mihon.domain.reader.content.DownloadChapterIdentity
 import mihon.domain.platform.SharePayload
+import mihon.domain.reader.ChapterPairingRepository
+import mihon.domain.reader.content.DownloadChapterIdentity
 import mihon.domain.task.NotificationEvent
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.Buffer
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -111,29 +126,43 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
-import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.DesktopPreferenceStore
-import tachiyomi.domain.track.repository.TrackRepository
-import tachiyomi.domain.track.interactor.DeleteTrack
-import tachiyomi.domain.track.interactor.GetTracks
-import tachiyomi.domain.track.interactor.InsertTrack
+import tachiyomi.core.common.preference.PreferenceStore
+import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.JvmDatabaseHandler
+import tachiyomi.data.download.PersistentDownloadStore
+import tachiyomi.domain.category.interactor.CreateCategoryWithName
+import tachiyomi.domain.category.interactor.DeleteCategory
+import tachiyomi.domain.category.interactor.GetCategories
+import tachiyomi.domain.category.interactor.RenameCategory
+import tachiyomi.domain.category.interactor.ReorderCategory
+import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
 import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.repository.CreatorRepository
-import tachiyomi.domain.track.service.TrackerSessionProvider
-import tachiyomi.domain.track.service.TrackerServiceRegistry
+import tachiyomi.domain.download.service.DownloadPreferences
+import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.manga.interactor.GetLibraryManga
+import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
+import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaCover
+import tachiyomi.domain.manga.repository.MangaRepository
+import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.release.interactor.GetApplicationRelease
 import tachiyomi.domain.release.service.ReleaseService
-import mihon.desktop.platform.DesktopCredentialStore
-import mihon.desktop.platform.CredentialBackend
-import mihon.desktop.platform.CredentialNamespace
-import mihon.desktop.tracking.DesktopTrackerSyncScheduler
-import mihon.desktop.tracking.DesktopNetworkConnectivity
-import mihon.desktop.tracking.DesktopTrackerOAuthCallbackBroker
+import tachiyomi.domain.source.service.AuthenticatedCookie
+import tachiyomi.domain.source.service.AuthenticatedSession
+import tachiyomi.domain.source.service.AuthenticatedSessionCommitter
+import tachiyomi.domain.source.service.SourceLoginRequest
+import tachiyomi.domain.track.interactor.DeleteTrack
+import tachiyomi.domain.track.interactor.GetTracks
+import tachiyomi.domain.track.interactor.InsertTrack
 import tachiyomi.domain.track.interactor.ReadingProgressTrackSync
 import tachiyomi.domain.track.model.Track
+import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.domain.track.service.TrackerAuthentication
@@ -147,57 +176,78 @@ import tachiyomi.domain.track.service.TrackerProviderResult
 import tachiyomi.domain.track.service.TrackerProviderService
 import tachiyomi.domain.track.service.TrackerProviderSession
 import tachiyomi.domain.track.service.TrackerService
-import tachiyomi.domain.source.service.AuthenticatedCookie
-import tachiyomi.domain.source.service.AuthenticatedSession
-import tachiyomi.domain.source.service.AuthenticatedSessionCommitter
-import tachiyomi.domain.source.service.SourceLoginRequest
-import tachiyomi.domain.reader.interactor.RecordReadingProgress
-import tachiyomi.domain.chapter.repository.ChapterRepository
-import tachiyomi.domain.manga.model.Manga
-import tachiyomi.domain.manga.model.MangaCover
-import tachiyomi.domain.manga.repository.MangaRepository
-import tachiyomi.domain.chapter.model.Chapter
-import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.track.service.TrackerServiceRegistry
+import tachiyomi.domain.track.service.TrackerSessionProvider
 import tachiyomi.domain.updates.model.UpdatesWithRelations
-import tachiyomi.domain.download.service.DownloadPreferences
-import tachiyomi.domain.category.interactor.CreateCategoryWithName
-import tachiyomi.domain.category.interactor.DeleteCategory
-import tachiyomi.domain.category.interactor.GetCategories
-import tachiyomi.domain.category.interactor.RenameCategory
-import tachiyomi.domain.category.interactor.ReorderCategory
-import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
-import tachiyomi.domain.manga.interactor.GetLibraryManga
-import tachiyomi.data.download.PersistentDownloadStore
-import tachiyomi.data.DatabaseHandler
-import tachiyomi.data.JvmDatabaseHandler
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.awt.GraphicsEnvironment
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
-import java.net.InetSocketAddress
-import java.net.Proxy
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
-import okhttp3.OkHttpClient
-import okhttp3.Protocol
-import okhttp3.Response
-import okhttp3.ResponseBody.Companion.toResponseBody
-import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.Request
+import java.net.InetSocketAddress
+import java.net.Proxy
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.prefs.Preferences
-import java.io.ByteArrayOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
-import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
-import okio.Buffer
 
 @Isolated
 class DesktopDiWiringTest {
+    @Test
+    fun `cancelled DI owner releases a suspended category snapshot before recovery or producers`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var created: DesktopTestDIContext? = null
+        val shareCloses = java.util.concurrent.atomic.AtomicInteger()
+        val initializing = async(Dispatchers.IO) {
+            created = initDesktopDIForTest(
+                tempDir,
+                isolatedDesktopPreferenceStore(),
+                startDownloadWorker = false,
+                nativeSharePort = object : DesktopNativeSharePort {
+                    override fun share(content: mihon.desktop.platform.DesktopNativeShareContent) =
+                        mihon.desktop.platform.DesktopNativeShareOutcome.Unavailable
+                    override fun close() {
+                        shareCloses.incrementAndGet()
+                    }
+                },
+                categoryRepositoryOverride = { actual ->
+                    object : tachiyomi.domain.category.repository.CategoryRepository by actual {
+                        override suspend fun getAll(): List<tachiyomi.domain.category.model.Category> {
+                            entered.complete(Unit)
+                            release.await()
+                            return actual.getAll()
+                        }
+                    }
+                },
+            )
+        }
+        try {
+            withTimeout(5_000) { entered.await() }
+            initializing.cancel()
+            val stopped = kotlinx.coroutines.withTimeoutOrNull(500) {
+                initializing.join()
+                true
+            }
+            assertTrue(stopped == true, "Owner cancellation must release the real pending SQL snapshot")
+            assertTrue(created == null, "Cancelled initialization cannot publish a started runtime")
+            assertEquals(1, shareCloses.get(), "The already created native share port belongs to the cancelled owner")
+        } finally {
+            release.complete(Unit)
+            withContext(NonCancellable) {
+                initializing.join()
+                created?.closeAndJoin()
+            }
+        }
+    }
+
     @Test
     fun `desktop DI applies persisted proxy to shared production client`(@TempDir tempDir: File) = runBlocking {
         val store = isolatedDesktopPreferenceStore()
@@ -225,7 +275,9 @@ class DesktopDiWiringTest {
     }
 
     @Test
-    fun `desktop production DI gives reader the manager owned partial lookup and lease source`(@TempDir tempDir: File) = runBlocking {
+    fun `desktop production DI gives reader the manager owned partial lookup and lease source`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
         val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
         try {
             val manager = Injekt.get<DesktopDownloadManager>()
@@ -262,7 +314,8 @@ class DesktopDiWiringTest {
             try {
                 val service = Injekt.get<DesktopNotificationService>()
                 val notifier = Injekt.get<DesktopSystemNotifier>()
-                val posted = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(1_000) { service.notifications.first() } }
+                val posted =
+                    async(start = CoroutineStart.UNDISPATCHED) { withTimeout(1_000) { service.notifications.first() } }
 
                 notifier.notify(NotificationEvent.Success("library", "Library updated", "3 new chapters"))
 
@@ -274,7 +327,9 @@ class DesktopDiWiringTest {
         }
 
     @Test
-    fun `desktop DI shares one OAuth broker and production tracker clients with UI`(@TempDir tempDir: File) = runBlocking {
+    fun `desktop DI shares one OAuth broker and production tracker clients with UI`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
         val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
         try {
             val broker = Injekt.get<DesktopTrackerOAuthCallbackBroker>()
@@ -347,7 +402,9 @@ class DesktopDiWiringTest {
 
             assertSame(uiDependencies, ownerDependencies.uiDependencies)
             assertSame(uiDependencies.externalActionNavigator, ownerDependencies.uiDependencies.externalActionNavigator)
-            assertTrue(uiDependencies.externalActionNavigator !== DesktopUiDependencies.fromInjekt().externalActionNavigator)
+            assertTrue(
+                uiDependencies.externalActionNavigator !== DesktopUiDependencies.fromInjekt().externalActionNavigator,
+            )
         } finally {
             context.closeAndJoin()
         }
@@ -369,7 +426,9 @@ class DesktopDiWiringTest {
     }
 
     @Test
-    fun `desktop DI binds immutable build-time trust to the production installer`(@TempDir tempDir: File) = runBlocking {
+    fun `desktop DI binds immutable build-time trust to the production installer`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
         val expectedWindowsPublisher =
             checkNotNull(System.getProperty("mihon.test.expectedInstallerWindowsPublisher"))
         val expectedMacTeamId =
@@ -460,7 +519,9 @@ class DesktopDiWiringTest {
     }
 
     @Test
-    fun `desktop DI runtime owns the same native share port used by the UI service`(@TempDir tempDir: File) = runBlocking {
+    fun `desktop DI runtime owns the same native share port used by the UI service`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
         val process = ControlledNativeShareProcess().also { it.emitReady() }
         val port = MacOsNativeSharePort(
             processLauncher = { process },
@@ -517,7 +578,9 @@ class DesktopDiWiringTest {
     private class ControlledNativeShareProcess : Process() {
         private val output = PipedOutputStream()
         private val input = PipedInputStream(output)
+
         @Volatile private var alive = true
+
         @Volatile var destroyed = false
             private set
 
@@ -578,15 +641,28 @@ class DesktopDiWiringTest {
                 val helper = Injekt.get<DesktopNetworkHelper>()
                 val sourceLoginFactory = Injekt.get<DesktopSourceLoginSessionFactory>()
                 val ui = DesktopUiDependencies.fromInjekt()
-                assertEquals(listOf(manager, bridge, helper), listOf(ui.cloudflareChallengeManager, ui.challengeBrowserLoginBridge, ui.networkHelper))
-                assertSame(Injekt.get<DesktopAuthenticatedSessionCommitter>(), Injekt.get<AuthenticatedSessionCommitter>())
+                assertEquals(
+                    listOf(manager, bridge, helper),
+                    listOf(ui.cloudflareChallengeManager, ui.challengeBrowserLoginBridge, ui.networkHelper),
+                )
+                assertSame(
+                    Injekt.get<DesktopAuthenticatedSessionCommitter>(),
+                    Injekt.get<AuthenticatedSessionCommitter>(),
+                )
                 assertSame(Injekt.get<AuthenticatedSessionCommitter>(), sourceLoginFactory.committer)
                 assertSame(sourceLoginFactory, ui.sourceLoginSessionFactory)
-                assertEquals(0, solverServer.requestCount, "runtime providers must not be observed while the helper is built")
+                assertEquals(
+                    0,
+                    solverServer.requestCount,
+                    "runtime providers must not be observed while the helper is built",
+                )
 
                 val manual = manager.publish(loginRequest(sourceUrl))
                 assertTrue(
-                    manager.recover(manual, ChallengeRecoveryIntent.SubmitManualCookies(loginSession("manual-secret", sourceUrl))) is
+                    manager.recover(
+                        manual,
+                        ChallengeRecoveryIntent.SubmitManualCookies(loginSession("manual-secret", sourceUrl)),
+                    ) is
                         ChallengeRecoveryState.Recovered,
                 )
                 assertEquals("manual-secret", helper.cookieJar.get(sourceUrl).single().value)
@@ -611,12 +687,21 @@ class DesktopDiWiringTest {
 
                 solverServer.enqueue(
                     MockResponse(
-                        body = """{"status":"ok","solution":{"userAgent":"solver-agent","cookies":[{"name":"cf_clearance","value":"solver-secret","domain":"${sourceUrl.host}"}]}}""",
+                        body = """
+                        {"status":"ok",
+                        "solution":{"userAgent":"solver-agent",
+                        "cookies":[{"name":"cf_clearance",
+                        "value":"solver-secret",
+                        "domain":"${sourceUrl.host}"}]}}
+                        """,
                     ),
                 )
                 preferences.flareSolverrUrl.set(solverServer.url("/").toString())
                 assertTrue(
-                    manager.recover(manager.publish(loginRequest(sourceUrl)), ChallengeRecoveryIntent.UseFlareSolverr) is
+                    manager.recover(
+                        manager.publish(loginRequest(sourceUrl)),
+                        ChallengeRecoveryIntent.UseFlareSolverr,
+                    ) is
                         ChallengeRecoveryState.Recovered,
                 )
                 assertEquals("solver-secret", helper.cookieJar.get(sourceUrl).single().value)
@@ -634,7 +719,9 @@ class DesktopDiWiringTest {
     }
 
     @Test
-    fun `extension install uses DI manager and updates its runtime inside transaction`(@TempDir tempDir: File) = runBlocking {
+    fun `extension install uses DI manager and updates its runtime inside transaction`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
         val context = initDesktopDIForTest(
             tempDir,
             DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
@@ -659,7 +746,9 @@ class DesktopDiWiringTest {
                     repoUrl = "https://repo.example",
                     repoName = "Fixture repo",
                     repoFingerprint = "fixture-key",
-                    sources = listOf(DesktopAvailableSource(FixtureNewSource.ID, "en", "Fixture", "https://example.com")),
+                    sources = listOf(
+                        DesktopAvailableSource(FixtureNewSource.ID, "en", "Fixture", "https://example.com"),
+                    ),
                 )
 
                 val result = api.installExtension(extension, manager)
@@ -720,7 +809,9 @@ class DesktopDiWiringTest {
     }
 
     @Test
-    fun `full DI reader tracker failure survives restart and runtime automatically cleans it`(@TempDir tempDir: File) = runBlocking {
+    fun `full DI reader tracker failure survives restart and runtime automatically cleans it`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
         val registry = MutableTestTrackerRegistry()
         val preferences = DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}"))
         val first = initDesktopDIForTest(
@@ -798,7 +889,9 @@ class DesktopDiWiringTest {
     }
 
     @Test
-    fun `full DI runtime awaits production library adapter cancellation before returning`(@TempDir tempDir: File) = runBlocking {
+    fun `full DI runtime awaits production library adapter cancellation before returning`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
         val updateStarted = CompletableDeferred<Unit>()
         val releaseCancellation = CompletableDeferred<Unit>()
         val cleanupCompleted = CompletableDeferred<Unit>()
@@ -827,7 +920,8 @@ class DesktopDiWiringTest {
         val runtime = Injekt.get<DesktopAppRuntime>()
         try {
             runtime.start()
-            updateStarted.await()
+            Injekt.get<LibraryUpdateScheduler>().runNow()
+            withTimeout(5_000) { updateStarted.await() }
             assertNotNull(taskScheduler.snapshot(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK.id))
 
             val closing = async { runtime.closeAndJoin() }
@@ -881,7 +975,8 @@ class DesktopDiWiringTest {
         var closing: kotlinx.coroutines.Deferred<Unit>? = null
         try {
             Injekt.get<DesktopAppRuntime>().start()
-            updateStarted.await()
+            Injekt.get<LibraryUpdateScheduler>().runNow()
+            withTimeout(5_000) { updateStarted.await() }
 
             val closeJob = async { context.closeAndJoin() }
             closing = closeJob
@@ -969,7 +1064,9 @@ class DesktopDiWiringTest {
     }
 
     @Test
-    fun `extension presentation DI keeps default flow singleton and captured reinit ownership`(@TempDir tempDir: File) = runBlocking {
+    fun `extension presentation DI keeps default flow singleton and captured reinit ownership`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
         val first = initDesktopDIForTest(
             tempDir.resolve("extension-first"),
             DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
@@ -1025,113 +1122,104 @@ class DesktopDiWiringTest {
 
     @Test
     fun `reinitializing test DI replaces every binding and scheduler context`(@TempDir tempDir: File) = runBlocking {
-        var firstManga = Manga.create().copy(source = 9, url = "/first", title = "First manga", favorite = true)
-        val firstExcludedId = 102L
-        val firstKeptId = 103L
-        val firstStore = DesktopPreferenceStore(
-            Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}"),
-        ).also {
-            val downloadPreferences = DownloadPreferences(it)
-            downloadPreferences.downloadNewChapters().set(true)
-            downloadPreferences.downloadNewUnreadChaptersOnly().set(true)
+        fun directorySource(sourceId: Long, stem: String): eu.kanade.tachiyomi.source.CatalogueSource =
+            object : eu.kanade.tachiyomi.source.CatalogueSource by
+            mihon.desktop.source.FakeSource(sourceId, "en", "$stem source") {
+                override suspend fun getMangaUpdate(
+                    manga: eu.kanade.tachiyomi.source.model.SManga,
+                    chapters: List<eu.kanade.tachiyomi.source.model.SChapter>,
+                    fetchDetails: Boolean,
+                    fetchChapters: Boolean,
+                ) = eu.kanade.tachiyomi.source.model.SMangaUpdate(manga, getChapterList(manga))
+
+                override suspend fun getChapterList(manga: eu.kanade.tachiyomi.source.model.SManga) =
+                    listOf("read", "kept").mapIndexed { index, suffix ->
+                        eu.kanade.tachiyomi.source.model.SChapter.create().apply {
+                            url = "/$stem-$suffix"
+                            name = "$stem $suffix"
+                            chapter_number = (index + 1).toFloat()
+                        }
+                    }
+            }
+        fun preferences() = isolatedDesktopPreferenceStore().also {
+            DownloadPreferences(it).apply {
+                downloadNewChapters().set(true)
+                downloadNewUnreadChaptersOnly().set(true)
+            }
+        }
+        suspend fun seed(stem: String, sourceId: Long): Manga {
+            val manga = Injekt.get<MangaRepository>().insertNetworkManga(
+                listOf(Manga.create().copy(source = sourceId, url = "/$stem", title = "$stem manga", favorite = true)),
+            ).single()
+            Injekt.get<ChapterRepository>().addAll(
+                listOf(
+                    Chapter.create().copy(
+                        mangaId = manga.id,
+                        name = "$stem read",
+                        url = "/$stem-read",
+                        read = true,
+                        chapterNumber = 1.0,
+                    ),
+                ),
+            )
+            return manga
         }
         val firstContext = initDesktopDIForTest(
             tempDir.resolve("first"),
-            firstStore,
-            libraryProvider = { listOf(LibraryManga(firstManga, emptyList(), 0, 0, 0, 0, 0, 0)) },
-            updateManga = { manga ->
-                LibraryUpdateChecker.UpdateResult(
-                    2,
-                    listOf(
-                        Chapter.create().copy(id = firstExcludedId, mangaId = manga.id, name = "First excluded", url = "/102", chapterNumber = 1.0),
-                        Chapter.create().copy(id = firstKeptId, mangaId = manga.id, name = "First kept", url = "/103", chapterNumber = 2.0),
-                    ),
-                )
-            },
+            preferences(),
             startDownloadWorker = false,
+            builtInSources = listOf(directorySource(9, "first")),
         )
         try {
-        val firstHandler = firstContext.handler
-        firstManga = Injekt.get<MangaRepository>().insertNetworkManga(listOf(firstManga)).single()
-        Injekt.get<ChapterRepository>().addAll(
-            listOf(
-                Chapter.create().copy(
-                    mangaId = firstManga.id,
-                    name = "First already read",
-                    url = "/first-read",
-                    read = true,
-                    chapterNumber = 1.0,
-                ),
-            ),
-        )
-        Injekt.get<LibraryUpdateScheduler>().runNow().join()
-
-        var secondManga = Manga.create().copy(source = 10, url = "/second", title = "Second manga", favorite = true)
-        val secondExcludedId = 202L
-        val secondKeptId = 203L
-        val secondStore = DesktopPreferenceStore(
-            Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}"),
-        ).also {
-            val downloadPreferences = DownloadPreferences(it)
-            downloadPreferences.downloadNewChapters().set(true)
-            downloadPreferences.downloadNewUnreadChaptersOnly().set(true)
-        }
-        val secondContext = initDesktopDIForTest(
-            tempDir.resolve("second"),
-            secondStore,
-            libraryProvider = { listOf(LibraryManga(secondManga, emptyList(), 0, 0, 0, 0, 0, 0)) },
-            updateManga = { manga ->
-                LibraryUpdateChecker.UpdateResult(
-                    2,
-                    listOf(
-                        Chapter.create().copy(id = secondExcludedId, mangaId = manga.id, name = "Second excluded", url = "/202", chapterNumber = 1.0),
-                        Chapter.create().copy(id = secondKeptId, mangaId = manga.id, name = "Second kept", url = "/203", chapterNumber = 2.0),
-                    ),
-                )
-            },
-            startDownloadWorker = false,
-        )
-
-        try {
-        val secondHandler = secondContext.handler
-        secondManga = Injekt.get<MangaRepository>().insertNetworkManga(listOf(secondManga)).single()
-        Injekt.get<ChapterRepository>().addAll(
-            listOf(
-                Chapter.create().copy(
-                    mangaId = secondManga.id,
-                    name = "Second already read",
-                    url = "/second-read",
-                    read = true,
-                    chapterNumber = 1.0,
-                ),
-            ),
-        )
-        assertSame(secondStore, Injekt.get<PreferenceStore>())
-        assertSame(secondHandler, Injekt.get<DatabaseHandler>())
-        assertNotNull(Injekt.get<DesktopAppPreferences>())
-        assertNotNull(Injekt.get<ReaderPreferences>())
-        assertSame(ReaderIoTestModeBridge, Injekt.get<DesktopReaderRuntimeFactory>().configuredReaderIoProbe)
-        assertSame(Injekt.get<ReaderPreferences>(), DesktopUiDependencies.fromInjekt().readerPreferences)
-        assertNotNull(Injekt.get<LibraryUpdateScheduler>())
-        assertNotNull(Injekt.get<CreatorDiscoveryScheduler>())
-        assertNotNull(Injekt.get<CreatorDiscoveryOutboxService>())
-
-        Injekt.get<LibraryUpdateScheduler>().runNow().join()
-
-        val firstEntries = PersistentDownloadStore(firstHandler.db).entries()
-        val secondEntries = PersistentDownloadStore(secondHandler.db).entries()
-        assertEquals(listOf(firstKeptId), firstEntries.map { it.chapterId })
-        assertEquals(listOf(secondKeptId), secondEntries.map { it.chapterId })
-        } finally {
-            secondContext.closeAndJoin()
-        }
+            val firstHandler = firstContext.handler
+            val firstManga = seed("first", 9)
+            Injekt.get<LibraryUpdateScheduler>().runNow().join()
+            val firstChapters = Injekt.get<ChapterRepository>().getChapterByMangaId(firstManga.id)
+            val firstKeptId = firstChapters.single { it.url == "/first-kept" }.id
+            assertTrue(firstChapters.single { it.url == "/first-read" }.read)
+            val secondStore = preferences()
+            val secondContext = initDesktopDIForTest(
+                tempDir.resolve("second"),
+                secondStore,
+                startDownloadWorker = false,
+                builtInSources = listOf(directorySource(10, "second")),
+            )
+            try {
+                val secondHandler = secondContext.handler
+                val secondManga = seed("second", 10)
+                assertTrue(firstHandler !== secondHandler)
+                assertTrue(firstManga !== secondManga)
+                assertSame(secondStore, Injekt.get<PreferenceStore>())
+                assertSame(secondHandler, Injekt.get<DatabaseHandler>())
+                assertNotNull(Injekt.get<DesktopAppPreferences>())
+                assertNotNull(Injekt.get<ReaderPreferences>())
+                assertSame(ReaderIoTestModeBridge, Injekt.get<DesktopReaderRuntimeFactory>().configuredReaderIoProbe)
+                assertSame(Injekt.get<ReaderPreferences>(), DesktopUiDependencies.fromInjekt().readerPreferences)
+                assertNotNull(Injekt.get<LibraryUpdateScheduler>())
+                assertNotNull(Injekt.get<CreatorDiscoveryScheduler>())
+                assertNotNull(Injekt.get<CreatorDiscoveryOutboxService>())
+                Injekt.get<LibraryUpdateScheduler>().runNow().join()
+                val secondChapters = Injekt.get<ChapterRepository>().getChapterByMangaId(secondManga.id)
+                val secondKeptId = secondChapters.single { it.url == "/second-kept" }.id
+                assertTrue(secondChapters.single { it.url == "/second-read" }.read)
+                val firstEntries = PersistentDownloadStore(firstHandler.db).entries()
+                val secondEntries = PersistentDownloadStore(secondHandler.db).entries()
+                assertEquals(listOf(firstKeptId), firstEntries.map { it.chapterId })
+                assertEquals(listOf(secondKeptId), secondEntries.map { it.chapterId })
+                assertEquals(listOf("/first-kept"), firstEntries.map { it.chapterUrl })
+                assertEquals(listOf("/second-kept"), secondEntries.map { it.chapterUrl })
+            } finally {
+                secondContext.closeAndJoin()
+            }
         } finally {
             firstContext.closeAndJoin()
         }
     }
 
     @Test
-    fun `reinitializing while scheduler runs joins old work and closes old database`(@TempDir tempDir: File): Unit = runBlocking {
+    fun `reinitializing while scheduler runs joins old work and closes old database`(
+        @TempDir tempDir: File,
+    ): Unit = runBlocking {
         val updateStarted = CompletableDeferred<Unit>()
         val updateStopped = CompletableDeferred<Unit>()
         val manga = Manga.create().copy(id = 301, source = 11, title = "Blocking manga", favorite = true)
@@ -1150,7 +1238,7 @@ class DesktopDiWiringTest {
         )
         try {
             Injekt.get<LibraryUpdateScheduler>().runNow()
-            updateStarted.await()
+            withTimeout(5_000) { updateStarted.await() }
 
             val secondContext = initDesktopDIForTest(
                 tempDir.resolve("running-second"),
@@ -1172,7 +1260,9 @@ class DesktopDiWiringTest {
     }
 
     @Test
-    fun `reinitializing stops active download worker before installing fresh context`(@TempDir tempDir: File): Unit = runBlocking {
+    fun `reinitializing stops active download worker before installing fresh context`(
+        @TempDir tempDir: File,
+    ): Unit = runBlocking {
         val downloadExecuteStarted = CompletableDeferred<Unit>()
         val downloadReadStarted = CompletableDeferred<Unit>()
         val downloadFinallyEntered = CompletableDeferred<Unit>()
@@ -1286,8 +1376,19 @@ class DesktopDiWiringTest {
 
     @Test
     fun `测试配置入口使用隔离内存存储并解析实际依赖`(@TempDir tempDir: File) = runBlocking {
-        val manga = Manga.create().copy(id = 71, source = 9, title = "Queued manga", favorite = true)
-        val chapter = Chapter.create().copy(id = 72, mangaId = manga.id, name = "New chapter", url = "/72")
+        var manga = Manga.create().copy(source = 9, url = "/queued-work", title = "Queued manga", favorite = true)
+        val source = object : eu.kanade.tachiyomi.source.Source {
+            override val id = 9L
+            override val name = "Queued fixture source"
+            override suspend fun getMangaDetails(manga: eu.kanade.tachiyomi.source.model.SManga) = manga
+            override suspend fun getChapterList(manga: eu.kanade.tachiyomi.source.model.SManga) = listOf(
+                eu.kanade.tachiyomi.source.model.SChapter.create().apply {
+                    url = "/72"
+                    name = "New chapter"
+                    chapter_number = 1f
+                },
+            )
+        }
         val configuredStore = DesktopPreferenceStore(
             Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}"),
         )
@@ -1296,92 +1397,100 @@ class DesktopDiWiringTest {
             tempDir,
             configuredStore,
             libraryProvider = { listOf(LibraryManga(manga, emptyList(), 0, 0, 0, 0, 0, 0)) },
-            updateManga = { LibraryUpdateChecker.UpdateResult(1, listOf(chapter)) },
+            updateManga = { candidate -> Injekt.get<LibraryUpdateChecker>().checkForUpdates(candidate, source) },
             startDownloadWorker = false,
         )
 
+        manga =
+            Injekt.get<tachiyomi.domain.manga.repository.MangaRepository>().insertNetworkManga(listOf(manga)).single()
         val statsJob = SupervisorJob()
         var statsModel: StatsScreenModel? = null
         try {
-        val handler = context.handler
-        assertSame(configuredStore, Injekt.get<PreferenceStore>())
-        assertNotNull(Injekt.get<DesktopAppPreferences>())
-        assertNotNull(Injekt.get<ReaderPreferences>())
-        assertNotNull(Injekt.get<LibraryUpdateScheduler>())
-        assertNotNull(Injekt.get<DesktopNetworkHelper>())
-        assertNotNull(Injekt.get<DesktopTaskScheduler>())
-        assertNotNull(Injekt.get<DesktopBatchMigrationController>())
-        assertNotNull(Injekt.get<DesktopDownloadManager>())
-        assertNotNull(Injekt.get<DownloadRepository>())
-        assertNotNull(Injekt.get<EnqueueDownload>())
-        assertNotNull(Injekt.get<IsChapterDownloaded>())
-        assertNotNull(Injekt.get<RecordReadingProgress>())
-        assertNotNull(Injekt.get<AutoBackupScheduler>())
-        assertNotNull(Injekt.get<DesktopExtensionManager>())
-        assertNotNull(Injekt.get<TrackRepository>())
-        assertNotNull(Injekt.get<TrackerSessionProvider>())
-        assertNotNull(Injekt.get<TrackerServiceRegistry>())
-        assertNotNull(Injekt.get<DesktopCredentialStore>())
-        assertNotNull(Injekt.get<ReadingProgressTrackSync>())
-        assertNotNull(Injekt.get<DesktopTrackerSyncScheduler>())
-        val sharedTaskScheduler = Injekt.get<DesktopTaskScheduler>()
-        assertSame(
-            sharedTaskScheduler,
-            Injekt.get<LibraryUpdateScheduler>().privateField("taskScheduler"),
-        )
-        assertSame(
-            sharedTaskScheduler,
-            Injekt.get<CreatorDiscoveryScheduler>().privateField("taskScheduler"),
-        )
-        assertSame(
-            Injekt.get<CreatorDiscoveryScheduler>(),
-            DesktopUiDependencies.fromInjekt().creatorDiscoveryScheduler,
-        )
-        assertSame(
-            sharedTaskScheduler,
-            Injekt.get<DesktopBatchMigrationController>().privateField("scheduler"),
-        )
-        assertSame(
-            sharedTaskScheduler,
-            Injekt.get<DesktopTrackerSyncScheduler>().privateField("scheduler"),
-        )
-        assertEquals(emptySet<Long>(), Injekt.get<TrackerSessionProvider>().loggedInTrackerIds().first())
-        assertNotNull(Injekt.get<BackupRestoreScreenModelFactory>())
-        assertTrue(Injekt.get<mihon.data.sync.journal.BackupRestoreSync>() is mihon.data.sync.journal.SyncBackupRestorer)
-        mihon.desktop.backup.verifyNativeBackupSync(Injekt.get(), handler, Injekt.get(), tempDir, this)
-        val filePicker = Injekt.get<DesktopFilePicker>()
-        assertTrue(filePicker is SwingDesktopFilePicker)
-        val directoryOpener = Injekt.get<DesktopDirectoryOpenPort>()
-        val uiDependencies = DesktopUiDependencies.fromInjekt()
-        assertSame(filePicker, uiDependencies.filePicker)
-        assertSame(directoryOpener, uiDependencies.downloadDirectoryOpener)
-        assertNotNull(Injekt.get<CreateCategoryWithName>())
-        assertNotNull(Injekt.get<GetCategories>())
-        assertNotNull(Injekt.get<RenameCategory>())
-        assertNotNull(Injekt.get<DeleteCategory>())
-        assertNotNull(Injekt.get<ReorderCategory>())
-        assertNotNull(Injekt.get<UpdateLibraryMembership>())
-        assertNotNull(Injekt.get<DesktopCustomCoverStore>())
-        assertSame(context.libraryScreenModel, Injekt.get<LibraryScreenModel>())
-        assertSame(context.libraryController, Injekt.get<LibraryMangaTestModeController>())
-        assertNotNull(LibraryScreenModelFactory.create())
-        assertNotNull(MangaDetailScreenModelFactory.create(manga.id))
-        statsModel = StatsScreenModel(
-            Injekt.get<GetLibraryManga>().subscribe(),
-            CoroutineScope(statsJob + Dispatchers.IO),
-        )
-        assertNotNull(statsModel)
+            val handler = context.handler
+            assertSame(configuredStore, Injekt.get<PreferenceStore>())
+            assertNotNull(Injekt.get<DesktopAppPreferences>())
+            assertNotNull(Injekt.get<ReaderPreferences>())
+            assertNotNull(Injekt.get<LibraryUpdateScheduler>())
+            assertNotNull(Injekt.get<DesktopNetworkHelper>())
+            assertNotNull(Injekt.get<DesktopTaskScheduler>())
+            assertNotNull(Injekt.get<DesktopBatchMigrationController>())
+            assertNotNull(Injekt.get<DesktopDownloadManager>())
+            assertNotNull(Injekt.get<DownloadRepository>())
+            assertNotNull(Injekt.get<EnqueueDownload>())
+            assertNotNull(Injekt.get<IsChapterDownloaded>())
+            assertNotNull(Injekt.get<RecordReadingProgress>())
+            assertNotNull(Injekt.get<AutoBackupScheduler>())
+            assertNotNull(Injekt.get<DesktopExtensionManager>())
+            assertNotNull(Injekt.get<TrackRepository>())
+            assertNotNull(Injekt.get<TrackerSessionProvider>())
+            assertNotNull(Injekt.get<TrackerServiceRegistry>())
+            assertNotNull(Injekt.get<DesktopCredentialStore>())
+            assertNotNull(Injekt.get<ReadingProgressTrackSync>())
+            assertNotNull(Injekt.get<DesktopTrackerSyncScheduler>())
+            val sharedTaskScheduler = Injekt.get<DesktopTaskScheduler>()
+            assertSame(
+                sharedTaskScheduler,
+                Injekt.get<LibraryUpdateScheduler>().privateField("taskScheduler"),
+            )
+            assertSame(
+                sharedTaskScheduler,
+                Injekt.get<CreatorDiscoveryScheduler>().privateField("taskScheduler"),
+            )
+            assertSame(
+                Injekt.get<CreatorDiscoveryScheduler>(),
+                DesktopUiDependencies.fromInjekt().creatorDiscoveryScheduler,
+            )
+            assertSame(
+                sharedTaskScheduler,
+                Injekt.get<DesktopBatchMigrationController>().privateField("scheduler"),
+            )
+            assertSame(
+                sharedTaskScheduler,
+                Injekt.get<DesktopTrackerSyncScheduler>().privateField("scheduler"),
+            )
+            assertEquals(emptySet<Long>(), Injekt.get<TrackerSessionProvider>().loggedInTrackerIds().first())
+            assertNotNull(Injekt.get<BackupRestoreScreenModelFactory>())
+            assertTrue(
+                Injekt.get<mihon.data.sync.journal.BackupRestoreSync>() is mihon.data.sync.journal.SyncBackupRestorer,
+            )
+            mihon.desktop.backup.verifyNativeBackupSync(Injekt.get(), handler, Injekt.get(), tempDir, this)
+            val filePicker = Injekt.get<DesktopFilePicker>()
+            assertTrue(filePicker is SwingDesktopFilePicker)
+            val directoryOpener = Injekt.get<DesktopDirectoryOpenPort>()
+            val uiDependencies = DesktopUiDependencies.fromInjekt()
+            assertSame(filePicker, uiDependencies.filePicker)
+            assertSame(directoryOpener, uiDependencies.downloadDirectoryOpener)
+            assertNotNull(Injekt.get<CreateCategoryWithName>())
+            assertNotNull(Injekt.get<GetCategories>())
+            assertNotNull(Injekt.get<RenameCategory>())
+            assertNotNull(Injekt.get<DeleteCategory>())
+            assertNotNull(Injekt.get<ReorderCategory>())
+            assertNotNull(Injekt.get<UpdateLibraryMembership>())
+            assertNotNull(Injekt.get<DesktopCustomCoverStore>())
+            assertSame(context.libraryScreenModel, Injekt.get<LibraryScreenModel>())
+            assertSame(context.libraryController, Injekt.get<LibraryMangaTestModeController>())
+            assertNotNull(LibraryScreenModelFactory.create())
+            assertNotNull(MangaDetailScreenModelFactory.create(manga.id))
+            statsModel = StatsScreenModel(
+                Injekt.get<GetLibraryManga>().subscribe(),
+                CoroutineScope(statsJob + Dispatchers.IO),
+            )
+            assertNotNull(statsModel)
 
-        Injekt.get<LibraryUpdateScheduler>().runNow().join()
-        val database = handler.db
-        val queued = PersistentDownloadStore(database).entries()
-        assertEquals(listOf(chapter.id), queued.map { it.chapterId })
-        assertEquals(listOf(DownloadQueueStatus.QUEUED), queued.map { it.status })
+            Injekt.get<LibraryUpdateScheduler>().runNow().join()
+            val database = handler.db
+            val queued = PersistentDownloadStore(database).entries()
+            val chapter = Injekt.get<tachiyomi.domain.chapter.repository.ChapterRepository>()
+                .getChapterByMangaId(manga.id).single()
+            assertEquals("/72", chapter.url)
+            assertEquals(listOf(chapter.id), queued.map { it.chapterId })
+            assertEquals(listOf(manga.id), queued.map { it.mangaId })
+            assertEquals(listOf(DownloadQueueStatus.QUEUED), queued.map { it.status })
 
-        val preference = Injekt.get<PreferenceStore>().getString("wiring_observe", "initial")
-        val changed = async(start = CoroutineStart.UNDISPATCHED) { preference.changes().first() }
-        preference.set("updated")
-        assertEquals("updated", withTimeout(1_000) { changed.await() })
+            val preference = Injekt.get<PreferenceStore>().getString("wiring_observe", "initial")
+            val changed = async(start = CoroutineStart.UNDISPATCHED) { preference.changes().first() }
+            preference.set("updated")
+            assertEquals("updated", withTimeout(1_000) { changed.await() })
         } finally {
             statsModel?.onDispose()
             statsJob.cancelAndJoin()
@@ -1486,6 +1595,7 @@ class DesktopDiWiringTest {
                 dateFetch = 0,
                 coverData = MangaCover(manga.id, sourceId, true, null, 0),
             )
+
             @Suppress("UNCHECKED_CAST")
             val updatesIdentity = UpdatesScreenModelFactory.create()
                 .privateField("downloadIdentity") as (UpdatesWithRelations) -> DownloadChapterIdentity

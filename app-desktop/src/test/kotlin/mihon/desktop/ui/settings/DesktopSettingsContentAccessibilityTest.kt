@@ -1,8 +1,8 @@
 package mihon.desktop.ui.settings
 
+import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.material3.Text
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.input.key.Key
@@ -20,6 +20,7 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
@@ -27,13 +28,15 @@ import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.backup.BackupPreview
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.download.DesktopDownloadDirectoryController
-import mihon.desktop.download.DesktopDownloadQueuePort
 import mihon.desktop.download.DesktopDownloadPreferences
+import mihon.desktop.download.DesktopDownloadQueuePort
 import mihon.desktop.download.DownloadItem
+import mihon.desktop.platform.DesktopFilePicker
 import mihon.desktop.reader.NextChapterPrefetchMode
 import mihon.desktop.reader.ReaderPreferences
-import mihon.desktop.platform.DesktopFilePicker
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.settings.DesktopLibraryCategoryPolicy
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -52,6 +55,13 @@ import java.util.prefs.Preferences
 @OptIn(ExperimentalComposeUiApi::class)
 @org.junit.jupiter.api.parallel.Isolated
 class DesktopSettingsContentAccessibilityTest {
+    private var libraryPreferenceNode: Preferences? = null
+
+    @AfterEach
+    fun closeLibraryPreferences() {
+        libraryPreferenceNode?.removeNode()
+    }
+
     @Test
     fun `Backup production button activates once on key down and respects disabled state`() = runBlocking {
         val scene = ImageComposeScene(700, 200, coroutineContext = coroutineContext) {}
@@ -107,7 +117,11 @@ class DesktopSettingsContentAccessibilityTest {
             val action = nodes(scene, true).single { it.config.contains(SemanticsActions.OnClick) }
             assertTrue(requireNotNull(action.config[SemanticsActions.RequestFocus].action).invoke())
             render(scene)
-            assertTrue(nodes(scene, true).single { it.config.contains(SemanticsActions.OnClick) }.config[SemanticsProperties.Focused])
+            assertTrue(
+                nodes(scene, true).single {
+                    it.config.contains(SemanticsActions.OnClick)
+                }.config[SemanticsProperties.Focused],
+            )
             listOf(Key.Enter, Key.NumPadEnter, Key.Spacebar).forEach { key ->
                 checked.value = false
                 calls = 0
@@ -130,7 +144,10 @@ class DesktopSettingsContentAccessibilityTest {
 
     @Test
     fun `Reader Library Download and Backup controls expose one labeled action with role and state`() = runBlocking {
-        val store = InMemoryPreferenceStore()
+        val node = Preferences.userRoot().node("mihon-content-accessibility-${System.nanoTime()}")
+            .also { libraryPreferenceNode = it }
+        val store = DesktopPreferenceStore(node)
+        LibraryPreferences(store).autoUpdateInterval().set(0)
         val readerPreferences = ReaderPreferences(store).apply {
             readingMode = mihon.desktop.reader.ReadingMode.AUTO
         }
@@ -162,7 +179,7 @@ class DesktopSettingsContentAccessibilityTest {
             render(scene)
             assertEquals(NextChapterPrefetchMode.FIRST_VIEWPORT, readerPreferences.nextChapterPrefetchMode)
         }
-        withScene(LibrarySettingsScreen(), dependencies, 1_600) { scene ->
+        withScene(LibrarySettingsScreen(), dependencies, 3_200) { scene ->
             assertToggle(scene, MR.strings.update_never.localized(), Role.RadioButton, selected = true)
             assertToggle(
                 scene,
@@ -170,6 +187,11 @@ class DesktopSettingsContentAccessibilityTest {
                 Role.Checkbox,
                 toggled = ToggleableState.Off,
             )
+            requireNotNull(
+                semanticBranch(scene, MR.strings.categories.localized(), Role.Button)
+                    .config[SemanticsActions.OnClick].action,
+            ).invoke()
+            render(scene)
             assertToggle(scene, "Favorites", Role.Checkbox, toggled = ToggleableState.Off)
         }
         withScene(DownloadSettingsScreen(), dependencies, 1_400) { scene ->
@@ -255,10 +277,18 @@ class DesktopSettingsContentAccessibilityTest {
             }
             assertTrue(MR.strings.pref_download_new.localized() in subtreeText(highlighted))
             val action = semanticBranch(scene, MR.strings.pref_download_new.localized(), Role.Switch)
-            assertFalse(action.config.contains(SemanticsProperties.Focused) && action.config[SemanticsProperties.Focused])
+            assertFalse(
+                action.config.contains(SemanticsProperties.Focused) && action.config[SemanticsProperties.Focused],
+            )
             assertTrue(requireNotNull(action.config[SemanticsActions.RequestFocus].action).invoke())
             render(scene)
-            assertTrue(semanticBranch(scene, MR.strings.pref_download_new.localized(), Role.Switch).config[SemanticsProperties.Focused])
+            assertTrue(
+                semanticBranch(
+                    scene,
+                    MR.strings.pref_download_new.localized(),
+                    Role.Switch,
+                ).config[SemanticsProperties.Focused],
+            )
         }
         withScene(DownloadSettingsScreen(), dependencies, 300) { scene ->
             assertTrue(nodes(scene, true).none { it.config.contains(DesktopSettingsAnchorHighlighted) })
@@ -270,7 +300,15 @@ class DesktopSettingsContentAccessibilityTest {
         scope: kotlinx.coroutines.CoroutineScope,
         readerPreferences: ReaderPreferences = ReaderPreferences(store),
     ): DesktopUiDependencies {
-        val categories = mockk<GetCategories> { coEvery { await() } returns listOf(Category(1, "Favorites", 0, 0)) }
+        val categories = mockk<GetCategories> {
+            coEvery { await() } returns listOf(Category(1, "Favorites", 0, 0))
+            every { subscribe() } returns flowOf(listOf(Category(1, "Favorites", 0, 0)))
+        }
+        val categoryPolicy = mockk<DesktopLibraryCategoryPolicy> {
+            every { state } returns MutableStateFlow(
+                DesktopLibraryCategoryPolicy.State.Ready(DesktopLibraryCategoryPolicy.Snapshot(emptySet(), emptySet())),
+            )
+        }
         val model = BackupRestoreScreenModel(
             loadPreview = { BackupPreview(1, 0, 0, 0, 0, 0, 0) },
             restore = { _, _ -> error("not used") },
@@ -300,7 +338,9 @@ class DesktopSettingsContentAccessibilityTest {
             every { creatorDiscoveryScheduler } returns null
             every { backupRestoreScreenModelFactory } returns factory
             every { filePicker } returns mockk<DesktopFilePicker>(relaxed = true)
-            every { libraryPreferences } returns LibraryPreferences(InMemoryPreferenceStore())
+            every { libraryPreferences } returns LibraryPreferences(store)
+            every { libraryCategoryPolicy } returns categoryPolicy
+            every { categorySortSettings } returns null
         }
     }
 
@@ -353,7 +393,9 @@ class DesktopSettingsContentAccessibilityTest {
         val eventType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
             .getMethod(if (type == KeyEventType.KeyDown) "access\$getKeyDown\$cp" else "access\$getKeyUp\$cp")
             .invoke(null)
-        val factory = events.declaredMethods.single { it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default") }
+        val factory = events.declaredMethods.single {
+            it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default")
+        }
         val native = factory.invoke(null, key.keyCode, eventType, 0, false, false, false, false, null)
         return androidx.compose.ui.input.key.KeyEvent(native)
     }
@@ -364,7 +406,13 @@ class DesktopSettingsContentAccessibilityTest {
     }
 
     private fun subtreeText(node: SemanticsNode) = flatten(node).flatMap {
-        if (it.config.contains(SemanticsProperties.Text)) it.config[SemanticsProperties.Text].map { text -> text.text } else emptyList()
+        if (it.config.contains(SemanticsProperties.Text)) {
+            it.config[SemanticsProperties.Text].map { text ->
+                text.text
+            }
+        } else {
+            emptyList()
+        }
     }
     private fun nodes(scene: ImageComposeScene, unmerged: Boolean) =
         scene.semanticsOwners.flatMap { flatten(if (unmerged) it.unmergedRootSemanticsNode else it.rootSemanticsNode) }

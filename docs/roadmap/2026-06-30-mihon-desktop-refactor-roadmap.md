@@ -4,7 +4,7 @@
 
 正式版日期：2026-06-30
 
-- active-child-plan: [作者页体验迭代](./2026-09-18-author-experience-iteration-roadmap.md)（2026-09-18开始；旧作者身份专项保持完成）
+- active-child-plan: [Desktop 实机交互迭代](./2026-09-30-desktop-interaction-iteration-roadmap.md)（2026-09-30 开始；此前作者计划的历史完成项与待修复项保持原状态）
 
 - 已完成专项：[阅读器双页与继续阅读行为迭代](./2026-09-24-reader-dual-page-and-continue-iteration-roadmap.md)（2026-09-26，COMPLETE；不改变当前作者页活动计划）。
 

@@ -41,6 +41,129 @@ class SourceUpdateMemoBackupIntegrationTest {
     @TempDir lateinit var directory: File
 
     @Test
+    fun `Android combined remote memo and directory refusal rolls back source metadata`() = runBlocking<Unit> {
+        Storage(directory.resolve("atomic-source.db"), true).use { storage ->
+            val manga = storage.mangas.insertNetworkManga(
+                listOf(Manga.create().copy(source = 42, url = "/manga", title = "Work", favorite = true)),
+            ).single()
+            val chapter = storage.chapters.addAll(
+                listOf(
+                    Chapter.create().copy(
+                        mangaId = manga.id,
+                        url = "/1",
+                        name = "Chapter 1",
+                        chapterNumber = 1.0,
+                        read = true,
+                    ),
+                ),
+            ).single()
+            storage.driver.execute(
+                null,
+                "CREATE TRIGGER refuse_source_directory BEFORE INSERT ON chapters WHEN NEW.url='/2' BEGIN " +
+                    "SELECT RAISE(ABORT, 'source directory refused'); END",
+                0,
+            )
+            val source = object : eu.kanade.tachiyomi.source.Source {
+                override val id = 42L
+                override val name = "Atomic"
+                override suspend fun getMangaUpdate(
+                    manga: eu.kanade.tachiyomi.source.model.SManga,
+                    chapters: List<eu.kanade.tachiyomi.source.model.SChapter>,
+                    fetchDetails: Boolean,
+                    fetchChapters: Boolean,
+                ): eu.kanade.tachiyomi.source.model.SMangaUpdate {
+                    manga.memo = Json.parseToJsonElement("""{"uncommitted":true}""").jsonObject
+                    val rows = listOf("/1", "/2").mapIndexed { index, url ->
+                        eu.kanade.tachiyomi.source.model.SChapter.create().apply {
+                            this.url = url
+                            name = "Chapter ${index + 1}"
+                            chapter_number = (index + 1).toFloat()
+                        }
+                    }
+                    return eu.kanade.tachiyomi.source.model.SMangaUpdate(manga, rows)
+                }
+            }
+            val preferences = io.mockk.mockk<tachiyomi.domain.library.service.LibraryPreferences> {
+                io.mockk.every { markDuplicateReadChapterAsRead().get() } returns emptySet()
+                io.mockk.every { disallowNonAsciiFilenames().get() } returns false
+            }
+            val downloads = io.mockk.mockk<eu.kanade.tachiyomi.data.download.DownloadManager>(relaxed = true) {
+                io.mockk.coEvery { withDirectoryChanges<Any?>(any(), any()) } coAnswers
+                    { secondArg<suspend () -> Any?>().invoke() }
+            }
+            val sync = eu.kanade.domain.chapter.interactor.SyncChaptersWithSource(
+                downloads, io.mockk.mockk(relaxed = true), storage.chapters,
+                tachiyomi.domain.chapter.interactor.ShouldUpdateDbChapter(), storage.updateManga,
+                tachiyomi.domain.chapter.interactor.UpdateChapter(storage.chapters), storage.getChapters,
+                eu.kanade.domain.manga.interactor.GetExcludedScanlators(storage.handler), preferences,
+            )
+            org.junit.jupiter.api.Assertions.assertThrows(Exception::class.java) {
+                runBlocking {
+                    storage.updateManga.awaitFromRemote(
+                        manga, source, false, true, chapterRepository = storage.chapters,
+                        syncChaptersWithSource = sync,
+                        coverCache = io.mockk.mockk(
+                            relaxed = true,
+                        ),
+                        libraryPreferences = preferences,
+                        downloadManager = downloads,
+                    )
+                }
+            }
+            assertEquals(
+                manga,
+                storage.mangas.getMangaById(manga.id),
+                "A rejected directory must not publish remote memo first",
+            )
+            assertEquals(listOf(chapter), storage.chapters.getChapterByMangaId(manga.id))
+        }
+    }
+
+    @Test
+    fun `Android production backup creator and restorer rebuild canonical relink after reopen`() = runBlocking<Unit> {
+        val backup = Storage(directory.resolve("alias-source.db"), true).use { s ->
+            val manga = s.mangas.insertNetworkManga(
+                listOf(Manga.create().copy(source = 42, url = "/manga", title = "Work", favorite = true)),
+            ).single()
+            val old = s.chapters.addAll(
+                listOf(
+                    Chapter.create().copy(
+                        mangaId = manga.id,
+                        url = "/old",
+                        name = "Chapter 2",
+                        chapterNumber = 2.0,
+                        read = true,
+                        lastPageRead = 6,
+                    ),
+                ),
+            ).single()
+            s.chapters.syncDirectory(
+                tachiyomi.domain.chapter.service.ChapterDirectoryCommit(
+                    manga.id,
+                    listOf(tachiyomi.domain.chapter.service.PreparedSourceChapter(old.copy(url = "/new"), 0)),
+                    2000,
+                ),
+            )
+            Backup(
+                MangaBackupCreator(s.handler, s.getCategories, GetHistory(s.history))(listOf(manga), BackupOptions()),
+            )
+        }
+        val decoded = BackupCodec.decode(Backup.serializer(), BackupCodec.encode(Backup.serializer(), backup))
+        val path = directory.resolve("alias-target.db")
+        Storage(path, true).use { s -> s.restorer.restore(decoded.backupManga.single(), emptyList()) }
+        Storage(path, false).use { s ->
+            val manga = s.mangas.getFavorites().single()
+            val chapter = s.chapters.getChapterByUrlAndMangaId("/old", manga.id)
+            org.junit.jupiter.api.Assertions.assertNotNull(
+                chapter,
+                "Android backup must retain accepted old references",
+            )
+            assertEquals("/new", chapter!!.url)
+            assertEquals(6L, chapter.lastPageRead)
+        }
+    }
+
+    @Test
     fun `remote memo only update preserves progress after reopen`() = runBlocking<Unit> {
         val path = directory.resolve("updates.db")
         val memo = Json.parseToJsonElement("""{"token":"updated","nested":[null,true]}""").jsonObject
@@ -88,9 +211,13 @@ class SourceUpdateMemoBackupIntegrationTest {
             }
             val preferences = io.mockk.mockk<tachiyomi.domain.library.service.LibraryPreferences> {
                 io.mockk.every { markDuplicateReadChapterAsRead().get() } returns emptySet()
+                io.mockk.every { disallowNonAsciiFilenames().get() } returns false
                 io.mockk.every { updateMangaTitles().get() } returns false
             }
-            val downloads = io.mockk.mockk<eu.kanade.tachiyomi.data.download.DownloadManager>(relaxed = true)
+            val downloads = io.mockk.mockk<eu.kanade.tachiyomi.data.download.DownloadManager>(relaxed = true) {
+                io.mockk.coEvery { withDirectoryChanges<Any?>(any(), any()) } coAnswers
+                    { secondArg<suspend () -> Any?>().invoke() }
+            }
             val sync = eu.kanade.domain.chapter.interactor.SyncChaptersWithSource(
                 downloads, io.mockk.mockk(relaxed = true), storage.chapters,
                 tachiyomi.domain.chapter.interactor.ShouldUpdateDbChapter(), storage.updateManga,

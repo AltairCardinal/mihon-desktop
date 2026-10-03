@@ -5,7 +5,6 @@ import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import io.mockk.mockk
-import java.awt.image.BufferedImage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -41,10 +40,13 @@ import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourceManager
+import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
 
 class DesktopDownloadDirectoryCompatibilityIntegrationTest {
+
+    private val fixtureDownloadPreferences = DesktopDownloadPreferences(InMemoryPreferenceStore())
 
     @TempDir
     lateinit var tempDir: File
@@ -85,44 +87,50 @@ class DesktopDownloadDirectoryCompatibilityIntegrationTest {
 
     @Test
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun `manual whole tree copy preserves every shared and historical artifact offline reading and deletion`() = runTest {
-        DownloadArtifactNamingPolicy.chapterCandidates(identity()).distinct().forEachIndexed { index, candidate ->
-            val oldRoot = tempDir.resolve("shared-old-$index")
-            val newRoot = tempDir.resolve("shared-new-$index")
-            val oldProvider = DesktopDownloadProvider(oldRoot)
-            val artifact = oldProvider.canonicalMangaDownloadDir(identity()).resolve(candidate.name)
-            createArtifact(artifact, candidate.kind)
-            assertTrue(oldRoot.copyRecursively(newRoot))
+    fun `manual whole tree copy preserves every shared and historical artifact offline reading and deletion`() {
+        runTest {
+            DownloadArtifactNamingPolicy.chapterCandidates(identity()).distinct().forEachIndexed { index, candidate ->
+                val oldRoot = tempDir.resolve("shared-old-$index")
+                val newRoot = tempDir.resolve("shared-new-$index")
+                val oldProvider = DesktopDownloadProvider(oldRoot)
+                val artifact = oldProvider.canonicalMangaDownloadDir(identity()).resolve(candidate.name)
+                createArtifact(artifact, candidate.kind)
+                assertTrue(oldRoot.copyRecursively(newRoot))
 
-            val provider = DesktopDownloadProvider(newRoot)
-            val match = provider.downloadArtifactLookup(SOURCE_ID).locate(identity())
+                val provider = DesktopDownloadProvider(newRoot)
+                val match = provider.downloadArtifactLookup(SOURCE_ID).locate(identity())
 
-            assertEquals(candidate, match?.candidate)
-            assertTrue(provider.isChapterDownloaded(SOURCE_ID, identity()))
-            assertMigratedArtifactReadsOffline(provider, index.toLong())
-            provider.deleteChapterDownload(SOURCE_ID, identity())
-            assertFalse(newRoot.resolve(artifact.relativeTo(oldRoot).path).exists())
-        }
-
-        listOf(DownloadArtifactKind.DIRECTORY, DownloadArtifactKind.CBZ).forEachIndexed { index, kind ->
-            val oldRoot = tempDir.resolve("desktop-old-$index")
-            val newRoot = tempDir.resolve("desktop-new-$index")
-            val oldProvider = DesktopDownloadProvider(oldRoot)
-            val oldDirectory = oldProvider.chapterDownloadDir(SOURCE_ID, identity().mangaTitle, identity().chapterName)
-            val artifact = if (kind == DownloadArtifactKind.DIRECTORY) {
-                oldDirectory
-            } else {
-                File(oldDirectory.parentFile, "${oldDirectory.name}.cbz")
+                assertEquals(candidate, match?.candidate)
+                assertTrue(provider.isChapterDownloaded(SOURCE_ID, identity()))
+                assertMigratedArtifactReadsOffline(provider, index.toLong())
+                provider.deleteChapterDownload(SOURCE_ID, identity())
+                assertFalse(newRoot.resolve(artifact.relativeTo(oldRoot).path).exists())
             }
-            createArtifact(artifact, kind)
-            assertTrue(oldRoot.copyRecursively(newRoot))
 
-            val provider = DesktopDownloadProvider(newRoot)
-            assertNotNull(provider.downloadArtifactLookup(SOURCE_ID).locate(identity()))
-            assertTrue(provider.isChapterDownloaded(SOURCE_ID, identity()))
-            assertMigratedArtifactReadsOffline(provider, 100L + index)
-            provider.deleteChapterDownload(SOURCE_ID, identity())
-            assertFalse(newRoot.resolve(artifact.relativeTo(oldRoot).path).exists())
+            listOf(DownloadArtifactKind.DIRECTORY, DownloadArtifactKind.CBZ).forEachIndexed { index, kind ->
+                val oldRoot = tempDir.resolve("desktop-old-$index")
+                val newRoot = tempDir.resolve("desktop-new-$index")
+                val oldProvider = DesktopDownloadProvider(oldRoot)
+                val oldDirectory = oldProvider.chapterDownloadDir(
+                    SOURCE_ID,
+                    identity().mangaTitle,
+                    identity().chapterName,
+                )
+                val artifact = if (kind == DownloadArtifactKind.DIRECTORY) {
+                    oldDirectory
+                } else {
+                    File(oldDirectory.parentFile, "${oldDirectory.name}.cbz")
+                }
+                createArtifact(artifact, kind)
+                assertTrue(oldRoot.copyRecursively(newRoot))
+
+                val provider = DesktopDownloadProvider(newRoot)
+                assertNotNull(provider.downloadArtifactLookup(SOURCE_ID).locate(identity()))
+                assertTrue(provider.isChapterDownloaded(SOURCE_ID, identity()))
+                assertMigratedArtifactReadsOffline(provider, 100L + index)
+                provider.deleteChapterDownload(SOURCE_ID, identity())
+                assertFalse(newRoot.resolve(artifact.relativeTo(oldRoot).path).exists())
+            }
         }
     }
 
@@ -158,42 +166,50 @@ class DesktopDownloadDirectoryCompatibilityIntegrationTest {
     }
 
     @Test
-    fun `disconnected configured root reports storage failure and retry after reconnect uses the same root`() = runBlocking {
-        val defaultRoot = tempDir.resolve("unused-default")
-        val configuredRoot = tempDir.resolve("configured-removable").apply { writeText("detached") }
-        val provider = DesktopDownloadProvider(configuredRoot)
-        val server = MockWebServer().apply {
-            repeat(5) { enqueue(MockResponse(body = PAGE_BODY)) }
-            start()
-        }
-        val item = downloadItem(chapterId = 72L).copy(pageUrls = listOf(server.url("/page.gif").toString()))
-        val manager = manager(provider)
-        try {
-            manager.enqueue(item)
-            manager.start()
-            awaitError(manager)
+    fun `disconnected configured root reports storage failure and retry after reconnect uses the same root`() {
+        runBlocking {
+            val defaultRoot = tempDir.resolve("unused-default")
+            val configuredRoot = tempDir.resolve("configured-removable").apply { writeText("detached") }
+            val provider = DesktopDownloadProvider(configuredRoot)
+            val server = MockWebServer().apply {
+                repeat(5) { enqueue(MockResponse(body = PAGE_BODY)) }
+                start()
+            }
+            val item = downloadItem(chapterId = 72L).copy(pageUrls = listOf(server.url("/page.gif").toString()))
+            val manager = manager(provider)
+            try {
+                manager.enqueue(item)
+                manager.start()
+                awaitError(manager)
 
-            assertTrue(manager.queue.value.single().failure is AppError.Storage)
-            assertEquals("detached", configuredRoot.readText())
-            assertFalse(defaultRoot.exists(), "A disconnected configured root must not fall back to the default root")
+                assertTrue(manager.queue.value.single().failure is AppError.Storage)
+                assertEquals("detached", configuredRoot.readText())
+                assertFalse(
+                    defaultRoot.exists(),
+                    "A disconnected configured root must not fall back to the default root",
+                )
 
-            assertTrue(configuredRoot.delete())
-            assertTrue(configuredRoot.mkdirs())
-            manager.retryItem(item.chapterId)
-            awaitCompleted(manager)
+                assertTrue(configuredRoot.delete())
+                assertTrue(configuredRoot.mkdirs())
+                manager.retryItem(item.chapterId)
+                awaitCompleted(manager)
 
-            assertTrue(provider.isChapterDownloaded(item.sourceId, item.mangaTitle, item.chapterName))
-            assertFalse(defaultRoot.exists())
-            assertEquals(5, server.requestCount)
-        } finally {
-            manager.stopAndJoin()
-            server.close()
+                assertTrue(provider.isChapterDownloaded(item.sourceId, item.mangaTitle, item.chapterName))
+                assertFalse(defaultRoot.exists())
+                assertEquals(5, server.requestCount)
+            } finally {
+                manager.stopAndJoin()
+                server.close()
+            }
         }
     }
 
     private fun createRepresentativeTree(provider: DesktopDownloadProvider) {
         createArtifact(provider.canonicalChapterDownloadDir(identity()), DownloadArtifactKind.DIRECTORY)
-        createArtifact(CbzCreator.defaultOutputFile(provider.canonicalChapterDownloadDir(identity())), DownloadArtifactKind.CBZ)
+        createArtifact(
+            CbzCreator.defaultOutputFile(provider.canonicalChapterDownloadDir(identity())),
+            DownloadArtifactKind.CBZ,
+        )
         provider.chapterDownloadDir(SOURCE_ID, identity().mangaTitle, identity().chapterName).let { legacy ->
             createArtifact(legacy, DownloadArtifactKind.DIRECTORY)
             createArtifact(File(legacy.parentFile, "${legacy.name}.cbz"), DownloadArtifactKind.CBZ)
@@ -302,6 +318,7 @@ class DesktopDownloadDirectoryCompatibilityIntegrationTest {
     }
 
     private fun manager(provider: DesktopDownloadProvider) = DesktopDownloadManager(
+        downloadPreferences = fixtureDownloadPreferences,
         provider = provider,
         httpClient = OkHttpClient.Builder().retryOnConnectionFailure(false).build(),
         workerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),

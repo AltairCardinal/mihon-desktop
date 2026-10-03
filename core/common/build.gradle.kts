@@ -26,6 +26,7 @@ kotlin {
                 api(kotlinx.coroutines.core)
                 api(kotlinx.serialization.json)
                 api(kotlinx.serialization.json.okio)
+                api(libs.markdown.parser)
                 implementation(libs.jsoup)
                 implementation(libs.natural.comparator)
             }

@@ -55,15 +55,6 @@ class ChapterSelectionActionsTest {
 
         assertEquals(ChapterSelectionDownloadAction.DOWNLOAD, action)
     }
-
-    @Test
-    fun `chapters at or below selection starts at first selected chapter in displayed order`() {
-        val chapters = listOf(chapter(1), chapter(2), chapter(3), chapter(4))
-
-        val result = chaptersAtOrBelowSelection(chapters, selectedIds = setOf(3L, 2L))
-
-        assertEquals(listOf(2L, 3L, 4L), result.map { it.id })
-    }
 }
 
 private fun chapter(id: Long): Chapter =

@@ -275,6 +275,17 @@ class AndroidSyncRuntimeWiringTest {
         }
         runtime.preferences.setInterval(0)
         Injekt.addSingleton(AndroidSyncScheduler(context, runtime))
+        val recoveryStore = tachiyomi.core.common.preference.AndroidPreferenceStore(
+            context,
+            context.getSharedPreferences("startup-recovery-${System.nanoTime()}", Context.MODE_PRIVATE),
+        )
+        Injekt.addSingleton(
+            tachiyomi.domain.category.interactor.DeleteCategory(
+                mockk(relaxed = true),
+                tachiyomi.domain.library.service.LibraryPreferences(recoveryStore),
+                tachiyomi.domain.download.service.DownloadPreferences(recoveryStore),
+            ),
+        )
         App().startSync(scope)
         assertEquals(SyncTrigger.STARTUP, withTimeout(5000) { entered.await() })
         assertTrue(runtime.coordinator.activity.value.running)

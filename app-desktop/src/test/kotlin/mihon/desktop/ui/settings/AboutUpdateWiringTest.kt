@@ -14,7 +14,6 @@ import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.every
 import io.mockk.mockk
-import mihon.desktop.AppVersion
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +28,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.APP_VERSION
+import mihon.desktop.AppVersion
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.di.initDesktopDIForTest
@@ -38,37 +38,50 @@ import mihon.desktop.license.DependencyNoticeProvider
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.settings.DesktopAppPreferences
-import mihon.desktop.update.*
+import mihon.desktop.update.DesktopUpdateCommandRunner
+import mihon.desktop.update.DesktopUpdateController
+import mihon.desktop.update.DesktopUpdateInstaller
+import mihon.desktop.update.DesktopUpdateProcessRunner
+import mihon.desktop.update.DesktopUpdateState
+import mihon.desktop.update.InstallCancelled
+import mihon.desktop.update.InstallManualOnly
+import mihon.desktop.update.InstallerTrust
+import mihon.desktop.update.ManualOnly
+import mihon.desktop.update.VerifiedDownload
+import mihon.desktop.update.awaitUpdaterPid
+import mihon.desktop.update.updaterTestCommand
+import mihon.domain.license.model.DependencyNotice
+import mihon.domain.license.model.LicenseNoticeFailureReason
+import mihon.domain.license.model.LicenseNoticeResult
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.domain.release.model.Release
 import tachiyomi.domain.release.model.ReleaseAsset
 import tachiyomi.domain.release.model.ReleaseChecksum
 import tachiyomi.domain.release.model.ReleaseOs
 import tachiyomi.domain.release.model.ReleasePackageType
 import tachiyomi.domain.release.model.ReleaseTarget
 import tachiyomi.domain.release.model.ReleaseVariant
-import tachiyomi.domain.release.model.Release
-import tachiyomi.core.common.preference.InMemoryPreferenceStore
-import mihon.domain.license.model.DependencyNotice
-import mihon.domain.license.model.LicenseNoticeFailureReason
-import mihon.domain.license.model.LicenseNoticeResult
 import tachiyomi.i18n.MR
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.Locale
-import java.util.concurrent.Executors
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Isolated
 class AboutUpdateWiringTest {
     @Test
-    fun `about routes real injected dependency notices to their first license content`(@TempDir tempDir: Path) = runBlocking {
+    fun `about routes real injected dependency notices to their first license content`(
+        @TempDir tempDir: Path,
+    ) = runBlocking {
         val context = initDesktopDIForTest(tempDir.toFile(), isolatedDesktopPreferenceStore())
         val dependencies = DesktopUiDependencies.fromInjekt()
         val notices = (dependencies.dependencyNoticeProvider.getNotices() as LicenseNoticeResult.Success).notices
@@ -76,11 +89,13 @@ class AboutUpdateWiringTest {
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         lateinit var navigator: Navigator
         try {
-            assertEquals(199, notices.size)
+            assertEquals(204, notices.size)
             assertTrue(coroutinesIndex >= 0)
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                    Navigator(AboutScreen(DesktopPlatformPaths.resolve("Linux", tempDir.toString(), emptyMap()))) { nav ->
+                    Navigator(
+                        AboutScreen(DesktopPlatformPaths.resolve("Linux", tempDir.toString(), emptyMap())),
+                    ) { nav ->
                         navigator = nav
                         CurrentScreen()
                     }
@@ -165,7 +180,9 @@ class AboutUpdateWiringTest {
     }
 
     @Test
-    fun `catalog result anchors once and preserves diagnostics action and ordering`(@TempDir tempDir: Path) = runBlocking {
+    fun `catalog result anchors once and preserves diagnostics action and ordering`(
+        @TempDir tempDir: Path,
+    ) = runBlocking {
         val paths = DesktopPlatformPaths.resolve("Linux", tempDir.toString(), emptyMap())
         paths.networkCacheDir.resolve("response.bin").writeBytes(ByteArray(1_536))
         val updateModel = mockk<DesktopUpdateScreenModel> {
@@ -192,21 +209,37 @@ class AboutUpdateWiringTest {
         try {
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                    Navigator(EmptyScreen()) { nav -> navigator = nav; CurrentScreen() }
+                    Navigator(EmptyScreen()) { nav ->
+                        navigator = nav
+                        CurrentScreen()
+                    }
                 }
             }
             render(scene)
             val screens = DesktopSettingsCatalog.screens()
             val fixedMain = listOf(
-                "AppearanceSettingsScreen", "LibrarySettingsScreen", "ReaderSettingsScreen",
-                "DownloadSettingsScreen", "TrackingSettingsScreen", "BackupSettingsScreen",
-                "SecuritySettingsScreen", "AdvancedSettingsScreen",
+                "AppearanceSettingsScreen",
+                "LibrarySettingsScreen",
+                "ReaderSettingsScreen",
+                "DownloadSettingsScreen",
+                "TrackingSettingsScreen",
+                "BackupSettingsScreen",
+                "SecuritySettingsScreen",
+                "AdvancedSettingsScreen",
             )
             assertEquals(fixedMain, screens.take(8).map { it.route::class.simpleName })
-            assertEquals(listOf("GeneralSettingsScreen", "ExtensionRepoScreen", "AboutScreen"), screens.drop(8).map { it.route::class.simpleName })
+            assertEquals(
+                listOf("GeneralSettingsScreen", "ExtensionRepoScreen", "AboutScreen"),
+                screens.drop(8).map {
+                    it.route::class.simpleName
+                },
+            )
 
             val title = MR.strings.desktop_about_app_data_directory.localized()
-            val result = DesktopSettingsCatalog.search(title).single { it.route is AboutScreen && it.anchorTitle == title }
+            val result = DesktopSettingsCatalog.search(title).single {
+                it.route is AboutScreen &&
+                    it.anchorTitle == title
+            }
             DesktopSettingsAnchorOwner.publish(result.route, result.anchorTitle)
             navigator.replace(AboutScreen(paths))
             render(scene)
@@ -249,7 +282,12 @@ class AboutUpdateWiringTest {
             Locale.setDefault(Locale.US)
             scene.setContent {
                 MaterialTheme {
-                    AboutUpdateSection(APP_VERSION, DesktopUpdateState.Idle.presentation(), "Could not open https://release", intents::add)
+                    AboutUpdateSection(
+                        APP_VERSION,
+                        DesktopUpdateState.Idle.presentation(),
+                        "Could not open https://release",
+                        intents::add,
+                    )
                 }
             }
             scene.render()
@@ -262,7 +300,11 @@ class AboutUpdateWiringTest {
                 MaterialTheme {
                     AboutUpdateSection(
                         APP_VERSION,
-                        DesktopUpdatePresentation("ready", "Ready to install", setOf(DesktopUpdateIntent.CONFIRM, DesktopUpdateIntent.DECLINE)),
+                        DesktopUpdatePresentation(
+                            "ready",
+                            "Ready to install",
+                            setOf(DesktopUpdateIntent.CONFIRM, DesktopUpdateIntent.DECLINE),
+                        ),
                         null,
                         intents::add,
                     )
@@ -361,7 +403,10 @@ class AboutUpdateWiringTest {
             processRunner.run(updaterTestCommand("block", tempDir), stdin)
         }
         val installer = DesktopUpdateInstaller(target, InstallerTrust(windowsPublisher = "CN=Mihon"), blockingRunner)
-        val controller = DesktopUpdateController({ tachiyomi.domain.release.interactor.GetApplicationRelease.Result.NewUpdate(release) }, { _, _ -> download }, installer::prepare, installer::handoff)
+        val controller =
+            DesktopUpdateController({
+                tachiyomi.domain.release.interactor.GetApplicationRelease.Result.NewUpdate(release)
+            }, { _, _ -> download }, installer::prepare, installer::handoff)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val model = DesktopUpdateScreenModel(controller, scope)
         try {
@@ -400,7 +445,13 @@ class AboutUpdateWiringTest {
         .config[SemanticsProperties.VerticalScrollAxisRange]
     private fun texts(scene: ImageComposeScene) = nodes(scene).flatMap(::texts)
     private fun texts(node: SemanticsNode) = flatten(node).flatMap {
-        if (it.config.contains(SemanticsProperties.Text)) it.config[SemanticsProperties.Text].map { text -> text.text } else emptyList()
+        if (it.config.contains(SemanticsProperties.Text)) {
+            it.config[SemanticsProperties.Text].map { text ->
+                text.text
+            }
+        } else {
+            emptyList()
+        }
     }
     private fun nodes(scene: ImageComposeScene, unmerged: Boolean = false) = scene.semanticsOwners.flatMap {
         flatten(if (unmerged) it.unmergedRootSemanticsNode else it.rootSemanticsNode)

@@ -4,9 +4,6 @@ import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
-import io.mockk.coEvery
-import io.mockk.coVerify
-import io.mockk.mockk
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
@@ -16,11 +13,14 @@ import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -29,36 +29,36 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.newSingleThreadContext
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import mihon.desktop.domain.DesktopSystemNotifier
 import mihon.desktop.extension.ExtensionClassLoader
 import mihon.domain.download.DownloadQueueEntry
-import okhttp3.Response
+import mihon.domain.reader.content.DownloadChapterIdentity
+import mihon.domain.reader.partial.PartialPageTableEntry
+import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
-import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
-import mihon.domain.reader.content.DownloadChapterIdentity
-import mihon.domain.reader.partial.PartialPageTableEntry
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import java.io.File
 import java.net.ServerSocket
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.jar.JarEntry
@@ -69,14 +69,67 @@ import kotlin.concurrent.thread
 @OptIn(ExperimentalCoroutinesApi::class)
 class DownloadManagerTest {
 
+    private val fixtureDownloadPreferences = DesktopDownloadPreferences(InMemoryPreferenceStore())
+
     @TempDir
     lateinit var tempDir: File
 
     private fun manager() = DesktopDownloadManager(
+        downloadPreferences = fixtureDownloadPreferences,
         provider = DesktopDownloadProvider(baseDir = tempDir),
     )
 
+    @Test
+    fun `migration of an originally completed artifact rejects a same bytes later completed generation`() =
+        runBlocking {
+            val server = mockwebserver3.MockWebServer()
+            repeat(2) {
+                server.enqueue(mockwebserver3.MockResponse.Builder().body(okio.Buffer().write(jpegBytes())).build())
+            }
+            server.start()
+            val provider = DesktopDownloadProvider(File(tempDir, "migration-generation"))
+            val manager =
+                DesktopDownloadManager(
+                    provider,
+                    downloadPreferences = fixtureDownloadPreferences,
+                    networkHelper = NetworkHelper(OkHttpClient()),
+                )
+            val item = DownloadItem(
+                42,
+                "Work",
+                "One",
+                410,
+                mangaId = 10,
+                pageUrls = listOf(server.url("/same.jpg").toString()),
+            )
+            try {
+                assertTrue(manager.enqueue(item))
+                manager.start()
+                withTimeout(5_000) { manager.queue.first { it.isEmpty() } }
+                assertTrue(provider.isChapterDownloaded(42, "Work", "One"))
+                val accepted = manager.captureMigrationGenerations(setOf(item.chapterId))
+                assertTrue(provider.deleteChapterDownload(42, "Work", "One"))
+                assertTrue(manager.enqueue(item))
+                withTimeout(5_000) {
+                    manager.queue.first { it.isEmpty() }
+                    while (!provider.isChapterDownloaded(42, "Work", "One")) delay(10)
+                }
+                val original = provider.chapterDownloadDir(42, "Work", "One")
+                org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException::class.java) {
+                    runBlocking {
+                        manager.withMigrationArtifacts(setOf(item.chapterId), listOf(original), accepted) { }
+                    }
+                }
+                assertTrue(provider.isChapterDownloaded(42, "Work", "One"))
+                assertEquals(2, server.requestCount)
+            } finally {
+                manager.stopAndJoin()
+                server.close()
+            }
+        }
+
     private fun manager(provider: DesktopDownloadProvider, scope: TestScope) = DesktopDownloadManager(
+        downloadPreferences = fixtureDownloadPreferences,
         provider = provider,
         networkHelper = NetworkHelper(OkHttpClient()),
         workerScope = scope,
@@ -88,6 +141,313 @@ class DownloadManagerTest {
         0xFF.toByte(),
         0xD9.toByte(),
     )
+
+    @Test
+    fun `captured retirement drains original producer and retries rejected generation without cancelling new work`() =
+        runBlocking {
+            val server = mockwebserver3.MockWebServer()
+            val entered = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val requestCount = AtomicInteger()
+            server.dispatcher = object : mockwebserver3.Dispatcher() {
+                override fun dispatch(request: mockwebserver3.RecordedRequest): mockwebserver3.MockResponse {
+                    requestCount.incrementAndGet()
+                    entered.complete(Unit)
+                    runBlocking { release.await() }
+                    return mockwebserver3.MockResponse.Builder().body(okio.Buffer().write(jpegBytes())).build()
+                }
+            }
+            server.start()
+            val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+                "jdbc:sqlite:${File(tempDir, "captured.sqlite").absolutePath}",
+            )
+            tachiyomi.data.Database.Schema.create(driver)
+            val database = tachiyomi.data.Database(
+                driver,
+                historyAdapter = tachiyomi.data.History.Adapter(tachiyomi.data.DateColumnAdapter),
+                mangasAdapter = tachiyomi.data.Mangas.Adapter(
+                    tachiyomi.data.StringListColumnAdapter,
+                    tachiyomi.data.UpdateStrategyColumnAdapter,
+                ),
+            )
+            val store = tachiyomi.data.download.PersistentDownloadStore(database)
+            var rejectSecond = false
+            val provider = DesktopDownloadProvider(tempDir.resolve("captured-files"))
+            val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
+                provider = provider,
+                networkHelper = NetworkHelper(OkHttpClient()),
+                store = store,
+                queuePersister = { entries ->
+                    if (rejectSecond &&
+                        entries.none { it.chapterId == 2L }
+                    ) {
+                        throw java.io.IOException("second retirement rejected")
+                    }
+                    store.replaceAll(entries)
+                },
+            )
+            try {
+                val first = DownloadItem(
+                    42,
+                    "Captured",
+                    "First",
+                    1,
+                    mangaId = 100,
+                    pageUrls = listOf(server.url("/first.jpg").toString()),
+                )
+                val second = first.copy(
+                    chapterId = 2,
+                    chapterName = "Second",
+                    pageUrls = listOf(server.url("/second.jpg").toString()),
+                )
+                assertTrue(manager.enqueue(first))
+                assertTrue(manager.enqueue(second))
+                manager.start()
+                withTimeout(5_000) { entered.await() }
+                manager.pauseAll()
+                val captured = manager.captureDownloadAttempts(listOf(1, 2))
+                rejectSecond = true
+                val pending = async(Dispatchers.Default) { manager.cancelCapturedDownloadAttempts(captured) }
+                withTimeout(5_000) { while (manager.queue.value.any { it.chapterId == 1L }) delay(10) }
+                assertFalse(pending.isCompleted, "the accepted first retirement still drains its real HTTP producer")
+                release.complete(Unit)
+                val failed = withTimeout(5_000) { pending.await() }
+                assertFalse(
+                    provider.isChapterDownloaded(first.sourceId, first.mangaTitle, first.chapterName),
+                    "the original cancelled HTTP producer has drained without publishing its chapter",
+                )
+                assertTrue(manager.enqueue(first), "the first completed retirement permits a later accepted generation")
+                rejectSecond = false
+                val retryFailed = withTimeout(5_000) {
+                    manager.cancelCapturedDownloadAttempts(captured.filter { it.item.chapterId in failed })
+                }
+                org.junit.jupiter.api.Assertions.assertAll("finite captured retirement", {
+                    assertEquals(setOf(2L), failed, "only the actual refused target remains pending")
+                }, {
+                    assertTrue(retryFailed.isEmpty())
+                    assertEquals(
+                        listOf(1L),
+                        manager.queue.value.map { it.chapterId },
+                        "retry must preserve the completed target's new accepted generation",
+                    )
+                    assertEquals(listOf(1L), store.entries().map { it.chapterId })
+                })
+                // Await the worker's next scheduling decision, rather than confusing a later
+                // accepted producer with the original cancelled producer.
+                withTimeout(5_000) {
+                    while (manager.queue.value.any { it.status == DownloadStatus.DOWNLOADING }) delay(10)
+                }
+                withTimeoutOrNull(500) { while (requestCount.get() == 1) delay(10) }
+                assertEquals(1, requestCount.get(), "pause must prevent the next producer after the active one drains")
+                assertFalse(provider.isChapterDownloaded(first.sourceId, first.mangaTitle, first.chapterName))
+            } finally {
+                release.complete(Unit)
+                manager.stopAndJoin()
+                server.close()
+                driver.close()
+            }
+        }
+
+    @Test
+    fun `captured original handle rejects an already completed replacement and preserves its real files`(): Unit =
+        runBlocking {
+            val server = mockwebserver3.MockWebServer()
+            server.enqueue(mockwebserver3.MockResponse.Builder().body(okio.Buffer().write(jpegBytes())).build())
+            server.enqueue(mockwebserver3.MockResponse.Builder().body(okio.Buffer().write(jpegBytes())).build())
+            server.start()
+            val provider = DesktopDownloadProvider(tempDir.resolve("completed-replacement"))
+            val manager =
+                DesktopDownloadManager(
+                    provider,
+                    downloadPreferences = fixtureDownloadPreferences,
+                    networkHelper = NetworkHelper(OkHttpClient()),
+                )
+            val item = DownloadItem(
+                42,
+                "Completed",
+                "One",
+                401,
+                mangaId = 100,
+                pageUrls = listOf(server.url("/replacement.jpg").toString()),
+            )
+            try {
+                assertTrue(manager.enqueue(item))
+                val captured = manager.captureDownloadAttempts(listOf(item.chapterId))
+                manager.start()
+                withTimeout(5_000) { manager.queue.first { it.isEmpty() } }
+                assertTrue(provider.isChapterDownloaded(item.sourceId, item.mangaTitle, item.chapterName))
+                assertTrue(provider.deleteChapterDownload(item.sourceId, item.mangaTitle, item.chapterName))
+                assertTrue(manager.enqueue(item))
+                withTimeout(5_000) {
+                    manager.queue.first { it.isEmpty() }
+                    while (!provider.isChapterDownloaded(item.sourceId, item.mangaTitle, item.chapterName)) delay(10)
+                }
+                assertEquals(
+                    setOf(item.chapterId),
+                    manager.cancelCapturedDownloadAttempts(captured),
+                    "an empty queue after a replacement completes cannot prove the original generation " +
+                        "owns these files",
+                )
+                assertTrue(provider.isChapterDownloaded(item.sourceId, item.mangaTitle, item.chapterName))
+            } finally {
+                manager.stopAndJoin()
+                server.close()
+            }
+        }
+
+    @Test
+    fun `captured failed retirement reserves the existing preflight throughout retry cleanup`(): Unit = runBlocking {
+        val provider = DesktopDownloadProvider(tempDir.resolve("captured-retry-reservation"))
+        val item = DownloadItem(42, "Retry", "One", 301, mangaId = 100)
+        val artifact = provider.chapterTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        var retry = false
+        val manager =
+            DesktopDownloadManager(
+                provider,
+                downloadPreferences = fixtureDownloadPreferences,
+                artifactCleaner = { file ->
+                    if (!retry) {
+                        false
+                    } else {
+                        entered.countDown()
+                        check(release.await(5, TimeUnit.SECONDS))
+                        file.deleteRecursively()
+                    }
+                },
+            )
+        try {
+            assertTrue(manager.enqueue(item))
+            artifact.mkdirs()
+            File(artifact, "old.tmp").writeBytes(jpegBytes())
+            val captured = manager.captureDownloadAttempts(listOf(item.chapterId))
+            assertEquals(setOf(item.chapterId), manager.cancelCapturedDownloadAttempts(captured))
+            retry = true
+            val completion = async(Dispatchers.Default) { manager.cancelCapturedDownloadAttempts(captured) }
+            assertTrue(withContext(Dispatchers.IO) { entered.await(5, TimeUnit.SECONDS) })
+            assertFalse(
+                manager.enqueue(item),
+                "a replacement cannot be accepted between retry validation and file cleanup",
+            )
+            release.countDown()
+            assertTrue(withTimeout(5_000) { completion.await() }.isEmpty())
+            assertTrue(manager.enqueue(item), "the same existing reservation is released after cleanup")
+            assertEquals(listOf(item.chapterId), manager.queue.value.map { it.chapterId })
+        } finally {
+            release.countDown()
+            manager.stopAndJoin()
+        }
+    }
+
+    @Test
+    fun `manual priority write failure preserves pause and restart order without moving active identity`() {
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            "jdbc:sqlite:${File(tempDir, "priority.sqlite").absolutePath}",
+        )
+        tachiyomi.data.Database.Schema.create(driver)
+        val database = tachiyomi.data.Database(
+            driver,
+            historyAdapter = tachiyomi.data.History.Adapter(tachiyomi.data.DateColumnAdapter),
+            mangasAdapter = tachiyomi.data.Mangas.Adapter(
+                tachiyomi.data.StringListColumnAdapter,
+                tachiyomi.data.UpdateStrategyColumnAdapter,
+            ),
+        )
+        val store = tachiyomi.data.download.PersistentDownloadStore(database)
+        var rejectAfterWrite = false
+        val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
+            provider = DesktopDownloadProvider(tempDir.resolve("priority-files")),
+            store = store,
+            queuePersister = { entries ->
+                store.replaceAll(entries)
+                if (rejectAfterWrite) {
+                    rejectAfterWrite = false
+                    throw java.io.IOException("priority commit acknowledgement failed")
+                }
+            },
+        )
+        try {
+            val first = DownloadItem(42, "Manual", "Active", 1, mangaId = 100)
+            val second = first.copy(chapterId = 2, chapterName = "Next")
+            val third = first.copy(chapterId = 3, chapterName = "Priority")
+            listOf(first, second, third).forEach { assertTrue(manager.enqueue(it)) }
+            assertTrue(manager.transition(first.chapterId, mihon.domain.download.DownloadQueueStatus.DOWNLOADING))
+            val active = manager.queue.value.first()
+            manager.pauseAll()
+            rejectAfterWrite = true
+            org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException::class.java) {
+                manager.startDownloadNow(third.chapterId)
+            }
+            assertEquals(listOf(1L, 2L, 3L), manager.queue.value.map { it.chapterId })
+            assertEquals(
+                listOf(1L, 2L, 3L),
+                store.entries().map { it.chapterId },
+                "a rejected priority request cannot reappear as accepted after restart",
+            )
+            assertTrue(manager.isPaused.value)
+            assertTrue(manager.startDownloadNow(third.chapterId))
+            assertEquals(listOf(1L, 3L, 2L), manager.queue.value.map { it.chapterId })
+            assertSame(active, manager.queue.value.first())
+            assertFalse(manager.isPaused.value)
+            assertEquals(listOf(1L, 3L, 2L), store.entries().map { it.chapterId })
+        } finally {
+            driver.close()
+        }
+    }
+
+    @Test
+    fun `manual enqueue reports only actually accepted entries and leaves no duplicate acceptance`() {
+        val manager = manager()
+        val item = DownloadItem(sourceId = 42, mangaTitle = "Manual", chapterName = "One", chapterId = 991)
+        assertEquals(true, manager.enqueue(item))
+        assertEquals(false, manager.enqueue(item))
+        assertEquals(listOf(item), manager.queue.value)
+    }
+
+    @Test
+    fun `manual enqueue rejected persistent writes never publish or recover ghost work`() {
+        for (afterWrite in listOf(false, true)) {
+            val file = File(tempDir, "enqueue-$afterWrite.sqlite")
+            val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}")
+            tachiyomi.data.Database.Schema.create(driver)
+            val database = tachiyomi.data.Database(
+                driver,
+                historyAdapter = tachiyomi.data.History.Adapter(tachiyomi.data.DateColumnAdapter),
+                mangasAdapter = tachiyomi.data.Mangas.Adapter(
+                    tachiyomi.data.StringListColumnAdapter,
+                    tachiyomi.data.UpdateStrategyColumnAdapter,
+                ),
+            )
+            val store = tachiyomi.data.download.PersistentDownloadStore(database)
+            var reject = true
+            val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
+                provider = DesktopDownloadProvider(File(tempDir, "files-$afterWrite")),
+                store = store,
+                queuePersister = { entries ->
+                    if (reject && entries.isNotEmpty()) {
+                        reject = false
+                        if (afterWrite) store.replaceAll(entries)
+                        throw java.io.IOException("queue persistence rejected")
+                    }
+                    store.replaceAll(entries)
+                },
+            )
+            try {
+                val item = DownloadItem(sourceId = 42, mangaTitle = "Manual", chapterName = "One", chapterId = 992)
+                org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException::class.java) { manager.enqueue(item) }
+                assertTrue(manager.queue.value.isEmpty(), "an unaccepted write never emits a runnable generation")
+                assertTrue(store.entries().isEmpty(), "restart cannot resurrect a rejected enqueue")
+                assertEquals(true, manager.enqueue(item))
+                assertEquals(listOf(item.chapterId), store.entries().map { it.chapterId })
+            } finally {
+                driver.close()
+            }
+        }
+    }
 
     @Test
     fun `initial queue is empty`() = runTest {
@@ -114,8 +474,11 @@ class DownloadManagerTest {
     fun `enqueue deduplicates by chapterId`() = runTest {
         val mgr = manager()
         val item = DownloadItem(
-            sourceId = 1L, mangaTitle = "Test", chapterName = "Ch 1",
-            chapterId = 10L, pageUrls = listOf("https://example.com/1.jpg"),
+            sourceId = 1L,
+            mangaTitle = "Test",
+            chapterName = "Ch 1",
+            chapterId = 10L,
+            pageUrls = listOf("https://example.com/1.jpg"),
         )
         mgr.enqueue(item)
         mgr.enqueue(item)
@@ -128,6 +491,7 @@ class DownloadManagerTest {
         val releaseProbe = CountDownLatch(1)
         val ioEvents = CopyOnWriteArrayList<DownloadIoEvent>()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = DesktopDownloadProvider(tempDir.resolve("enqueue-preflight")),
             workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
             enqueueFileOperations = object : DownloadEnqueueFileOperations {
@@ -174,8 +538,11 @@ class DownloadManagerTest {
         val mgr = manager()
         mgr.enqueue(
             DownloadItem(
-                sourceId = 1L, mangaTitle = "Test", chapterName = "Ch 1",
-                chapterId = 10L, pageUrls = listOf("https://example.com/1.jpg"),
+                sourceId = 1L,
+                mangaTitle = "Test",
+                chapterName = "Ch 1",
+                chapterId = 10L,
+                pageUrls = listOf("https://example.com/1.jpg"),
             ),
         )
         mgr.cancel(chapterId = 10L)
@@ -269,6 +636,7 @@ class DownloadManagerTest {
         val sourceClient = OkHttpClient()
         var observedClient: OkHttpClient? = null
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(globalClient) { sourceId ->
                 if (sourceId == 42L) sourceClient else globalClient
@@ -335,6 +703,7 @@ class DownloadManagerTest {
             val persistedQueues = CopyOnWriteArrayList<List<DownloadQueueEntry>>()
             val workerParent = SupervisorJob()
             val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
                 provider = provider,
                 networkHelper = NetworkHelper(OkHttpClient()),
                 workerScope = CoroutineScope(workerParent + Dispatchers.IO),
@@ -379,7 +748,10 @@ class DownloadManagerTest {
                 val snapshot = checkNotNull(manager.snapshot(queued.chapterId, identity))
                 assertEquals(listOf(0, 1, 2), queued.pageTable.entries.map(PartialPageTableEntry::readerOrdinal))
                 assertEquals(listOf(4, 19, 41), queued.pageTable.entries.map(PartialPageTableEntry::sourcePageIndex))
-                assertEquals(listOf("/page/first", "/page/middle", "/page/last"), queued.pageTable.entries.map(PartialPageTableEntry::pageUrl))
+                assertEquals(
+                    listOf("/page/first", "/page/middle", "/page/last"),
+                    queued.pageTable.entries.map(PartialPageTableEntry::pageUrl),
+                )
                 assertEquals(3, snapshot.pageTable.totalPageCount)
                 assertEquals(queued.pageTable, persisted.pageTable)
                 assertEquals(identity, persisted.downloadIdentity)
@@ -413,7 +785,12 @@ class DownloadManagerTest {
                     snapshot.committedPages.map { it.committedRevision }.sorted(),
                     snapshot.committedPages.map { it.committedRevision },
                 )
-                assertTrue(snapshot.committedPages.zipWithNext().all { (first, second) -> first.committedRevision < second.committedRevision })
+                assertTrue(
+                    snapshot.committedPages.zipWithNext().all { (first, second) ->
+                        first.committedRevision <
+                            second.committedRevision
+                    },
+                )
                 assertEquals(
                     listOf("001.jpg", "002.png", "003.jpg"),
                     provider.canonicalChapterTmpDir(identity).listFiles().orEmpty().map(File::getName).sorted(),
@@ -428,9 +805,11 @@ class DownloadManagerTest {
                 assertTrue(ioEvents.isNotEmpty())
                 assertEquals(1, ioEvents.count { it.operation == DownloadIoOperation.INDEX_DIRECTORY_LIST })
                 assertEquals(3, ioEvents.count { it.operation == DownloadIoOperation.PAGE_HEADER_PROBE })
-                assertTrue(ioEvents.all { event ->
-                    !event.locks.queueStateLocked && !event.locks.indexLocked && !event.locks.lifecycleLocked
-                })
+                assertTrue(
+                    ioEvents.all { event ->
+                        !event.locks.queueStateLocked && !event.locks.indexLocked && !event.locks.lifecycleLocked
+                    },
+                )
                 assertTrue(
                     setOf(
                         DownloadIoOperation.SOURCE_PAGE_LIST,
@@ -462,12 +841,15 @@ class DownloadManagerTest {
         }
 
         ExtensionClassLoader(extensionJar.toURI().toURL(), javaClass.classLoader).use { classLoader ->
-            val source = classLoader.loadClass(fixtureClassName).getDeclaredConstructor().newInstance() as CatalogueSource
+            val source = classLoader.loadClass(
+                fixtureClassName,
+            ).getDeclaredConstructor().newInstance() as CatalogueSource
             assertSame(classLoader, source.javaClass.classLoader)
             assertFalse(source is HttpSource)
             val executedUrls = CopyOnWriteArrayList<String>()
             val workerParent = SupervisorJob()
             val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
                 provider = DesktopDownloadProvider(tempDir.resolve("child-loader-downloads")),
                 networkHelper = NetworkHelper(OkHttpClient()),
                 workerScope = CoroutineScope(workerParent + Dispatchers.IO),
@@ -583,7 +965,10 @@ class DownloadManagerTest {
             assertFalse(canonicalDirectory.exists())
             assertTrue(canonicalCbz.isFile)
             assertFalse(provider.chapterDownloadDir(42L, identity.mangaTitle, identity.chapterName).exists())
-            assertEquals(canonicalCbz.absolutePath, provider.downloadArtifactLookup(42L).locate(identity)?.opaqueLocation)
+            assertEquals(
+                canonicalCbz.absolutePath,
+                provider.downloadArtifactLookup(42L).locate(identity)?.opaqueLocation,
+            )
             assertTrue(mgr.isDownloaded(42L, identity))
             assertTrue(provider.hasMangaDownloads(42L, identity))
 
@@ -608,6 +993,7 @@ class DownloadManagerTest {
             disallowNonAsciiFilenames = false,
         )
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = this,
@@ -668,6 +1054,7 @@ class DownloadManagerTest {
         val secondBytes = jpegBytes() + 0x02.toByte()
         val writtenGenerations = mutableListOf<Byte>()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = this,
@@ -906,6 +1293,7 @@ class DownloadManagerTest {
         val releaseFirstCleanup = CompletableDeferred<Unit>()
         val workerParent = SupervisorJob()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = DesktopDownloadProvider(tempDir.resolve("batch-retirement")),
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -939,46 +1327,48 @@ class DownloadManagerTest {
     }
 
     @Test
-    fun `batch retirement cancels current generation while an older generation is still retiring`(): Unit = runBlocking {
-        val provider = DesktopDownloadProvider(tempDir.resolve("batch-retirement-generation"))
-        val staleArtifact = provider.chapterTmpDir(42L, "Batch generation", "Chapter")
-        val cleanupEntered = CompletableDeferred<Unit>()
-        val releaseCleanup = CompletableDeferred<Unit>()
-        val workerParent = SupervisorJob()
-        val manager = DesktopDownloadManager(
-            provider = provider,
-            networkHelper = NetworkHelper(OkHttpClient()),
-            workerScope = CoroutineScope(workerParent + Dispatchers.Default),
-            artifactCleaner = { artifact ->
-                if (artifact == staleArtifact && cleanupEntered.complete(Unit)) {
-                    runBlocking { releaseCleanup.await() }
+    fun `batch retirement cancels current generation while an older generation is still retiring`(): Unit =
+        runBlocking {
+            val provider = DesktopDownloadProvider(tempDir.resolve("batch-retirement-generation"))
+            val staleArtifact = provider.chapterTmpDir(42L, "Batch generation", "Chapter")
+            val cleanupEntered = CompletableDeferred<Unit>()
+            val releaseCleanup = CompletableDeferred<Unit>()
+            val workerParent = SupervisorJob()
+            val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
+                provider = provider,
+                networkHelper = NetworkHelper(OkHttpClient()),
+                workerScope = CoroutineScope(workerParent + Dispatchers.Default),
+                artifactCleaner = { artifact ->
+                    if (artifact == staleArtifact && cleanupEntered.complete(Unit)) {
+                        runBlocking { releaseCleanup.await() }
+                    }
+                    artifact.deleteRecursively()
+                },
+            )
+            val item = DownloadItem(42L, "Batch generation", "Chapter", 603L)
+            manager.enqueue(item)
+            staleArtifact.mkdirs()
+            File(staleArtifact, "old.partial").writeText("old")
+
+            try {
+                assertTrue(manager.cancel(item.chapterId))
+                withTimeout(2_000) { cleanupEntered.await() }
+                manager.enqueue(item.copy(chapterUrl = "/replacement"))
+
+                val retirement = async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
+                    manager.cancelAndAwaitRetirements(listOf(item.chapterId))
                 }
-                artifact.deleteRecursively()
-            },
-        )
-        val item = DownloadItem(42L, "Batch generation", "Chapter", 603L)
-        manager.enqueue(item)
-        staleArtifact.mkdirs()
-        File(staleArtifact, "old.partial").writeText("old")
+                assertTrue(manager.queue.value.isEmpty())
 
-        try {
-            assertTrue(manager.cancel(item.chapterId))
-            withTimeout(2_000) { cleanupEntered.await() }
-            manager.enqueue(item.copy(chapterUrl = "/replacement"))
-
-            val retirement = async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
-                manager.cancelAndAwaitRetirements(listOf(item.chapterId))
+                releaseCleanup.complete(Unit)
+                assertTrue(withTimeout(3_000) { retirement.await() })
+            } finally {
+                releaseCleanup.complete(Unit)
+                withTimeout(3_000) { manager.stopAndJoin() }
+                withTimeout(3_000) { workerParent.cancelAndJoin() }
             }
-            assertTrue(manager.queue.value.isEmpty())
-
-            releaseCleanup.complete(Unit)
-            assertTrue(withTimeout(3_000) { retirement.await() })
-        } finally {
-            releaseCleanup.complete(Unit)
-            withTimeout(3_000) { manager.stopAndJoin() }
-            withTimeout(3_000) { workerParent.cancelAndJoin() }
         }
-    }
 
     @Test
     fun `older retirement cannot hide current generation cancellation persistence failure`(): Unit = runBlocking {
@@ -989,6 +1379,7 @@ class DownloadManagerTest {
         val workerParent = SupervisorJob()
         var failEmptyQueuePersistence = false
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -1044,6 +1435,7 @@ class DownloadManagerTest {
                 fallback = mihon.desktop.domain.DesktopNotificationService(),
             )
             val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
                 provider = DesktopDownloadProvider(tempDir.resolve("notification-generation")),
                 networkHelper = NetworkHelper(OkHttpClient()),
                 workerScope = CoroutineScope(workerParent + dispatcher),
@@ -1111,6 +1503,7 @@ class DownloadManagerTest {
         val replacementExecuted = CompletableDeferred<Unit>()
         val workerParent = SupervisorJob()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -1154,7 +1547,10 @@ class DownloadManagerTest {
             withTimeout(3_000) { manager.queue.first { it.isEmpty() } }
             assertArrayEquals(
                 jpegBytes(),
-                File(provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName), "001.jpg").readBytes(),
+                File(
+                    provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName),
+                    "001.jpg",
+                ).readBytes(),
             )
         } finally {
             releaseCleanup.complete(Unit)
@@ -1183,6 +1579,7 @@ class DownloadManagerTest {
         val workerParent = SupervisorJob()
         val staleFinal = provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -1224,7 +1621,12 @@ class DownloadManagerTest {
             manager.enqueue(item.copy(pageUrls = listOf("https://fixture.invalid/replacement.jpg")))
             withTimeout(2_000) { cleanupAwaitEntered.await() }
 
-            assertFalse(withTimeoutOrNull(200) { cleanupEntered.await(); true } ?: false)
+            assertFalse(
+                withTimeoutOrNull(200) {
+                    cleanupEntered.await()
+                    true
+                } ?: false,
+            )
             releaseProducer.complete(Unit)
             withTimeout(2_000) { cleanupEntered.await() }
             withTimeout(2_000) { replacementAwaitEntered.await() }
@@ -1256,6 +1658,7 @@ class DownloadManagerTest {
         var cleanupAllowed = false
         val workerParent = SupervisorJob()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -1322,6 +1725,7 @@ class DownloadManagerTest {
         val staleFinal = provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
         val workerParent = SupervisorJob()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -1353,98 +1757,100 @@ class DownloadManagerTest {
     }
 
     @Test
-    fun `canonical cleanup failure survives repeated cancellation without adopting stale content`(): Unit = runBlocking {
-        val provider = DesktopDownloadProvider(tempDir.resolve("canonical-retirement-chain"))
-        val identity = DownloadChapterIdentity(
-            sourceDisplayName = "Canonical Retirement Source",
-            mangaTitle = "Canonical Retirement Manga",
-            chapterName = "Chapter 7C",
-            scanlator = null,
-            chapterUrl = "/chapter/7c",
-            disallowNonAsciiFilenames = false,
-        )
-        val item = DownloadItem(
-            sourceId = 42L,
-            mangaTitle = identity.mangaTitle,
-            chapterName = identity.chapterName,
-            chapterId = 4_262L,
-            chapterUrl = identity.chapterUrl,
-            pageUrls = listOf("https://fixture.invalid/old.jpg"),
-        )
-        val canonicalFinal = provider.canonicalChapterDownloadDir(identity)
-        val firstWriteEntered = CompletableDeferred<Unit>()
-        val releaseFirstWrite = CompletableDeferred<Unit>()
-        val secondCleanupFinished = CompletableDeferred<Unit>()
-        val cleanupRuns = AtomicInteger()
-        var cleanupAllowed = false
-        var executeCalls = 0
-        val workerParent = SupervisorJob()
-        val manager = DesktopDownloadManager(
-            provider = provider,
-            networkHelper = NetworkHelper(OkHttpClient()),
-            workerScope = CoroutineScope(workerParent + Dispatchers.Default),
-            downloadIdentityResolver = { identity },
-            retirementCleanupFinishedObserver = { _, _ ->
-                if (cleanupRuns.incrementAndGet() >= 2) secondCleanupFinished.complete(Unit)
-            },
-            artifactCleaner = { artifact ->
-                if (artifact == canonicalFinal && !cleanupAllowed) false else artifact.deleteRecursively()
-            },
-            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
-                override fun execute(client: OkHttpClient, url: String): Response {
-                    executeCalls++
-                    return Response.Builder()
-                        .request(Request.Builder().url(url).build())
-                        .protocol(Protocol.HTTP_1_1)
-                        .code(200)
-                        .message("OK")
-                        .body(jpegBytes().toResponseBody())
-                        .build()
+    fun `canonical cleanup failure survives repeated cancellation without adopting stale content`(): Unit =
+        runBlocking {
+            val provider = DesktopDownloadProvider(tempDir.resolve("canonical-retirement-chain"))
+            val identity = DownloadChapterIdentity(
+                sourceDisplayName = "Canonical Retirement Source",
+                mangaTitle = "Canonical Retirement Manga",
+                chapterName = "Chapter 7C",
+                scanlator = null,
+                chapterUrl = "/chapter/7c",
+                disallowNonAsciiFilenames = false,
+            )
+            val item = DownloadItem(
+                sourceId = 42L,
+                mangaTitle = identity.mangaTitle,
+                chapterName = identity.chapterName,
+                chapterId = 4_262L,
+                chapterUrl = identity.chapterUrl,
+                pageUrls = listOf("https://fixture.invalid/old.jpg"),
+            )
+            val canonicalFinal = provider.canonicalChapterDownloadDir(identity)
+            val firstWriteEntered = CompletableDeferred<Unit>()
+            val releaseFirstWrite = CompletableDeferred<Unit>()
+            val secondCleanupFinished = CompletableDeferred<Unit>()
+            val cleanupRuns = AtomicInteger()
+            var cleanupAllowed = false
+            var executeCalls = 0
+            val workerParent = SupervisorJob()
+            val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
+                provider = provider,
+                networkHelper = NetworkHelper(OkHttpClient()),
+                workerScope = CoroutineScope(workerParent + Dispatchers.Default),
+                downloadIdentityResolver = { identity },
+                retirementCleanupFinishedObserver = { _, _ ->
+                    if (cleanupRuns.incrementAndGet() >= 2) secondCleanupFinished.complete(Unit)
+                },
+                artifactCleaner = { artifact ->
+                    if (artifact == canonicalFinal && !cleanupAllowed) false else artifact.deleteRecursively()
+                },
+                fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                    override fun execute(client: OkHttpClient, url: String): Response {
+                        executeCalls++
+                        return Response.Builder()
+                            .request(Request.Builder().url(url).build())
+                            .protocol(Protocol.HTTP_1_1)
+                            .code(200)
+                            .message("OK")
+                            .body(jpegBytes().toResponseBody())
+                            .build()
+                    }
+
+                    override fun writePage(tmp: File, bytes: ByteArray) {
+                        if (firstWriteEntered.complete(Unit)) runBlocking { releaseFirstWrite.await() }
+                        tmp.parentFile.mkdirs()
+                        DefaultDownloadFileOperations.writePage(tmp, bytes)
+                    }
+                },
+            )
+            manager.start()
+            manager.enqueue(item)
+            try {
+                withTimeout(2_000) { firstWriteEntered.await() }
+                canonicalFinal.mkdirs()
+                File(canonicalFinal, "stale.jpg").writeBytes(jpegBytes())
+                assertTrue(manager.cancel(item.chapterId))
+                manager.enqueue(item.copy(pageUrls = listOf("https://fixture.invalid/replacement-1.jpg")))
+                releaseFirstWrite.complete(Unit)
+                withTimeout(3_000) {
+                    manager.queue.first { queued -> queued.singleOrNull()?.status == DownloadStatus.ERROR }
                 }
 
-                override fun writePage(tmp: File, bytes: ByteArray) {
-                    if (firstWriteEntered.complete(Unit)) runBlocking { releaseFirstWrite.await() }
-                    tmp.parentFile.mkdirs()
-                    DefaultDownloadFileOperations.writePage(tmp, bytes)
+                assertTrue(manager.cancel(item.chapterId))
+                withTimeout(2_000) { secondCleanupFinished.await() }
+                manager.enqueue(item.copy(pageUrls = listOf("https://fixture.invalid/replacement-2.jpg")))
+                val repeatedResult = withTimeout(3_000) {
+                    manager.queue.first { queued ->
+                        queued.isEmpty() || queued.singleOrNull()?.status == DownloadStatus.ERROR
+                    }
                 }
-            },
-        )
-        manager.start()
-        manager.enqueue(item)
-        try {
-            withTimeout(2_000) { firstWriteEntered.await() }
-            canonicalFinal.mkdirs()
-            File(canonicalFinal, "stale.jpg").writeBytes(jpegBytes())
-            assertTrue(manager.cancel(item.chapterId))
-            manager.enqueue(item.copy(pageUrls = listOf("https://fixture.invalid/replacement-1.jpg")))
-            releaseFirstWrite.complete(Unit)
-            withTimeout(3_000) {
-                manager.queue.first { queued -> queued.singleOrNull()?.status == DownloadStatus.ERROR }
+
+                assertEquals(DownloadStatus.ERROR, repeatedResult.single().status)
+                assertTrue(canonicalFinal.isDirectory)
+                assertEquals(1, executeCalls)
+
+                cleanupAllowed = true
+                manager.retryItem(item.chapterId)
+                withTimeout(3_000) { manager.queue.first { it.isEmpty() } }
+                assertEquals(2, executeCalls)
+            } finally {
+                releaseFirstWrite.complete(Unit)
+                withTimeout(3_000) { manager.stopAndJoin() }
+                withTimeout(3_000) { workerParent.cancelAndJoin() }
             }
-
-            assertTrue(manager.cancel(item.chapterId))
-            withTimeout(2_000) { secondCleanupFinished.await() }
-            manager.enqueue(item.copy(pageUrls = listOf("https://fixture.invalid/replacement-2.jpg")))
-            val repeatedResult = withTimeout(3_000) {
-                manager.queue.first { queued ->
-                    queued.isEmpty() || queued.singleOrNull()?.status == DownloadStatus.ERROR
-                }
-            }
-
-            assertEquals(DownloadStatus.ERROR, repeatedResult.single().status)
-            assertTrue(canonicalFinal.isDirectory)
-            assertEquals(1, executeCalls)
-
-            cleanupAllowed = true
-            manager.retryItem(item.chapterId)
-            withTimeout(3_000) { manager.queue.first { it.isEmpty() } }
-            assertEquals(2, executeCalls)
-        } finally {
-            releaseFirstWrite.complete(Unit)
-            withTimeout(3_000) { manager.stopAndJoin() }
-            withTimeout(3_000) { workerParent.cancelAndJoin() }
         }
-    }
 
     @Test
     fun `completion persistence failure keeps the queue generation and published artifact`() = runTest {
@@ -1458,6 +1864,7 @@ class DownloadManagerTest {
         )
         var persistenceOutage = false
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             networkHelper = NetworkHelper(OkHttpClient()),
             workerScope = this,
@@ -1500,6 +1907,7 @@ class DownloadManagerTest {
         )
         var cleanupCalls = 0
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             queuePersister = { entries ->
                 if (entries.isEmpty()) throw java.io.IOException("persist cancellation failed")
@@ -1534,6 +1942,7 @@ class DownloadManagerTest {
         val releaseCleanup = CompletableDeferred<Unit>()
         val workerParent = SupervisorJob()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
             artifactCleaner = { artifact ->
@@ -1551,7 +1960,12 @@ class DownloadManagerTest {
 
         val closing = async(Dispatchers.Default) { manager.stopAndJoin() }
         try {
-            assertFalse(withTimeoutOrNull(200) { closing.await(); true } ?: false)
+            assertFalse(
+                withTimeoutOrNull(200) {
+                    closing.await()
+                    true
+                } ?: false,
+            )
             releaseCleanup.complete(Unit)
             withTimeout(3_000) { closing.await() }
         } finally {
@@ -1568,6 +1982,7 @@ class DownloadManagerTest {
             val finallyEntered = CompletableDeferred<Unit>()
             val releaseFinally = CompletableDeferred<Unit>()
             val mgr = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
                 provider = DesktopDownloadProvider(tempDir),
                 networkHelper = NetworkHelper(OkHttpClient()),
                 workerScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + dispatcher),

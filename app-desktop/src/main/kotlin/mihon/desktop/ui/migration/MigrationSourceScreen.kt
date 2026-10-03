@@ -8,9 +8,7 @@ import mihon.desktop.LocalDesktopUiDependencies
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,12 +32,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.flow.map
-import tachiyomi.domain.source.repository.SourceRepository
 
 /**
  * Lists sources that have library manga — entry point for manga migration.
@@ -62,26 +58,32 @@ class MigrationSourceScreen : Screen {
 
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = { Text(MR.strings.label_migration.localized()) },
-                    navigationIcon = {
-                        IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, MR.strings.desktop_ui_back.localized())
-                        }
-                    },
-                    actions = {
-                        migrationQueues.values.lastOrNull()?.let { queue ->
-                            TextButton(onClick = { navigator.push(MigrationBatchQueueScreen(queue.id)) }) {
-                                Text(
-                                    MR.strings.desktop_ui_migration_queues.localized(
-                                        Locale.getDefault(),
-                                        migrationQueues.size,
-                                    ),
-                                )
+                val primaryNavigation = mihon.desktop.ui.browse.LocalBrowsePrimaryNavigation.current
+                Column {
+                    TopAppBar(
+                        title = { Text(if (primaryNavigation != null) MR.strings.browse.localized() else MR.strings.label_migration.localized()) },
+                        navigationIcon = {
+                            if (primaryNavigation == null) {
+                                IconButton(onClick = { navigator.pop() }) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, MR.strings.desktop_ui_back.localized())
+                                }
                             }
-                        }
-                    },
-                )
+                        },
+                        actions = {
+                            migrationQueues.values.lastOrNull()?.let { queue ->
+                                TextButton(onClick = { navigator.push(MigrationBatchQueueScreen(queue.id)) }) {
+                                    Text(
+                                        MR.strings.desktop_ui_migration_queues.localized(
+                                            Locale.getDefault(),
+                                            migrationQueues.size,
+                                        ),
+                                    )
+                                }
+                            }
+                        },
+                    )
+                    primaryNavigation?.invoke()
+                }
             },
         ) { padding ->
             when {

@@ -10,7 +10,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -52,19 +51,15 @@ class SettingsSearchScreen : Screen {
         val focusRequester = remember { FocusRequester() }
         var query by remember { mutableStateOf("") }
         val direction = if (LocalLayoutDirection.current == LayoutDirection.Ltr) SettingsLayoutDirection.Ltr else SettingsLayoutDirection.Rtl
-        val results = remember(query, direction) { DesktopSettingsCatalog.search(query, direction) }
+        val localeTag = mihon.desktop.platform.LocalDesktopLocaleTag.current
+        val results = remember(query, direction, localeTag) { DesktopSettingsCatalog.search(query, direction) }
         LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
         Scaffold(
             topBar = {
                 TopAppBar(
                     navigationIcon = {
-                        IconButton(onClick = navigator::pop) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = MR.strings.action_bar_up_description.localized(),
-                            )
-                        }
+                        mihon.desktop.ui.settings.SettingsNavigationIcon()
                     },
                     title = {
                         BasicTextField(

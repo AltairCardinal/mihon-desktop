@@ -22,37 +22,29 @@ import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.every
 import io.mockk.mockk
-import java.awt.image.BufferedImage
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.FileInputStream
-import java.util.Locale
-import java.util.UUID
-import java.util.prefs.Preferences
-import javax.imageio.ImageIO
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.yield
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.domain.SortMode
+import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadItem
-import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.library.LibraryScreenModelFactory
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.test.http.LibraryMangaTestModeController
@@ -73,13 +65,13 @@ import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.category.repository.CategoryRepository
-import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
+import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.download.service.DownloadPreferences
-import tachiyomi.domain.library.model.LibrarySort
 import tachiyomi.domain.library.interactor.LibraryFilter
 import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.library.model.LibrarySort
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.model.Manga
@@ -88,6 +80,14 @@ import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileInputStream
+import java.util.Locale
+import java.util.UUID
+import java.util.prefs.Preferences
+import javax.imageio.ImageIO
 
 @Isolated
 class LibraryCategoryBehaviorTest {
@@ -97,7 +97,8 @@ class LibraryCategoryBehaviorTest {
         @TempDir tempDir: File,
     ) = runBlocking {
         val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
+        val context =
+            initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
         Dispatchers.setMain(UnconfinedTestDispatcher())
         var scene: ImageComposeScene? = null
         var model: LibraryScreenModel? = null
@@ -156,7 +157,7 @@ class LibraryCategoryBehaviorTest {
             }
             longClick(scene, target.title)
             render(scene)
-            click(scene, MR.strings.desktop_ui_mark_read.localized())
+            click(scene, MR.strings.action_mark_as_read.localized())
             withTimeout(5_000) {
                 while (
                     !Injekt.get<ChapterRepository>().getChapterById(targetUnread.id)!!.read ||
@@ -212,10 +213,10 @@ class LibraryCategoryBehaviorTest {
             val repository = Injekt.get<MangaRepository>()
             val mangas = repository.insertNetworkManga(
                 listOf(
-                    Manga.create().copy(source = 0, url = "/target-a", title = "Target A", initialized = true),
-                    Manga.create().copy(source = 0, url = "/hidden-a", title = "Hidden A", initialized = true),
-                    Manga.create().copy(source = 0, url = "/target-b", title = "Target B", initialized = true),
-                    Manga.create().copy(source = 0, url = "/default", title = "Default target", initialized = true),
+                    Manga.create().copy(source = 123, url = "/target-a", title = "Target A", initialized = true),
+                    Manga.create().copy(source = 123, url = "/hidden-a", title = "Hidden A", initialized = true),
+                    Manga.create().copy(source = 123, url = "/target-b", title = "Target B", initialized = true),
+                    Manga.create().copy(source = 123, url = "/default", title = "Default target", initialized = true),
                 ),
             )
             repository.updateMembershipsAtomically(
@@ -226,10 +227,7 @@ class LibraryCategoryBehaviorTest {
                     LibraryMembershipUpdate(mangas[3].id, true, 4, emptyList()),
                 ),
             )
-            Injekt.get<DesktopAppPreferences>().apply {
-                updateCategoryIncludes.set("2")
-                updateCategoryExcludes.set("1")
-            }
+            assertTrue(Injekt.get<mihon.desktop.settings.DesktopLibraryCategoryPolicy>().save(setOf(2), setOf(1)))
             scene = ImageComposeScene(1_400, 900, coroutineContext = coroutineContext) {}
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides DesktopUiDependencies.fromInjekt()) {
@@ -256,11 +254,11 @@ class LibraryCategoryBehaviorTest {
             rootModel.setSelectedCategoryIndex(rootModel.state.value.categories.indexOfFirst { it.id == 1L })
             rootModel.setSearchQuery("Target")
             render(scene)
-            click(scene, MR.strings.check_for_updates.localized())
+            click(scene, MR.strings.action_menu.localized())
             render(scene)
-            click(scene, MR.strings.action_update_library.localized())
+            click(scene, MR.strings.action_update_category.localized())
             withTimeout(5_000) { entered.await() }
-            click(scene, MR.strings.check_for_updates.localized())
+            click(scene, MR.strings.action_menu.localized())
             assertEquals(1, updated.size)
             click(scene, MR.strings.desktop_ui_random_manga.localized())
             render(scene)
@@ -282,14 +280,11 @@ class LibraryCategoryBehaviorTest {
             render(scene)
             assertEquals(setOf(mangas[0].id, mangas[1].id), updated.toSet())
 
-            Injekt.get<DesktopAppPreferences>().apply {
-                updateCategoryIncludes.set("0")
-                updateCategoryExcludes.set("2")
-            }
+            assertTrue(Injekt.get<mihon.desktop.settings.DesktopLibraryCategoryPolicy>().save(setOf(0), setOf(2)))
             val beforeAll = updated.size
-            click(scene, MR.strings.check_for_updates.localized())
+            click(scene, MR.strings.action_menu.localized())
             render(scene)
-            click(scene, MR.strings.ext_update_all.localized())
+            click(scene, MR.strings.action_update_library.localized())
             withTimeout(5_000) {
                 while (updated.size == beforeAll || returnedModel.state.value.isUpdating) {
                     render(scene)
@@ -300,6 +295,8 @@ class LibraryCategoryBehaviorTest {
 
             returnedModel.setSelectedCategoryIndex(returnedModel.state.value.categories.indexOfFirst { it.id == 3L })
             returnedModel.setSearchQuery(null)
+            render(scene)
+            click(scene, MR.strings.action_menu.localized())
             render(scene)
             click(scene, MR.strings.desktop_ui_random_manga.localized())
             render(scene)
@@ -324,7 +321,8 @@ class LibraryCategoryBehaviorTest {
     @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
     fun `factory queue identity changes refresh visible download counts`(@TempDir tempDir: File) = runBlocking {
         val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
+        val context =
+            initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
         Dispatchers.setMain(UnconfinedTestDispatcher())
         val server = MockWebServer().apply { start() }
         var scene: ImageComposeScene? = null
@@ -361,14 +359,9 @@ class LibraryCategoryBehaviorTest {
             }
             click(scene, MR.strings.action_filter.localized())
             render(scene)
-            click(
-                scene,
-                MR.strings.desktop_ui_filter_value.localized(
-                    Locale.getDefault(),
-                    MR.strings.label_downloaded.localized(),
-                    tachiyomi.core.common.preference.TriState.DISABLED.label(),
-                ),
-            )
+            click(scene, MR.strings.label_downloaded.localized())
+            render(scene)
+            click(scene, MR.strings.action_close.localized())
             render(scene)
             assertFalse(nodes(scene).flatMap { it.semanticLabels() }.contains(manga.title))
 
@@ -397,7 +390,9 @@ class LibraryCategoryBehaviorTest {
             )
             manager.start()
             withTimeout(5_000) {
-                while (manager.queue.value.isNotEmpty() || provider.downloadedChapterCount(manga.source, manga.title) != 1) {
+                while (manager.queue.value.isNotEmpty() ||
+                    provider.downloadedChapterCount(manga.source, manga.title) != 1
+                ) {
                     render(scene)
                     delay(10)
                 }
@@ -411,11 +406,19 @@ class LibraryCategoryBehaviorTest {
             val visibleLabels = nodes(scene).flatMap { it.semanticLabels() }
             assertTrue(visibleLabels.contains(manga.title))
             assertTrue(visibleLabels.contains("1"))
-            assertTrue(visibleLabels.contains(MR.strings.label_downloaded.localized()))
+            assertTrue(
+                visibleLabels.contains(
+                    MR.strings.desktop_ui_filter_value.localized(
+                        Locale.getDefault(),
+                        MR.strings.label_downloaded.localized(),
+                        MR.strings.desktop_ui_filter_include.localized(),
+                    ),
+                ),
+            )
 
             longClick(scene, manga.title)
             render(scene)
-            click(scene, MR.strings.action_remove.localized())
+            openSelectionDelete(scene)
             render(scene)
             clickToggle(scene, ToggleableState.Off, index = 1)
             click(scene, MR.strings.action_ok.localized())
@@ -446,7 +449,8 @@ class LibraryCategoryBehaviorTest {
     fun `factory reports provider deletion failure instead of claiming success`(@TempDir tempDir: File) = runBlocking {
         assumeTrue(System.getProperty("os.name").startsWith("Windows", ignoreCase = true))
         val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
+        val context =
+            initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
         var lockedFile: FileInputStream? = null
         try {
             val repository = Injekt.get<MangaRepository>()
@@ -467,7 +471,8 @@ class LibraryCategoryBehaviorTest {
 
             assertTrue(page.exists())
             assertEquals(
-                MR.strings.desktop_ui_items_updated_failed.localized(Locale.getDefault(), 0, 1),
+                MR.strings.desktop_ui_items_updated_failed.localized(Locale.getDefault(), 0, 1) + "\n" +
+                    MR.strings.desktop_chapter_batch_result.localized(Locale.getDefault(), 0, 0, 1),
                 model.state.value.operationFeedback,
             )
         } finally {
@@ -478,9 +483,12 @@ class LibraryCategoryBehaviorTest {
     }
 
     @Test
-    fun `factory download deletion retires only matching legacy and identified queue items`(@TempDir tempDir: File) = runBlocking {
+    fun `factory download deletion retires only matching legacy and identified queue items`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
         val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
+        val context =
+            initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
         try {
             val mangaRepository = Injekt.get<MangaRepository>()
             val target = mangaRepository.insertNetworkManga(
@@ -507,7 +515,9 @@ class LibraryCategoryBehaviorTest {
                 url = "/unrelated-chapter",
                 name = "Unrelated chapter",
             )
-            val insertedChapters = Injekt.get<ChapterRepository>().addAll(listOf(targetChapterInput, unrelatedChapterInput))
+            val insertedChapters = Injekt.get<ChapterRepository>().addAll(
+                listOf(targetChapterInput, unrelatedChapterInput),
+            )
             val targetChapter = insertedChapters.single { it.mangaId == target.id }
             val unrelatedChapter = insertedChapters.single { it.mangaId == unrelated.id }
             val manager = Injekt.get<DesktopDownloadManager>()
@@ -572,7 +582,11 @@ class LibraryCategoryBehaviorTest {
             scene.setContent { LibraryRemovalDialog(items, onDismiss = {}, onConfirm = { _, _ -> }) }
             render(scene)
             assertEquals(1, toggleNodes(scene).size)
-            assertFalse(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.downloaded_chapters.localized()))
+            assertFalse(
+                nodes(scene).flatMap {
+                    it.semanticLabels()
+                }.contains(MR.strings.downloaded_chapters.localized()),
+            )
         } finally {
             scene.close()
         }
@@ -580,9 +594,12 @@ class LibraryCategoryBehaviorTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
-    fun `root migration keeps remote and local selection across category actions`(@TempDir tempDir: File) = runBlocking {
+    fun `root migration keeps remote and local selection across category actions`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
         val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
+        val context =
+            initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
         Dispatchers.setMain(UnconfinedTestDispatcher())
         var scene: ImageComposeScene? = null
         var model: LibraryScreenModel? = null
@@ -637,39 +654,33 @@ class LibraryCategoryBehaviorTest {
             render(scene)
             click(scene, MR.strings.action_select_all.localized())
             render(scene)
-            assertTrue(
-                nodes(scene).flatMap { it.semanticLabels() }
-                    .contains(MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), 2)),
-            )
+            assertEquals(2, selectionCount(scene))
             click(scene, MR.strings.desktop_ui_invert_selection.localized())
             render(scene)
-            assertTrue(
-                nodes(scene).flatMap { it.semanticLabels() }
-                    .contains(MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), 1)),
-            )
+            assertEquals(1, selectionCount(scene))
             click(scene, MR.strings.action_select_all.localized())
             render(scene)
-            assertTrue(
-                nodes(scene).flatMap { it.semanticLabels() }
-                    .contains(MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), 2)),
-            )
-            click(scene, MR.strings.action_remove.localized())
+            assertEquals(2, selectionCount(scene))
+            openSelectionDelete(scene)
             render(scene)
             assertEquals(1, toggleNodes(scene).size)
-            assertFalse(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.downloaded_chapters.localized()))
-            clickToggle(scene, ToggleableState.Off)
+            assertFalse(
+                nodes(scene).flatMap {
+                    it.semanticLabels()
+                }.contains(MR.strings.downloaded_chapters.localized()),
+            )
+            clickToggle(scene, ToggleableState.Off, index = 0)
             render(scene)
             scene.sendKeyEvent(composeKeyEvent(Key.Escape, KeyEventType.KeyDown))
             render(scene)
-            assertTrue(
-                nodes(scene).flatMap { it.semanticLabels() }
-                    .contains(MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), 2)),
-            )
+            assertEquals(2, selectionCount(scene))
             assertTrue(repository.getMangaById(remote.id).favorite)
             assertTrue(repository.getMangaById(local.id).favorite)
             assertTrue(provider.hasMangaDownloads(remote.source, remote.title))
             assertTrue(provider.hasMangaDownloads(local.source, local.title))
-            click(scene, MR.strings.action_migrate.localized())
+            click(scene, MR.strings.action_menu.localized())
+            render(scene)
+            click(scene, MR.strings.migrate.localized())
             render(scene)
 
             val config = destination as LibraryBatchMigrationConfigScreen
@@ -693,7 +704,8 @@ class LibraryCategoryBehaviorTest {
     @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
     fun `root removal confirmation applies remove download and combined choices`(@TempDir tempDir: File) = runBlocking {
         val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
+        val context =
+            initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
         Dispatchers.setMain(UnconfinedTestDispatcher())
         var scene: ImageComposeScene? = null
         var model: LibraryScreenModel? = null
@@ -705,7 +717,9 @@ class LibraryCategoryBehaviorTest {
                 ).single()
             }
             repository.updateMembershipsAtomically(
-                mangas.mapIndexed { index, manga -> LibraryMembershipUpdate(manga.id, true, index.toLong(), emptyList()) },
+                mangas.mapIndexed { index, manga ->
+                    LibraryMembershipUpdate(manga.id, true, index.toLong(), emptyList())
+                },
             )
             val provider = Injekt.get<DesktopDownloadProvider>()
             mangas.forEach {
@@ -735,7 +749,7 @@ class LibraryCategoryBehaviorTest {
                 render(scene)
                 longClick(scene, title)
                 render(scene)
-                click(scene, MR.strings.action_remove.localized())
+                openSelectionDelete(scene)
                 render(scene)
             }
 
@@ -832,7 +846,9 @@ class LibraryCategoryBehaviorTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
-    fun `root category transaction freezes selection and persists mixed assignments`(@TempDir tempDir: File) = runBlocking {
+    fun `root category transaction freezes selection and persists mixed assignments`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
         val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
         val context = initDesktopDIForTest(
             tempDir,
@@ -842,6 +858,7 @@ class LibraryCategoryBehaviorTest {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         var scene: ImageComposeScene? = null
         var model: LibraryScreenModel? = null
+        var navigator: Navigator? = null
         try {
             val categoryRepository = Injekt.get<CategoryRepository>()
             categoryRepository.insert(Category(1L, "A", 0L, 0L))
@@ -861,11 +878,23 @@ class LibraryCategoryBehaviorTest {
                 ),
             )
             val rootModel = LibraryScreenModelFactory.create().also { model = it }
+            var initialOwner = true
+            var childModel: LibraryScreenModel? = null
             scene = ImageComposeScene(1_400, 900, coroutineContext = coroutineContext) {}
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides DesktopUiDependencies.fromInjekt()) {
-                    ProvideLibraryScreenModelFactory(factory = { rootModel }) {
-                        Navigator(LibraryRootScreen()) { CurrentScreen() }
+                    ProvideLibraryScreenModelFactory(factory = {
+                        if (initialOwner) {
+                            initialOwner = false
+                            rootModel
+                        } else {
+                            LibraryScreenModelFactory.create().also { childModel = it }
+                        }
+                    }) {
+                        Navigator(LibraryRootScreen()) {
+                            navigator = it
+                            CurrentScreen()
+                        }
                     }
                 }
             }
@@ -886,19 +915,34 @@ class LibraryCategoryBehaviorTest {
             render(scene)
             click(scene, second.title)
             render(scene)
-            click(scene, MR.strings.categories.localized())
+            click(scene, MR.strings.action_move_category.localized())
             withTimeout(5_000) {
                 while (toggleNodes(scene).size != 3) {
                     render(scene)
                     delay(10)
                 }
             }
-            assertEquals(1, toggleNodes(scene).count { it.config[SemanticsProperties.ToggleableState] == ToggleableState.On })
             assertEquals(
                 1,
-                toggleNodes(scene).count { it.config[SemanticsProperties.ToggleableState] == ToggleableState.Indeterminate },
+                toggleNodes(scene).count {
+                    it.config[SemanticsProperties.ToggleableState] ==
+                        ToggleableState.On
+                },
             )
-            assertEquals(1, toggleNodes(scene).count { it.config[SemanticsProperties.ToggleableState] == ToggleableState.Off })
+            assertEquals(
+                1,
+                toggleNodes(scene).count {
+                    it.config[SemanticsProperties.ToggleableState] ==
+                        ToggleableState.Indeterminate
+                },
+            )
+            assertEquals(
+                1,
+                toggleNodes(scene).count {
+                    it.config[SemanticsProperties.ToggleableState] ==
+                        ToggleableState.Off
+                },
+            )
             clickToggle(scene, ToggleableState.Off)
             categoryRepository.insert(Category(4L, "Late category", 3L, 0L))
             withTimeout(5_000) {
@@ -913,7 +957,7 @@ class LibraryCategoryBehaviorTest {
             assertEquals(setOf(1L), rootModel.categoryIdsForManga(first.id))
             assertEquals(setOf(1L, 2L), rootModel.categoryIdsForManga(second.id))
             render(scene)
-            click(scene, MR.strings.categories.localized())
+            click(scene, MR.strings.action_move_category.localized())
             withTimeout(5_000) {
                 while (toggleNodes(scene).size != 4) {
                     render(scene)
@@ -932,11 +976,11 @@ class LibraryCategoryBehaviorTest {
                 }
             }
             render(scene)
-            assertTrue(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_sort.localized()))
+            assertTrue(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_filter.localized()))
 
             longClick(scene, first.title)
             render(scene)
-            click(scene, MR.strings.categories.localized())
+            click(scene, MR.strings.action_move_category.localized())
             withTimeout(5_000) {
                 while (toggleNodes(scene).size != 4) {
                     render(scene)
@@ -945,8 +989,14 @@ class LibraryCategoryBehaviorTest {
             }
             click(scene, MR.strings.action_edit_categories.localized())
             render(scene)
-            assertTrue(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.desktop_ui_manage_categories.localized()))
-            assertTrue(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_sort.localized()))
+            assertTrue(navigator?.lastItem is CategoryManagementScreen)
+            assertTrue(childModel != null && childModel !== rootModel)
+            assertTrue(
+                nodes(scene).flatMap {
+                    it.semanticLabels()
+                }.contains(MR.strings.action_edit_categories.localized()),
+            )
+            assertFalse(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_filter.localized()))
 
             click(scene, MR.strings.action_delete.localized())
             render(scene)
@@ -959,6 +1009,12 @@ class LibraryCategoryBehaviorTest {
             withTimeout(5_000) { while (categoryRepository.get(1L) != null) delay(10) }
             assertEquals(setOf(3L), rootModel.categoryIdsForManga(first.id))
             assertEquals(setOf(2L, 3L), rootModel.categoryIdsForManga(second.id))
+            render(scene)
+            click(scene, MR.strings.action_bar_up_description.localized())
+            render(scene)
+            assertTrue(navigator?.lastItem is LibraryRootScreen)
+            assertTrue(rootModel.screenModelScope.coroutineContext[Job]?.isActive == true)
+            assertTrue(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_filter.localized()))
         } finally {
             val modelJob = model?.screenModelScope?.coroutineContext?.get(Job)
             scene?.close()
@@ -1157,7 +1213,8 @@ class LibraryCategoryBehaviorTest {
     @OptIn(ExperimentalCoroutinesApi::class)
     fun `test mode category sort persists through the production category chain`(@TempDir tempDir: File) = runBlocking {
         val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
+        val context =
+            initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
         var controller: LibraryMangaTestModeController? = null
         Dispatchers.setMain(UnconfinedTestDispatcher())
         try {
@@ -1169,7 +1226,9 @@ class LibraryCategoryBehaviorTest {
             model.createCategory("B")
             controller = LibraryMangaTestModeController(model)
             val categoryAIndex = model.state.value.categories.indexOfFirst { it.name == "A" }
-            assertTrue(controller.execute("select", mapOf("type" to "category", "index" to categoryAIndex.toString())).success)
+            assertTrue(
+                controller.execute("select", mapOf("type" to "category", "index" to categoryAIndex.toString())).success,
+            )
             assertTrue(controller.execute("sort", mapOf("mode" to "unreadCount", "ascending" to "false")).success)
             assertTrue(controller.execute("search", mapOf("query" to "needle")).success)
 
@@ -1187,10 +1246,17 @@ class LibraryCategoryBehaviorTest {
             assertEquals("needle", controller.snapshot().searchQuery)
 
             val categoryBIndex = model.state.value.categories.indexOfFirst { it.id == categoryB.id }
-            assertTrue(controller.execute("select", mapOf("type" to "category", "index" to categoryBIndex.toString())).success)
+            assertTrue(
+                controller.execute("select", mapOf("type" to "category", "index" to categoryBIndex.toString())).success,
+            )
             assertEquals(SortMode.TITLE, model.state.value.sortMode)
             val refreshedAIndex = model.state.value.categories.indexOfFirst { it.id == categoryA.id }
-            assertTrue(controller.execute("select", mapOf("type" to "category", "index" to refreshedAIndex.toString())).success)
+            assertTrue(
+                controller.execute(
+                    "select",
+                    mapOf("type" to "category", "index" to refreshedAIndex.toString()),
+                ).success,
+            )
             assertEquals(SortMode.UNREAD_COUNT, model.state.value.sortMode)
 
             val recreated = LibraryScreenModelFactory.create()
@@ -1213,6 +1279,7 @@ class LibraryCategoryBehaviorTest {
             preferencesNode.removeNode()
         }
     }
+
     @Test
     @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
     fun `root sort click survives category round trip and model recreation without changing global sort`(
@@ -1274,6 +1341,8 @@ class LibraryCategoryBehaviorTest {
             render(scene)
             val titles = setOf(alpha.title, zulu.title)
             assertEquals(listOf(alpha.title, zulu.title), renderedTitleOrder(scene, titles))
+            click(scene, MR.strings.action_filter.localized())
+            render(scene)
             click(scene, MR.strings.action_sort.localized())
             render(scene)
             click(scene, MR.strings.action_sort_unread_count.localized())
@@ -1311,7 +1380,9 @@ class LibraryCategoryBehaviorTest {
             assertEquals(SortMode.DATE_ADDED, recreated.state.value.sortMode)
             assertEquals(LibrarySort.Type.DateAdded, preferences.sortingMode().get().type)
         } finally {
-            val modelJobs = listOfNotNull(recreatedModel, rootModel).mapNotNull { it.screenModelScope.coroutineContext[Job] }
+            val modelJobs = listOfNotNull(recreatedModel, rootModel).mapNotNull {
+                it.screenModelScope.coroutineContext[Job]
+            }
             scene?.close()
             recreatedModel?.onDispose()
             rootModel?.onDispose()
@@ -1433,6 +1504,28 @@ class LibraryCategoryBehaviorTest {
     private fun nodes(scene: ImageComposeScene): List<SemanticsNode> =
         scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
 
+    @OptIn(ExperimentalComposeUiApi::class)
+    private suspend fun openSelectionDelete(scene: ImageComposeScene) {
+        if (nodes(scene).any {
+                it.config.contains(SemanticsActions.OnClick) &&
+                    MR.strings.action_menu.localized() in it.semanticLabels()
+            }
+        ) {
+            click(scene, MR.strings.action_menu.localized())
+            render(scene)
+        }
+        click(scene, MR.strings.action_delete.localized())
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun selectionCount(scene: ImageComposeScene): Int {
+        val bar = nodes(scene).single {
+            it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "library-selection-top-bar"
+        }
+        return flatten(bar).filter { it.config.contains(SemanticsProperties.Text) }
+            .flatMap { it.semanticLabels() }.single().toInt()
+    }
+
     private fun flatten(node: SemanticsNode): List<SemanticsNode> =
         listOf(node) + node.children.flatMap(::flatten)
 
@@ -1440,11 +1533,13 @@ class LibraryCategoryBehaviorTest {
         nodes(scene).flatMap { it.semanticLabels() }.filter { it in titles }.distinct()
 
     private fun SemanticsNode.semanticLabels(): List<String> =
-        (if (config.contains(SemanticsProperties.Text)) {
-            config[SemanticsProperties.Text].map { it.text }
-        } else {
-            emptyList()
-        }) + if (config.contains(SemanticsProperties.ContentDescription)) {
+        (
+            if (config.contains(SemanticsProperties.Text)) {
+                config[SemanticsProperties.Text].map { it.text }
+            } else {
+                emptyList()
+            }
+            ) + if (config.contains(SemanticsProperties.ContentDescription)) {
             config[SemanticsProperties.ContentDescription]
         } else {
             emptyList()
@@ -1465,7 +1560,9 @@ class LibraryCategoryBehaviorTest {
         val eventType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
             .getMethod(if (type == KeyEventType.KeyDown) "access\$getKeyDown\$cp" else "access\$getKeyUp\$cp")
             .invoke(null)
-        val factory = events.declaredMethods.single { it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default") }
+        val factory = events.declaredMethods.single {
+            it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default")
+        }
         val native = factory.invoke(null, key.keyCode, eventType, 0, false, false, false, false, null)
         return androidx.compose.ui.input.key.KeyEvent(native)
     }

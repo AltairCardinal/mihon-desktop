@@ -152,6 +152,57 @@ class DelayedTrackerSyncQueueTest {
         assertEquals(10.0, store.items.single().lastChapterRead)
     }
 
+    @Test
+    fun `sync and drain clamp fresh progress and clear raw pending without regression`() = runTest {
+        val cases = listOf(
+            Triple(10L, 1.0, 10.0),
+            Triple(100L, 1.0, 50.0),
+            Triple(100L, 60.0, 60.0),
+            Triple(10L, 12.0, 12.0),
+            Triple(0L, 1.0, 50.0),
+        )
+        for ((freshTotal, freshProgress, expected) in cases) {
+            for (drain in listOf(false, true)) {
+                val original = track(1, chapter = 1.0)
+                val store = MemoryStore(mutableListOf(item(1, 50.0)))
+                val writes = mutableListOf<Double>()
+                val remote = object : TrackerProviderPort {
+                    override val configuration = TrackerProviderCatalog.configuration(9)
+                    override val session = TrackerProviderSession(9, true)
+                    override suspend fun refresh(
+                        track: Track,
+                    ) = track.copy(totalChapters = freshTotal, lastChapterRead = freshProgress)
+                    override suspend fun update(track: Track) = track.also { writes += it.lastChapterRead }
+                    override suspend fun delete(track: Track) = Unit
+                }
+                var actual: Track? = null
+                val queue = DelayedTrackerSyncQueue(store, { TrackerProviderSession(it, true) }) { request ->
+                    TrackerProviderWorkflow().execute(remote, request).also {
+                        actual =
+                            (it as? TrackerProviderResult.Success)?.track
+                    }
+                }
+                val report = if (drain) queue.drain { original } else queue.sync(listOf(original), 50.0)
+                assertEquals(expected, actual!!.lastChapterRead)
+                assertEquals(if (expected == freshProgress) emptyList() else listOf(expected), writes)
+                assertEquals(0, report.remaining)
+                assertTrue(
+                    store.items.isEmpty(),
+                    "successful capped target must retire the original raw pending high water",
+                )
+                val explicit = TrackerProviderWorkflow().execute(
+                    remote,
+                    TrackerProviderRequest.Edit(original, TrackEdit(lastChapterRead = 0.0, didReadChapter = false)),
+                )
+                assertEquals(
+                    0.0,
+                    (explicit as TrackerProviderResult.Success).track!!.lastChapterRead,
+                    "explicit tracker edits retain their ability to lower progress",
+                )
+            }
+        }
+    }
+
     private fun port(): RecordingPort = RecordingPort()
 
     private fun track(id: Long, trackerId: Long = 9, chapter: Double = 0.0) = Track(

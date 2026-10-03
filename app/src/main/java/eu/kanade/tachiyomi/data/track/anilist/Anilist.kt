@@ -93,11 +93,6 @@ class Anilist(id: Long) : BaseTracker(id, "AniList"), DeletableTracker {
         }
     }
 
-    override fun get10PointScore(track: DomainTrack): Double {
-        // Score is stored in 100 point format
-        return track.score / 10.0
-    }
-
     override fun indexToScore(index: Int): Double {
         return when (scorePreference.get()) {
             // 10 point

@@ -1,6 +1,7 @@
 package tachiyomi.domain.manga.repository
 
 import kotlinx.coroutines.flow.Flow
+import mihon.domain.migration.MigrationCommit
 import mihon.domain.sync.SyncMutationContext
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.model.Manga
@@ -24,6 +25,32 @@ data class LibraryMembershipUpdate(
 )
 
 interface MangaRepository : LibraryMembershipRepository {
+
+    suspend fun prepareMigration(commit: MigrationCommit): mihon.domain.migration.MigrationReceipt =
+        throw UnsupportedOperationException("Migration preparation is not available")
+
+    suspend fun migrationReceipt(sourceMangaId: Long): mihon.domain.migration.MigrationReceipt? = null
+
+    suspend fun pendingMigrations(): List<mihon.domain.migration.MigrationReceipt> = emptyList()
+
+    suspend fun markMigrationFilesReady(commit: MigrationCommit) {
+        throw UnsupportedOperationException("Migration staging is not available")
+    }
+
+    suspend fun completeMigrationFiles(commit: MigrationCommit) {
+        throw UnsupportedOperationException("Migration cleanup is not available")
+    }
+
+    suspend fun acknowledgeMigration(commit: MigrationCommit) {
+        throw UnsupportedOperationException("Migration acknowledgement is not available")
+    }
+
+    suspend fun abortPreparedMigration(commit: MigrationCommit) {
+        throw UnsupportedOperationException("Migration rollback is not available")
+    }
+
+    suspend fun commitMigration(commit: MigrationCommit): Manga =
+        throw UnsupportedOperationException("Atomic migration is not available")
 
     suspend fun updateMembershipsAtomically(updates: List<LibraryMembershipUpdate>)
 

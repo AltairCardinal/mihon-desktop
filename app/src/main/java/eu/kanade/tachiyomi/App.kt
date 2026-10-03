@@ -54,6 +54,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -69,6 +70,7 @@ import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.core.common.util.system.logcat
+import tachiyomi.domain.category.interactor.DeleteCategory
 import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.widget.WidgetManager
@@ -83,6 +85,11 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
     internal fun startSync(scope: CoroutineScope) {
         scope.launch(Dispatchers.IO) {
             try {
+                val deleteCategory = Injekt.get<DeleteCategory>()
+                if (deleteCategory.recoverPending() is DeleteCategory.Result.InternalError) {
+                    logcat(LogPriority.ERROR) { "Unable to recover confirmed category deletion" }
+                    deleteCategory.recoveryReady.first { it }
+                }
                 Injekt.get<AndroidSyncScheduler>().start(this)
             } catch (cancelled: CancellationException) {
                 throw cancelled

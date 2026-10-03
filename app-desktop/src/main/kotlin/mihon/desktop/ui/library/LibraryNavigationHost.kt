@@ -24,6 +24,10 @@ internal interface LibraryNavigationHost {
     fun onReselect() = Unit
 
     fun registerReselectHandler(handler: () -> Unit): () -> Unit = { }
+
+    fun onCtrlReleased() = Unit
+
+    fun registerCtrlReleaseHandler(handler: () -> Unit): () -> Unit = { }
 }
 
 internal class VoyagerLibraryNavigationHost(
@@ -31,10 +35,12 @@ internal class VoyagerLibraryNavigationHost(
     private val onStackDetached: (LibraryScreenStack) -> Unit = {},
 ) : LibraryNavigationHost {
     private var reselectHandler: (() -> Unit)? = null
+    private var ctrlReleaseHandler: (() -> Unit)? = null
 
     @Composable
     override fun Content(root: Screen) {
         Navigator(root) { navigator ->
+            mihon.desktop.ui.home.ObserveHomeNavigationStack(navigator)
             val stack = remember(navigator) { VoyagerLibraryScreenStack(navigator) }
             DisposableEffect(stack) {
                 onStackAttached(stack)
@@ -54,6 +60,17 @@ internal class VoyagerLibraryNavigationHost(
         reselectHandler = handler
         return {
             if (reselectHandler === handler) reselectHandler = null
+        }
+    }
+
+    override fun onCtrlReleased() {
+        ctrlReleaseHandler?.invoke()
+    }
+
+    override fun registerCtrlReleaseHandler(handler: () -> Unit): () -> Unit {
+        ctrlReleaseHandler = handler
+        return {
+            if (ctrlReleaseHandler === handler) ctrlReleaseHandler = null
         }
     }
 }

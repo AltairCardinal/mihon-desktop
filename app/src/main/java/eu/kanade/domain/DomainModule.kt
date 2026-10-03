@@ -267,7 +267,7 @@ class DomainModule : InjektModule {
         addFactory { SetExcludedScanlators(get()) }
         addFactory {
             MigrateMangaUseCase(
-                get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(),
+                get(), get(), get(), get(), get(), get(), get(), get(), get(),
             )
         }
 
@@ -286,7 +286,7 @@ class DomainModule : InjektModule {
         addFactory { InsertTrack(get()) }
         addFactory { SyncChapterProgressWithTrack(get(), get(), get()) }
 
-        addSingletonFactory<ChapterRepository> { ChapterRepositoryImpl(get()) }
+        addSingletonFactory<ChapterRepository> { ChapterRepositoryImpl(get(), get<CreatorLibraryIndexWriter>()) }
         addFactory { GetChapter(get()) }
         addFactory { GetChaptersByMangaId(get()) }
         addFactory { GetBookmarkedChaptersByMangaId(get()) }

@@ -124,9 +124,19 @@ class TrackerProviderWorkflow(
                 throw TrackerProviderException(TrackerProviderErrorKind.AUTHENTICATION)
             }
             when (request) {
-                is TrackerProviderRequest.Edit -> TrackerProviderResult.Success(
-                    port.update(port.refresh(request.track).apply(request.edit, port.configuration, clock())),
-                )
+                is TrackerProviderRequest.Edit -> {
+                    val fresh = port.refresh(request.track)
+                    val requested = request.edit.lastChapterRead
+                    if (request.edit.didReadChapter && requested != null &&
+                        readProgressTarget(fresh, requested) <= fresh.lastChapterRead
+                    ) {
+                        TrackerProviderResult.Success(fresh)
+                    } else {
+                        TrackerProviderResult.Success(
+                            port.update(fresh.apply(request.edit, port.configuration, clock())),
+                        )
+                    }
+                }
                 is TrackerProviderRequest.Delete -> {
                     if (!port.configuration.supportsDelete) {
                         throw UnsupportedOperationException("Tracker does not support remote deletion")
@@ -208,7 +218,8 @@ private fun Track.apply(edit: TrackEdit, configuration: TrackerProviderConfigura
         lastChapterRead = if (edit.status == configuration.completionStatus && totalChapters > 0) {
             totalChapters.toDouble()
         } else {
-            edit.lastChapterRead ?: lastChapterRead
+            edit.lastChapterRead?.let { if (edit.didReadChapter) readProgressTarget(this, it) else it }
+                ?: lastChapterRead
         },
         startDate = edit.startDate ?: startDate,
         finishDate = edit.finishDate ?: finishDate,

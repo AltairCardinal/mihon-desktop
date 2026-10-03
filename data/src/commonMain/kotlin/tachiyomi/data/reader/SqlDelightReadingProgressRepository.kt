@@ -16,6 +16,7 @@ import mihon.domain.sync.SyncProjection
 import mihon.domain.sync.SyncReadingPolicy
 import mihon.domain.sync.SyncReadingSession
 import tachiyomi.data.Database
+import tachiyomi.data.chapter.readChapterUrlIdentity
 import tachiyomi.domain.reader.model.ReadingProgressEvent
 import tachiyomi.domain.reader.model.ReadingResumePosition
 import tachiyomi.domain.reader.model.ReadingSyncScope
@@ -57,13 +58,15 @@ class SqlDelightReadingProgressRepository(private val database: Database) : Read
         val position = SyncReadingPolicy.chooseResume(projection, SyncReadingSession(key, "", 0, ""))
             .nextPosition ?: return@transactionWithResult null
         val chapter = database.chaptersQueries.getChaptersByMangaId(mangaId, 0).executeAsList().find {
-            SyncObjectKey(
-                SyncObjectType.CHAPTER,
-                sourceId = manga.source.toString(),
-                originalUrl = it.url,
-                parentUrl = manga.url,
-            ).stableKey ==
-                position.chapterKey
+            val identity = database.readChapterUrlIdentity(it._id)
+            (identity.aliases + identity.canonicalUrl + it.url).distinct().any { url ->
+                SyncObjectKey(
+                    SyncObjectType.CHAPTER,
+                    sourceId = manga.source.toString(),
+                    originalUrl = url,
+                    parentUrl = manga.url,
+                ).stableKey == position.chapterKey
+            }
         } ?: return@transactionWithResult null
         ReadingResumePosition(chapter._id, position.pageIndex, syncSnapshot(chapter._id))
     }

@@ -18,6 +18,13 @@ import java.util.concurrent.TimeUnit
 
 class TestNavigationControllerTest {
 
+    @Test
+    fun `legacy author requests target Browse rather than a sixth root`() {
+        assertTrue(TestNavigationController.navigateToTab("AuthorsTab"))
+        assertEquals(mihon.desktop.ui.browse.BrowseTab, TestNavigationController.getTabOrNull("AuthorsTab"))
+        assertEquals(mihon.desktop.ui.browse.BrowseTab, TestNavigationController.getTabOrNull("Authors"))
+    }
+
     @AfterEach
     fun tearDown() {
         TestNavigationController.reset()

@@ -24,6 +24,26 @@ import rx.Observable
 class SourceApiBinaryContractTest {
 
     @Test
+    fun `old combined update constructor retains its two argument JVM ABI and complete default`() {
+        val manga = SManga.create().apply {
+            url = "/legacy"
+            title = "Legacy"
+        }
+        val chapters = listOf(
+            SChapter.create().apply {
+                url = "/1"
+                name = "Chapter 1"
+            },
+        )
+        val constructor = SMangaUpdate::class.java.getConstructor(SManga::class.java, List::class.java)
+        val result = constructor.newInstance(manga, chapters)
+        assertSame(manga, result.manga)
+        assertSame(chapters, result.chapters)
+        assertTrue(result.chapterListComplete)
+        assertEquals(false, SMangaUpdate(manga, chapters, false).chapterListComplete)
+    }
+
+    @Test
     fun `model factories and copies preserve manga and chapter memo`() {
         assertTrue(SManga.create().memo.isEmpty())
         assertTrue(SChapter.create().memo.isEmpty())

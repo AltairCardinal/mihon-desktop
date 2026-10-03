@@ -116,7 +116,7 @@ object SourceDateQualityPolicy {
         now: Long,
     ): List<SourceDateObservation> {
         val cutoff = now - DIAGNOSTIC_RETENTION_MILLIS
-        val recent = observations.filter { it.observedAt >= cutoff }
+        val recent = observations.distinct().filter { it.observedAt >= cutoff }
         val retainedValid = recent
             .filter { isQualityEvidence(it, now) }
             .groupBy(SourceDateObservation::identity)

@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.util.lang
 
 import android.content.Context
+import eu.kanade.domain.ui.model.UiDateFormat
 import tachiyomi.core.common.i18n.pluralStringResource
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
@@ -11,7 +12,6 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
-import java.time.temporal.ChronoUnit
 import java.util.Date
 import kotlin.math.absoluteValue
 
@@ -47,24 +47,20 @@ fun LocalDate.toRelativeString(
     context: Context,
     relative: Boolean = true,
     dateFormat: DateTimeFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT),
+    today: LocalDate = LocalDate.now(),
 ): String {
-    if (!relative) {
-        return dateFormat.format(this)
-    }
-    val now = LocalDate.now()
-    val difference = ChronoUnit.DAYS.between(this, now)
+    val difference = UiDateFormat.relativeDays(this, today, relative) ?: return dateFormat.format(this)
     return when {
-        difference < -7 -> dateFormat.format(this)
         difference < 0 -> context.pluralStringResource(
             MR.plurals.upcoming_relative_time,
-            difference.toInt().absoluteValue,
-            difference.toInt().absoluteValue,
+            difference.absoluteValue,
+            difference.absoluteValue,
         )
         difference < 1 -> context.stringResource(MR.strings.relative_time_today)
         difference < 7 -> context.pluralStringResource(
             MR.plurals.relative_time,
-            difference.toInt(),
-            difference.toInt(),
+            difference,
+            difference,
         )
         else -> dateFormat.format(this)
     }

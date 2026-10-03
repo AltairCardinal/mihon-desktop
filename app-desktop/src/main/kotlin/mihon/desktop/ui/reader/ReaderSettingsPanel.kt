@@ -1,7 +1,5 @@
 package mihon.desktop.ui.reader
 
-import tachiyomi.i18n.MR
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,6 +50,7 @@ import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
+import tachiyomi.i18n.MR
 
 /**
  * Reader settings dialog with three tabs, mirroring Android's reader bottom sheet:
@@ -101,6 +100,7 @@ fun ReaderSettingsPanel(
     onSkipDuplicateChaptersChange: (Boolean) -> Unit = {},
     onZoomChange: (ZoomState) -> Unit,
     onDismiss: () -> Unit,
+    feedback: String? = null,
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf(
@@ -114,6 +114,7 @@ fun ReaderSettingsPanel(
         title = { Text(MR.strings.desktop_ui_reader_settings.localized()) },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
+                feedback?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 TabRow(selectedTabIndex = selectedTab) {
                     tabs.forEachIndexed { index, title ->
                         Tab(
@@ -222,7 +223,13 @@ internal fun GeneralTab(
             )
         }
         if (currentMode == ReadingMode.AUTO) {
-            Text(if (isDualPage) MR.strings.desktop_reader_default_dual.localized() else MR.strings.desktop_reader_default_single.localized())
+            Text(
+                if (isDualPage) {
+                    MR.strings.desktop_reader_default_dual.localized()
+                } else {
+                    MR.strings.desktop_reader_default_single.localized()
+                },
+            )
             Text(MR.strings.desktop_reader_default_summary.localized(), style = MaterialTheme.typography.bodySmall)
         }
     }
@@ -322,7 +329,11 @@ internal fun GeneralTab(
     SettingsSection(MR.strings.desktop_ui_zoom.localized()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { onZoomChange(zoomState.zoomOut()) }) {
-                Icon(Icons.Default.ZoomOut, contentDescription = MR.strings.desktop_ui_zoom_out.localized(), tint = Color.Unspecified)
+                Icon(
+                    Icons.Default.ZoomOut,
+                    contentDescription = MR.strings.desktop_ui_zoom_out.localized(),
+                    tint = Color.Unspecified,
+                )
             }
             Text(
                 text = "×${"%.1f".format(zoomState.scale)}",
@@ -330,10 +341,18 @@ internal fun GeneralTab(
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
             IconButton(onClick = { onZoomChange(zoomState.zoomIn()) }) {
-                Icon(Icons.Default.ZoomIn, contentDescription = MR.strings.desktop_ui_zoom_in.localized(), tint = Color.Unspecified)
+                Icon(
+                    Icons.Default.ZoomIn,
+                    contentDescription = MR.strings.desktop_ui_zoom_in.localized(),
+                    tint = Color.Unspecified,
+                )
             }
             IconButton(onClick = { onZoomChange(zoomState.reset()) }) {
-                Icon(Icons.Outlined.FitScreen, contentDescription = MR.strings.desktop_ui_reset_zoom.localized(), tint = Color.Unspecified)
+                Icon(
+                    Icons.Outlined.FitScreen,
+                    contentDescription = MR.strings.desktop_ui_reset_zoom.localized(),
+                    tint = Color.Unspecified,
+                )
             }
         }
     }
@@ -507,7 +526,13 @@ private fun RadioRow(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CheckboxRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, indented: Boolean = false, enabled: Boolean = true) {
+private fun CheckboxRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    indented: Boolean = false,
+    enabled: Boolean = true,
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier

@@ -29,7 +29,14 @@ internal fun desktopSourceErrorMessage(
         MR.strings.desktop_ui_download_rate_limited_seconds.localized(locale, it)
     } ?: MR.strings.desktop_ui_download_rate_limited.localized(locale)
     is AppError.Server -> MR.strings.desktop_ui_download_server_error.localized(locale, error.statusCode)
-    is AppError.MalformedData -> MR.strings.desktop_ui_download_malformed_error.localized(locale)
+    is AppError.MalformedData -> if (error.cause.hasCause {
+            it is tachiyomi.domain.chapter.service.ChapterDirectoryDownloadConflictException
+        }
+    ) {
+        MR.strings.desktop_directory_download_conflict.localized(locale)
+    } else {
+        MR.strings.desktop_ui_download_malformed_error.localized(locale)
+    }
     AppError.NoResults -> MR.strings.no_results_found.localized(locale)
     else -> MR.strings.unknown_error.localized(locale)
 }

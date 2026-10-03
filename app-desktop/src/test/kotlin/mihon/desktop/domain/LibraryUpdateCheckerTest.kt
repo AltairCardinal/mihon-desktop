@@ -6,10 +6,9 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
-import kotlinx.coroutines.runBlocking
 import io.mockk.coVerify
 import io.mockk.mockk
-import mihon.desktop.domain.fakes.FakeChapterRepository
+import kotlinx.coroutines.runBlocking
 import mihon.domain.error.AppError
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -25,9 +24,19 @@ import tachiyomi.domain.manga.model.Manga
 import java.io.IOException
 
 class LibraryUpdateCheckerTest {
-    private fun checker(chapterRepository: FakeChapterRepository) = LibraryUpdateChecker(
+    private lateinit var storage: DirectorySqlFixture
+
+    @org.junit.jupiter.api.BeforeEach fun openStorage() {
+        storage = DirectorySqlFixture(manga())
+    }
+
+    @org.junit.jupiter.api.AfterEach fun closeStorage() {
+        storage.close()
+    }
+
+    private fun checker(chapterRepository: DirectorySqlFixture.ChapterFixture) = LibraryUpdateChecker(
         chapterRepository,
-        mihon.desktop.domain.fakes.FakeMangaRepository().apply { seed(manga()) },
+        storage.mangas.apply { seed(manga()) },
     )
 
     private val sourceId = 42L
@@ -55,21 +64,28 @@ class LibraryUpdateCheckerTest {
         Manga.create().copy(id = id, url = url, source = sourceId, title = "Test", favorite = true)
 
     private fun sChapter(url: String, name: String = "Ch") =
-        SChapter.create().apply { this.url = url; this.name = name }
+        SChapter.create().apply {
+            this.url = url
+            this.name = name
+        }
 
     @Test
     fun `adds new chapters not already in DB`() = runBlocking<Unit> {
-        val chapterRepo = FakeChapterRepository()
+        val chapterRepo = storage.chapters
         // DB already has ch-1
-        chapterRepo.addAll(listOf(
-            Chapter.create().copy(mangaId = 1L, url = "/ch/1", name = "Ch 1"),
-        ))
+        chapterRepo.addAll(
+            listOf(
+                Chapter.create().copy(mangaId = 1L, url = "/ch/1", name = "Ch 1"),
+            ),
+        )
 
-        val source = StubSource(listOf(
-            sChapter("/ch/1", "Ch 1"),
-            sChapter("/ch/2", "Ch 2"),
-            sChapter("/ch/3", "Ch 3"),
-        ))
+        val source = StubSource(
+            listOf(
+                sChapter("/ch/1", "Ch 1"),
+                sChapter("/ch/2", "Ch 2"),
+                sChapter("/ch/3", "Ch 3"),
+            ),
+        )
 
         val checker = checker(chapterRepo)
         val result = checker.checkForUpdates(manga(), source)
@@ -81,10 +97,12 @@ class LibraryUpdateCheckerTest {
 
     @Test
     fun `returns zero when no new chapters`() = runBlocking<Unit> {
-        val chapterRepo = FakeChapterRepository()
-        chapterRepo.addAll(listOf(
-            Chapter.create().copy(mangaId = 1L, url = "/ch/1", name = "Ch 1"),
-        ))
+        val chapterRepo = storage.chapters
+        chapterRepo.addAll(
+            listOf(
+                Chapter.create().copy(mangaId = 1L, url = "/ch/1", name = "Ch 1"),
+            ),
+        )
 
         val source = StubSource(listOf(sChapter("/ch/1", "Ch 1")))
 
@@ -96,8 +114,8 @@ class LibraryUpdateCheckerTest {
 
     @Test
     fun `successful update records complete catalogue facts`() = runBlocking<Unit> {
-        val chapterRepo = FakeChapterRepository()
-        val mangaRepo = mihon.desktop.domain.fakes.FakeMangaRepository().apply { seed(manga()) }
+        val chapterRepo = storage.chapters
+        val mangaRepo = storage.mangas.apply { seed(manga()) }
         val archive = mockk<CreatorArchiveRepository>(relaxed = true)
         val latest = sChapter("/ch/latest").apply { date_upload = 1_790_000_000_000L }
         val checker = LibraryUpdateChecker(
@@ -137,10 +155,12 @@ class LibraryUpdateCheckerTest {
 
     @Test
     fun `handles empty source chapter list`() = runBlocking<Unit> {
-        val chapterRepo = FakeChapterRepository()
-        chapterRepo.addAll(listOf(
-            Chapter.create().copy(mangaId = 1L, url = "/ch/1", name = "Ch 1"),
-        ))
+        val chapterRepo = storage.chapters
+        chapterRepo.addAll(
+            listOf(
+                Chapter.create().copy(mangaId = 1L, url = "/ch/1", name = "Ch 1"),
+            ),
+        )
 
         val source = StubSource(emptyList())
         val checker = checker(chapterRepo)
@@ -151,11 +171,13 @@ class LibraryUpdateCheckerTest {
 
     @Test
     fun `assigns correct sourceOrder to new chapters`() = runBlocking<Unit> {
-        val chapterRepo = FakeChapterRepository()
-        val source = StubSource(listOf(
-            sChapter("/ch/1", "Ch 1"),
-            sChapter("/ch/2", "Ch 2"),
-        ))
+        val chapterRepo = storage.chapters
+        val source = StubSource(
+            listOf(
+                sChapter("/ch/1", "Ch 1"),
+                sChapter("/ch/2", "Ch 2"),
+            ),
+        )
 
         val checker = checker(chapterRepo)
         checker.checkForUpdates(manga(), source)
@@ -169,11 +191,13 @@ class LibraryUpdateCheckerTest {
 
     @Test
     fun `recognizes chapter numbers from source chapter names during library update`() = runBlocking<Unit> {
-        val chapterRepo = FakeChapterRepository()
-        val source = StubSource(listOf(
-            sChapter("/ch/16", "第16卷"),
-            sChapter("/ch/22", "第22卷"),
-        ))
+        val chapterRepo = storage.chapters
+        val source = StubSource(
+            listOf(
+                sChapter("/ch/16", "第16卷"),
+                sChapter("/ch/22", "第22卷"),
+            ),
+        )
 
         val checker = checker(chapterRepo)
         checker.checkForUpdates(
@@ -186,17 +210,19 @@ class LibraryUpdateCheckerTest {
 
     @Test
     fun `updates existing unrecognized chapter numbers during library update`() = runBlocking<Unit> {
-        val chapterRepo = FakeChapterRepository()
+        val chapterRepo = storage.chapters
         chapterRepo.addAll(
             listOf(
                 Chapter.create().copy(mangaId = 1L, url = "/ch/16", name = "第16卷", chapterNumber = -1.0),
                 Chapter.create().copy(mangaId = 1L, url = "/ch/22", name = "第22卷", chapterNumber = -1.0),
             ),
         )
-        val source = StubSource(listOf(
-            sChapter("/ch/16", "第16卷"),
-            sChapter("/ch/22", "第22卷"),
-        ))
+        val source = StubSource(
+            listOf(
+                sChapter("/ch/16", "第16卷"),
+                sChapter("/ch/22", "第22卷"),
+            ),
+        )
 
         val checker = checker(chapterRepo)
         checker.checkForUpdates(
@@ -209,11 +235,13 @@ class LibraryUpdateCheckerTest {
 
     @Test
     fun `result includes inserted chapter models with correct URLs`() = runBlocking<Unit> {
-        val chapterRepo = FakeChapterRepository()
-        val source = StubSource(listOf(
-            sChapter("/ch/1", "Ch 1"),
-            sChapter("/ch/2", "Ch 2"),
-        ))
+        val chapterRepo = storage.chapters
+        val source = StubSource(
+            listOf(
+                sChapter("/ch/1", "Ch 1"),
+                sChapter("/ch/2", "Ch 2"),
+            ),
+        )
 
         val checker = checker(chapterRepo)
         val result = checker.checkForUpdates(manga(), source)
@@ -226,10 +254,12 @@ class LibraryUpdateCheckerTest {
 
     @Test
     fun `result newChapters is empty when no new chapters`() = runBlocking<Unit> {
-        val chapterRepo = FakeChapterRepository()
-        chapterRepo.addAll(listOf(
-            Chapter.create().copy(mangaId = 1L, url = "/ch/1", name = "Ch 1"),
-        ))
+        val chapterRepo = storage.chapters
+        chapterRepo.addAll(
+            listOf(
+                Chapter.create().copy(mangaId = 1L, url = "/ch/1", name = "Ch 1"),
+            ),
+        )
         val source = StubSource(listOf(sChapter("/ch/1")))
 
         val checker = checker(chapterRepo)
@@ -240,7 +270,7 @@ class LibraryUpdateCheckerTest {
 
     @Test
     fun `source network failure remains structured for scheduler and notification presentation`() = runBlocking<Unit> {
-        val result = checker(FakeChapterRepository()).checkForUpdates(
+        val result = checker(storage.chapters).checkForUpdates(
             manga(),
             StubSource(emptyList(), failure = IOException("connection reset")),
         )

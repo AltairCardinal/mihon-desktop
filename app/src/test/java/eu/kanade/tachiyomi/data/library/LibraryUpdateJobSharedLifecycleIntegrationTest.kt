@@ -83,6 +83,16 @@ import java.util.concurrent.TimeUnit
 class LibraryUpdateJobSharedLifecycleIntegrationTest {
 
     @Test
+    fun `actual library worker characterizes smart restrictions fetch once and zero chapter eligibility`() {
+        runBlocking { verifyMemoWorker(metadata = false, smartRules = true) }
+    }
+
+    @Test
+    fun `library worker recovers category deletion before scope and retries persistent refusal`() = runBlocking {
+        verifyMemoWorker(metadata = false, recoveryGate = true)
+    }
+
+    @Test
     fun `library worker reaches real combined chapter update and stores memo`() = runBlocking {
         verifyMemoWorker(metadata = false)
     }
@@ -92,14 +102,25 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
         verifyMemoWorker(metadata = true)
     }
 
-    private suspend fun verifyMemoWorker(metadata: Boolean) {
+    private suspend fun verifyMemoWorker(
+        metadata: Boolean,
+        recoveryGate: Boolean = false,
+        smartRules: Boolean = false,
+    ) {
         Injekt = InjektScope(DefaultRegistrar())
         Injekt.addSingleton(mockk<SecurityPreferences>(relaxed = true))
-        Injekt.addSingleton(mockk<DownloadManager>(relaxed = true))
+        val downloads = mockk<DownloadManager>(relaxed = true)
+        coEvery {
+            downloads.withDirectoryChanges(
+                any(),
+                any<suspend () -> tachiyomi.domain.chapter.service.ChapterDirectoryResult>(),
+            )
+        } coAnswers { secondArg<suspend () -> tachiyomi.domain.chapter.service.ChapterDirectoryResult>()() }
+        Injekt.addSingleton(downloads)
         Injekt.addSingleton(mockk<CoverCache>(relaxed = true))
         Injekt.addSingleton(
             mockk<FetchInterval> {
-                every { getWindow(any()) } returns (0L to Long.MAX_VALUE)
+                every { getWindow(any()) } returns (0L to if (smartRules) 10_000L else Long.MAX_VALUE)
             },
         )
         Injekt.addSingleton(mockk<FilterChaptersForDownload>(relaxed = true))
@@ -141,10 +162,44 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
                         ),
                     ),
                 )
+                if (smartRules) {
+                    val extra = storage.mangas.insertNetworkManga(
+                        listOf("once", "completed", "unread", "unstarted", "future", "zero").map { name ->
+                            Manga.create().copy(
+                                source = 42,
+                                url = "/$name",
+                                title = name,
+                                favorite = true,
+                                initialized = true,
+                                status = if (name == "completed") 2 else 1,
+                                nextUpdate = if (name == "future") Long.MAX_VALUE else 0,
+                                updateStrategy = if (name ==
+                                    "once"
+                                ) {
+                                    eu.kanade.tachiyomi.source.model.UpdateStrategy.ONLY_FETCH_ONCE
+                                } else {
+                                    eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE
+                                },
+                            )
+                        },
+                    )
+                    storage.chapters.addAll(
+                        extra.filter { it.title in setOf("once", "unread", "unstarted") }.map {
+                            tachiyomi.domain.chapter.model.Chapter.create().copy(
+                                mangaId = it.id,
+                                url = "/old",
+                                name = "Old",
+                                chapterNumber = 1.0,
+                                read = it.title == "once",
+                            )
+                        },
+                    )
+                }
                 val memo = kotlinx.serialization.json.Json.parseToJsonElement(
                     """{"worker":"memo"}""",
                 ) as kotlinx.serialization.json.JsonObject
                 var calls = 0
+                val calledUrls = mutableListOf<String>()
                 val source = object : Source {
                     override val id = 42L
                     override val name = "Worker source"
@@ -155,18 +210,78 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
                         fetchChapters: Boolean,
                     ): eu.kanade.tachiyomi.source.model.SMangaUpdate {
                         calls++
+                        calledUrls += manga.url
                         assertEquals(metadata, fetchDetails)
                         assertEquals(!metadata, fetchChapters)
                         manga.memo = memo
-                        chapters.single().memo = memo
-                        return eu.kanade.tachiyomi.source.model.SMangaUpdate(manga, chapters)
+                        val response = chapters.ifEmpty {
+                            listOf(
+                                eu.kanade.tachiyomi.source.model.SChapter.create().apply {
+                                    url = "/first"
+                                    name = "First"
+                                    chapter_number = 1.0f
+                                },
+                            )
+                        }
+                        response.forEach { it.memo = memo }
+                        return eu.kanade.tachiyomi.source.model.SMangaUpdate(manga, response)
                     }
                 }
-                val preferences = libraryPreferences()
-                every { preferences.autoUpdateMetadata().get() } returns false
-                every { preferences.markDuplicateReadChapterAsRead().get() } returns emptySet()
-                every { preferences.updateMangaTitles().get() } returns false
+                var rejectRecovery = false
+                val actualStore = tachiyomi.core.common.preference.AndroidPreferenceStore(
+                    context,
+                    context.getSharedPreferences("worker-category-${System.nanoTime()}", Context.MODE_PRIVATE),
+                )
+                val faultStore = object : tachiyomi.core.common.preference.PreferenceStore by actualStore {
+                    override fun getStringSet(key: String, defaultValue: Set<String>): Preference<Set<String>> {
+                        val actual = actualStore.getStringSet(key, defaultValue)
+                        return object : Preference<Set<String>> by actual {
+                            override fun set(value: Set<String>) {
+                                if (rejectRecovery &&
+                                    key == "library_update_categories_exclude"
+                                ) {
+                                    error("Category reference cleanup refused")
+                                }
+                                actual.set(value)
+                            }
+                        }
+                    }
+                }
+                val preferences = if (smartRules) {
+                    LibraryPreferences(actualStore)
+                } else if (recoveryGate) {
+                    LibraryPreferences(faultStore).also {
+                        storage.categories.insert(
+                            tachiyomi.domain.category.model.Category(0, "Confirmed deleted", 0, 0),
+                        )
+                        val category = storage.categories.getAll().single { category ->
+                            category.name == "Confirmed deleted"
+                        }
+                        assertEquals(1L, category.id)
+                        storage.categories.delete(category.id)
+                        it.autoUpdateMangaRestrictions().set(emptySet())
+                        it.updateCategoriesExclude().set(setOf("1"))
+                        it.categoryDeletionPending().set(setOf("1"))
+                    }
+                } else {
+                    libraryPreferences().also {
+                        every { it.autoUpdateMetadata().get() } returns false
+                        every { it.markDuplicateReadChapterAsRead().get() } returns emptySet()
+                        every { it.updateMangaTitles().get() } returns false
+                        every { it.disallowNonAsciiFilenames().get() } returns false
+                        every { it.categoryDeletionPending() } returns
+                            LibraryPreferences(actualStore).categoryDeletionPending()
+                    }
+                }
                 Injekt.addSingleton(preferences)
+                Injekt.addSingleton(
+                    tachiyomi.domain.category.interactor.DeleteCategory(
+                        storage.categories,
+                        preferences,
+                        tachiyomi.domain.download.service.DownloadPreferences(actualStore),
+                    ),
+                )
+                rejectRecovery = recoveryGate
                 Injekt.addSingleton<SourceManager>(
                     mockk {
                         every { get(42) } returns source
@@ -179,7 +294,7 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
                 Injekt.addSingleton<tachiyomi.domain.chapter.repository.ChapterRepository>(storage.chapters)
                 Injekt.addSingleton(
                     SyncChaptersWithSource(
-                        mockk(relaxed = true), mockk(relaxed = true), storage.chapters,
+                        downloads, mockk(relaxed = true), storage.chapters,
                         tachiyomi.domain.chapter.interactor.ShouldUpdateDbChapter(), storage.updateManga,
                         tachiyomi.domain.chapter.interactor.UpdateChapter(storage.chapters), storage.getChapters,
                         eu.kanade.domain.manga.interactor.GetExcludedScanlators(storage.handler), preferences,
@@ -191,7 +306,7 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
                 )
                 assertEquals(
                     "real library query must include the seeded manga",
-                    1,
+                    if (smartRules) 7 else 1,
                     Injekt.get<GetLibraryManga>().await().size,
                 )
                 assertEquals(source, Injekt.get<SourceManager>().getOrStub(42))
@@ -200,8 +315,21 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
                 } else {
                     TestListenableWorkerBuilder<LibraryUpdateJob>(context).setTags(listOf(WORK_NAME_MANUAL)).build()
                 }
-                worker.doWork()
-                assertEquals("worker must call the combined source API once", 1, calls)
+                if (recoveryGate) {
+                    assertEquals(ListenableWorker.Result.retry(), worker.doWork())
+                    assertEquals("Unrecovered references must not enter the source update", 0, calls)
+                    assertEquals(setOf("1"), preferences.categoryDeletionPending().get())
+                    rejectRecovery = false
+                    TestListenableWorkerBuilder<LibraryUpdateJob>(
+                        context,
+                    ).setTags(listOf(WORK_NAME_MANUAL)).build().doWork()
+                    assertTrue(preferences.categoryDeletionPending().get().isEmpty())
+                    assertTrue(preferences.updateCategoriesExclude().get().isEmpty())
+                } else {
+                    worker.doWork()
+                }
+                assertEquals("worker must call only the eligible combined source API", if (smartRules) 2 else 1, calls)
+                if (smartRules) assertEquals(setOf("/manga", "/zero"), calledUrls.toSet())
                 assertEquals(memo, storage.mangas.getMangaById(manga.id).memo)
                 val chapter = storage.chapters.getChapterByMangaId(manga.id).single()
                 assertEquals(memo, chapter.memo)
@@ -562,6 +690,17 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
     }
 
     private fun registerWorkerDependencies() {
+        val recoveryStore = tachiyomi.core.common.preference.AndroidPreferenceStore(
+            context,
+            context.getSharedPreferences("startup-recovery-${System.nanoTime()}", Context.MODE_PRIVATE),
+        )
+        Injekt.addSingleton(
+            tachiyomi.domain.category.interactor.DeleteCategory(
+                mockk(relaxed = true),
+                LibraryPreferences(recoveryStore),
+                tachiyomi.domain.download.service.DownloadPreferences(recoveryStore),
+            ),
+        )
         Injekt.addSingleton<SourceManager>(EmptySourceManager())
         Injekt.addSingleton(mockk<SecurityPreferences>(relaxed = true))
         Injekt.addSingleton(mockk<DownloadManager>(relaxed = true))

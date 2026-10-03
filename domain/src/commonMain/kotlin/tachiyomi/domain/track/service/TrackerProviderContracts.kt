@@ -6,6 +6,10 @@ package tachiyomi.domain.track.service
  * their remote representations have one source of truth here.
  */
 object TrackerProviderContracts {
+    /** AniList stores explicit POINT_100; every other provider stores its already-decoded ten-point score. */
+    fun tenPointScore(trackerId: Long, storedScore: Double): Double =
+        if (trackerId == 2L) storedScore / 10.0 else storedScore
+
     val androidProviderIds = (1L..9L).toList()
 
     fun authentication(id: Long): TrackerAuthentication = when (id) {

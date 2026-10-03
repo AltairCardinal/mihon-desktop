@@ -1,59 +1,70 @@
 package mihon.desktop.download
 
-import io.kotest.matchers.shouldBe
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
-import okhttp3.OkHttpClient
-import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
-import mockwebserver3.SocketEffect
-import okhttp3.Response
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
-import java.io.File
-import java.io.IOException
-import java.nio.file.AccessDeniedException
-import java.nio.file.AtomicMoveNotSupportedException
-import mihon.domain.error.AppError
-import mihon.desktop.domain.DesktopNotificationService
-import mihon.desktop.domain.DesktopSystemNotifier
-import mihon.domain.reader.content.DownloadChapterIdentity
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import mihon.desktop.domain.DesktopNotificationService
+import mihon.desktop.domain.DesktopSystemNotifier
+import mihon.domain.error.AppError
+import mihon.domain.reader.content.DownloadChapterIdentity
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import mockwebserver3.SocketEffect
+import okhttp3.OkHttpClient
+import okhttp3.Response
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.data.Database
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.data.download.PersistentDownloadStore
+import java.io.File
+import java.io.IOException
+import java.nio.file.AccessDeniedException
+import java.nio.file.AtomicMoveNotSupportedException
 
 class DesktopDownloadRetryIntegrationTest {
+
+    private val fixtureDownloadPreferences = DesktopDownloadPreferences(InMemoryPreferenceStore())
+
     @TempDir lateinit var directory: File
 
     @Test
     fun `page list boundary failures persist structured errors notify and retry clears them`(): Unit = runBlocking {
         val cases = listOf(
             "missing source" to SourceCase(null, AppError.Unknown::class),
-            "missing chapter url" to SourceCase(PageSource { emptyList() }, AppError.MalformedData::class, chapterUrl = ""),
-            "source error" to SourceCase(PageSource { throw IllegalStateException("bad payload") }, AppError.MalformedData::class),
+            "missing chapter url" to
+                SourceCase(PageSource { emptyList() }, AppError.MalformedData::class, chapterUrl = ""),
+            "source error" to
+                SourceCase(PageSource { throw IllegalStateException("bad payload") }, AppError.MalformedData::class),
             "empty pages" to SourceCase(PageSource { emptyList() }, AppError.MalformedData::class),
             "source timeout" to SourceCase(PageSource { awaitCancellation() }, AppError.Network::class, timeoutMs = 10),
         )
         cases.forEach { (_, case) ->
             val delivered = mutableListOf<mihon.desktop.domain.DesktopNotification>()
-            val notifier = DesktopSystemNotifier(system = { delivered += it; true }, fallback = DesktopNotificationService())
+            val notifier =
+                DesktopSystemNotifier(system = {
+                    delivered += it
+                    true
+                }, fallback = DesktopNotificationService())
             val manager = DesktopDownloadManager(
+                downloadPreferences = fixtureDownloadPreferences,
                 provider = DesktopDownloadProvider(File(directory, java.util.UUID.randomUUID().toString())),
                 httpClient = OkHttpClient(),
                 workerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
@@ -80,6 +91,7 @@ class DesktopDownloadRetryIntegrationTest {
         val dbFile = File(directory, "source-failure.db")
         val store = persistentStore(dbFile)
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = DesktopDownloadProvider(File(directory, "source-failure-downloads")),
             httpClient = OkHttpClient(),
             workerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
@@ -93,6 +105,7 @@ class DesktopDownloadRetryIntegrationTest {
 
         (persistentStore(dbFile).entries().single().failure is AppError.Unknown) shouldBe true
         val restarted = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = DesktopDownloadProvider(File(directory, "source-failure-downloads")),
             store = persistentStore(dbFile),
             sourceResolver = { null },
@@ -119,7 +132,9 @@ class DesktopDownloadRetryIntegrationTest {
                 job.cancel()
                 delays shouldBe listOf(2_000L, 4_000L, 8_000L)
                 server.requestCount shouldBe 4
-            } finally { server.close() }
+            } finally {
+                server.close()
+            }
         }
     }
 
@@ -168,7 +183,13 @@ class DesktopDownloadRetryIntegrationTest {
             Triple(500, null, AppError.Server::class),
         ).forEach { (code, retryAfter, type) ->
             val server = MockWebServer().apply {
-                repeat(4) { enqueue(MockResponse.Builder().code(code).apply { retryAfter?.let { addHeader("Retry-After", it) } }.build()) }
+                repeat(4) {
+                    enqueue(
+                        MockResponse.Builder().code(code).apply {
+                            retryAfter?.let { addHeader("Retry-After", it) }
+                        }.build(),
+                    )
+                }
                 start()
             }
             try {
@@ -181,7 +202,9 @@ class DesktopDownloadRetryIntegrationTest {
                 type.java.isInstance(failure) shouldBe true
                 if (failure is AppError.RateLimited) failure.retryAfterSeconds shouldBe 23
                 if (failure is AppError.Server) failure.statusCode shouldBe 500
-            } finally { server.close() }
+            } finally {
+                server.close()
+            }
         }
     }
 
@@ -192,7 +215,10 @@ class DesktopDownloadRetryIntegrationTest {
             IOException("No space left on device") to AppError.Storage::class,
             IllegalStateException("unexpected") to AppError.Unknown::class,
         ).forEach { (thrown, type) ->
-            val server = MockWebServer().apply { repeat(4) { enqueue(MockResponse(body = PNG)) }; start() }
+            val server = MockWebServer().apply {
+                repeat(4) { enqueue(MockResponse(body = PNG)) }
+                start()
+            }
             try {
                 val ops = object : DownloadFileOperations by DefaultDownloadFileOperations {
                     override fun writePage(tmp: File, bytes: ByteArray): Unit = throw thrown
@@ -203,13 +229,18 @@ class DesktopDownloadRetryIntegrationTest {
                 awaitError(manager)
                 job.cancel()
                 type.java.isInstance(manager.queue.value.single().failure) shouldBe true
-            } finally { server.close() }
+            } finally {
+                server.close()
+            }
         }
     }
 
     @Test
     fun `cancelled item is not overwritten by a late worker failure`(): Unit = runBlocking {
-        val server = MockWebServer().apply { enqueue(MockResponse(body = PNG)); start() }
+        val server = MockWebServer().apply {
+            enqueue(MockResponse(body = PNG))
+            start()
+        }
         val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
         val release = kotlinx.coroutines.CompletableDeferred<Unit>()
         val writeFinished = kotlinx.coroutines.CompletableDeferred<Unit>()
@@ -280,6 +311,7 @@ class DesktopDownloadRetryIntegrationTest {
             }
         }
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             httpClient = OkHttpClient.Builder().retryOnConnectionFailure(false).build(),
             workerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
@@ -333,28 +365,42 @@ class DesktopDownloadRetryIntegrationTest {
             awaitEmpty(manager)
             manager.failures.value.containsKey(chapter.chapterId) shouldBe false
             job.cancel()
-        } finally { server.close() }
+        } finally {
+            server.close()
+        }
     }
 
     @Test
     fun `terminal failure emits actionable notification`(): Unit = runBlocking {
-        val server = MockWebServer().apply { repeat(4) { enqueue(MockResponse(code = 403)) }; start() }
+        val server = MockWebServer().apply {
+            repeat(4) { enqueue(MockResponse(code = 403)) }
+            start()
+        }
         val delivered = mutableListOf<mihon.desktop.domain.DesktopNotification>()
         try {
-            val notifier = DesktopSystemNotifier(system = { delivered += it; true }, fallback = DesktopNotificationService())
+            val notifier =
+                DesktopSystemNotifier(system = {
+                    delivered += it
+                    true
+                }, fallback = DesktopNotificationService())
             val manager = manager(server, mutableListOf(), notifier = notifier)
             manager.enqueue(item(server))
             val job = manager.start()
             awaitError(manager)
             job.cancel()
             delivered.single().message shouldBe "服务器拒绝访问（HTTP 403），请检查登录或源设置后重试"
-        } finally { server.close() }
+        } finally {
+            server.close()
+        }
     }
 
     @Test
     fun `execute body read page write and final rename failures each use 2 4 8 retry policy`(): Unit = runBlocking {
         FailurePoint.entries.forEach { point ->
-            val server = MockWebServer().apply { repeat(4) { enqueue(MockResponse(body = PNG)) }; start() }
+            val server = MockWebServer().apply {
+                repeat(4) { enqueue(MockResponse(body = PNG)) }
+                start()
+            }
             val delays = mutableListOf<Long>()
             try {
                 val operations = FaultOperations(point)
@@ -365,7 +411,9 @@ class DesktopDownloadRetryIntegrationTest {
                 job.cancel()
                 delays shouldBe listOf(2_000L, 4_000L, 8_000L)
                 operations.failedStageAttempts shouldBe 4
-            } finally { server.close() }
+            } finally {
+                server.close()
+            }
         }
     }
 
@@ -381,6 +429,7 @@ class DesktopDownloadRetryIntegrationTest {
         val conflictingBytes = "GIF89aCONFLICT".toByteArray()
         val workerParent = SupervisorJob()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             httpClient = OkHttpClient(),
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -410,7 +459,11 @@ class DesktopDownloadRetryIntegrationTest {
             (failure is AppError.Storage) shouldBe true
             (failure.cause is ChapterPublishConflictException) shouldBe true
             File(finalDirectory, "001.gif").readBytes().contentEquals(conflictingBytes) shouldBe true
-            File(provider.canonicalChapterTmpDir(identity), "001.gif").readBytes().contentEquals(PNG.toByteArray()) shouldBe true
+            File(
+                provider.canonicalChapterTmpDir(identity),
+                "001.gif",
+            ).readBytes().contentEquals(PNG.toByteArray()) shouldBe
+                true
             server.requestCount shouldBe 1
         } finally {
             manager.stopAndJoin()
@@ -420,7 +473,7 @@ class DesktopDownloadRetryIntegrationTest {
     }
 
     @Test
-    fun `identical existing final is adopted without replacing it`() = runBlocking {
+    fun `identical existing final is adopted without replacing it`() = runBlocking<Unit> {
         val server = MockWebServer().apply {
             enqueue(MockResponse(body = PNG))
             start()
@@ -431,6 +484,7 @@ class DesktopDownloadRetryIntegrationTest {
         var renameCalls = 0
         val workerParent = SupervisorJob()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             httpClient = OkHttpClient(),
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -474,7 +528,7 @@ class DesktopDownloadRetryIntegrationTest {
     }
 
     @Test
-    fun `unsupported atomic chapter move keeps private pages and exposes typed storage failure`() = runBlocking {
+    fun `unsupported atomic chapter move keeps private pages and exposes typed storage failure`() = runBlocking<Unit> {
         val server = MockWebServer().apply {
             enqueue(MockResponse(body = PNG))
             start()
@@ -483,6 +537,7 @@ class DesktopDownloadRetryIntegrationTest {
         val identity = downloadIdentity("atomic-move")
         val workerParent = SupervisorJob()
         val manager = DesktopDownloadManager(
+            downloadPreferences = fixtureDownloadPreferences,
             provider = provider,
             httpClient = OkHttpClient(),
             workerScope = CoroutineScope(workerParent + Dispatchers.Default),
@@ -550,7 +605,8 @@ class DesktopDownloadRetryIntegrationTest {
         notifier: DesktopSystemNotifier? = null,
     ) =
         DesktopDownloadManager(
-            DesktopDownloadProvider(File(directory, server.port.toString())),
+            downloadPreferences = fixtureDownloadPreferences,
+            provider = DesktopDownloadProvider(File(directory, server.port.toString())),
             httpClient = OkHttpClient.Builder().retryOnConnectionFailure(false).build(),
             workerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
             retryDelay = { delays += it },
@@ -578,7 +634,13 @@ class DesktopDownloadRetryIntegrationTest {
         }
     }
 
-    private fun item(server: MockWebServer) = DownloadItem(1, "Manga", "Chapter", server.port.toLong(), pageUrls = listOf(server.url("/page.gif").toString()))
+    private fun item(server: MockWebServer) = DownloadItem(
+        1,
+        "Manga",
+        "Chapter",
+        server.port.toLong(),
+        pageUrls = listOf(server.url("/page.gif").toString()),
+    )
     private fun downloadIdentity(suffix: String) = DownloadChapterIdentity(
         sourceDisplayName = "Retry Source $suffix",
         mangaTitle = "Retry Manga $suffix",
@@ -590,14 +652,34 @@ class DesktopDownloadRetryIntegrationTest {
     private fun persistentStore(file: File): PersistentDownloadStore {
         val driver = JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}")
         runCatching { Database.Schema.create(driver) }
-        return PersistentDownloadStore(Database(
-            driver,
-            historyAdapter = tachiyomi.data.History.Adapter(DateColumnAdapter),
-            mangasAdapter = tachiyomi.data.Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
-        ))
+        return PersistentDownloadStore(
+            Database(
+                driver,
+                historyAdapter = tachiyomi.data.History.Adapter(DateColumnAdapter),
+                mangasAdapter = tachiyomi.data.Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+            ),
+        )
     }
-    private suspend fun awaitEmpty(manager: DesktopDownloadManager) { repeat(200) { if (manager.queue.value.isEmpty()) return; delay(10) } }
-    private suspend fun awaitError(manager: DesktopDownloadManager) { repeat(200) { if (manager.queue.value.singleOrNull()?.status == DownloadStatus.ERROR) return; delay(10) } }
+    private suspend fun awaitEmpty(
+        manager: DesktopDownloadManager,
+    ) {
+        repeat(200) {
+            if (manager.queue.value.isEmpty()) return
+            delay(10)
+        }
+    }
+    private suspend fun awaitError(
+        manager: DesktopDownloadManager,
+    ) {
+        repeat(200) {
+            if (manager.queue.value.singleOrNull()?.status ==
+                DownloadStatus.ERROR
+            ) {
+                return
+            }
+            delay(10)
+        }
+    }
 
     private enum class FailurePoint { EXECUTE, BODY, WRITE, RENAME }
     private data class SourceCase(
@@ -616,7 +698,11 @@ class DesktopDownloadRetryIntegrationTest {
         override suspend fun getMangaDetails(manga: SManga) = manga
         override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
         override suspend fun getPopularManga(page: Int) = MangasPage(emptyList(), false)
-        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList) = MangasPage(emptyList(), false)
+        override suspend fun getSearchManga(
+            page: Int,
+            query: String,
+            filters: FilterList,
+        ) = MangasPage(emptyList(), false)
         override suspend fun getLatestUpdates(page: Int) = MangasPage(emptyList(), false)
         override fun getFilterList() = FilterList()
     }

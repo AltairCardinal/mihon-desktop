@@ -1,5 +1,8 @@
 package eu.kanade.tachiyomi.ui.category
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -15,8 +18,12 @@ import eu.kanade.presentation.category.components.CategoryDeleteDialog
 import eu.kanade.presentation.category.components.CategoryRenameDialog
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.util.system.toast
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.collectLatest
+import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.screens.EmptyScreen
+import tachiyomi.presentation.core.screens.EmptyScreenAction
 import tachiyomi.presentation.core.screens.LoadingScreen
 
 class CategoryScreen : Screen() {
@@ -28,6 +35,27 @@ class CategoryScreen : Screen() {
         val screenModel = rememberScreenModel { CategoryScreenModel() }
 
         val state by screenModel.state.collectAsState()
+
+        LaunchedEffect(Unit) {
+            screenModel.events.collectLatest { event ->
+                if (event is CategoryEvent.LocalizedMessage) {
+                    context.toast(event.stringRes)
+                }
+            }
+        }
+
+        if (state is CategoryScreenState.RecoveryError) {
+            EmptyScreen(
+                stringRes = MR.strings.internal_error,
+                actions = persistentListOf(
+                    EmptyScreenAction(MR.strings.action_retry, Icons.Outlined.Refresh, screenModel::retryRecovery),
+                    EmptyScreenAction(MR.strings.action_bar_up_description, Icons.AutoMirrored.Outlined.ArrowBack) {
+                        navigator.pop()
+                    },
+                ),
+            )
+            return
+        }
 
         if (state is CategoryScreenState.Loading) {
             LoadingScreen()
@@ -68,14 +96,6 @@ class CategoryScreen : Screen() {
                     onDelete = { screenModel.deleteCategory(dialog.category.id) },
                     category = dialog.category.name,
                 )
-            }
-        }
-
-        LaunchedEffect(Unit) {
-            screenModel.events.collectLatest { event ->
-                if (event is CategoryEvent.LocalizedMessage) {
-                    context.toast(event.stringRes)
-                }
             }
         }
     }

@@ -131,7 +131,12 @@ import mihon.domain.sync.transport.SyncRepositoryTarget
 import tachiyomi.i18n.MR
 
 @Composable
-fun SyncToolbarButton(state: SyncPanelState, modifier: Modifier = Modifier, onOpen: () -> Unit) {
+fun SyncToolbarButton(
+    state: SyncPanelState,
+    modifier: Modifier = Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Outlined.Sync,
+    onOpen: () -> Unit,
+) {
     val busyDescription = if (state.busy) syncString(MR.strings.sync_busy) else ""
     Box(Modifier.size(48.dp)) {
         IconButton(
@@ -153,7 +158,7 @@ fun SyncToolbarButton(state: SyncPanelState, modifier: Modifier = Modifier, onOp
                 0f
             }
             Icon(
-                Icons.Outlined.Sync,
+                icon,
                 syncString(MR.strings.sync_title),
                 Modifier.rotate(rotation).then(if (state.busy) Modifier.testTag("sync-busy") else Modifier),
             )

@@ -284,8 +284,11 @@ class DesktopReaderRuntimeFactory internal constructor(
         onProductionClosed = onProductionClosed,
         pairingCoordinator = pairingCoordinator,
         persistViewerFlags = { targetMangaId, flags ->
-            mangaRepository?.update(MangaUpdate(id = targetMangaId, viewerFlags = flags))
+            check(requireNotNull(mangaRepository).update(MangaUpdate(id = targetMangaId, viewerFlags = flags))) {
+                "Unable to save this manga's reading mode"
+            }
         },
+        readViewerFlags = { targetMangaId -> mangaRepository?.getMangaById(targetMangaId)?.viewerFlags },
     )
 
     fun createScreenModel(

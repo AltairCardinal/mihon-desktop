@@ -193,15 +193,11 @@ class MigrationListScreenModelBatchWiringTest {
             trackerManager = trackerManager,
             sourceManager = sourceManager,
             downloadManager = mockk<DownloadManager>(relaxed = true),
-            updateManga = mockk<UpdateManga>(relaxed = true),
-            getChaptersByMangaId = getChapters,
             syncChaptersWithSource = mockk<SyncChaptersWithSource>(relaxed = true),
-            updateChapter = mockk<UpdateChapter>(relaxed = true),
-            getCategories = mockk<GetCategories>(relaxed = true),
-            setMangaCategories = mockk<SetMangaCategories>(relaxed = true),
             getTracks = getTracks,
             insertTrack = mockk<InsertTrack>(relaxed = true),
             coverCache = mockk<CoverCache>(relaxed = true),
+            mangaRepository = mockk(relaxed = true),
         )
         val screenModel = modelHost.create {
             MigrationListScreenModel(

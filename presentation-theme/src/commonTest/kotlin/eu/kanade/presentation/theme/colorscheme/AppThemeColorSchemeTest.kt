@@ -12,6 +12,40 @@ import kotlin.test.assertSame
 class AppThemeColorSchemeTest {
 
     @Test
+    fun `fixed catalog includes fourteen static themes in upstream order`() {
+        assertEquals(
+            listOf(
+                "DEFAULT",
+                "CATPPUCCIN",
+                "GREEN_APPLE",
+                "LAVENDER",
+                "MIDNIGHT_DUSK",
+                "NORD",
+                "STRAWBERRY_DAIQUIRI",
+                "TAKO",
+                "TEALTURQUOISE",
+                "TIDAL_WAVE",
+                "YINYANG",
+                "YOTSUBA",
+                "TOKYONIGHT",
+                "MONOCHROME",
+            ),
+            eu.kanade.domain.ui.model.selectableAppThemes(false).map { it.name },
+        )
+    }
+
+    @Test
+    fun `Catppuccin secondary tertiary and Nord outline preserve frozen roles`() {
+        val dark = AppThemeColorScheme.colorScheme(AppTheme.CATPPUCCIN, true, false)
+        val light = AppThemeColorScheme.colorScheme(AppTheme.CATPPUCCIN, false, false)
+        assertEquals(Color(0xFFB4BEFE), dark.secondary)
+        assertEquals(Color(0xFFA6E3A1), dark.tertiary)
+        assertEquals(Color(0xFF7287FD), light.secondary)
+        assertEquals(Color(0xFF40A02B), light.tertiary)
+        assertEquals(Color(0xFFD8DEE9), AppThemeColorScheme.colorScheme(AppTheme.NORD, false, false).outlineVariant)
+    }
+
+    @Test
     fun `every static app theme selects its fixed main palette`() {
         val palettes = mapOf(
             AppTheme.DEFAULT to TachiyomiColorScheme,
@@ -27,6 +61,7 @@ class AppThemeColorSchemeTest {
             AppTheme.TIDAL_WAVE to TidalWaveColorScheme,
             AppTheme.YINYANG to YinYangColorScheme,
             AppTheme.YOTSUBA to YotsubaColorScheme,
+            AppTheme.TOKYONIGHT to TokyoNightColorScheme,
         )
 
         palettes.forEach { (theme, palette) ->

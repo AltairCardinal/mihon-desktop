@@ -1,23 +1,28 @@
 package mihon.desktop.ui.library
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
-import androidx.compose.material3.MaterialTheme
 import cafe.adriel.voyager.core.screen.Screen
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.yield
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
+import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.domain.SortMode
 import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.ui.migration.LibraryBatchMigrationConfigScreen
-import mihon.desktop.domain.SortMode
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.category.interactor.SetMangaCategories
+import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.interactor.LibraryFilter
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.model.Manga
@@ -51,7 +56,10 @@ class LibraryParityIntegrationTest {
             selected = { selected },
             queue = { emptyList() },
             launch = { task -> launch { task() } },
-            enqueue = { _, action, _ -> downloaded = action },
+            enqueue = { _, action, _ ->
+                downloaded = action
+                true
+            },
             navigate = { destination = it },
             clear = {},
         )
@@ -70,10 +78,19 @@ class LibraryParityIntegrationTest {
         click(scene, "Download")
         scene.render()
 
-        listOf("Next 1 chapter", "Next 5 chapters", "Next 10 chapters", "Next 25 chapters", "All unread chapters", "Bookmarked chapters")
+        listOf(
+            "Next 1 chapter",
+            "Next 5 chapters",
+            "Next 10 chapters",
+            "Next 25 chapters",
+            "All unread chapters",
+            "Bookmarked chapters",
+        )
             .forEach { label -> assertTrue(nodes(scene).any { it.config.toString().contains(label) }, label) }
         click(scene, "Next 1 chapter")
-        click(scene, "Migrate")
+        click(scene, MR.strings.action_menu.localized())
+        scene.render()
+        click(scene, MR.strings.migrate.localized())
         yield()
         assertEquals(MangaDetailDownloadAction.NEXT_1_CHAPTER, downloaded)
         val config = destination as? LibraryBatchMigrationConfigScreen
@@ -82,7 +99,7 @@ class LibraryParityIntegrationTest {
     }
 
     @Test
-    fun `selection download clears selection before starting asynchronous work`() = runBlocking {
+    fun `selection download clears selection only after successful asynchronous work`() = runBlocking {
         var cleared = false
         var clearedBeforeEnqueue = false
         val selected = listOf(libraryManga(Manga.create().copy(id = 1L, title = "Remote", source = 7L)))
@@ -90,26 +107,33 @@ class LibraryParityIntegrationTest {
             selected = { selected },
             queue = { emptyList() },
             launch = { task -> runBlocking { task() } },
-            enqueue = { _, _, _ -> clearedBeforeEnqueue = cleared },
+            enqueue = { _, _, _ ->
+                clearedBeforeEnqueue = cleared
+                true
+            },
             navigate = {},
             clear = { cleared = true },
         )
 
         actions.download(MangaDetailDownloadAction.NEXT_1_CHAPTER)
 
-        assertTrue(clearedBeforeEnqueue)
+        assertTrue(!clearedBeforeEnqueue)
+        assertTrue(cleared)
     }
 
     @Test
-    fun `mark operation captures selection and clears before asynchronous work`() = runBlocking {
+    fun `mark operation captures selection and clears after successful asynchronous work`() = runBlocking {
         var cleared = false
         var idsSeenByOperation: Set<Long>? = null
 
-        clearSelectionBeforeAsync(
+        clearSelectionAfterAsync(
             selectedIds = setOf(1L, 2L),
             clear = { cleared = true },
             launch = { task -> runBlocking { task() } },
-            operation = { ids -> idsSeenByOperation = ids },
+            operation = { ids ->
+                idsSeenByOperation = ids
+                true
+            },
         )
 
         assertTrue(cleared)
@@ -117,7 +141,7 @@ class LibraryParityIntegrationTest {
     }
 
     @Test
-    fun `remove operation captures target and clears before asynchronous work`() = runBlocking {
+    fun `remove operation captures target and clears after successful asynchronous work`() = runBlocking {
         var cleared = false
         var idsSeenByOperation: List<Long>? = null
         val items = listOf(
@@ -125,11 +149,14 @@ class LibraryParityIntegrationTest {
             libraryManga(Manga.create().copy(id = 2L, title = "Second")),
         )
 
-        clearSelectionBeforeRemoval(
+        clearSelectionAfterRemoval(
             items = items,
             clear = { cleared = true },
             launch = { task -> runBlocking { task() } },
-            operation = { ids -> idsSeenByOperation = ids },
+            operation = { ids ->
+                idsSeenByOperation = ids
+                true
+            },
         )
 
         assertTrue(cleared)
@@ -166,7 +193,7 @@ class LibraryParityIntegrationTest {
     @Test
     fun `range selection is scoped to the last category anchor`() {
         val selection = LibrarySelectionState()
-        val visibleIds = listOf(10L, 20L, 30L, 40L, 50L)
+        val visibleIds = listOf(20L, 30L, 40L, 50L, 60L)
 
         selection.toggle(10L, categoryId = 1L)
         selection.handlePrimaryClick(
@@ -186,7 +213,7 @@ class LibraryParityIntegrationTest {
             categoryId = 2L,
             onOpen = {},
         )
-        assertEquals(setOf(10L, 20L, 40L, 60L), selection.selectedIds)
+        assertEquals(setOf(10L, 40L), selection.selectedIds)
 
         selection.handlePrimaryClick(
             visibleIds = visibleIds,
@@ -195,7 +222,7 @@ class LibraryParityIntegrationTest {
             categoryId = 2L,
             onOpen = {},
         )
-        assertEquals(setOf(10L, 20L, 30L, 40L, 60L), selection.selectedIds)
+        assertEquals(setOf(10L, 30L, 40L), selection.selectedIds)
     }
 
     @Test
@@ -210,7 +237,6 @@ class LibraryParityIntegrationTest {
         assertEquals(listOf(2L), result.failures.map { it.id })
         assertEquals(listOf(7L), repository.getMangaCategoryIds(3L))
     }
-
 
     @Test
     fun `library model exposes batch category partial failure to UI`() = runTest {
@@ -274,37 +300,42 @@ class LibraryParityIntegrationTest {
         var fullRefreshes = 0
         val scene = ImageComposeScene(1_400, 240) {}
         scene.setContent {
-            LibraryToolbar(
-                searchQuery = "",
-                onSearchChange = {},
-                sortMode = SortMode.TITLE,
-                sortAscending = true,
-                onSortChange = { _, _ -> },
-                filter = LibraryFilter(),
-                availableTrackerIds = emptySet(),
-                onToggleFilter = {},
-                onToggleTracking = {},
-                isUpdating = false,
-                displayMode = LibraryDisplayMode.COMPACT_GRID,
-                onDisplayModeChange = {},
-                onManageCategories = {},
-                onOpenGlobalSearch = {},
-                onOpenSettings = {},
-                categories = listOf(Category(1L, "Action", 0L, 0L)),
-                onRandomManga = {},
-                onRefresh = { currentRefreshes++ },
-                onRefreshAll = { fullRefreshes++ },
-            )
+            CompositionLocalProvider(
+                LocalDesktopUiDependencies provides mockk<DesktopUiDependencies>(relaxed = true) {
+                    every { syncPanel } returns null
+                },
+            ) {
+                LibraryToolbar(
+                    searchQuery = "",
+                    onSearchChange = {},
+                    sortMode = SortMode.TITLE,
+                    sortAscending = true,
+                    onSortChange = { _, _ -> },
+                    filter = LibraryFilter(),
+                    availableTrackerIds = emptySet(),
+                    onToggleFilter = {},
+                    onToggleTracking = {},
+                    isUpdating = false,
+                    displayMode = LibraryDisplayMode.COMPACT_GRID,
+                    onDisplayModeChange = {},
+                    onOpenGlobalSearch = {},
+                    onOpenSettings = {},
+                    categories = listOf(Category(1L, "Action", 0L, 0L)),
+                    onRandomManga = {},
+                    onRefresh = { currentRefreshes++ },
+                    onRefreshAll = { fullRefreshes++ },
+                )
+            }
         }
         scene.render()
 
-        click(scene, MR.strings.check_for_updates.localized())
+        click(scene, MR.strings.action_menu.localized())
+        scene.render()
+        click(scene, MR.strings.action_update_category.localized())
+        scene.render()
+        click(scene, MR.strings.action_menu.localized())
         scene.render()
         click(scene, MR.strings.action_update_library.localized())
-        scene.render()
-        click(scene, MR.strings.check_for_updates.localized())
-        scene.render()
-        click(scene, MR.strings.ext_update_all.localized())
 
         assertEquals(1, currentRefreshes)
         assertEquals(1, fullRefreshes)
@@ -317,31 +348,38 @@ class LibraryParityIntegrationTest {
         var refreshes = 0
         val scene = ImageComposeScene(1_400, 240) {}
         scene.setContent {
-            LibraryToolbar(
-                searchQuery = "",
-                onSearchChange = {},
-                sortMode = SortMode.TITLE,
-                sortAscending = true,
-                onSortChange = { _, _ -> },
-                filter = LibraryFilter(),
-                availableTrackerIds = emptySet(),
-                onToggleFilter = {},
-                onToggleTracking = {},
-                isUpdating = true,
-                displayMode = LibraryDisplayMode.COMPACT_GRID,
-                onDisplayModeChange = {},
-                onManageCategories = {},
-                onOpenGlobalSearch = {},
-                onOpenSettings = {},
-                categories = listOf(Category(1L, "Action", 0L, 0L)),
-                onRandomManga = {},
-                onRefresh = { refreshes++ },
-                onRefreshAll = {},
-            )
+            CompositionLocalProvider(
+                LocalDesktopUiDependencies provides mockk<DesktopUiDependencies>(relaxed = true) {
+                    every { syncPanel } returns null
+                },
+            ) {
+                LibraryToolbar(
+                    searchQuery = "",
+                    onSearchChange = {},
+                    sortMode = SortMode.TITLE,
+                    sortAscending = true,
+                    onSortChange = { _, _ -> },
+                    filter = LibraryFilter(),
+                    availableTrackerIds = emptySet(),
+                    onToggleFilter = {},
+                    onToggleTracking = {},
+                    isUpdating = true,
+                    displayMode = LibraryDisplayMode.COMPACT_GRID,
+                    onDisplayModeChange = {},
+                    onOpenGlobalSearch = {},
+                    onOpenSettings = {},
+                    categories = listOf(Category(1L, "Action", 0L, 0L)),
+                    onRandomManga = {},
+                    onRefresh = { refreshes++ },
+                    onRefreshAll = {},
+                )
+            }
         }
         scene.render()
 
-        click(scene, MR.strings.check_for_updates.localized())
+        click(scene, MR.strings.action_menu.localized())
+        scene.render(System.nanoTime())
+        click(scene, MR.strings.action_update_category.localized())
 
         assertEquals(1, refreshes)
         scene.close()

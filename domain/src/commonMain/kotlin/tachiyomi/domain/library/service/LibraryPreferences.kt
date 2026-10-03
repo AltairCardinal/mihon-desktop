@@ -156,6 +156,12 @@ class LibraryPreferences(
 
     fun defaultCategory() = preferenceStore.getInt(DEFAULT_CATEGORY_PREF_KEY, -1)
 
+    /** Confirmed category deletions whose finite reference cleanup has not completed. */
+    fun categoryDeletionPending() = preferenceStore.getStringSet(
+        Preference.appStateKey("category_deletion_pending"),
+        emptySet(),
+    )
+
     fun lastUsedCategory() = preferenceStore.getInt(Preference.appStateKey("last_used_category"), 0)
 
     fun categoryTabs() = preferenceStore.getBoolean("display_category_tabs", true)

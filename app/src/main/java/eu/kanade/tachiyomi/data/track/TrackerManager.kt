@@ -33,7 +33,7 @@ import java.io.IOException
 
 class TrackerManager internal constructor(
     private val trackerOverride: List<Tracker>? = null,
-    private val persist: suspend (Track) -> Unit = { Injekt.get<InsertTrack>().await(it) },
+    private val persist: suspend (Track) -> Unit = { Injekt.get<InsertTrack>().awaitOrThrow(it) },
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
 
@@ -88,6 +88,7 @@ class TrackerManager internal constructor(
                     TrackerProviderErrorKind.NOT_CONFIGURED,
                 ),
             )
+        var persisted = false
         val port = object : TrackerProviderPort {
             override val configuration = tracker.configuration()
             override val session = requireNotNull(session(tracker.id))
@@ -96,6 +97,7 @@ class TrackerManager internal constructor(
             override suspend fun update(track: Track): Track {
                 val updated = requireNotNull(tracker.update(track.toDbTrack(), false).toDomainTrack(idRequired = false))
                 persist(updated)
+                persisted = true
                 return updated
             }
             override suspend fun delete(track: Track) {
@@ -103,7 +105,9 @@ class TrackerManager internal constructor(
                     ?: throw UnsupportedOperationException("Tracker does not support remote deletion")
             }
         }
-        return TrackerProviderWorkflow(clock, ::classify).execute(port, request)
+        val result = TrackerProviderWorkflow(clock, ::classify).execute(port, request)
+        if (!persisted) (result as? TrackerProviderResult.Success)?.track?.let { persist(it) }
+        return result
     }
 
     private fun Tracker.configuration() = TrackerProviderConfiguration(

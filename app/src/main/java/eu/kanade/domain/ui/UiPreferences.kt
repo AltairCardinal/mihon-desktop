@@ -3,13 +3,12 @@ package eu.kanade.domain.ui
 import eu.kanade.domain.ui.model.TabletUiMode
 import eu.kanade.domain.ui.model.ThemeDefaults
 import eu.kanade.domain.ui.model.ThemePreferenceCodec
+import eu.kanade.domain.ui.model.UiDateFormat
 import eu.kanade.tachiyomi.util.system.DeviceUtil
 import eu.kanade.tachiyomi.util.system.isDynamicColorAvailable
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.getEnum
 import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
-import java.util.Locale
 
 class UiPreferences(
     private val preferenceStore: PreferenceStore,
@@ -40,9 +39,6 @@ class UiPreferences(
     fun imagesInDescription() = preferenceStore.getBoolean("pref_render_images_description", true)
 
     companion object {
-        fun dateFormat(format: String): DateTimeFormatter = when (format) {
-            "" -> DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT)
-            else -> DateTimeFormatter.ofPattern(format, Locale.getDefault())
-        }
+        fun dateFormat(format: String): DateTimeFormatter = UiDateFormat.formatter(format)
     }
 }

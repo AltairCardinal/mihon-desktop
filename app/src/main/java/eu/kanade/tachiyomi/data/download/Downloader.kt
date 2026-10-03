@@ -110,10 +110,17 @@ class Downloader(
     @Volatile
     var isPaused: Boolean = false
 
-    init {
-        scope.launch {
-            val chapters = store.restore()
-            addAllToQueue(chapters)
+    @Volatile private var restoreFailure: Throwable? = null
+    private val restoreJob = scope.launch {
+        val chapters = store.restore()
+        addAllToQueue(chapters)
+    }.also { job -> job.invokeOnCompletion { restoreFailure = it } }
+
+    internal suspend fun awaitQueueRestored() {
+        restoreJob.join()
+        if (restoreJob.isCancelled) {
+            throw restoreFailure
+                ?: IllegalStateException("Download queue initialization failed")
         }
     }
 
@@ -313,6 +320,39 @@ class Downloader(
                 DownloadJob.start(context)
             }
         }
+    }
+
+    /** Persists directory work before publishing it; ordinary queue commands retain their existing API. */
+    internal fun queueDirectoryChapters(manga: Manga, chapters: List<Chapter>, autoStart: Boolean): Boolean {
+        if (chapters.isEmpty()) return true
+        val source = sourceManager.get(manga.source) as? HttpSource ?: return false
+        val existing = queueState.value
+        val toConfirm = mutableListOf<Download>()
+        val toAdd = mutableListOf<Download>()
+        for (chapter in chapters.sortedByDescending { it.sourceOrder }) {
+            val queued = existing.singleOrNull { it.chapter.id == chapter.id }
+            if (queued != null) {
+                if (queued.manga.id != manga.id || queued.source.id != manga.source ||
+                    queued.chapter.url != chapter.url
+                ) {
+                    return false
+                }
+                toConfirm.add(queued)
+            } else if (provider.findChapterDir(chapter.name, chapter.scanlator, chapter.url, manga.title, source) ==
+                null
+            ) {
+                val download = Download(source, manga, chapter)
+                toConfirm.add(download)
+                toAdd.add(download)
+            }
+        }
+        if (toConfirm.isNotEmpty() && !store.addAllConfirmed(toConfirm)) return false
+        if (toAdd.isNotEmpty()) {
+            toAdd.forEach { it.status = Download.State.QUEUE }
+            _queueState.update { it + toAdd }
+        }
+        if (autoStart && existing.isEmpty() && toAdd.isNotEmpty()) DownloadJob.start(context)
+        return true
     }
 
     /**

@@ -9,10 +9,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.manga.interactor.GetManga
-import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.interactor.DeleteTrack
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.domain.track.interactor.InsertTrack
+import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.service.EnhancedTrackerManga
 import tachiyomi.domain.track.service.EnhancedTrackerService
 import tachiyomi.domain.track.service.EnhancedTrackerWorkflow
@@ -23,6 +23,7 @@ import tachiyomi.domain.track.service.TrackerProviderCatalog
 import tachiyomi.domain.track.service.TrackerProviderConfiguration
 import tachiyomi.domain.track.service.TrackerProviderErrorKind
 import tachiyomi.domain.track.service.TrackerProviderException
+import tachiyomi.domain.track.service.TrackerProviderPort
 import tachiyomi.domain.track.service.TrackerProviderRequest
 import tachiyomi.domain.track.service.TrackerProviderService
 import tachiyomi.domain.track.service.TrackerService
@@ -95,7 +96,9 @@ class TrackingScreenModel(
     private val mutableState = MutableStateFlow(TrackingState())
     val state: StateFlow<TrackingState> = mutableState.asStateFlow()
 
-    suspend fun load() {
+    suspend fun load() = operationMutex.withLock { loadLocal() }
+
+    private suspend fun loadLocal() {
         mutableState.value = mutableState.value.copy(loading = true, error = null)
         val enhancedManga: EnhancedTrackerManga?
         val tracks: Map<Long, Track>
@@ -118,7 +121,8 @@ class TrackingScreenModel(
             )
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
-            mutableState.value = mutableState.value.copy(loading = false, error = error.toTrackingMessage(TrackingMessage.LoadFailed))
+            mutableState.value =
+                mutableState.value.copy(loading = false, error = error.toTrackingMessage(TrackingMessage.LoadFailed))
             return
         }
         if (enhancedManga == null) return
@@ -139,6 +143,31 @@ class TrackingScreenModel(
                     error = error.toTrackingMessage(TrackingMessage.LoadFailed),
                 )
             }
+        }
+    }
+
+    suspend fun refresh() = operationMutex.withLock {
+        loadLocal()
+        if (state.value.error != null) return@withLock
+        mutableState.value = state.value.copy(loading = true, error = null, feedback = null)
+        var failure: TrackingMessage? = null
+        try {
+            state.value.services.filter { it.track != null }.forEach { item ->
+                try {
+                    val service = service(item.profile.id).requireAvailableAndLoggedIn()
+                    val provider = service as? TrackerProviderPort
+                        ?: failState(TrackingMessage.ServiceUnavailable)
+                    val refreshed = provider.refresh(requireNotNull(item.track))
+                    insertTrack.awaitOrThrow(refreshed)
+                    replaceTrack(item.profile.id, refreshed, TrackingMessage.Updated)
+                } catch (canceled: CancellationException) {
+                    throw canceled
+                } catch (error: Exception) {
+                    failure = error.toTrackingMessage(TrackingMessage.LoadFailed)
+                }
+            }
+        } finally {
+            mutableState.value = state.value.copy(loading = false, error = failure)
         }
     }
 
@@ -205,14 +234,19 @@ class TrackingScreenModel(
 
     private fun validateEdit(item: TrackingServiceState, track: Track, edit: TrackEdit) {
         edit.status?.let { status ->
-            if (item.statuses.none { it.first == status }) failArgument(TrackingMessage.UnsupportedStatus(item.profile.name))
+            if (item.statuses.none {
+                    it.first == status
+                }
+            ) {
+                failArgument(TrackingMessage.UnsupportedStatus(item.profile.name))
+            }
         }
         edit.score?.let { score ->
             if (item.scores.none { it == score }) failArgument(TrackingMessage.UnsupportedScore(item.profile.name))
         }
         edit.lastChapterRead?.let { chapter ->
             if (chapter < 0.0) failArgument(TrackingMessage.NegativeChapter)
-            val maximum = totalChapters?.takeIf { it > 0 } ?: track.totalChapters.takeIf { it > 0 }
+            val maximum = track.totalChapters.takeIf { it > 0 }
             if (maximum != null && chapter > maximum.toDouble()) {
                 failArgument(TrackingMessage.ChapterOutOfRange(maximum))
             }
@@ -221,7 +255,15 @@ class TrackingScreenModel(
 
     private fun replaceTrack(trackerId: Long, track: Track?, feedback: TrackingMessage) {
         mutableState.value = mutableState.value.copy(
-            services = mutableState.value.services.map { if (it.profile.id == trackerId) it.copy(track = track) else it },
+            services = mutableState.value.services.map {
+                if (it.profile.id ==
+                    trackerId
+                ) {
+                    it.copy(track = track)
+                } else {
+                    it
+                }
+            },
             error = null,
             feedback = feedback,
         )
@@ -229,7 +271,15 @@ class TrackingScreenModel(
 
     private fun replaceProfile(trackerId: Long, profile: TrackerProfile, feedback: TrackingMessage) {
         mutableState.value = mutableState.value.copy(
-            services = mutableState.value.services.map { if (it.profile.id == trackerId) it.copy(profile = profile) else it },
+            services = mutableState.value.services.map {
+                if (it.profile.id ==
+                    trackerId
+                ) {
+                    it.copy(profile = profile)
+                } else {
+                    it
+                }
+            },
             error = null,
             feedback = feedback,
         )

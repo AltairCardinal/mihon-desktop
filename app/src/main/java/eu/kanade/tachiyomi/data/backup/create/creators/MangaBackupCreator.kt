@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.data.backup.models.backupChapterMapper
 import eu.kanade.tachiyomi.data.backup.models.backupTrackMapper
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.chapter.readChapterUrlIdentity
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.history.interactor.GetHistory
 import tachiyomi.domain.manga.model.Manga
@@ -36,15 +37,23 @@ class MangaBackupCreator(
 
         if (options.chapters) {
             // Backup all the chapters
-            handler.awaitList {
+            mangaObject.chapters = handler.await(inTransaction = true) {
                 chaptersQueries.getChaptersByMangaId(
                     mangaId = manga.id,
-                    applyScanlatorFilter = 0, // false
+                    applyScanlatorFilter = 0,
                     mapper = backupChapterMapper,
-                )
+                ).executeAsList().map { backup ->
+                    val chapter = chaptersQueries.getChapterByUrlAndMangaId(
+                        chapterUrl = backup.url,
+                        mangaId = manga.id,
+                    ).executeAsOne()
+                    val identity = readChapterUrlIdentity(chapter._id)
+                    backup.copy(
+                        urlAliases = identity.aliases,
+                        canonicalUrl = identity.canonicalUrl.takeIf { identity.aliases.isNotEmpty() },
+                    )
+                }
             }
-                .takeUnless(List<BackupChapter>::isEmpty)
-                ?.let { mangaObject.chapters = it }
         }
 
         if (options.categories) {

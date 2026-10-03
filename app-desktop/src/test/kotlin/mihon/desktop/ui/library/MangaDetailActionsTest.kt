@@ -22,7 +22,6 @@ class MangaDetailActionsTest {
         assertEquals(
             listOf(
                 MangaDetailPrimaryActionType.TOGGLE_LIBRARY,
-                MangaDetailPrimaryActionType.EDIT_CATEGORIES,
                 MangaDetailPrimaryActionType.EDIT_FETCH_INTERVAL,
                 MangaDetailPrimaryActionType.TRACKING,
                 MangaDetailPrimaryActionType.OPEN_IN_BROWSER,
@@ -43,7 +42,6 @@ class MangaDetailActionsTest {
         )
 
         assertTrue(MangaDetailPrimaryActionType.TOGGLE_LIBRARY in actions)
-        assertFalse(MangaDetailPrimaryActionType.EDIT_CATEGORIES in actions)
         assertFalse(MangaDetailPrimaryActionType.EDIT_FETCH_INTERVAL in actions)
         assertFalse(MangaDetailPrimaryActionType.CONTINUE_READING in actions)
     }
@@ -71,9 +69,19 @@ class MangaDetailActionsTest {
             chapter(id = 3, sourceOrder = 3, read = true, bookmark = true),
         )
 
-        assertEquals(listOf(1L), chaptersForDownloadAction(chapters, MangaDetailDownloadAction.NEXT_1_CHAPTER).map { it.id })
-        assertEquals(listOf(1L, 2L), chaptersForDownloadAction(chapters, MangaDetailDownloadAction.UNREAD_CHAPTERS).map { it.id })
-        assertEquals(listOf(2L), chaptersForDownloadAction(chapters, MangaDetailDownloadAction.BOOKMARKED_CHAPTERS).map { it.id })
+        val manga = Manga.create().copy(chapterFlags = Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SORT_DESC)
+        fun select(bookmarked: Boolean = false, limit: Int? = null) =
+            tachiyomi.domain.library.selectManualDownloadChapters(
+                chapters,
+                manga,
+                bookmarked,
+                limit,
+                isQueued = { false },
+                isDownloaded = { false },
+            ).map { it.id }
+        assertEquals(listOf(1L), select(limit = 1))
+        assertEquals(listOf(1L, 2L), select())
+        assertEquals(listOf(2L, 3L), select(bookmarked = true))
     }
 
     @Test

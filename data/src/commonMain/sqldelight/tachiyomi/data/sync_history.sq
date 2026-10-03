@@ -32,7 +32,7 @@ WHERE target_key IN :targets AND space_id = :spaceId AND generation = :generatio
     AND actor_id = :actorId AND epoch = :epoch;
 
 getHistoryTarget:
-SELECT C._id AS chapter_id, M.source, M.url AS manga_url, C.url AS chapter_url
+SELECT C._id AS chapter_id, M.source, M.url AS manga_url, coalesce((SELECT max(A.canonical_url) FROM chapter_url_aliases A WHERE A.chapter_id = C._id HAVING count(DISTINCT A.canonical_url) = 1), C.url) AS chapter_url
 FROM history H JOIN chapters C ON C._id = H.chapter_id JOIN mangas M ON M._id = C.manga_id
 WHERE H._id = :historyId;
 

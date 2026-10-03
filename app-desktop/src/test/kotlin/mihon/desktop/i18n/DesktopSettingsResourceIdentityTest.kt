@@ -13,40 +13,41 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import dev.icerock.moko.resources.StringResource
-import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.domain.ui.model.selectableAppThemes
+import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
-import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.DesktopLocalizedNavigatorContent
 import mihon.desktop.DesktopOwnerIngressDependencies
+import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.OwnerUiDependencies
-import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.backup.AutoBackupInterval
 import mihon.desktop.backup.BackupPreview
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.backup.DesktopBackupRestorer
+import mihon.desktop.domain.fakes.FakeExtensionRepoRepository
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DownloadItem
-import mihon.desktop.domain.fakes.FakeExtensionRepoRepository
-import mihon.desktop.platform.CredentialBackend
-import mihon.desktop.platform.DesktopCredentialStore
-import mihon.desktop.platform.DesktopPlatformPaths
-import mihon.desktop.platform.DesktopLocaleAdapter
-import mihon.desktop.platform.DesktopNetworkHelper
-import mihon.desktop.platform.OperatingSystem
-import mihon.desktop.platform.PlatformCredentialUnavailableException
+import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.network.DesktopCloudflareCookieImportResult
 import mihon.desktop.network.DesktopNetworkMaintenancePort
+import mihon.desktop.platform.CredentialBackend
+import mihon.desktop.platform.DesktopCredentialStore
+import mihon.desktop.platform.DesktopLocaleAdapter
+import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.platform.DesktopPlatformPaths
+import mihon.desktop.platform.OperatingSystem
+import mihon.desktop.platform.PlatformCredentialUnavailableException
 import mihon.desktop.privacy.DesktopCapabilitySupport
 import mihon.desktop.privacy.DesktopPrivacyCapabilities
 import mihon.desktop.privacy.DesktopWindowPrivacy
@@ -57,29 +58,31 @@ import mihon.desktop.privacy.NativeAffinityQuery
 import mihon.desktop.privacy.WDA_NONE
 import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.settings.DesktopLibraryCategoryPolicy
 import mihon.desktop.settings.LibraryUpdateInterval
-import mihon.desktop.ui.settings.AppearanceSettingsScreen
+import mihon.desktop.tracking.DesktopAuthenticatingTrackerService
 import mihon.desktop.ui.settings.AboutScreen
-import mihon.desktop.ui.settings.AdvancedSettingsScreen
 import mihon.desktop.ui.settings.AdvancedSettingsPlatformActions
+import mihon.desktop.ui.settings.AdvancedSettingsScreen
+import mihon.desktop.ui.settings.AppearanceSettingsScreen
 import mihon.desktop.ui.settings.BackupPresentationText
 import mihon.desktop.ui.settings.BackupRestoreFailureReason
 import mihon.desktop.ui.settings.BackupRestoreScreenModel
 import mihon.desktop.ui.settings.BackupRestoreUiState
 import mihon.desktop.ui.settings.BackupSettingsScreen
+import mihon.desktop.ui.settings.DesktopUpdateScreenModel
 import mihon.desktop.ui.settings.DownloadSettingsScreen
 import mihon.desktop.ui.settings.ExtensionRepoScreen
 import mihon.desktop.ui.settings.GeneralSettingsScreen
+import mihon.desktop.ui.settings.LanguageSettingsScreen
 import mihon.desktop.ui.settings.LibrarySettingsScreen
 import mihon.desktop.ui.settings.LocalAdvancedSettingsPlatformActions
 import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.settings.ReaderSettingsScreen
 import mihon.desktop.ui.settings.SecuritySettingsScreen
-import mihon.desktop.ui.settings.DesktopUpdateScreenModel
-import mihon.desktop.ui.settings.presentation
 import mihon.desktop.ui.settings.backupPartialFailurePresentation
 import mihon.desktop.ui.settings.backupPresentationText
-import mihon.desktop.tracking.DesktopAuthenticatingTrackerService
+import mihon.desktop.ui.settings.presentation
 import mihon.desktop.ui.tracking.TrackingMessage
 import mihon.desktop.ui.tracking.TrackingSettingsScreen
 import mihon.desktop.ui.tracking.trackingMessageText
@@ -100,15 +103,16 @@ import mihon.domain.extensionrepo.interactor.ReplaceExtensionRepo
 import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import mihon.domain.task.TaskState
-import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
@@ -118,15 +122,16 @@ import tachiyomi.domain.release.model.Release
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackEdit
+import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.domain.track.service.TrackerAuthentication
 import tachiyomi.domain.track.service.TrackerProfile
 import tachiyomi.domain.track.service.TrackerService
 import tachiyomi.domain.track.service.TrackerServiceRegistry
-import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.i18n.MR
 import java.io.File
 import java.nio.file.Files
 import java.util.Locale
+import java.util.prefs.Preferences
 
 @OptIn(ExperimentalComposeUiApi::class)
 @org.junit.jupiter.api.parallel.Isolated
@@ -134,10 +139,12 @@ class DesktopSettingsResourceIdentityTest {
     private val originalLocale = Locale.getDefault()
     private val english = Locale.US
     private val chinese = Locale.forLanguageTag("zh-CN")
+    private var libraryPreferenceNode: Preferences? = null
 
     @AfterEach
     fun restoreLocale() {
         Locale.setDefault(originalLocale)
+        libraryPreferenceNode?.removeNode()
     }
 
     @Test
@@ -165,7 +172,8 @@ class DesktopSettingsResourceIdentityTest {
                     coEvery { getTracksByMangaId(42L) } returns listOf(track)
                 }
                 val service = mockk<TrackerService>(relaxed = true) {
-                    every { profile } returns MutableStateFlow(TrackerProfile(7L, "Test Service", TrackerAuthentication.OAUTH, true))
+                    every { profile } returns
+                        MutableStateFlow(TrackerProfile(7L, "Test Service", TrackerAuthentication.OAUTH, true))
                     every { statuses } returns listOf(1L to "Reading")
                     every { scores } returns listOf(10.0)
                 }
@@ -174,7 +182,9 @@ class DesktopSettingsResourceIdentityTest {
                     every { insertTrack } returns tachiyomi.domain.track.interactor.InsertTrack(repository)
                     every { deleteTrack } returns tachiyomi.domain.track.interactor.DeleteTrack(repository)
                     every { trackerServiceRegistry } returns
-                        object : TrackerServiceRegistry { override val services = listOf(service) }
+                        object : TrackerServiceRegistry {
+                            override val services = listOf(service)
+                        }
                 }
             }
 
@@ -185,14 +195,17 @@ class DesktopSettingsResourceIdentityTest {
                     TrackingMessage.Updated to MR.strings.desktop_tracking_updated.localized(locale),
                     TrackingMessage.Removed to MR.strings.desktop_tracking_removed.localized(locale),
                     TrackingMessage.LoggedOut to MR.strings.logout_success.localized(locale),
-                    TrackingMessage.SearchTitleEmpty to MR.strings.desktop_tracking_search_title_empty.localized(locale),
+                    TrackingMessage.SearchTitleEmpty to MR.strings.desktop_tracking_search_title_empty.localized(
+                        locale,
+                    ),
                     TrackingMessage.MangaRequired to MR.strings.desktop_tracking_manga_required.localized(locale),
                     TrackingMessage.NotBound to MR.strings.desktop_tracking_not_bound.localized(locale),
                     TrackingMessage.NegativeChapter to MR.strings.desktop_tracking_negative_chapter.localized(locale),
                     TrackingMessage.ChapterOutOfRange(12) to
                         MR.strings.desktop_tracking_chapter_out_of_range.localized(locale, 12L),
                     TrackingMessage.UnknownService to MR.strings.desktop_tracking_unknown_service.localized(locale),
-                    TrackingMessage.ServiceUnavailable to MR.strings.desktop_tracking_service_unavailable.localized(locale),
+                    TrackingMessage.ServiceUnavailable to
+                        MR.strings.desktop_tracking_service_unavailable.localized(locale),
                     TrackingMessage.LoginRequired to MR.strings.desktop_tracking_login_required.localized(locale),
                     TrackingMessage.LoginCancelled to MR.strings.desktop_tracking_login_cancelled.localized(locale),
                     TrackingMessage.LoginFailed to MR.strings.desktop_tracking_login_failed.localized(locale),
@@ -200,7 +213,10 @@ class DesktopSettingsResourceIdentityTest {
                     TrackingMessage.UnbindFailed to MR.strings.desktop_tracking_unbind_failed.localized(locale),
                 )
                 expected.forEach { (message, copy) -> assertEquals(copy, trackingMessageText(message, locale)) }
-                assertEquals("Provider 原始资料 #42", trackingMessageText(TrackingMessage.External("Provider 原始资料 #42"), locale))
+                assertEquals(
+                    "Provider 原始资料 #42",
+                    trackingMessageText(TrackingMessage.External("Provider 原始资料 #42"), locale),
+                )
 
                 val registry = object : TrackerServiceRegistry {
                     override val services = emptyList<TrackerService>()
@@ -244,9 +260,17 @@ class DesktopSettingsResourceIdentityTest {
         val serviceName = "Service parameter #29"
         try {
             listOf(english, chinese).forEach { locale ->
-                val unavailable = trackingService(1, "Unavailable provider", TrackerAuthentication.OAUTH, false, unavailableReason = unavailableReason)
+                val unavailable =
+                    trackingService(
+                        1,
+                        "Unavailable provider",
+                        TrackerAuthentication.OAUTH,
+                        false,
+                        unavailableReason = unavailableReason,
+                    )
                 val sourceManaged = trackingSourceService(2, "Source provider", loggedIn = true)
-                val loggedIn = trackingService(3, serviceName, TrackerAuthentication.OAUTH, true, username = "reader@example.test")
+                val loggedIn =
+                    trackingService(3, serviceName, TrackerAuthentication.OAUTH, true, username = "reader@example.test")
                 val loggedOut = trackingService(4, "Logged-out provider", TrackerAuthentication.OAUTH, false)
                 val settings = render(
                     TrackingSettingsScreen(),
@@ -348,8 +372,16 @@ class DesktopSettingsResourceIdentityTest {
                     MR.strings.action_cancel.localized(locale),
                 )
 
-                val result = TrackSearchResult(77, "External result #77", 20, remoteUrl = "https://tracker.example/item/77")
-                val searchService = trackingService(6, "Search provider", TrackerAuthentication.OAUTH, true, searchResults = listOf(result))
+                val result =
+                    TrackSearchResult(77, "External result #77", 20, remoteUrl = "https://tracker.example/item/77")
+                val searchService =
+                    trackingService(
+                        6,
+                        "Search provider",
+                        TrackerAuthentication.OAUTH,
+                        true,
+                        searchResults = listOf(result),
+                    )
                 val searchScene = trackingScene(
                     TrackingSettingsScreen(42, mangaTitle, 12),
                     trackingDependencies(listOf(searchService)),
@@ -359,8 +391,12 @@ class DesktopSettingsResourceIdentityTest {
                     snapshot(searchScene)
                     click(searchScene, MR.strings.desktop_tracking_manage.localized(locale))
                     snapshot(searchScene)
+                    setText(searchScene, 0, MR.strings.action_search_hint.localized(locale), "")
                     click(searchScene, MR.strings.action_search.localized(locale))
-                    assertCopy(snapshot(searchScene).text, MR.strings.desktop_tracking_search_title_empty.localized(locale))
+                    assertCopy(
+                        snapshot(searchScene).text,
+                        MR.strings.desktop_tracking_search_title_empty.localized(locale),
+                    )
                     setText(searchScene, 0, MR.strings.action_search_hint.localized(locale), "needle")
                     click(searchScene, MR.strings.action_search.localized(locale))
                     assertCopy(
@@ -384,8 +420,13 @@ class DesktopSettingsResourceIdentityTest {
         val mangaTitle = "Action manga #42"
         try {
             listOf(english, chinese).forEach { locale ->
-                val passwordService = trackingService(10, "Password provider", TrackerAuthentication.USERNAME_PASSWORD, false)
-                withTrackingScene(TrackingSettingsScreen(), trackingDependencies(listOf(passwordService)), locale) { scene ->
+                val passwordService =
+                    trackingService(10, "Password provider", TrackerAuthentication.USERNAME_PASSWORD, false)
+                withTrackingScene(
+                    TrackingSettingsScreen(),
+                    trackingDependencies(listOf(passwordService)),
+                    locale,
+                ) { scene ->
                     openTracking(scene, MR.strings.login.localized(locale))
                     clickTracking(scene, MR.strings.action_cancel.localized(locale))
                     coVerify(exactly = 0) { passwordService.login(any(), any()) }
@@ -405,7 +446,11 @@ class DesktopSettingsResourceIdentityTest {
                 }
 
                 val logoutService = trackingService(12, "Logout provider", TrackerAuthentication.OAUTH, true)
-                withTrackingScene(TrackingSettingsScreen(), trackingDependencies(listOf(logoutService)), locale) { scene ->
+                withTrackingScene(
+                    TrackingSettingsScreen(),
+                    trackingDependencies(listOf(logoutService)),
+                    locale,
+                ) { scene ->
                     openTracking(scene, MR.strings.logout.localized(locale))
                     clickTracking(scene, MR.strings.action_cancel.localized(locale))
                     coVerify(exactly = 0) { logoutService.logout() }
@@ -437,7 +482,14 @@ class DesktopSettingsResourceIdentityTest {
 
                 val result = TrackSearchResult(77, "Search result", 20)
                 val resultTrack = trackingTrack(14, result.title)
-                val searchService = trackingService(14, "Search provider", TrackerAuthentication.OAUTH, true, searchResults = listOf(result))
+                val searchService =
+                    trackingService(
+                        14,
+                        "Search provider",
+                        TrackerAuthentication.OAUTH,
+                        true,
+                        searchResults = listOf(result),
+                    )
                 coEvery { searchService.bind(42, result) } returns resultTrack
                 val searchRepository = trackingRepository(emptyList())
                 val searchDependencies = trackingDependencies(listOf(searchService), repository = searchRepository)
@@ -461,7 +513,10 @@ class DesktopSettingsResourceIdentityTest {
                     val failedTrack = trackingTrack(20L + operation, "Failure track")
                     val failedResult = TrackSearchResult(20L + operation, "Failure result", 12)
                     val failedService = trackingService(
-                        20L + operation, "Failure provider", TrackerAuthentication.OAUTH, true,
+                        20L + operation,
+                        "Failure provider",
+                        TrackerAuthentication.OAUTH,
+                        true,
                         searchResults = listOf(failedResult),
                     )
                     val failedRepository = trackingRepository(if (operation == 2) listOf(failedTrack) else emptyList())
@@ -508,12 +563,14 @@ class DesktopSettingsResourceIdentityTest {
             every { downloadQueuePort } returns downloads
             every { networkHelper } returns network
             every { networkRoutingPort } returns network
+            every { libraryPreferences } returns LibraryPreferences(InMemoryPreferenceStore())
         }
         val emptyDependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns prefs
             every { this@mockk.localeAdapter } returns localeAdapter
             every { downloadManager } returns emptyDownloads
             every { downloadQueuePort } returns emptyDownloads
+            every { libraryPreferences } returns LibraryPreferences(InMemoryPreferenceStore())
         }
         val previousLocale = Locale.getDefault()
         try {
@@ -526,8 +583,9 @@ class DesktopSettingsResourceIdentityTest {
                     MR.strings.pref_incognito_mode_summary.localized(locale),
                     MR.strings.label_download_queue.localized(locale),
                     MR.strings.desktop_more_download_queue_count.localized(locale, 2),
-                    MR.strings.label_migration.localized(locale),
-                    MR.strings.desktop_more_migration_summary.localized(locale),
+                    MR.strings.categories.localized(locale),
+                    MR.strings.label_data_storage.localized(locale),
+                    MR.strings.label_help.localized(locale),
                     MR.strings.label_stats.localized(locale),
                     MR.strings.desktop_more_stats_summary.localized(locale),
                     MR.strings.label_settings.localized(locale),
@@ -567,22 +625,24 @@ class DesktopSettingsResourceIdentityTest {
                 )
                 assertCopy(general.descriptions, MR.strings.action_bar_up_description.localized(locale))
 
-                val appearance = render(AppearanceSettingsScreen(), dependencies, locale)
+                val appearance = render(AppearanceSettingsScreen(), dependencies, locale, height = 1_400, width = 2_200)
                 val themeCopy = selectableAppThemes(dynamicColorAvailable = false)
                     .map { requireNotNull(it.titleRes).localized(locale) }
                 assertCopy(
                     appearance.text,
                     MR.strings.pref_category_appearance.localized(locale),
                     MR.strings.pref_app_language.localized(locale),
-                    MR.strings.desktop_language_follow_system.localized(locale),
+                    MR.strings.label_default.localized(locale),
                     MR.strings.pref_category_theme.localized(locale),
                     MR.strings.theme_system.localized(locale),
                     MR.strings.theme_light.localized(locale),
                     MR.strings.theme_dark.localized(locale),
-                    MR.strings.pref_app_theme.localized(locale),
                     MR.strings.pref_dark_theme_pure_black.localized(locale),
-                    MR.strings.desktop_appearance_library_grid.localized(locale),
-                    MR.strings.desktop_appearance_grid_columns.localized(locale, 3),
+                    MR.strings.pref_category_display.localized(locale),
+                    MR.strings.pref_tablet_ui_mode.localized(locale),
+                    MR.strings.pref_date_format.localized(locale),
+                    MR.strings.pref_relative_format.localized(locale),
+                    MR.strings.pref_display_images_description.localized(locale),
                     *themeCopy.toTypedArray(),
                 )
                 assertCopy(appearance.descriptions, MR.strings.action_bar_up_description.localized(locale))
@@ -593,124 +653,145 @@ class DesktopSettingsResourceIdentityTest {
     }
 
     @Test
-    fun `Appearance language entry applies default and reports persistence failure without changing selection`() = runBlocking {
-        val preferenceStore = InMemoryPreferenceStore()
-        val preferences = DesktopAppPreferences(preferenceStore)
-        preferences.appLanguage.set("en")
-        val localeAdapter = DesktopLocaleAdapter(preferences.appLanguage, chinese, Locale::setDefault)
-        localeAdapter.applyPersisted()
-        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
-            every { appPreferences } returns preferences
-            every { this@mockk.localeAdapter } returns localeAdapter
+    fun `Appearance language entry applies default and reports persistence failure without changing selection`() =
+        runBlocking {
+            val preferenceStore = InMemoryPreferenceStore()
+            val preferences = DesktopAppPreferences(preferenceStore)
+            preferences.appLanguage.set("en")
+            val localeAdapter = DesktopLocaleAdapter(preferences.appLanguage, chinese, Locale::setDefault)
+            localeAdapter.applyPersisted()
+            val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+                every { appPreferences } returns preferences
+                every { this@mockk.localeAdapter } returns localeAdapter
+            }
+            val firstLanguage = localeAdapter.availableLanguages(english).first()
+            val dialog = renderAfterClicks(
+                AppearanceSettingsScreen(),
+                dependencies,
+                english,
+                MR.strings.pref_app_language.localized(english),
+                useLocalizedHost = true,
+            )
+            assertCopy(dialog.text, firstLanguage.displayName, requireNotNull(firstLanguage.localizedDisplayName))
+
+            val applied = renderAfterClicks(
+                AppearanceSettingsScreen(),
+                dependencies,
+                english,
+                MR.strings.pref_app_language.localized(english),
+                MR.strings.label_default.localized(english),
+                expectedTextAfterClicks = "${MR.strings.pref_app_language.localized(
+                    chinese,
+                )}: ${MR.strings.desktop_language_follow_system.localized(chinese)}",
+                useLocalizedHost = true,
+            )
+
+            assertEquals("", preferences.appLanguage.get())
+            assertEquals("", localeAdapter.activeLanguageTag.value)
+            assertCopy(applied.descriptions, MR.strings.selected.localized(chinese))
+            assertCopy(
+                applied.text,
+                MR.strings.pref_app_language.localized(chinese),
+                MR.strings.label_default.localized(chinese),
+                "${MR.strings.pref_app_language.localized(
+                    chinese,
+                )}: ${MR.strings.desktop_language_follow_system.localized(chinese)}",
+            )
+
+            preferences.appLanguage.set("en")
+            val failingPreference = FailingStringPreference(preferences.appLanguage)
+            val failing = DesktopLocaleAdapter(failingPreference, chinese, Locale::setDefault)
+            failing.applyPersisted()
+            failingPreference.failWrites = true
+            val failingDependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+                every { appPreferences } returns preferences
+                every { this@mockk.localeAdapter } returns failing
+            }
+            val failed = renderAfterClicks(
+                AppearanceSettingsScreen(),
+                failingDependencies,
+                english,
+                MR.strings.pref_app_language.localized(english),
+                MR.strings.label_default.localized(english),
+                useLocalizedHost = true,
+            )
+
+            assertEquals("en", preferences.appLanguage.get())
+            assertEquals("en", failing.activeLanguageTag.value)
+            assertCopy(failed.text, MR.strings.unknown_error.localized(english))
         }
-        val firstLanguage = localeAdapter.availableLanguages(english).first()
-        val dialog = renderAfterClicks(
-            AppearanceSettingsScreen(),
-            dependencies,
-            english,
-            MR.strings.pref_app_language.localized(english),
-            useLocalizedHost = true,
-        )
-        assertCopy(dialog.text, firstLanguage.displayName, requireNotNull(firstLanguage.localizedDisplayName))
-
-        val applied = renderAfterClicks(
-            AppearanceSettingsScreen(),
-            dependencies,
-            english,
-            MR.strings.pref_app_language.localized(english),
-            MR.strings.desktop_language_follow_system.localized(english),
-            expectedTextAfterClicks = "${MR.strings.pref_app_language.localized(chinese)}: ${MR.strings.desktop_language_follow_system.localized(chinese)}",
-            useLocalizedHost = true,
-        )
-
-        assertEquals("", preferences.appLanguage.get())
-        assertEquals("", localeAdapter.activeLanguageTag.value)
-        assertEntry(
-            applied,
-            MR.strings.pref_app_language.localized(chinese),
-            MR.strings.desktop_language_follow_system.localized(chinese),
-        )
-        assertCopy(
-            applied.text,
-            MR.strings.pref_app_language.localized(chinese),
-            MR.strings.desktop_language_follow_system.localized(chinese),
-            "${MR.strings.pref_app_language.localized(chinese)}: ${MR.strings.desktop_language_follow_system.localized(chinese)}",
-        )
-
-        preferences.appLanguage.set("en")
-        val failingPreference = FailingStringPreference(preferences.appLanguage)
-        val failing = DesktopLocaleAdapter(failingPreference, chinese, Locale::setDefault)
-        failing.applyPersisted()
-        failingPreference.failWrites = true
-        val failingDependencies = mockk<DesktopUiDependencies>(relaxed = true) {
-            every { appPreferences } returns preferences
-            every { this@mockk.localeAdapter } returns failing
-        }
-        val failed = renderAfterClicks(
-            AppearanceSettingsScreen(),
-            failingDependencies,
-            english,
-            MR.strings.pref_app_language.localized(english),
-            MR.strings.desktop_language_follow_system.localized(english),
-            useLocalizedHost = true,
-        )
-
-        assertEquals("en", preferences.appLanguage.get())
-        assertEquals("en", failing.activeLanguageTag.value)
-        assertCopy(failed.text, MR.strings.unknown_error.localized(english))
-    }
 
     @Test
-    fun `production locale navigation retains Appearance and delivers feedback after localized recreation`() = runBlocking {
-        val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
-        preferences.appLanguage.set("en")
-        val localeAdapter = DesktopLocaleAdapter(preferences.appLanguage, chinese, Locale::setDefault)
-        localeAdapter.applyPersisted()
-        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
-            every { appPreferences } returns preferences
-            every { this@mockk.localeAdapter } returns localeAdapter
-        }
-        val owner = DesktopOwnerIngressDependencies(mockk(relaxed = true), dependencies)
-        val scene = ImageComposeScene(900, 2_400, coroutineContext = coroutineContext) {}
-        var originalNavigator: Navigator? = null
-        var latestNavigator: Navigator? = null
-        try {
-            scene.setContent {
-                OwnerUiDependencies(owner) {
-                    Navigator(AppearanceSettingsScreen()) { navigator ->
-                        if (originalNavigator == null) originalNavigator = navigator
-                        latestNavigator = navigator
-                        DesktopLocalizedNavigatorContent(localeAdapter, navigator)
+    fun `production locale navigation retains Appearance and delivers feedback after localized recreation`() =
+        runBlocking {
+            val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
+            preferences.appLanguage.set("en")
+            val localeAdapter = DesktopLocaleAdapter(preferences.appLanguage, chinese, Locale::setDefault)
+            localeAdapter.applyPersisted()
+            val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+                every { appPreferences } returns preferences
+                every { this@mockk.localeAdapter } returns localeAdapter
+            }
+            val owner = DesktopOwnerIngressDependencies(mockk(relaxed = true), dependencies)
+            val scene = ImageComposeScene(900, 2_400, coroutineContext = coroutineContext) {}
+            var originalNavigator: Navigator? = null
+            var latestNavigator: Navigator? = null
+            try {
+                scene.setContent {
+                    OwnerUiDependencies(owner) {
+                        Navigator(AppearanceSettingsScreen()) { navigator ->
+                            if (originalNavigator == null) originalNavigator = navigator
+                            latestNavigator = navigator
+                            DesktopLocalizedNavigatorContent(localeAdapter, navigator)
+                        }
                     }
                 }
+                repeat(3) {
+                    scene.render()
+                    yield()
+                }
+                val originalAppearance = requireNotNull(originalNavigator).lastItem
+                click(scene, MR.strings.pref_app_language.localized(english))
+                repeat(3) {
+                    scene.render()
+                    yield()
+                }
+                click(scene, MR.strings.label_default.localized(english))
+                val expectedFeedback =
+                    "${MR.strings.pref_app_language.localized(
+                        chinese,
+                    )}: ${MR.strings.desktop_language_follow_system.localized(chinese)}"
+                awaitText(scene, expectedFeedback)
+                assertSame(requireNotNull(originalNavigator), requireNotNull(latestNavigator))
+                assertInstanceOf(LanguageSettingsScreen::class.java, requireNotNull(latestNavigator).lastItem)
+                assertCopy(textCopy(scene), MR.strings.pref_app_language.localized(chinese), expectedFeedback)
+                dismissSnackbar(scene, localeAdapter)
+                assertNull(localeAdapter.pendingFeedback.value)
+                val back = nodes(scene).first {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        MR.strings.action_bar_up_description.localized(chinese) in descriptionCopy(it)
+                }
+                assertTrue(requireNotNull(back.config[SemanticsActions.OnClick].action).invoke())
+                repeat(3) {
+                    scene.render()
+                    yield()
+                }
+                assertSame(originalAppearance, requireNotNull(latestNavigator).lastItem)
+                val rendered =
+                    RenderedCopy(textCopy(scene), descriptionCopy(scene), entryCopy(scene), selectedEntryCopy(scene))
+                assertEntry(
+                    rendered,
+                    MR.strings.pref_app_language.localized(chinese),
+                    MR.strings.label_default.localized(chinese),
+                )
+                assertCopy(
+                    rendered.text,
+                    MR.strings.pref_category_appearance.localized(chinese),
+                )
+            } finally {
+                scene.close()
             }
-            repeat(3) { scene.render(); yield() }
-            click(scene, MR.strings.pref_app_language.localized(english))
-            repeat(3) { scene.render(); yield() }
-            click(scene, MR.strings.desktop_language_follow_system.localized(english))
-            val expectedFeedback =
-                "${MR.strings.pref_app_language.localized(chinese)}: ${MR.strings.desktop_language_follow_system.localized(chinese)}"
-            awaitText(scene, expectedFeedback)
-            val rendered = RenderedCopy(textCopy(scene), descriptionCopy(scene), entryCopy(scene), selectedEntryCopy(scene))
-
-            assertSame(requireNotNull(originalNavigator), requireNotNull(latestNavigator))
-            assertInstanceOf(AppearanceSettingsScreen::class.java, requireNotNull(latestNavigator).lastItem)
-            dismissSnackbar(scene, localeAdapter)
-            assertNull(localeAdapter.pendingFeedback.value)
-            assertEntry(
-                rendered,
-                MR.strings.pref_app_language.localized(chinese),
-                MR.strings.desktop_language_follow_system.localized(chinese),
-            )
-            assertCopy(
-                rendered.text,
-                MR.strings.pref_category_appearance.localized(chinese),
-                expectedFeedback,
-            )
-        } finally {
-            scene.close()
         }
-    }
 
     @Test
     fun `About renders shared identities through production dependencies`() = runBlocking {
@@ -743,32 +824,73 @@ class DesktopSettingsResourceIdentityTest {
                 assertCopy(
                     copy.text,
                     MR.strings.pref_category_about.localized(locale),
-                    MR.strings.desktop_about_version_value.localized(locale, MR.strings.version.localized(locale), mihon.desktop.APP_VERSION),
+                    MR.strings.desktop_about_version_value.localized(
+                        locale,
+                        MR.strings.version.localized(locale),
+                        mihon.desktop.APP_VERSION,
+                    ),
                     MR.strings.check_for_updates.localized(locale),
                     MR.strings.label_extensions.localized(locale),
-                    MR.strings.desktop_about_info_row.localized(locale, MR.strings.desktop_about_app_data_directory.localized(locale), paths.configDir.absolutePath),
-                    MR.strings.desktop_about_info_row.localized(locale, MR.strings.desktop_about_database.localized(locale), "${paths.databaseFile.absolutePath} (2.0 KB)"),
-                    MR.strings.desktop_about_info_row.localized(locale, MR.strings.desktop_about_network_cache.localized(locale), "1.5 KB"),
-                    MR.strings.desktop_about_info_row.localized(locale, MR.strings.desktop_about_installed_extensions.localized(locale), "0"),
-                    MR.strings.desktop_about_info_row.localized(locale, MR.strings.desktop_about_extensions_directory.localized(locale), paths.extensionsDir.absolutePath),
-                    MR.strings.desktop_about_info_row.localized(locale, MR.strings.desktop_about_java_version.localized(locale), "${System.getProperty("java.version")} (${System.getProperty("java.vendor")})"),
-                    MR.strings.desktop_about_info_row.localized(locale, MR.strings.desktop_about_operating_system.localized(locale), "${System.getProperty("os.name")} ${System.getProperty("os.version")}"),
+                    MR.strings.desktop_about_info_row.localized(
+                        locale,
+                        MR.strings.desktop_about_app_data_directory.localized(locale),
+                        paths.configDir.absolutePath,
+                    ),
+                    MR.strings.desktop_about_info_row.localized(
+                        locale,
+                        MR.strings.desktop_about_database.localized(locale),
+                        "${paths.databaseFile.absolutePath} (2.0 KB)",
+                    ),
+                    MR.strings.desktop_about_info_row.localized(
+                        locale,
+                        MR.strings.desktop_about_network_cache.localized(locale),
+                        "1.5 KB",
+                    ),
+                    MR.strings.desktop_about_info_row.localized(
+                        locale,
+                        MR.strings.desktop_about_installed_extensions.localized(locale),
+                        "0",
+                    ),
+                    MR.strings.desktop_about_info_row.localized(
+                        locale,
+                        MR.strings.desktop_about_extensions_directory.localized(locale),
+                        paths.extensionsDir.absolutePath,
+                    ),
+                    MR.strings.desktop_about_info_row.localized(
+                        locale,
+                        MR.strings.desktop_about_java_version.localized(locale),
+                        "${System.getProperty("java.version")} (${System.getProperty("java.vendor")})",
+                    ),
+                    MR.strings.desktop_about_info_row.localized(
+                        locale,
+                        MR.strings.desktop_about_operating_system.localized(locale),
+                        "${System.getProperty("os.name")} ${System.getProperty("os.version")}",
+                    ),
                 )
                 assertCopy(copy.descriptions, MR.strings.action_bar_up_description.localized(locale))
                 val cleared = renderAfterClicks(
-                    AboutScreen(paths), dependencies, locale,
+                    AboutScreen(paths),
+                    dependencies,
+                    locale,
                     MR.strings.desktop_advanced_clear_network_cache.localized(locale),
                 )
                 assertCopy(
                     cleared.text,
                     MR.strings.desktop_about_network_cache_cleared.localized(locale),
-                    MR.strings.desktop_about_info_row.localized(locale, MR.strings.desktop_about_network_cache.localized(locale), "0 B"),
+                    MR.strings.desktop_about_info_row.localized(
+                        locale,
+                        MR.strings.desktop_about_network_cache.localized(locale),
+                        "0 B",
+                    ),
                 )
             }
 
             assertTrue(controller.check(DesktopUpdateScreenModel.releaseArguments()))
             listOf(english, chinese).forEach { locale ->
-                assertCopy(render(AboutScreen(paths), dependencies, locale, height = 2_400).text, MR.strings.desktop_update_available.localized(locale, release.version))
+                assertCopy(
+                    render(AboutScreen(paths), dependencies, locale, height = 2_400).text,
+                    MR.strings.desktop_update_available.localized(locale, release.version),
+                )
             }
             assertTrue(controller.download())
             listOf(english, chinese).forEach { locale ->
@@ -788,20 +910,39 @@ class DesktopSettingsResourceIdentityTest {
                     DesktopUpdateState.Idle to MR.strings.desktop_update_idle.localized(locale),
                     DesktopUpdateState.Checking to MR.strings.desktop_update_checking.localized(locale),
                     DesktopUpdateState.UpToDate to MR.strings.update_check_no_new_updates.localized(locale),
-                    DesktopUpdateState.UpdateAvailable(release) to MR.strings.desktop_update_available.localized(locale, release.version),
-                    DesktopUpdateState.NoCompatiblePackage to MR.strings.desktop_update_no_compatible_package.localized(locale),
-                    DesktopUpdateState.CheckFailed(CheckFailure.REQUEST_FAILED, true) to MR.strings.desktop_update_check_failed.localized(locale, MR.strings.desktop_update_failure_request_failed.localized(locale)),
-                    DesktopUpdateState.CheckFailed(CheckFailure.OS_TOO_OLD, false) to MR.strings.desktop_update_check_failed.localized(locale, MR.strings.desktop_update_failure_os_too_old.localized(locale)),
-                    DesktopUpdateState.Downloading(release, DownloadProgress(1, 2)) to MR.strings.desktop_update_downloading.localized(locale, release.version),
-                    DesktopUpdateState.Verifying(release, verified) to MR.strings.desktop_update_verifying.localized(locale, release.version),
-                    DesktopUpdateState.ReadyToInstall(release.releaseLink, ready) to MR.strings.desktop_update_ready.localized(locale),
-                    DesktopUpdateState.HandingOff(release.releaseLink) to MR.strings.desktop_update_handing_off.localized(locale),
-                    DesktopUpdateState.HandedOff(release.releaseLink) to MR.strings.desktop_update_handed_off.localized(locale),
-                    DesktopUpdateState.InstallFailed(InstallStage.VERIFY, release.releaseLink) to MR.strings.desktop_update_install_failed_verify.localized(locale),
-                    DesktopUpdateState.InstallFailed(InstallStage.HANDOFF, release.releaseLink) to MR.strings.desktop_update_install_failed_handoff.localized(locale),
-                    DesktopUpdateState.RetryableFailure(UpdateOperation.DOWNLOAD, release.releaseLink) to MR.strings.desktop_update_download_retryable.localized(locale),
+                    DesktopUpdateState.UpdateAvailable(release) to
+                        MR.strings.desktop_update_available.localized(locale, release.version),
+                    DesktopUpdateState.NoCompatiblePackage to
+                        MR.strings.desktop_update_no_compatible_package.localized(locale),
+                    DesktopUpdateState.CheckFailed(CheckFailure.REQUEST_FAILED, true) to
+                        MR.strings.desktop_update_check_failed.localized(
+                            locale,
+                            MR.strings.desktop_update_failure_request_failed.localized(locale),
+                        ),
+                    DesktopUpdateState.CheckFailed(CheckFailure.OS_TOO_OLD, false) to
+                        MR.strings.desktop_update_check_failed.localized(
+                            locale,
+                            MR.strings.desktop_update_failure_os_too_old.localized(locale),
+                        ),
+                    DesktopUpdateState.Downloading(release, DownloadProgress(1, 2)) to
+                        MR.strings.desktop_update_downloading.localized(locale, release.version),
+                    DesktopUpdateState.Verifying(release, verified) to
+                        MR.strings.desktop_update_verifying.localized(locale, release.version),
+                    DesktopUpdateState.ReadyToInstall(release.releaseLink, ready) to
+                        MR.strings.desktop_update_ready.localized(locale),
+                    DesktopUpdateState.HandingOff(release.releaseLink) to
+                        MR.strings.desktop_update_handing_off.localized(locale),
+                    DesktopUpdateState.HandedOff(release.releaseLink) to
+                        MR.strings.desktop_update_handed_off.localized(locale),
+                    DesktopUpdateState.InstallFailed(InstallStage.VERIFY, release.releaseLink) to
+                        MR.strings.desktop_update_install_failed_verify.localized(locale),
+                    DesktopUpdateState.InstallFailed(InstallStage.HANDOFF, release.releaseLink) to
+                        MR.strings.desktop_update_install_failed_handoff.localized(locale),
+                    DesktopUpdateState.RetryableFailure(UpdateOperation.DOWNLOAD, release.releaseLink) to
+                        MR.strings.desktop_update_download_retryable.localized(locale),
                     DesktopUpdateState.Cancelled(null) to MR.strings.desktop_update_cancelled.localized(locale),
-                    DesktopUpdateState.ManualOnly(release.releaseLink) to MR.strings.desktop_update_manual.localized(locale),
+                    DesktopUpdateState.ManualOnly(release.releaseLink) to
+                        MR.strings.desktop_update_manual.localized(locale),
                 ).forEach { (state, expected) -> assertEquals(expected, state.presentation().message) }
 
                 var openMode = 0
@@ -884,7 +1025,14 @@ class DesktopSettingsResourceIdentityTest {
                     MR.strings.action_cancel.localized(locale),
                 )
 
-                val repo = ExtensionRepo("https://repo.example", "Example Repo", "Example", "https://website.example", "fingerprint")
+                val repo =
+                    ExtensionRepo(
+                        "https://repo.example",
+                        "Example Repo",
+                        "Example",
+                        "https://website.example",
+                        "fingerprint",
+                    )
                 repository.insertRepo(repo.baseUrl, repo.name, repo.shortName, repo.website, repo.signingKeyFingerprint)
                 val duplicateScene = extensionRepoScene(ExtensionRepoScreen(repo.baseUrl), dependencies, locale)
                 try {
@@ -943,9 +1091,12 @@ class DesktopSettingsResourceIdentityTest {
         try {
             listOf(english, chinese).forEach { locale ->
                 val outcomes = listOf(
-                    CreateExtensionRepo.Result.InvalidUrl to MR.strings.desktop_extension_repo_https_required.localized(locale),
-                    CreateExtensionRepo.Result.RepositoryUnavailable to MR.strings.desktop_extension_repo_unavailable.localized(locale),
-                    CreateExtensionRepo.Result.InvalidRepository to MR.strings.desktop_extension_repo_invalid_metadata.localized(locale),
+                    CreateExtensionRepo.Result.InvalidUrl to
+                        MR.strings.desktop_extension_repo_https_required.localized(locale),
+                    CreateExtensionRepo.Result.RepositoryUnavailable to
+                        MR.strings.desktop_extension_repo_unavailable.localized(locale),
+                    CreateExtensionRepo.Result.InvalidRepository to
+                        MR.strings.desktop_extension_repo_invalid_metadata.localized(locale),
                     CreateExtensionRepo.Result.RepoAlreadyExists to MR.strings.error_repo_exists.localized(locale),
                     CreateExtensionRepo.Result.Error to MR.strings.desktop_extension_repo_add_failed.localized(locale),
                 )
@@ -968,7 +1119,13 @@ class DesktopSettingsResourceIdentityTest {
                 val successRepository = FakeExtensionRepoRepository()
                 val success = mockk<CreateExtensionRepo> {
                     coEvery { await(any()) } coAnswers {
-                        successRepository.insertRepo("https://created.example", "Created", "Short", "https://website.example", "created-fp")
+                        successRepository.insertRepo(
+                            "https://created.example",
+                            "Created",
+                            "Short",
+                            "https://website.example",
+                            "created-fp",
+                        )
                         CreateExtensionRepo.Result.Success
                     }
                 }
@@ -986,7 +1143,8 @@ class DesktopSettingsResourceIdentityTest {
                 }
 
                 val pending = CompletableDeferred<CreateExtensionRepo.Result>()
-                val pendingCreate = mockk<CreateExtensionRepo> { coEvery { await(any()) } coAnswers { pending.await() } }
+                val pendingCreate =
+                    mockk<CreateExtensionRepo> { coEvery { await(any()) } coAnswers { pending.await() } }
                 val pendingUrl = "https://pending.example"
                 val pendingScene = extensionRepoScene(
                     ExtensionRepoScreen(pendingUrl),
@@ -996,7 +1154,11 @@ class DesktopSettingsResourceIdentityTest {
                 try {
                     snapshot(pendingScene)
                     click(pendingScene, MR.strings.action_add.localized(locale))
-                    assertCopy(snapshot(pendingScene).text, MR.strings.desktop_extension_repo_pending.localized(locale), pendingUrl)
+                    assertCopy(
+                        snapshot(pendingScene).text,
+                        MR.strings.desktop_extension_repo_pending.localized(locale),
+                        pendingUrl,
+                    )
                     pending.complete(CreateExtensionRepo.Result.Error)
                     snapshot(pendingScene)
                 } finally {
@@ -1006,9 +1168,16 @@ class DesktopSettingsResourceIdentityTest {
                 val conflictRepository = FakeExtensionRepoRepository()
                 val oldRepo = ExtensionRepo("https://old.example", "Old", null, "https://old.example", "shared-fp")
                 val newRepo = ExtensionRepo("https://new.example", "New", null, "https://new.example", "shared-fp")
-                conflictRepository.insertRepo(oldRepo.baseUrl, oldRepo.name, oldRepo.shortName, oldRepo.website, oldRepo.signingKeyFingerprint)
+                conflictRepository.insertRepo(
+                    oldRepo.baseUrl,
+                    oldRepo.name,
+                    oldRepo.shortName,
+                    oldRepo.website,
+                    oldRepo.signingKeyFingerprint,
+                )
                 val conflictCreate = mockk<CreateExtensionRepo> {
-                    coEvery { await(newRepo.baseUrl) } returns CreateExtensionRepo.Result.DuplicateFingerprint(oldRepo, newRepo)
+                    coEvery { await(newRepo.baseUrl) } returns
+                        CreateExtensionRepo.Result.DuplicateFingerprint(oldRepo, newRepo)
                 }
                 val conflictScene = extensionRepoScene(
                     ExtensionRepoScreen(newRepo.baseUrl),
@@ -1039,6 +1208,9 @@ class DesktopSettingsResourceIdentityTest {
     @Test
     fun `Reader Library and Download render their shared MR identities`() = runBlocking {
         val prefs = DesktopAppPreferences(InMemoryPreferenceStore())
+        val node = Preferences.userRoot().node("mihon-resource-library-${System.nanoTime()}")
+            .also { libraryPreferenceNode = it }
+        val sharedLibrary = LibraryPreferences(DesktopPreferenceStore(node)).apply { autoUpdateInterval().set(0) }
         val readerPrefs = mihon.desktop.reader.ReaderPreferences(InMemoryPreferenceStore()).apply {
             readingMode = mihon.desktop.reader.ReadingMode.AUTO
         }
@@ -1048,6 +1220,12 @@ class DesktopSettingsResourceIdentityTest {
         }
         val categoryLoader = mockk<GetCategories> {
             coEvery { await() } returns listOf(Category(1, "Favorites", 0, 0))
+            every { subscribe() } returns flowOf(listOf(Category(1, "Favorites", 0, 0)))
+        }
+        val categoryPolicy = mockk<DesktopLibraryCategoryPolicy> {
+            every { state } returns MutableStateFlow(
+                DesktopLibraryCategoryPolicy.State.Ready(DesktopLibraryCategoryPolicy.Snapshot(emptySet(), emptySet())),
+            )
         }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns prefs
@@ -1057,7 +1235,9 @@ class DesktopSettingsResourceIdentityTest {
             every { downloadQueuePort } returns downloads
             every { getCategories } returns categoryLoader
             every { creatorDiscoveryScheduler } returns null
-            every { libraryPreferences } returns LibraryPreferences(InMemoryPreferenceStore())
+            every { libraryPreferences } returns sharedLibrary
+            every { libraryCategoryPolicy } returns categoryPolicy
+            every { categorySortSettings } returns null
         }
         val previousLocale = Locale.getDefault()
         try {
@@ -1085,7 +1265,7 @@ class DesktopSettingsResourceIdentityTest {
                 assertSelectedEntry(reader, MR.strings.automatic_background.localized(locale))
                 assertCopy(reader.descriptions, MR.strings.action_bar_up_description.localized(locale))
 
-                val library = render(LibrarySettingsScreen(), dependencies, locale)
+                val library = render(LibrarySettingsScreen(), dependencies, locale, height = 3_200)
                 assertCopy(
                     library.text,
                     MR.strings.pref_category_library.localized(locale),
@@ -1095,8 +1275,8 @@ class DesktopSettingsResourceIdentityTest {
                     MR.strings.desktop_library_manual_refresh_summary.localized(locale),
                     MR.strings.pref_category_display.localized(locale),
                     MR.strings.pref_hide_missing_chapter_indicators.localized(locale),
-                    MR.strings.desktop_library_excluded_categories.localized(locale),
-                    MR.strings.desktop_library_excluded_categories_summary.localized(locale),
+                    MR.strings.categories.localized(locale),
+                    MR.strings.pref_library_update_categories_details.localized(locale),
                 )
                 assertCopy(library.descriptions, MR.strings.action_bar_up_description.localized(locale))
                 listOf(
@@ -1105,8 +1285,8 @@ class DesktopSettingsResourceIdentityTest {
                     LibraryUpdateInterval.EVERY_24H to MR.strings.update_24hour,
                     LibraryUpdateInterval.WEEKLY to MR.strings.update_weekly,
                 ).forEach { (interval, resource) ->
-                    prefs.libraryUpdateInterval.set(interval)
-                    val selectedLibrary = render(LibrarySettingsScreen(), dependencies, locale)
+                    sharedLibrary.autoUpdateInterval().set(interval.hours.toInt())
+                    val selectedLibrary = render(LibrarySettingsScreen(), dependencies, locale, height = 3_200)
                     assertSelectedEntry(selectedLibrary, resource.localized(locale))
                 }
 
@@ -1278,7 +1458,10 @@ class DesktopSettingsResourceIdentityTest {
                         MR.strings.desktop_privacy_telemetry_unavailable.localized(locale),
                         MR.strings.desktop_privacy_widget_unavailable.localized(locale),
                     )
-                    assertNoCopy(main.text, MR.strings.desktop_privacy_widget_unavailable_updates_available.localized(locale))
+                    assertNoCopy(
+                        main.text,
+                        MR.strings.desktop_privacy_widget_unavailable_updates_available.localized(locale),
+                    )
                     assertCopy(main.descriptions, MR.strings.action_bar_up_description.localized(locale))
                     clickToggle(scene)
                     assertCopy(
@@ -1300,7 +1483,6 @@ class DesktopSettingsResourceIdentityTest {
                     setText(scene, 1, MR.strings.desktop_security_confirm_passphrase.localized(locale), "secret")
                     click(scene, MR.strings.action_save.localized(locale))
                     assertCopy(snapshot(scene).text, MR.strings.desktop_security_saved.localized(locale))
-
                 } finally {
                     scene.close()
                 }
@@ -1323,7 +1505,12 @@ class DesktopSettingsResourceIdentityTest {
                     snapshot(authentication)
                     clickToggle(authentication)
                     snapshot(authentication)
-                    setText(authentication, 0, MR.strings.desktop_security_current_passphrase.localized(locale), "wrong")
+                    setText(
+                        authentication,
+                        0,
+                        MR.strings.desktop_security_current_passphrase.localized(locale),
+                        "wrong",
+                    )
                     click(authentication, MR.strings.action_save.localized(locale))
                     assertCopy(
                         snapshot(authentication).text,
@@ -1344,7 +1531,10 @@ class DesktopSettingsResourceIdentityTest {
                     locale,
                 )
                 try {
-                    assertCopy(snapshot(unavailable).text, MR.strings.desktop_security_backend_unavailable.localized(locale))
+                    assertCopy(
+                        snapshot(unavailable).text,
+                        MR.strings.desktop_security_backend_unavailable.localized(locale),
+                    )
                 } finally {
                     unavailable.close()
                 }
@@ -1387,7 +1577,8 @@ class DesktopSettingsResourceIdentityTest {
                         DesktopPassphraseVerifier(DesktopCredentialStore(MemoryCredentialBackend())),
                         windowController(securityPreferences, appPreferences, supported = true),
                         DesktopPrivacyCapabilities.production.copy(
-                            nativeSystemNotifications = DesktopPrivacyCapabilities.production.nativeSystemNotifications.copy(
+                            nativeSystemNotifications =
+                            DesktopPrivacyCapabilities.production.nativeSystemNotifications.copy(
                                 support = DesktopCapabilitySupport.Supported,
                             ),
                         ),
@@ -1438,7 +1629,8 @@ class DesktopSettingsResourceIdentityTest {
                     every { appPreferences } returns appPrefs
                     every { backupRestoreScreenModelFactory } returns factory
                 }
-                val scene = ImageComposeScene(900, 2_000, coroutineContext = kotlinx.coroutines.currentCoroutineContext()) {}
+                val scene =
+                    ImageComposeScene(900, 2_000, coroutineContext = kotlinx.coroutines.currentCoroutineContext()) {}
                 try {
                     scene.setContent {
                         CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
@@ -1450,7 +1642,12 @@ class DesktopSettingsResourceIdentityTest {
                             scene.render()
                             yield()
                         }
-                        return RenderedCopy(textCopy(scene), descriptionCopy(scene), entryCopy(scene), selectedEntryCopy(scene))
+                        return RenderedCopy(
+                            textCopy(scene),
+                            descriptionCopy(scene),
+                            entryCopy(scene),
+                            selectedEntryCopy(scene),
+                        )
                     }
 
                     val main = snapshot()
@@ -1504,7 +1701,11 @@ class DesktopSettingsResourceIdentityTest {
                         MR.strings.action_cancel.localized(locale),
                     )
                     restoreGate.complete(
-                        TaskState.Success(DesktopBackupRestorer.RestoreResult().apply { repeat(7) { incrementSuccess() } }),
+                        TaskState.Success(
+                            DesktopBackupRestorer.RestoreResult().apply {
+                                repeat(7) { incrementSuccess() }
+                            },
+                        ),
                     )
                     assertCopy(snapshot().text, MR.strings.desktop_backup_completed_count.localized(locale, 7))
 
@@ -1615,7 +1816,8 @@ class DesktopSettingsResourceIdentityTest {
         }
 
         val storageGate = CompletableDeferred<TaskState<DesktopBackupRestorer.RestoreResult>>()
-        val model = BackupRestoreScreenModel({ BackupPreview(1, 0, 0, 0, 0, 0, 0) }, { _, _ -> storageGate.await() }, this)
+        val model =
+            BackupRestoreScreenModel({ BackupPreview(1, 0, 0, 0, 0, 0, 0) }, { _, _ -> storageGate.await() }, this)
         model.select(file)
         yield()
         model.confirmRestore()
@@ -1634,9 +1836,10 @@ class DesktopSettingsResourceIdentityTest {
         dependencies: DesktopUiDependencies,
         locale: Locale,
         height: Int = 900,
+        width: Int = 900,
     ): RenderedCopy {
         Locale.setDefault(locale)
-        val scene = ImageComposeScene(900, height, coroutineContext = kotlinx.coroutines.currentCoroutineContext()) {}
+        val scene = ImageComposeScene(width, height, coroutineContext = kotlinx.coroutines.currentCoroutineContext()) {}
         return try {
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
@@ -1672,13 +1875,19 @@ class DesktopSettingsResourceIdentityTest {
                     }
                 }
             }
-            repeat(3) { scene.render(); yield() }
+            repeat(3) {
+                scene.render()
+                yield()
+            }
             labels.forEach { label ->
                 val node = nodes(scene).last {
                     it.config.contains(SemanticsActions.OnClick) && flatten(it).flatMap(::textCopy).contains(label)
                 }
                 assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
-                repeat(3) { scene.render(); yield() }
+                repeat(3) {
+                    scene.render()
+                    yield()
+                }
             }
             if (expectedTextAfterClicks != null) {
                 awaitText(scene, expectedTextAfterClicks)
@@ -1723,7 +1932,11 @@ class DesktopSettingsResourceIdentityTest {
         locale: Locale,
     ): ImageComposeScene {
         Locale.setDefault(locale)
-        return ImageComposeScene(900, 2_400, coroutineContext = kotlinx.coroutines.currentCoroutineContext()).also { scene ->
+        return ImageComposeScene(
+            900,
+            2_400,
+            coroutineContext = kotlinx.coroutines.currentCoroutineContext(),
+        ).also { scene ->
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
                     Navigator(screen) { CurrentScreen() }
@@ -1770,13 +1983,16 @@ class DesktopSettingsResourceIdentityTest {
         unavailableReason: String? = null,
         searchResults: List<TrackSearchResult> = emptyList(),
     ) = mockk<DesktopAuthenticatingTrackerService>(relaxed = true) {
-        every { profile } returns MutableStateFlow(TrackerProfile(id, name, authentication, loggedIn, username, unavailableReason))
+        every { profile } returns
+            MutableStateFlow(TrackerProfile(id, name, authentication, loggedIn, username, unavailableReason))
         every { statuses } returns listOf(1L to "Reading status #61")
         every { scores } returns listOf(8.0)
         coEvery { search(any()) } returns searchResults
     }
 
-    private fun trackingSourceService(id: Long, name: String, loggedIn: Boolean) = mockk<TrackerService>(relaxed = true) {
+    private fun trackingSourceService(id: Long, name: String, loggedIn: Boolean) = mockk<TrackerService>(
+        relaxed = true,
+    ) {
         every { profile } returns MutableStateFlow(TrackerProfile(id, name, TrackerAuthentication.API_KEY, loggedIn))
         every { statuses } returns emptyList()
         every { scores } returns emptyList()
@@ -1793,7 +2009,10 @@ class DesktopSettingsResourceIdentityTest {
     ) =
         mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns DesktopAppPreferences(InMemoryPreferenceStore())
-            every { trackerServiceRegistry } returns object : TrackerServiceRegistry { override val services = services }
+            every { trackerServiceRegistry } returns
+                object : TrackerServiceRegistry {
+                    override val services = services
+                }
             every { getTracks } returns tachiyomi.domain.track.interactor.GetTracks(repository)
             every { insertTrack } returns tachiyomi.domain.track.interactor.InsertTrack(repository)
             every { deleteTrack } returns tachiyomi.domain.track.interactor.DeleteTrack(repository)
@@ -1822,7 +2041,11 @@ class DesktopSettingsResourceIdentityTest {
         actions: AdvancedSettingsPlatformActions,
     ): ImageComposeScene {
         Locale.setDefault(locale)
-        return ImageComposeScene(900, 2_400, coroutineContext = kotlinx.coroutines.currentCoroutineContext()).also { scene ->
+        return ImageComposeScene(
+            900,
+            2_400,
+            coroutineContext = kotlinx.coroutines.currentCoroutineContext(),
+        ).also { scene ->
             scene.setContent {
                 CompositionLocalProvider(
                     LocalDesktopUiDependencies provides dependencies,
@@ -1839,7 +2062,11 @@ class DesktopSettingsResourceIdentityTest {
         locale: Locale,
     ): ImageComposeScene {
         Locale.setDefault(locale)
-        return ImageComposeScene(900, 2_000, coroutineContext = kotlinx.coroutines.currentCoroutineContext()).also { scene ->
+        return ImageComposeScene(
+            900,
+            2_000,
+            coroutineContext = kotlinx.coroutines.currentCoroutineContext(),
+        ).also { scene ->
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
                     Navigator(SecuritySettingsScreen()) { CurrentScreen() }
@@ -1855,7 +2082,11 @@ class DesktopSettingsResourceIdentityTest {
         clipboardManager: ClipboardManager = mockk(relaxed = true),
     ): ImageComposeScene {
         Locale.setDefault(locale)
-        return ImageComposeScene(900, 1_200, coroutineContext = kotlinx.coroutines.currentCoroutineContext()).also { scene ->
+        return ImageComposeScene(
+            900,
+            1_200,
+            coroutineContext = kotlinx.coroutines.currentCoroutineContext(),
+        ).also { scene ->
             scene.setContent {
                 CompositionLocalProvider(
                     LocalDesktopUiDependencies provides dependencies,
@@ -1911,7 +2142,10 @@ class DesktopSettingsResourceIdentityTest {
     }
 
     private suspend fun snapshot(scene: ImageComposeScene): RenderedCopy {
-        repeat(3) { scene.render(); yield() }
+        repeat(3) {
+            scene.render()
+            yield()
+        }
         return RenderedCopy(textCopy(scene), descriptionCopy(scene), entryCopy(scene), selectedEntryCopy(scene))
     }
 
@@ -1946,11 +2180,17 @@ class DesktopSettingsResourceIdentityTest {
     }
 
     private fun assertEntry(actual: RenderedCopy, title: String, subtitle: String) {
-        assertTrue(listOf(title, subtitle) in actual.entries, "Missing entry '$title' -> '$subtitle': ${actual.entries}")
+        assertTrue(
+            listOf(title, subtitle) in actual.entries,
+            "Missing entry '$title' -> '$subtitle': ${actual.entries}",
+        )
     }
 
     private fun assertSelectedEntry(actual: RenderedCopy, title: String) {
-        assertTrue(listOf(title) in actual.selectedEntries, "Missing selected entry '$title': ${actual.selectedEntries}")
+        assertTrue(
+            listOf(title) in actual.selectedEntries,
+            "Missing selected entry '$title': ${actual.selectedEntries}",
+        )
     }
 
     private fun textCopy(scene: ImageComposeScene): Set<String> =
@@ -1965,7 +2205,14 @@ class DesktopSettingsResourceIdentityTest {
     private fun descriptionCopy(scene: ImageComposeScene): Set<String> = nodes(scene).flatMap(::descriptionCopy).toSet()
 
     private fun descriptionCopy(node: SemanticsNode): List<String> =
-        if (node.config.contains(SemanticsProperties.ContentDescription)) node.config[SemanticsProperties.ContentDescription] else emptyList()
+        if (node.config.contains(
+                SemanticsProperties.ContentDescription,
+            )
+        ) {
+            node.config[SemanticsProperties.ContentDescription]
+        } else {
+            emptyList()
+        }
 
     private fun entryCopy(scene: ImageComposeScene): Set<List<String>> = nodes(scene)
         .filter { it.config.contains(SemanticsActions.OnClick) }
@@ -1986,7 +2233,13 @@ class DesktopSettingsResourceIdentityTest {
         .toSet()
 
     private fun textCopy(node: SemanticsNode): List<String> =
-        if (node.config.contains(SemanticsProperties.Text)) node.config[SemanticsProperties.Text].map { it.text } else emptyList()
+        if (node.config.contains(SemanticsProperties.Text)) {
+            node.config[SemanticsProperties.Text].map {
+                it.text
+            }
+        } else {
+            emptyList()
+        }
 
     private fun nodes(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)

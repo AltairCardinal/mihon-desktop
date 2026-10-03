@@ -6,14 +6,12 @@ import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
-import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeCatalogueSource
-import mihon.desktop.domain.fakes.FakeMangaRepository
+import mihon.domain.error.AppError
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
-import mihon.domain.error.AppError
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.SourceDateExtensionIdentity
@@ -25,13 +23,25 @@ import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 
 class SaveSourceMangaForDetailsTest {
+    private lateinit var storage: DirectorySqlFixture
+
+    @org.junit.jupiter.api.BeforeEach fun openStorage() {
+        storage = DirectorySqlFixture()
+    }
+
+    @org.junit.jupiter.api.AfterEach fun closeStorage() {
+        storage.close()
+    }
 
     @Test
     fun `detail refresh calls combined update exactly once with both flags`() = runBlocking<Unit> {
-        val mangaRepo = FakeMangaRepository()
-        val chapterRepo = FakeChapterRepository()
+        val mangaRepo = storage.mangas
+        val chapterRepo = storage.chapters
         val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
-        val listed = SManga.create().apply { url = "/combined"; title = "Combined" }
+        val listed = SManga.create().apply {
+            url = "/combined"
+            title = "Combined"
+        }
         var calls = 0
         val source = object : eu.kanade.tachiyomi.source.Source {
             override val id = 42L
@@ -47,7 +57,12 @@ class SaveSourceMangaForDetailsTest {
                 assertEquals(true, fetchChapters)
                 return eu.kanade.tachiyomi.source.model.SMangaUpdate(
                     manga,
-                    listOf(SChapter.create().apply { url = "/chapter"; name = "Chapter 1" }),
+                    listOf(
+                        SChapter.create().apply {
+                            url = "/chapter"
+                            name = "Chapter 1"
+                        },
+                    ),
                 )
             }
         }
@@ -60,8 +75,8 @@ class SaveSourceMangaForDetailsTest {
 
     @Test
     fun `background detail refresh publishes loading then keeps the structured source failure`() = runBlocking<Unit> {
-        val mangaRepo = FakeMangaRepository()
-        val chapterRepo = FakeChapterRepository()
+        val mangaRepo = storage.mangas
+        val chapterRepo = storage.chapters
         val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
         val listed = SManga.create().apply {
             url = "/comic/invalid-details"
@@ -75,8 +90,12 @@ class SaveSourceMangaForDetailsTest {
             override suspend fun getMangaDetails(manga: SManga): SManga =
                 throw IllegalStateException("results was null")
             override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
-            override suspend fun getPopularManga(page: Int) = eu.kanade.tachiyomi.source.model.MangasPage(emptyList(), false)
-            override suspend fun getLatestUpdates(page: Int) = eu.kanade.tachiyomi.source.model.MangasPage(emptyList(), false)
+            override suspend fun getPopularManga(
+                page: Int,
+            ) = eu.kanade.tachiyomi.source.model.MangasPage(emptyList(), false)
+            override suspend fun getLatestUpdates(
+                page: Int,
+            ) = eu.kanade.tachiyomi.source.model.MangasPage(emptyList(), false)
             override suspend fun getSearchManga(
                 page: Int,
                 query: String,
@@ -101,52 +120,53 @@ class SaveSourceMangaForDetailsTest {
     }
 
     @Test
-    fun `search results use canonical mapping deduplicate per source and preserve existing state`() = runBlocking<Unit> {
-        val mangaRepo = FakeMangaRepository()
-        val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, FakeChapterRepository())
-        mangaRepo.seed(
-            Manga.create().copy(
-                id = 7,
-                source = 42,
-                url = "/same",
-                title = "Existing",
-                favorite = true,
-                initialized = true,
-            ),
-        )
-        val listed = SManga.create().apply {
-            url = "/same"
-            title = "Listed"
-            artist = "Artist"
-            author = "Author"
-            description = "Description"
-            genre = "Drama, Action"
-            status = SManga.COMPLETED
-            thumbnail_url = "https://example.invalid/cover.jpg"
-            update_strategy = UpdateStrategy.ONLY_FETCH_ONCE
-            initialized = false
+    fun `search results use canonical mapping deduplicate per source and preserve existing state`() =
+        runBlocking<Unit> {
+            val mangaRepo = storage.mangas
+            val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, storage.chapters)
+            mangaRepo.seed(
+                Manga.create().copy(
+                    id = 7,
+                    source = 42,
+                    url = "/same",
+                    title = "Existing",
+                    favorite = true,
+                    initialized = true,
+                ),
+            )
+            val listed = SManga.create().apply {
+                url = "/same"
+                title = "Listed"
+                artist = "Artist"
+                author = "Author"
+                description = "Description"
+                genre = "Drama, Action"
+                status = SManga.COMPLETED
+                thumbnail_url = "https://example.invalid/cover.jpg"
+                update_strategy = UpdateStrategy.ONLY_FETCH_ONCE
+                initialized = false
+            }
+
+            val sameSource = useCase.awaitSearchResults(listOf(listed, listed), 42)
+            val otherSource = useCase.awaitSearchResults(listOf(listed), 43).single()
+
+            assertEquals(listOf(7L), sameSource.map(Manga::id))
+            assertEquals(true, sameSource.single().favorite)
+            assertEquals(true, sameSource.single().initialized)
+            assertEquals(43L, otherSource.source)
+            assertEquals("Artist", otherSource.artist)
+            assertEquals("Author", otherSource.author)
+            assertEquals("Description", otherSource.description)
+            assertEquals(listOf("Drama", "Action"), otherSource.genre)
+            assertEquals(SManga.COMPLETED.toLong(), otherSource.status)
+            assertEquals("https://example.invalid/cover.jpg", otherSource.thumbnailUrl)
+            assertEquals(UpdateStrategy.ONLY_FETCH_ONCE, otherSource.updateStrategy)
         }
-
-        val sameSource = useCase.awaitSearchResults(listOf(listed, listed), 42)
-        val otherSource = useCase.awaitSearchResults(listOf(listed), 43).single()
-
-        assertEquals(listOf(7L), sameSource.map(Manga::id))
-        assertEquals(true, sameSource.single().favorite)
-        assertEquals(true, sameSource.single().initialized)
-        assertEquals(43L, otherSource.source)
-        assertEquals("Artist", otherSource.artist)
-        assertEquals("Author", otherSource.author)
-        assertEquals("Description", otherSource.description)
-        assertEquals(listOf("Drama", "Action"), otherSource.genre)
-        assertEquals(SManga.COMPLETED.toLong(), otherSource.status)
-        assertEquals("https://example.invalid/cover.jpg", otherSource.thumbnailUrl)
-        assertEquals(UpdateStrategy.ONLY_FETCH_ONCE, otherSource.updateStrategy)
-    }
 
     @Test
     fun `saves source manga as non favorite with chapters`() = runBlocking<Unit> {
-        val mangaRepo = FakeMangaRepository()
-        val chapterRepo = FakeChapterRepository()
+        val mangaRepo = storage.mangas
+        val chapterRepo = storage.chapters
         val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
 
         val result = useCase.await(
@@ -157,8 +177,14 @@ class SaveSourceMangaForDetailsTest {
             },
             sourceId = 42L,
             sChapters = listOf(
-                SChapter.create().apply { url = "/chapter/1"; name = "Chapter 1" },
-                SChapter.create().apply { url = "/chapter/2"; name = "Chapter 2" },
+                SChapter.create().apply {
+                    url = "/chapter/1"
+                    name = "Chapter 1"
+                },
+                SChapter.create().apply {
+                    url = "/chapter/2"
+                    name = "Chapter 2"
+                },
             ),
         )
 
@@ -171,8 +197,8 @@ class SaveSourceMangaForDetailsTest {
 
     @Test
     fun `saving source manga records the complete catalogue through the archive repository`() = runBlocking<Unit> {
-        val mangaRepo = FakeMangaRepository()
-        val chapterRepo = FakeChapterRepository()
+        val mangaRepo = storage.mangas
+        val chapterRepo = storage.chapters
         val archive = mockk<CreatorArchiveRepository>(relaxed = true)
         val useCase = SaveSourceMangaForDetails(
             NetworkToLocalManga(mangaRepo),
@@ -226,8 +252,8 @@ class SaveSourceMangaForDetailsTest {
 
     @Test
     fun `recognizes chapter numbers from source chapter names when saving details`() = runBlocking<Unit> {
-        val mangaRepo = FakeMangaRepository()
-        val chapterRepo = FakeChapterRepository()
+        val mangaRepo = storage.mangas
+        val chapterRepo = storage.chapters
         val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
 
         useCase.await(
@@ -237,8 +263,14 @@ class SaveSourceMangaForDetailsTest {
             },
             sourceId = 42L,
             sChapters = listOf(
-                SChapter.create().apply { url = "/chapter/16"; name = "第16卷" },
-                SChapter.create().apply { url = "/chapter/22"; name = "第22卷" },
+                SChapter.create().apply {
+                    url = "/chapter/16"
+                    name = "第16卷"
+                },
+                SChapter.create().apply {
+                    url = "/chapter/22"
+                    name = "第22卷"
+                },
             ),
         )
 
@@ -247,8 +279,8 @@ class SaveSourceMangaForDetailsTest {
 
     @Test
     fun `updates existing unrecognized chapter numbers when saving details again`() = runBlocking<Unit> {
-        val mangaRepo = FakeMangaRepository()
-        val chapterRepo = FakeChapterRepository()
+        val mangaRepo = storage.mangas
+        val chapterRepo = storage.chapters
         val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
         val existing = Manga.create().copy(
             id = 7L,
@@ -260,8 +292,20 @@ class SaveSourceMangaForDetailsTest {
         mangaRepo.seed(existing)
         chapterRepo.addAll(
             listOf(
-                Chapter.create().copy(id = 100L, mangaId = 7L, url = "/chapter/16", name = "第16卷", chapterNumber = -1.0),
-                Chapter.create().copy(id = 101L, mangaId = 7L, url = "/chapter/22", name = "第22卷", chapterNumber = -1.0),
+                Chapter.create().copy(
+                    id = 100L,
+                    mangaId = 7L,
+                    url = "/chapter/16",
+                    name = "第16卷",
+                    chapterNumber = -1.0,
+                ),
+                Chapter.create().copy(
+                    id = 101L,
+                    mangaId = 7L,
+                    url = "/chapter/22",
+                    name = "第22卷",
+                    chapterNumber = -1.0,
+                ),
             ),
         )
 
@@ -272,8 +316,14 @@ class SaveSourceMangaForDetailsTest {
             },
             sourceId = 42L,
             sChapters = listOf(
-                SChapter.create().apply { url = "/chapter/16"; name = "第16卷" },
-                SChapter.create().apply { url = "/chapter/22"; name = "第22卷" },
+                SChapter.create().apply {
+                    url = "/chapter/16"
+                    name = "第16卷"
+                },
+                SChapter.create().apply {
+                    url = "/chapter/22"
+                    name = "第22卷"
+                },
             ),
         )
 
@@ -282,14 +332,19 @@ class SaveSourceMangaForDetailsTest {
 
     @Test
     fun `does not duplicate chapters on repeated source detail open`() = runBlocking<Unit> {
-        val mangaRepo = FakeMangaRepository()
-        val chapterRepo = FakeChapterRepository()
+        val mangaRepo = storage.mangas
+        val chapterRepo = storage.chapters
         val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
         val sManga = SManga.create().apply {
             url = "/manga/chainsaw-man"
             title = "Chainsaw Man"
         }
-        val chapters = listOf(SChapter.create().apply { url = "/chapter/1"; name = "Chapter 1" })
+        val chapters = listOf(
+            SChapter.create().apply {
+                url = "/chapter/1"
+                name = "Chapter 1"
+            },
+        )
 
         val first = useCase.await(sManga, sourceId = 42L, sChapters = chapters)
         val second = useCase.await(sManga, sourceId = 42L, sChapters = chapters)
@@ -300,8 +355,8 @@ class SaveSourceMangaForDetailsTest {
 
     @Test
     fun `fetches source details and chapters before opening unified manga detail`() = runBlocking<Unit> {
-        val mangaRepo = FakeMangaRepository()
-        val chapterRepo = FakeChapterRepository()
+        val mangaRepo = storage.mangas
+        val chapterRepo = storage.chapters
         val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
         val source = FakeCatalogueSource(
             details = SManga.create().apply {
@@ -310,7 +365,12 @@ class SaveSourceMangaForDetailsTest {
                 author = "Author A"
                 thumbnail_url = "https://example.invalid/detail-cover.jpg"
             },
-            chapters = listOf(SChapter.create().apply { url = "/chapter/1"; name = "Chapter 1" }),
+            chapters = listOf(
+                SChapter.create().apply {
+                    url = "/chapter/1"
+                    name = "Chapter 1"
+                },
+            ),
         )
 
         val result = useCase.awaitFromSource(
@@ -332,8 +392,8 @@ class SaveSourceMangaForDetailsTest {
 
     @Test
     fun `saves listed manga without fetching source before navigation`() = runBlocking<Unit> {
-        val mangaRepo = FakeMangaRepository()
-        val chapterRepo = FakeChapterRepository()
+        val mangaRepo = storage.mangas
+        val chapterRepo = storage.chapters
         val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
         val listed = SManga.create().apply {
             url = "/manga/fast-open"
@@ -352,8 +412,8 @@ class SaveSourceMangaForDetailsTest {
 
     @Test
     fun `listed save returns existing initialized manga without downgrading it`() = runBlocking<Unit> {
-        val mangaRepo = FakeMangaRepository()
-        val chapterRepo = FakeChapterRepository()
+        val mangaRepo = storage.mangas
+        val chapterRepo = storage.chapters
         val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
         val existing = Manga.create().copy(
             id = 7L,
@@ -374,13 +434,13 @@ class SaveSourceMangaForDetailsTest {
 
         assertEquals(7L, result.id)
         assertEquals(true, result.initialized)
-        assertEquals(true, mangaRepo.get(7L)?.initialized)
+        assertEquals(true, mangaRepo.getMangaById(7L).initialized)
     }
 
     @Test
     fun `listed detail open requests refresh for existing initialized manga with no chapters`() = runBlocking<Unit> {
-        val mangaRepo = FakeMangaRepository()
-        val chapterRepo = FakeChapterRepository()
+        val mangaRepo = storage.mangas
+        val chapterRepo = storage.chapters
         val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
         val existing = Manga.create().copy(
             id = 7L,
@@ -402,36 +462,37 @@ class SaveSourceMangaForDetailsTest {
         assertEquals(7L, result.manga.id)
         assertEquals(true, result.manga.initialized)
         assertEquals(true, result.needsRefresh)
-        assertEquals(true, mangaRepo.get(7L)?.initialized)
+        assertEquals(true, mangaRepo.getMangaById(7L).initialized)
     }
 
     @Test
-    fun `listed detail open does not request refresh for existing initialized manga with chapters`() = runBlocking<Unit> {
-        val mangaRepo = FakeMangaRepository()
-        val chapterRepo = FakeChapterRepository()
-        val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
-        val existing = Manga.create().copy(
-            id = 7L,
-            source = 42L,
-            url = "/manga/already-has-chapters",
-            title = "Already Has Chapters",
-            initialized = true,
-        )
-        mangaRepo.seed(existing)
-        chapterRepo.addAll(
-            listOf(
-                Chapter.create().copy(mangaId = 7L, url = "/chapter/1", name = "Chapter 1"),
-            ),
-        )
+    fun `listed detail open does not request refresh for existing initialized manga with chapters`() =
+        runBlocking<Unit> {
+            val mangaRepo = storage.mangas
+            val chapterRepo = storage.chapters
+            val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
+            val existing = Manga.create().copy(
+                id = 7L,
+                source = 42L,
+                url = "/manga/already-has-chapters",
+                title = "Already Has Chapters",
+                initialized = true,
+            )
+            mangaRepo.seed(existing)
+            chapterRepo.addAll(
+                listOf(
+                    Chapter.create().copy(mangaId = 7L, url = "/chapter/1", name = "Chapter 1"),
+                ),
+            )
 
-        val result = useCase.awaitListedForDetails(
-            sManga = SManga.create().apply {
-                url = "/manga/already-has-chapters"
-                title = "Already Has Chapters"
-            },
-            sourceId = 42L,
-        )
+            val result = useCase.awaitListedForDetails(
+                sManga = SManga.create().apply {
+                    url = "/manga/already-has-chapters"
+                    title = "Already Has Chapters"
+                },
+                sourceId = 42L,
+            )
 
-        assertEquals(false, result.needsRefresh)
-    }
+            assertEquals(false, result.needsRefresh)
+        }
 }

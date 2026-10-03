@@ -1,25 +1,43 @@
 package mihon.desktop.ui.library
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.Role
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
+import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DownloadStatus
+import mihon.desktop.settings.DesktopAppPreferences
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.i18n.MR
 import java.util.Locale
 
 class MangaDetailChapterListItemsTest {
+    private val rowDependencies = mockk<DesktopUiDependencies> {
+        every { appPreferences } returns DesktopAppPreferences(InMemoryPreferenceStore())
+    }
+
+    @Composable
+    private fun ChapterRowTheme(content: @Composable () -> Unit) {
+        CompositionLocalProvider(LocalDesktopUiDependencies provides rowDependencies) {
+            MaterialTheme(content = content)
+        }
+    }
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
@@ -29,7 +47,7 @@ class MangaDetailChapterListItemsTest {
         val scene = ImageComposeScene(900, 180, coroutineContext = coroutineContext) {}
         try {
             scene.setContent {
-                MaterialTheme {
+                ChapterRowTheme {
                     ChapterRow(
                         chapter = Chapter.create().copy(id = 7L, mangaId = 1L, name = "Chapter"),
                         title = "Chapter",
@@ -73,7 +91,7 @@ class MangaDetailChapterListItemsTest {
         val scene = ImageComposeScene(900, 180, coroutineContext = coroutineContext) {}
         try {
             scene.setContent {
-                MaterialTheme {
+                ChapterRowTheme {
                     ChapterRow(
                         chapter = Chapter.create().copy(id = 8L, mangaId = 1L, name = "Selected chapter"),
                         title = "Selected chapter",
@@ -110,7 +128,7 @@ class MangaDetailChapterListItemsTest {
         val scene = ImageComposeScene(900, 180, coroutineContext = coroutineContext) {}
         try {
             scene.setContent {
-                MaterialTheme {
+                ChapterRowTheme {
                     ChapterRow(
                         chapter = Chapter.create().copy(id = 9L, mangaId = 1L, name = "Long press chapter"),
                         title = "Long press chapter",
@@ -149,7 +167,7 @@ class MangaDetailChapterListItemsTest {
         val scene = ImageComposeScene(900, 180, coroutineContext = coroutineContext) {}
         try {
             scene.setContent {
-                MaterialTheme {
+                ChapterRowTheme {
                     ChapterRow(
                         chapter = Chapter.create().copy(id = 10L, mangaId = 1L, name = "Button chapter"),
                         title = "Button chapter",
@@ -167,12 +185,13 @@ class MangaDetailChapterListItemsTest {
             }
             scene.render()
 
-            val bookmark = nodes(scene).single { node ->
-                node.config.contains(SemanticsActions.OnClick) &&
-                    node.config.contains(SemanticsProperties.ContentDescription) &&
-                    MR.strings.action_bookmark.localized() in node.config[SemanticsProperties.ContentDescription]
+            val row = nodes(scene).single { node ->
+                node.config.contains(SemanticsActions.CustomActions) && node.hasText("Button chapter")
             }
-            tap(scene, bookmark.boundsInRoot.center)
+            val bookmark = row.config[SemanticsActions.CustomActions].single {
+                it.label == MR.strings.action_bookmark.localized()
+            }
+            assertTrue(bookmark.action())
 
             val download = nodes(scene).single { node ->
                 node.config.contains(SemanticsActions.OnClick) &&
@@ -220,7 +239,7 @@ class MangaDetailChapterListItemsTest {
         val scene = ImageComposeScene(900, 180, coroutineContext = coroutineContext) {}
         try {
             scene.setContent {
-                MaterialTheme {
+                ChapterRowTheme {
                     ChapterRow(
                         chapter = Chapter.create().copy(id = 7L, mangaId = 1L, name = "Chapter"),
                         title = "Chapter",

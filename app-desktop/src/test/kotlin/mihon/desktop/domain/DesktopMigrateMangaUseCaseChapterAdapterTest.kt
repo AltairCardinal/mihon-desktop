@@ -2,68 +2,79 @@ package mihon.desktop.domain
 
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.spyk
 import kotlinx.coroutines.test.runTest
-import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
+import mihon.domain.migration.MigrationCommit
+import mihon.domain.migration.MigrationReceipt
+import mihon.domain.migration.models.MigrationFlag
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import tachiyomi.domain.category.interactor.GetCategories
-import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
-import tachiyomi.domain.chapter.interactor.UpdateChapter
-import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 
 class DesktopMigrateMangaUseCaseChapterAdapterTest {
     @Test
-    fun `Desktop production adapter preserves all target read states when source contains read NaN`() = runTest {
-        val mangas = FakeMangaRepository()
+    fun `Desktop production adapter delegates chapter state to the atomic migration repository`() = runTest {
+        val mangas = spyk(FakeMangaRepository())
         val chapters = FakeChapterRepository()
         val source = Manga.create().copy(id = 10, source = 1, url = "/source", title = "Source", favorite = true)
         mangas.seed(source)
-        chapters.seed(chapter(1, source.id, 2.0, read = true))
-        chapters.seed(chapter(2, source.id, Double.NaN, read = true))
+        var receipt: MigrationReceipt? = null
+        var accepted: MigrationCommit? = null
+        coEvery { mangas.migrationReceipt(source.id) } answers { receipt }
+        coEvery { mangas.prepareMigration(any()) } answers {
+            MigrationReceipt(firstArg(), filesReady = true).also { receipt = it }
+        }
+        coEvery { mangas.commitMigration(any()) } coAnswers {
+            accepted = firstArg()
+            receipt = requireNotNull(receipt).copy(committed = true)
+            mangas.getMangaById(requireNotNull(accepted).targetMangaId)
+        }
+        coEvery { mangas.completeMigrationFiles(any()) } answers
+            { receipt = requireNotNull(receipt).copy(filesComplete = true) }
+        coEvery { mangas.acknowledgeMigration(any()) } answers { receipt = null }
         val useCase = DesktopMigrateMangaUseCase(
-            saveSourceMangaForDetails = SaveSourceMangaForDetails(
-                NetworkToLocalManga(mangas),
-                mangas,
-                chapters,
-            ),
-            getChaptersByMangaId = GetChaptersByMangaId(chapters),
-            updateChapter = UpdateChapter(chapters),
-            getCategories = GetCategories(FakeCategoryRepository()),
-            mangaRepository = mangas,
+            SaveSourceMangaForDetails(NetworkToLocalManga(mangas), mangas, chapters, directoryCommit = { _, _ ->
+                tachiyomi.domain.chapter.service.ChapterDirectoryResult(
+                    tachiyomi.domain.chapter.service.ChapterDirectoryPlan(
+                        emptyList(),
+                        emptyList(),
+                        emptyList(),
+                        emptySet(),
+                    ),
+                    emptyList(),
+                )
+            }),
+            mangas,
         )
-
-        useCase.await(
-            sourceManga = source,
-            targetSManga = SManga.create().apply {
+        val target = useCase.await(
+            source,
+            SManga.create().apply {
                 url = "/target"
                 title = "Target"
             },
-            targetSourceId = 2,
-            targetChapters = listOf(sourceChapter("/1", 1f), sourceChapter("/2", 2f), sourceChapter("/3", 3f)),
-            options = MigrationOptions(copyCategories = false, copyNotes = false),
+            2,
+            listOf(
+                SChapter.create().apply {
+                    url = "/1"
+                    name = "One"
+                    chapter_number = 1f
+                },
+            ),
+            MigrationOptions(copyCategories = false, copyNotes = false),
             replace = false,
         )
-
-        assertEquals(3, chapters.updates.size)
-        assertEquals(listOf(null, null, null), chapters.updates.map { it.read })
-    }
-
-    private fun chapter(id: Long, mangaId: Long, number: Double, read: Boolean) = Chapter.create().copy(
-        id = id,
-        mangaId = mangaId,
-        url = "/source-$id",
-        name = "Source $id",
-        chapterNumber = number,
-        read = read,
-    )
-
-    private fun sourceChapter(url: String, number: Float) = SChapter.create().apply {
-        this.url = url
-        name = url
-        chapter_number = number
+        coVerify(exactly = 1) { mangas.commitMigration(any()) }
+        assertEquals(setOf(MigrationFlag.CHAPTER), requireNotNull(accepted).flags)
+        assertEquals(source.id, accepted?.sourceMangaId)
+        assertEquals(target.id, accepted?.targetMangaId)
+        assertTrue(target.id != source.id)
+        assertTrue(chapters.updates.isEmpty(), "No retired standalone chapter writes can bypass the atomic repository")
+        assertEquals(source, mangas.getMangaById(source.id))
     }
 }

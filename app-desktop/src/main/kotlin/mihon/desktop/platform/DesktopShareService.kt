@@ -1,8 +1,11 @@
 package mihon.desktop.platform
 
+import mihon.desktop.domain.DesktopNotification
+import mihon.domain.platform.SharePayload
+import tachiyomi.i18n.MR
+import java.awt.Desktop
 import java.awt.GraphicsEnvironment
 import java.awt.Toolkit
-import java.awt.Desktop
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 import java.awt.datatransfer.Transferable
@@ -18,18 +21,17 @@ import java.nio.file.attribute.PosixFilePermissions
 import javax.imageio.ImageIO
 import javax.swing.JFileChooser
 import javax.swing.SwingUtilities
-import mihon.desktop.domain.DesktopNotification
-import mihon.domain.platform.SharePayload
-import tachiyomi.i18n.MR
 
 class DesktopShareService(
     private val nativeSharePort: DesktopNativeSharePort = UnavailableDesktopNativeSharePort,
     private val clipboardPort: DesktopClipboardPort = AwtDesktopClipboardPort,
-    private val savePort: DesktopSavePort = SwingDesktopSavePort,
+    private val savePort: DesktopSavePort = SwingDesktopSavePort(),
     private val isHeadless: () -> Boolean = {
         GraphicsEnvironment.isHeadless() || DesktopExternalActionPolicy.isShareSuppressed()
     },
     private val revealPort: DesktopRevealPort = AwtDesktopRevealPort,
+    private val overwriteConfirmation: (File) -> Boolean = ::confirmDesktopOverwrite,
+    private val saveContentWriter: (DesktopSaveContent, File) -> Unit = ::writeDesktopSaveContent,
 ) {
     fun share(
         payload: SharePayload,
@@ -76,10 +78,20 @@ class DesktopShareService(
     fun saveImage(image: BufferedImage, destination: File): DesktopShareResult {
         if (isHeadless()) return DesktopShareResult.Unavailable(DesktopShareUnavailableReason.HEADLESS)
         return runCatching {
-            destination.parentFile?.mkdirs()
-            check(ImageIO.write(image, "png", destination))
-            revealBestEffort(destination)
-            DesktopShareResult.Saved(destination)
+            when (
+                saveDesktopContent(
+                    DesktopSaveContent.Image(image),
+                    destination,
+                    overwriteConfirmation,
+                    saveContentWriter,
+                )
+            ) {
+                DesktopSaveOutcome.Cancelled -> DesktopShareResult.Cancelled
+                is DesktopSaveOutcome.Saved -> {
+                    revealBestEffort(destination)
+                    DesktopShareResult.Saved(destination)
+                }
+            }
         }.getOrElse { DesktopShareResult.Failed(DesktopShareFailureReason.SAVE_FAILED) }
     }
 
@@ -138,8 +150,10 @@ sealed interface DesktopShareResult {
 enum class DesktopShareUnavailableReason { HEADLESS, UNSUPPORTED_PAYLOAD }
 enum class DesktopShareFailureReason { NATIVE_SHARE_FAILED, CLIPBOARD_BUSY, SAVE_FAILED, INVALID_PAYLOAD }
 
-fun DesktopShareResult.toDesktopNotification(): DesktopNotification = DesktopNotification(
-    title = MR.strings.action_share.localized(),
+fun DesktopShareResult.toDesktopNotification(
+    title: String = MR.strings.action_share.localized(),
+): DesktopNotification = DesktopNotification(
+    title = title,
     message = when (this) {
         DesktopShareResult.OpenedNatively -> MR.strings.action_share.localized()
         DesktopShareResult.SharedNatively -> MR.strings.completed.localized()
@@ -272,24 +286,70 @@ private object AwtDesktopRevealPort : DesktopRevealPort {
     }
 }
 
-private object SwingDesktopSavePort : DesktopSavePort {
+internal class SwingDesktopSavePort(
+    private val chooseDestination: (String) -> File? = ::chooseDesktopSaveDestination,
+    private val overwriteConfirmation: (File) -> Boolean = ::confirmDesktopOverwrite,
+    private val contentWriter: (DesktopSaveContent, File) -> Unit = ::writeDesktopSaveContent,
+) : DesktopSavePort {
     override fun save(content: DesktopSaveContent, suggestedName: String): DesktopSaveOutcome {
-        var selected: File? = null
-        val choose = {
-            val chooser = JFileChooser().apply { selectedFile = File(suggestedName) }
-            if (chooser.showSaveDialog(null) == JFileChooser.APPROVE_OPTION) selected = chooser.selectedFile
-        }
-        if (SwingUtilities.isEventDispatchThread()) choose() else SwingUtilities.invokeAndWait(choose)
-        val destination = selected ?: return DesktopSaveOutcome.Cancelled
-        when (content) {
-            is DesktopSaveContent.Image -> check(ImageIO.write(content.image, "png", destination))
-            is DesktopSaveContent.LocalFile -> Files.copy(
-                content.file.toPath(),
-                destination.toPath(),
-                StandardCopyOption.REPLACE_EXISTING,
-            )
-        }
+        val destination = chooseDestination(suggestedName) ?: return DesktopSaveOutcome.Cancelled
+        return saveDesktopContent(content, destination, overwriteConfirmation, contentWriter)
+    }
+}
+
+private fun chooseDesktopSaveDestination(suggestedName: String): File? {
+    var selected: File? = null
+    val choose = {
+        val chooser = JFileChooser().apply { selectedFile = File(suggestedName) }
+        if (chooser.showSaveDialog(null) == JFileChooser.APPROVE_OPTION) selected = chooser.selectedFile
+    }
+    if (SwingUtilities.isEventDispatchThread()) choose() else SwingUtilities.invokeAndWait(choose)
+    return selected
+}
+
+private fun confirmDesktopOverwrite(destination: File): Boolean {
+    var confirmed = false
+    val confirm = {
+        confirmed = javax.swing.JOptionPane.showConfirmDialog(
+            null,
+            MR.strings.sync_replace_file.localized(),
+            MR.strings.action_save.localized(),
+            javax.swing.JOptionPane.YES_NO_OPTION,
+        ) == javax.swing.JOptionPane.YES_OPTION
+    }
+    if (SwingUtilities.isEventDispatchThread()) confirm() else SwingUtilities.invokeAndWait(confirm)
+    return confirmed
+}
+
+private fun saveDesktopContent(
+    content: DesktopSaveContent,
+    destination: File,
+    confirmOverwrite: (File) -> Boolean,
+    writer: (DesktopSaveContent, File) -> Unit,
+): DesktopSaveOutcome {
+    val target = destination.toPath().toAbsolutePath().normalize()
+    if (Files.exists(target) && !confirmOverwrite(destination)) return DesktopSaveOutcome.Cancelled
+    Files.createDirectories(target.parent)
+    val staging = Files.createTempFile(target.parent, ".mihon-save-", ".tmp")
+    try {
+        writer(content, staging.toFile())
+        // If the filesystem cannot replace atomically, preserve the original and report
+        // failure. There is deliberately no destructive copy-over fallback.
+        Files.move(staging, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
         return DesktopSaveOutcome.Saved(destination)
+    } finally {
+        Files.deleteIfExists(staging)
+    }
+}
+
+private fun writeDesktopSaveContent(content: DesktopSaveContent, destination: File) {
+    when (content) {
+        is DesktopSaveContent.Image -> check(ImageIO.write(content.image, "png", destination))
+        is DesktopSaveContent.LocalFile -> Files.copy(
+            content.file.toPath(),
+            destination.toPath(),
+            StandardCopyOption.REPLACE_EXISTING,
+        )
     }
 }
 

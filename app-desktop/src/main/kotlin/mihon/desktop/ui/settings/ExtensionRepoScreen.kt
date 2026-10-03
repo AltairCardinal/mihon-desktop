@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Add
@@ -60,9 +59,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.launch
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
 import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
-import mihon.domain.extensionrepo.interactor.GetExtensionRepo
 import mihon.domain.extensionrepo.interactor.ReplaceExtensionRepo
-import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import mihon.domain.extensionrepo.service.ExtensionRepoAction
 import mihon.domain.extensionrepo.service.ExtensionRepoActionResult
@@ -227,9 +224,7 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
                 TopAppBar(
                     title = { Text(MR.strings.label_extension_repos.localized()) },
                     navigationIcon = {
-                        IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
-                        }
+                        mihon.desktop.ui.settings.SettingsNavigationIcon()
                     },
                     actions = {
                         IconButton(

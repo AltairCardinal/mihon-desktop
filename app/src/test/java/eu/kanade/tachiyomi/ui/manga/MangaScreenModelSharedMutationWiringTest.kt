@@ -100,12 +100,268 @@ import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.InjektScope
 import uy.kohesive.injekt.api.addSingleton
+import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.registry.default.DefaultRegistrar
 import java.util.Collections
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], manifest = Config.NONE)
 class MangaScreenModelSharedMutationWiringTest {
+    @Test
+    fun `Android manual download uses raw repository range and stable ascending candidates before limit`() = runTest {
+        val original = listOf(
+            chapter(1).copy(chapterNumber = 1.0, bookmark = true, read = true),
+            chapter(2).copy(chapterNumber = 2.0, bookmark = true),
+            chapter(3).copy(chapterNumber = 2.0),
+        )
+        val current = manga(true).copy(chapterFlags = Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SORT_DESC)
+        val get = mockk<GetMangaWithChapters> {
+            coEvery { subscribe(MANGA_ID, true) } returns flowOf(current to original.drop(1))
+            coEvery { awaitManga(MANGA_ID) } returns current
+            coEvery { awaitChapters(MANGA_ID, true) } returns original.drop(1)
+            coEvery { awaitChapters(MANGA_ID, false) } returns original
+        }
+        val accepted = Channel<List<Chapter>>(Channel.UNLIMITED)
+        val manager = mockk<DownloadManager>(relaxed = true) {
+            every { getQueuedDownloadOrNull(any()) } returns null
+            every { queueState } returns MutableStateFlow(emptyList())
+            every { statusFlow() } returns emptyFlow()
+            every { progressFlow() } returns emptyFlow()
+            every { isChapterDownloaded(any(), any(), any(), any(), any(), any()) } returns false
+            every { downloadChapters(any(), any(), any()) } answers {
+                accepted.trySend(secondArg())
+                Unit
+            }
+        }
+        for (skip in listOf(false, true)) {
+            ReaderPreferences(preferenceStore).skipFiltered().set(skip)
+            val model = screenModel(
+                manga = current,
+                chapters = original.drop(1),
+                getMangaWithChaptersOverride = get,
+                downloadManagerOverride = manager,
+            )
+            try {
+                awaitSuccess(model)
+                model.runDownloadAction(eu.kanade.presentation.manga.DownloadAction.BOOKMARKED_CHAPTERS)
+                testScheduler.runCurrent()
+                val bookmarks = withContext(Dispatchers.Default) { withTimeout(5000) { accepted.receive() } }
+                assertEquals(if (skip) listOf(2L) else listOf(1L, 2L), bookmarks.map { it.id })
+                model.runDownloadAction(eu.kanade.presentation.manga.DownloadAction.NEXT_1_CHAPTER)
+                testScheduler.runCurrent()
+                val next = withContext(Dispatchers.Default) { withTimeout(5000) { accepted.receive() } }
+                assertEquals(listOf(2L), next.map { it.id })
+            } finally {
+                model.onDispose()
+            }
+        }
+    }
+
+    @Test
+    fun `Android current defaults calls the shared favorite batch and six authoritative preferences`() = runTest {
+        val current = manga(true).copy(
+            chapterFlags = Manga.CHAPTER_SHOW_UNREAD or Manga.CHAPTER_SHOW_DOWNLOADED or
+                Manga.CHAPTER_SHOW_BOOKMARKED or Manga.CHAPTER_SORTING_NUMBER or
+                Manga.CHAPTER_SORT_ASC or Manga.CHAPTER_DISPLAY_NUMBER,
+        )
+        val other = current.copy(id = MANGA_ID + 1, chapterFlags = 0)
+        val updates = Collections.synchronizedList(mutableListOf<tachiyomi.domain.manga.model.MangaUpdate>())
+        val batchCompleted = CompletableDeferred<Unit>()
+        val repository = mockk<MangaRepository> {
+            coEvery { getFavorites() } returns listOf(current, other)
+            coEvery { update(any()) } coAnswers {
+                val update = firstArg<tachiyomi.domain.manga.model.MangaUpdate>()
+                updates += update
+                if (update.id == other.id) batchCompleted.complete(Unit)
+                true
+            }
+        }
+        val preferences = LibraryPreferences(preferenceStore)
+        val sharedDefaults = SetMangaDefaultChapterFlags(
+            preferences,
+            SetMangaChapterFlags(repository),
+            tachiyomi.domain.manga.interactor.GetFavorites(repository),
+        )
+        val model = screenModel(manga = current, chapters = emptyList(), defaultsOverride = sharedDefaults)
+        try {
+            awaitSuccess(model)
+            model.setCurrentSettingsAsDefault(applyToExisting = true)
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) { batchCompleted.await() }
+            }
+            assertEquals(listOf(current.id, other.id), updates.map { it.id })
+            assertTrue(updates.all { it.chapterFlags == current.chapterFlags })
+            assertEquals(Manga.CHAPTER_SHOW_UNREAD, preferences.filterChapterByRead().get())
+            assertEquals(Manga.CHAPTER_SHOW_DOWNLOADED, preferences.filterChapterByDownloaded().get())
+            assertEquals(Manga.CHAPTER_SHOW_BOOKMARKED, preferences.filterChapterByBookmarked().get())
+            assertEquals(Manga.CHAPTER_SORTING_NUMBER, preferences.sortChapterBySourceOrNumber().get())
+            assertEquals(Manga.CHAPTER_SORT_ASC, preferences.sortChapterByAscendingOrDescending().get())
+            assertEquals(Manga.CHAPTER_DISPLAY_NUMBER, preferences.displayChapterByNameOrNumber().get())
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `Android actual manual read uses highest valid shared progress after local write`() = runTest {
+        val chapters =
+            listOf(chapter(1).copy(chapterNumber = 9.0), chapter(2).copy(chapterNumber = Double.NaN), chapter(3))
+        val track = tachiyomi.domain.track.model.Track(
+            1,
+            MANGA_ID,
+            2,
+            11,
+            44,
+            "Title",
+            1.0,
+            100,
+            1,
+            80.0,
+            "url",
+            0,
+            0,
+            false,
+        )
+        val get = mockk<GetTracks> {
+            every { subscribe(MANGA_ID) } returns flowOf(listOf(track))
+            coEvery { await(MANGA_ID) } returns listOf(track)
+        }
+        val tracker = mockk<eu.kanade.tachiyomi.data.track.Tracker>(relaxed = true) {
+            every { id } returns 2L
+            every { isLoggedIn } returns true
+            every { isLoggedInFlow } returns flowOf(true)
+        }
+        val progress = Channel<Double>(Channel.UNLIMITED)
+        val trackChapter = mockk<TrackChapter>(relaxed = true) {
+            coEvery { await(any(), MANGA_ID, any(), any()) } answers {
+                progress.trySend(thirdArg())
+                Unit
+            }
+        }
+        val repository = mockk<ChapterRepository>(relaxed = true)
+        val status =
+            SetReadStatus(
+                DownloadPreferences(preferenceStore),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                repository,
+            )
+        Injekt.addSingleton<eu.kanade.domain.track.interactor.RefreshTracks>(
+            mockk {
+                coEvery { await(MANGA_ID) } returns emptyList()
+            },
+        )
+        val model = screenModel(
+            manga = manga(true),
+            chapters = chapters,
+            setReadStatus = status,
+            trackerManagerOverride = TrackerManager(listOf(tracker)),
+            getTracksOverride = get,
+            trackChapterOverride = trackChapter,
+        )
+        try {
+            testScheduler.runCurrent()
+            awaitSuccess(model)
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    while ((model.state.value as MangaScreenModel.State.Success).hasLoggedInTrackers.not()) delay(10)
+                }
+            }
+            model.markChaptersRead(chapters, true)
+            testScheduler.runCurrent()
+            val actual =
+                withContext(Dispatchers.Default) { kotlinx.coroutines.withTimeoutOrNull(1_000) { progress.receive() } }
+            assertEquals(9.0, actual)
+            coVerify(exactly = 1) {
+                repository.updateAll(match { it.map { row -> row.id }.toSet() == setOf(1L, 2L, 3L) })
+            }
+        } finally {
+            withContext(Dispatchers.Main) { model.onDispose() }
+        }
+    }
+
+    @Test
+    fun `Android manual read local storage failure never starts remote refresh or progress`() = runTest {
+        val chapters =
+            listOf(chapter(1).copy(chapterNumber = 9.0), chapter(2).copy(chapterNumber = Double.NaN), chapter(3))
+        val track = tachiyomi.domain.track.model.Track(
+            1,
+            MANGA_ID,
+            2,
+            11,
+            44,
+            "Title",
+            1.0,
+            100,
+            1,
+            80.0,
+            "url",
+            0,
+            0,
+            false,
+        )
+        val get = mockk<GetTracks> {
+            every { subscribe(MANGA_ID) } returns flowOf(listOf(track))
+            coEvery { await(MANGA_ID) } returns listOf(track)
+        }
+        val tracker = mockk<eu.kanade.tachiyomi.data.track.Tracker>(relaxed = true) {
+            every { id } returns 2L
+            every { isLoggedIn } returns true
+            every { isLoggedInFlow } returns flowOf(true)
+        }
+        val progress = Channel<Double>(Channel.UNLIMITED)
+        val trackChapter = mockk<TrackChapter>(relaxed = true) {
+            coEvery { await(any(), MANGA_ID, any(), any()) } answers {
+                progress.trySend(thirdArg())
+                Unit
+            }
+        }
+        val repository = mockk<ChapterRepository>(relaxed = true) {
+            coEvery { updateAll(any()) } throws java.io.IOException("local read rejected")
+        }
+        val status =
+            SetReadStatus(
+                DownloadPreferences(preferenceStore),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                repository,
+            )
+        Injekt.addSingleton<eu.kanade.domain.track.interactor.RefreshTracks>(
+            mockk {
+                coEvery { await(MANGA_ID) } returns emptyList()
+            },
+        )
+        val model = screenModel(
+            manga = manga(true),
+            chapters = chapters,
+            setReadStatus = status,
+            trackerManagerOverride = TrackerManager(listOf(tracker)),
+            getTracksOverride = get,
+            trackChapterOverride = trackChapter,
+        )
+        try {
+            testScheduler.runCurrent()
+            awaitSuccess(model)
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    while ((model.state.value as MangaScreenModel.State.Success).hasLoggedInTrackers.not()) delay(10)
+                }
+            }
+            model.markChaptersRead(chapters, true)
+            testScheduler.runCurrent()
+            val actual =
+                withContext(Dispatchers.Default) { kotlinx.coroutines.withTimeoutOrNull(1_000) { progress.receive() } }
+            assertEquals(null, actual)
+            val refresh = Injekt.get<eu.kanade.domain.track.interactor.RefreshTracks>()
+            coVerify(exactly = 0) { refresh.await(MANGA_ID) }
+            coVerify(exactly = 1) {
+                repository.updateAll(match { it.map { row -> row.id }.toSet() == setOf(1L, 2L, 3L) })
+            }
+        } finally {
+            withContext(Dispatchers.Main) { model.onDispose() }
+        }
+    }
+
     @get:Rule
     val compose = createEmptyComposeRule()
     private val readingRepository = mockk<ReadingProgressRepository>(relaxed = true)
@@ -368,8 +624,15 @@ class MangaScreenModelSharedMutationWiringTest {
         }
         val getChapters = tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(chapters)
         val update = UpdateManga(mangas, tachiyomi.domain.manga.interactor.FetchInterval(getChapters))
+        val downloads = mockk<eu.kanade.tachiyomi.data.download.DownloadManager>(relaxed = true)
+        coEvery {
+            downloads.withDirectoryChanges(
+                any(),
+                any<suspend () -> tachiyomi.domain.chapter.service.ChapterDirectoryResult>(),
+            )
+        } coAnswers { secondArg<suspend () -> tachiyomi.domain.chapter.service.ChapterDirectoryResult>()() }
         val sync = eu.kanade.domain.chapter.interactor.SyncChaptersWithSource(
-            mockk(relaxed = true), mockk(relaxed = true), chapters,
+            downloads, mockk(relaxed = true), chapters,
             tachiyomi.domain.chapter.interactor.ShouldUpdateDbChapter(), update, UpdateChapter(chapters), getChapters,
             GetExcludedScanlators(handler), LibraryPreferences(preferenceStore),
         )
@@ -395,11 +658,13 @@ class MangaScreenModelSharedMutationWiringTest {
             withContext(Dispatchers.Default) {
                 withTimeout(5_000) {
                     called.await()
-                    while (mangas.getMangaById(MANGA_ID).memo != memo) delay(10)
+                    if (!emptyChapters) {
+                        while (mangas.getMangaById(MANGA_ID).memo != memo) delay(10)
+                    }
                 }
             }
             coVerify(exactly = 1) { source.getMangaUpdate(any(), any(), true, true) }
-            assertEquals(memo, mangas.getMangaById(MANGA_ID).memo)
+            if (!emptyChapters) assertEquals(memo, mangas.getMangaById(MANGA_ID).memo)
             coVerify(exactly = 0) { source.getMangaDetails(any()) }
             coVerify(exactly = 0) { source.getChapterList(any()) }
             if (emptyChapters) {
@@ -413,6 +678,7 @@ class MangaScreenModelSharedMutationWiringTest {
                     }
                 }
                 assertEquals("No chapters found", snackbar.visuals.message)
+                assertEquals(manga.memo, mangas.getMangaById(MANGA_ID).memo)
                 snackbar.dismiss()
                 testScheduler.runCurrent()
                 assertEquals(false, (model.state.value as MangaScreenModel.State.Success).isRefreshingData)
@@ -553,6 +819,90 @@ class MangaScreenModelSharedMutationWiringTest {
         }
     }
 
+    @Test
+    fun `Android previous actual wrapper preserves stable duplicate prefix in both directions`() = runTest {
+        val chapters = listOf(3.0, -1.0, 2.5, 2.5, 7.0, 1.0).mapIndexed { index, number ->
+            chapter(index + 1L).copy(chapterNumber = number)
+        }
+        for (direction in listOf(Manga.CHAPTER_SORT_ASC, Manga.CHAPTER_SORT_DESC)) {
+            val captured = Channel<List<ChapterUpdate>>(Channel.UNLIMITED)
+            val repository = mockk<ChapterRepository> {
+                coEvery { updateAll(any()) } coAnswers { captured.send(firstArg()) }
+            }
+            val preferences = mockk<DownloadPreferences> {
+                every { removeAfterMarkedAsRead().get() } returns false
+            }
+            val model = screenModel(
+                manga = manga(true).copy(chapterFlags = Manga.CHAPTER_SORTING_NUMBER or direction),
+                chapters = chapters,
+                setReadStatus = SetReadStatus(preferences, mockk(), mockk(), repository),
+            )
+            try {
+                awaitSuccess(model)
+                model.markPreviousChapterRead(chapters[2])
+                val updates = withContext(Dispatchers.Default) { withTimeout(5000) { captured.receive() } }
+                assertEquals(listOf(2L, 6L), updates.map { it.id })
+                assertTrue(updates.all { it.read == true && it.syncContext == SyncMutationContext.User })
+            } finally {
+                model.onDispose()
+            }
+        }
+    }
+
+    @Test
+    fun `Android bookmark actual wrapper propagates cancellation without writes or snackbar`() = runTest {
+        val attempted = Collections.synchronizedList(mutableListOf<Long>())
+        val repository = mockk<ChapterRepository> {
+            coEvery { update(any()) } answers {
+                attempted += firstArg<ChapterUpdate>().id
+                throw kotlinx.coroutines.CancellationException("cancel actual batch")
+            }
+        }
+        val model = screenModel(
+            manga = manga(true),
+            chapters = listOf(chapter(1), chapter(2)),
+            updateChapter = UpdateChapter(repository),
+            batchUpdateChapters = BatchUpdateChapters(),
+        )
+        try {
+            awaitSuccess(model)
+            val mutation = model.bookmarkChapters(listOf(chapter(1), chapter(2)), true)
+            withContext(Dispatchers.Default) { withTimeout(5000) { mutation.join() } }
+            assertTrue(mutation.isCancelled)
+            assertEquals(listOf(1L), attempted)
+            assertEquals(null, model.snackbarHostState.currentSnackbarData)
+        } finally {
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `Android previous first valid pointer clears selection with no writes stale pointer does not`() = runTest {
+        val chapters = listOf(chapter(1).copy(chapterNumber = 1.0), chapter(2).copy(chapterNumber = 2.0))
+        val repository = mockk<ChapterRepository>(relaxed = true)
+        val preferences = mockk<DownloadPreferences> { every { removeAfterMarkedAsRead().get() } returns false }
+        val model = screenModel(
+            manga = manga(true).copy(
+                chapterFlags =
+                Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SORT_ASC,
+            ),
+            chapters = chapters,
+            setReadStatus = SetReadStatus(preferences, mockk(), mockk(), repository),
+        )
+        try {
+            awaitSuccess(model)
+            model.toggleAllSelection(true)
+            assertEquals(2, (model.state.value as MangaScreenModel.State.Success).chapters.count { it.selected })
+            model.markPreviousChapterRead(chapter(99))
+            assertEquals(2, (model.state.value as MangaScreenModel.State.Success).chapters.count { it.selected })
+            model.markPreviousChapterRead(chapters[0])
+            assertTrue((model.state.value as MangaScreenModel.State.Success).chapters.none { it.selected })
+            coVerify(exactly = 0) { repository.updateAll(any()) }
+        } finally {
+            model.onDispose()
+        }
+    }
+
     private fun screenModel(
         context: Context = RuntimeEnvironment.getApplication(),
         manga: Manga,
@@ -571,6 +921,11 @@ class MangaScreenModelSharedMutationWiringTest {
         chapterRepository: ChapterRepository = mockk(relaxed = true),
         syncChaptersWithSource: eu.kanade.domain.chapter.interactor.SyncChaptersWithSource = mockk(relaxed = true),
         getMangaWithChaptersOverride: GetMangaWithChapters? = null,
+        defaultsOverride: SetMangaDefaultChapterFlags? = null,
+        downloadManagerOverride: DownloadManager? = null,
+        trackerManagerOverride: TrackerManager? = null,
+        getTracksOverride: GetTracks? = null,
+        trackChapterOverride: TrackChapter? = null,
     ): MangaScreenModel {
         Injekt.addSingleton(chapterRepository)
         Injekt.addSingleton(mockk<eu.kanade.tachiyomi.data.cache.CoverCache>(relaxed = true))
@@ -587,7 +942,7 @@ class MangaScreenModelSharedMutationWiringTest {
             every { subscribe(MANGA_ID) } returns flowOf(emptySet())
             coEvery { await(MANGA_ID) } returns emptySet()
         }
-        val downloadManager = mockk<DownloadManager>(relaxed = true) {
+        val downloadManager = downloadManagerOverride ?: mockk<DownloadManager>(relaxed = true) {
             every { queueState } returns MutableStateFlow(emptyList())
             every { statusFlow() } returns emptyFlow()
             every { progressFlow() } returns emptyFlow()
@@ -605,8 +960,8 @@ class MangaScreenModelSharedMutationWiringTest {
             libraryPreferences = libraryPreferences,
             trackPreferences = TrackPreferences(preferenceStore),
             readerPreferences = ReaderPreferences(preferenceStore),
-            trackerManager = TrackerManager(emptyList()),
-            trackChapter = mockk<TrackChapter>(relaxed = true),
+            trackerManager = trackerManagerOverride ?: TrackerManager(emptyList()),
+            trackChapter = trackChapterOverride ?: mockk<TrackChapter>(relaxed = true),
             downloadManager = downloadManager,
             downloadCache = downloadCache,
             getMangaAndChapters = getMangaWithChapters,
@@ -615,13 +970,13 @@ class MangaScreenModelSharedMutationWiringTest {
             getExcludedScanlators = excludedScanlators,
             setExcludedScanlators = mockk<SetExcludedScanlators>(relaxed = true),
             setMangaChapterFlags = mockk<SetMangaChapterFlags>(relaxed = true),
-            setMangaDefaultChapterFlags = mockk<SetMangaDefaultChapterFlags>(relaxed = true),
+            setMangaDefaultChapterFlags = defaultsOverride ?: mockk<SetMangaDefaultChapterFlags>(relaxed = true),
             setReadStatus = setReadStatus,
             updateChapter = updateChapter,
             updateManga = updateManga,
             syncChaptersWithSource = syncChaptersWithSource,
             getCategories = mockk<GetCategories>(relaxed = true),
-            getTracks = mockk<GetTracks> {
+            getTracks = getTracksOverride ?: mockk<GetTracks> {
                 every { subscribe(MANGA_ID) } returns flowOf(emptyList())
             },
             addTracks = mockk<AddTracks>(relaxed = true),

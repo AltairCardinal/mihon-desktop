@@ -85,7 +85,8 @@ object UpdatesTab : Tab {
         @Composable
         get() {
             val icon = rememberVectorPainter(Icons.Default.NewReleases)
-            return remember {
+            val localeTag = mihon.desktop.platform.LocalDesktopLocaleTag.current
+            return remember(localeTag) {
                 TabOptions(
                     index = 1u,
                     title = MR.strings.label_recent_updates.localized(),
@@ -96,7 +97,8 @@ object UpdatesTab : Tab {
 
     @Composable
     override fun Content() {
-        Navigator(UpdatesRootScreen()) {
+        Navigator(UpdatesRootScreen()) { navigator ->
+            mihon.desktop.ui.home.ObserveHomeNavigationStack(navigator)
             CurrentScreen()
         }
     }

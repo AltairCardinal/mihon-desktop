@@ -25,6 +25,7 @@ import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DownloadStatus
 import mihon.desktop.reader.ReaderNavigator
+import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.source.FakeSource
 import mihon.domain.reader.content.DownloadChapterIdentity
@@ -42,7 +43,6 @@ import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetDisplayMode
 import tachiyomi.domain.category.interactor.SetMangaCategories
-import tachiyomi.domain.category.interactor.SetSortModeForCategory
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
@@ -415,7 +415,13 @@ class LibraryScreenModelTest {
             }
             val model = LibraryScreenModel(
                 libraryPreferences = preferences,
-                setSortModeForCategory = SetSortModeForCategory(preferences, repository),
+                categorySortSettings = mihon.desktop.settings.DesktopCategorySortSettings(
+                    isolatedDesktopPreferenceStore(),
+                    preferences,
+                    repository,
+                    tachiyomi.domain.category.interactor.ResetCategoryFlags(preferences, repository),
+                    kotlinx.coroutines.sync.Mutex(),
+                ),
             )
             model.setCategories(listOf(Category(id = 7L, name = "Action", order = 0L, flags = 0L)))
 
@@ -920,7 +926,9 @@ class LibraryScreenModelTest {
         val mangaRepository = FakeMangaRepository()
         mangaRepository.seed(sampleManga(id = 1L).copy(favorite = true))
         mangaRepository.seed(sampleManga(id = 2L).copy(favorite = true))
-        val model = LibraryScreenModel(updateManga = UpdateManga(mangaRepository))
+        val model = LibraryScreenModel(updateManga = UpdateManga(mangaRepository)).apply {
+            setAllItems(listOf(1L, 2L).map { sampleLibraryManga(requireNotNull(mangaRepository.get(it))) })
+        }
 
         model.removeFromLibrary(listOf(1L, 2L))
 
@@ -932,20 +940,28 @@ class LibraryScreenModelTest {
     @Test
     fun `removeFromLibrary counts a partial item failure only once`() = runTest {
         val mangaRepository = FakeMangaRepository()
-        val manga = sampleManga(id = 3L).copy(favorite = true)
+        val manga = sampleManga(id = 3L, source = 7L).copy(favorite = true)
         mangaRepository.seed(manga)
         var downloadsDeleted = false
         val model = LibraryScreenModel(
             updateManga = UpdateManga(mangaRepository),
             deleteCustomCover = { false },
+            captureRemovalFiles = {
+                LibraryRemovalFiles(
+                    mutableSetOf(tempDir.resolve("original-download").toFile()),
+                    mutableListOf(),
+                    emptyMap(),
+                )
+            },
             deleteMangaDownloads = { downloadsDeleted = true },
         ).apply { setAllItems(listOf(sampleLibraryManga(manga))) }
 
         model.removeFromLibrary(listOf(manga.id), deleteDownloads = true)
 
-        assertTrue(downloadsDeleted)
+        assertFalse(downloadsDeleted, "Cover refusal must preserve the remaining original download")
         assertEquals(
-            MR.strings.desktop_ui_items_updated_failed.localized(java.util.Locale.getDefault(), 0, 1),
+            MR.strings.desktop_ui_items_updated_failed.localized(java.util.Locale.getDefault(), 0, 1) + "\n" +
+                MR.strings.desktop_chapter_batch_result.localized(java.util.Locale.getDefault(), 0, 0, 1),
             model.state.value.operationFeedback,
         )
     }
@@ -1050,6 +1066,7 @@ class LibraryScreenModelTest {
             chapterRepository = chapterRepository,
             enqueueDownload = { enqueued += it },
             mangaProvider = { manga },
+            skipFiltered = true,
         )
 
         model.enqueueNextUnreadDownload(sampleLibraryManga(manga))
@@ -1218,6 +1235,7 @@ class LibraryScreenModelTest {
             repository,
             enqueueDownload = { nextOne += it.chapterId },
             mangaProvider = { manga },
+            skipFiltered = true,
         )
             .enqueueDownloads(listOf(item), MangaDetailDownloadAction.NEXT_1_CHAPTER)
         val nextFive = mutableListOf<Long>()
@@ -1225,6 +1243,7 @@ class LibraryScreenModelTest {
             repository,
             enqueueDownload = { nextFive += it.chapterId },
             mangaProvider = { manga },
+            skipFiltered = true,
         )
             .enqueueDownloads(listOf(item), MangaDetailDownloadAction.NEXT_5_CHAPTERS)
 
@@ -1287,7 +1306,7 @@ class LibraryScreenModelTest {
     fun `bookmarked download query failure is reported without queueing chapters`() = runTest {
         val backing = FakeChapterRepository()
         val repository = object : ChapterRepository by backing {
-            override suspend fun getBookmarkedChaptersByMangaId(mangaId: Long): List<Chapter> =
+            override suspend fun getChapterByMangaId(mangaId: Long, applyScanlatorFilter: Boolean): List<Chapter> =
                 error("bookmark query failed")
         }
         val enqueued = mutableListOf<DownloadItem>()
@@ -1423,9 +1442,10 @@ class LibraryScreenModelTest {
             ),
         )
 
-        detailModel.setFilterShowRead(true)
+        detailModel.toggleFilterMenu()
         detailModel.setManga(manga.copy(title = "Updated title"))
-        assertTrue(detailModel.state.value.filterShowRead)
+        assertTrue(detailModel.state.value.showFilterMenu)
+        assertFalse(detailModel.state.value.filterShowRead)
         val requestAfterTemporaryUiChange = requireNotNull(
             detailModel.readerRequest(
                 manga = requireNotNull(detailModel.state.value.manga),
@@ -1479,13 +1499,28 @@ class LibraryScreenModelTest {
         isChapterDownloaded: ((LibraryManga, Chapter) -> Boolean)? = null,
         isChapterQueued: ((Chapter) -> Boolean)? = null,
         mangaProvider: (Long) -> Manga = { sampleManga(it) },
+        skipFiltered: Boolean = false,
     ): LibraryScreenModel {
         val getChapters = GetChaptersByMangaId(chapterRepository)
         val mangaBacking = FakeMangaRepository()
         val mangaRepository = object : MangaRepository by mangaBacking {
             override suspend fun getMangaById(id: Long): Manga = mangaProvider(id)
         }
+        val readerStore = isolatedDesktopPreferenceStore().apply {
+            getBoolean("reader_skip_filtered_chapters", false).set(skipFiltered)
+        }
+        val legacyReader = java.util.prefs.Preferences.userRoot()
+            .node("/mihon-test/${java.util.UUID.randomUUID()}/reader")
+        val readerPreferences = try {
+            ReaderPreferences(readerStore, legacyReader)
+        } finally {
+            legacyReader.removeNode()
+        }
         return LibraryScreenModel(
+            sourceManager = FakeDesktopSourceManager(
+                listOf(FakeSource(1L, "en", "One"), FakeSource(7L, "en", "Seven")),
+            ),
+            readerPreferences = readerPreferences,
             getChaptersByMangaId = getChapters,
             getBookmarkedChaptersByMangaId = GetBookmarkedChaptersByMangaId(chapterRepository),
             getNextChapters = GetNextChapters(getChapters, GetManga(mangaRepository), FakeHistoryRepository()),

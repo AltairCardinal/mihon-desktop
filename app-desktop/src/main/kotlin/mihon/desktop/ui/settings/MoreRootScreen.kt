@@ -7,11 +7,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -32,11 +27,25 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import mihon.desktop.test.state.applicationState
 import mihon.desktop.ui.extension.extensionListDestination
 import mihon.desktop.ui.migration.MigrationSearchScreen
 import tachiyomi.i18n.MR
 import java.util.Locale
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.GetApp
+import androidx.compose.material.icons.outlined.QueryStats
+import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.automirrored.outlined.Label
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import tachiyomi.core.common.Constants
 
 class MoreRootScreen : Screen {
 
@@ -61,6 +70,9 @@ class MoreRootScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
+        val uriHandler = LocalUriHandler.current
+        val libraryPreferences = requireNotNull(LocalDesktopUiDependencies.current.libraryPreferences)
+        val downloadedOnly by libraryPreferences.downloadedOnly().changes().collectAsState(initial = libraryPreferences.downloadedOnly().get())
         val downloadQueuePort = LocalDesktopUiDependencies.current.downloadQueuePort
         val preferences = LocalDesktopUiDependencies.current.appPreferences
         val downloadQueue by downloadQueuePort.queue.collectAsState()
@@ -98,17 +110,28 @@ class MoreRootScreen : Screen {
                 modifier = Modifier.fillMaxSize().padding(padding),
             ) {
                 item {
+                    Box(Modifier.fillParentMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Image(mihon.desktop.loadDesktopAppIcon(), null, Modifier.size(80.dp))
+                    }
+                    SwitchSettingsItem(
+                        title = MR.strings.label_downloaded_only.localized(),
+                        subtitle = MR.strings.downloaded_only_summary.localized(),
+                        checked = downloadedOnly,
+                        onCheckedChange = libraryPreferences.downloadedOnly()::set,
+                        leadingContent = { Icon(Icons.Outlined.CloudOff, null) },
+                    )
                     SwitchSettingsItem(
                         title = MR.strings.pref_incognito_mode.localized(),
                         subtitle = MR.strings.pref_incognito_mode_summary.localized(),
                         checked = incognito,
                         onCheckedChange = preferences.incognitoMode::set,
+                        leadingContent = { Icon(IncognitoGlassesIcon, null) },
                     )
                     HorizontalDivider()
                 }
                 item {
                     SettingsEntry(
-                        icon = Icons.Default.CloudDownload,
+                        icon = Icons.Outlined.GetApp,
                         title = MR.strings.label_download_queue.localized(),
                         subtitle = if (activeDownloads > 0) {
                             MR.strings.desktop_more_download_queue_count.localized(Locale.getDefault(), activeDownloads)
@@ -117,41 +140,54 @@ class MoreRootScreen : Screen {
                         },
                         onClick = { navigator.push(mihon.desktop.ui.download.DownloadQueueScreen()) },
                     )
-                    HorizontalDivider()
                 }
                 item {
                     SettingsEntry(
-                        icon = Icons.Default.SwapHoriz,
-                        title = MR.strings.label_migration.localized(),
-                        subtitle = MR.strings.desktop_more_migration_summary.localized(),
-                        onClick = { navigator.push(mihon.desktop.ui.migration.MigrationSourceScreen()) },
+                        icon = Icons.AutoMirrored.Outlined.Label,
+                        title = MR.strings.categories.localized(),
+                        subtitle = null,
+                        onClick = { navigator.push(mihon.desktop.ui.library.CategoryManagementScreen()) },
                     )
-                    HorizontalDivider()
                 }
                 item {
                     SettingsEntry(
-                        icon = Icons.Default.BarChart,
+                        icon = Icons.Outlined.QueryStats,
                         title = MR.strings.label_stats.localized(),
                         subtitle = MR.strings.desktop_more_stats_summary.localized(),
                         onClick = { navigator.push(mihon.desktop.ui.more.StatsScreen()) },
                     )
-                    HorizontalDivider()
                 }
                 item {
                     SettingsEntry(
-                        icon = Icons.Default.Settings,
-                        title = MR.strings.label_settings.localized(),
+                        icon = Icons.Outlined.Storage,
+                        title = MR.strings.label_data_storage.localized(),
                         subtitle = null,
-                        onClick = { navigator.push(settingsDestination()) },
+                        onClick = { navigator.push(backupSettingsDestination()) },
                     )
                     HorizontalDivider()
                 }
                 item {
                     SettingsEntry(
-                        icon = Icons.Default.Info,
+                        icon = Icons.Outlined.Settings,
+                        title = MR.strings.label_settings.localized(),
+                        subtitle = null,
+                        onClick = { navigator.push(settingsDestination()) },
+                    )
+                }
+                item {
+                    SettingsEntry(
+                        icon = Icons.Outlined.Info,
                         title = MR.strings.pref_category_about.localized(),
                         subtitle = MR.strings.desktop_more_about_summary.localized(),
                         onClick = { navigator.push(AboutScreen()) },
+                    )
+                }
+                item {
+                    SettingsEntry(
+                        icon = Icons.AutoMirrored.Outlined.HelpOutline,
+                        title = MR.strings.label_help.localized(),
+                        subtitle = null,
+                        onClick = { uriHandler.openUri(Constants.URL_HELP) },
                     )
                 }
             }
