@@ -1141,14 +1141,9 @@ private fun SyncProgressCard(
                     syncString(MR.strings.sync_progress, run.processed, run.total),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                SyncLinearProgressIndicator(
-                    progress = if (run.phase in setOf(SyncRunPhase.CHECKING, SyncRunPhase.IMPORTING)) {
-                        null
-                    } else {
-                        (run.processed.toFloat() / run.total).coerceIn(0f, 1f)
-                    },
-                    modifier = Modifier.fillMaxWidth().testTag("sync-progress"),
-                    running = run.state == SyncRunState.RUNNING,
+                LinearProgressIndicator(
+                    progress = { (run.processed.toFloat() / run.total).coerceIn(0f, 1f) },
+                    Modifier.fillMaxWidth().testTag("sync-progress"),
                 )
                 val remaining = (run.total - run.completed - run.skipped - run.failed).coerceAtLeast(0)
                 Text(
@@ -1164,11 +1159,7 @@ private fun SyncProgressCard(
                     style = MaterialTheme.typography.bodySmall,
                 )
             } else if (!terminal && progress == null) {
-                SyncLinearProgressIndicator(
-                    progress = null,
-                    modifier = Modifier.fillMaxWidth().testTag("sync-progress"),
-                    running = run.state == SyncRunState.RUNNING,
-                )
+                LinearProgressIndicator(Modifier.fillMaxWidth().testTag("sync-progress"))
             }
             when (run.state) {
                 SyncRunState.PAUSED_USER -> {
@@ -1425,7 +1416,7 @@ private fun SyncStageProgress(run: SyncRunSnapshot, fact: SyncProgressFact, nowM
     val fraction = when (fact.stage) {
         SyncProgressStage.TRANSFERRING -> fact.totalBytes?.takeIf { it > 0L }
             ?.let { (fact.effectiveBytes.toFloat() / it).coerceIn(0f, 1f) }
-        SyncProgressStage.PREPARING -> fact.totalItems?.takeIf { it > fact.completedItems && fact.completedItems > 0L }
+        SyncProgressStage.PREPARING -> fact.totalItems?.takeIf { it > fact.completedItems }
             ?.let { (fact.completedItems.toFloat() / it).coerceIn(0f, 1f) }
         SyncProgressStage.CONFIRMING -> fact.totalItems?.takeIf { it > 0L && fact.completedItems > 0L }
             ?.let { (fact.completedItems.toFloat() / it).coerceIn(0f, 1f) }
@@ -1438,7 +1429,11 @@ private fun SyncStageProgress(run: SyncRunSnapshot, fact: SyncProgressFact, nowM
     val progressModifier = Modifier.fillMaxWidth().testTag("sync-progress").semantics {
         stateDescription = progressDescription
     }
-    SyncLinearProgressIndicator(fraction, progressModifier, running = run.state == SyncRunState.RUNNING)
+    if (fraction == null) {
+        LinearProgressIndicator(progressModifier)
+    } else {
+        LinearProgressIndicator(progress = { fraction }, modifier = progressModifier)
+    }
     if (fact.stage == SyncProgressStage.TRANSFERRING && fraction != null) {
         Text(progressDescription)
     }
@@ -1525,19 +1520,6 @@ private fun SyncStageProgress(run: SyncRunSnapshot, fact: SyncProgressFact, nowM
                 Text(syncString(MR.strings.sync_eta_unavailable))
             else -> Text(syncString(MR.strings.sync_eta_unknown))
         }
-    }
-}
-
-@Composable
-private fun SyncLinearProgressIndicator(progress: Float?, modifier: Modifier, running: Boolean) {
-    if (progress == null && running) {
-        LinearProgressIndicator(modifier)
-    } else {
-        LinearProgressIndicator(
-            progress = { progress ?: 0f },
-            modifier = modifier,
-            drawStopIndicator = {},
-        )
     }
 }
 

@@ -11,10 +11,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asSkiaBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -73,103 +70,6 @@ import java.util.Locale
 
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelContentTest {
-    @Test
-    fun `resuming counting with only durable totals restores indeterminate animation`() = rendered(
-        connected().copy(
-            run = visualRun(SyncRunPhase.CHECKING).copy(state = SyncRunState.PAUSED_USER, total = 14_177),
-        ),
-    ) {
-        awaitTag("sync-resume-run")
-        assertEquals(0f..1f, node("sync-progress").config[SemanticsProperties.ProgressBarRangeInfo].range)
-        click("sync-resume-run")
-        assertEquals(SyncPanelAction.ResumeSync, actions.last())
-        panel.state.value = panel.state.value.copy(
-            run = requireNotNull(panel.state.value.run).copy(state = SyncRunState.RUNNING),
-        )
-        render()
-        assertEquals(
-            ProgressBarRangeInfo.Indeterminate,
-            node("sync-progress").config[SemanticsProperties.ProgressBarRangeInfo],
-        )
-        val start = System.nanoTime()
-        val first = progressPixels(start + 300_000_000)
-        yield()
-        val second = progressPixels(start + 900_000_000)
-        assertFalse(first.contentEquals(second), "Counting animation must advance after resume")
-    }
-
-    @Test
-    fun `resuming preparation before the first item restores indeterminate progress`() = rendered(
-        connected().copy(
-            run = visualRun(SyncRunPhase.IMPORTING).copy(state = SyncRunState.PAUSED_USER, total = 14_177),
-            progress = SyncProgressFact(
-                scope = "run-visual:preparing",
-                stage = SyncProgressStage.PREPARING,
-                direction = SyncProgressDirection.UPLOAD,
-                completedItems = 0,
-                totalItems = 14_177,
-                effectiveBytes = 0,
-                networkBytes = 0,
-                totalBytes = null,
-                elapsedSeconds = 56,
-                hold = SyncProgressHold.PAUSED,
-                stageEtaSeconds = null,
-                wholeEtaSeconds = null,
-            ),
-        ),
-    ) {
-        awaitTag("sync-resume-run")
-        assertEquals(0f..1f, node("sync-progress").config[SemanticsProperties.ProgressBarRangeInfo].range)
-        click("sync-resume-run")
-        panel.state.value = panel.state.value.copy(
-            run = requireNotNull(panel.state.value.run).copy(state = SyncRunState.RUNNING),
-            progress = requireNotNull(panel.state.value.progress).copy(hold = SyncProgressHold.ACTIVE),
-        )
-        render()
-        assertEquals(
-            ProgressBarRangeInfo.Indeterminate,
-            node("sync-progress").config[SemanticsProperties.ProgressBarRangeInfo],
-        )
-    }
-
-    @Test
-    fun `zero determinate progress has no bright endpoint with or without live facts`() {
-        for (live in listOf(false, true)) {
-            rendered(
-                connected().copy(
-                    run = visualRun(SyncRunPhase.UPLOADING).copy(total = 14_177),
-                    progress = if (live) {
-                        SyncProgressFact(
-                            scope = "run-visual:transfer",
-                            stage = SyncProgressStage.TRANSFERRING,
-                            direction = SyncProgressDirection.UPLOAD,
-                            completedItems = 0,
-                            totalItems = 14_177,
-                            effectiveBytes = 0,
-                            networkBytes = 0,
-                            totalBytes = 100,
-                            elapsedSeconds = 56,
-                            hold = SyncProgressHold.ACTIVE,
-                            stageEtaSeconds = null,
-                            wholeEtaSeconds = null,
-                        )
-                    } else {
-                        null
-                    },
-                ),
-            ) {
-                awaitTag("sync-progress")
-                render()
-                val pixels = progressPixels(System.nanoTime())
-                assertEquals(
-                    pixels[pixels.size / 2],
-                    pixels[pixels.size - 3],
-                    "Zero progress must show only the track at its endpoint",
-                )
-            }
-        }
-    }
-
     @Test
     fun `first import shows committed entries as preparation detail without finishing preparation`() = rendered(
         connected().copy(
@@ -1902,21 +1802,6 @@ class SyncPanelContentTest {
             repeat(3) {
                 scene.render()
                 yield()
-            }
-        }
-        suspend fun progressPixels(atNanos: Long): IntArray {
-            repeat(2) {
-                scene.render(atNanos).close()
-                yield()
-            }
-            return scene.render(atNanos).use { image ->
-                val bounds = node("sync-progress").boundsInRoot
-                assertTrue(bounds.width > 10, "Progress indicator must be laid out before inspecting pixels")
-                image.toComposeImageBitmap().asSkiaBitmap().use { bitmap ->
-                    IntArray(bounds.width.toInt()) { offset ->
-                        bitmap.getColor(bounds.left.toInt() + offset, bounds.center.y.toInt())
-                    }
-                }
             }
         }
         suspend fun awaitTag(value: String) = withTimeout(2_000) {
