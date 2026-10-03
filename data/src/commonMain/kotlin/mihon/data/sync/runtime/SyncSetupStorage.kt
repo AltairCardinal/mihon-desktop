@@ -54,6 +54,7 @@ internal data class StoredSyncConnection(
     val material: StoredSyncMaterial,
     val actorId: String,
     val epoch: Long,
+    val switchIntentId: String? = null,
 ) {
     fun repository() = SyncRepository(owner, repository, branch)
     override fun toString(): String = "StoredSyncConnection(<redacted>)"
@@ -111,6 +112,8 @@ internal data class StoredSyncSetup(
     val defaultBranch: String? = null,
     val confirmedBootstrapCommitSha: String? = null,
     val confirmedBootstrapTreeSha: String? = null,
+    val switchIntentId: String? = null,
+    val settled: Boolean = false,
 ) {
     fun account() = SyncGitHubAccount(accountId, accountLogin)
     fun repository() = SyncRepository(owner, repository, branch)
@@ -142,6 +145,27 @@ internal data class StoredLegacySyncSetup(
 /** Versioned records contain only verified data keys, never the user's password or a password-derived KEK. */
 internal class SyncSetupStorage(private val secure: SyncSecureStore) {
     private val json = Json { encodeDefaults = true }
+
+    suspend fun recovery(connection: StoredSyncConnection): SyncSpaceRecovery? {
+        val descriptor = connection.material.material().descriptor
+        val value = secure.read(connectionKey(descriptor.spaceId, descriptor.generation) + "-recovery") ?: return null
+        val recovery = decode<StoredSyncSpaceRecovery>(value, 1)
+        return recovery.takeIf { it.bindingRevision == connection.snapshotManifestBinding().connectionRevision }
+            ?.let { SyncSpaceRecovery(it.reason) }
+    }
+
+    suspend fun setRecovery(connection: StoredSyncConnection, reason: SyncSpaceRecoveryReason?) {
+        val descriptor = connection.material.material().descriptor
+        val key = connectionKey(descriptor.spaceId, descriptor.generation) + "-recovery"
+        val before = secure.read(key)
+        val revision = connection.snapshotManifestBinding().connectionRevision
+        val previous = before?.let { decode<StoredSyncSpaceRecovery>(it, 1) }
+        if (reason == null && previous?.bindingRevision != revision) return
+        val after = reason?.let {
+            json.encodeToString(StoredSyncSpaceRecovery(bindingRevision = revision, reason = it))
+        }
+        if (!secure.compareAndSet(key, before, after)) throw SyncSecureStoreException()
+    }
 
     suspend fun pending(accountId: Long): StoredSyncSetup? = secure.read(setupKey(accountId))?.let {
         decode<StoredSyncSetup>(it, 3).also { value ->
@@ -184,14 +208,18 @@ internal class SyncSetupStorage(private val secure: SyncSecureStore) {
 
     suspend fun save(value: StoredSyncSetup, expected: StoredSyncSetup?) {
         require(value.version == 3)
-        val key = setupKey(value.accountId)
+        val key = value.switchIntentId?.let(::switchSetupKey) ?: setupKey(value.accountId)
         val before = secure.read(key)
         require(before?.let { decode<StoredSyncSetup>(it, 3) } == expected) { "sync setup changed" }
         if (!secure.compareAndSet(key, before, json.encodeToString(value))) throw SyncSecureStoreException()
     }
 
     suspend fun clear(value: StoredSyncSetup) {
-        val key = setupKey(value.accountId)
+        if (value.switchIntentId != null) {
+            save(value.copy(settled = true), value)
+            return
+        }
+        val key = value.switchIntentId?.let(::switchSetupKey) ?: setupKey(value.accountId)
         val before = secure.read(key) ?: return
         if (decode<StoredSyncSetup>(before, 3) != value) return
         if (!secure.compareAndSet(key, before, null)) throw SyncSecureStoreException()
@@ -231,6 +259,91 @@ internal class SyncSetupStorage(private val secure: SyncSecureStore) {
         val before = secure.read(key)
         require(before?.let { decode<StoredSyncConnection>(it, 2) } == previous) { "sync binding changed" }
         if (!secure.compareAndSet(key, before, json.encodeToString(value))) throw SyncSecureStoreException()
+    }
+
+    suspend fun setupFor(value: StoredSyncSetup): StoredSyncSetup? =
+        value.switchIntentId?.let { switchSetup(it) } ?: pending(value.accountId)
+
+    suspend fun pendingForConnection(value: StoredSyncConnection): StoredSyncSetup? =
+        (value.switchIntentId?.let { switchSetup(it) } ?: pending(value.accountId))?.takeIf { !it.settled }
+
+    suspend fun switchSetup(intentId: String): StoredSyncSetup? =
+        secure.read(switchSetupKey(intentId))?.let { decode<StoredSyncSetup>(it, 3) }
+
+    suspend fun activeSwitch(accountId: Long): StoredSyncSpaceSwitch? {
+        val pointer = secure.read("sync-switch-pointer-v1-$accountId") ?: return null
+        val id = decode<StoredSyncSpaceSwitchPointer>(pointer, 1).intentId
+        var intent = requireNotNull(switchIntent(id))
+        require(intent.accountId == accountId)
+        if (intent.stage == SyncSpaceSwitchStage.PREPARING && intent.target == null) {
+            switchSetup(id)?.let { checkpoint ->
+                require(checkpoint.accountId == accountId && checkpoint.switchIntentId == id)
+                val repaired = intent.copy(target = checkpoint)
+                saveSwitch(repaired, intent)
+                intent = repaired
+            }
+        }
+        return intent
+    }
+
+    suspend fun switchIntent(intentId: String): StoredSyncSpaceSwitch? {
+        require(intentId.matches(ATTEMPT_PATTERN))
+        return secure.read("sync-switch-intent-v1-$intentId")?.let {
+            decode<StoredSyncSpaceSwitch>(it, 1).also { value ->
+                require(value.intentId == intentId && value.accountId == value.oldConnection.accountId)
+                require(value.oldBindingRevision == value.oldConnection.snapshotManifestBinding().connectionRevision)
+                require(value.previousIntentId == null || value.previousIntentId.matches(ATTEMPT_PATTERN))
+                require(value.previousIntentId != value.intentId)
+                require(value.target == null || value.target.switchIntentId == intentId)
+                require(value.targetConnection == null || value.targetConnection.switchIntentId == intentId)
+            }
+        }
+    }
+
+    suspend fun saveSwitch(value: StoredSyncSpaceSwitch, expected: StoredSyncSpaceSwitch?) {
+        require(value.version == 1 && value.intentId.matches(ATTEMPT_PATTERN))
+        val key = "sync-switch-intent-v1-${value.intentId}"
+        val before = secure.read(key)
+        require(before?.let { decode<StoredSyncSpaceSwitch>(it, 1) } == expected) { "sync switch changed" }
+        if (!secure.compareAndSet(key, before, json.encodeToString(value))) throw SyncSecureStoreException()
+    }
+
+    suspend fun startSwitch(value: StoredSyncSpaceSwitch) {
+        val key = "sync-switch-pointer-v1-${value.accountId}"
+        val before = secure.read(key)
+        before?.let {
+            val previous = requireNotNull(switchIntent(decode<StoredSyncSpaceSwitchPointer>(it, 1).intentId))
+            require(previous.stage in setOf(SyncSpaceSwitchStage.COMPLETE, SyncSpaceSwitchStage.CANCELLED))
+        }
+        saveSwitch(value, null)
+        val next = json.encodeToString(StoredSyncSpaceSwitchPointer(intentId = value.intentId))
+        if (!secure.compareAndSet(key, before, next)) throw SyncSecureStoreException()
+    }
+
+    suspend fun addressUpdate(spaceId: String, generation: Long): StoredSyncAddressUpdate? =
+        secure.read(connectionKey(spaceId, generation) + "-address-v1")?.let {
+            decode<StoredSyncAddressUpdate>(it, 1)
+        }
+
+    suspend fun saveAddressUpdate(value: StoredSyncAddressUpdate, expected: StoredSyncAddressUpdate?) {
+        val descriptor = value.before.material.material().descriptor
+        val key = connectionKey(descriptor.spaceId, descriptor.generation) + "-address-v1"
+        val before = secure.read(key)
+        require(before?.let { decode<StoredSyncAddressUpdate>(it, 1) } == expected)
+        require(
+            value.before.accountId == value.after.accountId &&
+                value.before.repositoryId == value.after.repositoryId,
+        )
+        require(
+            value.before.material == value.after.material && value.before.actorId == value.after.actorId &&
+                value.before.epoch == value.after.epoch,
+        )
+        if (!secure.compareAndSet(key, before, json.encodeToString(value))) throw SyncSecureStoreException()
+    }
+
+    private fun switchSetupKey(intentId: String): String {
+        require(intentId.matches(ATTEMPT_PATTERN))
+        return "sync-switch-setup-v1-$intentId"
     }
 
     private inline fun <reified T> decode(value: String, expectedVersion: Int): T {

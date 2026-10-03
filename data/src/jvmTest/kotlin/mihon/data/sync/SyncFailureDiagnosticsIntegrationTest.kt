@@ -58,7 +58,7 @@ class SyncFailureDiagnosticsIntegrationTest {
     }
 
     @Test
-    fun `real resume separates repository and snapshot 404 from connected initialization result`() = runBlocking {
+    fun `real resume separates repository and snapshot errors from unfinished initialization`() = runBlocking {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(driver)
         val database = Database(
@@ -109,6 +109,7 @@ class SyncFailureDiagnosticsIntegrationTest {
                 }
                 setup.git.server.dispatcher = original
                 val initializing = saved.copy(
+                    stage = SyncInitializationStage.SPACE_CONFIRMED,
                     newSpace = true,
                     defaultBranch = "main",
                     confirmedBootstrapCommitSha = "a".repeat(40),
@@ -123,9 +124,14 @@ class SyncFailureDiagnosticsIntegrationTest {
                 assertTrue(output.contains("phase=RESUME_INITIALIZE_RESULT"), output)
                 assertTrue(output.contains("result=NEEDS_EXPLICIT_ACTION"), output)
                 assertTrue(output.contains("reason=BOOTSTRAP_CHANGED"), output)
-                assertTrue(output.contains("newSpace=true stage=CONNECTED"), output)
+                assertTrue(output.contains("newSpace=true stage=SPACE_CONFIRMED"), output)
                 assertFalse(output.contains(SECRET), output)
                 assertFalse(output.contains("confirmed bootstrap"), output)
+                val connected = saved.copy(stage = SyncInitializationStage.CONNECTED)
+                setup.runtime.onboarding.storage.save(connected, saved)
+                val connectedOutput = capture { setup.runtime.onboarding.resume(connected) }
+                assertFalse(connectedOutput.contains("phase=RESUME_INITIALIZE"), connectedOutput)
+                assertFalse(connectedOutput.contains(SECRET), connectedOutput)
             }
         }
     }

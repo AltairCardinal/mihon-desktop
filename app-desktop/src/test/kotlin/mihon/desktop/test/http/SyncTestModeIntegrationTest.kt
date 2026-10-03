@@ -42,6 +42,43 @@ import java.util.prefs.Preferences
 @Isolated
 class SyncTestModeIntegrationTest {
     @Test
+    fun `recovery endpoint exposes safe state and dispatches the native recovery actions`() = runBlocking {
+        val actions = java.util.concurrent.CopyOnWriteArrayList<SyncPanelAction>()
+        val panel = object : SyncPanel {
+            override val state = MutableStateFlow(SyncPanelState(
+                recovery = mihon.data.sync.runtime.SyncSpaceRecovery(
+                    mihon.data.sync.runtime.SyncSpaceRecoveryReason.SPACE_UNAVAILABLE,
+                ),
+            ))
+            override fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean = false
+            override fun dispatch(action: SyncPanelAction) { actions += action }
+        }
+        val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) {
+            testHttpServer(syncPanel = panel)
+        }.start()
+        try {
+            val base = "http://127.0.0.1:${server.resolvedConnectors().single().port}/test/sync"
+            val snapshot = Json.parseToJsonElement(request(base).body()).jsonObject
+            assertEquals("SPACE_UNAVAILABLE", snapshot.getValue("recoveryReason").jsonPrimitive.content)
+            assertEquals("false", snapshot.getValue("recoveryBusy").jsonPrimitive.content)
+            val expected = listOf(
+                "open_recovery" to SyncPanelAction.OpenRecovery,
+                "recheck_space" to SyncPanelAction.RecheckSpace,
+                "check_authorization" to SyncPanelAction.CheckAuthorization,
+                "connect_other_space" to SyncPanelAction.ConnectOtherSpace,
+                "create_new_space" to SyncPanelAction.CreateNewSpace,
+            )
+            for ((path, _) in expected) {
+                assertEquals(202, request("$base/$path", post = true).statusCode())
+            }
+            assertEquals(expected.map { it.second }, actions)
+            assertFalse("repositoryId" in snapshot)
+        } finally {
+            server.stop(0, 0)
+        }
+    }
+
+    @Test
     fun `setup diagnostics accept retry without retaining the obsolete repository action`() = runBlocking {
         val actions = java.util.concurrent.CopyOnWriteArrayList<SyncPanelAction>()
         val panel = object : SyncPanel {

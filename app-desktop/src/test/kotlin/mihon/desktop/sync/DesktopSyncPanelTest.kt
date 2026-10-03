@@ -96,6 +96,36 @@ class DesktopSyncPanelTest {
             click("sync-open")
             assertTrue(panel.state.value.visible)
             panel.state.value = panel.state.value.copy(
+                recovery = mihon.data.sync.runtime.SyncSpaceRecovery(
+                    mihon.data.sync.runtime.SyncSpaceRecoveryReason.SPACE_UNAVAILABLE,
+                ),
+            )
+            render()
+            click("sync-recovery-open")
+            assertTrue(panel.actions.contains(SyncPanelAction.OpenRecovery))
+            // The wrapper forwards events; shared controller navigation is exercised in its integration tests.
+            panel.state.value = panel.state.value.copy(page = SyncPanelPage.RECOVERY)
+            render()
+            assertTrue(find("sync-recovery-page") != null)
+            requireNotNull(find("sync-recovery-recheck")!!.config[SemanticsActions.RequestFocus].action).invoke()
+            render()
+            val recoveryKeyType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
+                .getMethod("access\$getKeyDown\$cp").invoke(null)
+            val recoveryKeyFactory = Class.forName("androidx.compose.ui.input.key.KeyEvent_desktopKt").declaredMethods
+                .single { it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default") }
+            val recoveryEscape = recoveryKeyFactory.invoke(
+                null, Key.Escape.keyCode, recoveryKeyType, 0, false, false, false, false, null,
+            )
+            scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(recoveryEscape))
+            render()
+            assertEquals(SyncPanelPage.MAIN, panel.state.value.page)
+            assertTrue(panel.actions.contains(SyncPanelAction.Back))
+            click("sync-close")
+            assertFalse(panel.state.value.visible)
+            assertTrue(find("sync-open")!!.config[SemanticsProperties.Focused])
+            panel.state.value = panel.state.value.copy(recovery = null)
+            click("sync-open")
+            panel.state.value = panel.state.value.copy(
                 run = SyncRunSnapshot(
                     "compact-run", "space", 1, SyncTrigger.MANUAL, SyncRunState.RUNNING, SyncRunPhase.UPLOADING,
                     6, 100, 0, 0, 0, attemptId = 1, nextRetryAt = 0, lastProgressAt = 1000,

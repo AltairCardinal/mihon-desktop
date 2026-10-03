@@ -134,6 +134,7 @@ import mihon.data.sync.runtime.SyncRunPhase
 import mihon.data.sync.runtime.SyncRunSnapshot
 import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncSetupStep
+import mihon.data.sync.runtime.SyncSpaceRecoveryReason
 import mihon.domain.sync.SyncCancellationDecision
 import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.auth.GitHubAuthFailureReason
@@ -145,12 +146,12 @@ import tachiyomi.i18n.MR
 import kotlin.time.TimeSource
 
 @Composable
-fun SyncToolbarButton(state: SyncPanelState, onOpen: () -> Unit) {
+fun SyncToolbarButton(state: SyncPanelState, modifier: Modifier = Modifier, onOpen: () -> Unit) {
     val busyDescription = if (state.busy) syncString(MR.strings.sync_busy) else ""
     Box(Modifier.size(48.dp)) {
         IconButton(
             onClick = onOpen,
-            modifier = Modifier.fillMaxSize().testTag("sync-open").semantics {
+            modifier = modifier.fillMaxSize().testTag("sync-open").semantics {
                 stateDescription = busyDescription
             },
         ) {
@@ -227,6 +228,7 @@ fun SyncPanelContent(
             SyncPanelPage.SETTINGS -> SettingsPage(state, panel::dispatch, Modifier.weight(1f))
             SyncPanelPage.DIAGNOSTICS -> DiagnosticPage(state, panel::dispatch, onOpenDiagnostic, Modifier.weight(1f))
             SyncPanelPage.HISTORY -> RecordsPage(state, Modifier.weight(1f))
+            SyncPanelPage.RECOVERY -> RecoveryPage(state, panel::dispatch, Modifier.weight(1f))
             SyncPanelPage.SETUP -> SetupPage(
                 state,
                 presentation,
@@ -271,20 +273,41 @@ fun SyncPanelContent(
                             SyncPanelQuestion.DISCONNECT -> MR.strings.sync_disconnect
                             SyncPanelQuestion.SWITCH_SPACE -> MR.strings.sync_switch
                             SyncPanelQuestion.ABANDON_LEGACY -> MR.strings.sync_setup_abandon_legacy_title
+                            SyncPanelQuestion.CREATE_NEW_SPACE -> MR.strings.sync_recovery_create
+                            SyncPanelQuestion.CONNECT_SPACE -> MR.strings.sync_recovery_connect_confirm
                         },
                     ),
                 )
             },
             text = {
-                Text(
-                    syncString(
-                        when (question) {
-                            SyncPanelQuestion.DISCONNECT -> MR.strings.sync_disconnect_body
-                            SyncPanelQuestion.SWITCH_SPACE -> MR.strings.sync_switch_body
-                            SyncPanelQuestion.ABANDON_LEGACY -> MR.strings.sync_setup_abandon_legacy_body
-                        },
-                    ),
-                )
+                Column(
+                    Modifier.testTag("sync-question-text").verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (question == SyncPanelQuestion.CONNECT_SPACE) {
+                        state.switchTargetRepository?.let { target ->
+                            Text(syncString(MR.strings.sync_recovery_connect_target, target.fullName))
+                        }
+                    } else {
+                        Text(
+                            syncString(
+                                when (question) {
+                                    SyncPanelQuestion.DISCONNECT -> MR.strings.sync_disconnect_body
+                                    SyncPanelQuestion.SWITCH_SPACE -> MR.strings.sync_switch_body
+                                    SyncPanelQuestion.ABANDON_LEGACY -> MR.strings.sync_setup_abandon_legacy_body
+                                    SyncPanelQuestion.CREATE_NEW_SPACE -> MR.strings.sync_recovery_create_body
+                                    SyncPanelQuestion.CONNECT_SPACE -> MR.strings.sync_recovery_connect_target
+                                },
+                            ),
+                        )
+                    }
+                    if (question == SyncPanelQuestion.CONNECT_SPACE || question == SyncPanelQuestion.CREATE_NEW_SPACE) {
+                        Text(
+                            syncString(MR.strings.sync_recovery_old_pending, state.switchPendingDecisions),
+                            Modifier.testTag("sync-switch-pending-count"),
+                        )
+                    }
+                }
             },
             confirmButton = {
                 Action("sync-confirm-question", MR.strings.sync_confirm) {
@@ -318,6 +341,7 @@ private fun PanelHeader(state: SyncPanelState, dispatch: (SyncPanelAction) -> Un
                         SyncPanelPage.SETTINGS -> MR.strings.sync_settings
                         SyncPanelPage.HISTORY -> MR.strings.sync_records
                         SyncPanelPage.DIAGNOSTICS -> MR.strings.sync_diagnostics
+                        SyncPanelPage.RECOVERY -> MR.strings.sync_recovery_choose
                         else -> MR.strings.sync_title
                     },
                 ),
@@ -350,6 +374,171 @@ private fun PanelHeader(state: SyncPanelState, dispatch: (SyncPanelAction) -> Un
     }
 }
 
+@Composable
+private fun RecoverySummary(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit, modifier: Modifier) {
+    val recovery = requireNotNull(state.recovery)
+    LazyColumn(
+        modifier.fillMaxWidth().padding(24.dp).testTag("sync-recovery-summary"),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item {
+            Surface(
+                modifier = Modifier.fillMaxWidth().testTag("sync-recovery-card"),
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        syncString(
+                            when (recovery.reason) {
+                                SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED -> MR.strings.sync_recovery_auth_expired
+                                SyncSpaceRecoveryReason.SPACE_DATA_INVALID -> MR.strings.sync_recovery_data_problem
+                                SyncSpaceRecoveryReason.SPACE_UNAVAILABLE -> MR.strings.sync_recovery_title
+                                SyncSpaceRecoveryReason.SWITCH_PENDING -> MR.strings.sync_recovery_switch_pending_title
+                            },
+                        ),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(syncString(recoveryBody(state)))
+                    RecoveryCheckFeedback(state)
+                    if (recovery.reason == SyncSpaceRecoveryReason.SWITCH_PENDING) {
+                        ContinueSwitchAction(state, dispatch)
+                    } else if (recovery.reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED) {
+                        Action(
+                            "sync-recovery-authorization",
+                            MR.strings.sync_reconnect,
+                            enabled = !recovery.busy && !state.setupBusy,
+                            primary = true,
+                        ) { dispatch(SyncPanelAction.CheckAuthorization) }
+                    } else {
+                        Action(
+                            "sync-recovery-open",
+                            MR.strings.sync_recovery_choose,
+                            enabled = !recovery.busy && !state.setupBusy,
+                            primary = true,
+                        ) { dispatch(SyncPanelAction.OpenRecovery) }
+                    }
+                }
+            }
+        }
+        item {
+            Text(
+                syncString(recoveryWaiting(state)),
+                Modifier.testTag("sync-recovery-waiting"),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        item {
+            Action("sync-recovery-recheck", MR.strings.sync_recovery_recheck, !recovery.busy && !state.setupBusy) {
+                dispatch(SyncPanelAction.RecheckSpace)
+            }
+        }
+        item {
+            Action("sync-recovery-details", MR.strings.sync_recovery_details) {
+                dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecoveryPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit, modifier: Modifier) {
+    val enabled = state.recovery?.busy != true && !state.setupBusy
+    LazyColumn(
+        modifier.fillMaxWidth().padding(24.dp).testTag("sync-recovery-page"),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (state.recovery?.reason == SyncSpaceRecoveryReason.SWITCH_PENDING) {
+                    Text(
+                        syncString(MR.strings.sync_recovery_switch_pending_title),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+                Text(syncString(recoveryBody(state)))
+                if (state.recovery?.reason == SyncSpaceRecoveryReason.SWITCH_PENDING) {
+                    Text(syncString(recoveryWaiting(state)), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        if (state.recovery?.busy == true || state.problem in RECOVERY_CHECK_PROBLEMS) {
+            item { RecoveryCheckFeedback(state) }
+        }
+        if (state.recovery?.reason == SyncSpaceRecoveryReason.SWITCH_PENDING) {
+            item { ContinueSwitchAction(state, dispatch) }
+        }
+        item {
+            Action("sync-recovery-recheck", MR.strings.sync_recovery_recheck, enabled) {
+                dispatch(SyncPanelAction.RecheckSpace)
+            }
+        }
+        item {
+            Action("sync-recovery-authorization", MR.strings.sync_recovery_authorization, enabled) {
+                dispatch(SyncPanelAction.CheckAuthorization)
+            }
+        }
+        item {
+            Action("sync-recovery-connect-other", MR.strings.sync_recovery_connect_other, enabled) {
+                dispatch(SyncPanelAction.ConnectOtherSpace)
+            }
+        }
+        item {
+            Action("sync-recovery-create", MR.strings.sync_recovery_create, enabled) {
+                dispatch(SyncPanelAction.CreateNewSpace)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContinueSwitchAction(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit) {
+    Action(
+        "sync-recovery-continue",
+        MR.strings.sync_recovery_continue,
+        enabled = state.recovery?.busy != true && !state.setupBusy,
+        primary = true,
+    ) { dispatch(SyncPanelAction.BeginSetup) }
+}
+
+private fun recoveryBody(state: SyncPanelState): StringResource =
+    if (state.recovery?.reason == SyncSpaceRecoveryReason.SWITCH_PENDING) {
+        MR.strings.sync_recovery_switch_pending_body
+    } else {
+        MR.strings.sync_recovery_preserved
+    }
+
+private fun recoveryWaiting(state: SyncPanelState): StringResource =
+    if (state.recovery?.reason == SyncSpaceRecoveryReason.SWITCH_PENDING) {
+        MR.strings.sync_recovery_switch_pending_waiting
+    } else {
+        MR.strings.sync_recovery_waiting
+    }
+
+@Composable
+private fun RecoveryCheckFeedback(state: SyncPanelState) {
+    if (state.recovery?.busy == true) {
+        Text(
+            syncString(MR.strings.sync_recovery_checking),
+            Modifier.testTag("sync-recovery-checking").semantics { liveRegion = LiveRegionMode.Polite },
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    } else if (state.problem in RECOVERY_CHECK_PROBLEMS) {
+        Column(
+            Modifier.testTag("sync-recovery-check-incomplete").semantics { liveRegion = LiveRegionMode.Polite },
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(syncString(MR.strings.sync_recovery_check_incomplete))
+            Text(
+                problemText(requireNotNull(state.problem)),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private val RECOVERY_CHECK_PROBLEMS = setOf(SyncRunProblem.NETWORK, SyncRunProblem.STORAGE)
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MainPage(
@@ -363,6 +552,10 @@ private fun MainPage(
     listState: LazyListState,
     modifier: Modifier,
 ) {
+    if (state.recovery != null) {
+        RecoverySummary(state, dispatch, modifier)
+        return
+    }
     val continuingSetup = state.setupStep !in setOf(SyncSetupStep.SIGN_IN, SyncSetupStep.COMPLETE)
     LazyColumn(state = listState, modifier = modifier.testTag("sync-pending-list")) {
         item("summary") {
@@ -405,13 +598,19 @@ private fun MainPage(
                 }
             }
             state.notice?.takeIf { !state.showingCompactRun }?.takeIf {
-                it.bulk != null || (it.exchange != null && state.run == null)
+                it.spaceAddressUpdated || it.bulk != null || (it.exchange != null && state.run == null)
             }?.let { notice ->
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
+                        if (notice.spaceAddressUpdated) {
+                            Text(
+                                syncString(MR.strings.sync_recovery_address_updated),
+                                Modifier.testTag("sync-notice-address-updated"),
+                            )
+                        }
                         notice.exchange?.takeIf { state.run == null }?.let { result ->
                             if (
                                 result.status == SyncRunStatus.SUCCESS || result.status == SyncRunStatus.PARTIAL
@@ -1311,7 +1510,30 @@ private fun SetupPage(
                 }
             }
             SyncSetupStep.CHOOSE_SPACE -> {
-                item { Text(syncString(MR.strings.sync_setup_multiple)) }
+                if (state.spaces.isEmpty()) {
+                    item {
+                        Text(
+                            syncString(MR.strings.sync_recovery_no_spaces),
+                            Modifier.testTag("sync-recovery-no-spaces"),
+                        )
+                    }
+                    item {
+                        Action(
+                            "sync-recovery-authorization",
+                            MR.strings.sync_recovery_authorization,
+                            !state.setupBusy,
+                        ) {
+                            dispatch(SyncPanelAction.CheckAuthorization)
+                        }
+                    }
+                    item {
+                        Action("sync-recovery-create", MR.strings.sync_recovery_create, !state.setupBusy) {
+                            dispatch(SyncPanelAction.CreateNewSpace)
+                        }
+                    }
+                } else {
+                    item { Text(syncString(MR.strings.sync_setup_multiple)) }
+                }
                 items(state.spaces, key = { it.repositoryId }) { space ->
                     TextButton(
                         onClick = { dispatch(SyncPanelAction.ChooseSpace(space)) },
@@ -1337,6 +1559,29 @@ private fun SetupPage(
                 }
             }
             SyncSetupStep.COMPLETE -> { }
+            SyncSetupStep.PREPARE_REPOSITORY -> {
+                item {
+                    Text(
+                        syncString(MR.strings.sync_recovery_prepare_title),
+                        Modifier.testTag("sync-recovery-prepare"),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+                item { Text(syncString(MR.strings.sync_recovery_prepare_body)) }
+                item {
+                    Action("sync-create-private-repo", MR.strings.sync_setup_create_repo, !state.setupBusy) {
+                        openBrowser(githubRepositoryCreationUrl(state.setupAccountLogin))
+                    }
+                }
+                item {
+                    Action(
+                        "sync-recovery-repository-created",
+                        MR.strings.sync_recovery_repository_created,
+                        enabled = !state.setupBusy,
+                        primary = true,
+                    ) { dispatch(SyncPanelAction.RetrySetup) }
+                }
+            }
             SyncSetupStep.ERROR -> {
                 val problem = state.setupProblem
                 val needsRepositoryGuide = problem in setOf(
@@ -2158,9 +2403,10 @@ private val INSTALLATION_RECOVERY_PROBLEMS = setOf(
 
 private const val GITHUB_APP_INSTALL_URL = "https://github.com/apps/mihon-desktop/installations/new"
 
-private fun githubRepositoryCreationUrl(owner: String): String =
+private fun githubRepositoryCreationUrl(owner: String?): String =
     "https://github.com/new?name=${encodeQueryParameter(SyncRepositoryTarget.NAME)}" +
-        "&visibility=${encodeQueryParameter("private")}&owner=${encodeQueryParameter(owner)}"
+        "&visibility=${encodeQueryParameter("private")}" +
+        owner?.let { "&owner=${encodeQueryParameter(it)}" }.orEmpty()
 
 private fun githubInstallationManagementUrl(installation: SyncAppInstallation, accountLogin: String): String? {
     if (installation.id <= 0) return null
@@ -2268,6 +2514,7 @@ private fun problemText(problem: SyncRunProblem): String = syncString(
         SyncRunProblem.INVALID_DATA -> MR.strings.sync_problem_data
         SyncRunProblem.UNKNOWN -> MR.strings.sync_problem_unknown
         SyncRunProblem.REPOSITORY_NOT_PRIVATE -> MR.strings.sync_problem_not_private
+        SyncRunProblem.SPACE_UNAVAILABLE -> MR.strings.sync_recovery_title
     },
 )
 

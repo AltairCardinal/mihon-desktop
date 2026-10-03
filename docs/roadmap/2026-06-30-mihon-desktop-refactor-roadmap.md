@@ -4,7 +4,9 @@
 
 正式版日期：2026-06-30
 
-- active-child-plan: [同步进度整轮计数与简洁展示](./2026-09-28-sync-progress-display-roadmap.md)（2026-10-02，SP04已交付；当前待SP03原生人工验收）
+- active-child-plan: [同步空间不可用恢复](./2026-10-03-sync-space-recovery-roadmap.md)（2026-10-03，R1–R3 已交付；R4 实体恢复业务及 macOS 钥匙串验收待完成，保留旧连接与数据）
+
+- 此前活动专项：[同步进度整轮计数与简洁展示](./2026-09-28-sync-progress-display-roadmap.md)（SP04已交付；SP03原生人工验收状态保留，不由本次恢复计划代为勾选）。
 
 - 已完成专项：[阅读器双页与继续阅读行为迭代](./2026-09-24-reader-dual-page-and-continue-iteration-roadmap.md)（2026-09-26，COMPLETE；不改变当前作者页活动计划）。
 

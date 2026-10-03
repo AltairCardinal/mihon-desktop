@@ -32,7 +32,7 @@ enum class SyncHttpFailureClass {
     UNKNOWN,
 }
 
-class SyncHttpException(
+open class SyncHttpException(
     val code: Int? = null,
     message: String,
     val retryable: Boolean = false,
@@ -40,6 +40,37 @@ class SyncHttpException(
     val retryAfterMillis: Long? = null,
     val rateLimitResetEpochSeconds: Long? = null,
 ) : IllegalStateException(message)
+
+internal enum class SyncRequiredResource { REPOSITORY, SPACE_DATA }
+
+internal class SyncRequiredResourceUnavailable(val resource: SyncRequiredResource, code: Int = 404) :
+    SyncHttpException(code, "required sync resource is unavailable")
+
+/** Applies the same status/rate-limit distinction to onboarding account and repository reads. */
+internal fun SyncHttpResponse.requireSyncSuccess(): SyncHttpResponse {
+    if (code in 200..299) return this
+    val now = System.currentTimeMillis()
+    val message = body.decodeToString().lowercase()
+    val secondaryLimit = message.contains("secondary rate") || message.contains("abuse detection")
+    val limited = code == 429 || (
+        code == 403 && (
+            headers["x-ratelimit-remaining"] == "0" || headers["retry-after"] != null || secondaryLimit
+            )
+        )
+    val failure = when {
+        limited -> SyncHttpFailureClass.RATE_LIMITED
+        code == 401 || code == 403 -> SyncHttpFailureClass.AUTHORIZATION
+        code >= 500 -> SyncHttpFailureClass.SERVER
+        else -> SyncHttpFailureClass.UNKNOWN
+    }
+    throw SyncHttpException(
+        code,
+        "GitHub sync request failed",
+        limited || code >= 500,
+        failure,
+        retryAfterMillis = rateLimitNotBeforeMillis(now)?.let { (it - now).coerceAtLeast(0) },
+    )
+}
 
 data class SyncHttpResponse(
     val code: Int,

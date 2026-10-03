@@ -1143,8 +1143,14 @@ class SyncRuntimeWiringTest {
                 runtime.credentials.clear()
                 assertEquals(SyncRunProblem.AUTHORIZATION, runtime.coordinator.synchronize(SyncTrigger.MANUAL).problem)
                 assertEquals(SyncRunState.BLOCKED, runtime.runStore.active("space", 1)?.state)
+                val blocked = requireNotNull(runtime.runStore.active("space", 1))
+                val requests = setup.git.server.requestCount
                 setup.secure.fail = true
-                assertEquals(SyncRunProblem.STORAGE, runtime.coordinator.synchronize(SyncTrigger.MANUAL).problem)
+                val failedStorage = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                assertEquals(SyncRunProblem.STORAGE, failedStorage.problem)
+                assertEquals(SyncRunStatus.FAILED, failedStorage.status)
+                assertEquals(blocked, runtime.runStore.active("space", 1))
+                assertEquals(requests, setup.git.server.requestCount)
             }
         }
     }

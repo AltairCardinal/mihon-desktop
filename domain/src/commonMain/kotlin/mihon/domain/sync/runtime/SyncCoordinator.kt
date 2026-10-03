@@ -23,6 +23,7 @@ enum class SyncRunStatus { SUCCESS, PARTIAL, FAILED, SKIPPED }
 @kotlinx.serialization.Serializable
 enum class SyncRunProblem {
     AUTHORIZATION,
+    SPACE_UNAVAILABLE,
     NETWORK,
     STORAGE,
     REMOTE_CHANGED,

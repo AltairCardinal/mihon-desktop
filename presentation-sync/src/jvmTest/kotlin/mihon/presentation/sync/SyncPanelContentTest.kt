@@ -29,8 +29,10 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
+import mihon.data.sync.auth.DiscoveredSyncSpace
 import mihon.data.sync.auth.SyncAppInstallation
 import mihon.data.sync.auth.SyncDiscoveryProblem
+import mihon.data.sync.auth.SyncGitHubAccount
 import mihon.data.sync.auth.SyncInstallationAccountType
 import mihon.data.sync.auth.SyncRepositorySelection
 import mihon.data.sync.inbox.SyncPendingItem
@@ -55,12 +57,16 @@ import mihon.data.sync.runtime.SyncRunPhase
 import mihon.data.sync.runtime.SyncRunSnapshot
 import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncSetupStep
+import mihon.data.sync.runtime.SyncSpaceRecovery
+import mihon.data.sync.runtime.SyncSpaceRecoveryReason
 import mihon.data.sync.runtime.SyncTerminalSummary
 import mihon.domain.sync.SyncCancellationDecision
 import mihon.domain.sync.SyncObjectKey
 import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.auth.GitHubAuthFailureReason
 import mihon.domain.sync.auth.GitHubDeviceCode
+import mihon.domain.sync.crypto.SyncSpaceDescriptor
+import mihon.domain.sync.crypto.SyncSpaceProtection
 import mihon.domain.sync.runtime.SyncRunProblem
 import mihon.domain.sync.runtime.SyncRunResult
 import mihon.domain.sync.runtime.SyncRunStatus
@@ -78,6 +84,411 @@ import java.util.Locale
 
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelContentTest {
+    @Test
+    fun `pending switch primary and recovery method both continue the existing setup`() {
+        for (page in listOf(SyncPanelPage.MAIN, SyncPanelPage.RECOVERY)) {
+            renderedEnglish(
+                connected().copy(page = page, recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.SWITCH_PENDING)),
+            ) {
+                awaitTag("sync-recovery-continue")
+                assertTrue(texts().contains(MR.strings.sync_recovery_continue.localized(Locale.US)))
+                click("sync-recovery-continue")
+                assertEquals(listOf(SyncPanelAction.BeginSetup), actions)
+                assertTrue(opened.isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun `long target connection confirmation stays readable and clickable at 200 percent`(): Unit = runBlocking {
+        val original = Locale.getDefault()
+        Locale.setDefault(Locale.SIMPLIFIED_CHINESE)
+        val fixture = Fixture(
+            connected().copy(
+                question = SyncPanelQuestion.CONNECT_SPACE,
+                switchTargetRepository = SyncRepository(
+                    "reader-with-a-long-github-account-name",
+                    "private-mihon-sync-space-with-a-long-name",
+                    "mihon-sync-v1",
+                ),
+                switchPendingDecisions = 109,
+            ),
+            ImageComposeScene(320, 800, coroutineContext = currentCoroutineContext()) {},
+            fontScale = 2f,
+            dark = false,
+        )
+        try {
+            fixture.setContent()
+            fixture.awaitTag("sync-confirm-question")
+            val text = fixture.node("sync-question-text")
+            val pending = fixture.node("sync-switch-pending-count")
+            val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+            requireNotNull(pending.config[SemanticsActions.GetTextLayoutResult].action).invoke(layouts)
+            if (layouts.any { it.hasVisualOverflow } || pending.boundsInRoot.height < pending.size.height - 1f ||
+                pending.size.height <= 0
+            ) {
+                assertTrue(text.config.contains(SemanticsActions.ScrollBy), "clipped confirmation must remain readable")
+                requireNotNull(text.config[SemanticsActions.ScrollBy].action).invoke(0f, 10_000f)
+                fixture.render()
+            }
+            fixture.assertTextFits("sync-switch-pending-count")
+            assertTrue(fixture.node("sync-switch-pending-count").boundsInRoot.height > 0f)
+            for (tag in listOf("sync-confirm-question", "sync-cancel-question")) {
+                val bounds = fixture.geometry(tag)
+                assertTrue(bounds.height >= 48f && bounds.top >= 0f && bounds.bottom <= 800f, tag)
+                assertTrue(bounds.left >= 0f && bounds.right <= 320f, tag)
+                fixture.click(tag)
+            }
+            assertEquals(listOf(SyncPanelAction.ConfirmQuestion, SyncPanelAction.CancelQuestion), fixture.actions)
+            if (text.config.contains(SemanticsActions.ScrollBy)) {
+                requireNotNull(text.config[SemanticsActions.ScrollBy].action).invoke(0f, -10_000f)
+            }
+            fixture.render()
+            System.getProperty("mihon.sync.visualDir")?.let(::File)?.let { directory ->
+                directory.mkdirs()
+                fixture.scene.render().use { image ->
+                    requireNotNull(image.encodeToData(EncodedImageFormat.PNG)).use { data ->
+                        File(directory, "space-connection-confirm-320-2.0-zh.png").writeBytes(data.bytes)
+                    }
+                }
+            }
+        } finally {
+            fixture.scene.close()
+            Locale.setDefault(original)
+        }
+    }
+
+    @Test
+    fun `connection confirmation names the verified target and retains zero or multiple old decisions`() {
+        val target = SyncRepository("reader", "new-private-space", "mihon-sync-v1")
+        for (count in listOf(0L, 7L)) {
+            renderedEnglish(
+                connected().copy(
+                    question = SyncPanelQuestion.CONNECT_SPACE,
+                    switchTargetRepository = target,
+                    switchPendingDecisions = count,
+                ),
+            ) {
+                awaitTag("sync-confirm-question")
+                assertTrue(
+                    texts().contains(MR.strings.sync_recovery_connect_target.localized(Locale.US, target.fullName)),
+                )
+                assertTrue(texts().contains(MR.strings.sync_recovery_old_pending.localized(Locale.US, count)))
+                click("sync-cancel-question")
+                assertEquals(SyncPanelAction.CancelQuestion, actions.last())
+                click("sync-confirm-question")
+                assertEquals(SyncPanelAction.ConfirmQuestion, actions.last())
+                assertTrue(opened.isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun `new space initial confirmation reports actual old unapplied decisions`() = renderedEnglish(
+        connected().copy(question = SyncPanelQuestion.CREATE_NEW_SPACE, switchPendingDecisions = 9),
+    ) {
+        awaitTag("sync-confirm-question")
+        assertTrue(texts().contains(MR.strings.sync_recovery_old_pending.localized(Locale.US, 9L)))
+        assertTrue(texts().contains(MR.strings.sync_recovery_create_body.localized(Locale.US)))
+        click("sync-cancel-question")
+        assertEquals(listOf(SyncPanelAction.CancelQuestion), actions)
+    }
+
+    @Test
+    fun `unfinished space change explains preparation without claiming a deleted space`() {
+        for (page in listOf(SyncPanelPage.MAIN, SyncPanelPage.RECOVERY)) {
+            renderedEnglish(
+                connected().copy(page = page, recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.SWITCH_PENDING)),
+            ) {
+                awaitTag(if (page == SyncPanelPage.MAIN) "sync-recovery-card" else "sync-recovery-page")
+                render()
+                assertTrue(texts().contains(MR.strings.sync_recovery_switch_pending_title.localized(Locale.US)))
+                assertTrue(texts().contains(MR.strings.sync_recovery_switch_pending_body.localized(Locale.US)))
+                assertTrue(texts().contains(MR.strings.sync_recovery_switch_pending_waiting.localized(Locale.US)))
+                assertFalse(texts().contains(MR.strings.sync_recovery_preserved.localized(Locale.US)))
+                assertTrue(
+                    hasTag(
+                        if (page ==
+                            SyncPanelPage.MAIN
+                        ) {
+                            "sync-recovery-continue"
+                        } else {
+                            "sync-recovery-recheck"
+                        },
+                    ),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `safe rename result appears as a dismissible session notice`() = renderedEnglish(
+        connected().copy(notice = SyncPanelNotice(spaceAddressUpdated = true)),
+    ) {
+        awaitTag("sync-notice-address-updated")
+        assertTrue(texts().contains(MR.strings.sync_recovery_address_updated.localized(Locale.US)))
+        click("sync-dismiss-notice")
+        assertEquals(SyncPanelAction.DismissNotice, actions.last())
+        panel.state.value = panel.state.value.copy(notice = null)
+        render()
+        assertFalse(hasTag("sync-notice-address-updated"))
+    }
+
+    @Test
+    fun `main space recovery gives explicit checking feedback`() = renderedEnglish(
+        connected().copy(recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE, busy = true)),
+    ) {
+        awaitTag("sync-recovery-checking")
+        assertTrue(texts().contains(MR.strings.sync_recovery_checking.localized(Locale.US)))
+        assertTrue(node("sync-recovery-open").config.contains(SemanticsProperties.Disabled))
+        assertTrue(hasTag("sync-recovery-card"))
+    }
+
+    @Test
+    fun `recovery methods give explicit checking feedback`() = renderedEnglish(
+        connected().copy(
+            page = SyncPanelPage.RECOVERY,
+            recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE, busy = true),
+        ),
+    ) {
+        awaitTag("sync-recovery-checking")
+        assertTrue(texts().contains(MR.strings.sync_recovery_checking.localized(Locale.US)))
+        assertTrue(hasTag("sync-recovery-page"))
+    }
+
+    @Test
+    fun `incomplete recovery check explains current failure and preserves recovery paths`() {
+        for (page in listOf(SyncPanelPage.MAIN, SyncPanelPage.RECOVERY)) {
+            for ((problem, reason) in listOf(
+                SyncRunProblem.NETWORK to MR.strings.sync_problem_network,
+                SyncRunProblem.STORAGE to MR.strings.sync_problem_storage,
+            )) {
+                renderedEnglish(
+                    connected().copy(
+                        page = page,
+                        recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE),
+                        problem = problem,
+                    ),
+                ) {
+                    awaitTag("sync-recovery-check-incomplete")
+                    assertTrue(texts().contains(MR.strings.sync_recovery_check_incomplete.localized(Locale.US)))
+                    assertTrue(texts().contains(reason.localized(Locale.US)))
+                    assertTrue(hasTag(if (page == SyncPanelPage.MAIN) "sync-recovery-card" else "sync-recovery-page"))
+                    if (page == SyncPanelPage.MAIN) {
+                        click("sync-recovery-open")
+                        assertEquals(SyncPanelAction.OpenRecovery, actions.last())
+                    } else {
+                        scroll("sync-recovery-page", 2)
+                        awaitTag("sync-recovery-recheck")
+                        click("sync-recovery-recheck")
+                        assertEquals(SyncPanelAction.RecheckSpace, actions.last())
+                    }
+                    panel.state.value = panel.state.value.copy(problem = SyncRunProblem.SPACE_UNAVAILABLE)
+                    render()
+                    assertFalse(hasTag("sync-recovery-check-incomplete"))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `empty recovery candidates keep authorization and creation available`() = renderedEnglish(
+        connected().copy(page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.CHOOSE_SPACE),
+    ) {
+        awaitTag("sync-recovery-no-spaces")
+        click("sync-recovery-authorization")
+        assertEquals(SyncPanelAction.CheckAuthorization, actions.last())
+        click("sync-recovery-create")
+        assertEquals(SyncPanelAction.CreateNewSpace, actions.last())
+        assertTrue(opened.isEmpty())
+    }
+
+    @Test
+    fun `multiple recovery candidates dispatch only the explicitly selected repository`() {
+        val candidates = listOf(71L, 72L).map { id ->
+            DiscoveredSyncSpace(
+                SyncGitHubAccount(42, "owner"),
+                id,
+                SyncRepository("owner", "space-$id", "main"),
+                SyncSpaceDescriptor("space-$id", 1, SyncSpaceProtection.None),
+                "head-$id",
+            )
+        }
+        renderedEnglish(
+            connected().copy(
+                page = SyncPanelPage.SETUP,
+                setupStep = SyncSetupStep.CHOOSE_SPACE,
+                spaces = candidates,
+            ),
+        ) {
+            awaitTag("sync-space-72")
+            assertTrue(actions.isEmpty())
+            click("sync-space-72")
+            assertEquals(listOf(SyncPanelAction.ChooseSpace(candidates.last())), actions)
+            assertTrue(opened.isEmpty())
+        }
+    }
+
+    @Test
+    fun `space recovery replaces stale progress and dispatches one primary recovery action`() = renderedEnglish(
+        connected().copy(
+            recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE),
+            run = visualRun(SyncRunPhase.UPLOADING),
+            nextSyncAtMillis = 60_000,
+        ),
+    ) {
+        awaitTag("sync-recovery-card")
+        assertFalse(hasTag("sync-progress-card"))
+        assertFalse(hasTag("sync-next-auto"))
+        assertFalse(hasTag("sync-now"))
+        assertTrue(texts().contains(MR.strings.sync_recovery_preserved.localized(Locale.US)))
+        click("sync-recovery-open")
+        assertEquals(SyncPanelAction.OpenRecovery, actions.last())
+        click("sync-recovery-recheck")
+        assertEquals(SyncPanelAction.RecheckSpace, actions.last())
+    }
+
+    @Test
+    fun `authorization recovery presents reconnect and does not offer sync`() = renderedEnglish(
+        connected().copy(recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED)),
+    ) {
+        awaitTag("sync-recovery-authorization")
+        assertTrue(texts().contains(MR.strings.sync_recovery_auth_expired.localized(Locale.US)))
+        assertFalse(hasTag("sync-now"))
+        click("sync-recovery-authorization")
+        assertEquals(SyncPanelAction.CheckAuthorization, actions.last())
+    }
+
+    @Test
+    fun `recovery methods use production panel actions and preserve back and close`() = renderedEnglish(
+        connected().copy(
+            page = SyncPanelPage.RECOVERY,
+            recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE),
+        ),
+    ) {
+        awaitTag("sync-recovery-page")
+        for ((index, entry) in listOf(
+            "sync-recovery-recheck" to SyncPanelAction.RecheckSpace,
+            "sync-recovery-authorization" to SyncPanelAction.CheckAuthorization,
+            "sync-recovery-connect-other" to SyncPanelAction.ConnectOtherSpace,
+            "sync-recovery-create" to SyncPanelAction.CreateNewSpace,
+        ).withIndex()) {
+            val (tag, action) = entry
+            scroll("sync-recovery-page", index + 1)
+            awaitTag(tag)
+            click(tag)
+            assertEquals(action, actions.last())
+        }
+        click("sync-back")
+        assertEquals(SyncPanelAction.Back, actions.last())
+        click("sync-close")
+        assertEquals(SyncPanelAction.Close, actions.last())
+        assertTrue(opened.isEmpty())
+    }
+
+    @Test
+    fun `new space preparation opens browser while explicit continue uses existing recheck`() = renderedEnglish(
+        connected().copy(
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.PREPARE_REPOSITORY,
+            setupAccountLogin = "owner&other=a/b",
+        ),
+    ) {
+        awaitTag("sync-recovery-prepare")
+        assertTrue(texts().contains(MR.strings.sync_recovery_prepare_body.localized(Locale.US)))
+        click("sync-create-private-repo")
+        assertEquals(
+            "https://github.com/new?name=mihon-sync&visibility=private&owner=owner%26other%3Da%2Fb",
+            opened.single(),
+        )
+        assertTrue(actions.isEmpty(), "opening the browser must not initialize or replace a space")
+        click("sync-recovery-repository-created")
+        assertEquals(SyncPanelAction.RetrySetup, actions.last())
+        click("sync-back")
+        assertEquals(SyncPanelAction.Back, actions.last())
+    }
+
+    @Test
+    fun `new space confirmation states local recovery boundary and cancellation stays explicit`() = renderedEnglish(
+        connected().copy(question = SyncPanelQuestion.CREATE_NEW_SPACE),
+    ) {
+        awaitTag("sync-cancel-question")
+        assertTrue(texts().contains(MR.strings.sync_recovery_create_body.localized(Locale.US)))
+        click("sync-cancel-question")
+        assertEquals(listOf(SyncPanelAction.CancelQuestion), actions)
+        assertTrue(opened.isEmpty())
+    }
+
+    @Test
+    fun `busy recovery disables repeated checks and switching without losing the page`() = renderedEnglish(
+        connected().copy(
+            page = SyncPanelPage.RECOVERY,
+            recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE, busy = true),
+        ),
+    ) {
+        awaitTag("sync-recovery-page")
+        for ((index, tag) in listOf(
+            "sync-recovery-recheck",
+            "sync-recovery-authorization",
+            "sync-recovery-connect-other",
+            "sync-recovery-create",
+        ).withIndex()) {
+            scroll("sync-recovery-page", index + 1)
+            awaitTag(tag)
+            assertTrue(node(tag).config.contains(SemanticsProperties.Disabled), tag)
+        }
+        assertTrue(hasTag("sync-close"))
+        assertTrue(actions.isEmpty())
+    }
+
+    @Test
+    fun `recovery actions remain reachable at 200 percent with English dark and Chinese light themes`() = runBlocking {
+        val original = Locale.getDefault()
+        try {
+            for (locale in listOf(Locale.US, Locale.SIMPLIFIED_CHINESE)) {
+                Locale.setDefault(locale)
+                val fixture = Fixture(
+                    connected().copy(
+                        page = SyncPanelPage.RECOVERY,
+                        recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.SPACE_DATA_INVALID),
+                    ),
+                    ImageComposeScene(320, 1100, coroutineContext = currentCoroutineContext()) {},
+                    fontScale = 2f,
+                    dark = locale == Locale.US,
+                )
+                try {
+                    fixture.setContent()
+                    fixture.awaitTag("sync-recovery-page")
+                    for ((index, tag) in listOf(
+                        1 to "sync-recovery-recheck",
+                        2 to "sync-recovery-authorization",
+                        3 to "sync-recovery-connect-other",
+                        4 to "sync-recovery-create",
+                    )) {
+                        fixture.scroll("sync-recovery-page", index)
+                        fixture.awaitTag(tag)
+                        val bounds = fixture.geometry(tag)
+                        assertTrue(bounds.height >= 48f && bounds.right <= 320 && bounds.left >= 0, tag)
+                    }
+                    assertEquals(SyncPanelPage.RECOVERY, fixture.panel.state.value.page)
+                    assertTrue(fixture.actions.isEmpty())
+                    System.getProperty("mihon.sync.visualDir")?.let(::File)?.let { directory ->
+                        directory.mkdirs()
+                        fixture.scene.render().use { image ->
+                            requireNotNull(image.encodeToData(EncodedImageFormat.PNG)).use { data ->
+                                File(directory, "space-recovery-320-2.0-${locale.language}.png").writeBytes(data.bytes)
+                            }
+                        }
+                    }
+                } finally {
+                    fixture.scene.close()
+                }
+            }
+        } finally {
+            Locale.setDefault(original)
+        }
+    }
+
     @Test
     fun `setup retryable error remains visible beside an old nonterminal run`() {
         renderedEnglish(

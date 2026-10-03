@@ -10,6 +10,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import mihon.data.sync.auth.GitHubAuthClient
 import mihon.data.sync.auth.GitHubTokenRefresher
 import mihon.data.sync.auth.PersistentGitHubCredentialStore
@@ -35,6 +37,7 @@ import mihon.domain.sync.runtime.SyncRunStatus
 import mihon.domain.sync.runtime.SyncTrigger
 import mihon.domain.sync.security.SyncSecureStore
 import mihon.domain.sync.security.SyncSecureStoreException
+import mihon.domain.sync.transport.SyncInitializationStage
 import mihon.domain.sync.transport.SyncRepository
 import okhttp3.OkHttpClient
 import okio.Path
@@ -166,6 +169,10 @@ class SyncRuntime(
     internal suspend fun bindSetup(setup: StoredSyncSetup) {
         coordinator.cancelAndJoin()
         connectionMutex.withLock {
+            if (setup.switchIntentId != null) {
+                activateSwitch(setup)
+                return@withLock
+            }
             val material = setup.material.material()
             val descriptor = material.descriptor
             val stored = onboarding.storage.connection(descriptor.spaceId, descriptor.generation)
@@ -211,6 +218,202 @@ class SyncRuntime(
         }
     }
 
+    internal suspend fun activeSwitch(): StoredSyncSpaceSwitch? {
+        val connection = rawConnection() ?: return null
+        if (!connection.enabled || connection.unsupportedFormat) return null
+        val stored = onboarding.storage.connection(connection.spaceId, connection.generation) ?: return null
+        return onboarding.storage.activeSwitch(stored.accountId)?.takeIf {
+            it.stage in setOf(SyncSpaceSwitchStage.PREPARING, SyncSpaceSwitchStage.ACTIVATING)
+        }
+    }
+
+    internal suspend fun beginSwitch(purpose: SyncSpaceSwitchPurpose): StoredSyncSpaceSwitch {
+        coordinator.cancelAndJoin()
+        return connectionMutex.withLock {
+            recoverSwitchActivation()
+            val connection = requireNotNull(rawConnection())
+            val stored = requireNotNull(onboarding.storage.connection(connection.spaceId, connection.generation))
+            onboarding.session(stored.accountId)
+            val previous = onboarding.storage.activeSwitch(stored.accountId)
+            if (previous?.stage in setOf(SyncSpaceSwitchStage.PREPARING, SyncSpaceSwitchStage.ACTIVATING)) {
+                // A new explicit choice archives its own checkpoint; it never retargets an initialized attempt.
+                require(previous?.targetConnection == null)
+                verifySwitch(requireNotNull(previous))
+                onboarding.storage.saveSwitch(previous.copy(stage = SyncSpaceSwitchStage.CANCELLED), previous)
+            }
+            StoredSyncSpaceSwitch(
+                intentId = UUID.randomUUID().toString(),
+                accountId = stored.accountId,
+                oldConnection = stored,
+                oldBindingRevision = stored.snapshotManifestBinding().connectionRevision,
+                oldPending = onboarding.storage.pendingForConnection(stored),
+                purpose = purpose,
+                previousIntentId = previous?.intentId,
+            ).also { onboarding.storage.startSwitch(it) }
+        }
+    }
+
+    internal suspend fun verifySwitch(intent: StoredSyncSpaceSwitch) {
+        require(onboarding.storage.activeSwitch(intent.accountId) == intent) { "sync switch changed" }
+        onboarding.session(intent.accountId)
+        val active = requireNotNull(rawConnection())
+        val old = intent.oldConnection.material.material().descriptor
+        require(active.spaceId == old.spaceId && active.generation == old.generation)
+        val current = requireNotNull(onboarding.storage.connection(old.spaceId, old.generation))
+        require(current.snapshotManifestBinding().connectionRevision == intent.oldBindingRevision)
+    }
+
+    internal suspend fun confirmSwitch(intent: StoredSyncSpaceSwitch): StoredSyncSetup = connectionMutex.withLock {
+        verifySwitch(intent)
+        require(intent.stage == SyncSpaceSwitchStage.PREPARING)
+        val setup = requireNotNull(intent.target)
+        require(onboarding.storage.setupFor(setup) == setup)
+        onboarding.storage.saveSwitch(intent.copy(stage = SyncSpaceSwitchStage.ACTIVATING), intent)
+        setup
+    }
+
+    /** No remote requests here: a verified activation can only finish its frozen local transaction. */
+    private suspend fun recoverSwitchActivation() {
+        recoverAddressUpdate()
+        val active = rawConnection() ?: return
+        if (!active.enabled || active.unsupportedFormat) return
+        val stored = onboarding.storage.connection(active.spaceId, active.generation) ?: return
+        val intent = onboarding.storage.activeSwitch(stored.accountId) ?: return
+        if (intent.stage == SyncSpaceSwitchStage.ACTIVATING && intent.targetConnection != null) {
+            finishSwitchActivation(intent)
+        }
+    }
+
+    private suspend fun recoverAddressUpdate() {
+        val active = handler.await { sync_journalQueries.getActiveSpace().executeAsOneOrNull() } ?: return
+        val update = onboarding.storage.addressUpdate(active.space_id, active.generation) ?: return
+        if (update.complete) return
+        val before = update.before
+        val after = update.after
+        require(
+            before.accountId == after.accountId && before.repositoryId == after.repositoryId &&
+                before.material == after.material && before.actorId == after.actorId && before.epoch == after.epoch,
+        )
+        val stored = onboarding.storage.connection(active.space_id, active.generation)
+        require(stored == before || stored == after)
+        require(active.repository_branch == before.branch && after.branch == before.branch)
+        require(
+            (active.repository_owner == before.owner && active.repository_name == before.repository) ||
+                (active.repository_owner == after.owner && active.repository_name == after.repository),
+        )
+        if (stored != after) onboarding.storage.bind(after, before)
+        handler.await(inTransaction = true) {
+            sync_journalQueries.updateRepositoryAddress(
+                after.owner,
+                after.repository,
+                active.space_id,
+                active.generation,
+                before.owner,
+                before.repository,
+                before.branch,
+            )
+            val changed = sync_journalQueries.getActiveSpace().executeAsOne()
+            require(changed.repository_owner == after.owner && changed.repository_name == after.repository)
+        }
+        update.pendingBefore?.let { pending ->
+            val current = requireNotNull(onboarding.storage.setupFor(pending))
+            val next = pending.copy(owner = after.owner, repository = after.repository)
+            require(current == pending || current == next)
+            if (current != next) onboarding.storage.save(next, pending)
+        }
+        onboarding.storage.saveAddressUpdate(update.copy(complete = true), update)
+    }
+
+    private suspend fun activateSwitch(setup: StoredSyncSetup) {
+        var intent = requireNotNull(onboarding.storage.activeSwitch(setup.accountId))
+        require(intent.intentId == setup.switchIntentId && intent.stage == SyncSpaceSwitchStage.ACTIVATING)
+        val frozen = requireNotNull(intent.target)
+        require(
+            frozen.copy(
+                stage = setup.stage,
+                confirmedBootstrapCommitSha = setup.confirmedBootstrapCommitSha,
+                confirmedBootstrapTreeSha = setup.confirmedBootstrapTreeSha,
+            ) == setup,
+        ) { "sync target changed" }
+        if (intent.targetConnection == null) {
+            verifySwitch(intent)
+            val descriptor = setup.material.material().descriptor
+            val existing = onboarding.storage.connection(descriptor.spaceId, descriptor.generation)
+            require(
+                existing == null || (
+                    existing.accountId == setup.accountId &&
+                        existing.repositoryId == setup.repositoryId && existing.material == setup.material &&
+                        existing.repository() == setup.repository()
+                    ),
+            )
+            val actor = handler.await {
+                sync_journalQueries.getCurrentActor(descriptor.spaceId, descriptor.generation).executeAsOneOrNull()
+            }
+            require(actor == null || (actor.actor_id == existing?.actorId && actor.epoch == existing.epoch))
+            val target = StoredSyncConnection(
+                accountId = setup.accountId, accountLogin = setup.accountLogin,
+                repositoryId = setup.repositoryId, owner = setup.owner, repository = setup.repository,
+                branch = setup.branch, material = setup.material,
+                actorId = actor?.actor_id ?: UUID.randomUUID().toString(), epoch = actor?.epoch ?: 1,
+                switchIntentId = intent.intentId,
+            )
+            val next = intent.copy(targetConnection = target)
+            onboarding.storage.saveSwitch(next, intent)
+            intent = next
+        }
+        finishSwitchActivation(intent)
+    }
+
+    private suspend fun finishSwitchActivation(intent: StoredSyncSpaceSwitch) {
+        val target = requireNotNull(intent.targetConnection)
+        val setup = requireNotNull(intent.target)
+        val old = intent.oldConnection.material.material().descriptor
+        val descriptor = target.material.material().descriptor
+        val active = requireNotNull(rawConnection())
+        require(
+            (active.spaceId == old.spaceId && active.generation == old.generation) ||
+                (active.spaceId == descriptor.spaceId && active.generation == descriptor.generation),
+        )
+        val currentOld = requireNotNull(onboarding.storage.connection(old.spaceId, old.generation))
+        require(currentOld.snapshotManifestBinding().connectionRevision == intent.oldBindingRevision)
+        val existing = onboarding.storage.connection(descriptor.spaceId, descriptor.generation)
+        if (existing != target) {
+            require(
+                existing == null || (
+                    existing.accountId == target.accountId &&
+                        existing.repositoryId == target.repositoryId && existing.material == target.material &&
+                        existing.repository() == target.repository()
+                    ),
+            )
+            onboarding.storage.bind(target, existing)
+        }
+        baseline.switchAndImport(
+            intent.intentId,
+            old.spaceId,
+            old.generation,
+            descriptor.spaceId,
+            descriptor.generation,
+            target.repository(),
+            target.actorId,
+            target.epoch,
+        )
+        val checkpoint = requireNotNull(onboarding.storage.setupFor(setup))
+        if (checkpoint.stage != SyncInitializationStage.CONNECTED) {
+            onboarding.storage.save(
+                checkpoint.copy(stage = SyncInitializationStage.CONNECTED),
+                checkpoint,
+            )
+        }
+        val completed = intent.copy(stage = SyncSpaceSwitchStage.COMPLETE)
+        try {
+            onboarding.storage.saveSwitch(completed, intent)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            if (onboarding.storage.switchIntent(intent.intentId) != completed) throw failure
+        }
+    }
+
     init {
         if (preferences.scheduleAnchor.get() == 0L) preferences.scheduleAnchor.set(clock())
     }
@@ -225,6 +428,7 @@ class SyncRuntime(
     /** Resumes only an accepted system-interrupted run; a user pause remains paused. */
     suspend fun hasResumableRun(): Boolean {
         val connection = connection() ?: return false
+        if (recoveryBlocked(connection)) return false
         return runStore.active(connection.spaceId, connection.generation)?.let {
             isResumable(it)
         } == true
@@ -233,6 +437,7 @@ class SyncRuntime(
     /** Returns whether an accepted automatic run is allowed to make its next attempt now. */
     suspend fun isRecoveryDue(): Boolean {
         val connection = connection() ?: return false
+        if (recoveryBlocked(connection)) return false
         return runStore.active(connection.spaceId, connection.generation)?.let {
             isResumable(it) && maxOf(it.nextRetryAt, scheduledAccountHttpNotBefore(connection)) <= clock()
         } == true
@@ -241,6 +446,7 @@ class SyncRuntime(
     /** Delay used when the platform schedules the durable recovery wake-up. */
     suspend fun recoveryDelayMillis(): Long {
         val connection = connection() ?: return 0L
+        if (recoveryBlocked(connection)) return 0L
         return runStore.active(connection.spaceId, connection.generation)?.let {
             if (isResumable(it)) {
                 (maxOf(it.nextRetryAt, scheduledAccountHttpNotBefore(connection)) - clock()).coerceAtLeast(0L)
@@ -273,6 +479,7 @@ class SyncRuntime(
     /** Resumes only an accepted system-interrupted run; a user pause remains paused. */
     suspend fun resumeIfNeeded(): Boolean {
         val connection = connection() ?: return false
+        if (recoveryBlocked(connection)) return false
         if (runStore.active(connection.spaceId, connection.generation) == null) {
             completePendingSetupIfSettled()
         }
@@ -321,8 +528,29 @@ class SyncRuntime(
 
     suspend fun connection(): SyncConnection? = connectionFacts().projection
 
+    private suspend fun rawConnection(): SyncConnection? = rawConnectionFacts().projection
+
     /** Shares the production raw lookup and decoder without reading authorization credentials. */
     internal suspend fun connectionFacts(): SyncConnectionFacts {
+        recoverLocalConnectionIfIdle()
+        return rawConnectionFacts()
+    }
+
+    private suspend fun recoverLocalConnectionIfIdle() {
+        if (!connectionMutex.tryLock()) return
+        try {
+            recoverSwitchActivation()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Keep the old local projection readable. Recovery checks still fail closed and report storage trouble.
+        } finally {
+            connectionMutex.unlock()
+        }
+    }
+
+    /** Pure lookup for diagnostics: capture the active identity before decoding its sealed binding. */
+    internal suspend fun rawConnectionFacts(): SyncConnectionFacts {
         val active = handler.await { sync_journalQueries.getActiveSpace().executeAsOneOrNull() }
             ?: return SyncConnectionFacts(null, null, SyncBindingDecode.MISSING)
         var decode = SyncBindingDecode.MISSING
@@ -360,7 +588,7 @@ class SyncRuntime(
         if (!connection.enabled || connection.unsupportedFormat) return null
         val stored = onboarding.storage.connection(connection.spaceId, connection.generation) ?: return null
         if (stored.repository() != connection.repository) return null
-        return onboarding.storage.pending(stored.accountId)?.takeIf {
+        return onboarding.storage.pendingForConnection(stored)?.takeIf {
             // A crash can follow the DB commit but precede the final connected-marker CAS.
             it.repositoryId == stored.repositoryId && it.repository() == stored.repository() &&
                 it.material == stored.material
@@ -370,6 +598,10 @@ class SyncRuntime(
     /** Completes a connected setup after its durable import queue has drained. */
     internal suspend fun completePendingSetupIfSettled(): Boolean {
         val connection = connection() ?: return false
+        return completePendingSetupIfSettled(connection)
+    }
+
+    private suspend fun completePendingSetupIfSettled(connection: SyncConnection): Boolean {
         val setup = pendingSetup(connection) ?: return false
         val latest = runStore.latest(connection.spaceId, connection.generation)
         if (latest?.state != SyncRunState.SUCCEEDED) return false
@@ -386,7 +618,7 @@ class SyncRuntime(
         liveSession = null
         mutableLiveProgress.value = null
         connectionMutex.withLock {
-            connection()?.let {
+            rawConnection()?.let {
                 runStore.active(it.spaceId, it.generation)?.let { run -> runStore.cancel(run.runId) }
                 SyncLocalJournal(handler).disconnect(it.spaceId, it.generation)
             }
@@ -394,9 +626,181 @@ class SyncRuntime(
         }
     }
 
+    /** A persisted decision belongs to the exact sealed binding revision, never merely a repository name. */
+    suspend fun spaceRecovery(): SyncSpaceRecovery? {
+        recoverLocalConnectionIfIdle()
+        return rawConnection()?.let { recoveryFor(it) }
+    }
+
+    private suspend fun recoveryFor(connection: SyncConnection): SyncSpaceRecovery? {
+        if (!connection.enabled || connection.unsupportedFormat) return null
+        val stored = onboarding.storage.connection(connection.spaceId, connection.generation) ?: return null
+        onboarding.storage.addressUpdate(connection.spaceId, connection.generation)?.let {
+            if (!it.complete) throw SyncSecureStoreException()
+        }
+        val switching = onboarding.storage.activeSwitch(stored.accountId)
+        if (switching?.stage in setOf(SyncSpaceSwitchStage.PREPARING, SyncSpaceSwitchStage.ACTIVATING)) {
+            return SyncSpaceRecovery(SyncSpaceRecoveryReason.SWITCH_PENDING)
+        }
+        return onboarding.storage.recovery(stored)
+    }
+
+    private suspend fun recoveryBlocked(connection: SyncConnection): Boolean = try {
+        recoveryFor(connection) != null
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        // A corrupt/future secure decision must not become permission to start new work.
+        true
+    }
+
+    /** Explicit recovery is read-only: authenticate, inspect the current App grant, then validate the fixed space. */
+    suspend fun recheckSpace(): SyncSpaceRecoveryCheck {
+        coordinator.cancelAndJoin()
+        return connectionMutex.withLock {
+            recoverSwitchActivation()
+            val connection = rawConnection() ?: return@withLock SyncSpaceRecoveryCheck()
+            val stored = onboarding.storage.connection(connection.spaceId, connection.generation)
+                ?: throw SyncSecureStoreException()
+            try {
+                onboarding.storage.recovery(stored)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return@withLock SyncSpaceRecoveryCheck(problem = SyncRunProblem.STORAGE)
+            }
+            val switching = onboarding.storage.activeSwitch(stored.accountId)
+            if (switching?.stage == SyncSpaceSwitchStage.ACTIVATING) {
+                return@withLock SyncSpaceRecoveryCheck(recoveryFor(connection), SyncRunProblem.STORAGE)
+            }
+            val checked = checkSpace(connection, stored, allowRename = true)
+            if (switching?.stage == SyncSpaceSwitchStage.PREPARING &&
+                checked.problem == null && checked.recovery == null
+            ) {
+                onboarding.storage.saveSwitch(switching.copy(stage = SyncSpaceSwitchStage.CANCELLED), switching)
+            }
+            if (checked.problem == null) {
+                val current = requireNotNull(onboarding.storage.connection(connection.spaceId, connection.generation))
+                onboarding.storage.setRecovery(current, checked.recovery?.reason)
+            }
+            val recovery = try {
+                recoveryFor(requireNotNull(rawConnection()))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return@withLock SyncSpaceRecoveryCheck(problem = SyncRunProblem.STORAGE)
+            }
+            SyncSpaceRecoveryCheck(recovery, checked.problem, checked.spaceAddressUpdated)
+        }
+    }
+
+    private suspend fun checkSpace(
+        connection: SyncConnection,
+        stored: StoredSyncConnection,
+        allowRename: Boolean = false,
+    ): SyncSpaceRecoveryCheck {
+        return try {
+            val session = onboarding.session(stored.accountId)
+            val inventory = session.http.authorizedRepositoryObjects(stored.accountId)
+            val matches = inventory.filter { it["id"]?.jsonPrimitive?.longOrNull == stored.repositoryId }
+            require(matches.size <= 1)
+            val repository = matches.singleOrNull()
+                ?: return SyncSpaceRecoveryCheck(SyncSpaceRecovery(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE))
+            if (allowRename) {
+                val name = repository["full_name"]?.jsonPrimitive?.content?.split('/')
+                if (name != null && name.size == 2) {
+                    val candidate = SyncRepository(name[0], name[1], connection.repository.branch)
+                    if (candidate != connection.repository) {
+                        // Repository identity and full authenticated content are checked before either local write.
+                        onboarding.verifyRepository(session, candidate, stored.repositoryId)
+                        val material = stored.material.material()
+                        onboarding.transport(
+                            session.token,
+                            material,
+                            repositoryId = stored.repositoryId,
+                            requestGate = accountHttpRequestGate(stored.accountId),
+                        ).readSnapshot(
+                            candidate,
+                            material.descriptor.spaceId,
+                            material.descriptor.generation,
+                        ).getOrThrow()
+                        require(candidate.owner.equals(session.account.login, ignoreCase = true))
+                        val pending = onboarding.storage.pendingForConnection(stored)
+                        require(pending == null || pending.stage == SyncInitializationStage.CONNECTED)
+                        val update = StoredSyncAddressUpdate(
+                            before = stored,
+                            after = stored.copy(owner = candidate.owner, repository = candidate.name),
+                            pendingBefore = pending,
+                        )
+                        val previous = onboarding.storage.addressUpdate(connection.spaceId, connection.generation)
+                        require(previous == null || previous.complete)
+                        onboarding.storage.saveAddressUpdate(update, previous)
+                        recoverAddressUpdate()
+                        return SyncSpaceRecoveryCheck(spaceAddressUpdated = true)
+                    }
+                }
+            }
+            onboarding.verifyRepository(session, connection.repository, stored.repositoryId)
+            onboarding.transport(
+                session.token,
+                stored.material.material(),
+                repositoryId = stored.repositoryId,
+                requestGate = accountHttpRequestGate(stored.accountId),
+            ).readSnapshot(connection.repository, connection.spaceId, connection.generation).getOrThrow()
+            SyncSpaceRecoveryCheck()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            val reason = when (failure) {
+                is mihon.data.sync.http.SyncRequiredResourceUnavailable -> when (failure.resource) {
+                    mihon.data.sync.http.SyncRequiredResource.REPOSITORY -> SyncSpaceRecoveryReason.SPACE_UNAVAILABLE
+                    mihon.data.sync.http.SyncRequiredResource.SPACE_DATA -> SyncSpaceRecoveryReason.SPACE_DATA_INVALID
+                }
+                is mihon.data.sync.http.SyncHttpException -> when {
+                    failure.code == 401 -> SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED
+                    failure.code == 403 && !failure.retryable &&
+                        failure.failureClass != mihon.data.sync.http.SyncHttpFailureClass.RATE_LIMITED ->
+                        SyncSpaceRecoveryReason.SPACE_UNAVAILABLE
+                    else -> null
+                }
+                is mihon.data.sync.transport.SyncRemoteDataInvalid,
+                is mihon.domain.sync.crypto.SyncCryptoException,
+                -> SyncSpaceRecoveryReason.SPACE_DATA_INVALID
+                is GitHubAuthException -> if (failure.failure.retryable) {
+                    null
+                } else {
+                    SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED
+                }
+                else -> null
+            }
+            if (reason != null) {
+                SyncSpaceRecoveryCheck(SyncSpaceRecovery(reason))
+            } else {
+                SyncSpaceRecoveryCheck(problem = failure.syncProblem())
+            }
+        }
+    }
+
     override suspend fun exchange(trigger: SyncTrigger): SyncRunResult = connectionMutex.withLock {
-        val connection = connection()?.takeIf { it.enabled || it.unsupportedFormat }
+        try {
+            recoverSwitchActivation()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Preserve an unavailable binding's storage feedback while unknown intents remain a closed gate.
+            val problem = if (rawConnectionFacts().decode == SyncBindingDecode.READ_FAILED) {
+                SyncRunProblem.STORAGE
+            } else {
+                null
+            }
+            return@withLock SyncRunResult(
+                if (problem == null) SyncRunStatus.SKIPPED else SyncRunStatus.FAILED,
+                problem = problem,
+            )
+        }
+        val connection = rawConnection()?.takeIf { it.enabled || it.unsupportedFormat }
             ?: return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+        if (recoveryBlocked(connection)) return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
         val active = runStore.active(connection.spaceId, connection.generation)
         if (trigger == SyncTrigger.STARTUP && active != null) {
             // Startup is a recovery probe. It must never create a second run over a
@@ -504,7 +908,7 @@ class SyncRuntime(
             attemptId = attemptId,
             ownerSession = ownerSession,
         )
-        val result = try {
+        var result = try {
             preferences.lastAttempt.set(clock())
             val stored = onboarding.storage.connection(connection.spaceId, connection.generation)
                 ?: throw SyncSecureStoreException()
@@ -553,6 +957,29 @@ class SyncRuntime(
             throw cancelled
         } catch (failure: Exception) {
             SyncRunResult(SyncRunStatus.FAILED, problem = failure.syncProblem())
+        }
+        if (!connection.unsupportedFormat && result.problem in setOf(
+                SyncRunProblem.SPACE_UNAVAILABLE,
+                SyncRunProblem.AUTHORIZATION,
+                SyncRunProblem.INVALID_DATA,
+            )
+        ) {
+            val stored = onboarding.storage.connection(connection.spaceId, connection.generation)
+                ?: throw SyncSecureStoreException()
+            val checked = checkSpace(connection, stored)
+            if (checked.recovery != null) {
+                onboarding.storage.setRecovery(stored, checked.recovery.reason)
+                result = result.copy(
+                    problem = when (checked.recovery.reason) {
+                        SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED -> SyncRunProblem.AUTHORIZATION
+                        SyncSpaceRecoveryReason.SPACE_DATA_INVALID -> SyncRunProblem.INVALID_DATA
+                        else -> SyncRunProblem.SPACE_UNAVAILABLE
+                    },
+                )
+            } else if (result.problem == SyncRunProblem.SPACE_UNAVAILABLE) {
+                // A missing-resource response alone is insufficient to create a durable block.
+                result = result.copy(problem = checked.problem ?: SyncRunProblem.NETWORK)
+            }
         }
         val networkFailureCount = if (result.problem == SyncRunProblem.NETWORK && !exhausted) {
             runStore.recordNetworkFailure(run.runId, ownerSession)
@@ -631,7 +1058,7 @@ class SyncRuntime(
             ownerSession,
         )
         runStore.get(run.runId)?.let { failureLogFor(it) }
-        if (result.status == SyncRunStatus.SUCCESS) completePendingSetupIfSettled()
+        if (result.status == SyncRunStatus.SUCCESS) completePendingSetupIfSettled(connection)
         if (result.status == SyncRunStatus.SUCCESS) preferences.lastSuccess.set(clock())
         preferences.history.set(Json.encodeToString((records() + SyncRunRecord(clock(), trigger, result)).takeLast(20)))
         result

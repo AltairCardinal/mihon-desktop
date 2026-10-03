@@ -228,3 +228,8 @@ getSyncChapterDescription:
 SELECT chapters.* FROM chapters JOIN mangas ON mangas._id = chapters.manga_id
 WHERE chapters.url = :chapterUrl AND mangas.url = :mangaUrl AND mangas.source = :sourceId
 ORDER BY chapters._id LIMIT 1;
+
+updateRepositoryAddress:
+UPDATE sync_spaces SET repository_owner = :newOwner, repository_name = :newName
+WHERE space_id = :spaceId AND generation = :generation AND active = 1
+AND repository_owner = :oldOwner AND repository_name = :oldName AND repository_branch = :branch;

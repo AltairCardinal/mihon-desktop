@@ -935,7 +935,10 @@ class SyncGitSafetyContractTest {
         repositoryOverride: SyncRepository? = null,
         private val realTreeOids: Boolean = empty,
     ) : AutoCloseable {
-        private val repository = repositoryOverride ?: this@SyncGitSafetyContractTest.repository
+        private var repository = repositoryOverride ?: this@SyncGitSafetyContractTest.repository
+        fun renameRepository(value: SyncRepository) {
+            repository = value
+        }
         val server = MockWebServer()
         private var nextObject = 1
         private val blobs = mutableMapOf<String, ByteArray>()

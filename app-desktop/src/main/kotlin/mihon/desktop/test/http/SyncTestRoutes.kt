@@ -36,6 +36,8 @@ internal fun Route.syncTestRoutes(panel: SyncPanel?, secureStore: SyncSecureStor
             put("pendingTotal", state.pendingTotal)
             put("setupStep", state.setupStep.name)
             put("setupBusy", state.setupBusy)
+            put("recoveryReason", state.recovery?.reason?.name?.let(::JsonPrimitive) ?: JsonNull)
+            put("recoveryBusy", state.recovery?.busy == true)
             put("spaceCount", state.spaces.size)
             put("setupProblem", state.setupProblem?.name?.let(::JsonPrimitive) ?: JsonNull)
             put("problem", state.problem?.name?.let(::JsonPrimitive) ?: JsonNull)
@@ -82,6 +84,11 @@ internal fun Route.syncTestRoutes(panel: SyncPanel?, secureStore: SyncSecureStor
             "authorize" -> SyncPanelAction.Authorize
             "cancel_authorization" -> SyncPanelAction.CancelAuthorization
             "retry_setup" -> SyncPanelAction.RetrySetup
+            "open_recovery" -> SyncPanelAction.OpenRecovery
+            "recheck_space" -> SyncPanelAction.RecheckSpace
+            "check_authorization" -> SyncPanelAction.CheckAuthorization
+            "connect_other_space" -> SyncPanelAction.ConnectOtherSpace
+            "create_new_space" -> SyncPanelAction.CreateNewSpace
             "synchronize" -> SyncPanelAction.Synchronize
             "cancel_sync" -> SyncPanelAction.CancelSync
             else -> null

@@ -213,6 +213,8 @@ internal class MemorySyncSecureStore : SyncSecureStore {
     val values = ConcurrentHashMap<String, String>()
     var fail = false
     var rejectConnectedSetup = false
+    var afterWrite: ((String, String?) -> Unit)? = null
+    var beforeWrite: ((String, String?) -> Unit)? = null
     override suspend fun read(key: String): String? {
         if (fail || readFailure) throw mihon.domain.sync.security.SyncSecureStoreException()
         nextSpaceRead?.takeIf { key.startsWith("space-") }?.let { gate ->
@@ -230,8 +232,10 @@ internal class MemorySyncSecureStore : SyncSecureStore {
         ) {
             throw mihon.domain.sync.security.SyncSecureStoreException()
         }
+        beforeWrite?.invoke(key, value)
         if (values[key] != expected) return@synchronized false
         if (value == null) values.remove(key) else values[key] = value
+        afterWrite?.invoke(key, value)
         true
     }
 }

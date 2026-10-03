@@ -12,7 +12,11 @@ import mihon.domain.sync.runtime.SyncRunProblem
 import mihon.domain.sync.runtime.SyncRunResult
 import mihon.domain.sync.transport.SyncRepository
 
-enum class SyncPanelPage { MAIN, SETTINGS, HISTORY, SETUP, DIAGNOSTICS }
+enum class SyncPanelPage { MAIN, SETTINGS, HISTORY, SETUP, DIAGNOSTICS, RECOVERY }
+
+@kotlinx.serialization.Serializable
+enum class SyncSpaceRecoveryReason { AUTHORIZATION_REQUIRED, SPACE_UNAVAILABLE, SPACE_DATA_INVALID, SWITCH_PENDING }
+data class SyncSpaceRecovery(val reason: SyncSpaceRecoveryReason, val busy: Boolean = false)
 enum class SyncDiagnosticFeedback {
     CAPTURED,
     READ_FAILED,
@@ -33,10 +37,11 @@ enum class SyncSetupStep {
     MERGING,
     COMPLETE,
     ERROR,
+    PREPARE_REPOSITORY,
 }
 enum class SyncPasswordProblem { INCORRECT, TOO_LONG, INVALID }
 enum class SyncDecisionScope { ITEM, SELECTED, ALL }
-enum class SyncPanelQuestion { DISCONNECT, SWITCH_SPACE, ABANDON_LEGACY }
+enum class SyncPanelQuestion { DISCONNECT, SWITCH_SPACE, ABANDON_LEGACY, CREATE_NEW_SPACE, CONNECT_SPACE }
 
 data class SyncBulkConfirmation(
     val jobId: String,
@@ -62,6 +67,7 @@ data class SyncPanelNotice(
     val exchange: SyncRunResult? = null,
     val bulk: SyncBulkStatus? = null,
     val setupCompleted: Boolean = false,
+    val spaceAddressUpdated: Boolean = false,
 )
 
 /** Read-only durable outcome details for one selected run. */
@@ -87,6 +93,9 @@ data class SyncPanelState(
     val page: SyncPanelPage = SyncPanelPage.MAIN,
     val loaded: Boolean = false,
     val connection: SyncConnection? = null,
+    val recovery: SyncSpaceRecovery? = null,
+    val switchTargetRepository: SyncRepository? = null,
+    val switchPendingDecisions: Long = 0,
     val busy: Boolean = false,
     val problem: SyncRunProblem? = null,
     val notice: SyncPanelNotice? = null,
@@ -146,6 +155,11 @@ data class SyncPanelState(
 
 sealed interface SyncPanelAction {
     data object Open : SyncPanelAction
+    data object OpenRecovery : SyncPanelAction
+    data object RecheckSpace : SyncPanelAction
+    data object CheckAuthorization : SyncPanelAction
+    data object ConnectOtherSpace : SyncPanelAction
+    data object CreateNewSpace : SyncPanelAction
     data object Close : SyncPanelAction
     data object Back : SyncPanelAction
     data class Navigate(val page: SyncPanelPage) : SyncPanelAction

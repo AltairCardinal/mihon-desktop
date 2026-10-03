@@ -225,3 +225,19 @@ probe/open/copy 且图片网络为 0；缺失页才允许一个物理图片请�
 返回测试动作历史。
 
 `POST /screenshot` 已移除并返回 `404 Not Found`。Test Mode 不提供读取桌面屏幕像素的 API。
+
+## 同步空间恢复（仅 Test Mode）
+
+`GET /test/sync` 读取与原生同步面板相同的 controller 投影。新增 `recoveryReason`（无恢复问题时为 `null`，否则为固定枚举 `AUTHORIZATION_REQUIRED`、`SPACE_UNAVAILABLE`、`SPACE_DATA_INVALID` 或 `SWITCH_PENDING`）及 `recoveryBusy`（检查是否正在执行）。`SWITCH_PENDING` 表示尚未完成的本机切换意图，不证明旧远端不可访问。不返回账号、仓库 ID、远端 URL、密码、密钥或持久恢复材料。
+
+以下 POST 入口将动作发送至该原生 panel；`202 Accepted` 只表示已入队，不能作为检查成功、切换完成或同步成功的证据，须继续读取面板状态并核对运行结果。未知动作返回 `400`，缺少运行中的 panel 返回 `503`。
+
+| 入口 | 原生动作 |
+|---|---|
+| `/test/sync/open_recovery` | 打开恢复方式页 |
+| `/test/sync/recheck_space` | 重新核对旧空间可访问性与身份，不启动同步 |
+| `/test/sync/check_authorization` | 进入原授权恢复流程 |
+| `/test/sync/connect_other_space` | 进入其他空间发现与选择流程 |
+| `/test/sync/create_new_space` | 请求创建新空间的确认，不创建 GitHub 仓库，不跳过用户确认 |
+
+检查可能访问真实 GitHub，因此真实账号操作仍须具备相应任务授权；自动化失败矩阵应使用隔离的 MockWebServer。上述接口不接受任意仓库地址、密钥或恢复材料，也不提供自动确认危险操作的入口。

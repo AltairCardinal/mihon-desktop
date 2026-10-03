@@ -552,6 +552,8 @@ private fun SyncBatch.itemLogs(result: String): List<SyncBatchLogEntry> {
 }
 
 internal fun Exception.syncProblem(): SyncRunProblem = when (this) {
+    is mihon.data.sync.transport.SyncRemoteDataInvalid -> SyncRunProblem.INVALID_DATA
+    is mihon.data.sync.http.SyncRequiredResourceUnavailable -> SyncRunProblem.SPACE_UNAVAILABLE
     is mihon.domain.sync.crypto.SyncCryptoException -> SyncRunProblem.INVALID_DATA
     is UnsupportedSyncSpace -> SyncRunProblem.INVALID_DATA
     is SyncSetupException -> when (problem) {
@@ -573,7 +575,7 @@ internal fun Exception.syncProblem(): SyncRunProblem = when (this) {
         SyncHttpFailureClass.RATE_LIMITED,
         SyncHttpFailureClass.SERVER,
         -> SyncRunProblem.NETWORK
-        SyncHttpFailureClass.UNKNOWN -> if (code == 401 || code == 403) {
+        SyncHttpFailureClass.UNKNOWN -> if (!retryable && (code == 401 || code == 403)) {
             SyncRunProblem.AUTHORIZATION
         } else {
             SyncRunProblem.NETWORK

@@ -60,6 +60,52 @@ class SyncBaselineStore(private val handler: DatabaseHandler, private val bootst
         }
     }
 
+    /** Activation and the current-state baseline commit together; the durable intent id is the idempotency key. */
+    internal suspend fun switchAndImport(
+        importId: String,
+        oldSpaceId: String,
+        oldGeneration: Long,
+        spaceId: String,
+        generation: Long,
+        repository: SyncRepository,
+        actorId: String,
+        epoch: Long,
+    ) {
+        bootstrap.awaitReady()
+        handler.await(inTransaction = true) {
+            val existing = sync_importQueries.getImport(importId).executeAsOneOrNull()
+            val active = sync_journalQueries.getActiveSpace().executeAsOneOrNull()
+            if (existing != null) {
+                require(existing.space_id == spaceId && existing.generation == generation)
+                require(active?.space_id == spaceId && active.generation == generation)
+                return@await
+            }
+            require(active?.space_id == oldSpaceId && active.generation == oldGeneration) {
+                "sync active space changed"
+            }
+            val origin = if (sync_importQueries.getInitialImport(spaceId, generation).executeAsOneOrNull() == null) {
+                SyncOrigin.INITIAL_IMPORT
+            } else {
+                SyncOrigin.BACKUP_RESTORE
+            }
+            SyncLocalJournal(handler).connect(spaceId, generation, repository, actorId, epoch)
+            val actor = sync_journalQueries.getActiveActor().executeAsOne()
+            sync_importQueries.insertImport(
+                importId,
+                spaceId,
+                generation,
+                origin.name,
+                actor.actor_id,
+                actor.epoch,
+                actor.next_seq,
+            )
+            sync_importQueries.freezeFavorites(importId, null, null)
+            sync_importQueries.freezeFollows(importId, null)
+            sync_importQueries.freezeReading(importId, null, null)
+            sync_importQueries.setImportTotal(importId)
+        }
+    }
+
     suspend fun process(importId: String, limit: Int = 50): SyncImportProgress {
         require(limit in 1..256)
         return handler.await(inTransaction = true) {

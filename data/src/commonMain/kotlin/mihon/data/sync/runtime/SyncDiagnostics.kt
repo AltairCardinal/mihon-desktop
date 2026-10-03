@@ -377,7 +377,7 @@ class SyncDiagnostics internal constructor(
     )
 
     private suspend fun readFacts(): Facts? = try {
-        val connection = runtime.connectionFacts()
+        val connection = runtime.rawConnectionFacts()
         val active = connection.projection?.let { runtime.runStore.active(it.spaceId, it.generation) }
         val latest = connection.projection?.let { runtime.runStore.latest(it.spaceId, it.generation) }
         val pending = connection.projection?.let { runtime.diagnosticPending(it) }
