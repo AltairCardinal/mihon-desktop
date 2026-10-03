@@ -8,6 +8,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusGroup
@@ -42,6 +43,8 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Visibility
@@ -130,6 +133,8 @@ import mihon.data.sync.runtime.SyncProgressDirection
 import mihon.data.sync.runtime.SyncProgressFact
 import mihon.data.sync.runtime.SyncProgressHold
 import mihon.data.sync.runtime.SyncProgressStage
+import mihon.data.sync.runtime.SyncRecoveryAuthorization
+import mihon.data.sync.runtime.SyncRecoveryContinuation
 import mihon.data.sync.runtime.SyncRunPhase
 import mihon.data.sync.runtime.SyncRunSnapshot
 import mihon.data.sync.runtime.SyncRunState
@@ -275,6 +280,7 @@ fun SyncPanelContent(
                             SyncPanelQuestion.ABANDON_LEGACY -> MR.strings.sync_setup_abandon_legacy_title
                             SyncPanelQuestion.CREATE_NEW_SPACE -> MR.strings.sync_recovery_create
                             SyncPanelQuestion.CONNECT_SPACE -> MR.strings.sync_recovery_connect_confirm
+                            SyncPanelQuestion.CANCEL_RECOVERY_SWITCH -> MR.strings.sync_recovery_cancel_switch
                         },
                     ),
                 )
@@ -297,6 +303,9 @@ fun SyncPanelContent(
                                     SyncPanelQuestion.ABANDON_LEGACY -> MR.strings.sync_setup_abandon_legacy_body
                                     SyncPanelQuestion.CREATE_NEW_SPACE -> MR.strings.sync_recovery_create_body
                                     SyncPanelQuestion.CONNECT_SPACE -> MR.strings.sync_recovery_connect_target
+                                    SyncPanelQuestion.CANCEL_RECOVERY_SWITCH -> {
+                                        MR.strings.sync_recovery_cancel_switch_body
+                                    }
                                 },
                             ),
                         )
@@ -400,22 +409,37 @@ private fun RecoverySummary(state: SyncPanelState, dispatch: (SyncPanelAction) -
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(syncString(recoveryBody(state)))
+                    RecoveryFacts(state)
                     RecoveryCheckFeedback(state)
                     if (recovery.reason == SyncSpaceRecoveryReason.SWITCH_PENDING) {
                         ContinueSwitchAction(state, dispatch)
-                    } else if (recovery.reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED) {
+                        RecoveryCancelAction(state, dispatch)
+                    } else if (recovery.reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED &&
+                        !state.recoveryAuthorizationConfirmed
+                    ) {
                         Action(
                             "sync-recovery-authorization",
                             MR.strings.sync_reconnect,
-                            enabled = !recovery.busy && !state.setupBusy,
+                            enabled = state.recoveryActionsEnabled,
                             primary = true,
                         ) { dispatch(SyncPanelAction.CheckAuthorization) }
+                    } else if (recovery.reason == SyncSpaceRecoveryReason.SPACE_DATA_INVALID) {
+                        Action(
+                            "sync-recovery-details",
+                            MR.strings.sync_recovery_details,
+                            primary = true,
+                        ) { dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS)) }
                     } else {
+                        Action(
+                            "sync-recovery-create",
+                            MR.strings.sync_recovery_create,
+                            enabled = state.recoveryActionsEnabled,
+                            primary = true,
+                        ) { dispatch(SyncPanelAction.CreateNewSpace) }
                         Action(
                             "sync-recovery-open",
                             MR.strings.sync_recovery_choose,
-                            enabled = !recovery.busy && !state.setupBusy,
-                            primary = true,
+                            enabled = state.recoveryActionsEnabled,
                         ) { dispatch(SyncPanelAction.OpenRecovery) }
                     }
                 }
@@ -429,13 +453,15 @@ private fun RecoverySummary(state: SyncPanelState, dispatch: (SyncPanelAction) -
             )
         }
         item {
-            Action("sync-recovery-recheck", MR.strings.sync_recovery_recheck, !recovery.busy && !state.setupBusy) {
+            Action("sync-recovery-recheck", MR.strings.sync_recovery_recheck, state.recoveryActionsEnabled) {
                 dispatch(SyncPanelAction.RecheckSpace)
             }
         }
-        item {
-            Action("sync-recovery-details", MR.strings.sync_recovery_details) {
-                dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+        if (recovery.reason != SyncSpaceRecoveryReason.SPACE_DATA_INVALID) {
+            item {
+                Action("sync-recovery-details", MR.strings.sync_recovery_details) {
+                    dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+                }
             }
         }
     }
@@ -443,51 +469,100 @@ private fun RecoverySummary(state: SyncPanelState, dispatch: (SyncPanelAction) -
 
 @Composable
 private fun RecoveryPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit, modifier: Modifier) {
-    val enabled = state.recovery?.busy != true && !state.setupBusy
+    val reason = state.recovery?.reason
+    val needsAuthorization =
+        reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED && !state.recoveryAuthorizationConfirmed
+    val pending = reason == SyncSpaceRecoveryReason.SWITCH_PENDING
+    val invalid = reason == SyncSpaceRecoveryReason.SPACE_DATA_INVALID
     LazyColumn(
         modifier.fillMaxWidth().padding(24.dp).testTag("sync-recovery-page"),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (state.recovery?.reason == SyncSpaceRecoveryReason.SWITCH_PENDING) {
+                if (pending) {
                     Text(
                         syncString(MR.strings.sync_recovery_switch_pending_title),
                         style = MaterialTheme.typography.titleMedium,
                     )
                 }
                 Text(syncString(recoveryBody(state)))
-                if (state.recovery?.reason == SyncSpaceRecoveryReason.SWITCH_PENDING) {
-                    Text(syncString(recoveryWaiting(state)), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                RecoveryFacts(state)
+                if (pending) {
+                    Text(
+                        syncString(recoveryWaiting(state)),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
-        if (state.recovery?.busy == true || state.problem in RECOVERY_CHECK_PROBLEMS) {
-            item { RecoveryCheckFeedback(state) }
-        }
-        if (state.recovery?.reason == SyncSpaceRecoveryReason.SWITCH_PENDING) {
-            item { ContinueSwitchAction(state, dispatch) }
-        }
-        item {
-            Action("sync-recovery-recheck", MR.strings.sync_recovery_recheck, enabled) {
-                dispatch(SyncPanelAction.RecheckSpace)
+        item { RecoveryCheckFeedback(state) }
+        when {
+            pending -> {
+                item { ContinueSwitchAction(state, dispatch) }
+                if (state.canCancelRecoverySwitch) item { RecoveryCancelAction(state, dispatch) }
             }
-        }
-        item {
-            Action("sync-recovery-authorization", MR.strings.sync_recovery_authorization, enabled) {
-                dispatch(SyncPanelAction.CheckAuthorization)
+            needsAuthorization -> item { RecoveryAuthorizationAction(state, dispatch, primary = true) }
+            invalid -> item {
+                Action("sync-recovery-details", MR.strings.sync_recovery_details, primary = true) {
+                    dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+                }
             }
+            else -> item { RecoveryCreateAction(state, dispatch, primary = true) }
         }
         item {
-            Action("sync-recovery-connect-other", MR.strings.sync_recovery_connect_other, enabled) {
+            Action(
+                "sync-recovery-connect-other",
+                MR.strings.sync_recovery_connect_other,
+                state.recoveryActionsEnabled,
+            ) {
                 dispatch(SyncPanelAction.ConnectOtherSpace)
             }
         }
+        if (!needsAuthorization) item { RecoveryAuthorizationAction(state, dispatch) }
+        if (pending || needsAuthorization || invalid) item { RecoveryCreateAction(state, dispatch) }
         item {
-            Action("sync-recovery-create", MR.strings.sync_recovery_create, enabled) {
-                dispatch(SyncPanelAction.CreateNewSpace)
+            Action("sync-recovery-recheck", MR.strings.sync_recovery_recheck, state.recoveryActionsEnabled) {
+                dispatch(SyncPanelAction.RecheckSpace)
             }
         }
+    }
+}
+
+@Composable
+private fun RecoveryAuthorizationAction(
+    state: SyncPanelState,
+    dispatch: (SyncPanelAction) -> Unit,
+    primary: Boolean = false,
+) {
+    Action(
+        if (state.recoveryAuthorizationConfirmed) {
+            "sync-recovery-manage-authorization"
+        } else {
+            "sync-recovery-authorization"
+        },
+        if (state.recoveryAuthorizationConfirmed) {
+            MR.strings.sync_recovery_manage_authorization
+        } else {
+            MR.strings.sync_recovery_authorization
+        },
+        state.recoveryActionsEnabled,
+        primary = primary,
+    ) {
+        dispatch(
+            if (state.recoveryAuthorizationConfirmed) {
+                SyncPanelAction.ManageAuthorization
+            } else {
+                SyncPanelAction.CheckAuthorization
+            },
+        )
+    }
+}
+
+@Composable
+private fun RecoveryCreateAction(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit, primary: Boolean = false) {
+    Action("sync-recovery-create", MR.strings.sync_recovery_create, state.recoveryActionsEnabled, primary = primary) {
+        dispatch(SyncPanelAction.CreateNewSpace)
     }
 }
 
@@ -495,10 +570,92 @@ private fun RecoveryPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> U
 private fun ContinueSwitchAction(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit) {
     Action(
         "sync-recovery-continue",
-        MR.strings.sync_recovery_continue,
-        enabled = state.recovery?.busy != true && !state.setupBusy,
+        when (state.pendingRecoveryPurpose) {
+            SyncRecoveryContinuation.CREATE -> MR.strings.sync_recovery_continue_create
+            SyncRecoveryContinuation.CONNECT -> MR.strings.sync_recovery_continue_connect
+            null -> MR.strings.sync_recovery_continue
+        },
+        enabled = state.recoveryActionsEnabled,
         primary = true,
-    ) { dispatch(SyncPanelAction.BeginSetup) }
+    ) { dispatch(SyncPanelAction.ContinueRecovery) }
+}
+
+private val SyncPanelState.recoveryAuthorizationConfirmed: Boolean
+    get() = recoveryAuthorization == SyncRecoveryAuthorization.CONFIRMED ||
+        recovery?.authorizationConfirmedAtMillis != null
+
+private val SyncPanelState.recoveryActionsEnabled: Boolean
+    get() = recovery?.busy != true && !setupBusy && recoveryAuthorization !in setOf(
+        SyncRecoveryAuthorization.CHECKING,
+        SyncRecoveryAuthorization.WAITING,
+        SyncRecoveryAuthorization.VERIFYING,
+    )
+
+@Composable
+private fun RecoveryCancelAction(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit) {
+    if (!state.canCancelRecoverySwitch) return
+    Action("sync-recovery-cancel-switch", MR.strings.sync_recovery_cancel_switch, state.recoveryActionsEnabled) {
+        dispatch(SyncPanelAction.Ask(SyncPanelQuestion.CANCEL_RECOVERY_SWITCH))
+    }
+}
+
+@Composable
+private fun RecoveryFacts(state: SyncPanelState) {
+    val authorization = when (state.recoveryAuthorization) {
+        SyncRecoveryAuthorization.CHECKING -> MR.strings.sync_recovery_authorization_checking
+        SyncRecoveryAuthorization.WAITING -> MR.strings.sync_recovery_authorization_waiting
+        SyncRecoveryAuthorization.VERIFYING -> MR.strings.sync_recovery_authorization_verifying
+        SyncRecoveryAuthorization.CONFIRMED -> MR.strings.sync_recovery_authorization_confirmed
+        SyncRecoveryAuthorization.CANCELLED -> MR.strings.sync_recovery_authorization_cancelled
+        SyncRecoveryAuthorization.FAILED -> MR.strings.sync_recovery_authorization_failed
+        SyncRecoveryAuthorization.IDLE -> if (state.recoveryAuthorizationConfirmed) {
+            MR.strings.sync_recovery_authorization_confirmed
+        } else if (state.recovery?.reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED) {
+            MR.strings.sync_recovery_auth_expired
+        } else {
+            MR.strings.sync_recovery_authorization_unknown
+        }
+    }
+    Text(
+        syncString(
+            if (state.recoveryAuthorizationConfirmed) {
+                MR.strings.sync_recovery_authorization_confirmed
+            } else {
+                authorization
+            },
+        ),
+        Modifier.testTag("sync-recovery-authorization-fact"),
+    )
+    if (state.recoveryAuthorizationConfirmed &&
+        state.recoveryAuthorization !in setOf(SyncRecoveryAuthorization.IDLE, SyncRecoveryAuthorization.CONFIRMED)
+    ) {
+        Text(
+            syncString(authorization),
+            Modifier.testTag("sync-recovery-authorization-feedback"),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    Text(
+        syncString(
+            when (state.recovery?.lastCheckReason ?: state.recovery?.reason) {
+                SyncSpaceRecoveryReason.SPACE_UNAVAILABLE -> MR.strings.sync_recovery_check_unavailable
+                SyncSpaceRecoveryReason.SPACE_DATA_INVALID -> MR.strings.sync_recovery_data_problem
+                SyncSpaceRecoveryReason.SWITCH_PENDING -> MR.strings.sync_recovery_switch_pending_title
+                SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED -> MR.strings.sync_recovery_waiting
+                null -> MR.strings.sync_recovery_check_available
+            },
+        ),
+        Modifier.testTag("sync-recovery-space-fact"),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    state.recovery?.lastCheckedAtMillis?.let { checkedAt ->
+        Text(
+            syncString(MR.strings.sync_recovery_last_check, syncScheduleDateTime(checkedAt)),
+            Modifier.testTag("sync-recovery-last-check"),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 private fun recoveryBody(state: SyncPanelState): StringResource =
@@ -523,14 +680,14 @@ private fun RecoveryCheckFeedback(state: SyncPanelState) {
             Modifier.testTag("sync-recovery-checking").semantics { liveRegion = LiveRegionMode.Polite },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-    } else if (state.problem in RECOVERY_CHECK_PROBLEMS) {
+    } else if (state.recovery?.lastCheckSucceeded == false || state.problem in RECOVERY_CHECK_PROBLEMS) {
         Column(
             Modifier.testTag("sync-recovery-check-incomplete").semantics { liveRegion = LiveRegionMode.Polite },
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(syncString(MR.strings.sync_recovery_check_incomplete))
             Text(
-                problemText(requireNotNull(state.problem)),
+                problemText(state.recovery?.lastCheckProblem ?: state.problem ?: SyncRunProblem.UNKNOWN),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -1693,14 +1850,19 @@ private fun SyncCompactProgressCard(
     horizontalPadding: Dp,
 ) {
     val run = state.run
-    val counting = run?.plannedItems == null && presentation.status in setOf(
-        MR.strings.sync_busy,
-        MR.strings.sync_wait_start,
-    )
+    val counting = run?.plannedItems == null
     val status = if (presentation.status == MR.strings.sync_busy) MR.strings.sync_round_active else presentation.status
-    val statusText = syncString(if (counting) MR.strings.sync_round_counting else status)
+    val statusText = syncString(
+        if (counting &&
+            presentation.status in setOf(MR.strings.sync_busy, MR.strings.sync_wait_start)
+        ) {
+            MR.strings.sync_round_counting
+        } else {
+            status
+        },
+    )
     val firstLine = if (counting) {
-        syncString(MR.strings.sync_round_counting)
+        statusText
     } else {
         syncString(
             MR.strings.sync_round_progress,
@@ -1758,21 +1920,36 @@ private fun SyncCompactProgressCard(
                 ) {
                     Text(firstLine, Modifier.fillMaxWidth().testTag("sync-progress-status"), style = textStyle)
                 }
+                if (counting) {
+                    if (presentation.active || (run == null && state.busy)) {
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().height(4.dp).testTag("sync-counting-track"),
+                        )
+                    } else {
+                        Box(
+                            Modifier.fillMaxWidth().height(4.dp)
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                .testTag("sync-counting-paused-track"),
+                        )
+                    }
+                }
                 presentation.fraction?.let { fraction ->
                     LinearProgressIndicator(
                         progress = { fraction },
                         modifier = Modifier.fillMaxWidth().height(4.dp).testTag("sync-progress-track"),
                     )
                 }
-                Text(
-                    syncString(
-                        MR.strings.sync_round_time,
-                        syncClockDuration(presentation.elapsedSeconds),
-                        presentation.wholeEta?.let(::syncClockDuration) ?: "—",
-                    ),
-                    Modifier.fillMaxWidth().height(timeHeight).testTag("sync-round-time"),
-                    style = textStyle,
-                )
+                if (!counting) {
+                    Text(
+                        syncString(
+                            MR.strings.sync_round_time,
+                            syncClockDuration(presentation.elapsedSeconds),
+                            presentation.wholeEta?.let(::syncClockDuration) ?: "—",
+                        ),
+                        Modifier.fillMaxWidth().height(timeHeight).testTag("sync-round-time"),
+                        style = textStyle,
+                    )
+                }
                 SyncMainOperation(state, presentation, false, {}, dispatch)
                 state.bulk?.takeIf { it.remaining > 0 }?.let { bulk ->
                     Action(
@@ -1832,9 +2009,7 @@ private fun SyncProgressCard(
                     style = MaterialTheme.typography.titleLarge,
                 )
             }
-            val seconds = (
-                (run?.updatedAt ?: state.nowMillis) - (run?.createdAt ?: state.nowMillis) - (run?.pausedMillis ?: 0L)
-                ).coerceAtLeast(0) / 1000
+            val seconds = presentation.elapsedSeconds
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val text = syncString(
                     MR.strings.sync_result_summary,
@@ -2038,7 +2213,11 @@ private fun syncMainOperationHeight(): Dp {
     val padding = ButtonDefaults.TextButtonContentPadding
     val direction = LocalLayoutDirection.current
     val width = with(LocalDensity.current) {
-        (168.dp - padding.calculateLeftPadding(direction) - padding.calculateRightPadding(direction)).roundToPx()
+        (
+            168.dp - padding.calculateLeftPadding(
+                direction,
+            ) - padding.calculateRightPadding(direction) - 32.dp
+            ).roundToPx()
     }
     val labels = listOf(
         MR.strings.sync_resume_run, MR.strings.sync_retry_run, MR.strings.sync_reconnect,
@@ -2071,9 +2250,15 @@ private fun SyncMainOperation(
     val buttonModifier = if (terminal) {
         Modifier.fillMaxWidth().heightIn(min = 48.dp)
     } else {
-        Modifier.fillMaxWidth().height(operationHeight)
+        Modifier.width(168.dp).height(operationHeight)
     }
-    val containerModifier = if (terminal) Modifier.fillMaxWidth() else Modifier.width(168.dp).height(operationHeight)
+    val containerModifier = if (terminal) {
+        Modifier.fillMaxWidth()
+    } else {
+        Modifier.fillMaxWidth().heightIn(
+            min = operationHeight,
+        )
+    }
     Box(containerModifier, contentAlignment = Alignment.CenterEnd) {
         when {
             terminal && state.busy -> Action(
@@ -2094,16 +2279,11 @@ private fun SyncMainOperation(
             ) {
                 dispatch(operation.action)
             }
-            run?.state == SyncRunState.PAUSED_USER -> Action(
-                "sync-resume-run",
-                MR.strings.sync_resume_run,
-                state.connection?.enabled == true,
-                shape = operationShape,
-                primary = terminal,
+            run?.state == SyncRunState.PAUSED_USER -> SyncPauseResumeButton(
+                paused = true,
+                enabled = state.connection?.enabled == true,
                 modifier = buttonModifier,
-            ) {
-                dispatch(SyncPanelAction.ResumeSync)
-            }
+            ) { dispatch(SyncPanelAction.ResumeSync) }
             run?.state == SyncRunState.FAILED || run?.state == SyncRunState.PARTIAL -> Action(
                 "sync-retry-run",
                 MR.strings.sync_retry_run,
@@ -2166,15 +2346,10 @@ private fun SyncMainOperation(
             ) {
                 dispatch(SyncPanelAction.Synchronize)
             }
-            presentation.active -> Action(
-                "sync-pause-run",
-                MR.strings.sync_pause_run,
-                shape = operationShape,
-                primary = terminal,
+            presentation.active -> SyncPauseResumeButton(
+                paused = false,
                 modifier = buttonModifier,
-            ) {
-                dispatch(SyncPanelAction.PauseSync)
-            }
+            ) { dispatch(SyncPanelAction.PauseSync) }
             else -> Action(
                 "sync-wait",
                 if (fact?.hold ==
@@ -2190,6 +2365,29 @@ private fun SyncMainOperation(
                 modifier = buttonModifier,
             ) {}
         }
+    }
+}
+
+@Composable
+private fun SyncPauseResumeButton(
+    paused: Boolean,
+    modifier: Modifier,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    FilledTonalButton(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 48.dp).testTag(if (paused) "sync-resume-run" else "sync-pause-run"),
+        enabled = enabled,
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Icon(
+            if (paused) Icons.Outlined.PlayArrow else Icons.Outlined.Pause,
+            null,
+            Modifier.size(24.dp).testTag("sync-pause-resume-icon"),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(syncString(if (paused) MR.strings.sync_resume_run else MR.strings.sync_pause_run))
     }
 }
 

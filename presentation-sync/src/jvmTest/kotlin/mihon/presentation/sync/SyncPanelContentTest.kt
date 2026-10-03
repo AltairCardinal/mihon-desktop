@@ -51,6 +51,8 @@ import mihon.data.sync.runtime.SyncProgressDirection
 import mihon.data.sync.runtime.SyncProgressFact
 import mihon.data.sync.runtime.SyncProgressHold
 import mihon.data.sync.runtime.SyncProgressStage
+import mihon.data.sync.runtime.SyncRecoveryAuthorization
+import mihon.data.sync.runtime.SyncRecoveryContinuation
 import mihon.data.sync.runtime.SyncRunLog
 import mihon.data.sync.runtime.SyncRunLogStatus
 import mihon.data.sync.runtime.SyncRunPhase
@@ -85,6 +87,188 @@ import java.util.Locale
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelContentTest {
     @Test
+    fun `recovery method recommends the observed next step before auxiliary recheck`() {
+        val cases = listOf(
+            Triple(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE, "sync-recovery-create", SyncPanelAction.CreateNewSpace),
+            Triple(
+                SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED,
+                "sync-recovery-authorization",
+                SyncPanelAction.CheckAuthorization,
+            ),
+            Triple(
+                SyncSpaceRecoveryReason.SPACE_DATA_INVALID,
+                "sync-recovery-details",
+                SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS),
+            ),
+        )
+        for ((reason, tag, action) in cases) {
+            renderedEnglish(connected().copy(page = SyncPanelPage.RECOVERY, recovery = SyncSpaceRecovery(reason))) {
+                awaitTag(tag)
+                assertTrue(node(tag).boundsInRoot.top < node("sync-recovery-recheck").boundsInRoot.top)
+                click(tag)
+                assertEquals(listOf(action), actions)
+            }
+        }
+    }
+
+    @Test
+    fun `invalid space data recommends inspecting the reason instead of replacing the space`() = renderedEnglish(
+        connected().copy(recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.SPACE_DATA_INVALID)),
+    ) {
+        awaitTag("sync-recovery-card")
+        assertFalse(hasTag("sync-recovery-create"))
+        click("sync-recovery-details")
+        assertEquals(listOf(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS)), actions)
+    }
+
+    @Test
+    fun `pending recovery continues the selected purpose and cancel uses a separate confirmation`() {
+        for (purpose in SyncRecoveryContinuation.entries) {
+            renderedEnglish(
+                connected().copy(
+                    recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.SWITCH_PENDING),
+                    pendingRecoveryPurpose = purpose,
+                    canCancelRecoverySwitch = true,
+                ),
+            ) {
+                awaitTag("sync-recovery-continue")
+                val label = if (purpose ==
+                    SyncRecoveryContinuation.CREATE
+                ) {
+                    "Continue creating"
+                } else {
+                    "Continue connecting"
+                }
+                assertTrue(texts().contains(label), texts().toString())
+                click("sync-recovery-continue")
+                assertEquals(listOf(SyncPanelAction.ContinueRecovery), actions)
+                click("sync-recovery-cancel-switch")
+                assertEquals(SyncPanelAction.Ask(SyncPanelQuestion.CANCEL_RECOVERY_SWITCH), actions.last())
+                panel.state.value = panel.state.value.copy(question = SyncPanelQuestion.CANCEL_RECOVERY_SWITCH)
+                render()
+                click("sync-cancel-question")
+                assertEquals(SyncPanelAction.CancelQuestion, actions.last())
+                panel.state.value = panel.state.value.copy(question = SyncPanelQuestion.CANCEL_RECOVERY_SWITCH)
+                render()
+                click("sync-confirm-question")
+                assertEquals(SyncPanelAction.ConfirmQuestion, actions.last())
+            }
+        }
+    }
+
+    @Test
+    fun `confirmed recovery authorization becomes explicit management instead of another check`() = renderedEnglish(
+        connected().copy(
+            page = SyncPanelPage.RECOVERY,
+            recovery = SyncSpaceRecovery(
+                SyncSpaceRecoveryReason.SPACE_UNAVAILABLE,
+                authorizationConfirmedAtMillis = 1000,
+            ),
+            recoveryAuthorization = SyncRecoveryAuthorization.CONFIRMED,
+        ),
+    ) {
+        awaitTag("sync-recovery-manage-authorization")
+        assertFalse(hasTag("sync-recovery-authorization"))
+        click("sync-recovery-manage-authorization")
+        assertEquals(listOf(SyncPanelAction.ManageAuthorization), actions)
+    }
+
+    @Test
+    fun `recovery separates authorization and unavailable space facts`() = renderedEnglish(
+        connected().copy(
+            recovery = SyncSpaceRecovery(
+                SyncSpaceRecoveryReason.SPACE_UNAVAILABLE,
+                authorizationConfirmedAtMillis = 9_000,
+                lastCheckedAtMillis = 10_000,
+                lastCheckReason = SyncSpaceRecoveryReason.SPACE_UNAVAILABLE,
+                lastCheckSucceeded = true,
+            ),
+            recoveryAuthorization = SyncRecoveryAuthorization.CONFIRMED,
+        ),
+    ) {
+        awaitTag("sync-recovery-card")
+        assertTrue(hasTag("sync-recovery-authorization-fact"))
+        assertTrue(hasTag("sync-recovery-space-fact"))
+        assertTrue(hasTag("sync-recovery-last-check"))
+        assertFalse(hasTag("sync-recovery-authorization"))
+        click("sync-recovery-create")
+        assertEquals(listOf(SyncPanelAction.CreateNewSpace), actions)
+        assertTrue(hasTag("sync-recovery-recheck"))
+    }
+
+    @Test
+    fun `failed recovery check retains prior space conclusion and disables repeat while checking`() = renderedEnglish(
+        connected().copy(
+            recovery = SyncSpaceRecovery(
+                SyncSpaceRecoveryReason.SPACE_UNAVAILABLE,
+                lastCheckedAtMillis = 10_000,
+                lastCheckProblem = SyncRunProblem.NETWORK,
+                lastCheckReason = SyncSpaceRecoveryReason.SPACE_UNAVAILABLE,
+                lastCheckSucceeded = false,
+                authorizationConfirmedAtMillis = 9_000,
+            ),
+            recoveryAuthorization = SyncRecoveryAuthorization.FAILED,
+        ),
+    ) {
+        awaitTag("sync-recovery-card")
+        assertTrue(hasTag("sync-recovery-space-fact"))
+        assertTrue(hasTag("sync-recovery-check-incomplete"))
+        assertTrue(texts().contains("Authorization confirmed"), texts().toString())
+        click("sync-recovery-recheck")
+        assertEquals(listOf(SyncPanelAction.RecheckSpace), actions)
+        panel.state.value = panel.state.value.copy(recovery = panel.state.value.recovery!!.copy(busy = true))
+        render()
+        assertTrue(node("sync-recovery-recheck").config.contains(SemanticsProperties.Disabled))
+    }
+
+    @Test
+    fun `counting track animates only while active and time begins when the plan freezes`() = renderedEnglish(
+        connected().copy(
+            run = visualRun(SyncRunPhase.IMPORTING).copy(plannedItems = null),
+            nowMillis = 50_000,
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(hasTag("sync-counting-track"))
+        assertEquals(
+            androidx.compose.ui.semantics.ProgressBarRangeInfo.Indeterminate,
+            node("sync-counting-track").config[SemanticsProperties.ProgressBarRangeInfo],
+        )
+        assertFalse(hasTag("sync-round-time"))
+        click("sync-pause-run")
+        assertEquals(listOf(SyncPanelAction.PauseSync), actions)
+        panel.state.value = panel.state.value.copy(
+            run = panel.state.value.run!!.copy(
+                state = SyncRunState.PAUSED_USER,
+                pausedAt = 50_000,
+            ),
+        )
+        render()
+        assertFalse(hasTag("sync-counting-track"))
+        assertTrue(hasTag("sync-counting-paused-track"))
+        assertFalse(hasTag("sync-round-time"))
+        val resume = node("sync-resume-run").boundsInRoot
+        assertTrue(resume.height >= 48f)
+        assertEquals(node("sync-progress-card").boundsInRoot.right - 18f, resume.right, 1f)
+        assertEquals(24f, unmergedNode("sync-pause-resume-icon").boundsInRoot.width, 1f)
+        click("sync-resume-run")
+        assertTrue(actions.contains(SyncPanelAction.ResumeSync))
+        panel.state.value = panel.state.value.copy(
+            run = panel.state.value.run!!.copy(
+                state = SyncRunState.RUNNING,
+                plannedItems = 100,
+                planStartedAt = 50_000,
+                pausedAt = null,
+            ),
+        )
+        render()
+        assertFalse(hasTag("sync-counting-track"))
+        assertTrue(texts().contains("Syncing, completed 0/100 items"), texts().toString())
+        assertTrue(texts().contains("Elapsed 00:00, estimated remaining —"), texts().toString())
+        assertEquals(0f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
+    }
+
+    @Test
     fun `pending switch primary and recovery method both continue the existing setup`() {
         for (page in listOf(SyncPanelPage.MAIN, SyncPanelPage.RECOVERY)) {
             renderedEnglish(
@@ -93,7 +277,7 @@ class SyncPanelContentTest {
                 awaitTag("sync-recovery-continue")
                 assertTrue(texts().contains(MR.strings.sync_recovery_continue.localized(Locale.US)))
                 click("sync-recovery-continue")
-                assertEquals(listOf(SyncPanelAction.BeginSetup), actions)
+                assertEquals(listOf(SyncPanelAction.ContinueRecovery), actions)
                 assertTrue(opened.isEmpty())
             }
         }
@@ -428,10 +612,10 @@ class SyncPanelContentTest {
     ) {
         awaitTag("sync-recovery-page")
         for ((index, tag) in listOf(
-            "sync-recovery-recheck",
-            "sync-recovery-authorization",
-            "sync-recovery-connect-other",
             "sync-recovery-create",
+            "sync-recovery-connect-other",
+            "sync-recovery-authorization",
+            "sync-recovery-recheck",
         ).withIndex()) {
             scroll("sync-recovery-page", index + 1)
             awaitTag(tag)
@@ -460,10 +644,11 @@ class SyncPanelContentTest {
                     fixture.setContent()
                     fixture.awaitTag("sync-recovery-page")
                     for ((index, tag) in listOf(
-                        1 to "sync-recovery-recheck",
-                        2 to "sync-recovery-authorization",
-                        3 to "sync-recovery-connect-other",
+                        1 to "sync-recovery-details",
+                        2 to "sync-recovery-connect-other",
+                        3 to "sync-recovery-authorization",
                         4 to "sync-recovery-create",
+                        5 to "sync-recovery-recheck",
                     )) {
                         fixture.scroll("sync-recovery-page", index)
                         fixture.awaitTag(tag)
@@ -634,7 +819,9 @@ class SyncPanelContentTest {
     @Test
     fun `modern completed card is compact and details remain actionable`() = renderedEnglish(
         connected().copy(
-            run = visualRun(SyncRunPhase.COMPLETE).copy(state = SyncRunState.SUCCEEDED, confirmedItems = 14434),
+            run = visualRun(
+                SyncRunPhase.COMPLETE,
+            ).copy(state = SyncRunState.SUCCEEDED, confirmedItems = 14434, plannedItems = 14434),
             periodMinutes = 60,
             nowMillis = 100_000,
             nextSyncAtMillis = 3_700_000,
@@ -853,7 +1040,7 @@ class SyncPanelContentTest {
     @Test
     fun `compact whole plan excludes work totals body percentages and local ETA`() = rendered(
         connected().copy(
-            run = visualRun(SyncRunPhase.UPLOADING),
+            run = visualRun(SyncRunPhase.UPLOADING).copy(plannedItems = 20_000),
             progress = SyncProgressFact(
                 scope = "run-visual:1",
                 stage = SyncProgressStage.TRANSFERRING,
@@ -875,7 +1062,7 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-progress-details-toggle"))
         assertFalse(hasTag("sync-stage-count"))
         assertFalse(hasTag("sync-active-body-progress"))
-        assertTrue(texts().contains("正在统计数据"))
+        assertTrue(texts().contains("同步中，已完成0/20000条"))
         assertTrue(texts().any { it.contains("剩余估时—") })
         assertFalse(texts().any { it.contains("6144") || it.contains("62%") || it.contains("12 秒") })
     }
@@ -1042,7 +1229,8 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-stage-count"))
         assertFalse(hasTag("sync-active-body-progress"))
         assertTrue(texts().contains("正在统计数据"))
-        assertTrue(texts().any { it.contains("剩余估时—") })
+        assertFalse(hasTag("sync-round-time"))
+        assertTrue(hasTag("sync-counting-track"))
         assertFalse(hasTag("sync-progress-track"))
         assertFalse(texts().any { it.contains("0/0") || it.contains("NaN") })
     }
@@ -1054,6 +1242,7 @@ class SyncPanelContentTest {
                 state = SyncRunState.PARTIAL,
                 stopReason = "projection_pending",
                 confirmedItems = 26_778,
+                plannedItems = 30_000,
                 updatedAt = 6_000,
             ),
             progress = SyncProgressFact(
@@ -1245,6 +1434,7 @@ class SyncPanelContentTest {
         connected().copy(
             run = visualRun(SyncRunPhase.COMPLETE).copy(
                 state = SyncRunState.SUCCEEDED,
+                plannedItems = 1,
                 updatedAt = 31_000,
             ),
             progress = SyncProgressFact(
@@ -1272,7 +1462,7 @@ class SyncPanelContentTest {
     @Test
     fun `recovered run keeps stage and explicitly checks saved progress`() = rendered(
         connected().copy(
-            run = visualRun(SyncRunPhase.CHECKING).copy(state = SyncRunState.WAITING_SYSTEM),
+            run = visualRun(SyncRunPhase.CHECKING).copy(state = SyncRunState.WAITING_SYSTEM, plannedItems = 10),
             progress = SyncProgressFact(
                 scope = "run-visual:1",
                 stage = SyncProgressStage.PREPARING,
@@ -1300,7 +1490,7 @@ class SyncPanelContentTest {
     @Test
     fun `pause request keeps progress and explains that saving is in progress`() = rendered(
         connected().copy(
-            run = visualRun(SyncRunPhase.UPLOADING),
+            run = visualRun(SyncRunPhase.UPLOADING).copy(plannedItems = 10),
             progress = SyncProgressFact(
                 scope = "run-visual:1",
                 stage = SyncProgressStage.TRANSFERRING,
@@ -1919,6 +2109,7 @@ class SyncPanelContentTest {
             run = visualRun(SyncRunPhase.COMPLETE).copy(
                 state = SyncRunState.CANCELLED,
                 confirmedItems = 1536,
+                plannedItems = 2048,
                 updatedAt = 17_515_000,
             ),
             nowMillis = 20_000_000,
@@ -3264,6 +3455,8 @@ class SyncPanelContentTest {
             }
         }
         fun nodes() = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+        fun unmergedNode(value: String) = scene.semanticsOwners.flatMap { flatten(it.unmergedRootSemanticsNode) }
+            .first { tag(it) == value }
         fun hasTag(value: String) = nodes().any { tag(it) == value }
         fun node(value: String) = nodes().first { tag(it) == value }
         suspend fun reveal(value: String, viewportHeight: Int) {

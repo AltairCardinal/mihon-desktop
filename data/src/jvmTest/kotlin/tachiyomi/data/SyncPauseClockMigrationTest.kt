@@ -23,9 +23,17 @@ class SyncPauseClockMigrationTest {
                         "VALUES('old','space',1,'MANUAL','PAUSED_USER','UPLOADING',1000,1000,11000)",
                     0,
                 )
+                driver.execute(
+                    null,
+                    "INSERT INTO sync_runtime_confirmations(run_id,direction,batch_id,item_count,status) " +
+                        "VALUES('old','PLAN','round',0,'PLANNED')",
+                    0,
+                )
                 DatabaseMigration.migrateAtomically(driver, 40, Database.Schema.version)
-                assertEquals(41L, Database.Schema.version)
+                assertEquals(42L, Database.Schema.version)
                 assertEquals(11_000L, value(driver, "SELECT paused_at FROM sync_runtime_pause_clock"))
+                assertEquals(1_000L, value(driver, "SELECT planned_at FROM sync_runtime_pause_clock"))
+                assertEquals(0L, value(driver, "SELECT planned_paused_millis FROM sync_runtime_pause_clock"))
             }
             open().use { driver ->
                 driver.execute(
@@ -34,6 +42,7 @@ class SyncPauseClockMigrationTest {
                     0,
                 )
                 assertEquals(60_000L, value(driver, "SELECT paused_millis FROM sync_runtime_pause_clock"))
+                assertEquals(1_000L, value(driver, "SELECT planned_at FROM sync_runtime_pause_clock"))
                 assertEquals(1L, value(driver, "SELECT COUNT(*) FROM sync_runtime_runs WHERE run_id='old'"))
                 assertEquals(1L, value(driver, "PRAGMA foreign_keys"))
                 driver.execute(null, "DELETE FROM sync_runtime_runs WHERE run_id='old'", 0)

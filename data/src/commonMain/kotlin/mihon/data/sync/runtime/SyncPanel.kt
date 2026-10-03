@@ -16,7 +16,20 @@ enum class SyncPanelPage { MAIN, SETTINGS, HISTORY, SETUP, DIAGNOSTICS, RECOVERY
 
 @kotlinx.serialization.Serializable
 enum class SyncSpaceRecoveryReason { AUTHORIZATION_REQUIRED, SPACE_UNAVAILABLE, SPACE_DATA_INVALID, SWITCH_PENDING }
-data class SyncSpaceRecovery(val reason: SyncSpaceRecoveryReason, val busy: Boolean = false)
+data class SyncSpaceRecovery(
+    val reason: SyncSpaceRecoveryReason,
+    val busy: Boolean = false,
+    val lastCheckedAtMillis: Long? = null,
+    val lastCheckProblem: SyncRunProblem? = null,
+    val lastCheckReason: SyncSpaceRecoveryReason? = null,
+    val lastCheckSucceeded: Boolean? = null,
+    val authorizationConfirmedAtMillis: Long? = null,
+)
+
+@kotlinx.serialization.Serializable
+enum class SyncRecoveryAuthorization { IDLE, CHECKING, WAITING, VERIFYING, CONFIRMED, CANCELLED, FAILED }
+
+enum class SyncRecoveryContinuation { CONNECT, CREATE }
 enum class SyncDiagnosticFeedback {
     CAPTURED,
     READ_FAILED,
@@ -41,7 +54,14 @@ enum class SyncSetupStep {
 }
 enum class SyncPasswordProblem { INCORRECT, TOO_LONG, INVALID }
 enum class SyncDecisionScope { ITEM, SELECTED, ALL }
-enum class SyncPanelQuestion { DISCONNECT, SWITCH_SPACE, ABANDON_LEGACY, CREATE_NEW_SPACE, CONNECT_SPACE }
+enum class SyncPanelQuestion {
+    DISCONNECT,
+    SWITCH_SPACE,
+    ABANDON_LEGACY,
+    CREATE_NEW_SPACE,
+    CONNECT_SPACE,
+    CANCEL_RECOVERY_SWITCH,
+}
 
 data class SyncBulkConfirmation(
     val jobId: String,
@@ -94,6 +114,9 @@ data class SyncPanelState(
     val loaded: Boolean = false,
     val connection: SyncConnection? = null,
     val recovery: SyncSpaceRecovery? = null,
+    val recoveryAuthorization: SyncRecoveryAuthorization = SyncRecoveryAuthorization.IDLE,
+    val pendingRecoveryPurpose: SyncRecoveryContinuation? = null,
+    val canCancelRecoverySwitch: Boolean = false,
     val switchTargetRepository: SyncRepository? = null,
     val switchPendingDecisions: Long = 0,
     val busy: Boolean = false,
@@ -158,6 +181,8 @@ sealed interface SyncPanelAction {
     data object OpenRecovery : SyncPanelAction
     data object RecheckSpace : SyncPanelAction
     data object CheckAuthorization : SyncPanelAction
+    data object ManageAuthorization : SyncPanelAction
+    data object ContinueRecovery : SyncPanelAction
     data object ConnectOtherSpace : SyncPanelAction
     data object CreateNewSpace : SyncPanelAction
     data object Close : SyncPanelAction

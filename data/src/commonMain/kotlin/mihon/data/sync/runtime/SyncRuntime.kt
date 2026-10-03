@@ -163,7 +163,103 @@ class SyncRuntime(
 
     internal suspend fun acceptAuthorization(revision: Long?, token: mihon.domain.sync.auth.GitHubAccessToken) {
         coordinator.cancelAndJoin()
-        connectionMutex.withLock { credentials.replace(revision, token) }
+        connectionMutex.withLock {
+            val connection = rawConnection()
+            val stored = connection?.let { onboarding.storage.connection(it.spaceId, it.generation) }
+            // A browser response cannot replace the original account's credential before identity verification.
+            onboarding.session(stored?.accountId, token.accessToken)
+            val credential = credentials.replace(revision, token)
+            if (stored != null) {
+                onboarding.storage.updateRecoveryObservation(stored) {
+                    it.copy(
+                        credentialRevision = credential.revision,
+                        authorization = SyncRecoveryAuthorization.CONFIRMED,
+                        authorizationConfirmedAtMillis = clock(),
+                    )
+                }
+            }
+        }
+    }
+
+    internal suspend fun recoveryObservation(): StoredSyncRecoveryObservation? {
+        val connection = rawConnection() ?: return null
+        if (!connection.enabled || connection.unsupportedFormat) return null
+        val stored = onboarding.storage.connection(connection.spaceId, connection.generation) ?: return null
+        val observation = onboarding.storage.recoveryObservation(stored) ?: return null
+        if (observation.credentialRevision != credentials.read()?.revision) {
+            return observation.copy(
+                authorizationConfirmedAtMillis = null,
+                authorization = SyncRecoveryAuthorization.IDLE,
+            )
+        }
+        return observation.copy(
+            authorization = when (observation.authorization) {
+                SyncRecoveryAuthorization.CHECKING,
+                SyncRecoveryAuthorization.WAITING,
+                SyncRecoveryAuthorization.VERIFYING,
+                -> SyncRecoveryAuthorization.CANCELLED
+                else -> observation.authorization
+            },
+        )
+    }
+
+    internal suspend fun recordRecoveryAuthorization(
+        status: SyncRecoveryAuthorization,
+        clearConfirmation: Boolean = false,
+    ) = connectionMutex.withLock {
+        val connection = rawConnection() ?: return@withLock
+        val stored = onboarding.storage.connection(connection.spaceId, connection.generation) ?: return@withLock
+        val revision = credentials.read()?.revision
+        onboarding.storage.updateRecoveryObservation(stored) {
+            it.copy(
+                credentialRevision = revision,
+                authorization = status,
+                authorizationConfirmedAtMillis = when {
+                    clearConfirmation -> null
+                    status == SyncRecoveryAuthorization.CONFIRMED -> clock()
+                    it.credentialRevision != revision -> null
+                    else -> it.authorizationConfirmedAtMillis
+                },
+            )
+        }
+    }
+
+    internal suspend fun checkRecoveryAuthorization(): SyncRecoveryAuthorizationCheck {
+        return try {
+            connectionMutex.withLock {
+                val connection = rawConnection()
+                val stored = connection?.let { onboarding.storage.connection(it.spaceId, it.generation) }
+                if (credentials.read() == null) return@withLock SyncRecoveryAuthorizationCheck(required = true)
+                val session = onboarding.session(stored?.accountId)
+                val credential = requireNotNull(credentials.read())
+                require(credential.credential.accessToken == session.token) { "sync credential changed" }
+                if (stored != null) {
+                    onboarding.storage.updateRecoveryObservation(stored) {
+                        it.copy(
+                            credentialRevision = credential.revision,
+                            authorization = SyncRecoveryAuthorization.CONFIRMED,
+                            authorizationConfirmedAtMillis = clock(),
+                        )
+                    }
+                }
+                SyncRecoveryAuthorizationCheck(confirmed = true)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            val required = (failure is mihon.data.sync.http.SyncHttpException && failure.code == 401) ||
+                (failure is GitHubAuthException && !failure.failure.retryable)
+            SyncRecoveryAuthorizationCheck(required = required, problem = failure.syncProblem())
+        }
+    }
+
+    internal suspend fun cancelRecoverySwitch() = connectionMutex.withLock {
+        val intent = activeSwitch() ?: return@withLock
+        require(intent.stage == SyncSpaceSwitchStage.PREPARING) { "sync switch already committed" }
+        val active = requireNotNull(rawConnection())
+        val current = requireNotNull(onboarding.storage.connection(active.spaceId, active.generation))
+        require(current.snapshotManifestBinding().connectionRevision == intent.oldBindingRevision)
+        onboarding.storage.saveSwitch(intent.copy(stage = SyncSpaceSwitchStage.CANCELLED), intent)
     }
 
     internal suspend fun bindSetup(setup: StoredSyncSetup) {
@@ -639,10 +735,19 @@ class SyncRuntime(
             if (!it.complete) throw SyncSecureStoreException()
         }
         val switching = onboarding.storage.activeSwitch(stored.accountId)
-        if (switching?.stage in setOf(SyncSpaceSwitchStage.PREPARING, SyncSpaceSwitchStage.ACTIVATING)) {
-            return SyncSpaceRecovery(SyncSpaceRecoveryReason.SWITCH_PENDING)
-        }
-        return onboarding.storage.recovery(stored)
+        val recovery = if (switching?.stage in setOf(SyncSpaceSwitchStage.PREPARING, SyncSpaceSwitchStage.ACTIVATING)) {
+            SyncSpaceRecovery(SyncSpaceRecoveryReason.SWITCH_PENDING)
+        } else {
+            onboarding.storage.recovery(stored)
+        } ?: return null
+        val observation = recoveryObservation() ?: return recovery
+        return recovery.copy(
+            lastCheckedAtMillis = observation.lastCheckedAtMillis,
+            lastCheckProblem = observation.lastCheckProblem,
+            lastCheckReason = observation.lastCheckReason,
+            lastCheckSucceeded = observation.lastCheckSucceeded,
+            authorizationConfirmedAtMillis = observation.authorizationConfirmedAtMillis,
+        )
     }
 
     private suspend fun recoveryBlocked(connection: SyncConnection): Boolean = try {
@@ -674,14 +779,43 @@ class SyncRuntime(
                 return@withLock SyncSpaceRecoveryCheck(recoveryFor(connection), SyncRunProblem.STORAGE)
             }
             val checked = checkSpace(connection, stored, allowRename = true)
-            if (switching?.stage == SyncSpaceSwitchStage.PREPARING &&
-                checked.problem == null && checked.recovery == null
-            ) {
-                onboarding.storage.saveSwitch(switching.copy(stage = SyncSpaceSwitchStage.CANCELLED), switching)
-            }
             if (checked.problem == null) {
                 val current = requireNotNull(onboarding.storage.connection(connection.spaceId, connection.generation))
                 onboarding.storage.setRecovery(current, checked.recovery?.reason)
+            }
+            val current = requireNotNull(onboarding.storage.connection(connection.spaceId, connection.generation))
+            val credentialRevision = credentials.read()?.revision
+            val authorizationConfirmed = checked.authorizationConfirmed &&
+                checked.authorizationCredentialRevision != null &&
+                checked.authorizationCredentialRevision == credentialRevision
+            try {
+                onboarding.storage.updateRecoveryObservation(current) {
+                    val authorizationRequired =
+                        checked.recovery?.reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED
+                    it.copy(
+                        lastCheckedAtMillis = clock(),
+                        lastCheckSucceeded = checked.problem == null,
+                        lastCheckProblem = checked.problem,
+                        lastCheckReason = if (checked.problem == null) checked.recovery?.reason else it.lastCheckReason,
+                        credentialRevision = credentialRevision,
+                        authorizationConfirmedAtMillis = when {
+                            authorizationRequired -> null
+                            authorizationConfirmed -> clock()
+                            it.credentialRevision != credentialRevision -> null
+                            else -> it.authorizationConfirmedAtMillis
+                        },
+                        authorization = when {
+                            authorizationRequired -> SyncRecoveryAuthorization.IDLE
+                            authorizationConfirmed -> SyncRecoveryAuthorization.CONFIRMED
+                            it.credentialRevision != credentialRevision -> SyncRecoveryAuthorization.IDLE
+                            else -> it.authorization
+                        },
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return@withLock SyncSpaceRecoveryCheck(problem = SyncRunProblem.STORAGE)
             }
             val recovery = try {
                 recoveryFor(requireNotNull(rawConnection()))
@@ -690,7 +824,7 @@ class SyncRuntime(
             } catch (_: Exception) {
                 return@withLock SyncSpaceRecoveryCheck(problem = SyncRunProblem.STORAGE)
             }
-            SyncSpaceRecoveryCheck(recovery, checked.problem, checked.spaceAddressUpdated)
+            SyncSpaceRecoveryCheck(recovery, checked.problem, checked.spaceAddressUpdated, authorizationConfirmed)
         }
     }
 
@@ -699,13 +833,22 @@ class SyncRuntime(
         stored: StoredSyncConnection,
         allowRename: Boolean = false,
     ): SyncSpaceRecoveryCheck {
+        var authorizationConfirmed = false
+        var authorizationCredentialRevision: Long? = null
         return try {
             val session = onboarding.session(stored.accountId)
+            authorizationCredentialRevision =
+                credentials.read()?.takeIf { it.credential.accessToken == session.token }?.revision
+            authorizationConfirmed = authorizationCredentialRevision != null
             val inventory = session.http.authorizedRepositoryObjects(stored.accountId)
             val matches = inventory.filter { it["id"]?.jsonPrimitive?.longOrNull == stored.repositoryId }
             require(matches.size <= 1)
             val repository = matches.singleOrNull()
-                ?: return SyncSpaceRecoveryCheck(SyncSpaceRecovery(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE))
+                ?: return SyncSpaceRecoveryCheck(
+                    SyncSpaceRecovery(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE),
+                    authorizationConfirmed = true,
+                    authorizationCredentialRevision = authorizationCredentialRevision,
+                )
             if (allowRename) {
                 val name = repository["full_name"]?.jsonPrimitive?.content?.split('/')
                 if (name != null && name.size == 2) {
@@ -736,7 +879,11 @@ class SyncRuntime(
                         require(previous == null || previous.complete)
                         onboarding.storage.saveAddressUpdate(update, previous)
                         recoverAddressUpdate()
-                        return SyncSpaceRecoveryCheck(spaceAddressUpdated = true)
+                        return SyncSpaceRecoveryCheck(
+                            spaceAddressUpdated = true,
+                            authorizationConfirmed = authorizationConfirmed,
+                            authorizationCredentialRevision = authorizationCredentialRevision,
+                        )
                     }
                 }
             }
@@ -747,7 +894,10 @@ class SyncRuntime(
                 repositoryId = stored.repositoryId,
                 requestGate = accountHttpRequestGate(stored.accountId),
             ).readSnapshot(connection.repository, connection.spaceId, connection.generation).getOrThrow()
-            SyncSpaceRecoveryCheck()
+            SyncSpaceRecoveryCheck(
+                authorizationConfirmed = authorizationConfirmed,
+                authorizationCredentialRevision = authorizationCredentialRevision,
+            )
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
@@ -774,9 +924,18 @@ class SyncRuntime(
                 else -> null
             }
             if (reason != null) {
-                SyncSpaceRecoveryCheck(SyncSpaceRecovery(reason))
+                SyncSpaceRecoveryCheck(
+                    SyncSpaceRecovery(reason),
+                    authorizationConfirmed =
+                    authorizationConfirmed && reason != SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED,
+                    authorizationCredentialRevision = authorizationCredentialRevision,
+                )
             } else {
-                SyncSpaceRecoveryCheck(problem = failure.syncProblem())
+                SyncSpaceRecoveryCheck(
+                    problem = failure.syncProblem(),
+                    authorizationConfirmed = authorizationConfirmed,
+                    authorizationCredentialRevision = authorizationCredentialRevision,
+                )
             }
         }
     }

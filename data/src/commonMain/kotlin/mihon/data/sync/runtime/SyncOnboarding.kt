@@ -383,8 +383,8 @@ internal class SyncOnboarding(
         }
     }
 
-    suspend fun session(expectedAccountId: Long? = null): Session {
-        val token = runtime.accessToken()
+    suspend fun session(expectedAccountId: Long? = null, accessToken: String? = null): Session {
+        val token = accessToken ?: runtime.accessToken()
         val http = GitHubPrivateRepositorySelector(
             client,
             { token },

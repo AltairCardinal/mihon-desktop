@@ -12,8 +12,13 @@ import mihon.data.sync.crypto.SyncAeadEngineFactory
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelController
 import mihon.data.sync.runtime.SyncPanelPage
+import mihon.data.sync.runtime.SyncPanelQuestion
+import mihon.data.sync.runtime.SyncRecoveryAuthorization
+import mihon.data.sync.runtime.SyncRecoveryContinuation
 import mihon.data.sync.runtime.SyncSetupStep
 import mihon.data.sync.runtime.SyncSpaceRecoveryReason
+import mihon.data.sync.runtime.SyncSpaceSwitchStage
+import mihon.domain.sync.auth.GitHubAccessToken
 import mihon.domain.sync.crypto.SyncCryptoBinding
 import mihon.domain.sync.crypto.SyncSpaceDescriptorCodec
 import mihon.domain.sync.crypto.SyncSpacePayload
@@ -41,6 +46,317 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 abstract class SyncSpaceRecoveryContract {
     protected abstract fun open(): SyncRuntimeStorageContract.Storage
+
+    @Test
+    fun `replacement authorization validates real account before replacing original credential`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val credential = requireNotNull(setup.runtime.credentials.read())
+                setup.accountId = 99L
+                var rejected = false
+                try {
+                    setup.runtime.acceptAuthorization(
+                        credential.revision,
+                        GitHubAccessToken("new-account-token", null, "bearer", emptySet(), null, null),
+                    )
+                } catch (_: Exception) {
+                    rejected = true
+                }
+                assertTrue(rejected, "different account authorization must be rejected before replacement")
+                assertEquals(credential, setup.runtime.credentials.read())
+            }
+        }
+    }
+
+    @Test
+    fun `recovery check remembers last real fact across failed check and controller recreation`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val delegate = setup.git.server.dispatcher
+                setup.git.server.dispatcher = failing(delegate, "/repos/${setup.repository.fullName}", 404)
+                setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                setup.panel.act(SyncPanelAction.OpenRecovery)
+                setup.now = 2_000L
+                setup.panel.act(SyncPanelAction.RecheckSpace)
+                setup.panel.awaitRecoveryIdle()
+                assertEquals(2_000L, setup.panel.state.value.recovery?.lastCheckedAtMillis)
+                assertEquals(
+                    SyncSpaceRecoveryReason.SPACE_UNAVAILABLE,
+                    setup.panel.state.value.recovery?.lastCheckReason,
+                )
+                assertEquals(true, setup.panel.state.value.recovery?.lastCheckSucceeded)
+                setup.git.server.dispatcher = failing(delegate, "/user", 500)
+                setup.now = 3_000L
+                setup.panel.act(SyncPanelAction.RecheckSpace)
+                setup.panel.awaitRecoveryIdle()
+                val fact = requireNotNull(setup.panel.state.value.recovery)
+                assertEquals(3_000L, fact.lastCheckedAtMillis)
+                assertEquals(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE, fact.lastCheckReason)
+                assertEquals(false, fact.lastCheckSucceeded)
+                assertEquals(SyncRunProblem.NETWORK, fact.lastCheckProblem)
+                setup.panel.act(SyncPanelAction.Close)
+                val restarted = setup.runtime()
+                try {
+                    (restarted.panel as SyncPanelController).act(SyncPanelAction.OpenRecovery)
+                    assertEquals(fact.copy(busy = false), restarted.panel.state.value.recovery)
+                } finally {
+                    restarted.stopPanel()
+                }
+                setup.git.server.dispatcher = failing(delegate, "/user", 500)
+                setup.panel.act(SyncPanelAction.Open)
+                setup.panel.act(SyncPanelAction.CheckAuthorization)
+                withTimeout(5_000) {
+                    setup.panel.state.first { it.recoveryAuthorization == SyncRecoveryAuthorization.FAILED }
+                }
+                assertEquals(
+                    fact.authorizationConfirmedAtMillis,
+                    setup.panel.state.value.recovery?.authorizationConfirmedAtMillis,
+                )
+                assertEquals(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE, setup.panel.state.value.recovery?.reason)
+                setup.authorize("renewed-token")
+                val credentialChanged = setup.runtime()
+                try {
+                    (credentialChanged.panel as SyncPanelController).act(SyncPanelAction.OpenRecovery)
+                    assertNull(credentialChanged.panel.state.value.recovery?.authorizationConfirmedAtMillis)
+                    assertEquals(
+                        SyncRecoveryAuthorization.IDLE,
+                        credentialChanged.panel.state.value.recoveryAuthorization,
+                    )
+                } finally {
+                    credentialChanged.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `authorization check uses real identity and confirms independently of unavailable space`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val delegate = setup.git.server.dispatcher
+                var deviceRequests = 0
+                val inaccessible = failing(delegate, "/repos/${setup.repository.fullName}", 404)
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.url.encodedPath == "/device") deviceRequests++
+                        return inaccessible.dispatch(request)
+                    }
+                }
+                setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                setup.panel.act(SyncPanelAction.OpenRecovery)
+                val credential = setup.runtime.credentials.read()
+                setup.panel.act(SyncPanelAction.CheckAuthorization)
+                withTimeout(5_000) {
+                    setup.panel.state.first {
+                        it.recoveryAuthorization == SyncRecoveryAuthorization.CONFIRMED &&
+                            it.recovery?.lastCheckedAtMillis != null && it.recovery?.busy == false
+                    }
+                }
+                setup.panel.awaitRecoveryIdle()
+                assertEquals(0, deviceRequests)
+                assertEquals(credential, setup.runtime.credentials.read())
+                assertEquals(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE, setup.panel.state.value.recovery?.reason)
+                assertEquals(setup.now, setup.panel.state.value.recovery?.authorizationConfirmedAtMillis)
+                setup.panel.act(SyncPanelAction.Close)
+                val restarted = setup.runtime()
+                try {
+                    (restarted.panel as SyncPanelController).act(SyncPanelAction.OpenRecovery)
+                    assertEquals(SyncRecoveryAuthorization.CONFIRMED, restarted.panel.state.value.recoveryAuthorization)
+                    assertEquals(setup.now, restarted.panel.state.value.recovery?.authorizationConfirmedAtMillis)
+                } finally {
+                    restarted.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `authorization identity errors never become confirmed or browser success`() = runBlocking {
+        for ((code, body) in listOf(404 to "{}", 403 to "{}", 429 to "{}", 500 to "{}", 200 to "{}", 200 to "broken")) {
+            open().use { storage ->
+                SyncOnboardingFixture(storage).use { setup ->
+                    setup.existing("")
+                    setup.authorize()
+                    setup.begin()
+                    val delegate = setup.git.server.dispatcher
+                    setup.git.server.dispatcher = failing(delegate, "/repos/${setup.repository.fullName}", 404)
+                    setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                    setup.panel.act(SyncPanelAction.OpenRecovery)
+                    setup.git.server.dispatcher = object : Dispatcher() {
+                        override fun dispatch(request: RecordedRequest): MockResponse =
+                            if (request.url.encodedPath == "/user") {
+                                MockResponse(code = code, body = body)
+                            } else {
+                                delegate.dispatch(request)
+                            }
+                    }
+                    setup.panel.act(SyncPanelAction.CheckAuthorization)
+                    withTimeout(5_000) {
+                        setup.panel.state.first { it.recoveryAuthorization == SyncRecoveryAuthorization.FAILED }
+                    }
+                    assertNull(setup.panel.state.value.deviceCode, "$code $body")
+                    assertNull(setup.panel.state.value.recovery?.authorizationConfirmedAtMillis, "$code $body")
+                    assertEquals(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE, setup.panel.state.value.recovery?.reason)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `unfinished recovery switch remains available after close and recreation`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val credential = setup.runtime.credentials.read()
+                val binding = setup.runtime.connection()
+                setup.panel.act(SyncPanelAction.ConnectOtherSpace)
+                withTimeout(5_000) { setup.panel.state.first { !it.setupBusy } }
+                val intent = requireNotNull(setup.runtime.activeSwitch())
+                setup.panel.act(SyncPanelAction.RecheckSpace)
+                setup.panel.awaitRecoveryIdle()
+                assertEquals(
+                    intent,
+                    setup.runtime.activeSwitch(),
+                    "a read-only recheck cannot cancel an unfinished switch",
+                )
+                setup.panel.act(SyncPanelAction.Close)
+                assertEquals(intent, setup.runtime.activeSwitch())
+                val restarted = setup.runtime()
+                try {
+                    (restarted.panel as SyncPanelController).act(SyncPanelAction.OpenRecovery)
+                    assertEquals(SyncRecoveryContinuation.CONNECT, restarted.panel.state.value.pendingRecoveryPurpose)
+                    assertTrue(restarted.panel.state.value.canCancelRecoverySwitch)
+                    assertEquals(binding, restarted.connection())
+                    assertEquals(credential, restarted.credentials.read())
+                    val panel = restarted.panel as SyncPanelController
+                    panel.act(SyncPanelAction.ContinueRecovery)
+                    assertEquals(intent, restarted.activeSwitch())
+                    panel.act(SyncPanelAction.Ask(SyncPanelQuestion.CANCEL_RECOVERY_SWITCH))
+                    panel.act(SyncPanelAction.CancelQuestion)
+                    assertEquals(intent, restarted.activeSwitch(), "dismissing confirmation retains continuation")
+                    panel.act(SyncPanelAction.Ask(SyncPanelQuestion.CANCEL_RECOVERY_SWITCH))
+                    panel.act(SyncPanelAction.ConfirmQuestion)
+                    assertNull(restarted.activeSwitch(), "confirmed cancellation archives only the pending switch")
+                    assertEquals(binding, restarted.connection())
+                    assertEquals(credential, restarted.credentials.read())
+                    assertEquals(
+                        intent.oldPending,
+                        restarted.onboarding.storage.pendingForConnection(intent.oldConnection),
+                    )
+                    val activating = intent.copy(stage = SyncSpaceSwitchStage.ACTIVATING)
+                    val archived = requireNotNull(restarted.onboarding.storage.activeSwitch(intent.accountId))
+                    restarted.onboarding.storage.saveSwitch(activating, archived)
+                    var rejected = false
+                    try {
+                        restarted.cancelRecoverySwitch()
+                    } catch (_: IllegalArgumentException) {
+                        rejected = true
+                    }
+                    assertTrue(rejected, "committed activation cannot be rolled back")
+                    assertEquals(activating, restarted.activeSwitch())
+                    assertEquals(binding, restarted.connection())
+                } finally {
+                    restarted.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `invalid recovery observations never supply facts or clear the gate`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                setup.git.server.dispatcher = failing(
+                    setup.git.server.dispatcher,
+                    "/repos/${setup.repository.fullName}",
+                    404,
+                )
+                setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                setup.panel.act(SyncPanelAction.OpenRecovery)
+                setup.panel.act(SyncPanelAction.RecheckSpace)
+                setup.panel.awaitRecoveryIdle()
+                val key = setup.secure.values.keys.single { it.endsWith("-recovery-observation") }
+                val original = Json.parseToJsonElement(requireNotNull(setup.secure.values[key])).jsonObject
+                for (record in listOf(
+                    JsonObject(original + ("bindingRevision" to JsonPrimitive("other-binding"))).toString(),
+                    "{}",
+                    "{\"version\":999}",
+                )) {
+                    setup.secure.values[key] = record
+                    val restarted = setup.runtime()
+                    try {
+                        (restarted.panel as SyncPanelController).act(SyncPanelAction.OpenRecovery)
+                        assertEquals(
+                            SyncSpaceRecoveryReason.SPACE_UNAVAILABLE,
+                            restarted.panel.state.value.recovery?.reason,
+                        )
+                        assertNull(restarted.panel.state.value.recovery?.lastCheckedAtMillis)
+                        assertNull(restarted.panel.state.value.recovery?.authorizationConfirmedAtMillis)
+                        assertEquals(SyncRecoveryAuthorization.IDLE, restarted.panel.state.value.recoveryAuthorization)
+                        assertEquals(
+                            SyncRunStatus.SKIPPED,
+                            restarted.coordinator.synchronize(SyncTrigger.MANUAL).status,
+                        )
+                    } finally {
+                        restarted.stopPanel()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `confirmed authorization is cleared by real 401 while waiting for fresh browser approval`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val delegate = setup.git.server.dispatcher
+                val inaccessible = failing(delegate, "/repos/${setup.repository.fullName}", 404)
+                setup.git.server.dispatcher = inaccessible
+                setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                setup.panel.act(SyncPanelAction.OpenRecovery)
+                setup.panel.act(SyncPanelAction.RecheckSpace)
+                setup.panel.awaitRecoveryIdle()
+                assertNotNull(setup.panel.state.value.recovery?.authorizationConfirmedAtMillis)
+                val release = CountDownLatch(1)
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse = when (request.url.encodedPath) {
+                        "/user" -> MockResponse(code = 401, body = "{}")
+                        "/token" -> {
+                            check(release.await(5, TimeUnit.SECONDS))
+                            inaccessible.dispatch(request)
+                        }
+                        else -> inaccessible.dispatch(request)
+                    }
+                }
+                try {
+                    setup.panel.act(SyncPanelAction.CheckAuthorization)
+                    withTimeout(5_000) { setup.panel.state.first { it.deviceCode != null } }
+                    assertEquals(SyncRecoveryAuthorization.WAITING, setup.panel.state.value.recoveryAuthorization)
+                    assertNull(setup.panel.state.value.recovery?.authorizationConfirmedAtMillis)
+                } finally {
+                    setup.panel.act(SyncPanelAction.Close)
+                    release.countDown()
+                }
+            }
+        }
+    }
 
     @Test
     fun `required repository 404 gates restart and all triggers without losing local data`() = runBlocking {
@@ -306,7 +622,7 @@ abstract class SyncSpaceRecoveryContract {
                 try {
                     setup.panel.act(SyncPanelAction.RecheckSpace)
                     assertTrue(entered.await(5, TimeUnit.SECONDS))
-                    setup.panel.act(SyncPanelAction.CheckAuthorization)
+                    setup.panel.act(SyncPanelAction.ManageAuthorization)
                     withTimeout(5_000) { setup.panel.state.first { it.deviceCode != null } }
                     release.countDown()
                     setup.panel.awaitRecoveryIdle()

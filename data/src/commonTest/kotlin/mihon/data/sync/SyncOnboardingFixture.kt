@@ -1,6 +1,7 @@
 package mihon.data.sync
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -33,6 +34,7 @@ import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.coroutineContext
 
 /** Real Git object server plus GitHub identity/install discovery HTTP contract, without copying sync logic. */
 internal class SyncOnboardingFixture(
@@ -210,6 +212,7 @@ internal suspend fun SyncPanelController.act(action: SyncPanelAction) {
 internal class MemorySyncSecureStore : SyncSecureStore {
     var readFailure = false
     var nextSpaceRead: Pair<CompletableDeferred<Unit>, CompletableDeferred<Unit>>? = null
+    var nextSpaceReadCoroutineName: String? = null
     val values = ConcurrentHashMap<String, String>()
     var fail = false
     var rejectConnectedSetup = false
@@ -217,7 +220,13 @@ internal class MemorySyncSecureStore : SyncSecureStore {
     var beforeWrite: ((String, String?) -> Unit)? = null
     override suspend fun read(key: String): String? {
         if (fail || readFailure) throw mihon.domain.sync.security.SyncSecureStoreException()
-        nextSpaceRead?.takeIf { key.startsWith("space-") }?.let { gate ->
+        nextSpaceRead?.takeIf {
+            key.startsWith("space-") &&
+                (
+                    nextSpaceReadCoroutineName == null ||
+                        coroutineContext[CoroutineName]?.name == nextSpaceReadCoroutineName
+                    )
+        }?.let { gate ->
             nextSpaceRead = null
             gate.first.complete(Unit)
             gate.second.await()

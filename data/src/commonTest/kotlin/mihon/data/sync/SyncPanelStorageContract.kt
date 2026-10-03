@@ -2,6 +2,7 @@ package mihon.data.sync
 
 import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -313,9 +314,14 @@ abstract class SyncPanelStorageContract {
                 f.runtime.stopPanel()
                 val entered = CompletableDeferred<Unit>()
                 val release = CompletableDeferred<Unit>()
+                val captureName = "identity-changing-diagnostic-capture"
+                f.secure.nextSpaceReadCoroutineName = captureName
                 f.secure.nextSpaceRead = entered to release
-                val collecting = async { f.runtime.diagnostics.capture(mihon.data.sync.runtime.SyncPanelState()) }
+                val collecting = async(CoroutineName(captureName)) {
+                    f.runtime.diagnostics.capture(mihon.data.sync.runtime.SyncPanelState())
+                }
                 withTimeout(5000) { entered.await() }
+                assertTrue(collecting.isActive, "the capture must still be waiting inside its real secure read")
                 storage.handler.await { sync_journalQueries.disconnectSpace("space", 1) }
                 f.runtime.baseline.connectAndImport("other-private-space", 2, repository, "actor", 1)
                 release.complete(Unit)
@@ -486,6 +492,7 @@ abstract class SyncPanelStorageContract {
                             it.coordinatorRunning == false
                     },
                 )
+                f.panel.awaitIdle()
                 f.runtime.diagnostics.record(
                     mihon.data.sync.runtime.SyncDiagnosticEventKind.REFRESH_END,
                     mihon.data.sync.runtime.SyncDiagnosticRefreshSource.OPEN,

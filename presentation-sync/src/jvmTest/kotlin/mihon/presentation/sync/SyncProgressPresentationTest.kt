@@ -16,6 +16,31 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class SyncProgressPresentationTest {
+    @Test fun `counting has no elapsed clock and frozen plan starts from its durable origin`() {
+        val session = SyncProgressDisplaySession()
+        val counting = state().copy(nowMillis = 50_000, run = run.copy(plannedItems = null))
+        assertEquals(0L, session.project(counting, 0).elapsedSeconds)
+        assertEquals(0L, session.project(counting, 20_000).elapsedSeconds)
+        val frozen = counting.copy(
+            nowMillis = 70_000,
+            run = run.copy(planStartedAt = 70_000, planPausedMillis = 10_000, pausedMillis = 10_000),
+        )
+        assertEquals(0L, session.project(frozen, 20_000).elapsedSeconds)
+        assertEquals(3L, session.project(frozen, 23_000).elapsedSeconds)
+        assertEquals(3L, SyncProgressDisplaySession().project(frozen.copy(nowMillis = 73_000), 0).elapsedSeconds)
+        val paused = frozen.copy(
+            nowMillis = 100_000,
+            run = frozen.run!!.copy(
+                state = SyncRunState.PAUSED_USER,
+                pausedAt = 74_000,
+                updatedAt = 74_000,
+            ),
+        )
+        assertEquals(4L, session.project(paused, 50_000).elapsedSeconds)
+        val resumed = frozen.copy(nowMillis = 104_000, run = frozen.run!!.copy(pausedMillis = 40_000))
+        assertEquals(4L, SyncProgressDisplaySession().project(resumed, 0).elapsedSeconds)
+    }
+
     @Test fun `paused elapsed freezes across reopening and resumes without adding the pause`() {
         val session = SyncProgressDisplaySession()
         val running = state().copy(nowMillis = 10_000)
@@ -57,7 +82,7 @@ class SyncProgressPresentationTest {
         session.project(idle, 5_000_000)
         val counting = idle.copy(busy = true)
         assertEquals(0L, session.project(counting, 9_000_000).elapsedSeconds)
-        assertEquals(1L, session.project(counting, 9_001_000).elapsedSeconds)
+        assertEquals(0L, session.project(counting, 9_001_000).elapsedSeconds)
         val durable = state().copy(nowMillis = 7000, run = run.copy(createdAt = 1000))
         assertEquals(6L, session.project(durable, 9_002_000).elapsedSeconds)
         assertEquals(7L, session.project(durable.copy(nowMillis = -1000), 9_003_000).elapsedSeconds)

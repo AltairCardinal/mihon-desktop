@@ -2040,4 +2040,19 @@
     <string name="sync_diagnostic_intro">采集本机同步状态，帮助排查问题。不包含账号、凭据或作品信息。</string>
     <string name="sync_diagnostic_details_toggle">诊断内容与隐私说明</string>
     <string name="sync_periodic_label">定期同步</string>
+    <string name="sync_recovery_authorization_confirmed">授权已确认</string>
+    <string name="sync_recovery_authorization_checking">正在检查授权</string>
+    <string name="sync_recovery_authorization_waiting">等待浏览器授权</string>
+    <string name="sync_recovery_authorization_verifying">正在验证授权</string>
+    <string name="sync_recovery_authorization_cancelled">授权已取消</string>
+    <string name="sync_recovery_authorization_failed">授权未完成</string>
+    <string name="sync_recovery_manage_authorization">管理授权</string>
+    <string name="sync_recovery_last_check">最近检查：%1$s</string>
+    <string name="sync_recovery_check_unavailable">旧空间仍不可用</string>
+    <string name="sync_recovery_check_available">原空间已恢复连接</string>
+    <string name="sync_recovery_continue_create">继续创建</string>
+    <string name="sync_recovery_continue_connect">继续连接</string>
+    <string name="sync_recovery_cancel_switch">取消更换空间</string>
+    <string name="sync_recovery_cancel_switch_body">取消本次更换？本机资料和原连接状态会保留。</string>
+    <string name="sync_recovery_authorization_unknown">授权尚未检查</string>
 </resources>

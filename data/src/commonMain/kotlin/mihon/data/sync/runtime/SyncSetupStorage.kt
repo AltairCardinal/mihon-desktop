@@ -146,6 +146,45 @@ internal data class StoredLegacySyncSetup(
 internal class SyncSetupStorage(private val secure: SyncSecureStore) {
     private val json = Json { encodeDefaults = true }
 
+    suspend fun recoveryObservation(connection: StoredSyncConnection): StoredSyncRecoveryObservation? {
+        val descriptor = connection.material.material().descriptor
+        val value = secure.read(connectionKey(descriptor.spaceId, descriptor.generation) + "-recovery-observation")
+            ?: return null
+        return decodeObservation(value)?.takeIf {
+            it.bindingRevision == connection.snapshotManifestBinding().connectionRevision
+        }
+    }
+
+    suspend fun updateRecoveryObservation(
+        connection: StoredSyncConnection,
+        update: (StoredSyncRecoveryObservation) -> StoredSyncRecoveryObservation,
+    ) {
+        val descriptor = connection.material.material().descriptor
+        val key = connectionKey(descriptor.spaceId, descriptor.generation) + "-recovery-observation"
+        val before = secure.read(key)
+        val decoded = before?.let(::decodeObservation)
+        // Unknown display records are never permission to rewrite a future format.
+        if (before != null && decoded == null) return
+        val revision = connection.snapshotManifestBinding().connectionRevision
+        val previous = decoded?.takeIf { it.bindingRevision == revision }
+            ?: StoredSyncRecoveryObservation(bindingRevision = revision)
+        val next = update(previous)
+        require(next.version == 1 && next.bindingRevision == revision)
+        val current = connection(descriptor.spaceId, descriptor.generation)
+        require(current?.snapshotManifestBinding()?.connectionRevision == revision) { "sync binding changed" }
+        if (!secure.compareAndSet(key, before, json.encodeToString(next))) throw SyncSecureStoreException()
+    }
+
+    private fun decodeObservation(value: String): StoredSyncRecoveryObservation? = try {
+        decode<StoredSyncRecoveryObservation>(value, 1).also {
+            require(it.lastCheckedAtMillis == null || it.lastCheckedAtMillis >= 0)
+            require(it.authorizationConfirmedAtMillis == null || it.authorizationConfirmedAtMillis >= 0)
+            require(it.credentialRevision == null || it.credentialRevision > 0)
+        }
+    } catch (_: Exception) {
+        null
+    }
+
     suspend fun recovery(connection: StoredSyncConnection): SyncSpaceRecovery? {
         val descriptor = connection.material.material().descriptor
         val value = secure.read(connectionKey(descriptor.spaceId, descriptor.generation) + "-recovery") ?: return null

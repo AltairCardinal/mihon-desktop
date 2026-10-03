@@ -151,9 +151,12 @@ class SyncProgressControllerIntegrationTest {
             mount()
             runtime.panel.dispatch(SyncPanelAction.Open)
             withTimeout(5000) { runtime.panel.state.first { it.loaded && it.run?.runId == run.runId } }
-            withTimeout(5000) { while (node("sync-round-time") == null) render() }
-            assertNotNull(node("sync-round-time"))
+            assertEquals(SyncProgressHold.RECOVERING, runtime.panel.state.value.progress!!.hold)
+            withTimeout(5000) { while (node("sync-counting-paused-track") == null) render() }
+            assertNull(node("sync-round-time"))
             assertNull(node("sync-progress-track"))
+            clockMillis = 31_000
+            displayMillis = 30_000
             runtime.runStore.freezePlan(
                 run.runId,
                 "fixture-owner",
@@ -171,16 +174,16 @@ class SyncProgressControllerIntegrationTest {
                 "${run.runId}:fixture", SyncProgressStage.TRANSFERRING,
                 SyncProgressDirection.UPLOAD, 0, 1, 0, 0, 100, 0, SyncProgressHold.ACTIVE, null, null,
             )
-            clockMillis = 11_000
-            displayMillis = 10_000
+            clockMillis = 41_000
+            displayMillis = 40_000
             click("sync-pause-run")
             withTimeout(5000) { runtime.panel.state.first { it.run?.state == SyncRunState.PAUSED_USER } }
             assertEquals(SyncRunState.PAUSED_USER, runtime.runStore.get(run.runId)!!.state)
             render()
             fun displayedTime() = node("sync-round-time")!!.config[SemanticsProperties.Text].single().text
             assertTrue(displayedTime().contains("00:10"), displayedTime())
-            clockMillis = 71_000
-            displayMillis = 70_000
+            clockMillis = 101_000
+            displayMillis = 100_000
             render()
             assertTrue(displayedTime().contains("00:10"), displayedTime())
             runtime.panel.dispatch(SyncPanelAction.Close)
@@ -274,6 +277,8 @@ class SyncProgressControllerIntegrationTest {
             withTimeout(5000) { runtime.panel.state.first { it.loaded && it.run?.runId == run.runId } }
             render()
             assertEquals(SyncRunState.BLOCKED, runtime.panel.state.value.run!!.state)
+            assertEquals(31_000L, runtime.panel.state.value.run!!.planStartedAt)
+            assertEquals(10L, SyncProgressDisplaySession().project(runtime.panel.state.value, 0).elapsedSeconds)
             assertNull(node("sync-progress-details"))
             assertEquals(mihon.domain.sync.runtime.SyncRunProblem.STORAGE, runtime.panel.state.value.problem)
             withTimeout(5000) { while (node("sync-reenter-password") == null) render() }

@@ -2251,4 +2251,19 @@
     <string name="sync_diagnostic_intro">Collect local sync status to help investigate problems. Account, credentials and book details are excluded.</string>
     <string name="sync_diagnostic_details_toggle">Diagnostic details and privacy</string>
     <string name="sync_periodic_label">Periodic sync</string>
+    <string name="sync_recovery_authorization_confirmed">Authorization confirmed</string>
+    <string name="sync_recovery_authorization_checking">Checking authorization</string>
+    <string name="sync_recovery_authorization_waiting">Waiting for browser authorization</string>
+    <string name="sync_recovery_authorization_verifying">Verifying authorization</string>
+    <string name="sync_recovery_authorization_cancelled">Authorization cancelled</string>
+    <string name="sync_recovery_authorization_failed">Authorization not completed</string>
+    <string name="sync_recovery_manage_authorization">Manage authorization</string>
+    <string name="sync_recovery_last_check">Last checked: %1$s</string>
+    <string name="sync_recovery_check_unavailable">The previous space is still unavailable</string>
+    <string name="sync_recovery_check_available">The previous space is connected again</string>
+    <string name="sync_recovery_continue_create">Continue creating</string>
+    <string name="sync_recovery_continue_connect">Continue connecting</string>
+    <string name="sync_recovery_cancel_switch">Cancel space change</string>
+    <string name="sync_recovery_cancel_switch_body">Cancel this space change? Local data and the previous connection will be preserved.</string>
+    <string name="sync_recovery_authorization_unknown">Authorization has not been checked</string>
 </resources>

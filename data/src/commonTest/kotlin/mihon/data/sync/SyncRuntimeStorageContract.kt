@@ -60,6 +60,43 @@ import tachiyomi.domain.manga.model.MangaUpdate
 
 abstract class SyncRuntimeStorageContract {
     @Test
+    fun `plan timing excludes counting pauses and survives store reconstruction`() = runBlocking {
+        open().use { storage ->
+            storage.connect("plan-clock", repository)
+            var now = 1_000L
+            val store = SyncRunStore(storage.handler, clock = { now })
+            val run = store.start("space", 1, SyncTrigger.MANUAL)
+            assertTrue(store.claim(run.runId, "owner", 1))
+            assertNull(store.get(run.runId)!!.planStartedAt)
+            now = 11_000
+            store.pause(run.runId)
+            now = 41_000
+            assertTrue(store.resumeIfAllowed(run.runId))
+            assertTrue(store.claim(run.runId, "owner", 2))
+            now = 51_000
+            store.freezePlan(run.runId, "owner", emptyList())
+            assertEquals(51_000L, store.get(run.runId)!!.planStartedAt)
+            assertEquals(30_000L, store.get(run.runId)!!.planPausedMillis)
+            now = 61_000
+            store.freezePlan(run.runId, "owner", emptyList())
+            assertEquals(51_000L, store.get(run.runId)!!.planStartedAt)
+            store.pause(run.runId)
+            now = 91_000
+            val reopened = SyncRunStore(storage.handler, clock = { now })
+            assertTrue(reopened.resumeIfAllowed(run.runId))
+            val restored = reopened.get(run.runId)!!
+            assertEquals(51_000L, restored.planStartedAt)
+            assertEquals(30_000L, restored.planPausedMillis)
+            assertEquals(60_000L, restored.pausedMillis)
+            assertEquals(
+                10_000L,
+                now - restored.planStartedAt!! -
+                    (restored.pausedMillis - restored.planPausedMillis),
+            )
+        }
+    }
+
+    @Test
     fun `pause clock persists repeated pauses and ignores duplicate pause and rejected ownership`() = runBlocking {
         open().use { storage ->
             var now = 1_000L

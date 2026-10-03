@@ -27,6 +27,7 @@ import mihon.data.sync.runtime.SyncProgressDirection
 import mihon.data.sync.runtime.SyncProgressFact
 import mihon.data.sync.runtime.SyncProgressHold
 import mihon.data.sync.runtime.SyncProgressStage
+import mihon.data.sync.runtime.SyncRunPlanBatch
 import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.data.sync.runtime.SyncSetupStep
@@ -133,6 +134,12 @@ class SyncTerminalRecoveryIntegrationTest {
     @Test fun `R05 disconnected owned run keeps pause retry and recovery without creating another round`() = fixture {
         now += 1000
         val run = runtime.runStore.start("space", 1, SyncTrigger.MANUAL)
+        assertTrue(runtime.runStore.claim(run.runId, "owned-fixture", 1))
+        runtime.runStore.freezePlan(
+            run.runId,
+            "owned-fixture",
+            listOf(SyncRunPlanBatch(SyncProgressDirection.UPLOAD, "owned-batch", 100)),
+        )
         runtime.runStore.pause(run.runId)
         handler.await { sync_journalQueries.disconnectSpace("space", 1) }
         open()
@@ -367,6 +374,11 @@ class SyncTerminalRecoveryIntegrationTest {
             runtime.baseline.connectAndImport("space", 1, SyncRepository("fixture", "sync", "main"), "actor", 1)
             oldRunId = runtime.runStore.start("space", 1, SyncTrigger.MANUAL).runId
             assertTrue(runtime.runStore.claim(oldRunId, "fixture-owner", 1))
+            runtime.runStore.freezePlan(
+                oldRunId,
+                "fixture-owner",
+                listOf(SyncRunPlanBatch(SyncProgressDirection.UPLOAD, "batch", 1536)),
+            )
             runtime.runStore.confirmed(oldRunId, "fixture-owner", SyncProgressDirection.UPLOAD, "batch", 1536)
             now = 17_515_000
             runtime.runStore.cancel(oldRunId)

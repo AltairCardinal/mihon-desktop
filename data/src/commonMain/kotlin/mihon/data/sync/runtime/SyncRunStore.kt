@@ -57,6 +57,8 @@ data class SyncRunSnapshot(
     val plannedItems: Long? = null,
     val pausedMillis: Long = 0,
     val pausedAt: Long? = null,
+    val planStartedAt: Long? = null,
+    val planPausedMillis: Long = 0,
 )
 
 data class SyncRunPlanBatch(
@@ -417,9 +419,12 @@ class SyncRunStore(
                         require(previous.item_count == batch.itemCount)
                     }
                 }
+                val plannedAt = clock()
+                sync_runtimeQueries.ensureRuntimePauseClock(runId)
+                sync_runtimeQueries.startRuntimePlanClock(plannedAt, runId)
                 sync_runtimeQueries.insertRuntimeConfirmation(runId, "PLAN", "round", 0, "PLANNED")
                 // Publish the fixed denominator through the existing run observation stream.
-                sync_runtimeQueries.addRuntimeConfirmedItemsOwned(0, clock(), runId, ownerSession)
+                sync_runtimeQueries.addRuntimeConfirmedItemsOwned(0, plannedAt, runId, ownerSession)
             }
             readPlan(runId)
         }
@@ -882,6 +887,8 @@ private fun tachiyomi.data.Sync_runtime_runs.toSnapshot(
     plannedItems = planned,
     pausedMillis = pauseClock?.paused_millis ?: 0,
     pausedAt = pauseClock?.paused_at,
+    planStartedAt = pauseClock?.planned_at,
+    planPausedMillis = pauseClock?.planned_paused_millis ?: 0,
     uploadedBaseline = uploaded_baseline,
     downloadedBaseline = downloaded_baseline,
     attemptId = attempt_id,

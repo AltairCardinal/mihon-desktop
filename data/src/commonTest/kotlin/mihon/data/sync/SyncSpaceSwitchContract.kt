@@ -472,7 +472,7 @@ abstract class SyncSpaceSwitchContract {
     }
 
     @Test
-    fun `saved intent restarts and recheck releases healthy old space`() = runBlocking {
+    fun `saved intent restarts and read only recheck retains continuation until explicit cancellation`() = runBlocking {
         open().use { storage ->
             SyncSpaceSwitchFixture(storage).use { fixture ->
                 fixture.prepareOld()
@@ -485,12 +485,15 @@ abstract class SyncSpaceSwitchContract {
                 }
                 fixture.old.secure.afterWrite = null
                 val reopened = fixture.old.runtime()
-                assertNotNull(reopened.activeSwitch())
+                val intent = requireNotNull(reopened.activeSwitch())
                 assertEquals(SyncSpaceRecoveryReason.SWITCH_PENDING, reopened.spaceRecovery()?.reason)
                 assertEquals(SyncRunStatus.SKIPPED, reopened.coordinator.synchronize(SyncTrigger.PERIODIC).status)
                 fixture.oldUnavailable = false
-                assertEquals(null, reopened.recheckSpace().recovery)
+                assertEquals(SyncSpaceRecoveryReason.SWITCH_PENDING, reopened.recheckSpace().recovery?.reason)
+                assertEquals(intent, reopened.activeSwitch())
+                reopened.cancelRecoverySwitch()
                 assertEquals(null, reopened.activeSwitch())
+                assertEquals(null, reopened.spaceRecovery())
                 assertNotNull(reopened.onboarding.storage.pending(1L))
                 assertEquals("space", reopened.connection()?.spaceId)
             }

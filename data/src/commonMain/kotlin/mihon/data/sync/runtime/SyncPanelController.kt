@@ -330,6 +330,8 @@ class SyncPanelController(
         }
         selectedBindings = selectedBindings.filter { (id, binding) -> references[id] == binding }
         val recovery = runtime.spaceRecovery()
+        val recoveryObservation = runtime.recoveryObservation()
+        val pendingSwitch = runtime.activeSwitch()
         val prefs = runtime.preferences
         val period = prefs.intervalMinutes()
         val next = if (period == 0) {
@@ -389,6 +391,19 @@ class SyncPanelController(
                 nowMillis = clock(),
                 nextSyncAtMillis = if (recovery != null) 0L else next,
                 recovery = recovery?.copy(busy = recoveryJob?.isActive == true),
+                recoveryAuthorization = if (authJob?.isActive == true) {
+                    it.recoveryAuthorization
+                } else {
+                    recoveryObservation?.authorization ?: SyncRecoveryAuthorization.IDLE
+                },
+                pendingRecoveryPurpose = pendingSwitch?.let { intent ->
+                    if (intent.purpose == SyncSpaceSwitchPurpose.CREATE) {
+                        SyncRecoveryContinuation.CREATE
+                    } else {
+                        SyncRecoveryContinuation.CONNECT
+                    }
+                },
+                canCancelRecoverySwitch = pendingSwitch?.stage == SyncSpaceSwitchStage.PREPARING,
                 importRemaining = imports,
                 importPaused = prefs.importPaused.get(),
                 records = runtime.records().asReversed(),
@@ -445,7 +460,28 @@ class SyncPanelController(
             effectiveBytes = 0,
             networkBytes = 0,
             totalBytes = null,
-            elapsedSeconds = ((clock() - run.createdAt).coerceAtLeast(0) / 1_000),
+            elapsedSeconds = if (run.plannedItems == null) {
+                0
+            } else {
+                val end = if (run.state in setOf(
+                        SyncRunState.SUCCEEDED,
+                        SyncRunState.PARTIAL,
+                        SyncRunState.FAILED,
+                        SyncRunState.BLOCKED,
+                        SyncRunState.CANCELLED,
+                    )
+                ) {
+                    run.updatedAt
+                } else {
+                    run.pausedAt ?: clock()
+                }
+                (
+                    (
+                        end - (run.planStartedAt ?: run.createdAt) -
+                            (run.pausedMillis - run.planPausedMillis).coerceAtLeast(0)
+                        ).coerceAtLeast(0) / 1_000
+                    )
+            },
             hold = when (run.state) {
                 SyncRunState.PAUSED_USER -> SyncProgressHold.PAUSED
                 SyncRunState.WAITING_NETWORK -> SyncProgressHold.OFFLINE
@@ -485,7 +521,9 @@ class SyncPanelController(
                 mutableState.update { it.copy(page = SyncPanelPage.RECOVERY) }
             }
             SyncPanelAction.RecheckSpace -> recheckSpace()
-            SyncPanelAction.CheckAuthorization -> authorize()
+            SyncPanelAction.CheckAuthorization -> checkAuthorization()
+            SyncPanelAction.ManageAuthorization -> authorize()
+            SyncPanelAction.ContinueRecovery -> runtime.activeSwitch()?.let { resumeSwitch(it) }
             SyncPanelAction.ConnectOtherSpace -> beginSwitch(SyncSpaceSwitchPurpose.CONNECT)
             SyncPanelAction.CreateNewSpace -> {
                 cancelRecovery()
@@ -755,6 +793,13 @@ class SyncPanelController(
                     }
                     SyncPanelQuestion.SWITCH_SPACE -> beginSwitch(SyncSpaceSwitchPurpose.CONNECT)
                     SyncPanelQuestion.ABANDON_LEGACY -> abandonLegacyPending()
+                    SyncPanelQuestion.CANCEL_RECOVERY_SWITCH -> {
+                        cancelSwitchPreparation()
+                        cancelAuthorization()
+                        runtime.cancelRecoverySwitch()
+                        mutableState.update { it.copy(page = SyncPanelPage.RECOVERY) }
+                        refresh()
+                    }
                 }
             }
         }
@@ -809,6 +854,11 @@ class SyncPanelController(
     }
 
     private suspend fun cancelAuthorization() {
+        val interrupted = state.value.recoveryAuthorization in setOf(
+            SyncRecoveryAuthorization.CHECKING,
+            SyncRecoveryAuthorization.WAITING,
+            SyncRecoveryAuthorization.VERIFYING,
+        )
         authVersion++
         authJob?.cancelAndJoin()
         authJob = null
@@ -818,9 +868,50 @@ class SyncPanelController(
             it.copy(deviceCode = null, setupBusy = setupJob?.isActive == true, authRequestStartedAtMillis = null)
         }
         deviceBrowserOpened.set(false)
+        if (interrupted) {
+            mutableState.update { it.copy(recoveryAuthorization = SyncRecoveryAuthorization.CANCELLED) }
+            runtime.recordRecoveryAuthorization(SyncRecoveryAuthorization.CANCELLED)
+        }
+    }
+
+    private suspend fun checkAuthorization() {
+        if (authJob?.isActive == true || recoveryJob?.isActive == true) return
+        cancelAuthorization()
+        val version = authVersion
+        val session = panelSession
+        mutableState.update { it.copy(recoveryAuthorization = SyncRecoveryAuthorization.CHECKING, authFailure = null) }
+        runtime.recordRecoveryAuthorization(SyncRecoveryAuthorization.CHECKING)
+        authJob = scope.launch {
+            val checked = runtime.checkRecoveryAuthorization()
+            enqueue {
+                if (version != authVersion || session != panelSession || !state.value.visible) return@enqueue
+                authJob = null
+                when {
+                    checked.confirmed -> {
+                        mutableState.update { it.copy(recoveryAuthorization = SyncRecoveryAuthorization.CONFIRMED) }
+                        refresh()
+                        recheckSpace()
+                    }
+                    checked.required -> {
+                        runtime.recordRecoveryAuthorization(SyncRecoveryAuthorization.IDLE, clearConfirmation = true)
+                        mutableState.update { it.copy(recoveryAuthorization = SyncRecoveryAuthorization.IDLE) }
+                        refresh()
+                        authorize()
+                    }
+                    else -> {
+                        runtime.recordRecoveryAuthorization(SyncRecoveryAuthorization.FAILED)
+                        mutableState.update {
+                            it.copy(recoveryAuthorization = SyncRecoveryAuthorization.FAILED, problem = checked.problem)
+                        }
+                        refresh()
+                    }
+                }
+            }
+        }
     }
 
     private suspend fun authorize() {
+        if (authJob?.isActive == true) return
         cancelRecovery()
         setupVersion++
         setupJob?.cancelAndJoin()
@@ -838,27 +929,53 @@ class SyncPanelController(
                 authFailure = null,
                 authRequestStartedAtMillis = startedAt,
                 nowMillis = startedAt,
+                recoveryAuthorization = SyncRecoveryAuthorization.CHECKING,
             )
         }
+        runtime.recordRecoveryAuthorization(SyncRecoveryAuthorization.CHECKING)
+        val session = panelSession
         authJob = scope.launch {
             val result = runtime.authorization.authorize(SyncRuntime.CLIENT_ID) { code ->
                 enqueue {
-                    if (version == authVersion && state.value.visible) {
-                        mutableState.update { it.copy(deviceCode = code) }
+                    if (version == authVersion && session == panelSession && state.value.visible) {
+                        runtime.recordRecoveryAuthorization(SyncRecoveryAuthorization.WAITING)
+                        mutableState.update {
+                            it.copy(deviceCode = code, recoveryAuthorization = SyncRecoveryAuthorization.WAITING)
+                        }
                     }
                 }
             }
             enqueue {
-                if (version != authVersion || !state.value.visible) return@enqueue
+                if (version != authVersion || session != panelSession || !state.value.visible) return@enqueue
+                authJob = null
                 when (result) {
                     is GitHubDeviceAuthResult.Authorized -> {
-                        runtime.acceptAuthorization(previous, result.token)
+                        mutableState.update { it.copy(recoveryAuthorization = SyncRecoveryAuthorization.VERIFYING) }
+                        try {
+                            runtime.acceptAuthorization(previous, result.token)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            runtime.recordRecoveryAuthorization(SyncRecoveryAuthorization.FAILED)
+                            mutableState.update {
+                                it.copy(
+                                    deviceCode = null,
+                                    setupBusy = false,
+                                    authRequestStartedAtMillis = null,
+                                    recoveryAuthorization = SyncRecoveryAuthorization.FAILED,
+                                    problem = failure.syncProblem(),
+                                    setupProblem = (failure as? SyncSetupException)?.problem,
+                                )
+                            }
+                            return@enqueue
+                        }
                         mutableState.update {
                             it.copy(
                                 deviceCode = null,
                                 setupStep = SyncSetupStep.DISCOVERING,
                                 setupBusy = false,
                                 authRequestStartedAtMillis = null,
+                                recoveryAuthorization = SyncRecoveryAuthorization.CONFIRMED,
                             )
                         }
                         if (runtime.activeSwitch() != null) {
@@ -870,13 +987,17 @@ class SyncPanelController(
                             discover()
                         }
                     }
-                    is GitHubDeviceAuthResult.Failed -> mutableState.update {
-                        it.copy(
-                            deviceCode = null,
-                            setupBusy = false,
-                            authFailure = result.failure.reason,
-                            authRequestStartedAtMillis = null,
-                        )
+                    is GitHubDeviceAuthResult.Failed -> {
+                        runtime.recordRecoveryAuthorization(SyncRecoveryAuthorization.FAILED)
+                        mutableState.update {
+                            it.copy(
+                                deviceCode = null,
+                                setupBusy = false,
+                                authFailure = result.failure.reason,
+                                authRequestStartedAtMillis = null,
+                                recoveryAuthorization = SyncRecoveryAuthorization.FAILED,
+                            )
+                        }
                     }
                 }
             }
@@ -884,7 +1005,7 @@ class SyncPanelController(
     }
 
     private fun recheckSpace() {
-        if (recoveryJob?.isActive == true) return
+        if (recoveryJob?.isActive == true || authJob?.isActive == true) return
         val session = panelSession
         val version = recoveryVersion
         val page = state.value.page
@@ -1194,6 +1315,10 @@ class SyncPanelController(
     }
 
     private suspend fun beginSwitch(purpose: SyncSpaceSwitchPurpose) {
+        runtime.activeSwitch()?.let {
+            resumeSwitch(it)
+            return
+        }
         bulkJob?.cancelAndJoin()
         bulkJob = null
         cancelRecovery()
