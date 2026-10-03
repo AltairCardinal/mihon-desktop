@@ -2,7 +2,7 @@
 
 状态：DP01 A–E 已完成实施、独立审查、相关验证及功能提交 `2a0e7570b7f359c4899e45f95769cc13e553f228`。DP02 首次矩阵后的修复提交为 `f95ffeb1e0c75a11f9e2326cd06b1500dd434e7c`；第二次矩阵剩余5项的限定修复、追加局部复审和31项相关验证已完成，提交为 `ca4abd37a32c57c7f7cb4486f1bdfa78af5aa0e1`。用户批准的第三次 Desktop 完整复验已自然通过：3250项、0失败、0错误、3条件跳过；共享两个目标、Android 应用及客户端的第二次完整结果仍适用。
 
-DP02保持未勾选。2026-10-03按根因收敛完成Android test-only修复：39个既定方法分轮有效通过，确认原裁边／Copy夹具与恢复验收问题已修复，正式宿主APK未变。Windows平台协程依赖泄漏已按严格红绿修复，真实production Main与Library59项回归通过，Android解析图前后相同，修复提交 `84d98c7176`。用户批准的追加最终矩阵已执行Desktop完整3251项（0失败／错误，3条件skip）和共享JVM620项；共享Android525与客户端53复用有效结果，纯换行格式修正后检查通过，应用Android完整单元测试正在补上首次实际执行。Windows/macOS新正式构建、冷启动、原生输入与B1/B2真实案例仍未完成；旧正式产物和此前失败记录保留，不把局部通过等同最终交付。
+DP02保持未勾选。2026-10-03按根因收敛完成Android test-only修复：39个既定方法分轮有效通过，确认原裁边／Copy夹具与恢复验收问题已修复，正式宿主APK未变。Windows平台协程依赖泄漏已按严格红绿修复，真实production Main与Library59项回归通过，Android解析图前后相同，修复提交 `84d98c7176`。用户批准的追加最终矩阵已执行Desktop完整3251项（0失败／错误，3条件skip）和共享JVM620项；共享Android525与客户端53复用有效结果，纯换行格式修正后检查通过，应用Android完整708项已完成，0失败／错误、7原条件skip。Windows/macOS正式70构建完成；Windows冷启动及用户B1/B2运行结果已取得，macOS完整原生运行与Android实体人工确认仍未完成；旧正式产物和此前失败记录保留，不把局部通过等同最终交付。
 
 基线 `31a6ab7269967cc615ed54ac2ca58fe8d9b3f1db`。本报告为本次唯一聚合证据；事实与构造夹具分别记录，最新结果见末节。
 
@@ -808,3 +808,8 @@ Windows严格红阶段新增 `DesktopProductionMainDispatcherTest`：Gradle提�
 2026-10-03最终矩阵已完成：Desktop3251、共享JVM620、共享Android525、Android应用708、客户端53；除上述原条件skip外零失败／错误，最终spotlessCheck通过。Windows `udp-final-third-windows-build-only`自然PASSED，发布0.11.19.70.84d98c7；Final unpacked EXE为 `D:/Codex/worktrees/0877/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.70.84d98c7-unpacked/Mihon Desktop.exe`，文件存在。新正式包在此前失败的隔离配置启动真实Library READY，外部窗口确认书架及正常章节入口第169话真实图片；确认正式包冷启动问题已修复。用户移动窗口后重新核对实际窗口和命中PID；用户随后选择自行完成Windows双页／键鼠验收，停止Windows原生输入，B1/B2结果待用户反馈，DP02不勾选。
 
 Mac同源码production Main定向测试1项通过，真实Swing EDT／Library完成；正式构建首次被Homebrew vendor guard拦截，不是业务失败。核对项目脚本原有Temurin21.0.10后以其绝对JAVA_HOME继续build-only，恢复失败构建分配的BUILD以保持两端70一致；`udp-final-third-macos-build-only-temurin`自然成功47秒，独立部署到 `/Users/altair/Library/Caches/mihon-shared-dual-page-20261002-f95ffeb/artifacts/Mihon Desktop.app`。LaunchServices启动实际PID47006，HTTP healthy，显示器正常唤醒后原生Tab投递成功；尚未完成正常LocalSource入口B1/B2及完整键鼠断言，不标为运行验收通过。没有重复完整JVM测试，也没有修改日常应用。
+
+
+2026-10-03 Windows用户现场验收（正式0.11.19.70.84d98c7）：B1第17页先居中随后右侧，前组15/16，顺读尾部验收无误，退出重开结果一致；B2第20页居中，第2页左侧，页面不丢失。用户另观察未充分加载时当前页由居中移到右槽，随后左侧页出现。设计4.2第5优先级明确未决组先呈现目标页居中，再根据有效事实重排，7节保持原定位目标；与该加载策略一致，最终分组通过不等同没有视觉移动。没有复现反复来回摆动或目标丢失，不据此新增产品修复／全量测试。
+
+纠正主代理之前的手动说明：当前Desktop键盘0／End使用presentation.displayUnits总数，而该序列包含章界提示；GoToPage处理命中transitionDirection时选中提示单元。因此用户按0先看到“下一页没有啦”，再退到17，与当前接线一致。此前将0说明为“直接到源末页”不准确；直接定位源17应使用底部源页码进度条。用户现有反馈证明边界前17页与15/16可读，但不能替代源页码条直接17的独立结果。此项不擅自修改快捷键语义，不把说明错误计为新增双页产品回归。Windows实测反馈保留，DP02仍未勾选。
