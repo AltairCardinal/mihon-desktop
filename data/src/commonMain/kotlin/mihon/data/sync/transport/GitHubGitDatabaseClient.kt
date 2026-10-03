@@ -24,6 +24,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import mihon.data.sync.auth.hasExplicitEmptyRepositoryMessage
 import mihon.data.sync.crypto.SyncAeadEngineFactory
+import mihon.data.sync.http.SyncFailureDiagnostics
+import mihon.data.sync.http.SyncFailurePhase
 import mihon.data.sync.http.SyncHttpBodyWork
 import mihon.data.sync.http.SyncHttpClient
 import mihon.data.sync.http.SyncHttpException
@@ -879,7 +881,8 @@ class GitHubSyncTransport(
         initializeAttempt(repository, spaceId, generation, intent, saveCheckpoint)
     } catch (error: CancellationException) {
         throw error
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+        SyncFailureDiagnostics.record(SyncFailurePhase.RESUME_INITIALIZE, error, stage = intent.stage)
         SyncInitializationResult.Failed("sync initialization could not be confirmed")
     }
 

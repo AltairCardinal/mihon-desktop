@@ -72,3 +72,21 @@ Windows 正式脚本构建 0.11.19.75.b08d06d，发布运行版本与真实扩�
 
 
 Windows 正式脚本构建 0.11.19.76.6924d21，并通过版本及真实扩展安装的发布运行验收（sync-setup-blank-windows）。发布 EXE 为 `app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.76.6924d21-unpacked/Mihon Desktop.exe`。Android 正式候选 0.19.4-aex.26/vc44 构建及独立 verify 通过，v2/v3 原证书连续，R8/资源压缩开启，APK 位于 `app/artifacts/android/0.19.4-aex.26-vc44-6924d2112b-release/`。构建基线 6924d2112b 包含已验证的本次未提交功能 diff；Android 真机和实际 GitHub 检查原因仍由用户升级后验收，未执行 macOS 构建。
+
+
+## 2026-10-03：实体 Android 设置失败排障
+
+用户明确授权调试已连接设备。ADB 核对目标实体应用为本 fork 正式 vc44，前台重试仍返回通用错误，现有日志不足以确定底层原因；设备时钟正常。没有清空应用、空间、凭据或修改设备 VPN/代理。production DI 使用 NetworkHelper.client；SyncHttpClient 克隆保留其 DNS/TLS/代理配置，清除请求日志 interceptor 以避免凭据泄漏。
+
+发现诊断缺口：HTTP callback 把原 IOException 归一化，发现及待完成设置查询进一步归并为 RETRYABLE。取证采用固定 sync_failure 日志，只有阶段枚举、允许列表异常分类及 HTTP 状态码，不记录 message、Throwable、stack、账号、URL、header 或 body；日志异常被隔离，不改变原业务结果、取消或客户端配置。只在真实发布运行时通过原操作链路验收；连接异常不直接认定代理握手失败，独立 curl/TCP 不能作为业务验收证据。
+
+
+取证实现红测 3/3 因缺少固定日志失败，最终 40/40 focused 通过（新诊断 5、响应边界 1、发现契约 34），data 格式与 diff 检查通过（sync-failure-diagnostic-final2，25 秒）。主代理独立核对固定词汇、归一化前捕获、日志异常隔离、取消传播及客户端继承，无待修项。正式候选 vc45/0.19.4-aex.27 构建、签名及指定实体设备覆盖安装校验通过（原身份、原证书；未清空数据）。当时 ADB 报告休眠/锁屏标志且 UI dump 属于系统界面，主代理误判为实机锁屏并要求解锁；用户澄清平板没有锁屏。随后主应用界面可操作。系统标志不能单独作为实机锁屏或故障原因的证据。
+
+vc45 实体操作观察：主界面重试收到 HTTP 404 并安排重试；设置进入上次未完成的设置恢复时，先显示“正在准备同步空间”，再退到通用重试。HTTP 响应证明此次请求已进入 HTTP 阶段，但 404 也可能属于初始化正常探测，不能据此认定删除或权限原因。代码路径为 pending Current→runSetup→resume，初轮脱敏日志尚未覆盖恢复内部阶段。为区分仓库核验/初始化/快照读取，补固定恢复阶段、newSpace 布尔、持久 stage 枚举及初始化结果；初始化 reason 只允许已知固定文案映射成枚举，其余 OTHER，不打印原文。当前仍不改变初始化策略。
+
+恢复阶段诊断红测确认真实 resume 缺少阶段日志；最终诊断集成 7/7 与 v3 初始化相关契约、data 格式检查通过（sync-resume-diagnostic-final）。主代理核对原恢复分支、异常重抛、取消与固定 reason 映射，无初始化政策变更。新增测试与日志超过机械行数估算，但属于同一脱敏取证批次，不包含空间迁移或重置。
+
+正式候选 vc46/0.19.4-aex.28 构建成功（3 分 24 秒），原签名覆盖安装并核验成功；产物为 `app/artifacts/android/0.19.4-aex.28-vc46-6b49d81bab-release/Mihon-Fork-0.19.4-aex.28-vc46-release-universal.apk`。指定主显示屏后可通过 ADB 操作应用，未要求用户解锁，也没有变更设备锁屏设置。真实设置恢复取得固定日志：`phase=RESUME_VERIFY_REPOSITORY class=HTTP status=404 newSpace=true stage=CONNECTED`。因此已确认本轮致命失败是保存的仓库地址在核验阶段不可访问；不是初始化正常 404 探测，也未进入快照读取。404 本身不能区分仓库删除、改名、授权不可见，不将这些假设写成已证实原因。
+
+源码同时确认“更换同步空间”确认后仍走 pending Current 恢复旧记录，不能绕过此失败重新选择。当前 CONNECTED 设置记录仍可能保护首次交换未结算的导入，因此不能为恢复界面盲目清除。下一步须核对远端现状，再设计保留旧绑定、数据和待上传批次的显式更换流程；本批次仅完成诊断，尚未修复实际同步失败。

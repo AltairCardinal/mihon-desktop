@@ -191,6 +191,7 @@ class SyncHttpClient(
             continuation.invokeOnCancellation { call.cancel() }
             call.enqueue(object : Callback {
                 override fun onFailure(call: Call, error: IOException) {
+                    if (!call.isCanceled()) SyncFailureDiagnostics.record(SyncFailurePhase.HTTP_CALL, error)
                     metrics.recordHttp(0L, failed = true)
                     if (!continuation.isCancelled) {
                         continuation.resumeWithException(
@@ -200,6 +201,13 @@ class SyncHttpClient(
                 }
 
                 override fun onResponse(call: Call, response: Response) {
+                    if (response.code !in 200..299) {
+                        SyncFailureDiagnostics.record(
+                            SyncFailurePhase.HTTP_RESPONSE,
+                            status = response.code,
+                            kind = SyncFailureKind.HTTP,
+                        )
+                    }
                     try {
                         val result = response.use {
                             val headers = it.headers.toMap().mapKeys { (key, _) -> key.lowercase() }
@@ -217,6 +225,7 @@ class SyncHttpClient(
                     } catch (error: CancellationException) {
                         if (!continuation.isCancelled) continuation.resumeWithException(error)
                     } catch (error: Exception) {
+                        SyncFailureDiagnostics.record(SyncFailurePhase.HTTP_BODY, error, response.code)
                         metrics.recordHttp(0L, failed = true)
                         if (!continuation.isCancelled) {
                             continuation.resumeWithException(

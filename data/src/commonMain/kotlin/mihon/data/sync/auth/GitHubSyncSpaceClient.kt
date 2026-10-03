@@ -10,6 +10,9 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
+import mihon.data.sync.http.SyncFailureDiagnostics
+import mihon.data.sync.http.SyncFailureKind
+import mihon.data.sync.http.SyncFailurePhase
 import mihon.data.sync.http.SyncHttpException
 import mihon.data.sync.http.SyncHttpRequestGate
 import mihon.data.sync.http.SyncHttpResponse
@@ -139,8 +142,10 @@ class GitHubSyncSpaceClient(
     } catch (error: CancellationException) {
         throw error
     } catch (error: DiscoveryException) {
+        SyncFailureDiagnostics.record(SyncFailurePhase.DISCOVERY, kind = SyncFailureKind.DISCOVERY)
         discoveryResult(error.account, error.problem, error.installation)
     } catch (error: Exception) {
+        SyncFailureDiagnostics.record(SyncFailurePhase.DISCOVERY, error)
         SyncSpaceDiscovery.Failed(error.problem())
     }
 

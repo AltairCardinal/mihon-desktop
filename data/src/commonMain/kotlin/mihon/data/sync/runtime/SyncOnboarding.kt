@@ -1,5 +1,6 @@
 package mihon.data.sync.runtime
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonObject
@@ -15,6 +16,8 @@ import mihon.data.sync.auth.SyncGitHubAccount
 import mihon.data.sync.auth.SyncSpaceCreation
 import mihon.data.sync.auth.SyncSpaceDiscovery
 import mihon.data.sync.crypto.SyncSpaceCrypto
+import mihon.data.sync.http.SyncFailureDiagnostics
+import mihon.data.sync.http.SyncFailurePhase
 import mihon.data.sync.http.SyncHttpBodyObserver
 import mihon.data.sync.http.SyncHttpException
 import mihon.data.sync.http.SyncHttpRequestGate
@@ -63,10 +66,19 @@ internal class SyncOnboarding(
     suspend fun pending(): StoredSyncSetup? = storage.pending(session().account.id)
 
     suspend fun pendingForCurrentAccount(): SyncPendingSetup {
-        val current = session().account.id
-        storage.legacyPending(current)?.let { return SyncPendingSetup.Legacy(it) }
-        storage.pending(current)?.let { return SyncPendingSetup.Current(it) }
-        return SyncPendingSetup.None
+        var phase = SyncFailurePhase.PENDING_ACCOUNT
+        try {
+            val current = session().account.id
+            phase = SyncFailurePhase.PENDING_STORAGE
+            storage.legacyPending(current)?.let { return SyncPendingSetup.Legacy(it) }
+            storage.pending(current)?.let { return SyncPendingSetup.Current(it) }
+            return SyncPendingSetup.None
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            SyncFailureDiagnostics.record(phase, error)
+            throw error
+        }
     }
 
     /** Reads the fixed repository and valid v2 descriptors without changing the legacy local record. */
@@ -190,99 +202,134 @@ internal class SyncOnboarding(
     }
 
     suspend fun resume(initial: StoredSyncSetup): SyncSetupOutcome {
-        var setup = storage.pending(initial.accountId)
-            ?.takeIf { it.attemptId == initial.attemptId } ?: throw IllegalStateException("sync setup changed")
-        val session = session(setup.accountId)
-        val material = setup.material.material()
-        val requestGate = runtime.accountHttpRequestGate(session.account.id)
-        if (setup.newSpace) {
-            if (setup.stage == SyncInitializationStage.VERIFIED_EMPTY) {
-                val rechecked = spaces(session.token, requestGate).createOrResume(
-                    SyncCreationAttempt(session.account, setup.attemptId, repositoryId = setup.repositoryId),
-                ) {}
-                when (rechecked) {
-                    is SyncSpaceCreation.Failed -> throw SyncSetupException(rechecked.problem)
-                    is SyncSpaceCreation.Existing -> {
-                        if (rechecked.space.repositoryId != setup.repositoryId ||
-                            rechecked.space.descriptor != material.descriptor
+        var phase = SyncFailurePhase.RESUME_LOAD
+        var diagnosticNewSpace = initial.newSpace
+        var diagnosticStage = initial.stage
+        try {
+            var setup = storage.pending(initial.accountId)
+                ?.takeIf { it.attemptId == initial.attemptId } ?: throw IllegalStateException("sync setup changed")
+            diagnosticNewSpace = setup.newSpace
+            diagnosticStage = setup.stage
+            phase = SyncFailurePhase.RESUME_ACCOUNT
+            val session = session(setup.accountId)
+            phase = SyncFailurePhase.RESUME_LOAD
+            val material = setup.material.material()
+            val requestGate = runtime.accountHttpRequestGate(session.account.id)
+            if (setup.newSpace) {
+                phase = SyncFailurePhase.RESUME_INITIALIZE
+                if (setup.stage == SyncInitializationStage.VERIFIED_EMPTY) {
+                    val rechecked = spaces(session.token, requestGate).createOrResume(
+                        SyncCreationAttempt(session.account, setup.attemptId, repositoryId = setup.repositoryId),
+                    ) {}
+                    when (rechecked) {
+                        is SyncSpaceCreation.Failed -> throw SyncSetupException(rechecked.problem)
+                        is SyncSpaceCreation.Existing -> {
+                            if (rechecked.space.repositoryId != setup.repositoryId ||
+                                rechecked.space.descriptor != material.descriptor
+                            ) {
+                                if (!setup.matchesFixedRepository(rechecked.space)) {
+                                    throw SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED)
+                                }
+                                storage.clear(setup)
+                                return SyncSetupOutcome.Existing(rechecked.space)
+                            }
+                        }
+                        is SyncSpaceCreation.Ready -> {
+                            if (rechecked.repositoryId != setup.repositoryId ||
+                                rechecked.defaultBranch != setup.defaultBranch
+                            ) {
+                                throw SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED)
+                            }
+                        }
+                    }
+                }
+                phase = SyncFailurePhase.RESUME_VERIFY_REPOSITORY
+                verifyRepository(session, setup.repository(), setup.repositoryId)
+                phase = SyncFailurePhase.RESUME_INITIALIZE
+                val result = transport(
+                    session.token,
+                    material,
+                    repositoryId = setup.repositoryId,
+                    persistentObjectCacheDirectory = runtime.persistentObjectCacheDirectory,
+                    requestGate = requestGate,
+                ).initialize(
+                    setup.repository(),
+                    material.descriptor.spaceId,
+                    material.descriptor.generation,
+                    setup.initializationIntent(),
+                ) { checkpoint ->
+                    require(checkpoint.stage.ordinal >= setup.stage.ordinal) { "sync setup stage moved backwards" }
+                    val next = setup.copy(
+                        stage = checkpoint.stage,
+                        confirmedBootstrapCommitSha = checkpoint.bootstrapCommitSha,
+                        confirmedBootstrapTreeSha = checkpoint.bootstrapTreeSha,
+                    )
+                    phase = SyncFailurePhase.RESUME_SAVE
+                    storage.save(next, setup)
+                    setup = next
+                    diagnosticStage = next.stage
+                    phase = SyncFailurePhase.RESUME_INITIALIZE
+                }
+                SyncFailureDiagnostics.record(
+                    SyncFailurePhase.RESUME_INITIALIZE_RESULT,
+                    newSpace = setup.newSpace,
+                    stage = setup.stage,
+                    result = result,
+                )
+                when (result) {
+                    is SyncInitializationResult.Initialized, is SyncInitializationResult.Adopted -> {
+                        if (setup.stage != SyncInitializationStage.SPACE_CONFIRMED &&
+                            setup.stage != SyncInitializationStage.CONNECTED
                         ) {
-                            if (!setup.matchesFixedRepository(rechecked.space)) {
+                            throw SyncSetupException(SyncDiscoveryProblem.RETRYABLE)
+                        }
+                    }
+                    else -> {
+                        val found = spaces(session.token, requestGate).discover(setup.accountId)
+                        if (found is SyncSpaceDiscovery.Found && found.space.descriptor != material.descriptor) {
+                            if (!setup.matchesFixedRepository(found.space)) {
                                 throw SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED)
                             }
                             storage.clear(setup)
-                            return SyncSetupOutcome.Existing(rechecked.space)
+                            return SyncSetupOutcome.Existing(found.space)
                         }
-                    }
-                    is SyncSpaceCreation.Ready -> {
-                        if (rechecked.repositoryId != setup.repositoryId ||
-                            rechecked.defaultBranch != setup.defaultBranch
-                        ) {
-                            throw SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED)
-                        }
-                    }
-                }
-            }
-            verifyRepository(session, setup.repository(), setup.repositoryId)
-            val result = transport(
-                session.token,
-                material,
-                repositoryId = setup.repositoryId,
-                persistentObjectCacheDirectory = runtime.persistentObjectCacheDirectory,
-                requestGate = requestGate,
-            ).initialize(
-                setup.repository(),
-                material.descriptor.spaceId,
-                material.descriptor.generation,
-                setup.initializationIntent(),
-            ) { checkpoint ->
-                require(checkpoint.stage.ordinal >= setup.stage.ordinal) { "sync setup stage moved backwards" }
-                val next = setup.copy(
-                    stage = checkpoint.stage,
-                    confirmedBootstrapCommitSha = checkpoint.bootstrapCommitSha,
-                    confirmedBootstrapTreeSha = checkpoint.bootstrapTreeSha,
-                )
-                storage.save(next, setup)
-                setup = next
-            }
-            when (result) {
-                is SyncInitializationResult.Initialized, is SyncInitializationResult.Adopted -> {
-                    if (setup.stage != SyncInitializationStage.SPACE_CONFIRMED &&
-                        setup.stage != SyncInitializationStage.CONNECTED
-                    ) {
                         throw SyncSetupException(SyncDiscoveryProblem.RETRYABLE)
                     }
                 }
-                else -> {
-                    val found = spaces(session.token, requestGate).discover(setup.accountId)
-                    if (found is SyncSpaceDiscovery.Found && found.space.descriptor != material.descriptor) {
-                        if (!setup.matchesFixedRepository(found.space)) {
-                            throw SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED)
-                        }
-                        storage.clear(setup)
-                        return SyncSetupOutcome.Existing(found.space)
-                    }
-                    throw SyncSetupException(SyncDiscoveryProblem.RETRYABLE)
-                }
             }
+            phase = SyncFailurePhase.RESUME_VERIFY_REPOSITORY
+            verifyRepository(session, setup.repository(), requireNotNull(setup.repositoryId))
+            phase = SyncFailurePhase.RESUME_READ_SNAPSHOT
+            transport(
+                session.token,
+                material,
+                repositoryId = requireNotNull(setup.repositoryId),
+                manifestStore = snapshotManifestStore,
+                manifestBinding = setup.snapshotManifestBinding(),
+                persistentObjectCacheDirectory = runtime.persistentObjectCacheDirectory,
+                requestGate = requestGate,
+            ).readSnapshot(
+                setup.repository(),
+                material.descriptor.spaceId,
+                material.descriptor.generation,
+            ).getOrThrow()
+            phase = SyncFailurePhase.RESUME_BIND
+            runtime.bindSetup(setup)
+            val connected = setup.copy(stage = SyncInitializationStage.CONNECTED)
+            phase = SyncFailurePhase.RESUME_SAVE
+            storage.save(connected, setup)
+            return SyncSetupOutcome.Connected(connected)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            SyncFailureDiagnostics.record(
+                phase,
+                error,
+                newSpace = diagnosticNewSpace,
+                stage = diagnosticStage,
+            )
+            throw error
         }
-        verifyRepository(session, setup.repository(), requireNotNull(setup.repositoryId))
-        transport(
-            session.token,
-            material,
-            repositoryId = requireNotNull(setup.repositoryId),
-            manifestStore = snapshotManifestStore,
-            manifestBinding = setup.snapshotManifestBinding(),
-            persistentObjectCacheDirectory = runtime.persistentObjectCacheDirectory,
-            requestGate = requestGate,
-        ).readSnapshot(
-            setup.repository(),
-            material.descriptor.spaceId,
-            material.descriptor.generation,
-        ).getOrThrow()
-        runtime.bindSetup(setup)
-        val connected = setup.copy(stage = SyncInitializationStage.CONNECTED)
-        storage.save(connected, setup)
-        return SyncSetupOutcome.Connected(connected)
     }
 
     suspend fun complete(setup: StoredSyncSetup) {
