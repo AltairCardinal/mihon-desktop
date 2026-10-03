@@ -1996,6 +1996,7 @@
     <string name="sync_import_paused_summary">首次合并已暂停</string>
     <string name="sync_bulk_paused_summary">已选事项处理已暂停</string>
     <string name="sync_view_processing">查看处理进度</string>
+    <string name="sync_diagnostic_information">诊断信息</string>
     <string name="sync_diagnostics">诊断</string>
     <string name="sync_diagnostic_description">采集本机同步事实，不包含账号、仓库、凭据或作品信息。仅保留本进程最近128次观察到的状态变化；JSON导出上限256KiB，超限会标明截断。可再次采集比较变化。</string>
     <string name="sync_diagnostic_capture">采集快照</string>

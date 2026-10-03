@@ -1770,8 +1770,10 @@ private fun SetupPage(
                 }
             }
             SyncSetupStep.ERROR -> {
-                item { SetupErrorActions(state, dispatch) }
                 val problem = state.setupProblem
+                val installationGuidance = problem in INSTALLATION_RECOVERY_PROBLEMS &&
+                    problem != SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE
+                item { SetupErrorActions(state, dispatch, installationGuidance) }
                 val needsRepositoryGuide = problem in setOf(
                     SyncDiscoveryProblem.NEEDS_INSTALLATION,
                     SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS,
@@ -1864,13 +1866,26 @@ private fun SetupPage(
                         }
                     }
                 }
+                if (installationGuidance) {
+                    item {
+                        Action(
+                            "sync-setup-error-details",
+                            MR.strings.sync_diagnostic_information,
+                            state.recoveryActionsEnabled && !state.busy,
+                        ) { dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS)) }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SetupErrorActions(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit) {
+private fun SetupErrorActions(
+    state: SyncPanelState,
+    dispatch: (SyncPanelAction) -> Unit,
+    installationGuidance: Boolean,
+) {
     val enabled = state.recoveryActionsEnabled && !state.busy
     val reason = state.recovery?.reason
     val unavailable = reason == SyncSpaceRecoveryReason.SPACE_UNAVAILABLE ||
@@ -1911,8 +1926,14 @@ private fun SetupErrorActions(state: SyncPanelState, dispatch: (SyncPanelAction)
             }
         }
         if (!unavailable || !state.canChangeSpace) {
-            ErrorRecoveryExit(state, dispatch, "sync-setup")
-        } else {
+            ErrorRecoveryExit(
+                state,
+                dispatch,
+                "sync-setup",
+                showDiagnostics = !installationGuidance,
+                allowConfigureSpace = !installationGuidance,
+            )
+        } else if (!installationGuidance) {
             Action("sync-setup-error-details", MR.strings.sync_recovery_details, enabled) {
                 dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
             }
@@ -1921,7 +1942,13 @@ private fun SetupErrorActions(state: SyncPanelState, dispatch: (SyncPanelAction)
 }
 
 @Composable
-private fun ErrorRecoveryExit(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit, prefix: String) {
+private fun ErrorRecoveryExit(
+    state: SyncPanelState,
+    dispatch: (SyncPanelAction) -> Unit,
+    prefix: String,
+    showDiagnostics: Boolean = true,
+    allowConfigureSpace: Boolean = true,
+) {
     val enabled = state.recoveryActionsEnabled && !state.busy
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (state.canChangeSpace) {
@@ -1929,7 +1956,8 @@ private fun ErrorRecoveryExit(state: SyncPanelState, dispatch: (SyncPanelAction)
             Action("$prefix-recovery-open", MR.strings.sync_switch, enabled) {
                 dispatch(SyncPanelAction.OpenRecovery)
             }
-        } else if (state.page == SyncPanelPage.SETUP && state.loaded && state.connection == null &&
+        } else if (allowConfigureSpace && state.page == SyncPanelPage.SETUP &&
+            state.loaded && state.connection == null &&
             state.problem !in setOf(SyncRunProblem.STORAGE, SyncRunProblem.INVALID_DATA) &&
             state.setupProblem != SyncDiscoveryProblem.INCOMPATIBLE
         ) {
@@ -1937,8 +1965,10 @@ private fun ErrorRecoveryExit(state: SyncPanelState, dispatch: (SyncPanelAction)
                 dispatch(SyncPanelAction.BeginSetup)
             }
         }
-        Action("$prefix-error-details", MR.strings.sync_recovery_details, enabled) {
-            dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+        if (showDiagnostics) {
+            Action("$prefix-error-details", MR.strings.sync_recovery_details, enabled) {
+                dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+            }
         }
     }
 }

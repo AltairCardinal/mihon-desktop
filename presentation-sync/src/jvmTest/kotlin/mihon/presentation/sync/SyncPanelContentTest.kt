@@ -3449,6 +3449,48 @@ class SyncPanelContentTest {
         awaitTag("sync-recovery-details")
     }
 
+    @Test
+    fun `installation guide keeps diagnostics after setup actions without restarting configuration`() = runBlocking {
+        for (problem in listOf(SyncDiscoveryProblem.NEEDS_INSTALLATION, SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS)) {
+            val fixture = Fixture(
+                SyncPanelState(
+                    visible = true,
+                    loaded = true,
+                    page = SyncPanelPage.SETUP,
+                    setupStep = SyncSetupStep.ERROR,
+                    setupProblem = problem,
+                    setupAccountLogin = "owner",
+                    setupInstallation = if (problem == SyncDiscoveryProblem.NEEDS_INSTALLATION) {
+                        null
+                    } else {
+                        SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1)
+                    },
+                ),
+                ImageComposeScene(700, 1600, coroutineContext = coroutineContext) {},
+            )
+            try {
+                fixture.setContent()
+                fixture.awaitTag("sync-recheck-installation")
+                assertFalse(fixture.hasTag("sync-setup-configure-space"))
+                fixture.awaitTag("sync-setup-error-details")
+                assertTrue(
+                    fixture.node("sync-setup-error-details").boundsInRoot.top >
+                        fixture.node("sync-recheck-installation").boundsInRoot.bottom,
+                )
+                assertFalse(fixture.texts().contains(MR.strings.sync_recovery_details.localized(Locale.getDefault())))
+                assertTrue(
+                    fixture.texts().contains(MR.strings.sync_diagnostic_information.localized(Locale.getDefault())),
+                )
+                fixture.click("sync-setup-error-details")
+                assertEquals(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS), fixture.actions.last())
+                fixture.click("sync-recheck-installation")
+                assertEquals(SyncPanelAction.RetrySetup, fixture.actions.last())
+            } finally {
+                fixture.scene.close()
+            }
+        }
+    }
+
     private fun connected() = SyncPanelState(
         visible = true,
         loaded = true,
