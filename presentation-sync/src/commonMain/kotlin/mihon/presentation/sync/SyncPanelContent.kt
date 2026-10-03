@@ -1941,11 +1941,13 @@ private fun SyncCompactProgressCard(
                 }
                 if (!counting) {
                     Text(
-                        syncString(
-                            MR.strings.sync_round_time,
-                            syncClockDuration(presentation.elapsedSeconds),
-                            presentation.wholeEta?.let(::syncClockDuration) ?: "—",
-                        ),
+                        presentation.wholeEta?.let { eta ->
+                            syncString(
+                                MR.strings.sync_round_time,
+                                syncClockDuration(presentation.elapsedSeconds),
+                                syncClockDuration(eta),
+                            )
+                        } ?: syncString(MR.strings.sync_elapsed, syncClockDuration(presentation.elapsedSeconds)),
                         Modifier.fillMaxWidth().height(timeHeight).testTag("sync-round-time"),
                         style = textStyle,
                     )

@@ -264,7 +264,7 @@ class SyncPanelContentTest {
         render()
         assertFalse(hasTag("sync-counting-track"))
         assertTrue(texts().contains("Syncing, completed 0/100 items"), texts().toString())
-        assertTrue(texts().contains("Elapsed 00:00, estimated remaining —"), texts().toString())
+        assertTrue(texts().contains("Elapsed 00:00"), texts().toString())
         assertEquals(0f, node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current)
     }
 
@@ -962,7 +962,7 @@ class SyncPanelContentTest {
     ) {
         awaitTag("sync-progress-card")
         assertTrue(texts().contains("Syncing, completed 40/100 items"), texts().toString())
-        assertTrue(texts().contains("Elapsed 00:10, estimated remaining —"), texts().toString())
+        assertTrue(texts().contains("Elapsed 00:10"), texts().toString())
         assertEquals(
             androidx.compose.ui.semantics.ProgressBarRangeInfo(0.4f, 0f..1f),
             node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo],
@@ -1063,7 +1063,8 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-stage-count"))
         assertFalse(hasTag("sync-active-body-progress"))
         assertTrue(texts().contains("同步中，已完成0/20000条"))
-        assertTrue(texts().any { it.contains("剩余估时—") })
+        assertTrue(texts().any { it.startsWith("已用 ") })
+        assertFalse(texts().any { it.contains("剩余估时") })
         assertFalse(texts().any { it.contains("6144") || it.contains("62%") || it.contains("12 秒") })
     }
 
@@ -1199,7 +1200,7 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-round-time")
-        assertTrue(texts().contains("Elapsed 00:10, estimated remaining —"))
+        assertTrue(texts().contains("Elapsed 00:10"))
         assertTrue(texts().contains("Syncing, completed 0/2 items"))
         assertFalse(texts().any { it.contains("1 minute") || it.contains("1 second") })
     }
@@ -1484,7 +1485,8 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-stage-count"))
         assertFalse(hasTag("sync-active-body-progress"))
         assertTrue(texts().any { it.contains(MR.strings.sync_waiting_system.localized(Locale.getDefault())) })
-        assertTrue(texts().any { it.contains("剩余估时—") })
+        assertTrue(texts().any { it.startsWith("已用 ") })
+        assertFalse(texts().any { it.contains("剩余估时") })
     }
 
     @Test
@@ -1512,7 +1514,8 @@ class SyncPanelContentTest {
         assertFalse(hasTag("sync-stage-count"))
         assertFalse(hasTag("sync-active-body-progress"))
         assertTrue(texts().any { it.contains("正在暂停，正在保存进度") })
-        assertTrue(texts().any { it.contains("剩余估时—") })
+        assertTrue(texts().any { it.startsWith("已用 ") })
+        assertFalse(texts().any { it.contains("剩余估时") })
         assertTrue(node("sync-wait").config.contains(SemanticsProperties.Disabled))
     }
 
@@ -2936,15 +2939,16 @@ class SyncPanelContentTest {
         ),
     ) {
         awaitTag("sync-round-time")
-        val initial = texts().single { it.contains("剩余估时") }
+        assertFalse(texts().any { it.contains("剩余估时") })
+        val initial = texts().single { it.startsWith("已用 ") }
         displayMillis = 1000
         withTimeout(3000) {
-            while (texts().single { it.contains("剩余估时") } == initial) {
+            while (texts().single { it.startsWith("已用 ") } == initial) {
                 render()
                 delay(10)
             }
         }
-        assertTrue(texts().any { it.contains("已用00:01") })
+        assertTrue(texts().any { it.contains("已用 00:01") })
         for (increment in 1..3) {
             displayMillis = increment * 1000L
             panel.state.value =
@@ -2954,11 +2958,12 @@ class SyncPanelContentTest {
         assertTrue(texts().any { it.contains("剩余估时00:07") })
         displayMillis = 13000
         withTimeout(3000) {
-            while (texts().none { it.contains("剩余估时—") }) {
+            while (texts().any { it.contains("剩余估时") }) {
                 render()
                 delay(10)
             }
         }
+        assertTrue(texts().any { it.startsWith("已用 ") })
         panel.state.value = panel.state.value.copy(visible = false)
         render()
         val calls = clockCalls
