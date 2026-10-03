@@ -269,6 +269,13 @@ tasks.withType<Test> {
 
 val jvmTestTask = tasks.named<Test>("jvmTest")
 jvmTestTask {
+    doFirst {
+        val production = kotlin.targets.getByName("jvm").compilations.getByName("main")
+        systemProperty(
+            "mihon.test.productionRuntimeClasspath",
+            (production.output.allOutputs + requireNotNull(production.runtimeDependencyFiles)).asPath,
+        )
+    }
     useJUnitPlatform {
         excludeTags("final-parity-audit", "parity-governance")
     }

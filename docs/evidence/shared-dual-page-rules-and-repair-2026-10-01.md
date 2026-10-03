@@ -1,6 +1,10 @@
 # 双端共享双页规则与修复证据
 
-状态：DP01 A–E 已完成实施、同轮独立审查、相关验证及功能提交 `2a0e7570b7f359c4899e45f95769cc13e553f228`。DP02 首次完整矩阵失败后的限定修复、同轮独立验收和格式收口已提交为 `f95ffeb1e0c75a11f9e2326cd06b1500dd434e7c`。用户随后批准的一次追加完整矩阵已结束：Desktop 仍有5项失败，共享两个目标、Android 应用及客户端完整测试通过。未启动第三次完整验证；追加修复提交和针对读取边界的复审待用户决定。正式产物、ART 像素与原生输入验收未完成。基线 `31a6ab7269967cc615ed54ac2ca58fe8d9b3f1db`。本报告为本次唯一聚合证据；事实与构造夹具分别记录，最新结果见末节。
+状态：DP01 A–E 已完成实施、独立审查、相关验证及功能提交 `2a0e7570b7f359c4899e45f95769cc13e553f228`。DP02 首次矩阵后的修复提交为 `f95ffeb1e0c75a11f9e2326cd06b1500dd434e7c`；第二次矩阵剩余5项的限定修复、追加局部复审和31项相关验证已完成，提交为 `ca4abd37a32c57c7f7cb4486f1bdfa78af5aa0e1`。用户批准的第三次 Desktop 完整复验已自然通过：3250项、0失败、0错误、3条件跳过；共享两个目标、Android 应用及客户端的第二次完整结果仍适用。
+
+三端正式产物已构建，DP02保持未勾选。获批 Android test-only 修复已打通 R8 公共 Activity 入口及 PixelCopy 窗口像素；采样原方法 EXIF1–8、alpha 与真实开关因果对照通过，部分 View/触摸及源错误恢复通过，但完整 ART 仍未通过：right split+crop 黄金与 Copy empty Retry 恢复失败保留，具体原因未确定。Windows 新冷配置正式图形启动暴露 Main dispatcher/Android Handler 异常。2026-10-03用户已批准按根因收敛方向继续及追加一次全量，先补全独立原生向量和诊断，修改稳定后再复验与构建。Windows/macOS 原生输入与 B1/B2 正式真实案例仍未完成。
+
+基线 `31a6ab7269967cc615ed54ac2ca58fe8d9b3f1db`。本报告为本次唯一聚合证据；事实与构造夹具分别记录，最新结果见末节。
 
 ## A 输入事实
 
@@ -281,7 +285,7 @@ udp-e-testmode-matching-owner-red fresh1正确红 expected currentPage1/actual0�
 
 nativeInput 提供实际 Compose viewportPixels、density、实际 AWT content-origin 换算的 viewportScreenPoints、三行三列 tapPoints，坐标系 awt_screen_points；windowPresent/showing/focused、Compose window 与 reader owner focus 缺失时 available=false 并给出 reason。该接口不读取屏幕、不做 screenshot、不建立控件树；离屏 Scene 的几何可以存在但无 AWT window 时不可原生输入。HTTP inputKind=application_action 不能当 physical key/mouse 验收。
 
-DP02 原 Android release instrumentation 入口：
+DP01 冻结时准备的 Android release instrumentation 入口（历史记录；DP02 发现 R8 ABI 不兼容，当前修复入口见文末）：
 - SharedSpreadNativeAcceptanceTest：原 JNI region 解码、共同 sRGB/alpha/EXIF 采样。
 - SharedReaderViewNativeAcceptanceTest：actual ReaderPageImageView/SSIV，EXIF1–8 JPEG 四象限、full/split/fit/crop 的实际 Canvas 像素以及原 MotionEvent 双击缩放/拖动平移。Windows 仅编译，不执行或伪记 JNI/ART 结果。
 - InstalledSharedReaderSourceAcceptanceTest：隔离 emulator 中已安装且已信任的原 ManHuaGui/CopyManga APK，原 ExtensionLoader、HttpSource parser、ChapterLoader、shared host 和 pageLoader。ManHuaGui packed HTML 复用既有合法仓库 fixture（SHA-256 795f701ea8a238dd1a1a368f31bd42c4a1d9bddb55cee47d8cc8bc9a1e8bcb52）；CopyManga 需要原真实响应文件，不生成替代 parser。输入文件限制在隔离 app 私有目录。原 NetworkHelper public getters 的 client 身份识别 R8 后实际存活 OkHttpClient 字段，临时附加受控本地 response 路由并核所有 public getters 与原 extension.client 消费它，finally 恢复原对象，不新增 keep 或关闭 R8。此受控响应链不是 TLS/代理阶段验收。
@@ -681,3 +685,117 @@ reject零FIRST/零绕行、实际body exact32MiB、normal33MiB/cached无新netwo
 键鼠/发布构建仍待验收。此前真实Copy生产缓存已找到完整22contents/22words原成功响应，
 仅ignored私有目录保留，可派生缺失/空/截断受控边界；尚未执行Android原parser或ART，
 不将Windows JVM成功替代该平台证据，也不声称成功响应未找到。
+
+### DP02 第二轮剩余项提交与获批 Desktop 完整复验
+
+限定修复已提交 `ca4abd37a32c57c7f7cb4486f1bdfa78af5aa0e1`。本批 11 个实际内容文件保持内聚：3 个 production 文件处理缓存 preview 与可选响应 body 两处读取边界，6 个测试/夹具文件覆盖其生命周期、额度及原呈现断言，2 个必要维护文档说明边界。主要风险是 cached raw lease 所有权和锁定 Okio 版本的公开 JVM Source 字段，已由真实生命周期与流式 quota 用例独立核验；没有 shared、Android、Dual/Single 产品改动。
+
+用户批准的一次追加 Desktop 完整复验 `udp-final-second-repair-desktop-full` 于北京时间 2026-10-02 14:33:03–14:38:28 自然 PASSED/exit0，使用项目 `build-desktop.sh full-tests`。主代理核验 fresh 434 suites、3250 项、0 失败、0 错误、3 条件跳过。第二轮 shared 两目标、Android 应用和 client 完整绿色证据仍适用，未重复完整矩阵，也未再运行 finalParityAudit。
+
+### DP02 三端正式构建、产物与尚未关闭的运行门槛
+
+Desktop 统一分配为 `0.11.19.69.ca4abd3`。Windows 项目入口 `build-desktop.sh build-only` 已分配版本，但后续 PowerShell `-File` 启动无脚本输出、约30秒退出，未进入 Gradle。保留三个正式入口失败记录及最小启动诊断；`-Command` 调用同一项目平台脚本已证实可正常执行版本 guard。因此由协调器运行同一 `build-windows.ps1 -SkipTests -VersionAllocated -ExpectedVersion ...`，保留原构建、production runtime 验证和发布步骤，没有直接用 Gradle 部署。不能据此断言代理配置或 PowerShell 内部故障原因已定位。
+
+`udp-final-windows-formal-command` 于北京时间 15:08:44–15:10:30 自然 PASSED/exit0，正式运行版本及原 ManHuaGui APK 装载/解析验收通过。日志唯一 `Final unpacked EXE:` 指向且主代理确认存在：[Mihon Desktop.exe](D:/Codex/worktrees/0877/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.69.ca4abd3-unpacked/Mihon%20Desktop.exe)。Windows ZIP SHA-256 为 `7f2f2bf20a020ff6658ae2dca08dbd831992c73ea28c21e88557a769fb4944e3`。构建验收尚不包含本次 B1/B2 冷热、直跳/顺读或物理输入。
+
+macOS 在独立 detached worktree `/Users/altair/Library/Caches/mihon-shared-dual-page-20261002-f95ffeb/repo` 核对源码为同一 `ca4abd37a3`，不修改用户日常 checkout 或 `/Applications`。`udp-final-macos-encoded-focused` 于北京时间 14:50:59–14:54:23 自然 PASSED/exit0，fresh 2 suites/4 项包含真实 native Skia EXIF/alpha sampler 三项和实际 Compose reopen 一项，0失败/错误/跳过；不是完整模块。`udp-final-macos-formal-build` 经项目 `build-desktop.sh build-only` 正式构建与隔离部署成功，实际包位于上述独立根目录的 `artifacts/Mihon Desktop.app`。交付 ZIP SHA-256 为 `9c078e3febb6e9ffa4c312307fa974ad3b16b413d0fdb44cc17cf8c3bf70a661`，大小196568069字节。
+
+Mac 正式包经 LaunchServices 非 headless 启动，隔离 profile 与端口均已核验。北京时间 15:28:32 醒屏后观察到 `displayAsleep=false`、会话锁定标志仍 true、原生事件权限 true、截图权限 false；HTTP state 健康不代替窗口和输入验收。已停止键鼠，等待用户进入桌面并置本次窗口前台后复核。没有请求 TCC 权限或读取 Mac 桌面像素，也不由锁定标志断言用户设置了自动锁屏或需要密码。
+
+Android 统一 `candidate --offline` 内部任务 `android-candidate` 于北京时间 15:38:54–15:42:28 自然 PASSED/exit0，随后外部同证书签名、校验及发布成功；主代理再次用统一 `verify --artifact` 核验。正式候选为 [Mihon-Fork-0.19.4-aex.22-vc40-release-universal.apk](D:/Codex/worktrees/0877/mihon/app/artifacts/android/0.19.4-aex.22-vc40-ca4abd37a3-release/Mihon-Fork-0.19.4-aex.22-vc40-release-universal.apk)，SHA-256 `d27a010832f84d6b712883284850a263cfee5800ccf9d9d332338a23ed7ec9f1`，原证书 `bd8e3af75921fc4356deacabd44a3d491fda8439ffbc7d073c363974a648cae3`，四 ABI、非调试、R8/资源压缩启用。版本40/`0.19.4-aex.22`。构建期间 tracked 源码和文档冻结，发布后才恢复证据维护。
+
+### DP02 正式运行中新发现的验收入口阻塞（保留失败）
+
+Release 测试包首次调用未引用 `-Pmihon.testBuildType=release`，PowerShell 将带点号的属性拆开，未进入编译；另一次 task 查询同类参数错误。日志保留，不能算行为红。按日志固定引号后的 `udp-final-android-release-test-apk-quoted` 于北京时间16:01:19–16:02:03 自然 PASSED/exit0，测试包经项目签名脚本 `-Instrumentation` 验证 targetPackage 和原证书后生成，SHA-256 `0aeb72c4fac319274adfb59aa5d6d85de4f6dbd30cce07041c4650e5d5df262d`。
+
+专用 `mihon-pairing-api36` 以只读 overlay、不加载/保存快照、1536MiB/2核启动，ADB serial `emulator-5586`、hardware `ranchu`，启动前无其他设备或 emulator 进程，未操作实体设备。统一 install 核验正式候选安装哈希与证书成功，未使用 connected 任务覆盖候选。
+
+`SharedSpreadNativeAcceptanceTest` 与 `SharedReaderViewNativeAcceptanceTest` 原 runner 实际执行2项、失败2项：均在读取 `ReaderImageOrientation.entries` 时 `NoSuchMethodError: getEntries()`，尚未进入 JNI 解码、实际像素或触摸。过程日志 `app-desktop/tmp/udp-final-android-native-20261002/exif-view-run.log` 保留。正式候选 mapping/usage 确认 R8 已消除内部 getters/部分函数并改写 Config 默认构造签名；测试包仅映射名称不能还原这些内部 ABI。这两测试文件仅在 DP01 的 `2a0e7570b7` 提交添加，后两轮修复未更改；当前事实是验收入口不兼容正式 R8 包，不能据此证明用户阅读功能回归，也不能声称 ART 已通过。编译/JVM 证据本来不包含该正式运行层。
+
+Windows 同样查明：HTTP library `select(type=chapter)` 虽经真实 detail model 获取章节，却转入 `TestNavigationController.openReader`，强制 `dualPage=false`、空邻章和 synthetic progress tracker，不能作为正常 UI 打开两真实案例的最终证据。真实入口是详情页 `onReadChapter` → 原 request 全部 flags/chapters → `navigator.push(DesktopReaderScreen)`。本次 HTTP route 的17页缓存像素和实际 mounted geometry只作诊断，未记为B1最终通过。两次外部精确 PID 激活后 Windows 前台仍不属于本次应用，已停止原生输入并请求用户置前台。
+
+DP02 保持未勾选。用户已批准追加一次 test-only 修复、主代理局部独审和定向 ART（45–90分钟）；复用原实施代理，不修改 production/keep、不重新打正式 APK、不追加全量。Windows/Mac现场输入确认仍待用户回复。
+
+### DP02 获批 ART 入口修复与 Windows 冷配置启动失败（进行中）
+
+Android 原测试依赖的宿主内部 ABI 不仅包含 `getEntries`，还包括被 R8 消除或改写的构造器和接口。当前修复使用 Android 公共 Intent/Activity/View/SQLite/SharedPreferences 边界，让正式 ReaderActivity、原扩展和 production holder 自行创建内部对象。入口探测中先后暴露 `SourceManager.getOnlineSources`、`PreferenceStore.getInt` 缺失，均发生于阅读行为之前；移除这些宿主内部接口依赖后，已实际进入 ReaderActivity，但30秒图像绘制检查尚未通过。保留各次日志，正在限定定位请求与挂载 View，不能称 JNI、采样、EXIF、触摸或错误恢复已通过。临时 smoke 分支不是原完整验收的替代证据。
+
+后续 Copy 同方法对照取得实际章节1次、图片5次请求；View identity 核对为真实 ReaderPageImageView/SSIV。软件 Canvas 的多点结果为透明，但同次设备窗口 `app-desktop/tmp/udp-art-entry-repair-20261002/window-copy.png` 实际显示中央 CYAN 和 `1 / 22`，主代理已独立查看；宿主 PID 限定日志确认原 native decoder 加载成功。故本次“未观察到颜色”已定位为软件 Canvas 观测不适配实际硬件 View，不能归为产品空白页。test-only 修复转用公共 PixelCopy(window)和当前可见 View 几何，并防止旧缓存使不同输入假绿；完整 EXIF/触摸/采样断言仍未通过。
+
+`native-pixels-signed.apk` SHA-256 `cea838880c9fbedd5e689c5e1ba67f9a8818849cceff09740208af075db77e3c` 的原方法临时入口 smoke，在 Copy、ManHuaGui 各自然 OK(1 test)，分别3.809秒、3.329秒。两次均清隔离缓存，断言章节和图片请求大于0以及实际当前窗口中心 CYAN；主代理核读两个 runner 原始日志。只确认正式候选的公共入口和像素观测可用，不把临时分支计为原完整源错误恢复或 EXIF/采样/触摸验收。正式宿主 APK 未改，后续只整合测试包。
+
+同轮局部独审要求修正三个假绿风险：拖动前后目标色块必须非空，并从 window 坐标转换到实际目标 View；自动匹配先稳定展示关闭态双页，再经真实偏好开启并持续观察非默认单页，候选两页各自需要新 body 读取；EXIF 只变换候选一侧，另一侧保持 NORMAL 黄金，避免两边同时错误翻转仍相等。已读修正实现，实际 ART 全门槛仍待。
+
+修正包的源用例因测试 HTTP server 对空连接 EOF 当致命异常而失败，不能归类为 production 错误传播失败。View 用例已通过 EXIF1 whole 像素/双击/拖动及 left split，随后在 EXIF1 right split+crop+FIT_WIDTH 失败；实际 fresh chapter/image 各3，`window-fit-crop.png` 显示仅绿色内容，主代理核图，未证明产品或夹具根因。限定对照仅把原80×60/60×80和白边4等比例放大至800×600/600×800和白边40，保持方向/半页/颜色黄金。另 sampler 在封面准备处读取全窗口中心失败，实际 half-slot 为540×2400、图像540×810；改用实际可见内容准备，不改变后续稳定分组门槛。各旧失败日志保留，以上均非完整验收通过。
+
+`crop-scale-and-connection-signed.apk` SHA-256 `fefc38fd8a235cb72fe04f72ff04ba7a178f17e1d7279871f299d86f207ccf75` 修正 EOF 空连接和初始封面观测，等待 Activity 销毁后才清隔离缓存，并执行上述分辨率对照。`crop-scale-view-run.log` 自然1失败/38.381秒，仍是 EXIF1/variant2、fresh chapter/image各3；放大不能关闭此失败，已停止该项额外夹具变体，EXIF2–8未执行，不据此确定根因或改 production。
+
+`connection-source-run.log` 自然1失败/50.428秒：ManHuaGui 成功、六错误和每次真实 Retry 恢复均已走过；Copy 成功和 empty ChapterError 已过，empty Retry 后出现真实图片错误 UI，chapterRequests=3、imageRequests仍5，未恢复 CYAN。一次限定取证 `copy-retry-error-observation-run.log` 同点失败/50.615秒，实际 PID10600日志为 `Failed to find image type` → `No decoder found to handle this stream` → SSIV `Image decoder failed to initialize and get image size`。已证实实际解码流不能识别，未确定错误字节的来源；不将缓存删除假设写为根因，也未放宽恢复门槛。
+
+`cover-slot-sampler-run.log` 自然1失败/36.004秒：EXIF1 已通过同 owner 关闭态稳定双页、开启态稳定非默认单页以及候选两页新 body 的对照；下一 EXIF2 停在封面准备。此前真实翻页保存了进度，ReaderViewModel 默认恢复 chapter.last_page_read，重开不自动回0；本次还没执行到 EXIF2采样断言。下一包将通过既有 SavedState 输入 `page_index=0` 明确每向量起点，再以实际封面确认。独审另发现 alpha30/210 在重复预乘错误下平均色差约29.5仍可能低于30阈值；改为 alpha60/240，使错误对照超阈值，同时保留正确不透明黄金和方差保护，未更改 production 匹配规则。
+
+Windows 原 profile 的关停、缓存移动和进度重置组合命令被工具自动策略整体拒绝，未执行；随后只读确认旧进程仍在、备份未产生。改用保留原 profile 的独立新目录 `app-desktop/tmp/udp-final-cold-input-20261002-ca4abd3`：从原两个作品、两话数据库建立一致备份，复制本次偏好和两原扩展，仅重置副本阅读进度；未复制 encoded cache、未注入配对记录，也未复制原 background-tasks journal。正常关停原隔离实例后，用同一正式 EXE 非 headless 启动。
+
+北京时间18:06:34，正式包在此冷配置启动时发生 `IllegalStateException: Module with the Main dispatcher had failed to initialize`，原因链为 `NoSuchMethodException: android.os.Handler.createAsync(android.os.Looper)`；实际入口是 `LibraryScreenModel.syncBackgroundUpdate` 的 `screenModelScope.launch`。本次应用进程77700停留在 Compose 错误对话框，HTTP59143不可用；只读线程证据位于 `app-desktop/tmp/udp-final-cold-bootstrap-threads.txt`，crash log 位于该新 profile 的 `home/AppData/Local/Mihon/logs/mihon_crash.log`。这是正式产品启动失败，不是 Android 测试 ABI 问题，尚未修复。
+
+已核正式发布 ZIP 与 EXE 同目录中的 coroutines-android JAR 字节一致，不是 Android 测试包构建插入；Desktop 同时具有 Android Handler stub 和 coroutines Swing，当前 dispatcher 选择 Android factory 后找不到 `createAsync`。Git 追溯显示失败调用点来自2026-09-09，Handler stub 最近修改来自2026-05-11；DP01 的 Desktop build 文件只改格式和测试资源，后两轮修复也未更改这些调用点。以上不能单独证明首次引入故障的提交。原暖 profile 的后台任务已完成，新冷配置实际触发了两个作品更新，是不同启动路径的线索；尚未做因果对照，不将其写为唯一触发原因。未擅自改产品、补 stub 方法或强制测试 dispatcher，也未因故障追加全量。
+
+现有 `LibraryScreenModelTest` 的运行中更新/重建用例显式 `Dispatchers.setMain(StandardTestDispatcher(testScheduler))`，因此验证后台状态行为，却不会检验正式包自动选择 Main dispatcher 的过程；正式 Windows 脚本的 extension runtime 验收使用隔离空 profile 和 `--headless`。这两类已有绿色结果均不能覆盖此次“有库数据、更新在运行、真实图形 Library 初始化”的失败路径，后续修复必须包含无测试 Main 替换的实际运行证据，不能仅重跑原全量来确认。
+
+只读依赖声明进一步发现 `domain/build.gradle.kts` 的 `commonMain` 使用 `kotlinx.bundles.coroutines`，而 `gradle/kotlinx.versions.toml` 的该 bundle 包含 `coroutines-android`；此声明来自2026-03-18。Desktop 显式依赖 domain，因此存在平台依赖泄漏的确定声明路径；尚未占用实施代理的 Gradle 协调权运行 resolved dependency 查询或修改该声明。后续修复方向应优先校正平台依赖归属，保护 Android 原依赖，不能仅给 Desktop stub 增加 `createAsync` 让 Android dispatcher 在非 Swing 线程运行。
+
+主代理已就此独立产品阻塞提出待批准增量：当前 ART 批次后复用原代理，校正 Desktop 平台依赖，补无 Main 替换的定向红绿与实际运行验证，主代理独审1轮，追加 Desktop 完整测试1次及 Windows/macOS 项目正式构建各1次，预计90–150分钟；不修改 Android 功能。不获批准则保留启动阻塞，仅继续当前已授权 ART test-only 批次。未收到回复前不执行这些追加修改、全量或重构建。
+
+Mac 同一正式包继续使用隔离目录，经 LaunchServices 非 headless 启动。已在本次独立 local source 根目录准备 B1/B2 原 CBZ，分别核 SHA-256 `fec7ffef2dc6773c0c917b5e9961fff745cca5eb9eaccc82deee2dffe26b522b`、`760c81b12dee475288833b29b1f965fa097d4dbafbc36b6cc62f3e2d5a9ac439`，仅配置正常 RTL/双页/自动匹配和本地源目录，没有强制分组。实际应用41020、包装器41019，HTTP59131 HomeScreen健康；尚未通过真实本地源入口打开并发送原生键鼠，不能记为 B1/B2 通过。进程号仅为本次取证时点，后续操作须重新核验。
+
+### 本轮 test-only 最终结果与继续边界（DP02 未完成）
+
+最后一次采样中，本轮新增的 Activity 清理等待使用了无界 `waitForIdleSync`，实际窗口已经返回 Launcher，仪器仍不返回；停止本次隔离宿主后保留 `final-sampler-run.log`，该次不能作为业务失败或通过。最终 helper 改为公开 `isDestroyed` 的5秒有界检查，删除临时 smoke/诊断输出，并由外层 driver 分别限制 sampler150秒、source90秒。仅处理 `emulator-5586` 本次包，没有操作实体设备或其他实例。
+
+`udp-art-test-only-bounded-final-apk` 自然 PASSED；四个实际改动测试文件限定格式 Apply/Check、最终 `git diff --check` 通过。最终签名测试包为 `app-desktop/tmp/udp-art-entry-repair-20261002/bounded-final-signed.apk`，SHA-256 `efb7b1fe5a611a98af142ddd4780c064700be5bb74a4d1e6820a3cc5306ceb55`，原证书连续。主代理核验其哈希以及正式宿主 APK 仍为 `d27a010832f84d6b712883284850a263cfee5800ccf9d9d332338a23ed7ec9f1`；没有修改产品、keep、正式 APK 或追加全量。
+
+| 最终门槛 | 实际结果与边界 |
+| --- | --- |
+| `SharedSpreadNativeAcceptanceTest` | [原始日志](D:/Codex/worktrees/0877/mihon/app-desktop/tmp/udp-art-entry-repair-20261002/bounded-final-sampler-run.log) 自然 OK(1 test)/28.283秒。完整执行 EXIF1–8及第9轮alpha60/240；一侧 EXIF、另一侧 NORMAL 黄金，候选两页各自新 body 请求，关闭态双页和开启态非默认单页各稳定500ms。主代理核日志与判别力，确认该采样验收通过。 |
+| `InstalledSharedReaderSourceAcceptanceTest` | [原始日志](D:/Codex/worktrees/0877/mihon/app-desktop/tmp/udp-art-entry-repair-20261002/bounded-final-source-run.log) 自然1失败/50.188秒。ManHuaGui 成功及六种错误→真实Retry经过断言；Copy初始成功与empty错误通过，empty Retry仍未恢复，后五种错误未执行。最后对照仅为Copy各向量图片URL增加唯一query，同一错误→Retry保持身份，保原22contents/words/order并仅淘汰页表JSON、保留图片body；依旧chapterRequests3/imageRequests5，不能把旧失败归结为手删图片缓存。实际PID11434日志仍为无法识别stream及SSIV初始化失败，根因未定位。 |
+| `SharedReaderViewNativeAcceptanceTest` | [原始日志](D:/Codex/worktrees/0877/mihon/app-desktop/tmp/udp-art-entry-repair-20261002/crop-scale-view-run.log) 保留1失败/38.381秒；EXIF1 whole黄金、双击放大、实际平移和left split已过，right split+crop/FIT_WIDTH未过；分辨率等比例放大未关闭问题，后续EXIF2–8未执行。最终包未重复这个未修复用例，不将早前结果说成最终新包全绿。 |
+
+实施代理已返回 `status/diff/tests/commit/process/next` 回执并交回执行权；无在途 Gradle/ART，外层 driver 自然退出且设备无活动 instrumentation。主代理同轮局部审查关闭了窗口像素、EXIF单侧黄金、alpha阈值、空色块、坐标换算和瞬态分组假绿风险；整体 ART 因上表两项未关闭，不签收最终交付。四个测试文件改动和必要文档保留未提交；既有版本分配不回滚。最后有效提交仍为 `ca4abd37a32c57c7f7cb4486f1bdfa78af5aa0e1`，未勾选 DP02、未更新 manifest 为新的运行通过。
+
+当前测试入口必须使用已核验的专用 emulator 和同签名测试 APK。准备目录为 `/data/local/tmp/udp-art-native/`，包含两原扩展 `manhuagui.apk`/`copymanga.apk`、`source-inputs.json`、`copy/{success,empty,missing,malformed}.json`。输入行提供 mangaId/sourceId/mangaUrl/mangaTitle/chapterId/chapterUrl/chapterName，当前私有 B1/B2夹具 chapterId 为15640/15652；URL和实际捕获响应继续留在忽略目录，不提交。旧 `sharedReaderSourceId` 等直调内部ABI参数入口已被替换。通过 AndroidJUnitRunner 指定上述原类，运行前显式核 serial 和正式 APK 哈希，并对外层进程设置期限；不要用 connected 任务覆盖正式宿主。受控本地响应验收仍不代表真实远端、TLS/代理或 B1/B2 原漫画的完整原生交付。
+
+继续前先区分两个待定位的 Android 失败与已明确的 Windows dispatcher 启动失败；尚未证明前两者由最近产品修复引入。此段记录时 Windows 额外修复/全量/双平台构建方案尚待批准。保留这两个红例，后续针对实际字节来源和裁切几何定位，不通过调整黄金或反复完整矩阵尝试收口。
+
+### 2026-10-03 按根因收敛的续作授权与顺序
+
+用户明确批准“根据当前方向继续，批准你再进行一次全量测试”。本次追加全量额度为一次，保留到必要修改稳定、发布范围冻结后使用；不立即执行，不重复已经适用的无关完整模块。
+
+复用原实施代理 `dual_page_resume`，主代理独立验收本批实际改动；不新增代理。先将既定 Android 原生验收向量隔离执行，防止首个断言失败隐藏 EXIF2–8 和 Copy 后五种错误；原验收范围、golden、真实 Activity/扩展/解码链保持。诊断阶段控制45–60分钟，连续两次没有新证据停止重跑，返回具体证据缺口。重型 Gradle 由实施代理唯一协调。
+
+三类失败分别追查正式 Desktop 调度器选择、实际裁切/缩放/可见区域、HTTP→缓存→解码器字节。根因确定后按红绿重构修复产品或修正测试，不猜改产品。全部必要修改稳定后才执行受影响的追加全量与项目正式构建，最后补齐正常入口 B1/B2 及真实键鼠运行验收。Android 产品未改变时复用原正式 APK；Desktop依赖调整须核对Android解析影响后再决定其证据可否复用。不新建平行报告或状态系统；尚未关闭 DP02。
+
+独立向量首次执行取得完整的 View 分布：24项中19项通过，只有 EXIF1/5/6/7/8 的 right split＋crop＋FIT_WIDTH 失败。随后同一图片、同一黄金的 crop ON/OFF 定向对照中，ON失败而OFF通过。原 native decoder 固定提交 `41c059e5405c1d982c937767707270ee96c32614` 的灰度边界扫描以亮度阈值识别内容；原夹具的纯亮黄色区域可能被当作白边。当前修正仅为保留原四种黄金色块的夹具添加暗色内容边界，同时加入实际开启/关闭裁边的内容宽度差断言，不能仅凭 crop 参数已设置证明裁边有效。最终自然通过结果尚待核验，不据此修改产品解码规则。
+
+Copy 的逐例独立进程确认初始真实图片为239字节PNG，后续错误流程却把章节JSON当作图片交给解码器。原扩展DEX进一步确认解析错误会返回 `tachiyomi-lib-textinterceptor` 虚拟地址，其原有 TextInterceptor 将错误说明绘制为图片；测试路由先改写主机，绕过了这个拦截器。这是测试夹具的确定边界错误，不是已证实的宿主 parser 或图片解码回归。修正方向是保留原虚拟拦截器，并严格拒绝未知真实请求；不伪造图片、不复制扩展的文本渲染、不改变第三方扩展。章节错误仍验证真实 Retry；扩展错误图片须证明实际错误反馈，并通过正常已有操作恢复到合法章节图片，不能仅展示错误页就算恢复通过。
+
+最新 `udp-art-closed-panel-markers-apk` 自然 BUILD SUCCESSFUL/66秒；签名测试包 `closed-panel-markers-signed.apk` SHA-256 `6359806cc0b38e146b03785a90b822621f4ab6ca1a9e653ef393ee0f20392bc7`。2026-10-03 08:32 的两个关键定向用例已自然通过：`resume-crop-normal-run.log` 的 EXIF1/variant2 OK(1)/4.881秒，`resume-crop-exif6-run.log` 的 EXIF6/variant2 OK(1)/4.608秒。主代理独立核原日志、测试实现和包哈希；两项均保留原色块、FIT_WIDTH、左右方向，并验证实际 crop ON/OFF 的内容尺寸差。确认这两个裁边夹具失败已修复；完整24项及源错误恢复仍待，不据此宣布整体原生验收完成。
+
+同包的 `resume-copy-empty-run.log` 自然 FAIL(1)/32.805秒，失败仅为仍期待 ChapterError。原拦截器已经生成24007字节PNG，SHA-256 `32623c8934994beaa9277f96a682370e77c24b18a184339cda348ebe59d8ee53`；主代理独立查看 `resume-observations/copymanga_320544/window.png`，实际阅读窗口显示“漫畫吐槽／加载失败，请清除缓存后重试／List is empty.”和 `1 / 1`。章节请求1、真实图片端点请求0，缓存体为原PNG而非章节JSON。确认保留虚拟主机后原错误反馈恢复；此项仍未完成用户正常恢复验收，不把旧 ChapterError 断言失败归为新产品故障。
+
+随后 `udp-art-text-image-pixel-alignment-apk` 自然 BUILD SUCCESSFUL/25秒；`text-image-alignment-signed.apk` SHA-256 `8b7947299d1538b575d5c1dd077e91381144c8142555d4d2f400ef85a5b0e552`。`aligned-copy-empty-run.log` 自然 OK(1)/7.805秒：原拦截器PNG与当前窗口的黑色文字采样匹配至少95%（允许原SSIV缩放造成的1物理像素偏移），真实 More → Settings → Data and storage → Clear chapter cache 操作后重新打开原章，章节请求再次增加、真实图片端点请求增加并实际绘制CYAN。主代理核原日志与实现；未直接删除文件或复制错误渲染实现。确认 Copy empty 用例的测试路由和恢复验收已修复，余下响应向量及最终批次结果继续记录。
+
+同包 `final-marked-view-24-run.log` 自然 OK(24)/90.82秒，完整 EXIF1–8 的 whole、left split、right split＋FIT_WIDTH＋crop ON/OFF、真实双击放大和实际拖动均通过；`final-route-sampler-run.log` 自然 OK(1)/29.368秒，保留原完整 EXIF／alpha／实际匹配分组门槛。主代理独立核两个 runner 原日志及先前读取的断言。确认原裁边测试失败已修复，完整 View 和 sampler 原生验收通过。
+
+Copy vector1/2 分别在反馈观测失败后停止重复：原错误PNG为1000×473和1000×427，实际全宽白底范围为 `[0,944,1080,1455]` 和 `[0,969,1080,1430]`。长文字使原“每行60%为白色”观测切断图片范围，并非实际图片被高度限制。主代理独立查看 vector1 窗口，明确显示原 missing-field 错误说明；离线原图白色外边距定位所得126/131黑字匹配及比例2.114/2.113支持修正观测范围。保持95%字形门槛和真实恢复要求，未据失败猜改产品；修正后的余下五向量自然结果尚待。
+
+`udp-art-white-margins-recovery-apk` 自然 BUILD SUCCESSFUL/27秒，签名包 SHA-256 `38edd857919d9a333422f912b386d2fa212dc3925c7ac3cc5d91bdfaeaece24b`。原14向量分别独立进程执行，`white-margin-{source}-vector{index}-run.log` 的13项自然 OK(1)：ManHuaGui全部7项，Copy成功、empty、missing、403、429、500。所有错误项均实际反馈后取得新合法章节响应/图片并绘制CYAN。唯一 Copy malformed 停在字形比对，原图细笔画未按实际缩放插值的采样为102/110，按实际1080×461绘制矩形缩放后为76/76；修正仅涉及测试图像对照，保留95%／1像素门槛。下一步只复验这项及必要代表性用例，不重复整组，也未使用全量额度。主代理独立核14份日志终态及本包完整哈希。
+
+最终 `filtered-error-image-signed.apk` SHA-256 `8db2c27f7f203ffa03ab541aee067cda7ff05e77e70a153937b188b0391342d7`，只将原错误PNG按实际绘制矩形进行公共双线性缩放后比较字形。`filtered-copy-vector2-run.log` 自然 OK(1)/7.495秒，代表性 `filtered-copy-vector0-run.log` 自然 OK(1)/7.994秒；主代理核原日志、最终包哈希及真实恢复实现。复用未受此观测修正影响的13个源用例、完整View24和sampler1的有效绿色结果，三个既定入口共39个方法均有有效通过证据；不是一次39项完整运行，也不把早前失败整轮改称全绿。确认原裁边／Copy夹具和恢复验收问题已修复。正式宿主 APK 未改；本次专用5586模拟器及其两个已核进程正常关闭，未操作实体设备。Windows产品修复、追加全量和三端真实作品交付仍待，DP02保持未完成。
+
+Windows严格红阶段新增 `DesktopProductionMainDispatcherTest`：Gradle提供实际 `jvmMain` runtime classpath，独立子进程只带probe类和production依赖，不带 `coroutines-test`，实际调用 Main 并创建真实 `LibraryScreenModel` 观察活跃更新任务。前两次临时依赖图查询分别因任务注册时点和artifact类型歧义失败，未执行Main，不计行为红；查询改为解析后的外部component graph，未改变产品。`udp-windows-production-main-red3` 自然失败/15秒，Main子进程精确复现 `Main dispatcher had failed to initialize` → `NoSuchMethodException: android.os.Handler.createAsync(android.os.Looper)`。主代理独立核XML完整原因链并保存 `windows-production-main-red3.xml`，随后才准许production修改。修复前Desktop外部组件284且含coroutines-android，domain Android release外部组件121、坐标SHA-256 `1291d53921f9f0c88afc547716dc6aca14a33edeecf6b51a199522d534bc54fc`；绿色阶段须保留Android图并确认Desktop回到真实Swing EDT。
+
+绿色实现仅将domain的共同协程依赖展开为core／guava，将android依赖归属androidMain，并删除jvmMain重复的core／BOM声明；没有修改Handler stub、Library行为或强制调度器。`udp-windows-production-main-green` 自然 BUILD SUCCESSFUL/8秒，新真实production Main测试1项、0失败/错误，子进程执行真实Swing EDT和Library更新观察。Desktop外部组件283且不含coroutines-android；Android仍121且坐标SHA-256与修复前完全一致。主代理独立核resolved graph、测试实现、XML及实际diff，确认最小修复和平台边界有效；重构复验、相关格式及正式包冷启动仍须完成。
+
+`udp-windows-production-main-refactor-context` 自然 BUILD SUCCESSFUL/12秒：新production Main测试1项和现有LibraryScreenModelTest58项共59项，0失败／错误／跳过，XML明确记录 `PRODUCTION_MAIN_EDT_LIBRARY_COMPLETE thread=AWT-EventQueue-0`；相关限定格式通过。首次重构命令只因临时格式hook缺app插件上下文失败，未运行业务，随后复用已有可靠入口修正，没有更改产品或建立新格式框架。主代理独立核实现、两份XML和协调器终态，确认调度器初始化问题已修复并完成同范围复验。正式包冷启动仍待最终构建验证。
+
+本批13个受控文件内聚于DP02阻塞关闭：共享Android ART夹具替换重复内部ABI测试并保留原验收、Desktop平台依赖与真实Main回归、必要维护文档及已分配版本记录。超过8文件／400行主要来自夹具整合，不拆成不能独立验收的微任务。独立审查复用主代理当前轮，未新增代理或泛审；相关定向门槛满足后冻结产品，不新增能力，DP02仅在正式全量／构建／真实运行证据与提交齐全后勾选。

@@ -1,30 +1,30 @@
 package eu.kanade.tachiyomi.ui.reader.viewer
 
 import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.Color
-import android.os.Build
 import android.os.SystemClock
 import android.view.MotionEvent
-import android.view.View
-import androidx.test.platform.app.InstrumentationRegistry
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
-import kotlinx.coroutines.runBlocking
-import mihon.domain.reader.PageSplitHalf
-import mihon.domain.reader.ReaderImageOrientation
-import okio.Buffer
+import eu.kanade.tachiyomi.ui.reader.HostReaderArtFixture
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.junit.runners.Parameterized
 import java.io.ByteArrayOutputStream
-import java.util.concurrent.atomic.AtomicReference
 
-/** Executed only in DP02 on ART; Windows compilation does not establish pixel or touch acceptance. */
-class SharedReaderViewNativeAcceptanceTest {
+/** Signed candidate's Activity creates the real holder/config/SSIV; only original image bytes vary. */
+@RunWith(Parameterized::class)
+class SharedReaderViewNativeAcceptanceTest(private val exif: Int, private val variant: Int) {
+    companion object {
+        @JvmStatic
+        @Parameterized.Parameters(name = "EXIF{0}-variant{1}")
+        fun vectors(): List<Array<Any>> = (1..8).flatMap { exif ->
+            (0..2).map { variant -> arrayOf<Any>(exif, variant) }
+        }
+    }
+
     @Test
-    fun actualReaderViewExifSplitFitCropAndNativeTouch() = runBlocking {
-        check(Build.HARDWARE == "ranchu" || Build.HARDWARE == "goldfish")
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val context = instrumentation.targetContext
+    fun actualReaderViewExifSplitFitCropAndNativeTouch() {
         val expected = listOf(
             listOf(Color.RED, Color.BLUE, Color.GREEN, Color.YELLOW),
             listOf(Color.GREEN, Color.YELLOW, Color.RED, Color.BLUE),
@@ -35,153 +35,81 @@ class SharedReaderViewNativeAcceptanceTest {
             listOf(Color.YELLOW, Color.BLUE, Color.GREEN, Color.RED),
             listOf(Color.GREEN, Color.RED, Color.YELLOW, Color.BLUE),
         )
-        for (orientation in ReaderImageOrientation.entries) {
-            val rawWidth = if (orientation.exifValue < 5) 80 else 60
-            val rawHeight = if (orientation.exifValue < 5) 60 else 80
-            val bytes = encodedCorners(rawWidth, rawHeight, orientation.exifValue)
-            for (variant in 0..2) {
-                val half = if (variant == 1) PageSplitHalf.LEFT else PageSplitHalf.RIGHT
-                val bounds = if (variant == 0) null else orientation.splitBounds(rawWidth, rawHeight, half)
-                val owned = bounds?.takeIf { variant == 2 }?.let {
-                    encodeReaderPageRegion(
-                        Buffer().write(bytes),
-                        android.graphics.Rect(
-                            it.x,
-                            it.y,
-                            it.x + it.width,
-                            it.y + it.height,
-                        ),
-                        context.cacheDir,
-                    )
+        HostReaderArtFixture("manhuagui").use { fixture ->
+            fixture.image.set(encodedCorners(if (exif < 5) 800 else 600, if (exif < 5) 600 else 800, exif))
+            fixture.cold()
+            fixture.configure(
+                split = variant != 0,
+                invert = variant == 2,
+                crop = variant == 2,
+                scale = if (variant == 2) {
+                    SubsamplingScaleImageView.SCALE_TYPE_FIT_WIDTH
+                } else {
+                    SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE
+                },
+            )
+            val requests = fixture.imageRequests.get()
+            fixture.launch()
+            val colors = expected[exif - 1]
+            val probes = when (variant) {
+                1 -> listOf(colors[0], colors[1], colors[0], colors[1])
+                2 -> listOf(colors[2], colors[3], colors[2], colors[3])
+                else -> colors
+            }
+            fixture.awaitStable("EXIF $exif variant $variant current native region must paint golden corners") {
+                fixture.quadrants(probes)
+            }
+            if (variant == 2) {
+                val cropped = fixture.coloredBounds(probes)
+                fixture.configure(
+                    split = true,
+                    invert = true,
+                    crop = false,
+                    scale = SubsamplingScaleImageView.SCALE_TYPE_FIT_WIDTH,
+                )
+                fixture.awaitStable("EXIF $exif crop disabled must preserve golden content and restore white margin") {
+                    fixture.quadrants(probes) && fixture.coloredBounds(probes).width() < cropped.width() - 8
                 }
-                val failure = AtomicReference<Throwable?>()
-                lateinit var view: ReaderPageImageView
-                instrumentation.runOnMainSync {
-                    view = ReaderPageImageView(context).apply {
-                        setBackgroundColor(Color.WHITE)
-                        onImageLoadError = { failure.set(it ?: IllegalStateException("Native view decode failed")) }
-                    }
-                    val config = ReaderPageImageView.Config(
-                        zoomDuration = 1,
-                        sourceOrientation = orientation,
-                        sourceBounds = bounds.takeIf { owned == null },
-                        cropBorders = variant == 2,
-                        minimumScaleType = if (variant ==
-                            2
-                        ) {
-                            SubsamplingScaleImageView.SCALE_TYPE_FIT_WIDTH
-                        } else {
-                            SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE
-                        },
-                    )
-                    if (owned == null) {
-                        view.setImage(Buffer().write(bytes), false, config, 0)
-                    } else {
-                        view.setRegionImage(owned, config, 0) { true }
-                    }
+                val uncropped = fixture.coloredBounds(probes)
+                assertTrue(
+                    "EXIF $exif actual crop must remove white margin and enlarge preserved content",
+                    cropped.width() > uncropped.width() + 8,
+                )
+            }
+            assertTrue(
+                "New EXIF fixture must actually fetch original bytes",
+                fixture.imageRequests.get() > requests,
+            )
+            if (variant == 0) {
+                val before = fixture.coloredBounds(colors)
+                val x = before.exactCenterX()
+                val y = before.exactCenterY()
+                val now = SystemClock.uptimeMillis()
+                fixture.touch(MotionEvent.ACTION_DOWN, now, now, x, y)
+                fixture.touch(MotionEvent.ACTION_UP, now, now + 30, x, y)
+                fixture.touch(MotionEvent.ACTION_DOWN, now + 100, now + 100, x, y)
+                fixture.touch(MotionEvent.ACTION_UP, now + 100, now + 130, x, y)
+                fixture.await("EXIF $exif real double tap must enlarge actual painted content") {
+                    val after = fixture.coloredBounds(colors)
+                    after.height() > before.height() * 1.1 || after.width() > before.width() * 1.1
                 }
-                try {
-                    val colors = expected[orientation.exifValue - 1]
-                    val probes = when (variant) {
-                        1 -> listOf(colors[0], colors[1], colors[0], colors[1])
-                        2 -> listOf(colors[2], colors[3], colors[2], colors[3])
-                        else -> colors
-                    }
-                    val deadline = SystemClock.uptimeMillis() + 10_000
-                    var matched = false
-                    while (!matched && SystemClock.uptimeMillis() < deadline) {
-                        failure.get()?.let { throw AssertionError("Actual ReaderPageImageView failed", it) }
-                        instrumentation.runOnMainSync {
-                            view.measure(
-                                View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY),
-                                View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY),
+                val red = fixture.coloredBounds(listOf(Color.RED))
+                assertTrue("Current zoomed RED content must be present", red.width() > 0 && red.height() > 0)
+                val drag = SystemClock.uptimeMillis()
+                fixture.touch(MotionEvent.ACTION_DOWN, drag, drag, x, y)
+                fixture.touch(MotionEvent.ACTION_MOVE, drag, drag + 40, x + 40, y)
+                fixture.touch(MotionEvent.ACTION_MOVE, drag, drag + 80, x + 180, y)
+                fixture.touch(MotionEvent.ACTION_UP, drag, drag + 120, x + 180, y)
+                fixture.await("EXIF $exif real drag must pan painted source pixels") {
+                    val after = fixture.coloredBounds(listOf(Color.RED))
+                    after.width() > 0 && after.height() > 0 &&
+                        (
+                            kotlin.math.abs(after.right - red.right) > 20 ||
+                                kotlin.math.abs(after.left - red.left) > 20
                             )
-                            view.layout(0, 0, 300, 300)
-                            val pixels = Bitmap.createBitmap(300, 300, Bitmap.Config.ARGB_8888)
-                            try {
-                                view.draw(Canvas(pixels))
-                                matched =
-                                    listOf(
-                                        75 to 75,
-                                        75 to 225,
-                                        225 to 75,
-                                        225 to 225,
-                                    ).zip(probes).all { (point, color) ->
-                                        closeColor(pixels.getPixel(point.first, point.second), color)
-                                    }
-                            } finally {
-                                pixels.recycle()
-                            }
-                        }
-                        if (!matched) SystemClock.sleep(20)
-                    }
-                    assertTrue(
-                        "EXIF ${orientation.exifValue}, variant=$variant must paint its actual normalized source region",
-                        matched,
-                    )
-                    if (variant == 0) {
-                        val child = view.getChildAt(0) as SubsamplingScaleImageView
-                        val before = child.scale
-                        instrumentation.runOnMainSync {
-                            val now = SystemClock.uptimeMillis()
-                            touch(view, now, now, MotionEvent.ACTION_DOWN, 150f, 150f)
-                            touch(view, now, now + 30, MotionEvent.ACTION_UP, 150f, 150f)
-                            touch(view, now + 100, now + 100, MotionEvent.ACTION_DOWN, 150f, 150f)
-                            touch(view, now + 100, now + 130, MotionEvent.ACTION_UP, 150f, 150f)
-                        }
-                        pump(view, 500)
-                        assertTrue("Native double tap must reach the real SSIV zoom", child.scale > before * 1.1f)
-                        val center = requireNotNull(child.center)
-                        instrumentation.runOnMainSync {
-                            val now = SystemClock.uptimeMillis()
-                            touch(view, now, now, MotionEvent.ACTION_DOWN, 150f, 150f)
-                            touch(view, now, now + 30, MotionEvent.ACTION_MOVE, 170f, 150f)
-                            touch(view, now, now + 60, MotionEvent.ACTION_MOVE, 220f, 150f)
-                            touch(view, now, now + 90, MotionEvent.ACTION_UP, 220f, 150f)
-                        }
-                        pump(view, 100)
-                        assertTrue(
-                            "Native drag must pan the displayed image",
-                            requireNotNull(child.center).x != center.x,
-                        )
-                        assertTrue(view.canPanLeft() || view.canPanRight())
-                    }
-                } finally {
-                    instrumentation.runOnMainSync { view.recycle() }
-                    owned?.let { check(it.delete()) }
                 }
             }
         }
-    }
-
-    private fun pump(view: ReaderPageImageView, duration: Long) {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val deadline = SystemClock.uptimeMillis() + duration
-        while (SystemClock.uptimeMillis() < deadline) {
-            instrumentation.runOnMainSync {
-                val pixels = Bitmap.createBitmap(300, 300, Bitmap.Config.ARGB_8888)
-                try {
-                    view.draw(Canvas(pixels))
-                } finally {
-                    pixels.recycle()
-                }
-            }
-            SystemClock.sleep(16)
-        }
-    }
-
-    private fun touch(view: View, down: Long, time: Long, action: Int, x: Float, y: Float) {
-        MotionEvent.obtain(down, time, action, x, y, 0).let { event ->
-            try {
-                view.dispatchTouchEvent(event)
-            } finally {
-                event.recycle()
-            }
-        }
-    }
-
-    private fun closeColor(pixel: Int, expected: Int): Boolean = listOf(0, 8, 16).all {
-        kotlin.math.abs((pixel ushr it and 255) - (expected ushr it and 255)) < 35
     }
 
     private fun encodedCorners(width: Int, height: Int, exif: Int): ByteArray {
@@ -192,7 +120,11 @@ class SharedReaderViewNativeAcceptanceTest {
                     x,
                     y,
                     when {
-                        x < 4 || y < 4 || x >= width - 4 || y >= height - 4 -> Color.WHITE
+                        x < 40 || y < 40 || x >= width - 40 || y >= height - 40 -> Color.WHITE
+                        x < 44 || y < 44 || x >= width - 44 || y >= height - 44 ||
+                            kotlin.math.abs(
+                                x - width / 2,
+                            ) < 2 || kotlin.math.abs(y - height / 2) < 2 -> Color.rgb(16, 16, 16)
                         x < width / 2 && y < height / 2 -> Color.RED
                         x >= width / 2 && y < height / 2 -> Color.GREEN
                         x < width / 2 -> Color.BLUE

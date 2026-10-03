@@ -485,7 +485,21 @@ Android 采样完成还须在同一内容锁下消费原事实快照，核对方
 平台已删除旧显示 Bitmap 的 EdgePixelMatcher、历次 matchedPairs 并集和整章 manual 禁用；
 Session 只消费共同 owner 当前完整候选，手动状态继续局部遮蔽。Desktop presentation 只消费实际 shared units；旧独立 pairing facade、索引推槽、visible-only single/dual settle 和兼容 matchedPairs 决策已删除。
 Windows Robolectric 仅替换不能加载的 JNI region 边界，执行真实编码像素、共享评分和实际 DisplayPage 接线；
-原 JNI 的 EXIF/ICC/alpha 验收入口为 SharedSpreadNativeAcceptanceTest，仍待 DP02 在正式 ART 产物运行。
+原 JNI 的 EXIF/sRGB/alpha 验收入口为 SharedSpreadNativeAcceptanceTest，结果以 DP02 正式 ART 记录为准。
+
+正式 R8 候选的 instrumentation 不直接调用可能被消除或改签名的内部 sampler、Config、枚举 getter。
+`HostReaderArtFixture` 通过 Android 公共 Intent 启动真实 ReaderActivity，以正常偏好和隔离数据库输入驱动
+原扩展、ChapterLoader、holder、SSIV 与采样 owner；测试包不得为保留内部 ABI 修改产品 keep 规则。
+实际硬件 View 的像素使用公共 PixelCopy(window)和当前可见控件几何读取，不能用软件 Canvas 的透明结果
+判定窗口空白。共享采样需以自动匹配关闭/开启的非默认可见分组作因果对照；仅显示图片不足以证明 sampler 接线。
+EXIF 候选一侧变换、另一侧保持 NORMAL 黄金，保留非对称边缘与 alpha 对照，避免双方同错仍相等。
+EXIF split/fit/crop/触摸及源响应向量独立报告，首个失败不能隐藏后续未执行项。裁边夹具保留可识别的暗色内容边界，
+并通过同图开启/关闭裁边后的实际内容尺寸差确认裁边生效；亮色黄金本身不能充当灰度裁边算法的内容边界。
+受控 HTTP 路由保留原扩展自行处理的虚拟图片拦截器，未知真实请求显式失败，不将章节 JSON 作为图片返回。
+错误验收按原 source 的实际反馈区分章节错误与扩展生成的说明图片：前者执行真实 Retry，后者执行既有产品恢复入口，
+两者最终都须重新取得合法章节图片并绘制。不能仅凭“重试”文字识别错误层级，也不能直接删除缓存文件代替用户恢复操作。
+这些入口仅运行在本次独立 emulator：会安装两原扩展、写入两条 fixture 漫画/章节及临时偏好，并清理其图片缓存。
+不得指向日常 emulator 或实体设备。旧 ABI、加载、像素和输入失败分别保留；编译或入口冒烟不替代完整行为验收。
 
 - fixed-main 只证明固定原版用户语义；共享提取完成、可靠性加固或平台实现不能反向成为上游来源证据。
 - latest settlement、进度幂等/drain 与 encoded store 生命周期属于跨平台可靠性；它们需要两端 production
@@ -503,7 +517,7 @@ Windows Robolectric 仅替换不能加载的 JNI region 边界，执行真实编
 
 Desktop tap 在动画前记录逻辑 PageId，key/drag 继续沿原 navigation intent；尺寸或匹配重排用新 owner units 映射同一目标，不把 delayed native index 变成新用户意图。实际 renderer 只有原 viewport ticket、完整槽位已画和 native idle 才能记录 single/dual 阅读；布局反馈不制造进度。Webtoon 单独保留原恢复 anchor，仅条漫恢复/模式入口设置，由实际条漫 settle 消费，不能给 single/dual 绕过 ticket。
 
-Test Mode 读取 actual mounted model 并在 EventQueue 调用原动作。分页几何来自真实 modifier 和本 publisher 生命周期，pager 卸载时清除；实际窗口/owner focus 缺失时不能报告可原生输入。HTTP 动作与外部 physical key/mouse 证据分开。DP02 Android instrumentation 的原 View/SSIV Canvas 像素、EXIF split/fit/crop/触摸及原已安装扩展 parser 入口仅供隔离 ART 验收；Windows 编译和受控 HTTP 响应路由不能替代正式 ART、TLS/代理或真实源产物验收。
+Test Mode 读取 actual mounted model 并在 EventQueue 调用原动作。分页几何来自真实 modifier 和本 publisher 生命周期，pager 卸载时清除；实际窗口/owner focus 缺失时不能报告可原生输入。HTTP 动作与外部 physical key/mouse 证据分开。DP02 Android instrumentation 使用上文的公共入口与实际像素边界；Windows 编译和受控 HTTP 响应路由不能替代正式 ART、TLS/代理或真实源产物验收。
 
 Desktop 原生 tap/drag intent 与 composition binding 都保存原共享逻辑位置，
 不把 native index 或布尔 userNavigation 当作当前操作权威。intent 选择和 model 写回分别核对

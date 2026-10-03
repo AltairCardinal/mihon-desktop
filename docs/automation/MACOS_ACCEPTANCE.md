@@ -77,6 +77,8 @@ Material 默认 DragHandle 的外层接收点击及焦点，内层 modifier 不�
 
 ## 6. 隔离关停、失败与证据边界
 
+从 Windows 经 SSH 发送多行 shell 脚本时，显式保持 UTF-8/LF。PowerShell here-string 直接管道以及 Python `subprocess.run(input=script, text=True)` 均可能把换行转换为 CRLF，令远端 `set -eu` 或参数带入 `\r`；最后一条命令退出 0 不能证明前面步骤成功。已验证的方式是 `input=script.encode("utf-8")`、不启用 `text=True`，并用 UTF-8 严格解码 stdout/stderr；发送前检查脚本没有 `\r`。入口失败后先核对已发生的部署或 Git 操作，不能直接重复全部变更。
+
 完成后仅对核对过的本次实例调用 `/test/shutdown`，确认实际应用 PID 和 LaunchServices 包装器都退出。异常时只处理本次精确进程树，不全局清理 Java、Gradle 或其他 Mihon 实例；需要保留窗口供用户检查时明确告知，现场检查结束再关停。
 
 每层结果分别记录：构建、运行版本、production wiring、安全存储、窗口、原生输入、视觉、真实远端及设备升级。一个层级通过不能替代另一个层级。失败保留原记录；针对具体问题补验，不因验收工具排障自动重跑完整测试或正式构建。外部工具修改不自动要求重打包应用；production 代码有变化时重新判断原证据有效性并遵守预算。
@@ -91,5 +93,6 @@ Material 默认 DragHandle 的外层接收点击及焦点，内层 modifier 不�
 | 2026-09-30；同一 Mac 与候选 | 核对实际应用 on-screen 窗口元数据，用户明确确认“现在看见了”。窗口证据记录提交 `ecd7d4ca1d`。 | 窗口可见不能代替键盘、视觉或同步验收。 |
 | 2026-09-30；macOS 14.8.4；候选 `0.11.19.71.ecd7d4c` | 锁屏时停止输入，用户解锁后重新核验；Dock 全屏矩形误阻塞通过实际 AX 命中 PID 排除；鼠标打开、五控件正反 Tab 回环、Escape 还焦、Enter/Space 重开通过；应用及包装器正常退出。实现与证据提交 `9967e556cffc2cb2dc0b20f98458716aea415b37`。 | 只覆盖未登录 MAIN；底层工具栏局部焦点与模态作用域区分，不冒充密码页或远端双端。 |
 | 2026-10-02；同一 macOS 14.8.4；共享双页正式构建前的只读预检 | 同次读取主显示器休眠为 true、会话锁屏标志为 true；用户明确纠正其自动超时行为仅为息屏。修订验收前置检查，分别核对显示器、会话与应用焦点。 | 尚未执行本次正式候选的醒屏后输入验收；两个标志同时为 true 的具体原因未证实，不能由此推断需要密码。 |
+| 2026-10-02；Windows Python 3.14 经 SSH 到同一 Mac；候选 `0.11.19.69.ca4abd3` | 多行脚本通过 binary stdin 保持 UTF-8/LF 后，隔离 profile 配置、LaunchServices 启动及 HTTP 健康核验成功；此前 CRLF 入口失败保留。 | 只证明脚本传输与本次启动步骤；不能替代窗口焦点、原生输入或真实阅读验收。失败后的部分执行状态须先核对。 |
 
 上述同步专项详细记录位于 `codex/sync-password-review` 的 `docs/roadmap/2026-09-28-sync-password-safety-roadmap.md`；当前分支未包含它时，可从对应提交只读查看，不把不存在的路径写成当前可用验收入口。历史临时目录、PID、动态端口和候选不是后续任务的默认配置。
