@@ -82,3 +82,14 @@ PROJECT_POLICY：本轮仅修改共享进度卡片时间行。计划固定但剩
 真实 Compose D01 通过虚拟时钟和真实呈现验证未知 → 有效 → 过期估时；红测因旧界面缺少仅已用文案失败。仅执行受影响 SyncPanelContentTest 与格式检查，不重跑完整产品矩阵。本轮不构建或发布新 APK，云端 0.19.4-aex.30 不包含此次微调。
 
 验证结果：`sync-eta-label-green` 的 115 项中 114 项通过（含 D01）；误加到无计划 D10 的无关时间断言已撤销。`sync-eta-label-final-format` 重验 D01/D10 及格式全部通过；生产变更在首次绿实现后未改变。`git diff --check` 通过。
+
+## 2026-10-04 补交 Android 正式候选
+
+用户要求构建供远程验收。本轮复用 4cc8be426e 的行为与格式证据，不重复功能测试；版本分配为 0.19.4-aex.31 / code 49。统一 candidate 构建和独立 verify 通过，沿用原发布证书，v2/v3 签名、R8、资源压缩已核验。
+
+- 正式 APK：`app/artifacts/android/0.19.4-aex.31-vc49-4cc8be426e-release/Mihon-Fork-0.19.4-aex.31-vc49-release-universal.apk`。
+- SHA-256：`28d913b31373c2e09a57526c5bdcf5636e2365eddc8833dd4caeb813b20d5780`。
+- productionInputsSha256：`2c67746a0c0d1a1778e6903ba0daa65d58b3814849a72ae76e45201d39783b92`。
+- 四个版本化分片写后与整包重组校验通过，总大小 68726667 字节。保留原下载脚本和两次浏览器手势，不安装或操作用户设备。
+
+Sites 已发布成功：源提交 `12ab62cf68a00ceb8f00f2bf2dd91add785274b1`，deployment `appgdep_6ac12de06b4c81919297056cf8c5ed34`，结果 `succeeded`；既有下载入口 <https://mihon-apk-sync-recovery.windy-lover-ds.chatgpt.site> 和访问权限保持一致。
