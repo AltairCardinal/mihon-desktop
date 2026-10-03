@@ -84,13 +84,17 @@ test('新入口双端两行信息与真实完成比例，无详情无循环动�
     await page.getByTestId('show-progress-both').click();
     assert.equal(await pc.getByTestId('sync-progress-track').count(), 0, '新版完成态不保留运行轨道');
     assert.match(await pc.getByTestId('sync-compact-summary').innerText(), /同步已完成/);
+    await page.clock.install();
     await pc.getByTestId('sync-progress-primary').click();
+    assert.equal(await pc.getByTestId('sync-compact-summary').innerText(), '正在统计数据');
+    assert.equal(await pc.getByTestId('sync-compact-time').count(), 0);
+    await page.clock.fastForward(1200);
     assert.match(await pc.getByTestId('sync-compact-summary').innerText(), /同步中，已完成0\/\d+条/);
     assert.equal(await pc.getByTestId('sync-progress-track').getAttribute('aria-valuenow'), '0');
   } finally { await browser.close(); }
 });
 
-test('未知总数静态轨道，320px大字可读，主题切换与设置返回不丢进度', async () => {
+test('统计阶段循环等待无计时，320px大字可读，主题切换与设置返回不丢进度', async () => {
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1180 } });
@@ -99,7 +103,9 @@ test('未知总数静态轨道，320px大字可读，主题切换与设置返回
     const phone = page.frameLocator('#preview-android');
     const track = phone.getByTestId('sync-progress-track');
     await phone.getByTestId('sync-compact-summary').waitFor();
-    assert.equal(await track.count(), 0, '实机未知总数不绘制比例轨道');
+    assert.equal(await track.count(), 1, '提案统计阶段显示等待轨道');
+    assert.equal(await track.getAttribute('aria-valuenow'), null);
+    assert.equal(await phone.getByTestId('sync-compact-time').count(), 0);
     await phone.locator('body').evaluate(el => {
       const style = document.createElement('style');
       style.textContent = '.sync-compact-card {font-size:28px;}';

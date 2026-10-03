@@ -6,7 +6,7 @@
   function create({ state, currentDevice, isWindows, esc, view, button, render, queueStats }) {
     const modern = () => native && window.parent.MihonPreview.reviewMode === 'proposal';
     const native = Boolean(window.parent.MihonPreview?.fullSyncReview);
-    const titles = { authorize: '连接 GitHub', password: '同步密码', lookup: '查找同步空间', creating: '创建同步空间', 'setup-error': '同步空间未连接', import: '首次合并', importing: '合并进度', imported: '合并完成', frequency: '同步频率', device: '设备名称', disconnect: '断开同步', switch: '更换同步空间', issue: '同步详情', activity: '同步记录', privacy: '阅读与历史', diagnostics: '同步诊断' };
+    const titles = { recovery: '恢复同步', 'recovery-spaces': '选择同步空间', 'recovery-confirm': '确认更换空间', 'recovery-cancel': '取消本次更换', authorize: '连接 GitHub', password: '同步密码', lookup: '查找同步空间', creating: '创建同步空间', 'setup-error': '同步空间未连接', import: '首次合并', importing: '合并进度', imported: '合并完成', frequency: '同步频率', device: '设备名称', disconnect: '断开同步', switch: '更换同步空间', issue: '同步详情', activity: '同步记录', privacy: '阅读与历史', diagnostics: '同步诊断' };
     const cancellationExample = Object.values(state.devices).flatMap(device => device.confirmations)[0];
     function data() {
       if (!state.ui.interactions) state.ui.interactions = { connected: true, stack: [], fields: { repo: 'reader/mihon-sync', password: '', device: currentDevice().name }, automatic: false, message: '', issue: null, mode: 'join', importKind: 'merge', lastSync: '14:32', authStatus: 'idle', spaceScenario: 'new', setupStage: null, passwordProtected: false };
@@ -133,7 +133,7 @@
       const unknown = data().issue === 'unknown';
       return data().issue ? `<button class="ix-status-link" data-action="ix-issue" data-testid="ix-issue">${view.icon(unknown ? 'sync' : 'info')}<span><strong>${unknown ? '正在核对上传结果' : '上次同步未完成'}</strong><small>${unknown ? '待上传数量会保留到核对完成' : '查看详情与恢复操作'}</small></span>${view.icon('chevron')}</button>` : '';
     }
-    function summary() { return issues() + renderBatch() + message(); }
+    function summary() { return modern() && data().recovery ? '' : issues() + renderBatch() + message(); }
     function activityPage() {
       const entries = data().automatic ? [
         ['白河 · 自动保留关注', '两端同时作出不同操作时，优先保留收藏或关注。'],
@@ -148,6 +148,7 @@
     }
     function status({ total, membership, reading, pending, busy, online }) {
       const d = data();
+      if (modern() && d.recovery) return recoverySummary();
       if (d.progress) return progressCard();
       if (d.changes) { membership = { total: d.changes.membership, favorites: d.changes.membership, authors: 0 }; reading = d.changes.reading; total = d.changes.membership + reading; }
       const membershipTotal = typeof membership === 'number' ? membership : membership.total;
@@ -231,16 +232,20 @@
       const [label, name] = primary(f);
       const percent = f.completionPercent;
       const disabled = ['pausing', 'retry', 'network', 'system', 'recovering'].includes(f.state);
-      return `<section class="sync-progress-card sync-compact-card" data-state="${f.state}" data-testid="sync-progress-card"><div class="sync-compact-content"><p data-compact-line data-testid="sync-compact-summary">${esc(compactSummary(f))}</p>${native && percent === null ? '' : `<div class="sync-progress-track" data-testid="sync-progress-track" role="progressbar" aria-label="同步完成进度" aria-valuemin="0" aria-valuemax="100" ${percent === null ? '' : `aria-valuenow="${percent}"`}><span style="width:${percent ?? 0}%"></span></div>`}<p data-compact-line data-testid="sync-compact-time">${esc(f.time)}</p></div>${f.state === 'succeeded' ? nextAuto() : ''}${f.state === 'failed' ? `<p class="ix-note">${esc(f.reason || '同步未完成，已完成的进度已保留。')}</p>` : ''}<div class="sync-compact-controls"><button class="m-button m-button-text" data-testid="sync-progress-primary" data-action="${name}" ${disabled ? 'disabled' : ''}><span data-progress-control-label>${label}</span></button></div></section>`;
+      const counting = modern() && f.counting;
+      return `<section class="sync-progress-card sync-compact-card" data-state="${f.state}" data-phase="${counting ? 'counting' : 'syncing'}" data-testid="sync-progress-card"><div class="sync-compact-content"><p data-compact-line data-testid="sync-compact-summary">${esc(compactSummary(f))}</p>${native && percent === null && !counting ? '' : `<div class="sync-progress-track" data-testid="sync-progress-track" role="progressbar" aria-label="${counting ? '正在统计数据' : '同步完成进度'}" data-active="${f.state === 'running'}" data-determinate="${percent !== null}" aria-valuemin="0" aria-valuemax="100" ${percent === null ? '' : `aria-valuenow="${percent}"`}><span style="width:${counting ? 32 : percent ?? 0}%"></span></div>`}${counting ? '' : `<p data-compact-line data-testid="sync-compact-time">${esc(f.time || '已用00:00，剩余估时—')}</p>`}</div>${f.state === 'succeeded' ? nextAuto() : ''}${f.state === 'failed' ? `<p class="ix-note">${esc(f.reason || '同步未完成，已完成的进度已保留。')}</p>` : ''}<div class="sync-compact-controls"><button class="m-button ${modern() ? 'm-button-tonal' : 'm-button-text'}" data-testid="sync-progress-primary" data-action="${name}" ${disabled ? 'disabled' : ''}>${modern() ? `<span data-progress-control-icon aria-hidden="true">${view.icon(f.state === 'paused' ? 'play' : 'pause')}</span>` : ''}<span data-progress-control-label>${label}</span></button></div></section>`;
     }
     function paintCompact(card, f) {
       card.querySelector('[data-testid="sync-compact-summary"]').textContent = compactSummary(f);
-      card.querySelector('[data-testid="sync-compact-time"]').textContent = f.time;
+      const time = card.querySelector('[data-testid="sync-compact-time"]');
+      if (time) time.textContent = f.time || '已用00:00，剩余估时—';
       const track = card.querySelector('[data-testid="sync-progress-track"]');
       if (track) {
         if (f.completionPercent === null) track.removeAttribute('aria-valuenow');
         else track.setAttribute('aria-valuenow', f.completionPercent);
-        track.firstElementChild.style.width = `${f.completionPercent ?? 0}%`;
+        track.dataset.active = String(f.state === 'running');
+        track.dataset.determinate = String(f.completionPercent !== null);
+        track.firstElementChild.style.width = `${f.counting && modern() ? 32 : f.completionPercent ?? 0}%`;
       }
       const control = card.querySelector('[data-testid="sync-progress-primary"]');
       const [label, name] = primary(f);
@@ -274,7 +279,7 @@
         return;
       }
       if (f.compact) {
-        if (card.dataset.state !== f.state) { render(); return; }
+        if (card.dataset.state !== f.state || (card.dataset.phase === 'counting') !== Boolean(modern() && f.counting)) { render(); return; }
         paintCompact(card, f); return;
       }
       const put = (id, value) => { const node = card.querySelector(`[data-testid="${id}"]`); if (node && node.textContent !== value) node.textContent = value; };
@@ -319,7 +324,7 @@
       if (name === 'compact-download') { f.direction = '本轮下载'; f.action = '接收'; }
       if (name === 'compact-bidirectional') { f.direction = '双向同步'; f.scope = 'review-whole-run'; f.confirmed = 0; f.total = 24576; f.startedAt = Date.now(); }
       if (name === 'compact-start') { f.confirmed = 0; f.startedAt = Date.now(); }
-      if (name === 'compact-unknown') { f.total = null; f.confirmed = 0; f.wholeEta = null; }
+      if (name === 'compact-unknown') { f.total = null; f.confirmed = 0; f.wholeEta = null; if (modern()) { f.phase = 'counting'; f.startedAt = null; f.planTotal = 16384; f.planningRemaining = 6000; schedulePlanning(f); } }
       if (name === 'compact-paused') { f.state = 'paused'; f.pausedAt = Date.now(); }
       if (name === 'compact-failed') { f.state = 'failed'; f.endedAt = Date.now(); f.reason = '连接暂时中断，可继续同步。'; }
       if (name === 'compact-complete') { f.state = 'succeeded'; f.confirmed = f.total; f.endedAt = Date.now(); if (native) { f.confirmed = 14434; f.total = 14434; f.startedAt = f.endedAt - 39713000; } didSync(true); }
@@ -337,6 +342,17 @@
         if (f.state === 'running') scheduleCompactTick();
       }, 1200);
     }
+    function schedulePlanning(f, complete) {
+      f.planningStartedAt = Date.now();
+      if (complete) f.onPlanned = complete;
+      progressTimer = setTimeout(() => {
+        if (data().progress !== f || f.state !== 'running') return;
+        Object.assign(f, { phase: 'syncing', total: f.planTotal, confirmed: 0, startedAt: Date.now(), lastProgressAt: Date.now(), pausedMillis: 0, pausedAt: null, planningRemaining: 0 });
+        render();
+        if (f.onPlanned) f.onPlanned();
+        else scheduleCompactTick();
+      }, f.planningRemaining);
+    }
     function rapidTick(step) {
       const f = data().progress; if (!f || f.state !== 'running') return;
       f.demoStep = step; f.action = ['接收', '校验', '合并', '上传'][step % 4]; f.scope = `round-${step}`; f.direction = step % 4 === 3 ? '本轮上传' : '本轮下载'; f.detail = `正在${f.action}第 ${step + 1} 批数据`; f.confirmed = Math.max(f.confirmed ?? 0, 1280 + Math.floor(step / 4) * 20); f.checked = step * 30; f.received = step * 15; f.additionalWork = step >= 5; f.percent = step % 2 ? 30 : null; f.wholeEta = step % 3 ? null : 20; f.lastProgressAt = Date.now();
@@ -349,49 +365,62 @@
       paintProgress();
       progressTimer = setTimeout(() => { if (step >= 5) { f.state = 'succeeded'; f.confirmed = 1600; f.endedAt = Date.now(); paintProgress(); } else continuousTick(step + 1); }, 4000);
     }
-    function beginSync(trigger = 'manual') {
+    function beginSync(trigger = 'manual', onPlanned) {
       clearTimeout(progressTimer);
       const compact = Boolean(window.parent.MihonPreview?.fullSyncReview);
       // Plan only the local demo model on an isolated copy; never exchange live data early.
       const planned = compact ? window.__mihonSyncDemo.model.triggerSync(JSON.parse(JSON.stringify(state)), currentDevice().id, trigger) : null;
-      newProgress({ source: 'manual', compact, confirmed: compact ? 0 : null, total: planned?.ok ? (planned.sent || 0) + (planned.applied || 0) : null, action: '准备' });
+      const total = planned?.ok ? (planned.sent || 0) + (planned.applied || 0) : null;
+      const f = newProgress({ source: 'manual', compact, confirmed: compact ? 0 : null, total: modern() ? null : total, action: '准备' });
+      if (modern()) { Object.assign(f, { phase: 'counting', startedAt: null, planTotal: total, planningRemaining: 1200 }); schedulePlanning(f, onPlanned); }
+      else onPlanned?.();
     }
     function finishSync(result) { const f = data().progress; if (f?.source !== 'manual') return; Object.assign(f, { state: result.ok ? 'succeeded' : 'failed', confirmed: result.ok ? (result.sent || 0) + (result.applied || 0) : null, noWork: result.ok && !result.skipped && result.sent === 0 && result.received === 0 && currentDevice().confirmations.length === 0, endedAt: Date.now(), reason: result.message }); }
     let authWindow = null;
     let authRequest = 0;
     function startAuth(reconnect = false) {
+      if (data().recovery && data().authStatus === 'waiting') { data().stack = ['authorize']; return; }
       authWindow?.close(); authWindow = null;
       data().reconnecting = reconnect; data().authStatus = 'ready'; authRequest += 1;
       go('authorize');
     }
     function openAuthorization() {
+      if (data().authStatus === 'waiting') return;
       const url = new URL('./github-authorization-demo.html', document.baseURI);
       url.searchParams.set('request', String(authRequest));
       if (data().reconnecting) url.searchParams.set('reconnect', '1');
       authWindow = window.open(url.href, '_blank', 'popup,width=540,height=760');
       if (authWindow) {
         data().authStatus = 'waiting';
+        if (data().recovery) data().recovery.authorization = 'waiting';
         if (navigator.clipboard?.writeText) navigator.clipboard.writeText('DEMO-CODE').catch(() => {});
       } else data().message = '请允许打开授权窗口，然后重试。也可以手动复制上方验证码。';
     }
     window.addEventListener('message', event => {
       const reply = event.data;
-      if (event.source !== authWindow || !reply || reply.type !== 'mihon-demo-authorization' || reply.request !== String(authRequest)) return;
+      if (event.source !== authWindow || !reply || reply.type !== 'mihon-demo-authorization' || reply.request !== String(authRequest) || data().authStatus !== 'waiting') return;
       if (reply.allowed) {
         data().authStatus = 'success';
-        if (data().reconnecting) { data().issue = null; data().connected = true; home(state.ui.syncOpen ? 'GitHub 已重新连接，可以继续同步。' : ''); }
+        if (data().recovery) {
+          const r = data().recovery; r.authorization = 'checking'; r.busy = true; data().stack = ['recovery'];
+          recoveryTimer = setTimeout(() => { if (data().recovery !== r) return; r.authorization = 'confirmed'; r.authorizationAt = Date.now(); r.busy = false; if (r.condition === 'auth') r.condition = 'deleted'; checkRecovery(); render(); }, 400);
+        } else if (data().reconnecting) { data().issue = null; data().connected = true; home(state.ui.syncOpen ? 'GitHub 已重新连接，可以继续同步。' : ''); }
         else findSpace();
-      } else data().authStatus = 'denied';
+      } else { data().authStatus = 'denied'; if (data().recovery) data().recovery.authorization = 'cancelled'; }
       render();
     });
     function authorizationPage() {
       const d = data();
       if (d.authStatus === 'expired' || d.authStatus === 'denied') return `<h3>${d.authStatus === 'expired' ? '验证码已过期' : '本次授权已取消'}</h3>` + note('本设备的数据保持原样，你可以重新连接。') + actions(action(d.authStatus === 'expired' ? '重新获取验证码' : '重新授权', 'auth-restart', true));
-      return `<h3>在浏览器中登录 GitHub</h3>` + note('打开 GitHub 后输入下面的设备验证码，并授权 Mihon 连接同步空间。') + '<div class="ix-device-code" aria-label="设备验证码">DEMO-CODE</div>' + actions(action('复制验证码并打开 GitHub', 'open-github', true)) + note(d.authStatus === 'waiting' ? '等待你在 GitHub 完成授权，完成后这里会自动更新。' : '验证码在 15 分钟内有效。你也可以手动复制验证码。') + message();
+      return `<h3>在浏览器中登录 GitHub</h3>` + note('打开 GitHub 后输入下面的设备验证码，并授权 Mihon 连接同步空间。') + '<div class="ix-device-code" aria-label="设备验证码">DEMO-CODE</div>' + actions(action(d.authStatus === 'waiting' ? '等待授权完成' : '复制验证码并打开 GitHub', 'open-github', true, d.authStatus === 'waiting' ? 'disabled' : '')) + note(d.authStatus === 'waiting' ? '等待你在 GitHub 完成授权，完成后这里会自动更新。' : '验证码在 15 分钟内有效。你也可以手动复制验证码。') + (d.authStatus === 'waiting' ? actions(action('重新开始授权', 'auth-restart')) : '') + message();
     }
     function renderScreen() {
       const d = data(); let body = '';
       switch (screen()) {
+        case 'recovery': body = recoveryPage(); break;
+        case 'recovery-spaces': body = recoverySpaces(); break;
+        case 'recovery-confirm': body = recoveryConfirmation(); break;
+        case 'recovery-cancel': body = '<h3>取消这次更换？</h3>' + note('本机资料和原空间的恢复记录会保留。下次可以重新选择同步空间。') + actions(action('继续更换', 'recovery-open') + action('取消更换', 'recovery-cancel-apply', true)); break;
         case 'authorize': body = authorizationPage(); break;
         case 'lookup': body = '<h3>正在查找同步空间</h3>' + note('正在检查专用私有同步空间。可以收起面板，稍后继续。'); break;
         case 'creating': body = '<h3>正在创建同步空间</h3>' + note('正在准备专用私有同步空间。可以收起面板，稍后继续。'); break;
@@ -417,6 +446,94 @@
       const [title, detail, label, name] = labels[kind];
       return `<h3>${title}</h3>` + note(detail) + pair('同步空间', data().fields.repo) + message() + actions(action(label, name, true) + action('返回同步', 'home'));
     }
+    let recoveryTimer = null;
+    function recoveryScenario(name) {
+      const d = data();
+      d.connected = true; d.issue = null; d.progress = null;
+      const condition = name === 'space-auth' ? 'auth' : name === 'space-renamed' ? 'renamed' : name === 'space-check-failed' ? 'check-failed' : 'deleted';
+      d.recovery = { condition, authorization: condition === 'auth' ? 'required' : 'connected', lastCheckedAt: Date.now(), lastSpaceFact: 'unavailable', checks: 1, result: '旧空间无法访问', busy: false, candidates: name === 'space-existing' ? [{ name: 'reader/mihon-sync', protected: true }] : [] };
+      if (name === 'space-switch-pending') d.recovery.pending = { kind: 'connect', stage: 'password', target: 'reader/mihon-sync', protected: true };
+      d.stack = ['recovery'];
+    }
+    function recoveryButton(label, name, primary = false, disabled = false) {
+      return `<button class="m-button ${primary ? 'm-button-primary' : 'm-button-text'}" data-action="ix-recovery-${name}" data-testid="recovery-${primary ? 'primary' : name}" ${disabled ? 'disabled' : ''}>${label}</button>`;
+    }
+    function recoveryRecommendation() {
+      const r = data().recovery;
+      if (r.pending) return [r.pending.kind === 'create' ? '继续创建同步空间' : '继续连接同步空间', 'continue', '上次设置尚未完成，继续后会从已保存的步骤开始。'];
+      if (r.authorization === 'waiting') return ['查看授权进度', 'authorize', '已打开浏览器，等待完成授权，无需重复发起。'];
+      if (['required', 'cancelled'].includes(r.authorization)) return ['重新连接 GitHub', 'authorize', r.authorization === 'cancelled' ? '上次授权已取消，可以重新连接后检查空间。' : '当前授权无法访问同步空间，请先完成授权。'];
+      if (r.condition === 'renamed') return ['检查并恢复原空间', 'check-primary', '空间可能只更改了名称。检查可用性后会继续使用原空间。'];
+      if (r.candidates.length) return ['选择已有同步空间', 'connect', '已有可用空间，可选择后连接并合并本机资料。'];
+      return ['创建新的同步空间', 'create', '旧空间仍不可用。创建一个新空间后，本机资料会作为首次同步数据。'];
+    }
+    function recoverySummary() {
+      const r = data().recovery;
+      const [label] = recoveryRecommendation();
+      return `<section class="modern-status-card recovery-summary" data-testid="recovery-summary"><div class="modern-status-heading"><span class="modern-status-icon">${view.icon('info')}</span><h3>同步需要处理</h3></div><p class="modern-muted">本机书架、关注和阅读记录已保留</p><p>${esc(r.pending ? '上次更换空间尚未完成' : r.authorization === 'waiting' ? '等待浏览器完成 GitHub 授权' : r.result)}</p><div class="modern-status-actions"><button class="m-button m-button-primary" data-action="ix-recovery-open" data-testid="recovery-open">${esc(label)}</button></div></section>`;
+    }
+    function recoveryPage() {
+      const r = data().recovery;
+      const [label, next, hint] = recoveryRecommendation();
+      const auth = { connected: '已连接 · 尚未复核', required: '需要重新授权', cancelled: '上次授权已取消', waiting: '等待浏览器授权', checking: '正在验证授权', confirmed: '已确认' }[r.authorization];
+      const time = new Date(r.lastCheckedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      return `<section class="recovery-intro"><div class="modern-status-heading"><span class="modern-status-icon">${view.icon('info')}</span><h3>${r.pending ? '继续完成空间连接' : '恢复你的同步连接'}</h3></div><p class="modern-muted">本机书架、关注和阅读记录已保留</p></section><section class="recovery-facts" aria-label="当前连接状态"><div class="recovery-fact"><span class="recovery-fact-icon">${view.icon(r.authorization === 'confirmed' ? 'check' : 'cloud')}</span><div><strong>GitHub 授权</strong><p data-testid="recovery-auth-state" data-status="${r.authorization}">${auth}</p></div>${['waiting', 'checking'].includes(r.authorization) ? '' : recoveryButton(r.authorization === 'confirmed' ? '管理授权' : '检查授权', r.authorization === 'confirmed' ? 'manage-auth' : 'authorization', false, r.busy)}</div><div class="recovery-fact"><span class="recovery-fact-icon">${view.icon('info')}</span><div><strong>原同步空间</strong><p data-testid="recovery-space-state">${r.checkProblem ? '上次确认：空间不可用' : '无法访问原空间'}</p><small>${esc(data().fields.repo)}</small></div></div><p class="recovery-check-result" data-testid="recovery-result" role="status" aria-busy="${r.busy}">${r.busy ? r.authorization === 'checking' ? '正在验证 GitHub 授权…' : '正在检查空间…' : `${r.checkProblem || r.result} · 最近检查 ${time}`}</p></section><section class="recovery-next"><h4>下一步</h4><p>${esc(hint)}</p>${recoveryButton(r.busy ? '正在检查…' : label, next, true, r.busy)}${r.pending ? recoveryButton('取消本次更换', 'cancel') : next !== 'connect' ? recoveryButton('连接已有同步空间', 'connect', false, r.busy || r.authorization === 'waiting') : recoveryButton('创建新的同步空间', 'create', false, r.busy)}</section><div class="recovery-secondary">${recoveryButton('重新检查空间', 'recheck', false, r.busy || r.authorization === 'waiting')}${r.checks > 1 && !r.busy && !r.checkProblem ? '<p class="modern-muted">检查结果未改变，请按上方建议继续。外部设置改变后可再次检查。</p>' : ''}</div>`;
+    }
+    function checkRecovery() {
+      const r = data().recovery; if (!r || r.busy || r.authorization === 'waiting') return;
+      r.busy = true; r.checks += 1;
+      recoveryTimer = setTimeout(() => {
+        if (data().recovery !== r) return;
+        r.busy = false; r.lastCheckedAt = Date.now();
+        if (!state.online || r.condition === 'check-failed') r.checkProblem = '检查未完成，请检查网络后重试';
+        else if (r.condition === 'renamed') { data().fields.repo = 'reader/mihon-sync-renamed'; data().recovery = null; home('原同步空间已恢复，已更新名称，可以继续同步。'); }
+        else { r.checkProblem = null; r.result = r.authorization === 'required' ? '授权尚未恢复，无法检查空间' : '仍无法访问旧空间'; }
+        render();
+      }, 700);
+    }
+    function checkRecoveryAuthorization() {
+      const r = data().recovery; if (!r || r.busy || r.authorization === 'waiting') return;
+      const previousAuthorization = r.authorization;
+      r.busy = true; r.authorization = 'checking';
+      recoveryTimer = setTimeout(() => {
+        if (data().recovery !== r) return;
+        r.busy = false;
+        if (!state.online) { r.authorization = previousAuthorization; r.checkProblem = '授权检查未完成，请恢复网络后重试'; }
+        else { r.authorization = r.condition === 'auth' ? 'required' : 'confirmed'; r.authorizationAt = Date.now(); if (r.authorization === 'confirmed') checkRecovery(); }
+        render();
+      }, 500);
+    }
+    function findRecoverySpaces() {
+      const r = data().recovery; if (r.busy || r.authorization === 'waiting') return;
+      data().stack = ['recovery', 'recovery-spaces']; r.searching = true;
+      recoveryTimer = setTimeout(() => { if (data().recovery !== r) return; r.searching = false; r.searchFailed = !state.online; render(); }, 700);
+    }
+    function recoverySpaces() {
+      const r = data().recovery;
+      return '<h3>连接已有同步空间</h3>' + note('选择当前账号可访问的专用同步空间。确认前不会改变原连接。') + `<div data-testid="recovery-spaces">${r.searching ? '<p role="status">正在查找可用空间…</p>' : r.searchFailed ? '<p role="status">查找未完成，请恢复网络后重试。</p>' : r.candidates.length ? r.candidates.map((space, index) => `<button class="ix-choice recovery-space-choice" data-action="ix-recovery-space-choice" data-index="${index}" data-testid="recovery-space-choice"><strong>${esc(space.name)}</strong><small>可连接${space.protected ? ' · 需要同步密码' : ''}</small>${view.icon('chevron')}</button>`).join('') : '<p>没有可连接的同步空间</p><p class="modern-muted">如果刚在 GitHub 创建空间或调整权限，可重新查找；也可以直接创建。</p>'}</div>` + (r.searching ? '' : actions(recoveryButton('重新查找', 'search') + recoveryButton('创建新的同步空间', 'create')));
+    }
+    function recoveryConfirmation() {
+      const d = data(); const r = d.recovery; const create = r.confirmKind === 'create';
+      return `<h3>${create ? '创建并连接新的同步空间？' : '连接所选同步空间？'}</h3>` + note('本机书架、关注和阅读记录会保留，原连接的恢复记录也会保留到新空间连接完成。') + note(create ? '新空间将从本机资料开始首次同步。已丢失的远端专属资料无法从本机恢复。' : '新空间已有资料会与本机合并，空书架不会自动取消其他设备收藏。') + (create ? '' : pair('所选空间', r.choice.name)) + `<div class="ix-actions">${recoveryButton('返回', 'cancel-confirm')}<button class="m-button m-button-primary" data-action="ix-recovery-confirm" data-testid="recovery-confirm">${create ? '继续创建' : '确认连接'}</button></div>`;
+    }
+    function handleRecovery(name, target) {
+      const d = data(); const r = d.recovery; if (!r || !name.startsWith('recovery-')) return false;
+      if (name === 'recovery-open') d.stack = ['recovery'];
+      else if (name === 'recovery-recheck' || name === 'recovery-check-primary') checkRecovery();
+      else if (name === 'recovery-authorization') checkRecoveryAuthorization();
+      else if (name === 'recovery-authorize' || name === 'recovery-manage-auth') { startAuth(true); if (d.authStatus !== 'waiting') r.authorization = 'required'; }
+      else if (name === 'recovery-connect' || name === 'recovery-search') findRecoverySpaces();
+      else if (name === 'recovery-create') { if (r.busy || r.authorization === 'waiting') return true; r.confirmKind = 'create'; d.stack = ['recovery', 'recovery-confirm']; }
+      else if (name === 'recovery-space-choice') { r.choice = r.candidates[Number(target.dataset.index)]; if (r.choice) { r.confirmKind = 'connect'; go('recovery-confirm'); } }
+      else if (name === 'recovery-cancel-confirm') d.stack = ['recovery'];
+      else if (name === 'recovery-confirm') {
+        r.pending = { kind: r.confirmKind, stage: 'password', target: r.confirmKind === 'create' ? 'reader/mihon-sync' : r.choice.name, protected: r.confirmKind === 'connect' && r.choice.protected };
+        d.fields.password = ''; d.mode = r.pending.kind === 'create' ? 'create' : 'join'; d.spaceScenario = r.pending.protected ? 'protected' : 'new'; setupPage('password');
+      } else if (name === 'recovery-continue') { d.mode = r.pending.kind === 'create' ? 'create' : 'join'; d.spaceScenario = r.pending.protected ? 'protected' : 'new'; setupPage(r.pending.stage); }
+      else if (name === 'recovery-cancel') go('recovery-cancel');
+      else if (name === 'recovery-cancel-apply') { clearTimeout(setupTimer); clearTimeout(importTimer); r.pending = null; d.setupStage = null; d.progress = null; d.fields.password = ''; d.stack = ['recovery']; }
+      return true;
+    }
     function renderBatch() {
       const batch = data().batch;
       if (!batch) return '';
@@ -425,7 +542,8 @@
     let setupTimer = null;
     function setupPage(name) {
       const d = data(); d.setupStage = name; d.message = '';
-      if (state.ui.syncOpen && (!screen() || ['authorize', 'lookup', 'creating', 'password', 'setup-error', 'issue'].includes(screen()))) d.stack = [name];
+      if (d.recovery?.pending) d.recovery.pending.stage = name;
+      if (state.ui.syncOpen && (!screen() || ['authorize', 'lookup', 'creating', 'password', 'setup-error', 'issue', 'recovery', 'recovery-confirm'].includes(screen()))) d.stack = [name];
     }
     function findSpace() {
       clearTimeout(setupTimer); setupPage('lookup');
@@ -469,6 +587,7 @@
         }
         if (d.importProgress === 100 && native) {
           importFact(); Object.assign(d.progress, { state: 'succeeded', endedAt: Date.now(), source: 'manual' });
+          if (d.recovery?.pending) { d.fields.repo = d.recovery.pending.target; d.recovery = null; }
           d.connected = true; d.importReady = true; d.setupStage = null; d.importProgress = null; didSync(true); home();
         } else if (d.importProgress === 100) { d.connected = true; d.importReady = true; if (d.setupStage) { d.progress = null; d.setupStage = null; d.importProgress = null; d.importReady = false; if (screen() === 'importing') home(state.ui.syncOpen ? '同步已开启' : ''); } else if (screen() === 'importing') d.stack[d.stack.length - 1] = 'imported'; }
         else advanceImport();
@@ -510,14 +629,15 @@
       }, 650);
     }
     function showScenario(name) {
-      clearTimeout(importTimer); clearTimeout(batchTimer); clearTimeout(setupTimer); clearTimeout(progressTimer);
+      clearTimeout(importTimer); clearTimeout(batchTimer); clearTimeout(setupTimer); clearTimeout(progressTimer); clearTimeout(recoveryTimer);
       clearTimeout(state.ui.timerId); state.ui.busy = false; state.ui.timerId = null;
       authWindow?.close(); authWindow = null; authRequest += 1;
       batchStep = null;
       state.ui.interactions = null; const d = data();
       state.ui.syncOpen = true; state.ui.syncSettingsOpen = false; state.ui.route = 'library'; state.ui.detail = null; state.ui.reader = false;
       state.ui.batchReview = null; state.ui.selecting = false; state.ui.syncResult = null; state.ui.batchResult = null;
-      if (name.startsWith('progress-')) progressScenario(name.slice(9));
+      if (name.startsWith('space-')) recoveryScenario(name);
+      else if (name.startsWith('progress-')) progressScenario(name.slice(9));
       else if (name.startsWith('setup')) { d.connected = false; d.spaceScenario = name === 'setup-existing' ? 'existing' : name === 'setup-protected' ? 'protected' : 'new'; d.setupFailure = name === 'setup-find-failed' ? 'find' : name === 'setup-create-failed' ? 'create' : null; }
       else if (name === 'mixed') d.automatic = true;
       else if (name === 'pending-upload') {
@@ -619,15 +739,27 @@
     function handle(name, target) {
       if (!name.startsWith('ix-')) return false;
       const actionName = name.slice(3); const d = data();
+      if (handleRecovery(actionName, target)) return true;
       if (actionName === 'progress-details') { d.progressDetails = !d.progressDetails; }
       else if (actionName === 'progress-restart') compactScenario(['compact-download', 'compact-bidirectional'].includes(data().progressScenario) ? data().progressScenario : 'compact-start');
       else if (actionName === 'progress-failures') d.failureLogOpen = !d.failureLogOpen;
-      else if (actionName === 'progress-pause') { clearTimeout(progressTimer); clearTimeout(state.ui.timerId); state.ui.timerId = null; state.ui.busy = false; d.progress.state = 'paused'; d.progress.pausedAt = Date.now(); }
-      else if (actionName === 'progress-resume' || actionName === 'progress-retry') { if (d.progress.compact && d.progress.source !== 'manual') { if (d.progress.pausedAt != null) d.progress.pausedMillis = (d.progress.pausedMillis || 0) + Date.now() - d.progress.pausedAt; d.progress.pausedAt = null; d.progress.state = 'running'; d.progress.endedAt = null; d.progress.lastProgressAt = Date.now(); if (d.progress.total !== null) scheduleCompactTick(); } else if (d.progress.source === 'manual') { window.__mihonSyncDemo.scheduleSync('manual'); } else { d.progress.state = 'recovering'; d.progress.percent = null; progressTimer = setTimeout(() => { d.progress.state = 'running'; if (d.progressScenario === 'rapid') rapidTick(d.progress.demoStep || 0); else continuousTick(d.progress.demoStep || 0); paintProgress(); }, 1000); } }
+      else if (actionName === 'progress-pause') { clearTimeout(progressTimer); clearTimeout(state.ui.timerId); state.ui.timerId = null; state.ui.busy = false; if (d.progress.phase === 'counting') d.progress.planningRemaining = Math.max(0, d.progress.planningRemaining - (Date.now() - d.progress.planningStartedAt)); d.progress.state = 'paused'; d.progress.pausedAt = Date.now(); }
+      else if (actionName === 'progress-resume' || actionName === 'progress-retry') {
+        const f = d.progress;
+        if (f.compact && (f.source !== 'manual' || modern() && f.onPlanned && actionName === 'progress-resume')) {
+          if (f.pausedAt != null && f.phase !== 'counting') f.pausedMillis = (f.pausedMillis || 0) + Date.now() - f.pausedAt;
+          f.pausedAt = null; f.state = 'running'; f.endedAt = null; f.lastProgressAt = Date.now();
+          if (f.source === 'manual') { state.ui.busy = true; state.ui.busyDeviceId = currentDevice().id; }
+          if (f.phase === 'counting') schedulePlanning(f);
+          else if (f.source === 'manual') f.onPlanned();
+          else if (f.total !== null) scheduleCompactTick();
+        } else if (f.source === 'manual') window.__mihonSyncDemo.scheduleSync('manual');
+        else { f.state = 'recovering'; f.percent = null; progressTimer = setTimeout(() => { f.state = 'running'; if (d.progressScenario === 'rapid') rapidTick(f.demoStep || 0); else continuousTick(f.demoStep || 0); paintProgress(); }, 1000); }
+      }
       else if (['frequency', 'device', 'disconnect', 'switch', 'issue', 'activity', 'privacy', 'diagnostics'].includes(actionName)) { go(actionName); }
       else if (actionName === 'setup' || actionName === 'reconnect') { if (actionName === 'setup' && d.setupStage) d.stack = [d.setupStage]; else startAuth(actionName === 'reconnect'); }
       else if (actionName === 'open-github') openAuthorization();
-      else if (actionName === 'auth-restart') { d.authStatus = 'ready'; authWindow?.close(); authWindow = null; authRequest += 1; }
+      else if (actionName === 'auth-restart') { d.authStatus = 'ready'; if (d.recovery) d.recovery.authorization = 'required'; authWindow?.close(); authWindow = null; authRequest += 1; }
       else if (actionName === 'password-toggle') {
         d.showPassword = !d.showPassword;
         const input = document.querySelector('[data-ix-field="password"]');
@@ -641,7 +773,7 @@
         else if (d.mode === 'join' && d.fields.password !== 'mihon-demo') d.message = '密码不正确，请重试。';
         else { d.passwordProtected = d.fields.password !== ''; d.fields.password = ''; d.showPassword = false; d.issue = null; if (d.mode === 'create') createSpace(); else beginImport(); }
       }
-      else if (actionName === 'back') { if (native) { const diagnostics = screen() === 'diagnostics'; home(); state.ui.syncSettingsOpen = diagnostics; } else back(); }
+      else if (actionName === 'back') { if (d.recovery && screen() !== 'recovery') d.stack = ['recovery']; else if (native) { const diagnostics = screen() === 'diagnostics'; home(); state.ui.syncSettingsOpen = diagnostics; } else back(); }
       else if (actionName === 'home') home();
       else if (actionName === 'connection-info') { d.message = '当前账号 reader，已连接到 ' + d.fields.repo + '。'; }
       else if (actionName === 'diagnostic-capture') { d.diagnosticSnapshot = { prototype: true, connected: d.connected, state: d.progress?.state || 'idle', crossProcessComparable: Boolean(d.diagnosticSession) }; d.diagnosticFeedback = '快照已采集'; }
@@ -671,7 +803,7 @@
       data().fields[target.dataset.ixField] = target.value;
       if (target.dataset.ixField === 'password') { const submit = document.querySelector('[data-testid="ix-password-confirm"]'); if (submit) { submit.textContent = data().mode === 'join' ? '连接同步空间' : target.value === '' ? '不设置密码' : '确认密码'; submit.disabled = data().mode === 'join' && target.value === ''; } }
     }
-    return { nativeSettings, beginSync, finishSync, paintProgress, hasProgress: () => Boolean(data().progress), screen, title: () => titles[screen()], back, close, settings, settingsFooter, renderScreen, unconfigured, connected: () => data().connected, status, didSync, resetCountdown, summary, handle, input, showScenario, networkChanged, startBatch, batchActive: () => data().batch && data().batch.done < data().batch.total,
+    return { nativeSettings, beginSync, finishSync, paintProgress, needsRecovery: () => Boolean(modern() && data().recovery), hasProgress: () => Boolean(data().progress), screen, title: () => titles[screen()], back, close, settings, settingsFooter, renderScreen, unconfigured, connected: () => data().connected, status, didSync, resetCountdown, summary, handle, input, showScenario, networkChanged, startBatch, batchActive: () => data().batch && data().batch.done < data().batch.total,
       importStatus: () => data().importProgress != null && !data().progress ? row(data().importReady ? '合并已完成' : data().importWaitingNetwork ? '等待网络连接' : data().importPaused ? '合并尚未完成' : '正在合并数据', '查看进度与继续操作', 'import-view') : '',
       busy: () => data().issue === 'unknown' || (data().importProgress != null && !data().importPaused && !data().importReady),
     };

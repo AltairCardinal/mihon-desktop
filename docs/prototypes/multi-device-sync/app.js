@@ -229,6 +229,7 @@
   }
 
   function renderSyncPage() {
+    if (interactions.needsRecovery()) return `<section class="sync-content modern-main" data-testid="sync-panel">${interactions.status({})}</section>`;
     if (!interactions.connected()) return interactions.unconfigured();
     const current = currentDevice();
     const pending = current.confirmations.length;
@@ -448,13 +449,14 @@
   }
 
   function scheduleSync(trigger) {
+    if (interactions.needsRecovery()) { interactions.handle('ix-recovery-open', {}); render(); return; }
     if (preview?.fullSyncReview && ((trigger === 'periodic' && !currentDevice().settings.periodicSync) || (trigger === 'startup' && !currentDevice().settings.startupSync))) {
       notice('此设备已关闭这项自动同步。'); render(); return;
     }
     if (state.ui.busy) { notice('同步正在进行，可以继续切换页面；请稍候查看本轮结果。'); render(); return; }
-    interactions.beginSync(trigger);
-    const deviceId = state.selectedDevice; state.ui.busy = true; state.ui.busyDeviceId = deviceId; notice(`${model.TRIGGER_LABELS[trigger]}已开始；页面仍可继续操作。`); render();
-    const timer = window.setTimeout(() => {
+    const deviceId = state.selectedDevice; state.ui.busy = true; state.ui.busyDeviceId = deviceId; notice(`${model.TRIGGER_LABELS[trigger]}已开始；页面仍可继续操作。`);
+    interactions.beginSync(trigger, () => {
+      const timer = window.setTimeout(() => {
       if (state.ui.timerId !== timer) return;
       const result = model.triggerSync(state, deviceId, trigger);
       interactions.didSync(result.ok);
@@ -465,8 +467,10 @@
       }
       if (state.ui.syncOpen && state.selectedDevice === deviceId) state.ui.syncResult = result;
       state.ui.timerId = null; state.ui.busy = false; state.ui.busyDeviceId = null; notice(result.message, result.ok ? 'success' : 'failure'); render();
-    }, 420);
-    state.ui.timerId = timer;
+      }, 420);
+      state.ui.timerId = timer;
+    });
+    render();
   }
 
   function switchPlatform(platform) {

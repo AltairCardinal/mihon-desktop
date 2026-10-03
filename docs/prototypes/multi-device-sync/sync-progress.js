@@ -53,7 +53,8 @@
         : null;
       const title = titles[f.state];
       const eta = f.eta === duration(f.wholeEta) && Number.isFinite(f.wholeEta) ? clockText(f.wholeEta) : '—';
-      return { ...f, completionPercent, summary: `${title}，已完成${completed ?? '—'}/${total ?? '—'}条`, time: `已用${f.elapsed}，剩余估时${eta}` };
+      const counting = fact.phase === 'counting';
+      return { ...f, counting, completionPercent, summary: counting ? f.state === 'paused' ? '已暂停统计' : '正在统计数据' : `${title}，已完成${completed ?? '—'}/${total ?? '—'}条`, time: counting ? null : `已用${f.elapsed}，剩余估时${eta}` };
     };
   }
   const api = { createDisplay, createCompactDisplay, terminalStates, duration };

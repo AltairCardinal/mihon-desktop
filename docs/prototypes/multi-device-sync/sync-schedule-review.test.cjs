@@ -38,9 +38,13 @@ test('完整审阅：完成后显示下一次时间，设置即时生效且双�
     await page.clock.fastForward(14 * 60000);
     assert.match(await pc.getByTestId('sync-next-auto').innerText(), /即将同步/);
     await pc.getByTestId('sync-progress-primary').click();
+    assert.equal(await pc.getByTestId('sync-compact-summary').innerText(), '正在统计数据');
+    assert.equal(await pc.getByTestId('sync-compact-time').count(), 0);
+    assert.equal(await pc.getByTestId('sync-next-auto').count(), 0);
+    await page.clock.runFor(1200);
     assert.match(await pc.getByTestId('sync-compact-summary').innerText(), /同步中/);
     assert.equal(await pc.getByTestId('sync-next-auto').count(), 0);
-    await page.clock.fastForward(1000);
+    await page.clock.runFor(500);
     assert.match(await pc.getByTestId('sync-next-auto').innerText(), /今天|明天/);
     await pc.getByTestId('ix-activity').click();
   } finally { await browser.close(); }

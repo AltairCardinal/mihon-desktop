@@ -45,7 +45,8 @@ test('源码对齐：历史结果、顶栏操作、普通空态和记录入口�
     await page.selectOption('#progress-scene', 'compact-unknown');
     await page.getByTestId('show-progress-both').click();
     assert.equal(await phone.getByTestId('sync-compact-summary').innerText(), '正在统计数据');
-    assert.equal(await phone.getByTestId('sync-progress-track').count(), 0);
+    assert.equal(await phone.getByTestId('sync-progress-track').getAttribute('aria-valuenow'), null);
+    assert.equal(await phone.getByTestId('sync-compact-time').count(), 0);
   } finally { await browser.close(); }
 });
 
