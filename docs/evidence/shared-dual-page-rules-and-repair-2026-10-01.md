@@ -2,7 +2,7 @@
 
 状态：DP01 A–E 已完成实施、独立审查、相关验证及功能提交 `2a0e7570b7f359c4899e45f95769cc13e553f228`。DP02 首次矩阵后的修复提交为 `f95ffeb1e0c75a11f9e2326cd06b1500dd434e7c`；第二次矩阵剩余5项的限定修复、追加局部复审和31项相关验证已完成，提交为 `ca4abd37a32c57c7f7cb4486f1bdfa78af5aa0e1`。用户批准的第三次 Desktop 完整复验已自然通过：3250项、0失败、0错误、3条件跳过；共享两个目标、Android 应用及客户端的第二次完整结果仍适用。
 
-三端正式产物已构建，DP02保持未勾选。获批 Android test-only 修复已打通 R8 公共 Activity 入口及 PixelCopy 窗口像素；采样原方法 EXIF1–8、alpha 与真实开关因果对照通过，部分 View/触摸及源错误恢复通过，但完整 ART 仍未通过：right split+crop 黄金与 Copy empty Retry 恢复失败保留，具体原因未确定。Windows 新冷配置正式图形启动暴露 Main dispatcher/Android Handler 异常。2026-10-03用户已批准按根因收敛方向继续及追加一次全量，先补全独立原生向量和诊断，修改稳定后再复验与构建。Windows/macOS 原生输入与 B1/B2 正式真实案例仍未完成。
+DP02保持未勾选。2026-10-03按根因收敛完成Android test-only修复：39个既定方法分轮有效通过，确认原裁边／Copy夹具与恢复验收问题已修复，正式宿主APK未变。Windows平台协程依赖泄漏已按严格红绿修复，真实production Main与Library59项回归通过，Android解析图前后相同，修复提交 `84d98c7176`。用户批准的追加最终矩阵已执行Desktop完整3251项（0失败／错误，3条件skip）和共享JVM620项；共享Android525与客户端53复用有效结果，纯换行格式修正后检查通过，应用Android完整单元测试正在补上首次实际执行。Windows/macOS新正式构建、冷启动、原生输入与B1/B2真实案例仍未完成；旧正式产物和此前失败记录保留，不把局部通过等同最终交付。
 
 基线 `31a6ab7269967cc615ed54ac2ca58fe8d9b3f1db`。本报告为本次唯一聚合证据；事实与构造夹具分别记录，最新结果见末节。
 
@@ -799,3 +799,12 @@ Windows严格红阶段新增 `DesktopProductionMainDispatcherTest`：Gradle提�
 `udp-windows-production-main-refactor-context` 自然 BUILD SUCCESSFUL/12秒：新production Main测试1项和现有LibraryScreenModelTest58项共59项，0失败／错误／跳过，XML明确记录 `PRODUCTION_MAIN_EDT_LIBRARY_COMPLETE thread=AWT-EventQueue-0`；相关限定格式通过。首次重构命令只因临时格式hook缺app插件上下文失败，未运行业务，随后复用已有可靠入口修正，没有更改产品或建立新格式框架。主代理独立核实现、两份XML和协调器终态，确认调度器初始化问题已修复并完成同范围复验。正式包冷启动仍待最终构建验证。
 
 本批13个受控文件内聚于DP02阻塞关闭：共享Android ART夹具替换重复内部ABI测试并保留原验收、Desktop平台依赖与真实Main回归、必要维护文档及已分配版本记录。超过8文件／400行主要来自夹具整合，不拆成不能独立验收的微任务。独立审查复用主代理当前轮，未新增代理或泛审；相关定向门槛满足后冻结产品，不新增能力，DP02仅在正式全量／构建／真实运行证据与提交齐全后勾选。
+
+修复提交 `84d98c7176e7c26022f959066d432acd32406733` 后执行本次用户批准的追加最终矩阵。`udp-final-third-desktop-full` 经项目 `build-desktop.sh full-tests` 自然 PASSED／4分57秒；435 suites、3251 tests、0 failures／errors、3原条件skip，XML时段2026-10-03 01:06:05–01:10:34 UTC。共享与Android／客户端／格式第二条命令中，共享JVM620项新执行通过；共享Android525项和客户端53项为UP-TO-DATE复用，其图／源码未变。命令最终在domain Gradle脚本的换行格式检查失败，尚未执行应用完整Android单元测试，不能把整条命令称绿。
+
+保留失败日志后仅运行格式修正：初次附带Desktop标准formatter任务因该项目没有此任务而未执行；`udp-final-third-domain-format-only` 经 `:domain:spotlessKotlinApply spotlessCheck` 自然 PASSED／16秒。修正只将domain脚本工作区换行还原为已提交内容，重新暂存核验后Git无源码diff，未改变冻结产品，不追加完整业务测试。应用Android完整单元测试由 `udp-final-third-android-remaining` 补上本矩阵首次实际执行，自然PASSED／16分33秒：124 suites、708 tests、0 failures／errors、7原条件skip。外层等待超时后查询协调器确认自然完成，未重启测试。Mac隔离repo已快进到同一 `84d98c7176`；原BUILD69工作区改动以具名stash保留，没有覆盖日常checkout／应用。
+
+
+2026-10-03最终矩阵已完成：Desktop3251、共享JVM620、共享Android525、Android应用708、客户端53；除上述原条件skip外零失败／错误，最终spotlessCheck通过。Windows `udp-final-third-windows-build-only`自然PASSED，发布0.11.19.70.84d98c7；Final unpacked EXE为 `D:/Codex/worktrees/0877/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.70.84d98c7-unpacked/Mihon Desktop.exe`，文件存在。新正式包在此前失败的隔离配置启动真实Library READY，外部窗口确认书架及正常章节入口第169话真实图片；确认正式包冷启动问题已修复。用户移动窗口后重新核对实际窗口和命中PID；用户随后选择自行完成Windows双页／键鼠验收，停止Windows原生输入，B1/B2结果待用户反馈，DP02不勾选。
+
+Mac同源码production Main定向测试1项通过，真实Swing EDT／Library完成；正式构建首次被Homebrew vendor guard拦截，不是业务失败。核对项目脚本原有Temurin21.0.10后以其绝对JAVA_HOME继续build-only，恢复失败构建分配的BUILD以保持两端70一致；`udp-final-third-macos-build-only-temurin`自然成功47秒，独立部署到 `/Users/altair/Library/Caches/mihon-shared-dual-page-20261002-f95ffeb/artifacts/Mihon Desktop.app`。LaunchServices启动实际PID47006，HTTP healthy，显示器正常唤醒后原生Tab投递成功；尚未完成正常LocalSource入口B1/B2及完整键鼠断言，不标为运行验收通过。没有重复完整JVM测试，也没有修改日常应用。
