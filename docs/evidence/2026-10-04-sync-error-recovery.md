@@ -77,3 +77,31 @@ Gradle 配置阶段曾停在依赖 Socket.connect；仅停止协调器记录的�
 - 安装缺失或仓库授权引导页 → 不显示设置同步空间；创建仓库、安装/管理权限与重新检查操作保留。
 - 同页 → 诊断信息在主要操作之后；点击进入原诊断页，返回原错误页（既有控制器返回逻辑）。
 - 一般错误与空间不可用 → 既有配置/更换恢复出口保留，仅针对安装引导调整信息层级。
+
+## 统计暂停恢复动画与进度条终点修正（后续迭代）
+
+SOURCE：SyncRuntime 在已存在的同步轮恢复时发布 RECOVERING hold；SyncProgressDisplaySession 对该 hold 不计算速度/估时，旧 CompactProgressCard 又把它当作停止动画。共享 Material 3 确定进度组件默认绘制终点标记，即使 fraction=0 也会出现亮点。
+
+PROJECT_POLICY：总数未冻结且 run=RUNNING、hold=ACTIVE 或 RECOVERING 时，显示正在统计数据与无限等待动画；暂停、离线、系统等待仍静止，统计完成前仍不显示时间。总数已冻结时使用真实 fraction，并禁用默认终点标记；仅绘制真实完成进度，不把 0 条显示成已有进展。估时计算和持久化语义保持原链路。HTML_ADAPTER：本轮只改共享原生界面，不改原型。
+
+无子代理；两个 focused Compose 测试先正确失败（恢复统计动画不存在、零进度末端颜色不同）。测试执行真实暂停/恢复事件，并覆盖主面板与首次合并页面；离线转静止。离屏原生像素测试覆盖 0/100 与 25/100，验证未完成右端与未填充轨道同色，同时语义 fraction 准确，不读取系统屏幕。最小 UI 实现后 focused 红绿、相关界面/展示/控制器集成回归与格式、项目要求的 Windows 正式构建及本地 APK；不上传云端，不操作用户设备。
+
+本轮相关回归、格式、正式构建与原证书签名校验已完成；Android 用户实机验收待进行。
+
+本轮相关模块 156 项回归中 155 项通过；唯一失败为旧真实控制器集成用例等待 RECOVERING 统计状态的静止轨道，正是本轮要求改变的行为。该用例改为等待无限轨道、验证 Indeterminate 且无静止轨道/计时；保持真实数据库和 controller wiring，不放宽超时或删场景。复验仅此集成用例与格式，复用其余 155 项证据，不重复全量。
+
+真实 controller 集成 focused 复验与格式检查通过，相关 156 项证据收口。正式候选分配 0.19.4-aex.34 / versionCode 52，Windows 构建经官方平台脚本进行。
+
+本轮 Desktop 完整 JVM 3236 项中 3235 通过；唯一失败为未修改的 LibraryMangaTestModeHttpTest 本地 HTTP 客户端收到空响应头（HTTP/1.1 header parser received no bytes）。同类 focused 复验通过，未改生产或测试代码；异常未复现，真实原因未证实，不将其归因于本轮 UI。沿用其余 3235 项有效证据，仅复验受影响类。官方 Windows 平台脚本继续以 VersionAllocated/SkipTests 对同一生产 diff、同一版本构建与运行验收，不重复全量或再分配版本。
+
+本轮 Windows 正式构建与 production runtime 版本、扩展安装验收通过：[Mihon Desktop.exe](../../app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.82.ef4b512-unpacked/Mihon%20Desktop.exe)。
+
+本轮正式 APK：[Mihon-Fork-0.19.4-aex.34-vc52-release-universal.apk](../../app/artifacts/android/0.19.4-aex.34-vc52-ef4b512e52-release/Mihon-Fork-0.19.4-aex.34-vc52-release-universal.apk)。SHA-256：`082602a111cb8b3f5d7c101e3eeb7501d962a003881d3c1e31bf4309070c0fa6`。正式 candidate 构建 2m25s，verify 通过，包名 app.mihon.desktop.fork、versionCode 52、原证书 v2/v3、不可调试、R8/资源压缩开启。未上传云端，未安装或操作用户设备。
+
+本轮手动验收：
+
+- 尚在统计数据 → 暂停 → 恢复 → 无限等待动画继续，显示正在统计数据，仍无时间行；统计实际完成后才显示完成/总数与计时。
+- 主同步面板、首次合并面板均适用；暂停与离线仍显示静止轨道，不能用动画暗示正在执行。
+- 已完成 0/总数 → 没有右端亮点；部分完成 → 进度条反映真实完成比例，未填充末端仍无亮点。
+
+没有改变同步统计、保存、暂停/恢复或估时业务逻辑；修复局限在共享 Compose 表现层，并覆盖真实 controller 的状态接入。

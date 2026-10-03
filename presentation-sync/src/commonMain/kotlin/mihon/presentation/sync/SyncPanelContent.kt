@@ -1989,10 +1989,15 @@ private fun SyncCompactProgressCard(
 ) {
     val run = state.run
     val counting = run?.plannedItems == null
+    val countingInProgress = counting && (
+        presentation.active ||
+            (run?.state == SyncRunState.RUNNING && presentation.fact?.hold == SyncProgressHold.RECOVERING) ||
+            (run == null && state.busy)
+        )
     val status = if (presentation.status == MR.strings.sync_busy) MR.strings.sync_round_active else presentation.status
     val statusText = syncString(
-        if (counting &&
-            presentation.status in setOf(MR.strings.sync_busy, MR.strings.sync_wait_start)
+        if (countingInProgress ||
+            (counting && presentation.status in setOf(MR.strings.sync_busy, MR.strings.sync_wait_start))
         ) {
             MR.strings.sync_round_counting
         } else {
@@ -2059,7 +2064,7 @@ private fun SyncCompactProgressCard(
                     Text(firstLine, Modifier.fillMaxWidth().testTag("sync-progress-status"), style = textStyle)
                 }
                 if (counting) {
-                    if (presentation.active || (run == null && state.busy)) {
+                    if (countingInProgress) {
                         LinearProgressIndicator(
                             modifier = Modifier.fillMaxWidth().height(4.dp).testTag("sync-counting-track"),
                         )
@@ -2075,6 +2080,7 @@ private fun SyncCompactProgressCard(
                     LinearProgressIndicator(
                         progress = { fraction },
                         modifier = Modifier.fillMaxWidth().height(4.dp).testTag("sync-progress-track"),
+                        drawStopIndicator = {},
                     )
                 }
                 if (!counting) {

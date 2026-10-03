@@ -15,6 +15,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asSkiaBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
@@ -3487,6 +3489,78 @@ class SyncPanelContentTest {
                 assertEquals(SyncPanelAction.RetrySetup, fixture.actions.last())
             } finally {
                 fixture.scene.close()
+            }
+        }
+    }
+
+    @Test
+    fun `resuming unfinished counting restores waiting animation in main and setup`() {
+        for (page in listOf(SyncPanelPage.MAIN, SyncPanelPage.SETUP)) {
+            renderedEnglish(
+                connected().copy(
+                    page = page,
+                    setupStep = SyncSetupStep.MERGING,
+                    run = visualRun(SyncRunPhase.IMPORTING).copy(
+                        plannedItems = null,
+                        state = SyncRunState.PAUSED_USER,
+                    ),
+                    progress = SyncProgressFact(
+                        "run-visual", SyncProgressStage.PREPARING, SyncProgressDirection.UPLOAD,
+                        0, null, 0, 0, null, 0, SyncProgressHold.PAUSED, null, null,
+                    ),
+                ),
+            ) {
+                awaitTag("sync-counting-paused-track")
+                click("sync-resume-run")
+                assertEquals(SyncPanelAction.ResumeSync, actions.last())
+                panel.state.value = panel.state.value.copy(
+                    run = panel.state.value.run!!.copy(state = SyncRunState.RUNNING),
+                    progress = panel.state.value.progress!!.copy(hold = SyncProgressHold.RECOVERING),
+                )
+                awaitTag("sync-counting-track")
+                assertFalse(hasTag("sync-counting-paused-track"))
+                assertFalse(hasTag("sync-round-time"))
+                assertFalse(hasTag("sync-progress-track"))
+                assertTrue(texts().contains(MR.strings.sync_round_counting.localized(Locale.US)))
+                assertEquals(
+                    androidx.compose.ui.semantics.ProgressBarRangeInfo.Indeterminate,
+                    node("sync-counting-track").config[SemanticsProperties.ProgressBarRangeInfo],
+                )
+                panel.state.value = panel.state.value.copy(
+                    progress = panel.state.value.progress!!.copy(hold = SyncProgressHold.OFFLINE),
+                )
+                awaitTag("sync-counting-paused-track")
+                assertFalse(hasTag("sync-counting-track"))
+            }
+        }
+    }
+
+    @Test
+    fun `determinate sync track has no bright endpoint marker at zero or partial completion`() {
+        for (completed in listOf(0L, 25L)) {
+            rendered(
+                connected().copy(
+                    run = visualRun(SyncRunPhase.UPLOADING).copy(
+                        plannedItems = 100,
+                        confirmedItems = completed,
+                    ),
+                ),
+            ) {
+                awaitTag("sync-progress-track")
+                val bounds = node("sync-progress-track").boundsInRoot
+                scene.render().use { image ->
+                    image.toComposeImageBitmap().asSkiaBitmap().use { bitmap ->
+                        assertEquals(
+                            bitmap.getColor(bounds.center.x.toInt(), bounds.center.y.toInt()),
+                            bitmap.getColor(bounds.right.toInt() - 3, bounds.center.y.toInt()),
+                            "unfinished endpoint must have the same color as the unfilled track",
+                        )
+                    }
+                }
+                assertEquals(
+                    completed / 100f,
+                    node("sync-progress-track").config[SemanticsProperties.ProgressBarRangeInfo].current,
+                )
             }
         }
     }

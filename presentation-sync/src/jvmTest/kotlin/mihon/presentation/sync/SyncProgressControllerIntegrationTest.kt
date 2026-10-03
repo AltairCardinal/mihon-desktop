@@ -152,7 +152,12 @@ class SyncProgressControllerIntegrationTest {
             runtime.panel.dispatch(SyncPanelAction.Open)
             withTimeout(5000) { runtime.panel.state.first { it.loaded && it.run?.runId == run.runId } }
             assertEquals(SyncProgressHold.RECOVERING, runtime.panel.state.value.progress!!.hold)
-            withTimeout(5000) { while (node("sync-counting-paused-track") == null) render() }
+            withTimeout(5000) { while (node("sync-counting-track") == null) render() }
+            assertNull(node("sync-counting-paused-track"))
+            assertEquals(
+                androidx.compose.ui.semantics.ProgressBarRangeInfo.Indeterminate,
+                node("sync-counting-track")!!.config[SemanticsProperties.ProgressBarRangeInfo],
+            )
             assertNull(node("sync-round-time"))
             assertNull(node("sync-progress-track"))
             clockMillis = 31_000
