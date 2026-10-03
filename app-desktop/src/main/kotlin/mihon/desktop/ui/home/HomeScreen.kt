@@ -1,15 +1,12 @@
 package mihon.desktop.ui.home
 
-import mihon.desktop.LocalDesktopUiDependencies
-import tachiyomi.i18n.MR
-
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -31,8 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
-import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.CurrentTab
 import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
@@ -42,16 +39,17 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.DesktopNotificationService
-import mihon.desktop.network.CloudflareChallenge
 import mihon.desktop.network.ChallengeRecoveryAction
 import mihon.desktop.network.ChallengeRecoveryIntent
+import mihon.desktop.network.CloudflareChallenge
 import mihon.desktop.test.navigation.TestNavigationController
-import mihon.desktop.ui.browse.BrowseTab
-import mihon.desktop.ui.authors.AuthorsTab
 import mihon.desktop.ui.authors.AuthorDetailScreen
+import mihon.desktop.ui.authors.AuthorsTab
+import mihon.desktop.ui.browse.BrowseTab
 import mihon.desktop.ui.cloudflare.CloudflareBypassDialog
 import mihon.desktop.ui.cloudflare.DesktopChallengeHomeAction
 import mihon.desktop.ui.cloudflare.DesktopChallengeHomeActionAdapter
@@ -68,6 +66,7 @@ import mihon.desktop.ui.settings.DownloadSettingsScreen
 import mihon.desktop.ui.settings.GeneralSettingsScreen
 import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.updates.UpdatesTab
+import tachiyomi.i18n.MR
 
 class HomeScreen : Screen {
 
@@ -76,6 +75,7 @@ class HomeScreen : Screen {
         var activeChallenge by remember { mutableStateOf<CloudflareChallenge?>(null) }
         val dependencies = LocalDesktopUiDependencies.current
         val libraryNavigationHost = LocalLibraryNavigationHost.current
+        val historyNavigationHost = mihon.desktop.ui.history.LocalHistoryNavigationHost.current
         val navigator = LocalNavigator.currentOrThrow
         val challengePort = dependencies.challengeUiPort
         val notificationService = dependencies.notificationService
@@ -143,8 +143,10 @@ class HomeScreen : Screen {
                 }
                 val alongsideActiveRecovery = action == DesktopChallengeHomeAction.Close ||
                     action == DesktopChallengeHomeAction.Recover(ChallengeRecoveryIntent.Cancel) ||
-                    (action is DesktopChallengeHomeAction.SubmitClearance &&
-                        uiState.runningAction == ChallengeRecoveryAction.Browser)
+                    (
+                        action is DesktopChallengeHomeAction.SubmitClearance &&
+                            uiState.runningAction == ChallengeRecoveryAction.Browser
+                        )
                 if (alongsideActiveRecovery) {
                     scope.launch { block() }
                 } else {
@@ -194,7 +196,7 @@ class HomeScreen : Screen {
                             NavigationBar {
                                 TabNavigationItem(LibraryTab, onReselect = libraryNavigationHost::onReselect)
                                 TabNavigationItem(UpdatesTab, badgeCount = authorDiscoveries.size)
-                                TabNavigationItem(HistoryTab)
+                                TabNavigationItem(HistoryTab, onReselect = historyNavigationHost::onReselect)
                                 TabNavigationItem(BrowseTab)
                                 TabNavigationItem(AuthorsTab)
                                 TabNavigationItem(MoreTab)

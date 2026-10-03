@@ -1,8 +1,5 @@
 package mihon.desktop.ui.library
 
-import tachiyomi.i18n.MR
-import java.util.Locale
-
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,11 +30,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import tachiyomi.domain.category.model.Category
+import tachiyomi.i18n.MR
+import java.util.Locale
 
 @Composable
 fun CategoryManagementDialog(
@@ -87,9 +87,10 @@ fun CategoryManagementDialog(
                         onValueChange = { newName = it },
                         placeholder = { Text(MR.strings.desktop_ui_new_category.localized()) },
                         singleLine = true,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).testTag("category_new_name"),
                     )
                     IconButton(
+                        modifier = Modifier.testTag("category_create"),
                         onClick = {
                             scope.launch {
                                 onCreate(newName)
@@ -158,7 +159,7 @@ fun CategoryManagementDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(MR.strings.desktop_ui_done.localized()) }
+            TextButton(onClick = onDismiss, modifier = Modifier.testTag("category_manage_done")) { Text(MR.strings.desktop_ui_done.localized()) }
         },
     )
 

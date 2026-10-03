@@ -41,6 +41,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,54 +66,17 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
-import mihon.desktop.history.HistoryReadFailure
-import mihon.desktop.history.HistoryReadStatus
 import mihon.desktop.history.HistoryScreenModelFactory
 import mihon.desktop.history.toReaderScreen
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import mihon.desktop.ui.source.desktopSourceErrorMessage
 import tachiyomi.domain.history.model.HistoryWithRelations
 import tachiyomi.i18n.MR
+import uy.kohesive.injekt.api.get
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-
-/** A date-labelled group of history items. */
-data class HistorySection(val dateLabel: String, val items: List<HistoryWithRelations>)
-
-/**
- * Groups [items] by calendar day of [HistoryWithRelations.readAt].
- * Items with null readAt are excluded.  Order within each group is preserved.
- * Day labels: "Today", "Yesterday", or "MMM dd, yyyy".
- */
-internal fun groupHistoryByDate(items: List<HistoryWithRelations>): List<HistorySection> {
-    val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
-    val today = startOfDay(Calendar.getInstance().time)
-    val yesterday = startOfDay(Date(today.time - 86_400_000L))
-
-    return items
-        .filter { it.readAt != null }
-        .groupByTo(linkedMapOf()) { startOfDay(it.readAt!!) }
-        .map { (dayStart, groupItems) ->
-            val label = when (dayStart) {
-                today -> MR.strings.relative_time_today.localized()
-                yesterday -> MR.strings.desktop_ui_yesterday.localized()
-                else -> dateFormat.format(dayStart)
-            }
-            HistorySection(dateLabel = label, items = groupItems)
-        }
-}
-
-private fun startOfDay(date: Date): Date {
-    val cal = Calendar.getInstance()
-    cal.time = date
-    cal.set(Calendar.HOUR_OF_DAY, 0)
-    cal.set(Calendar.MINUTE, 0)
-    cal.set(Calendar.SECOND, 0)
-    cal.set(Calendar.MILLISECOND, 0)
-    return cal.time
-}
 
 object HistoryTab : Tab {
 
@@ -131,9 +95,7 @@ object HistoryTab : Tab {
 
     @Composable
     override fun Content() {
-        Navigator(HistoryRootScreen()) {
-            CurrentScreen()
-        }
+        LocalHistoryNavigationHost.current.Content(HistoryRootScreen())
     }
 }
 
@@ -141,263 +103,127 @@ class HistoryRootScreen : Screen {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
-        val navigator = LocalNavigator.currentOrThrow
         val model = rememberScreenModel { HistoryScreenModelFactory.create() }
-        val state by model.state.collectAsState()
+        ContentWithModel(model)
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    internal fun ContentWithModel(model: mihon.desktop.history.HistoryScreenModel) {
+        val navigator = LocalNavigator.currentOrThrow
+        val shared by model.controller.state.collectAsState()
         val scope = rememberCoroutineScope()
-        DisposableEffect(model) { onDispose { model.cancelRead() } }
-
-        LaunchedEffect(state.searchQuery) {
-            model.loadHistory(state.searchQuery)
-        }
-
-        if (state.showClearAllDialog) {
-            AlertDialog(
-                onDismissRequest = { model.setShowClearAllDialog(false) },
-                title = { Text(MR.strings.desktop_ui_clear_all_history_81616b91.localized()) },
-                text = {
-                    Text(MR.strings.desktop_ui_this_will_permanently_delete_all_reading_history_this_ca.localized())
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            scope.launch {
-                                model.clearAllHistory()
-                            }
-                        },
-                    ) { Text(MR.strings.desktop_ui_clear_all.localized(), color = MaterialTheme.colorScheme.error) }
-                },
-                dismissButton = {
-                    TextButton(onClick = {
-                        model.setShowClearAllDialog(false)
-                    }) { Text(MR.strings.action_cancel.localized()) }
+        var managingCategories by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+        val dismiss = { model.controller.setDialog(null) }
+        when (val dialog = shared.dialog) {
+            is tachiyomi.domain.history.service.HistoryDialog.Delete -> mihon.presentation.history.HistoryDeleteDialog(
+                onDismissRequest = dismiss,
+                onDelete = { all ->
+                    model.controller.invalidateReaderRequests()
+                    scope.launch { model.controller.remove(dialog.history, all) }
                 },
             )
+            tachiyomi.domain.history.service.HistoryDialog.DeleteAll -> mihon.presentation.history.HistoryDeleteAllDialog(
+                onDismissRequest = dismiss,
+                onDelete = {
+                    model.controller.invalidateReaderRequests()
+                    scope.launch { model.controller.clear() }
+                },
+            )
+            is tachiyomi.domain.history.service.HistoryDialog.ChangeCategory -> if (!managingCategories) {
+                mihon.presentation.history.HistoryCategoryDialog(
+                    dialog,
+                    model.controller::selectCategory,
+                    dismiss,
+                    onConfirm = { scope.launch { model.controller.confirmCategory() } },
+                    onEdit = { managingCategories = true },
+                )
+            }
+            is tachiyomi.domain.history.service.HistoryDialog.Duplicate -> mihon.presentation.history.HistoryDuplicateDialog(
+                dialog,
+                dismiss,
+                onConfirm = { scope.launch { model.controller.addFavorite(dialog.manga.id, allowDuplicate = true) } },
+                onOpen = {
+                    model.controller.cancelReaderRequests()
+                    navigator.push(mihon.desktop.ui.library.MangaDetailScreen(it.id))
+                },
+                onMigrate = { model.controller.showMigration(it, dialog.manga) },
+            )
+            is tachiyomi.domain.history.service.HistoryDialog.Migrate -> HistoryMigrationDialog(dialog, model, dismiss) {
+                model.controller.cancelReaderRequests()
+                navigator.push(mihon.desktop.ui.library.MangaDetailScreen(dialog.current.id))
+            }
+            null -> Unit
         }
-
-        Column(
-            Modifier.fillMaxSize().onPreviewKeyEvent {
-                if (it.type == KeyEventType.KeyDown && it.key == Key.Escape && state.readStatus != null) {
-                    model.cancelRead()
-                    true
-                } else {
-                    false
+        if (managingCategories) {
+            HistoryManageCategories {
+                scope.launch {
+                    model.controller.refreshCategoryChoices()
+                    managingCategories = false
                 }
+            }
+        }
+        val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
+        val openReader: (HistoryWithRelations?) -> Unit = { item ->
+            val token = model.controller.beginReaderRequest()
+            if (token != null) {
+                scope.launch {
+                    val delivery = model.readerDeliveryFor(item, token)
+                    if (delivery != null && model.controller.consumeReaderRequest(token)) {
+                        val request = delivery.request
+                        if (request != null) {
+                            navigator.push(request.toReaderScreen(model::cancelRead))
+                        } else {
+                            snackbar.showSnackbar((if (delivery.internalError) MR.strings.internal_error else MR.strings.no_next_chapter).localized())
+                        }
+                    }
+                }
+            }
+        }
+        val navigationHost = LocalHistoryNavigationHost.current
+        DisposableEffect(model, navigationHost, navigator) {
+            model.controller.activateReaderRequests()
+            val unregister = navigationHost.registerReselectHandler { openReader(null) }
+            onDispose {
+                unregister()
+                model.controller.cancelReaderRequests()
+            }
+        }
+        LaunchedEffect(model) {
+            model.controller.events.collect { event ->
+                when (event) {
+                    tachiyomi.domain.history.service.HistoryEvent.HistoryCleared -> snackbar.showSnackbar(MR.strings.clear_history_completed.localized())
+                    tachiyomi.domain.history.service.HistoryEvent.InternalError -> snackbar.showSnackbar(MR.strings.internal_error.localized())
+                    is tachiyomi.domain.history.service.HistoryEvent.OpenChapter -> Unit
+                }
+            }
+        }
+        val dateStore = remember { uy.kohesive.injekt.Injekt.get<tachiyomi.core.common.preference.PreferenceStore>() }
+        mihon.presentation.history.HistoryContent(
+            state = shared,
+            datePreferences = mihon.presentation.history.HistoryDatePreferences(dateStore.getBoolean("relative_time_v2", true).get(), dateStore.getString("app_date_format", "").get()),
+            onSearchQueryChange = model::updateSearchQuery,
+            onCover = { item ->
+                model.controller.cancelReaderRequests()
+                navigator.push(mihon.desktop.ui.library.MangaDetailScreen(item.mangaId))
             },
-        ) {
-            // Search bar + clear-all button
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                OutlinedTextField(
-                    value = state.searchQuery,
-                    onValueChange = { query -> scope.launch { model.loadHistory(query) } },
-                    placeholder = { Text(MR.strings.desktop_ui_search_history.localized()) },
-                    leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = MR.strings.action_search.localized())
-                    },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
+            onResume = openReader,
+            onFavorite = { item -> scope.launch { model.controller.addFavorite(item.mangaId) } },
+            onDelete = { item -> model.controller.setDialog(tachiyomi.domain.history.service.HistoryDialog.Delete(item)) },
+            onClear = { model.controller.setDialog(tachiyomi.domain.history.service.HistoryDialog.DeleteAll) },
+            snackbar = { androidx.compose.material3.SnackbarHost(snackbar) },
+            cover = { item, modifier, click ->
+                AsyncImage(
+                    model = mihon.desktop.image.desktopSourceImageModel(item.coverData.url, item.coverData.sourceId),
+                    contentDescription = item.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = modifier.clickable(onClick = click),
                 )
-                if (state.items.isNotEmpty()) {
-                    TooltipBox(
-                        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                        tooltip = { Text(MR.strings.desktop_ui_clear_all_history.localized()) },
-                        state = rememberTooltipState(),
-                    ) {
-                        IconButton(onClick = { model.setShowClearAllDialog(true) }) {
-                            Icon(
-                                Icons.Default.DeleteSweep,
-                                contentDescription = MR.strings.desktop_ui_clear_all_history.localized(),
-                                tint = MaterialTheme.colorScheme.error,
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (state.items.isEmpty()) {
-                Box(
-                    Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = MR.strings.desktop_ui_no_reading_history.localized(),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            text = MR.strings.desktop_ui_manga_you_read_will_appear_here.localized(),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp),
-                        )
-                    }
-                }
-            } else {
-                val sections = remember(state.items) { groupHistoryByDate(state.items) }
-                LazyColumn(
-                    state = rememberLazyListState(),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    sections.forEach { section ->
-                        stickyHeader(key = "header_${section.dateLabel}") {
-                            HistoryDateHeader(section.dateLabel)
-                        }
-                        items(section.items, key = { it.id }) { item ->
-                            HistoryItem(
-                                item = item,
-                                status = state.readStatus?.takeIf { it.historyId == item.id },
-                                restoreReadFocus = state.lastReadHistoryId == item.id,
-                                onCancel = model::cancelRead,
-                                onUseExisting = {
-                                    scope.launch {
-                                        model.readerRequestFor(item, useExisting = true)?.let {
-                                            navigator.push(it.toReaderScreen(model::cancelRead))
-                                        }
-                                    }
-                                },
-                                onRead = {
-                                    scope.launch {
-                                        val request = model.readerRequestFor(item) ?: return@launch
-                                        navigator.push(
-                                            request.toReaderScreen(model::cancelRead),
-                                        )
-                                    }
-                                },
-                                onRemove = {
-                                    scope.launch { model.removeHistory(item) }
-                                },
-                            )
-                        }
-                    }
-                }
-            }
-        }
+            },
+        )
     }
 }
 
-@Composable
-private fun HistoryDateHeader(label: String) {
-    Text(
-        text = label,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(vertical = 6.dp, horizontal = 4.dp),
-    )
-}
-
-@Composable
-private fun HistoryItem(
-    item: HistoryWithRelations,
-    onRead: () -> Unit,
-    onRemove: () -> Unit,
-    status: HistoryReadStatus? = null,
-    restoreReadFocus: Boolean = false,
-    onCancel: () -> Unit = {},
-    onUseExisting: () -> Unit = {},
-) {
-    val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy  HH:mm", Locale.getDefault()) }
-    val readFocus = remember(item.id) { FocusRequester() }
-    LaunchedEffect(item.id, restoreReadFocus) {
-        if (restoreReadFocus) readFocus.requestFocus()
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = status?.loading != true, onClick = onRead),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            // Cover thumbnail
-            AsyncImage(
-                model = mihon.desktop.image.desktopSourceImageModel(item.coverData.url, item.coverData.sourceId),
-                contentDescription = item.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(48.dp, 68.dp)
-                    .clip(RoundedCornerShape(4.dp)),
-            )
-
-            // Info
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = MR.strings.desktop_ui_chapter_number.localized(
-                        Locale.getDefault(),
-                        item.chapterNumber.toString(),
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                item.readAt?.let { date ->
-                    Text(
-                        text = dateFormat.format(date),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (status?.loading == true) {
-                    Text(MR.strings.history_loading_chapters.localized(), style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = onCancel) { Text(MR.strings.action_cancel.localized()) }
-                } else if (status?.failure != null) {
-                    val message = when (status.failure) {
-                        HistoryReadFailure.SOURCE_UNAVAILABLE -> MR.strings.history_source_unavailable.localized()
-                        HistoryReadFailure.TARGET_MISSING -> MR.strings.history_chapter_not_in_catalog.localized()
-                        HistoryReadFailure.IDENTITY -> MR.strings.history_chapter_identity_conflict.localized()
-                        HistoryReadFailure.STORAGE -> MR.strings.history_catalog_storage_error.localized()
-                        HistoryReadFailure.SOURCE -> status.error?.let { desktopSourceErrorMessage(it) }
-                            ?: MR.strings.unknown_error.localized()
-                    }
-                    Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                    TextButton(onClick = onRead) { Text(MR.strings.history_retry_chapters.localized()) }
-                    if (status.canUseExisting) {
-                        Text(
-                            MR.strings.history_existing_chapters_incomplete.localized(),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        TextButton(onClick = onUseExisting) {
-                            Text(MR.strings.history_read_existing_chapters.localized())
-                        }
-                    }
-                    TextButton(onClick = onCancel) { Text(MR.strings.action_cancel.localized()) }
-                }
-            }
-
-            // Delete button
-            IconButton(
-                onClick = onRead,
-                enabled = status?.loading != true,
-                modifier = Modifier.focusRequester(readFocus),
-            ) {
-                Icon(Icons.Default.PlayArrow, contentDescription = MR.strings.action_resume.localized())
-            }
-            IconButton(onClick = onRemove) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = MR.strings.action_remove.localized(),
-                    tint = MaterialTheme.colorScheme.error,
-                )
-            }
-        }
-    }
+internal val LocalHistoryNavigationHost = androidx.compose.runtime.staticCompositionLocalOf<mihon.desktop.ui.library.LibraryNavigationHost> {
+    mihon.desktop.ui.library.VoyagerLibraryNavigationHost()
 }

@@ -103,7 +103,21 @@ class ReaderChapterWindowProductionWiringTest {
                 getNextChapters = mockk(relaxed = true),
                 upsertHistory = mockk(relaxed = true),
                 updateChapter = mockk(relaxed = true),
-                recordReadingProgress = mockk(relaxed = true),
+                recordReadingProgress = mockk(relaxed = true) {
+                    coEvery { openChapter(any()) } answers {
+                        val selected = chapters.first {
+                            it.id ==
+                                firstArg<tachiyomi.domain.reader.model.ReaderChapterIdentity>().chapterId
+                        }
+                        tachiyomi.domain.reader.model.ReaderOpenContext(
+                            manga,
+                            selected,
+                            0,
+                            tachiyomi.domain.reader.model.ReadingSyncSnapshot(),
+                            false,
+                        )
+                    }
+                },
                 setMangaViewerFlags = mockk(relaxed = true),
                 getIncognitoState = mockk(relaxed = true),
                 pairingCoordinator = emptyChapterPairingCoordinator(),

@@ -56,6 +56,12 @@ internal class HistoryCatalogTestFixture(
     },
 ) : AutoCloseable {
     private val mutex = Mutex()
+
+    @Volatile private var directoryGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+
+    suspend fun awaitDirectoryRelease() {
+        directoryGate?.await()
+    }
     val source = HistoryCatalogTestSource(client, "$baseUrl/test/history/catalog-source")
     val chapterCalls = AtomicInteger()
     val pageCalls = AtomicInteger()
@@ -70,11 +76,20 @@ internal class HistoryCatalogTestFixture(
 
     suspend fun execute(step: String, requestedMode: String = "success") = mutex.withLock {
         verifyProfile()
-        require(step in setOf("seed", "advance", "mode", "check"))
+        require(step in setOf("seed", "advance", "mode", "check", "hold", "release"))
         require(
             requestedMode in
                 setOf("success", "http403", "http429", "http500", "empty", "malformed", "missing_target", "timeout"),
         )
+        if (step == "hold") {
+            check(directoryGate?.isCompleted != false) { "Directory is already held" }
+            directoryGate = kotlinx.coroutines.CompletableDeferred()
+            return@withLock
+        }
+        if (step == "release") {
+            directoryGate?.complete(Unit)
+            return@withLock
+        }
         if (step == "mode") {
             mode = requestedMode
             return@withLock
@@ -176,6 +191,7 @@ internal class HistoryCatalogTestFixture(
         }
         val outgoing = SyncLocalJournal(handler).pendingEvents(SPACE, 1)
         buildJsonObject {
+            put("directoryHeld", directoryGate?.isCompleted == false)
             put("chapterCalls", chapterCalls.get())
             put("pageCalls", pageCalls.get())
             put("imageCalls", imageCalls.get())
@@ -209,6 +225,7 @@ internal class HistoryCatalogTestFixture(
     }
 
     override fun close() {
+        directoryGate?.cancel()
         HistoryCatalogTestSourceBridge.clear(source)
     }
     companion object {

@@ -33,7 +33,7 @@ class HistoryNavigationPolicyIntegrationTest {
     fun `history refs honor scanlator exclusion external targets and all shared skip policies`(@TempDir folder: File) = runBlocking {
         val context = initDesktopDIForTest(folder, inMemoryDesktopPreferenceStore())
         try {
-            val remote = listOf("external", "4", "3", "2b", "2", "1").map { key ->
+            val remote = listOf("external", "4", "3b", "3", "2b", "2", "1").map { key ->
                 SChapter.create().apply {
                     url = if (key == "external") externalChapterUrl("https://fixture.invalid/external") else "/$key"
                     name = "Chapter $key"
@@ -61,29 +61,25 @@ class HistoryNavigationPolicyIntegrationTest {
             model.loadHistory()
             val item = model.state.value.items.single()
             val request = requireNotNull(model.readerRequestFor(item))
-            assertEquals(current.id, request.chapterId)
-            assertEquals(listOf("/4", "/3", "/2b", "/2"), request.chapters.map { it.url })
-            val duplicate = request.chapters.single { it.url == "/2b" }
+            assertEquals(chapters.getValue("/3").id, request.chapterId)
+            assertEquals(listOf("/4", "/3b", "/3", "/2b"), request.chapters.map { it.url })
+            val duplicate = request.chapters.single { it.url == "/3b" }
             assertTrue(duplicate.isDuplicate && duplicate.isFiltered)
-            assertTrue(request.chapters.single { it.id == current.id }.isFiltered)
+            assertTrue(request.chapters.none { it.id == current.id })
             fun navigator(read: Boolean = false, filtered: Boolean = false, duplicate: Boolean = false) = ReaderNavigator(request.chapters, request.currentChapterIndex, read, filtered, duplicate)
-            assertEquals("/2b", navigator().nextToRead?.url)
-            assertEquals("/3", navigator(duplicate = true).nextToRead?.url)
+            assertEquals("/3b", navigator().nextToRead?.url)
+            assertEquals("/4", navigator(duplicate = true).nextToRead?.url)
             assertEquals("/4", navigator(filtered = true).nextToRead?.url)
             assertNull(navigator(read = true, filtered = true).nextToRead)
-            assertNull(navigator().previousRead)
+            assertEquals("/2b", navigator().previousRead?.url)
             Injekt.get<DatabaseHandler>().await { excluded_scanlatorsQueries.insert(manga.id, "Other") }
             model.cancelRead()
-            val isolated = requireNotNull(model.readerRequestFor(item))
-            assertEquals(listOf(current.id), isolated.chapters.map { it.id })
-            assertNull(ReaderNavigator(isolated.chapters, isolated.currentChapterIndex).nextToRead)
-            assertNull(ReaderNavigator(isolated.chapters, isolated.currentChapterIndex).previousRead)
+            assertNull(model.readerRequestFor(item))
             val external = chapters.values.single { it.url.startsWith("external:") }
             Injekt.get<UpsertHistory>().await(HistoryUpdate(external.id, Date(System.currentTimeMillis() + 10), 1))
             model.loadHistory()
             model.cancelRead()
             assertNull(model.readerRequestFor(model.state.value.items.single { it.chapterId == external.id }))
-            assertEquals(HistoryReadFailure.TARGET_MISSING, model.state.value.readStatus?.failure)
         } finally {
             context.closeAndJoin()
         }

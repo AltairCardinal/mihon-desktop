@@ -48,24 +48,18 @@ fun LocalDate.toRelativeString(
     relative: Boolean = true,
     dateFormat: DateTimeFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT),
 ): String {
-    if (!relative) {
-        return dateFormat.format(this)
-    }
-    val now = LocalDate.now()
-    val difference = ChronoUnit.DAYS.between(this, now)
-    return when {
-        difference < -7 -> dateFormat.format(this)
-        difference < 0 -> context.pluralStringResource(
-            MR.plurals.upcoming_relative_time,
-            difference.toInt().absoluteValue,
-            difference.toInt().absoluteValue,
-        )
-        difference < 1 -> context.stringResource(MR.strings.relative_time_today)
-        difference < 7 -> context.pluralStringResource(
+    return when (val label = mihon.presentation.history.historyDateLabel(this, relative, dateFormat)) {
+        mihon.presentation.history.HistoryDateLabel.Today -> context.stringResource(MR.strings.relative_time_today)
+        is mihon.presentation.history.HistoryDateLabel.DaysAgo -> context.pluralStringResource(
             MR.plurals.relative_time,
-            difference.toInt(),
-            difference.toInt(),
+            label.days,
+            label.days,
         )
-        else -> dateFormat.format(this)
+        is mihon.presentation.history.HistoryDateLabel.Upcoming -> context.pluralStringResource(
+            MR.plurals.upcoming_relative_time,
+            label.days,
+            label.days,
+        )
+        is mihon.presentation.history.HistoryDateLabel.Formatted -> label.text
     }
 }

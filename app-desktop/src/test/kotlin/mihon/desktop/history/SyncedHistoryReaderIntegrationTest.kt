@@ -63,7 +63,7 @@ import java.net.http.HttpResponse
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncedHistoryReaderIntegrationTest {
     @Test
-    fun `projection during source wait selects coherent latest resume and metadata never revives cleared history`(@TempDir folder: File) = runBlocking {
+    fun `background metadata preserves the already selected opening and never revives cleared history`(@TempDir folder: File) = runBlocking {
         val context = initDesktopDIForTest(folder, inMemoryDesktopPreferenceStore())
         val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) { testHttpServer() }.start()
         val base = "http://127.0.0.1:${server.resolvedConnectors().single().port}"
@@ -83,11 +83,12 @@ class SyncedHistoryReaderIntegrationTest {
             }
             val owner = Injekt.get<SaveSourceMangaForDetails>()
             val chapters = Injekt.get<ChapterRepository>()
-            val model = HistoryScreenModel(Injekt.get(), Injekt.get(), Injekt.get(), Injekt.get(), Injekt.get(), Injekt.get(), prepareDirectory = { owner.awaitPrepared(source, it) })
+            val model = HistoryScreenModelFactory.create()
             model.loadHistory()
             val original = model.state.value.items.single()
             val pending = kotlinx.coroutines.coroutineScope {
-                val request = async { model.readerRequestFor(original) }
+                val entry = requireNotNull(model.readerRequestFor(original))
+                val preparation = async { owner.awaitPrepared(source, Injekt.get<MangaRepository>().getMangaById(original.mangaId)) }
                 reached.await()
                 fixture.execute("advance")
                 chapters.update(tachiyomi.domain.chapter.model.ChapterUpdate(original.chapterId, bookmark = true))
@@ -107,16 +108,16 @@ class SyncedHistoryReaderIntegrationTest {
                 )
                 val outgoing = fixture.snapshot().getValue("outgoingUserEvents")
                 release.complete(Unit)
-                val entry = requireNotNull(request.await())
+                assertTrue(preparation.await() is mihon.desktop.extension.SourceCallResult.Success)
                 assertEquals(outgoing, fixture.snapshot().getValue("outgoingUserEvents"))
                 entry
             }
             val current = requireNotNull(Injekt.get<tachiyomi.domain.reader.interactor.RecordReadingProgress>().resumePosition(original.mangaId))
-            assertEquals(current.chapterId, pending.chapterId)
-            assertEquals(2, pending.initialPage)
-            assertEquals(current.snapshot, pending.resumeSnapshot)
-            assertEquals(42, pending.mangaViewerFlags)
-            assertEquals(3, pending.chapters.size)
+            assertEquals(original.chapterId, pending.chapterId)
+            assertEquals(1, pending.initialPage)
+            assertNotNull(pending.resumeSnapshot)
+            assertEquals(1, pending.chapters.size)
+            assertEquals(42, Injekt.get<MangaRepository>().getMangaById(original.mangaId).viewerFlags)
             assertTrue(requireNotNull(chapters.getChapterById(original.chapterId)).bookmark)
             assertEquals(listOf("Acceptance category"), Injekt.get<tachiyomi.domain.category.repository.CategoryRepository>().getCategoriesByMangaId(original.mangaId).map { it.name })
             assertEquals("Retained notes", Injekt.get<MangaRepository>().getMangaById(original.mangaId).notes)
@@ -244,12 +245,18 @@ class SyncedHistoryReaderIntegrationTest {
             assertEquals(200, post(base, "/test/reader/close").statusCode())
             settle(scene) { destination is HistoryRootScreen }
             controller.hydrate()
-            val latestResume = requireNotNull(Injekt.get<tachiyomi.domain.reader.interactor.RecordReadingProgress>().resumePosition(manga.id))
+            val row = controller.snapshot().rows.first()
+            val selected = requireNotNull(Injekt.get<tachiyomi.domain.history.interactor.GetNextChapters>().await(row.mangaId, row.chapterId, false).firstOrNull())
+            val opening = requireNotNull(
+                Injekt.get<tachiyomi.domain.reader.interactor.RecordReadingProgress>().openChapter(
+                    tachiyomi.domain.reader.model.ReaderChapterIdentity(manga.id, manga.source, manga.url, selected.id, selected.url),
+                ),
+            )
             assertTrue(controller.execute("history_select", mapOf("index" to "0")).success)
-            settle(scene) { ProductionReaderTestModeBridge.snapshot()?.let { it.isOpen && loaded(it, latestResume.chapterId) } == true }
-            assertEquals(latestResume.chapterId, (destination as DesktopReaderScreen).chapterId)
-            assertEquals(latestResume.pageIndex, (destination as DesktopReaderScreen).initialPage)
-            assertEquals(latestResume.snapshot, (destination as DesktopReaderScreen).resumeSnapshot)
+            settle(scene) { ProductionReaderTestModeBridge.snapshot()?.let { it.isOpen && loaded(it, selected.id) } == true }
+            assertEquals(selected.id, (destination as DesktopReaderScreen).chapterId)
+            assertEquals(opening.pageIndex, (destination as DesktopReaderScreen).initialPage)
+            assertEquals(opening.snapshot, (destination as DesktopReaderScreen).resumeSnapshot)
             assertEquals(1, fixture.chapterCalls.get())
         } finally {
             scene.close()

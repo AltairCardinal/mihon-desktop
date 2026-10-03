@@ -6,10 +6,14 @@ import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
 import androidx.compose.animation.graphics.vector.AnimatedImageVector
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
@@ -40,7 +44,7 @@ data object HistoryTab : Tab {
 
     private val snackbarHostState = SnackbarHostState()
 
-    private val resumeLastChapterReadEvent = Channel<Unit>()
+    private var activeResume: (() -> Unit)? = null
 
     override val options: TabOptions
         @Composable
@@ -55,21 +59,48 @@ data object HistoryTab : Tab {
         }
 
     override suspend fun onReselect(navigator: Navigator) {
-        resumeLastChapterReadEvent.send(Unit)
+        activeResume?.invoke()
     }
 
     @Composable
     override fun Content() {
+        val screenModel = rememberScreenModel { HistoryScreenModel() }
+        ContentWithModel(screenModel)
+    }
+
+    @Composable
+    internal fun ContentWithModel(screenModel: HistoryScreenModel) {
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
-        val screenModel = rememberScreenModel { HistoryScreenModel() }
         val state by screenModel.state.collectAsState()
+        val lifecycle = LocalLifecycleOwner.current.lifecycle
+        DisposableEffect(screenModel, lifecycle) {
+            screenModel.controller.activateReaderRequests()
+            val resume: () -> Unit = screenModel::resumeLatest
+            activeResume = resume
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    screenModel.controller.activateReaderRequests()
+                } else if (event == Lifecycle.Event.ON_PAUSE) {
+                    screenModel.controller.cancelReaderRequests()
+                }
+            }
+            lifecycle.addObserver(observer)
+            onDispose {
+                lifecycle.removeObserver(observer)
+                if (activeResume === resume) activeResume = null
+                screenModel.controller.cancelReaderRequests()
+            }
+        }
 
         HistoryScreen(
             state = state,
             snackbarHostState = snackbarHostState,
             onSearchQueryChange = screenModel::updateSearchQuery,
-            onClickCover = { navigator.push(MangaScreen(it)) },
+            onClickCover = {
+                screenModel.controller.cancelReaderRequests()
+                navigator.push(MangaScreen(it))
+            },
             onClickResume = screenModel::getNextChapterForManga,
             onDialogChange = screenModel::setDialog,
             onClickFavorite = screenModel::addFavorite,
@@ -77,7 +108,7 @@ data object HistoryTab : Tab {
 
         val onDismissRequest = { screenModel.setDialog(null) }
         when (val dialog = state.dialog) {
-            is HistoryScreenModel.Dialog.Delete -> {
+            is tachiyomi.domain.history.service.HistoryDialog.Delete -> {
                 HistoryDeleteDialog(
                     onDismissRequest = onDismissRequest,
                     onDelete = { all ->
@@ -89,42 +120,52 @@ data object HistoryTab : Tab {
                     },
                 )
             }
-            is HistoryScreenModel.Dialog.DeleteAll -> {
+            is tachiyomi.domain.history.service.HistoryDialog.DeleteAll -> {
                 HistoryDeleteAllDialog(
                     onDismissRequest = onDismissRequest,
                     onDelete = screenModel::removeAllHistory,
                 )
             }
-            is HistoryScreenModel.Dialog.DuplicateManga -> {
+            is tachiyomi.domain.history.service.HistoryDialog.Duplicate -> {
                 DuplicateMangaDialog(
                     duplicates = dialog.duplicates,
                     onDismissRequest = onDismissRequest,
                     onConfirm = { screenModel.addFavorite(dialog.manga) },
-                    onOpenManga = { navigator.push(MangaScreen(it.id)) },
+                    onOpenManga = {
+                        screenModel.controller.cancelReaderRequests()
+                        navigator.push(MangaScreen(it.id))
+                    },
                     onMigrate = { screenModel.showMigrateDialog(dialog.manga, it) },
                 )
             }
-            is HistoryScreenModel.Dialog.ChangeCategory -> {
-                ChangeCategoryDialog(
-                    initialSelection = dialog.initialSelection,
-                    onDismissRequest = onDismissRequest,
-                    onEditCategories = { navigator.push(CategoryScreen()) },
-                    onConfirm = { include, _ ->
-                        screenModel.moveMangaToCategoriesAndAddToLibrary(dialog.manga, include)
+            is tachiyomi.domain.history.service.HistoryDialog.ChangeCategory -> {
+                mihon.presentation.history.HistoryCategoryDialog(
+                    dialog = dialog,
+                    onSelect = screenModel.controller::selectCategory,
+                    onDismiss = onDismissRequest,
+                    onConfirm = screenModel::confirmCategory,
+                    onEdit = {
+                        screenModel.controller.cancelReaderRequests()
+                        navigator.push(CategoryScreen())
                     },
                 )
             }
-            is HistoryScreenModel.Dialog.Migrate -> {
+            is tachiyomi.domain.history.service.HistoryDialog.Migrate -> {
                 MigrateMangaDialog(
                     current = dialog.current,
                     target = dialog.target,
                     // Initiated from the context of [dialog.target] so we show [dialog.current].
-                    onClickTitle = { navigator.push(MangaScreen(dialog.current.id)) },
+                    onClickTitle = {
+                        screenModel.controller.cancelReaderRequests()
+                        navigator.push(MangaScreen(dialog.current.id))
+                    },
                     onDismissRequest = onDismissRequest,
                 )
             }
             null -> {}
         }
+
+        LaunchedEffect(screenModel) { screenModel.controller.refreshCategoryChoices() }
 
         LaunchedEffect(state.list) {
             if (state.list != null) {
@@ -139,21 +180,20 @@ data object HistoryTab : Tab {
                         snackbarHostState.showSnackbar(context.stringResource(MR.strings.internal_error))
                     HistoryScreenModel.Event.HistoryCleared ->
                         snackbarHostState.showSnackbar(context.stringResource(MR.strings.clear_history_completed))
-                    is HistoryScreenModel.Event.OpenChapter -> openChapter(context, e.chapter)
+                    is HistoryScreenModel.Event.OpenChapter -> if (screenModel.controller.consumeReaderRequest(
+                            e.requestToken,
+                        )
+                    ) {
+                        openChapter(context, e.chapter)
+                    }
                 }
-            }
-        }
-
-        LaunchedEffect(Unit) {
-            resumeLastChapterReadEvent.receiveAsFlow().collectLatest {
-                openChapter(context, screenModel.getNextChapter())
             }
         }
     }
 
     private suspend fun openChapter(context: Context, chapter: Chapter?) {
         if (chapter != null) {
-            val intent = ReaderActivity.newIntent(context, chapter.mangaId, chapter.id, resume = true)
+            val intent = ReaderActivity.newContinueIntent(context, chapter.mangaId, chapter.id)
             context.startActivity(intent)
         } else {
             snackbarHostState.showSnackbar(context.stringResource(MR.strings.no_next_chapter))

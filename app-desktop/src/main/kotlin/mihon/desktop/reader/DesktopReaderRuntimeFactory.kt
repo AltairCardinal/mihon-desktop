@@ -135,6 +135,7 @@ class DesktopReaderRuntimeFactory internal constructor(
     private val partialDownloadIoProbe: DownloadIoProbe = DownloadIoProbe.None,
     private val chapterRepository: tachiyomi.domain.chapter.repository.ChapterRepository? = null,
     private val pairingCoordinator: DesktopChapterPairingCoordinator? = null,
+    private val catalogPreparation: tachiyomi.domain.reader.interactor.ReaderCatalogPreparation? = null,
 ) {
     internal val configuredReaderIoProbe: ReaderIoProbe get() = readerIoProbe
     internal val configuredPartialDownloadSnapshotLookup: PartialDownloadSnapshotLookup
@@ -295,6 +296,8 @@ class DesktopReaderRuntimeFactory internal constructor(
         dualPageOverride: Boolean?,
         progressTrackerOverride: ReaderProgressTracker? = null,
         onProductionClosed: () -> Unit = {},
+        chapters: List<ReaderChapterRef> = emptyList(),
+        opening: tachiyomi.domain.reader.model.ReaderOpenContext? = null,
     ): ReaderScreenModel {
         val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val runtime = try {
@@ -311,7 +314,17 @@ class DesktopReaderRuntimeFactory internal constructor(
                 dualPageOverride = dualPageOverride,
                 ownedRuntimeScope = runtimeScope,
                 onProductionClosed = onProductionClosed,
-            )
+            ).also { model ->
+                model.attachCatalog(chapters, opening, catalogPreparation) { completed ->
+                    mihon.desktop.reader.desktopReaderOpenContext(
+                        checkNotNull(opening).manga,
+                        completed,
+                        checkNotNull(opening).chapter,
+                    ) { chapter ->
+                        downloadProvider.isChapterDownloaded(opening.manga.source, opening.manga.title, chapter.name)
+                    }?.chapters.orEmpty()
+                }
+            }
         } catch (error: Throwable) {
             runtime.close()
             runtimeScope.cancel()

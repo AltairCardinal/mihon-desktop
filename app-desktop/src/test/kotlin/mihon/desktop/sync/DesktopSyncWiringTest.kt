@@ -24,7 +24,7 @@ import java.util.prefs.Preferences
 @Isolated
 class DesktopSyncWiringTest {
     @Test
-    fun `ordinary continuation stops when all chapters are read while history retains sync candidate`(
+    fun `all read final chapters stop library detail and official history continuation`(
         @TempDir folder: File,
     ) = runBlocking {
         val node = Preferences.userRoot().node("mihon-sync-resume-di-" + UUID.randomUUID())
@@ -69,13 +69,7 @@ class DesktopSyncWiringTest {
             val history = Injekt.get<tachiyomi.domain.history.interactor.GetHistory>().subscribe("").first().single()
             val model = mihon.desktop.history.HistoryScreenModelFactory.create()
             assertEquals(null, model.readerRequestFor(history))
-            assertEquals(
-                mihon.desktop.history.HistoryReadFailure.SOURCE_UNAVAILABLE,
-                model.state.value.readStatus?.failure,
-            )
-            val request = model.readerRequestFor(history, useExisting = true)
-            assertEquals(2, request?.initialPage)
-            assertTrue(request?.resumeSnapshot?.heads?.isNotEmpty() == true)
+            model.onDispose()
         } finally {
             context.closeAndJoin()
             node.removeNode()

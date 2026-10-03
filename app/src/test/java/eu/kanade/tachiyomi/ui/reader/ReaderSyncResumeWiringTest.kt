@@ -18,6 +18,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -45,6 +46,122 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 class ReaderSyncResumeWiringTest {
     @Test
+    fun `post fetch chapter query failure is silent and leaves active reader intact`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val port = tachiyomi.domain.reader.interactor.ReaderCatalogPreparation { emptyList() }
+        val fixture = Fixture(catalog = port, failCatalogQuery = true)
+        fixture.repository.openedContext = tachiyomi.domain.reader.model.ReaderOpenContext(
+            Manga.create().copy(id = 1, source = 7, chapterFlags = Manga.CHAPTER_SORTING_NUMBER),
+            fixture.storedChapters.first(),
+            1,
+            snapshot("catalog-heads"),
+            true,
+        )
+        try {
+            assertTrue(fixture.model.init(1, 1).getOrThrow())
+            val chapter = fixture.model.state.value.currentChapter
+            val pages = chapter!!.pages
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    fixture.queryRefreshStarted.await()
+                    val field = ReaderViewModel::class.java.getDeclaredField("catalogJob").apply { isAccessible = true }
+                    val job = field.get(fixture.model) as kotlinx.coroutines.Job
+                    job.join()
+                    org.junit.jupiter.api.Assertions.assertFalse(
+                        job.isCancelled,
+                        "Background query error escaped Reader failure boundary",
+                    )
+                }
+            }
+            org.junit.jupiter.api.Assertions.assertSame(chapter, fixture.model.state.value.currentChapter)
+            org.junit.jupiter.api.Assertions.assertSame(pages, chapter.pages)
+        } finally {
+            fixture.close()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `background catalog changes only neighbors and retains active chapter pages window and baseline`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var calls = 0
+        lateinit var fixture: Fixture
+        val port = tachiyomi.domain.reader.interactor.ReaderCatalogPreparation {
+            calls++
+            entered.complete(Unit)
+            release.await()
+            fixture.storedChapters =
+                (1L..3L).map { id ->
+                    Chapter.create().copy(id = id, mangaId = 1, name = "Chapter $id", chapterNumber = id.toDouble())
+                }
+            fixture.storedChapters
+        }
+        fixture = Fixture(catalog = port)
+        fixture.storedChapters = fixture.storedChapters.take(1)
+        fixture.repository.openedContext = tachiyomi.domain.reader.model.ReaderOpenContext(
+            Manga.create().copy(id = 1, source = 7, chapterFlags = Manga.CHAPTER_SORTING_NUMBER),
+            fixture.storedChapters.single(),
+            1,
+            snapshot("catalog-heads"),
+            true,
+        )
+        try {
+            assertTrue(fixture.model.init(1, 1).getOrThrow())
+            val active = requireNotNull(fixture.model.state.value.currentChapter)
+            val pages = requireNotNull(active.pages)
+            val window = requireNotNull(fixture.model.state.value.chapterWindow)
+            fixture.model.onLayoutPageSelected(pages[2])
+            withContext(Dispatchers.Default) { withTimeout(5_000) { entered.await() } }
+            assertEquals(1, calls)
+            assertEquals(null, fixture.model.state.value.viewerChapters!!.nextChapter)
+            release.complete(Unit)
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    fixture.model.state.first { it.viewerChapters?.nextChapter?.chapter?.id == 2L }
+                }
+            }
+            org.junit.jupiter.api.Assertions.assertSame(active, fixture.model.state.value.currentChapter)
+            org.junit.jupiter.api.Assertions.assertSame(pages, active.pages)
+            assertEquals(window.activationSequence, fixture.model.state.value.chapterWindow!!.activationSequence)
+            assertEquals(3, fixture.model.state.value.currentPage)
+            fixture.model.onPageSelected(pages[2])
+            assertEquals(snapshot("catalog-heads"), awaitValue(fixture.repository.records).second)
+            assertTrue(fixture.model.init(1, 1).getOrThrow())
+            assertEquals(1, calls)
+        } finally {
+            release.complete(Unit)
+            fixture.close()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `history selected read chapter cannot reuse its old sync page`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        try {
+            Fixture(savedState = SavedStateHandle(mapOf("resumeWithinChapter" to true))).use { fixture ->
+                fixture.repository.openedContext = tachiyomi.domain.reader.model.ReaderOpenContext(
+                    Manga.create().copy(id = 1, source = 7),
+                    Chapter.create().copy(id = 2, mangaId = 1, read = true),
+                    0,
+                    snapshot("current-heads"),
+                    false,
+                )
+                assertTrue(fixture.model.init(1, 2).getOrThrow())
+                val chapter = requireNotNull(fixture.model.state.value.currentChapter)
+                assertEquals(2L, chapter.chapter.id)
+                assertEquals(0, chapter.requestedPage)
+                fixture.model.onPageSelected(requireNotNull(chapter.pages)[0])
+                assertEquals(snapshot("current-heads"), awaitValue(fixture.repository.records).second)
+            }
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun `ordinary continuation keeps selected unread chapter and its own saved page`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         try {
@@ -71,6 +188,9 @@ class ReaderSyncResumeWiringTest {
         try {
             Fixture(savedState = SavedStateHandle(mapOf("resumeWithinChapter" to true))).use { fixture ->
                 fixture.repository.candidate = ReadingResumePosition(1, 2, snapshot("matching-heads"))
+                fixture.repository.openedContext = fixture.repository.responses.getValue(
+                    1,
+                ).copy(pageIndex = 2, snapshot = snapshot("matching-heads"), resumedWithinChapter = true)
                 assertTrue(fixture.model.init(1, 1).getOrThrow())
                 val chapter = requireNotNull(fixture.model.state.value.currentChapter)
                 assertEquals(1L, chapter.chapter.id)
@@ -91,7 +211,7 @@ class ReaderSyncResumeWiringTest {
                 assertTrue(fixture.model.init(1, 2).getOrThrow())
                 assertEquals(2L, fixture.model.state.value.currentChapter!!.chapter.id)
                 assertEquals(0, fixture.model.state.value.currentChapter!!.requestedPage)
-                assertEquals(0, fixture.repository.lookups)
+                assertEquals(1, fixture.repository.lookups)
             }
         } finally {
             Dispatchers.resetMain()
@@ -99,17 +219,17 @@ class ReaderSyncResumeWiringTest {
     }
 
     @Test
-    fun `continue reading selects the merged chapter and early page even when it is already read`() = runTest {
+    fun `history preserves selected chapter rather than globally merged read candidate`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val fixture = Fixture()
         try {
             assertTrue(fixture.model.init(1, 1).getOrThrow())
             val chapter = requireNotNull(fixture.model.state.value.currentChapter)
-            assertEquals(2L, chapter.chapter.id)
-            assertEquals(1, chapter.requestedPage)
+            assertEquals(1L, chapter.chapter.id)
+            assertEquals(0, chapter.requestedPage)
             assertEquals(1, fixture.repository.lookups)
             fixture.model.onPageSelected(requireNotNull(chapter.pages)[1])
-            assertEquals(fixture.original.snapshot, awaitValue(fixture.repository.records).second)
+            assertEquals(snapshot("current-heads"), awaitValue(fixture.repository.records).second)
         } finally {
             fixture.close()
             Dispatchers.resetMain()
@@ -120,6 +240,9 @@ class ReaderSyncResumeWiringTest {
     fun `invalid synchronized page starts at chapter beginning and emits feedback`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val fixture = Fixture(pageIndex = 8)
+        fixture.repository.openedContext = fixture.repository.responses.getValue(
+            1,
+        ).copy(pageIndex = 8, snapshot = fixture.original.snapshot, resumedWithinChapter = true)
         val events = CopyOnWriteArrayList<ReaderViewModel.Event>()
         val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             fixture.model.eventFlow.collect(events::add)
@@ -127,7 +250,7 @@ class ReaderSyncResumeWiringTest {
         try {
             assertTrue(fixture.model.init(1, 1).getOrThrow())
             val chapter = requireNotNull(fixture.model.state.value.currentChapter)
-            assertEquals(2L, chapter.chapter.id)
+            assertEquals(1L, chapter.chapter.id)
             assertEquals(0, chapter.requestedPage)
             assertEquals(1, events.size, "Invalid synchronized page must produce a user-visible warning")
         } finally {
@@ -141,19 +264,22 @@ class ReaderSyncResumeWiringTest {
     fun `receipt during page loading and active reading cannot replace the adopted session`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val fixture = Fixture(receiveDuringLoad = true)
+        fixture.repository.openedContext = fixture.repository.responses.getValue(
+            1,
+        ).copy(pageIndex = 1, snapshot = fixture.original.snapshot, resumedWithinChapter = true)
         try {
             assertTrue(fixture.model.init(1, 1).getOrThrow())
             val current = requireNotNull(fixture.model.state.value.currentChapter)
-            assertEquals(2L, current.chapter.id)
+            assertEquals(1L, current.chapter.id)
             assertEquals(1, current.requestedPage)
             val mode = fixture.model.manga!!.viewerFlags
             fixture.repository.candidate = ReadingResumePosition(3, 2, snapshot("another-receipt"))
             fixture.model.onPageSelected(requireNotNull(current.pages)[1])
             val record = awaitValue(fixture.repository.records)
             assertEquals(fixture.original.snapshot, record.second)
-            assertEquals(2L, record.first.chapterId)
+            assertEquals(1L, record.first.chapterId)
             assertEquals(1, fixture.repository.lookups)
-            assertEquals(2L, fixture.model.state.value.currentChapter!!.chapter.id)
+            assertEquals(1L, fixture.model.state.value.currentChapter!!.chapter.id)
             assertEquals(1, current.requestedPage)
             assertEquals(mode, fixture.model.manga!!.viewerFlags)
             assertTrue(fixture.model.init(1, 1).getOrThrow())
@@ -175,7 +301,7 @@ class ReaderSyncResumeWiringTest {
                 Fixture(savedState = SavedStateHandle(state)).use { fixture ->
                     assertTrue(fixture.model.init(1, 1).getOrThrow())
                     assertEquals(1L, fixture.model.state.value.currentChapter!!.chapter.id)
-                    assertEquals(0, fixture.repository.lookups)
+                    assertEquals(1, fixture.repository.lookups)
                     if (state.containsKey("page_index")) {
                         assertEquals(2, fixture.model.state.value.currentChapter!!.requestedPage)
                     }
@@ -204,12 +330,23 @@ class ReaderSyncResumeWiringTest {
     }
 
     private class Repository(var candidate: ReadingResumePosition?) : ReadingProgressRepository {
+        var openedContext: tachiyomi.domain.reader.model.ReaderOpenContext? = null
+        var responses: Map<Long, tachiyomi.domain.reader.model.ReaderOpenContext> = emptyMap()
+        override suspend fun openChapter(
+            target: tachiyomi.domain.reader.model.ReaderChapterIdentity,
+        ): tachiyomi.domain.reader.model.ReaderOpenContext? {
+            assertEquals(1L, target.mangaId)
+            assertEquals(7L, target.sourceId)
+            openedContext?.let { assertEquals(it.chapter.id, target.chapterId) }
+            lookups++
+            return openedContext ?: responses.getValue(target.chapterId)
+        }
+
         var lookups = 0
         val records = Channel<Pair<ReadingProgressEvent, ReadingSyncSnapshot>>(Channel.UNLIMITED)
         override suspend fun resumePosition(mangaId: Long): ReadingResumePosition? {
             assertEquals(1L, mangaId)
-            lookups++
-            return candidate
+            error("Reader must consume atomic selected opening")
         }
         override suspend fun beginSyncSession(chapterId: Long) = snapshot("current-heads")
         override suspend fun record(event: ReadingProgressEvent) = error("Reader must retain its causal session")
@@ -224,11 +361,15 @@ class ReaderSyncResumeWiringTest {
         receiveDuringLoad: Boolean = false,
         savedState: SavedStateHandle = SavedStateHandle(mapOf("resume" to true)),
         firstChapterLastPageRead: Long = 0,
+        catalog: tachiyomi.domain.reader.interactor.ReaderCatalogPreparation? = null,
+        failCatalogQuery: Boolean = false,
     ) : AutoCloseable {
         val original = ReadingResumePosition(2, pageIndex, snapshot("adopted-heads"))
         val repository = Repository(original)
+        val queryRefreshStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
+        private val queryCount = java.util.concurrent.atomic.AtomicInteger()
         private val manga = Manga.create().copy(id = 1, source = 7, chapterFlags = Manga.CHAPTER_SORTING_NUMBER)
-        private val chapters = (1L..3L).map { id ->
+        var storedChapters = (1L..3L).map { id ->
             Chapter.create().copy(
                 id = id,
                 mangaId = 1,
@@ -237,6 +378,18 @@ class ReaderSyncResumeWiringTest {
                 read = id == 2L,
                 lastPageRead = if (id == 2L) 2 else firstChapterLastPageRead,
             )
+        }
+        init {
+            repository.responses = storedChapters.associate { chapter ->
+                chapter.id to
+                    tachiyomi.domain.reader.model.ReaderOpenContext(
+                        manga,
+                        chapter,
+                        if (chapter.id == 1L) firstChapterLastPageRead.toInt() else 0,
+                        snapshot("current-heads"),
+                        false,
+                    )
+            }
         }
         private val source = mockk<Source>()
         private val loader = ChapterLoader(
@@ -285,7 +438,13 @@ class ReaderSyncResumeWiringTest {
             trackChapter = mockk(relaxed = true),
             getManga = mockk<GetManga> { coEvery { await(1) } returns manga },
             getChaptersByMangaId = mockk<GetChaptersByMangaId> {
-                coEvery { await(1, any()) } returns chapters
+                coEvery { await(1, any()) } coAnswers {
+                    if (queryCount.incrementAndGet() > 2 && failCatalogQuery) {
+                        queryRefreshStarted.complete(Unit)
+                        error("chapter database unavailable")
+                    }
+                    storedChapters
+                }
             },
             getNextChapters = mockk(relaxed = true),
             upsertHistory = mockk(relaxed = true),
@@ -299,6 +458,7 @@ class ReaderSyncResumeWiringTest {
                 every { markDuplicateReadChapterAsRead().get() } returns emptySet()
             },
             chapterLoaderFactory = { _, _ -> loader },
+            catalogPreparation = { catalog ?: tachiyomi.domain.reader.interactor.ReaderCatalogPreparation { null } },
         )
         override fun close() = model.viewModelScope.cancel()
     }

@@ -50,6 +50,7 @@ internal fun Route.historyCatalogTestRoutes() {
     get("/test/history/catalog-source/manga/history-catalog/feed") {
         val fixture = HistoryTestModeBridge.controller?.catalogFixture
         fixture?.chapterCalls?.incrementAndGet()
+        fixture?.awaitDirectoryRelease()
         val mode = fixture?.mode ?: "success"
         if (mode == "timeout") delay(31_000)
         val code = when (mode) {

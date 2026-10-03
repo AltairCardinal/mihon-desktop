@@ -1,5 +1,5 @@
 ---
-status: planned
+status: in_progress
 date: 2026-10-04
 ---
 
@@ -9,7 +9,7 @@ date: 2026-10-04
 
 用户要求：Desktop 历史页的功能、操作和反馈与官方 Mihon 一致；能够共享的底层代码由本仓库 Android/Desktop 共用，消除没有必要的独立实现。历史条目关联到本机作品和章节后，应按原版续读规则进入阅读器，不在历史页先检查源、补全远端目录或提供另一套阅读失败流程。
 
-本文件是设计，[执行 roadmap](roadmap/2026-10-04-history-upstream-parity-roadmap.md)是唯一实施计划。本轮只编写文档，不代表产品已经修复、测试通过或正式交付。
+本文件是固定设计，[执行 roadmap](roadmap/2026-10-04-history-upstream-parity-roadmap.md)是唯一实施计划。原规划轮只编写文档；用户随后要求实现本计划，实际实施与验收结果记录于[聚合证据](evidence/history-upstream-parity-2026-10-04.md)。设计中的必做契约保持固定，状态推进不表示未执行的测试或正式交付已经通过。
 
 | 基准 | 固定内容 |
 |---|---|
@@ -30,7 +30,9 @@ SOURCE 表示下述固定源码事实；PROJECT_POLICY 表示用户要求及本�
 - [GetNextChapters](https://github.com/mihonapp/mihon/blob/4c88f02646aa1a358611e5b3b37ef7a62909b8d9/domain/src/main/java/tachiyomi/domain/history/interactor/GetNextChapters.kt)：本地章节过滤、排序、当前章已读与未读分支。
 - [ReaderViewModel](https://github.com/mihonapp/mihon/blob/4c88f02646aa1a358611e5b3b37ef7a62909b8d9/app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt)：阅读器自行取得本地章节上下文；历史入口不负责源目录获取。
 
-### 1.2 当前差异与证据性质
+### 1.2 规划基线差异与证据性质
+
+此表记录规划时的代码与诊断，作为改造动机保留；实施后的接口见第 8 节，实际红绿与剩余验收见聚合证据。表中旧链路不表示当前实现仍在使用。
 
 | 当前代码入口 | SOURCE 事实 | 影响 |
 |---|---|---|
@@ -163,7 +165,7 @@ Desktop 历史和详情共用一次本地上下文组装，保留本机全部合
 
 ## 6. 固定验收矩阵
 
-以下是未执行的必做契约，均交付于 roadmap 的 HP01，HP02 补最终矩阵和原生运行证据。测试名称由实施时沿用实际文件，不能仅扫描符号或复制 production 算法。
+以下是固定的必做契约，均交付于 roadmap 的 HP01，HP02 补最终矩阵和原生运行证据；实际进度与失败边界见聚合证据。测试名称由实施时沿用实际文件，不能仅扫描符号或复制 production 算法。
 
 | ID | 前置与真实操作 | 必须断言 |
 |---|---|---|
@@ -206,3 +208,20 @@ Desktop Test Mode 删除旧历史专属 `history_retry`/`history_read_existing` 
 维护顺序：固定上游行为 → 共享契约 → 双端 production 接线 → 平台原生验收。需要平台差异时记录具体 API/输入设备限制、最小 adapter 与对应测试；不允许以实现省事、旧 Desktop 已这样工作或测试已绿作为差异理由。
 
 故障诊断优先核对真实动作、选章结果、Reader 上下文与持久状态；日志只含脱敏身份关联、阶段和错误类别。用户内容、令牌和完整数据库不得进入证据。回退采用正常 Git revert/兼容正式候选，不回滚用户数据，不删除补全的正确章节。
+
+## 8. 已落地接口与维护边界
+
+以下记录已经通过接口审查的实现结构，不代表 HP01/HP02 已完成；剩余接线、回归和正式运行状态以聚合证据为准。
+
+- `domain/.../history/service/HistoryController.kt` 是查询、分组和历史对话框的唯一状态所有者。输入 revision 与已加载结果 revision 配对，平台不得另订阅一个列表或以旧列表表示新查询已完成。收藏编排通过 `HistoryFavoriteActions` 调用已有原子会员写入，增强追踪仍由平台 adapter 执行。
+- Reader 请求资格在实际点击入口同步捕获，选章可以异步等待，实际导航前消费同一 token 一次。离页、封面/分类等其他导航、弹窗和删除使未交付请求失效；返回页重新激活，不能重放旧点击或关闭已挂载 Reader。短锁只保护 epoch/资格，不等待数据库或网络；Android 标签重选只调用当前挂载的 callback，不能用等待返回页 collector 的 rendezvous。
+- `presentation-history` 是范围限定历史页的共享 Compose 模块；两端壳消费同一内容和动作。日期显示保留已有相对日期、日期格式偏好，历史 Book 比例不改变其他 Desktop 页的封面规则。
+- 共享内容保留查询、列表位置与动作焦点 anchor。实际键盘移动会更新 anchor，编辑器获焦清除旧条目 anchor；关闭弹层或页面返回恢复有效触发器，条目消失则回顶栏。数据库更新不得抢走当前编辑/手动选择的焦点。Escape 由当前弹层消费一层，不能同时关闭背景搜索。
+- `RecordReadingProgress.openChapter(ReaderChapterIdentity)` 委托 `SqlDelightReadingProgressRepository`。作品 ID/source/URL 与章节 ID/URL 在同一事务内核对；只在未读同章恢复时采用同步位置，否则使用所选章的本地页和合法 snapshot。接口只读，不创建阅读事件、历史、outbox 或会话。拒绝身份不符时返回 null，不以 index=0 或另一章代替。
+- Desktop 历史和详情通过 `selectedDesktopReaderOpenContext` 组装同一 production Reader；Android ReaderViewModel 消费同一原子上下文。章节排序共用 `getChapterSort`：Desktop 使用 `sortDescending=true` 保持 ReaderNavigator 的 newest-first 内部约定，Android 使用 oldest-first；原始数组方向可以不同，实际前后章含义与用户排序设置必须一致。当前章对象、初始页和已采用 snapshot 是会话状态；后续同步与目录结果不得覆盖这些状态。
+- `ReaderCatalogCompletion` 每个已打开 Reader 只尝试一次，仅允许带有效 scope 的同章同步恢复，等待上限为 30 秒。完整性判断由平台 preparation port 读取既有观测；COMPLETE 不请求源。准备失败或超时保留当前内容；外层取消继续传播。用户通过详情既有刷新入口重试，不增加历史行重试按钮。
+- 共享 `data/.../chapter/SourceChapterCatalogWriter.kt` 保留非删除合并、真实读回和观测事务。Desktop 原名称为 adapter/typealias；Android `AndroidReaderCatalogPreparation` 使用相同核心，不借用含下载更名、删除副作用的常规章节刷新。bootstrap 等待和源抓取在短事务外，合并时再次核对当前作品身份及目标章。
+- `SourceMangaUpdateService.awaitSharedCatalog` 是 Reader 补全与 Android 详情更新的窄 opt-in。按源实例、sourceId、作品 URL 合并重叠目录请求，最后等待者退出才取消共享执行；Reader 先取目录时，晚加入详情只补 metadata。原 `await` 的 flags、opaque memo 与错误/取消语义保持不变；内部传递 `Result` 保留原 source 异常对象，不能放宽既有异常契约来迁就 Deferred 栈恢复。
+- 邻接装配与后续本地查询也属于后台失败边界。Desktop 用 activation epoch、Android 用当前阅读激活/window sequence 拒绝关闭、换章及返回同章后的旧结果；只隔离非取消的 Exception，保留现有当前章对象、页面、模式、配对和因果基线。导航、预取与 Test Mode 应从实际挂载 Reader 的最新 refs 读取，不能另行合成邻章。
+
+本次没有 schema 或同步协议变更。后续修改上述接口时，先运行双端共享文件库契约，再运行受影响 Reader 消费者和实际导航/DI 测试；完整模块测试与正式构建仍只在当前 roadmap 最终收口执行。旧测试若与固定上游行为冲突，应以新的正确红测替换；若只是 fixture 身份与真实种子不一致，应修夹具，保留原页码、书签、配对、隐私和持久化断言。

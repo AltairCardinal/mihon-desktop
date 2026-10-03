@@ -1,6 +1,5 @@
 package mihon.desktop.ui.library
 
-import mihon.domain.reader.progress.resolveReaderChapterEntryPage
 import cafe.adriel.voyager.core.model.ScreenModel
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -22,6 +21,7 @@ import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.externalChapterUrlOrNull
 import mihon.desktop.reader.viewerFlagsFollowingGlobal
 import mihon.desktop.reader.viewerFlagsWithReadingMode
+import mihon.domain.reader.progress.resolveReaderChapterEntryPage
 import mihon.domain.task.TaskState
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
@@ -448,44 +448,15 @@ class MangaDetailScreenModel(
 
     suspend fun continueReadingRequest(manga: Manga, chapters: List<Chapter>): MangaDetailReaderRequest? {
         val target = nextUnreadChapter(chapters, manga) ?: return null
-        val request = readerRequest(manga, chapters, target) ?: return null
-        val resume = readingProgress?.resumePosition(manga.id)?.takeIf { it.chapterId == target.id }
-        return if (resume != null) {
-            request.copy(
-                initialPage = resume.pageIndex,
-                resumeSnapshot = resume.snapshot,
-            )
-        } else {
-            request
-        }
+        return readerRequest(manga, chapters, target)
     }
 
-    fun readerRequest(
+    suspend fun readerRequest(
         manga: Manga,
         chapters: List<Chapter>,
         chapter: Chapter,
     ): MangaDetailReaderRequest? {
-        if (chapter.url.externalChapterUrlOrNull() != null) return null
-        val readerChapters = chapters
-            .filterNot { it.url.externalChapterUrlOrNull() != null }
-            .sortedBy { it.sourceOrder }
-        val chapterRefs = readerChapters.toReaderChapterRefs(
-            currentChapterId = chapter.id,
-            manga = manga,
-            isChapterDownloaded = { readerChapter -> isChapterDownloaded(manga, readerChapter) },
-        )
-        return MangaDetailReaderRequest(
-            chapterTitle = chapter.name,
-            mangaId = manga.id,
-            mangaTitle = manga.title,
-            sourceId = manga.source,
-            chapterUrl = chapter.url,
-            chapterId = chapter.id,
-            chapters = chapterRefs,
-            currentChapterIndex = ReaderNavigator.indexForId(chapterRefs, chapter.id),
-            initialPage = resolveReaderChapterEntryPage(chapter.read, chapter.lastPageRead),
-            mangaViewerFlags = manga.viewerFlags,
-        )
+        return mihon.desktop.reader.selectedDesktopReaderOpenContext(manga, chapters, chapter, readingProgress, ::isChapterDownloaded)
     }
 
     suspend fun setCategoriesForManga(mangaId: Long, categoryIds: List<Long>): SetMangaCategories.Result {
@@ -577,16 +548,4 @@ internal enum class MangaDetailAddToLibraryResult {
     FAILED,
 }
 
-data class MangaDetailReaderRequest(
-    val chapterTitle: String,
-    val mangaId: Long,
-    val mangaTitle: String,
-    val sourceId: Long,
-    val chapterUrl: String,
-    val chapterId: Long,
-    val chapters: List<ReaderChapterRef>,
-    val currentChapterIndex: Int,
-    val initialPage: Int,
-    val mangaViewerFlags: Long,
-    val resumeSnapshot: tachiyomi.domain.reader.model.ReadingSyncSnapshot? = null,
-)
+typealias MangaDetailReaderRequest = mihon.desktop.reader.DesktopReaderOpenContext

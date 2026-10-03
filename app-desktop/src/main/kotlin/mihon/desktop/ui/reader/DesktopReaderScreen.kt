@@ -106,6 +106,7 @@ data class DesktopReaderScreen(
     val localChapterPath: String? = null,
     @Transient val progressTracker: ReaderProgressTracker? = null,
     @Transient val resumeSnapshot: tachiyomi.domain.reader.model.ReadingSyncSnapshot? = null,
+    @Transient val opening: tachiyomi.domain.reader.model.ReaderOpenContext? = null,
     @Transient val onProductionClosed: () -> Unit = {},
 ) : Screen {
 
@@ -126,6 +127,8 @@ data class DesktopReaderScreen(
                 dualPageOverride = isDualPage,
                 progressTrackerOverride = progressTracker,
                 onProductionClosed = onProductionClosed,
+                chapters = chapters,
+                opening = opening,
             )
         }
         val runtime = checkNotNull(model.runtime)
@@ -136,6 +139,7 @@ data class DesktopReaderScreen(
                     chapters,
                     transition = { direction, nav -> requestAdjacentChapterTransition(direction, model, nav) },
                     closeReader = { navigator.pop() },
+                    currentChapters = { model.state.value.chapterRefs },
                 )
             } else {
                 null
@@ -184,8 +188,8 @@ data class DesktopReaderScreen(
         val skipRead = state.skipReadChapters
         val skipFiltered = state.skipFilteredChapters
         val skipDuplicate = state.skipDuplicateChapters
-        val readerNav = remember(chapters, state.context.chapterIndex, skipRead, skipFiltered, skipDuplicate) {
-            chapters.takeIf { it.isNotEmpty() }?.let {
+        val readerNav = remember(state.chapterRefs, state.context.chapterIndex, skipRead, skipFiltered, skipDuplicate) {
+            state.chapterRefs.takeIf { it.isNotEmpty() }?.let {
                 ReaderNavigator(
                     chapters = it,
                     currentIndex = state.context.chapterIndex.coerceIn(it.indices),
@@ -311,7 +315,7 @@ data class DesktopReaderScreen(
             return false
         }
         model.clearChapterTransition()
-        model.activateChapter(chapterContext(target, direction))
+        model.activateChapter(chapterContext(target, direction, model.state.value.chapterRefs))
         return true
     }
 
@@ -322,7 +326,7 @@ data class DesktopReaderScreen(
         dualPage: Boolean,
     ) {
         val nextContext = readerNavigator?.nextToRead?.let { target ->
-            chapterContext(target, ReaderTransitionDirection.NEXT)
+            chapterContext(target, ReaderTransitionDirection.NEXT, model.state.value.chapterRefs)
         }
         val firstViewportPageCount = when {
             readingMode == ReadingMode.WEBTOON -> WEBTOON_FIRST_VIEWPORT_PAGES
@@ -335,6 +339,7 @@ data class DesktopReaderScreen(
     private fun chapterContext(
         target: ReaderChapterRef,
         direction: ReaderTransitionDirection,
+        refs: List<ReaderChapterRef> = chapters,
     ) = DesktopReaderChapterContext(
         chapterId = target.id,
         sourceId = sourceId,
@@ -342,7 +347,7 @@ data class DesktopReaderScreen(
         mangaTitle = mangaTitle,
         chapterTitle = target.name,
         chapterNumber = target.chapterNumber,
-        chapterIndex = ReaderNavigator.indexForId(chapters, target.id),
+        chapterIndex = ReaderNavigator.indexForId(refs, target.id),
         initialPage = initialPageForChapterNavigation(
             if (direction == ReaderTransitionDirection.PREVIOUS) {
                 ReaderChapterNavigationDirection.Previous

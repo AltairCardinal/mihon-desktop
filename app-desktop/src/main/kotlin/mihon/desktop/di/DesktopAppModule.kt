@@ -1016,6 +1016,7 @@ internal fun initUILayer(
             encodedCacheDirectory = paths.networkCacheDir.resolve("reader-encoded"),
             chapterRepository = chapterRepository,
             pairingCoordinator = pairingCoordinator,
+            catalogPreparation = mihon.desktop.reader.DesktopReaderCatalogPreparation(mangaRepository, Injekt.get(), Injekt.get()),
             readerIoProbe = mihon.desktop.test.http.ReaderIoTestModeBridge,
             disallowNonAsciiFilenames = {
                 Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get()

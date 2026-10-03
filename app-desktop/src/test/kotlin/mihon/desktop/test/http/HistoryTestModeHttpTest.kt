@@ -135,6 +135,26 @@ class HistoryTestModeHttpTest {
         }
     }
 
+    @Test
+    fun `retired history directory actions are unsupported and retain the shared rows`() = runBlocking {
+        val repository = FakeHistoryRepository().apply { addHistory(history(1, "Naruto")) }
+        val model = model(repository)
+        val controller = HistoryTestModeController(model)
+        try {
+            controller.hydrate()
+            val before = controller.snapshot()
+            for (action in listOf("history_retry", "history_read_existing", "history_cancel")) {
+                val result = controller.execute(action, mapOf("index" to "0"))
+                assertEquals(false, result.success)
+                assertEquals(TimelineTestFailureCode.UNSUPPORTED_ACTION, result.failureCode)
+                assertEquals(before, result.snapshot)
+            }
+        } finally {
+            controller.close()
+            model.onDispose()
+        }
+    }
+
     private fun model(
         repository: FakeHistoryRepository,
         chapterRepository: FakeChapterRepository = FakeChapterRepository(),
@@ -142,9 +162,10 @@ class HistoryTestModeHttpTest {
     ) = HistoryScreenModel(
         getHistory = GetHistory(repository),
         removeHistory = RemoveHistory(repository),
-        getChapter = GetChapter(chapterRepository),
+
         getManga = GetManga(mangaRepository),
         getChapters = tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(chapterRepository),
+        getNextChapters = tachiyomi.domain.history.interactor.GetNextChapters(tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(chapterRepository), GetManga(mangaRepository), repository),
     )
 
     private fun history(id: Long, title: String) = HistoryWithRelations(

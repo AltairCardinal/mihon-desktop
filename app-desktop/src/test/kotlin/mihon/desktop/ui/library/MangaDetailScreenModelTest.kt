@@ -79,7 +79,8 @@ class MangaDetailScreenModelTest {
             driver,
             historyAdapter = tachiyomi.data.History.Adapter(tachiyomi.data.DateColumnAdapter),
             mangasAdapter = tachiyomi.data.Mangas.Adapter(
-                tachiyomi.data.StringListColumnAdapter, tachiyomi.data.UpdateStrategyColumnAdapter,
+                tachiyomi.data.StringListColumnAdapter,
+                tachiyomi.data.UpdateStrategyColumnAdapter,
             ),
         )
         val handler = tachiyomi.data.JvmDatabaseHandler(database, driver)
@@ -786,7 +787,7 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
-    fun `readerRequest uses source order and last page`() {
+    fun `readerRequest uses source order and last page`() = runTest {
         val model = MangaDetailScreenModel(mangaId = 1L)
         val manga = createFakeManga(id = 1L, title = "M").copy(source = 9L, viewerFlags = 7L)
         val chapters = listOf(
@@ -804,7 +805,7 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
-    fun `readerRequest returns null for an external browser chapter`() {
+    fun `readerRequest returns null for an external browser chapter`() = runTest {
         val model = MangaDetailScreenModel(mangaId = 1L)
         val manga = createFakeManga(id = 1L)
         val chapter = createFakeChapter(1L).copy(url = "external:https://kodansha.us/chapter/1")
@@ -815,7 +816,7 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
-    fun `readerRequest excludes external chapters from reader navigation`() {
+    fun `readerRequest excludes external chapters from reader navigation`() = runTest {
         val model = MangaDetailScreenModel(mangaId = 1L)
         val manga = createFakeManga(id = 1L)
         val internalChapter = createFakeChapter(1L).copy(url = "/chapter/internal")
@@ -829,7 +830,7 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
-    fun `readerRequest marks filtered and duplicate chapters for shared reader skip policy`() {
+    fun `readerRequest marks filtered and duplicate chapters for shared reader skip policy`() = runTest {
         val model = MangaDetailScreenModel(mangaId = 1L)
         val manga = createFakeManga(id = 1L).copy(chapterFlags = Manga.CHAPTER_SHOW_UNREAD)
         val current = createFakeChapter(42L).copy(chapterNumber = 4.0, scanlator = "B", sourceOrder = 4L)
@@ -915,7 +916,7 @@ private fun createFakeManga(id: Long, title: String = "Manga $id") =
     Manga.create().copy(id = id, title = title, source = 1L)
 
 private fun createFakeChapter(id: Long) =
-    tachiyomi.domain.chapter.model.Chapter.create().copy(id = id, mangaId = 1L, name = "Chapter $id")
+    tachiyomi.domain.chapter.model.Chapter.create().copy(id = id, mangaId = 1L, name = "Chapter $id", url = "/chapter/$id")
 
 private class FakeCreatorRepository : CreatorRepository {
     data class Link(val mangaId: Long, val creatorId: Long, val role: CreatorRole)

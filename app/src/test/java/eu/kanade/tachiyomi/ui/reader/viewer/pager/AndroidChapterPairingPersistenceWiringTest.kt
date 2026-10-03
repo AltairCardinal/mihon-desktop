@@ -830,9 +830,22 @@ class AndroidChapterPairingPersistenceWiringTest {
         Injekt.addSingleton(BasePreferences(RuntimeEnvironment.getApplication() as Application, preferences))
         Injekt.addSingleton(mockk<DownloadManager>(relaxed = true))
 
-        val manga = Manga.create().copy(id = 1, source = 7, title = "Pairing manga")
-        val chapter = Chapter.create().copy(id = 2, mangaId = 1, name = "Chapter 2", lastPageRead = 5, sourceOrder = 2)
-        val adjacent = Chapter.create().copy(id = 3, mangaId = 1, name = "Chapter 3", sourceOrder = 1)
+        val manga = Manga.create().copy(id = 1, source = 7, url = "/", title = "Pairing manga")
+        val chapter = Chapter.create().copy(
+            id = 2,
+            mangaId = 1,
+            url = "/chapter",
+            name = "Chapter 2",
+            lastPageRead = 5,
+            sourceOrder = 2,
+        )
+        val adjacent = Chapter.create().copy(
+            id = 3,
+            mangaId = 1,
+            url = "/chapter-3",
+            name = "Chapter 3",
+            sourceOrder = 1,
+        )
         val source = mockk<Source>()
         val sourceManager = mockk<SourceManager> {
             every { isInitialized } returns MutableStateFlow(true)
@@ -939,7 +952,7 @@ class AndroidChapterPairingPersistenceWiringTest {
             null,
             "INSERT INTO chapters(_id, manga_id, url, name, read, bookmark, last_page_read, " +
                 "chapter_number, source_order, date_fetch, date_upload) " +
-                "VALUES (2, 1, '/chapter', 'C', 0, 0, 5, 1, 0, 0, 0)",
+                "VALUES (2, 1, '/chapter', 'C', 0, 0, 5, 1, 2, 0, 0)",
             0,
         )
     }

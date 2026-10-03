@@ -2,162 +2,105 @@ package mihon.desktop.history
 
 import cafe.adriel.voyager.core.model.ScreenModel
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.update
-import mihon.desktop.reader.externalChapterUrlOrNull
-import mihon.desktop.ui.library.toReaderChapterRefs
-import tachiyomi.domain.chapter.interactor.GetChapter
 import tachiyomi.domain.history.interactor.GetHistory
 import tachiyomi.domain.history.interactor.RemoveHistory
 import tachiyomi.domain.history.model.HistoryWithRelations
+import tachiyomi.domain.history.service.HistoryController
 import tachiyomi.domain.manga.interactor.GetManga
 
-data class HistoryState(
-    val searchQuery: String = "",
-    val items: List<HistoryWithRelations> = emptyList(),
-    val showClearAllDialog: Boolean = false,
-    val readStatus: HistoryReadStatus? = null,
-    val lastReadHistoryId: Long? = null,
-)
+typealias HistoryState = tachiyomi.domain.history.service.HistoryState
 
-data class HistoryReaderRequest(
-    val chapterTitle: String,
-    val mangaTitle: String,
-    val sourceId: Long,
-    val chapterUrl: String,
-    val chapterId: Long,
-    val mangaId: Long,
-    val mangaViewerFlags: Long,
-    val initialPage: Int,
-    val resumeSnapshot: tachiyomi.domain.reader.model.ReadingSyncSnapshot? = null,
-    val chapters: List<mihon.desktop.reader.ReaderChapterRef> = emptyList(),
-    val currentChapterIndex: Int = 0,
-    val chapterNumber: Double = 0.0,
-)
+typealias HistoryReaderRequest = mihon.desktop.reader.DesktopReaderOpenContext
 
 class HistoryScreenModel(
     private val getHistory: GetHistory,
     private val removeHistory: RemoveHistory,
-    private val getChapter: GetChapter,
     private val getManga: GetManga,
     private val readingProgress: tachiyomi.domain.reader.interactor.RecordReadingProgress? = null,
     private val getChapters: tachiyomi.domain.chapter.interactor.GetChaptersByMangaId? = null,
-    private val prepareDirectory: (suspend (tachiyomi.domain.manga.model.Manga) -> mihon.desktop.extension.SourceCallResult<mihon.desktop.domain.PreparedChapterCatalog>)? = null,
+    private val observationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    private val getNextChapters: tachiyomi.domain.history.interactor.GetNextChapters,
     private val isDownloaded: (tachiyomi.domain.manga.model.Manga, tachiyomi.domain.chapter.model.Chapter) -> Boolean = { _, _ -> false },
+    private val favoriteActions: tachiyomi.domain.history.service.HistoryFavoriteActions? = null,
 ) : ScreenModel {
 
-    private val _state = MutableStateFlow(HistoryState())
-    val state: StateFlow<HistoryState> = _state.asStateFlow()
-    private var readGeneration = 0L
-    private var deliveredHistoryId: Long? = null
-    private var historyLoaded = false
+    val controller = HistoryController(observationScope, getHistory, removeHistory, getNextChapters, favoriteActions = favoriteActions)
+    val state = controller.state
+
+    fun updateSearchQuery(query: String?) {
+        controller.updateSearchQuery(query)
+    }
 
     fun cancelRead() {
-        readGeneration++
-        deliveredHistoryId = null
-        _state.update { it.copy(readStatus = null) }
+        controller.activateReaderRequests()
     }
 
     override fun onDispose() {
         cancelRead()
+        controller.close()
+        observationScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
     }
 
-    suspend fun loadHistory(query: String = state.value.searchQuery) {
-        val items = getHistory.subscribe(query).first()
-        historyLoaded = true
-        _state.update { it.copy(searchQuery = query, items = items) }
+    suspend fun loadHistory(query: String? = state.value.searchQuery) {
+        controller.refresh(query)
+        val revision = controller.state.value.queryRevision
+        controller.state.first { it.searchQuery == query && it.loadedQueryRevision == revision && it.list != null }
     }
 
     fun setShowClearAllDialog(show: Boolean) {
-        _state.update { it.copy(showClearAllDialog = show) }
+        controller.setDialog(if (show) tachiyomi.domain.history.service.HistoryDialog.DeleteAll else null)
     }
 
     suspend fun removeHistory(item: HistoryWithRelations) {
-        if (state.value.readStatus?.historyId == item.id) cancelRead()
+        controller.invalidateReaderRequests()
         removeHistory.await(item)
         loadHistory()
     }
 
     suspend fun clearAllHistory() {
-        cancelRead()
-        removeHistory.awaitAll()
-        _state.update { it.copy(items = emptyList(), showClearAllDialog = false) }
+        controller.invalidateReaderRequests()
+        val result = controller.clear()
+        controller.setDialog(null)
+        if (result) loadHistory()
     }
 
-    suspend fun readerRequestFor(item: HistoryWithRelations, useExisting: Boolean = false): HistoryReaderRequest? {
-        if (deliveredHistoryId == item.id) return null
-        if (state.value.readStatus?.let { it.historyId == item.id && it.loading } == true) return null
-        val prior = state.value.readStatus?.takeIf { it.historyId == item.id }
-        val generation = ++readGeneration
-        _state.update { it.copy(readStatus = HistoryReadStatus(item.id, loading = true)) }
-        var known = emptyList<tachiyomi.domain.chapter.model.Chapter>()
+    suspend fun readerRequestFor(item: HistoryWithRelations): HistoryReaderRequest? = consumeDelivery(item)
+
+    suspend fun latestReaderRequest(): HistoryReaderRequest? = consumeDelivery(null)
+
+    private suspend fun consumeDelivery(item: HistoryWithRelations?): HistoryReaderRequest? {
+        val token = controller.beginReaderRequest() ?: return null
+        val delivery = readerDeliveryFor(item, token) ?: return null
+        if (!controller.consumeReaderRequest(token)) return null
+        if (delivery.internalError) controller.internalError()
+        return delivery.request
+    }
+
+    internal suspend fun readerDeliveryFor(item: HistoryWithRelations?, token: Long): HistoryReaderDelivery? {
         try {
-            val manga = getManga.await(item.mangaId) ?: return fail(generation, item, HistoryReadFailure.TARGET_MISSING, false)
-            known = getChapters?.awaitOrThrow(manga.id) ?: listOfNotNull(getChapter.await(item.chapterId))
-            var directory = known
-            if (!useExisting && prepareDirectory != null) {
-                when (val result = prepareDirectory.invoke(manga)) {
-                    is mihon.desktop.extension.SourceCallResult.Success -> directory = result.value.chapters
-                    is mihon.desktop.extension.SourceCallResult.Error -> return fail(generation, item, failureFor(result.error), known.isNotEmpty(), result.error)
-                    is mihon.desktop.extension.SourceCallResult.Timeout -> return fail(generation, item, HistoryReadFailure.SOURCE, known.isNotEmpty(), result.error)
-                }
+            val chapter = if (item == null) controller.latestChapter() else controller.nextChapter(item.mangaId, item.chapterId)
+            if (chapter == null) return finishDelivery(token, null)
+            val manga = getManga.awaitOrThrow(chapter.mangaId) ?: return finishDelivery(token, null)
+            val chapters = getChapters?.awaitOrThrow(manga.id, applyScanlatorFilter = true) ?: listOf(chapter)
+            val request = mihon.desktop.reader.selectedDesktopReaderOpenContext(manga, chapters, chapter, readingProgress, isDownloaded)
+            if (controller.state.value.list != null) {
+                val rows = getHistory.await(chapter.mangaId)
+                if (rows.none { (it.readAt?.time ?: 0) > 0 && (item == null || (it.id == item.id && it.chapterId == item.chapterId)) }) return null
             }
-            if (generation != readGeneration) return null
-            // Resolve only after preparation: a synchronization arriving during fetch wins on next entry.
-            val currentManga = getManga.await(manga.id) ?: return fail(generation, item, HistoryReadFailure.TARGET_MISSING, known.isNotEmpty())
-            check(currentManga.source == manga.source && currentManga.url == manga.url) { "Source manga identity conflict" }
-            val resume = readingProgress?.resumePosition(manga.id)
-            val resumed = resume?.let { getChapter.await(it.chapterId) }?.takeIf { it.mangaId == manga.id && it.url.externalChapterUrlOrNull() == null }
-            val chapter = resumed ?: getChapter.await(item.chapterId)?.takeIf { it.mangaId == manga.id && it.url.externalChapterUrlOrNull() == null }
-                ?: return fail(generation, item, HistoryReadFailure.TARGET_MISSING, known.isNotEmpty())
-            if (useExisting && prior?.failure == HistoryReadFailure.TARGET_MISSING) directory = listOf(chapter)
-            val verifiedIds = directory.map { it.id }.toSet()
-            val latest = getChapters?.awaitOrThrow(manga.id, applyScanlatorFilter = true) ?: directory
-            val filtered = latest.filter { it.id in verifiedIds && it.url.externalChapterUrlOrNull() == null }
-            val readerChapters = (filtered + listOf(chapter).filter { it.id in verifiedIds && filtered.none { found -> found.id == it.id } }).sortedBy { it.sourceOrder }
-            check(readerChapters.map { it.url }.distinct().size == readerChapters.size) { "Duplicate local chapter identity" }
-            val refs = readerChapters.toReaderChapterRefs(chapter.id, currentManga) { isDownloaded(currentManga, it) }
-            val index = refs.indexOfFirst { it.id == chapter.id }
-            if (index < 0) return fail(generation, item, HistoryReadFailure.TARGET_MISSING, known.isNotEmpty())
-            if (generation != readGeneration) return null
-            if (historyLoaded && getHistory.await(item.mangaId).none { it.id == item.id && it.chapterId == item.chapterId && (it.readAt?.time ?: 0) > 0 }) {
-                cancelRead()
-                return null
-            }
-            if (generation != readGeneration) return null
-            deliveredHistoryId = item.id
-            _state.update { it.copy(readStatus = null, lastReadHistoryId = item.id) }
-            return HistoryReaderRequest(
-                chapterTitle = chapter.name, mangaTitle = currentManga.title, sourceId = currentManga.source,
-                chapterUrl = chapter.url, chapterId = chapter.id, mangaId = currentManga.id,
-                mangaViewerFlags = currentManga.viewerFlags,
-                initialPage = if (resumed != null) requireNotNull(resume).pageIndex else chapter.lastPageRead.toInt().coerceAtLeast(0),
-                resumeSnapshot = resume?.snapshot.takeIf { resumed != null },
-                chapters = refs.toList(), currentChapterIndex = index, chapterNumber = chapter.chapterNumber,
-            )
+            return finishDelivery(token, request)
         } catch (error: CancellationException) {
-            if (generation == readGeneration) cancelRead()
             throw error
         } catch (error: Exception) {
-            return fail(generation, item, if (error.message.orEmpty().contains("identity", true)) HistoryReadFailure.IDENTITY else HistoryReadFailure.STORAGE, known.isNotEmpty(), mihon.domain.error.AppError.Storage(error))
+            return finishDelivery(token, null, internalError = true)
         }
     }
 
-    private fun failureFor(error: mihon.domain.error.AppError) = when {
-        error.cause is mihon.desktop.domain.SourceCatalogUnavailableException -> HistoryReadFailure.SOURCE_UNAVAILABLE
-        error.cause?.message.orEmpty().contains("identity", true) -> HistoryReadFailure.IDENTITY
-        error is mihon.domain.error.AppError.Storage -> HistoryReadFailure.STORAGE
-        else -> HistoryReadFailure.SOURCE
-    }
-
-    private fun fail(generation: Long, item: HistoryWithRelations, failure: HistoryReadFailure, hasKnown: Boolean, error: mihon.domain.error.AppError? = null): HistoryReaderRequest? {
-        if (generation == readGeneration) _state.update { it.copy(readStatus = HistoryReadStatus(item.id, false, failure, error, hasKnown)) }
-        return null
-    }
+    private fun finishDelivery(token: Long, request: HistoryReaderRequest?, internalError: Boolean = false): HistoryReaderDelivery? =
+        if (controller.finishReaderRequest(token, request?.chapterId)) HistoryReaderDelivery(request, internalError) else null
 }
 
-enum class HistoryReadFailure { SOURCE_UNAVAILABLE, TARGET_MISSING, IDENTITY, STORAGE, SOURCE }
-data class HistoryReadStatus(val historyId: Long, val loading: Boolean, val failure: HistoryReadFailure? = null, val error: mihon.domain.error.AppError? = null, val canUseExisting: Boolean = false)
+internal data class HistoryReaderDelivery(val request: HistoryReaderRequest?, val internalError: Boolean = false)

@@ -3,17 +3,17 @@ package mihon.desktop.ui.reader
 import cafe.adriel.voyager.core.model.ScreenModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import mihon.desktop.reader.DesktopChapterPairingCoordinator
 import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.DesktopReaderRuntime
 import mihon.desktop.reader.DesktopReaderSessionState
-import mihon.desktop.reader.DesktopChapterPairingCoordinator
 import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ReaderPreferences
@@ -24,15 +24,15 @@ import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.dualPageFromViewerFlags
 import mihon.desktop.reader.readingModeFromViewerFlags
 import mihon.desktop.reader.viewerFlagsFollowingGlobal
-import mihon.desktop.reader.viewerFlagsWithReadingMode
 import mihon.desktop.reader.viewerFlagsWithDualPage
+import mihon.desktop.reader.viewerFlagsWithReadingMode
 import mihon.desktop.ui.reader.presentation.DisplayUnitId
 import mihon.desktop.ui.reader.presentation.VisiblePageSet
 import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
 import mihon.desktop.ui.reader.presentation.dualDisplayUnitIndexForSourcePage
 import mihon.desktop.ui.reader.presentation.firstDualPageIndex
-import mihon.domain.reader.ReaderChapterModel
 import mihon.domain.reader.AdaptiveReaderLayout
+import mihon.domain.reader.ReaderChapterModel
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderChapterTransitionModel
 import mihon.domain.reader.ReaderNavigationCommand
@@ -102,13 +102,56 @@ class ReaderScreenModel(
     private var manualDualPage = dualPageFromViewerFlags(mangaViewerFlags) ?: dualPageOverride ?: prefs.isDualPage
     private val productionRuntimeLifecycleLock = Any()
     private var retainedCompositionCount = 0
+
     @Volatile private var disposeRequested = false
     private var productionRuntimeClosed = false
+
     @Volatile private var pairingEpoch = 0L
+
+    @Volatile private var catalogActivationEpoch = 0L
+
     @Volatile private var pairingRequest: PairingRequest? = null
 
     init {
         beginPairingRestore(initialSessionState)
+    }
+
+    internal fun attachCatalog(
+        refs: List<mihon.desktop.reader.ReaderChapterRef>,
+        opened: tachiyomi.domain.reader.model.ReaderOpenContext?,
+        preparation: tachiyomi.domain.reader.interactor.ReaderCatalogPreparation?,
+        map: (List<tachiyomi.domain.chapter.model.Chapter>) -> List<mihon.desktop.reader.ReaderChapterRef>,
+    ) {
+        _state.update { it.copy(chapterRefs = refs) }
+        if (opened == null || preparation == null) return
+        val initial = state.value.context
+        val epoch = catalogActivationEpoch
+        val completion = tachiyomi.domain.reader.interactor.ReaderCatalogCompletion(opened, preparation)
+        ownedRuntimeScope?.launch {
+            try {
+                val chapters = completion.await() ?: return@launch
+                val updated = map(chapters)
+                synchronized(productionRuntimeLifecycleLock) {
+                    if (disposeRequested || productionRuntimeClosed || catalogActivationEpoch != epoch) return@synchronized
+                    _state.update { current ->
+                        if (current.context.mangaId != initial.mangaId || current.context.chapterId != initial.chapterId ||
+                            current.context.sourceId != initial.sourceId || current.context.chapterUrl != initial.chapterUrl
+                        ) {
+                            current
+                        } else {
+                            val index = updated.indexOfFirst { it.id == initial.chapterId && it.url == initial.chapterUrl }
+                            val activeRef = current.chapterRefs.firstOrNull { it.id == initial.chapterId && it.url == initial.chapterUrl }
+                            val neighbors = updated.map { if (it.id == initial.chapterId && activeRef != null) activeRef else it }
+                            if (index < 0) current else current.copy(chapterRefs = neighbors, context = current.context.copy(chapterIndex = index))
+                        }
+                    }
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Neighbor metadata is optional; keep the already mounted pages and causal session.
+            }
+        }
     }
 
     private fun buildInitialState(
@@ -178,7 +221,10 @@ class ReaderScreenModel(
                 current.currentPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
             }
             current.copy(
-                context = reader.context,
+                context = reader.context.copy(
+                    chapterIndex = current.chapterRefs.indexOfFirst { it.id == reader.context.chapterId }
+                        .takeIf { it >= 0 } ?: reader.context.chapterIndex,
+                ),
                 session = reader.snapshot,
                 currentPage = currentPage,
                 resumePageUnavailable = if (chapterChanged || firstStablePageList) {
@@ -199,7 +245,9 @@ class ReaderScreenModel(
                 pairingRevision = if (newIdentity) 0L else current.pairingRevision,
                 pairingSessionOnly = if (newIdentity) {
                     pairingCoordinator != null && reader.context.isTemporaryReaderFile()
-                } else current.pairingSessionOnly,
+                } else {
+                    current.pairingSessionOnly
+                },
                 pairingSaving = if (newIdentity) false else current.pairingSaving,
                 pairingNotice = if (newIdentity) null else current.pairingNotice,
                 spreadPages = if (newIdentity) emptySet() else current.spreadPages,
@@ -255,10 +303,14 @@ class ReaderScreenModel(
                     }
                 }
                 .onFailure {
-                    if (isCurrentPairingRequest(request)) _state.update { state ->
-                        if (isCurrentPairingRequest(request) && state.matchesPairingRequest(request)) {
-                            state.copy(pairingLoad = PairingLoad.ERROR)
-                        } else state
+                    if (isCurrentPairingRequest(request)) {
+                        _state.update { state ->
+                            if (isCurrentPairingRequest(request) && state.matchesPairingRequest(request)) {
+                                state.copy(pairingLoad = PairingLoad.ERROR)
+                            } else {
+                                state
+                            }
+                        }
                     }
                 }
         }
@@ -296,6 +348,7 @@ class ReaderScreenModel(
             _state.value.session.generation == generation && _state.value.session.activeChapter.pages.size == pageCount
 
     fun activateChapter(context: DesktopReaderChapterContext) {
+        catalogActivationEpoch++
         onChapterActivated(context)?.let(::acceptSessionState)
     }
 
@@ -492,7 +545,9 @@ class ReaderScreenModel(
                 val presentation = changed.dualPresentationSnapshot()
                 val index = presentation.dualDisplayUnitIndexForSourcePage(changed.currentPage)
                 if (index >= 0) presentation.firstDualPageIndex(index) else changed.currentPage
-            } else changed.currentPage
+            } else {
+                changed.currentPage
+            }
             layoutProgressAnchor = changed.session.activeChapter.pages.getOrNull(currentPage)?.id.takeIf { preserveProgress }
             changed.copy(
                 currentPage = currentPage,
@@ -524,7 +579,9 @@ class ReaderScreenModel(
                             if (!isCurrentPairingSession(context.chapterId, context.mangaId, generation, pageCount, epoch) ||
                                 state.context.chapterId != context.chapterId || state.session.generation != generation ||
                                 state.context.mangaId != context.mangaId || state.session.activeChapter.pages.size != pageCount
-                            ) return@changePresentation state
+                            ) {
+                                return@changePresentation state
+                            }
                             state.copy(
                                 forcedSinglePages = adjustment.forcedSinglePages,
                                 currentPage = adjustment.currentPage,
@@ -539,7 +596,11 @@ class ReaderScreenModel(
                             if (isCurrentPairingSession(context.chapterId, context.mangaId, generation, pageCount, epoch) &&
                                 state.context.chapterId == context.chapterId && state.session.generation == generation &&
                                 state.context.mangaId == context.mangaId && state.session.activeChapter.pages.size == pageCount
-                            ) state.copy(pairingSaving = false).withPairingNotice(PairingNotice.SAVE_FAILED) else state
+                            ) {
+                                state.copy(pairingSaving = false).withPairingNotice(PairingNotice.SAVE_FAILED)
+                            } else {
+                                state
+                            }
                         }
                         if (failure is StaleChapterPairingException) {
                             pairingEpoch++
@@ -583,7 +644,9 @@ class ReaderScreenModel(
         val automatic = mode == ReadingMode.AUTO
         val dual = if (automatic) {
             viewportSize?.let { (width, height) -> AdaptiveReaderLayout.dualPage(width, height) } ?: false
-        } else manualDualPage
+        } else {
+            manualDualPage
+        }
         if (automatic && viewportSize != null) adaptiveInitialized = true
         changePresentation {
             it.copy(

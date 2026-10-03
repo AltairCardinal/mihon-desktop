@@ -1,18 +1,14 @@
 package mihon.desktop.ui.migration
 
-import tachiyomi.i18n.MR
-import java.util.Locale
-
-import mihon.desktop.LocalDesktopUiDependencies
-
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -45,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -54,14 +51,17 @@ import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.DesktopMigrateMangaUseCase
+import mihon.desktop.domain.MigrationOptions
 import mihon.desktop.extension.SourceCallResult
 import mihon.desktop.extension.safeSourceCall
-import mihon.desktop.domain.MigrationOptions
 import mihon.desktop.migration.BatchMigrationOptions
 import mihon.desktop.migration.BatchMigrationTargetSelection
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.i18n.MR
+import java.util.Locale
 
 /**
  * Search for a replacement manga across all sources — step 3 of migration.
@@ -178,7 +178,8 @@ data class MigrationSearchScreen(
                             replace = true,
                         )
                         // Pop twice: back to source list (past manga list too)
-                        navigator.pop(); navigator.pop()
+                        navigator.pop()
+                        navigator.pop()
                     }
                 },
             )
@@ -207,7 +208,10 @@ data class MigrationSearchScreen(
                 SearchBar(
                     query = query,
                     onQueryChange = { query = it },
-                    onSearch = { doSearch(it); searchActive = false },
+                    onSearch = {
+                        doSearch(it)
+                        searchActive = false
+                    },
                     active = false,
                     onActiveChange = { searchActive = it },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -286,12 +290,13 @@ private fun MigrationOptions.toBatchOptions(replace: Boolean) = BatchMigrationOp
 )
 
 @Composable
-private fun MigrationConfirmDialog(
+internal fun MigrationConfirmDialog(
     sourceMangaTitle: String,
     targetMangaTitle: String,
     onDismiss: () -> Unit,
     onCopy: (MigrationOptions) -> Unit,
     onMigrate: (MigrationOptions) -> Unit,
+    onOpenCurrent: (() -> Unit)? = null,
 ) {
     var copyChapters by remember { mutableStateOf(true) }
     var copyCategories by remember { mutableStateOf(true) }
@@ -305,7 +310,7 @@ private fun MigrationConfirmDialog(
                 Text(
                     "\"$sourceMangaTitle\" → \"$targetMangaTitle\"",
                     style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(bottom = 12.dp),
+                    modifier = Modifier.padding(bottom = 12.dp).then(if (onOpenCurrent != null) Modifier.clickable(onClick = onOpenCurrent).testTag("history_migrate_current") else Modifier),
                 )
                 CheckRow(MR.strings.desktop_ui_copy_chapter_read_status.localized(), copyChapters) { copyChapters = it }
                 CheckRow(MR.strings.desktop_ui_copy_categories.localized(), copyCategories) { copyCategories = it }
@@ -314,11 +319,12 @@ private fun MigrationConfirmDialog(
         },
         confirmButton = {
             val options = MigrationOptions(copyChapters, copyCategories, copyNotes)
-            Button(onClick = { onMigrate(options) }) { Text(MR.strings.action_migrate.localized()) }
+            Button(onClick = { onMigrate(options) }, modifier = if (onOpenCurrent != null) Modifier.testTag("history_migrate_confirm") else Modifier) { Text(MR.strings.action_migrate.localized()) }
         },
         dismissButton = {
             val options = MigrationOptions(copyChapters, copyCategories, copyNotes)
             OutlinedButton(onClick = { onCopy(options) }) { Text(MR.strings.copy.localized()) }
+            if (onOpenCurrent != null) TextButton(onClick = onDismiss, modifier = Modifier.testTag("history_migrate_cancel")) { Text(MR.strings.action_cancel.localized()) }
         },
     )
 }

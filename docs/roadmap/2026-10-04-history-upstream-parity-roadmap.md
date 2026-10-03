@@ -1,5 +1,5 @@
 ---
-status: planned
+status: in_progress
 date: 2026-10-04
 ---
 
@@ -11,7 +11,7 @@ date: 2026-10-04
 
 官方基线为 `mihonapp/mihon@4c88f02646aa1a358611e5b3b37ef7a62909b8d9`；本地规划基线为 `92f1617fd3350a8c98eda2f4e2830551dfb5b64f`。下面验收固定为设计 P01–P18，不能在实现后因缺少功能删减。SOURCE、PROJECT_POLICY 和平台适配边界以设计为准。
 
-2026-10-04 用户本轮授权编写设计与 roadmap，尚未授权按新计划执行代码、测试或构建。当前所有任务未勾选；这是尚未激活的产品 child plan，从第一个未勾选项推导进度，不声明 active-task，不切换父 roadmap 的 active-child-plan。开始实施时核对真实执行归属，不能覆盖其他正在进行的任务指针。
+2026-10-04 规划轮仅获授权编写设计与 roadmap；随后用户明确要求实现本计划，实施预算现已生效。执行基线为 `10758b91ec`，分支为 `codex/history-reader-context-repair`，worktree 为 `D:/Codex/worktrees/f235/mihon`。HP01 随本批代码/测试/证据提交完成，当前第一个未勾选项为 HP02；checkbox 仍仅表示实现、独立审查、验证及提交全部完成，不声明 active-task。父 roadmap 的唯一指针仍指向作者专项，本计划沿用前序历史专项的独立执行归属，不覆盖该指针或作者专项状态。真实结果集中记录在[聚合证据](../evidence/history-upstream-parity-2026-10-04.md)。
 
 本计划取代[旧历史修复 roadmap](2026-10-01-history-reader-chapter-context-repair-roadmap.md)后续交付要求。旧 HR01 的有效实现/证据保留，HR02 未完成状态保留；旧追加测试批准不能自动当作本计划的重复测试额度。本计划的实施预算在用户要求执行本计划后生效。
 
@@ -37,11 +37,13 @@ date: 2026-10-04
 
 预计 HP01 涉及 25–40 个文件、超过 400 行，主要分布在 domain/data、窄共享 UI 模块及两个平台 history/reader adapter、测试和文档。内聚性来自同一历史能力的规则/入口/副作用必须一起闭环，不因行数拆出不可独立验收的 helper。实施者发现需要额外独立用户能力、schema/同步协议修改、全面 Reader 或追踪重构时，先提交具体缺口与最小替代，不直接扩大实施。
 
+实施中已超过文件数量估算：双端共享契约需要 JVM/Android 发现 wrapper、新共享 UI 模块及真实文件库/HTTP/页面集成测试；原子 Reader 打开还要求校准已有 Reader 夹具的实际作品/章节身份与页面发布。增加的文件仍服务同一历史能力，保留页码、配对、书签、隐私和已接受写入的断言，没有独立产品能力、schema 或同步协议扩张。风险集中在双端接线、异步资格与既有 Reader 消费者回归，按本批 focused 验证和同一轮独立审查处理；不为控制文件数删除 wrapper/集成证据或拆出不能独立验收的提交。最终提交前在聚合证据记录实际规模。
+
 独立审查不是每个测试类一轮；主代理对高风险接口的提前核对属于这唯一轮次的同一审查范围，稳定后只补未审内容和真实修改差异。出现架构假设失效或需要重开已通过审查时，按追加规则说明原因，不能把多轮复审换名称规避预算。
 
 ## 3. HP01：共享历史功能、双端接入与 Reader 边界收敛
 
-- [ ] **HP01 完成：P01–P18 的产品实现、双端共享契约和真实集成测试通过；独立审查通过、必要文档及提交完成。正式候选和现场验收由 HP02 完成。**
+- [x] **HP01 完成：P01–P18 的产品实现、双端共享契约和真实集成测试通过；独立审查通过、必要文档及提交完成。正式候选和现场验收由 HP02 完成。**
 
 ### 启动前置与委派
 
@@ -178,16 +180,16 @@ $env:NO_PROXY = 'localhost,127.0.0.1,::1'
 python scripts/gradle-coordinator.py run --key history-parity-entry -- .\gradlew.bat :app-desktop:jvmTest --tests "mihon.desktop.history.HistoryScreenModelTest" --tests "mihon.desktop.history.HistoryReaderComposeIntegrationTest" -PincludeIntegrationTests=true
 
 # 只有 HP02 才可运行以下完整目标；当前构建脚本外部使用协调器。
-python scripts/gradle-coordinator.py run --key history-parity-desktop-full -- bash scripts/build-desktop.sh full-tests
+python scripts/gradle-coordinator.py run --key history-parity-desktop-full -- 'C:\Program Files\Git\bin\bash.exe' scripts/build-desktop.sh full-tests
 python scripts/gradle-coordinator.py run --key history-parity-shared-final -- .\gradlew.bat :domain:jvmTest :domain:testDebugUnitTest :data:jvmTest :data:testDebugUnitTest :presentation-history:jvmTest :presentation-history:testDebugUnitTest :app:testReleaseUnitTest :test-desktop:test spotlessCheck
-python scripts/gradle-coordinator.py run --key history-parity-windows-build -- bash scripts/build-desktop.sh build-only
+python scripts/gradle-coordinator.py run --key history-parity-windows-build -- 'C:\Program Files\Git\bin\bash.exe' scripts/build-desktop.sh build-only
 
 # Android 正式签名预检与候选；本命令不授权实体设备安装或操作。
 python scripts/build-android.py check --signing
 python scripts/build-android.py candidate
 ```
 
-源网络请求遵循本机代理规则和有界重试，本地 MockWebServer/Test Mode 绕过代理。SDK 以真实 `android.jar`/`aapt2.exe`/`adb.exe` 与受影响 Android task 为准；不为普通 JVM 验证引入不必要 SDK 下载。
+Windows 的脚本示例显式使用已核验的 Git Bash；本机 PATH 中的 `bash.exe` 是 WindowsApps 入口，不能当作 Windows 构建 shell。macOS 继续使用目标机器原生 bash。源网络请求遵循本机代理规则和有界重试，本地 MockWebServer/Test Mode 绕过代理。SDK 以真实 `android.jar`/`aapt2.exe`/`adb.exe` 与受影响 Android task 为准；不为普通 JVM 验证引入不必要 SDK 下载。
 
 追加条件必须具体：新增代理/独立审查/再次 full/正式候选重建、schema 或协议变化、额外产品能力和显著成本，均先说明未通过项、原失败证据、上次未解决原因、拟范围/时间/替代方案，再等待决定。范围内只读诊断可以继续；不把“预算用完”当作原因，不在原因未知时归咎环境。
 

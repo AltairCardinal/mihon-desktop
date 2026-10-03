@@ -33,9 +33,11 @@ internal class ProductionReaderBinding(
     private val chapters: List<ReaderChapterRef>,
     private val transition: (ReaderTransitionDirection, ReaderNavigator?) -> Boolean,
     private val closeReader: () -> Unit,
+    private val currentChapters: () -> List<ReaderChapterRef> = { chapters },
 ) {
     private fun navigator(): ReaderNavigator? {
         val state = model.state.value
+        val chapters = currentChapters()
         val index = chapters.indexOfFirst { it.id == state.context.chapterId }
         return if (index < 0) null else ReaderNavigator(chapters, index, state.skipReadChapters, state.skipFilteredChapters, state.skipDuplicateChapters)
     }
@@ -46,7 +48,7 @@ internal class ProductionReaderBinding(
             true, state.context.chapterId, state.session.activeChapter.id.value, state.currentPage,
             state.session.activeChapter.pages.size, state.context.mangaTitle, state.context.chapterTitle,
             navigation?.nextToRead != null, navigation?.previousRead != null, state.session.activeChapter.loadState.toString(),
-            chapters.map { it.id }, state.context.chapterIndex, state.context.initialPage,
+            currentChapters().map { it.id }, state.context.chapterIndex, state.context.initialPage,
             state.context.resumeSnapshot?.heads?.values?.flatten()?.map { it.eventId.stableKey + ":" + it.effectId }?.sorted().orEmpty(),
         )
     }

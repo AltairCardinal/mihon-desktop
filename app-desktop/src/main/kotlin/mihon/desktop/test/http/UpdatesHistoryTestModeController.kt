@@ -233,9 +233,6 @@ data class HistoryTestRow(
 data class HistoryTestSnapshot(
     val searchQuery: String,
     val rows: List<HistoryTestRow>,
-    val loadingHistoryId: Long? = null,
-    val failure: String? = null,
-    val canUseExisting: Boolean = false,
 )
 
 @Serializable
@@ -258,7 +255,7 @@ class HistoryTestModeController internal constructor(
     fun snapshot(): HistoryTestSnapshot {
         val state = model.state.value
         return HistoryTestSnapshot(
-            searchQuery = state.searchQuery,
+            searchQuery = state.searchQuery.orEmpty(),
             rows = state.items.map {
                 HistoryTestRow(
                     id = it.id,
@@ -268,9 +265,6 @@ class HistoryTestModeController internal constructor(
                     readAt = it.readAt?.time ?: 0L,
                 )
             },
-            loadingHistoryId = state.readStatus?.takeIf { it.loading }?.historyId,
-            failure = state.readStatus?.failure?.name,
-            canUseExisting = state.readStatus?.canUseExisting == true,
         )
     }
 
@@ -300,12 +294,6 @@ class HistoryTestModeController internal constructor(
                     }
                 }
                 "history_select" -> select(params)
-                "history_retry" -> select(params)
-                "history_read_existing" -> select(params, useExisting = true)
-                "history_cancel" -> {
-                    model.cancelRead()
-                    null
-                }
                 else -> TimelineTestFailureCode.UNSUPPORTED_ACTION
             }
         } catch (error: CancellationException) {
@@ -331,10 +319,10 @@ class HistoryTestModeController internal constructor(
         HistoryTestModeBridge.clear(this)
     }
 
-    private suspend fun select(params: Map<String, String>, useExisting: Boolean = false): TimelineTestFailureCode? {
+    private suspend fun select(params: Map<String, String>): TimelineTestFailureCode? {
         val selected = item(params)
         if (selected == null) return rowFailure(params)
-        val request = model.readerRequestFor(selected, useExisting) ?: return TimelineTestFailureCode.OPERATION_REJECTED
+        val request = model.readerRequestFor(selected) ?: return TimelineTestFailureCode.OPERATION_REJECTED
         if (closed.get()) {
             model.cancelRead()
             return TimelineTestFailureCode.OWNER_CLOSED

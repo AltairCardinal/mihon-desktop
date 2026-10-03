@@ -145,6 +145,9 @@ class ReaderViewModel @JvmOverloads constructor(
     private val chapterLoaderFactory: (Manga, Source) -> ChapterLoader = { manga, source ->
         ChapterLoader(Injekt.get<Application>(), downloadManager, downloadProvider, manga, source)
     },
+    private val catalogPreparation: () -> tachiyomi.domain.reader.interactor.ReaderCatalogPreparation = {
+        Injekt.get()
+    },
 ) : ViewModel() {
 
     val dualPagePairings = eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagePairingStore(requiresRestoration = true)
@@ -241,6 +244,8 @@ class ReaderViewModel @JvmOverloads constructor(
     private val acceptedReadState = mutableMapOf<Long, Boolean>()
     private var readingActivation: ReadingActivation? = null
     private var pendingDualViewport: PendingDualViewport? = null
+    private var initialOpenContext: tachiyomi.domain.reader.model.ReaderOpenContext? = null
+    private var catalogJob: kotlinx.coroutines.Job? = null
     private var pendingResumePosition: ReadingResumePosition? = null
 
     private data class ReadingActivation(
@@ -271,11 +276,14 @@ class ReaderViewModel @JvmOverloads constructor(
      * time in a background thread to avoid blocking the UI.
      */
     private var chapterListCache: List<ReaderChapter>? = null
-    private suspend fun getChapterList(): List<ReaderChapter> {
-        chapterListCache?.let { return it }
+    private suspend fun getChapterList(refresh: Boolean = false): List<ReaderChapter> {
+        if (!refresh) chapterListCache?.let { return it }
+        val retained = chapterListCache.orEmpty().associateBy { it.chapter.id }
 
         val manga = manga!!
-        val chapters = getChaptersByMangaId.await(manga.id, applyScanlatorFilter = true)
+        val chapters = getChaptersByMangaId.await(manga.id, applyScanlatorFilter = true).map { chapter ->
+            initialOpenContext?.chapter?.takeIf { it.id == chapter.id } ?: chapter
+        }
 
         chapters.find { it.id == chapterId }
             ?: error("Requested chapter of id $chapterId not found in chapter list")
@@ -302,8 +310,8 @@ class ReaderViewModel @JvmOverloads constructor(
                 }
             }
             .map { it.toDbChapter() }
-            .map(::ReaderChapter)
-        chapterListCache = result
+            .map { chapter -> retained[chapter.id]?.takeIf { it.chapter.url == chapter.url } ?: ReaderChapter(chapter) }
+        if (!refresh) chapterListCache = result
         return result
     }
 
@@ -343,6 +351,7 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     override fun onCleared() {
+        catalogJob?.cancel()
         closeProgressHandle()
         chapterWindowOwner.close()
     }
@@ -352,6 +361,7 @@ class ReaderViewModel @JvmOverloads constructor(
      * trigger deletion of the downloaded chapters.
      */
     fun onActivityFinish() {
+        catalogJob?.cancel()
         closeProgressHandle()
     }
 
@@ -397,40 +407,41 @@ class ReaderViewModel @JvmOverloads constructor(
                 if (manga != null) {
                     sourceManager.isInitialized.first { it }
                     mutableState.update { it.copy(manga = manga) }
-                    if (chapterId == -1L) {
-                        val resume = when {
-                            savedState.get<Boolean>("resumeWithinChapter") == true ->
-                                recordReadingProgress.resumePosition(mangaId)?.takeIf {
-                                    it.chapterId == initialChapterId
-                                }
-                            savedState.get<Boolean>("resume") == true ->
-                                recordReadingProgress.resumePosition(mangaId)?.takeIf { position ->
-                                    getChaptersByMangaId.await(mangaId, applyScanlatorFilter = true).any { chapter ->
-                                        chapter.id == position.chapterId && !isChapterFiltered(manga, chapter) &&
-                                            (
-                                                !basePreferences.downloadedOnly().get() || manga.isLocal() ||
-                                                    downloadManager.isChapterDownloaded(
-                                                        chapter.name,
-                                                        chapter.scanlator,
-                                                        chapter.url,
-                                                        manga.title,
-                                                        manga.source,
-                                                    )
-                                                )
-                                    }
-                                }
-                            else -> null
-                        }
-                        pendingResumePosition = resume
-                        chapterId = resume?.chapterId ?: initialChapterId
+                    val targetId = chapterId.takeIf { it != -1L } ?: initialChapterId
+                    val selected = getChaptersByMangaId.await(mangaId, applyScanlatorFilter = true).first {
+                        it.id ==
+                            targetId
                     }
+                    val opened = requireNotNull(
+                        recordReadingProgress.openChapter(
+                            tachiyomi.domain.reader.model.ReaderChapterIdentity(
+                                manga.id,
+                                manga.source,
+                                manga.url,
+                                selected.id,
+                                selected.url,
+                            ),
+                        ),
+                    ) { "Selected reader chapter identity changed" }
+                    initialOpenContext = opened
+                    mutableState.update { it.copy(manga = opened.manga) }
+                    pendingResumePosition =
+                        ReadingResumePosition(
+                            opened.chapter.id,
+                            chapterPageIndex.takeIf {
+                                it >= 0
+                            } ?: opened.pageIndex,
+                            opened.snapshot,
+                        )
+                    chapterId = opened.chapter.id
 
-                    val source = sourceManager.getOrStub(manga.source)
-                    loader = chapterLoaderFactory(manga, source)
+                    val source = sourceManager.getOrStub(opened.manga.source)
+                    loader = chapterLoaderFactory(opened.manga, source)
 
                     val initialChapter = getChapterList().first { chapterId == it.chapter.id }
                     try {
                         loadChapter(loader!!, initialChapter)
+                        startCatalogCompletion(opened)
                     } catch (e: Throwable) {
                         showChapterError(initialChapter, e)
                         throw e
@@ -445,6 +456,43 @@ class ReaderViewModel @JvmOverloads constructor(
                     throw e
                 }
                 Result.failure(e)
+            }
+        }
+    }
+
+    private fun startCatalogCompletion(opened: tachiyomi.domain.reader.model.ReaderOpenContext) {
+        if (!opened.resumedWithinChapter || opened.snapshot.scope == null || catalogJob != null) return
+        val activation = readingActivation ?: return
+        val completion = tachiyomi.domain.reader.interactor.ReaderCatalogCompletion(opened, catalogPreparation())
+        catalogJob = viewModelScope.launchIO {
+            try {
+                if (completion.await() == null) return@launchIO
+                val updated = getChapterList(refresh = true)
+                withUIContext {
+                    if (readingActivation !== activation || state.value.currentChapter !== activation.chapter ||
+                        state.value.chapterWindow?.activationSequence != activation.windowSequence
+                    ) {
+                        return@withUIContext
+                    }
+                    val active = activation.chapter
+                    val index = updated.indexOf(active)
+                    if (index < 0) return@withUIContext
+                    chapterListCache = updated
+                    val reduction = chapterWindowOwner.replace(
+                        ViewerChapters(active, updated.getOrNull(index - 1), updated.getOrNull(index + 1)),
+                    )
+                    mutableState.update {
+                        it.copy(
+                            viewerChapters = chapterWindowOwner.viewerChapters(),
+                            chapterWindow = reduction.snapshot,
+                        )
+                    }
+                    eventChannel.send(Event.ReloadViewerChapters)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Optional directory metadata cannot invalidate loaded pages or the active progress session.
             }
         }
     }

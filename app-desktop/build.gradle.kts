@@ -142,6 +142,7 @@ kotlin {
                 implementation(projects.i18n)
                 implementation(projects.presentationTheme)
                 implementation(projects.presentationSync)
+                implementation(projects.presentationHistory)
 
                 // Network
                 implementation(libs.okhttp.core)

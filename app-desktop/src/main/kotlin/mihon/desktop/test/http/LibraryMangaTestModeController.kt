@@ -14,21 +14,21 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
-import mihon.domain.task.TaskState
 import mihon.desktop.domain.SortMode
 import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.ui.library.LibraryFilterField
 import mihon.desktop.ui.library.LibraryScreenModel
 import mihon.desktop.ui.library.MangaDetailScreenModel
-import tachiyomi.domain.library.interactor.LibraryFilter
-import tachiyomi.domain.library.model.LibraryManga
+import mihon.domain.task.TaskState
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.chapter.interactor.BatchChapterResult
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.library.interactor.LibraryFilter
+import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.interactor.LibraryMembershipResult
-import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 @Serializable
 data class LibraryTestRow(
@@ -99,14 +99,19 @@ class LibraryMangaTestModeController(
     @Volatile
     internal var detailModel: MangaDetailScreenModel? = null
         private set
+
     @Volatile
     private var libraryLoadState = OwnerLoadState.LOADING
+
     @Volatile
     private var libraryLoadError: String? = null
+
     @Volatile
     private var detailLoadState = OwnerLoadState.CLOSED
+
     @Volatile
     private var detailLoadError: String? = null
+
     @Volatile
     private var detailAttempted = false
     private var categoryIds = emptyList<Long>()
@@ -114,6 +119,7 @@ class LibraryMangaTestModeController(
     private var lastFailedChapterIds = emptyList<Long>()
     private val closed = AtomicBoolean(false)
     private val libraryReady = CompletableDeferred<LibraryMangaActionFailureCode?>()
+
     @Volatile
     private var libraryDependencyFailure: String? = null
     private var detailJob: Job? = null
@@ -362,7 +368,7 @@ class LibraryMangaTestModeController(
         return result
     }
 
-    private fun selectChapter(index: Int): LibraryMangaActionFailureCode? {
+    private suspend fun selectChapter(index: Int): LibraryMangaActionFailureCode? {
         val model = detailModel ?: return LibraryMangaActionFailureCode.DETAIL_NOT_OPEN
         val state = model.state.value
         val manga = state.manga ?: return LibraryMangaActionFailureCode.DETAIL_NOT_OPEN
@@ -479,7 +485,7 @@ class LibraryMangaTestModeController(
         params: Map<String, String>,
     ): LibraryMangaActionFailureCode? {
         val requiresLibrary = action in setOf("search", "filter", "sort", "open_manga_detail") ||
-            action == "select" && params["type"] != "chapter"
+            (action == "select" && params["type"] != "chapter")
         if (!requiresLibrary) return null
         return when (libraryLoadState) {
             OwnerLoadState.LOADING -> {
@@ -504,7 +510,7 @@ class LibraryMangaTestModeController(
             "detail_chapter",
             "detail_cover",
             "download",
-        ) || action == "select" && params["type"] == "chapter"
+        ) || (action == "select" && params["type"] == "chapter")
         if (!requiresDetail) return null
         if (!detailAttempted) return LibraryMangaActionFailureCode.DETAIL_NOT_OPEN
         return when (detailLoadState) {
@@ -516,7 +522,6 @@ class LibraryMangaTestModeController(
             }
         }
     }
-
 }
 
 object LibraryMangaTestModeBridge {

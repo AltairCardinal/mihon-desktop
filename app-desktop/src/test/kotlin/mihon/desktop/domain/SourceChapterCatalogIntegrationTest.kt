@@ -42,6 +42,23 @@ import java.util.concurrent.atomic.AtomicInteger
 @Isolated
 class SourceChapterCatalogIntegrationTest {
     @Test
+    fun `new discovery still creates its identity before nondeleting chapter merge`(@TempDir folder: File) = fixture(folder) {
+        val manga = Injekt.get<SaveSourceMangaForDetails>().await(listed(), 42, remote())
+        assertTrue(manga.id > 0)
+        assertEquals(3, Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id).size)
+    }
+
+    @Test
+    fun `late nondeleting catalog cannot write a changed source work identity`(@TempDir folder: File) = fixture(folder) {
+        val manga = seed()
+        val driver = Injekt.get<SqlDriver>()
+        driver.execute(null, "UPDATE mangas SET source = 43, url = '/changed-work' WHERE _id = ${manga.id}", 0)
+        val writer = Injekt.get<SourceChapterCatalogWriter>()
+        assertThrows(Exception::class.java) { runBlocking { writer.transaction { writer.merge(manga, remote()) } } }
+        assertTrue(Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id).isEmpty())
+    }
+
+    @Test
     fun `closing catalogue SQLite fixture does not leave unusable preferences for a default download worker`(@TempDir folder: File) = runBlocking {
         fixture(folder.resolve("profile")) { seed() }
         val failures = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
@@ -189,7 +206,6 @@ class SourceChapterCatalogIntegrationTest {
             val result = Injekt.get<SaveSourceMangaForDetails>().awaitPrepared(null, manga)
             assertTrue(result is mihon.desktop.extension.SourceCallResult.Error && result.error is mihon.domain.error.AppError.Storage)
             assertNull(model.readerRequestFor(item))
-            assertEquals(mihon.desktop.history.HistoryReadFailure.STORAGE, model.state.value.readStatus?.failure)
             val owner = Injekt.get<SaveSourceMangaForDetails>()
             owner.refreshFromSource(mihon.desktop.domain.fakes.FakeCatalogueSource(listed(), remote()), listed()).join()
             val refresh = assertInstanceOf(SourceMangaRefreshState.Failure::class.java, owner.refreshStates.value[SourceMangaRefreshKey(42, manga.url)])

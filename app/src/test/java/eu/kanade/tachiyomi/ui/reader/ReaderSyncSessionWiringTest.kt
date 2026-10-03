@@ -41,6 +41,8 @@ import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
+import tachiyomi.domain.reader.model.ReaderChapterIdentity
+import tachiyomi.domain.reader.model.ReaderOpenContext
 import tachiyomi.domain.reader.model.ReadingProgressEvent
 import tachiyomi.domain.reader.model.ReadingSyncScope
 import tachiyomi.domain.reader.model.ReadingSyncSnapshot
@@ -213,7 +215,12 @@ class ReaderSyncSessionWiringTest {
         }
     }
 
-    private class CapturingRepository(val beforeOpen: suspend (Long) -> Unit) : ReadingProgressRepository {
+    private class CapturingRepository(
+        val beforeOpen: suspend (Long) -> Unit,
+        val opening: suspend (Long) -> ReaderOpenContext,
+    ) : ReadingProgressRepository {
+        override suspend fun openChapter(target: ReaderChapterIdentity) = opening(target.chapterId)
+
         val openCount = AtomicInteger()
         val opened = Channel<Pair<Long, ReadingSyncSnapshot>>(Channel.UNLIMITED)
         val records = Channel<Recorded>(Channel.UNLIMITED)
@@ -243,7 +250,15 @@ class ReaderSyncSessionWiringTest {
         beforeOpen: suspend (Long) -> Unit = {},
         beforeDuplicateLookup: (suspend () -> Unit)? = null,
     ) : AutoCloseable {
-        val repository = CapturingRepository(beforeOpen)
+        val repository: CapturingRepository = CapturingRepository(beforeOpen) { id ->
+            ReaderOpenContext(
+                manga,
+                chapters.first { it.id == id },
+                0,
+                if (incognitoState.get()) ReadingSyncSnapshot() else repository.beginSyncSession(id),
+                false,
+            )
+        }
         val incognitoState = AtomicBoolean(incognito)
         private val manga = Manga.create().copy(id = 1, source = 7, chapterFlags = Manga.CHAPTER_SORTING_NUMBER)
         private val chapters = (1L..3L).map { id ->

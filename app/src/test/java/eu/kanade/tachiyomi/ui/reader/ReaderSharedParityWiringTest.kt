@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import eu.kanade.tachiyomi.ui.reader.model.publishLoadedPageListForTest
 import eu.kanade.tachiyomi.ui.reader.model.toSharedPageModel
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.DisabledNavigation
@@ -258,6 +259,11 @@ class ReaderSharedParityWiringTest {
             val downloadPreferences = mockk<DownloadPreferences>(relaxed = true)
             every { downloadPreferences.autoDownloadWhileReading().get() } returns 0
             val chapterLoader = mockk<eu.kanade.tachiyomi.ui.reader.loader.ChapterLoader>(relaxed = true)
+            coEvery { chapterLoader.loadChapter(any()) } coAnswers {
+                val current = firstArg<ReaderChapter>()
+                current.publishLoadedPageListForTest(listOf(ReaderPage(0).apply { chapter = current }))
+            }
+
             val viewModel = ReaderViewModel(
                 savedState = SavedStateHandle(),
                 sourceManager = sourceManager,
@@ -274,7 +280,21 @@ class ReaderSharedParityWiringTest {
                 getNextChapters = mockk(relaxed = true),
                 upsertHistory = mockk(relaxed = true),
                 updateChapter = mockk(relaxed = true),
-                recordReadingProgress = mockk(relaxed = true),
+                recordReadingProgress = mockk(relaxed = true) {
+                    coEvery { openChapter(any()) } answers {
+                        val selected = chapters.first {
+                            it.id ==
+                                firstArg<tachiyomi.domain.reader.model.ReaderChapterIdentity>().chapterId
+                        }
+                        tachiyomi.domain.reader.model.ReaderOpenContext(
+                            manga,
+                            selected,
+                            0,
+                            tachiyomi.domain.reader.model.ReadingSyncSnapshot(),
+                            false,
+                        )
+                    }
+                },
                 setMangaViewerFlags = mockk(relaxed = true),
                 getIncognitoState = mockk(relaxed = true),
                 pairingCoordinator = emptyChapterPairingCoordinator(),
