@@ -6,9 +6,9 @@
 
 HP01 已提交，后续同步生命周期修复、焦点等待校准与 P16 名称修复也已提交；P16 修复源码为 `05fdb81a6ad077e5db6a2c30cf9282d33637290d`。最后一次完整 Desktop 复验基线为 `8ffddcf5389bf9ab65f66b8d01449c8dd926275b`，451 类 / 3322 项 / 0 失败 / 0 错误 / 3 跳过；data JVM / data Android / Android App 的批准复验无失败。未受影响结果保留原来源，P16 另有真实 Android/Desktop 六方法红绿重构及限定格式检查通过。这是组合证据，未重新执行最终源码全量。跳过项、UP-TO-DATE、历次失败与修复分别记录。
 
-当前正式候选为 Desktop `0.11.19.75.05fdb81`、Android `0.19.4-aex.25` / versionCode 43，三平台实际构建成功。Android 43 已在同一私有 API36 模拟器原位升级，三类名称、正确详情、复选框切换、取消及分类书架结果均通过原生补验。旧 74/42 的未受影响运行证据保留原版本；Windows 旧候选稀疏目录九观测有效，新候选的双页索引外部断言失败未计通过；macOS 新候选真实 History→Reader 挂载、首图呈现与完整目录通过，未验证延迟闸门及原生键盘。Android 本地样本不覆盖同步稀疏目录与重复/迁移原生分支。
+当前正式候选为 Desktop `0.11.19.75.05fdb81`、Android `0.19.4-aex.26` / versionCode 44，实际构建成功；Android 44 为本轮获批的唯一正式重建。旧候选 43 的下述证据保留其版本来源。Android 43 的名称、详情、复选框和分类补验通过；本轮另以实际原生事件完成重复取消、短点进入迁移选择并返回取消、长按打开已有作品、依然添加后两作品共存四分支。Windows/macOS 75 已分别完成受控延迟目录九观测及同 profile 冷启动缓存复验；明确单页模式下 initial/current 均为请求页，完整目录重启后不再次请求图源。旧 AUTO 双页外部断言失败仍保留，未改写成通过。
 
-HP02 未完成，P16 名称缺口已修复并在 Android 新正式候选确认。用户指出重复全量请求后，已撤回四个完整目标的追加请求；随后“继续”授权本轮收窄工作，现已完成修复、唯一独审、六方法重构复验和三平台候选更新。Windows 新候选无法取得前台；macOS 本轮 console 锁屏字段仍为 true，两端均未发送原生输入，新窗口保留等待本轮现场确认。Android 同步稀疏及重复/迁移正式原生场景仍未完成，不勾选 HP02，也不把离屏/HTTP 当作这些原生通过证据。下文历史临时状态不替代本节当前结论。
+HP02 未完成，P16 名称缺口已修复并在 Android 新正式候选确认。重复全量请求已撤回，此后采用相关补验。2026-10-05 用户再次确认 Mac 是息屏而非锁屏；文档已有此规则，先前“待解锁”表述不当。短暂显示唤醒后锁屏字段消失，本轮候选窗口/前台/输入权限预检通过；原生搜索和焦点仍需真实结果确认，不能从事件发送成功宣称通过。Android 同步稀疏、延迟目录成败、冷缓存及原生前后章补验已在私有模拟器正式44完成；外部ABI正确红绿、首次助手边界失败和单独导航补验均见末节。不等待真机，本轮零全量重跑。当前仍不勾选 HP02、不运行 finalParityAudit。下文历史临时状态不替代本节当前结论。
 
 ## 执行基线与归属
 
@@ -528,4 +528,118 @@ macOS旧74正常shutdown请求已收到；PowerShell管道传输here-doc的CRLF�
 
 本轮受影响 Android 原生名称和操作补验已经通过；Windows/macOS原生键盘/焦点、Windows可见双页组，以及Android同步稀疏/重复迁移正式原生场景仍待验。已再次请用户确认两端新候选可见前台；现场回复尚未到达，不把等待当作批准或验收。保留两端新窗口供现场确认，不勾HP02，不运行finalParityAudit。本次不是roadmap全部完成的报告。
 
+## 继续执行：正式候选运行补验
+
+本轮复用原实施者完成 Android 原生重复分支；主代理执行两端正式产物的延迟目录与缓存补验，未增加代理、生产源码变更或完整测试。三个 protected 文件 SHA-256 与启动值一致。以下证据均属 Desktop75/Android43，不能与旧产物结果混称一次最终全量通过。
+
+### Desktop75：单页受控目录及冷启动
+
+复用 production 隔离偏好 factory 的真实 values.properties，阅读模式 LTR、dualPage=false，仅配置本任务专有 profile。未调用 Reader Test Mode 中不改变 production 模式的 reader_mode 空分支，未改 production 双页语义或既有断言。
+
+| 平台 | 真实过程与结果 |
+|---|---|
+| Windows75 | 旧48960/43648正常退出；新单页profile hp02-remaining-win-single，fresh GUI30724/launcher42884，正式发布EXE，HTTP58971/JMX58972。fresh九观测PASS；正常退出后同profile重启launcher44480，cache一观测PASS。证据 .gradle-coordinator/hp02-remaining-win-single.json 与 hp02-remaining-win-cache.json |
+| macOS75 | 旧55017正常退出；LaunchServices启动同正式app75，profile mac-75-single，fresh GUI55928、HTTP58981/JMX58982。fresh九观测PASS；shutdown收到后20秒观察仍存活，未另起实例，随后只读确认进程退出及包装器45171 exit0，再同profile重启GUI55981/包装器34656。cache一观测PASS。证据 .gradle-coordinator/hp02-remaining-mac-single.json 与 hp02-remaining-mac-cache.json，已复制root同名路径 |
+
+两端实际观测一致：目录闸门关闭时 Reader 已 Loaded/FIRST_PAGE_PRESENTED，refs仅中间章，initial/current1，sender两条基线；目录释放前翻至page2；释放后COMPLETE/3、请求1次，当前章/page2/initial1/heads均未变化；新同步结果不覆盖挂载会话；关闭后历史打开最新Ch.3，initial/current2及新原子基线正确；真实前后章2→1→2→3和两端边界成功。冷启动actual initial/current2、目录COMPLETE/3、chapterCalls0。每项来自 mounted production Reader 与实际文件库/HTTP，不是合成 refs。
+
+外部夹具启动配置错误保留事实：Windows Python write_text 默认把标记LF变CRLF，正式应用拒绝 Unrecognized test profile marker；仅修 owned 标记精确LF，未生成DB或产品修复。macOS Python3.9不支持 write_text newline 参数，创建空目录后TypeError；只移除本任务确认空目录，夹具改 write_bytes 固定LF。受控fresh闸门没有延长30秒 production超时。Mac zsh PATH没有rg，后续精确ps路径核对改用Python筛选，不重复启动。
+
+### Android43：重复作品原生分支
+
+私有 AVD mihon-history-hp02-api36 / emulator-5560，本轮launcher17604，正式应用PID2899；每次驱动均核AVD及versionCode43，未操作用户 emulator-5586。新增唯一虚构本地作品 History / Chapter 1.cbz（复用本任务虚构zip），既有收藏 History acceptance 触发原版模糊重名检查。
+
+13组实际 UIAutomator XML/截图及 observations.json 位于隔离候选 .gradle-coordinator/hp02-android-duplicates/，驱动 hp02-android-duplicates.py。主代理独立读取13条真实节点记录，确认以下结果：
+
+- 重复提示取消后，History仍显示添加到书架，3条历史保留。
+- 短点候选进入选择需要迁移的数据（章节、分类、显示作品、共存、迁移）；原生Back取消后，新作品仍未收藏，未执行迁移。最初短点误判为打开详情已在原记录更正标签及说明，不作打开已有证据。
+- 长按候选打开 History acceptance 详情：在书架中、共3章；对象正确。返回后重复弹层仍在。
+- 依然添加→分类a勾选→添加；分类a实际显示History与Second acceptance，默认分类保留原History acceptance；新History详情在书架中/共1章，历史3条均无添加入口。两个作品共存，无取消写入或原作品覆盖。
+
+本轮未改文件库SQL、未复制收藏/迁移实现，也没有使用注入导航替代这些Android真实事件。
+
+### 尚未完成的真实门槛与追加方案
+
+Windows前台PID2228进程路径已核为系统LockApp，与候选同Session1；Mac console locked=true/lockFlagPresent=true/onConsole=true。这是当前观测的输入前置条件，不能从HTTP appLocked=false推断系统解锁。已请求现场解锁并置前台；未收到回复前，0原生按键，不把HTTP补验计入P01/P02/P16/P17原生通过。
+
+Android正式43的DI使用默认GitHub认证端点，无本地Test Mode播种入口。ReadingProgressRepository需真实active sync scope与inbox resume heads才能触发稀疏目录补全，普通本地CBZ/备份还原不满足。现有 sync-android-acceptance.init.gradle 改成 app.mihon.syncacceptance 和debug证书，额外keep规则只能证明隔离ART产物，不能替代正式43。正式43 mapping中SyncLocalJournal主体仅保留构造、disconnect、renewIdentity，connect已被内联至lambda；仅有源码类名不能证明外部测试可调用。
+
+上轮建议的最小追加范围（提出时尚未授权；2026-10-05 用户已明确批准，本轮执行结果见后文）：仅私有5560，沿用原实施者；补充独立外部 instrumentation APK，绑定本fork正式签名目标，不向生产应用新增HTTP/UI播种入口；以真实journal/inbox/projector形成虚构同步稀疏作品，以本地夹具扩展控制目录闸门，实际点击历史与前后章。补充精确R8测试ABI保留规则及相关回归，正式候选递增重建一次，保留R8/资源收缩/证书连续性，不使用另一应用身份冒充发布包。独立检查签名目标、fixture隔离与production接线；失败只做相关focused补验。预计新增60–90分钟，一次正式Android候选构建，零完整模块/全量重跑。外部助手签名、AGP测试依赖与精确保留接口须先校准，不能宣称方案已经执行。
+
+提出方案时的替代路径为已有真实同步测试环境手动执行；2026-10-05 已选择并批准外部夹具，不再因缺少真机停止可由隔离模拟器完成的验收。HP02仍按实际剩余门槛判定。待验项不会下调为不适用。本节补验归入HP02最终批次，不为单独record evidence创建状态提交；最终验收和checkoff尚待完成。
+
 正式版本75/43来自本任务独立候选，随本批产物证据记录进入提交；root用户AppVersion草稿70按原字节保留，提交正式版本时从独立分配结果形成仅BUILD75的Git index内容，不暂存用户草稿70。两份受保护文档亦不暂存。后续候选应以已分配75/43为基线，不用工作区的旧用户计数草稿重新分配。
+
+
+## 2026-10-05：外部 Android 正式夹具与息屏校正
+
+用户明确确认 Mac 是息屏而非锁屏，要求核对经验文档、将模拟器优先验收写入 AGENTS，并批准上轮外部夹具、限定独审和一次正式 Android 重建。预算为复用原实施者一名、主代理一次限定独审、60–90分钟、零完整模块/全量重跑；局部助手失败仅补验对应路径。本批超过8文件/400行，内聚范围为正式 R8 产物的独立外部验收边界、虚构夹具、版本及必要治理/证据文档，没有新增产品播种入口、DI替换、数据库迁移或用户能力。
+
+### Mac 与模拟器规则
+
+MACOS_ACCEPTANCE 原已写有“息屏与锁屏分别记录”及用户2026-10-03的现场纠正；上轮仍描述“待解锁”不当，本次已更正当前状态。只执行一次 `caffeinate -u -t 5`，实际 `locked=true` 字段随后缺失，`onConsole=true`；字段缺失记未知，未声称机器证明解锁。用户本次息屏确认配合精确正式 PID55981 的窗口/前台/权限预检通过，窗口1024×768。AX焦点位置仍报-25202；事件发送成功不计搜索/焦点通过。经验表只新增本轮记录，原用户未提交的关停排查段落与2026-10-03关停记录仍保留其归属。
+
+Windows旧进程已退出，本轮复用同正式75EXE及专有single profile，新launcher10956/GUI48824、HTTP58971/JMX58972，原生空按键预检通过。Windows UIAutomation只能取得窗口/Pane，不能提供实际编辑器状态；Mac AX也不能提供焦点几何。HistoryTestModeController与真实HistoryRootScreen分别创建model，HTTP history_search snapshot不能替代原生编辑器输入结果，不将这种观测边界误判成产品缺陷。两端搜索、键盘焦点和可见双页仍待实际界面结果，不因窗口前置检查通过勾选P01/P02/P16/P17。
+
+AGENTS已追加：已授权隔离模拟器能够覆盖的真实 production、原生 UI/IME、持久化、升级和集成应继续，不因缺少真机停工；只对明确依赖硬件/厂商或计划指定真机的项目保留具体缺口。当前仅私有 `mihon-history-hp02-api36` / `emulator-5560`，API36、2核/1536MB、独立userdata；用户 `emulator-5586` 未操作。
+
+### 外部助手边界与正确红绿
+
+新增 `app/src/historyFormalAndroidTest/` 的三个Kotlin文件和测试manifest，只由 `scripts/history-android-formal.init.gradle` 加入 androidTest source set；普通正式host不编入这些夹具类。测试APK身份固定 `app.mihon.desktop.fork.test` /160001/1.6.0，使用已有签名脚本的Instrumentation分支和本fork连续证书。没有改变host应用身份、非debug属性、R8或资源收缩，也没有放宽签名入口。
+
+助手同时作为普通扩展，经真实“浏览→插件→信任→图源”加载 `HP02 local history fixture`/English；主代理独读真实UIAutomator节点确认，未向SourceManager替换DI或注入假源。外部Python服务仅127.0.0.1:18464，固定success/failure作品、四张真实PNG和最多28秒目录闸门；只将观察写入本worktree的ignored协调器目录。fixture AST及实际HTTP/PNG/目录/500/404自检通过。服务不打开产品数据库；助手SQLite仅只读防护与观察。所有数据变更走正式 SyncBatchCodec→SyncInboxStore→SyncRuntime.projector；journal连接只允许本任务SPACE/actor，拒绝其他active space。
+
+每个运行首先核AVD名、fork身份、非debug、versionCode、**已安装base.apk SHA256**及连续证书；仅在本任务虚构同步作品触发。成功场景是未收藏、未读中间章、pageIndex1、UNKNOWN/1章/1条历史、两个来自remote sender的heads。实际HistoryTab文本条目点击打开真实ReaderActivity。首图证据为mount中的PagerPageHolder恰为所选ReaderPage、在窗口中心可见，且SSIV已解码并经过实际onDraw；不以下载状态或预读页代替。目录完成前后直接断言currentChapter/pages/activation/session/openContext及snapshot对象身份相同，保持当前页，不重开会话。
+
+| 阶段 | 实际证据与结果 |
+|---|---|
+| 夹具接线校准 | 首次PowerShell未引用点号属性导致release guard拒绝；随后Google Maven DNS失败，JVM代理配置一次实际下载成功；错误nonProxyHosts竖线被bat解析及缺抽象chapterPageParse均属夹具/环境失败，不计产品红 |
+| 正确红 | 对已安装正式43运行 `HistoryFormalInstrumentationTest#formalHistoryFixtureAbiIsCallable`，1测试/1失败；`NoSuchMethodError SyncLocalJournal.connect(...)` 来自正式base.apk classes3.dex。hash/cert/nondebug/AVD防护已实际通过；此时尚无production keep变更。日志 `hp02-android-history-abi-red.log` |
+| 最小实现 | `app/proguard-rules.pro` 精确保留25类的36成员，allowoptimization，无新增whole-class keep，保留production R8。当前dex成员预核通过，仅作预检，真实44运行才算绿 |
+| 默认格式/编译 | 初次3Kotlin格式失败及一处>120长行已修；未禁用默认steps。最终 `hp02-history-formal-helper-green` PASS，2分11秒，393任务20执行373UP-TO-DATE；assembleReleaseAndroidTest及3文件默认KotlinCheck通过 |
+| 正式ABI绿 | 正式44实际调用同connect入口，1测试/0失败，runner0.069秒，日志 `hp02-android-history-abi-green.log`。修复已确认；这是发布产物外部测试接口保留修复，没有新增用户UI |
+| 延迟成功 | 正式44，1测试/0失败，3.751秒；PID9757。目录阻塞期间第二页真实呈现，原生翻至第三页并写db page2；释放后COMPLETE/3章、prev1/next3、1次目录请求，当前章/页和会话保持。日志 `hp02-android-history-success.log` |
+| 延迟失败 | 正式44，1测试/0失败，3.383秒；PID9869。相同首图/原生翻页成立；释放后HTTP500，UNKNOWN/1章、无邻章，当前第三页及会话保持，1次目录请求。日志 `hp02-android-history-failure.log` |
+| 冷缓存与首个原生边界检查 | 精确host force-stop后新ART PID10003，缓存三观察全部成立：COMPLETE/3章、未读db page2/实际第三页、0目录请求，身份与旧进程不同。后续原生2→1成功，但测试读Icon child enabled=true而非真实clickable Button父节点，整体测试1失败；保留 `hp02-android-history-cache.log`，不声称该整测试绿，也不SQL恢复旧进度 |
+
+### 正式候选44
+
+来源checkout `05fdb81a6ad077e5db6a2c30cf9282d33637290d` 加本批精确keep/版本及脚本输入，已核复制文件hash；正式候选输入快照在artifact.json，后续仅改外部助手不会改变这份APK。统一 `python scripts/build-android.py candidate --offline`，协调器 `android-candidate` 19:26:37–19:28:48 UTC，PASS，2分11秒，377任务31执行346UP-TO-DATE。唯一获批正式重建使用44/aex.26，连续原证书、v2/v3、4ABI、R8和资源收缩、无遥测/更新器。
+
+- [正式APK](D:/Codex/worktrees/f235/hp02-history-candidate/app/artifacts/android/0.19.4-aex.26-vc44-05fdb81a6a-release/Mihon-Fork-0.19.4-aex.26-vc44-release-universal.apk)：68591596字节，SHA256 `cc5ffd4096e7b43bde3bae065488e385a344ed676f378a53f5cf84ccd49a6ca6`。
+- [产物清单](D:/Codex/worktrees/f235/hp02-history-candidate/app/artifacts/android/0.19.4-aex.26-vc44-05fdb81a6a-release/artifact.json)：productionInputs `43d2ecd30530cef93ca7fd71f3b2e487cd4dc4c303a95041178f9c5532b033d7`；sourceDiff `78d3a64644bcd1532d14e2141c6ae5fc31e13b128046efeacb1c722f41de4474`。签名/身份独立verify及统一 `install --serial emulator-5560`通过；原43数据库与插件信任保留。
+
+独立verify包装首次误写文件名、随后误设不存在的JAVA_HOME而失败；纠正至已安装Adoptium21后真实verify通过。没有为此重建，也不将这些调用错误描述成签名失效。此前正式43证据保留原artifact与hash，未覆盖为44。
+
+
+### 原生导航助手修复与唯一限定验收
+
+第一次cache测试已保留其失败。production ChapterNavigator 的启用/禁用属性属于外层 FilledIconButton，描述属于内部Icon；首次助手错将子Icon的enabled作为按钮enabled。诊断的parent-chain XML来自误开的旧Second acceptance，只证明父/子节点结构，不作为success首章证据；误开可能产生真实阅读/历史写入，未SQL恢复、删除样本或宣称零写入。
+
+修复只在外部Reader助手：从description节点上溯到实际clickable按钮，fresh查询并有界等待其启用/禁用。保留false和同ReaderChapter强断言。新增navigation独立phase，跳过播种及旧未读/page2冷缓存前置，使用既有success完整作品，以真实历史点击进入、实际按钮归一到中间章，再验证前后章。它不下调原cache条件，也不冒充cache整测试重跑通过；合法导航改变进度后不伪造旧数据。
+
+`hp02-history-formal-navigation-helper` PASS，19:38:19–19:40:38 UTC，2分18秒，394任务27执行4cache363UP-TO-DATE，3Kotlin默认Apply/Check与助手assemble通过。已有连续签名入口生成新的外部助手SHA256 `ff2c3925e6404b61a0431cd3c127ecb77836d44919d6e0d7b5a43cfa672436b4`，仅安装test APK，**没有第二次正式host重建或安装非正式Gradle host产物**。`hp02-history-formal-navigation-final-inputs` 对最后源码编译和默认格式补核PASS，compileReleaseAndroidTestKotlin实际UP-TO-DATE，确认签名助手对应最终输入。
+
+正式44唯一navigation补验1测试/0失败、15.201秒，日志 `hp02-android-history-navigation.log`。真实2→1→2→3→2，各章所选页面在真实viewport解码并onDraw；首章上一章/末章下一章实际按钮禁用，原生点击后当前ReaderChapter同对象；终尾目录请求0。按钮描述使用本私有AVD已核对的中文资源，不作为所有语言验证。原先success4/failure4/cache部分3/失败native1加本次navigation9，总21观察；`.gradle-coordinator/hp02-android-formal-observations.json` SHA256 `7b38526c223363e687199fbc20216bb273de0c2910b1cbc1dd8fc163c7ac283b`。
+
+主代理完成本批唯一限定独审并独核真实日志/21观察/正式artifact hash与证书；核对只读数据库、防外部active scope、普通扩展加载、精确keep、真实历史入口/所选page绘制、会话snapshot对象身份及原生导航。Icon选择修复后仅复验该导航路径，未增加代理、广泛审查或full。最终Reader助手源码SHA256 `fecb1b6a2c20b917d438b7f56aa20a771119b8b96a446419082d99b34f0bb4bb`；此后无产品或助手变更。
+
+### 复现与维护边界
+
+重型助手构建同样经协调器串行，普通release保持R8；外部源码不进入正式host。例：
+
+```powershell
+python scripts/gradle-coordinator.py run --key history-formal-helper -- .\gradlew.bat :app:assembleReleaseAndroidTest '-Pmihon.testBuildType=release' -I scripts/history-android-formal.init.gradle --max-workers=2 --offline
+& scripts/sign-android-fork-release.ps1 -Instrumentation -InputApk app/build/outputs/apk/androidTest/release/app-release-androidTest.apk -OutputApk .gradle-coordinator/history-formal-helper-signed.apk
+python scripts/history-android-formal-fixture.py --output .gradle-coordinator/history-formal-observations.json
+# 仅已授权并核身份的本任务AVD：外部助手安装和reverse是独立动作，不隐式操作真机。
+& D:/Android/Sdk/platform-tools/adb.exe -s emulator-5560 install -r .gradle-coordinator/history-formal-helper-signed.apk
+& D:/Android/Sdk/platform-tools/adb.exe -s emulator-5560 reverse tcp:18464 tcp:18464
+& D:/Android/Sdk/platform-tools/adb.exe -s emulator-5560 shell am instrument -w -r -e expectedVersionCode 44 -e expectedApkSha256 cc5ffd4096e7b43bde3bae065488e385a344ed676f378a53f5cf84ccd49a6ca6 -e historyScenario navigation -e class mihon.history.fixture.HistoryFormalReaderInstrumentationTest#syncedSparseChapterIsReadableBeforeCatalogueAndRetainsActivation app.mihon.desktop.fork.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+首次success/failure必须是无同名固定fixture、无其他active sync scope的已初始化专有数据；现有AVD已播种，重跑会主动拒绝，不直接SQL改库/清除用户数据。cache必须在success后新ART进程、保留原未读page2和COMPLETE目录；navigation只使用合法现有完整目录，适用于导航已改变进度后的收窄补验。这里使用固定本地HTTP及独立remote协议输入，**不证明真实GitHub认证、跨设备远端传输或实体硬件行为**。保留精确R8成员是为了此签名外部验收ABI；后续内部重命名/签名变化须同步夹具和保留规则，并在真实正式产物上补验，不能单靠mapping中符号存在。
+
+实施者结构化回执已交付。自建服务PID37016已按PID/commandLine核对停止，只移除5560本任务tcp18464映射；instrumentation/Gradle均已终态，无host运行PID。保留私有AVD/userdata/helper/正式44，未操作5586。服务停止后虚构图源离线，这是测试夹具边界，不将其当作正常用户图源失败。
+
+本批AGENTS、外部ABI/夹具、Android版本44及本报告一起提交；Mac仅暂存本轮2026-10-05记录，原用户两个段落保持未提交。AppVersion用户草稿70和前序报告按原字节保护。本轮约定的Android同步稀疏、目录成败、缓存及前后章正式模拟器缺口已由上述组合补验关闭，不表示P11–P15所有契约在新APK逐项重跑；Windows/macOS原生搜索/焦点及可见双页仍待实际界面结果，因此HP02保持未勾选、不执行finalParityAudit。本轮零完整模块/全量重跑，一次正式Android候选；旧完整矩阵与相关补验仍为组合证据，不宣称最终代码重新全量通过。
