@@ -48,6 +48,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -242,6 +244,7 @@ private fun HistoryItem(
     requester: (String) -> FocusRequester,
     onFocused: (String) -> Unit,
 ) {
+    val showEntry = historyString(MR.strings.action_show_manga)
     Row(
         Modifier.fillMaxWidth().focusRequester(requester("row:${item.id}"))
             .onFocusChanged { if (it.isFocused) onFocused("row:${item.id}") }
@@ -253,7 +256,8 @@ private fun HistoryItem(
             item,
             Modifier.size(53.333.dp, 80.dp).focusRequester(requester("cover:${item.id}"))
                 .onFocusChanged { if (it.isFocused) onFocused("cover:${item.id}") }
-                .testTag("history_cover_${item.id}"),
+                .testTag("history_cover_${item.id}")
+                .semantics { onClick(label = showEntry, action = null) },
         ) { onCover(item) }
         Column(Modifier.weight(1f).padding(start = 16.dp, end = 8.dp)) {
             Text(

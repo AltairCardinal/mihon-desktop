@@ -1,6 +1,5 @@
 package mihon.presentation.history
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.heightIn
@@ -13,6 +12,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import tachiyomi.domain.history.service.HistoryDialog
 import tachiyomi.domain.manga.model.Manga
@@ -34,9 +35,14 @@ fun HistoryCategoryDialog(
             Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
                 dialog.categories.forEach { category ->
                     Row {
-                        Checkbox(category.id in dialog.selectedIds, {
-                            onSelect(category.id, it)
-                        }, Modifier.testTag("history_category_${category.id}"))
+                        Checkbox(
+                            category.id in dialog.selectedIds,
+                            {
+                                onSelect(category.id, it)
+                            },
+                            Modifier.testTag("history_category_${category.id}")
+                                .semantics { contentDescription = category.name },
+                        )
                         Text(category.name)
                     }
                 }

@@ -18,11 +18,14 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import tachiyomi.i18n.MR
 
 @Composable
 fun HistoryDeleteDialog(onDismissRequest: () -> Unit, onDelete: (Boolean) -> Unit) {
     var all by remember { mutableStateOf(false) }
+    val resetAllChapters = historyString(MR.strings.dialog_with_checkbox_reset)
     AlertDialog(
         onDismissRequest = onDismissRequest,
         modifier = Modifier.historyDialogKeyboard(onDismissRequest),
@@ -31,8 +34,13 @@ fun HistoryDeleteDialog(onDismissRequest: () -> Unit, onDelete: (Boolean) -> Uni
             Column {
                 Text(historyString(MR.strings.dialog_with_checkbox_remove_description))
                 Row {
-                    Checkbox(all, { all = it }, modifier = Modifier.testTag("history_delete_all_chapters"))
-                    Text(historyString(MR.strings.dialog_with_checkbox_reset))
+                    Checkbox(
+                        all,
+                        { all = it },
+                        modifier = Modifier.testTag("history_delete_all_chapters")
+                            .semantics { contentDescription = resetAllChapters },
+                    )
+                    Text(resetAllChapters)
                 }
             }
         },

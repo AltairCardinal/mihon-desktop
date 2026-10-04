@@ -8,6 +8,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -72,11 +76,14 @@ import tachiyomi.core.common.preference.AndroidPreferenceStore
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.history.interactor.RemoveHistory
 import tachiyomi.domain.history.model.HistoryWithRelations
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaCover
+import tachiyomi.domain.manga.repository.LibraryMembershipUpdate
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.reader.model.ReadingResumePosition
 import tachiyomi.domain.reader.model.ReadingSyncSnapshot
@@ -93,6 +100,105 @@ import java.util.Date
 @Config(sdk = [35], application = Application::class)
 @OptIn(InternalVoyagerApi::class)
 class ReaderSyncEntryWiringTest {
+    @Test
+    fun `actual history cover names the entry and labels exact detail navigation`() = runBlocking {
+        val model = history(chapters[1])
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        var navigator: Navigator? = null
+        try {
+            activity.get().setContent {
+                MaterialTheme {
+                    Navigator(MangaScreen(0)) { nav ->
+                        navigator = nav
+                        eu.kanade.tachiyomi.ui.history.HistoryTab.ContentWithModel(model)
+                    }
+                }
+            }
+            val cover = compose.onNodeWithTag("history_cover_1")
+            cover.assertIsDisplayed()
+            val semantics = cover.fetchSemanticsNode().config
+            assertEquals(
+                listOf(manga.title),
+                semantics.getOrElse(SemanticsProperties.ContentDescription) {
+                    emptyList()
+                },
+            )
+            assertEquals(
+                activity.get().stringResource(MR.strings.action_show_manga),
+                semantics[SemanticsActions.OnClick].label,
+            )
+            assertTrue(semantics[SemanticsActions.OnClick].action != null)
+            assertEquals(Role.Button, semantics[SemanticsProperties.Role])
+            cover.performClick()
+            compose.waitForIdle()
+            val detail = requireNotNull(navigator).lastItem
+            assertTrue(detail is MangaScreen)
+            assertEquals(
+                manga.id,
+                MangaScreen::class.java.getDeclaredField("mangaId").apply { isAccessible = true }.getLong(detail),
+            )
+            assertEquals(2, requireNotNull(navigator).items.size)
+            assertEquals(null, shadowOf(activity.get()).nextStartedActivity)
+        } finally {
+            activity.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `actual history category checkbox names category and confirms selected membership`() = runBlocking {
+        val category = Category(12, "Acceptance category", 0, 0)
+        val written = CompletableDeferred<LibraryMembershipUpdate>()
+        LibraryPreferences(preferences).defaultCategory().set(-1)
+        val model = history(
+            historyManga = manga.copy(favorite = false),
+            categoryChoices = listOf(category),
+            membership = UpdateLibraryMembership { written.complete(it) },
+        )
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            activity.get().setContent {
+                MaterialTheme {
+                    Navigator(MangaScreen(0)) {
+                        eu.kanade.tachiyomi.ui.history.HistoryTab.ContentWithModel(model)
+                    }
+                }
+            }
+            val favorite = compose.onNodeWithTag("history_favorite_1")
+            favorite.performClick()
+            compose.waitUntil(5_000) {
+                model.state.value.dialog is tachiyomi.domain.history.service.HistoryDialog.ChangeCategory
+            }
+            assertNamedCheckbox("history_category_${category.id}", category.name, ToggleableState.Off)
+            compose.onNodeWithTag("history_category_cancel").performClick()
+            compose.waitForIdle()
+            assertFalse(written.isCompleted)
+            assertEquals(null, model.state.value.dialog)
+            favorite.assertIsDisplayed().performClick()
+            compose.waitUntil(5_000) {
+                model.state.value.dialog is tachiyomi.domain.history.service.HistoryDialog.ChangeCategory
+            }
+            assertNamedCheckbox("history_category_${category.id}", category.name, ToggleableState.Off)
+            compose.onNodeWithTag("history_category_${category.id}").performClick()
+            assertNamedCheckbox("history_category_${category.id}", category.name, ToggleableState.On)
+            compose.onNodeWithTag("history_category_confirm").performClick()
+            val membership = withContext(Dispatchers.Default) { withTimeout(5_000) { written.await() } }
+            assertEquals(manga.id, membership.mangaId)
+            assertTrue(membership.favorite)
+            assertEquals(listOf(category.id), membership.categoryIds)
+            assertEquals(null, shadowOf(activity.get()).nextStartedActivity)
+        } finally {
+            activity.pause().stop().destroy()
+        }
+    }
+
+    private fun assertNamedCheckbox(tag: String, name: String, state: ToggleableState) {
+        val semantics = compose.onNodeWithTag(tag).assertIsDisplayed().fetchSemanticsNode().config
+        assertEquals(listOf(name), semantics.getOrElse(SemanticsProperties.ContentDescription) { emptyList() })
+        assertEquals(Role.Checkbox, semantics[SemanticsProperties.Role])
+        assertEquals(state, semantics[SemanticsProperties.ToggleableState])
+        assertTrue(semantics[SemanticsActions.OnClick].action != null)
+    }
+
     @Test
     fun `actual history row opens its selected chapter with within chapter resume intent`() = runBlocking {
         val model = history(chapters[1])
@@ -295,7 +401,8 @@ class ReaderSyncEntryWiringTest {
 
     private suspend fun queuedNavigationAction(tag: String, opensDetail: Boolean) {
         val scheduler = kotlinx.coroutines.test.TestCoroutineScheduler()
-        val model = history(chapters[1], kotlinx.coroutines.test.StandardTestDispatcher(scheduler))
+        val removals = mockk<RemoveHistory>(relaxed = true)
+        val model = history(chapters[1], kotlinx.coroutines.test.StandardTestDispatcher(scheduler), removals = removals)
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         var navigator: Navigator? = null
         try {
@@ -327,6 +434,17 @@ class ReaderSyncEntryWiringTest {
             } else {
                 assertTrue(model.controller.state.value.dialog is tachiyomi.domain.history.service.HistoryDialog.Delete)
                 compose.onNodeWithTag("history_delete_confirm").assertIsDisplayed()
+                val name = activity.get().stringResource(MR.strings.dialog_with_checkbox_reset)
+                assertNamedCheckbox("history_delete_all_chapters", name, ToggleableState.Off)
+                compose.onNodeWithTag("history_delete_all_chapters").performClick()
+                assertNamedCheckbox("history_delete_all_chapters", name, ToggleableState.On)
+                compose.onNodeWithTag("history_delete_cancel").performClick()
+                compose.waitForIdle()
+                assertEquals(null, model.controller.state.value.dialog)
+                coVerify(exactly = 0) {
+                    removals.await(any<HistoryWithRelations>())
+                    removals.await(any<Long>())
+                }
             }
             assertEquals(
                 "Old row action must be revoked at the navigation or dialog callback",
@@ -597,20 +715,42 @@ class ReaderSyncEntryWiringTest {
         selectedNext: Chapter? = null,
         readerDispatcher: CoroutineDispatcher = Dispatchers.IO,
         selectedLatest: Chapter? = null,
+        historyManga: Manga = manga,
+        categoryChoices: List<Category> = emptyList(),
+        membership: UpdateLibraryMembership = mockk(relaxed = true),
+        removals: RemoveHistory = mockk(relaxed = true),
         beforeSelection: suspend () -> Unit = {},
     ) = ScreenModelStore.getOrPut(modelHolder, "history") {
         HistoryScreenModel(
             addTracks = mockk(relaxed = true),
-            getCategories = mockk(relaxed = true),
-            getDuplicateLibraryManga = mockk(relaxed = true),
+            getCategories = tachiyomi.domain.category.interactor.GetCategories(
+                mockk {
+                    coEvery { getAll() } returns categoryChoices
+                    coEvery { getCategoriesByMangaId(historyManga.id) } returns emptyList()
+                },
+            ),
+            getDuplicateLibraryManga = tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga(
+                mockk {
+                    coEvery { getDuplicateLibraryManga(any(), any()) } returns emptyList()
+                },
+            ),
             getHistory = mockk {
                 every { subscribe(any()) } returns flowOf(
                     listOf(
-                        HistoryWithRelations(1, 2, 1, manga.title, 2.0, Date(1), 0, MangaCover(1, 7, true, null, 0)),
+                        HistoryWithRelations(
+                            1,
+                            2,
+                            1,
+                            historyManga.title,
+                            2.0,
+                            Date(1),
+                            0,
+                            MangaCover(1, 7, historyManga.favorite, null, 0),
+                        ),
                     ),
                 )
             },
-            getManga = mockk { coEvery { await(1) } returns manga },
+            getManga = mockk { coEvery { await(1) } returns historyManga },
             getNextChapters = mockk {
                 coEvery { await(1, 2, false) } coAnswers {
                     beforeSelection()
@@ -620,8 +760,8 @@ class ReaderSyncEntryWiringTest {
                 coEvery { await(false) } returns listOfNotNull(selectedLatest)
             },
             libraryPreferences = LibraryPreferences(preferences),
-            removeHistory = mockk(relaxed = true),
-            updateMembership = mockk(relaxed = true),
+            removeHistory = removals,
+            updateMembership = membership,
             sourceManager = sourceManager,
             readerActionDispatcher = readerDispatcher,
         )
