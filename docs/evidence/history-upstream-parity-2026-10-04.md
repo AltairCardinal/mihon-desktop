@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-HP01 A–E 实现、唯一一轮独立审查、受影响批次及限定格式/元数据检查完成，提交 `cbec5e8dbb07c2d3f015bf32fd574547a0ee2132`，HP01 已勾选。稳定批次八个目标共 348 项，失败/错误/跳过均为 0。HP02 首次完整 Desktop 目标 4 项失败已通过最小修复、22 项唯一受影响定向验证和计划内唯一修复复审，提交 `c1b4a757b09f444ea7cd308cd432b224f5663494`；尚未批准完整复跑。其余首次矩阵已结束：domain/共享历史 UI 双端与 data Android、Android App 均无失败，测试客户端复用 Gradle UP-TO-DATE 结果，全仓 spotlessCheck 通过；data JVM 有 1 项测试入场前的同步监听数据库异常，具体状态见文末表。用户在2026-10-04明确批准最小同步生命周期修复、追加一轮独立审查及 data JVM/data Android/Android App/Desktop 各一次完整复验；已复用原实施者完成最小修复与25项定向验证，追加独立审查及默认格式验收通过；完整复验即将由主代理串行执行。正式三平台候选和原生验收尚未执行，HP02 保持未勾选。下文保留有效红绿、夹具失败和明确撤回；历史段落中的临时状态不替代本节当前结论。
+HP01 A–E 实现、唯一一轮独立审查、受影响批次及限定格式/元数据检查完成，提交 `cbec5e8dbb07c2d3f015bf32fd574547a0ee2132`，HP01 已勾选。稳定批次八个目标共 348 项，失败/错误/跳过均为 0。HP02 首次完整 Desktop 目标 4 项失败已通过最小修复、22 项唯一受影响定向验证和计划内唯一修复复审，提交 `c1b4a757b09f444ea7cd308cd432b224f5663494`；用户已批准一次完整复跑，安排在共享修复后。其余首次矩阵已结束：domain/共享历史 UI 双端与 data Android、Android App 均无失败，测试客户端复用 Gradle UP-TO-DATE 结果，全仓 spotlessCheck 通过；data JVM 有 1 项测试入场前的同步监听数据库异常，具体状态见文末表。用户在2026-10-04明确批准最小同步生命周期修复、追加一轮独立审查及 data JVM/data Android/Android App/Desktop 各一次完整复验；已复用原实施者完成最小修复与25项定向验证，追加独立审查及默认格式验收通过；三个共享/Android完整复验已通过，Desktop批准的完整复验3322项中1项失败：原历史行删除后工具栏焦点恢复断言。Mac原计划受影响focused9项通过；该失败步骤的异步等待已校准，实际单方法定向验证1项通过；未修改production或放宽原焦点断言。完整复验仍保留失败结果，不以这项通过宣称完整通过。再次Desktop完整复验额度尚未批准。正式三平台候选和原生验收尚未执行，HP02 保持未勾选。下文保留有效红绿、夹具失败和明确撤回；历史段落中的临时状态不替代本节当前结论。
 
 ## 执行基线与归属
 
@@ -371,3 +371,33 @@ test-desktop 的实际 task 是 UP-TO-DATE（该日志381行），8类/52项/0�
 
 
 最后默认格式未通过项已关闭：`hp02-panel-lifecycle-default-format-refactor` PASSED37秒，worker40596/process44956已退出。scope init仅target四文件，保项目原formatter，没有clearSteps或editorConfigOverride；日志127行实际执行data:spotlessKotlinCheck（非UP-TO-DATE）。六条长行正常换行，真实生命周期双端各2/0/0/0再次通过，其它21项没有无故重跑。主代理读取实际init/四文件/两个XML及git diff --check，确认默认格式和文档owner边界通过；本次新增范围唯一独立审查完成，无待解决阻塞，未追加复审轮次。代码/测试/必要文档/本报告合并一个同步退出功能修复提交，随后执行已批准完整复验；HP02仍未勾选。
+
+
+同步退出修复提交 `5565ec273771b933f3fba01b94b34ed5bf95740b` 已包含上述6路径。主代理接管唯一协调权后启动 `hp02-shared-approved-retest-once`，worker29896/process18380，真实命令 `:data:jvmTest :data:testDebugUnitTest :app:testReleaseUnitTest --continue --console=plain`；这是用户批准的三个完整目标各一次复验，目前运行中。之后才执行批准的Desktop完整含集成一次；不重跑已经有效的domain/共享UI完整目标。测试客户端当前输入未变的UP-TO-DATE结果保留。
+
+Windows隔离candidate与Mac隔离checkout均已快进同一5565源码。新的最小bundle SHA-256 `afa9d82cc009e10230917241b2a880a3c355ed469897fe62ef01c518ed958071`，Mac核一致，双方未构建/分配版本。只读核对主仓库当前Desktop BUILD73、Android versionCode41/name aex.23，高于本分支69/35；正式分配前须再次核对，以更高现有版本为基准，不回退或借用旧产物。
+
+Mac受影响focused按原HP02预算，在独立主机并行执行，不增加代理或Desktop full。真实来源macOS14.8.4，JDK21.0.10+7，SDK36，同一5565checkout；四类为 HistoryAccessibilityIntegrationTest / HistoryNavigationDeliveryComposeTest / HistoryHomeReselectIntegrationTest / HistoryReaderCatalogCompletionIntegrationTest，includeIntegrationTests=true，max-workers2、Gradle heap2g。Mac没有可用的已确认本地代理入口，本轮经SSH独立loopback17408有界转发到本机已配置HTTP代理10808，HTTP/HTTPS显式设置、Java代理参数明确、本地地址bypass；未探测远程代理或改系统代理。
+
+首个Mac key `hp02-mac-focused-once` FAILED/exit1，worker53339/process53340：PowerShell stdin传输CRLF导致最终Gradle参数为 `--console=plain\r`，立即拒绝参数，未进入测试；保留原JSON/log，不计产品红或正式构建。主代理改为显式UTF-8/LF保存脚本后scp，启动 `hp02-mac-focused-transport-fixed`（worker53367/process53368），仍是原四类首次实际运行，目前编译中。这是命令传输校准，不改变production源码。
+
+
+`hp02-shared-approved-retest-once` 最终PASSED/exit0，33分9秒，2026-10-04 03:22:49 UTC结束，worker29896/process18380已退出。主代理实际XML独核：data JVM82类/763项/0失败/0错误/1跳过，跳过仍为需要显式local comparison的SyncGitCompareAcceptanceTest；data Android31类/354项/0失败/错误/跳过；app Release123类/692项/0失败/0错误/7跳过，均本轮时间戳，XML无flakyFailure/rerunFailure且日志无测试FAILED。App七项仍为前述三Unix FileProvider与四Release JVM SQLite assumptions，不计通过。原S2入场前异常本轮没有重现；修复真实性由新的四项红绿证明，原full具体泄漏实例仍未定，不升级因果结论。
+
+随后启动批准的唯一Desktop完整复验 `hp02-desktop-approved-retest-once`，项目脚本full-tests，worker796/process11300，2026-10-04 03:23:31 UTC开始；目前运行中，版本没有递增或正式构建。domain/共享UI完整结果、test-desktop未变输入复用与此前全仓格式检查仍有效，新四文件默认格式另已通过。
+
+Mac四类首次实际focused运行 `hp02-mac-focused-transport-fixed` PASSED/exit0，5分9秒，2026-10-04 03:06:09 UTC结束，worker53367/process53368已退出。实际XML9项/0失败/0错误/0跳过：Accessibility3、NavigationDelivery2、HomeReselect1、ReaderCatalogCompletion3；includeIntegrationTests=true且没有重复Desktop full。350x900/200%字体英文浅色与中文深色PNG已保存到本地 `.gradle-coordinator/hp02-mac-focused-results/`，主代理查看，两行省略和动作位置在界面内；这是Mac ImageComposeScene离屏结果，空白封面槽由测试fixture提供，不是实际OS窗口截图或原生输入验收。
+
+Android runtime只准备一个独立AVD配置 `mihon-history-hp02-api36`，位于Windows隔离candidate的 `.gradle-coordinator/hp02-android-avd`，API36/google_apis/x86_64，1536MB/2core、独立userdata与注册目录；avdmanager仅本地已安装package，未安装SDK或修改用户AVD目录。其扫描提示其它image devices.xml缺失，但退出0且新ini/config实际存在；尚未启动，不能计运行通过。虚构本地 `History acceptance` 三章各四PNG页只用于隔离本地阅读验收，完全离线；不连接账号/远端，也不能用它冒充同步稀疏目录验收。现有emulator-5586仍未操作、安装或关停。
+
+
+### 批准复验的 Desktop 最终结果与焦点失败定位
+
+`hp02-desktop-approved-retest-once` 最终 FAILED / exit1，6分25秒，2026-10-04 03:29:58 UTC结束，worker796/process11300已退出。主代理实际XML汇总451类/3322项/1失败/0错误/3跳过；失败XML时间戳2026-10-04T03:25:49.403Z，已保留到 `.gradle-coordinator/hp02-desktop-approved-failures/`，summary.json记录完整统计。三项平台跳过仍按首次矩阵解释，不计通过。
+
+唯一失败为 `HistoryAccessibilityIntegrationTest.native detail return retains query scroll and the originating cover focus` 的252行：`Removing the originating row restores a valid toolbar focus`，expected true / actual false。182行只是runBlocking方法入口；此前进度消息把该失败称为原封面焦点，最终XML已纠正为删除原行后的工具栏回退焦点，封面返回断言不是本轮失败点。原断言前的settle只等待工具栏存在和原封面消失，不等待焦点状态。尚未证实是单帧等待资格过早或真实production恢复缺口，不称flaky、不放宽断言、不重复full。复用原实施者，仅让本步骤等待既定焦点并保留强断言/超时诊断，由主代理协调一次实际method定向验证。用户此次批准的Desktop完整额度已使用；正式构建仍未开始，HP02未勾选。
+
+
+焦点夹具最小校准已经通过：仅该方法最后一步的settle增加关闭搜索按钮已Focused条件，保留返回HistoryRootScreen、原条目消失、原强断言与既有10秒上界；超时仍输出tags/focused。未改任何production、其它断言或helper，不吞失败。`hp02-toolbar-focus-wait-focused` PASSED/exit0，24秒，worker39496/process13528已退出，实际XML为本轮单方法1项/0失败/0错误/0跳过。主代理读取实际差异、命令和XML并运行git diff --check，确认校准直接等待既定行为而非替换预期；这是一处低风险测试等待校准，按风险自查，不增加产品独审轮次。该次focused表明本轮可在真实scene中交付回退焦点，不足以推断所有负载下行为或把完整失败称为flaky。
+
+目前只剩Desktop完整结果未绿；用户本轮新增完整额度已经用完，再次完整Desktop含integration需单独批准，预计6–10分钟。没有共享production变化，已经通过的data/domain/共享UI/Android完整结果不无故重跑；没有生成正式三平台候选，不分配版本、不勾HP02。待本次夹具修复与证据同批提交后请求这一项额外验证；不创建纯状态提交。三个起始protected文件SHA-256再次核对保持不变。

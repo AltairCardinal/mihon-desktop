@@ -248,7 +248,11 @@ class HistoryAccessibilityIntegrationTest {
             settle(scene) { requireNotNull(navigator).lastItem is mihon.desktop.ui.library.MangaDetailScreen }
             Injekt.get<tachiyomi.domain.history.interactor.RemoveHistory>().await(target)
             requireNotNull(navigator).pop()
-            settle(scene) { requireNotNull(navigator).lastItem is HistoryRootScreen && nodes(scene).any { tag(it) == "history_search_close" } && nodes(scene).none { tag(it) == "history_cover_$targetId" } }
+            settle(scene, "Removing the originating row restores a valid toolbar focus") {
+                requireNotNull(navigator).lastItem is HistoryRootScreen &&
+                    nodes(scene).any { tag(it) == "history_search_close" && isFocused(it) } &&
+                    nodes(scene).none { tag(it) == "history_cover_$targetId" }
+            }
             assertTrue(nodes(scene).any { tag(it) == "history_search_close" && isFocused(it) }, "Removing the originating row restores a valid toolbar focus")
         } finally {
             scene.close()
