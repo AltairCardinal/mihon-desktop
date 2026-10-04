@@ -4,11 +4,11 @@
 
 ## 当前状态
 
-HP01 已提交，后续已获批准的同步生命周期修复与焦点测试等待校准也已提交；当前源码为 `8ffddcf5389bf9ab65f66b8d01449c8dd926275b`。最新完整 Desktop 复验为 451 类 / 3322 项 / 0 失败 / 0 错误 / 3 跳过，data JVM / data Android / Android App 的批准复验均无失败；domain 与共享历史 UI 的未变输入结果复用，测试客户端为既有 UP-TO-DATE 结果。跳过项不计通过，历次失败和定向修复证据均保留。
+HP01 已提交，后续同步生命周期修复、焦点等待校准与 P16 名称修复也已提交；P16 修复源码为 `05fdb81a6ad077e5db6a2c30cf9282d33637290d`。最后一次完整 Desktop 复验基线为 `8ffddcf5389bf9ab65f66b8d01449c8dd926275b`，451 类 / 3322 项 / 0 失败 / 0 错误 / 3 跳过；data JVM / data Android / Android App 的批准复验无失败。未受影响结果保留原来源，P16 另有真实 Android/Desktop 六方法红绿重构及限定格式检查通过。这是组合证据，未重新执行最终源码全量。跳过项、UP-TO-DATE、历次失败与修复分别记录。
 
-Windows、macOS 与 Android 正式候选各一次实际构建已经完成：Desktop `0.11.19.74.8ffddcf`，Android `0.19.4-aex.24` / versionCode 42。Windows 正式 EXE 的生产运行校验和稀疏目录 Test Mode 链路通过；冷启动保留目标章、初始页、基线与完整目录，但双页当前可见组还缺原生证据。Android 独立 API 36 模拟器的真实 IME、封面/正文导航、过滤后重选、收藏、前后章、删除及清空取消已实际执行；这些本地样本不覆盖同步稀疏目录与重复作品/分类分支。
+当前正式候选为 Desktop `0.11.19.75.05fdb81`、Android `0.19.4-aex.25` / versionCode 43，三平台实际构建成功。Android 43 已在同一私有 API36 模拟器原位升级，三类名称、正确详情、复选框切换、取消及分类书架结果均通过原生补验。旧 74/42 的未受影响运行证据保留原版本；Windows 旧候选稀疏目录九观测有效，新候选的双页索引外部断言失败未计通过；macOS 新候选真实 History→Reader 挂载、首图呈现与完整目录通过，未验证延迟闸门及原生键盘。Android 本地样本不覆盖同步稀疏目录与重复/迁移原生分支。
 
-HP02 未完成。正式 Android 页面发现历史封面、删除与分类复选框缺少可访问名称，双端还缺少封面的“查看作品”动作标签。用户指出重复全量请求后，已撤回 Desktop、共享历史 UI 两端和 Android App 四个完整目标的追加请求；用户随后“继续”，授权最小 P16 修复、复用原实施者、主代理独审一轮、定向补验及三平台候选更新。六个真实页面用例已经正确红→绿，尚待重构复验与更新后的候选运行证据。Windows 原生工具未取得候选前台；Mac 本轮 console 锁屏字段仍为 true，两端均未发送原生输入，继续等待本轮现场确认。下文历史临时状态不替代本节当前结论。
+HP02 未完成，P16 名称缺口已修复并在 Android 新正式候选确认。用户指出重复全量请求后，已撤回四个完整目标的追加请求；随后“继续”授权本轮收窄工作，现已完成修复、唯一独审、六方法重构复验和三平台候选更新。Windows 新候选无法取得前台；macOS 本轮 console 锁屏字段仍为 true，两端均未发送原生输入，新窗口保留等待本轮现场确认。Android 同步稀疏及重复/迁移正式原生场景仍未完成，不勾选 HP02，也不把离屏/HTTP 当作这些原生通过证据。下文历史临时状态不替代本节当前结论。
 
 ## 执行基线与归属
 
@@ -502,3 +502,30 @@ HP02与capability验证状态保持未完成，不运行finalParityAudit，不�
 主代理本轮独立审查通过：共享状态、selection、点击资格、确认/取消及持久化接口无行为扩张；Android 名称必须由真实 Book adapter 提供，Desktop 复用原封面名称；两端 OnClick 合并后仍含真实 action。默认 formatter 对旧长行的修改为机械换行。没有新增资源、依赖、DI 或导航调用点；现有真实导航和文件库证据覆盖受影响的接线。三个用户文件 SHA-256 仍与启动值一致，未纳入本修复提交。
 
 未受影响的首次完整矩阵、已批准复验保留原版本和实际数量，本轮定向结果仅关闭 P16 缺口；目录/同步/domain/data/测试客户端没有新产品输入。正式候选更新使用项目 build-only 路径，避免再跑已撤回的完整目标。这是首次完整结果与后续受影响范围补验的组合证据，**不是最终源码重新全量通过**；候选来源、运行结果和剩余原生边界将在下文记录。
+
+## P16 修复后的正式候选与原生补验
+
+来源为修复提交 `05fdb81a6ad077e5db6a2c30cf9282d33637290d`，Windows/Android 隔离候选 checkout 和 macOS 专用 checkout 均 fast-forward 到该提交，未复制 root 用户改动。跨机 bundle SHA-256 `d871f04caa1731203093faa7e9152659749fa39f9e2bf6a31ffc424bf323ebff`；首次 fetch 用错 bundle ref，未修改 Mac checkout，随后核对唯一 HEAD ref 并正确 fast-forward。三项重型构建串行，无额外完整测试。
+
+| 正式候选 | 实际构建 / 产物 |
+|---|---|
+| Windows 75 | `hp02-p16-windows-formal` PASSED，08:24:47–08:26:21 UTC，worker12296/process5840退出。经可靠 foreground 包装器调用原 `scripts/build-windows.ps1 -SkipTests -ExpectedVersion 0.11.19.75.05fdb81`，由项目脚本分配74→75、正式构建、运行版本和漫画柜扩展生产安装校验、发布。实际 `Final unpacked EXE:` 为 [Mihon Desktop.exe](<D:/Codex/worktrees/f235/hp02-history-candidate/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.75.05fdb81-unpacked/Mihon Desktop.exe>)，已确认存在472576字节；[ZIP](D:/Codex/worktrees/f235/hp02-history-candidate/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.75.05fdb81-windows.zip) SHA-256 `ddbdf6f2ab67c4cfd751b18f3a0e90f777f0e0ec7c8e0db18a3995f69ac20deb` |
+| macOS 75 | `hp02-p16-macos-formal` PASSED，08:26:43–08:27:18 UTC，worker54814/process54815退出。原 `bash scripts/build-desktop.sh build-only`，57任务16执行41UP-TO-DATE，实际发布 [Mihon Desktop.app](</Users/altair/Library/Caches/mihon-history-parity-20261004-f235/app-75/Mihon Desktop.app>)，包内正式可执行文件已核存在；保留旧app74，仅新增本任务app75/dist75，剩余空间1.3GiB，未清其它缓存 |
+| Android 43 | 原证书签名预检通过；第一次 candidate 在Gradle前拒绝已占用42，没有构建或采用旧APK。按规范明确分配43/aex.25后，`android-candidate` PASSED，08:28:39–08:31:21 UTC，worker49028/process38692退出，377任务33执行1cache343UP-TO-DATE；[正式 APK](D:/Codex/worktrees/f235/hp02-history-candidate/app/artifacts/android/0.19.4-aex.25-vc43-05fdb81a6a-release/Mihon-Fork-0.19.4-aex.25-vc43-release-universal.apk) 已存在68575212字节，独立verify通过，SHA-256 `4423e2a6d33ade76ef85dd89fd465f1491d5d667a9e759998dc411ee74f40bef`；[清单](D:/Codex/worktrees/f235/hp02-history-candidate/app/artifacts/android/0.19.4-aex.25-vc43-05fdb81a6a-release/artifact.json) 记录productionInputs `c70435ad182bf12a9a6fb119ca30b103197febf720ed4a9bd040112d2dfe941a`、sourceDiff `5dc640f83afb95d7c76349cf31ffe8240ae6cb0df61da6fc05f7b628961771fc`，原连续证书/v2/v3、4ABI、R8及资源收缩与禁用遥测/更新器均有效 |
+
+Android AVD仍为私有 `mihon-history-hp02-api36` / emulator-5560 / 独立userdata，1536MB、2核、headless；其它 emulator-5586 未操作。通过项目独立 `install --artifact … --serial emulator-5560` 实际原位升级，dumpsys核versionCode43/versionNameaex.25/lastUpdateTime08:33:49 UTC，再启动真实应用。先前42的收藏、历史、分类和中文设置保留，没有操作实体设备。
+
+新正式 APK 的实际 UIAutomator 节点和原生坐标动作记录在 `.gradle-coordinator/hp02-p16-android-observations.json`：
+
+- 历史两封面分别为 `Second acceptance` / `History acceptance`，实际Button的content-desc正确、clickable/focusable=true且无NAF；点击前者只进入对应作品详情“共1章”，返回历史仍有两条记录。
+- 真实删除弹窗Checkbox名称“重置此作品的所有章节”与相邻文案一致，默认checked=false，无NAF；点击后true，取消后两历史仍在，未确认删除。
+- 在仅本任务样本详情取消收藏，再由真实历史“添加到书架”打开分类：Checkbox名称a、默认false且无NAF；取消后历史添加入口仍在；重开默认false，点击true→添加，真实书架分类a再次出现Second acceptance，恢复该样本收藏。
+- [新候选中文历史](D:/Codex/worktrees/f235/hp02-history-candidate/.gradle-coordinator/hp02-p16-android-chinese-history.png) 来自该私有AVD；本轮中文/正常字体/浅色未改变既有偏好。旧候选的真实IME、中文/英文深色200%等未受名称补丁影响的证据保留原版本，不声称全部在43重跑。
+
+Windows旧GUI39016/launcher18248经原HTTP正常关闭并确认退出；新正式GUI48960/launcher43648，profile为`hp02-p16-windows-profile`，HTTP58971/JMX58972。有界原生Tab前置检查仍报前台PID2228不等于48960，**0按键**。新候选fresh闸门下当前章实际首图已呈现，单章refs、initial1/current1与sender两条基线正确；外部脚本`go_to_page2`后等待currentPage2超时，实际双页组current1，符合前文已核对的双页较小索引语义。保留原失败，没有修改production或把它改为通过；该次30秒目录闸门窗口已过去，不记目录补全通过。旧74九观测仍有其版本/场景有效证据。
+
+macOS旧74正常shutdown请求已收到；PowerShell管道传输here-doc的CRLF终止符导致包装脚本额外NameError，未再次发送shutdown；稍后核旧实际进程已退出。新75经精确LaunchServices路径启动，GUI55017、HTTP58981/JMX58982、独立mac-75-runtime profile。第一次driver在异步挂载前立即断言production导致失败，随后只读有界观察原导航，未重新造数据或复制实现：真实Reader target1/Loaded，refs[2,1,3]、initial1/current1、FIRST_PAGE_PRESENTED、catalogCOMPLETE/3、目录请求1次。该场景没有延迟闸门，不替代P13/P14的受控延迟验收。系统console仍`locked=true/lockFlagPresent=true/onConsole=true`，**0原生输入**，没有把HTTP appLocked=false当作图形会话解锁。
+
+本轮受影响 Android 原生名称和操作补验已经通过；Windows/macOS原生键盘/焦点、Windows可见双页组，以及Android同步稀疏/重复迁移正式原生场景仍待验。已再次请用户确认两端新候选可见前台；现场回复尚未到达，不把等待当作批准或验收。保留两端新窗口供现场确认，不勾HP02，不运行finalParityAudit。本次不是roadmap全部完成的报告。
+
+正式版本75/43来自本任务独立候选，随本批产物证据记录进入提交；root用户AppVersion草稿70按原字节保留，提交正式版本时从独立分配结果形成仅BUILD75的Git index内容，不暂存用户草稿70。两份受保护文档亦不暂存。后续候选应以已分配75/43为基线，不用工作区的旧用户计数草稿重新分配。
