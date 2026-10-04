@@ -60,7 +60,22 @@ class DualPageR2LPagerViewer(
     private var currentPage: Any? = null
     private var replacingPairing = false
     private var destroyed = false
-    private val presentedViewports = mutableMapOf<SharedDualPageSession, ReaderDualPageViewportTicket>()
+    private var gestureInProgress = false
+    internal val hasActiveGesture: Boolean get() = gestureInProgress
+    private var gestureNavigationForward: Boolean? = null
+    private var viewportSize: Pair<Int, Int>? = null
+    private fun geometrySettings() = listOf(
+        config.imageScaleType,
+        config.imageZoomType,
+        config.imageCropBorders,
+        config.landscapeZoom,
+        config.dualPageSplit,
+        config.dualPageInvert,
+        config.dualPageRotateToFit,
+        config.dualPageRotateToFitInvert,
+    )
+    private var presentationSettings = geometrySettings()
+    private val presentedViewports = mutableMapOf<SharedDualPageSession, MutableSet<ReaderDualPageViewportTicket>>()
 
     private var awaitingIdleViewerChapters: ViewerChapters? = null
 
@@ -68,6 +83,7 @@ class DualPageR2LPagerViewer(
         set(value) {
             field = value
             if (value) {
+                pager.children.filterIsInstance<DualPagerPageHolder>().forEach { it.onViewportMoved() }
                 awaitingIdleViewerChapters?.let { viewerChapters ->
                     setChaptersInternal(viewerChapters)
                     awaitingIdleViewerChapters = null
@@ -89,8 +105,20 @@ class DualPageR2LPagerViewer(
         }
 
     private val pagerListener = object : ViewPager.SimpleOnPageChangeListener() {
+        override fun onPageScrolled(position: Int, positionOffset: Float, positionOffsetPixels: Int) {
+            if (destroyed) return
+            pager.children.filterIsInstance<DualPagerPageHolder>().forEach { it.onViewportMoved() }
+        }
+
         override fun onPageSelected(position: Int) {
             if (replacingPairing || destroyed) return
+            if (gestureInProgress && currentPage is DisplayPage) {
+                val previousPosition = adapter.items.indexOf(currentPage)
+                if (previousPosition >= 0 && previousPosition != position) {
+                    gestureNavigationForward = position < previousPosition
+                    return
+                }
+            }
             if (!activity.isScrollingThroughPages) {
                 activity.hideMenu()
             }
@@ -98,7 +126,15 @@ class DualPageR2LPagerViewer(
         }
 
         override fun onPageScrollStateChanged(state: Int) {
+            if (state == ViewPager.SCROLL_STATE_DRAGGING) gestureInProgress = true
             isIdle = state == ViewPager.SCROLL_STATE_IDLE
+            if (state == ViewPager.SCROLL_STATE_IDLE) {
+                gestureInProgress = false
+                val forward = gestureNavigationForward
+                gestureNavigationForward = null
+                if (forward != null && !navigateSource(forward, animate = false)) onPageChange(pager.currentItem)
+                adapter.publishPendingPairing()
+            }
         }
     }
 
@@ -110,6 +146,14 @@ class DualPageR2LPagerViewer(
         pager.id = R.id.reader_pager
         pager.adapter = adapter
         pager.addOnPageChangeListener(pagerListener)
+        pager.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
+            val size = (right - left) to (bottom - top)
+            if (size.first > 0 && size.second > 0) {
+                val previous = viewportSize
+                viewportSize = size
+                if (previous != null && previous != size) invalidateGeometry()
+            }
+        }
         pager.tapListener = { event ->
             val viewPosition = IntArray(2)
             pager.getLocationOnScreen(viewPosition)
@@ -149,7 +193,7 @@ class DualPageR2LPagerViewer(
 
     override fun destroy() {
         destroyed = true
-        presentedViewports.toMap().forEach { (owner, ticket) -> owner.releaseViewport(ticket) }
+        presentedViewports.toMap().forEach { (owner, tickets) -> tickets.forEach(owner::releaseViewport) }
         presentedViewports.clear()
         pager.removeOnPageChangeListener(pagerListener)
         adapter.close()
@@ -264,12 +308,14 @@ class DualPageR2LPagerViewer(
     private fun moveToPrevious() = moveRight()
 
     private fun moveLeft() {
+        if (navigateSource(forward = true)) return
         if (pager.currentItem != 0) {
             pager.setCurrentItem(pager.currentItem - 1, config.usePageTransitions)
         }
     }
 
     private fun moveRight() {
+        if (navigateSource(forward = false)) return
         if (pager.currentItem != adapter.count - 1) {
             pager.setCurrentItem(pager.currentItem + 1, config.usePageTransitions)
         }
@@ -277,6 +323,22 @@ class DualPageR2LPagerViewer(
 
     private fun moveUp() = moveToPrevious()
     private fun moveDown() = moveToNext()
+
+    private fun navigateSource(forward: Boolean, animate: Boolean = config.usePageTransitions): Boolean {
+        val chapter = (currentPage as? DisplayPage)?.firstPage?.chapter ?: return false
+        val wasReplacing = replacingPairing
+        replacingPairing = true
+        try {
+            val target = adapter.navigate(chapter, forward) ?: return false
+            val position = adapter.items.indexOfFirst { it is DisplayPage && it.containsPage(target) }
+            if (position < 0) return false
+            pager.setCurrentItem(position, animate)
+        } finally {
+            replacingPairing = wasReplacing
+        }
+        onPageChange(pager.currentItem)
+        return true
+    }
 
     // ── Page change handling ─────────────────────────────────────────────────
 
@@ -309,7 +371,6 @@ class DualPageR2LPagerViewer(
                 adapter.selectPage(page)
             }
         }
-        capturePresentation(displayPage)
         refreshPresentation()
         val logicalPage =
             pages.getOrNull(adapter.session(page.chapter)?.location?.pageId?.sourcePageIndex ?: page.index) ?: page
@@ -337,18 +398,24 @@ class DualPageR2LPagerViewer(
             .filter { it.displayPage == selected }.forEach { it.beginPresentation() }
     }
 
+    private fun invalidateGeometry() {
+        if (destroyed) return
+        presentedViewports.keys.toList().forEach { it.invalidateViewport() }
+        presentedViewports.clear()
+        pager.children.filterIsInstance<DualPagerPageHolder>().forEach { it.beginPresentation() }
+    }
+
     internal fun capturePresentation(
         displayPage: DisplayPage,
     ): Pair<SharedDualPageSession, ReaderDualPageViewportTicket>? {
         if (destroyed) return null
         discardObsoletePresentations()
         val owner = adapter.session(displayPage.firstPage.chapter) ?: return null
-        val unit = owner.targetUnit ?: return null
         val visible = displayPage.visiblePages.map { owner.identity.pageIds[it.index] }
-        if (visible != unit.pageIds) return null
-        return owner.captureViewport()?.let { ticket ->
-            // Each chapter owner keeps one issued scope. An offscreen chapter never revokes its neighbour.
-            presentedViewports[owner] = ticket
+        val pageId = owner.location?.pageId?.takeIf { it in visible } ?: visible.firstOrNull() ?: return null
+        return owner.captureViewport(pageId, preparingPageIds = emptySet())?.let { ticket ->
+            // Native neighbours may expose pixels during a drag; only the logical scope can read.
+            presentedViewports.getOrPut(owner) { mutableSetOf() } += ticket
             owner to ticket
         }
     }
@@ -356,12 +423,15 @@ class DualPageR2LPagerViewer(
     internal fun releasePresentation(scope: Pair<SharedDualPageSession, ReaderDualPageViewportTicket>) {
         val (owner, ticket) = scope
         owner.releaseViewport(ticket)
-        if (presentedViewports[owner] === ticket) presentedViewports.remove(owner)
+        presentedViewports[owner]?.let { tickets ->
+            tickets.remove(ticket)
+            if (tickets.isEmpty()) presentedViewports.remove(owner)
+        }
     }
 
     private fun discardObsoletePresentations() {
         presentedViewports.keys.toList().filterNot(adapter::ownsSession).forEach { owner ->
-            presentedViewports.remove(owner)?.let(owner::releaseViewport)
+            presentedViewports.remove(owner)?.forEach(owner::releaseViewport)
         }
     }
 
@@ -371,15 +441,16 @@ class DualPageR2LPagerViewer(
         if (displayPage != currentPage) return
         val holder = pager.children.filterIsInstance<DualPagerPageHolder>()
             .firstOrNull { it.displayPage == displayPage } ?: return
-        if (!holder.hasRenderedVisiblePages()) return
         val (owner, ticket) = holder.presentationScope ?: return
+        val drawn = holder.renderedPageIds(owner).intersect(owner.frame(ticket)?.drawnPageIds.orEmpty())
+        if (drawn.isEmpty()) return
         val effect = owner.settle(
             ReaderDualPageSettlement(
                 ticket.identity,
                 ticket.layoutRevision,
                 ticket.locationSequence,
                 ticket.unitId,
-                displayPage.visiblePages.mapTo(mutableSetOf()) { ticket.identity.pageIds[it.index] },
+                drawn,
                 settled = true,
                 reason = ReaderDualPageSettlementReason.USER_NAVIGATION,
                 settlementSequence = ticket.locationSequence,
@@ -391,7 +462,10 @@ class DualPageR2LPagerViewer(
         val logicalPage =
             displayPage.firstPage.chapter.pages?.getOrNull(owner.location?.pageId?.sourcePageIndex ?: return)
                 ?: return
-        activity.onViewerViewportSettled(this, logicalPage, displayPage.visiblePages)
+        val actualPages = displayPage.firstPage.chapter.pages.orEmpty().filter {
+            ticket.identity.pageIds[it.index] in drawn
+        }
+        activity.onViewerViewportSettled(this, logicalPage, actualPages)
     }
 
     internal fun onTransitionSelected(transition: ChapterTransition) {
@@ -437,26 +511,32 @@ class DualPageR2LPagerViewer(
     fun refreshPairing() = adapter.refreshPairing()
 
     internal fun replacePairing(anchor: ReaderPage?, layoutOnly: Boolean, replace: () -> Unit) {
+        val wasReplacing = replacingPairing
         replacingPairing = true
         try {
             replace()
-            if (anchor != null) {
+            if (anchor != null && !wasReplacing) {
                 val position = adapter.items.indexOfFirst { it is DisplayPage && it.containsPage(anchor) }
                 if (position >= 0) pager.setCurrentItem(position, false)
             }
         } finally {
-            replacingPairing = false
+            replacingPairing = wasReplacing
         }
-        if (pager.isVisible && anchor != null) onPageChange(pager.currentItem, layoutOnly = layoutOnly)
+        if (!replacingPairing && pager.isVisible && anchor != null) {
+            onPageChange(pager.currentItem, layoutOnly = layoutOnly)
+        }
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private fun refreshAdapter() {
-        val currentItem = pager.currentItem
+        val settings = geometrySettings()
+        if (settings != presentationSettings) {
+            presentationSettings = settings
+            invalidateGeometry()
+        }
         adapter.refresh()
-        pager.adapter = adapter
-        pager.setCurrentItem(currentItem, false)
+        pager.children.filterIsInstance<DualPagerPageHolder>().forEach { it.refreshImageProperties() }
     }
 
     private fun getPageHolder(page: ReaderPage): DualPagerPageHolder? =

@@ -158,13 +158,15 @@ class HttpReaderMaterializeAdapterIntegrationTest {
         }
     }
 
-    internal class TestHttpSource(private val server: MockWebServer) : HttpSource() {
+    internal class TestHttpSource(
+        private val server: MockWebServer,
+        override val client: OkHttpClient = OkHttpClient(),
+    ) : HttpSource() {
         override val id = 77L
         override val name = "Reader HTTP fixture"
         override val lang = "en"
         override val supportsLatest = false
         override val baseUrl = server.url("/").toString().removeSuffix("/")
-        override val client = OkHttpClient()
 
         override fun headersBuilder() = Headers.Builder()
 

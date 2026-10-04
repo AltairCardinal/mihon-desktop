@@ -98,11 +98,17 @@ class SharedDualPageDesktopWiringTest {
             assertTrue(model.acceptDualFact(wide, ReaderPageFact.dimensions(1500, 1067)))
             assertEquals(16, model.state.value.currentPage)
             assertEquals(pageIds[16], model.state.value.dualPageLocation?.pageId)
+            val units = model.state.value.dualPageUnits
+            assertEquals(listOf(pageIds[16]), units.single { pageIds[16] in it.pageIds }.pageIds)
+            assertEquals(pageIds.toSet(), units.flatMap { it.pageIds }.toSet())
             assertEquals(
-                listOf(listOf(10, 11), listOf(12, 13), listOf(14, 15), listOf(16)),
-                model.state.value.dualPageUnits.filter { it.pageIds.first().sourcePageIndex >= 10 }
-                    .map { unit -> unit.pageIds.map(ReaderPageId::sourcePageIndex) },
+                pageIds.size,
+                units.sumOf {
+                    it.pageIds.size
+                },
+                "Every source page belongs to exactly one native unit",
             )
+            assertEquals(listOf(pageIds[9]), units.single { pageIds[9] in it.pageIds }.pageIds)
         } finally {
             model.onDispose()
         }
@@ -130,7 +136,7 @@ class SharedDualPageDesktopWiringTest {
                     }
                 }.id,
             )
-            val original = requireNotNull(model.captureDualViewport(visible))
+            val original = requireNotNull(model.beginPagerViewport(visible, userNavigation = false))
             val nextChapter = reader.snapshot.activeChapter.copy(pages = listOf(page.copy(attemptGeneration = 1)))
             model.acceptSessionState(reader.copy(snapshot = reader.snapshot.copy(activeChapter = nextChapter)))
             assertFalse(model.acceptDualFact(fact, ReaderPageFact.dimensions(20, 40)))
@@ -163,7 +169,9 @@ class SharedDualPageDesktopWiringTest {
                 }
             }.id,
         )
-        val ticket = requireNotNull(model.captureDualViewport(visible))
+        val ticket = requireNotNull(model.beginPagerViewport(visible, userNavigation = false))
+        assertTrue(model.prepareDualViewportPage(ticket, pageId))
+        assertTrue(model.drawDualViewportPage(ticket, pageId))
         model.settleDualPage(visible, ticket)
         model.settleDualPage(visible, ticket)
         assertEquals(listOf(setOf(pageId)), reports)
@@ -208,7 +216,9 @@ internal fun ReaderScreenModel.presentReadyPagerViewport(): mihon.desktop.ui.rea
     )
     try {
         native.begin(userNavigation = false)
-        unit.slots.filter { it.page != null }.forEach { native.drawn(it.id) }
+        unit.slots.filter { it.page != null }.forEach {
+            if (native.prepare(it.id)) native.drawn(it.id)
+        }
         native.setIdle(true)
         return visible
     } finally {

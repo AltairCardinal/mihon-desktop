@@ -276,6 +276,8 @@ class ReaderViewModel @JvmOverloads constructor(
         val settlementSequence: Long,
         val selectedActivation: ReadingActivation?,
         val activationJob: Deferred<ReadingActivation?>?,
+        val presentedPages: MutableSet<ReaderPage> = linkedSetOf(),
+        val acceptedPages: MutableSet<ReaderPage> = linkedSetOf(),
         var settled: Boolean = false,
         var settling: Boolean = false,
     )
@@ -505,7 +507,8 @@ class ReaderViewModel @JvmOverloads constructor(
             chapterList.getOrNull(chapterPos + 1),
         )
 
-        if (!restoreChapterPairing(chapter, useDefaultPairing, canActivate) {
+        val restoreInBackground = withUIContext { !useDefaultPairing && usesDualPageViewer() }
+        if (!restoreInBackground && !restoreChapterPairing(chapter, useDefaultPairing, canActivate) {
                 if (canActivate()) {
                     pairingRetryChapter = chapter
                     mutableState.update { it.copy(dialog = Dialog.PairingRestoreError(chapter)) }
@@ -515,7 +518,7 @@ class ReaderViewModel @JvmOverloads constructor(
             return null
         }
 
-        return withUIContext {
+        val activation = withUIContext {
             val expectedWindow = chapterWindowOwner.snapshot
             if (!canActivate()) return@withUIContext null
             if (
@@ -563,6 +566,7 @@ class ReaderViewModel @JvmOverloads constructor(
                     chapterWindow = window,
                     bookmarked = newChapters.currChapter.chapter.bookmark,
                     pairingReadUnavailable = useDefaultPairing,
+                    pairingRecordReady = isPairingRecordReady(newChapters.currChapter),
                     pairingSaving = false,
                     dialog = if (it.dialog is Dialog.PairingRestoreError ||
                         it.dialog == Dialog.Loading
@@ -582,6 +586,12 @@ class ReaderViewModel @JvmOverloads constructor(
             if (invalidResumePage) eventChannel.send(Event.SyncResumePageUnavailable)
             activation
         }
+        if (activation != null && restoreInBackground) {
+            restoreChapterPairingInBackground(chapter) {
+                state.value.viewerChapters?.currChapter === chapter
+            }
+        }
+        return activation
     }
 
     /**
@@ -705,6 +715,11 @@ class ReaderViewModel @JvmOverloads constructor(
             eventChannel.trySend(Event.ReloadViewerChapters)
             return
         }
+        if (withUIContext { usesDualPageViewer() }) {
+            restoreChapterPairingInBackground(chapter, shouldPromptPairingError)
+            eventChannel.trySend(Event.ReloadViewerChapters)
+            return
+        }
         val chapterId = requireNotNull(chapter.chapter.id)
         val mangaId = requireNotNull(manga?.id)
         if (!restoreChapterPairing(chapter, canActivate = {
@@ -741,6 +756,60 @@ class ReaderViewModel @JvmOverloads constructor(
         }
     }
 
+    private fun usesDualPageViewer(): Boolean {
+        val mode = getMangaReadingMode()
+        return mode == ReadingMode.DUAL_PAGE_R2L.flagValue ||
+            (mode == ReadingMode.AUTO.flagValue && state.value.viewer is DualPageR2LPagerViewer)
+    }
+
+    private fun isPairingRecordReady(chapter: ReaderChapter): Boolean {
+        val pages = chapter.pages ?: return false
+        val owner = dualPagePairings.chapters[chapter]?.takeIf { it.pages === pages }?.session ?: return false
+        return dualPagePairings.isRestored(chapter, pages) &&
+            owner.pairingState.status != mihon.domain.reader.ReaderPairingPersistenceStatus.DEFAULT_UNVERIFIED
+    }
+
+    /** Re-read the current owner; an old or adjacent operation cannot unlock a pending current read. */
+    private fun publishPairingRecordAvailability() {
+        mutableState.update { current ->
+            current.copy(pairingRecordReady = current.currentChapter?.let(::isPairingRecordReady) == true)
+        }
+    }
+
+    /** Normal dual reading does not wait for the original record request or invent a known revision. */
+    private fun restoreChapterPairingInBackground(
+        chapter: ReaderChapter,
+        shouldPromptPairingError: () -> Boolean,
+    ) {
+        val pages = chapter.pages ?: return
+        val mangaId = manga?.id ?: return
+        val isCurrentContent = {
+            val window = state.value.viewerChapters
+            manga?.id == mangaId && chapter.pages === pages &&
+                chapter in listOfNotNull(window?.prevChapter, window?.currChapter, window?.nextChapter)
+        }
+        viewModelScope.launch(pairingCallbackDispatcher) {
+            if (!restoreChapterPairing(chapter, canActivate = isCurrentContent) {
+                    if (shouldPromptPairingError()) {
+                        pairingRetryChapter = chapter
+                        mutableState.update { it.copy(dialog = Dialog.PairingRestoreError(chapter)) }
+                    }
+                }
+            ) {
+                return@launch
+            }
+            withUIContext {
+                if (!isCurrentContent()) return@withUIContext
+                if (dualPagePairings.chapters[chapter]?.session?.pairingState?.notice ==
+                    mihon.domain.reader.ReaderPairingPersistenceNotice.INVALID_RECORD
+                ) {
+                    eventChannel.trySend(Event.ChapterPairingInvalid)
+                }
+                eventChannel.trySend(Event.ReloadViewerChapters)
+            }
+        }
+    }
+
     /** The retained Main owner signs before I/O; stale content results never configure new owners. */
     private suspend fun restoreChapterPairing(
         chapter: ReaderChapter,
@@ -759,18 +828,24 @@ class ReaderViewModel @JvmOverloads constructor(
         while (true) {
             val operation = withUIContext {
                 if (!canActivate() || manga?.id != mangaId) return@withUIContext null
-                chapter.pages?.let { dualPagePairings.beginRestore(chapter, it) }
+                chapter.pages?.let { dualPagePairings.beginRestore(chapter, it) }.also {
+                    publishPairingRecordAvailability()
+                }
             } ?: return false
             val snapshot = try {
                 pairingCoordinator.submit(chapterId) { load(chapterId, mangaId) }.await()
             } catch (error: CancellationException) {
                 withContext(NonCancellable) {
-                    withUIContext { dualPagePairings.failRestore(operation) }
+                    withUIContext {
+                        dualPagePairings.failRestore(operation)
+                        publishPairingRecordAvailability()
+                    }
                 }
                 throw error
             } catch (error: Throwable) {
                 withUIContext {
                     if (dualPagePairings.failRestore(operation) && canActivate()) onFailure()
+                    publishPairingRecordAvailability()
                 }
                 return false
             }
@@ -780,7 +855,9 @@ class ReaderViewModel @JvmOverloads constructor(
                 }
                 // Ensure observes actual replacement epochs before accepting this original result.
                 dualPagePairings.ensure(chapter, operation.pages)
-                dualPagePairings.acceptRestore(operation, snapshot)
+                dualPagePairings.acceptRestore(operation, snapshot).also {
+                    publishPairingRecordAvailability()
+                }
             }
             if (accepted) return true
             if (withUIContext { dualPagePairings.chapters[chapter]?.session === operation.owner }) {
@@ -899,35 +976,51 @@ class ReaderViewModel @JvmOverloads constructor(
 
     /** Completes a selected dual viewport without replaying chapter activation or page side effects. */
     fun onDualViewportSettled(page: ReaderPage, visiblePages: List<ReaderPage>) {
-        val pending = pendingDualViewport?.takeIf { it.page === page && !it.settled && !it.settling } ?: return
+        val pending = pendingDualViewport?.takeIf {
+            it.page === page && readerProgressSettlementArbiter.isLatest(it.settlementSequence)
+        } ?: return
+        if (visiblePages.isEmpty() || visiblePages.any {
+                it.chapter !== page.chapter || it !in pending.pageList || it.status is Page.State.Error
+            }
+        ) {
+            return
+        }
+        pending.presentedPages += visiblePages
+        if (pending.settling || pending.acceptedPages.containsAll(pending.presentedPages)) return
         pending.settling = true
-        if (pending.activationJob == null) {
-            pending.settled = pending.selectedActivation?.let { activation ->
-                acceptChapterProgress(
+        fun commit(activation: ReadingActivation) {
+            if (pendingDualViewport !== pending ||
+                !readerProgressSettlementArbiter.isLatest(pending.settlementSequence)
+            ) {
+                return
+            }
+            val cumulative = pending.presentedPages.toList()
+            if (acceptChapterProgress(
                     page.chapter,
                     page,
                     pending.pageList,
-                    visiblePages,
+                    cumulative,
                     pending.settlementSequence,
                     activation,
                 )
-            } == true
-            pending.settling = false
-        } else {
-            val selectedPages = visiblePages.toList()
-            viewModelScope.launch(Dispatchers.Main.immediate) {
-                val activation = pending.activationJob.await()
-                if (activation != null && readerProgressSettlementArbiter.isLatest(pending.settlementSequence)) {
-                    pending.settled = acceptChapterProgress(
-                        page.chapter,
-                        page,
-                        pending.pageList,
-                        selectedPages,
-                        pending.settlementSequence,
-                        activation,
-                    )
-                }
+            ) {
+                pending.acceptedPages += cumulative
+                pending.settled = true
+            }
+        }
+        if (pending.activationJob == null) {
+            try {
+                pending.selectedActivation?.let(::commit)
+            } finally {
                 pending.settling = false
+            }
+        } else {
+            viewModelScope.launch(Dispatchers.Main.immediate) {
+                try {
+                    pending.activationJob.await()?.let(::commit)
+                } finally {
+                    pending.settling = false
+                }
             }
         }
     }
@@ -995,7 +1088,6 @@ class ReaderViewModel @JvmOverloads constructor(
         val handle = progressHandle?.takeIf { it.isOpen } ?: return false
         val session = activation.session ?: return false
         if (incognitoMode || getIncognitoState.await(manga?.source)) return false
-        if (page.status is Page.State.Error) return false
         val chapterPages = readerChapter.pages ?: return false
         if (chapterPages !== selectedPageList) return false
         if (visiblePages.any { it.chapter !== readerChapter || it !in chapterPages }) return false
@@ -1503,6 +1595,7 @@ class ReaderViewModel @JvmOverloads constructor(
         val dialog: Dialog? = null,
         val pairingSaving: Boolean = false,
         val pairingReadUnavailable: Boolean = false,
+        val pairingRecordReady: Boolean = false,
         val menuVisible: Boolean = false,
         @IntRange(from = -100, to = 100) val brightnessOverlayValue: Int = 0,
     ) {

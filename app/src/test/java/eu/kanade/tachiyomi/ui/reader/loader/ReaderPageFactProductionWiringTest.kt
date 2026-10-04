@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.reader.loader
 
+import android.content.Context
 import android.graphics.Bitmap
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.data.cache.ChapterCache
@@ -16,17 +17,31 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.Json
 import mihon.domain.reader.ReaderPageFactState
 import mihon.domain.reader.materialize.ReaderChapterContentRequest
+import mihon.domain.reader.scheduler.ReaderPageMaterializeRunner
+import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderChapterId
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import okhttp3.OkHttpClient
+import okhttp3.ResponseBody
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
+import okio.ForwardingSource
+import okio.buffer
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -39,11 +54,237 @@ import java.io.DataOutputStream
 import java.io.File
 import java.io.FilterInputStream
 import java.io.IOException
+import java.nio.file.Files
+import java.util.Base64
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], manifest = Config.NONE)
 class ReaderPageFactProductionWiringTest {
+    @Test
+    fun `cancelling a same ref writer wait closes the unconsumed original HTTP response`() = runBlocking {
+        val directory = Files.createTempDirectory("reader-http-cache-wait-cancel").toFile()
+        val context = mockk<Context>()
+        every { context.cacheDir } returns directory
+        val cache = ChapterCache(context, Json)
+        val store = AndroidReaderEncodedPageStore(cache)
+        val writerEntered = CompletableDeferred<Unit>()
+        val releaseWriter = CompletableDeferred<Unit>()
+        val responseClosed = AtomicBoolean()
+        val bodyReads = AtomicInteger()
+        val baselinePhysical = ReaderPageMaterializeRunner.processPhysicalWorkCount.value
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val response = chain.proceed(chain.request())
+            val original = response.body
+            val source = object : ForwardingSource(original.source()) {
+                override fun read(sink: Buffer, byteCount: Long): Long {
+                    bodyReads.incrementAndGet()
+                    return super.read(sink, byteCount)
+                }
+            }.buffer()
+            response.newBuilder().body(object : ResponseBody() {
+                override fun contentType() = original.contentType()
+                override fun contentLength() = original.contentLength()
+                override fun source() = source
+                override fun close() {
+                    try {
+                        original.close()
+                    } finally {
+                        responseClosed.set(true)
+                    }
+                }
+            }).build()
+        }.build()
+        MockWebServer().also { it.start() }.use { server ->
+            server.enqueue(MockResponse(body = "current encoded bytes"))
+            val imageUrl = server.url("/same-image").toString()
+            val ref = EncodedPageRef(imageUrl)
+            val held = async(Dispatchers.IO) {
+                runCatching {
+                    store.store(ref) {
+                        writerEntered.complete(Unit)
+                        releaseWriter.await()
+                        assertTrue(cache.putImageToCache(imageUrl, responseForImage(imageUrl, "old encoded bytes")))
+                        cache.getImageFile(imageUrl).length()
+                    }
+                }
+            }
+            writerEntered.await()
+            val chapter = ReaderChapter(Chapter.create().copy(id = 7, mangaId = 1))
+            val page = ReaderPage(0, imageUrl = imageUrl).apply { this.chapter = chapter }
+            chapter.publishLoadedPageListForTest(listOf(page))
+            val loader = HttpPageLoader(
+                chapter,
+                HttpReaderMaterializeAdapterIntegrationTest.TestHttpSource(server, client),
+                cache,
+                dispatcher = Dispatchers.IO,
+                encodedPageStore = store,
+            )
+            try {
+                loader.onPageSelected(page)
+                val storeLock = store.javaClass.getDeclaredField("stateLock").run {
+                    isAccessible = true
+                    get(store)
+                }
+                withTimeout(5_000) {
+                    while (synchronized(storeLock) {
+                            val writers = store.javaClass.getDeclaredField("refWriters").run {
+                                isAccessible = true
+                                get(store) as Map<*, *>
+                            }
+                            val lease = checkNotNull(writers[ref])
+                            lease.javaClass.getDeclaredField("callers").run {
+                                isAccessible = true
+                                getInt(lease)
+                            } != 2
+                        }
+                    ) {
+                        delay(10)
+                    }
+                }
+                assertEquals(0, bodyReads.get())
+                loader.recycle()
+                withTimeout(5_000) {
+                    while (ReaderPageMaterializeRunner.processPhysicalWorkCount.value != baselinePhysical) delay(10)
+                }
+                assertTrue(
+                    "A cancelled cache waiter must close its received, unconsumed HTTP response",
+                    responseClosed.get(),
+                )
+                assertEquals(0, bodyReads.get())
+            } finally {
+                loader.recycle()
+                releaseWriter.complete(Unit)
+                held.await()
+                cache.close()
+                client.dispatcher.executorService.shutdown()
+                client.connectionPool.evictAll()
+                directory.deleteRecursively()
+            }
+        }
+    }
+
+    private fun responseForImage(imageUrl: String, bytes: String): okhttp3.Response = okhttp3.Response.Builder()
+        .request(okhttp3.Request.Builder().url(imageUrl).build())
+        .protocol(okhttp3.Protocol.HTTP_1_1)
+        .code(200)
+        .message("OK")
+        .body(bytes.toResponseBody())
+        .build()
+
+    @Test
+    fun `replacement generation waits for same cache writer without reporting a storage error`() = runBlocking {
+        val directory = Files.createTempDirectory("reader-http-cache-generation").toFile()
+        val context = mockk<Context>()
+        every { context.cacheDir } returns directory
+        val cache = ChapterCache(context, Json)
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val responses = AtomicInteger()
+        val replacementReads = AtomicInteger()
+        val replacementClosed = CountDownLatch(1)
+        val png = Base64.getDecoder().decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a9sAAAAASUVORK5CYII=",
+        )
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val response = chain.proceed(chain.request())
+            val attempt = responses.incrementAndGet()
+            val originalBody = response.body
+            val bodySource = object : ForwardingSource(originalBody.source()) {
+                override fun read(sink: Buffer, byteCount: Long): Long {
+                    if (attempt == 1) {
+                        entered.countDown()
+                        check(release.await(15, TimeUnit.SECONDS)) { "Original HTTP read gate expired" }
+                    } else {
+                        replacementReads.incrementAndGet()
+                    }
+                    return super.read(sink, byteCount)
+                }
+
+                override fun close() {
+                    try {
+                        super.close()
+                    } finally {
+                        if (attempt != 1) replacementClosed.countDown()
+                    }
+                }
+            }.buffer()
+            response.newBuilder().body(object : ResponseBody() {
+                override fun contentType() = originalBody.contentType()
+                override fun contentLength() = originalBody.contentLength()
+                override fun source() = bodySource
+            }).build()
+        }.build()
+        MockWebServer().also { it.start() }.use { server ->
+            repeat(2) { server.enqueue(MockResponse.Builder().body(Buffer().write(png)).build()) }
+            val source = HttpReaderMaterializeAdapterIntegrationTest.TestHttpSource(server, client)
+            val chapter = ReaderChapter(Chapter.create().copy(id = 7, mangaId = 1))
+            val page = ReaderPage(0, imageUrl = server.url("/same-image").toString()).apply {
+                this.chapter = chapter
+            }
+            chapter.publishLoadedPageListForTest(listOf(page))
+            val loader = HttpPageLoader(chapter, source, cache, dispatcher = Dispatchers.IO)
+            try {
+                loader.onPageSelected(page)
+                assertTrue("Original cache write must enter real HTTP body", entered.await(5, TimeUnit.SECONDS))
+                val diskCache = ChapterCache::class.java.getDeclaredField("diskCache").run {
+                    isAccessible = true
+                    get(cache)
+                }
+                val key = cache.getImageFile(checkNotNull(page.imageUrl)).nameWithoutExtension
+                val originalEditor = synchronized(diskCache) {
+                    val entries = diskCache.javaClass.getDeclaredField("lruEntries").run {
+                        isAccessible = true
+                        get(diskCache) as Map<*, *>
+                    }
+                    val entry = checkNotNull(entries[key])
+                    entry.javaClass.getDeclaredField("currentEditor").run {
+                        isAccessible = true
+                        get(entry)
+                    }
+                }
+                assertNotNull("Held original response must own the actual same-key cache editor", originalEditor)
+
+                loader.onPageSelected(page)
+                withTimeoutOrNull(3_000) {
+                    while (page.status !is Page.State.Error && replacementClosed.count != 0L) delay(10)
+                }
+                val failure = (page.status as? Page.State.Error)?.error
+                println(
+                    "same-key replacement status=${page.status} editor=$originalEditor " +
+                        "responses=${responses.get()} replacementReads=${replacementReads.get()} failure=$failure",
+                )
+                failure?.let { println(it.stackTraceToString()) }
+                assertFalse("An occupied same-key editor is not a storage failure", page.status is Page.State.Error)
+                release.countDown()
+                withTimeout(5_000) {
+                    while (page.status != Page.State.Ready && page.status !is Page.State.Error) delay(10)
+                }
+                (page.status as? Page.State.Error)?.error?.let { println(it.stackTraceToString()) }
+                assertEquals(
+                    "Current generation must become Ready after original IO ends",
+                    Page.State.Ready,
+                    page.status,
+                )
+                assertArrayEquals(png, cache.getImageFile(checkNotNull(page.imageUrl)).readBytes())
+                assertNotNull(page.encodedPageRef)
+            } finally {
+                release.countDown()
+                withTimeout(5_000) {
+                    while (loader.hasForegroundWork) delay(10)
+                }
+                loader.recycle()
+                cache.close()
+                client.dispatcher.executorService.shutdown()
+                client.connectionPool.evictAll()
+                directory.deleteRecursively()
+            }
+        }
+    }
+
     @Test
     fun `download directory and archive loader streams publish dimensions without native holders`() = runTest {
         val directory = File.createTempFile("reader-fact-routes", ".tmp").apply {

@@ -50,6 +50,7 @@ data class ReaderState(
     val dualPageIdentity: mihon.domain.reader.ReaderDualPageIdentity? = null,
     val dualFactWorkRevision: Long = 0,
     val dualPageLayoutRevision: Long = 0,
+    val dualGeometryRevision: Long = 0,
     val dualPairingState: mihon.domain.reader.ReaderPairingPersistenceState? = null,
     val dualPageLocation: mihon.domain.reader.ReaderDualPageLocationIntent? = null,
     val chapterTransition: ReaderChapterTransitionModel? = null,

@@ -76,14 +76,23 @@ object SharedSpreadMatching {
             first != null && second != null && first > 0 && second == first + 1 &&
                 candidate.first !in forcedSinglePages && candidate.second !in forcedSinglePages &&
                 candidate.distance.isFinite() && candidate.distance >= 0 && candidate.distance < COLOR_THRESHOLD
-        }.sortedWith(compareBy<ReaderSpreadCandidate> { it.distance }.thenBy { indices.getValue(it.first) })
-        val occupied = mutableSetOf<ReaderPageId>()
+        }.groupBy { indices.getValue(it.first) }.mapValues { (_, values) -> values.minOf { it.distance } }
         return buildSet {
-            valid.forEach { candidate ->
-                if (candidate.first !in occupied && candidate.second !in occupied) {
-                    add(candidate.first to candidate.second)
-                    occupied += candidate.first
-                    occupied += candidate.second
+            var start = 1
+            while (start + 1 < orderedPages.size) {
+                if (orderedPages[start] in forcedSinglePages) {
+                    start++
+                    continue
+                }
+                val near = valid[start]
+                val later = valid[start + 1]
+                if (later != null && (near == null || later < near)) {
+                    // Commit the orphan and its reservation together. A farther edge cannot undo it.
+                    add(orderedPages[start + 1] to orderedPages[start + 2])
+                    start += 3
+                } else {
+                    if (near != null) add(orderedPages[start] to orderedPages[start + 1])
+                    start += if (orderedPages[start + 1] in forcedSinglePages) 1 else 2
                 }
             }
         }

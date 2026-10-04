@@ -10,6 +10,16 @@ import org.junit.jupiter.api.Test
 /** Real-source dimensions and synthetic counterexamples are deliberately separate contracts. */
 class SharedDualPageRulesContractTest {
     private val chapter = ReaderChapterId(42)
+
+    @Test
+    fun `unknown prefix does not turn normal forward pairing into an entire chapter of singles`() {
+        val pages = pages(9)
+        val facts = mapOf(pages[1] to ReaderPageFact.dimensions(100, 150))
+        val units = SharedDualPageRules.build(pages, facts, ReaderDirection.RTL)
+        assertEquals(listOf(pages[1], pages[2]), units[1].pageIds)
+        assertEquals(ReaderPortraitSingleSlot.RIGHT, units[1].slots.first().position)
+        assertFalse(units[1].certain, "Ordinary fallback must not fabricate portrait evidence")
+    }
     private fun pages(count: Int) = List(count) { ReaderPageId(chapter, it) }
     private fun facts(pages: List<ReaderPageId>, spreads: Set<Int> = emptySet()) = pages.associateWith {
         if (it.sourcePageIndex in spreads) {
@@ -163,12 +173,12 @@ class SharedDualPageRulesContractTest {
     }
 
     @Test
-    fun `segment leading portrait reserved for match or manual boundary uses opening side`() {
+    fun `segment leading portrait reserved for match or manual boundary uses stable reading side`() {
         for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
             val side = if (direction == ReaderDirection.RTL) {
-                ReaderPortraitSingleSlot.LEFT
-            } else {
                 ReaderPortraitSingleSlot.RIGHT
+            } else {
+                ReaderPortraitSingleSlot.LEFT
             }
             val matched = build(8, setOf(3), direction, matches = setOf(PagePair(5, 6)))
             val leading = matched.single { it.anchor.sourcePageIndex == 4 }
@@ -206,10 +216,10 @@ class SharedDualPageRulesContractTest {
         facts[pages[6]] = ReaderPageFact(ReaderPageFactState.FAILED)
         val units = SharedDualPageRules.build(pages, facts, ReaderDirection.RTL)
         assertEquals(listOf(listOf(1), listOf(2, 3)), groups(units).take(2))
+        assertEquals(listOf(listOf(4, 5), listOf(6, 7)), groups(units).drop(2))
         for (unit in units.drop(2)) {
-            assertEquals(1, unit.pageIds.size)
             assertFalse(unit.certain)
-            assertEquals(ReaderPortraitSingleSlot.FULL, unit.slots.single().position)
+            assertEquals(ReaderPortraitSingleSlot.RIGHT, unit.slots.first().position)
         }
         facts[pages[5]] = ReaderPageFact.dimensions(1800, 1000)
         facts[pages[6]] = ReaderPageFact.dimensions(1000, 1500)

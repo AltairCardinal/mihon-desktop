@@ -23,6 +23,9 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import kotlinx.coroutines.CoroutineScope
 import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.ScaleType
@@ -82,6 +85,7 @@ internal fun zoomableGestureCapabilities(
 internal fun ZoomablePageBox(
     presentationImage: ReaderPresentationImage,
     onPageDrawn: (() -> Unit)? = null,
+    onPagePrepared: ((Int, Int) -> Boolean)? = null,
     pageLabel: String,
     zoomState: ZoomState,
     onZoomChange: (ZoomState) -> Unit,
@@ -119,6 +123,7 @@ internal fun ZoomablePageBox(
     val readyState = presentationState as? DesktopReaderPresentationImageState.Ready
     val asset = readyState?.asset
     val renderedImage = rememberReaderPresentationRenderedImage(presentationImage, cropBorders)
+    val mountedCoordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
 
     LaunchedEffect(asset, splitHalf, onSpreadDetected) {
         if (asset != null && onSpreadDetected != null && splitHalf == null && asset.sourceWidth > asset.sourceHeight) {
@@ -270,7 +275,8 @@ internal fun ZoomablePageBox(
         Box(
             modifier = modifier
                 .then(gestureModifier)
-                .then(doubleTapModifier),
+                .then(doubleTapModifier)
+                .onGloballyPositioned { mountedCoordinates[0] = it },
             contentAlignment = imageAlignment,
         ) {
             val fullDecodeFailed = presentationState is DesktopReaderPresentationImageState.Failed
@@ -318,30 +324,40 @@ internal fun ZoomablePageBox(
                     translationX = zoomState.offsetX,
                     translationY = zoomState.offsetY,
                 )
-                .observeReaderPageDraw(
-                    renderedImage?.let { image ->
-                        {
-                            val accepted = image.acknowledgeDraw()
-                            if (onPageDrawn != null && image.currentPixels()) onPageDrawn.invoke()
-                            accepted
-                        }
-                    },
-                )
             if (renderedImage != null && !fullDecodeFailed && !presentationClosed) {
-                Image(
-                    bitmap = renderedImage.bitmap,
-                    contentDescription = pageLabel,
-                    alignment = imageAlignment,
-                    modifier = imageModifier,
-                    contentScale = resolvedScale,
-                )
-                ReaderRegionTileLayer(
-                    presentationImage = presentationImage,
-                    renderedImage = renderedImage,
-                    contentScale = resolvedScale,
-                    alignment = imageAlignment,
-                    zoomState = zoomState,
-                )
+                // The base bitmap and region tiles share one preparation boundary. A mounted
+                // prefetch page may decode, but cannot acknowledge clipped-away pixels.
+                Box(
+                    Modifier.fillMaxSize().observeReaderPageDraw(
+                        {
+                            val accepted = renderedImage.acknowledgeDraw()
+                            if (onPageDrawn != null && renderedImage.currentPixels()) onPageDrawn.invoke()
+                            accepted
+                        },
+                        prepareDraw = {
+                            mountedCoordinates[0]?.takeIf { it.isAttached }?.boundsInRoot()?.isEmpty == false &&
+                                (
+                                    onPagePrepared == null ||
+                                        asset?.let { onPagePrepared(it.bitmap.width, it.bitmap.height) } == true
+                                    )
+                        },
+                    ),
+                ) {
+                    Image(
+                        bitmap = renderedImage.bitmap,
+                        contentDescription = pageLabel,
+                        alignment = imageAlignment,
+                        modifier = imageModifier,
+                        contentScale = resolvedScale,
+                    )
+                    ReaderRegionTileLayer(
+                        presentationImage = presentationImage,
+                        renderedImage = renderedImage,
+                        contentScale = resolvedScale,
+                        alignment = imageAlignment,
+                        zoomState = zoomState,
+                    )
+                }
             }
         }
     }

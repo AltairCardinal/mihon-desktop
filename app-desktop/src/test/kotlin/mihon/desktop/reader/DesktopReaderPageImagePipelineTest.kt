@@ -1,13 +1,9 @@
 package mihon.desktop.reader
 
 import androidx.compose.ui.graphics.asComposeImageBitmap
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -38,9 +34,29 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DesktopReaderPageImagePipelineTest {
+
+    private suspend fun acquireOriginal(
+        pipeline: DesktopReaderPageImagePipeline,
+        request: ReaderPageDecodeKey,
+        optional: Boolean,
+    ): DesktopReaderImageAssetLease? = if (optional) {
+        pipeline.openRegionSession(request.contentKey).use {
+            it.acquireTile(
+                request.copy(purpose = PageDecodePurpose.REGION_TILE, region = PixelBounds(0, 0, 1, 1)),
+                true,
+            )
+        }
+    } else {
+        pipeline.acquire(request)
+    }
 
     @Test
     fun `concurrent acquire single flights one content open and one decode`() = runTest {
@@ -75,6 +91,7 @@ class DesktopReaderPageImagePipelineTest {
 
             assertEquals(1, contentOpenCalls)
             assertEquals(1, decodeCalls)
+            assertEquals(1, pipeline.foregroundWork.value, "Two callers share one original foreground task")
             releaseDecode.complete(Unit)
 
             val firstLease = requireNotNull(first.await())
@@ -84,6 +101,7 @@ class DesktopReaderPageImagePipelineTest {
             assertEquals(1, events.count { it.matches(ReaderIoEventType.DECODE, key) })
             assertEquals(0, pipeline.snapshot().inFlightCount)
             assertEquals(listOf(key), pipeline.snapshot().cache.keys)
+            assertEquals(0, pipeline.foregroundWork.value, "Completed retained images do not keep optional work paused")
 
             firstLease.close()
             secondLease.close()
@@ -118,12 +136,148 @@ class DesktopReaderPageImagePipelineTest {
                 assertSame(first.asset, cached.asset)
                 assertEquals(eventCountAfterMiss, events.size)
                 assertEquals(1, decodeCalls)
+                assertEquals(0, pipeline.foregroundWork.value, "The original cache hit does not enqueue decode work")
                 assertEquals(1, events.count { it.matches(ReaderIoEventType.OPEN_PAGE, key) })
                 assertEquals(1, events.count { it.matches(ReaderIoEventType.DECODE, key) })
             } finally {
                 cached.close()
             }
         } finally {
+            pipeline.close()
+            contentOwner.close()
+        }
+    }
+
+    @Test
+    fun `queued image cancellation releases foreground qualification before body starts`() = runTest {
+        for (optional in listOf(false, true)) {
+            val reporter = reporter()
+            val contentOwner = contentOwner(this, reporter) { ENCODED_BYTES }
+            var decodes = 0
+            val pipeline = DesktopReaderPageImagePipeline(
+                scope = this,
+                pageContentOwner = contentOwner,
+                ioReporter = reporter,
+                decoder = DesktopReaderPageImageDecoder { _, _ -> asset(tag = ++decodes) },
+            )
+            try {
+                val queued = async(start = CoroutineStart.UNDISPATCHED) { acquireOriginal(pipeline, key(), optional) }
+                assertEquals(1, if (optional) pipeline.optionalWork.value else pipeline.foregroundWork.value)
+                pipeline.clear()
+                runCurrent()
+                assertEquals(0, if (optional) pipeline.optionalWork.value else pipeline.foregroundWork.value)
+                assertEquals(0, decodes)
+                assertNull(runCatching { queued.await() }.getOrNull())
+            } finally {
+                pipeline.close()
+                contentOwner.close()
+            }
+        }
+    }
+
+    @Test
+    fun `visible caller promotes the same optional tile exactly once until actual completion`() = runTest {
+        val reporter = reporter()
+        val contentOwner = contentOwner(this, reporter) { ENCODED_BYTES }
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = contentOwner,
+            ioReporter = reporter,
+            decoder = DesktopReaderPageImageDecoder { _, _ ->
+                entered.complete(Unit)
+                release.await()
+                asset(tag = 1)
+            },
+        )
+        val tile = key().copy(purpose = PageDecodePurpose.REGION_TILE, region = PixelBounds(0, 0, 1, 1))
+        val session = pipeline.openRegionSession(tile.contentKey)
+        try {
+            val sample = async { session.acquireTile(tile, optional = true) }
+            entered.await()
+            assertEquals(0, pipeline.foregroundWork.value)
+            assertEquals(1, pipeline.optionalWork.value)
+            val visible = async { session.acquireTile(tile) }
+            val anotherVisible = async { session.acquireTile(tile) }
+            runCurrent()
+            assertEquals(1, pipeline.foregroundWork.value)
+            assertEquals(1, pipeline.optionalWork.value, "Promotion retains the original optional task exactly once")
+            release.complete(Unit)
+            listOf(sample, visible, anotherVisible).forEach { requireNotNull(it.await()).close() }
+            assertEquals(0, pipeline.foregroundWork.value)
+            assertEquals(0, pipeline.optionalWork.value)
+        } finally {
+            release.complete(Unit)
+            session.close()
+            pipeline.close()
+            contentOwner.close()
+        }
+    }
+
+    @Test
+    fun `different optional entry is paused atomically while same key shares the original work`() = runTest {
+        val reporter = reporter()
+        val contentOwner = contentOwner(this, reporter) { ENCODED_BYTES }
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var decodes = 0
+        val tile = key().copy(purpose = PageDecodePurpose.REGION_TILE, region = PixelBounds(0, 0, 1, 1))
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = contentOwner,
+            ioReporter = reporter,
+            decoder = DesktopReaderPageImageDecoder { _, request ->
+                decodes++
+                if (request == tile) {
+                    entered.complete(Unit)
+                    withContext(kotlinx.coroutines.NonCancellable) { release.await() }
+                }
+                asset(tag = decodes)
+            },
+        )
+        val session = pipeline.openRegionSession(tile.contentKey)
+        val first = async { session.acquireTile(tile, true) }
+        val replacement = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = contentOwner,
+            ioReporter = reporter,
+            decoder = DesktopReaderPageImageDecoder { _, _ ->
+                decodes++
+                asset(tag = decodes)
+            },
+        )
+        val replacementSession = replacement.openRegionSession(tile.contentKey)
+        try {
+            entered.await()
+            val shared = async { session.acquireTile(tile, true) }
+            runCurrent()
+            assertEquals(1, decodes)
+            assertEquals(1, pipeline.optionalWork.value)
+            val competing = runCatching {
+                session.acquireTile(tile.copy(region = PixelBounds(1, 0, 2, 1)), true)?.close()
+            }
+            assertTrue(
+                competing.exceptionOrNull() is DesktopReaderOptionalWorkPaused,
+                "A different optional key must pause at the original Entry creation point; decodes=$decodes",
+            )
+            assertEquals(1, decodes, "Conflicting admission never enters the decoder")
+            assertEquals(1, replacement.optionalWork.value, "Replacement pipelines observe original physical work")
+            val acrossRuntime = runCatching {
+                replacementSession.acquireTile(tile.copy(region = PixelBounds(2, 0, 1, 1)), true)?.close()
+            }
+            assertTrue(acrossRuntime.exceptionOrNull() is DesktopReaderOptionalWorkPaused)
+            assertEquals(1, decodes, "A replacement Entry cannot bypass the original atomic optional admission")
+            release.complete(Unit)
+            requireNotNull(first.await()).close()
+            requireNotNull(shared.await()).close()
+            assertEquals(0, pipeline.optionalWork.value)
+        } finally {
+            release.complete(Unit)
+            first.cancelAndJoin()
+            session.close()
+            replacementSession.close()
+            replacement.close()
             pipeline.close()
             contentOwner.close()
         }
@@ -290,44 +444,53 @@ class DesktopReaderPageImagePipelineTest {
 
     @Test
     fun `generation fence rejects and releases a non cooperative stale decode`() = runTest {
-        val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        val reporter = reporter()
-        val decodeEntered = CountDownLatch(1)
-        val releaseDecode = CountDownLatch(1)
-        val decodeReturned = CountDownLatch(1)
-        val disposeCalls = AtomicInteger()
-        val contentOwner = contentOwner(ioScope, reporter) { ENCODED_BYTES }
-        val pipeline = DesktopReaderPageImagePipeline(
-            scope = ioScope,
-            pageContentOwner = contentOwner,
-            ioReporter = reporter,
-            decoder = DesktopReaderPageImageDecoder { _, _ ->
-                decodeEntered.countDown()
-                check(releaseDecode.await(5, TimeUnit.SECONDS))
-                asset(tag = 1, disposer = { disposeCalls.incrementAndGet() }).also { decodeReturned.countDown() }
-            },
-        )
-        val staleKey = key(generation = 1L)
-        val acquiring = async { pipeline.acquire(staleKey) }
+        for (optional in listOf(false, true)) {
+            val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val reporter = reporter()
+            val decodeEntered = CountDownLatch(1)
+            val releaseDecode = CountDownLatch(1)
+            val decodeReturned = CountDownLatch(1)
+            val disposeCalls = AtomicInteger()
+            val contentOwner = contentOwner(ioScope, reporter) { ENCODED_BYTES }
+            val pipeline = DesktopReaderPageImagePipeline(
+                scope = ioScope,
+                pageContentOwner = contentOwner,
+                ioReporter = reporter,
+                decoder = DesktopReaderPageImageDecoder { _, _ ->
+                    decodeEntered.countDown()
+                    check(releaseDecode.await(5, TimeUnit.SECONDS))
+                    asset(tag = 1, disposer = { disposeCalls.incrementAndGet() }).also { decodeReturned.countDown() }
+                },
+            )
+            val staleKey = key(generation = 1L)
+            val acquiring = async { acquireOriginal(pipeline, staleKey, optional) }
 
-        try {
-            assertTrue(withContext(Dispatchers.IO) { decodeEntered.await(5, TimeUnit.SECONDS) })
-            pipeline.beginGeneration(2L)
-            releaseDecode.countDown()
-            assertTrue(withContext(Dispatchers.IO) { decodeReturned.await(5, TimeUnit.SECONDS) })
+            try {
+                assertTrue(withContext(Dispatchers.IO) { decodeEntered.await(5, TimeUnit.SECONDS) })
+                assertEquals(1, if (optional) pipeline.optionalWork.value else pipeline.foregroundWork.value)
+                pipeline.beginGeneration(2L)
+                assertEquals(
+                    1,
+                    if (optional) pipeline.optionalWork.value else pipeline.foregroundWork.value,
+                    "A detached non-cooperative original decoder is still busy",
+                )
+                releaseDecode.countDown()
+                assertTrue(withContext(Dispatchers.IO) { decodeReturned.await(5, TimeUnit.SECONDS) })
 
-            val result = runCatching { withTimeout(5_000) { acquiring.await() } }.getOrNull()
-            result?.close()
-            assertNull(result)
-            assertEquals(1, disposeCalls.get())
-            assertTrue(pipeline.snapshot().cache.keys.isEmpty())
-            assertEquals(0, pipeline.snapshot().inFlightCount)
-        } finally {
-            releaseDecode.countDown()
-            acquiring.cancelAndJoin()
-            pipeline.close()
-            contentOwner.close()
-            ioScope.cancel()
+                val result = runCatching { withTimeout(5_000) { acquiring.await() } }.getOrNull()
+                result?.close()
+                assertNull(result)
+                assertEquals(1, disposeCalls.get())
+                assertTrue(pipeline.snapshot().cache.keys.isEmpty())
+                assertEquals(0, pipeline.snapshot().inFlightCount)
+                assertEquals(0, if (optional) pipeline.optionalWork.value else pipeline.foregroundWork.value)
+            } finally {
+                releaseDecode.countDown()
+                acquiring.cancelAndJoin()
+                pipeline.close()
+                contentOwner.close()
+                ioScope.cancel()
+            }
         }
     }
 
@@ -339,44 +502,51 @@ class DesktopReaderPageImagePipelineTest {
 
     @Test
     fun `close rejects and releases a non cooperative late decoded asset`() = runTest {
-        val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        val reporter = reporter()
-        val decodeEntered = CountDownLatch(1)
-        val releaseDecode = CountDownLatch(1)
-        val decodeReturned = CountDownLatch(1)
-        val disposeCalls = AtomicInteger()
-        val contentOwner = contentOwner(ioScope, reporter) { ENCODED_BYTES }
-        val pipeline = DesktopReaderPageImagePipeline(
-            scope = ioScope,
-            pageContentOwner = contentOwner,
-            ioReporter = reporter,
-            decoder = DesktopReaderPageImageDecoder { _, _ ->
-                decodeEntered.countDown()
-                check(releaseDecode.await(5, TimeUnit.SECONDS))
-                asset(tag = 1, disposer = { disposeCalls.incrementAndGet() }).also { decodeReturned.countDown() }
-            },
-        )
-        val acquiring = async { pipeline.acquire(key()) }
+        for (optional in listOf(false, true)) {
+            val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val reporter = reporter()
+            val decodeEntered = CountDownLatch(1)
+            val releaseDecode = CountDownLatch(1)
+            val decodeReturned = CountDownLatch(1)
+            val disposeCalls = AtomicInteger()
+            val contentOwner = contentOwner(ioScope, reporter) { ENCODED_BYTES }
+            val pipeline = DesktopReaderPageImagePipeline(
+                scope = ioScope,
+                pageContentOwner = contentOwner,
+                ioReporter = reporter,
+                decoder = DesktopReaderPageImageDecoder { _, _ ->
+                    decodeEntered.countDown()
+                    check(releaseDecode.await(5, TimeUnit.SECONDS))
+                    asset(tag = 1, disposer = { disposeCalls.incrementAndGet() }).also { decodeReturned.countDown() }
+                },
+            )
+            val acquiring = async { acquireOriginal(pipeline, key(), optional) }
 
-        try {
-            assertTrue(withContext(Dispatchers.IO) { decodeEntered.await(5, TimeUnit.SECONDS) })
-            pipeline.close()
-            pipeline.close()
-            releaseDecode.countDown()
-            assertTrue(withContext(Dispatchers.IO) { decodeReturned.await(5, TimeUnit.SECONDS) })
+            try {
+                assertTrue(withContext(Dispatchers.IO) { decodeEntered.await(5, TimeUnit.SECONDS) })
+                pipeline.close()
+                pipeline.close()
+                assertEquals(
+                    1,
+                    if (optional) pipeline.optionalWork.value else pipeline.foregroundWork.value,
+                    "Close cannot claim a running native task has finished",
+                )
+                releaseDecode.countDown()
+                assertTrue(withContext(Dispatchers.IO) { decodeReturned.await(5, TimeUnit.SECONDS) })
 
-            val result = runCatching { withTimeout(5_000) { acquiring.await() } }.getOrNull()
-            result?.close()
-            assertNull(result)
-            assertEquals(1, disposeCalls.get())
-            assertTrue(pipeline.snapshot().cache.keys.isEmpty())
-            assertEquals(0, pipeline.snapshot().inFlightCount)
-        } finally {
-            releaseDecode.countDown()
-            acquiring.cancelAndJoin()
-            pipeline.close()
-            contentOwner.close()
-            ioScope.cancel()
+                val result = runCatching { withTimeout(5_000) { acquiring.await() } }.getOrNull()
+                result?.close()
+                assertNull(result)
+                assertEquals(1, disposeCalls.get())
+                assertTrue(pipeline.snapshot().cache.keys.isEmpty())
+                assertEquals(0, pipeline.snapshot().inFlightCount)
+            } finally {
+                releaseDecode.countDown()
+                acquiring.cancelAndJoin()
+                pipeline.close()
+                contentOwner.close()
+                ioScope.cancel()
+            }
         }
     }
 

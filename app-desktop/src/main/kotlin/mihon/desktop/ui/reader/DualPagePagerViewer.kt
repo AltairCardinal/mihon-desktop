@@ -24,11 +24,14 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -90,11 +93,12 @@ internal val DualPageSlotIdKey = SemanticsPropertyKey<DisplaySlotId>("DualPageSl
 internal fun DualPageDisplayUnitFrame(
     unit: DisplayUnit,
     onRetry: (ReaderPageId) -> Unit,
+    mountIdentity: Any = unit.id,
     readyContent: @Composable (DisplaySlot, Modifier) -> Unit,
 ) {
     require(unit.id.mode == ReaderPresentationMode.DUAL_PAGED) { "A dual frame requires a dual display unit" }
     require(unit.slots.size in 1..2) { "A dual display unit must contain one full-span slot or two physical slots" }
-    val identity = remember(unit.id) { DualPageDisplayUnitCompositionIdentity() }
+    val identity = remember(mountIdentity) { DualPageDisplayUnitCompositionIdentity() }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -237,6 +241,9 @@ internal fun DualPagePagerViewer(
         displayUnits.indexOfFirst { unit -> unit.slots.any { it.page?.id == pageId } }
             .takeIf { it >= 0 }?.let(::unitToPager)
 
+    fun unitKey(unit: DisplayUnit): Any =
+        unit.slots.mapNotNull { it.page?.id }.minByOrNull { it.sourcePageIndex } ?: unit.id
+
     val initialUnitIndex = presentation.restoreDisplayUnitIndex(currentPageId, currentDisplayUnitId)
         .coerceAtLeast(0)
         .coerceIn(displayUnits.indices)
@@ -286,17 +293,20 @@ internal fun DualPagePagerViewer(
         if (userTurnTarget.value == currentPageId) userTurnTarget.value = null
     }
 
-    val selectedIndex = pagerState.currentPage.coerceIn(displayUnits.indices)
+    // A local projection can change RTL indices while Pager retains the original visible key.
+    // Bind the presenter to that actual item until the location effect updates the native index.
+    val visibleKey = if (!pagerState.isScrollInProgress) {
+        pagerState.layoutInfo.visiblePagesInfo.minByOrNull { kotlin.math.abs(it.offset) }?.key
+    } else {
+        null
+    }
+    val visibleUnitIndex = displayUnits.indexOfFirst { unitKey(it) == visibleKey }
+    val selectedIndex = if (visibleUnitIndex >= 0) {
+        unitToPager(visibleUnitIndex)
+    } else {
+        pagerState.currentPage.coerceIn(displayUnits.indices)
+    }
     val selectedUnit = displayUnits[pagerToUnit(selectedIndex)]
-    val nativePresentation = rememberPagerNativePresentation(
-        unit = selectedUnit,
-        visible = presentation.resolveDualVisiblePages(selectedUnit.id),
-        binding = pagerPresentationBinding,
-        userNavigation = navigationIntent.value?.selects(selectedIndex, selectedUnit.id, nativeLocation) == true,
-        idle = !pagerState.isScrollInProgress && pagerState.settledPage == selectedIndex &&
-            (programmaticTarget.value?.let { it == selectedIndex } ?: true),
-        onVisiblePagesChanged = onVisiblePagesChanged,
-    )
 
     SideEffect {
         val intent = navigationIntent.value
@@ -308,6 +318,16 @@ internal fun DualPagePagerViewer(
     }
 
     fun executeTapCommand(command: ReaderNavigationCommand) {
+        val forward = when (command) {
+            ReaderNavigationCommand.Next -> true
+            ReaderNavigationCommand.Previous -> false
+            else -> null
+        }
+        if (forward != null && pagerPresentationBinding?.model?.navigateDualPage(forward) == true) {
+            userTurnTarget.value = pagerPresentationBinding.model.state.value.dualPageLocation?.pageId
+            programmaticTarget.value = null
+            return
+        }
         val basePage =
             userTurnTarget.value?.let(::pageToPager)
                 ?: if (programmaticTarget.value != null) pagerState.settledPage else pagerState.currentPage
@@ -358,17 +378,39 @@ internal fun DualPagePagerViewer(
                 TapNavRegion.MENU -> onTapCenter?.invoke()
             }
         },
-        key = { pagerIndex -> displayUnits[pagerToUnit(pagerIndex)].id },
+        key = { pagerIndex ->
+            val unit = displayUnits[pagerToUnit(pagerIndex)]
+            unitKey(unit)
+        },
     ) { pagerIndex ->
         val unit = displayUnits[pagerToUnit(pagerIndex)]
+        val selected = unit.id == selectedUnit.id
+        val nativePresentation = rememberPagerNativePresentation(
+            unit = unit,
+            visible = presentation.resolveDualVisiblePages(unit.id),
+            binding = pagerPresentationBinding,
+            userNavigation = selected && navigationIntent.value?.selects(
+                selectedIndex,
+                unit.id,
+                nativeLocation,
+            ) == true,
+            idle = selected && !pagerState.isScrollInProgress && pagerState.settledPage == selectedIndex &&
+                (programmaticTarget.value?.let { it == selectedIndex } ?: true),
+            onVisiblePagesChanged = onVisiblePagesChanged,
+            selected = selected,
+            navigationLocation = navigationIntent.value?.logicalLocation ?: nativeLocation,
+        )
         Box(
-            modifier = Modifier.fillMaxSize().semantics {
+            modifier = Modifier.fillMaxSize().clipToBounds().onGloballyPositioned {
+                nativePresentation.setExposed(!it.boundsInRoot().isEmpty)
+            }.semantics {
                 if (unit.id == selectedUnit.id) this[ReaderPagerNativePresentationKey] = nativePresentation
             },
         ) {
             DualPageDisplayUnitFrame(
                 unit = unit,
                 onRetry = onRetryPage,
+                mountIdentity = nativePresentation,
             ) { slot, modifier ->
                 val page = requireNotNull(slot.page)
                 val physicalSlot = unit.slots.indexOf(slot)
@@ -380,11 +422,13 @@ internal fun DualPagePagerViewer(
                     sourceBounds = slot.sourceBounds,
                 )
                 ZoomablePageBox(
-                    onPageDrawn = if (unit.id == selectedUnit.id) {
-                        { nativePresentation.drawn(slot.id) }
-                    } else {
-                        null
+                    onPagePrepared = { width, height ->
+                        nativePresentation.setExposed(
+                            kotlin.math.abs(pagerState.getOffsetDistanceInPages(pagerIndex)) < 1f,
+                        )
+                        nativePresentation.prepare(slot.id, page, width, height)
                     },
+                    onPageDrawn = { nativePresentation.drawn(slot.id) },
                     presentationImage = presentationImage,
                     pageLabel = MR.strings.desktop_ui_page_number.localized(
                         Locale.getDefault(),

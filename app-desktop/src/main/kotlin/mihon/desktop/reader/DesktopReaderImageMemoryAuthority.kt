@@ -1,7 +1,10 @@
 package mihon.desktop.reader
 
-import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import mihon.domain.reader.ReaderPageDecodeKey
+import java.util.concurrent.atomic.AtomicBoolean
 
 internal enum class DesktopReaderImageMemoryKind {
     FULL,
@@ -67,6 +70,8 @@ internal class DesktopReaderImageMemoryAuthority(
     private var nextAllocationId = 1L
     private var revision = 0L
     private var closed = false
+    private val mutableSnapshots = MutableStateFlow(snapshot())
+    val snapshots = mutableSnapshots.asStateFlow()
 
     init {
         require(maxBytes >= 0L) { "maxBytes must be non-negative" }
@@ -104,6 +109,8 @@ internal class DesktopReaderImageMemoryAuthority(
                 if (closeError !== error) error.addSuppressed(closeError)
             }
             throw error
+        } finally {
+            publishSnapshot()
         }
         return result.first
     }
@@ -131,7 +138,11 @@ internal class DesktopReaderImageMemoryAuthority(
             resources += rebalanceLocked()
             resources
         }
-        releaseResources(released)
+        try {
+            releaseResources(released)
+        } finally {
+            publishSnapshot()
+        }
         return synchronized(lock) { cacheRetentionMatchesLocked(key, allocationId) } && isCurrent()
     }
 
@@ -139,14 +150,18 @@ internal class DesktopReaderImageMemoryAuthority(
         key: ReaderPageDecodeKey,
         allocationId: Long,
         isCurrent: () -> Boolean,
-    ): DesktopReaderImageMemoryLease? = synchronized(lock) {
-        if (closed) return null
-        if (!cacheRetentionMatchesLocked(key, allocationId) || !isCurrent()) return null
-        cacheRetentions[key]
-        val allocation = allocations[allocationId] ?: return null
-        incrementRetentionLocked(allocation, DesktopReaderImageMemoryRetention.ACTIVE)
-        revision++
-        AuthorityLease(this, allocationId, DesktopReaderImageMemoryRetention.ACTIVE)
+    ): DesktopReaderImageMemoryLease? {
+        val lease = synchronized(lock) {
+            if (closed) return null
+            if (!cacheRetentionMatchesLocked(key, allocationId) || !isCurrent()) return null
+            cacheRetentions[key]
+            val allocation = allocations[allocationId] ?: return null
+            incrementRetentionLocked(allocation, DesktopReaderImageMemoryRetention.ACTIVE)
+            revision++
+            AuthorityLease(this, allocationId, DesktopReaderImageMemoryRetention.ACTIVE)
+        }
+        publishSnapshot()
+        return lease
     }
 
     fun touchCache(key: ReaderPageDecodeKey, allocationId: Long): Boolean = synchronized(lock) {
@@ -159,7 +174,11 @@ internal class DesktopReaderImageMemoryAuthority(
         val released = synchronized(lock) {
             removeCacheRetentionLocked(key, allocationId, notify = false) ?: return false
         }
-        releaseResources(listOf(released))
+        try {
+            releaseResources(listOf(released))
+        } finally {
+            publishSnapshot()
+        }
         return true
     }
 
@@ -193,7 +212,11 @@ internal class DesktopReaderImageMemoryAuthority(
             revision++
             resources
         }
-        releaseResources(released)
+        try {
+            releaseResources(released)
+        } finally {
+            publishSnapshot()
+        }
     }
 
     private fun retain(
@@ -203,13 +226,15 @@ internal class DesktopReaderImageMemoryAuthority(
         require(retention != DesktopReaderImageMemoryRetention.CACHE) {
             "CACHE retention requires an identity and must use admitCache"
         }
-        return synchronized(lock) {
+        val lease = synchronized(lock) {
             check(!closed) { "Desktop reader image memory authority is closed" }
             val allocation = checkNotNull(allocations[allocationId]) { "Image allocation is released" }
             incrementRetentionLocked(allocation, retention)
             revision++
             AuthorityLease(this, allocationId, retention)
         }
+        publishSnapshot()
+        return lease
     }
 
     internal fun retainAllocation(
@@ -227,7 +252,11 @@ internal class DesktopReaderImageMemoryAuthority(
                 addAll(rebalanceLocked())
             }
         }
-        releaseResources(released)
+        try {
+            releaseResources(released)
+        } finally {
+            publishSnapshot()
+        }
     }
 
     private fun rebalanceLocked(): List<ReleasedResource> {
@@ -317,6 +346,11 @@ internal class DesktopReaderImageMemoryAuthority(
         }
         is DesktopReaderImageAssetLease -> lease.memoryAllocationId(this)
         else -> error("Unsupported image memory lease implementation")
+    }
+
+    private fun publishSnapshot() {
+        val current = snapshot()
+        mutableSnapshots.update { previous -> if (current.revision > previous.revision) current else previous }
     }
 
     private fun releaseResources(resources: List<ReleasedResource>) {

@@ -429,6 +429,7 @@ class PagerPageHolder(
         if (!imageCallbackCurrent() || boundContent != page.contentIdentity()) return
         super.onImageLoaded()
         progressIndicator?.hide()
+        presentationScope?.let { (owner, ticket) -> owner.preparePage(ticket, owner.identity.pageIds[page.index]) }
         renderedContent = boundContent
         viewer.onHolderDisplayStateChanged(this)
     }

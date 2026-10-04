@@ -69,6 +69,7 @@ fun ReaderAppBars(
     isAutomaticMode: Boolean = false,
     isPairingSaving: Boolean = false,
     isPairingUnavailable: Boolean = false,
+    isPairingRecordReady: Boolean = true,
     onRetryPairing: () -> Unit = {},
     onClickAdjustPairing: () -> Unit = {},
 ) {
@@ -137,6 +138,7 @@ fun ReaderAppBars(
                     isAutomaticMode = isAutomaticMode,
                     isPairingSaving = isPairingSaving,
                     isPairingUnavailable = isPairingUnavailable,
+                    isPairingRecordReady = isPairingRecordReady,
                     onRetryPairing = onRetryPairing,
                     onClickAdjustPairing = onClickAdjustPairing,
                 )

@@ -199,6 +199,10 @@ class DesktopReaderSession(
     internal val currentNextChapterPrefetchMode: NextChapterPrefetchMode
         get() = synchronized(lock) { nextChapterPrefetchMode }
     internal fun pageRunnerSnapshot(): ReaderPageMaterializeRunnerSnapshot = pageRunner.snapshot()
+    internal val physicalWorkCount get() = ReaderPageMaterializeRunner.processPhysicalWorkCount
+    internal val foregroundRequestRevision = requestRevision.asStateFlow()
+    internal val foregroundRequestsIdle: Boolean
+        get() = synchronized(lock) { schedulerIdleLocked() } && physicalWorkCount.value == 0
 
     fun start() {
         synchronized(lock) {
@@ -660,6 +664,7 @@ class DesktopReaderSession(
                     val request = core.pollNextPageRequest()
                     if (request == null) {
                         if (!completedWithoutMaterialization) return@synchronized null
+                        requestRevision.value++
                         // Completing a missing or already-ready entry can be the transition to shared scheduler idle.
                         adjacentPageListJob = maybeStartAdjacentPageListLocked()
                         enqueueAdjacentImagesLocked()

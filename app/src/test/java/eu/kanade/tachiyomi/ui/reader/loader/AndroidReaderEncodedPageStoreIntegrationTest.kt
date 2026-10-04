@@ -6,6 +6,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import mihon.domain.reader.session.EncodedPageRef
@@ -29,6 +30,182 @@ class AndroidReaderEncodedPageStoreIntegrationTest {
 
     @TempDir
     lateinit var cacheDirectory: Path
+
+    @Test
+    fun `same ref replacement waits through original writer failure cleanup`() = runTest {
+        val context = mockk<Context>()
+        every { context.cacheDir } returns cacheDirectory.toFile()
+        val cache = ChapterCache(context, Json, maxCacheBytes = 64)
+        val store = AndroidReaderEncodedPageStore(cache, maxBytes = 64)
+        val ref = EncodedPageRef("https://example.test/replacement")
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var replacementEntered = false
+        val original = async {
+            runCatching {
+                store.store(ref) {
+                    assertTrue(cache.putImageToCache(ref.value, response(ref, "old")))
+                    entered.complete(Unit)
+                    release.await()
+                    throw IOException("Original writer failed after commit")
+                }
+            }
+        }
+        entered.await()
+        val replacement = async {
+            store.store(ref) {
+                replacementEntered = true
+                assertTrue(cache.putImageToCache(ref.value, response(ref, "replacement")))
+                cache.getImageFile(ref.value).length()
+            }
+        }
+        try {
+            runCurrent()
+            assertFalse(replacementEntered, "Replacement must wait until the original same-ref cleanup completes")
+            release.complete(Unit)
+            assertInstanceOf(IOException::class.java, original.await().exceptionOrNull())
+            assertInstanceOf(EncodedPageStoreWriteResult.Stored::class.java, replacement.await())
+            assertEquals("replacement", cache.getImageFile(ref.value).readText())
+            assertEquals(setOf(ref), store.diagnostics().refs)
+        } finally {
+            release.complete(Unit)
+            original.await()
+            replacement.await()
+            cache.close()
+        }
+    }
+
+    @Test
+    fun `another ref remains writable while original ref writer is held`() = runTest {
+        val context = mockk<Context>()
+        every { context.cacheDir } returns cacheDirectory.toFile()
+        val cache = ChapterCache(context, Json, maxCacheBytes = 64)
+        val store = AndroidReaderEncodedPageStore(cache, maxBytes = 64)
+        val originalRef = EncodedPageRef("https://example.test/held")
+        val anotherRef = EncodedPageRef("https://example.test/independent")
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val original = async {
+            store.store(originalRef) {
+                entered.complete(Unit)
+                release.await()
+                assertTrue(cache.putImageToCache(originalRef.value, response(originalRef, "held")))
+                cache.getImageFile(originalRef.value).length()
+            }
+        }
+        try {
+            entered.await()
+            val another = store.store(anotherRef) {
+                assertTrue(cache.putImageToCache(anotherRef.value, response(anotherRef, "independent")))
+                cache.getImageFile(anotherRef.value).length()
+            }
+            assertInstanceOf(EncodedPageStoreWriteResult.Stored::class.java, another)
+            assertFalse(original.isCompleted)
+            assertEquals("independent", cache.getImageFile(anotherRef.value).readText())
+        } finally {
+            release.complete(Unit)
+            original.await()
+            cache.close()
+        }
+    }
+
+    @Test
+    fun `cancelled waiting same ref writer never enters or removes original bytes`() = runTest {
+        val context = mockk<Context>()
+        every { context.cacheDir } returns cacheDirectory.toFile()
+        val cache = ChapterCache(context, Json, maxCacheBytes = 64)
+        val store = AndroidReaderEncodedPageStore(cache, maxBytes = 64)
+        val ref = EncodedPageRef("https://example.test/cancel-waiter")
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var waitingWriterEntered = false
+        val original = async {
+            store.store(ref) {
+                assertTrue(cache.putImageToCache(ref.value, response(ref, "original")))
+                entered.complete(Unit)
+                release.await()
+                cache.getImageFile(ref.value).length()
+            }
+        }
+        entered.await()
+        val waiting = async {
+            store.store(ref) {
+                waitingWriterEntered = true
+                assertTrue(cache.putImageToCache(ref.value, response(ref, "cancelled")))
+                cache.getImageFile(ref.value).length()
+            }
+        }
+        try {
+            runCurrent()
+            waiting.cancel()
+            waiting.join()
+            assertFalse(waitingWriterEntered, "Cancellation before entering the same-ref write must not invoke writer")
+            assertEquals("original", cache.getImageFile(ref.value).readText())
+            release.complete(Unit)
+            original.await()
+            var laterWriterEntered = false
+            store.store(ref) {
+                laterWriterEntered = true
+                assertTrue(cache.putImageToCache(ref.value, response(ref, "original")))
+                cache.getImageFile(ref.value).length()
+            }
+            assertTrue(laterWriterEntered)
+            assertEquals("original", cache.getImageFile(ref.value).readText())
+        } finally {
+            release.complete(Unit)
+            original.await()
+            waiting.cancel()
+            waiting.join()
+            cache.close()
+        }
+    }
+
+    @Test
+    fun `session end prevents queued same ref writer from entering after old physical work`() = runTest {
+        val context = mockk<Context>()
+        every { context.cacheDir } returns cacheDirectory.toFile()
+        val cache = ChapterCache(context, Json, maxCacheBytes = 64)
+        val store = AndroidReaderEncodedPageStore(cache, maxBytes = 64)
+        val ref = EncodedPageRef("https://example.test/end-with-waiter")
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var waitingWriterEntered = false
+        val original = async {
+            runCatching {
+                store.store(ref) {
+                    entered.complete(Unit)
+                    release.await()
+                    assertTrue(cache.putImageToCache(ref.value, response(ref, "late")))
+                    cache.getImageFile(ref.value).length()
+                }
+            }
+        }
+        entered.await()
+        val waiting = async {
+            runCatching {
+                store.store(ref) {
+                    waitingWriterEntered = true
+                    assertTrue(cache.putImageToCache(ref.value, response(ref, "queued")))
+                    cache.getImageFile(ref.value).length()
+                }
+            }
+        }
+        try {
+            runCurrent()
+            store.endSession()
+            release.complete(Unit)
+            assertInstanceOf(IllegalStateException::class.java, original.await().exceptionOrNull())
+            assertInstanceOf(IllegalStateException::class.java, waiting.await().exceptionOrNull())
+            assertFalse(waitingWriterEntered)
+            assertFalse(cache.isImageInCache(ref.value))
+            assertFalse(store.diagnostics().isSessionOpen)
+        } finally {
+            release.complete(Unit)
+            original.await()
+            waiting.await()
+            cache.close()
+        }
+    }
 
     @Test
     fun `quota eviction survives cache reopen with physical presence as authority`() = runTest {

@@ -14,6 +14,16 @@ class SharedSpreadMatchingContractTest {
     private val artwork = List(50) { if (it % 2 == 0) 0xffa0a0a0.toInt() else 0xff404080.toInt() }
 
     @Test
+    fun `online selection reserves local better pair before more distant stronger edge`() {
+        val candidates = listOf(
+            ReaderSpreadCandidate(pages[1], pages[2], 10.0),
+            ReaderSpreadCandidate(pages[2], pages[3], 5.0),
+            ReaderSpreadCandidate(pages[3], pages[4], 0.0),
+        )
+        assertEquals(setOf(pages[2] to pages[3]), SharedSpreadMatching.select(pages, candidates))
+    }
+
+    @Test
     fun `fifty source samples follow normalized EXIF spine sides including squares`() {
         val turned = requireNotNull(SharedSpreadMatching.plan(60, 40, ReaderImageOrientation.CLOCKWISE))
         assertEquals(50, turned.left.size)
@@ -109,7 +119,7 @@ class SharedSpreadMatchingContractTest {
             order.forEach { assertTrue(owner.accept(owner.request(pages[it]), samples)) }
             var repairs = 0
             while (true) {
-                val missing = owner.requiredSamples(portraitFacts())
+                val missing = owner.requiredSamples(portraitFacts(), pages.drop(1))
                 if (missing.isEmpty()) break
                 assertTrue(missing.size <= 2)
                 assertTrue(++repairs <= 3, "Every repair must finish a previously unscored adjacent edge")

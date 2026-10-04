@@ -95,6 +95,7 @@ class ReaderMaterializeProductionWiringTest {
         val source = mockk<HttpSource>()
         val cache = mockk<ChapterCache>()
         val response = mockk<Response>()
+        every { response.close() } returns Unit
         every { cache.isImageInCache(any()) } returns true
         every { cache.putImageToCache(any(), any()) } returns true
         every { cache.getImageFile(any()) } returns File("unused")
@@ -130,6 +131,7 @@ class ReaderMaterializeProductionWiringTest {
         val source = mockk<HttpSource>()
         val cache = mockk<ChapterCache>()
         val response = mockk<Response>()
+        every { response.close() } returns Unit
         val cachedUrls = mutableSetOf<String>()
         var attempts = 0
         every { cache.isImageInCache(any()) } answers { firstArg<String>() in cachedUrls }
@@ -180,6 +182,7 @@ class ReaderMaterializeProductionWiringTest {
         val source = mockk<HttpSource>()
         val cache = mockk<ChapterCache>()
         val response = mockk<Response>()
+        every { response.close() } returns Unit
         every { cache.isImageInCache(any()) } returns false
         every { cache.putImageToCache(any(), any()) } returns false
         every { cache.getImageFile(any()) } returns File("missing")

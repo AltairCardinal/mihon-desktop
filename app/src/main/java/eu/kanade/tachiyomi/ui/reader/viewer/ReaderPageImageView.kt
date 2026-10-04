@@ -1,11 +1,14 @@
 package eu.kanade.tachiyomi.ui.reader.viewer
 
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.PointF
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.drawable.Animatable
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.os.AsyncTask
 import android.util.AttributeSet
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -23,6 +26,7 @@ import coil3.asDrawable
 import coil3.dispose
 import coil3.imageLoader
 import coil3.request.CachePolicy
+import coil3.request.Disposable
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import coil3.size.Precision
@@ -44,11 +48,17 @@ import eu.kanade.tachiyomi.data.coil.readerDecodeIdentity
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonSubsamplingImageView
 import eu.kanade.tachiyomi.util.system.animatorDurationScale
 import eu.kanade.tachiyomi.util.view.isVisibleOnScreen
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import mihon.domain.reader.PageDecodeCachePolicy
 import okio.BufferedSource
 import tachiyomi.core.common.util.system.ImageUtil
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * A wrapper view for showing page image.
@@ -66,6 +76,20 @@ open class ReaderPageImageView @JvmOverloads constructor(
     private val isWebtoon: Boolean = false,
 ) : FrameLayout(context, attrs, defStyleAttrs, defStyleRes) {
 
+    companion object {
+        // These original process-shared decoder tasks can outlive a recycled view or reader.
+        private val decoderTasks = MutableStateFlow(0)
+        internal val foregroundWork: StateFlow<Int> = decoderTasks.asStateFlow()
+
+        internal fun beginForegroundWork(): () -> Unit {
+            val finished = AtomicBoolean()
+            decoderTasks.update { it + 1 }
+            return {
+                if (finished.compareAndSet(false, true)) decoderTasks.update { it - 1 }
+            }
+        }
+    }
+
     private val alwaysDecodeLongStripWithSSIV by lazy {
         Injekt.get<BasePreferences>().alwaysDecodeLongStripWithSSIV().get()
     }
@@ -75,9 +99,16 @@ open class ReaderPageImageView @JvmOverloads constructor(
     private var config: Config? = null
     private val decodeIdentitySource = DecodeRequestIdentitySource()
     private var imageCallbackIsCurrent: () -> Boolean = { true }
+    private var animatedDrawableIsCurrent: () -> Boolean = { false }
     private var regionInputStream: java.io.InputStream? = null
 
     var onImageLoaded: (() -> Unit)? = null
+
+    /** Acquires physical geometry immediately before the child can expose its first pixels. */
+    var beforeImageDraw: ((width: Int, height: Int) -> Boolean)? = null
+
+    /** A visible, actually loaded child has completed its native drawing pass. */
+    var onImageDrawn: (() -> Unit)? = null
     var onImageLoadError: ((Throwable?) -> Unit)? = null
     var onScaleChanged: ((newScale: Float) -> Unit)? = null
     var onViewClicked: (() -> Unit)? = null
@@ -86,6 +117,21 @@ open class ReaderPageImageView @JvmOverloads constructor(
      * For automatic background. Will be set as background color when [onImageLoaded] is called.
      */
     var pageBackground: Drawable? = null
+
+    private fun prepareNativeImageDraw(width: Int, height: Int): Boolean {
+        if (beforeImageDraw == null && onImageDrawn == null) return true
+        return imageCallbackIsCurrent() && width > 0 && height > 0 && getGlobalVisibleRect(Rect()) &&
+            beforeImageDraw?.invoke(width, height) != false
+    }
+
+    private fun nativeImageDrawn() {
+        if (imageCallbackIsCurrent()) onImageDrawn?.invoke()
+    }
+
+    /** A new viewport capability must repaint an already decoded child RenderNode. */
+    internal fun invalidateImageDraw() {
+        pageView?.invalidate()
+    }
 
     @CallSuper
     open fun onImageLoaded() {
@@ -167,14 +213,15 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     fun setImage(drawable: Drawable, config: Config) {
-        imageCallbackIsCurrent = { true }
+        val identity = decodeIdentitySource.next(-1)
+        imageCallbackIsCurrent = identity::isCurrent
         this.config = config
         if (drawable is Animatable) {
             prepareAnimatedImageView()
-            setAnimatedImage(drawable, config)
+            setAnimatedImage(drawable, config, identity, identity::isCurrent)
         } else {
             prepareNonAnimatedImageView()
-            setNonAnimatedImage(drawable, config)
+            setNonAnimatedImage(drawable, config, identity, identity::isCurrent)
         }
     }
 
@@ -300,8 +347,22 @@ open class ReaderPageImageView @JvmOverloads constructor(
         pageView = if (isWebtoon) {
             WebtoonSubsamplingImageView(context)
         } else {
-            SubsamplingScaleImageView(context)
+            object : SubsamplingScaleImageView(context) {
+                override fun onDraw(canvas: Canvas) {
+                    val drawable = isReady || isImageLoaded
+                    if (drawable) {
+                        val dimensions = config?.sourceOrientation?.orientedSize(sWidth, sHeight)
+                            ?: mihon.domain.reader.ReaderPageSize(sWidth, sHeight)
+                        if (!prepareNativeImageDraw(dimensions.width, dimensions.height)) return
+                    }
+                    // A metadata-only pass initializes normal base tiles without locking geometry.
+                    super.onDraw(canvas)
+                    if (drawable && isReady) nativeImageDrawn()
+                }
+            }
         }.apply {
+            // This SSIV version defaults to the same AsyncTask pool; only observe its original tasks.
+            setExecutor(ReaderImageForegroundExecutor(AsyncTask.THREAD_POOL_EXECUTOR))
             setMaxTileSize(ImageUtil.hardwareBitmapThreshold)
             setDoubleTapZoomStyle(SubsamplingScaleImageView.ZOOM_FOCUS_CENTER)
             setPanLimit(SubsamplingScaleImageView.PAN_LIMIT_INSIDE)
@@ -413,7 +474,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
                     .customDecoder(true)
                     .crossfade(false)
                     .build()
-                    .let(context.imageLoader::enqueue)
+                    .let { request -> observeReaderImageRequest { context.imageLoader.enqueue(request) } }
             }
             else -> {
                 throw IllegalArgumentException("Not implemented for class ${data::class.simpleName}")
@@ -442,7 +503,15 @@ open class ReaderPageImageView @JvmOverloads constructor(
         pageView = if (isWebtoon) {
             AppCompatImageView(context)
         } else {
-            PhotoView(context)
+            object : PhotoView(context) {
+                override fun onDraw(canvas: Canvas) {
+                    val image = drawable
+                    val current = image != null && animatedDrawableIsCurrent()
+                    if (current && !prepareNativeImageDraw(image!!.intrinsicWidth, image.intrinsicHeight)) return
+                    super.onDraw(canvas)
+                    if (current) nativeImageDrawn()
+                }
+            }
         }.apply {
             adjustViewBounds = true
 
@@ -491,8 +560,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
             .diskCachePolicy(CachePolicy.DISABLED)
             .target(
                 onSuccess = { result ->
-                    if (!callbackIsCurrent()) return@target
+                    if (!callbackIsCurrent() || identity?.isCurrent() == false) return@target
                     val drawable = result.asDrawable(context.resources)
+                    animatedDrawableIsCurrent = { callbackIsCurrent() && identity?.isCurrent() != false }
                     setImageDrawable(drawable)
                     (drawable as? Animatable)?.start()
                     isVisible = true
@@ -501,13 +571,13 @@ open class ReaderPageImageView @JvmOverloads constructor(
             )
             .listener(
                 onError = { _, result ->
-                    if (!callbackIsCurrent()) return@listener
+                    if (!callbackIsCurrent() || identity?.isCurrent() == false) return@listener
                     onImageLoadError(result.throwable)
                 },
             )
             .crossfade(false)
             .build()
-        context.imageLoader.enqueue(request)
+        observeReaderImageRequest { context.imageLoader.enqueue(request) }
     }
 
     private fun Int.getSystemScaledDuration(): Int {
@@ -535,4 +605,35 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 }
 
+/** Initial Coil work remains observed until its original deferred actually completes, including cancellation. */
+internal fun observeReaderImageRequest(enqueue: () -> Disposable): Disposable {
+    val finished = ReaderPageImageView.beginForegroundWork()
+    return try {
+        enqueue().also { it.job.invokeOnCompletion { finished() } }
+    } catch (failure: Throwable) {
+        finished()
+        throw failure
+    }
+}
+
 private const val MAX_ZOOM_SCALE = 5F
+
+/** Keeps accepted queued/running native work busy until its original Runnable actually exits. */
+internal class ReaderImageForegroundExecutor(private val delegate: Executor) : Executor {
+    override fun execute(command: Runnable) {
+        val finished = ReaderPageImageView.beginForegroundWork()
+        try {
+            delegate.execute {
+                try {
+                    command.run()
+                } finally {
+                    finished()
+                }
+            }
+        } catch (failure: Throwable) {
+            // Also handles rejected submission or a synchronous delegate; completion is exactly once.
+            finished()
+            throw failure
+        }
+    }
+}

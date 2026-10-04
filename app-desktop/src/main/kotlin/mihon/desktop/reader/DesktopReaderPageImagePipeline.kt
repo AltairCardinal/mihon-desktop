@@ -11,6 +11,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import mihon.domain.reader.PageDecodePurpose
@@ -249,6 +250,8 @@ class DesktopReaderPageImagePipeline internal constructor(
         var pendingAcquires: Int = 0
         var decodedLease: DesktopReaderImageAssetLease? = null
         var fullCacheClaimed: Boolean = false
+        var foreground = false
+        var optional = false
     }
 
     private class ContentSessionEntry(
@@ -284,6 +287,12 @@ class DesktopReaderPageImagePipeline internal constructor(
     }
 
     internal val cacheRevision: StateFlow<Long> = mutableCacheRevision.asStateFlow()
+
+    /** Queued or executing original work; completed cache and presentation leases are not busy. */
+    internal val foregroundWork: StateFlow<Int> = mutableForegroundWork.asStateFlow()
+
+    /** Original optional tasks remain qualified until completion, even after their caller leaves. */
+    internal val optionalWork: StateFlow<Int> = mutableOptionalWork.asStateFlow()
 
     internal suspend fun acquire(key: ReaderPageDecodeKey): DesktopReaderImageAssetLease? =
         acquireWithLoader(key) { load(key) }
@@ -328,6 +337,7 @@ class DesktopReaderPageImagePipeline internal constructor(
     internal suspend fun acquireRegionTile(
         session: DesktopReaderRegionContentSession,
         key: ReaderPageDecodeKey,
+        optional: Boolean = false,
     ): DesktopReaderImageAssetLease? {
         require(key.purpose == PageDecodePurpose.REGION_TILE) {
             "Region sessions only accept region-tile requests"
@@ -335,7 +345,7 @@ class DesktopReaderPageImagePipeline internal constructor(
         require(key.contentKey == session.contentKey) {
             "Region tile and source session identities must match"
         }
-        return acquireWithLoader(key) {
+        return acquireWithLoader(key, optional) {
             session.withContent { encoded -> decodeContent(key, encoded) }
         }
     }
@@ -363,13 +373,21 @@ class DesktopReaderPageImagePipeline internal constructor(
 
     private suspend fun acquireWithLoader(
         key: ReaderPageDecodeKey,
+        optional: Boolean = false,
         loader: suspend () -> DesktopReaderImageAssetLease?,
     ): DesktopReaderImageAssetLease? {
         val entry = synchronized(lock) {
             check(!closed) { "Desktop reader page image pipeline is closed" }
             if (clearing || !isCurrentAttemptLocked(key.contentKey)) return null
             cacheFor(key)?.acquire(key)?.let { return it }
-            entries.getOrPut(key) { createEntry(key, loader) }.also {
+            entries.getOrPut(key) {
+                if (optional && mutableOptionalWork.value != 0) throw DesktopReaderOptionalWorkPaused()
+                createEntry(key, loader, optional)
+            }.also {
+                if (!optional && !it.foreground && !it.deferred.isCompleted) {
+                    it.foreground = true
+                    mutableForegroundWork.update { count -> count + 1 }
+                }
                 it.pendingAcquires++
                 it.deferred.start()
             }
@@ -640,8 +658,17 @@ class DesktopReaderPageImagePipeline internal constructor(
     private fun createEntry(
         key: ReaderPageDecodeKey,
         loader: suspend () -> DesktopReaderImageAssetLease?,
+        optional: Boolean,
     ): Entry {
         val entry = Entry()
+        if (optional) {
+            // Different runtime locks still observe the same original process decoder resources.
+            if (!mutableOptionalWork.compareAndSet(0, 1)) throw DesktopReaderOptionalWorkPaused()
+            entry.optional = true
+        } else {
+            entry.foreground = true
+            mutableForegroundWork.update { count -> count + 1 }
+        }
         entry.deferred = scope.async(start = CoroutineStart.LAZY) {
             val decoded = loader()
             try {
@@ -671,6 +698,14 @@ class DesktopReaderPageImagePipeline internal constructor(
         entry.deferred.invokeOnCompletion {
             var leaseToClose: DesktopReaderImageAssetLease? = null
             synchronized(lock) {
+                if (entry.foreground) {
+                    entry.foreground = false
+                    mutableForegroundWork.update { count -> count - 1 }
+                }
+                if (entry.optional) {
+                    entry.optional = false
+                    mutableOptionalWork.update { count -> count - 1 }
+                }
                 leaseToClose = removeIfUnusedLocked(key, entry)
             }
             leaseToClose?.close()
@@ -822,6 +857,9 @@ class DesktopReaderPageImagePipeline internal constructor(
     }
 
     companion object {
+        // Closing a runtime cannot end native work still executing on the original shared dispatcher.
+        private val mutableForegroundWork = MutableStateFlow(0)
+        private val mutableOptionalWork = MutableStateFlow(0)
         const val DEFAULT_CACHE_ENTRIES = 7
         const val DEFAULT_CACHE_BYTES = 128L * 1024L * 1024L
         const val DEFAULT_TILE_CACHE_ENTRIES = 8
@@ -880,11 +918,11 @@ internal class DesktopReaderRegionContentSession(
         withContent { Unit }
     }
 
-    suspend fun acquireTile(key: ReaderPageDecodeKey): DesktopReaderImageAssetLease? {
+    suspend fun acquireTile(key: ReaderPageDecodeKey, optional: Boolean = false): DesktopReaderImageAssetLease? {
         synchronized(lock) {
             check(!closed) { "Desktop reader region content session is closed" }
         }
-        return pipeline.acquireRegionTile(this, key)
+        return pipeline.acquireRegionTile(this, key, optional)
     }
 
     suspend fun <T> withContent(block: suspend (ByteArray) -> T): T {

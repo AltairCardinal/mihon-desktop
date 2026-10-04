@@ -153,6 +153,7 @@ internal fun SinglePagePagerViewer(
         idle = !pagerState.isScrollInProgress && pagerState.settledPage == selectedIndex &&
             (programmaticTarget.value?.let { it == selectedIndex } ?: true),
         onVisiblePagesChanged = onVisiblePagesChanged,
+        navigationLocation = navigationIntent.value?.logicalLocation ?: nativeLocation,
     )
 
     SideEffect {
@@ -234,6 +235,13 @@ internal fun SinglePagePagerViewer(
                     sourceBounds = readySlot.sourceBounds,
                 )
                 ZoomablePageBox(
+                    onPagePrepared = { width, height ->
+                        kotlin.math.abs(pagerState.getOffsetDistanceInPages(pagerIndex)) < 1f &&
+                            (
+                                unit.id != selectedUnit.id ||
+                                    nativePresentation.prepare(readySlot.id, readyPage, width, height)
+                                )
+                    },
                     onPageDrawn = if (unit.id == selectedUnit.id) {
                         { nativePresentation.drawn(readySlot.id) }
                     } else {

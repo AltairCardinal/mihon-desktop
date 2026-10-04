@@ -91,15 +91,29 @@ internal class MountedReaderPresentationFixture(
     mangaId: Long = 0L,
     pairingCoordinator: DesktopChapterPairingCoordinator? = null,
     initialPage: Int = case.mode.initialPage,
+    progressTracker: ReaderProgressTracker = mockk(relaxed = true),
+    automaticSpreadMatching: Boolean = false,
+    heldResponsePage: Int? = null,
 ) : AutoCloseable {
     private val productionFixture = ReaderProductionTestFixture(root, coroutineContext)
     private val previousInjekt = Injekt
     private val controller = ReaderTestModeController()
+    private val responseGate = java.util.concurrent.CountDownLatch(1)
     private val source = if (case.route == MountedReaderContentRoute.ONLINE) {
-        repeat(pageCount) {
-            productionFixture.server.enqueue(
-                MockResponse.Builder().body(Buffer().write(productionFixture.pageBytes)).build(),
-            )
+        if (heldResponsePage == null) {
+            repeat(pageCount) {
+                productionFixture.server.enqueue(
+                    MockResponse.Builder().body(Buffer().write(productionFixture.pageBytes)).build(),
+                )
+            }
+        } else {
+            productionFixture.server.dispatcher = object : mockwebserver3.Dispatcher() {
+                override fun dispatch(request: mockwebserver3.RecordedRequest): MockResponse {
+                    val page = request.url.encodedPath.substringAfterLast('/').substringBefore('.').toInt()
+                    if (page == heldResponsePage) responseGate.await(30, java.util.concurrent.TimeUnit.SECONDS)
+                    return MockResponse.Builder().body(Buffer().write(productionFixture.pageBytes)).build()
+                }
+            }
         }
         MountedOnlineReaderSource(
             pageCount = pageCount,
@@ -139,6 +153,8 @@ internal class MountedReaderPresentationFixture(
     }
 
     init {
+        productionFixture.readerPreferences.isAutoSpreadMatching = automaticSpreadMatching
+        check(productionFixture.readerPreferences.isAutoSpreadMatching == automaticSpreadMatching)
         ReaderIoTestModeBridge.install(controller)
         var now = 0L
         val runtimeFactory = DesktopReaderRuntimeFactory(
@@ -146,7 +162,7 @@ internal class MountedReaderPresentationFixture(
             downloadProvider = DesktopDownloadProvider(root.resolve("downloads")),
             sourceManager = FakeDesktopSourceManager(listOfNotNull(source)),
             networkHelper = NetworkHelper(OkHttpClient()),
-            progressTracker = mockk<ReaderProgressTracker>(relaxed = true),
+            progressTracker = progressTracker,
             mangaRepository = null,
             encodedCacheDirectory = root.resolve("encoded"),
             readerIoProbe = ReaderIoTestModeBridge,
@@ -198,6 +214,7 @@ internal class MountedReaderPresentationFixture(
     }
 
     override fun close() {
+        responseGate.countDown()
         releaseBackgroundGates()
         productionFixture.close()
         ReaderIoTestModeBridge.clear(controller)

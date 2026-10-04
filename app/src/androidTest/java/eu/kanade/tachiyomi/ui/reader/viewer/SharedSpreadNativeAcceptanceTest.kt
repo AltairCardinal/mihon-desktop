@@ -60,7 +60,7 @@ class SharedSpreadNativeAcceptanceTest {
     }
 
     /** Fixture pixels, transformed by Android Matrix then labelled with original EXIF metadata. */
-    private fun encodedPage(index: Int, exif: Int, alpha: Boolean): ByteArray {
+    internal fun encodedPage(index: Int, exif: Int, alpha: Boolean): ByteArray {
         val bitmap = Bitmap.createBitmap(40, 60, Bitmap.Config.ARGB_8888)
         bitmap.eraseColor(
             when (index) {

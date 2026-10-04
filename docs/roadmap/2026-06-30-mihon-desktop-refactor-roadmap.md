@@ -4,7 +4,7 @@
 
 正式版日期：2026-06-30
 
-- active-child-plan: [双端共享双页：不阻塞阅读与稳定呈现](./2026-10-01-shared-dual-page-rules-and-repair-roadmap.md)（原专项继续使用 worktree `0877/mihon`；2026-10-04完成v3增量roadmap，新增代码尚未实施，最终交付仍待完成；其他专项不在本 worktree 恢复）
+- active-child-plan: [双端共享双页：不阻塞阅读与稳定呈现](./2026-10-01-shared-dual-page-rules-and-repair-roadmap.md)（原专项继续使用 worktree `0877/mihon`；2026-10-05，v3增量SP01共享及两端接线、资源／操作、开发性能与独审／相关验证已完成并随功能提交勾选；正式交付DP02仍待；其他专项不在本 worktree 恢复）
 
 - 原作者页体验计划保留历史实施和待修复记录；本 worktree 激活前没有作者代码或其他未提交改动，切换不覆盖其他 worktree 的工作。
 

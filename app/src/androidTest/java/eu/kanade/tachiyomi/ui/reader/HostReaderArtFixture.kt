@@ -20,14 +20,23 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.platform.app.InstrumentationRegistry
+import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
+import mihon.domain.reader.scheduler.ReaderPageMaterializeRunner
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import okhttp3.Response
+import okhttp3.ResponseBody
+import okio.Buffer
+import okio.ForwardingSource
+import okio.buffer
 import org.json.JSONArray
 import org.json.JSONObject
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -36,14 +45,51 @@ import java.security.MessageDigest
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicIntegerArray
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import java.util.zip.ZipInputStream
 
 /** Calls the installed candidate through Android component/View and retained extension APIs. */
-internal class HostReaderArtFixture(private val kind: String) : AutoCloseable {
+internal class HostReaderArtFixture(
+    private val kind: String,
+    originalArchive: String? = null,
+    private val performancePageCount: Int? = null,
+) : AutoCloseable {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val cacheDiagnostic = InstrumentationRegistry.getArguments()
+        .getString("performanceCacheDiagnostic") == "true"
+    private val diagnosticCache by lazy { Injekt.get<ChapterCache>() }
+    private val diagnosticRequestSequence = AtomicInteger()
     val context = instrumentation.targetContext
+    private val originalContent = originalArchive?.let { name ->
+        val expected = when (name) {
+            "real-b1-original.cbz" ->
+                "fec7ffef2dc6773c0c917b5e9961fff745cca5eb9eaccc82deee2dffe26b522b" to 17
+            "real-b2-original.cbz" ->
+                "760c81b12dee475288833b29b1f965fa097d4dbafbc36b6cc62f3e2d5a9ac439" to 22
+            else -> error("Only the two independently verified original archives are accepted")
+        }
+        val archive = staged(name)
+        check(byteIdentity(archive).substringAfter("sha256=") == expected.first)
+        val entries = ZipInputStream(ByteArrayInputStream(archive)).use { zip ->
+            buildList {
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    if (!entry.isDirectory) add(entry.name to zip.readBytes())
+                }
+            }.sortedBy { it.first }
+        }
+        check(entries.size == expected.second)
+        byteIdentity(archive) to entries
+    }
+    val originalArchiveIdentity: String? get() = originalContent?.first
+    fun originalEncodedPage(index: Int): ByteArray {
+        val entries = requireNotNull(originalContent).second
+        return entries[if (performancePageCount == null) index else index % entries.size].second
+    }
 
     // AndroidPreferenceStore consumes this same default SharedPreferences file. Use its public Android
     // storage boundary rather than host interfaces that R8 has devirtualized into concrete classes.
@@ -54,33 +100,79 @@ internal class HostReaderArtFixture(private val kind: String) : AutoCloseable {
         }
     }
     val success = if (kind == "copymanga") {
-        staged("copy/success.json")
+        staged("copy/success.json").let { captured ->
+            if (performancePageCount == null) {
+                captured
+            } else {
+                check(originalContent != null && performancePageCount == 300)
+                val document = JSONObject(captured.toString(Charsets.UTF_8))
+                val chapter = document.getJSONObject("results").getJSONObject("chapter")
+                val prototype = chapter.getJSONArray("contents").getJSONObject(0)
+                chapter.put(
+                    "contents",
+                    JSONArray(
+                        (0 until performancePageCount).map { index ->
+                            JSONObject(prototype.toString()).put(
+                                "url",
+                                android.net.Uri.parse(prototype.getString("url")).buildUpon()
+                                    .path("/sp01-performance/$index.jpg").build().toString(),
+                            )
+                        },
+                    ),
+                )
+                chapter.put("words", JSONArray((0 until performancePageCount).toList()))
+                document.toString().toByteArray(Charsets.UTF_8)
+            }
+        }
     } else {
-        instrumentation.context.assets.open("shared-reader-manhuagui-packed.html").use { it.readBytes() }
+        instrumentation.context.assets.open("shared-reader-manhuagui-packed.html").use {
+            it.readBytes()
+        }.let { packed ->
+            originalContent?.let { (_, entries) ->
+                check(entries.size == 17)
+                val files = JSONArray(entries.map { it.first }).toString()
+                val expanded = packed.toString(Charsets.UTF_8).replace("\"files\":[\"001.jpg\"]", "\"files\":$files")
+                check(expanded != packed.toString(Charsets.UTF_8))
+                expanded.toByteArray(Charsets.UTF_8)
+            } ?: packed
+        }
     }
     val response = AtomicReference(200 to success)
     val imageRequests = AtomicInteger()
-    val imagePageRequests = AtomicIntegerArray(22)
+    val responsePayloadBytes = AtomicLong()
     val virtualErrorBody = AtomicReference<ByteArray?>(null)
     val chapterRequests = AtomicInteger()
     val image = AtomicReference(png(Color.CYAN))
     private val returnedBodies = Collections.synchronizedList(mutableListOf<String>())
     private val privateRequestPaths = Collections.synchronizedList(mutableListOf<String>())
-    val images = AtomicReference<List<ByteArray>?>(null)
+    val images = AtomicReference(
+        originalContent?.second?.let { entries ->
+            List(performancePageCount ?: entries.size) { entries[it % entries.size].second }
+        },
+    )
+    val beforeImageRequest = AtomicReference<(Int) -> Unit>({})
+    val imageStatuses = AtomicReference<Map<Int, Int>>(emptyMap())
     private val imagePaths = if (kind == "copymanga") {
         JSONObject(success.toString(Charsets.UTF_8)).getJSONObject("results").getJSONObject("chapter").also { chapter ->
             val words = chapter.getJSONArray("words")
             check((0..3).map(words::getInt) == listOf(0, 1, 2, 3)) {
                 "Original Copy first four image identities must retain source order"
             }
-        }.getJSONArray("contents").let { rows ->
-            (0 until rows.length()).map {
+        }.let { chapter ->
+            val rows = chapter.getJSONArray("contents")
+            val words = chapter.getJSONArray("words")
+            val indices = (0 until rows.length()).let { indices ->
+                if (originalContent == null) indices.toList() else indices.sortedBy(words::getInt)
+            }
+            if (originalContent != null) check(indices.map(words::getInt) == (0 until rows.length()).toList())
+            indices.map {
                 android.net.Uri.parse(rows.getJSONObject(it).getString("url")).path
             }
         }
     } else {
-        listOf("/comic/123/001.jpg")
+        originalContent?.second?.map { "/comic/123/${it.first}" } ?: listOf("/comic/123/001.jpg")
     }
+    val imagePageRequests = AtomicIntegerArray(maxOf(22, imagePaths.size))
     private val chapterPath = if (kind == "copymanga") {
         val parts = input.getString("chapterUrl").split('/')
         check(parts.size == 3 && parts[1] == "chapter")
@@ -133,7 +225,8 @@ internal class HostReaderArtFixture(private val kind: String) : AutoCloseable {
                     val (status, body) = if (isImage) {
                         imageRequests.incrementAndGet()
                         imagePaths.indexOf(path).takeIf { it >= 0 }?.let { imagePageRequests.incrementAndGet(it) }
-                        200 to (images.get()?.getOrNull(imagePaths.indexOf(path)) ?: image.get())
+                        val index = imagePaths.indexOf(path)
+                        (imageStatuses.get()[index] ?: 200) to (images.get()?.getOrNull(index) ?: image.get())
                     } else if (isChapter) {
                         chapterRequests.incrementAndGet()
                         response.get()
@@ -146,8 +239,14 @@ internal class HostReaderArtFixture(private val kind: String) : AutoCloseable {
                         )
                         404 to "Unknown fixture endpoint".toByteArray(Charsets.US_ASCII)
                     }
+                    responsePayloadBytes.addAndGet(body.size.toLong())
                     val contentType = if (isImage) {
-                        "image/png"
+                        if (originalContent != null) {
+                            body.inputStream().use(tachiyomi.core.common.util.system.ImageUtil::findImageType)?.mime
+                                ?: error("Original encoded image has no supported type")
+                        } else {
+                            "image/png"
+                        }
                     } else if (!isChapter) {
                         "text/plain"
                     } else if (kind == "copymanga") {
@@ -166,7 +265,8 @@ internal class HostReaderArtFixture(private val kind: String) : AutoCloseable {
                             output.write(
                                 (
                                     "HTTP/1.1 $status Acceptance\r\nContent-Type: $contentType\r\n" +
-                                        "Content-Length: ${body.size}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"
+                                        "Content-Length: ${body.size}\r\n" +
+                                        "Cache-Control: no-store\r\nConnection: close\r\n\r\n"
                                     )
                                     .toByteArray(Charsets.US_ASCII),
                             )
@@ -191,6 +291,8 @@ internal class HostReaderArtFixture(private val kind: String) : AutoCloseable {
             check(fields.isNotEmpty())
             val route = Interceptor { chain ->
                 val request = chain.request()
+                imagePaths.indexOf(request.url.encodedPath).takeIf { it >= 0 }
+                    ?.let { beforeImageRequest.get().invoke(it) }
                 // Original Copy TextInterceptor consumes this virtual origin later in the same client chain.
                 // Changing its host would bypass the extension's real error/comment image renderer.
                 if (request.url.host == "tachiyomi-lib-textinterceptor") {
@@ -202,7 +304,12 @@ internal class HostReaderArtFixture(private val kind: String) : AutoCloseable {
                     return@Interceptor rendered
                 }
                 val local = request.url.newBuilder().scheme("http").host("127.0.0.1").port(server.localPort).build()
-                chain.proceed(request.newBuilder().url(local).build())
+                val response = chain.proceed(request.newBuilder().url(local).build())
+                if (cacheDiagnostic && response.body.contentType()?.type == "image") {
+                    observeCacheResponse(request.url.toString(), response)
+                } else {
+                    response
+                }
             }
             fields.zip(originals).forEach { (field, original) ->
                 val client = original as OkHttpClient
@@ -249,6 +356,81 @@ internal class HostReaderArtFixture(private val kind: String) : AutoCloseable {
     private fun install(name: String) {
         val result = shell("pm install -r /data/local/tmp/udp-art-native/$name.apk").toString(Charsets.UTF_8)
         check(result.contains("Success")) { "Original extension installation failed" }
+    }
+
+    /** Read-only actual cache/editor state; never call get/edit or change journal membership. */
+    private fun cacheDiagnosticState(url: String? = null): String {
+        val cache = diagnosticCache
+        val disk = ChapterCache::class.java.getDeclaredField("diskCache")
+            .apply { isAccessible = true }.get(cache)
+        val key = url?.let { eu.kanade.tachiyomi.util.storage.DiskUtil.hashKeyForDisk(it) }
+        val (active, keyEditor) = synchronized(disk) {
+            val entries = disk.javaClass.getDeclaredField("lruEntries").apply { isAccessible = true }
+                .get(disk) as Map<*, *>
+            fun editorIdentity(entry: Any?): Int? {
+                if (entry == null) return null
+                val editor = entry.javaClass.getDeclaredField("currentEditor")
+                    .apply { isAccessible = true }.get(entry)
+                return editor?.let(System::identityHashCode)
+            }
+            entries.mapNotNull { (entryKey, entry) ->
+                editorIdentity(entry)?.let { "$entryKey:$it" }
+            }.take(8) to editorIdentity(entries[key])
+        }
+        return "cache=${System.identityHashCode(cache)} key=$key keyEditor=$keyEditor editors=$active " +
+            "file=${url?.let { cache.getImageFile(it).exists() }} " +
+            "normal=${ReaderPageMaterializeRunner.processPhysicalWorkCount.value} " +
+            "native=${ReaderPageImageView.foregroundWork.value}"
+    }
+
+    /** Actual disk journal accounting, including historical orphan records from earlier raw fixture resets. */
+    fun cacheJournalState(): Pair<Long, Set<String>> {
+        val disk = ChapterCache::class.java.getDeclaredField("diskCache")
+            .apply { isAccessible = true }.get(diagnosticCache)
+        return synchronized(disk) {
+            val entries = disk.javaClass.getDeclaredField("lruEntries").apply { isAccessible = true }
+                .get(disk) as Map<*, *>
+            val bytes = disk.javaClass.getMethod("size").invoke(disk) as Long
+            bytes to entries.keys.filterIsInstance<String>().toSet()
+        }
+    }
+
+    private fun observeCacheResponse(url: String, response: Response): Response {
+        val requestId = diagnosticRequestSequence.incrementAndGet()
+        val original = response.body
+        val bytes = AtomicLong()
+        val closed = AtomicBoolean()
+        val observed = object : ForwardingSource(original.source()) {
+            override fun read(sink: Buffer, byteCount: Long): Long {
+                val result = super.read(sink, byteCount)
+                if (result > 0 && bytes.getAndAdd(result) == 0L) {
+                    android.util.Log.i(
+                        "ReaderCacheDiagnostic",
+                        "request=$requestId firstRead time=${System.nanoTime()} ${cacheDiagnosticState(url)}",
+                    )
+                }
+                return result
+            }
+
+            override fun close() {
+                try {
+                    super.close()
+                } finally {
+                    if (closed.compareAndSet(false, true)) {
+                        android.util.Log.i(
+                            "ReaderCacheDiagnostic",
+                            "request=$requestId close bytes=${bytes.get()} expected=${original.contentLength()} " +
+                                "time=${System.nanoTime()} ${cacheDiagnosticState(url)}",
+                        )
+                    }
+                }
+            }
+        }.buffer()
+        return response.newBuilder().body(object : ResponseBody() {
+            override fun contentType() = original.contentType()
+            override fun contentLength() = original.contentLength()
+            override fun source() = observed
+        }).build()
     }
 
     fun configure(
@@ -546,20 +728,28 @@ internal class HostReaderArtFixture(private val kind: String) : AutoCloseable {
         }
     }
 
-    fun launch() {
+    fun launch(initialPage: Int = 0) {
         finish()
-        activity = instrumentation.startActivitySync(
-            Intent().apply {
-                setClassName(context.packageName, "eu.kanade.tachiyomi.ui.reader.ReaderActivity")
-                putExtra("manga", input.getLong("mangaId"))
-                putExtra("chapter", input.getLong("chapterId"))
-                putExtra("resume", false)
-                putExtra("resumeWithinChapter", false)
-                // Existing Android SavedState input fixes the initial logical page, never final grouping.
-                putExtra("page_index", 0)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            },
-        )
+        val monitor = instrumentation.addMonitor(ReaderActivity::class.java.name, null, false)
+        try {
+            context.startActivity(
+                Intent().apply {
+                    setClassName(context.packageName, "eu.kanade.tachiyomi.ui.reader.ReaderActivity")
+                    putExtra("manga", input.getLong("mangaId"))
+                    putExtra("chapter", input.getLong("chapterId"))
+                    putExtra("resume", false)
+                    putExtra("resumeWithinChapter", false)
+                    // Existing Android SavedState input fixes the initial logical page, never final grouping.
+                    putExtra("page_index", initialPage)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                },
+            )
+            activity = requireNotNull(monitor.waitForActivityWithTimeout(30_000)) {
+                "The real reader Activity must enter its lifecycle"
+            }
+        } finally {
+            instrumentation.removeMonitor(monitor)
+        }
     }
 
     fun currentImages(): List<View> {
@@ -571,6 +761,188 @@ internal class HostReaderArtFixture(private val kind: String) : AutoCloseable {
             }
         }
         return result
+    }
+
+    fun nativePresentationState(): String {
+        var state = ""
+        onReaderMain { activity ->
+            val viewer = activity.viewModel.state.value.viewer as?
+                eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
+            if (cacheDiagnostic) {
+                val loader = viewer?.adapter?.currentChapter?.pageLoader
+                if (loader is eu.kanade.tachiyomi.ui.reader.loader.HttpPageLoader) {
+                    val actual = loader.javaClass.getDeclaredField("chapterCache")
+                        .apply { isAccessible = true }.get(loader)
+                    check(actual === diagnosticCache) { "Cache observer must use the actual loader cache" }
+                }
+            }
+            val holders = views(activity.window.decorView)
+                .filterIsInstance<eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagerPageHolder>()
+            state = "selected=${viewer?.pager?.currentItem} " + holders.joinToString { holder ->
+                val presentation = holder.presentationScope?.let { (owner, ticket) ->
+                    "target=${owner.location?.pageId?.sourcePageIndex} seq=${owner.location?.sequence}" +
+                        " ticketSeq=${ticket.locationSequence} frame=${owner.frame(ticket)}"
+                }
+                val children = views(
+                    holder,
+                ).filterIsInstance<com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView>()
+                    .joinToString { "${it.sWidth}x${it.sHeight}/ready=${it.isReady}/base=${it.isImageLoaded}" }
+                val errors = holder.javaClass.getDeclaredField("errorPages").apply { isAccessible = true }
+                    .get(holder) as Map<*, *>
+                val statuses = holder.displayPage.visiblePages.joinToString { page ->
+                    val cause = (page.status as? eu.kanade.tachiyomi.source.model.Page.State.Error)?.error
+                    "${page.index}:${page.status}/${cause?.stackTraceToString()}"
+                }
+                val messages = views(holder).filterIsInstance<android.widget.TextView>()
+                    .filter { it.id == eu.kanade.tachiyomi.R.id.error_message && it.isShown }
+                    .map { it.text.toString() }
+                "unit=${holder.displayPage.visiblePages.map { it.index }} $presentation native=[$children]" +
+                    " statuses=[$statuses] errors=${errors.mapValues { (_, value) -> (value as ReaderPage).index }}" +
+                    " messages=$messages normal=${viewer?.adapter?.currentChapter?.pageLoader?.hasForegroundWork}" +
+                    " nativeBusy=${ReaderPageImageView.foregroundWork.value}" +
+                    " optionalBusy=" +
+                    eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value
+            }
+        }
+        return state
+    }
+
+    data class SlotObservation(
+        val content: Rect,
+        val imageBounds: Rect,
+        val mount: View,
+        val container: View,
+        val scaleX: Float,
+        val scaleY: Float,
+        val translationX: Float,
+        val translationY: Float,
+    )
+
+    /** PixelCopy and actual public View identities; no presentation or progress callbacks are manufactured. */
+    fun observeSlot(color: Int): SlotObservation {
+        val content = coloredBounds(listOf(color))
+        check(!content.isEmpty)
+        var observation: SlotObservation? = null
+        instrumentation.runOnMainSync {
+            val image = views(requireNotNull(activity).window.decorView)
+                .filterIsInstance<ReaderPageImageView>().first { view ->
+                    val transformed = Rect()
+                    view.isShown && view.getGlobalVisibleRect(transformed) &&
+                        transformed.contains(content.centerX(), content.centerY())
+                }
+            val transformed = Rect().also { check(image.getGlobalVisibleRect(it)) }
+            val container = (image.parent as View).parent as View
+            observation = SlotObservation(
+                content,
+                transformed,
+                image,
+                container,
+                container.scaleX,
+                container.scaleY,
+                container.translationX,
+                container.translationY,
+            )
+        }
+        return requireNotNull(observation)
+    }
+
+    fun onReaderMain(action: (ReaderActivity) -> Unit) {
+        instrumentation.runOnMainSync { action(activity as ReaderActivity) }
+    }
+
+    fun logicalPageIndex(): Int? {
+        var index: Int? = null
+        onReaderMain { activity ->
+            val viewer = activity.viewModel.state.value.viewer as?
+                eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
+            val chapter = activity.viewModel.state.value.viewerChapters?.currChapter
+            if (viewer != null && chapter != null) {
+                index = viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex
+            }
+        }
+        return index
+    }
+
+    fun touchWindow(action: Int, down: Long, time: Long, x: Float, y: Float) {
+        instrumentation.runOnMainSync {
+            MotionEvent.obtain(down, time, action, x, y, 0).let { event ->
+                try {
+                    requireNotNull(activity).window.decorView.dispatchTouchEvent(event)
+                } finally {
+                    event.recycle()
+                }
+            }
+        }
+    }
+
+    fun windowWidth(): Int {
+        var width = 0
+        instrumentation.runOnMainSync { width = requireNotNull(activity).window.decorView.width }
+        return width
+    }
+
+    fun retryBounds(): Rect? = retryNode()?.let { Rect().also(it::getBoundsInScreen) }
+
+    fun feedbackBounds(viewId: Int): Pair<Rect, Rect> {
+        var bounds: Pair<Rect, Rect>? = null
+        onReaderMain { activity ->
+            val view = views(activity.window.decorView).first { it.id == viewId && it.isShown }
+            val visible = Rect().also { check(view.getGlobalVisibleRect(it)) }
+            val matrix = android.graphics.Matrix().also(view::transformMatrixToGlobal)
+            val full = android.graphics.RectF(0f, 0f, view.width.toFloat(), view.height.toFloat())
+            matrix.mapRect(full)
+            bounds = Rect().also(full::roundOut) to visible
+        }
+        return requireNotNull(bounds)
+    }
+
+    fun loadingBounds(pageIndex: Int? = null): Rect? {
+        var bounds: Rect? = null
+        onReaderMain { activity ->
+            val root = pageIndex?.let { index ->
+                views(activity.window.decorView)
+                    .filterIsInstance<eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagerPageHolder>()
+                    .first { holder -> holder.displayPage.visiblePages.any { it.index == index } }
+            } ?: activity.window.decorView
+            bounds = views(root)
+                .filterIsInstance<eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator>()
+                .mapNotNull { indicator -> Rect().takeIf { indicator.isShown && indicator.getGlobalVisibleRect(it) } }
+                .firstOrNull()
+        }
+        return bounds
+    }
+
+    /** Observes the original loader and actual shared adapter classification, without publishing facts. */
+    fun hasDecodedSpread(index: Int): Boolean {
+        var decoded = false
+        instrumentation.runOnMainSync {
+            val state = (activity as? ReaderActivity)?.viewModel?.state?.value ?: return@runOnMainSync
+            val chapter = state.viewerChapters?.currChapter ?: return@runOnMainSync
+            val page = chapter.pages?.getOrNull(index) ?: return@runOnMainSync
+            val viewer = state.viewer as? eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
+                ?: return@runOnMainSync
+            val owner = viewer.adapter.session(chapter) ?: return@runOnMainSync
+            decoded = page.status == eu.kanade.tachiyomi.source.model.Page.State.Ready &&
+                owner.pageFact(owner.identity.pageIds[index])?.state == mihon.domain.reader.ReaderPageFactState.SPREAD
+        }
+        return decoded
+    }
+
+    fun progress(): Pair<Long, Long> = SQLiteDatabase.openDatabase(
+        context.getDatabasePath("tachiyomi.db").path,
+        null,
+        SQLiteDatabase.OPEN_READONLY,
+    ).use { database ->
+        val id = input.getLong("chapterId").toString()
+        val page = database.rawQuery("SELECT last_page_read FROM chapters WHERE _id=?", arrayOf(id)).use {
+            check(it.moveToFirst())
+            it.getLong(0)
+        }
+        val events = database.rawQuery("SELECT COUNT(*) FROM reading_events WHERE chapter_id=?", arrayOf(id)).use {
+            check(it.moveToFirst())
+            it.getLong(0)
+        }
+        page to events
     }
 
     fun frame(): Bitmap? {
@@ -605,9 +977,30 @@ internal class HostReaderArtFixture(private val kind: String) : AutoCloseable {
 
     /** Only the dedicated emulator's cached fixture bodies; never alter grouping or pairing records. */
     fun cold() {
+        if (cacheDiagnostic) android.util.Log.i("ReaderCacheDiagnostic", "cold beforeFinish ${cacheDiagnosticState()}")
         finish()
-        context.cacheDir.resolve("chapter_disk_cache").listFiles().orEmpty()
-            .filter { it.extension == "0" }.forEach { check(it.delete()) }
+        val deadline = SystemClock.uptimeMillis() + 30_000
+        while (ReaderPageMaterializeRunner.processPhysicalWorkCount.value != 0 ||
+            ReaderPageImageView.foregroundWork.value != 0
+        ) {
+            check(SystemClock.uptimeMillis() < deadline) {
+                "Original foreground work must finish before fixture cache reset: ${cacheDiagnosticState()}"
+            }
+            SystemClock.sleep(20)
+        }
+        if (cacheDiagnostic) android.util.Log.i("ReaderCacheDiagnostic", "cold beforeDelete ${cacheDiagnosticState()}")
+        val directory = context.cacheDir.resolve("chapter_disk_cache")
+        val currentKeys = directory.listFiles().orEmpty()
+            .filter { it.extension == "0" }.map { it.nameWithoutExtension }.toSet()
+        diagnosticCache.clear()
+        check(directory.listFiles().orEmpty().none { it.extension == "0" }) {
+            "Original ChapterCache.clear must remove the current fixture image files"
+        }
+        val remainingKeys = cacheJournalState().second
+        check(currentKeys.none { it in remainingKeys }) {
+            "Original ChapterCache.clear must remove current physical entries from the journal"
+        }
+        if (cacheDiagnostic) android.util.Log.i("ReaderCacheDiagnostic", "cold afterDelete ${cacheDiagnosticState()}")
     }
 
     fun await(message: String, condition: () -> Boolean) {
@@ -625,7 +1018,7 @@ internal class HostReaderArtFixture(private val kind: String) : AutoCloseable {
                 }
                 throw AssertionError(
                     "$message; chapterRequests=${chapterRequests.get()} imageRequests=${imageRequests.get()} " +
-                        "mounted=$mounted; ${failureEvidence()}",
+                        "mounted=$mounted; ${nativePresentationState()}; ${failureEvidence()}",
                 )
             }
             SystemClock.sleep(20)
@@ -724,8 +1117,10 @@ internal class HostReaderArtFixture(private val kind: String) : AutoCloseable {
         fun closeColor(pixel: Int, expected: Int) = listOf(0, 8, 16).all {
             kotlin.math.abs((pixel ushr it and 255) - (expected ushr it and 255)) < 35
         }
-        fun png(color: Int): ByteArray {
-            val bitmap = Bitmap.createBitmap(80, 60, Bitmap.Config.ARGB_8888)
+        fun png(color: Int): ByteArray = png(80, 60, color)
+
+        fun png(width: Int, height: Int, color: Int): ByteArray {
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             try {
                 bitmap.eraseColor(color)
                 return ByteArrayOutputStream().also {

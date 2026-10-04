@@ -33,6 +33,15 @@ class DualPagePairingStore(val requiresRestoration: Boolean = false) {
     internal fun ensure(chapter: ReaderChapter, pages: List<ReaderPage>): ChapterPairing {
         val sampled = pages.map { page -> page to page.captureContentFact() }
         val previous = chapters[chapter]
+        if (previous?.pages === pages) {
+            sampled.forEach { (page, captured) ->
+                if (captured.second.retrySequence >
+                    (previous.factRetrySequences[page] ?: captured.second.retrySequence)
+                ) {
+                    previous.session.reloadContent(previous.session.identity.pageIds[page.index])
+                }
+            }
+        }
         previous?.takeIf {
             it.pages === pages && it.session.identity.content.map { content -> content.contentVersion } ==
                 sampled.map { it.second.first }
@@ -52,7 +61,6 @@ class DualPagePairingStore(val requiresRestoration: Boolean = false) {
             return entry
         }
         val target = previous?.session?.location?.pageId?.sourcePageIndex ?: chapter.requestedPage
-        chapters.remove(chapter)
         val chapterState = chapter.sharedSessionStateFlow.value
         val revision = ++pageListRevision
         val identity = ReaderDualPageIdentity(
@@ -69,6 +77,11 @@ class DualPagePairingStore(val requiresRestoration: Boolean = false) {
         val samePages = previous?.session?.identity?.let {
             it.pageIds == identity.pageIds && it.generation == identity.generation
         } == true
+        if (samePages && !requireNotNull(previous).session.canRebindContent(identity)) {
+            // A normal loader snapshot may arrive while its old decoded image is still exposed.
+            // Keep its owner and facts together until the native viewport releases that lease.
+            return previous
+        }
         val session = if (samePages) {
             requireNotNull(previous).session.rebindContent(identity)
         } else {

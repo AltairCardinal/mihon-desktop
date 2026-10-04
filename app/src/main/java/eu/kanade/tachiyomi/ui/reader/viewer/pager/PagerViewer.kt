@@ -373,6 +373,14 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
         if (destroyed || page is InsertPage) return null
         val pages = page.chapter.pages ?: return null
         if (pages.getOrNull(page.index) !== page) return null
+        val previous = pairingStore.chapters[page.chapter]?.session
+        if (previous != null &&
+            previous.identity.content.getOrNull(page.index)?.contentVersion != page.encodedContentIdentity()
+        ) {
+            // Ordinary Single already replaces its decoded image on a normal content snapshot.
+            // End that old presentation before rebinding, rather than assigning new bytes to its frame.
+            presentedViewports.remove(previous)?.let(previous::releaseViewport)
+        }
         return pairingStore.ensure(page.chapter, pages).session.also {
             it.configure(if (this is L2RPagerViewer) ReaderDirection.LTR else ReaderDirection.RTL)
             it.configurePresentationMode(ReaderPresentationMode.SINGLE)
@@ -398,6 +406,9 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
                             entry.factRetrySequences[page] = captured.retrySequence
                             owner.retryFacts()
                         }
+                        if (owner.identity.content[page.index].contentVersion != page.encodedContentIdentity()) {
+                            return@collect
+                        }
                         owner.acceptFact(owner.requestFact(owner.identity.pageIds[page.index]), captured.fact)
                         (currentPage as? ReaderPage)?.takeIf { it.chapter === chapter }
                             ?.let { getPageHolder(it)?.beginPresentation() }
@@ -419,7 +430,7 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
         }
         val owner = ensureSingleOwner(page) ?: return null
         if (owner.location?.pageId != owner.identity.pageIds[page.index]) return null
-        return owner.captureViewport()?.let {
+        return owner.captureViewport(preparingPageIds = emptySet())?.let {
             presentedViewports[owner] = it
             owner to it
         }

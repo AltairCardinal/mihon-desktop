@@ -99,7 +99,9 @@ class ChapterLoaderStorageClassificationTest {
         every { cache.isImageInCache(any()) } returns false
         every { cache.putImageToCache(any(), any()) } throws IOException("disk full")
         every { cache.getImageFile(any()) } returns File("unused")
-        coEvery { source.getImage(any()) } returns mockk<Response>()
+        coEvery { source.getImage(any()) } returns mockk<Response>().also { response ->
+            every { response.close() } returns Unit
+        }
         val chapter = ReaderChapter(Chapter.create().copy(id = 7, mangaId = 1))
         val page = ReaderPage(0, imageUrl = "https://example.test/image").apply { this.chapter = chapter }
         chapter.publishLoadedPageListForTest(listOf(page))
@@ -163,7 +165,9 @@ class ChapterLoaderStorageClassificationTest {
         val cache = mockk<ChapterCache>()
         every { cache.isImageInCache(any()) } returns false
         every { cache.putImageToCache(any(), any()) } throws AppErrorException(AppError.Permission())
-        coEvery { source.getImage(any()) } returns mockk<Response>()
+        coEvery { source.getImage(any()) } returns mockk<Response>().also { response ->
+            every { response.close() } returns Unit
+        }
         val chapter = ReaderChapter(Chapter.create().copy(id = 7, mangaId = 1))
         val page = ReaderPage(0, imageUrl = "https://example.test/image").apply { this.chapter = chapter }
         chapter.publishLoadedPageListForTest(listOf(page))
@@ -191,7 +195,9 @@ class ChapterLoaderStorageClassificationTest {
         val cache = mockk<ChapterCache>()
         every { cache.isImageInCache(any()) } returns false
         every { cache.putImageToCache(any(), any()) } throws CancellationException("cancelled")
-        coEvery { source.getImage(any()) } returns mockk<Response>()
+        coEvery { source.getImage(any()) } returns mockk<Response>().also { response ->
+            every { response.close() } returns Unit
+        }
         val chapter = ReaderChapter(Chapter.create().copy(id = 7, mangaId = 1))
         val page = ReaderPage(0, imageUrl = "https://example.test/image").apply { this.chapter = chapter }
         chapter.publishLoadedPageListForTest(listOf(page))

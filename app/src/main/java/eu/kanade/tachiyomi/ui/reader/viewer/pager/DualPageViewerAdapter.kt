@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
 import android.view.View
 import android.view.ViewGroup
+import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
@@ -12,14 +13,12 @@ import eu.kanade.tachiyomi.widget.ViewPagerAdapter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
 import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.ReaderChapterBoundary
-import mihon.domain.reader.ReaderDualPageFactReadPermit
 import mihon.domain.reader.ReaderDualPageFactRequest
 import mihon.domain.reader.ReaderPageFact
 import mihon.domain.reader.ReaderPageFactState
@@ -57,20 +56,43 @@ class DualPageViewerAdapter(
 
     private val chapterPairings = store.chapters
     private var chapters: ViewerChapters? = null
+    private var pendingPairing = false
     private val scope = MainScope()
+    private val foregroundCollectors = mutableMapOf<PageLoader, Job>()
+
+    // Main owns subscriptions; IO checks an immutable publication plus each loader's real getter.
+    @Volatile
+    private var foregroundLoaders: Set<PageLoader> = emptySet()
     private val factCollectors = mutableMapOf<ReaderPage, Job>()
-    private var supplementSession: SharedDualPageSession? = null
-    private var supplementSequence: Long? = null
-    private var supplementWorkRevision: Long? = null
-    private var supplementJob: Job? = null
     private var matchingJob: Job? = null
     private var matchingSession: SharedDualPageSession? = null
     private val failedSamples = mutableSetOf<mihon.domain.reader.ReaderDualPageContentIdentity>()
     internal var spreadDecoderFactory = eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.nativeDecoder
 
+    init {
+        scope.launch {
+            eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView.foregroundWork
+                .map { it > 0 }.distinctUntilChanged().collect { busy ->
+                    if (!busy) {
+                        viewer.activity.refreshOptionalReaderMemoryPressure()
+                        startMatching()
+                    }
+                }
+        }
+        scope.launch {
+            viewer.activity.optionalWorkUnderMemoryPressure.collect { pressured ->
+                if (!pressured) startMatching()
+            }
+        }
+        scope.launch {
+            eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.collect { count ->
+                if (count == 0) startMatching()
+            }
+        }
+    }
+
     internal fun matchingSettingChanged() {
         matchingJob?.cancel()
-        matchingJob = null
         failedSamples.clear()
         chapterPairings.values.forEach {
             it.session.configure(
@@ -91,7 +113,15 @@ class DualPageViewerAdapter(
         val entry = chapterPairings[page.chapter] ?: return
         if (entry.pages.getOrNull(page.index) !== page) return
         entry.session.goToPage(entry.session.identity.pageIds[page.index])
-        startSupplement()
+        startMatching()
+    }
+
+    internal fun navigate(chapter: ReaderChapter, forward: Boolean): ReaderPage? {
+        val entry = chapterPairings[chapter] ?: return null
+        if (!entry.session.navigate(forward)) return null
+        val target = entry.session.location?.pageId?.sourcePageIndex?.let(entry.pages::getOrNull) ?: return null
+        rebuildItems(target)
+        return target
     }
 
     internal fun close() {
@@ -103,8 +133,8 @@ class DualPageViewerAdapter(
         matchingSession = null
         failedSamples.clear()
         factCollectors.clear()
-        supplementJob = null
-        supplementSession = null
+        foregroundCollectors.clear()
+        foregroundLoaders = emptySet()
     }
 
     /** Keep decode facts and manual pairing while the same chapter page identities remain loaded. */
@@ -115,13 +145,34 @@ class DualPageViewerAdapter(
         chapterPairings.keys.toList().filter { it !in window }.forEach { chapter ->
             chapterPairings.remove(chapter)?.session?.close()
         }
+        val activeLoaders = window.mapNotNull { it.pageLoader }.toSet()
+        // A removed chapter loses presentation ownership immediately, but cancelled physical work
+        // still consumes the original decoder/network resources until its actual completion.
+        foregroundCollectors.keys.toList().filter { it !in activeLoaders && !it.hasForegroundWork }
+            .forEach { foregroundCollectors.remove(it)?.cancel() }
+        for (loader in activeLoaders) {
+            if (loader !in foregroundCollectors) {
+                foregroundCollectors[loader] = scope.launch {
+                    loader.foregroundWork.collect { busy ->
+                        if (!busy) {
+                            viewer.activity.refreshOptionalReaderMemoryPressure()
+                            startMatching()
+                            val currentWindow = chapters?.let {
+                                listOfNotNull(it.prevChapter, it.currChapter, it.nextChapter)
+                            }.orEmpty()
+                            if (currentWindow.none { it.pageLoader === loader }) {
+                                foregroundCollectors.remove(loader)?.cancel()
+                                foregroundLoaders = foregroundCollectors.keys.toSet()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        foregroundLoaders = foregroundCollectors.keys.toSet()
         for (chapter in window) {
             val pages = chapter.pages
             if (pages == null) {
-                chapterPairings.remove(chapter)?.session?.close()
-                continue
-            }
-            if (store.requiresRestoration && chapterPairings[chapter]?.pages !== pages) {
                 chapterPairings.remove(chapter)?.session?.close()
                 continue
             }
@@ -155,7 +206,6 @@ class DualPageViewerAdapter(
                         if (captured.retrySequence > previousRetry) {
                             entry.factRetrySequences[page] = captured.retrySequence
                             matchingJob?.cancel()
-                            matchingJob = null
                             failedSamples.clear()
                             entry.session.retryFacts()
                         }
@@ -216,6 +266,7 @@ class DualPageViewerAdapter(
     private fun acceptFact(page: ReaderPage, fact: ReaderPageFact) {
         val pairing = chapterPairings[page.chapter] ?: return
         if (pairing.pages.getOrNull(page.index) !== page) return
+        if (pairing.session.identity.content[page.index].contentVersion != page.encodedContentIdentity()) return
         val request = pairing.session.requestFact(pairing.session.identity.pageIds[page.index])
         if (!pairing.session.acceptFact(request, fact)) return
         rebuildItems()
@@ -236,6 +287,12 @@ class DualPageViewerAdapter(
 
     fun refreshPairing() = rebuildItems()
 
+    internal fun releaseContent(chapter: ReaderChapter) {
+        val pages = chapter.pages ?: return
+        val previous = chapterPairings[chapter]?.session ?: return
+        if (store.ensure(chapter, pages).session !== previous) rebuildItems()
+    }
+
     fun refresh() {
         readerThemedContext = viewer.activity.createReaderThemeContext()
     }
@@ -253,6 +310,13 @@ class DualPageViewerAdapter(
     }
 
     override fun getItemPosition(view: Any): Int {
+        if (view is DualPagerPageHolder) {
+            val unchanged = items.indexOf(view.displayPage)
+            if (unchanged != -1) return unchanged
+            items.forEachIndexed { position, replacement ->
+                if (replacement is DisplayPage && view.updateDisplayPage(replacement)) return position
+            }
+        }
         if (view is ViewPagerAdapter.PositionableView) {
             val position = items.indexOf(view.item)
             if (position != -1) return position
@@ -263,8 +327,13 @@ class DualPageViewerAdapter(
 
     /** Assemble in story order and reverse the entire window once, including its boundaries. */
     private fun rebuildItems(targetPage: ReaderPage? = null) {
+        if (targetPage == null && viewer.hasActiveGesture) {
+            // Facts update the owner immediately, while native slots retain their held positions.
+            pendingPairing = true
+            return
+        }
+        pendingPairing = false
         val chapters = chapters ?: return
-        startSupplement()
         startMatching()
         val selected = items.getOrNull(viewer.pager.currentItem)
         val currentPairing = chapterPairings[chapters.currChapter]
@@ -321,162 +390,114 @@ class DualPageViewerAdapter(
         }
     }
 
+    internal fun publishPendingPairing() {
+        if (pendingPairing) rebuildItems()
+    }
+
     /** No materialization here: required adjacent edges consume only already-ready original streams. */
     private fun startMatching() {
         val chapter = currentChapter ?: return
         val owner = chapterPairings[chapter]?.session ?: return
         if (matchingSession !== owner || !viewer.config.automaticSpreadMatching) {
             matchingJob?.cancel()
-            matchingJob = null
             failedSamples.clear()
             matchingSession = owner
         }
-        if (!viewer.config.automaticSpreadMatching || matchingJob?.isActive == true ||
-            owner.spreadSampleDependencies().isEmpty()
+        if (!viewer.config.automaticSpreadMatching ||
+            viewer.activity.optionalWorkUnderMemoryPressure.value || foregroundLoaders.any { it.hasForegroundWork } ||
+            eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView.foregroundWork.value > 0 ||
+            matchingJob?.isCompleted == false ||
+            eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value > 0
         ) {
             return
         }
-        matchingJob = scope.launch {
-            var pendingContent = owner.spreadSampleDependencies().firstOrNull()?.let { id ->
-                owner.identity.content.single { it.pageId == id }
-            }
-            try {
-                kotlinx.coroutines.withTimeout(owner.factBudget.remainingWaitMillis(System.nanoTime() / 1_000_000L)) {
-                    while (chapterPairings[chapter]?.session === owner) {
-                        val pageId = owner.spreadSampleDependencies().firstOrNull() ?: break
-                        val content = owner.identity.content.single { it.pageId == pageId }
-                        pendingContent = content
-                        if (content in failedSamples) break
-                        val page = chapter.pages?.getOrNull(pageId.sourcePageIndex)
-                            ?.takeIf { it.status is eu.kanade.tachiyomi.source.model.Page.State.Ready } ?: break
-                        val captured = page.captureContentFact()
-                        if (captured.first != content.contentVersion ||
-                            captured.second.fact.sourceOrientation != content.sourceOrientation
-                        ) {
-                            store.ensure(chapter, requireNotNull(chapter.pages))
-                            if (chapterPairings[chapter]?.session !== owner ||
-                                owner.identity.content.single { it.pageId == pageId } == content
-                            ) {
-                                break
-                            }
-                            continue
-                        }
-                        val request = owner.requestSpreadSample(pageId) ?: break
-                        val fact = captured.second.fact
-                        val rawSize = request.content.sourceOrientation.orientedSize(fact.width, fact.height)
-                        val samples = try {
-                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.sample(
-                                    page,
-                                    request,
-                                    rawSize.width,
-                                    rawSize.height,
-                                    spreadDecoderFactory,
-                                )
-                            }
-                        } catch (error: CancellationException) {
-                            throw error
-                        } catch (_: Exception) {
-                            null
-                        }
-                        if (chapterPairings[chapter]?.session !== owner || !owner.ownsSpreadSampleRequest(request) ||
-                            page.encodedContentIdentity() != request.content.contentVersion
-                        ) {
-                            break
-                        }
-                        if (samples == null) {
-                            failedSamples += request.content
-                            break
-                        }
-                        var accepted = false
-                        if (!page.consumeContentFact(captured) {
-                                accepted = owner.acceptSpreadSample(request, samples)
-                            }
-                        ) {
-                            store.ensure(chapter, requireNotNull(chapter.pages))
-                            continue
-                        }
-                        if (!accepted) break
-                        rebuildItems()
-                    }
-                }
-            } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
-                if (chapterPairings[chapter]?.session === owner && matchingJob === coroutineContext[Job]) {
-                    pendingContent?.let { failedSamples += it }
-                }
-            }
-        }
-    }
-
-    /** The shared owner decides dependencies and budget; this adapter only leases the existing loader. */
-    private fun startSupplement() {
-        val chapter = currentChapter ?: return
-        val owner = chapterPairings[chapter]?.session ?: return
-        val sequence = owner.location?.sequence ?: return
-        val workRevision = owner.factWorkRevision
-        if (supplementSession === owner && supplementSequence == sequence &&
-            supplementWorkRevision == workRevision && supplementJob?.isActive == true
+        val first = owner.spreadSampleDependencies().firstOrNull() ?: return
+        val firstContent = owner.identity.content.single { it.pageId == first }
+        if (firstContent in failedSamples ||
+            chapter.pages?.getOrNull(first.sourcePageIndex)?.status != eu.kanade.tachiyomi.source.model.Page.State.Ready
         ) {
             return
         }
-        supplementJob?.cancel()
-        supplementSession = owner
-        supplementSequence = sequence
-        supplementWorkRevision = workRevision
-        val loader = chapter.pageLoader ?: return
-        val budget = owner.factBudget
-        val clock = { System.nanoTime() / 1_000_000L }
-        supplementJob = scope.launch {
-            try {
-                val wait = budget.remainingWaitMillis(clock())
-                if (wait == 0L) return@launch
-                withTimeout(wait) {
-                    while (chapterPairings[chapter]?.session === owner && owner.location?.sequence == sequence &&
-                        owner.factWorkRevision == workRevision
+        val job = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+            while (chapterPairings[chapter]?.session === owner) {
+                val pageId = owner.spreadSampleDependencies().firstOrNull() ?: break
+                val content = owner.identity.content.single { it.pageId == pageId }
+                if (content in failedSamples) break
+                val page = chapter.pages?.getOrNull(pageId.sourcePageIndex)
+                    ?.takeIf { it.status is eu.kanade.tachiyomi.source.model.Page.State.Ready } ?: break
+                val captured = page.captureContentFact()
+                if (captured.first != content.contentVersion ||
+                    captured.second.fact.sourceOrientation != content.sourceOrientation
+                ) {
+                    store.ensure(chapter, requireNotNull(chapter.pages))
+                    if (chapterPairings[chapter]?.session !== owner ||
+                        owner.identity.content.single { it.pageId == pageId } == content
                     ) {
-                        val admitted = budget.reserve(owner.factDependencies(), clock())
-                        if (admitted.isEmpty()) break
-                        coroutineScope {
-                            admitted.forEach { pageId ->
-                                launch {
-                                    try {
-                                        if (chapterPairings[chapter]?.session !== owner ||
-                                            owner.location?.sequence != sequence
-                                        ) {
-                                            return@launch
-                                        }
-                                        val request = owner.requestFact(pageId)
-                                        val page = chapter.pages?.getOrNull(pageId.sourcePageIndex) ?: return@launch
-                                        loader.loadFactPage(page, ReaderDualPageFactReadPermit(budget, pageId, clock))
-                                        val captured = page.contentFact.value
-                                        if (chapterPairings[chapter]?.session === owner &&
-                                            owner.identity.content[page.index].contentVersion ==
-                                            page.encodedContentIdentity()
-                                        ) {
-                                            owner.acceptOrientedFact(request, captured.fact)
-                                        }
-                                    } finally {
-                                        // Actual network bytes were metered by the permit, never inferred from file
-                                        // length.
-                                        budget.complete(pageId, 0, cacheHit = true)
-                                    }
-                                }
-                            }
-                        }
-                        rebuildItems()
+                        break
                     }
+                    continue
                 }
-            } catch (_: TimeoutCancellationException) {
-                budget.close()
-            } catch (error: CancellationException) {
-                throw error
+                val request = owner.requestSpreadSample(pageId) ?: break
+                val fact = captured.second.fact
+                val rawSize = request.content.sourceOrientation.orientedSize(fact.width, fact.height)
+                val samples = try {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.sample(
+                            page,
+                            request,
+                            rawSize.width,
+                            rawSize.height,
+                            spreadDecoderFactory,
+                            canContinue = {
+                                !viewer.activity.optionalWorkUnderMemoryPressure.value &&
+                                    foregroundLoaders.none { it.hasForegroundWork } &&
+                                    eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView.foregroundWork.value == 0
+                            },
+                        )
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    null
+                }
+                if (chapterPairings[chapter]?.session !== owner || !owner.ownsSpreadSampleRequest(request) ||
+                    page.encodedContentIdentity() != request.content.contentVersion
+                ) {
+                    break
+                }
+                if (samples == null) {
+                    failedSamples += request.content
+                    break
+                }
+                var accepted = false
+                if (!page.consumeContentFact(captured) {
+                        accepted = owner.acceptSpreadSample(request, samples)
+                    }
+                ) {
+                    store.ensure(chapter, requireNotNull(chapter.pages))
+                    continue
+                }
+                if (!accepted) break
+                rebuildItems()
             }
         }
+        // Main serializes admission, registering this LAZY job, and start across viewer replacements.
+        // Cancellation revokes publication, not a native/IO task still executing in the old job.
+        matchingJob = job
+        eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.observe(job)
+        job.invokeOnCompletion {
+            scope.launch {
+                if (matchingJob === job) {
+                    matchingJob = null
+                    startMatching()
+                }
+            }
+        }
+        job.start()
     }
 
     private fun isReadyForDisplay(chapter: ReaderChapter?): Boolean =
-        chapter?.state is ReaderChapter.State.Loaded &&
-            (!store.requiresRestoration || chapter.pages?.let { store.isRestored(chapter, it) } == true)
+        chapter?.state is ReaderChapter.State.Loaded
 
     private fun buildDisplayPages(pages: List<ReaderPage>, session: SharedDualPageSession): List<DisplayPage> {
         return session.units.map { unit ->

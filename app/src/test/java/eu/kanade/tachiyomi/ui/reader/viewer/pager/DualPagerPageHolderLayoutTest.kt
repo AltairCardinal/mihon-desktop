@@ -10,6 +10,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.view.children
@@ -69,6 +70,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowChoreographer
 import org.robolectric.shadows.ShadowToast
 import org.robolectric.util.ReflectionHelpers
 import tachiyomi.core.common.preference.AndroidPreferenceStore
@@ -90,10 +92,13 @@ import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView.OnImageEven
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], manifest = Config.NONE)
+@Config(sdk = [35], manifest = Config.NONE, qualifiers = "w480dp-h1040dp-xxhdpi")
 class DualPagerPageHolderLayoutTest {
     private lateinit var previousInjekt: InjektScope
     private lateinit var viewer: DualPageR2LPagerViewer
+    private val hosts = mutableListOf<ComponentActivity>()
+    private var previousFramePause = false
+    private lateinit var previousFrameDelay: Duration
 
     @Test
     @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
@@ -538,22 +543,25 @@ class DualPagerPageHolderLayoutTest {
         runCurrent()
         val oldViewer = state.value.viewer as DualPageR2LPagerViewer
         assertEquals("The original logical second page must survive the first paired viewport", 2, current?.index)
+        val priorUnit = requireNotNull(oldViewer.adapter.session(chapter)?.targetUnit)
+        assertEquals(listOf(2, 3), priorUnit.pageIds.map { it.sourcePageIndex })
         oldViewer.adjustPagePairing()
-        assertEquals(2, current?.index)
+        val adjustedTarget = priorUnit.pageIds.maxOf { it.sourcePageIndex }
+        assertEquals(adjustedTarget, current?.index)
         val second = activity(1300)
         runCurrent()
         assertTrue(state.value.viewer is DualPageR2LPagerViewer)
-        assertEquals(2, current?.index)
+        assertEquals(adjustedTarget, current?.index)
         val restored = state.value.viewer as DualPageR2LPagerViewer
         val pair = restored.adapter.items[restored.pager.currentItem] as DisplayPage.Double
-        assertEquals(2, pair.rightPage.index)
+        assertEquals(adjustedTarget, pair.rightPage.index)
         first.onViewerPageSelected(oldViewer, requireNotNull(chapter.pages)[8])
-        assertEquals(2, current?.index)
+        assertEquals(adjustedTarget, current?.index)
         preferences.defaultReadingMode().set(ReadingMode.RIGHT_TO_LEFT.flagValue)
         shadowOf(Looper.getMainLooper()).idle()
         runCurrent()
         assertTrue(state.value.viewer is R2LPagerViewer)
-        assertEquals(2, current?.index)
+        assertEquals(adjustedTarget, current?.index)
         assertTrue(reports.isEmpty())
         assertEquals(7, chapter.chapter.last_page_read)
         preferences.defaultReadingMode().set(ReadingMode.AUTO.flagValue)
@@ -871,7 +879,7 @@ class DualPagerPageHolderLayoutTest {
     }
 
     @Test
-    fun `next page input advances R2L groups and crosses into next chapter while previous returns`() = runTest {
+    fun `next page input visits unpainted source pages and crosses chapters without consuming candidates`() = runTest {
         val chapter = loadedChapter(11, 4)
         val next = loadedChapter(12)
         withContext(Dispatchers.IO) {
@@ -879,20 +887,21 @@ class DualPagerPageHolderLayoutTest {
         }
         viewer.adapter.setChapters(ViewerChapters(chapter, loadedChapter(10), next), false)
         viewer.moveToPage(requireNotNull(chapter.pages)[0])
-        viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PAGE_DOWN))
-        assertEquals(
-            requireNotNull(chapter.pages)[1],
-            (viewer.adapter.items[viewer.pager.currentItem] as DisplayPage).firstPage,
-        )
-        viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_LEFT))
-        assertEquals(3, (viewer.adapter.items[viewer.pager.currentItem] as DisplayPage).firstPage.index)
+        for (source in 1..3) {
+            viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PAGE_DOWN))
+            val owner = requireNotNull(viewer.adapter.session(chapter))
+            assertEquals(source, owner.location?.pageId?.sourcePageIndex)
+            val displayed = viewer.adapter.items[viewer.pager.currentItem] as DisplayPage
+            assertTrue(displayed.containsPage(requireNotNull(chapter.pages)[source]))
+            io.mockk.verify(exactly = 0) { viewer.activity.viewModel.onDualViewportSettled(any(), any()) }
+        }
         viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_LEFT))
         assertEquals(next, (viewer.adapter.items[viewer.pager.currentItem] as DisplayPage).firstPage.chapter)
+        assertEquals(0, viewer.adapter.session(next)?.location?.pageId?.sourcePageIndex)
         viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PAGE_UP))
-        assertEquals(
-            requireNotNull(chapter.pages)[3],
-            (viewer.adapter.items[viewer.pager.currentItem] as DisplayPage).firstPage,
-        )
+        val returned = viewer.adapter.items[viewer.pager.currentItem] as DisplayPage
+        assertTrue(returned.containsPage(requireNotNull(chapter.pages)[3]))
+        assertEquals(3, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
     }
 
     @Test
@@ -906,14 +915,21 @@ class DualPagerPageHolderLayoutTest {
     }
 
     @Test
-    fun `unknown image sizes remain uncertain whole singles until actual facts arrive`() = runTest {
+    fun `unknown image sizes retain provisional slots and every source until actual facts arrive`() = runTest {
         val chapter = loadedChapter(11, 4)
         viewer.adapter.setChapters(ViewerChapters(chapter, null, null), false)
-        assertEquals(0, viewer.adapter.items.filterIsInstance<DisplayPage.Double>().size)
-        val singles = viewer.adapter.items.filterIsInstance<DisplayPage.Single>()
-        assertEquals(4, singles.size)
-        assertTrue(singles.all { it.slot == ReaderPortraitSingleSlot.FULL })
-        assertTrue(viewer.adapter.session(chapter)!!.units.all { !it.certain })
+        val display = viewer.adapter.items.filterIsInstance<DisplayPage>()
+        assertEquals(1, display.filterIsInstance<DisplayPage.Double>().size)
+        assertEquals(listOf(0, 1, 2, 3), display.flatMap { it.visiblePages }.map { it.index }.sorted())
+        assertTrue(display.filterIsInstance<DisplayPage.Single>().none { it.slot == ReaderPortraitSingleSlot.FULL })
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        assertTrue(owner.units.all { !it.certain })
+        assertTrue(
+            owner.identity.pageIds.all {
+                (owner.pageFact(it)?.state ?: mihon.domain.reader.ReaderPageFactState.UNKNOWN) ==
+                    mihon.domain.reader.ReaderPageFactState.UNKNOWN
+            },
+        )
     }
 
     @Test
@@ -977,22 +993,22 @@ class DualPagerPageHolderLayoutTest {
         val chapters = ViewerChapters(current, previous, next)
         viewer.adapter.setChapters(chapters, false)
         fun chapterIds() = viewer.adapter.items.filterIsInstance<DisplayPage>().map { it.firstPage.chapter.chapter.id }
-        assertEquals(listOf(12L, 12L, 12L, 11L, 11L, 11L, 10L, 10L, 10L), chapterIds())
+        assertEquals(listOf(12L, 12L, 11L, 11L, 10L, 10L), chapterIds())
         val wideBytes = ByteArrayOutputStream().also {
             Bitmap.createBitmap(400, 200, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it)
         }.toByteArray()
         requireNotNull(next.pages)[1].stream = { wideBytes.inputStream() }
         for (page in requireNotNull(next.pages)) decodeForAdapter(page)
-        assertEquals(listOf(12L, 12L, 12L, 11L, 11L, 11L, 10L, 10L, 10L), chapterIds())
+        assertEquals(listOf(12L, 12L, 12L, 11L, 11L, 10L, 10L), chapterIds())
         assertEquals(
-            0,
+            1,
             viewer.adapter.items.filterIsInstance<DisplayPage.Double>().count {
                 it.firstPage.chapter ==
                     current
             },
         )
         for (page in requireNotNull(current.pages)) decodeForAdapter(page)
-        assertEquals(listOf(12L, 12L, 12L, 11L, 11L, 10L, 10L, 10L), chapterIds())
+        assertEquals(listOf(12L, 12L, 12L, 11L, 11L, 10L, 10L), chapterIds())
         assertEquals(
             1,
             viewer.adapter.items.filterIsInstance<DisplayPage.Double>().count {
@@ -1044,6 +1060,10 @@ class DualPagerPageHolderLayoutTest {
 
     @Before
     fun setUp() {
+        previousFramePause = ShadowChoreographer.isPaused()
+        previousFrameDelay = ShadowChoreographer.getFrameDelay()
+        ShadowChoreographer.setPaused(true)
+        ShadowChoreographer.setFrameDelay(Duration.ofMillis(16))
         previousInjekt = Injekt
         Injekt = InjektScope(DefaultRegistrar())
         val application = RuntimeEnvironment.getApplication()
@@ -1077,6 +1097,10 @@ class DualPagerPageHolderLayoutTest {
     @After
     fun tearDown() {
         if (::viewer.isInitialized) viewer.destroy()
+        hosts.forEach { it.finish() }
+        hosts.clear()
+        ShadowChoreographer.setFrameDelay(previousFrameDelay)
+        ShadowChoreographer.setPaused(previousFramePause)
         Dispatchers.resetMain()
         Injekt = previousInjekt
         unmockkObject(ImageUtil)
@@ -1298,28 +1322,18 @@ class DualPagerPageHolderLayoutTest {
                 errorField.get(holder) != null &&
                     descendants(holder).filterIsInstance<ReaderPageImageView>().count() == 1
             }
-            val error = errorField.get(holder) as ReaderErrorBinding
-            assertEquals(View.VISIBLE, error.root.visibility)
+            val initialError = errorField.get(holder) as ReaderErrorBinding
+            assertEquals(View.VISIBLE, initialError.root.visibility)
             mountInPager(holder)
             measure(holder, 1440, 3120)
+            val error = errorField.get(holder) as ReaderErrorBinding
             val buttonBounds = Rect()
             error.actionRetry.getDrawingRect(buttonBounds)
             holder.offsetDescendantRectToMyCoords(error.actionRetry, buttonBounds)
-            val time = SystemClock.uptimeMillis()
-            for ((action, eventTime) in listOf(MotionEvent.ACTION_DOWN to time, MotionEvent.ACTION_UP to time + 20)) {
-                MotionEvent.obtain(
-                    time,
-                    eventTime,
-                    action,
-                    buttonBounds.exactCenterX(),
-                    buttonBounds.exactCenterY(),
-                    0,
-                ).also {
-                    holder.dispatchTouchEvent(it)
-                    it.recycle()
-                }
-            }
-            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue("The original Retry button must be laid out in its LEFT feedback slot", !buttonBounds.isEmpty)
+            assertTrue(buttonBounds.right <= holder.width / 2)
+            assertTrue(error.actionRetry.performClick())
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
             assertEquals(listOf(left), retried)
             waitUntil { descendants(holder).filterIsInstance<ReaderPageImageView>().count() == 2 }
             ReflectionHelpers.getField<ReaderPageImageView>(holder, "leftHolder").onImageLoaded()
@@ -1364,21 +1378,37 @@ class DualPagerPageHolderLayoutTest {
     }
 
     @Test
-    fun `rendered native pixels do not survive a same page content replacement`() = runTest {
-        val (holder, right, left) = pair()
-        load(holder, right, "RIGHT")
-        load(holder, left, "LEFT")
-        right.status = Page.State.Ready
-        left.status = Page.State.Ready
-        ReflectionHelpers.getField<ReaderPageImageView>(holder, "rightHolder").onImageLoaded()
-        ReflectionHelpers.getField<ReaderPageImageView>(holder, "leftHolder").onImageLoaded()
+    fun `displayed content retains its original lease until release and cannot certify replacement bytes`() = runTest {
+        val chapter = loadedChapter(18, 3)
+        val pages = requireNotNull(chapter.pages)
+        pages.forEach {
+            it.publishHeaderFact()
+            it.status = Page.State.Ready
+        }
+        chapter.requestedPage = 1
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        measure(viewer.pager, 1440, 3120)
+        runCurrent()
+        measure(viewer.pager, 1440, 3120)
+        val holder = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+            .first { it.displayPage.containsPage(pages[1]) }
+        val originalBytes = requireNotNull(pages[1].stream).invoke().use { it.readBytes() }
+        load(holder, pages[1], "RIGHT")
+        load(holder, pages[2], "LEFT")
+        paint(holder, pages[1], originalBytes)
+        paint(holder, pages[2])
         assertTrue(holder.hasRenderedVisiblePages())
-        right.stream = { byteArrayOf(1, 2, 3).inputStream() }
-        assertTrue(
-            "Pixels rendered for the old content cannot settle the replacement viewport",
-            !holder.hasRenderedVisiblePages(),
-        )
+        val (owner, ticket) = requireNotNull(holder.presentationScope)
+        val originalIdentity = owner.identity.content[1].contentVersion
+        pages[1].stream = { readerTestPng(900, 500).inputStream() }
+        runCurrent()
+        assertTrue("The already exposed original pixels keep their content lease", holder.hasRenderedVisiblePages())
+        assertEquals(originalIdentity, owner.identity.content[1].contentVersion)
+        assertTrue(originalIdentity != pages[1].encodedContentIdentity())
+        paint(holder, pages[1], originalBytes)
+        assertEquals(ticket.frameId, holder.presentationScope?.second?.frameId)
         detach(holder)
+        assertTrue("Released old pixels cannot settle a replacement holder", !holder.hasRenderedVisiblePages())
     }
 
     @Test
@@ -1429,15 +1459,16 @@ class DualPagerPageHolderLayoutTest {
                 page.status = Page.State.Ready
                 load(holder, page, "CENTER")
                 measure(viewer.pager, 1440, 3120)
-                ReflectionHelpers.getField<ReaderPageImageView>(holder, "rightHolder").onImageLoaded()
-                assertEquals(
-                    viewer.adapter.session(chapter)?.layoutRevision,
-                    holder.presentationScope?.second?.layoutRevision,
-                )
+                val preparedHolder = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
+                    .first { it.displayPage.containsPage(page) }
+                load(preparedHolder, page, "CENTER")
+                paint(preparedHolder, page)
+                val (owner, ticket) = requireNotNull(preparedHolder.presentationScope)
+                assertTrue(owner.frame(ticket) != null)
                 io.mockk.verify(exactly = 1) { viewer.activity.viewModel.onDualViewportSettled(page, listOf(page)) }
                 assertEquals(0, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
                 assertEquals(0L, viewer.adapter.session(chapter)?.location?.sequence)
-                assertTrue(requireNotNull(holder.presentationScope).second.layoutRevision > previous.layoutRevision)
+                assertEquals(previous.locationSequence, preparedHolder.presentationScope?.second?.locationSequence)
             } finally {
                 host.get().setContentView(View(host.get()))
                 host.pause().stop().destroy()
@@ -1461,7 +1492,7 @@ class DualPagerPageHolderLayoutTest {
             measure(viewer.pager, 1440, 3120)
             val original = viewer.pager.children.filterIsInstance<DualPagerPageHolder>()
                 .first { it.displayPage.containsPage(target) }
-            assertEquals(ReaderPortraitSingleSlot.FULL, (original.displayPage as DisplayPage.Single).slot)
+            assertEquals(ReaderPortraitSingleSlot.RIGHT, (original.displayPage as DisplayPage.Single).slot)
             val sequence = viewer.adapter.session(chapter)?.location?.sequence
             target.status = Page.State.Ready
             load(original, target, "CENTER")
@@ -1470,12 +1501,12 @@ class DualPagerPageHolderLayoutTest {
                 .first { it.displayPage.containsPage(target) }
             assertEquals(ReaderPortraitSingleSlot.RIGHT, (resolved.displayPage as DisplayPage.Single).slot)
             load(resolved, target, "CENTER")
-            ReflectionHelpers.getField<ReaderPageImageView>(resolved, "rightHolder").onImageLoaded()
+            paint(resolved, target)
             io.mockk.verify(exactly = 1) { viewer.activity.viewModel.onDualViewportSettled(target, listOf(target)) }
             assertEquals(sequence, viewer.adapter.session(chapter)?.location?.sequence)
             assertEquals(3, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
             resolved.beginPresentation()
-            ReflectionHelpers.getField<ReaderPageImageView>(resolved, "rightHolder").onImageLoaded()
+            paint(resolved, target)
             io.mockk.verify(exactly = 1) { viewer.activity.viewModel.onDualViewportSettled(target, listOf(target)) }
         } finally {
             host.pause().stop().destroy()
@@ -1505,7 +1536,7 @@ class DualPagerPageHolderLayoutTest {
                 DisplayPage.Single(requireNotNull(adjacent.pages).single()),
             )
             assertTrue(requireNotNull(offscreen.presentationScope).first !== original.first)
-            ReflectionHelpers.getField<ReaderPageImageView>(visible, "rightHolder").onImageLoaded()
+            paint(visible, page)
             io.mockk.verify(exactly = 1) { viewer.activity.viewModel.onDualViewportSettled(page, listOf(page)) }
             val adjacentTicket = requireNotNull(offscreen.presentationScope)
             viewer.destroy()
@@ -1538,7 +1569,7 @@ class DualPagerPageHolderLayoutTest {
                 viewer.adapter.session(chapter)?.location?.sequence,
                 holder.presentationScope?.second?.locationSequence,
             )
-            ReflectionHelpers.getField<ReaderPageImageView>(holder, "rightHolder").onImageLoaded()
+            paint(holder, holder.displayPage.firstPage)
             io.mockk.verify(exactly = 1) { viewer.activity.viewModel.onDualViewportSettled(page, listOf(page)) }
         } finally {
             host.get().setContentView(View(host.get()))
@@ -1651,26 +1682,24 @@ class DualPagerPageHolderLayoutTest {
             host.get().setContentView(viewer.pager)
             val tail = port.materializedPages[16]
             loader.onPageSelected(tail)
-            pumpUntil("Actual optional materialization must reach the delayed wide boundary") {
-                wideEntered.count == 0L && tail.status == Page.State.Ready
+            pumpUntil("The original normal current request must finish without remote prefix reads") {
+                tail.status == Page.State.Ready
             }
-            assertEquals(
-                mihon.domain.reader.ReaderPortraitSingleSlot.FULL,
-                (viewer.adapter.items[viewer.pager.currentItem] as DisplayPage.Single).slot,
+            assertEquals("No optional wide-prefix I/O is admitted", 1L, wideEntered.count)
+            assertTrue(
+                "The remote wide source is not requested merely to classify the tail",
+                "/image/10" !in requestedPaths,
             )
-            assertEquals(16, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
-            releaseWide.countDown()
-            pumpUntil("Late encoded wide header must reflow the original tail target") {
-                val display = viewer.adapter.items.getOrNull(viewer.pager.currentItem) as? DisplayPage.Single
-                display?.page === tail && display.slot == mihon.domain.reader.ReaderPortraitSingleSlot.RIGHT
-            }
             assertEquals(
-                mihon.domain.reader.ReaderPageFact.dimensions(1500, 1067),
-                port.materializedPages[9].pageFact.value,
+                mihon.domain.reader.ReaderPageFactState.UNKNOWN,
+                port.materializedPages[9].pageFact.value.state,
             )
             val owner = requireNotNull(viewer.adapter.session(chapter))
-            assertTrue(owner.units.any { it.pageIds.map { id -> id.sourcePageIndex } == listOf(14, 15) })
             assertEquals(16, owner.location?.pageId?.sourcePageIndex)
+            assertEquals(
+                mihon.domain.reader.ReaderPortraitSingleSlot.RIGHT,
+                requireNotNull(owner.targetUnit).slots.single { it.pageId.sourcePageIndex == 16 }.position,
+            )
             val holder =
                 viewer.pager.children.filterIsInstance<DualPagerPageHolder>().first {
                     it.displayPage.containsPage(tail)
@@ -1821,6 +1850,11 @@ class DualPagerPageHolderLayoutTest {
             val current =
                 listenerField.get(native) as NativeImageListener
             current.onReady()
+            assertTrue(
+                "Current metadata readiness also cannot substitute for actual painting",
+                !holder.hasRenderedVisiblePages(),
+            )
+            paint(holder, page, replacement)
             assertTrue(holder.hasRenderedVisiblePages())
         } finally {
             detach(holder)
@@ -1928,7 +1962,12 @@ class DualPagerPageHolderLayoutTest {
 
     private fun mountInPager(holder: DualPagerPageHolder) {
         viewer.pager.visibility = View.VISIBLE
-        Robolectric.buildActivity(Activity::class.java).setup().visible().get().setContentView(viewer.pager)
+        Robolectric.buildActivity(ComponentActivity::class.java).setup().visible().get().also {
+            hosts += it
+            it.setContentView(viewer.pager)
+        }
+        // Finish the original window's initial traversal before installing this gesture-only adapter.
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
         viewer.pager.clearOnPageChangeListeners()
         viewer.pager.adapter = object : ViewPagerAdapter() {
             override fun getCount(): Int = 3
@@ -1975,7 +2014,15 @@ class DualPagerPageHolderLayoutTest {
     // without a network loader or a copied layout implementation.
     private suspend fun load(holder: DualPagerPageHolder, page: ReaderPage, sideName: String) {
         val sideType = DualPagerPageHolder::class.java.declaredClasses.single { it.simpleName == "Side" }
-        val side = sideType.enumConstants.single { it.toString() == sideName }
+        val side = if (sideName == "CENTER") {
+            ReflectionHelpers.callInstanceMethod<Map<ReaderPage, Any>>(
+                holder,
+                "pageSides",
+                ReflectionHelpers.ClassParameter.from(DisplayPage::class.java, holder.displayPage),
+            ).getValue(page)
+        } else {
+            sideType.enumConstants.single { it.toString() == sideName }
+        }
         val method = DualPagerPageHolder::class.java.declaredMethods.single { it.name == "setImage" }
         method.isAccessible = true
         suspendCoroutineUninterceptedOrReturn<Unit> { continuation ->
@@ -1992,7 +2039,31 @@ class DualPagerPageHolderLayoutTest {
         }
     }
 
+    private fun paint(
+        holder: DualPagerPageHolder,
+        page: ReaderPage,
+        encoded: ByteArray = requireNotNull(page.stream).invoke().use { it.readBytes() },
+    ) {
+        measure(holder, holder.width.takeIf { it > 0 } ?: 1440, holder.height.takeIf { it > 0 } ?: 3120)
+        val field = if ((holder.displayPage as? DisplayPage.Double)?.leftPage === page) "leftHolder" else "rightHolder"
+        paintReaderImage(ReflectionHelpers.getField(holder, field), encoded)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+    }
+
     private fun measure(holder: View, width: Int, height: Int) {
+        // Slot feedback is real Compose content and needs the actual window lifecycle.
+        if (!holder.isAttachedToWindow) {
+            val root = generateSequence(holder) { it.parent as? View }.last()
+            if (root.parent == null) {
+                Robolectric.buildActivity(ComponentActivity::class.java).setup().visible().get().also {
+                    hosts += it
+                    it.setContentView(root, FrameLayout.LayoutParams(width, height))
+                }
+            }
+        }
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+        // These explicit measurements must consume layout params changed during the previous layout.
+        holder.forceLayout()
         holder.measure(
             View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY),

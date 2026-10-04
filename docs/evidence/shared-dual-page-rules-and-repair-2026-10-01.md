@@ -815,3 +815,661 @@ Mac同源码production Main定向测试1项通过，真实Swing EDT／Library完
 2026-10-03 Windows用户现场验收（正式0.11.19.70.84d98c7）：B1第17页先居中随后右侧，前组15/16，顺读尾部验收无误，退出重开结果一致；B2第20页居中，第2页左侧，页面不丢失。用户另观察未充分加载时当前页由居中移到右槽，随后左侧页出现。设计4.2第5优先级明确未决组先呈现目标页居中，再根据有效事实重排，7节保持原定位目标；与该加载策略一致，最终分组通过不等同没有视觉移动。没有复现反复来回摆动或目标丢失，不据此新增产品修复／全量测试。
 
 纠正主代理之前的手动说明：当前Desktop键盘0／End使用presentation.displayUnits总数，而该序列包含章界提示；GoToPage处理命中transitionDirection时选中提示单元。因此用户按0先看到“下一页没有啦”，再退到17，与当前接线一致。此前将0说明为“直接到源末页”不准确；直接定位源17应使用底部源页码进度条。用户现有反馈证明边界前17页与15/16可读，但不能替代源页码条直接17的独立结果。此项不擅自修改快捷键语义，不把说明错误计为新增双页产品回归。Windows实测反馈保留，DP02仍未勾选。
+
+## 2026-10-04 v3增量实施
+
+用户要求实施唯一roadmap，起点为干净的 `9fe50edf6e`。按计划启用1名实施子代理，A→B→C串行；主代理进行1轮分段独立审查。定向红绿重构估算四组共12次，SP01末尾受影响批次验证1次；SP01实施、审查、验证及提交完成后才使用本轮新增最终矩阵1次、Windows/Android/macOS正式构建各1次与对应运行验收。失败不自动追加全量或正式构建，旧70证据不算v3通过。
+
+首次只读前置核验：本worktree未观察到在途Gradle/协调器进程；Android SDK的android-36/android.jar、36.0.0/aapt2.exe和platform-tools/adb.exe存在，当前无连接设备，已有 `mihon-pairing-api36` 专项AVD。Mac入口可达、macOS14.8.4和既有Temurin21.0.10有效；旧隔离checkout为 `84d98c7176` 且保留BUILD69→70未提交改动，其他应用实例保持原状。这些只证明环境前置，不证明本轮原生行为通过。
+
+SP01.A共享接口已通过首段独审与定向验证，已放行同一实施代理串行执行SP01.B Desktop→Android；尚未完成平台/资源/操作链验收，不勾选SP01或DP02。具体红因、结果、日志和S01–S17映射在本节随实际证据追加。
+
+`sp-a-stable-red` 实际执行新 `SharedDualPageStablePresentationContractTest` 的8个用例，8个行为断言失败、0编译/引擎错误；主代理核读测试和原XML。正确红因包括未知目标FULL/未知前缀依赖、整组进度门禁、跳过未画伙伴、晚恢复换组与certain手调门禁。原XML保存于 `.gradle-coordinator/sp-a-stable-red-tests.xml`，日志为同目录 `sp-a-stable-red.log`。最小实现后 `sp-a-stable-green` 自然PASSED/1分15秒，8个用例通过。该结果仅证明首轮反例；竞争/预留、邻屏/history、身份失效及受影响旧契约仍在补齐，A接口尚未签收，两端原生接线尚未实施。
+
+主代理执行 `python scripts/build-android.py check --signing` 退出0，既有正式证书可用，JDK21和SDK36前置通过；未构建、未安装、未分配版本。这不是Android业务验收证据。
+
+SP01.A接口独审定向补齐了部分双页进度累计、动画邻屏生命周期、投影/页归属、空loading票据、真实内容替换、快速连续定位、视口变更和开篇摘要反例。初轮旧契约中与v3冷跳、默认双页、迟到恢复和逐页进度明确冲突的断言随规格更新；B1/B2、EXIF分类和保存失败保护未放宽。`sp-a-refactor-focused2` 的Android98项中视口反例失败，JVM尚未执行，未以旧XML记录本次JVM通过。
+
+同一独审第一段最终关闭三项真实问题：自己的pending伙伴被占用索引误认成其他组、反向组首槽先画后丢失后槽、迟到手调保存未使原冲突历史失效。`sp-a-review-boundary-red` 实际执行2项/2个行为失败，最小修复后 `sp-a-review-boundary-green` 的这两项及视口反例3项全绿。可见冲突帧在真实release前保留，迟到保存只影响未来回访，不回跳当前定位；空placeholder不成为显示历史。
+
+冻结共享快照后的 `sp-a-final-jvm-focused` 自然PASSED/12秒，包含domain Kotlin格式修正与检查；`sp-a-final-android-focused2` 运行真实 `:domain:testDebugUnitTest`。主代理独立解析两端新XML：JVM时间为2026-10-03T18:37:03Z，Android为18:38:08–09Z，均为8类100 tests、0 failures/errors/skips，其中新增稳定呈现契约30项、session28项。此前误用不存在的 `:domain:testAndroidHostTest` 仅配置失败、0测试，不计行为结果。对应日志位于 `.gradle-coordinator/` 同名文件；没有完整模块或正式构建。上述证据只签收共享接口，不证明平台真实首帧、零位移或用户交付；SP01保持未勾选，后续复用同一实施代理执行B/C。
+
+SP01.B Desktop首轮通过真实 `ReaderContent`、HorizontalPager、原图像owner/pipeline和 `ZoomablePageBox` 离屏绘制复现：C已画、D未画时没有partial进度；实际tap及 `MouseWheelEvent` 都跳到源index3而不是未画伙伴index2。对应有效红为 `sp-b-desktop-native-red` 的partial用例、`sp-b-desktop-navigation-red` 及 `sp-b-desktop-wheel-red`。前两轮wide用例在伙伴放行前没有完成宿主首画，不能作为宽伙伴被错误半槽绘制的红因；已保留并区分其失败证据，不以它宣称修复宽图旧故障。
+
+最小绿 `sp-b-desktop-native-green` 新XML时间2026-10-03T19:01:55.942Z，实际4项全绿：真实partial→同定位追加、连续tap、wheel及迟到wide。partial验证逐帧整幅内容矩形与真实Compose呈现对象身份；wide当前首画与伙伴到达后不画半槽、不移动C。数据和观察来自真实pipeline，未手工调用drawn。此里程碑尚不证明真实SQL写入、缩放/邻屏/内容替换、Android或正式产物；后续补齐，保持SP01未勾选。
+
+原图输入只读核验：B1 CBZ有17图、原编码总6350792B，SHA-256 `fec7ffef2dc6773c0c917b5e9961fff745cca5eb9eaccc82deee2dffe26b522b`；B2有22图、11801744B，SHA-256 `760c81b12dee475288833b29b1f965fa097d4dbafbc36b6cc62f3e2d5a9ac439`。对应dimensions JSON的wide页分别为[10]及[3,10,19,21]。HostReaderArtFixture固定ManHuaGui单URL解析样例不等于原B1的17页验收，后续S09/S10必须绑定上述真实原图和正常产品来源链。该核验仅确认输入，未执行原生读取或配对验收。
+
+Desktop后续原生反例覆盖了原内容lease保留、远页替换、显式crop/实际viewport变更、缩放平移中的迟到wide、真实曝光与prefetch区分、原Retry和触摸drag。`sp-b-desktop-geometry-red` 的2项实际失败分别为crop丢失未画伙伴、实际resize没有更新geometry context；`sp-b-desktop-drag-red` 使用项目既有Touch输入精确复现目标index2被跳到index3。早前Mouse输入未形成有效drag的失败不计业务红。反向D先画/C未画、无可选header的真实Ready和远端portrait猜测被实际wide纠正也形成独立行为红，随后最小修复；没有通过等待伙伴或新增首帧宽限获得绿色。
+
+`SharedDualPageRuntimeProgressProductionTest` 通过真实Compose绘制、runtime factory、ReaderProgressTracker、RecordReadingProgress和内存SQLDelight/JDBC链验证partial→追加：先写源index1与1个事件，D放行后写index2与第二事件，多帧不重复计读。首轮 `sp-b-desktop-runtime-progress` 新XML时间2026-10-03T19:08:10.284Z，实际1项通过；并非手工调用settle或mock progress parser。
+
+`sp-b-prepared-boundaries-green` 保存的4份新XML由主代理独立解析：共享stable31、session28，共59项；Desktop真实原生14、SQL生产链1，共15项，均0 failures/errors/skips。共享XML为2026-10-03T19:55:10–11Z，Desktop为19:55:28–37Z。该快照的原生测试逐帧核完整内容矩形、Compose对象身份、frameId和非默认zoom/pan，不仅比较中心线。此结果只证明该定向集合，不证明Android、资源预算或正式运行通过。
+
+首次受影响旧Desktop回归 `sp-b-desktop-regression` 实跑83项，其中23项失败。分类中有3项旧契约与v3冷跳/缺尺寸/未画票据语义冲突，须按新协议适配；原即时翻页16项出现首帧背景，另4项双页快速/反向目标仍待诊断。没有将这些失败称为绿色。随后新原生14仍绿、即时翻页16仍失败，排除了仅凭上一帧LayoutCoordinates缓存作因果判断。新诊断XML确认逻辑定位先更新而旧页面仍可见时，旧票据被提前释放；修复与受影响复验尚在进行，SP01.B仍未签收，未启动完整模块测试或正式构建。
+
+Desktop稳定里程碑随后关闭上述首帧空白：旧画面仍暴露时保留其原有有效几何票据，新逻辑定位撤销旧屏计读/追加资格；不将旧像素续画误当新导航。原PageTurn断言仍逐帧拒绝即时翻页背景；v3导航预期用真实 `ReaderPageIoObserver.firstPresented` 建立因果，前槽实际未画时不能把旧双页下标当作已读。`sp-b-desktop-slot-lifecycle-red` 的共享1项及Desktop3项保留两个正确红：从已画前槽反向时误走未来后槽，以及伙伴错误的真实Retry按钮重挂载当前已画图。修复仅优先相应方向内的未画页，并对重试页定向撤销lease；未锁伙伴换内容可继承原槽，已锁且内容未变的另一图保留frame、mount和变换，旧owner票据仍不能报告替换内容。
+
+`sp-b-desktop-focused-final4` 新XML中共享60项全绿，Desktop86项仅远处宽图候选1项失败；其中PageTurn40、真实Native17和SQL1通过。格式同时另有3处长行失败，两类结果分别记录，不以业务绿覆盖格式失败。远宽图回归明确复现当前定位16时远处9的有效SPREAD仍留在[9,10]缓存候选。`sp-b-projection-delta-red` 的真实共享缓存契约1项正确失败后，最小修复只在changed页附近使用原有有界投影更新；当前已锁frame、不相邻单位对象和每源页唯一归属保持，重复且不改变布局的事实继续复用列表。没有扫描全章重算配对。
+
+`sp-b-desktop-projection-green` 由主代理核验5份新XML：共享32＋28项（2026-10-03T20:29:07Z）、DesktopWiring5＋Native17＋SQL1项（20:29:21–26Z），共83项，0 failures/errors/skips。没有机械重复仍适用的其余旧回归；最终SP01冻结批次按后续实际改动验证。`sp-b-desktop-scoped-format` 自然PASSED/18秒，终态2026-10-03T20:31:43Z；复用原临时格式入口，仅App0、Domain10、Desktop14个本任务Kotlin目标。此前3次配置失败分别为未注册Desktop任务、PowerShell未整体引用参数及按需配置未加载app插件，均0业务测试，不计产品红。
+
+实施者已交付 `status/diff/tests/commit/process/next` 结构化Desktop里程碑回执；主代理核证并放行同一代理继续Android B。当前全部Gradle已终止，无在途重型进程，产品与文档保持未提交。该回执只签收Desktop协议、几何/导航及真实SQL的开发定向证据；Desktop原B1/B2正常来源、EXIF补证、Android View/VM及JNI/ART、C资源/性能/操作反馈和正式S17仍未完成。SP01和DP02继续未勾选。
+
+Android首轮 `sp-b-android-progress-red` 自然FAILED/14分47秒。主代理独立解析保存的XML（2026-10-03T20:38:47.468Z）：6 attempts、6 failures、0 errors/skips，实际是2个方法各执行3次，不能写成6个独立场景。真实VM＋SQL用例先成功写入partial源index1，第二次同pending追加index2时等待事件为空（行327），证明原一次性settled门禁吞掉追加；实际挂载Ready holder的用例在尚未native draw时发现frame.locked非空（行350），证明挂载过早成为几何承诺。二者为有效行为红，不是编译或测试引擎失败。
+
+该轮前导通配符方法过滤触发大量Test Executor类发现，默认maxRetries=2又重复扫描，增加流程开销但未扩大业务执行集合；进程均自然结束，未并行重启。后续改用完整FQN方法选择及仓库已有 `udp-focused-no-retry.init.gradle`，仅当前定向TDD调用关闭自动重试，仓库和正式验证默认不变。VM调用只证明进度/wiring；实际Android像素、首帧和零位移仍须后续holder及JNI/ART证据，不能以这两个Robolectric用例代替。
+
+Android追加的 `sp-b-android-activation-red` 使用完整FQN及已有focused无重试入口，实际2项/2失败，XML为2026-10-03T20:51:19.318Z。真实相邻章节activation尚在等待时，第二次actual callback累计仍为1而不是2；逻辑目标图片错误但确定伙伴实际已画时，原目标Error全局门禁使伙伴没有SQL事件。主代理核原XML及production接线，不把前轮Executor类发现次数当业务场景数。
+
+最小实现保留原定位token、activation与pending对象，分别累计presented/accepted源页；等待activation结束后读取最新实际集合，不制造新导航。仅对实际绘制集合检查Error，保留章节、页身份、定位及隐私检查；离屏旧回执仍拒绝。`sp-b-android-progress-green` 自然PASSED/1分02秒，主代理独立解析3份新XML：共享stable32＋session28项（2026-10-03T20:54:17Z）、真实VM/SQL4项（20:54:35Z），共64项，0 failures/errors/skips；App2、Domain10、Desktop14个任务目标格式通过。确认Android同定位追加进度及等待激活时丢失回执的问题已修复；这是VM生产链验证，不能替代真实View像素与逐槽反馈验收。
+
+为取得B的真实Android呈现红测，使用统一 `python scripts/build-android.py debug`，协调器 `android-candidate` 自然PASSED/2分06秒（21:17:12Z），随后 `sp-b-android-art-test-apk` 的 `:app:assembleDebugAndroidTest --no-parallel --max-workers=2` 自然PASSED/3分06秒（21:20:51Z）。两次构建期间全部tracked source/docs冻结；没有完整模块测试、正式候选、版本递增或实体安装。开发宿主为 `app.mihon.desktop.fork.dev`，APK SHA-256 `330ae4c3f8772137c8e850078e2b28a424d46d909c17407f0202ff6569bc1f43`；dev.test仪器APK为 `3b2287a59507e8ee951f752a6aee44f477d31bed03ab34e471b527aee5db9139`，target dev，两包同debug证书 `fb141e4e749dc634a3d5d79e179a1057ab81fa1fd7cb5077b6dfeccfe11f3079`。这些开发产物不作正式交付地址。
+
+主代理启动前实核31.8GiB总内存、8.08GiB可用，无连接设备或既有emulator，5586/5587端口空闲。专用 `mihon-pairing-api36` 使用1536MiB/2核、read-only、不加载/保存快照、no-window启动，serial `emulator-5586`、hardware `ranchu`、API36 x86_64身份均实核；父PID40840，启动日志 `app-desktop/tmp/udp-sp01-art-20261004/emulator-{stdout,stderr}.log`。原ManHuaGui/Copy APK精确校验既有SHA后，连同原捕获响应只暂存到 `/data/local/tmp/udp-art-native/`。实施者通过统一installer安装dev宿主，仪器包仅安装此AVD；首次正常MainActivity初始化独立dev数据库，不迁移正式用户库。真实窗口首帧、伙伴迟到/宽图/错误及SQL的首次ART红正在执行，尚未记录其结果；不会把未执行的后续断言记为有效红或绿。
+
+首次ART红 `sp-b-android-art-native-red` 自然终态101.615秒，3 tests/3 failures；portrait/wide/error三向量均停在“Actual first-slot pixels must reach the real SQL progress path”。主代理核原日志及测试：C实际PixelCopy矩形为 `(540,796)–(1077,1605)`，真实SinglePageSubHolder/SSIV为540×810，原Copy响应解析及C图片HTTP200存在，D gate尚未放行。故这是实际首图已显示但partial SQL未提交的正确红；不是图片未画或环境错误。宽伙伴不得半槽、逐槽Retry及伙伴追加的后续断言均未执行，不以此记录它们已红或已绿。开发宿主和源码身份保持上述绑定，首次仪器进程已自然结束，AVD仅本轮专用实例继续保留供focused修复复验；最小holder实际draw接线仍在实施。
+
+原图输入进一步独立核对：主代理直接读取两份原CBZ的每张encoded图像头（仅元数据，不作呈现），实得B1的17图/6350792B及宽图[10]，B2的22图/11801744B及宽图[3,10,19,21]；全部原图EXIF为1，与既有dimensions JSON一致。此核验保护S09/S10输入真实性，不能替代正常来源入口及实际分组/几何，也不能证明S11的EXIF1–8。
+
+首次最小协议修复将onImageLoaded与实际native draw分离，并接partial累计settle。`sp-b-android-native-protocol-format` 自然PASSED/18秒，21:29:01Z；随后开发宿主SHA `840b56ea7392ca77fa5139e60687100cb3cd14db39d6447ba5a2e439462cd324`、仪器SHA `5866fecc71c54b0379e90fd717342249bb0af6762b41fd01727b6ef82381c197` 在同一冻结源码上构建成功，仍为dev/debug证书，不递增正式身份。协议ART三向复验正在执行，结果待实际日志。主代理独审另指出新beforeDraw以尺寸存在即prepare可能提前锁定；实施者核真实缓存AAR的该版SSIV，确认sWidth/sHeight可先完成，而onDraw尚无ready bitmap/base content即返回。该边界确需补真实JNI metadata已完成但region decode受控的红测及最小修复；当前三向首协议结果不能排除它，也不能以跳过初始化导致死锁或额外等待一帧获得通过。
+
+首协议ART `sp-b-android-art-native-protocol` 自然终态12.55秒，3 tests/2 failures。三向均已通过C实际像素→SQL源index1的首断言；error一向通过其原有Retry中心、C未缩放观测及伙伴实际补入SQL2。portrait/wide在真实doubletap后因夹具使用未乘祖先transform的getLocationInWindow/width关联PixelCopy中心而找不到对应View，属于观测坐标错误，不计产品宽图或追加的正确红。主代理核旧error反馈仍为全holder及XML center布局，要求使用完整bounds包含对应half而非中心点小于中线、补D Loading在C显示后仍有独立反馈，并将error纳入真实zoom；旧error单向PASS仅代表已执行的窄断言，不代表逐槽反馈已实现。
+
+保持上述production宿主不变，仅增强原生测试并构建新仪器包 `c863801e9c323db3197b666be1fc1a897c340d9d6fbfb30cf507153ac5d4c11b`，`sp-b-android-native-boundaries-test-apk` 自然PASSED/28秒。新增 `ReaderPageImageNativeDrawGateTest` 使用原公开SSIV executor放行真实JNI初始化、hold原base decode任务，元数据阶段检查0prepare/ACK，release后检实际MAGENTA pixels与同一draw pass的prepare/ACK；不替换decoder或手工调用shared drawn。真实窗口Native3同时修正transform观测，增强Loading/Retry整槽界限。四项正确红正在执行，未提前记录结果；仍无正式版本分配或完整模块测试。
+
+加强后的 `sp-b-android-art-boundaries-red` 自然终态44.839秒，4 tests/3 failures，主代理核原日志。portrait向量在修正实际transform关联后完整通过；真实JNI gate在sWidth=400、base decode held、isImageLoaded=false时prepare计数为1而非0，明确证明元数据提前锁定。error向量已通过C像素与SQL1，却在“D pending loading feedback must remain inside its LEFT slot”失败，证明加载反馈未按D独立槽位提供，尚未执行加强后的Retry断言。wide向量在真实D Ready及adapter SPREAD已到后无法取得当前C像素，需进一步核mount/pager状态；不能仅以缺观测异常声称已复现半槽或已修复几何。实现者继续按两个正确红最小修gate和槽内反馈，宽图在明确原因前保持原行为；没有完整模块或正式构建。
+
+最小gate/Loading修复后的开发宿主SHA `8239cb23fefb46d6c6021a9181331097af3514bd9d0a011e597a854c8c16de03`，仪器SHA `1fa55c03317c7e3206d2724a1bae79b3da7f4ae9862b7b8b27ecc7a795cc8ee0` 均由冻结tracked源码构建成功。`sp-b-android-art-gate-loading` 自然终态89.863秒，4 tests/3 failures：portrait完整通过；error已通过D LEFT Loading及真实zoom，随后Retry整个bounds跨槽（line87）为新的有效行为红；wide本轮在launcher idle/setup超时，不能当宽图业务红。JNI metadata阶段0prepare已通过，但release后actual ACK未到，故完整native gate仍未绿。实施者诊断Android硬件子RenderNode可仅重绘SSIV自身而复用父wrapper displayList，父dispatchDraw不足以保证每次实际childdraw回执；下一最小修复移动到原SSIV/PhotoView子类onDraw前后，需继续用真实ready flags、PixelCopy及ACK证据核原因和同一门禁，不增加等待帧或替换解码器。
+
+同一轮B进度/身份独审另登记两个待核风险：history frame.drawn包含以往实际显示，回翻新holder未画时不能仅用它在idle计读；原PhotoView复用时旧drawable非空也不能当新请求已解码。二者按S14/S15原边界补真实production接线反例，不提前称为已修复，也不以全量测试代替诊断。
+
+将Loading/Error沿原FrameLayout放在不随pageContainer变换的物理half后，`sp-b-android-child-draw-error-format` 自然PASSED/18秒（22:10:01Z）。开发宿主SHA `d62511dd3f25c63053658c0a0bbe6a26320b1dba5d385d225e0e814ca0fb8fed` 与仪器SHA `0013b677aa8061f944f20f64e26b7c4820fd73f8c543eaadb5c8c7a3b551988c` 同冻结源码构建成功，终态分别22:11:22Z/44秒、22:12:14Z/28秒。
+
+`sp-b-android-art-child-draw-error` 自然终态17.831秒，4 tests/1 failure。portrait完整绿；error通过LEFT Loading/SQL1→真实非默认zoom→Retry及error_message实际未裁切完整bounds均在LEFT→真实MotionEvent点击→D像素及SQL2；JNI gate通过metadata0prepare/0ACK、release后真实base准备和首次ACK仅1次prepare、实际窗口PixelCopy MAGENTA。主代理核日志及原子SSIV/PhotoView onDraw接线，首draw不等matcher，不替换原解码器；之前RenderNode机制仅为诊断推断，旧日志未记录足够flags，不据其单独宣称因果已证实。唯一wide现为明确业务红：实际D Ready及adapter SPREAD后，原C `mount.isAttachedToWindow` 为false（line113），证明当前已画容器被卸载。随后最小修稳定anchor/holder；当前宽图、history重挂进度与Photo新内容身份仍未签收，SP01.B不勾完成。
+
+稳定holder修复保留未改变物理槽的原图片、容器、任务和变换，只撤未显示且不再属于该组的伙伴。开发宿主SHA `c58f77cc05491397989e191a33badcd9ce03ef7ec2ef741e8f1fa026c635b6f7`、仪器SHA `36c3cfb9d19558d8cf9c01946660c886eb0e0c970cd2a7a3ac63324067bd807d` 在同一冻结源码上构建成功。`sp-b-android-art-stable-holder` 自然终态51.842秒，4 tests/1 failure：portrait/error/gate完整通过；wide在真实D Ready及SPREAD到达后，连续30次C的完整内容矩形、mount/container身份、缩放和平移均保持且无D半槽像素，随后真实按键翻到D却无FULL像素（line123）。因此仅签收已执行的稳定几何断言，不能写宽图完整通过。
+
+生产c58f保持不变，补诊断及原Single真实手势反例；`sp-b-android-native-single-diagnostic-test-apk` 自然PASSED/43秒，22:23:38Z，仪器SHA `f031f7ff869eb2b50f5093756979789460a71e2a63e642d57f9bed8381bf9f7a`。`sp-b-android-art-single-diagnostic-red` 自然终态82.661秒，4 tests/2 failures：portrait/error仍完整通过；D已选FULL、逻辑源index2/seq2与票据seq2一致、SSIV900×600且ready/baseLoaded为true，但该frame锁定/绘制集合为空；原Single双击时SSIV scale未升，实际图片2倍来自父容器，为正确手势回归红。最小修复在新presentation scope时仅invalidate原已解码child，并固定holder原始Double的手势上下文，不重解码或等待，不把撤伙伴后的Double改成Single手势。
+
+`sp-b-android-native-scope-gesture-format` 自然PASSED/16秒，22:26:49Z；统一debug构建自然PASSED/22秒，22:28:22Z，宿主SHA `29ca55ce3bcdabb09bc2b14471331c805e5cbd7b7519543f794c13bf1291b881`；`sp-b-android-native-scope-gesture-test-apk` 自然PASSED/28秒，22:29:42Z，仪器SHA `3dbb3b737b9778645729bc9d7c4d85e9c3e04172c19fd9da2312d4b885f1fa64`。两包绑定同一冻结源码，原Native3＋Gate＋Single共5项的ART复验结果待实际终态。主代理同时核Android key/tap/wheel仍走旧pager组索引±1，将真实源页导航、邻屏拖动、history当前实画资格及PhotoView新请求身份继续列为B未闭项；不以当前窄几何绿提前推进C。当前资源约2.3–2.4GiB可用，无并发新增重型编译；只沿已有专用AVD及已构建两包继续focused原生复验，不清理其他Java/Gradle进程。
+
+`sp-b-android-art-scope-gesture` 自然终态54.568秒，5 tests/1 failure；主代理核原日志及原Single真实MotionEvent/SSIV scale断言：portrait、error、Gate、Single完整通过，确认初始Single误用整组缩放的回归已修复。wide仍在实际下一步FULL像素处失败，C稳定且未半槽的既有断言继续通过；scope-change单独invalidate未关闭这个红。实施者保持同一问题诊断，检查ViewPager实际曝光后是否重新触发child绘制，不增加固定等待或重解码。此结果只签收四项及wide已执行的窄断言，Android B仍未完成，无提交或正式版本分配。
+
+真实 `onPageScrolled` 与idle曝光回调只invalidate可见且本holder未实画的原child，已画C保留原容器/变换。`sp-b-android-native-boundary-batch-format` 自然PASSED/19秒，22:47:11Z；统一debug自然PASSED/24秒，22:47:53Z，宿主SHA `950b6b7aacd3324d5faa0de4cfcbd439e0f48ebdaee8ac38065e0626a32f2d46`；`sp-b-android-native-boundary-batch-test-apk` 自然PASSED/35秒，22:49:21Z，仪器SHA `2dddb46e80c5c28b6e7830553fdbce8826aca9aa71fd8aaa1e112523060790a0`。限定测试构建串行、max-workers=1，两包仍为同一冻结源码和原debug证书。资源检查发现约2GiB可用，但无持续换页或异常，另一工作树已无active任务，只复用常驻daemon；未终止其他进程。
+
+`sp-b-android-art-boundary-batch-red` 自然终态40.003秒，9 tests/6 failures，主代理独读日志与实际测试。原NativeStable3向全部完整通过；wide的C30次内容矩形/挂载/变换不变、D不半槽、真实DPAD_LEFT后D宽度超过视口75%的FULL像素及SQL源index2均通过，确认宽图下一屏空白已修复。新增红保留：原Coil两帧GIF旧drawable仍显示、新请求encoded stream受控未完成时，replacement prepare应0实1（line79，ACK及release后断言尚未执行）；真实原reader回翻、旧holder已卸载、新窗口preDraw暂停而activation/SQL正常时，事件数43变45（line67），证明历史draw集合过早计读；key/tap/wheel/drag四个真实窗口事件在D原HTTP请求held时均应定位源index2，却跳index3（line49）。6项是正确行为红，不是环境、编译或空筛选。继续原B身份/计读/导航最小修复；Gate/Single仍有效且本次未改其行为，未机械重复。Android B及真实B1/B2、EXIF、C和正式S17仍未全部签收。
+
+三类最小修复分别绑定Photo drawable对应的原decode identity（旧图可继续画，但不借用新请求prepare/ACK）、本holder当前owner/location的actual paint集合与shared历史draw集合的交集、共享源页导航再映射原ViewPager位置。原usePageTransitions保留；拖动沿原动画曝光锁定，到真实idle校正源目标，临时邻屏不读。`sp-b-android-native-source-progress-format` 自然PASSED/22秒，22:58:23Z；统一debug自然PASSED/34秒，23:00:30Z，宿主SHA `0d4d71e93e55cef80a06ab868d6165ff79f71b68eed81854d12a759c8bed2d5f`；`sp-b-android-native-source-progress-test-apk` 自然PASSED/34秒，23:02:31Z，仪器SHA `f9cfafd4ef43230651d6144b78d7bd78bba440934d0ee69c3408ebafb8786f03`。两包生产源码一致，仅History harness在测试包构建前加强SQL4前置、允许共享反向导航回到原[C,D] frame的源1或2；未改变未paint及SQL核心断言，原正确红仍满足该前置，不追加debug构建。
+
+首次instrument命令遗漏 `.viewer` 包段，4个initializationError、0业务用例，单独保存 `sp-b-android-art-source-progress-runner-error.log`，不计产品红。更正FQN后，同两包的 `sp-b-android-art-source-progress` 自然终态43.885秒、OK (9 tests)，主代理独读终态及三类production修复：Photo旧图0prepare/ACK、新请求release后实际GREEN绘制；history旧holder卸载且新窗口未paint期间SQL事件不增加，release后实际C/D再读；四种输入先定位未画D且不计D、连续请求可到E；原Stable3的portrait追加、wide完整下一屏和逐槽error/真实Retry全部通过。确认跳过未显示伙伴、历史未画先计读及旧动画图借新请求资格的问题已修复。只是Android B窄里程碑，非整个SP01完成。
+
+既定真实原图前置已完成：原专用 `emulator-5586` 复核AVD名 `mihon-pairing-api36` 后，暂存 `/data/local/tmp/udp-art-native/real-b1-original.cbz`（archive6352412B）与 `real-b2-original.cbz`（archive11803790B），设备端SHA分别与既有本机 `fec7ffef2dc6773c0c917b5e9961fff745cca5eb9eaccc82deee2dffe26b522b`、`760c81b12dee475288833b29b1f965fa097d4dbafbc36b6cc62f3e2d5a9ac439` 相同。此前6350792B/11801744B是17/22张encoded图像payload合计，不是ZIP总大小。本步骤只暂存已有输入，未触发应用、用户输入或并发编译，也不是原图呈现通过。
+
+接续的 `sp-b-android-holder-progress-focused` 限定共享stable/session及既有AndroidWiring、ProgressProduction、HolderLayout类，串行max-workers=1、focused禁重试；共享任务UP-TO-DATE，沿用20:54Z的32＋28有效结果，不冒称fresh。app任务仍在实际逐项执行，若干旧dual夹具仅手调onImageLoaded却等待actual进度，每项有界超时；另有Single旧诊断反射已移除的issuedViewport字段。正在保留失败XML、区分夹具与真实回归，未提前记整批结果。终态后只适配受影响夹具为实际production child绘制，先两代表方法再同类复验；Robolectric证据不替代上述JNI/ART。B还须关闭真实邻屏曝光、显式viewport/settings及内容换版生命周期、D-first/UNKNOWN、B1/B2与EXIF补证，然后才进入C。
+
+上述限定批次自然FAILED（23:17:39Z，7分27秒）：ProgressProduction33项/25失败、HolderLayout47项/15失败、AndroidWiring12项/6失败，共92项/46失败、0 errors/skips；原XML归档于 `.gradle-coordinator/sp-b-android-holder-progress-focused-xml/`。主代理独读失败列表，未把它们统一归为产品回归：旧夹具只发加载回调而未实际绘制、私有诊断字段变化及旧整组进度/未知页分组预期，需要按v3逐项适配；可见内容换版进入 `PairingStore.ensure` 后直接 `rebindContent` 抛异常则保留为S14真实失败。旧fact身份保护不能通过替换分组枚举断言丢失，后续须直接验证旧请求被拒及对应源页事实不变。
+
+实际绘制夹具继续使用原encoded Bitmap、原SSIV和 `Canvas.draw`，由production child的真实draw pass产生prepare/ACK，不手工调用共享drawn。初次缺回执经flags和可见矩形定位为测试窗口小于声明视口，图片落在可见区外；修正Robolectric真实窗口尺寸，并正常消费原主线程post，未关闭可见性检查、改产品解码或引入固定等待帧。`sp-b-android-paint-fixture-green` 自然PASSED/26秒，两代表用例全绿（新XML23:28:28Z）。这只验证JVM生产接线，不替代真实ART/JNI解码。
+
+`sp-b-android-progress-paint-regression` 自然FAILED（23:31:54Z，2分18秒），33项/10失败；XML保存为 `.gradle-coordinator/sp-b-android-progress-paint-regression.xml`。其中7项夹具向Single FULL传RIGHT而导致实际图片尺寸为0，2项仍要求旧整组进度门禁，1项保留为可见lease异常。最小测试适配通过反射调用原production `pageSides(displayPage)` 获取实际槽位，不复制共享规则；两partial用例保留原SQL、章末和activation保护，改为首张实际绘制→伙伴Retry后实际追加。`sp-b-android-paint-slot-focused` 自然PASSED（23:36:23Z，1分07秒），4个进度方法及1个原B2尺寸夹具方法共5项全绿。最后一项是尺寸CSV生成图的真实槽位接线，不能当作B2原图呈现通过。S14及其余B边界尚未关闭，未提交、未勾选SP01，未启动C或最终全量。
+
+S14新增三项VM/holder测试拟走实际pager测量、原裁边偏好和原encoded snapshot身份更新。首 `sp-b-android-context-red` 自然FAILED（23:45:41Z，38秒），仅测试缺少 `Injekt.get` 扩展导入，0业务执行，不计正确红。修正测试入口后，`sp-b-android-context-red2` 自然FAILED（23:51:27Z，40秒），3项/3失败；XML保存为 `.gradle-coordinator/sp-b-android-context-red2.xml`，主代理独读。resize后仍能取得旧context0的locked/drawn frame；内容换版的owner变null，suppressed异常指向 `SharedDualPageSession.rebindContent → PairingStore.ensure` 的可见lease检查，确认这两项真实行为红。crop也观察到旧frame，但后续核出偏好事件没有到达config，不能算第三项正确产品红，见下段更正。下一原生租约测试继续使用既有0d4d开发宿主，生产尚未改变；它将核旧pixels、非默认zoom与挂载身份，不能仅以Store不抛认定修复。Ready页没有公开强制网络reload入口，底层header-retry序列与用户错误槽Retry的证据明确区分，不为测试扩展下载能力。
+
+仅仪器包构建的首入口因可空 `fixture.images` 缺少解包而编译失败，0业务执行；最小修测试后 `sp-b-android-content-lease-red-test-apk2` 自然PASSED（23:53:31Z，29秒），仪器SHA `f1ebf2fb75b2bfe99731e79c0b5491b95d53c15c6e452e6355e1e75a7c0b21e1`，生产仍为原dev 0d4d。`sp-b-android-art-content-lease-red` 的 `numtests=2` 只表示计划数，实际仅开始content-leave第1项：真实HTTP C/D已画、SQL2和2倍zoom前置通过，后台stream新snapshot后原ART进程在 `DualPageViewerAdapter` fact collector → `PairingStore.ensure` → `SharedDualPageSession.rebindContent` 抛可见lease异常而崩溃，runner终态 `shortMsg=Process crashed`。主代理独读完整异常链，确认真实产品红；header-retry向未执行，后续像素保持及离屏换版断言也未执行，不把它们记为已失败或通过。继续同一S14最小修复，无在途ART/Gradle或正式构建。
+
+首最小修后的 `sp-b-android-context-green` 自然FAILED（23:57:30Z，54秒），3项/1失败：resize和换版保持原owner/native尺寸通过，crop仍旧frame。主代理与实施者核当前夹具的 `InMemoryPreferenceStore.getBoolean` 每次生成新Preference对象，测试的 `cropBorders().set(true)` 未进入PagerConfig原注册flow；因此更正此前crop红因，不能据旧frame单独认定产品故障。该用例改用原Android偏好存储，并先断言config实际发生变化；不改通用内存偏好实现。原生租约尚未绿，整体S14仍未签收；另已登记换版保留旧图后再resize的组合及离屏补载去重风险，按同一S14范围验证。
+
+真实crop事件红 `sp-b-android-crop-real-event-red` 自然FAILED（2026-10-04T00:00:12Z，35秒），1项：原Android偏好存储实际使 `config.imageCropBorders=true`，等价旧refresh链虽然detach撤销旧票据，新票据context仍0，准确失败在context未更新。`sp-b-android-lease-geometry-red` 自然FAILED（00:01:58Z，24秒），1项：可见旧bytes保留后真实resize，原SSIV ready/loaded/shown/visible均为true，但prepare计数0，证明旧lease资格错误依赖已清空的本context绘制集合。两项原XML按key归档；不借编译或缺事件记红。
+
+最小实现使用独立可见内容lease跨geometry保持原回调资格，当前context的rendered集合仍重新收集；离屏补载按页去重、detach取消并核attachment。设置沿原Buffer快照重配图片，保持holder和旧bytes；主题不更新几何context。`sp-b-android-context-green2` 自然PASSED（00:06:18Z，54秒），Progress4＋HolderLayout1共5项/0 failures/errors/skips，包含bytes换版→resize→原child真实绘制、crop/resize、未显示的Single换版身份及crop region文件生命周期。
+
+共享Store独审另要求保护原Single已显示后的换版：`sp-b-android-single-loaded-replacement-red` 自然FAILED（00:10:30Z，46秒），1项，首次原onLoaded计读已成功，新bytes仍复用旧content owner为正确红。窄修在原Single替图入口先释放旧scope，再Store正常rebind；不把双页可见旧lease规则扩为Single新产品行为，不改变Single原onLoaded进度入口，也不声称它是Single真实像素证据。`sp-b-android-context-single-green`（00:12:28Z，1分07秒）6项/1失败，其余5通过；失败是首次显示helper错误要求已计读同seq的新版再次 `readingEligible=true`。新owner、旧frame撤销及新encoded身份已通过；只修helper的二次资格预期，保drawn及SQL1断言、不造新导航。`sp-b-android-single-loaded-replacement-green` 自然PASSED（00:14:48Z，25秒），1项。production没有再变，最终同production的6项有效绿可合并复用。
+
+格式首轮 `sp-b-android-content-context-format` 因Holder一处超过120字长行FAILED（00:07:59Z，29秒），0业务测试；修格式后 `sp-b-android-content-context-format2` 自然PASSED（00:16:10Z，17秒）。统一debug构建PASSED（00:16:49Z，29秒），开发宿主SHA `8128954ec2d40ff78cb12fd71fbedd414fe46672413322560be64f209159e30a`；testAPK构建PASSED（00:17:25Z，20秒），仪器SHA `32f790c9a2a502c368cf09c87bc267e68d7d94be5a9d887822fb19d06b0b2c03`，同冻结源码及原debug证书。debug文件为 `app/artifacts/android/0.19.4-aex.22-vc40-9fe50edf6e-debug-586468fcffd3/Mihon-Fork-0.19.4-aex.22-vc40-debug-universal.apk`，主代理核存在并独算SHA一致；不作为正式交付包。
+
+同两包的 `sp-b-android-art-content-context` 自然终态59.063秒、OK (11 tests)。主代理独读全部11个完成CODE0、0 failures：Content2、History1、Nav4、Stable3、SingleGesture1。内容向先真实HTTP C/D像素→SQL2→2倍zoom，新stream/header后12次实际PixelCopy的RED完整Rect、mount/container、scale/pan及SQL均不变；真实离屏再进入后新MAGENTA宽图FULL，header-retry向先保旧再沿原显式底层序列放行。后一向不是新增Ready网络UI或用户错误槽Retry证明。其余导航/逐槽错误Retry/宽图下一屏/未paint不计读/原Single手势继续通过，确认可见换版崩溃及换版后geometry回调失效已修复。主代理签收此窄S14及受影响Single接线里程碑；B剩余D-first/UNKNOWN、真实拖动迟到信息、原B1/B2和JNI EXIF、Desktop原图/迟到EXIF，以及C仍未完成，SP01/DP02保持未勾选。
+
+Exposure新增三项使用同一production `8128954…`，只重建测试包。`sp-b-android-exposure-red-test-apk` 自然PASSED（00:36:31Z，24秒），testSHA `77394ef639c29e7732597f5139fb1c1259ca9a23502d5bb2482b91c7df6d1068`。`sp-b-android-art-exposure-red` 自然终态41.689秒，3项/2失败，主代理独读全部终态与测试事件。反向从已画后组经真实key进入目标，前页原HTTP仍UNKNOWN，目标RIGHT实际像素及前页后来wide后12次Rect/mount/逻辑目标不变全部通过。D-first用真实SSIV公开executor暂扣原JNI base任务，metadata正常且sWidth400、baseLoaded=false、queuedTask非空；D已实际LEFT并记录SQL2，C无RED像素，准确失败在C RIGHT加载反馈缺失，后续key/释放任务/累计回执尚未执行，不作通过。held-neighbor项则在E首像素曝光前置超时，邻holder尚无native child、正常HTTP仅C/D（D重复一次）；尚未放行F，因此不能记作F迟到移动画面的正确红。保留原失败日志，先核真实触摸与正常调度入口。SP01仍未完成。
+
+治理检查同步把capability43当前production标记由未被消费的旧 `DualPageSettledVisiblePageReporter` 声明改为 `rememberPagerNativePresentation`、逐槽prepare/drawn及原model结算链。标记只承担治理定位，不替代真实行为/像素测试；该治理类与架构guard的运行留到SP01末受影响批次验证，manifest须依据最终有效证据更新，不提前把正式S17记绿。
+
+Exposure Loading窄修把提示移除从setImage绑定结束移到本槽原child实际绘制且shared ACK成功，不新增呈现等待。格式首轮31秒仅Root治理文件CRLF/长行失败，后续配置顺序错误1秒及同文件反复max-line-length均为0业务测试；停止猜行，Root接回该文件最终格式责任。预格式13秒只作定位，两处猜测的常量分行已撤销，保原治理marker＋LF，最终SP01必须包括其正常Check。`sp-b-android-exposure-loading-format7` 暂只限定受影响产品/原生测试（治理文件未在本次清单）自然PASSED13秒，00:54:37Z；不以此宣称完整格式已过。统一debug自然PASSED（00:55:15Z，18秒），宿主SHA `929787d060dd4b53dee330fd438297667d691db37bd4ae09662a44379ab2ebb4`，开发文件为 `app/artifacts/android/0.19.4-aex.22-vc40-9fe50edf6e-debug-6b5081b50ee5/Mihon-Fork-0.19.4-aex.22-vc40-debug-universal.apk`；testAPK自然PASSED14秒，testSHA `b4fb6291502df0f0981988a768bd5fa382773f4eae756851d0aa8074d2687d27`。
+
+同两包 `sp-b-android-art-exposure-loading` 40.993秒、3项/2失败：D-first完整CODE0，执行C原JNI base held、D实际LEFT/SQL2、C RIGHT Loading、真实key优先C且D几何不变、释放原JNI后C实际首画及累计不回退；held新增诊断反射错误（Pager继承DirectionalViewPager，不能从错误ViewPager class取mScrollState），尚未到伙伴迟到；reverse则初始未来伙伴源4未就绪，仅源3实际BLUE/SQL3、HTTP3＋5，尚未执行反向。因此不把后两项当新产品红。测试前置窄修沿真实class层级读状态，反向初始只要求实际源3＋SQL3，保目标源2/UNKNOWN/RIGHT/迟到wide所有断言；production9297未变，不重建debug。
+
+测试包 `sp-b-android-exposure-diagnostic-test-apk` 自然PASSED23秒，testSHA `1404c2d021661d57f27acf3121196228d286149c875025d730623335f1255bf0`。`sp-b-android-art-exposure-diagnostic` 11.646秒、3项/2失败：reverse核心完整通过；held真实触摸已使E BLUE像素曝光、原frame/逻辑C/SQL基线成立，F正常请求随后实际Ready/SPREAD，准确业务红在scrollX由-638变0（line244，后续Rect/frame断言尚未执行）。D-first同production在RIGHT Loading断言再次失败；其全树firstVisible观测尚未限定源1槽，故此前单次完整绿只保为该次结果，不声称反馈持续签收。先修观测按当前源/槽取得真实可见提示，再判剩余产品风险。拟沿原gesture协议延后adapter结构通知/定位，事实与曝光锁定照常，idle按原source导航消费最新投影，不以scrollTo掩盖重组。B仍未完成。
+
+本轮Mac前置只读核验（08:47北京时间）：原隔离缓存checkout仍HEAD `84d98c7176e7c26022f959066d432acd32406733`，仅AppVersion.kt有未提交改动，macOS14.8.4及既有Temurin21路径可用。未复制源码、启动构建或操作日常实例；DP02使用新的隔离checkout，保护这份旧改动。
+
+最小手势协议在 `hasActiveGesture` 且无显式源目标时只延后adapter结构投影；原事实及曝光锁定正常，idle先消费原源页导航cause，再发布最新pending投影，未用scrollTo恢复外观。Loading新绑定先设置本槽提示，覆盖StateFlow首次收集已经Ready的路径；可见旧lease早退不新挂提示。`sp-b-android-exposure-held-format` 自然PASSED（01:06:09Z，15秒），仍未包含Root治理文件的最终格式；统一debug自然PASSED（01:06:59Z，14秒），devSHA `2c27b96fe5c0036bad8be1f35924256231bf51e48b11aaebe3abae7bdca56c96`，开发文件 `app/artifacts/android/0.19.4-aex.22-vc40-9fe50edf6e-debug-fa20ee703dce/Mihon-Fork-0.19.4-aex.22-vc40-debug-universal.apk`。testAPK自然PASSED（01:07:40Z，15秒），testSHA `89b47cebc3f1c1ebdd2ef83e1372f92dcd92bcce87cc1562424e3a6634917403`。
+
+`sp-b-android-art-exposure-held-green` 自然终态45.389秒、3项/1失败：D-first及reverse完整CODE0；held晚F事实之后12次offset、实际完整Rect、PixelCopy内容、mount/container、scale/pan、frame与SQL全部不变，旧-638→0红已关闭。新增真实UP后E SQL3断言失败，最终回到C；随后独读实际DirectionalViewPager1.0.0 `determineTargetPage` 字节码，低velocity前页使用0.6截断偏置，原638/1080=0.591未跨既有释放阈值，符合回原页行为。这是已证实的手势前置不足，不记作源导航新产品红。保留失败、原几何日志及字节码过程证据；生产2c27不变，只使已完成held比较后继续实际MOVE到0.93W再UP，不调用scrollTo、源导航或伪造cause。
+
+`sp-b-android-exposure-release-test-apk` 自然PASSED（01:13:15Z，23秒），testSHA `d3557e89b0ebe9644c7e1881c563856621acd08991715cd5a9044a5ce7b275a1`。`sp-b-android-art-exposure-release` 自然终态15.018秒、OK (3 tests)，全部CODE0。主代理独读原代码事件及终态：held F实际Ready/SPREAD后12次x=-638、完整View Rect(98,795–638,1605)、pixels(100,796–637,1605)、同mount/container、scale/pan、frame serial3、逻辑C及SQL(2,115)保持；原MOVE继续到x=-800、ItemInfo position10/offset-1/width1，原UP后E实际SQL3，再原key到F MAGENTA宽图，实际内容宽度超过视口75%且SQL4。完整几何过程见 `.gradle-coordinator/sp-b-android-art-exposure-release-geometry.log`，PID14568/01:13:51–52。D-first前图JNI解码held时后图LEFT、前图RIGHT Loading、源页导航与累计实际回执全部通过，反向UNKNOWN条件与前页晚wide零移动也通过。确认伙伴迟到导致真实held拖动复位及Ready初收缺Loading的问题已修复；主代理签收此B窄里程碑，不表示B或SP01完成。
+
+同两APK的SourceNavigation4受影响复验首次应用启动在ExtensionManager→NotificationManager取消通知时发生包/UID不匹配SecurityException（Chrome包），0业务启动；完整原日志 `.gradle-coordinator/sp-b-android-art-exposure-source-regression.log` 保留，不归因手势改动，也不更改无关通知代码。仅专用AVD本dev实例force-stop后经原MainActivity正常初始化，同APK单次复验 `.gradle-coordinator/sp-b-android-art-exposure-source-regression2.log` 自然终态15.942秒、OK (4 tests)，key/tap/wheel/drag全部CODE0；根因仍未证实，不以重启成功作因果结论。主代理另只读取得AVD实际安装base.apk SHA，与上述本地dev2c27完全一致；本地testAPK SHA亦为d355，非仅文件名推断。未递增版本、未正式构建、未提前全量。
+
+下一B工作使用既有原CBZ提取的17/22张原bytes，进入原Manhuagui/Copy扩展HTTP→正常loader→JNI→真实呈现及SQL，保原1页/22页夹具；原B1/B2条件槽位、JNI EXIF、Desktop原图/晚EXIF及旧focused适配尚欠。Loading受影响Native Error一项与下一原图批合并，避免无关重复Gate/Photo。C未启动；治理文件正常格式检查仍属SP01最终批次必做项。
+
+治理格式处理的范围更正：主代理用本机cached ktlint1.8.0 CLI（独立格式诊断、384MiB上限，无Gradle/网络依赖下载）确认实文件采用项目120/intellij配置，但该既有整类包含大量需重排的旧行；直接格式化会涉及上千行及字面量正规化，已恢复诊断前本任务文件，不接纳未证实保语义的输出。为避免把额外marker改动扩大为旧治理文件重写，撤销本轮9行marker变更；01:35Z核该文件git diff/status均为空、index无暂存，保原文件。此前“最终需格式检查该新增改动”的安排随新增改动撤销，不再强行重格式无改动旧类；项目正常spotlessCheck和本任务实际修改代码的格式要求不变，该治理类与架构guard仍纳入SP01末受影响验证。新生产调用链、实际行为方法及日志登记parity manifest与本报告，旧未消费helper的声明不能作本轮行为通过证据。未改变任何S01–S17必做验收，也未新建formatter框架或取消项目规则。
+
+### B Android 原图 JNI 开发证据（2026-10-04，尚非正式 S17）
+
+本节 production 始终是上述开发宿主 SHA `2c27b96fe5c0036bad8be1f35924256231bf51e48b11aaebe3abae7bdca56c96`，没有产品修改、版本递增或正式构建。`HostReaderArtFixture` 只解压已核 SHA 的原 B1/B2 archive，保留 17 张 WebP／22 张 JPEG 原 bytes 和 MIME，进入已安装原扩展的 HTTP 解析、普通 loader、原 JNI SSIV 与真实窗口 PixelCopy；不注入事实、分组或实际绘制回执。B2 原 `words` 有乱序，原 parser 会按源身份排序；夹具的 original 分支据此把源页与 HTTP 图片路径一一映射，保留原响应形状和 parser，旧模拟图片分支不变。
+
+| 原日志 key（均在 `.gradle-coordinator/`） | 实际终态及判别 |
+|---|---|
+| `sp-b-android-art-original-images` | 188.993秒，6项／5失败；晚到开篇完整绿。Copy 原图按 contents 物理位置路由错误，源20实际收到源12／22 bytes；相关前置失败不算产品红。其余像素超时继续诊断。初始 testSHA `84abe52931b732a02e306fef876f2d6a24fc6d3b3e3999f4eeec497c51658854`。 |
+| `sp-b-android-art-original-images-diagnostic` | 98.129秒，3项／3失败，testSHA `99742dcb76e0716b4d9d5a74f888dc8a8d899a52a368336014de9da1eb294e6d`。修源映射后原尺寸／实际槽／JNI base 已成立；B1源17及B2源20仅18/25单点匹配，原高频边缘颜色经缩小滤波改变。开篇新 Dual owner 的真实邻页事实／未锁前置已过，导航提示把左侧像素染色。均为观测／提示前置，不据此改产品。 |
+| `sp-b-android-art-original-images-observer` | 99.749秒，6项／2失败，testSHA `d690503b9061927969c0a86023a8cadb850a0323b0fde825aaf26f2f9d0ab461`；B1冷跳／反向、B1全17顺读／暖回翻、B2晚开篇及晚源20四项完整绿。两项早结构仍在提示遮挡前置，不能签首帧。有效进程 PID16542，原 geometry 日志保留旧进程片段，不能混入本轮证据。 |
+| `sp-b-android-art-original-images-hint` | 84.889秒，3项／2失败，testSHA `2f7f16dba83d4a28e68837740118e4cceb60beb4e012f0f0c13f4d3eeba13bf3`；B1首15实际像素前的透明观察完整绿：PID17111／02:08:01.216Z，原 prepare 成功、源15尚未 drawn 时，实际事实 `[PORTRAIT,PORTRAIT]`、组合 `[14,15]`、普通 Ready `[true,true]`，原回调返回值不变；全17顺读和暖15/16回翻仍绿。两项 known 尚未完成真实提示关闭。 |
+| `sp-b-android-art-original-images-hint-final` | 70.789秒，2项／2失败，testSHA `0f78b4eb5d89b0cd193247fe5bb7628b63d49b2082ada683fcbfc6f1a4831340`。PID17499／02:10:24.496Z观察旧提示 hidden，.617Z新 holder 加载，.752Z新提示才染色；已证实测试把“尚未显示”当作“关闭完成”的生命周期前置竞态，不是产品呈现红。 |
+| `sp-b-android-art-original-images-mounted-hint` | 16.846秒，OK(2 tests)，全部CODE0，testSHA `4b85bb451371e9c5ceffa4e830db9d82f37efd392ce89fdba525173419580185`；先等新提示真实 shown，再经原公开 click 有界重试并观察 hidden。新 Dual owner 首 preDraw 真实邻事实／未锁前置、原图实际LEFT／FULL、12次几何及身份稳定均过。首实际 prepare 的 context 连续性证据仍待下项补齐，不凭最终 slot 代替。 |
+
+观察器维持 5×5 空间网格，原图内每点最多偏移24源像素、只依原图梯度挑稳定点，不参考截图选择；真实窗口仍须至少20/25点匹配。原参考及实际同25空间点的 RGB 最大跨度须超过70，均匀任意颜色因实际跨度0不能通过；不硬凑暗点而拒绝浅色广告。首轮错源图已被尺寸／原参考联合校验拒绝。检查同时约束真实 View.page、原图尺寸、完整内容矩形、mount／container、scale／pan，保 original bytes 身份。原39张参考预检只用于观察器有效性，不作为产品呈现证据。
+
+主代理独读 runner 终态、透明回调代码及 geometry，并独算 testSHA `d690…`、`2f7…`、`4b85…` 一致。当前已执行范围：B1冷跳源17仍RIGHT，真实反向到未画源16且源15UNKNOWN，晚源15到达不移动，再真实返回17；B1正常顺读实际覆盖全部17源页，及时15/16在首15像素前成立，暖回翻仍为原组合；B2源2／20晚结构首RIGHT且真实邻宽图到达后不移动，原key到宽图3／21 FULL及广告22可达。早结构使用真实 Single 正常读邻页／目标后经既有 mode consumer 创建新 Dual owner，首 preDraw 验证新 owner 事实，旧缓存本身不算已知证据。PID17791／02:13的 source20实际Rect `(0,437)–(1080,1963)`、source2实际Rect `(0,819)–(540,1581)` 与各自原 mount／container、scale1、pan0在12次观察中一致，见 `sp-b-android-art-original-images-mounted-hint-geometry.log`。
+
+格式／测试包中间命令只承担编译前置；hint前两次格式失败0业务，透明观察降嵌套并分行后 `hint-test-apk3` 自然PASSED24秒。未安装／未运行的 observer中间包不记业务绿。所有旧失败及日志保留，不放宽原25/20阈值或重写生产逻辑获得通过。当前S09/S10原图行为范围可复用，S03早结构首次实际prepare的slot／context追加证据、JNI EXIF24／受影响Error、Desktop原图／晚EXIF、旧focused适配与C仍待完成；SP01、DP02均未勾选，未提交。
+
+S03首实际绘制补证随后关闭：`sp-b-android-original-images-first-context-test-apk` 定向格式及testAPK自然PASSED，testSHA `1fa0cf8c23188289a5bb5b8925ca824552f9d5a0e1383bcc6e988bca6b055c22`；production仍2c27。`sp-b-android-art-original-images-first-context` 实际Time16.932秒、OK(2 tests)，全部CODE0。主代理独算testSHA并独读原终态／geometry：PID18077／02:18:44.096Z源20首actual prepare为FULL、邻事实 `[SPREAD,SPREAD]`，02:18:52.088Z源2为LEFT、邻事实 `[PORTRAIT,SPREAD]`；原 callback 成功后透明观察且返回值不变，目标仍 `wasDrawn=false`。预挂载票据context2／serial3与首actual票据context3／serial6不同，明确原启动设置／geometry变化发生在首pixel之前；两项实际窗口原图及12次稳定观察后frameId仍context3／serial6。不能用预挂载票据等同实际首帧，但首实际slot／facts及后续票据一致的断言已过，排除了最终新context掩盖首次错误slot。原六项及B1及时15/16证据可合并复用，主代理签收本节S09/S10与S03窄Android原图里程碑；仍非正式R8/S17或整个B完成。下一项仅同两包JNI EXIF24与受影响Error，不泛跑无关Native Gate／Photo；Desktop原图／晚EXIF、旧focused与C仍未完成。
+
+同两包原 JNI／反馈受影响回归已关闭：`sp-b-android-art-exif-native` 原 runner Time91.689秒、OK(24 tests)、24个CODE0；`SharedReaderViewNativeAcceptanceTest` 经原 Activity／Single holder／SSIV，实际EXIF1–8×三种split／invert／crop／fit设置，variant0含真实双击放大和拖动平移，原golden角点进入PixelCopy。该范围保护共用原图片View／decoder及原Single行为，不把它说成24项独立Dual分组证据。`sp-b-android-art-loading-error-regression` 精确选择 `SharedDualPageStableNativeAcceptanceTest#actualPartialPixelsStayMountedThroughPartnerCompletionAndRetry[late-error]`，numtests=1，Time5.824秒、OK(1 test)、CODE0，原C实画／SQL→D LEFT独立Loading→原zoom→完整槽内Error／Retry→实际触摸重试→D像素／SQL追加全部过；未重复无关Gate／Photo。主代理独读终态及实际测试入口，签收Android B原图、JNI与反馈窄开发里程碑。当前无ART／Gradle进程，专用AVD保留原实例；Desktop原图与Ready先画／原EXIF晚到、旧受影响测试适配仍待完成，B整体未关，C未启动，无提交或正式验收。
+
+
+### B Desktop Ready先画／原EXIF晚到（2026-10-04，开发窄里程碑）
+
+`SharedDualPageLateExifProductionTest` 从原 runtime factory、MockWebServer 原编码EXIF6图片、同一个 content coordinator／encoded store 到 Skia／真实 ReaderViewport 离屏绘制；仅在原 coordinator 的 ContentOpenPort 加透明有界header门控，转交原open并最终恢复，不替换解析器、decoder、事实、frame或绘制回执。首图正常full请求不等待header。主代理独读实际入口及原XML：gate前真实源1 FIRST_PAGE_PRESENTED及彩色像素成立，gate后原header返回并实际HEADER_READ。正确红 expected CLOCKWISE_90、实际NORMAL，原因是原decode分类通过requestFact签新header能力，覆盖尚在途原能力。早期MockK泛型／suspend callOriginal异常与虚拟调度前置超时没有到产品断言，不算产品红；超时仅停止该协调器记录进程树，无全局Java清理。
+
+最小修复：共享session提供acceptDecodedFact，以有效当前viewport、同版内容及规范未裁边实际尺寸分类，不签发或消费原header能力；Desktop原prepare调用该接口。原header迟到后正常确认方向，旧sample能力拒绝、新能力使用CLOCKWISE_90，首frame、mount及真实像素完整矩形不变。region session及原DesktopReaderSpreadSampler从真实更新身份取得方向，四角实际采样蓝／黄／红／绿均在RGB差30内。该采样检查不冒充C可选调度验收。原内容lease最终全部释放。
+
+| 协调器 key／归档证据 | 实际结果 |
+|---|---|
+| `sp-b-desktop-late-original-exif-red4`／同名XML | 25秒自然FAILED，02:40:59.233Z，1项／1失败；上述真实首像素及原header返回前置全部通过，方向丢失为正确产品红。 |
+| `sp-b-decoded-fact-contract-red`／同名XML | 16秒自然FAILED，02:43:53Z，Session29项／1失败，原请求被decode分类撤销；其余28过。先执行旧真实组合的业务红，再新增接口，不以缺符号编译失败代替。 |
+| `sp-b-decoded-fact-green` | 30秒自然FAILED，共享62项／1失败；fixture把raw160×100当作规范effective尺寸，误标wide导致未画伙伴剔除。按原API契约改为100×160＋CLOCKWISE_90，保留完整frame等值断言，不放宽产品条件；该轮Desktop未执行。 |
+| `sp-b-decoded-fact-green2` | 71秒自然PASSED，限定四文件格式通过；Session30＋Stable32、DesktopLateExif1＋NativeStable17＋SpreadSampler3，共83项，全部无失败／错误／跳过。主代理独读XML：共享02:50:43Z，Desktop02:51:04–13Z。 |
+| `sp-b-decoded-fact-refactor-android` | 71秒自然FAILED；只重构测试采点，Desktop1 fresh02:52:51.017Z全绿；共享JVM62 UP-TO-DATE复用上轮有效结果。错误选择app Android目标，0 Android业务，不归为产品失败。 |
+| `sp-b-decoded-fact-android-green` | 9秒自然PASSED，纠正为`:domain:testReleaseUnitTest`，仅两个完整FQN；Session30＋Stable32 fresh02:54:52.063/.166Z，62项无失败／错误／跳过。主代理独读XML及协调器终态。 |
+
+共享新增契约还覆盖实际draw后的late方向保持frame、原header幂等、旧sample失效／新sample正确、非法尺寸、frame之外页、撤销context、换版及旧定位decode拒绝。新定位后旧locked frame仍保护原像素；原owner本来就拒绝旧未锁伙伴prepare，接口没有扩大旧权限。主代理完成本次相关共享接口与真实Desktop链定向独审，签收该窄bug修复；B仍欠Desktop原B1/B2与旧受影响测试适配，C未启动。SP01／DP02未勾选，无提交、全量测试或正式构建。
+
+
+Desktop原B1/B2首次限定验证 `sp-b-desktop-original-native` 自然FAILED44秒，XML时间03:03:23.785Z，6项／2失败／0错误／0跳过，限定格式通过。两ZIP SHA及17／22张原bytes经真实CBZ/runtime/Skia/ReaderViewport；B1及时15/16与源17可达、B2早源2LEFT、早源20FULL、晚源20RIGHT→宽21FULL→22可达四项仅完成本轮终态像素条件，不提前签S03/S12。B1冷17首目标像素已有，后续等待源页index14／15事实超时；普通backward1不会请求index14（源15），不能为测试增加事实IO。B2冷2最终LEFT，宽伙伴3可由真实decode先贡献类型，单独延迟header没有保证首画时邻事实未知；尚不判产品红，不把期望改LEFT吞冷条件。
+
+主代理本段独审发现两处证据不足：轮询最终正确slot不证明第一次实际绘制的slot/context；按slot和原图尺寸计算的Fit矩形不证明真实像素没有移动。下一次内聚test-only修正须透明观察原model同对象prepare成功、保持原返回值和真实draw，记录firstprepare邻UNKNOWN／已知及frame/slot，再以实际截图内容边界测几何；保20/25匹配和RGB非均匀跨度>70，不放宽已有阈值。冷B1只等待普通预取真实覆盖的index15（源16）；冷B2可有界延迟原伙伴decoder，释放后仍交原Skia。产品不为前置修改，六条件及原失败日志保留，当前B／SP01均未签收。
+
+
+`sp-b-desktop-original-native-first-paint` 自然FAILED28秒，XML03:12:21.719Z，6项／3失败／0错误／0跳过，限定格式通过。同model对象的非挂起prepare调用原方法，成功才观察且保持原返回值，无第二model/owner；目标firstprepare与actualpaint frame相同、原25点阈值保留。B1冷17及两个B2 known 的首次条件通过；B1首17的邻index15为UNKNOWN，原晚源16头406396B、peek1127×1600；B2冷2首RIGHT、邻index0／2均UNKNOWN，原header与伙伴decode门控释放后两B2在stableAfterHeaders的observe为空，slot/frame/pixels原因待实际诊断，不能提前判位移或产品红。
+
+本轮B1及时原15/16走真实factory/runtime发生 `The anchor page must be visible`，堆栈为实际partial settle→model→factory.onViewportSettled→DesktopReaderSession→ReaderSessionCore.settleViewport。主代理独读production：model逻辑target C不在仅D的实际draw集合，却把C当core anchor；core要求anchor属于actual visible集合。已确认该运行时边界遗漏，旧C-first SQL单项并未覆盖D-first，下一项先补真实D-first／SQL业务红；不得把未画C加入actual集合、强画C、吞异常或放宽core断言。拟仅平台model→runtime选实际anchor，保逻辑C、原C加载及next未画导航，验证后来C追加去重/max不回退与runtime snapshot。
+
+新的非背景bbox仍有观测污染：ReaderState.showUI默认false，fixture.toggleUI把它设true，ReaderViewport实际画TopAppBar／Settings／BottomBar；不同RIGHT原图bbox同为[350,0,681,399]，与参考Fit右沿约631／633不一致，不能据此签纯漫画零位移。移除该fixture toggle后重验受影响六条件；本轮3绿仅保首prepare／原图点匹配窄证据，不将含工具栏bbox作S12绿。旧日志与失败保留，真实runtime bug与观测前置分别修复。无提交／全量／正式构建。
+
+
+Desktop后图先画的正确红／修复与原图呈现映射随后按同一批次关闭：
+
+| 协调器 key（原XML同目录归档） | 实际终态及限制 |
+|---|---|
+| `sp-b-partner-first-runtime-red`／`red2` | 参数路径截断及两条新增长行格式失败，分别2／11秒、0业务；不是产品红。纠正原argv整段引号／窄分行，未改变产品。 |
+| `sp-b-partner-first-runtime-red3` | 自然FAILED29秒；Runtime2项／1正确失败，03:25:35.655Z，原C decoder held、真实D画出后进入core anchor断言；旧C-first通过。Original6项／1失败，03:25:26.024Z，冷B2晚结构后target/history仍C RIGHT，native却为zeroRect邻wide。toolbar已移除，真实像素边界不再包含681处控件。 |
+| `sp-b-partner-first-runtime-green` | 自然终态约36秒；最小实际anchor修复后Runtime2 fresh03:28:28.686Z全绿。Original6／2失败；诊断额外render的PNG C完好，不能据单次语义nil就称真实像素空白。 |
+| `sp-b-partner-first-runtime-refactor` | 35秒，Runtime2仍绿、Original6／2失败。观察器改为单次render→同帧semantics／Bitmap，12帧仍硬断言，无await／跳帧；修正快照一致性仍不能解决selected native。 |
+| `sp-b-original-observation-diagnostic` | 自然FAILED约23秒，Original6／2；精确早退为missing selected native。RTL units count随晚宽图拆组变化，旧currentPage物理index选择邻wide而原可见C key不变；实际C slot／mount／额外PNG仍在，确认选中presenter映射错误，不扩大结论为已证实像素blank。 |
+| `sp-b-visible-key-native-green` | 自然PASSED约31秒；Original6 fresh03:34:47.407Z＋Runtime2 fresh03:34:55.823Z，共8项无失败／错误／跳过，四文件限定格式通过。 |
+| `sp-b-desktop-original-refactor` | 自然PASSED约40秒，终态03:36:32.748Z；Original6@03:36:07.605Z＋Runtime2@03:36:15.949Z＋PageTurn40@03:36:17.149Z＋NativeStable17@03:36:25.595Z，共65项fresh、无失败／错误／跳过；限定格式及diffcheck通过。主代理独读四份XML与协调器终态。 |
+
+生产修改仅限既有接口：model提交进度时target在actual集合则用target，否则选实际已画页作core anchor；UI逻辑target保持C，core visibility断言不变。Runtime新D-first用例真实factory／Skia／Compose→tracker→SQL，首D写last2、C原decoder仍在途、UI逻辑1／runtime原context1不跳页、实际next tap仍处理未画C，释放后C实际画出并Ready，append最大值保持2，20次idle重复绘制reading_events数量恒定。不会把未画C当作actual；原C-first事件数及部分→完整追加也通过。确认后图先画导致真实runtime anchor断言的bug已修复。
+
+双页pager复用原stable unitKey；非滚动时取实际visiblePagesInfo最靠近viewport的原key映射当前units，滚动保原currentPage，idle仍等实际settledPage与原programmatic／navigation cause。未scrollTo、伪导航或改owner/frame/geometry；真实原图12连续帧仍须25空间点至少20匹配、RGB跨度>70、同frame/mount及真实非背景bbox，未await掩盖临时失败。原图firstprepare调用原model同对象真实方法且保返回值；B2冷2首源2RIGHT时cover事实可以PORTRAIT，但源3宽事实必须UNKNOWN；晚到后源2不变、原tap到3FULL。源20早结构FULL bbox[209,0,491,399]、晚RIGHT[350,0,632,399]，开篇早LEFT[67,0,349,399]／晚RIGHT[350,0,632,399]。B1冷17RIGHT[350,0,631,399]，及时15/16首准备前事实可靠、真实左右原图并到17；B2末21wide及广告22也实际可达。原ZIP SHA／bytes未变，参考点独立于截图选择；额外PNG只用于诊断，不代替最终同帧证据。
+
+主代理独审本次实际anchor、visible-key映射及真实生产测试，签收65项覆盖的Desktop窄里程碑；当时B尚欠原B1反向17→16／晚15→返回17的Desktop原图补链及Android旧受影响夹具，C未启动。其余已有Native反向／SQL证据可复用但不冒充原B1该操作；下一最小补链与B末受影响验证合并。仍无提交／SP01勾选／完整模块或正式构建。
+
+### B 原图反向补链与 Android JVM 宿主（2026-10-04，仍在实施）
+
+Desktop原B1冷17用例扩展公开反向操作至16：原15／16 header有界延后、原15 decoder有界延后，其余仍走同factory／CBZ／Skia链。首17 RIGHT；实际反向首16 RIGHT，首prepare前源15 UNKNOWN；释放原工作后连续12帧保持原frame、mount及实际像素边界，再公开next返回原17。`sp-b-android-affected-original-boundary-desktop.xml` 为fresh03:41:37.499Z，1项／0失败／0错误／0跳过，5.804秒。主代理独读测试与XML签收此补链，其他五个原图条件无相关改动，复用03:36绿证据。
+
+同协调器随后执行Android三个受影响类，在第一个真实回翻SQL用例的无界主Looper drain挂起。两次线程转储均为InfiniteTransition→AndroidUiFrameClock→Choreographer→ShadowPausedLooper.idle，CPU持续而输出不进，无OOM；不是SSIV/JNI栈。仅停止该协调器记录的进程树，`sp-b-android-affected-original-boundary` CANCELLED／130，终态03:46:00.962Z；未取得Android完整类结果，不引用旧XML作绿。
+
+Robolectric4.16.1原vsync实现证实自动推进时钟会持续执行加载动画。测试保存旧paused／frameDelay，暂停自动vsync并显式推进16ms真实帧。首次ViewRoot未挂children及后续posted callback没有送达分别诊断：原shared drawn、holder实际集合、eligible与pager idle均成立，VM／SQL尚空；队列head为target=null同步屏障，后有原holder的ViewRoot callback。真实帧推进traversal解除屏障后，原holder→ViewModel→数据库链完成首组、末组及回翻。16ms仅宿主时钟步长，不是产品等待。保留原actualpaint／SQL断言，撤去临时MockK及队列追踪。
+
+| 协调器 key | 实际结果与归因 |
+|---|---|
+| `sp-b-android-progress-frame-host`、`frame-host2`、`frame-diagnostic` | 分别32／42／42秒自然FAILED，均1项；首次未挂children、原回调未送达的宿主前置，未认作产品红。 |
+| `sp-b-android-progress-post-diagnostic` | 18秒、0业务；@Before隐式返回MockKStubScope导致JUnit拒绝，改为显式runBlocking<Unit>，不改方法过滤。 |
+| `sp-b-android-progress-post-diagnostic2` | 33秒、1失败；Activity继承Context的临时MockK追踪递归StackOverflow，未到实际绘制。撤Activity追踪。 |
+| `sp-b-android-progress-post-diagnostic3` | 42秒、1失败；attached／handler成立，paint后原post仍未消费，随后队列确认同步屏障。 |
+| `sp-b-android-progress-frame-post-green` | 自然PASSED，原回翻SQL方法fresh04:10:23.859Z，1／0失败／0错误／0跳过。主代理独读XML及实际宿主实现。 |
+| `sp-b-android-affected-frame-host-refactor` | 自然FAILED，终态04:15:30.323Z；Progress37／4失败、Holder47／24失败、Wiring12／2失败，总96／30、0错误／跳过。Progress双页33项绿；四个Single尚未推进原smooth导航，Holder有窗口生命周期前置及旧分组／onImageLoaded期待，Wiring旧optional及匹配当前重组期待属C。三份freshXML归档并独读，不宣称B全部绿。 |
+| `sp-b-android-affected-host-boundaries` | 55秒自然FAILED；Single原content回调失效／换版／失败图不记读／存储反馈四项fresh04:18:13.366Z全绿，Holder首图几何绿；真实pinch尚未到手势断言，宿主重挂载旧DirectionalViewPager.LayoutParams被FrameLayout转换失败。6／1、0错误／跳过，继续窄宿主修复。 |
+
+这一轮只改测试宿主及v3实际绘制预期，没有Android production变更，既有同SHA ART原图、JNI／EXIF及Loading→Error→Retry证据仍有效。旧可选前缀IO、16页等待与恢复／手调规则留C红绿，不能为B恢复旧行为。B、SP01、DP02均未勾选；无提交、完整模块测试、正式构建或版本递增。
+
+Android旧布局夹具后续窄修与B重构复验关闭：
+
+| 协调器 key | 实际结果及范围 |
+|---|---|
+| `sp-b-android-holder-v3-affected` | 0业务，Windows .bat命令长度超限／255；改用同Java21及原GradleWrapperMain入口，经同协调器传相同精确filters。已核JAVA_OPTS／GRADLE_OPTS为空并保原64m options，没有新过滤系统或测试框架。 |
+| `sp-b-android-holder-v3-affected2` | 72秒自然FAILED，Holder46／11失败 fresh04:29:31.460Z、Single4／0 fresh04:29:56.997Z，总50／11、0错误／跳过。未重复C三项。 |
+| `sp-b-android-holder-host-refactor3` | 12秒格式失败、0业务；新诊断字符串长行分拆。误取旧build XML的临时副本撤除，不作为本轮证据，原affected2归档保留。 |
+| `sp-b-android-holder-host-refactor4` | 30秒自然FAILED，11／3、fresh04:34:18.485Z；真实初Root、合法LayoutParams及与测量一致窗口后，8项通过，包括pinch、double tap、Webtoon边界和页面重建。 |
+| `sp-b-android-holder-three-boundaries` | 27秒自然FAILED，3／1、fresh04:37:19.146Z；known FULL及原bytes首次画→换版重绘→离屏失效通过，Retry未到点击，按钮宽度0。 |
+| `sp-b-android-holder-retry-binding`、`retry-layout` | 分别26秒自然FAILED、各1／1，fresh04:39:36.492Z／04:41:43.895Z；同binding、attached、holder／pager1440宽，feedback参数720而实际缓存宽0，排除旧binding及错误half参数，尚未到click。 |
+| `sp-b-android-holder-retry-measure` | 27秒自然PASSED，1／0／0错误／0跳过，fresh04:43:32.377Z；原forceLayout消费既有720参数后feedback720×3120、Retry264×144，实际完整LEFT边界成立；原按钮点击→正确页loader→Ready collector→错误清除及双图几何通过。 |
+| `sp-b-android-b-affected-refactor` | 3分26秒自然PASSED，终态04:48:43.771Z；Progress37 fresh04:45:35.134Z、Holder46 fresh04:48:04.407Z、Wiring10 fresh04:48:30.605Z，共93／0失败／0错误／0跳过，无重试；限定格式和diffcheck通过。三XML按完整FQN归档，主代理独读确认。 |
+
+具体前置与v3预期区分：新页面保持测试不应读setUp全局viewer，而读页面实际oldViewer；暂停vsync后须完成初Root，手动1440测量须与480dp／xxhdpi真实窗口一致。onSizeChanged按原宽度重新定位反馈后，手动measure缓存仍旧，forceLayout仅消费原布局参数，未给槽赋假尺寸。旧租约测试首次绘制漏Ready，被原callbackIsCurrent正确拒绝；补真实Ready前置后，旧bytes重绘／原frame／离屏失效全部保留。known宽图在未首paint时合法重挂，须重新取得真实holder。Retry使用原公开按钮performClick验证接线，不声称此JVM用例是触摸验收；同SHA ART late-error的真实触摸／zoom／SQL证据仍单列有效。
+
+旧onImageLoaded不再伪造已读；未知事实不改写PORTRAIT，候选覆盖每个源页且唯一；未画伙伴按源页推进，章界保原0／End。重构结果已撤临时队列、MockK、Root参数和Retry日志，保真实窗口、状态恢复、有界帧及测量助手。主代理完成本段源码／XML／实际产物证据独审，签收SP01.B开发里程碑，允许同实施者进入C。
+
+C明确欠项仍是 `cold real B1 dimensions flow from HTTP encoded headers to late tail native slot` 的旧额外前缀IO、`explicit native target supplements at most two missing facts and deadline` 的旧补读，以及 `matching preference reaches actual encoded sampler shared session and native display pages` 的旧当前重组期待。三项没有删除或计绿，需按C真实资源／操作链红绿适配；最终受影响集合再覆盖完整行为。SP01／DP02仍未勾选，未提交、未执行全量或正式构建。
+
+### C 近窗准备、Desktop 原图片任务与正常请求窗口（2026-10-04，尚未完成 C）
+
+B 的原生呈现与导航门禁通过后，继续同一实施代理、同一轮分段独审。以下均为开发期 focused 证据，未执行完整模块测试或正式构建，不表示 S16、C、SP01 或 S17 已完成。
+
+| 范围 | 正确红因 | 绿／重构证据及边界 |
+|---|---|---|
+| 共享附近资料准备 | `sp-c-shared-window-red2` 的 FactDemand 8 项中 5 项失败：旧窗口只到当前页附近三页，首像素前未来资料请求及翻页／方向变化的旧采样撤销不满足 v3 | `sp-c-shared-window-green2`：Session 30、StablePresentation 32、FactDemand 8、SpreadMatching 12，共 82 项全绿、无 skip。准备窗口改为当前页沿阅读方向最多五页；当前局部呈现选择仍只消费其必要依赖。`goToPage`、实际源页导航、方向／开关变化撤销旧请求，保留同内容已确认样本。Android Debug 目标 FactDemand 8 项在 `sp-c-desktop-resource-green2` 另实跑全绿 |
+| Desktop 首像素前资料与启动前忙状态 | `sp-c-desktop-resource-red2` 两项均因目标行为失败：普通 Ready 邻页仍等待 first-presented；真实 FULL_PAGE 解码正在运行时仍启动 REGION_TILE 采样 | `sp-c-desktop-resource-green2` Desktop 两项全绿；同一次任务另含上述 Android 共享 8 项。真实 RuntimeFactory／原 encoded owner／Skia／Compose 接线，无独立识别客户端；`combine` 观察原图片任务状态，取消首像素前的资料门禁，最多一个可选工作者 |
+| 原图片 Entry 的忙状态与生命周期 | 在已有行为绿后补原 owner 的取消和共享资源边界验证，无额外产品实现 | `sp-c-desktop-resource-refactor`：原 Pipeline 13 项＋资源 Wiring 2 项，共 15 项全绿；排队未执行即取消后计数回零且不解码，代际替换／close 后非协作旧解码直到实际退出仍 busy，两个调用共享一个任务，optional tile 被真实 visible caller 升格只计一次，缓存和已完成 retained lease 不保持 busy。Root 已独读代码及 XML，签收此窄范围 |
+| Desktop 反向阅读不额外补读 | `sp-c-desktop-normal-window-red` 一项正确失败：原 CatalogueSource Page → 普通 HTTP → Skia／Compose 已画 source index 16，实际反向导航后 target 15 已画，真实请求为 `[16,18,17,19,15,20,14,11,12]`；11／12 越过原 backward-one 正常预取窗口 | 移除 model 原 `startOptionalFactsLocked`／`loadFactPage` 主动补读及重复等待状态，只从普通 Ready encoded 内容贡献资料；不改正常 scheduler 或 Desktop P4。`sp-c-desktop-normal-window-green`：资源 Wiring 3 项＋Pipeline 13 项，共 16 项全绿、无 errors／skip，fresh UTC 05:20:39.590／05:20:47.589。同范围格式检查及 `git diff --check` 通过 |
+
+协调器同 key 的 `.log` 与 `-TEST-<完整类名>.xml` 均留在忽略目录 `.gradle-coordinator/`。Root 独立读取了共享 82、Android 8、资源红绿、Pipeline 13 及 HTTP 红绿 XML，非零执行数与实际时间相符；没有以扫描源码代替行为测试。
+
+过程失败不计行为证据：`sp-c-shared-window-red` 是 Windows Gradle 入口失败；共享首次 green 的两项旧“三页准备窗口”断言失败后按新的五页准备范围调整，保留当前呈现局部范围、旧票据拒绝和已确认缓存断言，实际正确红以 red2 归档为准。`sp-c-desktop-resource-red` 因 runtime／Compose UI 共用 StandardTestDispatcher，在真实解码前的宿主预热循环挂起；仅终止该协调器记录的进程树，保留 thread dump／log，不记 FULL_PAGE 业务红。改用已有 LateExif 测试验证的 runtime Default／UI Standard 隔离后，red2 才出现上述两个正确红因。`sp-c-desktop-resource-green` 因格式 init 的插件加载顺序失败、无业务用例；green2 才为有效绿。
+
+资源独审仍有具体待关闭项：采样运行中遇忙与真正解析失败必须区分；等待单 permit 后及每个有界单位开始前须重新核对资源；idle 通知发生于旧 publisher job 结束前时，不得丢失恢复或要求用户 Retry。原 materialize runner 的 queued／running 物理任务、Android 原 SSIV base／tile 工作、真实内存压力也尚未完成接线。本段现有绿仅证明图片 Entry 生命周期及启动前门禁，不冒充上述能力。手动／设置／晚恢复／保存反馈与固定性能对照仍待实施；SP01、DP02 checkbox 保持未勾选。
+
+
+#### C 原下载任务的物理完成与暂停语义（窄绿，竞态仍待行为验收）
+
+`sp-c-desktop-physical-pause-red` fresh UTC 05:26:25.660 实跑两项：原非协作 materialize 在逻辑取消后仍受真实 gate 阻塞，source index 16 已实际画出的前置成立，REGION 实际启动 6 次而非 0，构成物理 busy 的正确红；稳定 busy → 旧 publisher 退出 → FULL 释放的中途案例在旧实现即绿，不能拿它证明 idle／completion 竞态已修复。最初第三个低层方法末尾返回 nullable Unit，JUnit 未发现；保留原两项 XML，不计零执行的低层方法为正确红。
+
+修正该 test-only 返回类型后，`sp-c-desktop-pause-result-red` fresh UTC 05:28:27.686 一项正确红：原 FULL 解码真正 entered 后，sampler 以 null 返回暂缓，不能与坏图区分。当前最小实现使用 typed `DesktopReaderOptionalWorkPaused`，在 model 内单独处理，暂停不入 failedSpreadReads；取得单 permit 后和每条有界 edge 前重核资源。原单个 publisher Job 以 LAZY 先登记后启动，未真正完成时不启动第二工作者；真实完成回调触发重评，未引入固定等待或另一个调度 owner。
+
+`ReaderPageMaterializeRunner.physicalWorkCount` 只读 Flow 与原 active/cancel 表分离：原 Job 登记后加一、invokeOnCompletion 的 finally 减一，通知在 runner 锁外；旧逻辑 cancel 不提前声称物理完成。Desktop Session 同时沿原 requestRevision 核 scheduler idle，原页请求、P4 和 materialize executor 不另起实现。
+
+`sp-c-desktop-physical-pause-green` 终态 PASSED／exit 0，UTC 05:36:30.079：Runner JVM 5 项（05:35:47.297）、同共享契约 Android Debug 5 项（05:35:59.613）、Desktop Resource 6 项（05:36:17.531）、原 Pipeline 13 项（05:36:28.841），共 29 项全绿、无 failure／error／skip，scoped 格式通过。归档为 `.gradle-coordinator/sp-c-desktop-physical-pause-green-{jvmTest,testDebugUnitTest}-TEST-<完整类名>.xml`；Root 已核实际结果及 queued-before-body／已取消 scope／真实执行器拒绝／非协作旧任务的 production 契约。
+
+此段签收真实物理计数与稳定 busy 的暂停／恢复窄范围；尚未签收 idle 发生于旧 publisher 完成前的竞态。下一用例仅以测试 dispatcher 扣留原 continuation，保真实 factory、HTTP、Skia、FULL 状态和 Flow，要求先见旧 publisher 尚 active 且前台已真实完成，再放行并自动恢复匹配。内存、Android native 与手动／保存／性能仍未完成，SP01／DP02 不勾选。
+
+
+#### C Desktop 原内存账本压力与竞态证据判别
+
+`sp-c-desktop-memory-pressure-red` fresh UTC 05:52:55.322 一项正确红：在同一个 RuntimeFactory 的原 Skia 路径取得真实 40×60 FULL 图片租约，仅在测试内把原 authority 的 soft budget 调为 128 B；snapshot.maxBytes、真实 pinned／overBudget 及原 foreground=0 前置成立，REGION 仍新增两次而非零。没有修改 resident／pressure／估算值，没有巨量分配，也不声称系统发生 OOM。
+
+最小绿在原 `DesktopReaderImageMemoryAuthority` 上发布只读 snapshot Flow：原 lease／cache 变更后的通知在原锁外，按已有 revision 防倒序；model 从同账本的 overBudget 判断可选门禁，无第二内存 owner 或缓存。`sp-c-desktop-memory-pressure-green` Resource 7 项（UTC 05:54:41.955）＋原 UnifiedMemoryAuthority 4 项（05:54:56.146），共 11 项全绿、无 failure／error／skip，终态 PASSED 05:54:57.221。
+
+重构将 reader 消费映射为压力布尔值并 distinctUntilChanged，避免每次普通 lease revision 都唤醒准备 collector。`sp-c-desktop-memory-pressure-refactor` 同 11 项再次全绿：原 UnifiedMemory 4 项 fresh 05:57:04.802、Resource 7 项 fresh 05:57:05.068，终态 PASSED 05:57:19.815；scoped 格式及 diffcheck 通过。真实 held lease 释放后原 overBudget 回零，REGION 继续增长，自动匹配仍开启、逻辑目标仍为 source index 0，同一 owner 的所需样本评分完成，未依赖用户 Retry／导航。Root 已独读夹具和原压力 Flow；其性能开销仍由 C 固定对照验证，不以 focused 绿冒充性能通过。
+
+竞态尝试保留为过程记录：`sp-c-desktop-completion-race-red` 一项失败于监测 collector 消费 idle 的宿主前置；red2、red3、red4 均实际绿色，不能称正确红。最初只断言 projection 包含 `[2,3]`，普通双页也能满足，已加强原中途 case 的 REGION 增长及样本需求真正清空；但透明 dispatcher 的祖先调度计数仍不能证明最终 collector 已消费 idle。red5 一项失败于有界 drain 的 100 个原 runnable 上限（UTC 05:49:58.736），未到恢复断言；停止此方法，不放大上限，不保留无判别力 case 为完成保护。已恢复 production completion wake，dispatcher draft 仅留忽略目录，全部实际日志／XML 保留。
+
+下一竞态方法收敛为装饰原 first-REGION 已获取内容 lease 的实际 release closure：原 region.use 在真实 busy Pause 后关闭租约时有界阻住，FULL 先真正完成，原 Default collector 通过其邻页 header 工作重新建立这一实际副作用证明已消费 idle；旧 publisher 此时仍未完成。随后放行同原 release／coordinator，检查无 Retry 的真实采样接受。它不替换 decoder、Deferred、content、lease 或 owner；未运行通过前，此项仍不签收。Android 原生资源门禁、操作与固定性能对照继续待实施，SP01／DP02 不勾选。
+
+
+#### C 配置自反馈及真实关闭竞态的最终定向验收
+
+前述原邻页 header 的 close 方法实际绿色：`sp-c-desktop-completion-close-red` fresh UTC 06:01:23.060 一项全绿，真实 target `[1,2]`、busy headerJobs `{1}`、idle 重新建立 2、旧 publisher 仍在关闭及原 release 转发恰一次均成立，但该 header 后续事件自然重评，不能保护“没有其他后续事件”的完成通知。下一同实例原非挂起 consumer 的 observed-red 首轮失败于 MockK 安装半态与原 collector 并发，未到行为断言；在原 model lifecycle lock 内完成安装后，observed-red2 fresh 06:06:59.871 仍一项实际绿，亦不记正确红。
+
+由此查出真实自反馈：原 bind collector 的 ensureDualSession 每次调用同值 configure，SharedSession.configure 无条件 rebuild／layoutRevision 增长，publish 又更新被监听的 state。不是继续放大 dispatcher 等待，也不通过这些额外事件假装恢复正常。`sp-c-shared-configuration-idempotence-red` 一项正确失败（UTC 06:11:04.820）：同配置八次，layoutRevision 期望 6 实际 14。最小实现仅在 closed／VERTICAL 校验后对同 direction／automatic 早退；真实选项变化仍调用原 presentation、取消原请求，Single／Dual、手调、事实更新独立路径不改。
+
+`sp-c-shared-configuration-idempotence-green`：Session 31、StablePresentation 32、FactDemand 8，共享 JVM 71 项 fresh UTC 06:12:36.277–402，同 Android Debug 镜像 71 项 fresh 06:12:48.445–567，共 142 项全绿／无 error／skip，终态 PASSED 06:12:49.485。契约同时验证 off／on、缓存 units 同实例、layout／sample／fact／location 不变、已画 frame 和原 header／sample capability 有效、VERTICAL 拒绝、真正 LTR 变化仍生效。Root 独读六份 XML、原 configure／publish 链、rebindContent 单独同步 presentation 的路径，签收此 A/C 接口增量，未扩大产品范围。
+
+在幂等修复后，同 current source index 0、原 factory／runtime／model ===、原第一 REGION 已取得的内容 lease、真实 FULL 工作，再用透明 mockkObject 观察非挂起 startSpreadSamplesLocked：先 callOriginal 返回，才记录真实 idle consumer；原 lease.release 仅有界扣留，finally 转发同 coordinator，既不造 owner／lease／content，也不假造 busy。`sp-c-desktop-completion-close-after-idempotence-red` 一项正确红（UTC 06:14:08.832）：idle 已实际消费、FULL 真正完成、旧 publisher 尚在原关闭、放关闭后 publisher 已完成的前置全部成立，原 sampleDependencies 仍非空，失败为 `Actual completion resumes original sampling`。没有测试工具异常。
+
+恢复原真正 completion 唤醒后，`sp-c-desktop-completion-close-green` 同一项全绿，fresh UTC 06:15:23.452，无 error／skip：无需 Retry、导航或额外 header 事件，原 REGION 增长且 sampleDependencies 清空。最终 `sp-c-desktop-resource-completion-refactor` Resource 8（UTC 06:17:11.579）＋UnifiedMemory 4（06:17:11.319），共 12 项全绿，终态 PASSED 06:17:26.185；scoped 格式和 diffcheck 通过。透明观测安装／卸载均持原 model 锁；终态同 owner／全五页 PORTRAIT／原 encoded activeLeaseCounts 为零／release 转发恰一次。Root 独读真实正确红、绿、重构 XML 与 production 通知／单 worker／压力接线，签收本段 Desktop 资源和关闭竞态。
+
+此签收不包含性能通过或 C 整体完成。仍需 Desktop 旧匹配 wiring 的截止预期和悬挂／关闭真实链适配，Android 原物理／native／压力门禁、恢复／手调／保存闭环，以及固定四模式六场景三次配对性能证据；SP01 与 DP02 继续未勾选、不提前全量或正式构建。
+
+
+#### C Desktop Retry 身份与跨开关原生采样上限
+
+原保护方法保留名称 `actual setting event samples original encoded leases and changes shared visible layout`，仍经过实际 GeneralTab 开关、RuntimeFactory、原 encoded lease、正常源 Retry、Skia/sRGB、共享 owner 及 Compose 像素。适配过程的 singleflight-red 因原首画前置失败；red2 未到有效采样且当时未定因；red3 卡在旧本地夹具强制刷新后的源解析；red4 的 HTTP 夹具缺原 getImageUrl／Page.url。它们没有执行到 max1 目标，不记业务红，也没有修改本地源 Retry 产品行为。HTTP 夹具沿已有 CatalogueSource／FakeDesktopSourceManager／MockWebServer 链补全正常重试契约。
+
+`sp-c-desktop-optional-retry-identity-red` fresh UTC 06:47:54.611 一项正确红：实际页 Ready、attempt 1、原 owner PORTRAIT／待评分依赖均成立，但 pipeline 的原注册 attempt 仍默认 0，可选 region 被当过期拒绝，目标 failedReads 期望 1 实际 0。最小接线只在原可选 region 消费前，用 model 已接受 snapshot 捕获的 ContentOpenRequest 调用原 beginPageAttempt；不从原始 incoming 状态提前推进，不撤销仍受保护的旧可见内容，不另建身份 owner。
+
+`sp-c-desktop-optional-retry-identity-green` fresh UTC 06:48:49.348 仍为一项失败，必须分段分类：正常 Retry 及故障／显式重试段通过；真实原 REGION 非协作工作、虚拟 15_001 ms 无整章截止、实际 Off、source index 3 的真实绘制和 Skia 源色像素、重新 On／待评分依赖等前置均成立，最终 peakRegions 期望 1 实际 2，才是跨开关／Retry max1 的正确业务红。
+
+原 Pipeline Entry 增加只读 optionalWork：只对新 optional Entry 登记，缓存不登记，同 key 单飞只计一次，被真实可见消费者升格后仍保留原 optional 资格，直到实际 Deferred completion 才减；逻辑取消、generation 或 close 不提前归零。Model 启动门禁等待该计数为零并消费其 Flow；每条 edge 的 canContinue 仍只查前台／压力，不用自身 optional 计数阻塞自己。`sp-c-desktop-optional-singleflight-green` 共 14 项全绿（原保护方法 1 项 UTC 06:52:09.006、Pipeline 13 项 UTC 06:52:21.070，终态 PASSED 06:52:23.107）。保持 On，只释放旧原 Entry，原采样需求自动完成、峰值仍 1，无额外 Retry／导航；随后 Off 保撤票据、旧组不复活、逻辑 source index 3 及 encoded lease 清空。
+
+同轮独审发现 model 启动检查与实际 Entry 创建之间的交错：Retry 取消后清除 publisher 引用，两个不同 key 可能先后通过上层检查。实际创建点也须原子保证上限。`sp-c-desktop-optional-entry-admission-red` fresh UTC 06:54:40.983 一项正确红：第一 optional decoder 已真实进入、同 key 第二消费者仍只单飞一次，但不同 key 的真实 acquire 没有暂停并进入第二次解码。最小实现仅在原 Pipeline lock 的 getOrPut 新 Entry closure 重核 optionalWork；先处理缓存和同 key 复用，冲突抛已有 typed Pause，不排队，不标坏图，正常图片 Entry 仍可创建。
+
+创建点单方法绿 fresh UTC 06:55:32.816，一项全绿。最终 `sp-c-desktop-optional-singleflight-refactor` 共 23 项全绿、无 failure／error／skip：Pipeline 14（UTC 06:57:33.659）、Resource 8（06:57:34.104）、原严格 Wiring 1（06:57:48.184），终态 PASSED 06:57:55.069；限定格式 Apply／Check 及 diffcheck 通过。Root 已独读正确红／绿／最终三份 XML、原 Entry 创建和完成、model Retry 捕获及 Flow admission 路径，签收这段 Desktop Retry／max1 边界。Android native／压力／恢复／手调／保存与固定性能对照仍未完成，SP01／DP02 不勾选、不提交、不提前全量或正式构建。
+
+#### C Android 普通补读与冷恢复投影（adapter 窄段）
+
+`sp-c-android-normal-read-restore-red` 首两项实际绿，不能当正确红：章尾目标 16 的附近事实依赖为空，先签 Load 的恢复场景已有同页表 owner，均未暴露目标问题。调整同一夹具后，`sp-c-android-normal-read-restore-red2` fresh UTC 07:06:20.826 两项均正确失败、无 error／skip：原 normal PageLoader consumer 正在运行，目标 2 有未知附近依赖，旧 adapter 仍调用 loadFactPage `[4,5]`；fresh requiresRestoration store 的冷 setChapters 没有创建 owner，目标不可呈现。
+
+最小实现仅在 DualPageViewerAdapter 删除主动 Supplement 及其预算／等待字段，用普通已加载内容及原 matching 链贡献资料；冷新页表和邻章 Loaded 不再以配对记录已恢复作为投影前提。原 store 的 Load 请求、owner／页表身份和未知记录状态未改，不用空 READY 状态绕过等待。原严格方法名 `explicit native target supplements at most two missing facts and deadline` 作为历史保护入口保留：明确 normal consumer active／未知依赖非空、无额外 loadFactPage，虚拟 15_001 ms 后普通消费者仍活动。另一方法经过冷创建 owner、实际 beginRestore 和二次 setChapters，确认同 owner／pages、RESTORING、revision 未知且 adjustPairing 仍被禁止。
+
+`sp-c-android-normal-read-restore-green` 两项 fresh UTC 07:09:32.886 全绿。最终 `sp-c-android-normal-read-restore-refactor` 三项全绿：Holder 一项 UTC 07:13:55.763、Wiring 两项 UTC 07:14:06.857，终态 PASSED 07:14:14.586，无 failure／error／skip，限定格式及 diffcheck 通过。冷 HTTP Holder 用例通过原 HttpPageLoader／ChapterContentPort、真实 PNG 编码和原图片 View 测量：current source index 16 Ready，不请求远处宽图 `/image/10`，该页事实仍 UNKNOWN；目标 RIGHT，原 View width／left 均 720。它复用 B1 的尺寸形状，不是 B1 原 WebP 字节；Robolectric 几何也不代替 ART 首像素，未据此宣称观察到 backward source 15。
+
+Root 已独读红／绿／三项重构 XML、adapter 变更及上述真实方法，签收此窄段。ViewModel activation 前 await restore、原 matcher 的整 pass 截止、HTTP runner／SSIV 实际资源和平台内存、恢复／保存／CAS／手调闭环及性能仍待 C；SP01／DP02 保持未勾选，未提交或正式构建。
+
+#### C Android 原 HTTP 忙闲启动门禁（窄绿）
+
+`sp-c-android-http-physical-busy-red` 首轮仅测试 API 引用编译失败，零业务执行，不记正确红。修正原 spreadSampleDependencies 引用后，red2 fresh UTC 07:37:29.399 一项正确红：原 TestHttpSource／HTTP／缓存／encoded 路径的 current +4 已 Ready，透明扣留 source index 5 的 Canonical materialize executor 调用并仍委托原实现，原 runner physicalWorkCount=1、active key 前置成立；实际 preference 开启后，可选 decoder 工厂读数期望 0 实际 4。没有手工修改忙计数或复制 runner。
+
+最小实现为 PageLoader 只读 hasForegroundWork／Flow；HttpPageLoader 读取原 scheduler pending／active 与原 runner actual physical，并用轻量 revision 通知 scheduler 变化。Adapter 沿每章原 loader 身份订阅 idle，在原 startMatching 启动前读取真实忙值；不改变正常调度、网络或创建新队列／线程池。Archive／Directory 等现有 loadPage 不执行异步 materialize，其 native 开图仍待 SSIV 资源门禁覆盖。
+
+green 一项 fresh UTC 07:39:59.888 全绿：正常任务扣留期间可选读取为 0，仅释放同一任务后 physical 回零、实际读取增加且同 owner 的 sampleDependencies 清空，无 Retry／导航。最终 `sp-c-android-http-physical-refactor` 四项全绿（Holder 1，UTC 07:42:30.005；Wiring 3，07:42:40.770），无 error／skip，终态 PASSED 07:42:54.563；限定格式和 diffcheck 通过。采样区域测试 adapter 从真实 PNG 解码并调用原 AndroidReaderSpreadSampler，但不代替原 JNI decoder 的 ART 验收。
+
+Root 独读红／绿／四项重构 XML、getter／通知／原 loader 身份和测试透明委托，签收同 loader 正常物理工作活动时的启动抑制及稳定 idle 恢复。此 case 的 scheduler 也仍 active，不能单独证明逻辑取消后只剩 physical busy 的 adapter 接线；切章／替换 loader 后旧物理任务、工作进行中遇忙、旧 optional Job max1、SSIV／平台内存及 VM／操作／性能仍待 C。SP01／DP02 保持未勾选。
+
+#### C Android 逻辑取消与旧 HTTP loader 的实际物理结束
+
+同轮独审要求补两个边界。沿上一段真实 HTTP 夹具，用原 public onPageSelected 取消逻辑请求，确认 scheduler pending／active 及 Runner logical active 全空、physicalWorkCount 仍为 1；同 loader 的 hasForegroundWork 仍为真，可选读数保持 0。另一向量 recycle 原 loader，旧非协作任务仍实际运行；新章原 HttpPageLoader 完成页表和 current +4、独立 idle 后，经真实 setChapters 与 preference On 触发匹配。`sp-c-android-old-http-physical-red` fresh UTC 07:49:01.660 两项中一项正确失败：旧任务未退出时，可选读数期望 0 实际 4；同 loader 加强向量已绿，不伪称为第二项业务红。
+
+最小修复仅在原 Adapter 把 foreground 观察按真实 PageLoader 身份登记。退出窗口立即移除旧呈现 owner；旧 loader 仍忙时保留只读资源观察，实际 idle 后重评当前 owner 并撤观察。启动门禁覆盖当前及仍忙旧 loader，不保存旧页面的读取资格，不新建队列、线程池或工作 owner。
+
+`sp-c-android-old-http-physical-green` fresh UTC 07:51:15.955 两项全绿。最终 refactor 五项全绿、无 failure／error／skip：Holder 一项 UTC 07:54:28.077，Wiring 四项 UTC 07:54:38.758，终态 PASSED 07:54:53.210；限定格式 Apply／Check 及 diffcheck 通过。保持 On 和当前 owner，仅释放同一旧任务，actual physical 回零后样本依赖自然清空，无额外 Retry／导航。Root 独读正确红、green 和最终两份 XML、原公开取消／recycle／replacement 路径及 Adapter 生命周期，签收这一窄段。原 matcher 整 pass 截止、进行中暂停／actual completion max1、SSIV／平台内存、VM／操作／性能仍待 C；SP01／DP02 未勾选，未提交、未提前全量或正式构建。
+
+#### C Android 原 matcher 截止与同 adapter 实际完成上限
+
+保留原保护方法 `matching preference reaches actual encoded sampler shared session and native display pages` 的真实 preference、PNG 编码、评分、DisplayPage、坏图停止／显式 Retry 和原 finally 回收。采样期望按 current 五页窗口改为四条实际样本，而非旧整章 18 条。首 deadline-red 在第 4 条 decoder 已回收但 Main 尚未 accept 时提前检查依赖，未到目标断言，不记截止红；仅把同 owner 的依赖清空加入原等待条件。deadline-red2 fresh UTC 08:01:23.591 一项正确失败：上述质量及重试前置通过，原 region 真正进入后推进虚拟 15_001 ms，旧 pass 截止错误取消实际 Job／子任务。最小移除原 withTimeout 及超时坏图记录；deadline-green fresh UTC 08:04:31.233 一项全绿。
+
+随后 singleflight-red fresh UTC 08:07:17.357 一项正确失败：原 region 仍运行，Off 后原 Job cancelled 但未 completed、native active=1，真实 viewer.moveToPage 到 Ready 源 index 3 后重新 On，原 decoder 峰值期望 1 实际 2。最小实现保留原 Job 至真正 isCompleted，LAZY 先登记再启动，completion 在原 MainScope 重评当前 owner；坏图／未 Ready 首依赖在启动前返回，不新建任务队列或工作 owner。singleflight-green fresh UTC 08:10:18.405 一项全绿：保持 On，仅释放旧 region 后当前依赖自然清空，峰值 1、读取与回收相等、旧 2/3 分组不迟到发布。
+
+最终 matcher-refactor 五项全绿、无 failure／error／skip：Sampler 两项 UTC 08:14:06.564，Wiring 三项 UTC 08:14:11.824，终态 PASSED 08:14:22.855；限定格式 Apply／Check 和 diffcheck 通过。Root 独读两条正确红、对应绿、最终 XML、原 Job 登记／取消／完成及实际操作序列，签收整 pass 截止移除和同 adapter 上限。跨 adapter 旧 native、进行中 HTTP 到达／关闭 completion、SSIV／Coil／平台压力、恢复／保存／手调及固定性能对照仍待；不把此 Robolectric region adapter 证据冒充 JNI ART 或 C 整体完成。SP01／DP02 保持未勾选、未提交。
+
+#### C Android 进行中 HTTP 到达与旧采样关闭完成
+
+`sp-c-android-http-mid-sample-red` fresh UTC 08:19:42.108 一项正确失败：原 PNG region 已进入，正常 source index 5 经原 HTTP executor 进入 physical=1；公开导航取消逻辑后 physical 仍为 1。只释放第一 region，扣留原 decoder.recycle 的实际关闭，第二条有界区域解码计数期望 1 实际 2。没有修改忙计数或复制 runner／sampler。
+
+最小接线在原 sampler 的 open、decoder 创建和每条 bounded edge 前重核资源，以独立 CancellationException 类型 Pause 退出，保留未知样本，不记坏图。Adapter 从 Main 管理的订阅发布 @Volatile 不可变 loader 集合；IO 每次读取新快照及原 loader 同步 getter，不遍历 Main 可变 Map，不另建资源队列。green fresh UTC 08:24:05.752 一项全绿：先释放普通任务并消费 actual idle，旧 publisher 仍未完成、读取计数仍 1、需求仍待；保持 On，仅释放旧 decoder 实际关闭后，同 owner 的需求自然清空，无 Retry／导航／新 header。
+
+最终 `sp-c-android-http-mid-sample-refactor` 六项全绿、无 failure／error／skip：Sampler 两项 UTC 08:31:46.857，Wiring 四项 UTC 08:31:54.594，终态 PASSED 08:32:06.642；限定五文件格式 Apply／Check、diffcheck 通过。此段 green／refactor XML 保存于 `.gradle-coordinator/<key>/TEST*.xml`，不是此前平铺归档格式。Root 独读正确红、green、最终两份 XML、原 region／recycle 委托和通知顺序及线程安全快照路径，签收这一窄段；另核原 setChapters 尾部已有 retainedPages 清理和取消旧 fact 订阅，该处没有新增修复。SSIV／Coil、跨 adapter 旧 native、内存压力、持久化操作及性能仍待 C；SP01／DP02 不勾选、未提交、不提前全量或正式构建。
+
+#### C Android 销毁旧 viewer 后的实际 optional 上限
+
+`sp-c-android-replacement-optional-red` fresh UTC 08:35:10.333 一项正确失败：保留原 preference／encoded／坏图 Retry 链，在原 region active=1、Job cancelled 但未 completed 时实际 destroy 旧 viewer；同 ReaderActivity 创建新 DualPageR2LPagerViewer，原 Ready 源 index 3 导航及 On 后，原 region 峰值期望 1 实际 2。最小实现在原 AndroidReaderSpreadSampler singleton 被动观察原 LAZY Job，StateFlow.update 登记／真正 completion 撤销；Main 无挂起地检查、登记、start，adapter 订阅归零恢复，不创建另一工作 owner、队列或线程池。自身 optional 计数仅用于新 pass admission，不用于暂停已运行的 edge。
+
+green fresh UTC 08:36:55.610 一项全绿：旧物理工作未退时新 viewer 的 Ready 源页可正常定位，匹配峰值保持 1；保持 On，仅释放旧 region 后当前需求自动清空，旧结果不迟到发布。限定五文件格式通过，最终 refactor 七项全绿、无 failure／error／skip：Sampler 两项 UTC 08:38:56.484、Wiring 五项 UTC 08:39:01.901，终态 PASSED 08:39:14.526，XML 位于 `.gradle-coordinator/<key>/TEST*.xml`；diffcheck 通过。Root 独读正确红、green、最终两份 XML、原 destroy／新 viewer 事件、Main admission 和线程安全 actual completion，签收该资源观察接口后再进入 SSIV 下游。此处的原编码 Bitmap region adapter 不替代 JNI ART；SSIV／Coil 前台解码、平台压力、恢复操作和固定性能仍待 C。SP01／DP02 未勾选、未提交，未提前全量或正式构建。
+
+#### C Android 原 SSIV 实际任务与 JNI 自动恢复
+
+本段真实 ART 保留全部前置失败：首 red 使用残留缓存旧 RED，遗漏公开 Clear chapter cache；red2 仅编译测试包，没有执行 ART；red3 的测试 gate 超时抛错导致进程崩溃；diagnostic 的原输入五页均为 80×60 SPREAD、没有待采样依赖。这些均不是正确业务红。修正仅限测试夹具：公开冷缓存、复用既有真实 JPEG 40×60 输入和安全有界门闩，不注入事实、不修改匹配质量。
+
+`sp-c-android-native-resource-red4` 是唯一正确业务红：实际 ReaderActivity、原 HTTP 内容、五页 PORTRAIT／原 owner、真实 SSIV Runnable 已进入默认 executor 且被透明测试门闩扣留；原设置 On 后 optional Job=1、decoder factory 读取=1，期望均为 0。Time 3.246 秒／一项失败，无崩溃。此读取发生在原 JNI 工厂前，不声称失败时 JNI 已完成。
+
+最小 production 仅透明委托同版本 SSIV 原默认 AsyncTask.THREAD_POOL_EXECUTOR，入队前增加只读实际工作计数，原 Runnable finally 或提交异常才撤销；AtomicBoolean 保证拒绝及同步异常只撤一次。recycle／取消不提前减，不创建线程池或排队器。原 adapter 在 Main admission 和每个有界区域前检查，boolean distinct idle Flow 唤醒当前 owner；普通图片路径保持原执行器。
+
+Executor 两项 JVM 绿 fresh UTC 09:05:34.445；限定五文件格式通过。统一开发 Debug 构建 PASSED UTC 09:13:48.567，测试包 PASSED 09:15:00.870。实际开发 APK 为 `app/artifacts/android/0.19.4-aex.22-vc40-9fe50edf6e-debug-d35bebd99900/Mihon-Fork-0.19.4-aex.22-vc40-debug-universal.apk`，SHA-256 `285e05f0c03df0dddd18a1fe76a5e34694bc90c1efe8cbb84e1b016b88c7e0ea`；测试包 SHA-256 `a92ef616e9b20792e79b46acc26ca98df8bd18993c527ae3b3f9e374f74d1073`，沿用原 dev 证书。专用 emulator-5586 的原单方法 `originalSsivQueuedWorkDefersOptionalJniAndActualCompletionResumesWithoutRetry` 绿为 Time 3.715 秒、OK (1 test)。保持 On，仅释放原 SSIV 工作后，原 JNI 采样自动完成、同 owner 依赖清空、PixelCopy 确认真正 MAGENTA 图片绘制，无额外 Retry 或导航。
+
+最后 `sp-c-android-native-resource-refactor` 九项全绿、无 failure／error／skip／retry：Wiring 五项 UTC 09:18:29.790、Sampler 两项 09:18:21.005、Executor 两项 09:18:28.254，终态 PASSED 09:18:45.353。XML 保存于 `.gradle-coordinator/sp-c-android-native-resource-refactor/`，ART 原日志为 `app-desktop/tmp/sp-c-android-native-resource-{red4,green}.log`。Root 独读 production 计数／执行器／adapter、两项平衡测试、原 ART 事件与前置、实际 SHA、最终三份 XML 和终态，签收此 SSIV 窄段。Coil 初始解码、平台压力、Desktop 跨 runtime、慢恢复／操作闭环及固定性能仍待 C；没有全量／正式构建，SP01／DP02 未勾选、未提交。
+
+规模记录：2026-10-04 UTC 09:13 工作树实际 68 个变更文件，超过原 15–30 个文件估算；该数为当时快照，不是最终统计。增加部分主要覆盖原 S16 的逻辑取消后实际 HTTP／native 任务、跨 viewer 生命周期和完成唤醒，仍保护同一普通阅读优先链路。保持一名实施代理、同一轮分段独审、同一聚合报告；最终提交前再记录实际范围及内聚性，不用文件数拆开不可独立交付的协议。
+
+#### C Android 原 Coil 初始解码实际完成观察
+
+`sp-c-android-coil-resource-red` 是实际 ART 的正确红：合法双帧 GIF BufferedSource 经原 ReaderPageImageView／Coil 首次真实 read，被透明 ForwardingSource 门闩扣留；同 reader 五页真实 PORTRAIT、普通 HTTP idle、原图片尚未 loaded，真实 On 事件后 optional Job=1／工厂 reads=1，期望 0。Time 3.426 秒／一项失败，不是缓存或夹具输入失败。
+
+最小改动只在原 ReaderPageImageView 两个 enqueue 处观察原返回 Disposable.job：提交前登记，实际 Deferred completion 才撤销，同步 enqueue 失败也仅撤一次。原请求、dispatcher、cache、PhotoView、Webtoon Bitmap 分支和成功／错误回调保持原链；dispose／逻辑取消不提前归零。只观察首次加载／解码，动画每帧继续沿既有链路，不将此证据扩称每帧性能验收。
+
+Executor 首次 green 四项一项失败来自测试末尾主动 error 抛 IllegalStateException，日志保留；失败 XML 被后一次任务覆盖，未重造历史 XML，Root 已在覆盖前独读。测试改为原取消语义 CancellationException，保留 dispose→!completed→busy→实际 release 断言，不改 production 计数。`sp-c-android-coil-resource-green2` 四项全绿、无 failure／error／skip，XML fresh UTC 09:29:39.351，终态 PASSED 09:29:40.434；限定格式 PASSED 09:30:03.309。
+
+统一开发 Debug PASSED UTC 09:30:35.831，实际 APK `app/artifacts/android/0.19.4-aex.22-vc40-9fe50edf6e-debug-3ace41fc61c6/Mihon-Fork-0.19.4-aex.22-vc40-debug-universal.apk`，SHA-256 `85f09c46c2fce09ab4ceb165ca65408d2c50a8f5af0e5111694a604b53722215`；测试包 PASSED 09:31:16.245，SHA-256 `a8945fdc1f5c79dd2f6149a8624fce6bfaa35a70c46dd41c3e8127676db91615`。专用 emulator-5586 的 `sp-c-android-coil-resource-green.log` 执行原 SSIV 与 Coil 两方法，Time 6.501 秒、OK (2 tests)、各 STATUS_CODE 0。真实 GIF 显示为 Animatable、原 MAGENTA PixelCopy 及同 owner 原 JNI 采样依赖自然清空，无 Retry／导航。保留先前 SSIV 原场景的相关复验，不扩展所有 ART。
+
+`sp-c-android-coil-resource-refactor` PASSED UTC 09:32:04.203，但 Executor 测试任务 UP-TO-DATE，复用上述 09:29:39.351 四项 XML，不称 fresh 重新执行；归档 green2 和 refactor 如实保存。Root 独读两原 enqueue、完成观察及取消／失败测试、正确 ART 红和两项绿、实际 SHA 与协调器终态，签收 Coil 初始解码窄段。平台压力、Desktop 跨 runtime、慢恢复／保存／手调及性能仍待 C，SP01／DP02 不勾选、不提交，不提前全量或正式构建。
+
+#### C Android 系统压力、实际窗口恢复与中途有界退出
+
+实际 ART 的 `sp-c-android-memory-pressure-red` 为正确红：对本 dev 进程执行 am send-trim-memory RUNNING_LOW，独立 Application ComponentCallbacks2 确认真实 level 10 回调，MemoryInfo.lowMemory=false（没有制造 OOM）；普通五页 PORTRAIT／HTTP 与原 native idle／原 CYAN 首图成立，真实 On 后 optional=1，期望 0。Time 3.101 秒／一项失败。
+
+最小 production 将只读压力放在原 ReaderActivity：RUNNING_LOW／CRITICAL、BACKGROUND 以上和 onLowMemory 标记受压，排除 UI_HIDDEN；原 resume／窗口 focus 及 normal loader／SSIV／Coil 实际 idle 重新读取 ActivityManager.MemoryInfo.lowMemory。原 adapter admission 与每条 bounded edge 读取同 StateFlow，解除后沿原 scope 恢复，不另建资源 owner／工作队列／线程池，不用设备总 RAM 判永久受压，不挡普通图片。原 matching Job／全局 optional actual completion 上限不变。
+
+统一 Debug PASSED UTC 09:38:10.596，实际 APK `app/artifacts/android/0.19.4-aex.22-vc40-9fe50edf6e-debug-466a87b94f8c/Mihon-Fork-0.19.4-aex.22-vc40-debug-universal.apk`，SHA-256 `30bb44f96af2bf0ee91814c0d65c105b87c3764ba690f31fecfeca24ad8bc84d`；测试包 SHA-256 `aae54da44d3d1cab177b756c1dc076ae47a695e3de059a0f451c9297c13b3ddf`。`sp-c-android-memory-pressure-green.log` 的原单方法 `originalSystemTrimPausesOptionalJniAndWindowRecoveryResumesSameOwner` 实际 ART Time 3.422 秒、OK (1 test)、STATUS_CODE 0。真实 trim flow 保持 true 时不登记 optional；本 reader 的真实 Dialog 显示／关闭使窗口先失焦再恢复，原 MemoryInfo 刷新 false 后，同 owner／同 On／原 JNI 需求自然清空、原 CYAN 图继续可读，无 Retry 或导航。
+
+同轮独审补齐中途压力 wiring 判别力：保留上述 admission 分支，临时仅撤 IO canContinue 中的 pressure 条件。原 Wiring helper 经真实 normal HTTP 内容、第一 region 门闩，调用原 Activity.onTrimMemory 后 pressure=true／normalbusy=false；释放第一 region，扣住原 recycle 实际关闭，第二条 bounded region 计数期望 1 实际 2。`sp-c-android-memory-pressure-mid-red` fresh UTC 09:40:56.304，一项正确失败。恢复原 IO 条件后 green fresh 09:41:44.774，一项全绿（终态 09:41:53.703）：原窗口 focus 回调刷新 false 时旧 publisher 仍 !completed、读取仍 1、需求未知；仅释放实际 close，原需求才在同 owner 自动完成。该中途段是 Robolectric 原生产接线／Bitmap region 边界，不冒充 JNI ART；真实系统回调来源与窗口事件由前述 ART 覆盖。
+
+最后限定格式通过，`sp-c-android-memory-pressure-refactor` 十二项全绿、无 failure／error／skip：Sampler 两项 UTC 09:42:53.081、Wiring 六项 09:42:59.460、Executor 四项 09:42:57.860，终态 PASSED 09:43:12.929。三份 XML 归档 `.gradle-coordinator/sp-c-android-memory-pressure-refactor/`；mid 红绿各自目录保留。Root 独读 production 状态／生命周期及资源门禁、真实 Native 来源／解除、实际 SHA、mid 正确红／绿和原事件序列、最终三 XML／终态，关闭该独审缺口，签收压力窄段。
+
+本阶段预算重估：截至本回执总约 16 小时；剩 C 2.5–4 小时（Desktop 跨 runtime 15–30 分钟，双端恢复／操作 45–75 分钟，开发性能 45–90 分钟，最终 focused／格式 20–30 分钟），DP02 正式三端约 3–5 小时，合计约 21.5–25 小时，仍在原 18–30 小时估算内。具体阻塞致显著超估时先报告事实／成本，不新增框架或默认为授权。SP01／DP02 仍未勾选／未提交，未提前全量／正式构建。
+
+#### C Desktop 关闭旧 runtime 后的 Pipeline 实际资源观察
+
+`sp-c-desktop-cross-runtime-red` fresh UTC 09:46:47.990 一项正确失败：原 Off／model.onDispose／runtime.close 后，原 decode Deferred 和 encoded lease 在透明 NonCancellable decorator 内仍在途；同 Factory 新 Runtime 的五页 PORTRAIT 和普通 cover 真正绘制均成立，真实 On 后原 region 调用峰值期望 1 实际 2。门闩在原 native.decode(bytes,key) 前，放行后委托真正 Skia；不称门闩期间已经进入 JNI 内部，不注入忙状态。
+
+最小 production 仅将原 Pipeline 的只读 foregroundWork／optionalWork 移为同类 process-shared 观察；各原 Entry flags 仍局部，由真正 Deferred completion 一次撤销，取消／close 不归零。Flow.update 跨实例线程安全；新 optional Entry 创建使用 compareAndSet(0,1) 原子登记，cache／同 key 先复用，冲突沿原 typed Pause，普通 Entry 仍可创建。原 Model 消费同 Flow 自动恢复，不新增锁／队列／任务 owner，也不扩称观察全应用所有 Skia 客户端。
+
+green fresh UTC 09:48:39.569 一项全绿：旧实际工作未退出时，新 runtime 普通图片仍能显示，匹配保持上限；只释放原门闩，同 owner／同 On 的待评分依赖自然清空，峰值仍 1。原 Pipeline admission 方法另覆盖第二 Pipeline 的不同 key 拒绝及同 key 单飞，不增加机械测试类。
+
+格式首轮因 Desktop 配置时 Android 插件未加载失败、零业务测试，该日志保留；format2 先沿原 init 配置 app 再检查 Desktop，真通过。最后 `sp-c-desktop-cross-runtime-refactor` 二十四项全绿、无 failure／error／skip：Pipeline 十四项 UTC 09:51:32.519、Resource 九项 09:51:32.984、原严格设置 Wiring 一项 09:51:49.928，终态 PASSED 09:51:56.541，XML 归档同 key 目录。Root 独读正确红／绿、同 Factory replace／close／原 Skia 委托、global Flow／原 Entry CAS 和 completion、cache 先复用及第二 Pipeline 反例、最终三 XML 和终态，签收 Pipeline 窄段。
+
+此处没有冒称旧 Session 的 normal materialize 物理 IO 已被跨 Runtime 门禁覆盖；它目前仍是 perSession 观察。同轮 S16 独审将复用原 holdOldBackground 夹具核一次该具体旧任务反例，先确定关闭／现接线是否已覆盖再决定必要最小修复。双端记录慢恢复／操作和性能仍待 C；SP01／DP02 未勾选、未提交、未提前全量或正式构建。
+
+#### C Desktop 旧 Session 的正常物理 IO 跨 runtime
+
+同一 S16 独审的具体反例 `sp-c-desktop-cross-runtime-http-red` fresh UTC 09:56:52.258 一项正确失败：原 normal NON_CURRENT_PAGE 任务已进入透明 NonCancellable gate，关闭旧 runtime 后仍未释放；同 Factory 新 Runtime 普通 cover 真正绘制、五页原 PORTRAIT、实际 On 均成立，可选 REGION 调用计数期望 0 实际 8。此 gate 是原 materialize 执行任务边界，不称旧网络 socket 正在传输，也不注入忙标记。
+
+最小共享 API 只在原 ReaderPageMaterializeRunner 增加只读 processPhysicalWorkCount：既有 shouldStart 决定执行后，在原 lock 外登记，先于 instance Flow 通知与原 Job.start；原 invokeOnCompletion finally 一次撤销。原 instance 计数、队列、permits、pump、取消和调度不改。DesktopSession 的既有 physicalWorkCount／idle 及 Model Flow 消费改读 process 观察，原关闭任务真正退出才自动恢复；不新建工作 owner，不扩称整个应用 IO。Android 消费者未改，原同 adapter 旧 loader 范围仍按前述证据。
+
+首 green 已通过 regions=0，但失败在忙时应有 header／spread deps 的旧测试前置：global busy 正确阻止可选 header，因此 spread deps 可为空。这不是新业务红，原日志／XML保留，原正确 red 不重写。green2 fresh UTC 10:01:24.356 一项全绿：旧任务未退期间只要求普通五页 Ready、原 cover 可画且 REGION=0；释放旧实际 gate 后必须 REGION>0、五页原 PORTRAIT、同 owner 和依赖清空同时成立，避免用初始空依赖误绿。
+
+共享 Runner 五项 JVM fresh UTC 10:02:44.820 与五项 Android Debug 镜像 10:02:58.097 均全绿，无 failure／error／skip；原 queued-before-body、取消 scope、失败／非协作取消、P0 等边界增加 process baseline 断言，计数归回原基线。归档 `.gradle-coordinator/sp-c-reader-physical-observation-green/{jvm,android}/`。最终 refactor 的这两项任务 UP-TO-DATE，复用上述十项有效结果，不称 fresh 重新运行。
+
+`sp-c-desktop-cross-runtime-http-refactor` 的 Desktop 二十五项真 fresh 全绿：Pipeline 十四项 UTC 10:04:38.335、Resource 十项 10:04:38.804、原严格设置 Wiring 一项 10:04:58.522，终态 PASSED 10:05:05.169。归档同 key 的 jvm／android／desktop 子目录。Domain 格式通过；Desktop 两轮仅新测试长行格式失败、零业务测试，日志保留，format3 真通过。最后只做方法声明／缩进和 assert 机械断行，不重复已适用的业务集合。
+
+Root 独读共享登记先后／锁外 Flow／原 completion finally、仅两个 production Runner 消费入口、Desktop idle wiring、新原 Factory 事件和正确红／green2、十项共享镜像及二十五项平台实际 XML／终态，签收这一共享观察接口和 Desktop 窄段。此前 Pipeline 与 normal materialize 两个跨 runtime 实际缺口均已行为保护；双端慢恢复／手动／保存及固定性能仍待 C。SP01／DP02 未勾选、未提交，未提前全量／正式构建；剩 C 约 2–3 小时、DP02 约 3–5 小时，整体约 21.5–25 小时估算保持，具体超估先报告。
+
+#### C Android 慢配对记录与原按钮状态
+
+三条正确红分别保护真实接线：初始 `sp-c-android-nonblocking-restore-red` fresh UTC 10:13:50.553，一项失败，原 repository 已进入且读取扣留、owner 为 RESTORING／revision 未知，Mode 6 的原 init／activation 两秒内仍未返回；邻章 `sp-c-android-adjacent-nonblocking-restore-red` fresh 10:33:04.701，一项失败，原 chapter 3 页表已 Loaded／记录读取已进入，但正常邻章请求仍等待该读取；UI `sp-c-android-restoring-adjustment-ui-red2` fresh 10:42:01.849，一项失败，原 AppBars 的调整节点仍带 OnClick 且没有 Disabled，恢复期间未禁用。
+
+最小实现沿原 ReaderViewModel／store／application coordinator：明确 DUAL_PAGE_R2L 或 AUTO 的实际 Dual viewer 允许激活和正常邻章页表先推进，原 Main callback scope 执行异步恢复，真实 repository IO 仍在原 coordinator scope。显式单页／条漫不扩大改写。原 owner／pages／Manga／请求身份继续校验，失败和 Retry／临时模式仍用原入口；不注入空 READY、默认 revision 或新恢复 owner。`pairingRecordReady` 仅重新读取当前 store owner 状态，原 Activity→AppBars→BottomBar 据此禁调；邻章／旧任务完成不能直接清 pending，不借“正在保存”文案，不在 RESTORING 增加 Retry。
+
+失败分类如实保留：首 green／green2／green3 均停在实际 read entered 前置，虽 opening 已完成、后两次原 owner 已 RESTORING，原因未被诊断证明；不将其归为产品红或已证实的 scheduler 故障。只读诊断第一轮编译错误、UI 首红因表达式返回类型造成零测试、两轮格式入口／lint 失败均是零业务证据。diagnostic2 fresh 10:28:41.854 一项通过后，撤去诊断和无效 scheduler 补丁，沿原 Main callback scope 重构，未扩大超时或修改断言求绿。
+
+首 refactor 六项一项、green4 七项两项失败来自旧 Retry／Default 在恢复未完成或旧显示区间内期待已恢复组合。保留真实按钮、原 SQL 和记录值，测试区分普通可读与实际 owner READY；Retry 从尚未涉及未来配对的源页进入，Default 保留当前回退分组及旧保存记录，不用后台回跳证明恢复。两项诊断通过后撤打印，未为这些测试修改共享画面保护规则。
+
+`sp-c-android-nonblocking-restore-green5` 真 fresh UTC 10:47:24.054，八项全绿，无 failure／error／skip；终态 PASSED 10:48:03.536。包含两项慢读取、原请求签发、取消后重试、单页失败恢复、实际 Retry／Default 与 CAS。慢读取期间真 AppBars Adjust disabled、无额外 Retry；释放真实读取后同 owner 接纳原 `{3}` 记录、用户源页 3 定位不回跳，按钮重新 enabled。XML 归档 `.gradle-coordinator/sp-c-android-nonblocking-restore-green5/`，各正确红和失败日志保留。限定 format3 通过，未运行完整模块测试或正式构建。
+
+Root 独读三个正确红、最终八项 XML／终态、原 store／Main 接线及实际 Compose 节点变化，签收 JVM 恢复／按钮窄段；它不冒称真实 JNI 首像素或迟到记录零位移。Android 对应 ART、Desktop 恢复／操作及固定性能仍待 C，SP01／DP02 未勾选、未提交。
+
+规模补充：本轮实际只读统计的 70 文件快照分为产品实现 30、测试 35、文档 5；不是最终提交统计。恢复按钮接线后仍按同一 S13 能力批次记录最终内聚性与风险，不把文件数当作额外产品范围或提前完成证据。
+
+#### C Android 迟到记录的实际 ART／几何
+
+统一开发 Debug 自然 PASSED UTC 10:57:12，实际 APK `app/artifacts/android/0.19.4-aex.22-vc40-9fe50edf6e-debug-b1ab71e17160/Mihon-Fork-0.19.4-aex.22-vc40-debug-universal.apk`，SHA-256 `2d9f648afa505d7d032871a711f3e658a85c665ee5655013a7bd312aa6e8720e`。初 test APK PASSED 10:58:45.215，SHA `7394ecb4ce1fa690b2274377377356d22b1711874d06633396f278be2cbcd43a`。首 ART 使用旧包名而找不到 runner，零业务；native2 实际图片已画出，但 repo entered 未成立，不能作为慢记录验收或正确产品红。两个原日志保留。
+
+已读本机 Injekt 字节码确认夹具原因：addSingleton 的 factory 替换保留 existingValues 中已物化的旧 Lazy。测试仅用原 addFactory API 包装真实 repository，并断言当前 get 和真实 ViewModel 的 coordinator 均为同一包装器；不加 production seam、不重建上述 Debug。限定格式通过，`sp-c-android-restore-native-di-test-apk` PASSED UTC 11:12:21.364，新 test SHA `f0c30394a37a78c9fd5cca431ec6ecc9ee128a430c012b8eb4a97ae6cdb30a50`；两包 dev 证书连续。
+
+专用 emulator-5586 已核注册身份 `app.mihon.desktop.fork.dev.test`／target `.dev`。原单方法 `heldOriginalPairingRecordDoesNotDelayNativePixelsOrMoveExposedSlots` 的 native3 在实际 PID 25461 执行，Time 11.995 秒、OK (1 test)、STATUS_CODE 0。HELD 阶段真 RESTORING／未知 revision／无保存 request，原 Copy HTTP／合法 JPEG／JNI／PixelCopy 已画源 1 和 2，SQL last_page_read=2，实际双击缩放到 2 倍。仅释放真实记录读取后，同 owner 接纳原 forced `{1}`，12 次完整矩形、图像边界、mount、container、scale／translation 和 frame 相同，SQL receipt 总数 188→188；该数是当时数据库累计基线，不是本用例新增 188 次进度。真实下一页键随后进入源 3 的 BLUE 图并推进原 SQL。
+
+原几何记录 UTC 11:12:47.220／52.136：RED content `Rect(540,392–1077,2009)`、GREEN `Rect(0,392–537,2009)`，同 container `5c2108a`、mount RED `1c7a07e`／GREEN `bf9fa00`、scaleX/Y=2、translationX/Y=0；恢复前后相同。日志为 `app-desktop/tmp/sp-c-android-nonblocking-restore-native3.log` 与 `sp-c-android-nonblocking-restore-native-geometry3.log`。Root 独读真实依赖身份、门闩／原 SQL／touch／像素及 12 次断言、ART 终态／几何，独核生产及新 test SHA，签收 Android 开发慢恢复窄段。该证据不替代正式 R8、B1／B2 原图或完整性能；Desktop 恢复、其余操作／性能仍待 C，SP01／DP02 未勾选、未提交，未提前全量／正式构建。
+
+
+#### C Desktop 慢记录期间的图片与原恢复按钮
+
+`sp-c-desktop-nonblocking-restore-red` fresh UTC 11:18:08.386，两项正确失败：真实 repository 读取已进入并被扣留，原 viewport 仍只显示 Loading pages、没有原生首像素；读取失败时原 ERROR 页面也移除了图片，只余恢复反馈／原按钮。终态 FAILED 11:18:30.623，保留归档 XML 与日志。
+
+最小 production 只改原 DesktopReaderScreen：双页原页表非空时进入 CONTENT；ERROR 在图片上用原 PairingRestoreError 的局部面板，沿用原 Retry／本次默认按钮及本地化。原 Model 异步恢复、Factory／owner／SQL 不新建；Single／Webtoon 原恢复路径及正常图片 loading/error 不扩大修改。未知 revision 禁调／禁保存，Default 不伪造已恢复或覆盖原记录。
+
+green／green2 的后续失败保留：原业务已进入图片／按钮，但 Retry 的 Model READY 先于实际 enabled 节点重组；held 导航逻辑已到源页 3，原测试固定 render 时间没有推进真实动画。仅测试等待真实节点，并用 System.nanoTime 推进原动画，不改 production 导航、不扩大超时。`sp-c-desktop-nonblocking-restore-green3` fresh UTC 11:23:52.635，两项全绿、零 failure／error／skip，终态 PASSED 11:23:59.819。
+
+真实 Factory／原持久化 repository／ComposeScene／Skia 证明：慢读取时首像素已画、原 Adjust disabled、真实 reader tap 进入源 3／4；仅释放原读取后接纳 saved forced `{3}`，当前 source 3 不回跳，frame／composition mount 与 BLUE 联合像素矩形 12 次相同，原 SQL 配对记录不被覆盖、按钮重新 enabled。读取失败分别执行真实原 Retry 与 Default：Retry 再次读取且 pending 时保留图片，完成才启用；Default 保留未知 revision／禁调且不再读，原 SQL 配对与 last_page_read=5 基线不变。
+
+Root 独读正确红／green3 XML、协调器终态、production viewport 分支、完整原按钮／tap／SQL／Skia 事件，签收该慢恢复窄段。联合 BLUE 矩形是两图像素的包围框，不冒称各槽完整 geometry／transform；不替代 B 原生逐槽证据或正式 Windows／macOS 运行。原合法未知伙伴手调、其余操作／固定性能仍待 C；SP01／DP02 未勾选、未提交，未提前全量或正式构建。
+
+规模补充：本次只读工作树为 74 个变更文件，其中 32 产品实现、37 测试、5 文档；这是当前快照，最终提交前再核。仍为原 S01–S16 同一功能批次，一名实施代理、同一轮分段独审，没有新增产品能力或独立框架。
+
+
+#### C 原未知伙伴调整与保存重开语义
+
+操作簇首格式／refactor 只有测试长行 lint，零业务，日志保留。refactor2 实际 Compose 六项两失败、Model 九项一失败：原新未知伙伴用例未真实建立 UNKNOWN；旧重开期待远处全章相位；DEFAULT_UNVERIFIED 直接 Model 局部调整仍无 repository writes，但旧断言期待局部集合不变。没有为旧期望修改 production。共享原 beginSave 的会话内 DEFAULT 局部语义保留，并检查真实 writes=0／未知记录不覆盖；Model 精确方法在后续 focused 已绿。
+
+未知伙伴诊断最初按旧行号推测 automatic matching false，已撤回。实际失败在 `!unit.certain`，尚未执行设置断言；单次真实身份诊断显示 sameRuntimePrefs／setup／runtime／state 均 true，不存在该次假设的缓存或设置故障。DIRECTORY 已提供 header；ONLINE 的 NON_CURRENT_PAGE 门闩也不会扣住当屏伙伴。仅测试复用原 ONLINE MockWebServer，在 source index 2 的真实响应上放透明 CountDownLatch 门闩，原请求和图片 bytes 保持，finally 释放；不注入类型或组。
+
+`sp-c-pairing-unknown-operations-focused` 的 Desktop fresh UTC 11:52:58.867，两项一失败；`legalUnknownPartnerAdjustmentUsesOriginalButtonWithoutDisablingMatching` 实际通过：原记录 READY、伙伴非 Ready、uncertain 双页 `{1,2}`，真实原按钮 enabled／onclick 保存 SQL forced `{1}`，automatic matching 保持 true。剩余失败仅原 reopen 最后等待，Android 因 Gradle stop-on-failure 未执行。Root 独读真实门闩、按钮、SQL、状态和 XML，签收这一 Desktop 操作窄段。
+
+Android 首 diagnostic fresh UTC 11:59:30.723 一项失败为 JVM 无 imagedecoder JNI 的宿主前置，不是产品红；该命令 Desktop 未运行，不混存旧 XML。复用既有 encoded-region Robolectric adapter 并保留真正 On／原 owner／UI／SQL，`sp-c-pairing-unknown-operations-diagnostic2` fresh UTC 12:02:42.160 一项全绿、无 failure／error／skip：原 `Activity.AppBars` enabled 节点真实 performClick，SQL forced `{1}`，同 owner 的伙伴仍 Queue／UNKNOWN、自动匹配仍 On。仅此用例使用原区域 adapter，不关闭匹配或安装系统 JNI；不替代此前 ART/native 证据。Root 独读上述真实方法和 fresh XML，签收该 UI 操作窄段。
+
+同 diagnostic2 的 Desktop fresh UTC 12:02:23.356 一项失败给出实际 current source 5、READY／revision 1／manual `{1}`、viewport `{5,6}`；旧期望 `{4,5}` 是冷跳应恢复远处整章相位的断言，与 v3 局部决定冲突。原真实保存／SQL 重开／记录恢复仍保留。只改原用例：接纳迟到记录后保护当前 frame，实际 Reader Settings Dual Off→On 保持 source 5／图片，随后真实 previous taps 回到 source 1，必须单页独占且原 forced `{1}` 仍保存。
+
+`sp-c-pairing-reopen-local-boundary-green` fresh UTC 12:04:25.115，一项全绿、无 failure／error／skip。Root 独读实际设置节点／previous tap／单页像素／保存边界与 XML，签收重开语义；不预注最终组、不删掉保存／应用检查，也不修改 production 求旧相位绿。上述操作原类 refactor／格式和完整固定性能仍待 C；SP01／DP02 未勾选、未提交、未提前全量或正式构建。
+
+
+#### C 操作簇关联复验与结果复用
+
+`sp-c-pairing-operations-scoped-format` PASSED UTC 12:07:46.790。首次相关类命令 `sp-c-pairing-operations-refactor` 实际 Compose 六项全绿 fresh 12:10:21.313，Android 二十二项九失败 fresh 12:10:36.366；命令中的 Model 包名错误，没有其 XML，不记九项执行。该命令终态 FAILED 12:12:02.877，全部真实结果保留。
+
+九项汇总后只改 test-only 前置／v3 预期，不改 production：远处保存边界不保证冷跳全章相位，但重开、ViewModel 取消后的 actor 次序、recreated viewer 必须保真实 SQL 并在正常回到保存 boundary 时独占；迟到宽图保逻辑源页及手动边界；末页只把实际 DisplayPage 的 source 7 传入原 settlement／SQL，不加入未在该 unit 的 source 6。该末页用例是原 Model 进度输入层，不冒称实际 native draw。邻章等待原 owner READY／RESTORE_FAILED，loaded 内容可进入原 adapter，明确导航后原 Dialog／Retry／Default 仍可用，未知 revision 仍禁保存。
+
+`sp-c-pairing-operations-affected-green` Android 精确九项八通过、一转场前置失败，fresh UTC 12:17:55.505；正确 `mihon.desktop.ui.reader.DesktopChapterPairingModelIntegrationTest` 九项全绿 fresh 12:18:45.421，无 retry。转场停在未消费 Reload 的 raw Activity 宿主前置，未到旧最后配对断言。该夹具不启动实际 Activity collector，改用原 viewer.setChapters 消费真实已 Loaded／store ERROR 的加载事件，之后明确 loadNextChapter→原 ERROR Controls／Retry→READY→正常 boundary 3 独占；不模拟 header／组，不修改恢复实现。B／ART 的真实 collector 证据有效复用，此方法不被称为 collector wiring 验收。
+
+`sp-c-pairing-transition-loaded-content-focused` fresh UTC 12:22:11.051，一项全绿，终态 PASSED 12:22:26.659。核 manifest／治理文件没有受保护的旧名称引用后，测试名改为 `RTL unloaded transition exposes content and explicit navigation preserves pairing Retry`。late-wide 用例追加正常回到 boundary 3 的实际 singleton；replacement 的同等检查已在 12:17:55 快照前包含，不重复复验。
+
+最后 scoped-format-and-focused 首次只因测试声明长行 lint、第二次只因清单参数传递失败，均零业务，日志保留；不算新业务红。`sp-c-pairing-operations-final-focused3` fresh UTC 12:35:59.557，两项全绿、零 failure／error／skip／retry：上述转场和 late-wide。五文件限定 Spotless Apply／Check 同命令通过，终态 PASSED 12:36:23.926，真实 XML 归档 `.gradle-coordinator/sp-c-pairing-operations-final-focused3/`；diffcheck 通过。
+
+有效组合覆盖 Compose 6＋Model 9＋Android 22＝37 个方法：Android 首次未受后改影响的 13 项通过、九项定向中的 8 项通过、剩余转场通过；末两项又对测试改名／late-wide 新检查补验。该组合不是最终源码重新执行三类 37 项的 fresh 结果。Root 独读首次和补验 XML／终态、邻章原 Controls、save／cancel／recreated viewer／boundary 应用与末页输入边界、最后两项源码／XML，签收同轮 S13 操作窄段。固定性能及 C 批次冻结仍待；SP01／DP02 未勾选、未提交，未提前全量／正式构建。
+
+
+#### C 开发性能对照：Desktop 已取得证据，Android 尚待完整终态
+
+Desktop 原 B2 archive SHA-256 为 `760c81b12dee475288833b29b1f965fa097d4dbafbc36b6cc62f3e2d5a9ac439`，22 张原 JPEG bytes 经真实 MockWebServer、Factory、正常解码、原图片 owner、ComposeScene 与 Skia，不使用微型图片或注入事实。四条件 Off／On／Suspended／ForegroundPressure ×六场景×三次，共 72 个样本；`sp-c-development-performance-refactor-and-native-apk` fresh XML UTC 12:56:47.945，单方法 26.137 秒、零 failure／error／skip。测试包构建与限定格式同 key 通过，不是正式产品构建。
+
+透明 observer 调用原 `acceptReadyAsset` 和 `drawDualViewportPage`，仅其真实返回 true 后记 Ready／paint；明确目标源页、内容 generation／attempt 与 frame，第二图必须属于同一 frame 的另一槽，封面单槽记不适用。Ready／paint 使用真实墙钟；renderCost 仅是 scene.render 调用耗时，renderInterval 是实际 render-start 间隔，两者均不是原生 vsync／掉帧统计。TestScheduler 的 16ms 推进仅驱动开发宿主定时器，不冒称实际经过 16ms。
+
+首 72 样本 On 的 18 项中 12 项确有 optional decode，Suspended 的 18 项均保留实际旧任务计数 1，直至正常图片绘制后才 release。该门闩在原 decoder 调用边界，不冒称 JNI 内部已开始。Desktop Pressure 为原 memory authority 的 128 **bytes** 软预算，确有 overBudget 且不新增 optional；不冒称物理系统 OOM。resident／pinned／Java heap 是观测采样峰，不是全进程高水位。300 页场景是 22 张原 payload 循环组成 300 个独立源页身份、冷跳源 index 199；它不是 300 张不同原图，也不替代 A／B 的 300 页首页证据。
+
+不以平均值消除波动：首 72 中 On 300 Ready→paint 为 44.18／18.00／37.12ms，Off 为 24.59／24.26／26.50ms；Pressure rapid 输入一次 173.36ms，Off warm 首次 285.34ms。后一 Pressure 样本 optional decode peak 为 0，Off warm 有 157.78ms 单 render 成本，但不能据此未经分析将所有波动都归宿主。warm On 一次普通请求六源、Off 五源，不能称所有行 IO 完全相同；采样只读取现有 ready stream、不 materialize 的原生产契约及资源证据继续复用。
+
+只对具体疑点追加 `sp-c-desktop-development-performance-300-diagnostic`：同一方法限定原 300 场景，四条件×三次=12 个样本；fresh XML UTC 13:40:42.572，1 方法 8.791 秒、零 failure／error／skip，限定格式同 key 通过。透明记录 normal HTTP 源索引、decoder enter／return、原 prepareDecoded 返回值及真实 Ready／paint。On 三次 Ready→paint 43.76／35.78／41.40ms，均相隔两个 render；Off 65.68／44.07／30.56ms，间隔二／三／二。On 0／2 在源 201 optional REGION 已进入且尚未返回时，源 199 已实际画出；同 render 的旧 ticket false→原新 ticket true 无等待。Off 1 同样在普通宽图事实到达后出现 ticket 换代。12 次请求均为正常源 198..203 六源、2,958,053 bytes。
+
+Root 独读两组当前 XML、真实 observer／事件及源码，签收开发层级的“不等待 matcher 完成”窄证据。新诊断未复现稳定的 On 额外 render／大 render 峰，不证明数学零开销或所有硬件下无微小 CPU 竞争；正式 Windows／macOS、Android R8 的性能和原生体验仍归 DP02。两组构成 72＋12 的有效证据，不称最终完整矩阵重新执行。
+
+Android 同样保原 B2 payload、实际扩展解析／normal loader／JNI SSIV／独立原图 25 点 PixelCopy。开发 Debug production 始终是已核 SHA `2d9f648afa505d7d032871a711f3e658a85c665ee5655013a7bd312aa6e8720e`；后续只重建测试 APK。Native1 首 11 行后错误地要求反向输入必须再次 child onDraw；已画邻图可能由 RenderNode 复用，改为保实际原 Ready／首次 draw，输入另记独立 PixelCopy 首次正确目标画面的观测上界，未再次 draw 就记不适用。Native2 在 12 行后 donor 预热 take(5)Ready 假设失败；原真实宽图及 manual `{1}` 使该请求假设不成立，改为正常源 3／4 真 portrait、原 HTTP／native idle 后扣原 optional。保 SQL；22 页场景 baseline `{1}`，300 独立章节为空，各自四条件一致，不称全部无手动记录。
+
+Native3 为 19 行、Time 66.185 秒／一失败，pressure warm 的 trim 在 On 后建立，已有 task 不证明受压时新增。Native4 已先 trim→On，却在 On cold-jump 出现真实图片 Error，10 行、Time 62.56 秒／一失败；HTTP 两次返回原源 19 JPEG 517,837 bytes、缓存 SHA 一致，目标 frame 无 lock／draw、无 native 图且原 Error UI 可见。其原因尚未证实，不能记作 observer 假阴性或 BUG 已修复。精确单场景透明原 onImageLoadError／UI 文本诊断在 PID 29323、Time 3.918 秒、OK (1 test)，原 JNI／真实像素与反向均通过但没有复现，不消除原失败。Root 只读保留 PID 28679 的原 WARN／ERROR 日志，未取得对应解码 Throwable；其中 dex finalizer 断言没有已证实的业务因果关系。
+
+Native5 PID 29471 有 23 行、Time 80.775 秒／一失败，最后 pressure300 仍 pressure=true／optional=1。停止猜式整组重跑，只在该场景记录原 pressure／optional flow、真实 MemoryInfo、focus／lifecycle 与墙钟。精确诊断 PID 30695、Time 4.303 秒、OK (1 test) 已证实：UTC 13:37:38.466 pressure=false、实际 lowMemory=false 后 optional=1；.477 原 trim 又 true；.489 实际 optional=0。此前 .300→.311→.328 同波形。原 adapter 在普通工作 idle 时查询实际 MemoryInfo 解除压力，符合既有恢复机制；瞬时 trim 不能伪装持续系统低内存。每段真压力仍禁止新可选 IO／解码，旧工作有界退出由原实际资源红绿／native 证据保护；不修改生产为永久压力 flag，也不以峰值最多一项代替 admission 门槛。
+
+Native6 将按真实 trim／idle 解除波形完成原 72：初 trim→原 On→target release 保真 pressure=true／optional=0；记录实际状态转移和 lowMemory，finish 后等原 physical optional=0。不再要求解除期间已合法启动的旧 task 在任一后续瞬时 trim 立即从物理计数消失。该波形不覆盖持续 lowMemory；原持续 foreground busy 的 SSIV／Coil 红绿及 native 证据明确复用。Native6 已在 PID 30867 终态 Time 60.817 秒／一失败，仅 Off 六场景及 On 前三场景共九行，不是完整 72：On rapid-keys 的真实逻辑 target 源 3 未取得正确窗口像素。当前 frame 为 `{2 RIGHT,3 LEFT}`、target 3、seq 3／context 1，locked／drawn 为空；原 native 子图已 Ready／base，但没有对应真实绘制。透明原 error callback／UI 文本未记录异常；不能归为 observer 假阴性或已证实绘制门禁故障。原 raw／单方法失败保留，已停止整组重跑，尚待该路径的原 maps／prepare／内容绑定诊断。测试 APK SHA `12bd480c2241351d23d4188e91d6040e549d2cc5bd1efc1b0301e3edb54aa416` 对应该失败，production Debug 未改。Native4 图片 Error 原因也仍未知，两个相关失败不能因精确诊断或后续采样绿色无说明消除。开发私有字段／callback 观测不自动适用于 R8，不新增 bulk keep 或关 shrink 取得正式通过。
+
+各 raw logcat 可能含历史进程，只按实际 PID／时间段／对应 test APK 统计，不从总行数拼出 72。以上均不勾选 SP01／DP02；尚欠 Android 完整性能结论、C 最终关联验证／签收／提交及正式三端验收。
+
+后续限定诊断没有修改 production Debug。观察器已修正为只包装原非空 beforeImageDraw／onImageLoaded／onImageDrawn，原重绑定清空时保留 null。原 ReaderPageImageView 的两个绘制回调皆 null 时有直接允许分支；旧观察器在此补函数会增加 current／尺寸／可见性判断，这一观测语义改变已由实际源码核实。但没有原 Native4／Native6 对应时刻的 null 记录，不能据此认定两失败已被解释或 BUG 已修复。
+
+三回调 guard 后，`sp-c-native-performance-callback-boundary` 的 Rapid／On 三次在 PID 31790、Time 10.912 秒、OK (1 test)，真实绑定、原 beforeDraw 和原图强 PixelCopy 均通过；三次都是 context 0，不能覆盖 Native6 的 context 1。随后 `sp-c-native-performance-geometry-diagnostic-apk3` PASSED，测试 APK SHA `e09ec0bf80d71362d33f87cbcc55326f26c1d86a4e91aceceddcf5a86b11a623`；真实 scale 设置事件形成 config 2／context 1，PID 32105、Time 4.224 秒、OK (1 test)。源 3 bound 4:0／1130×1596 Ready、原 beforeDraw=true，context 1／frame 13 的 RIGHT 槽实际绘制及强 PixelCopy 通过。它只覆盖明确设置边界；Native6 context 1 的原事件来源仍未证实，初始偏好 Flow 分派仅是待证假设。
+
+同 `e09ec…` 测试 APK 的 `sp-c-native-performance-cold-diagnostic` 在 PID 32270、Time 10.581 秒、OK (1 test)，Cold-jump／On 三次的源 19 和反向源 18 真实 JNI／绑定／原图 PixelCopy 均通过，其中一次为实际 context 1；原错误回调及 Error UI 未复现异常，不消除 Native4 风险。进一步 `sp-c-native-performance-pending-context-apk` PASSED，SHA `46e11e98dffe9b9cf476e441025b2c79f68acb4991e59aac91c3d30c0dc5bb65`；PID 32578、Time 4.151 秒、OK (1 test)，真实 HTTP body 门闩建立逻辑源 3、候选 `[2,3]`、源 2 UNKNOWN；原 scale 事件形成目标 holder context 1 后放行，源 3 在 RIGHT 槽实际绘制并通过强 PixelCopy。严格的源 3 未 Ready 前置断言及完整 Throwable 记录仍在本方法重构复验；上述有限结果不是最终 72 对照全部通过。
+
+范围快照：2026-10-04 UTC 14:39 的 `git status` 为 76 文件＝32 production、37 tests、6 docs、1 manifest，原规划约 15–30 文件的估算已被明显超过，C 耗时也超原 3–5 小时估算。新增实现与测试仍围绕 S01–S16 的共享呈现、原双端接线及原资源／操作链；没有新产品能力、HTTP 客户端、缓存系统或独立 benchmark 框架。继续使用一名实施者、同轮分段独审；全量矩阵和正式构建尚未启动，SP01／DP02 未勾选、未提交。两原生失败的定向诊断按已说明的追加 30–60 分钟估算收口，不用未复现或缩减为 24 个样本代替原 72 的必需证据。
+
+严格 pending 重构补验：`sp-c-native-performance-pending-context-refactor-apk` PASSED 47700／38464，限定格式通过，测试 APK SHA `1c1fe358eb772bbb6d8e8c18e51ab9c4261b14bd21851e4088339167c8fe1728`。`sp-c-native-performance-pending-context-refactor` 在 PID 32754、Time 4.075 秒、OK (1 test)；日志确见 source 3 为 DownloadImage、source 2 UNKNOWN、`[2 RIGHT,3 LEFT]`，原 scale 事件后 context 1／frame 16，源 3 bound 4:0／原 beforeDraw=true／RIGHT 槽实际画出并通过强 PixelCopy。Root 独读实际前置、绑定、原回调及两终态，签收此窄场景；不解释 Native6 原失败。
+
+正确 observer 的首次完整对照尝试 `sp-c-native-development-performance-correct-observer` 终态为 PID 929、Time 174.387 秒、一失败，测试及 production SHA 同前。失败发生在 suspended 条件为下一场景建立 donor 的预热步骤，尚未安装 measurement observer；源 3／4 未同时达到原 Ready／PORTRAIT／physical idle 前置，原 Error Layout 可见。已停止整组重跑，不降前置、不修改 production 猜绿。原 ERROR 日志没有目标 decode Throwable，SQLite lock／dex finalizer 不能作为已证原因；Native4、Native6 及本次 donor Error 仍是待分类的相关风险。
+
+日志收集限制及纠正：原 geometry 文件保存 37 个起始行，但尾部缓冲缺失，且一条 frameIntervalNs 长行被截断；起始行数不能记作 37 份完整采样。随后补存同 PID 的 `sp-c-native-development-performance-correct-observer-ring.log`，确见 repeat 1／suspended 的 warm-sequential UTC 14:44:06.982、slow-partner 11.200、rapid-keys 15.688、cold-jump-reverse 20.170 都是 22 页场景并通过；下一个失败是 suspended／300 的 donor。先前仅依 37 条前缀推断“22 页场景返回 300 页”已撤回，未形成输入串扰证据，也没有因该推断修改 client／registry。被截断 cold-home 的资源尾字段已从原 ring 补取得；后续观测须完整保留有场景身份的字段，不能当缺失为零。原 raw／ring／错误日志全部保留；本轮仍不具备完整 72 性能通过结论。
+
+冻结批次验证 `sp-c-final-affected-26` 首次 UTC 15:00:48–15:01:07 的五份 fresh XML／终态已归档同名协调器目录：真实 HTTP／来源路由三类 20 项、ReaderArchitectureGuardTest 三项和 production delegates 一项通过，共 24；通用 manifest／reader protection 两项失败，均因 ID 43 的原 Android 保护方法改成 expression helper 委托，证据解析器不能读取其直接行为 body。方法名称及原 helper 行为还在，不能借此删除保护、放宽 manifest 或插入符号字符串。全部 69 个本任务 Kotlin 的限定 Check 通过；剩两契约将通过恢复原命名方法的真实直接行为主体，并定向复验原匹配／replacement 两行为来关闭。24 项可复用，不把后续局部复验称最终代码重跑全部 26。SP01／DP02 仍未勾选、未提交，未提前全量或正式构建。
+
+证据契约窄修已关闭：原 Android protected matching 方法恢复完整实际 runBlocking 主体，replacement 用本测试实例默认 false 的 flag 选择既有 recreate 分支，finally 还原；不复制主体、不改 production／Contract／manifest、不插入无意义 marker。`sp-c-protection-evidence-repair-four` PASSED 47300／43664；实际两行为 fresh XML UTC 15:11:32.498、两失败治理方法 fresh XML 15:11:46.969，分别 2 项／零 failure／error／skip，受影响文件 Apply／Check 通过。Root 独读真实主体、flag 默认／finally、两 XML／终态及原 24 的五份 XML，签收最终 26 的有效组合证据；它不是最终源码重新执行全部 26，两个真实行为另计为必要定向复验。原三方法保护和 manifest 状态未被弱化。
+
+采样数据进一步核对：Root 将 correct-observer 的原落盘前缀和同 PID 929 的 ring 按 repeat／condition／scene 合并，取得 41 个唯一原样本，末尾 nativeHeap／nativeWork／optionalWork／manualBaseline 等字段齐全，最大行 1,188 字符。缺段和最后一行截断来自采集文件缓冲尾，不支持“Android logcat 单行上限”结论；撤回必须新增帧日志分块机制的要求，没有因此引入 logger 框架。41 是失败前有效数据，不是完整 72，也不把未测 31 补为通过。
+
+新增取证的限定单场景：首 test APK 构建仅缺 ReaderPage import／零业务执行，修正后 `sp-c-native-performance-donor-error-diagnostic-apk2` PASSED 43316／32592、限定格式通过；测试 SHA `d8595082a498c16d8c1031993cd260c3eb225ded82c987339a5df63fec0a4d57`，production Debug 保持 `2d9f…`。`sp-c-native-performance-donor-error-diagnostic` 在 PID 5162、Time 6.298 秒、OK (1 test)，原 300／suspended donor 的真实 Ready／PORTRAIT／normal 与 native idle 前置成立，没有原 onError 异常；目标 199／context 0，Ready→paint 14.083ms、6 请求／3,064,618 bytes、native peak 4／optional peak 1。Root 独核构建／ART 终态；单次未复现不能关闭旧错误。
+
+下一次完整对照的目的与边界：单场景无法复现前述长序列 donor Error，因此只追加一次原 4×6×3 的长序列运行，所有 suspended donor 启用现有 errorsOnly／非空原 error callback 取证，失败现场记录实际 page.status／errorPages／error_message／busy；相比上轮可取得此前缺失的具体异常，不是猜测 production 修复后刷绿。预计 5–10 分钟，产品／测试 APK 不重建、不新增 client／registry／框架；终态补 ring 并核完整落盘字段，失败立即停止该轮。若通过，只签开发对照，历史三条失败仍分别分类，不宣称 production BUG 已修复。此前定向诊断已超过 30–60 分钟估算，实际约 70 分钟时已向用户说明；下一段仍原 S01–S16 必要验收，整体预测约 28 小时。SP01／DP02 不提前勾选／提交，不启动全量或正式构建。
+
+该次 `sp-c-native-development-performance-donor-observer-final` 已终态：实际 PID 5691、Time 68.551 秒、一失败、失败前十个完整样本；production／test APK 分别保持 `2d9f…`／`d859…`，不是完整 72 通过。repeat 0／On／cold-jump-reverse 的源 19 确有原 `Page.State.Error(IOException("Chapter cache rejected the image write"))`，真实栈为 `AndroidReaderMaterializePorts.kt:98` → `AndroidReaderEncodedPageStore.kt:73`，原 RIGHT errorPages=19 和 UI 消息一致，尚无对应 native 图／lock／draw；失败取证时 normal=false、nativeBusy=0、optionalBusy=0。原 HTTP 两次 200／517,837 bytes，缓存与响应 SHA `f8ec5de0f211bb0166e268bc7177f1356667fcf7ed920d1028e689b2f6a667cb` 一致，只证明已有正确字节，不能证明该 fetch 成功。原日志 `app-desktop/tmp/sp-c-native-development-performance-donor-observer-final.log` 保留完整 Throwable，geometry／ring／errors 同前缀保留；自有 logcat collector 已停止，无 Gradle／ART／采集在途。
+
+Root 独读现场和原 ChapterCache，确认此次直接错误为 `putImageToCache` 返回 false，不是已经证实的 JNI 解码失败；false 可来自同 key 的 `diskCache.edit` 未取得 editor，或 commit 后 `isImageInCache` 失败，现场尚不能区分。原夹具 cold 在 finish 后直接删除 `.0` 文件，没有通过 ChapterCache journal API；是否与未完成真实物理工作构成此次原因仍是待证假设，不能以当前 idle 快照反推清理边界已经 idle。复用同一实施者，先做该路径的原测试定向观察，预计 20–40 分钟；暂停性能矩阵重跑及猜测性 production 修改。若证夹具隔离问题只修夹具，若证真实存储并发则先核定最小反例和原存储测试边界，不新增缓存系统／owner／调度机制。Native6 拒画及旧 donor Error 没有被此栈自动解释；SP01／DP02 仍未勾选、未提交，最终全量／正式构建未启动。
+
+缓存支路定向取证（不重跑矩阵）：仅在原 HostReaderArtFixture 增加 opt-in 的原 ResponseBody／ForwardingSource 读取与关闭计数、原 ChapterCache 实例和 monitor 下的指定 key editor／活动 editor 快照，以及 cold 的 finish 前、raw 删除前后真实 processPhysicalWorkCount／native 计数；不调用 cache get／edit、不写 journal，不改读入字节、close、原 finish／清理时序。失败现场另外核实际 HttpPageLoader.chapterCache 与观察实例相同。该观测含短同步区间和日志，可能改变竞态时序；未复现不能消除原错误。
+
+`sp-c-native-cache-branch-diagnostic-apk` 48552／42056 和补指定 keyEditor 的 `…-apk2` 48160／16232 均 PASSED、限定 Apply／Check 通过；仅安装测试 APK，最终 SHA `7ae77d1db0c868f99725ed68f0dfdab130b3593f9b7458f3e070e7400833ba57`，production Debug 保持 `2d9f…`。原 On／cold-jump-reverse 定向三次在 PID 6510、UTC 15:56:28–38、Time 11.886 秒／OK (1 test)，取得三个完整样本。三次 cold 各三个边界均 physical normal=0、native=0、editor 空；源 19 对应 key `e5102d094f3529194febfa459da2c556` 的三个原响应都完整读入 517,837 bytes，没有原 Storage 错误或该响应 read0。source.close 在原 saveTo 内、commit 之前，故此时 editor 仍 active／file=false 是正常写入中状态，不能据此宣称写入失败。原 raw／ring 日志为 `app-desktop/tmp/sp-c-native-cache-branch-diagnostic{,-geometry,-ring}.log`。
+
+只补原失败的直接相邻前置：原测试 scene 参数支持逗号选择已有场景，执行 On／rapid-keys→cold-jump-reverse 各一次，保原 three-key 真实输入、finish、仅 optionalWork=0 等待和 raw cold。`sp-c-native-cache-adjacent-diagnostic-apk` PASSED 7128／44836、限定 Apply／Check 通过；测试 SHA `d2fcf60a786d6ecf8bf7b459f11f3081650320efdc5432818f903df22f8549d8`。PID 6814、UTC 16:02:13–19、Time 8.101 秒／OK (1 test)，两份完整样本，两个 cold 三边界仍 normal／native=0、editor 空，源 19 完整读入 517,837 bytes，无 Storage 错误。rapid 中 request5 对 key `95feaa57449e9b1f10eb4d3dd3b83a13` 完整读入 603,912 bytes，close 时 normal=2、该 editor 尚 active；紧随 request6 同 key close 时 read0／expected603,912、file=true、editor 已 null。这是实际重叠响应线索，但没有对应原 IOException，不能只凭 read0 判 edit-null 或断定原失败原因；取消／store session 检查也可能在读之前结束。原 raw／ring 日志为 `app-desktop/tmp/sp-c-native-cache-adjacent-diagnostic{,-geometry,-ring}.log`。两次自有采集器均仅按核对 PID／路径停止，ART／Gradle 均终态，没有继续刷次数／矩阵或修改 production。原 Native4／Native6／donor Error 和完整 72 验收仍未关闭；最终 26 组合证据继续复用。
+
+夹具 cold 协议的确定性红绿（不是 production BUG 修复）：只在原 Native 类新增 `coldFixtureRemovesTheRealImageFromOriginalCacheJournal`，经原 source19 HTTP／JNI／独立原图 PixelCopy 先确认真实图片，再读取原 diskCache.size／本次 key journal 成员，调用真实 Host.cold 后核该 key 移除。`sp-c-native-cold-protocol-red-apk` PASSED 47772／47976，测试 SHA `ac1a16e058d2d1cf8d5fe99a503f9aaa57644ce80df8c787f7513add66934264`。实际 PID 7121、Time 4.028 秒／一失败，正确红为原 raw cold 后本次 key 仍在 journal，bytes 22,159,610→22,159,610、entryBefore=true／entryAfter=true；不是编译／空过滤或旧图片前置失败。raw 与 ring 取证见 `app-desktop/tmp/sp-c-native-cold-protocol-red{,-geometry}.log`。
+
+最小绿仅改原 Host.cold：先正常 finish，再在测试端有界等待原 shared Runner 的实际 normal 计数与 ReaderPageImageView 实际 native 计数均为零，随后调用现有 `ChapterCache.clear()`，核当前实际 `.0` 文件全清、清理前有物理文件的 key 从 journal 移除。没有等待 optionalWork=0，没有改 SQL／manual／偏好、原 gate 或 production；opening 计时仍在 cold 之后，因此不将前置隔离等待混入 Ready→paint。公开 clear 仅清现存文件对应记录，之前 raw 删除已留下的无文件历史 orphan 不迁移、不强求全 size=0。`sp-c-native-cold-protocol-green-apk` PASSED 24356／32308、限定 Apply／Check 通过，测试 SHA `cbd6007fb2950e00d90243c859bd65c9bafb3aee8fe8ea9d8e322a5b09fce574`，production Debug 仍 `2d9f…`。实际协议 PID 7301、Time 3.687 秒／OK (1 test)，源19 key 从 journal 移除、bytes 22,159,610→19,593,299，当前物理 `.0` 全清、normal／native=0；保留的历史 orphan 已明确记录。
+
+同 green 测试包关联验证串行完成：原 On／rapid→cold-reverse 两场景 PID 7455、Time 7.976 秒／OK (1 test)，两完整样本；原 Suspended／300 一场景 PID 7657、Time 6.431 秒／OK (1 test)，原 donor 真 Ready／PORTRAIT／foreground idle 成立，正常源199实际 PixelCopy 后仍断言 old optionalWork=1 和原 release latch=1，之后才按原 finally release，任务真实退出为零。公开 clear 没有借等待 matcher 清零取消该压力条件。三场景含真实普通输入／原图解码与像素，不能替代完整72。日志为 `app-desktop/tmp/sp-c-native-cold-protocol-green.log`、`…-adjacent-green.log`、`…-suspended-green.log`，同 `…-green-geometry.log`／`…-green-ring.log` 按各 PID 绑定，collector 45600 已仅停止自身。夹具协议窄修和相关检验均完成；没有证据把原 source19 Storage 错误、Native6 拒画或旧 donor Error 的根因归于该协议，本次不宣称三条 production 风险已修复。SP01／DP02、完整性能及正式验收仍待，不自行再开矩阵。
+
+#### C 合法冷协议下的写入失败与原适配器修复
+
+首次合法 cold 协议的完整尝试 `sp-c-native-development-performance-cold-protocol-final` 为 PID 7850、Time 132.966 秒／一失败：repeat 0 四条件六场景共 24 份，repeat 1／Off 前四场景共 4 份，合计 28 份完整样本；不是完整 72。repeat 1／Off／cold-jump-reverse 的源 19 仍有原 Ports98→Store73 的 Storage IOException、原 Error UI、无 native 图／lock／draw；两个原 HTTP 200／517,837 bytes 与缓存 SHA 正确。匹配关闭也会失败，公开 clear 修正没有消除它，不能归为 matcher 开启或宣称夹具修复等于生产故障修复。原 raw／geometry／ring／errors 全保留，collector 40632 已只停止自身，未继续相同矩阵。
+
+在既有 HttpPageLoaderIntegrationTest 建立真实 MWS＋ChapterCache 反例：原响应第一次 read 时已经持有同 key editor，公开 onPageSelected 重定位产生当前 generation，第二响应未 read 就收到原 Storage IOException。首断言要求 held 状态 Ready 过强，保留其 trace 后修正为“写入忙期间不能变 Error，放行原普通 IO 后当前 Ready 和原 bytes”；`sp-c-cache-generation-red2` fresh UTC 16:42:40.038，1 项／1 正确行为失败、零 error／skip。cache／fetch／scheduler 的 HEAD 代码只读对照保留，未实际执行 HEAD，不能冒称基线实测或证明旧原生异常的唯一原因。未使用正常 reader VM／matcher／optional consumer，不将慢恢复当该反例根因。
+
+不采用共享 Runner 等待旧同页 job 整体退出：原 `late failure from old generation cannot replace ready content of the same page` 要求旧 source 尚未返回时，新 generation 已 Ready，之后旧失败不覆盖。修复限于 AndroidReaderEncodedPageStore 原实例内的同 ref writer＋commit／cleanup 租用，HTTP／encoded 读取／matcher 在外，不同 ref 并行；cancel-before-enter 不 writer／不删他人字节，endSession 不提前放开旧租用，引用真实退出归零后才移除。原 Store 四项新增保护的 `sp-c-store-ref-writer-red` 为 4 项／3 正确红、1 不同 ref 基线绿；覆盖 cleanup 竞争、等待取消及会话关闭。
+
+首次相关绿 22 项中 20 通过、2 测试宿主失败保留：普通 JVM 实际 Android Log.isLoggable 未 mock，引发 metadata initializer 错误，新 HTTP 方法迁入既有 ReaderPageFactProductionWiringTest Robolectric，保真实原缓存／header／公开 Loader；取消等待的后续同 ref 验证限定原 payload／writer 进入，不扩成同 URL 内容更新。原 DiskLruCache 2.0.2 javap 显示 dirty.renameTo(clean) 返回值被忽略，Windows 宿主实际重写仍保旧字节；不据此修改产品 cache。新响应所有权反例在原 store 两个调用者、真实当前 job 取消完成的前置下，HTTP 正文未读且原响应未 close，`sp-c-store-ready-and-response-close-red` 实跑 3 项／2 绿、1 正确资源红。最小 AndroidReaderPageFetchPort originalResponse.use 包住 permit／store 等待；strict mocks 只补必要 close stub，不放松原行为断言。
+
+`sp-c-store-ref-writer-response-green` 的 Store12＋原 Loader9＋Robo2＝23 项通过。首重构只因新注释缺空行在 11 秒内格式失败、零业务执行；修正后 `sp-c-store-ref-writer-refactor-33-2` PASSED UTC 17:12:28.712，六份 fresh XML 为 Store12、ChapterLoaderStorageClassification3、HttpPageLoader9、HttpReaderMaterializeAdapter4、ReaderMaterializeProductionWiring3、ReaderPageFactProductionWiring2＝33，时间窗 17:11:56.543–17:12:18.062，零 failure／error／skip，8 文件限定格式通过；XML 保存在同名协调器目录。Root 独读两 production、实际 gate／writer／cleanup／Response.cancel 路径和六 XML，完成同一轮写入／资源窄段独审。跨 loader 同 URL 不在实例锁覆盖内；历史 Native4／Native6／donor 与新 Off Storage 是否属于本分支仍没有唯一因果证据，不宣称全面根治。必要开发 APK／原生定向和完整性能仍待。
+
+范围更新：当前实际 84 文件＝34 production、43 tests、6 docs、1 manifest。相对上一 76，增加的是两原 Android 编码／fetch 适配器及六原测试文件；修复与 S16 的真实重定位、物理写入／cleanup 和取消响应所有权内聚。未新增全局缓存 owner／HTTP client／队列／持久格式、产品菜单或独立 benchmark；继续同一实施者和同轮独审，无最终全量／正式构建／版本递增。原冻结 26 的 MWS4／Loader9 已被最新 33 定向复验覆盖，其余未受影响结果复用，不称重新运行完整 26。SP01／DP02 继续未勾选、未提交。
+
+#### C 新写入修复包的原生拒画与定向诊断
+
+开发统一入口 Debug 构建 PASSED UTC 17:22:22.597，Main SHA-256 `18330c8fcd247de7f58b68ff21832ea4149bb00b3441c6b4c63071eccba5ee6b`，实际文件为 `app/artifacts/android/0.19.4-aex.22-vc40-9fe50edf6e-debug-57e03e745266/Mihon-Fork-0.19.4-aex.22-vc40-debug-universal.apk`；Root 独立核存在及 hash。对应 androidTest SHA `874ea2fbb348e0e013d4f0f1c6810b96b32d9d2222edb0b9771022c82157e9e6`，两包均沿用原 Debug 证书，仅安装至本任务 serial 5586；不递增正式版本，不将旧 `2d9f…` 的结果记为新产品验收。
+
+原计划四份定向样本在第一场景即停止：`sp-c-store-ref-writer-native-on.log` 为 PID 10523、Time 37.858 秒、1 项实跑／1 失败，On／rapid-keys 的目标源3未取得实际绘制和25点 PixelCopy；完整性能 row 为0，Off／cold、Suspended／300及72均未继续。实际 selected=10 是反向 adapter 的 ViewPager 索引，其项为[2RIGHT,3LEFT]，不是源10导航错位。源2 Queue、源3 Ready、ticket seq3／context0／serial7，lock／draw空、normal／native／optional实际计数0；无 Page.Error／Storage IOException。现场仅有一个 native ready/base child，但旧快照没有记录该 child 的 page 身份，不能据源3 Ready 推出源3原生已解码。Queue 也不表示 shared fact 必为UNKNOWN；三层绘制门禁的实际拒绝点未证实。geometry及同PID ring保留，自有 collector12480已停止；前述同 ref 写入和响应取消修复不等于本拒画问题已关闭。
+
+只复用已装包和现有透明 `performanceDiagnostic=true`，单次 On／rapid-keys 诊断为 PID10792、Time5.805秒／OK(1 test)，1份完整 row，日志 `app-desktop/tmp/sp-c-store-ref-writer-rapid-diagnostic{,-geometry,-ring}.log`。真实源3 child identity104711299，boundContent／boundEncoded均4:0，fact3 PORTRAIT1130×1596，原 beforeDraw 两次 true，最终 lock／draw[4,3]，强 PixelCopy通过；实际为[3RIGHT,4LEFT]／serial15，而非旧失败[2RIGHT,3LEFT]。本次没有源2 child／fact的失败现场，且透明诊断会改变时序，不能由此关闭旧失败或组合成性能矩阵通过。观测 Ready→paint源0为25.51ms，input→child619ms／PixelCopy上界765ms，13请求／7,482,403bytes，均只属于这份带诊断样本。自有 collector16360已停止，无新production修改或构建；下一步限原接线的最小反例，不移除未知前页保护、不放宽像素或超时标准。
+
+#### C 未承诺提案导航的正确反例与共享修复
+
+仅扩展原 SharedReaderResourceNativeAcceptanceTest，复用原 B2 HTTP／JNI／SQL 和公开三次 LEFT：HTTP 门闩保持源2事实真实UNKNOWN、源3另行放行，context0／设置不变，要求3右槽真实绘制及25点 PixelCopy，之后仍断2 UNKNOWN／非Ready。首构建参数拆分和诊断 helper 作用域编译失败均零业务，不算红；限定修正后的测试包955fbb4a…60493在 Main18330 上运行 PID11066、Time35.823秒，一失败，仅因 SQL==3 过强。真实3／4已画、目标3右槽像素通过；只读数据库＋WAL确证 chapter15652.last_page_read=4／events559，与 frame15.drawn[3,4]一致。改测真实目标frame绘制集合最大页码，要求含3、无未画2，未改变产品进度策略。
+
+同向量复验测试包 `2cd57f94150f137fc248ac5672d4a0c9f910d6216574f3c8787c7b2952c4c11d` 在原 Main18330 上，PID11337、Time35.043秒／1真实目标绘制失败，尚未进入进度断言。日志 `app-desktop/tmp/sp-c-rapid-unknown-progress-native{,-geometry,-ring}.log`：UTC17:55:11.498 原 beforeDraw 返回false，源3原生Ready／baseReady且bound／encoded／content均4:0；失败现场17:55:41.572事实2 UNKNOWN、3 PORTRAIT1130×1596，真实source3 child可见 Rect(0,819–540,1581)，有效frame7／context0仍[2RIGHT,3LEFT]，lock／draw空。UNKNOWN来自实际owner事实，不由Queue推断。此向量重现旧拒画signature，前页未知门禁正确拒绝错误LEFT；根因在导航复用了空提案且refresh仍从旧origin2决策，不是解除未知宽图保护。门闩30秒有界等待与失败后状态分别记录，不把 latch.count=1 单独当成整个等待期未超时的证明。两个自有collector42916／40080已仅停止自身，未追加原生矩阵。
+
+原 StableContract 的公开Session反例：goTo2／capture(empty preparing)→navigate3→实际fact3 PORTRAIT→capture3，要求RIGHT、prepare／draw3成功且旧ticket不得补2；另保护prepare锁2但未draw的组在navigate3时保持原frame。`sp-c-unlocked-proposal-shared-red` fresh UTC17:58:41.405，2项／1正确失败 expected RIGHT actual LEFT，1已锁保护绿，零error／skip；XML在同key目录归档。
+
+最小 production delta仅原 ReaderDualPagePresentationOwner.move：incoming排除 target不同于origin且locked／drawn皆空的提案，旧record沿原离场取消appendable，由新目标决策。已锁／已画判定、known(anchor)绘制门禁、数据格式和平台入口不变。`sp-c-unlocked-proposal-shared-green` PASSED56秒，四fresh XML共130项：Stable34＋Session31各JVM／AndroidDebug，UTC18:00:39.134／.284及18:00:52.119／.237，零failure／error／skip，三文件限定格式通过；归档在同key的jvmTest／testDebugUnitTest。Root独读move／原prepare门禁、新契约及四XML，完成同一失败路径窄审。后续仅Desktop三原接线类、更新开发包和同Native向量验证；未运行完整模块／72／正式构建，未提交，SP01／DP02仍待。实际文件数仍84，没有增加产品能力或实现文件；该共享导航修复直接保护S01／S06／S08／S14，不宣称所有历史Native异常已解释。
+
+该修复后续平台窄验已完成：`sp-c-unlocked-proposal-desktop-refactor` PASSED38秒，三fresh XML共62＝ReaderPageTurnPresentation40＋SharedDualPageDesktopWiring5＋SharedDualPageNativeStablePresentation17，UTC18:04:44.983–18:04:59.231，零failure／error／skip，不启性能env。原统一Debug27秒通过，产品SHA `fdbd5b6a3a25ec6cccabe4991568f4de885b220bb87c93d4658b78d07749bc81`，实际文件 `app/artifacts/android/0.19.4-aex.22-vc40-9fe50edf6e-debug-15254212b98b/Mihon-Fork-0.19.4-aex.22-vc40-debug-universal.apk`，Root独核存在及hash；testAPK25秒通过，SHA `99ab1f1f4fd9d97e90a5cbd1fdf761d0f6f392995ec449c2792a68b028a1b77e`，仅本任务5586两包更新、原开发版本／证书不变。
+
+同原Native反例绿色为 PID11740、Time7.02秒／OK(1 test)，日志 `app-desktop/tmp/sp-c-unlocked-proposal-native-green{,-geometry,-ring}.log`：源3原beforeDraw实际true，context0／frame16为[3RIGHT,4LEFT]，lock／draw[3,4]，25点PixelCopy及实际drawmax SQL通过；目标pixels后仍断源2UNKNOWN、非Ready且release未放行，不以已ready前页偷换未知条件。Root独读同PID原回调／frame／像素测试硬断言并签收该拒画分支修复，自有collector44488已停止。原写入33未相关改动可复用；完整性能仍待，不据此勾选SP01。共享导航改变影响Desktop快速输入／冷反翻，下一补验只复用原scene filter各12个配对样本，其他未受影响场景保留有效证据；Android新包先原四份定向，再核当前完整对照，未提前正式矩阵。
+
+#### C 导航修复后的平台补验与约束恢复
+
+同一产品 `fdbd5b6a…bc81`／测试 `99ab1f1f…1b77e` 的四份Android开发样本全部通过：On rapid＋cold两份为PID11943／10.725秒，Off cold为PID12161／6.021秒，Suspended 300为PID12313／8.328秒，均为OK(1 test)。原日志依次为 `app-desktop/tmp/sp-c-unlocked-proposal-native-{on-two,off-cold,suspended-300}{,-geometry,-ring}.log`；正式计时关闭performanceDiagnostic／cacheDiagnostic，donor原非空错误回调只透明转发。Ready→真实paint为7.09／11.23／14.03／6.89ms；Off反向复用RenderNode，childDraw记不适用，独立PixelCopy观测上界363ms，不能记0。On rapid输入→child约681ms／PixelCopy上界832ms。实际optional峰On1／Off0／Suspended1；Suspended在源199正确pixels后仍有实际旧工作1，随后finally release并核90秒门闩未超时、真实工作归零，不仅检查门闩count。Root独读stdout、同PID几何及上述硬断言，签收该四份定向开发证据；不是完整72或正式R8验收。
+
+Desktop只补共享导航变更涉及的rapid-keys／cold-jump-reverse，各四条件×三次＝12份。`sp-c-unlocked-proposal-desktop-perf-rapid2` PASSED，fresh XML UTC18:16:02.641，方法14.925秒；`sp-c-unlocked-proposal-desktop-perf-cold` PASSED，fresh XML UTC18:17:15.822，方法7.539秒。两份XML均1实跑方法、12完整样本、零failure／error／skip，Root独立读取原XML及原Ready／paint时间。首rapid只因未设置原图目录环境变量、零样本失败；补环境后仅重跑原范围，无源码变化。冷反向所有样本为四个正常请求／2,162,984bytes；快速输入真实普通预取按时序请求5–8页，不能写成On／Off网络请求完全相等。rapid首Off有420ms单render峰，On三次Ready→paint约28–34ms，冷反向On約33ms；这些是开发离屏调用与观测，不是原生vsync或正式体验保证。当前24替换旧72中同两场景，另外四场景48及原300诊断12未受此空提案导航修改影响，沿用已有有效证据；不得称最终源码fresh完整72重新通过。
+
+2026-10-05审计约束已由 `f94729a957` 单独提交。本轮恢复保守沿用北京时间02:37:19作为SP01剩余60分钟检查点起点，到03:37:19仍未签收时停止相关追加并报告缺口，不因再恢复代理重置。剩余问题限定S01／S06／S08／S14／S16：冻结现有源码和开发包，Android仅启动原固定72对照一次；失败即停后续场景，先保留样本及最小失败类别，不自动整组重跑。主代理核原证据与同轮尚欠签收、维护文档及提交，不重做A/B泛审。现有Gradle仅空闲daemon／Kotlin daemon，本任务AVD5586存活，无在途Gradle worker／ART／logcat；恢复同一实施代理，不新增代理。SP01／DP02继续未勾选，全量及正式构建尚未启动。
+
+#### SP01签收映射
+
+以下映射只归纳上文实际执行、独审及组合证据，不新建状态权威，也不把开发宿主提升为S17正式产物验收。Root本轮重新核原A两平台各八XML／100项、B Android三XML／93项，以及最新共享四XML／130项、Desktop三XML／62项、写入六XML／33项和保护补验两XML／4项，均零failure／error／skip。其中旧A/B绿色按相关修改影响复用，不能相加宣称最终源码重新执行了全部方法；原正确红因、宿主失败分类、生产入口和局限仍以上文各批次为准。
+
+| 验收ID | 已核开发实现／证据 | 当前边界 |
+|---|---|---|
+| S01 无matcher可读 | StablePresentation／FactDemand及真实两端资源wiring；JNI目标pixels在旧optional仍运行时通过；最新空提案导航反例 | 本次Android完整72开发对照已签收；不由模型绿推导发布体验 |
+| S02 伙伴迟到／失败 | Android StableNative／Holder、Desktop NativeStable真实逐槽几何及原Retry；晚宽图另屏FULL | 已核开发；不将底层Ready重载当新增UI入口 |
+| S03 绘制截止 | StablePresentation事件交错／prepare锁与真实draw回执；两端首prepare和原图连续帧 | 已核开发；observer调用原方法并保返回值 |
+| S04 竞争／预留 | StablePresentation／Rules／SpreadMatching实际选择器、同分与未知竞争／预留不重叠 | 已核开发；启发式分数不当真实标签，迟到漏识别与完整资料选错分开 |
+| S05 已显示组保护 | Session／StablePresentation历史占用；ExposureNative真实拖动邻屏及Desktop稳定挂载 | 已核开发；显式手调按新上下文处理 |
+| S06 未画伙伴导航 | PageTurn／Runtime actual-anchor＋SQL、SourceNavigationNative；最新unknown前页三次真实LEFT／pixels／drawmax SQL | 定向及本次Android完整快速输入对照已通过 |
+| S07 会话历史 | 共享历史与唯一归属契约；B1原图真实回翻、模型／SQL停稳 | 已核开发；没有历史时不保证与顺读分组相同 |
+| S08 冷跳／反向未知 | 共享两种局部反例、原B1 17→16→17、最新空提案RIGHT及旧票据拒绝 | 定向及本次完整冷反向对照已通过 |
+| S09 B1原17图 | 原CBZ／WebP bytes经真实两端来源、15/16及时／不及时及源17直跳／暖回翻、首帧和12帧几何 | 已核开发；实际SHA／原图数量保留，不用尺寸生成图替代原图 |
+| S10 B2原22图 | 原JPEG bytes、2已知LEFT／未知RIGHT、20已知FULL／未知RIGHT保持、广告22可达 | 已核开发；早到／晚到前置由实际事实及原prepare记录 |
+| S11 类型／方向 | Orientation／PortraitSingle／Rules契约、Android JNI EXIF1–8×三设置、Desktop真实Skia迟到EXIF | 已核开发；JNI24是Single真实共享View方向验证，LTR共享镜像与Desktop入口分开 |
+| S12 被动零位移 | 两端原View／Compose实际frame、mount、Rect、scale／pan及连续pixels；ContentLease真实旧图保留 | 已核开发；枚举、首尾PNG与Test Mode状态不替代逐帧几何 |
+| S13 手调／保存 | Android与Desktop原按钮事件、真实repository／SQL、慢恢复、CAS／失败Retry、保存重开组合37及native慢记录 | 已核开发；未知旧记录未恢复不能覆盖，合法兜底仍可手调 |
+| S14 上下文失效 | 最新Session／Stable130、ContentLease／History／Single原生、方向／开关／resize／内容版本与旧ticket回调 | 已核开发；最新空提案修复保已锁／已画组，完整输入对照通过 |
+| S15 真实进度 | ProgressProduction37、Runtime实际已画anchor／SQL、HistoryNative、drawmax追加／离屏撤销 | 已核开发；读取最大实际绘制页，预取／UNKNOWN占位不计读 |
+| S16 来源与资源 | 原ChapterContentRoute7、MWS／Loader异常与Retry、Store／HTTP33、Runner两平台物理完成、实际SSIV／Coil／系统trim及Desktop内存账本 | 开发资源及本次完整72已核；不将逻辑cancel当物理退出 |
+| S17 正式三端 | 尚未启动本次正式矩阵／构建／运行 | DP02待验；旧正式70与开发Debug不能代替 |
+
+当前没有新生产修改／新测试编写，既有保护补验与限定格式证据继续有效，不为此映射新增测试或再跑整类。
+
+#### SP01当前Android完整开发对照与末段签收
+
+本约束后的唯一完整对照使用前述同一开发产品／测试SHA，专属AVD5586、原B2 archive／payload及原正常reader链。精确方法 `SharedReaderResourceNativeAcceptanceTest.originalPayloadFourConditionsSixScenesHaveNoMatchingDependencyWait`，不设置condition／scene／repeat过滤，performanceDiagnostic／cacheDiagnostic默认false，仅donorDiagnostic=true透明记录原非空错误回调。实际ART PID12738，UTC18:48:08.613开始、18:52:52.915测试完成、.961 runner结束，stdout Time284.351秒／OK(1 test)、CODE0及最终-1，PTY18457自然exit0。日志 `app-desktop/tmp/sp-c-resume-current-native72{,-geometry,-ring}.log`；owned collector37956核SDK路径及5586参数后已停止，无在途Gradle／ART／自有logcat。
+
+Root独读实际stdout／geometry、原测试硬断言及代理结构化回执；四条件×六场景×三次恰为72唯一casekey，25项必需字段齐全，同PID ring核尾。没有本轮FAILED、StorageIOException或anchor异常。全部Suspended18项实际旧optional仍为1且源pixels已正确，放行后归零、90秒门闩未超时；On18项中16项实际optional峰1／2项0，正常busy窗口不强行启动。压力18项先真trim→On／targetRelease时pressure=true、optional0；原MemoryInfo均lowMemory=false，normal idle可合法解除压力后启动1项，所有18份sceneFinally均actualOptional0。包含旧已运行工作，不据峰1认定受压时新准入；不冒称持续系统低内存或OOM。
+
+逐场景三次波动保留，不用平均隐藏等待：72的目标Ready→paint最大为Off rapid43.03ms，On rapid6.56／2.98／12.08ms；On rapid输入→实际child为347.31／456.42／399.78ms、独立PixelCopy上界467.61／555.65／493.16ms，Off对应child362.62／332.92／420.67ms、PixelCopy455.55／446.90／503.26ms。原RenderNode复用没有新childDraw时明确不适用。On cold反向PixelCopy518.60／339.54／256.00ms，Off373.75／420.10／302.95ms，没有将单次差值都归因matcher。真实请求／bytes随正常窗口时序波动，不称IO完全相等；Java／native观测峰最大120,142,704／102,241,296B，不是全进程高水位。300仍为22原payload循环成300独立源身份、冷跳199，manual baseline与22页场景分别为[]／[1]。
+
+结合无等待结构、真实物理完成／准入及原生pixels证据，本轮开发对照签收；数学零CPU开销、真实硬件掉帧和正式发布体验仍须DP02复核。历史Native4／Native6／Storage原失败和观测／冷夹具问题均保留，已由正确红确认的同ref写入／取消响应与空提案拒画各按实际反例修复；当前完整合法场景复验通过，不声称所有历史异常具有唯一同根。
+
+同一独审的末段由Root完成：S01–S16按上表及上文真实生产链／原图／SQL／几何／资源结果满足开发门槛，已定位产品失败均有正确红、最小修复、关联绿与必要复验，当前无未关闭的实施验收失败。冻结批次采用原26首次结果＋保护2项补验的组合，MWS／Loader相关部分再由33覆盖，最新共享130／Desktop62／Android本72覆盖最后导航影响；不称最终代码fresh重新全跑上述全集。manifest仅新增原共享owner的生产映射及当前引用行，历史status／固定原图／保护方法未提升或删除。84文件内聚于原共享呈现、双端接线、资源／操作及对应验收，规模和成本已在审计中如实承认；未新增独立产品能力。维护文档同步后随SP01功能批次统一提交，DP02仍未完成，不提前启动其测试或构建。
+
+本次恢复仅一个修复批次：产品实现0／测试或夹具修改0／开发构建0，Android instrumentation1次（4分44秒），主代理完成既有证据复核／维护文档与提交。SP01本段保守计时从02:37:19起，签收发生于03:37:19检查点前；具体截止及提交hash由Git／后续正式交付证据追溯。实现与测试编写没有历史分项计时，仍不倒算其占比；无外部等待扣除、无新的统计系统。

@@ -82,7 +82,7 @@ class DesktopChapterPairingModelIntegrationTest {
         val old = loaded(11, generation = 1)
         val model =
             ReaderScreenModel(initialSessionState = old, dualPageOverride = true, pairingCoordinator = coordinator)
-        assertEquals(ReaderViewportBody.LOADING, readerViewportBody(model.state.value))
+        assertEquals(ReaderViewportBody.CONTENT, readerViewportBody(model.state.value))
         runCurrent()
 
         model.acceptSessionState(loaded(12, generation = 2))
@@ -230,7 +230,7 @@ class DesktopChapterPairingModelIntegrationTest {
         model.acceptSessionState(loaded(11, generation = 1, pageCount = 9))
         assertEquals(9, model.state.value.session.activeChapter.pages.size)
         assertEquals(PairingLoad.LOADING, model.state.value.pairingLoad)
-        assertEquals(ReaderViewportBody.LOADING, readerViewportBody(model.state.value))
+        assertEquals(ReaderViewportBody.CONTENT, readerViewportBody(model.state.value))
         assertEquals(emptySet<Int>(), model.state.value.forcedSinglePages)
         assertFalse(model.state.value.pairingSaving)
 
@@ -381,14 +381,15 @@ class DesktopChapterPairingModelIntegrationTest {
             pairingCoordinator = DesktopChapterPairingCoordinator(repository, backgroundScope),
         )
         runCurrent()
-        assertEquals(ReaderViewportBody.PAIRING_ERROR, readerViewportBody(model.state.value))
+        assertEquals(ReaderViewportBody.CONTENT, readerViewportBody(model.state.value))
         model.useDefaultPairingThisSession()
         assertEquals(ReaderViewportBody.CONTENT, readerViewportBody(model.state.value))
         model.goToPage(1)
         confirmPortraits(model)
         model.adjustSpread()
         assertEquals(0, writes)
-        assertEquals(emptySet<Int>(), model.state.value.forcedSinglePages)
+        assertEquals(setOf(1), model.state.value.forcedSinglePages)
+        assertEquals(null, model.state.value.dualPairingState?.revision)
 
         failRead = false
         model.retryPairingRestore()

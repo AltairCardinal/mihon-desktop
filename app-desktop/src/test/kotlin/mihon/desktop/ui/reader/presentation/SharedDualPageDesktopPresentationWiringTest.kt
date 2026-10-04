@@ -37,10 +37,13 @@ class SharedDualPageDesktopPresentationWiringTest {
     }
 
     @Test
-    fun `missing dimensions stay centered fallback singles instead of guessed portrait pairs`() {
+    fun `missing dimensions retain local pending pairs without claiming any image ready`() {
         val snapshot = DualPagedPresentation.present(request(5).copy(pageSizes = emptyMap()).withSharedOwner())
-        assertEquals((0 until 5).map { listOf(it) }, snapshot.groups())
-        assertEquals(List(5) { 1 }, snapshot.displayUnits.map { it.slots.size })
+        assertEquals(listOf(listOf(0), listOf(1, 2), listOf(3, 4)), snapshot.groups())
+        assertEquals(List(3) { 2 }, snapshot.displayUnits.map { it.slots.size })
+        snapshot.displayUnits.flatMap { it.slots }.mapNotNull { it.page }.forEach {
+            assertEquals(ReaderPageLoadState.Queued, it.loadState)
+        }
     }
 
     @Test
@@ -127,26 +130,32 @@ internal fun ReaderPresentationRequest.withSharedOwner(
             check(owner.acceptFact(owner.requestFact(id), fact))
         }
         var samples = 0
-        while (true) {
-            val id = owner.spreadSampleDependencies().firstOrNull() ?: break
-            check(samples++ <= ids.size * 4)
-            val original = requireNotNull(owner.requestSpreadSample(id))
-            fun edge(left: Boolean): List<Int> {
-                val pair = matchedPairs.firstOrNull { (first, second) ->
-                    (id.sourcePageIndex == first && left == (direction == ReaderDirection.RTL)) ||
-                        (id.sourcePageIndex == second && left == (direction == ReaderDirection.LTR))
-                }
-                return if (pair == null) {
-                    List(50) { 0xff404040.toInt() }
-                } else {
-                    List(50) { point ->
-                        0xff000000.toInt() or ((60 + point * 3) shl 16) or ((60 + pair.first * 8) shl 8) or
-                            100
+        // Real score work is local to a requested window. Visit each intended fixture window,
+        // then restore the original cold projection; loading every page's dimensions is insufficient.
+        for ((first, _) in matchedPairs.sortedBy { it.first }) {
+            check(owner.goToPage(ids[first]))
+            while (true) {
+                val id = owner.spreadSampleDependencies().firstOrNull() ?: break
+                check(samples++ <= ids.size * 4)
+                val original = requireNotNull(owner.requestSpreadSample(id))
+                fun edge(left: Boolean): List<Int> {
+                    val pair = matchedPairs.firstOrNull { (first, second) ->
+                        (id.sourcePageIndex == first && left == (direction == ReaderDirection.RTL)) ||
+                            (id.sourcePageIndex == second && left == (direction == ReaderDirection.LTR))
+                    }
+                    return if (pair == null) {
+                        List(50) { 0xff404040.toInt() }
+                    } else {
+                        List(50) { point ->
+                            0xff000000.toInt() or ((60 + point * 3) shl 16) or ((60 + pair.first * 8) shl 8) or
+                                100
+                        }
                     }
                 }
+                check(owner.acceptSpreadSample(original, ReaderSpreadEdgeSamples(edge(true), edge(false))))
             }
-            check(owner.acceptSpreadSample(original, ReaderSpreadEdgeSamples(edge(true), edge(false))))
         }
+        if (matchedPairs.isNotEmpty()) check(owner.goToPage(ids.first()))
         return copy(dualPageUnits = owner.units)
     } finally {
         owner.close()

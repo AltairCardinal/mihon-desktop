@@ -3,15 +3,20 @@
 ## 双页规则统一计划
 
 2026-10-01 用户要求 Windows Desktop 与 Android 的全部双页业务规则只维护一套。
-后续设计以[双端共享双页规则与修复设计](../2026-10-01-shared-dual-page-rules-and-repair-design.md)
+本轮增量以[稳定呈现设计v3](../2026-10-03-dual-page-stable-presentation-design.md)
 及[配套 roadmap](../roadmap/2026-10-01-shared-dual-page-rules-and-repair-roadmap.md)为准：
 分类、配对、宽图后策略、槽位、自动匹配、定位意图与异步重排决策均由共享 presentation 层拥有，
 平台仅提供事实、执行端口和原生呈现。新策略修复旧奇偶推测覆盖匹配的问题，保留自动对齐及手动调整能力。
 
-该计划尚未实施。下文的 Desktop landscape parity option、宽图封面特例、平台槽位映射、
-UNKNOWN 预当纵页及 Desktop 独有匹配等是当前实现事实，不再是允许继续维持差异的目标约束。
-迁移完成时按实际 production wiring 和契约测试更新本文；单页、Webtoon、同步、进度和其他 reader
-架构边界继续有效，不把新设计误写成已经完成的 capability。
+DP01已完成共享规则与接线；v3共享接口已通过SP01.A，Desktop协议/几何/导航及SQL开发定向验证已通过。
+Android逐槽呈现、源页输入、当前绘制进度及可见内容lease已通过开发ART验收；
+B两端原图／EXIF与受影响原生边界门禁已通过，C资源和操作链仍在实施，不能据此勾选完整SP01。
+已通过的C窄范围包括共享五页准备窗口、Desktop仅沿正常Ready内容贡献资料、原图片／下载任务真实完成计数；
+Desktop跨runtime资源门禁及采样恢复、Android原SSIV／Coil初始解码／系统内存门禁均已通过开发定向验收；
+两端慢配对记录不挡图片及原恢复按钮已通过，剩余操作闭环和固定性能对照仍待C，正式三端验收仍归DP02。
+下文的Desktop landscape parity option、宽图封面特例、旧恢复门禁和整组绘制门禁等保留为历史迁移记载，
+不再授权以旧门禁阻塞首图或重新安排已显示图像。实现进度与正式证据见唯一roadmap及聚合报告，
+不能以共享契约代替两端真实呈现验收。单页、Webtoon、同步、进度格式和其他reader架构边界继续有效。
 
 ## 状态与目的
 
@@ -286,10 +291,14 @@ presentation/navigation adapter，不进入 core 文案或按钮决策。若相�
 
 `ReaderProgressPolicy` 只接受 `ViewportSettled(activeChapterId, chapterId, visiblePageIds)`；章节打开、页准备和
 非 active 章节 settled 都不产生 effect。多页可见集合取实际可见逻辑页的最大索引，因此最终双页只有确实
-包含末页时才完成。Android 双页 viewer 在 ViewPager 空闲且当前 holder 的两张图片均触发真实解码成功回调后，
-才将 `DisplayPage.Double` 的两张源页一起提交；`firstPage` 只作导航与预加载锚点。图片仍在加载、解码失败、
-拖动中途或同一显示单元的 holder 重建都不新增进度；单页显示单元沿用原有报告链。任一可见页加载出错、
-混入旧章节或重排标记为 `layoutOnly` 时，该显示单元不写进度。Desktop 的 `layoutOnly` 视口仍须进入
+包含末页时才完成。v3双页使用共享显示票据：第一像素前逐槽锁定，实际绘制后才形成显示记录，
+原生视口停稳时提交本次实际页集合。Android取当前holder的actual paint与共享frame.drawn交集，
+Desktop由原Compose draw及idle链提交；解码完成、隐藏挂载、拖动曝光和history旧记录均不能单独计读。
+Desktop运行时的进度anchor必须取本次实际已画集合；逻辑目标尚未画而伙伴已画时，
+model仍保原逻辑目标，正常加载和源页导航继续，不把逻辑目标冒充actual或放宽core的可见页约束。
+健康首张不等待另一张成功；同一定位的后来伙伴可追加一次，重复回执去重，离屏旧定位不再追加。
+实际错误页、混入旧章节或 `layoutOnly` 不提供新的读取资格；单页显示单元沿用原有报告链。
+`firstPage` 保留组锚点职责，导航与进度必须使用对应真实源页身份。Desktop 的 `layoutOnly` 视口仍须进入
 可见页调度，尤其是配对恢复后第一次呈现在线章节；它只跳过进度 effect 与 settlement sequence 递增，
 不能跳过图片请求。effect 携带 session、chapter、page 与 settlement sequence 组成的幂等 key，Android
 `ReaderViewModel.onPageSelected` 通过 `ReaderViewportSettlementArbiter` 为每次 viewport settlement 分配单调
@@ -415,6 +424,95 @@ Android `DualPagerPageHolder` 与 Desktop `DualPagePagerViewer` 的普通双页�
 5. 数据库、备份和 `last_page_read` 格式保持不变；encoded cache 是可丢弃派生数据。
 6. 迁移失败时回滚入口 wiring，不恢复长期双 scheduler、双 progress policy 或 renderer 内 source fallback。
 
+### v3在线显示接口（SP01.A）
+
+显示稳定性与源页导航以[稳定呈现设计v3](../2026-10-03-dual-page-stable-presentation-design.md)为准。
+`SharedDualPageSession` 持有轻量的 `ReaderDualPagePresentationOwner`：只保存源页身份、固定物理槽、
+显示历史、预留和逐定位已上报集合，不持有图像、不启动I/O。当前共享接口已通过定向契约与接口独审；
+Android/Desktop原生消费、资源调度和正式运行证据仍按SP01.B/C与DP02取得，不能用共享契约代替。
+
+平台须以本次真实可画页调用 `captureViewport(preparingPageIds = ...)`，并使用 `frame(ticket).id`
+保持挂载身份。默认参数中的known事实不等于平台图像已可画，不能据此授权预取图片显示。
+新增可画槽必须先通过 `preparePage` 锁定，再发出首像素；`reportDrawn` 只记录真实曝光，
+只有当前用户定位、native idle及实际绘制页集合才能进入 `settle`。同一定位允许追加第二张图，
+去重后向原进度策略传累计真实集合，以保留最大可见页及实际末页完成语义。
+邻屏动画曝光也要锁定几何，但不能记作当前停稳阅读；预取、placeholder和纯布局变更不产生进度。
+离屏后调用 `releaseViewport` 撤销追加资格。反馈身份须保留原票据，不能用晚到的native索引重建导航原因。
+
+普通纵页先使用固定半槽，不等未知前缀、伙伴、评分或配对记录恢复。当前未显示窗口仅使用已有局部事实；
+选择下一对时，孤页和预留在同一owner事务发布，后来的更强边不能取消已有承诺。
+已锁槽和历史页归属优先；UNKNOWN仍是UNKNOWN，不伪装纵页或负匹配。
+事实回调只重算活动窗口及有缓存投影的局部窗口；显式导航可创建章级pager投影。
+该实现仍可能复制投影列表，不能把局部业务重算误称为所有平台UI操作均为常数复杂度。
+
+冷跳与反向阅读从实际目标附近开始；回翻使用已显示历史。缺伙伴时按源页身份推进，不静默吞掉未画页。
+视口或方向显式改变可建立新几何context并撤旧票据，但保留已承诺源组合；设置开关和晚恢复只影响未显示部分。
+手动保存沿原仓库CAS：失败保留旧显示，成功只使局部冲突历史失效；已导航后的成功不回跳，
+尚可见的冲突帧延到release后删除。配对恢复未完成时关闭保存，不能覆盖未知旧记录，也不能阻塞普通阅读。
+
+真实内容替换先调用 `canRebindContent`。涉及仍可见的锁定图时，平台保留原内容lease至离屏或用户显式reload，
+不能让旧像素与新内容身份混成一帧。远处内容变化只继承未变页历史；跨owner旧票据拒绝。
+失效、关闭及图像释放仍沿原平台owner，不能增加第二套cache或解码链。
+
+### Desktop原生接线开发里程碑（SP01.B）
+
+`ReaderPagerNativePresentation` 按原生页保存自己的共享票据；实际曝光页面的原图片及region tile共同经过
+prepare边界，真实draw才回报，当前定位且native idle才提交累计集合。仅挂载的预取页可以decode，
+不能因此发出FIRST_PAGE_PRESENTED或阅读进度。伙伴实际可画时只追加该槽，不重新构造已显示图的呈现对象。
+
+`ReaderContent` 的呈现epoch由generation、方向/模式及显式geometry上下文组成，
+不使用fact/layout revision或用户定位sequence作重挂载key。tap、相邻key、wheel与真实drag
+消费共享源页导航；gesture保留其原逻辑位置，避免动态binding在同一次输入内多次消费导航。
+新定位先到而旧页面仍曝光时，旧票据继续保护其几何，但不得追加旧屏阅读。
+非滚动时，presenter按原pager实际visiblePagesInfo的稳定源key重新映射当前单元，
+避免RTL列表局部拆组后旧物理index选中邻页；滚动中仍用原索引，idle仍须真实settledPage匹配。
+重新映射不伪造用户导航、滚动或停稳，不移动已曝光图像。
+
+`ReaderScreenModel` 先用实际未裁边位图类型准许槽位绘制；实际wide与远端portrait猜测冲突时，
+先纠正未显示候选，再准许FULL像素。后台替换仍可见内容时暂存新snapshot，离屏后再消费；
+未锁伙伴的正常Retry只更新该页，不重建当前已锁另一图。crop、scale或真实viewport变化
+显式更新geometry上下文，保留已承诺的源页组合，不伪造新阅读。
+
+实际 drawable 的规范未裁边尺寸经 `SharedDualPageSession.acceptDecodedFact` 分类，
+该事件仅接受当前定位、有效frame及同版内容，不签发或消费编码header能力。
+因此先画出的Skia图像不会撤销仍在途的原header请求；迟到EXIF更新原内容方向及采样身份，
+不移动已经锁定/绘制的slot。旧采样能力失效，新能力使用实际方向；重复header、旧内容及旧定位拒绝。
+已经锁定的离场frame仍保留原几何，旧定位不能借新decode补锁未画伙伴或追加进度。
+
+该开发里程碑以真实Compose离屏事件、完整逐帧像素矩形/对象身份及runtime→SQL链取得证据；
+Ready先画而原EXIF头晚到已通过原Factory/HTTP/encoded store/Skia/region sampler的开发验证，
+原B1/B2经正常LocalArchive CBZ到Skia/Compose的六个条件已取得首prepare、真实像素及12帧身份/矩形证据；
+B1原图17→未知前页16→迟到15→返回17的反向补链也已通过；B受影响93项定向重构复验通过。
+旧可选读取／当前强制重组三项预期留C处理，C及正式三端S17不能由这些开发结果代替。
+
+Android JVM 宿主出现逐槽 Compose Loading 后，Robolectric 自动 vsync 与无限动画会使无界 `idle()` 无法退出。
+测试须保存并暂停自动 vsync，以有界真实帧推进 ViewRoot traversal，释放同步屏障并消费原 View.post 绘制回调；
+收尾销毁测试 View/Activity 并恢复原暂停状态及帧间隔。窗口使用真实 ComponentActivity 生命周期，重新挂载时采用宿主合法 LayoutParams。
+手动测量须消费 onSizeChanged 发出的原布局请求；同一测量规格缓存了旧宽度时，以 View.forceLayout 后的原 measure/layout 复测，不能直接给反馈容器赋测试期望尺寸。
+这些是测试时钟和窗口约束，不是 production 的识别等待或呈现宽限；不得关闭 Loading、伪造 ACK、直接补 SQL，或用 JVM 结果替代 ART/JNI 像素验收。
+
+### Android可见内容与几何生命周期（SP01.B窄里程碑）
+
+`DualPagePairingStore` 先核共享 `canRebindContent`；可见图换版时保留旧entry，不把新事实送入旧identity。
+holder分别保存绑定内容、可见图像lease和当前context的actual paint。新context可清当前绘制集合，
+不能据此撤销仍可见旧图的回调资格；旧原生图沿相同绑定重绘，实际ACK再形成本context的绘制证据。
+真正离屏即使holder仍挂载也须释放票据，再消费新snapshot；补载按页去重并在detach取消。
+显式几何设置沿原encoded Buffer快照重配，不能用重挂adapter借机把后台新版换入当前图；主题不更新context。
+
+每个新图片绑定都创建本槽加载反馈，包括状态流首次收集已经Ready的情况；只有原child实际绘制且共享ACK成功才隐藏。
+反馈保持物理槽位，不能随图像zoom/pan移动，也不能在setImage或metadata回调时提前消失。可见旧lease早退不重新挂提示。
+原生手势期间，事实及曝光票据继续更新，adapter只延后无显式源目标的结构投影，不通知分页器重设位置。
+idle先消费原源页导航意图，再发布最新待处理投影；取消拖动也通过该收尾释放投影，不能用scrollTo掩盖重组。
+触摸验收须满足实际DirectionalViewPager的释放阈值；只露出邻页不等于已经完成翻页，曝光本身不能计读。
+
+普通Single保留其原内容替换与onLoaded进度语义：原替图入口先释放旧scope，再正常rebind，
+不能把新版交给旧content frame。其兼容验证不作为Single真实像素证据，也不把双页keep-old策略扩为Single新能力。
+上述边界已有真实View/SQL、11项开发ART窗口及Exposure3/受影响导航4项证据，详见唯一聚合报告。
+原B1/B2经正常扩展HTTP、原WebP/JPEG与JNI取得冷暖、乱序、真实源页导航及逐槽几何开发证据；
+早结构的首实际prepare及后续像素保持同一frame，不能用预挂载票据或最终槽位代替首帧。
+共用原Single图片View的EXIF1–8／split／crop／fit／原生触摸24项和受影响Dual逐槽Error单项已过；
+不把这些开发宿主结果当作正式R8或三端S17，旧受影响测试适配、Desktop剩余范围及C仍待完成。
+
 ## Authority 分层维护规则
 
 ### 双页方向与内容版本（DP01 接口）
@@ -445,13 +543,73 @@ encodedVersion 只随真实 stream/ref 替换递增；呈现 version 还随首�
 其他未改变页的原事实请求继续有效；普通 `acceptFact` 要求方向与原请求一致，不能绕过身份更新。
 真实 bytes 替换仍走完整 rebind，不允许旧请求跨 owner 或同身份重建。
 Desktop 头部工作按 owner 实例、workRevision 和物理 ContentOpenRequest 标识，其他页方向确认不得撤销正常或可选消费者。
-实际首帧之前只读取当前逻辑页的有界 header；原 firstPresentedGeneration flow 确认真实呈现后，
-所有已经 Ready 的原编码继续贡献事实，仍遵守 512 KiB/两并发限制。缓存命中不消耗新增网络额度，
-未缓存的 cold 补齐继续由共享 factDependencies 与原页数/字节/等待预算决定。该 collector 随 model dispose 取消。
+v3 C 的 Desktop header 不再等待 firstPresentedGeneration：当前逻辑页及单方向最多五页准备窗口内
+已经 Ready 的普通编码可贡献资料，仍使用每次最多 512 KiB 的原 header lease。邻页 header 与可选 region
+共用一个 permit；邻页取得 permit 后重核资源，当前逻辑页资料及正常图片解码不因可选识别暂停。
+不再调用 model 的主动 loadFactPage 补读，不为匹配扩展正常预取窗口；collector 随 model dispose 取消。
+原下载 runner 的 physicalWorkCount 在原 Job 实际完成回调撤销资格，包含尚未执行的排队任务和取消后
+仍在运行的旧物理任务；Desktop 同时观察原 scheduler requestRevision 与图片 Entry foregroundWork。
+它们是原资源链的只读活动状态，不建立第二任务队列或下载／解码 owner。
+
+Desktop 原 Entry 另发布只读 optionalWork：新 optional Entry 在创建时登记，直到实际 Deferred completion 才撤销；
+同 key 单飞、缓存命中不重复登记，升格为真实 foreground 后仍保留原 optional 资格，取消／generation／close 不提前归零。
+model 启动门禁等待 optionalWork 为零并沿同 Flow 恢复；edge canContinue 不读取自身计数。
+foregroundWork／optionalWork 的观察范围为同进程所有原 DesktopReaderPageImagePipeline 实例；各 Entry 的资格仍局部，真正 Deferred completion 才线程安全撤销，close／切换 Runtime 不提前抹掉旧工作。
+不同 Runtime 的本地 lock 不互斥，因此新 optional Entry 在原创建点以同 StateFlow.compareAndSet(0,1) 原子登记；先保 cache 和同 key 单飞，正常图片仍可创建，不额外排队或增加资源 owner。
+开发真实 Factory／Skia／Compose 链已证明关闭旧 Runtime 时在途 Deferred／encoded lease 保观察、新 Runtime 普通 cover 可画、旧工作真正退出后同 owner 待评分自动恢复；这是原 decoder 前透明门闩并在放行后委托 Skia，不冒称门闩期间已进入 JNI 内部。
+原 ReaderPageMaterializeRunner 另发布只读 processPhysicalWorkCount，既有 shouldStart 后在原 lock 外登记，先于 instance Flow 通知与原 Job.start；原 invokeOnCompletion finally 才一次撤销，instance 计数、队列、permits 和调度不改。
+DesktopSession 的既有 physicalWorkCount／idle 与 Model Flow 消费改读此 process 观察；旧 Session 已关闭但正常物理任务仍在途时暂停可选 IO，普通新 cover 仍可绘制，真正退出后同 owner 自然恢复 header／样本。
+真实 Factory／原 normal 执行器 gate 的跨 Runtime 反例已红绿，十项共享 JVM／Android 镜像与二十五项 Desktop focused 支持此边界；原 task gate 不冒称正在真实网络传输。观察仅限原 reader 执行器，Android 消费者保持原同 adapter loader 观察范围。
+实际 Entry 创建也在原 Pipeline lock 中原子重核上限，先复用缓存／同 key，冲突抛原 typed Pause，不建立排队，正常 Entry 不受此上限约束。
+设置页可先于新呈现消费 Retry 内容；可选 region 打开前仅以 model 已接受 snapshot 捕获的原 ContentOpenRequest 同步 beginPageAttempt，
+旧 generation／attempt 仍拒绝，不从 raw incoming 提前撤销可见旧图。开发门禁已覆盖真实原生旧工作跨 Off／On／Retry、
+当前页像素仍可画及仅释放旧 Entry 后自动恢复采样；Android 原生资源窄段见下节，完整 C／正式性能仍待验收。
+Desktop 内存压力继续由同一个 DesktopReaderImageMemoryAuthority 的原租约／缓存账本判断：
+原变更在锁外发布按 revision 防倒序的只读 snapshot Flow，reader 仅观察 overBudget 是否发生变化，
+受压时不新增邻页 header 或可选 region；真实租约释放后沿同原 collector 恢复。正常解码／已持有图片不被强制回收。
+压力测试只缩小原 soft budget 并持有真实 Skia 图片；它不代表系统 OOM 或本机实际低内存。Android 原生资源与系统压力接线／证据见下节。
 完整内容 open 与有界 header 是独立的实际 lease/I/O，分别记录 OPEN_PAGE 和 HEADER_READ；后者携带
 实际 page/generation 与 byteLimit，不以改名隐藏首帧前的非当前读取。Android metadata-only PREFETCH
 只获得页表，不在 ChapterContentPort 自动打开图片；实际当前/已物化页的正常内容链仍发布 header facts。
-邻章 Loaded 不等于配对已恢复，双页 adapter 仅用实际共享持久化状态开放邻章内容，恢复失败保留 transition。
+邻章 Loaded 不等于配对已恢复，但 v3 C 的双页 adapter 不再用恢复状态挡住正常内容投影。
+冷 setChapters 立即由原 store 创建同页表 owner；已有 Load 请求和 RESTORING／未知 revision 仍保留，未知记录不能被保存覆盖。
+adapter 不再调用主动 Supplement／loadFactPage，附近资料沿正常内容链贡献，不为匹配另行物化图片。
+此门禁已通过开发 focused 及真实 HTTP PNG→原 View 几何；Android native／压力窄段证据见下节。
+v3 C 的 ReaderViewModel 初始和邻章双页激活不再等待配对记录：明确 DUAL_PAGE_R2L 或 AUTO 的实际 Dual viewer
+在原 Main callback scope 中恢复，实际读取仍由原 application coordinator 的 IO scope 执行；显式单页／条漫保留原路径。
+原 store 继续签发并校验 owner、页表和内容身份；迟到记录只更新未显示区域，未知 revision 不授权保存。
+State.pairingRecordReady 只投影当前 owner 的实际状态，不由某个后台 Job 结束直接解禁；原 Activity→AppBars→BottomBar
+在恢复期间禁用调整，不显示额外 Retry、不借用“正在保存”反馈，实际 Ready 后恢复按钮。
+真 SQL／原 ViewModel／原 Compose 按钮的八项 focused 已通过；迟到记录另经开发 ART 的实际 HTTP／JNI／PixelCopy 验证：
+真实记录读取被扣留时两槽可画且能双击缩放，恢复同 owner 后 12 次矩形、挂载、2 倍缩放和平移不变，
+原 SQL 进度不重复，真实下一页键仍进入源页 3。测试先核实际 ViewModel 的 coordinator 身份，
+使用本机 Injekt 的原 addFactory API 透明包装 repository，不能用会保留旧 singleton cache 的替换制造未扣住读取的通过。
+该 ART 使用开发 APK／合法合成 JPEG／原 Copy 解析链，不冒称正式 R8 或 B1／B2 原图验收。
+Desktop 的原 ReaderScreenModel 恢复已是异步；v3 C 仅修正 ReaderViewport：双页正常页表非空时保持 CONTENT，
+配对读取中仍绘制原图片和处理源页导航。读取失败在原内容上复用 PairingRestoreError 的局部面板及 Retry／本次默认按钮，
+不另建恢复 owner、字符串或 Screen；显式 Single／Webtoon 及正常图片错误仍用原路径。
+未知配对 revision 继续禁用保存／调整；Default 保留 DEFAULT_UNVERIFIED，不能覆盖原 SQL 记录。
+真实 Factory／SQL／ComposeScene／Skia 的慢读取和失败按钮两项已通过：读取扣留时首像素可画、真实 tap 可进入源页 3，
+原迟到记录接纳后 frame／composition mount 和蓝色图片的联合像素矩形连续 12 次相同。
+这里的联合矩形不等于逐槽完整 transform；两槽几何边界仍按 B 的原生证据复用。
+两端原调整按钮已通过真实未知伙伴／记录 READY 的合法双页测试：保存当前边界而伙伴仍未 Ready，自动匹配继续开启。
+Desktop 使用原 ONLINE 内容请求的 source 2 响应门闩；Android 使用原 encoded-region Robolectric adapter、实际 Activity.AppBars 和 SQL，
+此 Android 操作证据不冒称 JNI。未知记录不允许持久写入；原 DEFAULT_UNVERIFIED 的共享会话内局部操作语义仍保留，
+不能把直接 Model 调用的局部变化误判为原 UI 授权保存。
+重开恢复记录时保护已显示 frame，冷跳仍可按局部信息分组；远处 forced-single 不承诺恢复整章奇偶相位。
+真实原设置事件和回到该保存源页的原 previous tap 已验证手动独占生效及 SQL 记录保持。
+操作簇相关 refactor／格式已通过：Compose 六项、正确 Model 九项及 Android 二十二项以未变通过结果和失败项定向修复组合覆盖，
+没有声称最终源码重新执行了全部三类。Android 原 raw Activity 夹具不启动实际 Reload collector，相关转场用例显式消费原加载事件到原 adapter；
+真正 Activity collector／native 绘制沿 B 的 ART 证据复用。完整固定性能仍待 C。
+Android PageLoader 的只读 hasForegroundWork／Flow 不提交加载请求；Http 实现合并原 scheduler pending／active 与 SharedRunner 物理完成计数。
+原 scheduler 状态改变只发 revision，adapter 按真实 loader 身份在 idle 重评并在启动采样前重核 busy。
+退出章节窗口立即失去旧呈现 owner；若旧 loader 的实际工作仍忙，只保留只读资源观察，直到真正 idle 后唤醒当前 owner 并撤除观察。
+启动门禁检查当前及仍忙的旧 loader；导航逻辑取消、recycle 或换章不能提前把旧物理任务视为完成。
+同 loader 取消后仅剩 physical busy，以及旧 loader 换章后实际完成自动恢复，均已通过开发 HTTP focused。
+Main 管理订阅，并在窗口更新、旧 idle 撤观察和 close 时发布 @Volatile 的不可变 loader 集合；IO 每次读取该集合及原 loader 实际 getter，不遍历 Main 可变表或只捕获启动时列表。
+Android sampler 在 encoded open、decoder 创建和每个有界 edge 开始前重核资源，忙时抛 typed Pause 取消，不返回坏图结果。
+普通物理任务先 idle、旧 decoder 关闭仍未完成时不重启；原 Job 真正 completion 后沿同 owner 自动补完需求，已通过真实 HTTP／编码开发 focused。
+以上 HTTP 接线证据不替代 JNI ART；平台原生资源／压力窄段见下节，完整 C 验收仍待。
 
 
 ### 自动匹配的共同样本 owner 与双端接线（DP01 D）
@@ -478,10 +636,31 @@ Android 的 ReadingModePage 双页分页设置经 ReaderPreferences、PagerConfi
 Android 在原 ReaderPage 内容锁内捕获 encoded stream；都不依赖显示 Bitmap，也不为匹配 materialize 或发网络请求。
 Android 采样完成还须在同一内容锁下消费原事实快照，核对方向、呈现版本和 retrySequence，防止尚未消费的新方向被旧样本覆盖。
 
-两端采样 pass 复用本 owner 可选事实预算的剩余主动等待时间；一次原 region 工作超过截止后不能接纳样本。
-失败或截止记录本页完整内容身份，普通布局重建停止重复尝试；原内容改变、显式图片 retry 或关闭后重新开启才允许重新尝试。
-16 页样本淘汰后的补边从已有编码逐边重采，不创建另一条补齐队列。原生不可中断解码可在截止后结束，
-但其结果不发布；流、region/像素 lease 和 decoder 在原 finally/use 路径释放。正常可见消费者不随匹配取消。
+DP01 历史实现的两端采样 pass 复用可选事实预算的主动等待时间。v3 C 两端均已移除整 pass 截止门禁，
+每个原 region 单位仍受 4 MiB 上限约束；资源忙时通过独立 Pause 状态退出，不能把暂停记为坏图或要求用户 Retry。
+原 publisher Job 真正完成后发布重评通知，以覆盖 idle 通知早于 Job 完成的时序；
+同一原 model 的真实 consumer／内容 lease 关闭红绿测试已确认该接线：idle 已消费但旧关闭尚在途时不并发启动，
+关闭真正结束后无需 Retry 自动完成样本评分。只断言静态候选组合不构成恢复证据。
+SharedDualPageSession.configure 对同方向／同自动选项幂等；重复配置不增加布局或采样版本、不重建缓存或撤销有效票据。
+真实方向／开关变化、事实／手调更新仍分别走原上下文和 rebuild。否则 ensure→configure→publish→状态监听
+会反复制造布局事件，既增加普通阅读开销，又掩盖完成通知丢失；此链路由共同契约及真实 Desktop wiring 保护。
+真正解析／采样失败仍记录本页完整内容身份，普通布局重建停止重复尝试；原内容改变、显式图片 retry 或关闭后重新开启才允许重新尝试。
+Android 原 matching Job 在关闭／重试／owner 变化时只取消，不提前清除仍执行 native／IO 的 Job；实际 isCompleted 才允许同 adapter 的下一次采样。
+LAZY Job 先登记再启动，实际 completion 沿原 MainScope 重评当前 owner；启动前检查首依赖的失败身份与 Ready，避免完成通知形成无进展循环。
+原 AndroidReaderSpreadSampler singleton 仅被动观察现有 LAZY matching Job 的实际生命周期；optionalWork 使用线程安全 StateFlow.update，销毁 viewer 或取消不提前减，原 invokeOnCompletion 才撤登记。
+Main 连续执行 admission、observe 和 start，无挂起或新队列；新 adapter 读同一计数并订阅归零，旧实际工作未退时只暂停匹配，普通 Ready 源页导航仍可用。
+同 adapter 及销毁旧 viewer 后新 adapter 的源页导航、重新开启与真正退出后自动恢复，已通过真实 encoded／DisplayPage 开发 focused；原 HTTP 进行中忙闲见前节。
+以上观察不创建任务执行 owner，不把自身 optional 计数用于阻塞当前 edge。
+ReaderPageImageView 对当前版本 SSIV 的原默认 AsyncTask.THREAD_POOL_EXECUTOR 仅作透明委托，入队即登记 queued/running，原 Runnable finally 或提交异常才撤销；AtomicBoolean 保证拒绝／同步异常只撤一次。recycle 和逻辑取消不提前归零，不创建新线程池或工作队列。
+Adapter 在 Main admission 与每条 bounded edge 前核对该只读线程安全计数，并订阅 boolean distinct idle 自动恢复；普通图片仍走原池。开发 ART 已验证原任务被扣留时不注册 optional，原任务结束后同 owner 的真实 JNI 采样与原图片 PixelCopy 自动完成；JVM 九项相关复验通过。
+原 ReaderPageImageView 的两个 Coil enqueue 同样仅透明观察原 Disposable.job：提交前登记，原 Deferred 实际 completion 才撤销；dispose／逻辑取消不提前归零，同步提交异常只撤一次。原请求、cache、dispatcher、PhotoView 和 Webtoon Bitmap 分支不改；只覆盖初始加载／解码，动画每帧仍走既有链路。
+开发 ART 已验证原 GIF 首次真实 read 被扣留时不注册 optional，实际退出后原 Animatable、MAGENTA PixelCopy 及同 owner JNI 样本自然完成，并复验原 SSIV 场景。取消和拒绝边界由四项 JVM focused 保护；末次 refactor UP-TO-DATE 复用有效结果，不称 fresh 全部重跑。
+Android 动态可选工作压力由原 ReaderActivity 观察实际系统 RUNNING_LOW／CRITICAL、BACKGROUND 以上 trim 和 onLowMemory；UI_HIDDEN 不作为内存压力。原 resume／focus 和原 normal loader／native idle 用 ActivityManager.MemoryInfo.lowMemory 刷新，不以总 RAM／低端设备身份永久关闭匹配。
+Adapter 在 Main admission 和每条 bounded edge 动态读同只读 StateFlow；压力暂停保留未知样本，普通图片不随之停。解除沿原 scope 唤醒，但旧 optional Job／region close 尚未完成时原上限继续生效，不额外排队或创建资源 owner。
+实际 ART 证明系统 trim 来源、无 OOM 的受压 admission、真实窗口失焦／恢复和原 JNI／首图继续；中途 region／close 顺序另由原生产 Wiring focused 验证，两种宿主证据区分记录。十二项相关复验已通过；不把测试发送 trim 等同本机发生 OOM。
+这些证据不替代完整 C、动画每帧性能或正式发布运行验收；这些仍待。
+16 页样本淘汰后的补边从已有编码逐边重采，不创建另一条补齐队列。原生不可中断解码可在取消后结束，
+但已撤销票据的结果不发布；流、region/像素 lease 和 decoder 在原 finally/use 路径释放。正常可见消费者不随匹配取消。
 平台已删除旧显示 Bitmap 的 EdgePixelMatcher、历次 matchedPairs 并集和整章 manual 禁用；
 Session 只消费共同 owner 当前完整候选，手动状态继续局部遮蔽。Desktop presentation 只消费实际 shared units；旧独立 pairing facade、索引推槽、visible-only single/dual settle 和兼容 matchedPairs 决策已删除。
 Windows Robolectric 仅替换不能加载的 JNI region 边界，执行真实编码像素、共享评分和实际 DisplayPage 接线；
@@ -548,3 +727,28 @@ RealBufferedSource 的公开 source 字段之前施加原 permit，避免 buffer
 取消可选工作、删除 partial；既已发生的预消费必须独立记录，不能称其被 adapter 消除。
 非 RealBufferedSource 的 opaque 响应明确失败，不静默改为无界可选读取；正常 visible 请求仍可
 使用原 source 链。这些限制不能替代真实源、代理/TLS 或 ART 验收。
+
+
+### v3 开发性能观测及系统压力边界
+
+Desktop 开发对照使用原 B2 encoded payload、正常 Factory／图片 owner 与实际 Skia draw；只在原 Ready 接纳和绘制回执成功后计时，第二槽按同 frame 判定。scene.render 成本、render-start 间隔及测试虚拟定时器分别报告，不能换算成 native vsync。300 页固定输入重复 22 张原 payload 并保独立源身份，冷跳源 index 199；软 memory ledger 压力也不等于物理 OOM。72 个基本样本与一次针对性 12 个 300 场景事件补证支持目标图不等待后台样本返回，仍保离散波动和正式体验／微小争用限制。
+
+Android 的 trim 回调设置 pressure，而原普通 HTTP／native 工作转 idle、Activity resume 或 focus 回来时，会查询真实 ActivityManager.MemoryInfo.lowMemory 并据此解除。这是自动恢复边界，不能在测试中把瞬时 trim 当成持续低内存。实际 false 区间可以启动可选工作；再次 true 后不能新增可选 IO／解码，已入物理 decoder 的有界工作按原每条 edge 的 canContinue 检查退出，计数只在实际 completion 清除。开发采样须记录此真实压力波形；持续 foreground busy 的原 SSIV／Coil 门闩证据另行复用，不能声称波形覆盖持续 lowMemory。私有字段／callback 观测仅为开发宿主证据，正式 R8 需核对应产物的实际入口，不能靠 bulk keep／关闭 shrink 替代。
+
+原生观察器只可包装已有非空回调并转发原函数；重绑定清空回调后，不得补造 Ready、绘制或 prepare 回调。ReaderPageImageView 在 beforeImageDraw 与 onImageDrawn 都为空时直接允许原绘制，补入观察函数会改变此分支，因而不能称为透明观测。回调修正后的定向绿色仅证明实际执行场景，不能自动解释旧图片 Error 或旧上下文下未绘制的失败；完整对照、原异常原因和正式运行须分别记录。
+
+### Android 同图缓存写入与响应所有权
+
+原 Android ChapterCache 使用 DiskLruCache，同一个 URL 的 editor 已被占用时，第二次写入返回 false。ReaderPageMaterializeRunner 的逻辑取消不保证旧 HTTP 正文或写入已经物理退出；仅更换请求 generation 不能防止同图重定位产生写入冲突。不能等待旧 materialize job 整体结束：旧 source.getImage 尚未返回时，新的请求仍须能正常完成，迟到的旧失败不得覆盖当前页。
+
+AndroidReaderEncodedPageStore 在原实例内按 EncodedPageRef 租用 Mutex，只串行化 writer、原 index commit 与该 writer 的失败／late-session cleanup。HTTP 请求、encoded 内容读取和匹配解码在锁外，不同 ref 独立。等待者可取消；未进入 writer 的取消不得执行 writer 或删除别人的字节。endSession 立即关闭会话，已进入的写入完成清理后才释放租用，排队者重新核对 session 后拒绝写入。租用引用计数覆盖等待和真实工作退出，归零后移除；不能在逻辑取消或关闭时清空在途租用，制造另一把同 ref 锁。该策略保护同一 store 内的同图写入，不提供跨 loader／store 同 URL 的全局互斥，不增加缓存层、队列、schema 或匹配等待。
+
+AndroidReaderPageFetchPort 持有 source 返回的原 Response，用 use 包住 permit 包装和 store 调用。即使等待同图写入时被取消、writer 尚未读取正文，响应也必须关闭；异常和 CancellationException 保持原传播及 suppressed 规则。维护时必须覆盖真实 HTTP／ChapterCache 与公开重定位、同 ref cleanup 竞争、不同 ref 并行、等待取消、session 关闭及旧 HTTP 迟到失败；仅 mock put 返回 true 无法发现原 editor 冲突。
+
+开发原生冷缓存夹具须先结束 Activity，等待真实普通 materialize／native 工作退出，再调用原 ChapterCache.clear 并验证本次文件和索引清除；不得直接删除 `.0` 文件留下 journal 残留。此准备不等待 optional matcher，挂起旧任务的场景须保持其真实计数到正常目标绘制后才放行。公开 clear 不迁移历史无文件索引项，须如实记录；白盒 journal／私有字段取证不自动适用于正式 R8。
+
+### 未承诺提案与快速导航
+
+原生 pager 可以先挂载尚未绘制的相邻组，并用空 preparing 集合取得 viewport ticket。此时 record 存在不代表漫画已经出现在窗口；locked 与 drawn 都为空的提案不具有必须延续的几何承诺。导航目标进入该提案的伙伴页、且目标不同于原 origin 时，ReaderDualPagePresentationOwner.move 不复用该 incoming record，由新目标按当前事实决策。旧提案沿原离场逻辑取消 appendable 资格，不能凭旧 ticket 再锁定或记录新像素。
+
+已锁定或已绘制的组仍复用原 frame／槽位和历史，不能仅因某页未收到 drawn 回执就重排。preparePage 对未知前页的保护保持：不能猜纵页让后一页先画左侧；新目标在未知前页时选择右侧兜底，随后已就绪图片独立绘制。维护时须同时覆盖空提案快速导航与已锁未画的保护，并通过真实 HTTP 门闩、原按键、目标 JNI／窗口像素及 SQL 进度验证平台接线。进度沿用实际绘制集合最大页码；目标和伙伴均画出时，不要求进度恰好等于目标页码。

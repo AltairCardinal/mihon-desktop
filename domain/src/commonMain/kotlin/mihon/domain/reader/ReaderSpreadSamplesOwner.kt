@@ -91,19 +91,6 @@ class ReaderSpreadSamplesOwner(
         return replacement
     }
 
-    /**
-     * Repairs one unscored adjacent edge at a time. The two samples meet before cache eviction,
-     * so every completed demand confirms an edge and eviction cannot cause an endless replay.
-     * These are existing encoded reads, not new materialization/network allowances.
-     */
-    fun requiredSamples(facts: Map<ReaderPageId, ReaderPageFact>): List<ReaderPageId> {
-        if (closed) return emptyList()
-        return identity.pageIds.drop(1).zipWithNext().firstOrNull { pair ->
-            pair !in scores && facts[pair.first]?.state == ReaderPageFactState.PORTRAIT &&
-                facts[pair.second]?.state == ReaderPageFactState.PORTRAIT
-        }?.let { pair -> listOf(pair.first, pair.second).filter { it !in samples } }.orEmpty()
-    }
-
     fun selected(
         direction: ReaderDirection,
         facts: Map<ReaderPageId, ReaderPageFact>,
@@ -129,6 +116,41 @@ class ReaderSpreadSamplesOwner(
             ReaderSpreadCandidate(pair.first, pair.second, distance)
         }
         return SharedSpreadMatching.select(identity.pageIds, candidates, forcedSinglePages)
+    }
+
+    /** Scalar lookup for one local decision; absence retains UNKNOWN/negative evidence internally. */
+    fun distance(
+        first: ReaderPageId,
+        second: ReaderPageId,
+        direction: ReaderDirection,
+        facts: Map<ReaderPageId, ReaderPageFact>,
+    ): Double? {
+        if (closed || direction == ReaderDirection.VERTICAL) return null
+        for (page in listOf(first, second)) {
+            val content = identity.content.firstOrNull { it.pageId == page } ?: return null
+            val fact = facts[page] ?: return null
+            if (fact.state != ReaderPageFactState.PORTRAIT || fact.sourceOrientation != content.sourceOrientation ||
+                fact.rotation != content.rotation
+            ) {
+                return null
+            }
+        }
+        val score = scores[first to second] ?: return null
+        return if (direction == ReaderDirection.RTL) score.rtl else score.ltr
+    }
+
+    fun requiredSamples(
+        facts: Map<ReaderPageId, ReaderPageFact>,
+        window: List<ReaderPageId>,
+        forward: Boolean = true,
+    ): List<ReaderPageId> {
+        if (closed) return emptyList()
+        val pairs = window.zipWithNext().let { if (forward) it else it.reversed() }
+        return pairs.firstOrNull { pair ->
+            pair.first != identity.pageIds.firstOrNull() && pair !in scores &&
+                facts[pair.first]?.state == ReaderPageFactState.PORTRAIT &&
+                facts[pair.second]?.state == ReaderPageFactState.PORTRAIT
+        }?.let { pair -> listOf(pair.first, pair.second).filter { it !in samples } }.orEmpty()
     }
 
     /** Cancels physical work without discarding confirmed same-content samples or scores. */

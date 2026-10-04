@@ -152,7 +152,26 @@ class ReaderPageTurnPresentationTest {
                     fixture.writeFrame("reader-page-turn-before.png")
                 }
                 val forward = fixture.page < (if (dual) 3 else 1)
-                val target = if (forward) (if (dual) 3 else 1) else (if (dual) 1 else 0)
+                val target = if (forward) {
+                    (if (dual) 3 else 1)
+                } else {
+                    if (dual && input != "request") {
+                        2
+                    } else if (dual) {
+                        1
+                    } else {
+                        0
+                    }
+                }
+                if (dual && !forward && input != "request") {
+                    assertEquals(3, fixture.page)
+                    assertTrue(
+                        setOf(3, 4).all {
+                            it in fixture.presented
+                        },
+                        "Reverse source target is based on the pair actually drawn",
+                    )
+                }
                 when (input) {
                     "tap" -> fixture.tap(forward, rtl)
                     "key" -> fixture.key(forward, rtl)
@@ -168,7 +187,7 @@ class ReaderPageTurnPresentationTest {
                             colors.all {
                                 it == RED || it == GREEN
                             },
-                            "Instant frame exposed background: $colors",
+                            "Instant frame exposed background: $colors ${fixture.diagnostic()}",
                         )
                     }
                     runCurrent()
@@ -257,6 +276,14 @@ class ReaderPageTurnPresentationTest {
                 fixture.frame()
                 runCurrent()
             }
+            if (dual) {
+                assertEquals(3, fixture.page)
+                assertTrue(setOf(1, 2).all { it in fixture.presented })
+                assertTrue(
+                    3 !in fixture.presented,
+                    "The latest source request is still unpainted when the reverse press starts",
+                )
+            }
             fixture.press(forward = false, rtl = rtl)
             repeat(3) {
                 fixture.frame()
@@ -268,8 +295,12 @@ class ReaderPageTurnPresentationTest {
                 runCurrent()
             }
 
-            assertEquals(0, fixture.page)
-            assertEquals(if (dual) setOf(RED, 0) else setOf(RED), fixture.frame())
+            assertEquals(
+                if (dual) 2 else 0,
+                fixture.page,
+                "An adjacent turn follows the latest logical source target during animation",
+            )
+            assertEquals(setOf(RED), fixture.frame())
         }
     }
 
@@ -286,13 +317,24 @@ class ReaderPageTurnPresentationTest {
                 fixture.frame()
                 runCurrent()
             }
+            if (dual) {
+                assertEquals(3, fixture.page)
+                assertTrue(
+                    4 !in fixture.presented,
+                    "The second request must not skip source four before its first real pixel",
+                )
+            }
             fixture.tap(forward = true, rtl = rtl)
             repeat(80) {
                 fixture.frame()
                 runCurrent()
             }
 
-            assertEquals(if (dual) 5 else 2, fixture.page)
+            assertEquals(
+                if (dual) 4 else 2,
+                fixture.page,
+                "A loading destination cannot consume its undrawn planned partner",
+            )
             assertEquals(setOf(GREEN), fixture.frame())
         }
     }
@@ -317,6 +359,7 @@ class ReaderPageTurnPresentationTest {
                 model.goToPage(value)
             }
         val decoded = CopyOnWriteArraySet<Int>()
+        val presented = CopyOnWriteArraySet<Int>()
         var bothPageColorsDrawn = false
             private set
         private val reporter = ReaderIoReporter(ReaderIoProbe.None, ReaderMonotonicClock { 0L })
@@ -339,7 +382,15 @@ class ReaderPageTurnPresentationTest {
                 )
             },
         )
-        private val owner = DesktopReaderPresentationImageOwner(scope, pipeline, ReaderPageIoObserver(reporter))
+        private val owner =
+            DesktopReaderPresentationImageOwner(
+                scope,
+                pipeline,
+                ReaderPageIoObserver(reporter) { page, _ ->
+                    presented +=
+                        page.sourcePageIndex
+                },
+            )
         private val scene = ImageComposeScene(400, 400, coroutineContext = scope.coroutineContext) {}
         private var time = 0L
         init {
@@ -429,6 +480,16 @@ class ReaderPageTurnPresentationTest {
             } finally {
                 bitmap.close()
             }
+        }
+        fun diagnostic(): String {
+            fun flatten(
+                node: androidx.compose.ui.semantics.SemanticsNode,
+            ): List<androidx.compose.ui.semantics.SemanticsNode> =
+                listOf(node) + node.children.flatMap(::flatten)
+            val native = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.firstOrNull {
+                it.config.contains(ReaderPagerNativePresentationKey)
+            }?.config?.get(ReaderPagerNativePresentationKey)
+            return "page=$page decoded=$decoded presented=$presented native=${native?.describe()}"
         }
         fun writeFrame(path: String) {
             val bitmap = renderBitmap()

@@ -1,12 +1,16 @@
 package mihon.desktop.reader
 
 import androidx.compose.ui.graphics.asSkiaBitmap
+import kotlinx.coroutines.CancellationException
 import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.PixelBounds
 import mihon.domain.reader.ReaderImageOrientation
 import mihon.domain.reader.ReaderPageDecodeKey
 import mihon.domain.reader.ReaderSpreadEdgeSamples
 import mihon.domain.reader.SharedSpreadMatching
+
+/** Resource deferral is not failed/corrupt evidence and may resume without a user retry. */
+internal class DesktopReaderOptionalWorkPaused : CancellationException("Optional reader work is paused")
 
 /** Executes the shared original-coordinate plan through existing bounded region leases. */
 internal object DesktopReaderSpreadSampler {
@@ -16,9 +20,11 @@ internal object DesktopReaderSpreadSampler {
         rawWidth: Int,
         rawHeight: Int,
         orientation: ReaderImageOrientation,
+        canContinue: () -> Boolean = { true },
     ): ReaderSpreadEdgeSamples? {
         val plan = SharedSpreadMatching.plan(rawWidth, rawHeight, orientation) ?: return null
         suspend fun edge(points: List<Pair<Int, Int>>): List<Int>? {
+            if (!canContinue()) throw DesktopReaderOptionalWorkPaused()
             val left = points.minOf { it.first }
             val top = points.minOf { it.second }
             val bounds = PixelBounds(
@@ -36,7 +42,7 @@ internal object DesktopReaderSpreadSampler {
                 bounds.height,
                 region = bounds,
             )
-            val lease = session.acquireTile(key) ?: return null
+            val lease = session.acquireTile(key, optional = true) ?: return null
             return lease.use {
                 val asset = it.asset
                 if (asset.sampled || asset.bitmap.width != bounds.width || asset.bitmap.height != bounds.height) {

@@ -6,9 +6,12 @@ import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.databinding.ReaderActivityBinding
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel
+import eu.kanade.tachiyomi.ui.reader.loader.HttpReaderMaterializeAdapterIntegrationTest.TestHttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.model.completePageListForTest
+import eu.kanade.tachiyomi.ui.reader.model.openPageListForTest
 import eu.kanade.tachiyomi.ui.reader.model.publishLoadedPageListForTest
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.RecordingReaderActivity
@@ -84,142 +87,214 @@ class SharedDualPageAndroidWiringTest {
         Injekt = previousInjekt
     }
 
+    private var replaceViewerDuringMatching = false
+
     @Test
     @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
-    fun `matching preference reaches actual encoded sampler shared session and native display pages`() =
-        runBlocking {
-            val chapter = chapter(19)
-            val baseline = listOf(
-                listOf(0), listOf(1, 2), listOf(3, 4), listOf(5, 6), listOf(7, 8),
-                listOf(9, 10), listOf(11, 12), listOf(13, 14), listOf(15, 16), listOf(17, 18),
-            )
-            var reads = 0
-            var releases = 0
-            requireNotNull(chapter.pages).forEach { page ->
-                val bitmap = android.graphics.Bitmap.createBitmap(40, 60, android.graphics.Bitmap.Config.ARGB_8888)
-                for (y in 0 until 60) {
-                    for (x in 0 until 40) {
-                        val channel = if ((x == 2 && page.index == 2) || (x == 37 && page.index == 3)) {
-                            80 + y * 2
-                        } else {
-                            page.index * 35
-                        }
-                        bitmap.setPixel(x, y, (255 shl 24) or (channel shl 16) or (80 shl 8) or 120)
+    fun `replacement native viewer waits for cancelled original optional region and resumes on its real completion`() {
+        replaceViewerDuringMatching = true
+        try {
+            `matching preference reaches actual encoded sampler shared session and native display pages`()
+        } finally {
+            replaceViewerDuringMatching = false
+        }
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `matching preference reaches actual encoded sampler shared session and native display pages`() = runBlocking {
+        val replaceViewer = replaceViewerDuringMatching
+        val chapter = chapter(19)
+        val baseline = listOf(
+            listOf(0), listOf(1, 2), listOf(3, 4), listOf(5, 6), listOf(7, 8),
+            listOf(9, 10), listOf(11, 12), listOf(13, 14), listOf(15, 16), listOf(17, 18),
+        )
+        var reads = 0
+        var releases = 0
+        requireNotNull(chapter.pages).forEach { page ->
+            val bitmap = android.graphics.Bitmap.createBitmap(40, 60, android.graphics.Bitmap.Config.ARGB_8888)
+            for (y in 0 until 60) {
+                for (x in 0 until 40) {
+                    val channel = if ((x == 2 && page.index == 2) || (x == 37 && page.index == 3)) {
+                        80 + y * 2
+                    } else {
+                        page.index * 35
                     }
-                }
-                val bytes = java.io.ByteArrayOutputStream().also {
-                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
-                }.toByteArray()
-                bitmap.recycle()
-                page.stream = { bytes.inputStream() }
-                page.publishHeaderFact()
-                page.status = eu.kanade.tachiyomi.source.model.Page.State.Ready
-            }
-            viewer.adapter.spreadDecoderFactory = { stream ->
-                reads++
-                eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(stream) { releases++ }
-            }
-            fun groups() = viewer.adapter.items.filterIsInstance<DisplayPage>().asReversed().map { item ->
-                when (item) {
-                    is DisplayPage.Single -> listOf(item.firstPage.index)
-                    is DisplayPage.Double -> listOf(item.rightPage.index, item.leftPage.index)
+                    bitmap.setPixel(x, y, (255 shl 24) or (channel shl 16) or (80 shl 8) or 120)
                 }
             }
-            suspend fun pump(condition: () -> Boolean) {
-                val deadline = System.nanoTime() + 5_000_000_000L
-                do {
-                    mainDispatcher.scheduler.runCurrent()
-                    kotlinx.coroutines.delay(5)
-                }
-                while (!condition() && System.nanoTime() < deadline)
+            val bytes = java.io.ByteArrayOutputStream().also {
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }.toByteArray()
+            bitmap.recycle()
+            page.stream = { bytes.inputStream() }
+            page.publishHeaderFact()
+            page.status = eu.kanade.tachiyomi.source.model.Page.State.Ready
+        }
+        viewer.adapter.spreadDecoderFactory = { stream ->
+            reads++
+            eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(stream) { releases++ }
+        }
+        fun groups() = viewer.adapter.items.filterIsInstance<DisplayPage>().asReversed().map { item ->
+            when (item) {
+                is DisplayPage.Single -> listOf(item.firstPage.index)
+                is DisplayPage.Double -> listOf(item.rightPage.index, item.leftPage.index)
             }
+        }
+        suspend fun pump(condition: () -> Boolean) {
+            val deadline = System.nanoTime() + 5_000_000_000L
+            do {
+                mainDispatcher.scheduler.runCurrent()
+                kotlinx.coroutines.delay(5)
+            }
+            while (!condition() && System.nanoTime() < deadline)
+        }
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        mainDispatcher.scheduler.runCurrent()
+        assertEquals(baseline, groups())
+        val preferences = uy.kohesive.injekt.Injekt.get<ReaderPreferences>()
+        assertTrue(!preferences.automaticSpreadMatching().get())
+        assertEquals(0, reads)
+        preferences.automaticSpreadMatching().set(true)
+        pump {
+            listOf(2, 3) in groups() && reads == 4 && reads == releases &&
+                requireNotNull(viewer.adapter.session(chapter)).spreadSampleDependencies().isEmpty()
+        }
+        assertTrue(
+            "Original sample lease must change actual native display pages",
+            listOf(2, 3) in groups(),
+        )
+        assertEquals(reads, releases)
+        assertEquals("Only the original current plus four ready window is sampled", 4, reads)
+        assertTrue(requireNotNull(viewer.adapter.session(chapter)).spreadSampleDependencies().isEmpty())
+        preferences.automaticSpreadMatching().set(false)
+        pump { groups() == baseline }
+        assertEquals(baseline, groups())
+        val page = requireNotNull(chapter.pages)[2]
+        val originalStream = requireNotNull(page.stream)
+        page.stream = { originalStream() }
+        page.publishHeaderFact()
+        mainDispatcher.scheduler.runCurrent()
+        val beforeFailure = reads
+        viewer.adapter.spreadDecoderFactory = { _ ->
+            reads++
+            object : eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageRegionDecoder {
+                override fun decode(region: android.graphics.Rect): android.graphics.Bitmap = error("bad region")
+                override fun recycle() {
+                    releases++
+                }
+            }
+        }
+        preferences.automaticSpreadMatching().set(true)
+        fun samplePassFinished() =
+            ReflectionHelpers.getField<kotlinx.coroutines.Job?>(viewer.adapter, "matchingJob")?.isCompleted != false
+        pump { reads == beforeFailure + 1 && reads == releases && samplePassFinished() }
+        assertEquals(beforeFailure + 1, reads)
+        repeat(3) {
             viewer.setChapters(ViewerChapters(chapter, null, null))
             mainDispatcher.scheduler.runCurrent()
-            assertEquals(baseline, groups())
-            val preferences = uy.kohesive.injekt.Injekt.get<ReaderPreferences>()
-            assertTrue(!preferences.automaticSpreadMatching().get())
-            assertEquals(0, reads)
-            preferences.automaticSpreadMatching().set(true)
-            pump { listOf(2, 3) in groups() && reads == 18 && reads == releases }
-            assertTrue(
-                "Original sample lease must change actual native display pages",
-                listOf(2, 3) in groups(),
-            )
-            assertEquals(reads, releases)
-            assertEquals("All seventeen adjacent edges must be scored beyond the sixteen sample cache", 18, reads)
-            preferences.automaticSpreadMatching().set(false)
-            pump { groups() == baseline }
-            assertEquals(baseline, groups())
-            val page = requireNotNull(chapter.pages)[2]
-            val originalStream = requireNotNull(page.stream)
-            page.stream = { originalStream() }
-            page.publishHeaderFact()
-            mainDispatcher.scheduler.runCurrent()
-            val beforeFailure = reads
-            viewer.adapter.spreadDecoderFactory = { _ ->
-                reads++
-                object : eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageRegionDecoder {
-                    override fun decode(region: android.graphics.Rect): android.graphics.Bitmap = error("bad region")
-                    override fun recycle() {
-                        releases++
-                    }
-                }
-            }
-            preferences.automaticSpreadMatching().set(true)
-            fun samplePassFinished() =
-                ReflectionHelpers.getField<kotlinx.coroutines.Job?>(viewer.adapter, "matchingJob")?.isCompleted != false
-            pump { reads == beforeFailure + 1 && reads == releases && samplePassFinished() }
-            assertEquals(beforeFailure + 1, reads)
-            repeat(3) {
-                viewer.setChapters(ViewerChapters(chapter, null, null))
-                mainDispatcher.scheduler.runCurrent()
-            }
-            assertEquals("Unrelated rebuilds must not loop a failed edge", beforeFailure + 1, reads)
-            page.retryHeaderFact()
-            pump { reads == beforeFailure + 2 && reads == releases && samplePassFinished() }
+        }
+        assertEquals("Unrelated rebuilds must not loop a failed edge", beforeFailure + 1, reads)
+        page.retryHeaderFact()
+        pump { reads == beforeFailure + 2 && reads == releases && samplePassFinished() }
 
-            assertEquals("Original image retry admits one new bounded sample", beforeFailure + 2, reads)
-            assertTrue("The failed sample cannot restore an earlier positive match", listOf(2, 3) !in groups())
-            val entered = java.util.concurrent.CountDownLatch(1)
-            val release = java.util.concurrent.CountDownLatch(1)
-            viewer.adapter.spreadDecoderFactory = { stream ->
-                reads++
-                val original = eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(stream) { releases++ }
-                object : eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageRegionDecoder {
-                    override fun decode(region: android.graphics.Rect): android.graphics.Bitmap {
+        assertEquals("Original image retry admits one new bounded sample", beforeFailure + 2, reads)
+        assertTrue("The failed sample cannot restore an earlier positive match", listOf(2, 3) !in groups())
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val nativeActive = java.util.concurrent.atomic.AtomicInteger()
+        val nativePeak = java.util.concurrent.atomic.AtomicInteger()
+        viewer.adapter.spreadDecoderFactory = { stream ->
+            reads++
+            val original = eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(stream) { releases++ }
+            object : eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageRegionDecoder {
+                override fun decode(region: android.graphics.Rect): android.graphics.Bitmap {
+                    val active = nativeActive.incrementAndGet()
+                    nativePeak.updateAndGet { maxOf(it, active) }
+                    try {
                         entered.countDown()
                         check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
                         return original.decode(region)
+                    } finally {
+                        nativeActive.decrementAndGet()
                     }
-                    override fun recycle() = original.recycle()
                 }
-            }
-            try {
-                page.retryHeaderFact()
-                pump { entered.count == 0L }
-                assertEquals(0L, entered.count)
-                val pending = ReflectionHelpers.getField<kotlinx.coroutines.Job>(viewer.adapter, "matchingJob")
-                mainDispatcher.scheduler.advanceTimeBy(15_001)
-                mainDispatcher.scheduler.runCurrent()
-                assertTrue(
-                    "The active original-region wait must be cancelled at the deadline before native completion",
-                    pending.isCancelled || pending.children.any { it.isCancelled },
-                )
-                release.countDown()
-                pump { pending.isCompleted && reads == releases }
-                assertTrue(pending.isCompleted)
-                assertEquals(reads, releases)
-                assertTrue(
-                    "A native region finishing after the active deadline cannot publish matching",
-                    listOf(2, 3) !in groups(),
-                )
-                preferences.automaticSpreadMatching().set(false)
-                mainDispatcher.scheduler.runCurrent()
-                assertEquals(baseline, groups())
-            } finally {
-                release.countDown()
+                override fun recycle() = original.recycle()
             }
         }
+        try {
+            page.retryHeaderFact()
+            pump { entered.count == 0L }
+            assertEquals(0L, entered.count)
+            val pending = ReflectionHelpers.getField<kotlinx.coroutines.Job>(viewer.adapter, "matchingJob")
+            mainDispatcher.scheduler.advanceTimeBy(15_001)
+            mainDispatcher.scheduler.runCurrent()
+            assertTrue(
+                "Elapsed optional budget cannot cancel an executing original region or block ordinary reading",
+                !pending.isCancelled && pending.children.none { it.isCancelled },
+            )
+            preferences.automaticSpreadMatching().set(false)
+            mainDispatcher.scheduler.runCurrent()
+            assertTrue(
+                "Off revokes the original logical ticket but cannot finish blocked physical decode",
+                pending.isCancelled,
+            )
+            assertTrue(!pending.isCompleted && nativeActive.get() == 1)
+            if (replaceViewer) {
+                val originalFactory = viewer.adapter.spreadDecoderFactory
+                viewer.destroy()
+                assertTrue(!pending.isCompleted && nativeActive.get() == 1)
+                viewer = DualPageR2LPagerViewer(activity)
+                viewer.config.navigationModeChangedListener = null
+                viewer.adapter.spreadDecoderFactory = originalFactory
+                viewer.setChapters(ViewerChapters(chapter, null, null))
+                mainDispatcher.scheduler.runCurrent()
+            }
+            val target = requireNotNull(chapter.pages)[3]
+            viewer.moveToPage(target)
+            mainDispatcher.scheduler.runCurrent()
+            val owner = requireNotNull(viewer.adapter.session(chapter))
+            assertEquals(
+                "Ordinary source navigation remains available during hung matching",
+                3,
+                owner.location?.pageId?.sourcePageIndex,
+            )
+            assertTrue(target.status == eu.kanade.tachiyomi.source.model.Page.State.Ready)
+            preferences.automaticSpreadMatching().set(true)
+            mainDispatcher.scheduler.runCurrent()
+            assertTrue(owner.spreadSampleDependencies().isNotEmpty())
+            repeat(50) {
+                mainDispatcher.scheduler.runCurrent()
+                kotlinx.coroutines.delay(5)
+            }
+            assertEquals(
+                "Off then On cannot overlap a still executing original optional decoder",
+                1,
+                nativePeak.get(),
+            )
+            release.countDown()
+            pump {
+                pending.isCompleted && reads == releases && nativeActive.get() == 0 &&
+                    owner.spreadSampleDependencies().isEmpty()
+            }
+            assertTrue(pending.isCompleted)
+            assertEquals(reads, releases)
+            assertEquals(1, nativePeak.get())
+            assertTrue(
+                "Original completion resumes the valid current owner without another setting or Retry",
+                owner.spreadSampleDependencies().isEmpty(),
+            )
+            assertTrue(
+                "A cancelled old-content sample cannot publish its earlier pairing after ordinary navigation",
+                listOf(2, 3) !in groups(),
+            )
+            preferences.automaticSpreadMatching().set(false)
+            mainDispatcher.scheduler.runCurrent()
+            assertEquals(baseline, groups())
+        } finally {
+            release.countDown()
+        }
+    }
 
     @Test
     @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
@@ -319,11 +394,9 @@ class SharedDualPageAndroidWiringTest {
         assertEquals(oldIdentity, owner.identity.content[1].contentVersion)
         assertEquals(
             "A replaced physical snapshot cannot seed either its old portrait or the new wide fact",
-            listOf(1),
-            owner.targetUnit!!.pageIds.map { it.sourcePageIndex },
+            mihon.domain.reader.ReaderPageFactState.UNKNOWN,
+            owner.pageFact(owner.identity.pageIds[1])?.state ?: mihon.domain.reader.ReaderPageFactState.UNKNOWN,
         )
-        assertTrue(!owner.targetUnit!!.certain)
-        assertEquals(mihon.domain.reader.ReaderPortraitSingleSlot.FULL, owner.targetUnit!!.slots.single().position)
         val original = owner.requestFact(owner.identity.pageIds[1])
         val replacement = store.ensure(chapter, sampled).session
         assertTrue(replacement !== owner)
@@ -335,17 +408,16 @@ class SharedDualPageAndroidWiringTest {
     }
 
     @Test
-    fun `cold unknown pages remain native centered fallback singles`() {
+    fun `cold unknown pages retain each source in provisional native slots`() {
         val chapter = chapter(5)
         viewer.setChapters(ViewerChapters(chapter, null, null))
         val units = viewer.adapter.items.filterIsInstance<DisplayPage>()
-        assertEquals(5, units.size)
-        assertTrue(
-            units.all {
-                it is DisplayPage.Single &&
-                    it.slot == mihon.domain.reader.ReaderPortraitSingleSlot.FULL
-            },
-        )
+        assertEquals(3, units.size)
+        assertEquals((0..4).toSet(), units.flatMap { it.visiblePages.map(ReaderPage::index) }.toSet())
+        assertEquals(5, units.sumOf { it.visiblePages.size })
+        val target = requireNotNull(viewer.adapter.session(chapter)).targetUnit!!
+        assertEquals(0, target.pageIds.single().sourcePageIndex)
+        assertEquals(mihon.domain.reader.ReaderPortraitSingleSlot.LEFT, target.slots.single().position)
     }
 
     @Test
@@ -394,7 +466,10 @@ class SharedDualPageAndroidWiringTest {
             current,
         )
         assertEquals(4, current.location?.pageId?.sourcePageIndex)
-        assertEquals(mihon.domain.reader.ReaderDualPageSingleReason.UNRESOLVED, current.targetUnit?.singleReason)
+        assertEquals(
+            mihon.domain.reader.ReaderPageFactState.UNKNOWN,
+            current.pageFact(current.identity.pageIds[4])?.state ?: mihon.domain.reader.ReaderPageFactState.UNKNOWN,
+        )
     }
 
     @Test
@@ -496,6 +571,8 @@ class SharedDualPageAndroidWiringTest {
             publishHeaderFact()
         }
         viewer.setChapters(ViewerChapters(chapter, null, null))
+        val originalOwner = requireNotNull(viewer.adapter.session(chapter))
+        val originalRequest = originalOwner.requestFact(originalOwner.identity.pageIds[1])
         val lock = ReflectionHelpers.getField<Any>(page, "contentLock")
         val entered = java.util.concurrent.CountDownLatch(1)
         val collectorThread = Thread.currentThread()
@@ -517,9 +594,10 @@ class SharedDualPageAndroidWiringTest {
             val owner = requireNotNull(viewer.adapter.session(chapter))
             assertEquals(
                 "The old captured portrait fact must not be accepted by the replacement owner",
-                mihon.domain.reader.ReaderDualPageSingleReason.UNRESOLVED,
-                owner.targetUnit?.singleReason,
+                mihon.domain.reader.ReaderPageFactState.UNKNOWN,
+                owner.pageFact(owner.identity.pageIds[1])?.state ?: mihon.domain.reader.ReaderPageFactState.UNKNOWN,
             )
+            assertTrue(!owner.acceptFact(originalRequest, mihon.domain.reader.ReaderPageFact.dimensions(30, 50)))
         } finally {
             replacement.join(5000)
         }
@@ -527,7 +605,7 @@ class SharedDualPageAndroidWiringTest {
 
     @Test
     fun `explicit native target supplements at most two missing facts and deadline`() = runTest(mainDispatcher) {
-        val chapter = chapter(17).apply { requestedPage = 16 }
+        val chapter = chapter(17).apply { requestedPage = 2 }
         val pages = requireNotNull(chapter.pages)
         val extra = mutableSetOf<Int>()
         val cancelled = mutableSetOf<Int>()
@@ -556,19 +634,378 @@ class SharedDualPageAndroidWiringTest {
             }
         }
         chapter.pageLoader = loader
-        val normal = launch { loader.loadPage(pages[16]) }
+        val normal = launch { loader.loadPage(pages[2]) }
         try {
             viewer.setChapters(ViewerChapters(chapter, null, null))
             mainDispatcher.scheduler.runCurrent()
-            assertEquals(setOf(15, 14), extra)
+            assertTrue(visibleActive && normal.isActive)
+            assertTrue(requireNotNull(viewer.adapter.session(chapter)).factDependencies().isNotEmpty())
+            assertEquals("Only the original normal loader may materialize encoded pages", emptySet<Int>(), extra)
             assertTrue(visibleActive)
             mainDispatcher.scheduler.advanceTimeBy(15_001)
             mainDispatcher.scheduler.runCurrent()
             assertEquals(extra, cancelled)
             assertTrue("Optional deadline cannot cancel the normal visible consumer", visibleActive && normal.isActive)
-            assertEquals(16, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
+            assertEquals(2, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
         } finally {
             normal.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun `pending original pairing restoration retains the dual owner and does not gate target presentation`() =
+        runTest(mainDispatcher) {
+            val chapter = chapter(8).apply { requestedPage = 2 }
+            val pages = requireNotNull(chapter.pages)
+            val store = DualPagePairingStore(requiresRestoration = true)
+            val restoredViewer = DualPageR2LPagerViewer(activity, store)
+            restoredViewer.config.navigationModeChangedListener = null
+            try {
+                restoredViewer.setChapters(ViewerChapters(chapter, null, null))
+                mainDispatcher.scheduler.runCurrent()
+                val available = requireNotNull(restoredViewer.adapter.session(chapter)) {
+                    "A cold target must not wait for old persisted pairing I/O"
+                }
+                assertTrue(available.pairingState.revision == null)
+                assertTrue(available.adjustPairing() == null)
+                val original = requireNotNull(store.beginRestore(chapter, pages))
+                restoredViewer.setChapters(ViewerChapters(chapter, null, null))
+                mainDispatcher.scheduler.runCurrent()
+                assertTrue(
+                    "Pending original I/O must retain the signed owner, pages and load request",
+                    restoredViewer.adapter.session(chapter) === original.owner,
+                )
+                assertTrue(
+                    "Normal dual target presentation must be available before old pairing I/O completes",
+                    restoredViewer.adapter.items.filterIsInstance<DisplayPage>().any { it.containsPage(pages[2]) },
+                )
+                assertEquals(
+                    "Reading availability does not declare an unknown persisted record ready",
+                    mihon.domain.reader.ReaderPairingPersistenceStatus.RESTORING,
+                    original.owner.pairingState.status,
+                )
+                assertTrue(original.owner.adjustPairing() == null)
+            } finally {
+                restoredViewer.destroy()
+            }
+        }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `original HTTP physical work defers matching and actual completion resumes pending samples`() =
+        verifyOriginalHttpPhysicalWork(switchLoader = false)
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `replaced original HTTP loader remains foreground busy until its physical work actually exits`() =
+        verifyOriginalHttpPhysicalWork(switchLoader = true)
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `foreground arriving during original region pauses sampling and idle before close resumes after completion`() =
+        verifyOriginalHttpPhysicalWork(switchLoader = false, pauseDuringSample = true)
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `system pressure arriving during original region pauses before next unit and real recovery waits for close`() =
+        verifyOriginalHttpPhysicalWork(
+            switchLoader = false,
+            pauseDuringSample = true,
+            memoryPressureDuringSample = true,
+        )
+
+    private fun verifyOriginalHttpPhysicalWork(
+        switchLoader: Boolean,
+        pauseDuringSample: Boolean = false,
+        memoryPressureDuringSample: Boolean = false,
+    ) = runBlocking<Unit> {
+        val directory = java.nio.file.Files.createTempDirectory("reader-matching-http-").toFile()
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val reads = java.util.concurrent.atomic.AtomicInteger()
+        val decodes = java.util.concurrent.atomic.AtomicInteger()
+        val firstRegion = java.util.concurrent.atomic.AtomicBoolean(true)
+        val firstRecycle = java.util.concurrent.atomic.AtomicBoolean(true)
+        val regionEntered = java.util.concurrent.CountDownLatch(1)
+        val regionRelease = java.util.concurrent.CountDownLatch(1)
+        val closeEntered = java.util.concurrent.CountDownLatch(1)
+        val closeRelease = java.util.concurrent.CountDownLatch(1)
+        val server = mockwebserver3.MockWebServer().apply {
+            dispatcher = object : mockwebserver3.Dispatcher() {
+                override fun dispatch(request: mockwebserver3.RecordedRequest): mockwebserver3.MockResponse {
+                    if (request.url.encodedPath == "/chapter") {
+                        return mockwebserver3.MockResponse(body = "pages:17")
+                    }
+                    val index = request.url.encodedPath.substringAfterLast('/').toInt() - 1
+                    val bitmap = android.graphics.Bitmap.createBitmap(
+                        40,
+                        60,
+                        android.graphics.Bitmap.Config.ARGB_8888,
+                    )
+                    for (y in 0 until 60) {
+                        for (x in 0 until 40) {
+                            val channel = if ((x == 2 && index == 2) || (x == 37 && index == 3)) {
+                                80 + y * 2
+                            } else {
+                                index * 35
+                            }
+                            bitmap.setPixel(x, y, (255 shl 24) or (channel shl 16) or (80 shl 8) or 120)
+                        }
+                    }
+                    val bytes = java.io.ByteArrayOutputStream().also {
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                    }.toByteArray()
+                    bitmap.recycle()
+                    return mockwebserver3.MockResponse.Builder().body(okio.Buffer().write(bytes)).build()
+                }
+            }
+            start()
+        }
+        val cache = mockk<eu.kanade.tachiyomi.data.cache.ChapterCache>(relaxed = true)
+        fun encodedFile(url: String) = java.io.File(directory, "${url.substringAfterLast('/')}.png")
+        every { cache.getPageListFromCache(any()) } throws java.io.IOException("normal cold cache")
+        every { cache.getImageFile(any()) } answers { encodedFile(firstArg()) }
+        every { cache.isImageInCache(any()) } answers { encodedFile(firstArg()).length() > 0 }
+        every { cache.putImageToCache(any(), any()) } answers {
+            val file = encodedFile(firstArg())
+            secondArg<okhttp3.Response>().use { response ->
+                file.outputStream().use { output -> response.body.byteStream().use { it.copyTo(output) } }
+            }
+            true
+        }
+        val chapter = ReaderChapter(Chapter.create().copy(id = 7, mangaId = 1, url = "/chapter"))
+        val executor = object : mihon.domain.reader.materialize.ReaderMaterializeExecutor by
+        mihon.domain.reader.materialize.CanonicalReaderMaterializeExecutor {
+            override suspend fun materializePage(
+                request: mihon.domain.reader.materialize.ReaderPageFetchRequest,
+                port: mihon.domain.reader.materialize.ReaderPageFetchPort,
+                forceRefresh: Boolean,
+                publish: (mihon.domain.reader.materialize.ReaderPageMaterializeEvent) -> Boolean,
+            ): mihon.domain.reader.materialize.ReaderPageMaterializeResult {
+                if (request.pageId.sourcePageIndex == 5) {
+                    entered.complete(Unit)
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { release.await() }
+                }
+                return mihon.domain.reader.materialize.CanonicalReaderMaterializeExecutor.materializePage(
+                    request,
+                    port,
+                    forceRefresh,
+                    publish,
+                )
+            }
+        }
+        val loader = eu.kanade.tachiyomi.ui.reader.loader.HttpPageLoader(
+            chapter,
+            TestHttpSource(server),
+            cache,
+            materializeExecutor = executor,
+        )
+        val generation = chapter.openPageListForTest()
+        assertTrue(chapter.installPageLoader(generation, loader))
+        val port = eu.kanade.tachiyomi.ui.reader.loader.AndroidReaderChapterContentPort(chapter, loader)
+        val runner = ReflectionHelpers.getField<mihon.domain.reader.scheduler.ReaderPageMaterializeRunner<*>>(
+            loader,
+            "pageRunner",
+        )
+        suspend fun pump(message: String, condition: () -> Boolean) {
+            kotlinx.coroutines.withTimeout(10_000) {
+                while (!condition()) {
+                    mainDispatcher.scheduler.runCurrent()
+                    kotlinx.coroutines.delay(5)
+                }
+            }
+            assertTrue(message, condition())
+        }
+        var normal: kotlinx.coroutines.Job? = null
+        var replacementLoader: eu.kanade.tachiyomi.ui.reader.loader.HttpPageLoader? = null
+        try {
+            kotlinx.coroutines.withContext(Dispatchers.IO) {
+                port.loadChapterContent(
+                    mihon.domain.reader.materialize.ReaderChapterContentRequest(
+                        mihon.domain.reader.session.ReaderChapterId(7),
+                        generation,
+                    ),
+                )
+            }
+            chapter.completePageListForTest(generation, port.materializedPages)
+            val pages = requireNotNull(chapter.pages)
+            loader.onPageSelected(pages[0])
+            pump("The original current plus four normal HTTP requests must be actually ready") {
+                pages.take(5).all { it.status == eu.kanade.tachiyomi.source.model.Page.State.Ready } &&
+                    runner.physicalWorkCount.value == 0
+            }
+            viewer.adapter.spreadDecoderFactory = { stream ->
+                reads.incrementAndGet()
+                val original = eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(stream)
+                if (!pauseDuringSample) {
+                    original
+                } else {
+                    object : eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageRegionDecoder {
+                        override fun decode(region: android.graphics.Rect): android.graphics.Bitmap {
+                            decodes.incrementAndGet()
+                            if (firstRegion.getAndSet(false)) {
+                                regionEntered.countDown()
+                                check(regionRelease.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                            }
+                            return original.decode(region)
+                        }
+
+                        override fun recycle() {
+                            try {
+                                if (firstRecycle.getAndSet(false)) {
+                                    closeEntered.countDown()
+                                    check(closeRelease.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                                }
+                            } finally {
+                                original.recycle()
+                            }
+                        }
+                    }
+                }
+            }
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            mainDispatcher.scheduler.runCurrent()
+            var activeChapter = chapter
+            var owner = requireNotNull(viewer.adapter.session(chapter))
+            if (pauseDuringSample) {
+                Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(true)
+                pump("The original encoded region must enter before new ordinary foreground work") {
+                    regionEntered.count == 0L
+                }
+                assertEquals(1, reads.get())
+                assertTrue(owner.spreadSampleDependencies().isNotEmpty())
+            }
+            if (memoryPressureDuringSample) {
+                activity.onTrimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW)
+                assertTrue(activity.optionalWorkUnderMemoryPressure.value)
+                assertTrue(!loader.hasForegroundWork)
+                regionRelease.countDown()
+                pump("Actual region cleanup must begin while the system pressure signal remains active") {
+                    closeEntered.count == 0L
+                }
+                assertEquals("Pressure arrival stops before a second bounded region", 1, decodes.get())
+                val publisher = ReflectionHelpers.getField<kotlinx.coroutines.Job>(viewer.adapter, "matchingJob")
+                assertTrue(!publisher.isCompleted)
+                assertTrue(owner.spreadSampleDependencies().isNotEmpty())
+                activity.onWindowFocusChanged(true)
+                assertTrue(!activity.optionalWorkUnderMemoryPressure.value)
+                mainDispatcher.scheduler.runCurrent()
+                assertTrue(!publisher.isCompleted)
+                assertEquals("Real recovery cannot overlap the still closing original optional job", 1, reads.get())
+                closeRelease.countDown()
+                pump("Only actual close completion resumes pending quality samples without Retry or navigation") {
+                    owner.spreadSampleDependencies().isEmpty()
+                }
+                assertTrue(viewer.adapter.session(chapter) === owner)
+                assertEquals(0, owner.location?.pageId?.sourcePageIndex)
+                return@runBlocking
+            }
+            normal = launch(Dispatchers.IO) { loader.loadPage(pages[5]) }
+            pump("A real normal materializer must enter the held original executor") { entered.isCompleted }
+            assertEquals(1, runner.physicalWorkCount.value)
+            assertTrue(loader.pageRunnerSnapshot().activeRequestKeys.any { it.pageIndex == 5 })
+            loader.onPageSelected(pages[0])
+            val scheduler = ReflectionHelpers.getField<mihon.domain.reader.scheduler.ReaderRequestScheduler>(
+                loader,
+                "requestScheduler",
+            )
+            pump("Public source navigation must cancel logical work while real old execution stays held") {
+                scheduler.snapshot().pendingRequests.isEmpty() && scheduler.snapshot().activeRequests.isEmpty() &&
+                    loader.pageRunnerSnapshot().activeRequestKeys.isEmpty()
+            }
+            assertEquals(1, runner.physicalWorkCount.value)
+            assertTrue(
+                "No logical request remains; busy must consume actual cancelled physical work",
+                loader.hasForegroundWork,
+            )
+            if (switchLoader) {
+                loader.recycle()
+                assertTrue(loader.isRecycled)
+                assertEquals(1, runner.physicalWorkCount.value)
+                activeChapter = ReaderChapter(Chapter.create().copy(id = 8, mangaId = 1, url = "/chapter"))
+                val nextLoader = eu.kanade.tachiyomi.ui.reader.loader.HttpPageLoader(
+                    activeChapter,
+                    TestHttpSource(server),
+                    cache,
+                )
+                replacementLoader = nextLoader
+                val nextGeneration = activeChapter.openPageListForTest()
+                assertTrue(activeChapter.installPageLoader(nextGeneration, nextLoader))
+                val nextPort = eu.kanade.tachiyomi.ui.reader.loader.AndroidReaderChapterContentPort(
+                    activeChapter,
+                    nextLoader,
+                )
+                kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    nextPort.loadChapterContent(
+                        mihon.domain.reader.materialize.ReaderChapterContentRequest(
+                            mihon.domain.reader.session.ReaderChapterId(8),
+                            nextGeneration,
+                        ),
+                    )
+                }
+                activeChapter.completePageListForTest(nextGeneration, nextPort.materializedPages)
+                nextLoader.onPageSelected(requireNotNull(activeChapter.pages)[0])
+                pump("The actual replacement loader must be Ready and idle independently of old physical work") {
+                    requireNotNull(activeChapter.pages).take(5).all {
+                        it.status == eu.kanade.tachiyomi.source.model.Page.State.Ready
+                    } && !nextLoader.hasForegroundWork
+                }
+                viewer.setChapters(ViewerChapters(activeChapter, null, null))
+                mainDispatcher.scheduler.runCurrent()
+                owner = requireNotNull(viewer.adapter.session(activeChapter))
+            }
+            assertEquals(0, owner.location?.pageId?.sourcePageIndex)
+            if (!pauseDuringSample) Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(true)
+            mainDispatcher.scheduler.runCurrent()
+            assertTrue(owner.spreadSampleDependencies().isNotEmpty())
+            if (pauseDuringSample) {
+                regionRelease.countDown()
+                pump("Actual region cleanup must start while the ordinary original task stays busy") {
+                    closeEntered.count == 0L
+                }
+                assertEquals("Foreground arrival stops before a second bounded region", 1, decodes.get())
+                val publisher = ReflectionHelpers.getField<kotlinx.coroutines.Job>(viewer.adapter, "matchingJob")
+                assertTrue(!publisher.isCompleted)
+                release.complete(Unit)
+                pump("Normal physical work must actually exit while the original region close is still held") {
+                    runner.physicalWorkCount.value == 0 && !loader.hasForegroundWork
+                }
+                repeat(10) {
+                    mainDispatcher.scheduler.runCurrent()
+                    kotlinx.coroutines.delay(5)
+                }
+                assertTrue(!publisher.isCompleted)
+                assertEquals(1, reads.get())
+                assertTrue(owner.spreadSampleDependencies().isNotEmpty())
+                closeRelease.countDown()
+            } else {
+                repeat(50) {
+                    mainDispatcher.scheduler.runCurrent()
+                    kotlinx.coroutines.delay(5)
+                }
+                assertEquals(
+                    "Optional matching must not decode while original normal physical work is busy",
+                    0,
+                    reads.get(),
+                )
+                release.complete(Unit)
+            }
+            pump("Original physical completion must resume remaining quality samples without Retry or navigation") {
+                runner.physicalWorkCount.value == 0 && reads.get() > 0 &&
+                    owner.spreadSampleDependencies().isEmpty()
+            }
+            assertTrue(viewer.adapter.session(activeChapter) === owner)
+            assertEquals(0, owner.location?.pageId?.sourcePageIndex)
+        } finally {
+            regionRelease.countDown()
+            closeRelease.countDown()
+            release.complete(Unit)
+            normal?.cancelAndJoin()
+            loader.recycle()
+            replacementLoader?.recycle()
+            server.close()
+            directory.listFiles()?.forEach { it.delete() }
+            directory.delete()
         }
     }
 

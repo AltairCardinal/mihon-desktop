@@ -552,6 +552,14 @@ internal fun ReaderViewport(
                         )
                     }
                     ColorFilterOverlay(state.colorFilter)
+                    if (state.dualPageMode && state.pairingLoad == PairingLoad.ERROR) {
+                        PairingRestoreError(
+                            onRetry = model::retryPairingRestore,
+                            onUseDefault = model::useDefaultPairingThisSession,
+                            modifier = Modifier.align(Alignment.Center)
+                                .background(Color.Black.copy(alpha = 0.7f)).padding(16.dp),
+                        )
+                    }
                     if (state.showUI) {
                         ReaderBottomBar(
                             currentPage = state.currentPage, totalPages = state.session.activeChapter.pages.size,
@@ -652,6 +660,7 @@ internal fun readerViewportBody(state: ReaderState): ReaderViewportBody {
             else -> ReaderViewportBody.EMPTY
         }
     }
+    if (state.dualPageMode) return ReaderViewportBody.CONTENT
     return when {
         state.pairingLoad == PairingLoad.ERROR -> ReaderViewportBody.PAIRING_ERROR
         state.pairingLoad == PairingLoad.LOADING -> ReaderViewportBody.LOADING
@@ -660,8 +669,12 @@ internal fun readerViewportBody(state: ReaderState): ReaderViewportBody {
 }
 
 @Composable
-private fun PairingRestoreError(onRetry: () -> Unit, onUseDefault: () -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+private fun PairingRestoreError(
+    onRetry: () -> Unit,
+    onUseDefault: () -> Unit,
+    modifier: Modifier = Modifier.fillMaxSize(),
+) {
+    Box(modifier, contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(MR.strings.desktop_reader_pairing_load_failed.localized(), color = Color.White)
             Button(onClick = onRetry) { Text(MR.strings.action_retry.localized()) }
@@ -701,6 +714,7 @@ internal fun handleReaderWheelEvent(
         ReaderWheelIntent.PREVIOUS_PAGE,
         ReaderWheelIntent.NEXT_PAGE,
         -> {
+            if (model.navigateDualPage(intent == ReaderWheelIntent.NEXT_PAGE)) return true
             val navPosition = readerKeyboardNavigationPosition(
                 state = state,
                 hasPreviousChapter = hasPreviousChapter,
@@ -759,6 +773,14 @@ internal fun handleReaderKeyEvent(
         }
     }
     val isRtl = state.readingMode == ReadingMode.RTL
+    val adjacentForward = when (event.key) {
+        Key.DirectionLeft, Key.A -> isRtl
+        Key.DirectionRight, Key.D, Key.Spacebar -> !isRtl
+        Key.PageUp -> false
+        Key.PageDown -> true
+        else -> null
+    }
+    if (adjacentForward != null && model.navigateDualPage(adjacentForward)) return true
     val action = when (event.key) {
         Key.DirectionLeft, Key.A -> ReaderKeyboardAction.forLeft(isRtl, navCurrent, totalPages)
         Key.DirectionRight, Key.D, Key.Spacebar -> ReaderKeyboardAction.forRight(isRtl, navCurrent, totalPages)
@@ -916,14 +938,15 @@ internal fun ReaderContent(
                     )
                     val firstPresentedGeneration by presentationImageOwner.firstPresentedGeneration.collectAsState()
                     val presentationEpoch = listOf(
-                        state.dualPageIdentity,
-                        state.dualPageLayoutRevision,
-                        state.dualPageLocation,
-                        state.dualFactWorkRevision,
+                        state.session.generation,
+                        state.readingMode,
                         state.dualPageMode,
+                        state.dualGeometryRevision,
+                        state.cropBordersPager,
+                        state.scaleType,
                     )
                     val pagerBinding = remember(model, presentationEpoch) {
-                        ReaderPagerPresentationBinding(presentationEpoch, model, state.dualPageLocation)
+                        ReaderPagerPresentationBinding(presentationEpoch, model)
                     }
                     ZoomablePagerViewer(
                         dualPageUnits = state.dualPageUnits,

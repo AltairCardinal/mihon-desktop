@@ -3,6 +3,8 @@ package eu.kanade.tachiyomi.ui.reader.loader
 import androidx.annotation.CallSuper
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import mihon.domain.reader.ReaderDualPageFactReadPermit
 
@@ -17,6 +19,10 @@ abstract class PageLoader {
      */
     var isRecycled = false
         private set
+
+    /** Actual normal work; optional consumers observe it without submitting loading requests. */
+    open val hasForegroundWork: Boolean get() = false
+    open val foregroundWork: Flow<Boolean> get() = flowOf(false)
 
     abstract var isLocal: Boolean
 

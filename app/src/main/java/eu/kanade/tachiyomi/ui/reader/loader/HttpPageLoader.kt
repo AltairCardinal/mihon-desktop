@@ -12,7 +12,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import mihon.domain.error.AppError
@@ -64,6 +68,7 @@ internal class HttpPageLoader(
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
     private val preloadJobLock = Any()
+    private val foregroundRevision = MutableStateFlow(0L)
     private val scheduledPages = mutableMapOf<ReaderRequestKey, ReaderPage>()
     private val factPermits = mutableMapOf<ReaderRequestKey, ReaderDualPageFactReadPermit>()
     private val pageRunner = ReaderPageMaterializeRunner(
@@ -73,6 +78,17 @@ internal class HttpPageLoader(
         materializeExecutor = materializeExecutor,
         port = AndroidPageMaterializeRunnerPort(),
     )
+
+    override val hasForegroundWork: Boolean
+        get() = synchronized(preloadJobLock) {
+            val requests = requestScheduler.snapshot()
+            requests.pendingRequests.isNotEmpty() || requests.activeRequests.isNotEmpty() ||
+                pageRunner.physicalWorkCount.value != 0
+        }
+
+    override val foregroundWork = combine(foregroundRevision, pageRunner.physicalWorkCount) { _, _ ->
+        hasForegroundWork
+    }.distinctUntilChanged()
 
     internal fun pageRunnerSnapshot(): ReaderPageMaterializeRunnerSnapshot = pageRunner.snapshot()
 
@@ -172,6 +188,7 @@ internal class HttpPageLoader(
                     requestScheduler.complete(request.jobKey)
                     scheduledPages.remove(request.jobKey)
                     factPermits.remove(request.jobKey)
+                    foregroundRevision.update { it + 1 }
                 }
                 pageRunner.cancel(setOf(request.jobKey))
                 pageRunner.pump()
@@ -195,6 +212,7 @@ internal class HttpPageLoader(
                 scheduledPages[request.jobKey] = candidate
             }
             preloadPlan.discardRequests.forEach(scheduledPages::remove)
+            foregroundRevision.update { it + 1 }
             preloadPlan
         }
         pageRunner.cancel(preloadPlan.cancelRequests)
@@ -224,6 +242,7 @@ internal class HttpPageLoader(
                 }
             }
             retryPlan.discardRequests.forEach(scheduledPages::remove)
+            foregroundRevision.update { it + 1 }
             retryPlan
         }
         pageRunner.cancel(retryPlan.cancelRequests)
@@ -235,6 +254,7 @@ internal class HttpPageLoader(
         val closePlan = synchronized(preloadJobLock) {
             requestScheduler.moveTo(chapterId = readerChapterId(), currentPage = 0, pageCount = 0).also {
                 scheduledPages.clear()
+                foregroundRevision.update { revision -> revision + 1 }
             }
         }
         pageRunner.cancel(closePlan.cancelRequests)
@@ -265,6 +285,7 @@ internal class HttpPageLoader(
             synchronized(preloadJobLock) {
                 while (true) {
                     val request = requestScheduler.pollNext() ?: return@synchronized null
+                    foregroundRevision.update { it + 1 }
                     val page = scheduledPages[request.jobKey]
                     if (page == null || page.status != Page.State.Queue) {
                         requestScheduler.complete(request.jobKey)
@@ -315,6 +336,7 @@ internal class HttpPageLoader(
                 requestScheduler.complete(work.request.jobKey)
                 scheduledPages.remove(work.request.jobKey)
                 factPermits.remove(work.request.jobKey)
+                foregroundRevision.update { it + 1 }
             }
         }
     }
@@ -354,6 +376,7 @@ internal class HttpPageLoader(
         pendingRequests.forEach { request ->
             pages.getOrNull(request.pageIndex)?.let { scheduledPages[request.jobKey] = it }
         }
+        foregroundRevision.update { it + 1 }
         result.cancelRequests.forEach { cancelledKey ->
             val cancelledPage = scheduledPages[cancelledKey] ?: return@forEach
             val hasReplacement = pendingRequests.any { it.pageId == cancelledKey.pageId }
@@ -367,6 +390,7 @@ internal class HttpPageLoader(
         synchronized(preloadJobLock) {
             if (requestScheduler.cancelPending(request.jobKey)) {
                 scheduledPages.remove(request.jobKey)
+                foregroundRevision.update { it + 1 }
             }
         }
         pageRunner.pump()
