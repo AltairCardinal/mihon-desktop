@@ -377,15 +377,16 @@ class DesktopReaderSessionIntegrationTest {
             val pairViewport = model.presentReadyPagerViewport()
             advanceUntilIdle()
 
-            assertEquals(setOf(1, 2), pairViewport.pageIds.mapTo(linkedSetOf(), ReaderPageId::sourcePageIndex))
-            assertEquals(2, progress.single().lastPageRead)
-            assertEquals(false, progress.single().isRead)
+            assertEquals(setOf(2, 3), pairViewport.pageIds.mapTo(linkedSetOf(), ReaderPageId::sourcePageIndex))
+            assertEquals(2, model.state.value.currentPage)
+            assertEquals(3, progress.single().lastPageRead)
+            assertTrue(progress.single().isRead)
 
             model.goToPage(3)
             model.presentReadyPagerViewport()
             advanceUntilIdle()
 
-            assertEquals(listOf(2, 3), progress.map(ReaderProgressEffect::lastPageRead))
+            assertTrue(progress.all { it.lastPageRead == 3 })
             assertTrue(progress.last().isRead)
         } finally {
             session.close()

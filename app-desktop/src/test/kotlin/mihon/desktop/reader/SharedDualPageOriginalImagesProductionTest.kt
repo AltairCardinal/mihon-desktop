@@ -180,6 +180,10 @@ class SharedDualPageOriginalImagesProductionTest {
             nextChapterPrefetchMode = NextChapterPrefetchMode.OFF
         }
         val events = CopyOnWriteArrayList<ReaderIoEvent>()
+        private val enteredHeaders = CopyOnWriteArrayList<Int>()
+        private val returnedHeaders = CopyOnWriteArrayList<Int>()
+        private val enteredDecodes = CopyOnWriteArrayList<Int>()
+        private val returnedDecodes = CopyOnWriteArrayList<Int>()
         private val decoded = CompletableDeferred<Unit>()
         private val decoder = SkiaDesktopReaderPageImageDecoder()
         private val factory = DesktopReaderRuntimeFactory(
@@ -192,8 +196,13 @@ class SharedDualPageOriginalImagesProductionTest {
             directory.resolve("encoded-$volume-$initial"),
             readerIoProbe = ReaderIoProbe(events::add),
             pageImageDecoder = DesktopReaderPageImageDecoder { encoded, key ->
-                if (key.pageIndex in heldDecode) decoded.await()
-                decoder.decode(encoded, key)
+                if (key.pageIndex in heldDecode) {
+                    enteredDecodes += key.pageIndex
+                    decoded.await()
+                }
+                decoder.decode(encoded, key).also {
+                    if (key.pageIndex in heldDecode) returnedDecodes += key.pageIndex
+                }
             },
         )
         private val runtime = factory.createRuntime(
@@ -238,9 +247,13 @@ class SharedDualPageOriginalImagesProductionTest {
             portField.set(
                 coordinator,
                 ReaderPageContentOpenPort<ByteArray> { request ->
-                    if (request.maxBytes != null && request.pageId.sourcePageIndex in held) headers.await()
+                    if (request.maxBytes != null && request.pageId.sourcePageIndex in held) {
+                        enteredHeaders += request.pageId.sourcePageIndex
+                        headers.await()
+                    }
                     port.open(request).also { bytes ->
                         if (request.maxBytes != null && request.pageId.sourcePageIndex in held) {
+                            returnedHeaders += request.pageId.sourcePageIndex
                             println(
                                 "original-late-header source=${request.pageId.sourcePageIndex + 1} " +
                                     "prefixSize=${bytes?.size} orientedSize=${bytes?.let(SkiaImageDecoder::peekSize)}",
@@ -294,12 +307,24 @@ class SharedDualPageOriginalImagesProductionTest {
         )
 
         suspend fun knownNeighbors(target: Int, expected: Map<Int, ReaderPageFactState>) {
+            assertTrue(!model.state.value.dualPageMode)
+            for ((index, type) in expected) {
+                model.goToPage(index)
+                await("A normal Single visit must decode original source $index") {
+                    model.state.value.currentPage == index &&
+                        runCatching { owner().pageFact(owner().identity.pageIds[index])?.state == type }
+                            .getOrDefault(false) &&
+                        owner().displayedHistory.any { it.drawnPageIds.any { page -> page.sourcePageIndex == index } }
+                }
+            }
+            model.goToPage(target)
             await("Ordinary encoded headers must precede this explicit mode change") {
                 model.state.value.currentPage == target && expected.all { (index, type) ->
                     runCatching { owner().pageFact(owner().identity.pageIds[index])?.state == type }.getOrDefault(false)
                 } && events.any { it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED }
             }
-            assertTrue(owner().displayedHistory.none { it.drawnPageIds.any { page -> page.sourcePageIndex != target } })
+            assertTrue(!model.state.value.dualPageMode)
+            assertTrue(firstPrepared.isEmpty(), "The normal Single warm-up does not prepare a Dual frame")
             knownFacts = expected
             println("original-known before-dual target=$target facts=$expected content=$expectedHash")
         }
@@ -339,15 +364,23 @@ class SharedDualPageOriginalImagesProductionTest {
 
         suspend fun stableAfterHeaders(source: Int, position: ReaderPortraitSingleSlot) {
             val first = requireNotNull(observations[source])
+            if (held.isNotEmpty()) {
+                await("A real held header or decoder must have entered") {
+                    enteredHeaders.isNotEmpty() || enteredDecodes.isNotEmpty()
+                }
+            }
+            val relevant = (enteredHeaders + enteredDecodes).toSet()
+            assertTrue(held.isEmpty() || relevant.isNotEmpty())
             headers.complete(Unit)
             decoded.complete(Unit)
             await("Held normal headers must finish") {
-                held.all { index ->
-                    runCatching {
-                        owner().pageFact(owner().identity.pageIds[index])?.state in
-                            setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
-                    }.getOrDefault(false)
-                }
+                enteredHeaders.all { it in returnedHeaders } && enteredDecodes.all { it in returnedDecodes } &&
+                    relevant.all { index ->
+                        runCatching {
+                            owner().pageFact(owner().identity.pageIds[index])?.state in
+                                setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
+                        }.getOrDefault(false)
+                    }
             }
             repeat(12) {
                 val observed = observe(source, position)

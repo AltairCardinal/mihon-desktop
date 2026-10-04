@@ -159,7 +159,7 @@ class DefaultReaderModeTest {
     }
 
     @Test
-    fun `layout settles preserve anchor and do not mark companion read but next page still reports`() = runTest {
+    fun `layout settles preserve logical anchor while newly painted companion and next page report`() = runTest {
         val initial = desktopReaderSessionState(chapterId = 7L, pageCount = 6, initialPage = 2)
         val reader = initial.copy(context = initial.context.copy(mangaId = 1))
         val repository = object : mihon.domain.reader.ChapterPairingRepository {
@@ -178,11 +178,18 @@ class DefaultReaderModeTest {
                 error("This fixture restores an existing manual record")
         }
         var reports = 0
-        val model = ReaderScreenModel(
+        lateinit var model: ReaderScreenModel
+        model = ReaderScreenModel(
             prefs = prefs(),
             initialSessionState = reader,
             pairingCoordinator = mihon.desktop.reader.DesktopChapterPairingCoordinator(repository, backgroundScope),
-            onViewportSettled = { _, _ -> reports++ },
+            onViewportSettled = { pages, active ->
+                val shared = ReaderScreenModel::class.java.getDeclaredField("dualSession")
+                    .apply { isAccessible = true }.get(model) as mihon.domain.reader.SharedDualPageSession
+                assertTrue(active in pages)
+                assertTrue(shared.displayedHistory.any { frame -> pages.all { it in frame.drawnPageIds } })
+                reports++
+            },
         )
         runCurrent()
         reader.snapshot.activeChapter.pages.forEach {
@@ -199,20 +206,22 @@ class DefaultReaderModeTest {
         advanceTimeBy(150)
         runCurrent()
         val dual = model.presentReadyPagerViewport()
-        assertEquals(setOf(1, 2), dual.pageIds.mapTo(linkedSetOf()) { it.sourcePageIndex })
+        assertEquals(setOf(2, 3), dual.pageIds.mapTo(linkedSetOf()) { it.sourcePageIndex })
         assertEquals(2, model.state.value.currentPage)
-        assertEquals(1, reports)
+        assertEquals(2, reports)
         model.updateViewportSize(900, 1000, this)
         runCurrent()
         advanceTimeBy(150)
         runCurrent()
         model.setSpreadPages(setOf(2))
         model.presentReadyPagerViewport()
-        assertEquals(1, reports)
+        assertEquals(2, reports)
         assertEquals(setOf(4), model.state.value.forcedSinglePages)
         model.goToPage(3)
         model.presentReadyPagerViewport()
-        assertEquals(2, reports)
+        assertEquals(3, reports)
+        model.presentReadyPagerViewport()
+        assertEquals(3, reports, "An unchanged fully painted idle viewport is deduplicated")
         model.onDispose()
     }
 

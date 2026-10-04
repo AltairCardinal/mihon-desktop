@@ -181,7 +181,7 @@ class SharedDualPageDesktopWiringTest {
     }
 }
 
-/** Exercises the actual native presenter and its original shared ticket, including paint/idle gates. */
+/** Feeds synthetic Ready metadata through the real presenter protocol; this is not a Skia pixel observation. */
 internal fun ReaderScreenModel.presentReadyPagerViewport(): mihon.desktop.ui.reader.presentation.VisiblePageSet {
     val current = state.value
     val snapshot = if (current.dualPageMode) {
@@ -216,8 +216,8 @@ internal fun ReaderScreenModel.presentReadyPagerViewport(): mihon.desktop.ui.rea
     )
     try {
         native.begin(userNavigation = false)
-        unit.slots.filter { it.page != null }.forEach {
-            if (native.prepare(it.id)) native.drawn(it.id)
+        unit.slots.filter { it.page?.loadState is mihon.domain.reader.session.ReaderPageLoadState.Ready }.forEach {
+            if (native.prepare(it.id, it.page, 40, 60)) native.drawn(it.id)
         }
         native.setIdle(true)
         return visible

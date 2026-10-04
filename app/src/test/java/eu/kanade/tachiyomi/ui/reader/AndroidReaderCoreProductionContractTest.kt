@@ -13,6 +13,7 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.loader.HttpPageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.readerTestPng
 import io.mockk.coEvery
 import io.mockk.every
@@ -226,6 +227,7 @@ class AndroidReaderCoreProductionContractTest {
         val getChapters = mockk<GetChaptersByMangaId>()
         coEvery { getChapters.await(manga.id, applyScanlatorFilter = true) } returns chapters
         val readerPreferences = mockk<ReaderPreferences>(relaxed = true)
+        every { readerPreferences.defaultReadingMode().get() } returns ReadingMode.AUTO.flagValue
         every { readerPreferences.skipRead().get() } returns false
         every { readerPreferences.skipFiltered().get() } returns false
         every { readerPreferences.skipDupe().get() } returns false

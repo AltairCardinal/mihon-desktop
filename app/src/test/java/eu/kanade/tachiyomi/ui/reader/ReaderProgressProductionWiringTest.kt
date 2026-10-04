@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.publishLoadedPageListForTest
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -104,6 +105,7 @@ class ReaderProgressProductionWiringTest {
                 materializeChapter(firstArg())
             }
             val readerPreferences = mockk<ReaderPreferences>(relaxed = true)
+            every { readerPreferences.defaultReadingMode().get() } returns ReadingMode.AUTO.flagValue
             every { readerPreferences.skipRead().get() } returns false
             every { readerPreferences.skipFiltered().get() } returns false
             every { readerPreferences.skipDupe().get() } returns false

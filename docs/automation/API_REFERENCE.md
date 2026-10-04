@@ -168,6 +168,8 @@ identity 仍匹配的队列项。
 | `sharedUnits` | 实际共享 owner 当前 units 中的源页索引数组，保留 UNKNOWN/临时单页等真实结果；不是 HTTP 服务端计算的预期分组。 |
 | `nativeInput` | mounted pager 的实际几何与窗口/焦点信息，详见下文。 |
 
+`currentDisplayPageIndices` 表示当前呈现单元，可能包含尚未绘制的伙伴；`visiblePageIndices` 来自 model 的停稳状态快照，不能作为当前像素全集。在同一定位下，无新阅读进度的后续绘制可能不刷新该快照。证明当前实际绘制时，应绑定选中的原生 presenter、它的有效 ticket／frame 和实际绘制槽，并核对应画面；不能合并历史 frame 或将上述 HTTP 数组当作像素证据。
+
 `nativeInput` 返回 `available`、`geometryAvailable`、`windowPresent`、`windowShowing`、
 `windowFocused`、`ownerFocused`、`reason` 和 `density`。`viewportPixels` 为 Compose 物理像素；
 `viewportScreenPoints` 和三行三列 `tapPoints` 从实际 AWT 内容区屏幕原点及 density 换算，

@@ -185,11 +185,14 @@ class DualPageCurrentPageWiringTest {
                 fixture.viewportDiagnostic().contains("idle=false"),
                 "The metadata must arrive during the actual native animation, not after settlement",
             )
+            val geometry = fixture.currentSlotGeometry()
             if (matching) fixture.confirmMatching() else fixture.wideFact(1)
             fixture.frames(120)
+            if (matching) assertEquals(geometry, fixture.currentSlotGeometry())
             assertEquals(3, fixture.state.currentPage, fixture.viewportDiagnostic())
-            assertTrue(fixture.reports.all { it == 1 || it == 3 }, "Reflow cannot manufacture another logical turn")
-            assertEquals(3, fixture.reports.last())
+            assertEquals(1, fixture.locationSequence(), "One real turn has one source-navigation cause")
+            fixture.assertPainted(setOf(3, 4))
+            fixture.assertIdleDoesNotReport()
         }
     }
 
@@ -205,12 +208,10 @@ class DualPageCurrentPageWiringTest {
             assertEquals(3, fixture.state.currentPage)
             val sequence = fixture.locationSequence()
             val reports = fixture.reports.toList()
+            val displayed = fixture.state.currentDisplayUnitId
             fixture.wideFact(1)
-            assertTrue(
-                fixture.state.dualPageUnits.any { it.pageIds.map { page -> page.sourcePageIndex } == listOf(2, 3) },
-                "The changed prefix must reflow the actual target into its new shared pair",
-            )
             fixture.frames(120)
+            assertEquals(displayed, fixture.state.currentDisplayUnitId, "Late prefix facts retain the drawn frame")
             assertEquals(3, fixture.state.currentPage, fixture.viewportDiagnostic())
             assertEquals(sequence, fixture.locationSequence())
             assertEquals(reports, fixture.reports)
@@ -231,17 +232,20 @@ class DualPageCurrentPageWiringTest {
             fixture.frames()
             fixture.nextTap()
             fixture.frames(2)
+            assertTrue(4 !in fixture.currentDrawn(), "The rapid second tap precedes its partner's actual paint")
             fixture.nextTap()
             fixture.wideFact(1)
             fixture.frames(120)
-            assertEquals(5, fixture.state.currentPage, fixture.viewportDiagnostic())
+            assertEquals(4, fixture.state.currentPage, fixture.viewportDiagnostic())
+            fixture.assertPainted(setOf(3, 4))
             fixture.goTo(7)
             fixture.frames(2)
             fixture.goTo(3)
             fixture.wideFact(5)
             fixture.frames(120)
             assertEquals(3, fixture.state.currentPage, fixture.viewportDiagnostic())
-            assertEquals(3, fixture.reports.last())
+            fixture.assertPainted(setOf(3, 4))
+            fixture.assertIdleDoesNotReport()
         }
     }
 
@@ -254,11 +258,11 @@ class DualPageCurrentPageWiringTest {
             fixture.frames()
             assertTrue(
                 fixture.state.dualPageUnits.any {
-                    it.pageIds.map { page -> page.sourcePageIndex } == listOf(1, 2)
+                    it.pageIds.map { page -> page.sourcePageIndex } == listOf(2, 3)
                 },
             )
             assertEquals(
-                listOf(2, 1),
+                listOf(3, 2),
                 fixture.slotIndices(),
                 "Native Compose must consume the shared pair, not rebuild UNKNOWN singles",
             )
@@ -291,16 +295,19 @@ class DualPageCurrentPageWiringTest {
             fixture.confirmPortraitFacts()
             fixture.frames()
             assertEquals(2, fixture.state.currentPage)
-            val reports = fixture.reports.toList()
+            val sequence = fixture.locationSequence()
             fixture.dual(true)
             fixture.frames()
             assertEquals(2, fixture.state.currentPage)
-            assertEquals(if (mode == ReadingMode.LTR) listOf(1, 2) else listOf(2, 1), fixture.slotIndices())
-            assertEquals(reports, fixture.reports)
+            assertEquals(if (mode == ReadingMode.LTR) listOf(2, 3) else listOf(3, 2), fixture.slotIndices())
+            assertEquals(sequence, fixture.locationSequence())
+            fixture.assertPainted(setOf(2, 3))
+            fixture.assertIdleDoesNotReport()
             fixture.dual(false)
             fixture.frames()
             assertEquals(2, fixture.state.currentPage)
-            assertEquals(reports, fixture.reports)
+            assertEquals(sequence, fixture.locationSequence())
+            fixture.assertIdleDoesNotReport()
             assertEquals(0, fixture.chapterRequests)
         }
     }
@@ -316,40 +323,51 @@ class DualPageCurrentPageWiringTest {
             fixture.frames()
             fixture.dual(true)
             fixture.frames()
-            val reports = fixture.reports.toList()
-            repeat(6) { index ->
+            repeat(6) {
+                val sequence = fixture.locationSequence()
                 fixture.adjust()
                 fixture.frames(90)
-                val firstPage = if (index % 2 == 0) 2 else 1
-                assertEquals(firstPage, fixture.state.currentPage)
-                assertEquals(
-                    setOf(firstPage, firstPage + 1),
-                    fixture.state.visiblePageIds.map {
-                        it.sourcePageIndex
-                    }.toSet(),
-                )
-                assertEquals(reports, fixture.reports)
+                assertEquals(2, fixture.state.currentPage)
+                assertEquals(setOf(1), fixture.state.forcedSinglePages)
+                fixture.assertPainted(setOf(2))
+                if (fixture.state.visiblePageIds.map { it.sourcePageIndex }.toSet() == setOf(2)) {
+                    fixture.assertNeighborOwns(3)
+                } else {
+                    fixture.assertPainted(setOf(2, 3))
+                }
+                assertEquals(sequence, fixture.locationSequence(), "Adjust has no reading-navigation cause")
                 assertEquals(0, fixture.chapterRequests)
+                fixture.goTo(1)
+                fixture.frames(90)
+                assertEquals(setOf(1), fixture.state.visiblePageIds.map { it.sourcePageIndex }.toSet())
+                fixture.assertPainted(setOf(1))
+                val returnedSequence = fixture.locationSequence()
+                fixture.adjust()
+                fixture.frames(90)
+                assertEquals(1, fixture.state.currentPage)
+                assertTrue(fixture.state.forcedSinglePages.isEmpty())
+                fixture.assertPainted(setOf(1, 2))
+                assertEquals(returnedSequence, fixture.locationSequence())
+                fixture.assertIdleDoesNotReport()
             }
             fixture.adjust()
             fixture.adjust()
             fixture.frames(120)
-            assertEquals(1, fixture.state.currentPage)
-            assertEquals(setOf(1, 2), fixture.state.visiblePageIds.map { it.sourcePageIndex }.toSet())
-            assertEquals(reports, fixture.reports)
-            repeat(4) {
-                fixture.adjust()
-                fixture.frames(2)
+            assertTrue(fixture.state.currentPage in setOf(1, 2))
+            assertTrue(fixture.state.forcedSinglePages.all { it == 1 })
+            fixture.assertPainted(setOf(fixture.state.currentPage))
+            fixture.goTo(1)
+            fixture.frames(90)
+            if (fixture.state.forcedSinglePages.contains(1)) {
                 fixture.adjust()
                 fixture.frames(90)
-                assertEquals(1, fixture.state.currentPage)
-                assertEquals(setOf(1, 2), fixture.state.visiblePageIds.map { it.sourcePageIndex }.toSet())
-                assertEquals(reports, fixture.reports)
             }
+            fixture.assertPainted(setOf(1, 2))
             fixture.nextTap()
             fixture.frames(90)
             assertEquals(3, fixture.state.currentPage)
-            assertEquals(reports + 3, fixture.reports, fixture.viewportDiagnostic())
+            fixture.assertPainted(setOf(3, 4))
+            fixture.assertIdleDoesNotReport()
             assertEquals(0, fixture.chapterRequests)
         }
     }
@@ -390,10 +408,22 @@ class DualPageCurrentPageWiringTest {
         }
         val reports = mutableListOf<Int>()
         var chapterRequests = 0
-        private val model = ReaderScreenModel(
+        private var unassociatedReports = 0
+        private val model: ReaderScreenModel = ReaderScreenModel(
             prefs = prefs,
             initialSessionState = desktopReaderSessionState(pageCount = 9, initialPage = initialPage),
-            onViewportSettled = { _, active -> reports += active.sourcePageIndex },
+            onViewportSettled = { pages, active ->
+                assertTrue(active in pages)
+                val shared = sharedOwner()
+                val native = currentNative()
+                if (native == null) {
+                    unassociatedReports++ // The scene semantics can be absent during the mounting callback.
+                } else {
+                    assertTrue(pages.all { it in native.frame.drawnPageIds }, viewportDiagnostic())
+                    assertEquals(shared.location?.sequence, native.ticket.locationSequence)
+                }
+                reports += active.sourcePageIndex
+            },
         )
         val state get() = model.state.value
         private val reporter = ReaderIoReporter(ReaderIoProbe.None, ReaderMonotonicClock { 0L })
@@ -472,6 +502,7 @@ class DualPageCurrentPageWiringTest {
         }
 
         fun confirmMatching() {
+            val displayed = sharedOwner().displayedHistory.filter { it.drawnPageIds.isNotEmpty() }
             model.setAutoSpreadMatching(true, prefs)
             val shared = ReaderScreenModel::class.java.getDeclaredField("dualSession").apply { isAccessible = true }
                 .get(model) as mihon.domain.reader.SharedDualPageSession
@@ -491,10 +522,117 @@ class DualPageCurrentPageWiringTest {
                 )
             }
             model.setAutoSpreadMatching(true, prefs)
+            displayed.forEach { frame ->
+                assertTrue(shared.displayedHistory.any { it.id == frame.id && it.unit == frame.unit })
+            }
+            assertTrue(shared.spreadSampleDependencies().isEmpty(), "The original sample capabilities were consumed")
+        }
+
+        private fun sharedOwner(): mihon.domain.reader.SharedDualPageSession =
+            ReaderScreenModel::class.java.getDeclaredField("dualSession")
+                .apply { isAccessible = true }.get(model) as mihon.domain.reader.SharedDualPageSession
+
+        fun currentSlotGeometry(): Map<Int, Triple<Float, Float, Float>> {
+            val slots = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+                .filter { it.config.contains(DualPageSlotIdKey) }
+                .filter { it.config[DualPageSlotIdKey].pageId?.sourcePageIndex in setOf(3, 4) }
+            val origin = slots.first { it.config[DualPageSlotIdKey].pageId?.sourcePageIndex == 3 }
+                .let { it.positionInRoot.x + it.size.width / 2f }
+            return slots.associate {
+                it.config[DualPageSlotIdKey].pageId!!.sourcePageIndex to
+                    Triple(
+                        it.size.width.toFloat(),
+                        it.size.height.toFloat(),
+                        it.positionInRoot.x + it.size.width / 2f - origin,
+                    )
+            }
+        }
+
+        private data class NativeObservation(
+            val ticket: mihon.domain.reader.ReaderDualPageViewportTicket,
+            val frame: mihon.domain.reader.ReaderDualPageFrame,
+            val rendered: Set<mihon.desktop.ui.reader.presentation.DisplaySlotId>,
+            val unit: mihon.desktop.ui.reader.presentation.DisplayUnit,
+        )
+
+        private fun nativeField(native: ReaderPagerNativePresentation, name: String): Any? =
+            ReaderPagerNativePresentation::class.java.getDeclaredField(name)
+                .apply { isAccessible = true }.get(native)
+
+        private fun currentNative(): NativeObservation? {
+            val shared = sharedOwner()
+            val natives = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+                .filter { it.config.contains(ReaderPagerNativePresentationKey) }
+                .map { it.config[ReaderPagerNativePresentationKey] }.distinct()
+            val observations = natives.mapNotNull { native ->
+                if (nativeField(native, "active") != true || nativeField(native, "exposed") != true ||
+                    nativeField(native, "selected") != true
+                ) {
+                    return@mapNotNull null
+                }
+                val ticket = nativeField(native, "ticket") as? mihon.domain.reader.ReaderDualPageViewportTicket
+                    ?: return@mapNotNull null
+                if (ticket.locationSequence != shared.location?.sequence) return@mapNotNull null
+                val frame = shared.frame(ticket) ?: return@mapNotNull null
+                if (frame.id != native.frameId || frame.unit.pageIds.none {
+                        it.sourcePageIndex == state.currentPage
+                    }
+                ) {
+                    return@mapNotNull null
+                }
+                @Suppress("UNCHECKED_CAST")
+                val rendered = (
+                    nativeField(native, "rendered") as
+                        Set<mihon.desktop.ui.reader.presentation.DisplaySlotId>
+                    ).toSet()
+                val unit = nativeField(native, "unit") as mihon.desktop.ui.reader.presentation.DisplayUnit
+                NativeObservation(ticket, frame, rendered, unit)
+            }
+            assertTrue(observations.size <= 1, "The current scene must have one selected native frame")
+            return observations.singleOrNull()
+        }
+
+        fun currentDrawn(): Set<Int> {
+            val native = currentNative() ?: return emptySet()
+            val rendered = native.rendered.mapNotNull { it.pageId }.toSet()
+            return native.frame.drawnPageIds.intersect(rendered).map { it.sourcePageIndex }.toSet()
+        }
+
+        fun assertPainted(pages: Set<Int>) {
+            val native = requireNotNull(currentNative()) { viewportDiagnostic() }
+            assertTrue(pages.isNotEmpty())
+            assertTrue(currentDrawn().containsAll(pages), viewportDiagnostic())
+            assertTrue(native.frame.unit.pageIds.map { it.sourcePageIndex }.containsAll(pages), viewportDiagnostic())
+            assertTrue(native.unit.slots.mapNotNull { it.page?.id?.sourcePageIndex }.containsAll(pages))
+            val slots = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+                .filter { it.config.contains(DualPageSlotIdKey) }
+            for (page in pages) {
+                val actual = native.rendered.single { it.pageId?.sourcePageIndex == page }
+                assertTrue(
+                    slots.any {
+                        it.config[DualPageSlotIdKey] == actual &&
+                            it.boundsInRoot.width > 0 && it.boundsInRoot.height > 0 &&
+                            it.size.width > 0 && it.size.height > 0
+                    },
+                    viewportDiagnostic(),
+                )
+            }
+        }
+
+        fun assertNeighborOwns(page: Int) {
             assertTrue(
-                state.dualPageUnits.any { it.pageIds.map { page -> page.sourcePageIndex } == listOf(2, 3) },
-                "The delivered samples must cause an actual shared matching reflow",
+                sharedOwner().displayedHistory.any {
+                    it.unit.pageIds.none { id -> id.sourcePageIndex == state.currentPage } &&
+                        it.drawnPageIds.any { id -> id.sourcePageIndex == page }
+                },
+                viewportDiagnostic(),
             )
+        }
+
+        fun assertIdleDoesNotReport() {
+            val completed = reports.toList()
+            frames()
+            assertEquals(completed, reports, "Repeated idle drawing cannot repeat progress")
         }
 
         fun locationSequence(): Long {
@@ -506,12 +644,11 @@ class DualPageCurrentPageWiringTest {
         fun viewportDiagnostic(): String {
             val owner = ReaderScreenModel::class.java.getDeclaredField("dualSession").apply { isAccessible = true }
                 .get(model) as mihon.domain.reader.SharedDualPageSession
-            fun field(name: String) = owner.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(owner)
             val native = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
                 .filter { it.config.contains(ReaderPagerNativePresentationKey) }
                 .map { it.config[ReaderPagerNativePresentationKey].describe() }
-            return "location=${owner.location}, layout=${owner.layoutRevision}, issued=${field("issuedViewport")}, " +
-                "lastRead=${field("lastReadLocationSequence")}, state=${state.currentDisplayUnitId}, native=$native"
+            return "location=${owner.location}, layout=${owner.layoutRevision}, history=${owner.displayedHistory}, " +
+                "state=${state.currentDisplayUnitId}, native=$native, unassociatedReports=$unassociatedReports"
         }
 
         fun slotIndices(): List<Int?> = requireNotNull(state.currentDisplayUnitId).slots.map {

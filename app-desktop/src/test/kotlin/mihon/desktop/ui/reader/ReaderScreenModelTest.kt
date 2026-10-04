@@ -252,6 +252,8 @@ class ReaderScreenModelTest {
         model.presentReadyPagerViewport()
 
         model.acceptSessionState(desktopReaderSessionState(chapterId = 7L, pageCount = 2))
+        assertTrue(settled.isEmpty(), "Queued content cannot manufacture a presentation")
+        model.presentReadyPagerViewport()
 
         assertEquals(displayUnit, model.state.value.currentDisplayUnitId)
         assertEquals(setOf(pageId), model.state.value.visiblePageIds)
@@ -272,6 +274,7 @@ class ReaderScreenModelTest {
         var singleSettlements = 0
         val singleModel = ReaderScreenModel(
             initialSessionState = queued,
+            dualPageOverride = false,
             onViewportSettled = { _, _ -> singleSettlements++ },
         )
         val singleViewport = VisiblePageSet(
@@ -302,6 +305,7 @@ class ReaderScreenModelTest {
         var dualSettlements = 0
         val dualModel = ReaderScreenModel(
             initialSessionState = queued,
+            dualPageOverride = true,
             onViewportSettled = { _, _ -> dualSettlements++ },
         )
         val dualViewport = VisiblePageSet(

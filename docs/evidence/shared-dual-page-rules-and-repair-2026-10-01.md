@@ -1473,3 +1473,75 @@ Root独读实际stdout／geometry、原测试硬断言及代理结构化回执�
 同一独审的末段由Root完成：S01–S16按上表及上文真实生产链／原图／SQL／几何／资源结果满足开发门槛，已定位产品失败均有正确红、最小修复、关联绿与必要复验，当前无未关闭的实施验收失败。冻结批次采用原26首次结果＋保护2项补验的组合，MWS／Loader相关部分再由33覆盖，最新共享130／Desktop62／Android本72覆盖最后导航影响；不称最终代码fresh重新全跑上述全集。manifest仅新增原共享owner的生产映射及当前引用行，历史status／固定原图／保护方法未提升或删除。84文件内聚于原共享呈现、双端接线、资源／操作及对应验收，规模和成本已在审计中如实承认；未新增独立产品能力。维护文档同步后随SP01功能批次统一提交，DP02仍未完成，不提前启动其测试或构建。
 
 本次恢复仅一个修复批次：产品实现0／测试或夹具修改0／开发构建0，Android instrumentation1次（4分44秒），主代理完成既有证据复核／维护文档与提交。SP01本段保守计时从02:37:19起，签收发生于03:37:19检查点前；具体截止及提交hash由Git／后续正式交付证据追溯。实现与测试编写没有历史分项计时，仍不倒算其占比；无外部等待扣除、无新的统计系统。
+
+### DP02 v3首次最终矩阵与剩余门禁
+
+SP01功能提交为 `dec006e7d37d31f78bad5edc3188b228530f2e81`，84文件＝34production／43tests／6docs／1manifest，13,649新增／1,501删除。提交后worktree clean；SP01开发门禁勾选不代表最终矩阵或正式交付通过。DP02五小时检查点从北京时间2026-10-05 02:59:00至07:59:00；不重置旧验证预算、不将正常工具等待剔除。Root执行本地唯一协调器重型工作，同一实施者负责Mac隔离前置；后续发现相关失败时复用该实施者优先修复，暂停正式构建。
+
+Android统一入口 `check --signing` 实际通过：JDK21.0.11、SDK36／Build Tools36.0.0、原release证书已验证、versionCode仍40／aex.22，源码为干净SP01提交、productionInputsSHA `d540fc3f37697a3a46cad033d3f355d090eb017c71acf79c115c7c526173996f`。只读预检不分配版本、不构建、不安装。Mac14.8.4／Temurin21.0.10+7实核，Data约3.4–3.5GiB可用；新隔离根 `/Users/altair/Library/Caches/mihon-shared-dual-page-v3-20261005-dec006e/` 已有同commit的clean源码／B1/B2原SHA输入，AppVersion70。旧三个应用实例和旧dirty checkout保护，未正式构建／递增版本／启动新应用。
+
+#### Desktop首次完整结果：失败保留，禁止自动重跑
+
+命令为协调器 `dp02-v3-desktop-full` 包装项目 `scripts/build-desktop.sh full-tests`，实际Windows分派 `build-windows.ps1 -TestOnly -FullTests`，integration=true，版本不变；会话设置单worker／不并行，未启可选开发benchmark环境。第一次分离启动命令被自动审批拒绝，零执行，随后同key改run才实际启动，不能算两次全量。worker13168／process43004，UTC19:00:33.423–19:06:55.903自然FAILED，Gradle BUILD FAILED in6m20s。440份原XML完整保存在 `.gradle-coordinator/dp02-v3-desktop-full/`，原日志同key `.log`；总3294tests／35failures／0errors／10skips。没有把原XML通过部分覆盖或把测试失败记为全部通过。
+
+| 失败组 | 首次实际证据／初步分类 | 处理边界 |
+|---|---|---|
+| DualPageCurrentPageWiring | 多项NoSuchFieldException issuedViewport发生于旧诊断helper；另有旧prefix reflow、旧[1,2]配对与手调预期失败 | 先恢复真实诊断并逐项对照v3，不删除真实logicaltarget／pixels／进度断言；私有旧字段失败不是产品红 |
+| SessionIntegration／AdaptiveViewport／DefaultMode | 旧[1,2]／[2,1]与实际[2,3]／[3,2]不符 | 判断是设计明确冷起点变化还是production导航／进度回归，不先改期望刷绿 |
+| RuntimeFactory三项 | 实际header两lease入飞仅[6]、冷反向optional未进入、B2普通holder前dimensions未确认 | 区分正常metadata与可选样本及真实模式／busy前置；核与Mac原图前置的关联 |
+| ReaderScreenModel两项 | 重复settle次数预期1实际0；旧canonical viewport源页与当前真实双页不同 | 保真实prepare／draw／settle与用户原因，不用直接伪读代替 |
+| Pipeline generation fence | decodeReturned后disposer预期1实际0 | 只读核是否把decoder返回错误当物理finally完成；不因此放松释放／资源归零要求 |
+| PartialRace目录发布 | Windows Files.move实际AccessDeniedException | 当前独立lease／目录链是否受本轮改动影响仍待分类；不猜改文件协议或延长超时 |
+| 非reader候选无关项 | GeneratedDependencyNotices／AboutUpdate两项199实际198；BrowseSearch HTTP header EOF；AuthorCard未出现late author | 保留首次失败，不自动修license／作者／搜索，不声称无关原因已证实 |
+
+截至首次结果，正式Windows／Android／Mac构建均未启动，其他最终矩阵目标尚未执行；完整Desktop没有通过证据，不能据此前focused绿直接放行build-only。原实施者接手相关失败的唯一修复簇，主代理仅归因核对及同一必要修复复审。先只读分类，诊断30分钟／两次无新事实停损；预计定位5–15分钟、范围内最小修复与定向验证25–45分钟。若已有正确红且需产品最小修改，保严格TDD；旧设计预期／宿主／诊断前置只改必要测试部分。未受修改影响的首轮绿复用，未执行的矩阵保持待验，不自动重跑完整Desktop／Android对照。
+
+#### Mac平台定向结果与正式门禁
+
+`sp-dp02-mac-native-original-focused` 自然PASSED，UTC19:04:18.246–19:07:56.356，NativeStable实际17项，fresh XML19:07:40.326／14.82秒，零failure／error／skip。Original首次FQN误用ui.reader，零发现不能记通过；只补准确 `mihon.desktop.reader.SharedDualPageOriginalImagesProductionTest` 六项，没有重复Native17。补验 `sp-dp02-mac-original-six` 自然FAILED，UTC19:08:24.115–19:09:25.205，XML19:08:28.375／56.154秒，6项／5failures／0errors／0skips：原B1 cold17→reverse16→return17通过，其他五项停在实际元数据前置，未据此认定产品原因或降低前置。两组XML已归档现有协调器目录；真实MacSkia／Compose是平台定向证据，不能当正式发布应用运行通过。Mac无在途工作且AppVersion70，后续正式构建暂停，先统一诊断Windows与Mac相关metadata失败，不新建fixture协议／观察器／验收框架。
+
+首轮Desktop的10个skip已逐XML核实：原图Original6因该次未提供 `MIHON_READER_ORIGINAL_ARCHIVES` 未执行，原可选开发性能方法1，MacNativeShare／WindowsPrivacy／非release Library各1条件不成立。不能把这些skip当通过；原图开发组合证据沿用，但当前Mac五失败和本次共享fixture适配需要按实际影响补Windows原图六项及Mac相关范围，不重跑完整Desktop来补环境。
+
+Root另只读比较旧正式70的实际 `app-desktop-jvm-*.jar` 中 `META-INF/mihon/dependencies.json` 与本次生成resource：两者均198个library，uniqueId集合一致，removed／added均空。GeneratedDependencyNoticesResourceTest与AboutUpdateWiringTest中固定199的数量失败，不能作为本轮新增依赖遗漏证据。是否只修这两个无关测试的199→198、保排序／必需名称／许可证正文验收，已单独异步请求用户决定，未收到批准前不编辑；其他未相关作者／搜索／Windows目录失败继续保留原证据，不擅自修产品。
+
+相关失败修复限定七个既有reader测试类及原Original／必要helper：先修失效诊断引用，核真实public location／frame；旧固定全章相位、双可选lease同时入飞、整章早确认与v3局部窗口／单可选工作者矛盾时，只改合法前置及本次明确新预期，保源目标／SQL真实drawmax、实际pixels／12帧几何及旧ticket拒绝。Pipeline decoder-return信号早于真正资源finally结束是待核竞态，必须保真实disposer完成与physical归零；两项ReaderScreenModel回调尚待准确分类，不能提前宣称该修复簇通过。诊断从UTC19:10起遵守30分钟／两次无新事实停损，原实施者主要实施，Root不重复写代码或重启全量。
+
+#### 首轮相关focused：41项，25通过／16待修正，未重跑全量
+
+九个既有测试文件的首轮适配没有production修改。两个启动前置分别为Windows `./gradlew.bat` 被cmd误解析、configuration-on-demand导致既有格式init找不到尚未加载的Spotless插件；两次均零业务执行、自然终态，原日志分别保留为 `dp02-related-reader-focused`／`dp02-related-reader-focused2`。修正为原已验证 `gradlew.bat` 入口及先配置 `:app:spotlessKotlinCheck`（该模块格式目标0文件），未修改构建脚本或扩大业务范围；第三key才是首个实际业务执行。
+
+`dp02-related-reader-focused3` UTC19:41:49.801–19:42:38.835，worker43892／process40176自然FAILED；九份fresh XML已归档同key目录。Root独读XML核41tests／16failures／0errors／0skips：Pipeline1、RuntimeFactory3、Session1、Original6、Model4和SharedWiring3共18项全绿，DualCurrent21中7绿14失败，Adaptive1／Default1失败，合计25绿。Pipeline保真实disposer完成和physical工作归零；Model仅Ready页以synthetic40×60metadata经过真实prepareDecoded协议，不能将该helper当原生像素证明。
+
+剩余16项已有可区分证据，不以再次全量代替诊断：Rapid2的第二次真实tap发生于源4未绘制，应先到4而非跳5；NativeAnimation6把实际进度回执anchor误当唯一逻辑目标；ModeChange3、Adaptive1、Default1把真实新伙伴绘制后的合法追加进度当重复；Matching1立即读取被显式设置重置的state ID，不能证明实际已画图片；Adjust3把部分绘制回执或第二槽尚未绘制当完整配对。只调整同九个测试的合法前置和契约断言，保独立source location／sequence、实际frame.drawn、完整伙伴绘制、idle去重及真实按钮／键鼠，不增加production机制或放宽像素、超时和完成标准。相应测试名称与精确过滤同步，不能保留“真实伙伴永不计读”的旧名称。
+
+Root对Original补验另发现首绘后factDependencies可能为空，`held ∩ dependencies`会真空通过晚事实门槛；六项此刻虽绿仍未签收该门槛。实施者须记录真实已经进入的held header／decode项、断非空及其返回／fact完成，再保原首prepare、25点像素与12帧frame／mount／矩形检查；不等待根本未请求的窗外页，也不删除迟到事实前置。第二轮只补这六项、上述16失败及回执helper直接受影响方法，未改的绿色复用；当前没有正式构建、另一次完整Desktop或Android72。两项license范围扩张仍等待用户决定，未编辑。
+
+随后 `dp02-related-reader-remaining` 为类型推导递归导致的compileTest失败，零业务；仅给Fixture的model／sharedOwner明确类型后，`dp02-related-reader-remaining2` UTC19:52:07–19:52:37运行27项／4失败／0error／0skip。Original6实际进入项非空、返回及fact后25点／12帧、Adjust5、Rapid2、Adaptive1、Default1共15项通过；剩余4项为新observer把动画裁剪后的bounds当测量尺寸，及把model快照当当前绘制全集。用原生语义节点未裁剪size／position、两槽相对中心X消去共同动画位移后，`dp02-related-reader-observer-final` UTC19:54:08.242–19:54:29.329实际12项全绿。14项未改绿色＋15项＋12项组成41项有效关联证据，不是fresh再跑41或完整Desktop。
+
+macOS只同步Original最终测试fixture，在原隔离源码／原SHA输入上 `dp02-mac-original-fixture-final` UTC19:56:09.180–19:56:26.803实际6项全绿，XML timestamp19:56:17.241／8.972秒／零failure／error／skip，已归档本地同key；Native17未重复。production仍SP01提交、版本70，无正式构建。Root核Original实际进入／返回及facts门槛和原首prepare／强像素断言后签收该窄段。
+
+Root末轮复审仍未签收DualCurrent的历史合并observer：`currentDrawn`合并含逻辑目标的历史frame可能误判当前画面，须改为当前active／selected／exposed原生对象的有效ticket／frameId、同一个owner.frame及实际rendered槽，不能退回历史。其直接消费者精确为NativeInput9、ModeChange3、Rapid2、Adjust5、LateMetadata1、MountedPair1共21参数，补验理由是共享observer改变，不是扩大整类。`visiblePageIds`不是delta；源码表明它取最后成功进度回执的frame.drawn，无新进度时提前返回可保留部分快照。旧XML直接观测唯一Dual history完整drawn2/3和native rendered2/3，但model可保留3；逐ACK先后未记录，只能推断。ReaderViewport与普通调度不读取此字段，HTTP导出不能据此作为当前像素全集；API参考同步说明边界，不新增production观测机制。原有41组合绿色尚不能代替这个准确当前frame门槛。
+
+#### 剩余最终矩阵首次：共享全绿，Android18失败保留
+
+Root从干净SP01 production及上述test-only差异启动 `dp02-v3-remaining-final-matrix`：`gradlew.bat :domain:jvmTest :domain:testDebugUnitTest :app:testReleaseUnitTest :test-desktop:test spotlessCheck --no-parallel --max-workers=1`，UTC20:00:24.677–20:19:35.290自然FAILED／exit1，worker46984／process45936确认已退出，Gradle19分10秒。途中只追加API观测说明，production／测试输入保持冻结；未另起Gradle、未重跑任何已完成完整目标。成本高于5–15分钟预估，DP02五小时检查点仍07:59，不扣除工具等待。
+
+首次三目标XML按平台前缀保存在 `.gradle-coordinator/dp02-v3-remaining-final-matrix/`：domain JVM103份／665项、domain Android87份／570项均零failure／error／skip，实际XML timestamp分别20:00:29.947–20:00:35.558、20:00:38.708–20:00:42.871；app Release125份／735项／18failures／0errors／7skips，timestamp20:01:17.426–20:19:23.767。失败中止后未执行的 `:test-desktop:test` 与 `spotlessCheck` 保持待验，不能用其他旧XML当本次执行。共享两目标已完成，后续无相关production修改时复用，不重复运行。
+
+Android18失败分布为CoreProduction／ChapterWindow／ProgressProduction／ProgressSettlementRace各1、SyncResume8、SyncSession6，均在六个旧reader测试fixture。SyncResume8直接是ReaderViewModel:1256读取 `defaultReadingMode().get()` 的Object→Number类型转换异常；另外10是初始化／激活成功断言，包装内因待核。真实偏好为Int／AUTO；六fixture都使用relaxed mock而未配置该Int，本轮loadChapter新增usesDualPageViewer判断触发原getMangaReadingMode。允许先核终态XML并仅补真实默认模式stub，保同步恢复／阅读进度全部原断言，原18项focused，预计5–10分钟；不修同步产品或新增框架。与当前Desktop21观察器门槛串行验证，限定既有15测试文件格式；无新的完整模块测试授权。license2及其他候选无关三项仍未修改，正式三端产物仍待。
+
+#### 当前限定修复签收与执行偏差
+
+当前修复只涉及15个既有reader测试文件（Desktop9／Android6），production／资源／构建配置没有改动。Android六fixture各只增加真实Int／AUTO默认模式stub，保原同步恢复、窗口、SQL进度与竞态断言。Desktop当前观察器改为选中、active、exposed原生对象的有效ticket、同一frameId及实际rendered槽；drawn只与该当前frame／槽相交，不合并历史，不把model快照当屏幕全集。没有原生节点时只记录未关联回执，不以历史兜底宣称完整关联；未另跑测试统计这类回执数量。Root独立核实际diff、production消费路径及下述fresh XML，签收相关修复；API参考只说明现有HTTP快照边界，不新增产品机制。
+
+必须记录一次违反验证范围的执行失误：`dp02-current-native-default-pref-focused` 把 `:app:testReleaseUnitTest` 和 `:app-desktop:jvmTest` 同置于命令、将所有 `--tests` 放在末尾，Gradle过滤实际只绑定后一个Desktop task，Android因此意外无过滤。这是第二次未过滤App模块启动，不能写成仅39项focused或零业务执行。发现后只停止该key记录的进程树，UTC20:24:47.051–20:26:30.093，CANCELLED／exit130；最终stdout已有41 PASSED（18相关＋23额外），无FAILED，没有自然完成或fresh XML。该key归档中的125份XML是首次矩阵旧结果，不是本次产出。首轮735项证据保留；取消的误启动不构成有效完整证据，也不恢复任何额度。后续focused命令各仅一个Test task，精确过滤并核非零实际用例，不再自动启动完整App。
+
+正确分开执行后，`dp02-default-pref-exact18` UTC20:26:51.997–20:27:58.741自然PASSED，fresh六XML18项／零failure、error、skip；`dp02-current-native-exact21` UTC20:29:04.468–20:29:31.788自然PASSED，fresh一XML21参数／零failure、error、skip。均归档于同key目录，worker／process已经退出。Android首次完整结果中的710个未受影响通过及7个skip可复用，18失败由此次补验关闭；不能称最终代码重新跑完735项。Desktop当前41项关联证据为首focused3中未受影响12项＋remaining2中Original6／Adaptive1／Default1共8项＋当前observer21；此前observer12已被21替代，不重复累计或声称fresh完整41／全量通过。Mac当前Original6与未受影响Native17同样按平台证据复用。
+
+#### 格式、客户端与原三项未复现
+
+`dp02-v3-client-format-first` UTC20:31:22.856–20:32:23.834自然PASSED，全局 `spotlessCheck` 已通过；该命令的客户端task仅UP-TO-DATE，XML仍是10月2日旧结果，不能记为本轮实际客户端执行。随后仅 `:test-desktop:test --rerun` 强制这个task首次实际执行，未强制重编依赖、未重复Desktop完整模块：`dp02-v3-client-first-execution` UTC20:34:43.186–20:35:00.604自然PASSED，fresh八XML53项／零failure、error、skip，已归档。Root核客户端使用独立本地HTTP夹具／模型与Python校验；没有向Windows日常应用发送原生键鼠事件。
+
+首次Desktop余下三项采用原方法各一次、单一Test task、integration=true／单worker的最小诊断，无文件修改：`dp02-unrelated-three-diagnostic` UTC20:42:25.751–20:42:40.082自然PASSED，fresh三XML各1项／零failure、error、skip。目录重命名实际越过原ATOMIC_MOVE并通过最终re-probe／bytes；搜索原HTTP过期完成请求得到409／NO_ACTIVE_LOGIN；作者真SQLite／Compose切All恢复原Late50断言。三个fixture及直接production调用链均无SP01差异。此次只证明未复现，不证明杀毒、文件锁、延时或唯一故障原因；首次AccessDenied／HTTP EOF／索引未完成失败及日志继续保留，不重跑或自动修复作者／搜索／文件协议。
+
+本段墙钟从首次相关诊断开始至上述终态均计入DP02原五小时检查点，没有外部等待扣除；实现0、新产品文件0、新构建0、新代理0。实际命令、前置失败、取消误启动及有效／旧XML分别如上，不把测试机器运行时间当测试工程工时。相关测试修正及必要说明随一个修复提交收口，提交hash由Git追溯。两个199→198的无关license断言仍未获用户决定、未编辑；完整Desktop尚不能描述为通过，Windows／Mac正式build-only门禁未放行，三端正式产物及S17仍待，DP02保持未勾选。

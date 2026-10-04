@@ -10,6 +10,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -450,6 +451,7 @@ class DesktopReaderPageImagePipelineTest {
             val decodeEntered = CountDownLatch(1)
             val releaseDecode = CountDownLatch(1)
             val decodeReturned = CountDownLatch(1)
+            val disposed = CountDownLatch(1)
             val disposeCalls = AtomicInteger()
             val contentOwner = contentOwner(ioScope, reporter) { ENCODED_BYTES }
             val pipeline = DesktopReaderPageImagePipeline(
@@ -459,7 +461,10 @@ class DesktopReaderPageImagePipelineTest {
                 decoder = DesktopReaderPageImageDecoder { _, _ ->
                     decodeEntered.countDown()
                     check(releaseDecode.await(5, TimeUnit.SECONDS))
-                    asset(tag = 1, disposer = { disposeCalls.incrementAndGet() }).also { decodeReturned.countDown() }
+                    asset(tag = 1, disposer = {
+                        disposeCalls.incrementAndGet()
+                        disposed.countDown()
+                    }).also { decodeReturned.countDown() }
                 },
             )
             val staleKey = key(generation = 1L)
@@ -480,6 +485,10 @@ class DesktopReaderPageImagePipelineTest {
                 val result = runCatching { withTimeout(5_000) { acquiring.await() } }.getOrNull()
                 result?.close()
                 assertNull(result)
+                assertTrue(withContext(Dispatchers.IO) { disposed.await(5, TimeUnit.SECONDS) })
+                withTimeout(5_000) {
+                    (if (optional) pipeline.optionalWork else pipeline.foregroundWork).first { it == 0 }
+                }
                 assertEquals(1, disposeCalls.get())
                 assertTrue(pipeline.snapshot().cache.keys.isEmpty())
                 assertEquals(0, pipeline.snapshot().inFlightCount)

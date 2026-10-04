@@ -59,10 +59,17 @@ class AdaptiveReaderViewportTest {
         val prefs = ReaderPreferences(DesktopPreferenceStore(root.node("current")), root.node("legacy"))
         prefs.readingMode = ReadingMode.AUTO
         val reports = mutableListOf<Int>()
-        val model = ReaderScreenModel(
+        lateinit var model: ReaderScreenModel
+        model = ReaderScreenModel(
             prefs = prefs,
             initialSessionState = desktopReaderSessionState(pageCount = 5, initialPage = 2),
-            onViewportSettled = { _, active -> reports += active.sourcePageIndex },
+            onViewportSettled = { pages, active ->
+                val shared = ReaderScreenModel::class.java.getDeclaredField("dualSession")
+                    .apply { isAccessible = true }.get(model) as mihon.domain.reader.SharedDualPageSession
+                assertTrue(active in pages)
+                assertTrue(shared.displayedHistory.any { frame -> pages.all { it in frame.drawnPageIds } })
+                reports += active.sourcePageIndex
+            },
         )
         // This isolated renderer supplies its original dimensions through the real shared ticket.
         model.state.value.session.activeChapter.pages.forEach { page ->
@@ -112,14 +119,14 @@ class AdaptiveReaderViewportTest {
             frames()
             assertTrue(model.state.value.dualPageMode)
             assertEquals(
-                listOf(1, 2),
+                listOf(2, 3),
                 model.state.value.dualPageUnits.single { unit ->
                     unit.pageIds.any { it.sourcePageIndex == 2 }
                 }.pageIds.map { it.sourcePageIndex },
             )
             assertEquals(2, model.state.value.dualPageLocation?.pageId?.sourcePageIndex)
             assertEquals(2, model.state.value.currentPage)
-            assertEquals(listOf(2), reports)
+            assertEquals(listOf(2, 3), reports)
             model.toggleUI()
             frames()
             assertTrue(model.state.value.dualPageMode)
@@ -127,7 +134,7 @@ class AdaptiveReaderViewportTest {
             frames()
             assertFalse(model.state.value.dualPageMode)
             assertEquals(2, model.state.value.currentPage)
-            assertEquals(listOf(2), reports)
+            assertEquals(listOf(2, 3), reports)
             val pageBounds = scene.semanticsOwners.flatMap { flatten(it.unmergedRootSemanticsNode) }
                 .first { node ->
                     node.config.contains(ReaderDisplayUnitIdKey) &&
@@ -142,7 +149,7 @@ class AdaptiveReaderViewportTest {
             scene.sendPointerEvent(PointerEventType.Release, nextTap, button = PointerButton.Primary)
             frames()
             assertEquals(4, model.state.value.currentPage)
-            assertEquals(listOf(2, 3, 4), reports)
+            assertEquals(listOf(2, 3, 3, 4), reports)
         } finally {
             scene.close()
             owner.close()

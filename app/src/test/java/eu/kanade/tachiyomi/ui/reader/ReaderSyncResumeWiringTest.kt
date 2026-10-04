@@ -10,6 +10,7 @@ import eu.kanade.tachiyomi.ui.reader.loader.ChapterLoader
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -268,6 +269,7 @@ class ReaderSyncResumeWiringTest {
             downloadProvider = mockk(relaxed = true),
             imageSaver = mockk(relaxed = true),
             readerPreferences = mockk<ReaderPreferences>(relaxed = true) {
+                every { defaultReadingMode().get() } returns ReadingMode.AUTO.flagValue
                 every { skipRead().get() } returns false
                 every { skipFiltered().get() } returns false
                 every { skipDupe().get() } returns false

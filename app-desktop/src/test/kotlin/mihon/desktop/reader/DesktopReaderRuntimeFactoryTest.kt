@@ -179,11 +179,11 @@ class DesktopReaderRuntimeFactoryTest {
             }
         }
         try {
-            pumpUntil { entered.containsAll(listOf(6, 8)) }
+            pumpUntil { entered.contains(6) }
             assertEquals(
-                listOf(6, 8),
-                entered.sorted(),
-                "Both actual bounded prefix leases must have started before either header completes",
+                listOf(6),
+                entered.toList(),
+                "The original bounded header worker serializes optional reads",
             )
             val location = model.state.value.dualPageLocation
             gates.getValue(6).complete(Unit)
@@ -203,6 +203,7 @@ class DesktopReaderRuntimeFactoryTest {
                 cancelled.isEmpty(),
                 "Another page's metadata confirmation cannot cancel the original second header lease",
             )
+            pumpUntil { entered.contains(8) }
             assertEquals(1, entered.count { it == 8 })
             gates.getValue(8).complete(Unit)
             pumpUntil {
@@ -392,7 +393,7 @@ class DesktopReaderRuntimeFactoryTest {
     }
 
     @Test
-    fun `cold tail actual runtime supplements backward headers within shared budget`() = runBlocking {
+    fun `cold tail runtime reads ordinary images without fetching an unknown prefix`() = runBlocking {
         val dispatcher = StandardTestDispatcher()
         val scope = CoroutineScope(SupervisorJob() + dispatcher)
         val dimensions =
@@ -470,33 +471,26 @@ class DesktopReaderRuntimeFactoryTest {
         try {
             pumpUntil { model.state.value.session.activeChapter.pages.size == 17 }
             val tail = model.state.value.session.activeChapter.pages.last().id
-            // Normal visible loading keeps its existing scheduler ownership; optional facts must
-            // supplement the still-unknown prefix, never manufacture a rendered reading event.
+            // A cold tail consumes ordinary loading; optional facts must not fetch a backward prefix.
             pumpUntil {
-                enteredPrefix.count == 0L && sceneNodes(scene).any { node ->
+                sceneNodes(scene).any { node ->
                     node.config.contains(ReaderPagerNativePresentationKey) &&
                         node.config[ReaderPagerNativePresentationKey].describe().contains("reported=true")
                 }
             }
-            assertEquals(0L, enteredPrefix.count, "The original optional request must actually be in flight")
+            assertEquals(1L, enteredPrefix.count, "Optional metadata must not materialize source fifteen")
             assertTrue(
                 sceneNodes(scene).any {
                     it.config.contains(ReaderPagerNativePresentationKey) &&
                         it.config[ReaderPagerNativePresentationKey].describe().contains("reported=true")
                 },
-                "The original tail pixels must actually have been drawn and settled while optional work is in flight",
+                "The original tail pixels must actually have been drawn and settled",
             )
             val location = model.state.value.dualPageLocation
             releasePrefix.countDown()
-            pumpUntil {
-                model.state.value.dualPageUnits.any {
-                    it.pageIds.singleOrNull()?.sourcePageIndex == 9 &&
-                        it.certain
-                }
-            }
             assertTrue(
-                paths.contains("/image/9"),
-                "The actual content route must supplement the needed wide boundary; paths=$paths",
+                !paths.contains("/image/9") && !paths.contains("/image/14"),
+                "Optional metadata cannot add distant or backward HTTP work; paths=$paths",
             )
             pumpUntil {
                 model.state.value.dualPageUnits.singleOrNull {
@@ -508,13 +502,12 @@ class DesktopReaderRuntimeFactoryTest {
                 mihon.domain.reader.ReaderPortraitSingleSlot.RIGHT,
                 units.single { it.pageIds.singleOrNull()?.sourcePageIndex == 16 }.slots.single().position,
             )
-            assertTrue(units.any { it.pageIds.map { id -> id.sourcePageIndex } == listOf(14, 15) })
             assertEquals(16, model.state.value.dualPageLocation?.pageId?.sourcePageIndex)
             assertEquals(location, model.state.value.dualPageLocation)
             assertEquals(
-                1,
+                0,
                 paths.count { it == "/image/14" },
-                "Metadata and drawn settlement must retain the original in-flight request",
+                "The backward unknown page is not an optional network request",
             )
             assertEquals(1, paths.count { it == "/image/16" }, "Metadata must not restart normal visible image work")
             pumpUntil {
@@ -708,35 +701,39 @@ class DesktopReaderRuntimeFactoryTest {
             }
         }
         try {
-            pumpUntil { model.state.value.dualPageUnits.size > 0 && model.state.value.dualPageUnits.all { it.certain } }
+            pumpUntil {
+                model.state.value.session.activeChapter.pages.size == 22 &&
+                    model.state.value.dualPageUnits.any {
+                        it.pageIds.singleOrNull()?.sourcePageIndex == 1 &&
+                            it.slots.single().position == mihon.domain.reader.ReaderPortraitSingleSlot.LEFT
+                    }
+            }
             assertEquals(22, model.state.value.session.activeChapter.pages.size)
-            assertTrue(
-                model.state.value.dualPageUnits.all { it.certain },
-                "Actual encoded header publisher must confirm dimensions before a holder exists",
-            )
-            val units = model.state.value.dualPageUnits
-            assertTrue(
-                units.any {
-                    it.pageIds.singleOrNull()?.sourcePageIndex == 1
-                },
-                "B2 page two must have its real structural singleton: $units",
-            )
-            assertTrue(
-                units.any {
-                    it.pageIds.singleOrNull()?.sourcePageIndex == 19
-                },
-                "B2 page twenty must have its real full singleton: $units",
-            )
             assertEquals(
-                mihon.domain.reader.ReaderPortraitSingleSlot.LEFT,
-                units.single { it.pageIds.singleOrNull()?.sourcePageIndex == 1 }.slots.single().position,
-            )
-            assertEquals(
-                mihon.domain.reader.ReaderPortraitSingleSlot.FULL,
-                units.single { it.pageIds.singleOrNull()?.sourcePageIndex == 19 }.slots.single().position,
+                mihon.domain.reader.ReaderPageFactState.UNKNOWN,
+                model.state.value.dualPageIdentity?.pageIds?.get(19)?.let { id ->
+                    val owner = ReaderScreenModel::class.java.getDeclaredField("dualSession")
+                        .apply { isAccessible = true }.get(model) as mihon.domain.reader.SharedDualPageSession
+                    owner.pageFact(id)?.state ?: mihon.domain.reader.ReaderPageFactState.UNKNOWN
+                },
+                "Normal nearby loading does not analyze every distant page",
             )
             for ((index, expectedWidth) in listOf(1 to 350f, 19 to 700f)) {
-                model.goToPage(index)
+                if (index == 19) {
+                    model.setDualPageMode(false)
+                    for (neighbor in listOf(18, 20)) {
+                        model.goToPage(neighbor)
+                        pumpUntil {
+                            model.state.value.visiblePageIds.any { it.sourcePageIndex == neighbor }
+                        }
+                        assertTrue(model.state.value.visiblePageIds.any { it.sourcePageIndex == neighbor })
+                    }
+                    model.goToPage(index)
+                    pumpUntil { model.state.value.visiblePageIds.any { it.sourcePageIndex == index } }
+                    model.setDualPageMode(true)
+                } else {
+                    model.goToPage(index)
+                }
                 pumpUntil {
                     sceneNodes(scene).any {
                         it.config.contains(DualPageSlotIdKey) &&
