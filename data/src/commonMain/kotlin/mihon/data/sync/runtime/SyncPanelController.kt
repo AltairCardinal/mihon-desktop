@@ -73,7 +73,7 @@ class SyncPanelController(
     private var observedCompletion = runtime.coordinator.activity.value.completion
 
     init {
-        scope.launch {
+        this.scope.launch {
             for (command in commands) {
                 try {
                     command()
@@ -84,7 +84,7 @@ class SyncPanelController(
                 }
             }
         }
-        scope.launch {
+        this.scope.launch {
             handler.subscribeToOneOrNull { sync_journalQueries.getActiveSpace() }.collectLatest { connection ->
                 queueRefresh()
                 if (connection != null) {
@@ -102,7 +102,7 @@ class SyncPanelController(
                 }
             }
         }
-        scope.launch {
+        this.scope.launch {
             runtime.coordinator.activity.collect { activity ->
                 enqueue {
                     val completed = activity.completion != observedCompletion
@@ -124,7 +124,7 @@ class SyncPanelController(
                 }
             }
         }
-        scope.launch {
+        this.scope.launch {
             runtime.liveProgress.collect { fact ->
                 mutableState.update { current ->
                     if (current.visible && fact != null &&
@@ -137,7 +137,7 @@ class SyncPanelController(
                 }
             }
         }
-        scope.launch {
+        this.scope.launch {
             val prefs = runtime.preferences
             merge(
                 prefs.startup.changes().map { Unit },
@@ -148,7 +148,7 @@ class SyncPanelController(
                 prefs.deviceName.changes().map { Unit },
             ).collect { queueRefresh() }
         }
-        scope.launch {
+        this.scope.launch {
             state.map { it.visible }.distinctUntilChanged().collectLatest { visible ->
                 if (visible) {
                     while (true) {

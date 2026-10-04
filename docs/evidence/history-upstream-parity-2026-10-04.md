@@ -4,11 +4,11 @@
 
 ## 当前状态
 
-HP01 A–E 实现、唯一一轮独立审查、受影响批次及限定格式/元数据检查完成，随本批提交勾选；HP01 提交为 `cbec5e8dbb07c2d3f015bf32fd574547a0ee2132`；HP02 已进入一次最终矩阵。稳定批次八个目标共 348 项，失败/错误/跳过均为 0。共享数据接口、两端实际 Reader 消费、共同历史状态与请求资格、排序、收藏追踪及焦点契约已核验；正式三平台验收仍待 HP02。下文保留各阶段的有效红绿、夹具失败和明确撤回，历史段落中的“待完成”不替代本节当前结论。
+HP01 A–E 实现、唯一一轮独立审查、受影响批次及限定格式/元数据检查完成，提交 `cbec5e8dbb07c2d3f015bf32fd574547a0ee2132`，HP01 已勾选。稳定批次八个目标共 348 项，失败/错误/跳过均为 0。HP02 首次完整 Desktop 目标 4 项失败已通过最小修复、22 项唯一受影响定向验证和计划内唯一修复复审，提交 `c1b4a757b09f444ea7cd308cd432b224f5663494`；尚未批准完整复跑。其余首次矩阵已结束：domain/共享历史 UI 双端与 data Android、Android App 均无失败，测试客户端复用 Gradle UP-TO-DATE 结果，全仓 spotlessCheck 通过；data JVM 有 1 项测试入场前的同步监听数据库异常，具体状态见文末表。用户在2026-10-04明确批准最小同步生命周期修复、追加一轮独立审查及 data JVM/data Android/Android App/Desktop 各一次完整复验；已复用原实施者完成最小修复与25项定向验证，追加独立审查及默认格式验收通过；完整复验即将由主代理串行执行。正式三平台候选和原生验收尚未执行，HP02 保持未勾选。下文保留有效红绿、夹具失败和明确撤回；历史段落中的临时状态不替代本节当前结论。
 
 ## 执行基线与归属
 
-- 授权：2026-10-04 用户要求实现该 roadmap；本次从 HP01 开始，HP02 尚未进入。
+- 授权：2026-10-04 用户要求实现该 roadmap；执行从 HP01 开始，当前已进入 HP02，最终完整复跑及新范围审批不由原实施授权自动涵盖。
 - 本地：`10758b91ec`，`codex/history-reader-context-repair`，`D:/Codex/worktrees/f235/mihon`。
 - 官方：`mihonapp/mihon@4c88f02646aa1a358611e5b3b37ef7a62909b8d9`。主代理通过本机代理只读获取该提交的 `HistoryViewModel.kt`、`HistoryTab.kt`、`GetNextChapters.kt`、`HistoryScreen.kt`、`HistoryItem.kt`、`HistoryDialogs.kt`，核对设计中的续读、删除、收藏、分类、迁移方向及列表界面。
 - 原有未提交改动：`AppVersion.kt`、`MACOS_ACCEPTANCE.md`、前序历史修复证据报告，保持用户所有权，不混入 HP01 提交。
@@ -317,3 +317,57 @@ HP02 最小修复：UI 迁移使用现有 `LocalDesktopUiDependencies` sourceMan
 六个修复文件专用 scopedApply PASSED 7 秒；`hp02-four-failures-refactor-check` PASSED 16 秒（worker 43524 / process 14108 已退出），主代理独立读取明确六文件 KotlinCheck 通过，日期 / mounted XML 各 1 / 0，diffcheck0，protected 三文件 SHA-256 原样。前轮 guard7、favorite9、accessibility2、detail2 已绿且未受后续夹具/格式影响，合计 22 个唯一受影响用例通过；没有为汇总计数重复前四组。唯一修复复审通过，修复随代码/测试/本证据提交；再次完整 Desktop 目标尚未执行或获得批准。
 
 正式候选独立 checkout 已创建在 `D:/Codex/worktrees/f235/hp02-history-candidate`，当前仅 HP01 commit，未构建/分配版本，将在修复提交后快进同一源码；不复制 protected 未提交文件。macOS 旧 checkout HEAD 为 c4adc8ad2afaefe1f7a77ee8edeadb5cdf7e3ecf，确认它是本次提交祖先，可传送小范围 bundle 到新 checkout，旧工作目录/日常应用不改。
+
+修复提交 `c1b4a757b09f444ea7cd308cd432b224f5663494` 后，主代理已向用户申请仅追加一次完整 Desktop JVM 含集成（预计 7–10 分钟），依据 AGENTS 的全量失败追加验证审批要求；当前尚未收到答复，不自动重跑。尚未执行的其余最终矩阵按原额度启动，key `hp02-shared-android-client-final-once`，worker 43792 / process 38552，原日志同 key，targets 为 domain/data 双端、presentation-history 双端、app Release、test-desktop 及 spotlessCheck；当前仍运行，未记录全绿。
+
+Windows 独立 checkout 已快进修复提交；macOS 新 checkout `/Users/altair/github/mihon-history-parity-20261004-f235` 由旧 repository 只读本地 clone 后接收 bundle，校验 SHA-256 `24f740b6764c6d25724cc6e518d126b48fe73333e2905c0569f16e700b4abf79`，精确 HEAD 为同一 c1b4a757b0、status 干净。旧 checkout / 应用未写入，双方尚未进行正式构建或版本分配。bundle/checkouts 只是过程产物，不能代替候选或原生运行证据。
+
+其余第一次完整矩阵终态 FAILED / exit1，16 分 45 秒，2026-10-04 00:01:50 UTC 结束，原 worker/process 退出。主代理读取本轮 XML与实际 task 日志，domain JVM 103 类/588项、Android 87类/493项全绿；共享 UI JVM 3类/5项、Android3类/4项全绿。data JVM 81类/761项，1失败、0错误、1跳过；失败XML保存 `.gradle-coordinator/hp02-shared-final-failures/data-TEST-mihon.data.sync.SyncS2ContractTest.xml`，不覆盖第一次日志。data Android、app Release、test-desktop 尚未实际执行（文件时间仍属于旧focused/旧轮），总体spotlessCheck未完成，不能拿旧非空XML当本轮完整通过。
+
+原实施者仅读取 data 实际 `SyncS2ContractTest` XML：6 / 1，在 runTest入场前抛 UncaughtExceptionsBeforeTest；suppressed 是已关闭 SQL statement / database 的 pending-import、category订阅查询，经 SQLDelight Flow/Combine与Dispatchers.IO传播。同步刷新业务断言尚未开始。调用点 `SyncPanelController`89–101与stop175、`SyncRuntime.stopPanel`215等文件没有被本次修改；时间相邻不足定位具体泄漏实例，尚不能证明baseline可复现或与本任务绝对无关。当前没有新修复或追加复审授权，保留该受限结论。
+
+主代理仅继续尚未执行目标的原一次额度：`hp02-unexecuted-android-client-format-once`，data Android / app Release / test-desktop / spotlessCheck，每个尚未执行测试目标第一次完整运行。此前已完成的 domain、共享UI和失败 data JVM不重复；独立审查与修复复审额度不重新计算，新增修复需说明具体成本并等待决定。
+
+
+### 首次矩阵最终核对与待决定事项
+
+`hp02-unexecuted-android-client-format-once` PASSED / exit0，18 分 28 秒，2026-10-04 00:25:06 UTC 结束，worker44272 / process12232 已退出。data Android XML 为30类/352项/0失败/0错误/0跳过；Android App Release XML 为123类/692项/0失败/0错误/7跳过，均为本轮时间戳，没有 flakyFailure/rerunFailure 节点，日志没有测试 FAILED 或重试执行记录。App 七项跳过：AndroidSyncPanelTest 三项报告打开要求 Unix host 的真实 FileProvider 路径，在本次 Windows 主机跳过；AndroidLegacySyncMigrationTest 四项真实 SQLite 迁移按已有 BuildConfig.DEBUG assumption 在 Release JVM 跳过。不计为通过，真实平台验收也不能由它们推导。
+
+test-desktop 的实际 task 是 UP-TO-DATE（该日志381行），8类/52项/0失败/0错误/0跳过 XML 为2026-10-01 09:35:49 UTC。Gradle 对当前任务输入判定未变化，复用既有结果；不是本轮新执行52项。全仓 spotlessCheck 的适用模块 checks 通过/UP-TO-DATE，没有以旧 XML 冒充格式证据。本次不为刷新日期而追加完整测试。
+
+| 完整目标 | 实际结果 | 当前交付限制 |
+|---|---|---|
+| Desktop JVM 含集成 | 首次451类/3321项/4失败/0错误/3跳过；失败保留，修复定向22项通过 | c1b4 修复后完整复跑未批准、未执行 |
+| domain JVM / Android | 103类/588项与87类/493项，均0失败/错误/跳过 | 本轮首次完整通过 |
+| presentation-history JVM / Android | 各3类，5项与4项，均0失败/错误/跳过 | 本轮首次完整通过 |
+| data JVM | 81类/761项/1失败/0错误/1跳过 | SyncS2ContractTest 测试入场前异常未闭合 |
+| data Android | 30类/352项，0失败/错误/跳过 | 本轮首次完整通过；新增共享 data 修复后需有效复验 |
+| app Release | 123类/692项，0失败/错误/7跳过 | 本轮首次完整无失败；跳过不计通过；新增共享 data 修复后需有效复验 |
+| test-desktop | 8类/52项，0失败/错误/跳过，task UP-TO-DATE | 复用未变输入的既有结果，不声称新执行 |
+| spotlessCheck | 整组 BUILD SUCCESSFUL，适用模块通过/UP-TO-DATE | 未扩大 UI DI baseline 或排除新文件 |
+| 三平台正式候选及原生运行 | 尚未执行 | 完整矩阵仍有失败，未分配版本或发布产物 |
+
+只读生命周期诊断进一步核对 SyncPanelController 的真实编译产物：构造器参数与成员都名为 scope，init 的六处不限定 `scope.launch` 实际绑定到构造器参数；javap 显示这些 launch 的接收者是参数（首处 offset276 aload_3 → offset293 launch$default），没有加入成员 scope 的 lifetime。stop 仅 cancelAndJoin lifetime，因此这些初始化监听不受该关闭路径所有。这是已证实的所有权缺口；本次失败具体由哪个实例泄漏仍未确定，未声称 baseline 必然复现或与历史变更绝对无关。javap 只作诊断，不能代替新增真实生命周期红绿测试。
+
+最小候选修复仅六处改为 `this.scope.launch`，保留构造器 API、调用者 scope 和同步协调器独立任务；补双端真实监听退出/数据库关闭契约，不吞 SQL 错误、不放宽失败断言、不扩大同步产品能力。该修复尚未编辑或启动，超出原历史实施批次且需额外独立审查。已向用户申请复用原实施者、增加一轮独立审查，以及 data JVM / data Android / Android App 各一次完整复验，预计40–60分钟。已申请的 Desktop 完整复跑若批准，安排在共享修复之后只执行一次，避免先复跑再被新共享源码失效。
+
+两个申请均尚未收到答复；依 AGENTS 追加规则，不把等待时间当授权，不自动修复新范围、重复完整目标或开始正式构建。唯一聚合报告的本轮记录保留在工作区，待实际修复/最终证据同批提交，不另建纯状态推进提交。起始三个 protected 文件 SHA-256 均保持不变。
+
+
+用户明确回复“批准”后，新增范围与追加额度生效：复用原实施者进行最小同步监听生命周期红绿重构；主代理独立审查一轮；通过后主代理串行协调 data JVM/data Android/Android App/Desktop 含集成各一次完整复验。Desktop 安排在共享修复之后，避免源码变化使先跑结果失效；预计追加50–70分钟，三平台正式候选及原生验收仍按原HP02预算。当前没有进行上述完整复验或正式构建。
+
+
+### 已批准的同步监听最小修复与独立审查
+
+复用原实施者新增 `SyncPanelLifecycleContract`，由 `JvmSyncPanelLifecycleContractTest` / `AndroidSyncPanelLifecycleContractTest` 运行同一真实行为。使用临时文件 SQLite、平台 JvmDatabaseHandler/AndroidDatabaseHandler；观察器只委托包装实际 SQLDelight 订阅 Flow，记录进入和 finally 收尾，不复制数据库查询/取消实现。第一例显式 callerScope，观察 active-space 与三条 inbox 查询，并验证 stop 后为0、callerJob与等待中的callerWork仍活、caller完成且关闭库后无新增订阅。第二例通过生产 `SyncRuntime.panel` getter、真实 onboarding 与 MockWebServer HTTP闸门，交换请求已经进入后 stopPanel，监听为0、外部交换继续并上传成功，再关闭数据库。
+
+首红 `hp02-panel-lifecycle-red` FAILED28秒，worker32588/process47304已退出；Android第一例有效红，expected0 actual4，第二例 Windows 文件清理 FileSystemException 掩盖主断言，不计产品红，JVM目标尚未执行。夹具改为独立单线程 queryDispatcher 创建/查询/关闭真实 JDBC，managed driver幂等关闭并释放executor；未改变production。`hp02-panel-lifecycle-correct-red` FAILED32秒，worker38548/process43604已退出，--continue下两个target均实际执行：JVM2/2与Android2/2四项主失败都为expected0 actual4；原XML保存 `.gradle-coordinator/hp02-panel-lifecycle-correct-red-results/{jvm,android}.xml`。
+
+产品仅init六处改 `this.scope.launch`，构造器API和方法内原member scope.launch保持不变。`hp02-panel-lifecycle-green` PASSED37秒，worker13412/process1864已退出，双端各2项、0失败/错误/跳过。随后 `hp02-panel-lifecycle-refactor-affected` PASSED39秒，worker45864/process4768已退出，主代理独读7份XML：JVM14/0与Android11/0，共25项，0错误/跳过；包含原SyncS2双端各6、既有panel暂停恢复/后台收起/返回设置、ticker和两项真实重开runtime wiring。原full异常的具体泄漏实例尚未证实，这组绿不能冒充完整复验。
+
+主代理本轮独审已核真实委托Flow、平台handler、queryDispatcher/JDBC关闭、parent子任务，以及production六处最小差异。文档按真实owner收窄：SyncCoordinator的Flight.owner是当前调用者job，测试仅证明由独立调用者启动的交换不受stopPanel影响；面板scope启动的调用仍随其scope取消。普通Close只是收起面板，不调用stop。Desktop宿主Scheduler.awaitStopped先coordinator.cancelAndJoin，再调用已接线onStopped=runtime::stopPanel，最后才允许关库。没有修改coordinator或UI产品边界。
+
+四文件scoped格式脚本曾clearSteps并禁用max-line-length，不能作为data默认120行长规则的完成证据。主代理发现后交原实施者仅整理新测试长行、保留项目formatter步骤，只限定目标四文件；默认规则检查与新双端四例refactor复验待回执。已通过的其它21项不无故重复。此为当前追加独审中未完成的格式验收，不另起审查轮次或完整测试。protected三文件SHA-256再次核对保持起始值，未暂存。
+
+
+最后默认格式未通过项已关闭：`hp02-panel-lifecycle-default-format-refactor` PASSED37秒，worker40596/process44956已退出。scope init仅target四文件，保项目原formatter，没有clearSteps或editorConfigOverride；日志127行实际执行data:spotlessKotlinCheck（非UP-TO-DATE）。六条长行正常换行，真实生命周期双端各2/0/0/0再次通过，其它21项没有无故重跑。主代理读取实际init/四文件/两个XML及git diff --check，确认默认格式和文档owner边界通过；本次新增范围唯一独立审查完成，无待解决阻塞，未追加复审轮次。代码/测试/必要文档/本报告合并一个同步退出功能修复提交，随后执行已批准完整复验；HP02仍未勾选。
