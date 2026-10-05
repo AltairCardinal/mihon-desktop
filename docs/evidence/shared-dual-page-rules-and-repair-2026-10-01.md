@@ -1796,3 +1796,9 @@ HTTP仅准备真实manga890073详情。将专属下载副本 `Original B2.cbz` �
 确认该结算后仅补尚未执行的一次原生LEFT：OPEN_READER_INTENT仍2条（初开与重试），SQL仍 `(21,1)`，没有新章节打开意图。只签单章节末端的有限边界行为，不冒充跨章节切换。核副本恢复、无held文件、SHA不变；正常shutdown后确认62537／62539退出、保护三实例存活，UTC09:30:18.305。现场首health到关停约9分49秒，含源码／几何读取、两个End失败及一次即时SQL断言；此前读取和随后文档另计。命令墙钟约4.674秒（故障／恢复）、3.722秒（Retry）、7.799／8.414秒（End两次）、3.874秒（Slider）、0.578秒（结算只读）、6.446秒（剩余边界与关停），不把命令时间当总工程时间。最终记录 `dp02-macos-real-retry-boundary-final-state.log`。
 
 roadmap已缩小当前缺口：保留精确冷跳／回翻槽位、慢／错误伙伴稳定、正式性能与End未定位项；追加正式Mac构建选择和另外两个既有答复仍等待，没有重复询问、扩大原场景组或提前勾选DP02。版本文件继续仅留原未提交状态，不借本轮文档提交收口。
+
+#### End未推进的只读构造阶段核验
+
+下一轮先核工作区HEAD为 `9050cccd1f`，仅两个版本文件未提交；本次Mac应用已退出、保护三实例仍在，目标仍active。没有新的审批答复，不把自动续接当追加正式构建或改变性能度量的同意。只做一次有界事件构造核验：用与既有工具相同的CGEventCreateKeyboardEvent／CGEventSetFlags(0)，不调用任何Post，将事件转公开NSEvent读取实际键码、type、modifierFlags和生成字符码点。首次Python缩进错误发生在脚本执行前，0事件；仅修正该前置再运行，日志分别 `dp02-macos-end-event-readonly-metadata.log`／`dp02-macos-end-event-readonly-metadata-corrected.log`，命令墙钟0.500／0.551秒。
+
+实际End为keyCode119／F72B，已绿左键为123／F702；两者type10、modifierFlags8388608。本次未启动应用、未置前台、未发送新原生输入或运行JVM测试／构建。该事实核清工具构造阶段两个键的区别，不能证明CGEventPostToPid后的AWT／Compose接收或reader焦点，End原因仍未定位。另只读ReaderDualPagePresentationOwner.units／project与handleReaderKeyEvent／applyReaderPageAction：projection明确遍历0..pages.lastIndex，End从对应完整displayUnits选择目标，不能以“仅投影已加载窗口”为本次原因，也没有据假设修改production。后续需在包含已验观察修正的正式reader中检查真实挂载状态／焦点及逻辑位置，再决定输入或产品修复；停止猜式End重复，复用此前错误／末页与本次只读结果。DP02依然未勾选，既有三项用户答复继续待收，不新建报告或重复提问。
