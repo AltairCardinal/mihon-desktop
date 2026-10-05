@@ -1780,3 +1780,19 @@ Root独读runner终态（每项1、零failure／ignored）、同PID日志、当�
 源码修正与维护说明可独立提交，既有正式71仍含旧绑定条件，尚未重构建，不签精确槽位／逐帧稳定或S17全部完成。需要包含该修正的正式Mac产物才能继续对应缺口；依roadmap2.3第10项“必须追加的全量／正式重构建”门槛提交集中选择，拟仅追加一次Mac项目脚本构建及剩余原生定向验收，既有原图／保存证据复用，全量新增0。Android正式性能度量和Windows人工结果仍无答复，DP02及版本收口继续保留待验状态。
 
 追加构建决定前仅只读核现有隔离Mac源码：base仍dec006e，保留已有版本、两项license及Original测试改动，不覆盖或重置；Mac剩余空间2.3GiB，其他三实例仍在。项目脚本既有JAVA_HOME为本机Temurin21.0.10+7，build-only会跳过完整JVM测试；追加执行前须核该实际JDK文件及本次差异影响证据，沿项目入口发布新身份。本次只读首次错误使用`/usr/bin/df`，入口即失败，无修改／构建；以本机command -v确认`/bin/df`后完成读取，不把命令路径失败当环境阻塞或扩大搜索。
+
+#### 现有正式Mac章节错误重试及B2末页／有限章界
+
+上一轮已提交 `6218ee5a856f0acc2898a90256d095754c3eb20f` 的观察修正与证据；追加正式构建、Android正式性能度量及Windows人工结果仍无答复。本轮继续独立推进原S17操作项，复用正式71及同profile，零Gradle／全量／正式构建、零新增代理或产品代码。先核专属B2章节8900731的SQL页数0／未读，原CBZ副本仍SHA `760c81b12dee475288833b29b1f965fa097d4dbafbc36b6cc62f3e2d5a9ac439`；原始输入未改。LaunchServices启动包装62537／应用62539，health UTC09:20:29.247。未置前台时几何只读取得菜单／零尺寸；短时唤醒及准确PID激活后再测得真实详情几何，零猜测输入。
+
+HTTP仅准备真实manga890073详情。将专属下载副本 `Original B2.cbz` 暂移为同目录非CBZ的 `.udp-retry-held`：先核源／目标绝对解析路径均在本profile，源为预期哈希、目标不存在；finally恢复原名并复核哈希，无删除、覆盖或原图内容变化。缺失期间通过真实章节行鼠标点击，实际控件树与已读ErrorState四子项结构相符，Retry矩形 `(571,456,77,40)`；只有generation1 OPEN_READER_INTENT，没有图片呈现，SQL last_page_read保持0。实际故障类别是本次下载路径缺失后的整章加载失败，不据无HTTP错误码推断远程、TLS或具体网络原因。
+
+恢复副本后，复读两次相同Retry矩形，原生中心点击 `(609.5,476)`；真实runtime generation1→2、PAGE_LIST_READY／原图decode／FIRST_PAGE_PRESENTED源索引0到达，随后真实SQL产生页0进度回执。整章Retry链已签收；不能拿它签慢伙伴错误／裁边／逐帧零位移。前置／原生重试日志分别 `app-desktop/tmp/dp02-macos-real-error-before-retry.log`、`dp02-macos-real-native-retry.log`。
+
+为核源末页与章界，外部原生工具新增有界End键码119投递，先直接End、再点击已测视口中心后End；两次都只有已投递事件、无源末页呈现。停止重复End方法，保留 `dp02-macos-real-native-end-boundary.log` 与 `dp02-macos-real-native-end-focused-boundary.log`。焦点、Mac键映射或产品处理哪一层导致未推进尚未独立定位；不宣称End已过或产品bug已修复，也不以这两个失败重跑正式包／全量。
+
+改走本次实际挂载的ReaderBottomBar页码Slider：两次相同矩形 `(212,789,871,44)`、RTL当前源页范围；在其宽度5%处真实点击 `(255.55,811)`，产生源索引20／21呈现；再真实视口点击及LEFT。即时SQL断言读到 `(20,0)`，因此 `dp02-macos-real-native-slider-boundary.log` 保留失败及未执行的后续步骤。没有第二次滑条／整组操作，只读同次运行随后核进度 `(21,1)`，三回执依次progress0、progress20、finished21，证据 `dp02-macos-real-native-slider-sql-settled.log`。真实呈现与异步SQL结算不在同一同步点，不能把原即时断言当已证存储丢失。source22广告实际呈现、真实末页已读达到；精确当前槽位仍未被旧候选观察。
+
+确认该结算后仅补尚未执行的一次原生LEFT：OPEN_READER_INTENT仍2条（初开与重试），SQL仍 `(21,1)`，没有新章节打开意图。只签单章节末端的有限边界行为，不冒充跨章节切换。核副本恢复、无held文件、SHA不变；正常shutdown后确认62537／62539退出、保护三实例存活，UTC09:30:18.305。现场首health到关停约9分49秒，含源码／几何读取、两个End失败及一次即时SQL断言；此前读取和随后文档另计。命令墙钟约4.674秒（故障／恢复）、3.722秒（Retry）、7.799／8.414秒（End两次）、3.874秒（Slider）、0.578秒（结算只读）、6.446秒（剩余边界与关停），不把命令时间当总工程时间。最终记录 `dp02-macos-real-retry-boundary-final-state.log`。
+
+roadmap已缩小当前缺口：保留精确冷跳／回翻槽位、慢／错误伙伴稳定、正式性能与End未定位项；追加正式Mac构建选择和另外两个既有答复仍等待，没有重复询问、扩大原场景组或提前勾选DP02。版本文件继续仅留原未提交状态，不借本轮文档提交收口。
