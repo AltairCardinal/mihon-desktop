@@ -1752,3 +1752,31 @@ Root独读runner终态（每项1、零failure／ignored）、同PID日志、当�
 重启后的首事件为伙伴3、约4.3ms后已存页内容2呈现。Root写的“首个回执必须为已存页2”断言失败是过强测试前提，规格允许后图先可画；原失败stdout保留 `dp02-macos-downloaded-b1-native-resume.log`。只重新只读核同次运行包含2／3，零新输入、零重启／整组重跑；仅签收已存页内容恢复，不据集合推断已证逻辑目标或稳定槽位。新会话SQL有两条最大页序号3的回执；不同实际绘制页追加时最大值可以相同，单靠这两条不能判断重复绘制或产品bug，本次未独立定位其产生原因。精确去重语义仍依共享／受影响wiring证据，不升级本次检查范围。
 
 首实例health为UTC08:14:27.392，最终关停核UTC08:42:29.151，已知运行区间约28分02秒，包含几何诊断、夹具准备、工具等待、原生输入及只读核验；本轮此前文档核对和后续整理另计，机器命令时间不冒充总工程时间。正常shutdown及只读ps确认本次61872／61874、61979／61981、62109／62111、62175／62177全部退出，三个保护PID仍在。日志集中沿用 `app-desktop/tmp/dp02-macos-*{geometry,sequence,progress,resume,final-state}.log`，没有额外报告。roadmap已及时回写该进度；DP02仍未勾选，Mac精确冷跳／回翻目标和槽位、逐帧稳定、设置／手调及性能继续待验，正式性能度量选择与Windows人工结果也尚无答复。
+
+#### Mac设置／手调闭环及普通产品入口观察修正
+
+沿用正式71／dec006e、同一隔离profile及原始B1，没有新Gradle全量或正式构建。首次health UTC08:52:19.451，启动包装62264／应用62266；HTTP仅准备真实manga890072详情，鼠标点击本次已挂载章节行进入默认runtime tracker。激活后立即前台检查仍拒绝一次输入，随后正确前台核验通过才点击，未绕过门禁。几何工具仅将已知顶部按钮所在层级的深度6调至7，节点上限仍80、保留去环与PID核验；设置树截断后的节点不作完整UI证明。
+
+按已读ReaderSettingsPanel／ReaderBottomBar结构与两次相同几何定位控件，全部操作经CoreGraphics真实鼠标、精确前台及命中PID验证；未调用HTTP业务设置／手调动作。自动匹配true→false→true均核实际隔离偏好；双页true→false→true同时核偏好及漫画viewer显式标志。原生手调后实际SQL配对行 `(8900721,1,17,1)`、边界3写入，没有预先插入边界或进度。第一次操作脚本的外层调用在输出尚未取完时yield，未捕获最后stdout；确认同一脚本已退出后只读核实际偏好／viewer及配对完整结果，不重跑这组操作或将丢失stdout伪称完整退出记录。
+
+只停止该实例，确认62264／62266退出后同包启动62401／62403。再次真实详情页章节点击，源索引4／5产生真实FIRST_PAGE_PRESENTED，SQL边界3／revision1仍在；不要求回执先后等于逻辑目标顺序。新进程偏好仍为RTL／双页／匹配开启。再次原生手调后配对表与边界均为空，chapter_pairing_revisions保留revision2，符合当前4／5前一手动边界的合法清除规则；外部全程只读业务库。UTC09:05:16.430核两组本次应用／包装进程退出、三保护实例仍运行，现场12分57秒。保存／重启／清除stdout及状态分别保存在ignored `dp02-macos-settings-real-save-reopen.log`、`dp02-macos-settings-real-restore.log`、`dp02-macos-settings-real-clear.log`、`dp02-macos-settings-final-state.log`。
+
+精确目标／槽位检查仍不能依赖旧71的普通入口状态。最小修正只改既有TestState.ReaderState：Test Mode下从已挂载产品model登记观察身份，保留真实runtime／tracker，不创建synthetic reader、不改变图片事实或配对状态；普通启动不启用，显式测试intent仍拒绝不匹配章节。产品model更换时清理旧观察，旧model迟到卸载不能清掉后继；实际卸载关闭观察，reset保持原测试语义。未新增端点、通用观察框架、产品owner／缓存／调度职责或UI。现有ReaderViewport的真实mount／geometry／focus接线直接复用。
+
+先写4项真实ReaderScreenModel行为测试；红阶段2项因普通入口未绑定而失败，另外2项保护显式intent与普通启动。最小实现后4项及原HTTP smoke共10项绿；清理后复验同范围，并针对既有配对Compose接线补6项，最终16项全部通过、零skip／failure／error，实际XML时间UTC09:11:11.776起。格式仅两个本次Kotlin文件。各次协调器范围与成本保留如下，均未启动完整模块测试：
+
+| key后缀（前缀dp02-product-entry-observer-） | 实际墙钟 | 结果／处理 |
+|---|---|---|
+| red | 24.510秒 | 4项，2正确红／2通过 |
+| green | 15.592秒 | 10项通过 |
+| format | 1.691秒 | 配置前置失败：app未配置，无法取得现有Spotless插件class；未执行测试 |
+| scoped-format | 12.934秒 | 真实ktlint混合条件括号问题，修正语法分组；未执行测试 |
+| final-focused | 11.227秒 | app格式器不适合外部Desktop路径，Apply路径错误；未执行测试 |
+| desktop-format | 3.137秒 | 正确Desktop插件已加载，但FROM-CACHE复用前一任务错误相对路径；未执行测试 |
+| format-cache-boundary | 21.794秒 | 仅spotlessKotlin任务显式rerun且关闭本次build cache，正确Desktop路径Apply／Check及16项全部通过；其余编译未全量重跑 |
+
+最后命令通过原 `udp-final-repair-format.init.gradle`、两个绝对owned目标，先配置`:app:help`以取得既有插件，再执行`:app-desktop:spotlessKotlin --rerun`、Apply／Check及单个带三个FQN过滤的`:app-desktop:jvmTest`；没有抑制格式规则或使用仓库全量。七次命令合计约90.885秒；首红至最终绿约6分56秒，期间入口诊断与源码核验均计入。本轮首health至最后定向结果约19分06秒，文档整理另计，不把重叠区间相加，也不把机器时间当全部工程耗时。
+
+源码修正与维护说明可独立提交，既有正式71仍含旧绑定条件，尚未重构建，不签精确槽位／逐帧稳定或S17全部完成。需要包含该修正的正式Mac产物才能继续对应缺口；依roadmap2.3第10项“必须追加的全量／正式重构建”门槛提交集中选择，拟仅追加一次Mac项目脚本构建及剩余原生定向验收，既有原图／保存证据复用，全量新增0。Android正式性能度量和Windows人工结果仍无答复，DP02及版本收口继续保留待验状态。
+
+追加构建决定前仅只读核现有隔离Mac源码：base仍dec006e，保留已有版本、两项license及Original测试改动，不覆盖或重置；Mac剩余空间2.3GiB，其他三实例仍在。项目脚本既有JAVA_HOME为本机Temurin21.0.10+7，build-only会跳过完整JVM测试；追加执行前须核该实际JDK文件及本次差异影响证据，沿项目入口发布新身份。本次只读首次错误使用`/usr/bin/df`，入口即失败，无修改／构建；以本机command -v确认`/bin/df`后完成读取，不把命令路径失败当环境阻塞或扩大搜索。

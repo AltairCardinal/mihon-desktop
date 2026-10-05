@@ -88,9 +88,11 @@ Material 默认 DragHandle 的外层接收点击及焦点，内层 modifier 不�
 
 同样检查调用链而非动作名：LibraryMangaTestModeController 的章节选择虽然读取真实详情记录，仍调用 TestNavigationController.openReader，后者注入同一不写库 tracker；因此“真实章节已存在”并不足以使此入口成为保存验收。MangaDetailScreen 中用户点击章节的 production 导航创建 DesktopReaderScreen 时没有该覆盖，可走真实 runtime tracker。用实际产品界面验收时，点击坐标必须来自本次已挂载控件几何；当前 reader 原生输入坐标不能挪用于详情或本地来源页面，也不能猜坐标、读取辅助功能文本或临时新增通用观察框架来绕过前置缺口。
 
-当前 ReaderState.mount 还要求测试 open intent 已打开且章节匹配；普通产品入口可能已真实绘制，而 `/test/reader/state` 仍是 mountedReader=null／isOpen=false。应结合真实production呈现回执判断证据层级，不能把状态接口未绑定判为界面未打开，也不能为绑定观察器再开一个模拟阅读器。LocalReaderEntry 的 localChapterPath 路径由 DesktopReaderTrackerPort 明确跳过SQL进度；真实保存验收可在隔离profile准备章节记录与按既有下载命名存放的原CBZ，再经详情页原生点击使用默认tracker，外部只读查库。准备不写进度／回执，不注入配对事实或边界。
+既有 `0.11.19.71.dec006e` 正式候选中的 ReaderState.mount 要求测试 open intent 已打开且章节匹配；普通产品入口可能已真实绘制，而 `/test/reader/state` 仍是 mountedReader=null／isOpen=false。应结合真实production呈现回执判断证据层级，不能把状态接口未绑定判为界面未打开，也不能为绑定观察器再开一个模拟阅读器。后续源码已修正：仅Test Mode自动观察实际挂载的产品model，沿用其runtime／tracker；普通启动不启用此绑定，显式测试intent仍校验章节，旧model卸载不清除后继观察。该修正须在包含它的正式产物上再验，不能由源码定向测试通过推断旧候选已具有新行为。LocalReaderEntry 的 localChapterPath 路径由 DesktopReaderTrackerPort 明确跳过SQL进度；真实保存验收可在隔离profile准备章节记录与按既有下载命名存放的原CBZ，再经详情页原生点击使用默认tracker，外部只读查库。准备不写进度／回执，不注入配对事实或边界。
 
 外部控件几何可从本次PID的 AXFocusedWindow 有界读取 AXChildren／AXPosition／AXSize，去环并核子节点PID；不读取名称、角色、文本或值，不截屏。窗口切换动画期间几何可能处于中间位置，点击前重新核稳态及命中PID。一次激活调用成功不等于立即置前台：本次立即检查未通过，稍后只读 NSWorkspace 确认目标PID已置前台后才输入；具体延迟机制未定位，不以重复激活或猜坐标替代核验。
+
+设置／手调验收以实际挂载控件和存储结果闭环。按已读Compose结构定位本次矩形，操作前复读稳态并核命中PID；恢复验证可结合原生重开后的真实呈现、只读配对表与再次手调产生的合法revision变化，不能直接写边界制造恢复。2026-10-05外部几何工具仅为已知顶部按钮将深度6调至7，节点上限仍80；设置树到达80时只使用已完整取得的所需控件，不能把截断树当完整UI，也不盲目增加负载。偏好只读取本次隔离backend所需键；控件点击后同时核偏好与漫画viewer字段，重启确认保留。
 
 未登录 MAIN 面板的原生输入通过，不代表密码页输入/视觉、真实 GitHub 双端或 Android 真机验收。MockWebServer 及离屏 Compose 结果也必须标明证据层级。真实远端写入、实体设备安装或系统设置改变，依用户授权和项目规则执行。
 

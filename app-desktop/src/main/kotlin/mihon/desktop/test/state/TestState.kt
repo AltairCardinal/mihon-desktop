@@ -154,6 +154,7 @@ val historyState = HistoryState()
 class ReaderState {
     private var openGeneration: Long = 0L
     private var openedChapterId: Long = 0L
+    private var observingProductEntry: Boolean = false
 
     @Volatile private var mounted: mihon.desktop.ui.reader.ReaderScreenModel? = null
 
@@ -172,9 +173,28 @@ class ReaderState {
         private set
 
     internal fun mountedSnapshot() = mounted?.state?.value
+
+    /** Observe the existing product model in Test Mode without replacing its runtime or tracker. */
+    @Synchronized
     internal fun mount(model: mihon.desktop.ui.reader.ReaderScreenModel) {
+        if (applicationState.testMode && (!isOpen || (observingProductEntry && mounted !== model))) {
+            val state = model.state.value
+            open(
+                state.context.chapterId,
+                state.currentPage,
+                state.session.activeChapter.pages.size,
+                state.readingMode == mihon.desktop.reader.ReadingMode.WEBTOON,
+                state.context.mangaTitle,
+                state.context.chapterTitle,
+                false,
+                false,
+            )
+            observingProductEntry = true
+        }
         if (isOpen && model.state.value.context.chapterId == openedChapterId) mounted = model
     }
+
+    @Synchronized
     internal fun unmount(model: mihon.desktop.ui.reader.ReaderScreenModel) {
         if (mounted !== model) return
         mounted = null
@@ -184,6 +204,14 @@ class ReaderState {
         geometryPublisher = null
         ownerFocused = false
         composeWindowFocused = false
+        if (observingProductEntry) {
+            observingProductEntry = false
+            isOpen = false
+            openedChapterId = 0L
+            mangaTitle = ""
+            chapterTitle = ""
+            productionClosed = true
+        }
     }
     internal fun updateActions(
         model: mihon.desktop.ui.reader.ReaderScreenModel,
@@ -304,6 +332,7 @@ class ReaderState {
         hasPrev: Boolean,
     ): Long {
         openGeneration += 1L
+        observingProductEntry = false
         this.isOpen = true
         this.closeRequested = false
         this.productionClosed = false
@@ -332,6 +361,7 @@ class ReaderState {
     @Synchronized
     fun reset() {
         openGeneration += 1L
+        observingProductEntry = false
         isOpen = false
         closeRequested = false
         productionClosed = false
