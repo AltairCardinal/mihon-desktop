@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.database.sqlite.SQLiteDatabase
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -22,9 +21,19 @@ import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.platform.app.InstrumentationRegistry
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
+import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageViewerAdapter
+import mihon.domain.reader.ReaderDualPageIdentity
+import mihon.domain.reader.ReaderPageFact
+import mihon.domain.reader.ReaderPageFactState
 import mihon.domain.reader.scheduler.ReaderPageMaterializeRunner
+import mihon.domain.reader.session.ReaderPageId
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
@@ -51,6 +60,29 @@ import java.util.concurrent.atomic.AtomicIntegerArray
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import java.util.zip.ZipInputStream
+
+/** Reads only a verified backing field on the original production object; missing ABI is a failure. */
+internal inline fun <reified T> actualArtField(instance: Any, name: String): T {
+    val value = instance.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(instance)
+    check(value is T) { "Actual ${instance.javaClass.name}.$name has an incompatible field value" }
+    return value
+}
+
+internal fun actualArtReaderState(activity: ReaderActivity): ReaderViewModel.State {
+    val flow = actualArtField<kotlinx.coroutines.flow.StateFlow<*>>(activity.viewModel, "state")
+    return requireNotNull(flow.value as? ReaderViewModel.State) { "Actual reader state must retain its type" }
+}
+
+private fun actualArtPhysicalCount(owner: Class<*>, name: String): Int {
+    val field = owner.getDeclaredField(name).apply { isAccessible = true }
+    check(java.lang.reflect.Modifier.isStatic(field.modifiers)) { "Actual physical counter must be static" }
+    val flow = requireNotNull(field.get(null) as? kotlinx.coroutines.flow.StateFlow<*>) {
+        "Actual physical counter must be a StateFlow"
+    }
+    val count = requireNotNull(flow.value as? Int) { "Actual physical counter must contain an Int" }
+    check(count >= 0) { "Actual physical counter must never be negative" }
+    return count
+}
 
 /** Calls the installed candidate through Android component/View and retained extension APIs. */
 internal class HostReaderArtFixture(
@@ -242,8 +274,18 @@ internal class HostReaderArtFixture(
                     responsePayloadBytes.addAndGet(body.size.toLong())
                     val contentType = if (isImage) {
                         if (originalContent != null) {
-                            body.inputStream().use(tachiyomi.core.common.util.system.ImageUtil::findImageType)?.mime
-                                ?: error("Original encoded image has no supported type")
+                            body.inputStream().use { stream ->
+                                val owner = tachiyomi.core.common.util.system.ImageUtil::class.java
+                                val method = owner.getDeclaredMethod("findImageType", java.io.InputStream::class.java)
+                                val receiver = if (java.lang.reflect.Modifier.isStatic(method.modifiers)) {
+                                    null
+                                } else {
+                                    owner.getDeclaredField("INSTANCE").apply { isAccessible = true }.get(null)
+                                }
+                                val type = method.invoke(receiver, stream)
+                                    ?: error("Original encoded image has no supported type")
+                                actualArtField<String>(type, "mime")
+                            }
                         } else {
                             "image/png"
                         }
@@ -379,8 +421,8 @@ internal class HostReaderArtFixture(
         }
         return "cache=${System.identityHashCode(cache)} key=$key keyEditor=$keyEditor editors=$active " +
             "file=${url?.let { cache.getImageFile(it).exists() }} " +
-            "normal=${ReaderPageMaterializeRunner.processPhysicalWorkCount.value} " +
-            "native=${ReaderPageImageView.foregroundWork.value}"
+            "normal=${actualArtPhysicalCount(ReaderPageMaterializeRunner::class.java, "processPhysicalWorkCount")} " +
+            "native=${actualArtPhysicalCount(ReaderPageImageView::class.java, "foregroundWork")}"
     }
 
     /** Actual disk journal accounting, including historical orphan records from earlier raw fixture resets. */
@@ -390,7 +432,7 @@ internal class HostReaderArtFixture(
         return synchronized(disk) {
             val entries = disk.javaClass.getDeclaredField("lruEntries").apply { isAccessible = true }
                 .get(disk) as Map<*, *>
-            val bytes = disk.javaClass.getMethod("size").invoke(disk) as Long
+            val bytes = actualArtField<Long>(disk, "size")
             bytes to entries.keys.filterIsInstance<String>().toSet()
         }
     }
@@ -692,11 +734,29 @@ internal class HostReaderArtFixture(
     ).use { it.readBytes() }
 
     private fun seed() {
-        SQLiteDatabase.openDatabase(
-            context.getDatabasePath("tachiyomi.db").path,
-            null,
-            SQLiteDatabase.OPEN_READWRITE,
-        ).use { database ->
+        val driver = Injekt.get<app.cash.sqldelight.db.SqlDriver>()
+        fun insert(table: String, values: ContentValues) {
+            val entries = values.valueSet().map { it.key to it.value }
+            val columns = entries.joinToString(",") { it.first }
+            val literals = entries.joinToString(",") {
+                when (val value = it.second) {
+                    is String -> "'${value.replace("'", "''")}'"
+                    is Number -> value.toString()
+                    else -> error("Unsupported owned fixture SQL value")
+                }
+            }
+            val updates = entries.filter { it.first != "_id" }.joinToString(",") {
+                "${it.first}=excluded.${it.first}"
+            }
+            // Updating the owned row preserves other chapters and their receipts under production foreign keys.
+            driver.execute(
+                null,
+                "INSERT INTO $table($columns) VALUES ($literals) ON CONFLICT(_id) DO UPDATE SET $updates",
+                0,
+                null,
+            )
+        }
+        run {
             val manga = ContentValues().apply {
                 put("_id", input.getLong("mangaId"))
                 put("source", input.getLong("sourceId"))
@@ -710,7 +770,7 @@ internal class HostReaderArtFixture(
                 put("cover_last_modified", 0)
                 put("date_added", 0)
             }
-            database.insertWithOnConflict("mangas", null, manga, SQLiteDatabase.CONFLICT_REPLACE)
+            insert("mangas", manga)
             val chapter = ContentValues().apply {
                 put("_id", input.getLong("chapterId"))
                 put("manga_id", input.getLong("mangaId"))
@@ -724,7 +784,7 @@ internal class HostReaderArtFixture(
                 put("date_fetch", 0)
                 put("date_upload", 0)
             }
-            database.insertWithOnConflict("chapters", null, chapter, SQLiteDatabase.CONFLICT_REPLACE)
+            insert("chapters", chapter)
         }
     }
 
@@ -799,7 +859,7 @@ internal class HostReaderArtFixture(
                 "unit=${holder.displayPage.visiblePages.map { it.index }} $presentation native=[$children]" +
                     " statuses=[$statuses] errors=${errors.mapValues { (_, value) -> (value as ReaderPage).index }}" +
                     " messages=$messages normal=${viewer?.adapter?.currentChapter?.pageLoader?.hasForegroundWork}" +
-                    " nativeBusy=${ReaderPageImageView.foregroundWork.value}" +
+                    " nativeBusy=${actualArtPhysicalCount(ReaderPageImageView::class.java, "foregroundWork")}" +
                     " optionalBusy=" +
                     eu.kanade.tachiyomi.ui.reader.viewer.AndroidReaderSpreadSampler.optionalWork.value
             }
@@ -853,11 +913,20 @@ internal class HostReaderArtFixture(
     fun logicalPageIndex(): Int? {
         var index: Int? = null
         onReaderMain { activity ->
-            val viewer = activity.viewModel.state.value.viewer as?
+            val state = actualArtReaderState(activity)
+            val viewer = actualArtField<eu.kanade.tachiyomi.ui.reader.viewer.Viewer?>(state, "viewer") as?
                 eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
-            val chapter = activity.viewModel.state.value.viewerChapters?.currChapter
+            val chapters = actualArtField<eu.kanade.tachiyomi.ui.reader.model.ViewerChapters?>(state, "viewerChapters")
+            val chapter = chapters?.let { actualArtField<ReaderChapter>(it, "currChapter") }
             if (viewer != null && chapter != null) {
-                index = viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex
+                val adapter = actualArtField<eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageViewerAdapter>(
+                    viewer,
+                    "adapter",
+                )
+                val owner = requireNotNull(adapter.session(chapter))
+                val location = actualArtField<mihon.domain.reader.ReaderDualPageLocationIntent?>(owner, "location")
+                val page = location?.let { actualArtField<mihon.domain.reader.session.ReaderPageId>(it, "pageId") }
+                index = page?.let { actualArtField<Int>(it, "sourcePageIndex") }
             }
         }
         return index
@@ -916,33 +985,48 @@ internal class HostReaderArtFixture(
     fun hasDecodedSpread(index: Int): Boolean {
         var decoded = false
         instrumentation.runOnMainSync {
-            val state = (activity as? ReaderActivity)?.viewModel?.state?.value ?: return@runOnMainSync
-            val chapter = state.viewerChapters?.currChapter ?: return@runOnMainSync
+            val state = (activity as? ReaderActivity)?.let(::actualArtReaderState) ?: return@runOnMainSync
+            val chapters = actualArtField<ViewerChapters?>(state, "viewerChapters") ?: return@runOnMainSync
+            val chapter = actualArtField<ReaderChapter>(chapters, "currChapter")
             val page = chapter.pages?.getOrNull(index) ?: return@runOnMainSync
-            val viewer = state.viewer as? eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
-                ?: return@runOnMainSync
-            val owner = viewer.adapter.session(chapter) ?: return@runOnMainSync
-            decoded = page.status == eu.kanade.tachiyomi.source.model.Page.State.Ready &&
-                owner.pageFact(owner.identity.pageIds[index])?.state == mihon.domain.reader.ReaderPageFactState.SPREAD
+            val viewer = actualArtField<Viewer?>(state, "viewer") as? DualPageR2LPagerViewer ?: return@runOnMainSync
+            val adapter = actualArtField<DualPageViewerAdapter>(viewer, "adapter")
+            val owner = adapter.session(chapter) ?: return@runOnMainSync
+            val identity = actualArtField<ReaderDualPageIdentity>(owner, "identity")
+            val pageId = actualArtField<List<ReaderPageId>>(identity, "pageIds")[index]
+            val fact = actualArtField<Map<ReaderPageId, ReaderPageFact>>(owner, "facts")[pageId]
+            decoded = page.status == Page.State.Ready &&
+                fact?.let { actualArtField<ReaderPageFactState>(it, "state") } == ReaderPageFactState.SPREAD
         }
         return decoded
     }
 
-    fun progress(): Pair<Long, Long> = SQLiteDatabase.openDatabase(
-        context.getDatabasePath("tachiyomi.db").path,
-        null,
-        SQLiteDatabase.OPEN_READONLY,
-    ).use { database ->
-        val id = input.getLong("chapterId").toString()
-        val page = database.rawQuery("SELECT last_page_read FROM chapters WHERE _id=?", arrayOf(id)).use {
-            check(it.moveToFirst())
-            it.getLong(0)
+    fun progress(): Pair<Long, Long> {
+        val driver = Injekt.get<app.cash.sqldelight.db.SqlDriver>()
+        val id = input.getLong("chapterId")
+        val valueConstructor = app.cash.sqldelight.db.QueryResult.Value::class.java
+            .getDeclaredConstructor(Any::class.java).apply { isAccessible = true }
+        val mapper: (Any) -> Any = { actualCursor ->
+            val cursor = actualArtField<android.database.Cursor>(actualCursor, "cursor")
+            check(cursor.moveToFirst()) { "Owned fixture chapter must exist in the production database" }
+            valueConstructor.newInstance(cursor.getLong(0) to cursor.getLong(1))
         }
-        val events = database.rawQuery("SELECT COUNT(*) FROM reading_events WHERE chapter_id=?", arrayOf(id)).use {
-            check(it.moveToFirst())
-            it.getLong(0)
+        // Release narrows executeQuery's return type; invoke the real retained interface entry.
+        val method = app.cash.sqldelight.db.SqlDriver::class.java.declaredMethods.single {
+            it.name == "executeQuery" && it.parameterCount == 5
         }
-        page to events
+        val result = requireNotNull(
+            method.invoke(
+                driver,
+                null,
+                "SELECT last_page_read,(SELECT COUNT(*) FROM reading_events WHERE chapter_id=$id) " +
+                    "FROM chapters WHERE _id=$id",
+                mapper,
+                0,
+                null,
+            ),
+        )
+        return actualArtField(result, "value")
     }
 
     fun frame(): Bitmap? {
@@ -980,8 +1064,8 @@ internal class HostReaderArtFixture(
         if (cacheDiagnostic) android.util.Log.i("ReaderCacheDiagnostic", "cold beforeFinish ${cacheDiagnosticState()}")
         finish()
         val deadline = SystemClock.uptimeMillis() + 30_000
-        while (ReaderPageMaterializeRunner.processPhysicalWorkCount.value != 0 ||
-            ReaderPageImageView.foregroundWork.value != 0
+        while (actualArtPhysicalCount(ReaderPageMaterializeRunner::class.java, "processPhysicalWorkCount") != 0 ||
+            actualArtPhysicalCount(ReaderPageImageView::class.java, "foregroundWork") != 0
         ) {
             check(SystemClock.uptimeMillis() < deadline) {
                 "Original foreground work must finish before fixture cache reset: ${cacheDiagnosticState()}"
@@ -1016,9 +1100,14 @@ internal class HostReaderArtFixture(
                         }
                     }
                 }
+                val diagnostics = try {
+                    nativePresentationState()
+                } catch (error: LinkageError) {
+                    "actual diagnostics unavailable: ${error.javaClass.name}: ${error.message}"
+                }
                 throw AssertionError(
                     "$message; chapterRequests=${chapterRequests.get()} imageRequests=${imageRequests.get()} " +
-                        "mounted=$mounted; ${nativePresentationState()}; ${failureEvidence()}",
+                        "mounted=$mounted; $diagnostics; ${failureEvidence()}",
                 )
             }
             SystemClock.sleep(20)

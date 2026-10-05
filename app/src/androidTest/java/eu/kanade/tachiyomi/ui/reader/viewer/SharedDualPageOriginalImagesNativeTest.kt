@@ -17,13 +17,23 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.HostReaderArtFixture
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.ReaderNavigationOverlayView
+import eu.kanade.tachiyomi.ui.reader.actualArtField
+import eu.kanade.tachiyomi.ui.reader.actualArtReaderState
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
-import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagerPageHolder
+import mihon.domain.reader.ReaderDualPageFrame
 import mihon.domain.reader.ReaderDualPageFrameId
+import mihon.domain.reader.ReaderDualPageIdentity
+import mihon.domain.reader.ReaderDualPageLocationIntent
+import mihon.domain.reader.ReaderDualPageSlot
+import mihon.domain.reader.ReaderDualPageUnit
+import mihon.domain.reader.ReaderDualPageViewportTicket
+import mihon.domain.reader.ReaderPageFact
 import mihon.domain.reader.ReaderPageFactState
 import mihon.domain.reader.ReaderPortraitSingleSlot
+import mihon.domain.reader.SharedDualPageSession
+import mihon.domain.reader.session.ReaderPageId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -40,6 +50,7 @@ class SharedDualPageOriginalImagesNativeTest {
         val position: ReaderPortraitSingleSlot,
         val facts: List<ReaderPageFactState?>,
         val wasDrawn: Boolean,
+        val ordinaryReady: List<Boolean>,
     )
 
     private val diagnostics = mutableSetOf<String>()
@@ -95,24 +106,23 @@ class SharedDualPageOriginalImagesNativeTest {
             fixture.launch()
             awaitOriginal(fixture, 0)
             val timely = AtomicReference<Triple<List<ReaderPageFactState?>, List<Int>, List<Boolean>>?>()
-            val hooked = mutableSetOf<ReaderPageImageView>()
+            val commitTrace = mutableListOf<String>()
+            var candidateScheduled = false
             lateinit var observer: ViewTreeObserver
             lateinit var listener: ViewTreeObserver.OnPreDrawListener
             fixture.onReaderMain { activity ->
                 observer = activity.window.decorView.viewTreeObserver
                 listener = ViewTreeObserver.OnPreDrawListener {
-                    val viewer = activity.viewModel.state.value.viewer as? DualPageR2LPagerViewer
-                    viewer?.let { descendants(it.pager) }?.filterIsInstance<ReaderPageImageView>()
-                        ?.filter {
-                            source(it)?.index == 14 && it.beforeImageDraw != null && hooked.add(it)
-                        }?.forEach { image ->
-                            val original = requireNotNull(image.beforeImageDraw)
-                            image.beforeImageDraw = { width, height ->
-                                val prepared = original.invoke(width, height)
-                                if (prepared) observeTimely15(image, activity, timely)
-                                prepared
-                            }
+                    if (!candidateScheduled) {
+                        candidateScheduled = observeFirstCommit(
+                            activity,
+                            14,
+                            listOf(14, 15),
+                            commitTrace,
+                        ) { snapshot, pages ->
+                            timely.compareAndSet(null, Triple(snapshot.facts, pages, snapshot.ordinaryReady))
                         }
+                    }
                     true
                 }
                 observer.addOnPreDrawListener(listener)
@@ -131,6 +141,11 @@ class SharedDualPageOriginalImagesNativeTest {
             }
             assertEquals((0..16).toSet(), presented)
             assertEquals(16, fixture.logicalPageIndex())
+            if (timely.get() == null) {
+                fixture.onReaderMain {
+                    commitTrace.forEach { Log.i("DualOriginal", "warm-first-commit=$it") }
+                }
+            }
             val firstPair = requireNotNull(timely.get())
             assertEquals(listOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.PORTRAIT), firstPair.first)
             assertEquals(listOf(14, 15), firstPair.second)
@@ -149,30 +164,6 @@ class SharedDualPageOriginalImagesNativeTest {
             assertEquals(16, fixture.logicalPageIndex())
             stableOriginal(fixture, 16, requireNotNull(observeOriginal(fixture, 16)))
         }
-    }
-
-    private fun observeTimely15(
-        image: ReaderPageImageView,
-        activity: ReaderActivity,
-        result: AtomicReference<Triple<List<ReaderPageFactState?>, List<Int>, List<Boolean>>?>,
-    ) {
-        val holder = generateSequence(image.parent) { it.parent }.filterIsInstance<DualPagerPageHolder>().first()
-        val (owner, ticket) = holder.presentationScope ?: return
-        val frame = owner.frame(ticket) ?: return
-        if (result.get() != null || owner.location?.pageId?.sourcePageIndex != 14 ||
-            owner.identity.pageIds[14] in frame.drawnPageIds
-        ) {
-            return
-        }
-        val chapter = activity.viewModel.state.value.viewerChapters?.currChapter
-        val pages = requireNotNull(chapter?.pages)
-        result.set(
-            Triple(
-                listOf(14, 15).map { owner.pageFact(owner.identity.pageIds[it])?.state },
-                frame.unit.slots.map { it.pageId.sourcePageIndex },
-                listOf(14, 15).map { pages[it].status == Page.State.Ready },
-            ),
-        )
     }
 
     @Test
@@ -206,7 +197,17 @@ class SharedDualPageOriginalImagesNativeTest {
     private fun lateStructure(target: Int, neighbors: Set<Int>, next: Int) {
         HostReaderArtFixture("copymanga", "real-b2-original.cbz").use { fixture ->
             val held = CountDownLatch(1)
-            fixture.beforeImageRequest.set { if (it in neighbors) check(held.await(90, TimeUnit.SECONDS)) }
+            val nextHeld = CountDownLatch(1)
+            val earlierEntered = CountDownLatch(1)
+            val nextEntered = CountDownLatch(1)
+            fixture.beforeImageRequest.set {
+                if (it in neighbors) {
+                    if (it == target - 1) earlierEntered.countDown()
+                    if (it == target + 1) nextEntered.countDown()
+                    val gate = if (target == 19 && it == target + 1) nextHeld else held
+                    check(gate.await(90, TimeUnit.SECONDS))
+                }
+            }
             fixture.configure(mode = 6)
             fixture.cold()
             try {
@@ -217,11 +218,46 @@ class SharedDualPageOriginalImagesNativeTest {
                 neighbors.forEach { assertEquals(ReaderPageFactState.UNKNOWN, fact(fixture, it)) }
                 assertEquals(ReaderPortraitSingleSlot.RIGHT, slot(fixture, target))
                 val before = requireNotNull(observeOriginal(fixture, target))
+                if (target == 19) {
+                    nextHeld.countDown()
+                    fixture.await("Original source21 must deliver its real late wide header first") {
+                        fact(fixture, target + 1) == ReaderPageFactState.SPREAD
+                    }
+                    assertEquals(0L, nextEntered.count)
+                    assertEquals(ReaderPageFactState.UNKNOWN, fact(fixture, target - 1))
+                    assertEquals(target, fixture.logicalPageIndex())
+                    stableOriginal(fixture, target, before)
+                    assertEquals(ReaderPortraitSingleSlot.RIGHT, slot(fixture, target))
+                }
+                val originalFrame = frameId(fixture, target)
+                if (target == 19) {
+                    held.countDown()
+                    fixture.key(KeyEvent.KEYCODE_DPAD_RIGHT)
+                    awaitOriginal(fixture, target - 1)
+                    assertEquals(target - 1, fixture.logicalPageIndex())
+                    assertEquals(0L, earlierEntered.count)
+                    assertEquals(ReaderPortraitSingleSlot.FULL, slot(fixture, target - 1))
+                }
                 held.countDown()
                 fixture.await("Actual original neighbor bytes must confirm their oriented wide headers") {
                     neighbors.all { fact(fixture, it) == ReaderPageFactState.SPREAD }
                 }
-                stableOriginal(fixture, target, before)
+                if (target == 19) {
+                    fixture.key(KeyEvent.KEYCODE_DPAD_LEFT)
+                    awaitOriginal(fixture, target)
+                    assertEquals(target, fixture.logicalPageIndex())
+                    assertEquals(originalFrame, frameId(fixture, target))
+                    fixture.awaitStable("Return by the real key to source20 original geometry") {
+                        observeOriginal(fixture, target)?.let {
+                            it.content == before.content && it.imageBounds == before.imageBounds &&
+                                it.scaleX == before.scaleX && it.scaleY == before.scaleY &&
+                                it.translationX == before.translationX && it.translationY == before.translationY
+                        } == true
+                    }
+                    stableOriginal(fixture, target, requireNotNull(observeOriginal(fixture, target)))
+                } else {
+                    stableOriginal(fixture, target, before)
+                }
                 assertEquals(ReaderPortraitSingleSlot.RIGHT, slot(fixture, target))
                 fixture.key(KeyEvent.KEYCODE_DPAD_LEFT)
                 awaitOriginal(fixture, next)
@@ -238,6 +274,7 @@ class SharedDualPageOriginalImagesNativeTest {
                 }
             } finally {
                 held.countDown()
+                nextHeld.countDown()
             }
         }
     }
@@ -259,43 +296,48 @@ class SharedDualPageOriginalImagesNativeTest {
             awaitOriginal(fixture, target)
             val first = AtomicReference<Triple<Map<Int, ReaderPageFactState?>, Boolean, ReaderDualPageFrameId>?>()
             val firstPrepared = AtomicReference<FirstPrepared?>()
-            val hooked = mutableSetOf<ReaderPageImageView>()
+            var candidateScheduled = false
             lateinit var observer: ViewTreeObserver
             lateinit var listener: ViewTreeObserver.OnPreDrawListener
             fixture.onReaderMain { activity ->
                 observer = activity.window.decorView.viewTreeObserver
                 listener = ViewTreeObserver.OnPreDrawListener {
-                    val viewer = activity.viewModel.state.value.viewer as? DualPageR2LPagerViewer
-                    val chapter = activity.viewModel.state.value.viewerChapters?.currChapter
+                    val viewer = actualArtField<Viewer?>(actualArtReaderState(activity), "viewer")
+                        as? DualPageR2LPagerViewer
+                    val chapter = viewer?.let { actualChapter(activity) }
                     if (viewer != null && chapter != null) {
                         val holder = descendants(viewer.pager).filterIsInstance<DualPagerPageHolder>()
-                            .firstOrNull { it.displayPage.visiblePages.any { it.index == target } }
-                        holder?.presentationScope?.let { (owner, ticket) ->
+                            .firstOrNull { actualDisplayPages(it).any { page -> page.index == target } }
+                        holder?.let(::actualScope)?.let { (owner, ticket) ->
                             if (first.get() == null) {
                                 val frame = requireNotNull(owner.frame(ticket))
                                 first.set(
                                     Triple(
                                         listOf(firstNeighbor, secondNeighbor).associateWith {
-                                            owner.pageFact(owner.identity.pageIds[it])?.state
+                                            actualFact(owner, it)
                                         },
-                                        frame.lockedPageIds.isEmpty(),
-                                        frame.id,
+                                        actualArtField<Set<ReaderPageId>>(frame, "lockedPageIds").isEmpty(),
+                                        actualArtField(frame, "id"),
                                     ),
                                 )
                             }
                         }
-                        descendants(viewer.pager).filterIsInstance<ReaderPageImageView>()
-                            .filter { source(it)?.index == target && it.beforeImageDraw != null && hooked.add(it) }
-                            .forEach {
-                                hookFirstPrepared(it, target, listOf(firstNeighbor, secondNeighbor), firstPrepared)
+                        if (!candidateScheduled) {
+                            candidateScheduled = observeFirstCommit(
+                                activity,
+                                target,
+                                listOf(firstNeighbor, secondNeighbor),
+                            ) { snapshot, _ ->
+                                firstPrepared.compareAndSet(null, snapshot)
                             }
+                        }
                     }
                     true
                 }
                 observer.addOnPreDrawListener(listener)
-                // Existing settings consumer creates a fresh Dual presentation context after genuine Single reads.
-                activity.viewModel.setMangaReadingMode(ReadingMode.DUAL_PAGE_R2L)
             }
+            // The original default-mode preference consumer creates a new Dual viewer after genuine Single reads.
+            fixture.configure(mode = 6)
             try {
                 fixture.await("The new actual Dual owner must expose its facts before any target pixels") {
                     first.get() != null
@@ -332,7 +374,7 @@ class SharedDualPageOriginalImagesNativeTest {
                 }
                 awaitOriginal(fixture, target)
                 val paintedFrame = requireNotNull(firstPrepared.get())
-                assertTrue("Original prepare precedes this frame's first paint", !paintedFrame.wasDrawn)
+                assertTrue("The same committed frame was unpainted at its pre-draw", !paintedFrame.wasDrawn)
                 assertEquals(expected, paintedFrame.position)
                 assertEquals(listOf(facts[firstNeighbor], facts[secondNeighbor]), paintedFrame.facts)
                 assertEquals(expected, slot(fixture, target))
@@ -346,53 +388,154 @@ class SharedDualPageOriginalImagesNativeTest {
         }
     }
 
-    private fun hookFirstPrepared(
-        image: ReaderPageImageView,
+    /** Brackets the original synchronous SSIV prepare/drawn chain within one actual committed frame. */
+    private fun observeFirstCommit(
+        activity: ReaderActivity,
         target: Int,
         neighbors: List<Int>,
-        result: AtomicReference<FirstPrepared?>,
-    ) {
-        val original = requireNotNull(image.beforeImageDraw)
-        image.beforeImageDraw = { width, height ->
-            val prepared = original(width, height)
-            if (prepared && result.get() == null) {
+        trace: MutableList<String>? = null,
+        accept: (FirstPrepared, List<Int>) -> Unit,
+    ): Boolean {
+        fun note(reason: String) {
+            if (trace != null && trace.size < 48 && trace.none { it.substringAfter('|') == reason }) {
+                trace.add("${SystemClock.uptimeMillis()}|$reason")
+            }
+        }
+        val viewer = actualArtField<Viewer?>(actualArtReaderState(activity), "viewer")
+            as? DualPageR2LPagerViewer ?: return false
+        val targetImages = descendants(viewer.pager).filterIsInstance<ReaderPageImageView>()
+            .filter { source(it)?.index == target }
+        if (trace != null) {
+            if (targetImages.isEmpty()) note("no-mounted-target")
+            targetImages.forEach { image ->
+                val rect = Rect()
+                val visible = image.getGlobalVisibleRect(rect)
+                val native = descendants(image).filterIsInstance<SubsamplingScaleImageView>().singleOrNull()
                 val holder = generateSequence(image.parent) { it.parent }
                     .filterIsInstance<DualPagerPageHolder>().first()
-                holder.presentationScope?.let { (owner, ticket) ->
-                    val frame = owner.frame(ticket)
-                    val page = owner.identity.pageIds[target]
-                    if (frame != null && owner.location?.pageId == page) {
-                        result.set(
-                            FirstPrepared(
-                                frame.id,
-                                frame.unit.slots.first { it.pageId == page }.position,
-                                neighbors.map { owner.pageFact(owner.identity.pageIds[it])?.state },
-                                page in frame.drawnPageIds,
-                            ),
-                        )
-                    }
+                val scope = actualScope(holder)
+                val frame = scope?.let { it.first.frame(it.second) }
+                val location = scope?.let { actualArtField<ReaderDualPageLocationIntent?>(it.first, "location") }
+                val index = location?.let {
+                    actualArtField<Int>(actualArtField<ReaderPageId>(it, "pageId"), "sourcePageIndex")
                 }
+                val drawn = frame?.let { actualArtField<Set<ReaderPageId>>(it, "drawnPageIds") }
+                    ?.map { actualArtField<Int>(it, "sourcePageIndex") }
+                note(
+                    "pre image=${System.identityHashCode(image)} shown=${image.isShown}/$visible rect=$rect " +
+                        "native=${native?.isReady}/${native?.isImageLoaded} location=$index " +
+                        "frame=${frame?.let { actualArtField<ReaderDualPageFrameId>(it, "id") }} drawn=$drawn",
+                )
             }
-            prepared
         }
+        val image = targetImages.firstOrNull {
+            it.isShown &&
+                descendants(it).filterIsInstance<SubsamplingScaleImageView>().any { native ->
+                    native.isReady || native.isImageLoaded
+                }
+        } ?: return false
+        val holder = generateSequence(image.parent) { it.parent }.filterIsInstance<DualPagerPageHolder>().first()
+        val (owner, ticket) = actualScope(holder) ?: return false
+        val frame = owner.frame(ticket) ?: return false
+        val page = actualPages(owner)[target]
+        val location = actualArtField<ReaderDualPageLocationIntent?>(owner, "location") ?: return false
+        if (actualArtField<ReaderPageId>(location, "pageId") != page) {
+            note("reject-location")
+            return false
+        }
+        val drawn = actualArtField<Set<ReaderPageId>>(frame, "drawnPageIds")
+        if (page in drawn) {
+            note("reject-already-drawn")
+            return false
+        }
+        val slots = actualSlots(frame)
+        val targetSlot = slots.firstOrNull { actualArtField<ReaderPageId>(it, "pageId") == page } ?: return false
+        val snapshot = FirstPrepared(
+            actualArtField(frame, "id"),
+            actualArtField(targetSlot, "position"),
+            neighbors.map { actualFact(owner, it) },
+            false,
+            slots.map {
+                val index = actualArtField<Int>(actualArtField<ReaderPageId>(it, "pageId"), "sourcePageIndex")
+                requireNotNull(actualChapter(activity).pages)[index].status == Page.State.Ready
+            },
+        )
+        val sourcePages = slots.map {
+            actualArtField<Int>(actualArtField<ReaderPageId>(it, "pageId"), "sourcePageIndex")
+        }
+        val observer = activity.window.decorView.viewTreeObserver
+        check(activity.window.decorView.isHardwareAccelerated) { "Frame commit requires the real hardware renderer" }
+        observer.registerFrameCommitCallback {
+            // Read on the original UI owner; never call prepare/reportDrawn or replace production callbacks.
+            activity.runOnUiThread {
+                val current = actualScope(holder) ?: run {
+                    note("commit-no-scope")
+                    return@runOnUiThread
+                }
+                if (current.first !== owner || current.second !== ticket ||
+                    !image.isShown || !image.getGlobalVisibleRect(Rect())
+                ) {
+                    note("commit-stale-owner-ticket-or-hidden")
+                    return@runOnUiThread
+                }
+                val committed = owner.frame(ticket) ?: return@runOnUiThread
+                if (actualArtField<ReaderDualPageFrameId>(committed, "id") != snapshot.frameId) return@runOnUiThread
+                if (page !in actualArtField<Set<ReaderPageId>>(committed, "drawnPageIds")) {
+                    note("commit-not-drawn")
+                    return@runOnUiThread
+                }
+                if (page !in actualArtField<Set<ReaderPageId>>(committed, "lockedPageIds")) return@runOnUiThread
+                val currentSlots = actualSlots(committed)
+                val currentPages = currentSlots.map {
+                    actualArtField<Int>(actualArtField<ReaderPageId>(it, "pageId"), "sourcePageIndex")
+                }
+                if (currentPages != sourcePages) return@runOnUiThread
+                val currentSlot = currentSlots.firstOrNull {
+                    actualArtField<ReaderPageId>(it, "pageId") == page
+                } ?: return@runOnUiThread
+                if (actualArtField<ReaderPortraitSingleSlot>(currentSlot, "position") != snapshot.position) {
+                    return@runOnUiThread
+                }
+                accept(snapshot, sourcePages)
+                note("commit-accepted frame=${snapshot.frameId} sources=$sourcePages")
+            }
+        }
+        note("scheduled frame=${snapshot.frameId} sources=$sourcePages facts=${snapshot.facts}")
+        return true
     }
+
+    private fun actualScope(holder: DualPagerPageHolder): Pair<SharedDualPageSession, ReaderDualPageViewportTicket>? =
+        actualArtField(holder, "presentationScope")
+
+    private fun actualDisplayPages(holder: DualPagerPageHolder): List<ReaderPage> =
+        actualArtField<eu.kanade.tachiyomi.ui.reader.viewer.pager.DisplayPage>(holder, "displayPage").visiblePages
+
+    private fun actualPages(owner: SharedDualPageSession): List<ReaderPageId> =
+        actualArtField(actualArtField<ReaderDualPageIdentity>(owner, "identity"), "pageIds")
+
+    private fun actualFact(owner: SharedDualPageSession, index: Int): ReaderPageFactState? =
+        actualArtField<Map<ReaderPageId, ReaderPageFact>>(owner, "facts")[actualPages(owner)[index]]
+            ?.let { actualArtField(it, "state") }
+
+    private fun actualSlots(frame: ReaderDualPageFrame): List<ReaderDualPageSlot> =
+        actualArtField(actualArtField<ReaderDualPageUnit>(frame, "unit"), "slots")
 
     private fun frameId(fixture: HostReaderArtFixture, source: Int): ReaderDualPageFrameId {
         var result: ReaderDualPageFrameId? = null
         fixture.onReaderMain { activity ->
-            val viewer = activity.viewModel.state.value.viewer as DualPageR2LPagerViewer
+            val viewer = actualViewer(activity)
             val holder = descendants(viewer.pager).filterIsInstance<DualPagerPageHolder>()
-                .first { it.displayPage.visiblePages.any { it.index == source } }
-            val (owner, ticket) = requireNotNull(holder.presentationScope)
-            result = requireNotNull(owner.frame(ticket)).id
+                .first { actualDisplayPages(it).any { page -> page.index == source } }
+            val (owner, ticket) = requireNotNull(actualScope(holder))
+            result = actualArtField(requireNotNull(owner.frame(ticket)), "id")
         }
         return requireNotNull(result)
     }
 
     private fun seekForPreparation(fixture: HostReaderArtFixture, source: Int) {
         fixture.onReaderMain { activity ->
-            val page = requireNotNull(activity.viewModel.state.value.viewerChapters?.currChapter?.pages)[source]
-            requireNotNull(activity.viewModel.state.value.viewer).moveToPage(page)
+            val page = requireNotNull(actualChapter(activity).pages)[source]
+            requireNotNull(actualArtField<Viewer?>(actualArtReaderState(activity), "viewer")).moveToPage(page)
         }
     }
 
@@ -415,7 +558,8 @@ class SharedDualPageOriginalImagesNativeTest {
         var observation: HostReaderArtFixture.SlotObservation? = null
         try {
             fixture.onReaderMain { activity ->
-                val root = activity.viewModel.state.value.viewer?.getView() ?: return@onReaderMain
+                val root = actualArtField<Viewer?>(actualArtReaderState(activity), "viewer")
+                    ?.getView() ?: return@onReaderMain
                 val image = descendants(root).filterIsInstance<ReaderPageImageView>()
                     .firstOrNull { source(it)?.index == index && it.isShown && it.getGlobalVisibleRect(Rect()) }
                     ?: run {
@@ -573,19 +717,37 @@ class SharedDualPageOriginalImagesNativeTest {
 
     private fun pageCount(fixture: HostReaderArtFixture): Int {
         var result = 0
-        fixture.onReaderMain {
-            result = requireNotNull(it.viewModel.state.value.viewerChapters?.currChapter?.pages).size
-        }
+        fixture.onReaderMain { activity -> result = actualChapter(activity).pages!!.size }
         return result
     }
 
+    private fun actualChapter(activity: ReaderActivity): eu.kanade.tachiyomi.ui.reader.model.ReaderChapter {
+        val chapters = requireNotNull(
+            actualArtField<eu.kanade.tachiyomi.ui.reader.model.ViewerChapters?>(
+                actualArtReaderState(activity),
+                "viewerChapters",
+            ),
+        )
+        return actualArtField(chapters, "currChapter")
+    }
+
+    private fun actualViewer(activity: ReaderActivity): DualPageR2LPagerViewer =
+        requireNotNull(actualArtField<Viewer?>(actualArtReaderState(activity), "viewer")) as DualPageR2LPagerViewer
+
+    private fun actualAdapter(viewer: DualPageR2LPagerViewer):
+        eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageViewerAdapter = actualArtField(viewer, "adapter")
+
     private fun currentPages(fixture: HostReaderArtFixture): List<Int> {
         var result = emptyList<Int>()
+        val logical = fixture.logicalPageIndex()
         fixture.onReaderMain { activity ->
-            val viewer = activity.viewModel.state.value.viewer as DualPageR2LPagerViewer
-            val chapter = requireNotNull(activity.viewModel.state.value.viewerChapters?.currChapter)
-            val owner = requireNotNull(viewer.adapter.session(chapter))
-            result = requireNotNull(owner.targetUnit).slots.map { it.pageId.sourcePageIndex }
+            val viewer = actualViewer(activity)
+            val holder = descendants(viewer.pager).filterIsInstance<DualPagerPageHolder>()
+                .first { actualDisplayPages(it).any { page -> page.index == logical } }
+            val (owner, ticket) = requireNotNull(actualScope(holder))
+            result = actualSlots(requireNotNull(owner.frame(ticket))).map {
+                actualArtField<Int>(actualArtField<ReaderPageId>(it, "pageId"), "sourcePageIndex")
+            }
         }
         return result
     }
@@ -593,12 +755,28 @@ class SharedDualPageOriginalImagesNativeTest {
     private fun slot(fixture: HostReaderArtFixture, source: Int): ReaderPortraitSingleSlot? {
         var result: ReaderPortraitSingleSlot? = null
         fixture.onReaderMain { activity ->
-            val viewer = activity.viewModel.state.value.viewer as DualPageR2LPagerViewer
+            val viewer = actualViewer(activity)
             val holder = descendants(viewer.pager).filterIsInstance<DualPagerPageHolder>()
-                .first { it.displayPage.visiblePages.any { it.index == source } }
-            val (owner, ticket) = requireNotNull(holder.presentationScope)
-            result =
-                requireNotNull(owner.frame(ticket)).unit.slots.first { it.pageId.sourcePageIndex == source }.position
+                .first {
+                    actualArtField<eu.kanade.tachiyomi.ui.reader.viewer.pager.DisplayPage>(it, "displayPage")
+                        .visiblePages.any { page -> page.index == source }
+                }
+            val (owner, ticket) = requireNotNull(
+                actualArtField<
+                    Pair<
+                        mihon.domain.reader.SharedDualPageSession,
+                        mihon.domain.reader.ReaderDualPageViewportTicket,
+                        >?,
+                    >(holder, "presentationScope"),
+            )
+            val frame = requireNotNull(owner.frame(ticket))
+            val unit = actualArtField<mihon.domain.reader.ReaderDualPageUnit>(frame, "unit")
+            val slots = actualArtField<List<mihon.domain.reader.ReaderDualPageSlot>>(unit, "slots")
+            val slot = slots.first {
+                val page = actualArtField<mihon.domain.reader.session.ReaderPageId>(it, "pageId")
+                actualArtField<Int>(page, "sourcePageIndex") == source
+            }
+            result = actualArtField(slot, "position")
         }
         return result
     }
@@ -606,10 +784,16 @@ class SharedDualPageOriginalImagesNativeTest {
     private fun fact(fixture: HostReaderArtFixture, source: Int): ReaderPageFactState? {
         var result: ReaderPageFactState? = null
         fixture.onReaderMain { activity ->
-            val viewer = activity.viewModel.state.value.viewer as DualPageR2LPagerViewer
-            val chapter = requireNotNull(activity.viewModel.state.value.viewerChapters?.currChapter)
-            val owner = requireNotNull(viewer.adapter.session(chapter))
-            result = owner.pageFact(owner.identity.pageIds[source])?.state
+            val owner = requireNotNull(actualAdapter(actualViewer(activity)).session(actualChapter(activity)))
+            val identity = actualArtField<mihon.domain.reader.ReaderDualPageIdentity>(owner, "identity")
+            val pages = actualArtField<List<mihon.domain.reader.session.ReaderPageId>>(identity, "pageIds")
+            val facts = actualArtField<
+                Map<
+                    mihon.domain.reader.session.ReaderPageId,
+                    mihon.domain.reader.ReaderPageFact,
+                    >,
+                >(owner, "facts")
+            result = facts[pages[source]]?.let { actualArtField(it, "state") }
         }
         return result
     }

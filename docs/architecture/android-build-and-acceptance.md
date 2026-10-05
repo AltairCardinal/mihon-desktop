@@ -127,6 +127,10 @@ Windows 命令前设置 `$ErrorActionPreference = 'Stop'`、`PYTHONUTF8=1`、`PY
 
 Release instrumentation 通过 `-Pmihon.testBuildType=release` 构建对应宿主和测试 APK，核对实际安装宿主哈希、证书、targetPackage 后运行适用 suite。现有 AEX release ABI suite 是特定能力门槛，不作为整个应用的通用全量验收；内部白盒测试保留在适合其结构的 Debug 配置，不为使 R8 测试通过批量保留内部类。`adb` 退出 0 不等于测试成功，必须检查 runner 终态、执行数量、失败、跳过和崩溃。
 
+正式53的原生阅读器验收曾遇到R8移除Companion／getter、但保留真实backing field的情况。mapping未列字段不能作为字段不存在的证据；按实际候选APK的DEX核字段、类型与方法签名，不能只根据未压缩源码推断测试ABI。必要的test-only字段读取必须严格核实际对象和类型，读取真实producer状态；缺失或错型应失败，不能用未知值零、逻辑队列为空或制造回调替代物理完成。R8也可能把callback字段收窄为具体lambda类型，不能直接赋普通测试function冒充透明观察。任何适配仍须保留原像素、几何、进度及生命周期断言，生产keep规则不因测试便利扩大。过程与失败证据见[阅读器聚合记录](../evidence/shared-dual-page-rules-and-repair-2026-10-01.md)。
+
+阅读器原生持久化夹具使用真实 DI 中的 SqlDriver 创建和查询其专属测试记录，避免在 Release 的 Requery driver 之外反复打开 Framework SQLite 连接。相同主键用 UPSERT 更新，不用 REPLACE 级联删除已有章节或回执。正式53的 executeQuery 返回类型被 R8 收窄，QueryResult.Value 的 value-class constructor-impl 也被移除；测试只能按实际 DEX 使用保留的方法、构造器及 Cursor，错型或缺失直接失败，不 mock 仓库或提供默认进度。此调整后的真实保存断言通过，但混用连接导致旧失败的具体机制尚未证实。外部核对持久化时须同时读取数据库与其 WAL；仅主文件可能是较早检查点，不能据此断言记录丢失。
+
 正式基线为最低 API 26 与当前 API 36，并覆盖代表性 arm64 设备/模拟器及需要的 x86_64 隔离环境。不是每个定向修复重跑整张矩阵；涉及 SDK、JNI、ABI、R8、安装器或身份迁移必须补验受影响组合。universal 为默认验收交付 APK；如另交付 ABI 专用 APK，每份独立记录哈希并验证其适用 ABI，不能用 universal 哈希替代。
 
 同一输入下有效结果可复用。纯文档、显示版本等机械修改不自动触发产品逻辑全量重跑，但更改构建身份、签名接线、R8、依赖或打包输入必须验证对应真实产物。出现产品缺陷时补红测、修复、重验受影响范围；遵守已声明的全量次数和审查预算。旧候选运行证据在二进制变化后不能自动标成新候选通过。

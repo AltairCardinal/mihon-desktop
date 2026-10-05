@@ -1545,3 +1545,183 @@ Android18失败分布为CoreProduction／ChapterWindow／ProgressProduction／Pr
 首次Desktop余下三项采用原方法各一次、单一Test task、integration=true／单worker的最小诊断，无文件修改：`dp02-unrelated-three-diagnostic` UTC20:42:25.751–20:42:40.082自然PASSED，fresh三XML各1项／零failure、error、skip。目录重命名实际越过原ATOMIC_MOVE并通过最终re-probe／bytes；搜索原HTTP过期完成请求得到409／NO_ACTIVE_LOGIN；作者真SQLite／Compose切All恢复原Late50断言。三个fixture及直接production调用链均无SP01差异。此次只证明未复现，不证明杀毒、文件锁、延时或唯一故障原因；首次AccessDenied／HTTP EOF／索引未完成失败及日志继续保留，不重跑或自动修复作者／搜索／文件协议。
 
 本段墙钟从首次相关诊断开始至上述终态均计入DP02原五小时检查点，没有外部等待扣除；实现0、新产品文件0、新构建0、新代理0。实际命令、前置失败、取消误启动及有效／旧XML分别如上，不把测试机器运行时间当测试工程工时。相关测试修正及必要说明随一个修复提交收口，提交hash由Git追溯。两个199→198的无关license断言仍未获用户决定、未编辑；完整Desktop尚不能描述为通过，Windows／Mac正式build-only门禁未放行，三端正式产物及S17仍待，DP02保持未勾选。
+
+#### Android v3正式候选53：构建通过，运行待验
+
+上述15测试文件及必要说明已随唯一修复提交 `c729f2f33b373dbcc4c83cf81443b76224e58b60` 完成；提交后工作区干净。Android的相关首次完整／focused门禁可独立复用，不依赖未获授权的Desktop license修正。构建前只读核其他活跃worktree版本和既有release目录：main已分配41，history分支44，sync分支实际正式候选最大52／aex.34。因此本worktree不使用原预测41，统一配置机械分配53／`0.19.4-aex.35`，原applicationId／证书连续；未引入其他分支的产品代码。专属API36 AVD实核为 `mihon-pairing-api36`，其旧正式宿主为34／aex.16，不能沿用历史日志的40推断当前安装。另一个模拟器及实体设备未操作。
+
+本轮唯一统一入口 `python scripts/build-android.py candidate` 的内部 `android-candidate` 自然PASSED，UTC20:47:17.872–20:49:52.090／2分33秒；签名与清单生成到20:49:58.372，外层wrapper自然exit0。仅版本配置dirty，production源码冻结；没有Debug／full／clean／外层协调器嵌套／安装。代理用统一verify核验，Root再读取实际文件与artifact.json、独立计算SHA一致。正式候选为 [Mihon-Fork-0.19.4-aex.35-vc53-release-universal.apk](D:/Codex/worktrees/0877/mihon/app/artifacts/android/0.19.4-aex.35-vc53-c729f2f33b-release/Mihon-Fork-0.19.4-aex.35-vc53-release-universal.apk)，68,620,171B，SHA-256 `08af169db392743812e31e3f15d8076b95fb7a9dfc30f59cbf00303241233db4`。
+
+清单为同目录 `artifact.json`：release fork ID、versionCode53、debuggable=false、R8=true、resourceShrinking=true、telemetry／updater=false、minSdk26／target36及四ABI；原证书 `bd8e3af75921fc4356deacabd44a3d491fda8439ffbc7d073c363974a648cae3`，v2／v3已验证。sourceRevision为c729完整hash，sourceDiff `8a05c3a75544483b286140b1b5c528c51e6d7e67a3514b66a1d94aee5b071f0d`，productionInputs `2eab2c1b4a3b9298f05b321488cfcf2cb5957ea511e2313dc5274accf18da83a`，未跟踪输入为空hash；保存mapping SHA `492bc0c51fcfecc0901148ffc6bdfbe812d0d953dee4941234fa678f62717df2`。源码差异指纹是构建时仅版本分配的快照，后续纯证据文字不冒称构建输入变更。
+
+当前只证明候选构建／签名／校验，不证明升级、JNI画面、正式性能或S17。正式宿主保持此不可变APK；后续只构建对应release instrumentation包，核原证书／targetPackage，在既授权专属模拟器安装同一候选后，首先运行原B1冷17／未知反16／回17精确方法验入口。旧Debug72不能替代53正式运行；内部getter／constructor若被R8消除，只读mapping／usage分类，不扩大keep、不以中间或重建APK替换候选。Windows／Mac正式构建仍未执行，DP02未勾选，07:59检查点不重置。
+
+#### 正式53安装与首次ART入口失败：保留，停止后续场景
+
+release instrumentation首次命令又遗漏已验证的整体属性引用，实际argv将 `-Pmihon.testBuildType=release` 拆为两个参数，约3秒FAILED、零编译／业务，不是产品红；原key与日志保留。此前start＋proxy命令被策略拒绝、零执行，不算一次构建。只修该同任务参数形式，`dp02-v3-release-instrumentation-argv` 的实际argv含完整单一属性，UTC20:58:37.664–20:59:12.897自然PASSED／34秒，main minify UP-TO-DATE。随后Root只对本roadmap第2.3.5补充focused单Test task、点号属性整体引用、核实际argv及记录误启动的明确规则，单独文档提交 `ae8e03516d6ab5bc9f608e770a77fa0a684c4c3f`；不改变53候选的c729＋版本快照，不重构建或修改其清单。
+
+测试包经项目 `-Instrumentation` 原证书签名、targetPackage核验，APK SHA `14504423632f377738272b1cbf7944a4cde100c781eb61b673193ea2b5255f24`，路径 `app-desktop/tmp/dp02-v3-release-instrumentation/app-fork-release-test-signed.apk`。仅专属模拟器用统一install入口升级正式53，设备实际base.apk SHA仍 `08af169d…233db4`，版本53／aex.35；测试包安装后的设备SHA同签名测试文件，旧数据未卸载／清库。B1/B2原图与既有扩展输入SHA实核一致，实体设备与另一个模拟器未操作。这是签名／安装／身份连续证据，不是配对与数据保留的业务验收。
+
+首次ART只执行 `SharedDualPageOriginalImagesNativeTest#originalB1ColdDirect17AndUnknownReverseKeepTheirFirstPixelsInThePromisedSlots`，UTC21:02:37.787–21:02:42.414，设备PID17884；runner Time1.823秒／numtests1／failure1／零skip，STATUS_CODE=-2、最终CODE=-1，adb exit0不能当通过。真实栈为 `NoSuchFieldError: ReaderPageMaterializeRunner.Companion`，在HostReaderArtFixture.cold:983访问全局physicalWork计数时失败，尚未launch目标ReaderActivity／PixelCopy／12帧断言。Root独读原stdout与进程记录，核正式53 usage207343的Companion字段、102362的Companion getter已被R8移除；mapping保生产Runner类，不表示测试ABI被保留。这是测试白盒入口与正式R8不兼容，当前不证明产品拒画、JNI故障或S17通过，也未执行到预先发现的Frame.getId风险。
+
+原stdout／process／geometry／ring保存在 `app-desktop/tmp/dp02-v3-release-instrumentation/original-b1-first*`；原collector42332／adb35672／设备17884均已退出，无在途Gradle或ART。没有第二次B1、全Native、正式72、keep／production／fixture改动或正式主APK重构建。现有开发证据不升级为正式证据；正式原图与性能继续待验。后续入口须先明确实际保留的生产观测边界与测试适配范围，保原强像素／几何／进度／物理完成要求，不能删计数断言、将未知写0或把批量内部ABI保留当最小前置修复。存在多个尚未验证的内部访问风险，不逐异常试跑整组来发现；新增适配或显著成本须按roadmap既定停损／范围门槛先给出具体方案。Android版本与本正式候选／失败记录仍留待DP02收口提交，不借此提前勾选；两个无关license修正仍待用户决定。
+
+#### R8入口只读复核：实际DEX纠正字段缺失推断
+
+本次恢复UTC21:24:48起限定十分钟只读核对，沿用原实施者、没有新测试／构建／生产修改。首先确认Runner.cancel／close先移除或清空activeWork再取消job，不能用空逻辑列表代替物理完成；保留的HttpPageLoader.getForegroundWork／getHasForegroundWork确实消费原physical计数，但仅捕获adapter的loader集合不能直接声称全进程归零。只读mapping／usage可证getter或Companion被移除，mapping未列字段本身不能证明字段不存在。
+
+Root进一步用SDK36实际 `dexdump.exe` 流式读取不可变53 APK的两个DEX，仅输出指定三个类的字段、不反汇编整包；单DEX临时解压文件已删除。classes3.dex实际Runner仍有PUBLIC STATIC FINAL `processPhysicalWorkCount: StateFlow`／`mutableProcessPhysicalWorkCount: MutableStateFlow`，实例physicalWorkCount及其backing flow也在；Frame仍有真实id、unit、lockedPageIds、drawnPageIds四字段。classes.dex实际ReaderPageImageView仍有PUBLIC STATIC FINAL `foregroundWork: StateFlow`／`decoderTasks: MutableStateFlow`及Companion。此前由mapping仅列部分字段推断“没有可靠真实计数路径”的结论撤回；缺失的是原测试所调的getter／Runner.Companion，原生产计数没有由这些证据证明消失。
+
+实际DEX同时确认beforeImageDraw／onImageDrawn字段已收窄到具体production synthetic lambda类型，不能把普通测试function直接写入并声称透明转发；Frame.getId等getter移除需读取已证真实字段，而非制造frame。首B1cold方法与fixture不需改生产callback；本段新增事实使最小test-only适配可行。原实施者限两个既有测试文件调整此精确入口的读取方式：真实静态StateFlow和已核实例backing field、严格类型／存在核、无值兜底／无对象图遍历／无事件制造，保原物理归零、25点像素、12帧、源目标／事实／进度要求。
+
+本修复窗口上限25分钟，预计10–20分钟，包含一次测试包编译／签装及同一原B1方法一次复验；不扩其他Original／全Native／正式72，不重新候选或安装中间主APK。当前缓存BuildConfig已核release53／aex35／COMMIT_SHA c729／COUNT9324，与候选一致；因roadmap文档提交改变HEAD，测试包命令可仅排除generateReleaseBuildConfig来复用这个已验证的冻结输入，避免纯文档变更触发主包minify。不得用此排除项生成或交付新的生产候选，正式宿主始终核同一08af哈希。需要改callback、事件含义、新observer或扩大此读取修正时，先回具体范围与成本，不逐异常试跑；R8像素及S17目前仍未通过。
+
+#### 两文件字段适配：首次补验仍为缓存诊断ABI前置失败
+
+`dp02-v3-release-field-abi-test` 从UTC21:49:03启动，限定两文件格式及release测试包编译通过，Gradle41秒；Root读取日志核主compileReleaseKotlin／minifyReleaseWithR8均UP-TO-DATE，没有重建或替换正式候选。ART同一B1 cold方法UTC21:50:45.708–21:50:53.091自然结束，设备PID18273、runner Time3.095秒／1项／1失败／0skip。Runner.Companion入口已越过，原静态StateFlow归零读取及ChapterCache.clear执行后，`cacheJournalState:417`反射调用已移除的DiskLruCache.size()报NoSuchMethodException；仍未launch目标Activity，零目标像素／12帧证据，不能记为产品红或正式B1通过。原日志 `app-desktop/tmp/dp02-v3-release-instrumentation/original-b1-field-adapted*` 保留，runner5132／collector30360及设备进程均已退出。
+
+实施者只读实际DEX确认size:J与lruEntries字段保留；Root核现有synchronized(disk)范围和此前实际已过的diskCache／lruEntries读取，允许在原25分钟窗口内追加这一处严格Long字段读取更正及同方法一次复验，预计2–5分钟。不重置窗口，不扩其他场景；此追加编译／ART必须单独记成本，不能称原一次额度内没有失败。Root独审两文件：pageFact生产实现确为facts[pageId]，字段读取等价；计数仍是真实全局物理完成StateFlow，字段缺失／类型不符直接失败；像素／几何／源导航／事实门槛未删减，也未赋值任何绘制回调。冷读通过仍只关闭这一个正式方法，暖读／knownStructure与性能观察器的具体callback类型风险另保持待解决，不能直接试跑整组发现下一异常。
+
+实施者实核原窗口起点为UTC21:44:05，检查点22:09:05，未扣除正常工具等待。第二次 `dp02-v3-release-cache-field-test` UTC21:56:15启动，测试包编译自然通过／34秒，主compile／R8仍UP-TO-DATE。测试包SHA `8ddad2ec20777bcccd9fcc02385c42b9156b0e7f91474744cf7298cbc138fb79`，上一适配包SHA `8b3bbda1d46ac5d5ad38d25b9801b5e5bb9c7b153783e0afdda5024b48e70d3e`；正式主包及设备仍08af。ART UTC21:57:56.288–21:58:05.210自然结束，PID18899，Time7.583秒／1项／1失败／0skip；cold的真实counter／journal／clear已越过，实际ReaderActivity及章节HTTP入口已启动，但首原图响应在fixture worker:269调用ImageUtil.findImageType时发生IncompatibleClassChangeError：R8已把该方法静态化，测试仍按virtual调用。真实章节响应已返回，原图响应未形成，未取得目标JNI／像素通过。`original-b1-cache-field-adapted*`原stdout／process／ring保留，runner41992／collector43736及设备进程已退出。
+
+两次连续测试前置失败后按roadmap2.3.5转只读诊断，停止第三次编译／ART；不能因异常类型不同抹去同类前置循环。原实施者仅在原窗口内核首B1有限调用链尚未越过的实际DEX成员和静态签名，给最小一批修正及成本；不改ImageUtil生产、keep、绘制回调或其他场景。两个Desktop license断言及暖读／结构／性能的观察方式仍待决定，DP02未勾选。
+
+#### 正式B1 cold单方法通过：范围仅实际像素、源导航与稳定槽位
+
+上述只读核对确认首B1正常路径所用SSIV尺寸／缩放／三种sourceToViewCoord重载、实际page字段、Pair成员及既有页面／viewer／session接口保留；ImageUtil.findImageType(InputStream)实际PUBLIC STATIC，返回ImageType.mime实际PUBLIC FINAL String、getter移除。仅更正原HTTP夹具的stream.use内调用方式：按真实方法static modifier选择null或实际INSTANCE receiver，调用同一production识别方法，再严格读返回mime字段；返回null仍原unsupported错误，无新parser或硬编码原图类型。Root核实际diff，签收这个已知最小前置更正后，在原22:09:05窗口内允许第三次精确复验，不扩大keeper／callback／观察器／文件边界。
+
+`dp02-v3-release-mime-abi-test` UTC22:01:50.997–22:02:26.026自然PASSED，Gradle34秒，限定格式通过、主compile／R8仍UP-TO-DATE。新签名测试包 `app-desktop/tmp/dp02-v3-release-instrumentation/app-fork-release-mime-test-signed.apk` SHA `f782cccff0c865d2fa345c566337456efc3323089bb49e0dd399369821f312b6`，原证书／targetPackage；正式主包及设备仍SHA08af。ART同一B1方法UTC22:03:37.844–22:03:50.433自然结束，PID19159、Time10.248秒、OK1／0failure／0skip、STATUS_CODE=0及最终CODE=-1；Root独读stdout、过程终态、源码断言并独立计算两APK哈希一致，worker17268／collector17548已退出。日志 `original-b1-mime-adapted*` 保留；geometry是logcat收集，应只引用PID19159的DualOriginal行，旧PID18899与系统ring不作为当前证据。
+
+实际B1 archive SHA仍fec7ffef…2b522b；source17与source16的稳态内容／图像矩形均Rect(540,817–1080,1583)，scaleX/Y=1、translationX/Y=0；保25点至少20点匹配及非均匀图像门槛。每个stableOriginal继续检查12帧同mount／container／矩形／变换；真正迟到的source15从UNKNOWN变为PORTRAIT后source16保持RIGHT，回17恢复原矩形及RIGHT。键盘翻页动画期间一次9/25过渡不匹配被原awaitStable排除，未延长超时或将过渡当稳定帧。该方法三处SQL日志均(0,0)，只有读取、没有非零SQL／事件数量断言，因此不能据此签收正式进度持久化或整个S17。
+
+原前置修正批次共3次测试包编译（41＋34＋34秒）及3次单方法ART（3.095＋7.583＋10.248秒），前两次失败完整保留；主应用构建0、新candidate0、生产／资源／keep改动0。从21:44:05至绿色自然终态22:03:50约19分45秒，Root核验／文档耗时另继续计入DP02，不把正常等待剔除。下一独立S10运行仅复用此测试包的两个B2 lateStructure方法，补原JPEG／真实Copymanga响应／迟到宽图／广告22，不包装绘制回调、不新增编译；暖读／knownStructure和正式性能仍等待新增观察方式的范围决定。DP02原07:59检查点不变。
+
+#### 正式B2迟到结构：开篇通过，20的完整方法未通过
+
+两个lateStructure方法复用正式08af及测试f782，零文件修改／编译／安装；B2设备输入SHA再次核同760c。`originalB2LateOpeningWidthKeeps2OnTheRightAndShows3FullOnTheNextRealKey` UTC22:06:36.890–22:06:49.783自然OK1、Time8.919秒／0failure／0skip。首次pidof采集为空，后以同时间窗TestRunner确证PID19362，不以空值当设备PID。Root独读runner和该PID几何：source2真实JPEG矩形Rect(540,819–1080,1581)，晚source3事实到达后12帧同mount／矩形／变换，source2仍RIGHT；真实下一按键source3实际Rect(0,818–1080,1582)、FULL及强像素通过。仅签收开篇迟到路径，不表示known opening LEFT已测。
+
+`originalB2LateBodyWidthsKeep20OnTheRightAndDoNotLose21Or22` UTC22:06:49.784–22:07:28.997自然FAILURES1、Time37.358秒／1项／1failure／0skip，PID19527。真实source20强像素在22:06:56.727通过，矩形Rect(540,819–1080,1581)、RIGHT；之后没有stable source20或source21／22记录。终态为failure-only `nativePresentationState:803`调用已移除ReaderViewModel.getState引发NoSuchMethodError，遮蔽了原30秒等待信息。源码／日志只能把未满足条件收窄为最吻合晚neighbors{18,20}全部SPREAD等待；缺少逐页请求／响应及facts记录，尚不能证明哪页未到、是否真的请求或产品原因。广告22可达性及整个body方法未通过，不因首图通过而勾选。
+
+原stdout／process／geometry／ring为 `original-b2-late-opening*`、`original-b2-late-body*`；11992／47820／47080／44976均已退出。发生首次失败即停止后续用例；只读诊断限5分钟，保原超时／late facts门槛。下一最小更正仅保护失败信息：在await诊断字符串构造处捕获LinkageError并记录实际类／message，继续保原condition、message、30秒、mounted与failureEvidence，不能把诊断不可用转成功；failureEvidence的剩余调用核为现有fixture／平台API。允许限定格式、一次测试包编译／签装及此body精确方法一次，预计2–4分钟、8分钟停止线，无callback／新observer／生产／keeper调整。B1及opening绿色不重跑。暖读／结构／性能观察方式额外45分钟问题已向用户提出，未获答复不执行依赖工作。
+
+失败信息保护的 `dp02-v3-release-body-failure-info-test` UTC22:12:11.242–22:12:50.009自然PASSED，Gradle38秒／限定格式通过、主compile／R8 UP-TO-DATE。测试包SHA `4c0c0e94031f2d2add12d5ac8b8a643bd047bf70ed12a33b9abf168a53810df2`，签装后设备核同SHA，正式主包仍08af。受影响body唯一复验UTC22:14:03.588–22:14:42.672自然FAILURES1、Time37.982秒／1项／1failure／0skip、PID19810。Root独读原stdout／过程及Host实际5行try／catch，确认仅失败诊断字符串被保护，原30秒和条件不变；不因adb exit0宣称green。48868／18264／44684／2808均已退出，没有在途正式场景。
+
+原错误现已明确为“Actual original neighbor bytes must confirm their oriented wide headers”，chapterRequests1、imageRequests4；实际已返回0-based indices[19,19,20,21]（源20两次、21、22），均HTTP200、原JPEG哈希和磁盘缓存一致。源19/index18不在返回向量，不足以直接证明没有发出请求或其最终fact状态。source20真实强像素／RIGHT矩形仍通过，但未过双方晚SPREAD条件，后续稳定／21／22可达性不能记为通过；SQL仍(0,0)，不签持久化。原日志 `original-b2-body-failure-info*` 保留，包括PID19810过滤段；未加新观察器或额外状态报告。该诊断修正共1编译＋1精确ART，约2分31秒命令墙钟，原两B2场景成本及失败不抹去。下一仅只读现有正常预取与事实供给边界、对照S10迟到前提，最多5分钟，不能以删除双邻事实门槛或注入原图事实换绿；完整方法保持失败／待修。
+
+最后只读检查点仍未取得可证的窗口条件，Root于UTC22:21要求停止追加读取并回执、22:23收回该回合，后收到结构化回执。不能把计划5分钟写成精确实际耗时，也不将回执等待剔出DP02。已读入口为HttpPageLoader.onPageSelected→调度器moveTo，事实消费另受Session预算；未证明源19应请求或处于窗口外，产品／夹具因果仍未知，也无已证明可行的最小修正。此回合零文件修改／新进程／新验证；完整body保持失败，未第三次试跑。后续不得直接缩小allSPREAD、制造事实或把单侧晚到当两侧完整结构通过。正式暖读／结构／性能观察方式、无关license断言仍等用户范围决定；DP02检查点仍07:59。
+
+随后Root直接只读核精确入口，首工具UTC22:24:59、收口核22:29:01，实际约4分2秒，超过声明3分钟，已停止、不重新计数。本轮零代理／测试／构建／产品修改。HttpPageLoader默认使用ReaderSchedulerPolicy.originalMihon（nearbyForward=4、nearbyBackward=0、maxConcurrentRequests=1）；moveTo的replaceWindow按anchor计算[start,end]及visible集合，直跳index19时这条正常预取不含index18。ReaderPage.publishHeaderFact从实际已拥有的stream读头，PairingStore／Adapter消费已有contentFact；当前reader目录没有loadFactPage的调用点。另一方面DualPagerPageHolder.loadSinglePage会另调用loader.loadPage，因此不能把“正常预取不含19”扩成“全部生产链绝不请求19”，也不能断言丢请求原因已证实。测试的双方晚事实前提不能仅靠正常前向预取保证，后续需在真实阅读准备／可见页加载边界证明其成立；不增加额外匹配IO、不缩小双方事实断言换绿。B2完整方法仍失败，S17与用户待决定项不变。
+
+#### 2026-10-05用户批准后的恢复：许可断言与45分钟R8观察窗口
+
+用户于本轮回复“允许”，批准此前提出的两个具体范围：正式R8测试观察方式适配最多45分钟，以及两个无关许可测试数量断言199→198。恢复计时从北京时间12:32:02开始，R8适配硬停止点13:17:02，不因换方法、key、编译或交接重置；不改变production、资源、keep或候选53，保首帧、25点强像素、12帧几何及固定性能标准。Root处理许可与独审，同一原实施者处理观察适配，本地重型Gradle串行。
+
+原目标记录的阻塞终态updatedAt=1791153416，对应北京时间06:36:56；实际等待用户至12:32:02，单列5小时55分06秒，仅这段无可独立推进的等待从DP02主动检查点中剔除。此前提出问题至阻塞间仍有诊断／文档，全部计入，不扩大等待区间。原DP02 02:59:00→07:59:00五小时预算未重置，等额平移后的主动检查点为13:54:06；45分钟观察授权不是新一轮五小时额度。
+
+Root仅改GeneratedDependencyNoticesResourceTest与AboutUpdateWiringTest两处199→198；实际resource198及与旧正式70相同uniqueId集合的既有证据复用，排序、所需依赖名称、许可证正文、真实DI与About→许可证列表→正文导航均保留。`dp02-license-count-approved-focused` UTC04:37:18.439–04:38:08.842自然PASSED，约50.4秒；实际argv仅一个jvmTest task及两条精确方法过滤，includeIntegrationTests=true、单worker。fresh两XML各1项／零failure、error、skip，实际测试时间0.169及3.130秒，已保存至同key临时目录。首次全量两处失败继续保留，由这次补验关闭；不描述为最终代码重新全量通过。两处数字调整无格式结构变化，git diff --check通过，原完整格式证据复用。
+
+剩余首次全量失败中的相关reader测试已由既有受影响范围补验关闭，另三无关方法原样复验未复现；本次两许可失败关闭后，可按计划复用首次全量与补验的组合证据进入Windows/macOS build-only，不重新全量。该资格仍不证明正式运行／性能或DP02完成；B2 body、warm/known首帧、正式72与三端S17仍按实际证据保留缺口。
+
+#### 45分钟R8观察适配提前停损：known2通过，warm首绘记录仍缺
+
+同一实施者仅修改既有OriginalNative测试，把不合法的窄化callback赋值替换为平台OnPreDraw→registerFrameCommitCallback观察。preDraw从同一真实holder／owner／ticket读取frame、源页及slot、既有facts、真实ordinary Ready；目标必须尚未draw。commit回到原UI owner后必须同holder／ticket／frame，目标已实际locked与drawn，完整源页集合及slot／position与preDraw一致；不调用preparePage／reportDrawn，也不替换生产callback。25点强PixelCopy、非均匀原图及12帧几何保留。Root独审发现并在首次编译前纠正nested runOnMainSync及commit完整slot关联；原setMangaReadingMode在实际DEX已inline，known切换改走既有default-mode偏好事件／真实production consumer，仍真实Single暖读→新Dual owner，无事实或最终分组注入。
+
+`dp02-v3-release-frame-commit-test` UTC04:43:46.581–04:44:41.359自然PASSED（54.8秒），仅Original限定格式和测试包；main compile／R8 UP-TO-DATE。签装测试SHA548e7aa027bcb7ed447139a46cc7c97dcc1e9411b41381fb4325c302962bf334，正式主包仍08af。
+
+精确known opening UTC04:46:34.372–04:46:50.638、Time13.042／OK1／零skip，PID23380；known body UTC04:46:52.600–04:47:07.029、Time12.915／OK1／零skip，PID23546。Root独读runner、终态与同PID几何：源2首提交LEFT、facts[PORTRAIT,SPREAD]、Rect(0,819–540,1581)；源20首提交FULL、facts[SPREAD,SPREAD]、Rect(0,437–1080,1963)。实际首提交frame为generation1/context3/serial6，先前proposed为context2/serial3，未把两context描述成同一frame；像素及12帧验证绑定实际首提交frame。SQL仍(0,0)，不签收持久化或全S17。首提交上下界也不等于原prepare回调纳秒时间。
+
+首次warm实际Time16.424／1项1失败：真实顺读强像素已到源17，但timely首绘记录为空，行135失败，后续warm reverse未执行。候选假设为predraw只检查isReady，可能漏掉原SSIV drawable=isReady||isImageLoaded、super.onDraw初始化后形成drawn的首帧。仅改为原drawable条件后，`dp02-v3-release-warm-drawable-test` UTC04:51:35.827–04:52:07.074自然PASSED（31.2秒），main compile／R8 UP-TO-DATE，签装SHA8a12c48c4bb9bab68e14300f1e77f5e60342bbbb8b1728015d211b346a0087e5。warm唯一补验UTC04:52:53.098–04:53:11.116，Time17.098／1项1失败，PID24170，仍行135记录null；假设未获证实。一次准备临时脚本的SyntaxError发生在ART启动前，不计产品红或执行成功；实际第二轮ART仅该方法一次。
+
+连续两次warm没有新增可区分原因的现场事实，按2.3.3提前停止追加观察器、编译和ART，不等待耗满13:17:02。共2次测试包编译／格式、4次精确ART（2通过／2失败，runner时间合计59.479秒）；未重跑known2、已绿B1cold／opening或Debug72，未启动正式72。性能原Ready／逐槽draw回调纳秒测点仍未取得可证等价，不能用FrameCommit上界冒充。B2 cold body双方迟到前置仍失败／待决定。实施者回执及Root核验均确认本轮worker、ART、collector退出，未提交未验收的观察适配；所有原失败与当前日志保留于 `app-desktop/tmp/dp02-v3-release-instrumentation/*frame-commit*`。
+
+#### 正式桌面产物：Mac构建及启动通过，Windows仅版本分配成功
+
+Mac先核隔离容器的source子目录、HEAD dec006e、实际只有此前测试夹具dirty及70版本；Root本地核dec006e→ae8e035所有提交仅tests/docs，production／build输入无改变；将获准的两个许可测试断言同步到隔离source，不覆盖已有原图夹具。实际Temurin21.0.10+7、磁盘3.1GiB可用，现有三个日常／历史PID保持保护。`dp02-v3-macos-formal-build` UTC04:41:12.466–04:42:17.431自然PASSED（65秒），项目build-only、完整JVM0重跑，版本70→71，worker60955／process60956自然退出。
+
+实际 `Final macOS app:` 为 `/Users/altair/Library/Caches/mihon-shared-dual-page-v3-20261005-dec006e/artifacts/0.11.19.71-dec006e/Mihon Desktop.app`，268MiB。Root独读实际打包JAR常量确认STAGE11／FEATURE19／BUILD71、GIT_HASH dec006e、IS_NON_RELEASE_BUILD=false，JAR SHA0f6580c30aedf36d0046c822570744d56cb13010e2c8706323d32cd2c8d52397。LaunchServices启动同包、独立新profile formal71-runtime、HTTP59351／JMX59352；实际PID61133及包路径／参数相符，health OK、HomeScreen与空library READY。正常临时唤醒后分别核displayAsleep=false、sessionLocked=false，目标on-screen窗口layer0／1024×768／(97,73)，原生事件权限true；未发送验收键鼠，不读取屏幕像素。仅证明正式包启动和窗口，不证明B1/B2、进度或性能；本次未发现需要改变macOS维护规则的新机制。
+
+实际Mac包以ditto保留app结构归档，ZIP196,600,789字节，SHA104f1b8fb50c5e48cfc62e557d0d35413ee28d83551b9d9595caba22ebff086e；复制到本地后独算同SHA，可点击[Mac正式构建包](D:/Codex/worktrees/0877/mihon/app-desktop/artifacts/macos/Mihon-Desktop-0.11.19.71.dec006e-macos.zip)。该包仍有S17待验项，不把归档／启动记成阅读验收完成。Root仅调用本次59351的shutdown，返回202/success，保留profile以便后续复用。
+
+Windows统一项目入口已分配0.11.19.71.ae8e035，但Git Bash派发至缓存PowerShell在进入脚本前退出127：`dp02-v3-windows-formal-build` UTC04:46:31.682–04:47:02.704（31秒）。保留71，不回滚或再次bump；显式已核pwsh.exe7.6.5续接同项目build-windows.ps1／SkipTests／VersionAllocated71：`dp02-v3-windows-formal-build-dispatch` UTC04:49:46.433–04:50:16.566（30秒）仍空log／exitFFFFFFFF，未进入Gradle。转只读入口诊断，系统PowerShell5.1在同foreground_options／DEVNULL条件下只读版本命令成功，再续接同script与已分配71的 `dp02-v3-windows-formal-system-shell` UTC04:53:35.635–04:54:05.767（30秒）同样退出FFFFFFFF／空log。所有worker与process自然退出；实际Gradle构建、runtime验收及正式发布均0，不宣称三次正式应用重构建或全量重跑。Windows版本71保留未提交，无新 `Final unpacked EXE:`；不提供旧70或tmp EXE充当本次交付。脚本执行前退出的真实原因仍未知，日志未提供自动审批拒绝理由，不把proxy、策略或PowerShell版本假设写成已证原因。连续入口失败后已停止新的启动／试探，后续需要最小入口诊断方案及用户决定。
+
+许可两断言补验及Root实际两行diff核验已完成，独立获准的测试修正提交为 `15e77a4bde7813c163ff5ac5a425ed7c3992f816`（仅两个test文件）；与未验收DP02观察器／版本／证据分开，后者保持dirty不冒充收口。当前正式Android53仍原c729／08af，Mac71基于dec006e同SP01产品内容，Windows尚无正式包。SP01勾选不变，DP02不勾选；尚欠warm首帧、cold body完整路径、正式性能72、Windows构建及三端S17完整运行／持久化证据。
+
+#### 独审补正known首候选证明：只接受一次登记，严格结果替代初版
+
+Root最终独审发现初版observeFirstCommit在每次preDraw重复register；stale owner／ticket／frame返回后仍可能接受较晚candidate。这削弱了“首次”证明，初版known两次方法绿色保留为运行事实，但不单独用于首帧验收。原45分钟窗口内，Root只交回原实施者最小补正：helper成功register返回true、所有未合格前置返回false；每个原listener只有局部candidateScheduled，第一次合格登记后固定，即使commit失效或未产生真实draw，也保持原记录null／失败，不能跳过早期候选接受后帧。无通用状态系统／新observer，未继续warm诊断。
+
+`dp02-v3-release-first-candidate-test` UTC05:07:29.092–05:08:01.397自然PASSED（32.3秒），仅Original限定格式及测试包，main compile／R8 UP-TO-DATE。签装测试SHA0466301647430e2dca97a84327ec367a7a9bef06b9274c4ee4aa8dc5bc67a366；正式主包及设备仍08af。最小修正真实影响两个known首帧判别，因此只补这两个精确方法：opening UTC05:08:36.304–05:08:51.509，Time12.356／OK1／零skip，PID24580；body UTC05:08:53.634–05:09:08.512，Time13.242／OK1／零skip，PID24736。Root独读当前helper／listener、自然过程终态、runner以及同PID实际frame记录，签收同首合格candidate context3／serial6、LEFT/[PORTRAIT,SPREAD]及FULL/[SPREAD,SPREAD]；原25像素与12帧检查仍通过。最新两结果替代初版known证据，不累计为四个不同验收项。不能把帧内上下界当原回调纳秒时间，也不签SQL持久化。
+
+此必要审查修正额外1次32.3秒测试包编译、2次精确ART，未跑warm、body迟到、72或全量；一次归档Python-c引号SyntaxError发生在归档准备阶段，无测试启动／无写，使用现有rg读取完成，保留过程错误。整个用户45分钟窗口共3次测试包编译、6次精确ART（四次known方法运行成功，最终有效两项；warm两次失败），新正式Android候选0、Debug72重跑0、产品阅读代码／keep改动0。所有本轮协调器、ART和采集器自然退出；Mac本次61132／61133也已退出，三个保护PID44348／47006／55981仍在。Root同意首候选修正，warm记录丢失、cold body前置、正式性能等价测点和Windows入口原因仍未知／未关闭。
+
+本轮按2.3停止继续试探。最小下一步候选是额外20分钟为warm捕获明确的首candidate前置／时序反例，以及10分钟定位Windows脚本执行前退出；范围仍仅既有测试／现有脚本入口诊断，不重新全量或正式Android候选，未知原因不承诺必修复。原性能纳秒口径保持，若提出改为真实FrameCommit上界必须先说明度量差异并由用户决定，当前未启动正式72。暂缓替代为保留现有Mac／Android候选、dirty及缺口，不勾选DP02。追加需用户决定，不能用原45分钟授权反复延长或通过换key重新计时。
+
+Root末次终态／UTF-8核验为北京时间13:15:01，本轮恢复12:32:02至此约42分59秒，包含工具等待、并行桌面前置、审查和文档，不将正常等待剔除；45分钟R8窗口内收口。DP02原主动五小时检查点仍13:54:06，不因停损或纯证据记录重置。所有未验收DP02改动保持未提交。
+
+#### 2026-10-05按用户纠偏自主续接：Windows正式交付入口关闭
+
+用户明确约束用于缩短交付、制止扩张和无效测试，不用于反复中断开发。roadmap修订提交 `32141a9682` 撤回旧20／30分钟继续许可请求，时间与重复失败作为内部收敛检查点；范围内的必要修复、等价测试前置修正及未进入实际构建的续接自主执行。此前等待和失败记录保留，不因纠偏抹去成本。
+
+Windows先以原生System PowerShell、同DEVNULL／进程组条件核命令执行与Python／Git解析；随后用 `-VersionAllocated -ExpectedVersion entry-preflight-only` 使原项目脚本在Gradle之前按预期抛出版本不一致错误。直调用及协调器 `dp02-windows-entry-version-guard` 均触达同一版本守卫；这是新的入口事实，仍未证实此前空日志退出的原因。守卫探针未递增版本、构建或运行测试。
+
+沿用已分配BUILD71及当前HEAD身份，`dp02-v3-windows-formal-entry-verified` 经项目 `scripts/build-windows.ps1 -SkipTests -VersionAllocated -ExpectedVersion 0.11.19.71.32141a9` 续接build-only，UTC06:08:14.811–06:10:33.544自然PASSED／exit0，约138.7秒。实际Gradle正式产物构建1分56秒；生产扩展APK安装、来源ID与运行版本验收通过，正式发布成功。首次完整矩阵及受影响补验的组合证据复用，未重跑完整模块／全量，未分配BUILD72。
+
+日志 `Final unpacked EXE:` 对应[Windows正式未打包应用](<D:/Codex/worktrees/0877/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.71.32141a9-unpacked/Mihon Desktop.exe>)，Root确认文件存在（472,576字节）。[Windows ZIP](D:/Codex/worktrees/0877/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.71.32141a9-windows.zip) 为188,809,012字节，独算SHA-256 `4adb246bf7266abd7e340e627ef26c591bf969d29818ca13b14d87f3caf4b4c6` 与构建日志一致。没有发送Windows原生键鼠；用户选择的B1/B2人工验收及完整S17仍待，正式产物通过不替代阅读／持久化／性能证据，DP02保持未勾选。
+
+暖读原null仅在已有Original测试增加有界、失败时输出的前置记录；`dp02-v3-release-warm-prerequisite-diagnostic` 编译40.4秒，唯一warm诊断UTC06:07:01.072–06:07:21.545、Time16.782／1失败。PID25610记录同image／frame27：逻辑目标14且native可画时，preDraw矩形(-540,817–0,1583)尚不可见、drawn为空；下一preDraw变可见时已drawn[14]，随后[14,15]，首候选从未登记。故此前OR drawable假设不成立；本次新证据定位为preDraw几何可见性门槛漏掉实际提交的首帧。
+
+最小修正仅将globalVisibleRect门槛移至FrameCommit：pre仍要求同逻辑目标、真实native可画且尚未drawn；首次合格候选固定，commit仍核同holder／owner／ticket／frame、实际可见、locked／drawn及完整源页／slot身份。Root独核等价边界，未制造绘制或修改生产callback。`dp02-v3-release-warm-commit-visible` UTC06:16:06.010–06:17:13.478自然PASSED（67.5秒），限定格式和测试包，main compile／R8仍UP-TO-DATE。签装测试SHA `ac74745b4713361e74b1abd4124a2b4b1c33eac88f4f581b189dbab6bad8d39f`；正式主包08af不变。
+
+仅原warm方法UTC06:21:57.331–06:22:35.650自然结束、Time27.830／OK1／零failure、skip，设备PID25993。Root独读runner、终态、当前helper及同PID日志：首次15像素对应facts[PORTRAIT,PORTRAIT]／源索引[14,15]／ordinaryReady[true,true]；顺读0–16完整、真实回翻15/16再到17、25点强像素及12帧几何均通过。观察器漏记问题已修复；SQL仍(0,0)，不将该通过写成持久化验收。未重复known2、冷读绿色或72；Gradle、ART与collector均终态退出，B2晚到前置及正式性能继续待处理。
+
+#### 晚B2前置收敛：保留真实晚到与回翻，移除不成立的反拖等待
+
+普通前向预取不保证源19后台返回。先在原body方法试真实反拖、保持20选中且可见，要求19进入已有HTTP门闩；未新增IO或事实注入。首次共同门闩条件未成立，不能由返回向量断言19全链没有请求。读实际scheduler后将19/21门闩分离，先释放21；20原位12帧稳定通过。第二轮独立失败记录为19未进入门闩、21已进入、逻辑仍20、20实际可见且scroll=390，排除了本轮由21门闩仍未释放导致的等待；不调整手势档位、阈值或超时。
+
+| 精确body补验 | 测试包编译 | ART结果 | 有效结论 |
+|---|---:|---|---|
+| `dp02-v3-release-b2-held-previous-holder` | 约40秒 | PID26295／39.255秒／1失败 | 首20 RIGHT、双方UNKNOWN通过；反拖联合前置未成立，后续未执行 |
+| `dp02-v3-release-b2-two-stage-neighbors` | 31.2秒 | PID26618／40.166秒／1失败 | 21真实晚到后20原位12帧通过；19门闩未进入，后续未执行 |
+| `dp02-v3-release-b2-real-reverse-return` | 28.9秒 | PID26896／12.673秒／OK1 | 普通回翻完整通过，见下文 |
+
+最终仅更正原方法的真实阅读前置，删除反拖试探增量：冷20首RIGHT且19/21皆UNKNOWN → 21真实SPREAD晚到、20原位12帧 → 真实RIGHT回19、原宽图FULL及双方真实SPREAD → 真实LEFT回20、历史frameId／RIGHT／原内容几何及当前实际mount十二帧稳定 → 21 FULL → 广告22完整可达。未预注最终组、边界或fact，19由正常用户回翻触发，不宣称其到达时20持续可见；“后台晚到不自动位移”由21阶段持续可见验证，另以真实回翻验证19事实和历史槽位。该覆盖对应S10／S12／S17普通源页链，未用不成立的后台请求前置阻塞真实阅读验收。
+
+最终ART UTC06:44:07.644–06:44:23.561自然通过；Root独核现body源代码、runner／process与PID26896几何。20首显示与返回均Rect(540,819–1080,1581)，实际mount与container也相同；19 FULL Rect(0,818–1080,1582)，21 FULL Rect(0,840–1080,1560)，22 RIGHT Rect(540,918–1080,1482)。签装测试SHA `1628571b3b961cd90b9f4117a05316fda239e483c724f538c0cf4c95f4198c5b`，所有编译main／R8均UP-TO-DATE，正式主包08af不变，所有自有进程退出。原失败保留，测试修正不能描述为产品bug修复；SQL仍0，正式保存和完整S17继续待验。正式原图六场景现有组合证据可复用，不重跑六场景整组；不称为当前测试包重新整组全绿。
+
+正式性能接口只读核验：实际DEX保留SSIV的 `onImageEventListener` 接口字段、`setOnImageEventListener` 和真实Ready事件，现ReaderPageImageView逐槽draw函数字段窄化，无法直接透明包装。采用Ready→GPU FrameCommit上界与开发精确draw计时分别报告的方案已作为一次集中度量取舍提交用户；此项尚未得到答复，不启动依赖该口径的正式72。其他范围内工作继续，DP02未勾选。
+
+#### 正式部分显示验收：首像素通过，进度资格待定位
+
+`dp02-v3-release-stable-native-field-access` UTC06:53:54.926–06:54:25.016通过限定格式及测试包编译；仅适配Host真实字段读取和既有portrait／wide／error的精确参数过滤，保留原像素、挂载、变换、重试及SQL断言。测试包SHA `90710fb939d1d217b0cfc78d51bdea7b5a097c6384e276a71dc15a241613208e`，主compile／R8 UP-TO-DATE，正式主APK仍08af。
+
+portrait唯一ART UTC06:54:49.995–06:55:31.099，PID27358，Time38.044秒／1失败。真实C的RIGHT首像素通过，但原30秒“Actual first-slot pixels must reach the real SQL progress path”超时；读取复制的数据库及WAL确认chapter15652进度0、事件0。尚未到达缩放、放行伙伴或后续进度断言，wide／error未执行。持久incognito=false不能证明失败时VM的Lazy值、activation或pending资格；旧getState诊断在R8宿主不可用，未据此归因产品。后续限定失败关闭前的实际字段资格快照及同一portrait补验，不改变超时或保存要求，不重跑原图六场景或全量。
+
+#### Mac正式包原生键盘接线的证据边界
+
+复用正式 `0.11.19.71.dec006e`，独立formal71-runtime profile及59351／59352端口，经LaunchServices启动实际应用PID61616／包装器61615。既有CoreGraphics工具核对醒屏、未锁定会话、目标PID及窗口焦点，以真实left／right事件使currentPage 0→1→0、locationSequence 0→1→2；不读取屏幕像素或辅助功能文本。输入发生在首图呈现完成前，使用现有local_archive生成的22页JPEG测试场景，不能作为原B1／B2、首帧稳定或真实阅读保存通过证据。
+
+该场景未建立production数据库章节记录，实际pairingStatus为RESTORE_FAILED，因果尚未证实；HTTP data/manga端点仅返回占位成功，不能据此伪造数据库前置已满足。保留原日志 `app-desktop/tmp/dp02-macos-native-keys.log`，不启动重复生成场景。shutdown成功，Root后续只读ps确认61615／61616均已退出，保护的44348／47006／55981仍运行；零新构建、零全量。正式Mac原图、稳定性、保存和性能门槛保持待验。
+
+#### 正式部分显示与保存：三种伙伴通过，夹具使用真实 production driver
+
+S02／S12／S15／S17的唯一未过前置为首张实际像素后SQL仍0。实施者先只读核实际DEX约15分钟后回执，Root收回任务并承担后续修改，未并行重复实现。既有StableNative测试仅在原首SQL超时后读取真实资格状态并继续抛出原失败；不结算、不造回执、不放宽30秒。两次精确portrait失败快照确认：actual activation与selectedActivation相同、incognito Lazy已初始化且false、acceptedCount=1、settled=true、handle未关闭、viewer idle、实际holder readingEligible=true；第二次还确认队列writeFailures=0／pendingWrites=0。因此未以“没有保存资格”归因，也不把队列为空等同落盘成功。
+
+只读真实AppModule／仓库及实际DEX确认Release使用Requery SqlDriver，原Host夹具另用Framework SQLite反复创建／查询同一数据库。最小test-only修正把专属manga／chapter创建和进度查询接回真实DI SqlDriver；同主键UPSERT保留其他章节与已有回执，查询真实chapters和reading_events，不 mock repository、不直接写进度。executeQuery的R8返回类型及QueryResult.Value实际构造器经DEX核对后使用保留入口；值不存在或错型直接失败。调整后绿色支持夹具接线更正有效，但尚未证实混用driver导致原失败的具体机制，不宣称产品存储bug已修复。
+
+| 有界修正／验证 | 测试包编译与格式 | 精确ART结果 | 边界与结论 |
+|---|---:|---|---|
+| `dp02-v3-release-progress-qualification-test` | 47.56秒 | portrait，PID27829，36.004秒／失败 | 保存资格实际已接受；原SQL等待失败 |
+| `dp02-v3-release-progress-storage-failure-test` | 32.74秒 | portrait，PID28032，35.953秒／失败 | 队列无记录失败、无在途写入；旧外部SQL仍0 |
+| `dp02-v3-release-production-sql-fixture-test` | 35秒 | portrait，1.476秒／前置失败 | ContentValues EntrySet不支持toArray；改为迭代map，不算产品红 |
+| `dp02-v3-release-production-sql-fixture-entries` | 31秒 | 未启动ART | 执行前发现REPLACE的外键级联风险，改同主键UPSERT |
+| `dp02-v3-release-production-sql-fixture-owned-rows` | 30秒 | portrait，1.855秒／前置失败 | value-class constructor-impl已移除；改为已核保留构造器 |
+| `dp02-v3-release-production-sql-value-constructor` | 33.24秒 | portrait，PID29224，7.224秒／OK1；wide，13.746秒／OK1；error，6.764秒／前置失败 | 前两项完整通过；error的action_retry资源字段被移除，后续未执行 |
+| `dp02-v3-release-native-error-resource-id` | 29秒 | error，PID29741，7.941秒／OK1 | 用正式宿主实际资源名查询ID，非零必需；原裁边、真实触摸重试及SQL断言完整通过 |
+
+本段所有编译仅限定owned Kotlin格式与 `:app:assembleReleaseAndroidTest`；实际main compile／R8均UP-TO-DATE，正式主APK与设备仍SHA `08af169db392743812e31e3f15d8076b95fb7a9dfc30f59cbf00303241233db4`，没有新candidate、keep或生产阅读代码修改。七次测试包编译约238.5秒，八次单参数ART合计110.963秒；UTC07:20:14–07:53:17约33分03秒墙钟，期间ABI诊断、夹具修正、签装和工具等待均计入，前述约15分钟委派只读及此后证据核验另计。实现／测试工程／文档未独立计时，不从机器时间推导其占比。两处可避免的夹具API错误保留成本，不包装成业务回归。
+
+portrait与wide复用测试包SHA `3ea36cb0a9e4ef44094b7ecf93e45bb9b897c542adf8741b938ac452ac7a7a2d`；error仅追加实际资源ID修正，测试包SHA `159837b708ad5993638cce6629649d4f6d1804f774bbeeadc4a776f026ebbb68`。这是同一正式宿主的三项组合证据，不称最终测试包重新三项整组通过。原C的RIGHT首像素→SQL进度1及新增一回执→真实双击缩放→伙伴纵图／宽图／HTTP503及重试，均保留当前挂载、内容矩形与变换；纵图与重试伙伴实际画出后SQL进度2及第二回执，宽图通过真实下一键完整显示后SQL2／第二回执。error的按钮与提示完整留在左槽、真实触摸重试，不删除原断言。
+
+Root独读runner终态（每项1、零failure／ignored）、同PID日志、当前夹具及实际主包哈希。最终外部只读复制 `tachiyomi.db` **及同名WAL** 后，chapter15652的last_page_read=2、read=0，目标累计事件7，最新两个事件为progress页1与页2，对应最后一次error方法；累计7包含此前有效尝试，不作为“本次只写两次”的断言，方法内baseline+1／+2才是去重证据。首次只复制主文件读到进度1／事件5，随后确认存在30,424字节WAL并补读，旧检查点不作记录丢失或产品故障证据。外部核验一次查询使用错误列名在只读查询阶段失败，随后按真实schema更正；没有写库或重跑ART。原日志为 `stable-native-portrait-qualification*`、`stable-native-portrait-storage-failure*`、`stable-native-*-production-sql*` 和 `stable-native-error-runtime-resource-id*`，所有自有runner／collector已终态退出。
+
+本次三份测试文件约600行变更共同适配不可变正式R8宿主的观察、真实输入与保存验收；规模来自保留原判别力所需的实际ABI读取，不引入产品owner、缓存、调度或新能力。正式原图六项与部分显示三项各自复用有效结果，不为提交重跑已绿项。DP02保持未勾选，版本记录留待最终收口；剩余正式性能度量取舍仍待用户答复，Mac完整原图／操作／保存与Windows人工验收继续待验。
