@@ -86,6 +86,8 @@ Material 默认 DragHandle 的外层接收点击及焦点，内层 modifier 不�
 
 阅读器验收还须核对场景是否有真实数据库章节及实际进度仓库。现有Test Mode的 `read_chapter` 生成场景使用不写库的syntheticReaderProgressTracker，章节不在production数据库；`/test/data/manga` 的成功响应也不创建记录。它们可用于有限的输入接线检查，不能证明配对恢复或阅读进度保存；先读当前实现，不能依成功HTTP状态推断已建立业务前置。正式原图与保存验收仍走实际产品记录和仓库，不为通过临时伪造结算事件。
 
+同样检查调用链而非动作名：LibraryMangaTestModeController 的章节选择虽然读取真实详情记录，仍调用 TestNavigationController.openReader，后者注入同一不写库 tracker；因此“真实章节已存在”并不足以使此入口成为保存验收。MangaDetailScreen 中用户点击章节的 production 导航创建 DesktopReaderScreen 时没有该覆盖，可走真实 runtime tracker。用实际产品界面验收时，点击坐标必须来自本次已挂载控件几何；当前 reader 原生输入坐标不能挪用于详情或本地来源页面，也不能猜坐标、读取辅助功能文本或临时新增通用观察框架来绕过前置缺口。
+
 未登录 MAIN 面板的原生输入通过，不代表密码页输入/视觉、真实 GitHub 双端或 Android 真机验收。MockWebServer 及离屏 Compose 结果也必须标明证据层级。真实远端写入、实体设备安装或系统设置改变，依用户授权和项目规则执行。
 
 ## 7. 已验证经验记录

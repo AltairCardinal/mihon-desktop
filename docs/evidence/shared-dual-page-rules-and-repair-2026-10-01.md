@@ -1725,3 +1725,9 @@ portrait与wide复用测试包SHA `3ea36cb0a9e4ef44094b7ecf93e45bb9b897c542adf87
 Root独读runner终态（每项1、零failure／ignored）、同PID日志、当前夹具及实际主包哈希。最终外部只读复制 `tachiyomi.db` **及同名WAL** 后，chapter15652的last_page_read=2、read=0，目标累计事件7，最新两个事件为progress页1与页2，对应最后一次error方法；累计7包含此前有效尝试，不作为“本次只写两次”的断言，方法内baseline+1／+2才是去重证据。首次只复制主文件读到进度1／事件5，随后确认存在30,424字节WAL并补读，旧检查点不作记录丢失或产品故障证据。外部核验一次查询使用错误列名在只读查询阶段失败，随后按真实schema更正；没有写库或重跑ART。原日志为 `stable-native-portrait-qualification*`、`stable-native-portrait-storage-failure*`、`stable-native-*-production-sql*` 和 `stable-native-error-runtime-resource-id*`，所有自有runner／collector已终态退出。
 
 本次三份测试文件约600行变更共同适配不可变正式R8宿主的观察、真实输入与保存验收；规模来自保留原判别力所需的实际ABI读取，不引入产品owner、缓存、调度或新能力。正式原图六项与部分显示三项各自复用有效结果，不为提交重跑已绿项。DP02保持未勾选，版本记录留待最终收口；剩余正式性能度量取舍仍待用户答复，Mac完整原图／操作／保存与Windows人工验收继续待验。
+
+#### 进度回写及 Mac 真实入口边界复核
+
+验收修正已提交 `d9e8d99435b9f7a525f673fb1397976dc9ad79ae`（三份测试、两份维护说明及本报告）；版本仍待最终收口。roadmap第5.0节现按矩阵、Android、Windows、Mac、性能与最终收口汇总当前有效证据和缺口，不新增任务checkoff、不称整个S17已过。
+
+本轮只读检查既有 LibraryMangaTestModeController.selectChapter、TestNavigationController.openReader、MangaDetailScreen.onReadChapter 与 reader 原生坐标输出。前两者即使使用真实章节记录仍注入synthetic tracker；正常详情页用户点击则不覆盖真实runtime tracker。现有坐标仅来自已挂载reader，不能用于详情或本地来源入口，未发送猜测坐标、未启动新应用、未复制或改写profile数据库、未扩大观察框架／产品入口。此新增事实排除了“经HTTP选择真实章节即可证明保存”的替代路径；完整Mac原图／操作／保存仍待真实产品UI路径，正式性能口径也未获答复。Windows人工验收的具体操作清单已送出并等待实际版本绑定的结果，不将等待或未提交答案记为通过。
