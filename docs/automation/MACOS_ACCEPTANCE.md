@@ -88,6 +88,10 @@ Material 默认 DragHandle 的外层接收点击及焦点，内层 modifier 不�
 
 同样检查调用链而非动作名：LibraryMangaTestModeController 的章节选择虽然读取真实详情记录，仍调用 TestNavigationController.openReader，后者注入同一不写库 tracker；因此“真实章节已存在”并不足以使此入口成为保存验收。MangaDetailScreen 中用户点击章节的 production 导航创建 DesktopReaderScreen 时没有该覆盖，可走真实 runtime tracker。用实际产品界面验收时，点击坐标必须来自本次已挂载控件几何；当前 reader 原生输入坐标不能挪用于详情或本地来源页面，也不能猜坐标、读取辅助功能文本或临时新增通用观察框架来绕过前置缺口。
 
+当前 ReaderState.mount 还要求测试 open intent 已打开且章节匹配；普通产品入口可能已真实绘制，而 `/test/reader/state` 仍是 mountedReader=null／isOpen=false。应结合真实production呈现回执判断证据层级，不能把状态接口未绑定判为界面未打开，也不能为绑定观察器再开一个模拟阅读器。LocalReaderEntry 的 localChapterPath 路径由 DesktopReaderTrackerPort 明确跳过SQL进度；真实保存验收可在隔离profile准备章节记录与按既有下载命名存放的原CBZ，再经详情页原生点击使用默认tracker，外部只读查库。准备不写进度／回执，不注入配对事实或边界。
+
+外部控件几何可从本次PID的 AXFocusedWindow 有界读取 AXChildren／AXPosition／AXSize，去环并核子节点PID；不读取名称、角色、文本或值，不截屏。窗口切换动画期间几何可能处于中间位置，点击前重新核稳态及命中PID。一次激活调用成功不等于立即置前台：本次立即检查未通过，稍后只读 NSWorkspace 确认目标PID已置前台后才输入；具体延迟机制未定位，不以重复激活或猜坐标替代核验。
+
 未登录 MAIN 面板的原生输入通过，不代表密码页输入/视觉、真实 GitHub 双端或 Android 真机验收。MockWebServer 及离屏 Compose 结果也必须标明证据层级。真实远端写入、实体设备安装或系统设置改变，依用户授权和项目规则执行。
 
 ## 7. 已验证经验记录
@@ -101,6 +105,7 @@ Material 默认 DragHandle 的外层接收点击及焦点，内层 modifier 不�
 | 2026-10-02；Windows Python 3.14 经 SSH 到同一 Mac；候选 `0.11.19.69.ca4abd3` | 多行脚本通过 binary stdin 保持 UTF-8/LF 后，隔离 profile 配置、LaunchServices 启动及 HTTP 健康核验成功；此前 CRLF 入口失败保留。 | 只证明脚本传输与本次启动步骤；不能替代窗口焦点、原生输入或真实阅读验收。失败后的部分执行状态须先核对。 |
 | 2026-10-03；同一Intel Mac；共享双页源码 `84d98c7176` | 系统java_home不能发现已有JDK，首次定向入口未执行测试；核对 `/usr/local/opt/openjdk@21` 指向现有21.0.10，直接执行其Java确认版本，再以绝对JAVA_HOME恢复入口。 | 安装位置和21.0.10只是本次环境事实，不是其他Mac的固定路径；入口恢复不代替测试或正式应用验收。 |
 | 2026-10-05；macOS 14.8.4；隔离正式候选 `0.11.19.71.dec006e` | 生成local_archive场景中原生左右键使页码0→1→0，但pairingStatus为RESTORE_FAILED；只读源码确认Test Mode章节不入库、进度tracker不写库，data/manga端点为占位响应。 | 只签键盘接线；未证明RESTORE_FAILED的具体原因，不签原图、稳定性、配对恢复或SQL保存。无需为外部检查重构建。 |
+| 2026-10-05；同一正式候选与隔离profile | 只读本次PID控件几何后原生点击本地来源，B1／B2原始CBZ共39页实际呈现；准备隔离的已下载章节，经真实详情页点击取得SQL进度0→2及两回执，退出后保留。重启原生继续阅读显示已存页2及伙伴3。 | 普通入口HTTP槽位状态未绑定，尚欠精确目标／稳定性等证明；本地文件入口按现有策略不写SQL。伙伴先画是允许行为，不要求首回执一定为目标页；不把呈现集合当完整槽位验收。 |
 
 上述同步专项详细记录位于 `codex/sync-password-review` 的 `docs/roadmap/2026-09-28-sync-password-safety-roadmap.md`；当前分支未包含它时，可从对应提交只读查看，不把不存在的路径写成当前可用验收入口。历史临时目录、PID、动态端口和候选不是后续任务的默认配置。
 

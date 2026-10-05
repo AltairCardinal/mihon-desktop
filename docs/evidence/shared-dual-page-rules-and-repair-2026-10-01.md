@@ -1731,3 +1731,24 @@ Root独读runner终态（每项1、零failure／ignored）、同PID日志、当�
 验收修正已提交 `d9e8d99435b9f7a525f673fb1397976dc9ad79ae`（三份测试、两份维护说明及本报告）；版本仍待最终收口。roadmap第5.0节现按矩阵、Android、Windows、Mac、性能与最终收口汇总当前有效证据和缺口，不新增任务checkoff、不称整个S17已过。
 
 本轮只读检查既有 LibraryMangaTestModeController.selectChapter、TestNavigationController.openReader、MangaDetailScreen.onReadChapter 与 reader 原生坐标输出。前两者即使使用真实章节记录仍注入synthetic tracker；正常详情页用户点击则不覆盖真实runtime tracker。现有坐标仅来自已挂载reader，不能用于详情或本地来源入口，未发送猜测坐标、未启动新应用、未复制或改写profile数据库、未扩大观察框架／产品入口。此新增事实排除了“经HTTP选择真实章节即可证明保存”的替代路径；完整Mac原图／操作／保存仍待真实产品UI路径，正式性能口径也未获答复。Windows人工验收的具体操作清单已送出并等待实际版本绑定的结果，不将等待或未提交答案记为通过。
+
+#### Mac正式原图与真实保存推进：原生完整顺读及退出落盘
+
+后续复用同一正式71／dec006e与formal71-runtime profile。只读确认保护PID44348／47006／55981仍运行、本次旧实例及59351／59352已退出，再经LaunchServices启动本次61874／包装61872。第一次AXWindows读取最多80节点、深度6，仅取得菜单及零尺寸节点；原生工具遇显示器休眠，零输入。正常短时唤醒后锁屏检查通过，激活后立即前台检查仍失败／零输入；随后只读NSWorkspace确证61874前台及AXFocusedWindow为(97,73,1024,768)。改读准确focused window并用CFEqual去环后取得32实际节点，不增加节点／深度上限，不读AX文本、角色或值，不截屏。
+
+本轮只有两个ignored外部小脚本复用已有CoreGraphics输入工具：有界真实控件几何及按原始章节核对真实呈现回执；没有新应用观察接口、产品owner、生产修改、Gradle、全量或正式重构建。原应用关闭后，仅在隔离profile设置已有本地根目录、RTL、双页与自动匹配偏好；重新启动61981／61979。HTTP仅准备BrowseTab，实际鼠标点击本地来源(609,306)及由当前原生矩形取得的两个原图卡片；每次先验本次焦点和命中PID。原CBZ哈希B1 `fec7ffef2dc6773c0c917b5e9961fff745cca5eb9eaccc82deee2dffe26b522b`、B2 `760c81b12dee475288833b29b1f965fa097d4dbafbc36b6cc62f3e2d5a9ac439` 未变。
+
+| 本次正式运行范围 | 实际结果 | 成本／限制 |
+|---|---|---|
+| 本地B1原始17页，实际点击及连续LEFT | 9次真实按键后源索引0–16全部产生production FIRST_PAGE_PRESENTED回执 | 命令墙钟约3.93秒，含脚本传输与SSH；不是强像素／槽位／性能证明 |
+| 本地B2原始22页，实际点击及连续LEFT | 14次真实按键后源索引0–21全部呈现，广告源22未跳过 | 命令墙钟约5.71秒，含点击及SSH；同样不证明迟到结构／零位移 |
+| 下载原图B1，真实详情页章节点击 | 首张索引0产生SQL回执0；一次真实LEFT后实际呈现1／2、SQL进度2，回执[0,2] | 首次点击及读取约1.2秒、翻页与SQL核验约1.09秒命令墙钟；实际预取1–4并不伪记未呈现3／4 |
+| 退出后重启、真实继续阅读FAB | 退出后SQL仍2／两回执；新进程原生FAB点击后已存索引2与伙伴3真实呈现，SQL合法推进至3 | 重启／详情准备约6.97秒、FAB及观察约1.03秒命令墙钟；逻辑目标精确身份仍未被状态接口观察 |
+
+源文件夹入口的canonical chapterId分别4478052408847097677／3461838217549254682由既有LocalReaderEntry路径摘要生成。只读进一步确认DesktopReaderTrackerPort对localChapterPath明确不打开SQL进度会话、不record；不是由本次原图顺读产生的存储失败。保存补验因此使用profile独占的manga890072／890073与chapter8900721／8900731，真实表／外键和已注册测试源身份，按production命名放同SHA原CBZ；插入前要求专属ID不存在，没有删除、覆盖其他记录或写进度／回执。随后HTTP仅打开真实详情页，鼠标点击实际章节行，由MangaDetailScreen创建默认tracker的真实reader。详情切换动画首份几何有中间偏移，等待后重读稳态才点击；未拿过渡坐标当最终位置。
+
+普通产品入口实际呈现已有，但HTTP mountedReader=null／isOpen=false；源码ReaderState.mount明确只接收已open且匹配的测试intent，不能据此断言界面没打开。回执由真正ReaderPageIoObserver.pagePresented去重记录，对应实际原图decoder／presentation链，未调用绘制或结算方法制造通过；本轮不新开模拟reader绑定观察器。
+
+重启后的首事件为伙伴3、约4.3ms后已存页内容2呈现。Root写的“首个回执必须为已存页2”断言失败是过强测试前提，规格允许后图先可画；原失败stdout保留 `dp02-macos-downloaded-b1-native-resume.log`。只重新只读核同次运行包含2／3，零新输入、零重启／整组重跑；仅签收已存页内容恢复，不据集合推断已证逻辑目标或稳定槽位。新会话SQL有两条最大页序号3的回执；不同实际绘制页追加时最大值可以相同，单靠这两条不能判断重复绘制或产品bug，本次未独立定位其产生原因。精确去重语义仍依共享／受影响wiring证据，不升级本次检查范围。
+
+首实例health为UTC08:14:27.392，最终关停核UTC08:42:29.151，已知运行区间约28分02秒，包含几何诊断、夹具准备、工具等待、原生输入及只读核验；本轮此前文档核对和后续整理另计，机器命令时间不冒充总工程时间。正常shutdown及只读ps确认本次61872／61874、61979／61981、62109／62111、62175／62177全部退出，三个保护PID仍在。日志集中沿用 `app-desktop/tmp/dp02-macos-*{geometry,sequence,progress,resume,final-state}.log`，没有额外报告。roadmap已及时回写该进度；DP02仍未勾选，Mac精确冷跳／回翻目标和槽位、逐帧稳定、设置／手调及性能继续待验，正式性能度量选择与Windows人工结果也尚无答复。
