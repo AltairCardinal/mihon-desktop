@@ -17,6 +17,8 @@ import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.AndroidChapterPairingCoordinator
 import eu.kanade.tachiyomi.ui.reader.HostReaderArtFixture
+import eu.kanade.tachiyomi.ui.reader.actualArtField
+import eu.kanade.tachiyomi.ui.reader.actualArtReaderState
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagerPageHolder
@@ -38,6 +40,7 @@ import uy.kohesive.injekt.api.addFactory
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.get
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.util.IdentityHashMap
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
@@ -225,7 +228,7 @@ class SharedReaderResourceNativeAcceptanceTest {
         }
     }
 
-    /** Fixed 4 x 6 x 3 development comparison, with original B2 payloads and original native callbacks. */
+    /** Fixed 4 x 6 x 3 comparison; Release reports Ready to actual GPU frame commit as an upper bound. */
     @Test
     fun originalPayloadFourConditionsSixScenesHaveNoMatchingDependencyWait() {
         val arguments = androidx.test.platform.app.InstrumentationRegistry.getArguments()
@@ -240,9 +243,13 @@ class SharedReaderResourceNativeAcceptanceTest {
         val conditions = listOf("off", "on", "suspended", "foreground-pressure").filter {
             arguments.getString("performanceCondition")?.let { selected -> it == selected } ?: true
         }
+        val startCase = arguments.getString("performanceStartCase")?.toInt() ?: 0
+        require(startCase in 0..71) { "Unknown performanceStartCase=$startCase" }
+        var caseIndex = 0
         repeat(arguments.getString("performanceRepeats")?.toInt() ?: 3) { repeat ->
             for (condition in conditions) {
                 for (scene in scenes) {
+                    if (caseIndex++ < startCase) continue
                     HostReaderArtFixture(
                         "copymanga",
                         "real-b2-original.cbz",
@@ -288,15 +295,20 @@ class SharedReaderResourceNativeAcceptanceTest {
                                 fixture.await("Original donor foreground must finish before optional work") {
                                     var idle = false
                                     fixture.onReaderMain { activity ->
-                                        val viewer = activity.viewModel.state.value.viewer as? DualPageR2LPagerViewer
-                                        val chapter = viewer?.adapter?.currentChapter
-                                        val owner = chapter?.let { viewer.adapter.session(it) }
+                                        val viewer = actualViewer(activity)
+                                        val chapter = viewer?.let {
+                                            actualArtField<eu.kanade.tachiyomi.ui.reader.model.ReaderChapter?>(
+                                                actualAdapter(it),
+                                                "currentChapter",
+                                            )
+                                        }
+                                        val owner = chapter?.let { actualAdapter(viewer).session(it) }
                                         idle = chapter?.pages?.slice(3..4)?.all {
                                             it.status == Page.State.Ready
-                                        } == true && ReaderPageImageView.foregroundWork.value == 0 &&
-                                            chapter.pageLoader?.hasForegroundWork == false && owner != null &&
+                                        } == true && actualNativeWork().value == 0 &&
+                                            actualNormalWork().value == 0 && owner != null &&
                                             (3..4).all { index ->
-                                                owner.pageFact(owner.identity.pageIds[index])?.state ==
+                                                actualFact(owner, index) ==
                                                     mihon.domain.reader.ReaderPageFactState.PORTRAIT
                                             }
                                     }
@@ -309,12 +321,34 @@ class SharedReaderResourceNativeAcceptanceTest {
                                 donorObservation.close()
                             }
                             fixture.onReaderMain { activity ->
-                                val viewer = activity.viewModel.state.value.viewer as DualPageR2LPagerViewer
-                                val original = viewer.adapter.spreadDecoderFactory
-                                viewer.adapter.spreadDecoderFactory = { stream ->
-                                    optionalEntered.countDown()
-                                    if (!optionalRelease.await(90, TimeUnit.SECONDS)) optionalExpired.set(true)
-                                    original(stream)
+                                val viewer = requireNotNull(actualViewer(activity))
+                                // The R8 decoder factory is a narrowed final lambda. Decorate only the
+                                // existing encoded stream; preserve bytes, close and content identity.
+                                for (page in requireNotNull(actualChapter(viewer).pages)) {
+                                    val field = ReaderPage::class.java.getDeclaredField("stream")
+                                        .apply { isAccessible = true }
+                                    val original = actualArtField<(() -> InputStream)?>(page, "stream") ?: continue
+                                    val forwarding: () -> InputStream = {
+                                        val encoded = original()
+                                        val sampler = Thread.currentThread().stackTrace.any {
+                                            it.className == AndroidReaderSpreadSampler::class.java.name &&
+                                                it.methodName == "sample"
+                                        }
+                                        if (sampler) {
+                                            check(actualOptionalWork().value == 1)
+                                            optionalEntered.countDown()
+                                            android.util.Log.i(
+                                                "ReaderPerformanceDiagnostic",
+                                                "suspendedEncodedGate source=${page.index} sampler=true " +
+                                                    "optional=${actualOptionalWork().value}",
+                                            )
+                                            if (!optionalRelease.await(90, TimeUnit.SECONDS)) {
+                                                optionalExpired.set(true)
+                                            }
+                                        }
+                                        encoded
+                                    }
+                                    field.set(page, forwarding)
                                 }
                             }
                             fixture.matching(true)
@@ -379,13 +413,13 @@ class SharedReaderResourceNativeAcceptanceTest {
                                     activity.onTrimMemory(
                                         android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW,
                                     )
-                                    assertTrue(activity.optionalWorkUnderMemoryPressure.value)
+                                    assertTrue(actualPressure(activity).value)
                                 }
                                 fixture.matching(true)
                                 fixture.onReaderMain {
                                     measurement.event("settingOnReturned", it)
-                                    assertTrue(it.optionalWorkUnderMemoryPressure.value)
-                                    assertEquals(0, AndroidReaderSpreadSampler.optionalWork.value)
+                                    assertTrue(actualPressure(it).value)
+                                    assertEquals(0, actualOptionalWork().value)
                                 }
                             }
                             fixture.onReaderMain { measurement.event("targetRelease", it) }
@@ -396,7 +430,7 @@ class SharedReaderResourceNativeAcceptanceTest {
                                 fixture.await("Original scale must change the real native geometry context") {
                                     var changed = false
                                     fixture.onReaderMain { activity ->
-                                        val viewer = activity.viewModel.state.value.viewer as DualPageR2LPagerViewer
+                                        val viewer = requireNotNull(actualViewer(activity))
                                         changed = viewer.config.imageScaleType == 2 &&
                                             measurement.mountedImages(activity.window.decorView)
                                                 .any { image ->
@@ -426,7 +460,7 @@ class SharedReaderResourceNativeAcceptanceTest {
                                     repeat(3) { fixture.key(KeyEvent.KEYCODE_DPAD_LEFT) }
                                     if (arguments.getString("performanceGeometryChange") == "pending-scale") {
                                         fixture.onReaderMain { activity ->
-                                            val viewer = activity.viewModel.state.value.viewer as DualPageR2LPagerViewer
+                                            val viewer = requireNotNull(actualViewer(activity))
                                             val owner = requireNotNull(
                                                 viewer.adapter.session(requireNotNull(viewer.adapter.currentChapter)),
                                             )
@@ -481,24 +515,22 @@ class SharedReaderResourceNativeAcceptanceTest {
                             }
                             fixture.onReaderMain { activity ->
                                 if (condition == "suspended") {
-                                    assertEquals(1, AndroidReaderSpreadSampler.optionalWork.value)
+                                    assertEquals(1, actualOptionalWork().value)
                                     assertEquals(1L, optionalRelease.count)
                                 }
                                 if (condition == "foreground-pressure") {
                                     measurement.event("pixelsObserved", activity)
                                     // Real idle MemoryInfo refresh can end trim pressure; an admitted original
                                     // task remains counted until its actual completion after a later trim.
-                                    assertTrue(AndroidReaderSpreadSampler.optionalWork.value <= 1)
+                                    assertTrue(actualOptionalWork().value <= 1)
                                 }
                             }
                             var manual = emptySet<Int>()
                             fixture.onReaderMain { activity ->
-                                val viewer = activity.viewModel.state.value.viewer as DualPageR2LPagerViewer
+                                val viewer = requireNotNull(actualViewer(activity))
                                 manual = requireNotNull(
-                                    viewer.adapter.session(
-                                        requireNotNull(viewer.adapter.currentChapter),
-                                    ),
-                                ).pairingState.committedForcedSinglePages
+                                    actualAdapter(viewer).session(actualChapter(viewer)),
+                                ).let(::actualManual)
                             }
                             measurement.print(repeat, condition, scene, opening, fixture, count, initial, manual)
                         } finally {
@@ -516,7 +548,7 @@ class SharedReaderResourceNativeAcceptanceTest {
                         assertTrue("Only a bounded native test gate is used", !optionalExpired.get())
                         fixture.finish()
                         fixture.await("The actual original optional task must exit before the next paired scene") {
-                            AndroidReaderSpreadSampler.optionalWork.value == 0
+                            actualOptionalWork().value == 0
                         }
                         if (condition == "foreground-pressure") {
                             android.util.Log.i(
@@ -530,9 +562,54 @@ class SharedReaderResourceNativeAcceptanceTest {
         }
     }
 
+    private companion object {
+        fun actualFlow(owner: Class<*>, name: String): kotlinx.coroutines.flow.StateFlow<Int> {
+            val field = owner.getDeclaredField(name).apply { isAccessible = true }
+            check(java.lang.reflect.Modifier.isStatic(field.modifiers))
+            val flow = requireNotNull(field.get(null) as? kotlinx.coroutines.flow.StateFlow<*>)
+            check(flow.value is Int && flow.value as Int >= 0)
+            @Suppress("UNCHECKED_CAST")
+            return flow as kotlinx.coroutines.flow.StateFlow<Int>
+        }
+
+        fun actualNativeWork() = actualFlow(ReaderPageImageView::class.java, "foregroundWork")
+        fun actualNormalWork() = actualFlow(ReaderPageMaterializeRunner::class.java, "processPhysicalWorkCount")
+        fun actualOptionalWork() = actualFlow(AndroidReaderSpreadSampler::class.java, "optionalWork")
+        fun actualPressure(activity: eu.kanade.tachiyomi.ui.reader.ReaderActivity) =
+            actualArtField<kotlinx.coroutines.flow.StateFlow<Boolean>>(activity, "optionalWorkUnderMemoryPressure")
+        fun actualViewer(activity: eu.kanade.tachiyomi.ui.reader.ReaderActivity) =
+            actualArtField<Viewer?>(actualArtReaderState(activity), "viewer") as? DualPageR2LPagerViewer
+        fun actualAdapter(viewer: DualPageR2LPagerViewer) =
+            actualArtField<eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageViewerAdapter>(viewer, "adapter")
+        fun actualChapter(viewer: DualPageR2LPagerViewer) =
+            requireNotNull(
+                actualArtField<eu.kanade.tachiyomi.ui.reader.model.ReaderChapter?>(
+                    actualAdapter(viewer),
+                    "currentChapter",
+                ),
+            )
+        fun actualPages(owner: mihon.domain.reader.SharedDualPageSession) =
+            actualArtField<List<mihon.domain.reader.session.ReaderPageId>>(
+                actualArtField<mihon.domain.reader.ReaderDualPageIdentity>(owner, "identity"),
+                "pageIds",
+            )
+        fun actualFact(owner: mihon.domain.reader.SharedDualPageSession, index: Int) =
+            actualArtField<Map<mihon.domain.reader.session.ReaderPageId, mihon.domain.reader.ReaderPageFact>>(
+                owner,
+                "facts",
+            )[actualPages(owner)[index]]?.let {
+                actualArtField<mihon.domain.reader.ReaderPageFactState>(it, "state")
+            }
+        fun actualManual(owner: mihon.domain.reader.SharedDualPageSession): Set<Int> {
+            val persistence = actualArtField<Any>(owner, "pairingPersistence")
+            val state = actualArtField<Any>(persistence, "state")
+            return actualArtField(state, "committedForcedSinglePages")
+        }
+    }
+
     private fun currentSource(fixture: HostReaderArtFixture): Int {
         var index = -1
-        fixture.onReaderMain { index = it.viewModel.state.value.currentPage - 1 }
+        index = fixture.logicalPageIndex() ?: -1
         check(index >= 0)
         return index
     }
@@ -558,6 +635,7 @@ class SharedReaderResourceNativeAcceptanceTest {
         private val byteBaseline: Long,
         private val diagnostic: Boolean,
         private val pressureWave: Boolean,
+        private val frameCommitUpper: Boolean = !eu.kanade.tachiyomi.BuildConfig.DEBUG,
     ) {
         private val observerScope = kotlinx.coroutines.CoroutineScope(
             kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate,
@@ -570,8 +648,8 @@ class SharedReaderResourceNativeAcceptanceTest {
                 .getMemoryInfo(info)
             android.util.Log.i(
                 "ReaderPerformanceDiagnostic",
-                "event=$label ns=${System.nanoTime()} pressure=${activity.optionalWorkUnderMemoryPressure.value} " +
-                    "optional=${AndroidReaderSpreadSampler.optionalWork.value} lowMemory=${info.lowMemory} " +
+                "event=$label ns=${System.nanoTime()} pressure=${actualPressure(activity).value} " +
+                    "optional=${actualOptionalWork().value} lowMemory=${info.lowMemory} " +
                     "focus=${activity.hasWindowFocus()} lifecycle=${activity.lifecycle.currentState}",
             )
         }
@@ -579,17 +657,37 @@ class SharedReaderResourceNativeAcceptanceTest {
         fun observeState(activity: eu.kanade.tachiyomi.ui.reader.ReaderActivity) {
             if (!diagnostic && !pressureWave) return
             observerScope.launch {
-                activity.optionalWorkUnderMemoryPressure.collect { event("pressureFlow:$it", activity) }
+                actualPressure(activity).collect { event("pressureFlow:$it", activity) }
             }
             observerScope.launch {
-                AndroidReaderSpreadSampler.optionalWork.collect { event("optionalFlow:$it", activity) }
+                actualOptionalWork().collect { event("optionalFlow:$it", activity) }
             }
         }
 
         fun close() {
+            closed = true
             observerScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
-            layoutHooks.forEach { (view, hook) -> view.removeOnLayoutChangeListener(hook) }
-            layoutHooks.clear()
+            val release = {
+                layoutHooks.forEach { (view, hook) -> view.removeOnLayoutChangeListener(hook) }
+                layoutHooks.clear()
+                val field = SubsamplingScaleImageView::class.java.getDeclaredField("onImageEventListener")
+                    .apply { isAccessible = true }
+                nativeListeners.forEach { (native, lease) ->
+                    if (field.get(native) === lease.forwarding) native.setOnImageEventListener(lease.original)
+                }
+                nativeListeners.clear()
+                actualReady.clear()
+                commitsInFlight.clear()
+                loadedHooks.clear()
+                paintHooks.clear()
+                errorHooks.clear()
+                prepareHooks.clear()
+            }
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                release()
+            } else {
+                androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().runOnMainSync(release)
+            }
         }
 
         val ready = ConcurrentHashMap<Int, Long>()
@@ -615,6 +713,7 @@ class SharedReaderResourceNativeAcceptanceTest {
         private var optionalWorkPeak = 0
 
         fun markInput() {
+            inputSource = -1
             input = System.nanoTime()
             inputPaint = 0
             inputPixels = 0
@@ -642,8 +741,8 @@ class SharedReaderResourceNativeAcceptanceTest {
             val runtime = Runtime.getRuntime()
             heap = maxOf(heap, runtime.totalMemory() - runtime.freeMemory())
             nativeHeap = maxOf(nativeHeap, Debug.getNativeHeapAllocatedSize())
-            nativeWorkPeak = maxOf(nativeWorkPeak, ReaderPageImageView.foregroundWork.value)
-            optionalWorkPeak = maxOf(optionalWorkPeak, AndroidReaderSpreadSampler.optionalWork.value)
+            nativeWorkPeak = maxOf(nativeWorkPeak, actualNativeWork().value)
+            optionalWorkPeak = maxOf(optionalWorkPeak, actualOptionalWork().value)
             fun views(view: View): List<View> = listOf(view) + if (view is ViewGroup) {
                 (0 until view.childCount).flatMap { views(view.getChildAt(it)) }
             } else {
@@ -689,6 +788,10 @@ class SharedReaderResourceNativeAcceptanceTest {
                 val page = generateSequence<Class<*>>(image.javaClass) { it.superclass }
                     .flatMap { it.declaredFields.asSequence() }.firstOrNull { it.name == "page" }
                     ?.apply { isAccessible = true }?.get(image) as? ReaderPage ?: continue
+                if (frameCommitUpper) {
+                    observeCommittedImage(root, image, page, errorsOnly)
+                    continue
+                }
                 if (diagnostic) {
                     val holder = generateSequence(image.parent) { it.parent }
                         .filterIsInstance<DualPagerPageHolder>()
@@ -772,6 +875,142 @@ class SharedReaderResourceNativeAcceptanceTest {
             }
         }
 
+        private data class ReadyObservation(val at: Long, val page: ReaderPage, val encoded: String)
+        private data class NativeListenerLease(
+            val original: SubsamplingScaleImageView.OnImageEventListener,
+            val forwarding: SubsamplingScaleImageView.OnImageEventListener,
+        )
+
+        @Volatile private var closed = false
+        private val nativeListeners = IdentityHashMap<
+            SubsamplingScaleImageView,
+            NativeListenerLease,
+            >()
+        private val actualReady = IdentityHashMap<ReaderPageImageView, ReadyObservation>()
+        private val commitsInFlight = java.util.Collections.newSetFromMap(
+            IdentityHashMap<ReaderPageImageView, Boolean>(),
+        )
+
+        private fun observeCommittedImage(
+            root: View,
+            image: ReaderPageImageView,
+            page: ReaderPage,
+            errorsOnly: Boolean,
+        ) {
+            val native = (0 until image.childCount).map(image::getChildAt)
+                .filterIsInstance<SubsamplingScaleImageView>().singleOrNull() ?: return
+            val field = SubsamplingScaleImageView::class.java.getDeclaredField("onImageEventListener")
+                .apply { isAccessible = true }
+            val original = field.get(native) as? SubsamplingScaleImageView.OnImageEventListener ?: return
+            if (original !== nativeListeners[native]?.forwarding) {
+                val forwarding = object : SubsamplingScaleImageView.OnImageEventListener by original {
+                    override fun onReady() {
+                        original.onReady()
+                        if (!closed && !errorsOnly && page.status == Page.State.Ready) {
+                            actualReady[image] = ReadyObservation(
+                                System.nanoTime(),
+                                page,
+                                page.encodedContentIdentity(),
+                            )
+                        }
+                    }
+                    override fun onImageLoadError(error: Exception) {
+                        android.util.Log.e(
+                            "ReaderPerformanceDiagnostic",
+                            "originalNativeError source=${page.index} encoded=${page.encodedContentIdentity()}",
+                            error,
+                        )
+                        original.onImageLoadError(error)
+                    }
+                }
+                native.setOnImageEventListener(forwarding)
+                nativeListeners[native] = NativeListenerLease(original, forwarding)
+            }
+            if (errorsOnly || !image.isShown || image in commitsInFlight) return
+            val holder = generateSequence(image.parent) { it.parent }
+                .filterIsInstance<DualPagerPageHolder>().firstOrNull() ?: return
+            val scope = actualArtField<
+                Pair<
+                    mihon.domain.reader.SharedDualPageSession,
+                    mihon.domain.reader.ReaderDualPageViewportTicket,
+                    >?,
+                >(holder, "presentationScope") ?: return
+            val (owner, ticket) = scope
+            val frame = owner.frame(ticket) ?: return
+            val pageId = actualPages(owner)[page.index]
+            val frameId = actualArtField<mihon.domain.reader.ReaderDualPageFrameId>(frame, "id")
+            val unit = actualArtField<mihon.domain.reader.ReaderDualPageUnit>(frame, "unit")
+            val sourceSlots = actualArtField<List<mihon.domain.reader.ReaderDualPageSlot>>(unit, "slots")
+            val sources = sourceSlots.map {
+                actualArtField<Int>(
+                    actualArtField<mihon.domain.reader.session.ReaderPageId>(it, "pageId"),
+                    "sourcePageIndex",
+                )
+            }
+            if (page.index !in sources) return
+            val encoded = page.encodedContentIdentity()
+            check(root.isHardwareAccelerated) { "GPU frame commit requires the original hardware renderer" }
+            val scheduledAt = System.nanoTime()
+            commitsInFlight.add(image)
+            root.viewTreeObserver.registerFrameCommitCallback {
+                val committedAt = System.nanoTime()
+                root.post {
+                    commitsInFlight.remove(image)
+                    if (closed) return@post
+                    val current = actualArtField<
+                        Pair<
+                            mihon.domain.reader.SharedDualPageSession,
+                            mihon.domain.reader.ReaderDualPageViewportTicket,
+                            >?,
+                        >(holder, "presentationScope") ?: return@post
+                    if (current.first !== owner || current.second !== ticket ||
+                        !image.isShown || !image.getGlobalVisibleRect(android.graphics.Rect()) ||
+                        page.status != Page.State.Ready || page.encodedContentIdentity() != encoded
+                    ) {
+                        return@post
+                    }
+                    val committed = owner.frame(ticket) ?: return@post
+                    if (actualArtField<mihon.domain.reader.ReaderDualPageFrameId>(committed, "id") != frameId ||
+                        pageId !in actualArtField<Set<mihon.domain.reader.session.ReaderPageId>>(
+                            committed,
+                            "lockedPageIds",
+                        ) || pageId !in actualArtField<Set<mihon.domain.reader.session.ReaderPageId>>(
+                            committed,
+                            "drawnPageIds",
+                        )
+                    ) {
+                        return@post
+                    }
+                    val committedSlots = actualArtField<List<mihon.domain.reader.ReaderDualPageSlot>>(
+                        actualArtField<mihon.domain.reader.ReaderDualPageUnit>(committed, "unit"),
+                        "slots",
+                    )
+                    val committedSources = committedSlots.map {
+                        actualArtField<Int>(
+                            actualArtField<mihon.domain.reader.session.ReaderPageId>(it, "pageId"),
+                            "sourcePageIndex",
+                        )
+                    }
+                    if (committedSources != sources) return@post
+                    val rendered = actualArtField<Map<ReaderPage, String>>(holder, "renderedPages")
+                    val bound = actualArtField<Map<ReaderPage, String>>(holder, "boundContents")
+                    if (rendered[page] == null || rendered[page] != bound[page]) return@post
+                    val stamp = actualReady[image] ?: return@post
+                    if (stamp.page !== page || stamp.encoded != encoded || stamp.at > committedAt) return@post
+                    // The timestamp is the real GPU callback arrival, not the subsequent main-thread check.
+                    ready.putIfAbsent(page.index, stamp.at)
+                    identities.putIfAbsent(page.index, encoded)
+                    if (paint.putIfAbsent(page.index, committedAt) == null) {
+                        frames[page.index] = frameId
+                        slots[page.index] = sources
+                    }
+                    if (input > 0 && scheduledAt >= input && inputPaint == 0L && page.index == inputSource) {
+                        inputPaint = committedAt
+                    }
+                }
+            }
+        }
+
         fun print(
             repeat: Int,
             condition: String,
@@ -790,18 +1029,26 @@ class SharedReaderResourceNativeAcceptanceTest {
             val fields = linkedMapOf(
                 "platform" to "android", "repeat" to repeat, "condition" to condition, "scene" to scene,
                 "source" to target, "identity" to identities[target], "frame" to frame,
-                "openingNs" to opening, "readyNs" to readyAt, "paintNs" to painted,
-                "readyToPaintNs" to (painted - readyAt), "secondSource" to second,
-                "secondReadyNs" to second?.let { ready[it] }, "secondPaintNs" to second?.let { paint[it] },
-                "inputNs" to input, "inputChildDrawNs" to inputPaint.takeIf { it > 0 },
+                "metric" to if (frameCommitUpper) "ready-to-gpu-frame-commit-upper" else "ready-to-draw",
+                "openingNs" to opening, "readyNs" to readyAt,
+                (if (frameCommitUpper) "frameCommitUpperNs" else "paintNs") to painted,
+                (if (frameCommitUpper) "readyToFrameCommitUpperNs" else "readyToPaintNs") to (painted - readyAt),
+                "secondSource" to second,
+                "secondReadyNs" to second?.let { ready[it] },
+                (if (frameCommitUpper) "secondFrameCommitUpperNs" else "secondPaintNs") to
+                    second?.let { paint[it] },
+                "inputNs" to input,
+                (if (frameCommitUpper) "inputFrameCommitUpperNs" else "inputChildDrawNs") to
+                    inputPaint.takeIf { it > 0 },
                 "inputPixelObservedUpperNs" to inputPixels.takeIf { it > 0 },
-                "frameIntervalNs" to frameIntervals.toList(),
+                (if (frameCommitUpper) "preDrawIntervalNs" else "frameIntervalNs") to frameIntervals.toList(),
                 "requests" to (fixture.imageRequests.get() - requestBaseline),
                 "pageTableRequests" to (fixture.chapterRequests.get() - pageTableBaseline),
                 "responsePayloadBytes" to (fixture.responsePayloadBytes.get() - byteBaseline),
                 "javaHeapObservedPeak" to heap, "nativeHeapObservedPeak" to nativeHeap,
                 "nativeWorkObservedPeak" to nativeWorkPeak, "optionalWorkObservedPeak" to optionalWorkPeak,
                 "pageCount" to count, "manualBaseline" to manual,
+                "sqlLastRead" to fixture.progress().first,
             )
             android.util.Log.i("ReaderPerformance", fields.entries.joinToString(" ") { "${it.key}=${it.value}" })
             assertTrue(painted >= readyAt)

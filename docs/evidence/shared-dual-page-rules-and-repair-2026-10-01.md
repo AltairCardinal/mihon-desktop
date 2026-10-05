@@ -1802,3 +1802,101 @@ roadmap已缩小当前缺口：保留精确冷跳／回翻槽位、慢／错误�
 下一轮先核工作区HEAD为 `9050cccd1f`，仅两个版本文件未提交；本次Mac应用已退出、保护三实例仍在，目标仍active。没有新的审批答复，不把自动续接当追加正式构建或改变性能度量的同意。只做一次有界事件构造核验：用与既有工具相同的CGEventCreateKeyboardEvent／CGEventSetFlags(0)，不调用任何Post，将事件转公开NSEvent读取实际键码、type、modifierFlags和生成字符码点。首次Python缩进错误发生在脚本执行前，0事件；仅修正该前置再运行，日志分别 `dp02-macos-end-event-readonly-metadata.log`／`dp02-macos-end-event-readonly-metadata-corrected.log`，命令墙钟0.500／0.551秒。
 
 实际End为keyCode119／F72B，已绿左键为123／F702；两者type10、modifierFlags8388608。本次未启动应用、未置前台、未发送新原生输入或运行JVM测试／构建。该事实核清工具构造阶段两个键的区别，不能证明CGEventPostToPid后的AWT／Compose接收或reader焦点，End原因仍未定位。另只读ReaderDualPagePresentationOwner.units／project与handleReaderKeyEvent／applyReaderPageAction：projection明确遍历0..pages.lastIndex，End从对应完整displayUnits选择目标，不能以“仅投影已加载窗口”为本次原因，也没有据假设修改production。后续需在包含已验观察修正的正式reader中检查真实挂载状态／焦点及逻辑位置，再决定输入或产品修复；停止猜式End重复，复用此前错误／末页与本次只读结果。DP02依然未勾选，既有三项用户答复继续待收，不新建报告或重复提问。
+
+
+#### 本轮批准与正式Android性能的有界分片收口
+
+用户明确批准一次追加Mac正式构建、单列正式Ready→GPU FrameCommit上界，并要求Windows由代理computer use验收。原授权持续，不再等待同一审批；首次全量和其他正式主包均不重做。复用原实施者负责Android测试适配，Root负责Mac／Windows原生及整合；本机Gradle串行、远端Mac可独立构建。原估75–110分钟为收敛检查点，不是定时申请继续的门槛。
+
+仅改变 `SharedReaderResourceNativeAcceptanceTest.kt`，没有production／资源／R8 keep修改。正式R8的SSIV实际接口透明转发原非空onImageEventListener；在真实onReady的production回调返回后取时，实际GPU FrameCommit回调到达时取终点，再只读核当前holder／同owner、同ticket／同frame、locked／drawn与rendered／bound身份。强PixelCopy、真实SQL、原图和布局断言保留，不调用绘制或结算方法制造事件。**本指标是观测边界到commit到达的上界，既非原Debug精确draw，也非输入响应或帧间停顿的统一指标。** `preDrawIntervalNs`仅为真实preDraw间隔，不能称提交帧间隔或直接证明无可感知卡顿。
+
+Suspended沿实际DEX确认的ReaderPage.stream原Function0透明返回同一InputStream；仅精确 `AndroidReaderSpreadSampler.sample` 实际调用栈扣留，原字节、close与内容身份保留。18个该条件样本都取得真实optional=1／gate尚未release时正常目标强像素，并在退出前optional归零；无新匹配器或调度职责。压力条件保持原真实trim→idle MemoryInfo刷新→可能放行→再次trim波形，首次trim／settingOn／targetRelease的pressure=true、optional=0硬前置通过；MemoryInfo.lowMemory实际全false，后续optional峰可为1，不能签持续低内存或全程optional=0。
+
+固定顺序为repeat→condition→scene，条件off／on／suspended／foreground-pressure，场景cold-home／warm-sequential／slow-partner／rapid-keys／cold-jump-reverse／300-pages。共72个唯一case，Root独核所有组合、时间差、无预注手动边界及真实SQL字段。原32位源页索引与pageCount、原图字节未改变。证据只按仍有效的字段组合，不称最终测试包一次完整72通过：
+
+| 批次 | 实际case／ART PID | 测试APK SHA-256 | 结果与时间 |
+|---|---|---|---|
+| 首次完整入口 | 0–11／32596 | d826d58804f8b0b9e2d97968fd7b26c7a801f94b6a301c5c2de85ab4039ede9e | 12有效，下一Suspended donor初始currentChapter=null被新strict require拒绝；原合法nullable前置已恢复。Time72.486秒，未执行余项 |
+| 仅补未执行60 | 12–59／2254 | eaca5dae76f4efd7f4aff52aa658d2b4ded3f2275612e3e7ef4ccbeac634b8b9 | 48有效；下一fixture staged→shell.readBytes归档读取16MiB扩容OOM，未进入该样本产品decoder／测量。Time333.889秒；剩12未执行 |
+| 仅补剩12 | 60–71／6386 | 6aaeaadfd53d183d0a6a47b731c811b73d45df4ac23858123aa14c115d8b225f | observer释放清理后fresh ART，Time84.286／OK1／0failure／0skip；未重测前60 |
+
+主APK始终08af169db392743812e31e3f15d8076b95fb7a9dfc30f59cbf00303241233db4，只有emulator-5586测试包更新。实际argv仅指定原精确method、`performanceDonorDiagnostic=true`（donor仅errorsOnly）、后两批加 `performanceStartCase=12/60`，没有condition／scene／repeats过滤；索引恢复只适用于此完整固定顺序。adb exit0不等于业务绿，前两批明确业务失败、末批实际OK。
+
+首12的旧inputCommit可能被上一目标排队commit污染，已全部排除该字段；同批真实目标强PixelCopy上界仍有效。后续最小修正markInput清旧source，且只认输入后登记的commit；所有输入结论仍采用真实强PixelCopy上界。OOM时Java堆按六场增长约116.5→187.6→259.1→328.2→391.2→464.5→546.9→575.4MiB（上限576MiB），跨四条件，不是On专属；native堆各组约53.6–66.2MiB。observer.close现在仅恢复仍属于本wrapper的原listener、移除layout hooks／清View maps，并以closed拒迟到记录。最后12Java末仍约192MiB，**不能把这项清理称OOM根因已证或产品内存问题已修复**；三进程分片不能证明连续72场长时内存稳定。
+
+Readiness到commit上界全样本2.38–268.54ms；输入到强PixelCopy上界243.59–1617.63ms。以下逐组三次值保留波动，单位ms；“—”表示该场景无输入指标。On rapid第三次1617.63、cold-jump第三次1057.82必须保留，不以平均掩盖，也不据单个含测量开销的上界断言匹配造成用户卡顿。
+
+| 条件 | 原固定场景 | Ready→commit三次上界 | 输入→强PixelCopy三次上界 |
+|---|---|---|---|
+| off | cold-home | 124.02／65.63／16.80 | —／—／— |
+| off | warm-sequential | 35.81／60.67／110.50 | 281.19／269.22／303.01 |
+| off | slow-partner | 31.32／16.07／37.84 | —／—／— |
+| off | rapid-keys | 66.36／8.20／182.63 | 787.09／467.66／811.47 |
+| off | cold-jump-reverse | 46.80／29.91／11.75 | 470.22／409.37／325.17 |
+| off | 300-pages | 36.55／78.00／2.38 | —／—／— |
+| on | cold-home | 19.49／111.33／18.97 | —／—／— |
+| on | warm-sequential | 111.12／70.72／95.38 | 290.86／243.59／415.77 |
+| on | slow-partner | 13.05／53.32／268.54 | —／—／— |
+| on | rapid-keys | 63.19／19.85／23.98 | 498.36／540.08／1617.63 |
+| on | cold-jump-reverse | 47.58／15.53／76.48 | 317.74／274.18／1057.82 |
+| on | 300-pages | 28.50／104.64／135.72 | —／—／— |
+| suspended | cold-home | 51.68／26.87／16.77 | —／—／— |
+| suspended | warm-sequential | 38.49／28.56／10.81 | 254.40／247.57／299.14 |
+| suspended | slow-partner | 14.49／14.83／57.13 | —／—／— |
+| suspended | rapid-keys | 14.51／29.82／27.08 | 516.58／516.88／569.56 |
+| suspended | cold-jump-reverse | 60.78／25.76／11.21 | 317.63／375.72／266.59 |
+| suspended | 300-pages | 48.39／30.86／18.44 | —／—／— |
+| foreground-pressure | cold-home | 54.71／53.02／89.30 | —／—／— |
+| foreground-pressure | warm-sequential | 52.05／21.34／12.49 | 281.87／264.05／281.18 |
+| foreground-pressure | slow-partner | 71.15／53.95／30.10 | —／—／— |
+| foreground-pressure | rapid-keys | 36.89／82.55／57.69 | 520.29／975.41／1176.73 |
+| foreground-pressure | cold-jump-reverse | 31.26／4.88／42.24 | 290.07／476.62／692.94 |
+| foreground-pressure | 300-pages | 60.00／93.94／54.50 | —／—／— |
+
+12个slow-partner有同frame第二槽真实Ready／commit，其他第二槽为NA，不伪填计时。原始日志、三份原样本、进程及SHA记录在ignored `app-desktop/tmp/dp02-v3-release-instrumentation/formal-performance-*`；组合 `formal-performance-combined-72-samples.json`只是只读派生视图。Root独读末批Instrumentation最终OK、72唯一组合与字段，检查测试diff和格式证据；不额外开全量／重放72。全部worker／runner／collector终态，main正式host无本轮活进程，其他.dev实例未动。
+
+从唯一首测试编译启动UTC12:20:55.420到末批结束12:48:27.979，墙钟27分32.559秒，包含适配、签装、诊断、编译前置失败及工具等待；三次ART累计490.661秒，只是机器执行时间，不能倒推实现／测试工程占比。一次cleanup编译缺声明失败零ART，补同文件声明后限定编译及格式通过；无新增生产代码／代理／独审轮次。采样已达到固定72即收口，不为了消除波动或OOM根因再追加样本。
+
+#### 获批追加Mac正式72：产品入口观察、原生目标与产物
+
+保护既有44348／47006／55981；仅隔离base及formal71-runtime profile。Temurin21.0.10+7真实文件／版本、1.9GiB空闲与无59351监听核实后，以原项目 `scripts/build-desktop.sh build-only` 经远端协调器 `dp02-v3-macos-approved-observation-build` 构建，UTC12:14:11.274854–12:15:03.993381自然PASSED，52.718527秒／Gradle51秒，worker63201／process63202终态，完整JVM新增0。
+
+Mac原隔离git base仍dec006e，四份既有版本／test fixture差异完整保留；仅同步Root `6218ee5a` 已验证的TestState产品入口观察修正，写前与git HEAD文件字节相同且外部备份。对应源码SHA53029ad838491ae80ba6a82ccf774e72ae53b014c51f4a4c130607cc49e3c4e1；不是把dirty补丁冒充纯dec006e。实际包JAR SHAf1e0c00ba28dafc109d07b97951da2ef91d864eed9fb41bdffd0c722e6f26343，实际ReaderState.class含observingProductEntry；独读AppVersion常量11／19／72。项目 `Final macOS app:` 位于base的 `artifacts/0.11.19.72-dec006e-observation/Mihon Desktop.app`，没有覆盖日常应用。
+
+LaunchServices实际63392／63394（后来63673／63675），59351／59352同隔离profile，health通过；实际详情章节行鼠标进入默认runtime tracker，mountedReader chapter8900721／generation1／READY、当前源5及显示6／5，真实窗口／owner焦点和几何通过。旧71无绑定不能回溯升级成这些状态证据。原39页、SQL／重启、手调、章节重试等未受影响结果复用，不重跑整组。
+
+旧End失败只以currentPage未变、无新图片判断。新包真实0／End输入使已显示源页集合变空、逻辑页与locationSequence保持；源码 `applyReaderPageAction` 对最后transition走selectDisplayUnit，`readerKeyboardNavigationPosition`包含末尾章界。状态与这一既有语义相符，不能再把End等同“应跳最后源图”，没有产品键映射修复；旧结果仍保留，HTTP尚未直接公开transition ID的限制不隐去。
+
+页码条端部click未命中滑条，两次实际变成NEXT，原失败日志保留；不能签目标17。随后只读确认页码由一位变两位时指示文本／滑条矩形变化（例x212、w871变x218、w865），硬编码旧尺寸检查不成立；源码showUI由显式toggle，未证实自动隐藏，撤销该早期原因推断。不继续猜端部坐标：复用原外部原生输入工具，加入有界真实down／8个drag／up，坐标来自当次稳定控件几何与实际命中PID。
+
+为保留原已读数据，旧app完整退出后只追加不存在的专属manga890074／chapter8900741和按原命名存放的同SHA原B1 CBZ；初始默认进度0、reading_events0、pairing0，无注入边界／当前显示票据。第一次脚本因3秒时旧PID尚未退出停在写入前，后续旧PID已自然退出；另一条件检查零修改。新app仅HTTP准备真实详情，native点击章节、页码条拖动和RIGHT／LEFT：
+
+| 实际原生操作 | 正式72观测 | 已确认成本与边界 |
+|---|---|---|
+| 详情章节点击、页码条拖至源17 | chapter8900741，currentPage16，currentDisplayPageIndices／visiblePageIndices均[16] | 完整focused外层3.760秒；拖动经过中间值，不能证明目标到达前前组仍未知 |
+| RIGHT回翻源16 | currentPage15，显示／可见[15]，locationSequence8→9 | 真实按键，未吞源16；集合不冒充逐槽图像矩形 |
+| LEFT返回源17 | currentPage16，显示／可见[16]，locationSequence9→10 | 复用已显示单页；没有逐帧像素证明，不签慢／错误伙伴零位移 |
+
+源B1 CBZ仍fec7ffef…522b；副本不改原始输入。native前置醒屏／锁定／焦点／命中全部保留，无系统屏幕像素／AX文本／值采集。新包用ditto归档、本地独算同SHAfdab35d1649d597dfe644c1a3a4f67d76618287f12580efe7fb9e1b9a49eb461，196601254字节，[Mac正式72包](D:/Codex/worktrees/0877/mihon/app-desktop/artifacts/macos/Mihon-Desktop-0.11.19.72.dec006e-observation-macos.zip)。归档后远端余约1.2GiB，不追加构建或大负载。慢／错误伙伴实际逐帧、未及时前组冷跳时序及完整正式阅读观察仍未关闭，不用现有绑定、indices或既有offscreen6替代这些层级。
+
+#### Windows computer use授权已启用；实际锁屏前置
+
+本会话无专用computer use MCP；用已有Pillow与外部Win32窗口截图／SendInput，只绑定本次正式71 EXE、59361／59362、ignored dp02-windows-native新profile和实际GUI PID48804（launcher40412）。此前用户自行验收选择已被本轮代操作授权取代，不等待重复批准。原图两个CBZ复制后原SHA核实，生产路径／profile身份与health通过。
+
+初次fixture marker被Windows文本写入转成CRLF，正式启动拒绝Unrecognized marker；只修专属marker为UTF-8/LF字节，核原失败的两个精确PID后关闭，仅续接启动，不改产品。外部置前台两次失败，均零输入；只读截图实际为锁屏背景，前台PID19708确认LockApp.exe，WTS当前会话SessionFlags0＝LOCKED。OpenInputDesktop返回Default并不能推翻锁定事实，不能继续对非目标窗口发送测试键鼠。已向用户一次请求解锁到桌面，其他工作照常推进；这是环境前置而非审批。Windows原图／稳定性／操作与保存仍待，不能把锁屏截图、health或工具代码当computer use验收通过。
+
+DP02继续未勾选；版本记录保留待最终收口。剩余Windows原生及Mac正式逐帧／时序／阅读观察有真实门槛，不因采样齐全、构建成功或会话结束削减。有效结果复用；没有无证据的全量重跑或追加正式构建授权。
+
+#### 本轮末段：Mac单次冷跳的及时条件与Windows保存前置
+
+Mac首次源17→16→17场景的chapter8900741最终真实SQL为last_page_read16／read1，回执为progress0、finished16、finished16。后两项来自两次真实访问（locationSequence8→9→10），不能用它们证明同一定位的闲置去重，也不据此新增产品修复。shutdown响应不等于进程已经退出：30秒时63673／63675仍在，后续只读确认自然退出，无强杀；三个保护实例保持运行。没有把短等待超时判为产品关停故障。
+
+为区分“拖动逐页经过前组”与“目标直接到达”，复用同一正式72／profile，只追加初始未读、无配对及进度注入的专属chapter8900751。外部输入工具保持原8步默认，仅增加有界1步选择；读取实时Slider矩形后真实down→一次drag到端点→up，未调用HTTP跳页。首次pgrep参数以双连字符开头造成前置拒绝，写入前停止；修正为既有方括号匹配后只执行一次。LaunchServices63984／63985，health UTC13:18:34.344；原生操作记录于ignored `dp02-macos-formal72-one-step-native.log`。
+
+初始源0且14／15／16无HEADER_READ；操作后目标currentPage16、locationSequence1、显示／可见[16,15]。实际源16（index15）HEADER_READ为1731308505669113ns，早于源17 FIRST_PAGE_PRESENTED的1731308586206767ns，差80.538ms；index14在此时未读取。这一观察签收前组及时条件下的真实冷跳源17，不能签前组不及时。实际RIGHT进入[14,13]／逻辑14，LEFT返回[16,15]／逻辑15；最后脚本误要求逻辑16而失败，原日志保留。仅补一次只读核对合法双页起始页15、原可见集合与SQL[16,1]，未重跑输入，不将该错误断言描述为产品导航修复。及时／不及时条件的逐槽首帧和零位移仍欠正式证据。
+
+只读核当前正式观察能力：ReaderMountedGeometry是整个pager矩形，ReaderState和productionEvents公开逻辑页／实际绘制回执；没有公开每槽实际图像矩形／变换／挂载身份，也没有受控迟到伙伴门闩。既有offscreen用例可复用，但不能冒充正式窗口逐帧验收。本轮不增加通用观察框架或为观察重建应用，相关门槛保持待验。此后63984／63985仅请求自身shutdown，末次只读ps确认两者自然退出、59351无监听，三个保护实例仍在；退出证据为ignored `dp02-macos-formal72-one-step-exit.log`。
+
+Windows在锁屏等待期间先核40412／48804的正式路径与profile，正常shutdown并确认两PID退出，再为同一新profile准备专属8900721／8900731真实章节与原SHA的下载CBZ。两者初始last_page_read0／read0、外键通过，没有写阅读回执、配对边界或绘制事实。仅重启同一正式71（launcher43920／GUI3220），UTC13:23:09.255 health通过；WTS仍SessionFlags0＝LOCKED，原生输入0。启动与localhost健康查询组合被工具策略拒绝，实际启动前未发生操作；拆为明确的应用启动和独立只读查询后通过，没有追加权限请求或修改系统策略。保留该窗口供解锁后继续验收；本机真实保存和computer use仍未签收。
+
+本次提交只含一个正式Android性能测试adapter及三份既有维护／证据／roadmap文档，共4文件、超过400行；范围内聚于同一正式验收批次，未增加产品能力。格式及非零ART结果已核，纯证据修改只做一次UTF-8／链接／diff核验，不重跑已通过的测试。两份既有版本差异保留未暂存，DP02不勾选，不以本次提交代替最终交付提交。
