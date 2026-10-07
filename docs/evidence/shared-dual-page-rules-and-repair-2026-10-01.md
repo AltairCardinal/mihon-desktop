@@ -1934,3 +1934,29 @@ Node @oai/sky两次返回窗口均没有本次EXE；未选择其他Mihon或Explo
 验证复用上一轮49通过／4个Darwin跳过的53项流程测试，已核对实际日志且对应代码未改变，不称为本轮重跑。补入的 Android 保护脚本20项定向测试通过、0失败／0跳过，使用模拟adb覆盖真实工具逻辑，无设备或应用启动；日志 `app-desktop/tmp/dp02-workflow-20261007/android-migration-tests.log`。已检查新增文档链接、UTF-8和来源脚本一致性，两处既有版本文件按SHA-256确认未变化；本轮不新增产品测试、Gradle、构建或原生验收。
 
 迁移及本次操作规范／交接修正随同一提交交付。开发继续与 DP02 原验收门槛仍等待用户在原会话启动；迁移完成不等于 DP02 完成，也不会自动修改 Goal 状态、全量预算或发布身份。
+
+
+### 2026-10-07原应用会话：Windows双页基础原生与保存闭环
+
+用户读取新规则后明确启动继续；先核实际HEAD `1b7e290b95275d0767faf9c5875c4303b9e46463`，迁移已提交且只余两处版本差异，未重做迁移或复跑其验证。实际调用线程桌面为Default、59791／59792空闲，原正式EXE launcher SHA93684e7620fa536a33c5de4ef7c5faffd2a5bed8779305bb739428580044c687不变。复用上一轮已准备且未读的profile-native-1；B1／B2原CBZ哈希与初始0／未读已核。原CLI限制是历史，不能沿用成当前锁屏／工具缺失。
+
+初周期launcher10068／runtime10356，health UTC06:01:25.718812900；真实EXE路径、父子及profile／端口参数核实。Node REPL复用已完整读取的computer-use技能，@oai/sky唯一精确EXE窗口21761720真实书架截图成功。所有业务输入只经公开sky.click／press_key／drag，一次动作立即刷新；过渡帧最多补观察，没有重复派发同一输入。实际书架B1卡片→详情Original B1章节行→默认production tracker，原图／SQL／FIRST_PAGE_PRESENTED均真实。旧正式71普通入口mountedReader=null／isOpen=false仍是观察限制，不通过测试open intent重开模拟reader来绑定。
+
+| 原生动作／稳定观察 | 独立产品／存储依据 | 签收范围与限制 |
+|---|---|---|
+| 自动匹配关→开，双页关→开，Escape返回 | reader_auto_spread_matching false→true；reader_dual_page false→true；漫画viewer4294967298→12884901890，实际界面控件核对 | Windows设置真实入口与持久化通过；预设偏好不当作这些点击证据 |
+| B1 Left从首图进入源2/3双页，点击既有手调按钮 | 配对行(8900721,1,17,1)、boundary1；手调后实际源3/4，匹配偏好仍true | 实际手调／保存通过，不注入边界，不把手调后的阅读当纯自动原图质量 |
+| B1滑条拖动实际先到16；当前端点单击明确17/17；Right到源15 RIGHT单页，Left回源16/17 | FIRST_PAGE_PRESENTED原索引包含0／1／2／3／15／16，第一次末页SQL16／read1 | 原生定位／回翻／保存通过；返回默认双页起始源16是合法语义，不要求始终17。不签不及时前组或逐帧零移动 |
+| B2源2 LEFT、源3宽图FULL；滑条实际落19，再Left到20 FULL、21宽图FULL、22广告完整RIGHT | 实际绘制索引0／1／2／17／18／19／20／21；末页SQL21／read1 | 同原图来源及这些实际呈现通过；未遍历全部22页，不签受控晚到20或完整性能 |
+
+首周期真实settings／manual／reading均已完成后，精确核进程及HTTP listener10356，单次shutdown，10068／10356自然退出。为了验证未读续读而不改变已读原章，离线只追加专属chapter8900722（Original B1 resume）及同SHA下载副本，初始index0／未读、外键通过，无配对或进度／回执注入。已读章节按既有resolveReaderChapterEntryPage从0开始新reading pass，不能拿它验证未读续读。一个包含启动和localhost操作的组命令被策略拒绝，零执行；分为精确关停／夹具准备及独立启动后续接，不改变系统策略、不申请重复授权。
+
+第二周期11592／24316，窗口164037826，由真实新章节行进入、真实Left阅读原图源2/3，SQL保存index2／read0，该章节无手调记录。正常shutdown两PID退出后，第三周期30280／23892／窗口9047952用同正式EXE／profile；真实书架→详情中新增章节显示第3页→真实行点击，实际reader工具栏3/17，原图源3 RIGHT／4 LEFT及FIRST_PAGE_PRESENTED索引2／3到达，SQL因伙伴实际绘制追加到3／read0。跨进程续读通过。首次只读断言错误要求OPEN_READER_INTENT.pageIndex=2，而实际公共事件该字段null；保留失败，仅更正为一次真实open及实际页码／绘制观察，不重派开章，不把接口字段缺失当产品失败。
+
+同第三周期原生Escape回详情，重新点击已读Original B1并真实Left：源2为RIGHT单页，区别于首周期手调前源2/3双页，证明revision1／boundary1经实际owner恢复生效；自动匹配偏好仍true。已读章按正常新reading pass从首页开始，当前last_page_read随这次真实阅读变为1／read仍1。末尾原断言错误要求跨会话永久保持16；对照既有ReaderEntryResolver与本次实际0→1阅读后只读修正，不恢复SQL或重放输入。最终三行分别(8900721,1,1)、(8900722,3,0)、(8900731,21,1)，配对／boundary不变、外键通过。
+
+已读原章末页保存和未读续读是两条不同证据；不能把最终1当第一次末页未保存，或把已读从0重读误判为续读丢失。单次目标shutdown响应success后30280／23892自然退出，最后等待2.404秒，三周期均无强杀／本轮遗留。首health至末退出UTC06:01:25.719→06:27:02.387约25分36.7秒，含原生、夹具／工具诊断和等待；前后读取及证据整理另计，不能用工具调用时间反推实现／测试占比。
+
+证据沿用ignored dp02-windows-cua-20261007目录：native-observations.json记录58条实际动作／观察摘要与CUA返回截图ID，不复制截图payload；b1-first-state／b1-manual-sql／b1-before-native-end／b2-last-state、resume-before／after-restart、final-product-state与resumed-native-result分别保存有限只读状态／SQL。截图由本轮CUA工具直接返回并观察，HTTP／SQL不冒充截图。正式EXE仍为[已发布71](<D:/Codex/worktrees/0877/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.71.32141a9-unpacked/Mihon Desktop.exe>)，不是临时或新构建。
+
+一次B1回返及另一个冷章节翻页的即时CUA截图有黑色过渡帧，后续稳定图正常。尚未量到其持续时间、目标Ready时点、动画与matcher依赖，不能据此确证原因或签无黑帧／无感性能；后续只对固定warm-sequential真实Ready／draw与过渡关系定向核验，不泛改UI、重跑全量或重构建。Windows受控迟到纵图／宽图／错误的逐帧矩形／变换／mount、纯自动冷拓扑及完整正式性能仍待，Mac既有正式时序／逐帧／性能门槛不变。DP02未勾选，不把本批入口／操作／保存通过扩成S17全部完成。本轮新增代理／独审／产品测试／Gradle／全量／正式构建均0，版本差异继续保护。
