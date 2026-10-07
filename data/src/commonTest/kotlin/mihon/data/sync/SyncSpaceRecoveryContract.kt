@@ -8,6 +8,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
+import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.crypto.SyncAeadEngineFactory
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelController
@@ -46,6 +47,49 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 abstract class SyncSpaceRecoveryContract {
     protected abstract fun open(): SyncRuntimeStorageContract.Storage
+
+    @Test
+    fun `reauthorization refreshes recovery choices before resuming a deleted repository`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { setup ->
+                storage.favorite("/preserved-import")
+                setup.runtime.preferences.importPaused.set(true)
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val binding = setup.runtime.connection()
+                val pending = requireNotNull(setup.runtime.onboarding.storage.pending(1L))
+                val writes = setup.repositoryWrites
+                setup.created = false
+                setup.runtime.credentials.clear()
+                setup.panel.act(SyncPanelAction.Open)
+                assertEquals(false, setup.panel.state.value.canChangeSpace)
+
+                setup.panel.act(SyncPanelAction.Authorize)
+                withTimeout(10_000) {
+                    setup.panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy }
+                }
+                assertTrue(
+                    setup.panel.state.value.canChangeSpace,
+                    "new authorization must refresh recovery eligibility",
+                )
+                assertEquals(
+                    SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE,
+                    setup.panel.state.value.setupProblem,
+                )
+                setup.panel.awaitRecoveryIdle()
+                setup.panel.act(SyncPanelAction.OpenRecovery)
+                assertEquals(SyncPanelPage.RECOVERY, setup.panel.state.value.page)
+                setup.panel.act(SyncPanelAction.CreateNewSpace)
+                setup.panel.act(SyncPanelAction.ConfirmQuestion)
+                withTimeout(5_000) { setup.panel.state.first { it.setupStep == SyncSetupStep.PREPARE_REPOSITORY } }
+                assertEquals(binding, setup.runtime.connection())
+                assertEquals(pending, setup.runtime.onboarding.storage.pending(1L))
+                assertEquals(writes, setup.repositoryWrites)
+                assertEquals(0, setup.userRepoPosts)
+            }
+        }
+    }
 
     @Test
     fun `generic setup error opens neutral recovery and back preserves source`() = runBlocking {

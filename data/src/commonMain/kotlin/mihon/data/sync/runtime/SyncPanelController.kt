@@ -28,6 +28,8 @@ import mihon.data.sync.auth.SyncSpaceDiscovery
 import mihon.data.sync.crypto.SyncPasswordInputException
 import mihon.data.sync.crypto.SyncPasswordInputIssue
 import mihon.data.sync.crypto.SyncSpaceCrypto
+import mihon.data.sync.http.SyncRequiredResource
+import mihon.data.sync.http.SyncRequiredResourceUnavailable
 import mihon.data.sync.inbox.SyncBulkProgress
 import mihon.domain.sync.SyncField
 import mihon.domain.sync.auth.GitHubDeviceAuthResult
@@ -1060,6 +1062,8 @@ class SyncPanelController(
                         mutableState.update { it.copy(recoveryAuthorization = SyncRecoveryAuthorization.VERIFYING) }
                         try {
                             runtime.acceptAuthorization(previous, result.token)
+                            // Recovery eligibility must reflect the newly accepted credential before setup resumes.
+                            refresh()
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (failure: Exception) {
@@ -1651,18 +1655,23 @@ class SyncPanelController(
         accountLogin: String? = null,
         installation: SyncAppInstallation? = null,
     ) {
+        val problem = when {
+            failure is SyncSetupException -> failure.problem
+            failure is SyncRequiredResourceUnavailable && failure.resource == SyncRequiredResource.REPOSITORY ->
+                SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE
+            else -> SyncDiscoveryProblem.RETRYABLE
+        }
         mutableState.update {
             it.copy(
                 setupBusy = false,
                 setupRetryFailed = it.setupRetryAttempted,
                 setupStep = SyncSetupStep.ERROR,
-                setupProblem = (failure as? SyncSetupException)?.problem ?: SyncDiscoveryProblem.RETRYABLE,
+                setupProblem = problem,
                 problem = failure.syncProblem(),
                 setupAccountLogin = accountLogin,
                 setupInstallation = installation,
             )
         }
-        val problem = (failure as? SyncSetupException)?.problem
         val requiresCheck =
             failure.syncProblem() in setOf(SyncRunProblem.AUTHORIZATION, SyncRunProblem.SPACE_UNAVAILABLE) ||
                 problem in setOf(
