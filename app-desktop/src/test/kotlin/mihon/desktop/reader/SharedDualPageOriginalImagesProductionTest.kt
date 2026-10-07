@@ -667,14 +667,18 @@ class SharedDualPageOriginalImagesProductionTest {
                 retry != null
             }
             val attempt = model.state.value.session.activeChapter.pages[15].attemptGeneration
-            assertTrue(
-                requireNotNull(retry).config[SemanticsActions.OnClick]
-                    .action!!.invoke(),
-                "The original Button action must execute",
-            )
-            await("The original Retry must advance the actual page attempt") {
+            assertEquals(14, model.state.value.currentPage, "The actual failed partner is beside the current page")
+            val button = requireNotNull(retry).boundsInRoot
+            scene.sendPointerEvent(PointerEventType.Press, button.center, button = PointerButton.Primary)
+            scene.sendPointerEvent(PointerEventType.Release, button.center, button = PointerButton.Primary)
+            await("The pointer must execute the original Retry and advance the actual page attempt") {
                 model.state.value.session.activeChapter.pages[15].attemptGeneration > attempt
             }
+            assertEquals(
+                14,
+                model.state.value.currentPage,
+                "Retry must not also dispatch the parent page turn; actual button=$button",
+            )
         }
 
         suspend fun awaitDrawObservation(done: () -> Boolean) = await("A real image command must be observed", done)

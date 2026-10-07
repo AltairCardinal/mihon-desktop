@@ -2059,3 +2059,27 @@ Root只读当前DesktopReaderPageContentOwner确认：OPEN_PAGE／HEADER_READ在
 本批预计30–50分钟，首正确帧红11:25:59至最终绿12:32:34已用66分34.7秒，另有约13分钟前置；超估原因包括前期方案停留、真实取消／按钮输入定位及格式重复，均不擦除。14 Kotlin接线／测试与4个原文档共18个本任务文件，超过8文件／400行但同属原DP02的有界观察与读取控制前置，不增加独立用户能力／新缓存／通用runner。Root独立检查真实内容边界、None普通模式、own timeout与父取消、owner隔离／生命周期、已应用坐标层级及新旧绑定；7方法及格式收口后同一功能提交，版本两处排除。最终worker24580／process11100、格式30464／26696均已退出；本轮两个Windows周期全退出，无Mac启动、正式／preview构建、Android72或完整矩阵。
 
 DP02继续未勾选：旧正式71／72仍缺新接口，必须把冻结源码定向带入实际候选才能补正式受控伙伴／真实Retry、B1/B2时序、帧与性能；不能用源码或离屏绿替代产物。新增正式构建超原额度时按roadmap2.3集中说明所需最小成本，不逐观察点重建，也不触发全量重跑。
+
+#### Retry真实指针诊断：确认父子动作双触发（待最小修复收口）
+
+上一批de23bc56c109已提交，追加两端各一次正式build-only集中确认尚未收到；自动GOAL接续不视为预算批准。Root继续原S17中pointer未解释失败，复用原实施者，只处理实际错误按钮与共用分页点击入口，不新增代理、框架／匹配规则／全量／构建。按Desktop UI规范固定一次事件只消费一层：原Retry实际attempt增长、current仍14、source15 LEFT原图恢复；不是另一个产品目标。
+
+现有readerPrimaryTapInput同时用于Single与Dual，Initial接收down后在Main release派发父翻页，原实现未核子事件isConsumed。原图timeout方法从Semantics动作升级为可见Role.Button实际bounds中心的公开scene Press／Release，先断言源15 attempt增长，再断言current14不变。key `dp02-retry-pointer-child-consumption-red`，12:41:25.929→12:42:00.244 UTC（34.316秒），fresh12:41:50.753／1失败0跳过／8.365秒；实际Button Rect(134,200–217,240)，attempt增长断言通过、current期望14实际15失败。Root独读XML与测试改动：现在有证据确认子Retry执行且父同事件翻页，不再只称原因未知；此前green3原因未解释的历史与Semantics green4仍按各自层级保留。
+
+修复目标仅让共用分页监听尊重Main阶段子控件已消费的事件，红绿限定原方法；最终补两个已有精确参数化翻页方法及cached pointer回归来覆盖受影响Single／Dual、左右方向／动画行为，不跑整类或完整模块。Zoomable独立手势、图片状态、配对、进度及版本不扩大修改。真正Windows／Mac鼠标按钮送达仍需含新源码的产物，不以scene绿色代替原生。
+
+最小生产修复只有readerPrimaryTapInput的5行Main事件isConsumed guard；子控件消费时结束本次背景tap，不吞掉子控件动作。key `dp02-retry-pointer-child-consumption-green`，12:43:01.695→12:43:31.652（29.957秒），fresh12:43:22.201／1通过0跳过／8.403秒；同公开Press／Release验证真实源15 attempt增长、current14不变、原图15 LEFT恢复。Root独读guard的取消／循环路径，Single与Dual复用此入口，Zoomable独立handler未改；重构格式和受影响参数化点击方法尚待，未扩大到匹配、保存或全量。
+
+首次最终4methods展开22案例 `dp02-retry-pointer-final-focused22` 12:45:59.477→12:46:33.964（34.487秒）失败，不能以Retry单绿提交。Original fresh12:46:18.730／2项1失败／10.558秒，cached pointer的强原图帧oracle失败；PageTurn fresh12:46:29.334／20项4失败／3.544秒，Single／Dual、LTR／RTL的live animation tap均未到预期目标，其余16项通过。Root独读XML，any Main consumed会同时丢弃Pager为打断动画消费的Press是一项待证实推断；修复应限定实际冲突的Release，不改变已有正常点击目标、不降低原图oracle、不禁用动画／缓存或运行完整模块。该失败清楚限定公共手势的传播范围，后续补验仍为相同4methods。
+
+收窄到Main Release消费保护后，相同4methods／22参数 `dp02-retry-pointer-release-focused22` 12:49:35.743→12:50:12.045（36.302秒）通过。Original fresh12:49:56.336／2通过0失败0跳过／11.158秒，PageTurn fresh12:50:07.532／20通过0失败0跳过／3.413秒，共22／14.571秒，XML已归档同key目录并由Root独读。保留旧cache partial像素失败，不据本次绿宣称唯一因果；其相同强oracle与80帧本次通过，没有降低匹配点／亮度／可见范围标准。只修改公共readerPrimaryTapInput，原图fixture由Semantics动作改真实Press／Release、增加真实attempt与位置保护；正式窗口验收仍待新产物。
+
+#### Retry指针修复批次收口
+
+注释澄清Press／Release边界并做2文件strict120格式，key `dp02-retry-pointer-release-scoped-format` 12:52:52.631→12:53:07.411（14.779秒）通过。此后只复验原红绿Retry方法，`dp02-retry-pointer-release-refactor1` 12:55:48.486→12:56:15.892（27.406秒），fresh12:56:06.311／1通过0失败0错误0跳过／8.527秒；其余21项复用同Release-only生产代码的有效结果，不再完整重跑22，更不重跑模块／全量。
+
+Root独立检查最终公共手势：只在Main Release已消费时终止本次父tap，Press仍按原流程支持普通点击与动画；子按钮原动作保留，Single／Dual共用，Zoomable与matcher／图片／保存都未改。红测证明真实按钮动作与父导航双触发；最终真实pointer证明尝试增长且目标14保持、伙伴原图恢复。代码层已修复Retry同时翻页的问题，正式窗口仍待新候选鼠标验收，不把旧正式包升级为已修复。
+
+本批预计10–20分钟收敛；从正确红开始12:41:25.929到最后绿12:56:15.892为14分49.963秒，另有前置只读。共5次所选focused命令与2次2文件格式，实际命令墙钟累计约3分11.9秒，测试体约54秒；它们不等于全部测试工程工时或实现／测试占比。首次正确红、过宽保护的5个回归失败、最终范围绿均保留；没有全量、正式／preview包或新代理。最终5个本任务文件（2代码／测试、3原文档）一次提交，2版本差异排除；worker31936／process27028、格式36100／38076以及22案例39104／48072均已退出，无本批运行中进程。
+
+Mac构建前只读核隔离source仍dec006e，5份既有dirty保留；TestState SHA53029ad8…e3c4e1与原6218入口观察补丁一致，后续最小产品更新仅11个路径，不覆盖测试夹具或合并整个分支。实际Temurin21.0.10+7在项目脚本绝对路径可用，java_home未注册提示不作为JDK缺失；余约2.3GiB、59351无监听，保护44348／47006／55981不动。追加Windows／Mac各一次build-only的集中确认仍待用户回复，自动GOAL继续不视为批准，不为本次修复重复申请同额度。批准后使用最终冻结修复，复用已执行完整基线与相关补验，不重建Android、不重跑72。

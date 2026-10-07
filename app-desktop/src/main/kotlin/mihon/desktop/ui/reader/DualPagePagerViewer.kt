@@ -530,6 +530,11 @@ internal fun Modifier.readerPrimaryTapInput(
 
             while (!gestureComplete) {
                 val nextEvent = awaitPointerEvent(PointerEventPass.Main)
+                // Respect consumed releases without cancelling taps when a pager consumes the press.
+                if (nextEvent.type == PointerEventType.Release && nextEvent.changes.any { it.isConsumed }) {
+                    gestureComplete = true
+                    continue
+                }
                 when (nextEvent.type) {
                     PointerEventType.Move -> {
                         val change = nextEvent.changes.first()
