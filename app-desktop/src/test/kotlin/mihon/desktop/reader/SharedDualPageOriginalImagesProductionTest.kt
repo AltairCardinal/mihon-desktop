@@ -12,10 +12,12 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.network.NetworkHelper
@@ -41,6 +43,8 @@ import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.ui.reader.DualPageDisplayUnitCompositionIdentityKey
+import mihon.desktop.ui.reader.DualPagePhysicalSlot
+import mihon.desktop.ui.reader.DualPagePhysicalSlotKey
 import mihon.desktop.ui.reader.DualPageSlotIdKey
 import mihon.desktop.ui.reader.ReaderPagerNativePresentationKey
 import mihon.desktop.ui.reader.ReaderScreenModel
@@ -80,6 +84,25 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class SharedDualPageOriginalImagesProductionTest {
     @TempDir lateinit var directory: File
+
+    @Test
+    fun `original B1 manual tail cached pointer reverse and return keep artwork in every actual frame`() = runBlocking {
+        Fixture("b1", 0, dual = true, animated = true, matching = true).use { fixture ->
+            fixture.pixels(0, ReaderPortraitSingleSlot.LEFT)
+            fixture.next()
+            fixture.pixels(1, ReaderPortraitSingleSlot.RIGHT)
+            fixture.pixels(2, ReaderPortraitSingleSlot.LEFT)
+            fixture.model.adjustSpread()
+            assertEquals(setOf(1), fixture.model.state.value.forcedSinglePages)
+            // The real slider first lands on source 16 before the explicit source-17 endpoint.
+            fixture.model.goToPage(15)
+            fixture.pixels(15, ReaderPortraitSingleSlot.RIGHT)
+            fixture.pixels(16, ReaderPortraitSingleSlot.LEFT)
+            fixture.model.goToPage(16)
+            fixture.pixels(16, ReaderPortraitSingleSlot.LEFT)
+            fixture.cachedTailTurns()
+        }
+    }
 
     @Test
     fun `original B1 cold seventeen reverses to unknown sixteen and returns with stable late pixels`() = runBlocking {
@@ -153,6 +176,8 @@ class SharedDualPageOriginalImagesProductionTest {
         dual: Boolean,
         private val held: Set<Int> = emptySet(),
         private val heldDecode: Set<Int> = held.filter { it > initial }.toSet(),
+        animated: Boolean = false,
+        matching: Boolean = false,
     ) : AutoCloseable {
         private val archive = File(
             requireNotNull(System.getenv("MIHON_READER_ORIGINAL_ARCHIVES")),
@@ -172,7 +197,7 @@ class SharedDualPageOriginalImagesProductionTest {
         private val preferences = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply {
             readingMode = ReadingMode.RTL
             isDualPage = dual
-            isAutoSpreadMatching = false
+            isAutoSpreadMatching = matching
             autoSplitPages = false
             cropBordersPager = false
             backgroundTheme = ReaderBackgroundTheme.BLACK
@@ -281,7 +306,7 @@ class SharedDualPageOriginalImagesProductionTest {
             }
             collector = runtimeScope.launch { runtime.session.state.collect { model.acceptSessionState(it) } }
             val app = DesktopAppPreferences(InMemoryPreferenceStore(), legacy.node("app"))
-                .apply { pageTurnAnimation.set(false) }
+                .apply { pageTurnAnimation.set(animated) }
             val dependencies = mockk<DesktopUiDependencies> { every { appPreferences } returns app }
             scene = ImageComposeScene(700, 400, coroutineContext = uiScope.coroutineContext) {}.apply {
                 setContent {
@@ -341,6 +366,129 @@ class SharedDualPageOriginalImagesProductionTest {
             scene.sendPointerEvent(PointerEventType.Release, Offset(680f, 200f), button = PointerButton.Primary)
             dispatcher.scheduler.runCurrent()
             delay(5)
+        }
+
+        private fun pointerTurn(forward: Boolean) {
+            val point = Offset(if (forward) 20f else 680f, 200f)
+            scene.sendPointerEvent(PointerEventType.Press, point, button = PointerButton.Primary)
+            scene.sendPointerEvent(PointerEventType.Release, point, button = PointerButton.Primary)
+        }
+
+        suspend fun cachedTailTurns() {
+            val references = (14..16).associateWith { source ->
+                zip.getInputStream(entries[source]).use { SkiaImageDecoder.decode(it.readBytes()).asSkiaBitmap() }
+            }
+            try {
+                for (forward in listOf(false, true)) {
+                    pointerTurn(forward)
+                    assertEquals(if (forward) 15 else 14, model.state.value.currentPage)
+                    repeat(40) { index ->
+                        // Inspect existing Ready assets without pinning them across the render.
+                        val leases = runtime.presentationImageOwner.retainCachedFullPageAssets()
+                        val ready = try {
+                            leases.filterValues { it.asset.sourceWidth > 0 && it.asset.sourceHeight > 0 }.keys.toSet()
+                        } finally {
+                            leases.values.forEach { it.close() }
+                        }
+                        assertTrue(setOf(15, 16).all { it in ready }, "The original tail pair must already be Ready")
+                        time += 16_000_000L
+                        // No runCurrent or preparation drain before this first post-pointer render.
+                        val actual = scene.render(time).toComposeImageBitmap().asSkiaBitmap()
+                        try {
+                            val nodes = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+                            val frames = nodes.filter { it.config.contains(ReaderPagerNativePresentationKey) }
+                                .map { node ->
+                                    val native = node.config[ReaderPagerNativePresentationKey]
+                                    "${native.frameId}:${native.describe()}"
+                                }
+                            val slots = nodes.filter {
+                                it.config.contains(DualPageSlotIdKey) &&
+                                    it.config[DualPageSlotIdKey].pageId?.sourcePageIndex in references
+                            }
+                            var artwork = false
+                            val details = slots.map { slot ->
+                                val source = requireNotNull(slot.config[DualPageSlotIdKey].pageId).sourcePageIndex
+                                val reference = references.getValue(source)
+                                val coordinates = slot.layoutInfo.coordinates
+                                val position = coordinates.positionInRoot()
+                                val rectangle = Rect(
+                                    position.x,
+                                    position.y,
+                                    position.x + coordinates.size.width,
+                                    position.y + coordinates.size.height,
+                                )
+                                val scale = min(rectangle.width / reference.width, rectangle.height / reference.height)
+                                val width = reference.width * scale
+                                val height = reference.height * scale
+                                val left = when (slot.config[DualPagePhysicalSlotKey]) {
+                                    DualPagePhysicalSlot.LEFT -> rectangle.right - width
+                                    DualPagePhysicalSlot.RIGHT -> rectangle.left
+                                    DualPagePhysicalSlot.FULL -> rectangle.center.x - width / 2
+                                }
+                                val top = rectangle.center.y - height / 2
+                                val points = samplePoints(reference, ceil(2 / scale).toInt())
+                                val samples = points.mapNotNull { (x, y) ->
+                                    val px = (left + (x + .5f) * scale).roundToInt()
+                                    val py = (top + (y + .5f) * scale).roundToInt()
+                                    if (px !in 0 until actual.width || py !in 0 until actual.height) {
+                                        null
+                                    } else {
+                                        Triple(
+                                            Offset(px.toFloat(), py.toFloat()),
+                                            reference.getColor(x, y),
+                                            actual.getColor(px, py),
+                                        )
+                                    }
+                                }
+                                val matched = samples.count { colorDistance(it.second, it.third) < 35 }
+                                val painted = samples.map { it.third }
+                                val content = Rect(left, top, left + width, top + height)
+                                val complete = content.left >= 0 && content.right <= 700 &&
+                                    content.top >= 0 && content.bottom <= 400 && samples.size == 25
+                                if (complete && source in ready) {
+                                    assertTrue(
+                                        matched >= 20 && span(painted) > 70,
+                                        "Original source=$source frame=$index forward=$forward matched=$matched " +
+                                            "rect=$rectangle frames=$frames history=${owner().displayedHistory}",
+                                    )
+                                }
+                                val bright = samples.filter {
+                                    colorDistance(it.second, it.third) < 35 &&
+                                        listOf(0, 8, 16).any { shift -> (it.third ushr shift and 255) > 70 }
+                                }
+                                val spanX = if (bright.isEmpty()) {
+                                    0f
+                                } else {
+                                    bright.maxOf { it.first.x } - bright.minOf { it.first.x }
+                                }
+                                val spanY = if (bright.isEmpty()) {
+                                    0f
+                                } else {
+                                    bright.maxOf { it.first.y } - bright.minOf { it.first.y }
+                                }
+                                val dispersed = bright.size >= 4 && spanX > 32 && spanY > 32
+                                artwork = artwork || dispersed
+                                "$source:slot=$rectangle,content=$content,matched=$matched/${samples.size}," +
+                                    "bright=${bright.size},spread=$spanX/$spanY,dispersed=$dispersed"
+                            }
+                            println(
+                                "original-cached-turn forward=$forward render=$index ready=$ready " +
+                                    "logical=${model.state.value.currentPage} " +
+                                    "frames=$frames slots=$details artwork=$artwork",
+                            )
+                            assertTrue(artwork, "Cached original turn exposed a black frame: $details frames=$frames")
+                        } finally {
+                            actual.close()
+                        }
+                        dispatcher.scheduler.advanceTimeBy(16)
+                        dispatcher.scheduler.runCurrent()
+                        delay(5)
+                    }
+                    if (!forward) pixels(14, ReaderPortraitSingleSlot.RIGHT)
+                }
+            } finally {
+                references.values.forEach { it.close() }
+            }
         }
 
         suspend fun pixels(source: Int, position: ReaderPortraitSingleSlot) {
@@ -479,7 +627,8 @@ class SharedDualPageOriginalImagesProductionTest {
                     val span = span(painted)
                     if (matched < 20 || span <= 70 || span(colors) <= 70) {
                         println(
-                            "original-observe-miss source=$source matched=$matched span=$span slot=${slot.boundsInRoot} frame=$frame",
+                            "original-observe-miss source=$source matched=$matched span=$span " +
+                                "slot=${slot.boundsInRoot} frame=$frame",
                         )
                         return null
                     }

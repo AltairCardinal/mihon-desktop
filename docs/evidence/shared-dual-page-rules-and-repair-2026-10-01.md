@@ -1960,3 +1960,26 @@ Node @oai/sky两次返回窗口均没有本次EXE；未选择其他Mihon或Explo
 证据沿用ignored dp02-windows-cua-20261007目录：native-observations.json记录58条实际动作／观察摘要与CUA返回截图ID，不复制截图payload；b1-first-state／b1-manual-sql／b1-before-native-end／b2-last-state、resume-before／after-restart、final-product-state与resumed-native-result分别保存有限只读状态／SQL。截图由本轮CUA工具直接返回并观察，HTTP／SQL不冒充截图。正式EXE仍为[已发布71](<D:/Codex/worktrees/0877/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.71.32141a9-unpacked/Mihon Desktop.exe>)，不是临时或新构建。
 
 一次B1回返及另一个冷章节翻页的即时CUA截图有黑色过渡帧，后续稳定图正常。尚未量到其持续时间、目标Ready时点、动画与matcher依赖，不能据此确证原因或签无黑帧／无感性能；后续只对固定warm-sequential真实Ready／draw与过渡关系定向核验，不泛改UI、重跑全量或重构建。Windows受控迟到纵图／宽图／错误的逐帧矩形／变换／mount、纯自动冷拓扑及完整正式性能仍待，Mac既有正式时序／逐帧／性能门槛不变。DP02未勾选，不把本批入口／操作／保存通过扩成S17全部完成。本轮新增代理／独审／产品测试／Gradle／全量／正式构建均0，版本差异继续保护。
+
+
+### 2026-10-07 GOAL逐项收口：诊断测试、Android结论与Windows观察恢复
+
+用户要求把七项剩余缺口纳入原GOAL逐一解决，并亲自将原目标恢复active；主代理查询确认。工具仅支持查询／状态更新，不能编辑目标正文，因此七项完整内容与退出条件写回唯一roadmap §5.0c，不建替代目标、计划或状态系统。SP01维持完成，DP02未勾选；两处既有版本差异保留。
+
+原图诊断测试草稿经原实施者修正，移除Class.forName及Compose内部反射，改用已有ImageComposeScene公开Press／Release，实际production指针导航与Factory／ZIP／Skia不变。公开形状的KeyEvent factory实际标为InternalComposeUiApi，第一次编译拒绝，0业务用例、25.722秒；此为前置失败，不算产品红，不用opt-in或反射绕过。下一精确方法 `original B1 manual tail cached pointer reverse and return keep artwork in every actual frame` 1通过／0失败／0跳过、6.943秒，80次实际scene.render均有原图。首post-input render前不drain；真实Ready lease查询后立即释放；完整contentRect须20/25原图匹配且颜色跨度>70，部分图至少4个匹配亮样本且横纵跨度各>32px，不能用单点或spinner换绿。
+
+唯一focused key `dp02-original-cached-pointer-dispersed-frame-focused` 的实际argv为 `gradlew.bat :app-desktop:jvmTest --tests "mihon.desktop.reader.SharedDualPageOriginalImagesProductionTest.original B1 manual tail cached pointer reverse and return keep artwork in every actual frame" -PincludeIntegrationTests=true --no-parallel --max-workers=1`，协调器09:09:16.439→09:10:16.827 UTC，60.389秒。XML在同key目录，Root独读非零用例及实际80帧日志。随后只限本文件的既有init script格式key `dp02-original-cached-pointer-dispersed-scoped-format` 通过，17.678秒；仅格式清理，不重复行为测试。没有产品修复：离屏固定16ms调度仍不证明正式AWT／GPU窗口每帧，键盘证明来自下面真实原生输入，不能把该pointer用例称为键盘用例。
+
+Android结论只复核既有formal-performance-combined-72-samples.json：72行／72唯一(condition,scene,repeat)，四条件各18。采样任务收口，不重跑72。Ready→commit与input→PixelCopy仍为包含测量开销的上界，原波动、18项真实挂起与压力波形按原记录保留；OOM发生于夹具前置且跨条件堆增长，不能判匹配根因，也不能把分片齐全当连续内存稳定。最终判断为采样完整、性能及内存的无条件PASS证据不足；解释项完成不关闭DP02性能门槛，不能通过报告措辞掩盖限制。
+
+Windows先完整读插件技能／guidance／api／confirmations；Node入口有效，documentation缺失继续用同插件文件。旧截图内容错配证据capture-identity-mismatch.json和animation-diagnostic-shutdown.json已核，原4552／15972退出2.405秒、业务输入0，原因未定。清空旧Node会话后，精确同一正式71／SHA93684e76…c687／profile-native-1，新45828／33460、窗口6554144取得正确Mihon；未置前首次有另一个窗口局部遮挡，精确置前后无遮挡。不能由前后差异断言旧错配根因已修复。随后物理Escape停止CUA，未确认业务输入；只核自身端口／EXE／profile再单次shutdown，两PID自然退出2.435秒，ignored goal-rebind-result.json保留。用户再次明确允许Computer Use后才恢复，不把Escape当重新审批或产品失败。
+
+下一周期41508／36924、唯一窗口115606736：真实书架B1→详情Original B1 resume→默认tracker。匹配／双页=true，chapter8900722无pairing或boundaries。跳前索引14／15／16无HEADER_READ；一次页码条末端click后稳定源16 RIGHT／17 LEFT、工具栏16/17，源16(index15) HEADER_READ早于源17(index16)首次呈现41.0504ms。旧71普通入口mountedReader仍null，不能证明用户请求精确17，也不能签完整前组及时／不及时；只签纯自动冷尾部真实操作。原生Right到源15 RIGHT单页，Left回16/17；返回没有新增OPEN_PAGE／DECODE15／16，FIRST_PAGE_PRESENTED去重不能作为每次回返draw时间。即时返回截图大部黑、最右有旧单页窄片段，后续正常双页：说明可见过渡包含旧页滑出，持续时间及原因未测，不签无黑帧。SQL最后16／read1，无手调行。只关停本周期，2.405秒自然退出。
+
+为区分动画相关性，再用同包／profile40408／4172、窗口2884006，从更多→设置→常规真实关闭“翻页动画”，实际开关及page_turn_animation=false核实，匹配仍true。真实重开同章、末端click、Right／Left。冷目标未准备时仍有黑底spinner；缓存回返即时图完整原图。但本次前一单元为源14/15双页，和开动画时源15单页不同，是时序／拓扑混杂，不能据此归因或签性能通过；停止重复相同截图方法，下一步需要实际槽位／帧状态。正常shutdown，40408／4172自然退出2.404秒，离线仅恢复本隔离profile动画=true；未改用户日常配置。
+
+本轮窗口证据在原ignored目录goal-native-observations.json（22项场景观察摘要）、goal-b1-cold-before／after、goal-b1-native-final、goal-animation-off-final及两个goal-*-shutdown.json；截图直接由CUA返回，未复制payload，HTTP只读状态／SQL不冒充截图。跨进程和操作准备包含在本轮耗时，无法拆分实现／测试工程占比；单元机时及关停时长如上，不以它们代替墙钟。
+
+Mac本轮仅只读前置：SSH到mbp-lan成功，正式72及原profile存在，余2.854GB，59351／59352无监听；44348／47006／55981三保护实例原样保持。新mac_acceptance_session.py／mac-acceptance.py尚未部署到此远端目录，不能称已使用新guard验收；未检查屏幕授权、未启动／输入、不推断锁屏。后续原生场景须复用新生命周期／保护而保留双页自己的真实入口，不用sync-main代签。
+
+新增代理0，复用原实施者；新增全量、Android72、正式构建均0。本批含测试修正及实际原生证据，随同一提交整合roadmap；剩余精确冷跳条件、受控迟到纵／宽／错误逐槽几何／变换／mount／重试、正式性能和最终DP02交付继续原GOAL。
