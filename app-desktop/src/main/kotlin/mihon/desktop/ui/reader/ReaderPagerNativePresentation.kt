@@ -91,6 +91,59 @@ internal class ReaderPagerNativePresentation(
     private var exposed = true
     private var reportedPages: Set<mihon.domain.reader.session.ReaderPageId> = emptySet()
     val frameId get() = ticket?.frameId
+    private val observationMountId = if (mihon.desktop.test.state.applicationState.testMode) {
+        mihon.desktop.test.state.readerState.nextDrawMountId()
+    } else {
+        0L
+    }
+
+    internal fun observeImageDraw(
+        slot: DisplaySlotId,
+        command: ReaderBaseImageDraw,
+        identity: mihon.desktop.reader.DesktopReaderPresentationImageSlotIdentity,
+        decodeKey: mihon.domain.reader.ReaderPageDecodeKey,
+    ) {
+        val current = binding ?: return
+        val capability = ticket ?: return
+        if (!active || !exposed || slot !in expected || slot.pageId != identity.pageId) return
+        val state = current.model.state.value
+        val index = unit.slots.indexOfFirst { it.id == slot }
+        val position = if (unit.slots.size == 1) {
+            "FULL"
+        } else if (index == 0) {
+            "LEFT"
+        } else {
+            "RIGHT"
+        }
+        mihon.desktop.test.state.readerState.recordSlotDraw(
+            current.model,
+            command.capture,
+            mihon.desktop.test.state.ReaderSlotDrawRecord(
+                sourcePageIndex = identity.pageId.sourcePageIndex,
+                chapterId = identity.pageId.chapterId.value,
+                generation = identity.generation,
+                readerGeneration = state.session.generation,
+                frameMatchesAssetGeneration = capability.frameId.generation == identity.generation,
+                locationSequence = state.dualPageLocation?.sequence,
+                ticketLocationSequence = capability.locationSequence,
+                frameId = capability.frameId.toString(),
+                slot = position,
+                nativeMountId = observationMountId,
+                mountId = command.mountId,
+                assetIdentity = command.bitmapIdentity,
+                attemptGeneration = identity.attemptGeneration,
+                contentIdentity = decodeKey.contentKey.hashCode(),
+                sourceRect = command.sourceRect,
+                destinationRect = command.destinationRect,
+                rootQuad = command.rootQuad,
+                imageLayoutQuad = command.layoutQuad,
+                clipCanvasTransform = command.relativeTransform,
+                monotonicNanos = command.monotonicNanos,
+                level = "base-image-draw-command",
+                canvasScope = "image-clip-layer-local",
+            ),
+        )
+    }
 
     fun update(unit: DisplayUnit, visible: VisiblePageSet, binding: ReaderPagerPresentationBinding?) {
         this.unit = unit

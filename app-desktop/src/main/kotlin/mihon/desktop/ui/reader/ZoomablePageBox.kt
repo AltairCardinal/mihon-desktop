@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -86,6 +87,13 @@ internal fun ZoomablePageBox(
     presentationImage: ReaderPresentationImage,
     onPageDrawn: (() -> Unit)? = null,
     onPagePrepared: ((Int, Int) -> Boolean)? = null,
+    onObservedImageDraw: (
+        (
+            ReaderBaseImageDraw,
+            mihon.desktop.reader.DesktopReaderPresentationImageSlotIdentity,
+            mihon.domain.reader.ReaderPageDecodeKey,
+        ) -> Unit
+    )? = null,
     pageLabel: String,
     zoomState: ZoomState,
     onZoomChange: (ZoomState) -> Unit,
@@ -124,6 +132,12 @@ internal fun ZoomablePageBox(
     val asset = readyState?.asset
     val renderedImage = rememberReaderPresentationRenderedImage(presentationImage, cropBorders)
     val mountedCoordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    // This branch does not exist for ordinary application rendering.
+    val observedCapture = if (onObservedImageDraw != null) {
+        mihon.desktop.test.state.readerState.slotDrawCapture.collectAsState().value
+    } else {
+        0L
+    }
 
     LaunchedEffect(asset, splitHalf, onSpreadDetected) {
         if (asset != null && onSpreadDetected != null && splitHalf == null && asset.sourceWidth > asset.sourceHeight) {
@@ -325,6 +339,31 @@ internal fun ZoomablePageBox(
                     translationY = zoomState.offsetY,
                 )
             if (renderedImage != null && !fullDecodeFailed && !presentationClosed) {
+                val observedMount = if (onObservedImageDraw != null) {
+                    remember { mihon.desktop.test.state.readerState.nextDrawMountId() }
+                } else {
+                    0L
+                }
+                val observedCoordinates = if (onObservedImageDraw != null) {
+                    remember { arrayOfNulls<LayoutCoordinates>(1) }
+                } else {
+                    null
+                }
+                val observedPainter = if (onObservedImageDraw != null) {
+                    remember(renderedImage.bitmap, observedCapture) {
+                        ReaderObservedBitmapPainter(renderedImage.bitmap)
+                    }
+                        .apply {
+                            capture = observedCapture
+                            mountId = observedMount
+                            coordinates = { observedCoordinates?.get(0) }
+                            onDraw = { command ->
+                                onObservedImageDraw?.invoke(command, identity, presentationImage.holder.decodeKey)
+                            }
+                        }
+                } else {
+                    null
+                }
                 // The base bitmap and region tiles share one preparation boundary. A mounted
                 // prefetch page may decode, but cannot acknowledge clipped-away pixels.
                 Box(
@@ -343,13 +382,23 @@ internal fun ZoomablePageBox(
                         },
                     ),
                 ) {
-                    Image(
-                        bitmap = renderedImage.bitmap,
-                        contentDescription = pageLabel,
-                        alignment = imageAlignment,
-                        modifier = imageModifier,
-                        contentScale = resolvedScale,
-                    )
+                    if (observedPainter != null) {
+                        Image(
+                            painter = observedPainter,
+                            contentDescription = pageLabel,
+                            alignment = imageAlignment,
+                            modifier = imageModifier.onGloballyPositioned { observedCoordinates?.set(0, it) },
+                            contentScale = resolvedScale,
+                        )
+                    } else {
+                        Image(
+                            bitmap = renderedImage.bitmap,
+                            contentDescription = pageLabel,
+                            alignment = imageAlignment,
+                            modifier = imageModifier,
+                            contentScale = resolvedScale,
+                        )
+                    }
                     ReaderRegionTileLayer(
                         presentationImage = presentationImage,
                         renderedImage = renderedImage,

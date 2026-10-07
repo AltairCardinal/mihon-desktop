@@ -21,6 +21,8 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.network.NetworkHelper
+import io.ktor.server.cio.CIO
+import io.ktor.server.engine.embeddedServer
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
@@ -36,12 +38,22 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
+import mihon.desktop.test.http.ReaderIoTestModeBridge
+import mihon.desktop.test.http.ReaderTestModeController
+import mihon.desktop.test.http.testHttpServer
+import mihon.desktop.test.state.applicationState
+import mihon.desktop.test.state.readerState
 import mihon.desktop.ui.reader.DualPageDisplayUnitCompositionIdentityKey
 import mihon.desktop.ui.reader.DualPagePhysicalSlot
 import mihon.desktop.ui.reader.DualPagePhysicalSlotKey
@@ -70,6 +82,10 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import java.io.File
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.security.MessageDigest
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.prefs.Preferences
@@ -84,6 +100,132 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class SharedDualPageOriginalImagesProductionTest {
     @TempDir lateinit var directory: File
+
+    @Test
+    fun `test mode records real original slot draw commands through the mounted reader`() = runBlocking {
+        val previousMode = applicationState.testMode
+        val previousController = ReaderIoTestModeBridge.controller
+        val controller = ReaderTestModeController()
+        applicationState.testMode = true
+        ReaderIoTestModeBridge.install(controller)
+        val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) { testHttpServer() }.start()
+        try {
+            val port = server.resolvedConnectors().single().port
+            val client = HttpClient.newHttpClient()
+            Fixture("b1", 14, dual = true).use { fixture ->
+                readerState.mount(fixture.model)
+                try {
+                    fixture.pixels(14, ReaderPortraitSingleSlot.RIGHT)
+                    val start = client.send(
+                        HttpRequest.newBuilder(URI("http://127.0.0.1:$port/test/reader/draw_observation/start"))
+                            .POST(HttpRequest.BodyPublishers.noBody()).build(),
+                        HttpResponse.BodyHandlers.ofString(),
+                    )
+                    assertEquals(200, start.statusCode(), "The existing reader must permit bounded draw observation")
+                    fixture.pixels(14, ReaderPortraitSingleSlot.RIGHT)
+                    fixture.awaitDrawObservation {
+                        readerState.slotDrawSnapshot().records.any { it.sourcePageIndex == 14 }
+                    }
+                    val snapshot = client.send(
+                        HttpRequest.newBuilder(URI("http://127.0.0.1:$port/test/reader/state")).GET().build(),
+                        HttpResponse.BodyHandlers.ofString(),
+                    )
+                    val observation = Json.parseToJsonElement(snapshot.body()).jsonObject
+                        .getValue("slotDrawObservation").jsonObject
+                    val records = observation.getValue("records").jsonArray.map { it.jsonObject }
+                    assertTrue(records.isNotEmpty(), "Actual original Image draws must reach the bound reader")
+                    val actual = records.last { it.getValue("sourcePageIndex").jsonPrimitive.content == "14" }
+                    assertEquals("base-image-draw-command", actual.getValue("level").jsonPrimitive.content)
+                    assertEquals(4, actual.getValue("rootQuad").jsonArray.size)
+                    assertTrue(actual.getValue("frameId") != JsonNull)
+                    assertTrue(actual.getValue("mountId").jsonPrimitive.content.toLong() > 0)
+                    assertEquals(fixture.observedFrame(14).toString(), actual.getValue("frameId").jsonPrimitive.content)
+                    val points = actual.getValue("rootQuad").jsonArray.map { it.jsonObject }
+                    val xs = points.map { it.getValue("x").jsonPrimitive.content.toFloat() }
+                    val ys = points.map { it.getValue("y").jsonPrimitive.content.toFloat() }
+                    val actualBounds = listOf(xs.min(), ys.min(), xs.max(), ys.max())
+                    val paintedBounds = fixture.observedArtworkBounds(14)
+                    assertTrue(
+                        actualBounds.zip(paintedBounds).all { (reported, pixel) -> abs(reported - pixel) <= 2f },
+                        "Reported actual command quad $actualBounds must match real original pixels $paintedBounds",
+                    )
+                    fixture.model.setZoomState(ZoomState(scale = 1.35f, offsetX = 7f, offsetY = -11f))
+                    val zoomStart = client.send(
+                        HttpRequest.newBuilder(URI("http://127.0.0.1:$port/test/reader/draw_observation/start"))
+                            .POST(HttpRequest.BodyPublishers.noBody()).build(),
+                        HttpResponse.BodyHandlers.ofString(),
+                    )
+                    assertEquals(200, zoomStart.statusCode())
+                    fixture.awaitDrawObservation {
+                        readerState.slotDrawSnapshot().records.any { it.sourcePageIndex == 14 }
+                    }
+                    val zoomed = readerState.slotDrawSnapshot().records.last { it.sourcePageIndex == 14 }
+                    val width = zoomed.rootQuad.maxOf { it.x } - zoomed.rootQuad.minOf { it.x }
+                    assertTrue(
+                        abs(width / (xs.max() - xs.min()) - 1.35f) < .02f,
+                        "The measured Image-to-root transform must apply real zoom exactly once",
+                    )
+                    fixture.assertObservedArtworkQuad(14, zoomed.rootQuad)
+                    fun postObservation(path: String) = client.send(
+                        HttpRequest.newBuilder(URI("http://127.0.0.1:$port/test/reader/draw_observation/$path"))
+                            .POST(HttpRequest.BodyPublishers.noBody()).build(),
+                        HttpResponse.BodyHandlers.ofString(),
+                    )
+                    for (invalid in listOf("abc", "0", "513", "999999999999999999")) {
+                        assertEquals(400, postObservation("start?capacity=$invalid").statusCode())
+                    }
+                    val stoppedCapture = readerState.slotDrawSnapshot().captureId
+                    assertEquals(200, postObservation("stop").statusCode())
+                    assertEquals(false, readerState.slotDrawSnapshot().active)
+                    assertEquals(false, readerState.recordSlotDraw(fixture.model, stoppedCapture, zoomed))
+                    assertEquals(200, postObservation("start?capacity=2").statusCode())
+                    val boundedCapture = readerState.slotDrawSnapshot().captureId
+                    assertEquals(false, readerState.recordSlotDraw(fixture.model, stoppedCapture, zoomed))
+                    // Exercise the recorder protocol with an actual validated command, not a draw receipt.
+                    repeat(3) { assertTrue(readerState.recordSlotDraw(fixture.model, boundedCapture, zoomed)) }
+                    val bounded = readerState.slotDrawSnapshot()
+                    assertEquals(2, bounded.records.size)
+                    assertEquals(1L, bounded.dropped)
+                    assertEquals(listOf(2L, 3L), bounded.records.map { it.sequence })
+                    Fixture("b1", 14, dual = true).use { successor ->
+                        readerState.mount(successor.model)
+                        try {
+                            assertEquals(false, readerState.slotDrawSnapshot().active)
+                            assertTrue(readerState.slotDrawSnapshot().records.isEmpty())
+                            assertEquals(false, readerState.recordSlotDraw(fixture.model, boundedCapture, zoomed))
+                            assertEquals(200, postObservation("start?capacity=2").statusCode())
+                            val successorCapture = readerState.slotDrawSnapshot().captureId
+                            readerState.unmount(fixture.model)
+                            assertTrue(readerState.slotDrawSnapshot().active, "Old unmount must preserve the successor")
+                            assertEquals(false, readerState.recordSlotDraw(fixture.model, successorCapture, zoomed))
+                            applicationState.testMode = false
+                            try {
+                                assertEquals(409, postObservation("start").statusCode())
+                                assertEquals(
+                                    false,
+                                    readerState.recordSlotDraw(successor.model, successorCapture, zoomed),
+                                )
+                                assertEquals(false, readerState.slotDrawSnapshot().active)
+                            } finally {
+                                applicationState.testMode = true
+                            }
+                            assertEquals(200, postObservation("stop").statusCode())
+                        } finally {
+                            readerState.unmount(successor.model)
+                        }
+                    }
+                } finally {
+                    readerState.unmount(fixture.model)
+                }
+            }
+        } finally {
+            server.stop(0, 1000)
+            ReaderIoTestModeBridge.clear(controller)
+            previousController?.let(ReaderIoTestModeBridge::install)
+            applicationState.testMode = previousMode
+            controller.close()
+        }
+    }
 
     @Test
     fun `original B1 manual tail cached pointer reverse and return keep artwork in every actual frame`() = runBlocking {
@@ -330,6 +472,69 @@ class SharedDualPageOriginalImagesProductionTest {
             ReaderScreenModel::class.java.getDeclaredField("dualSession").apply { isAccessible = true }.get(model)
                 as SharedDualPageSession?,
         )
+
+        fun observedArtworkBounds(source: Int) = observations.getValue(source).rectangle
+        fun observedFrame(source: Int) = observations.getValue(source).frame
+        suspend fun awaitDrawObservation(done: () -> Boolean) = await("A real image command must be observed", done)
+
+        fun assertObservedArtworkQuad(source: Int, quad: List<mihon.desktop.test.state.ReaderDrawPoint>) {
+            dispatcher.scheduler.runCurrent()
+            time += 16_000_000L
+            val actual = scene.render(time).toComposeImageBitmap().asSkiaBitmap()
+            val reference = zip.getInputStream(entries[source]).use {
+                SkiaImageDecoder.decode(it.readBytes()).asSkiaBitmap()
+            }
+            try {
+                val width = quad[1].x - quad[0].x
+                val height = quad[3].y - quad[0].y
+                val slot = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.first {
+                    it.config.contains(DualPageSlotIdKey) &&
+                        it.config[DualPageSlotIdKey].pageId?.sourcePageIndex == source && !it.boundsInRoot.isEmpty
+                }.boundsInRoot
+                val clip = slot.intersect(Rect(0f, 0f, actual.width.toFloat(), actual.height.toFloat()))
+                val sourceRoi = Rect(
+                    ((clip.left - quad[0].x) / width).coerceIn(0f, 1f) * reference.width,
+                    ((clip.top - quad[0].y) / height).coerceIn(0f, 1f) * reference.height,
+                    ((clip.right - quad[0].x) / width).coerceIn(0f, 1f) * reference.width,
+                    ((clip.bottom - quad[0].y) / height).coerceIn(0f, 1f) * reference.height,
+                )
+                val colors = samplePoints(
+                    reference,
+                    ceil(2 / (width / reference.width)).toInt(),
+                    sourceRoi,
+                ).map { (x, y) ->
+                    val u = (x + .5f) / reference.width
+                    val v = (y + .5f) / reference.height
+                    val px = (
+                        quad[0].x + (quad[1].x - quad[0].x) * u +
+                            (quad[3].x - quad[0].x) * v
+                        ).roundToInt()
+                    val py = (
+                        quad[0].y + (quad[1].y - quad[0].y) * u +
+                            (quad[3].y - quad[0].y) * v
+                        ).roundToInt()
+                    assertTrue(
+                        px in 0 until actual.width && py in 0 until actual.height,
+                        "Actual source ROI $sourceRoi maps outside viewport at $px/$py; quad=$quad clip=$clip",
+                    )
+                    reference.getColor(x, y) to actual.getColor(px, py)
+                }
+                val matched = colors.count { colorDistance(it.first, it.second) < 35 }
+                val paintedSpan = span(colors.map { it.second })
+                println(
+                    "observed-artwork source=$source matched=$matched/25 span=$paintedSpan quad=$quad roi=$sourceRoi",
+                )
+                assertTrue(
+                    matched >= 20,
+                    "Actual command must match original ROI: $matched/25; quad=$quad roi=$sourceRoi",
+                )
+                assertTrue(paintedSpan > 70 && span(colors.map { it.first }) > 70)
+            } finally {
+                reference.close()
+                actual.close()
+                dispatcher.scheduler.advanceTimeBy(16)
+            }
+        }
 
         suspend fun knownNeighbors(target: Int, expected: Map<Int, ReaderPageFactState>) {
             assertTrue(!model.state.value.dualPageMode)
@@ -698,14 +903,21 @@ class SharedDualPageOriginalImagesProductionTest {
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
 
     /** Spatially fixed 5x5 cells choose low-gradient source points, independently of observed screen pixels. */
-    private fun samplePoints(bitmap: Bitmap, radius: Int): List<Pair<Int, Int>> = (1..5).flatMap { row ->
+    private fun samplePoints(
+        bitmap: Bitmap,
+        radius: Int,
+        region: Rect = Rect(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat()),
+    ): List<Pair<Int, Int>> = (1..5).flatMap { row ->
         (1..5).map { column ->
-            val cx = bitmap.width * column / 6
-            val cy = bitmap.height * row / 6
+            val cx = (region.left + region.width * column / 6).toInt()
+            val cy = (region.top + region.height * row / 6).toInt()
+            val minX = maxOf(radius, region.left.toInt() + radius)
+            val maxX = minOf(bitmap.width - radius - 1, region.right.toInt() - radius - 1)
+            val minY = maxOf(radius, region.top.toInt() + radius)
+            val maxY = minOf(bitmap.height - radius - 1, region.bottom.toInt() - radius - 1)
             val candidates = (-24..24 step 4).flatMap { dx ->
                 (-24..24 step 4).map { dy ->
-                    (cx + dx).coerceIn(radius, bitmap.width - radius - 1) to
-                        (cy + dy).coerceIn(radius, bitmap.height - radius - 1)
+                    (cx + dx).coerceIn(minX, maxX) to (cy + dy).coerceIn(minY, maxY)
                 }
             }
             candidates.minBy { (x, y) ->

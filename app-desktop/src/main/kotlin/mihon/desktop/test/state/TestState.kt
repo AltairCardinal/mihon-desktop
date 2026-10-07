@@ -152,6 +152,70 @@ val historyState = HistoryState()
  * Reader state for testing.
  */
 class ReaderState {
+    private val drawCaptureRevision = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    internal val slotDrawCapture: kotlinx.coroutines.flow.StateFlow<Long> = drawCaptureRevision
+    private var drawCaptureId = 0L
+    private var drawCapacity = 120
+    private var drawDropped = 0L
+    private var drawSequence = 0L
+    private val drawRecords = java.util.ArrayDeque<ReaderSlotDrawRecord>()
+    private val drawMountIds = java.util.concurrent.atomic.AtomicLong()
+
+    internal fun nextDrawMountId(): Long = drawMountIds.incrementAndGet()
+
+    @Synchronized
+    internal fun startSlotDrawObservation(capacity: Int = 120): Boolean {
+        require(capacity in 1..512)
+        if (!applicationState.testMode || mounted == null) return false
+        drawCaptureId += 1
+        drawCapacity = capacity
+        drawDropped = 0
+        drawSequence = 0
+        drawRecords.clear()
+        drawCaptureRevision.value = drawCaptureId
+        return true
+    }
+
+    @Synchronized
+    internal fun stopSlotDrawObservation(): Boolean {
+        if (!applicationState.testMode || mounted == null) return false
+        drawCaptureRevision.value = 0L
+        return true
+    }
+
+    @Synchronized
+    internal fun recordSlotDraw(
+        model: mihon.desktop.ui.reader.ReaderScreenModel,
+        capture: Long,
+        record: ReaderSlotDrawRecord,
+    ): Boolean {
+        if (!applicationState.testMode || mounted !== model || capture == 0L ||
+            capture != drawCaptureRevision.value
+        ) {
+            return false
+        }
+        if (drawRecords.size == drawCapacity) {
+            drawRecords.removeFirst()
+            drawDropped += 1
+        }
+        drawRecords.addLast(record.copy(sequence = ++drawSequence))
+        return true
+    }
+
+    @Synchronized
+    internal fun slotDrawSnapshot() = ReaderSlotDrawSnapshot(
+        active = drawCaptureRevision.value != 0L && applicationState.testMode,
+        captureId = drawCaptureId,
+        capacity = drawCapacity,
+        dropped = drawDropped,
+        records = drawRecords.toList(),
+    )
+
+    private fun clearSlotDrawObservation() {
+        drawCaptureRevision.value = 0L
+        drawRecords.clear()
+        drawDropped = 0L
+    }
     private var openGeneration: Long = 0L
     private var openedChapterId: Long = 0L
     private var observingProductEntry: Boolean = false
@@ -191,12 +255,16 @@ class ReaderState {
             )
             observingProductEntry = true
         }
-        if (isOpen && model.state.value.context.chapterId == openedChapterId) mounted = model
+        if (isOpen && model.state.value.context.chapterId == openedChapterId) {
+            if (mounted !== model) clearSlotDrawObservation()
+            mounted = model
+        }
     }
 
     @Synchronized
     internal fun unmount(model: mihon.desktop.ui.reader.ReaderScreenModel) {
         if (mounted !== model) return
+        clearSlotDrawObservation()
         mounted = null
         previous = null
         next = null
@@ -331,6 +399,7 @@ class ReaderState {
         hasNext: Boolean,
         hasPrev: Boolean,
     ): Long {
+        clearSlotDrawObservation()
         openGeneration += 1L
         observingProductEntry = false
         this.isOpen = true
@@ -377,6 +446,46 @@ internal data class ReaderMountedGeometry(
     val bounds: androidx.compose.ui.geometry.Rect,
     val density: Float,
     val window: java.awt.Window?,
+)
+
+@kotlinx.serialization.Serializable
+internal data class ReaderDrawPoint(val x: Float, val y: Float)
+
+/** An actual base-bitmap canvas command; neither a vsync frame nor a GPU presentation receipt. */
+@kotlinx.serialization.Serializable
+internal data class ReaderSlotDrawRecord(
+    val sourcePageIndex: Int,
+    val chapterId: Long,
+    val generation: Long,
+    val readerGeneration: Long,
+    val frameMatchesAssetGeneration: Boolean,
+    val locationSequence: Long?,
+    val ticketLocationSequence: Long?,
+    val frameId: String?,
+    val slot: String,
+    val nativeMountId: Long,
+    val mountId: Long,
+    val assetIdentity: Int,
+    val attemptGeneration: Long,
+    val contentIdentity: Int,
+    val sourceRect: List<Float>,
+    val destinationRect: List<Float>,
+    val rootQuad: List<ReaderDrawPoint>,
+    val imageLayoutQuad: List<ReaderDrawPoint>,
+    val clipCanvasTransform: List<Double>,
+    val monotonicNanos: Long,
+    val sequence: Long = 0L,
+    val level: String,
+    val canvasScope: String,
+)
+
+@kotlinx.serialization.Serializable
+internal data class ReaderSlotDrawSnapshot(
+    val active: Boolean,
+    val captureId: Long,
+    val capacity: Int,
+    val dropped: Long,
+    val records: List<ReaderSlotDrawRecord>,
 )
 
 /**

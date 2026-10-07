@@ -429,6 +429,13 @@ internal fun DualPagePagerViewer(
                         nativePresentation.prepare(slot.id, page, width, height)
                     },
                     onPageDrawn = { nativePresentation.drawn(slot.id) },
+                    onObservedImageDraw = if (mihon.desktop.test.state.applicationState.testMode) {
+                        { command, identity, key ->
+                            nativePresentation.observeImageDraw(slot.id, command, identity, key)
+                        }
+                    } else {
+                        null
+                    },
                     presentationImage = presentationImage,
                     pageLabel = MR.strings.desktop_ui_page_number.localized(
                         Locale.getDefault(),

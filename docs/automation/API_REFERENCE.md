@@ -167,6 +167,7 @@ identity 仍匹配的队列项。
 | `mountedReader` | 当前 owner 的 `chapterId`、`generation`、`layoutRevision`、`locationSequence`、`pairingStatus`；实际 `readingMode`、`dualPageMode`、`autoSpreadMatching` 及 `currentDisplayPageIndices`、`visiblePageIndices`。未挂载为 `null`。 |
 | `sharedUnits` | 实际共享 owner 当前 units 中的源页索引数组，保留 UNKNOWN/临时单页等真实结果；不是 HTTP 服务端计算的预期分组。 |
 | `nativeInput` | mounted pager 的实际几何与窗口/焦点信息，详见下文。 |
+| `slotDrawObservation` | 显式启用的有界基础图片绘制命令记录，详见下文；默认未启用。 |
 
 `currentDisplayPageIndices` 表示当前呈现单元，可能包含尚未绘制的伙伴；`visiblePageIndices` 来自 model 的停稳状态快照，不能作为当前像素全集。在同一定位下，无新阅读进度的后续绘制可能不刷新该快照。证明当前实际绘制时，应绑定选中的原生 presenter、它的有效 ticket／frame 和实际绘制槽，并核对应画面；不能合并历史 frame 或将上述 HTTP 数组当作像素证据。
 
@@ -194,6 +195,29 @@ partial fixture 还返回以下页级观测字段：
 这些计数按 Reader page identity 归属；附近页预取不会污染当前页的“本地命中/网络回退”断言。已提交页应为一次本地
 probe/open/copy 且图片网络为 0；缺失页才允许一个物理图片请求。`snapshotGeneration` 是正整数，仅用于确认 Reader 与
 当前下载 attempt 对齐，不是跨场景稳定 ID。
+
+### `POST /reader/draw_observation/start?capacity=120` 与 `POST /reader/draw_observation/stop`
+
+当前绘制接线仅在双页分页视图中安装；单页／条漫没有此绘制记录。`active` 只表示捕获开关启用，不能代替支持的视图、实际命令或呈现证据。
+
+适用于包含此接口的 Desktop Test Mode 候选。先核对本次进程、产物和真实 reader 挂载，再启用观察；`capacity` 默认为120，允许1–512，非整数或越界返回400。无 Test Mode 或没有绑定 reader 时 start 返回409；成功返回200及当前 `slotDrawObservation` 快照。再次 start 建立新的 `captureId` 并清空旧记录；stop 关闭收集并保留本次已有记录供读取。reader 关闭／换绑定清空并使旧捕获失效，旧 model 的卸载不得清掉新 model 的捕获。
+
+`GET /reader/state` 中的 `slotDrawObservation` 包含 `active`、`captureId`、`capacity`、`dropped`、`records`。超出容量丢弃最旧记录并增加 `dropped`；有丢弃时不能把剩余记录称为完整区间。每条记录的主要字段为：
+
+| 字段 | 含义 |
+|---|---|
+| `level`、`canvasScope` | `base-image-draw-command`／`image-clip-layer-local`；来自原 BitmapPainter 的真实命令与当前 Image 裁剪记录层。 |
+| `sourcePageIndex`、`chapterId`、`generation`、`attemptGeneration` | 实际图片 holder 的源页、章节、资产代际及尝试代际；不拿当前请求代际替代旧图片代际。 |
+| `readerGeneration`、`frameMatchesAssetGeneration`、`frameId` | 当前 reader 代际、ticket 与资产的代际关联，以及实际 display ticket/frame；`frameId` 可以复用，不是 vsync 编号。 |
+| `locationSequence`、`ticketLocationSequence` | 当前 reader 定位与当前绘制能力的定位，二者不能自动当作同一用户请求。 |
+| `nativeMountId`、`mountId`、`assetIdentity`、`contentIdentity` | 实际原生 presenter／Image 挂载和资源关联的进程内标识；不是持久化键。 |
+| `sourceRect`、`destinationRect`、`clipCanvasTransform` | 原命令的基础 bitmap 像素源矩形、Painter 目标矩形、裁剪层当前仿射矩阵六值 `[m00,m10,m01,m11,m02,m12]`。 |
+| `rootQuad`、`imageLayoutQuad` | 原绘制四角与 Image 布局四角映射到 Compose 根像素坐标；为未裁剪几何，可能超出视口，不是 AWT 屏幕点或系统截图。 |
+| `monotonicNanos`、`sequence` | 实际命令返回后的单调时钟与本次捕获顺序；不代表 GPU 已呈现。 |
+
+观察只在实际附着坐标和当前 Image 裁剪层坐标域可核对时发布；缺记录不等于没有显示。启用时重新安装 Painter 以使真实绘制链记录当前图片，此安装成本不作为自动匹配成本。基础图片命令不包含 region tile 叠层；缓存图层重放、父 pager 动画移动也不一定重新执行命令。该接口不能单独证明屏幕每帧稳定、没有黑帧或 GPU／vsync 性能，须与真实原生观察及相应帧证据组合。
+
+旧候选404表示缺少接口能力，应记录具体候选及缺口，不能归因锁屏，也不通过 HTTP 重新打开模拟 reader 来制造绑定。普通应用启动不安装此观察器。
 
 ### `POST /reader/next_page`
 

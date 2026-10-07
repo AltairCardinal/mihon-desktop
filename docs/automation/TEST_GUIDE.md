@@ -62,6 +62,18 @@ $env:PYTHONIOENCODING = 'utf-8'
 python scripts/gradle-coordinator.py run --key reader-page-turn -- .\gradlew.bat :app-desktop:jvmTest --tests mihon.desktop.ui.reader.ReaderPageTurnPresentationTest
 ```
 
+### 阅读器基础图片绘制观察
+
+当前观察接线覆盖双页分页视图中的基础图片，单页与条漫未接入；不能用观察开关成功推断所有阅读模式均有记录。
+
+包含新观察接口的 Test Mode 候选可用 `POST /test/reader/draw_observation/start?capacity=120` 开始一次有界捕获，通过 `GET /test/reader/state` 读取 `slotDrawObservation`，最后用 `POST /test/reader/draw_observation/stop` 关闭。端口和进程须为本次已核对的候选；实际章节、图片与 tracker 仍从真实产品入口进入。HTTP 只负责观察控制和读取，不替代原生键鼠或用户阅读动作。字段和失败边界见 [API Reference](API_REFERENCE.md)。
+
+原 BitmapPainter 仍执行实际绘制；观察读取 Image 裁剪记录层中的原命令、矩阵和附着坐标，不按 fit 算法重建预期矩形，不制造 prepare／draw 回执，不持有图片 lease。基础图片命令的根坐标是未裁剪几何；缩放／平移后的像素比对必须在实际槽和视口可见交集中取原图样本，不能把正常裁剪判为产品失败。启用造成的正常 Painter 重新安装不计为匹配性能数据。
+
+记录层级是 `base-image-draw-command`，覆盖基础图片的实际绘制命令及当时挂载／变换；region tile、缓存层重放、GPU 呈现与整个动画的每帧几何继续按各自证据验证。`frameId` 是 display ticket 的标识，会被复用；`sequence` 是观察顺序。容量耗尽的 `dropped`、坐标域不支持、旧候选404或未挂载409都必须保留，不能改成通过。Windows Computer Use、Mac 原生生命周期与真实发布身份要求维持。
+
+这项定向接线验证使用 `SharedDualPageOriginalImagesProductionTest` 的真实 ZIP／Factory／Skia／HTTP 场景；只选择本次观察行为方法和具体守卫，不因此运行整类、完整模块、正式构建或发布矩阵。关闭观察和普通启动继续走原绘制链。
+
 ### 构建与测试
 
 按仓库 [AGENTS.md](../../AGENTS.md) 为当前行为选 focused 测试。以下命令运行完整 Desktop JVM 模块与 Robot 客户端测试，只在用户明确选择的发布里程碑或经授权的具体扩大验证中使用：

@@ -1052,6 +1052,28 @@ internal fun Application.testHttpServer(
         post("/test/reader/next_chapter") { call.readerAction("next_chapter") }
         post("/test/reader/prev_chapter") { call.readerAction("prev_chapter") }
 
+        post("/test/reader/draw_observation/start") {
+            val rawCapacity = call.request.queryParameters["capacity"]
+            val capacity = if (rawCapacity == null) 120 else rawCapacity.toIntOrNull()
+            if (capacity == null || capacity !in 1..512) {
+                call.respondText("Invalid draw observation capacity", status = HttpStatusCode.BadRequest)
+            } else {
+                val started = ReaderIoTestModeBridge.startDrawObservation(capacity)
+                call.respondText(
+                    Json.encodeToJsonElement(readerState.slotDrawSnapshot()).toString(),
+                    ContentType.Application.Json,
+                    if (started) HttpStatusCode.OK else HttpStatusCode.Conflict,
+                )
+            }
+        }
+        post("/test/reader/draw_observation/stop") {
+            ReaderIoTestModeBridge.stopDrawObservation()
+            call.respondText(
+                Json.encodeToJsonElement(readerState.slotDrawSnapshot()).toString(),
+                ContentType.Application.Json,
+            )
+        }
+
         post("/test/reader/close") {
             readerState.requestClose()
             applicationState.recordAction("reader_close", emptyMap())
@@ -1123,6 +1145,7 @@ internal fun Application.testHttpServer(
                         ),
                     )
                     put("nativeInput", readerMountedNativeInput())
+                    put("slotDrawObservation", Json.encodeToJsonElement(readerState.slotDrawSnapshot()))
                     put("isOpen", JsonPrimitive(readerState.isOpen))
                     put("closeRequested", JsonPrimitive(readerState.closeRequested))
                     put("productionClosed", JsonPrimitive(readerState.productionClosed))

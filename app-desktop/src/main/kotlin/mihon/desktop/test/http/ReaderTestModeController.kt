@@ -662,5 +662,14 @@ object ReaderIoTestModeBridge : ReaderIoProbe, DownloadIoProbe {
 
     fun beginScenario(currentPageIndex: Int = 0) = controller?.beginScenario(currentPageIndex)
 
-    fun clear(expected: ReaderTestModeController): Boolean = value.compareAndSet(expected, null)
+    fun startDrawObservation(capacity: Int = 120): Boolean =
+        mihon.desktop.test.state.readerState.startSlotDrawObservation(capacity)
+
+    fun stopDrawObservation(): Boolean = mihon.desktop.test.state.readerState.stopSlotDrawObservation()
+
+    fun clear(expected: ReaderTestModeController): Boolean {
+        val cleared = value.compareAndSet(expected, null)
+        if (cleared) stopDrawObservation()
+        return cleared
+    }
 }

@@ -1983,3 +1983,36 @@ Windows先完整读插件技能／guidance／api／confirmations；Node入口有
 Mac本轮仅只读前置：SSH到mbp-lan成功，正式72及原profile存在，余2.854GB，59351／59352无监听；44348／47006／55981三保护实例原样保持。新mac_acceptance_session.py／mac-acceptance.py尚未部署到此远端目录，不能称已使用新guard验收；未检查屏幕授权、未启动／输入、不推断锁屏。后续原生场景须复用新生命周期／保护而保留双页自己的真实入口，不用sync-main代签。
 
 新增代理0，复用原实施者；新增全量、Android72、正式构建均0。本批含测试修正及实际原生证据，随同一提交整合roadmap；剩余精确冷跳条件、受控迟到纵／宽／错误逐槽几何／变换／mount／重试、正式性能和最终DP02交付继续原GOAL。
+
+
+#### 同日下一批前置：Mac新版会话保护实机复核
+
+只将当前已提交mac_acceptance_session.py、mac-acceptance.py、mac-sync-native-acceptance.py定向部署到既有Mac隔离目录的scripts；先检查所有同名文件不存在或字节一致，不覆盖远端差异。实机SHA分别082e3095…a32f／e90234f8…ee3d／bbc325d0…dcc，与本worktree来源脚本核对。SessionGuard.prepare一次有界caffeinate恢复：before online=true／asleep=true／reportedLockFlag=true／frontmost loginwindow176，after asleep=false／reportedLockFlag=null／nativePermission=true／原保护Mihon55981前台；不需认证、不改变锁屏设置。guard.close释放自身辅助进程。没有调用sync-main、启动正式候选或派发键鼠，不把预检PASS升级成双页验收。原日志app-desktop/tmp/dp02-macos-new-session-preflight.log；本次SSH命令1.488秒，其他三个应用实例保持。
+
+原图／证据首批已提交a0553558ecca5c4be95222c4a8cc9fe2d75740cc，只含一个测试和原roadmap／聚合证据。下一批复用原实施者，目标仅既定S12／S17缺少的真实每槽draw观察、挂载及变换，先不同时扩受控IO；不新建通用runner／状态系统或重建正式包。实际字段、接线TDD及产物适用性审查完成后，再集中决定正式补验所需最小成本。
+
+
+#### 每槽基础图片命令观察：首次实际绿，尚待批次收口
+
+原实施者复用现有ReaderState／HTTP／native presenter／ZoomablePageBox，新增显式启停、有界120（1–512）记录，普通启动不安装。先真实B1Factory／ZIP／Skia／mounted model／HTTP场景，API缺失返回404形成正确红；前一engine／port编译失败0业务，另计前置。正确红key dp02-real-slot-draw-observation-red2，fresh09:39:32.748 UTC／1失败／0跳过／4.879秒，Root独读XML。后续八个现有代码／测试文件同属一个观察adapter，没有新owner／runner／持久化协议。
+
+一般Canvas delegate在真实GraphicsLayer强cast处失败，转公开Painter；启用后缓存层无onDraw、启用epoch使真实Painter重记录后又证明Image内部clip与外层不同canvas。原相同canvas门槛没有静默放开：根据当前公开clip layer尺寸／原点与附着Image坐标检查，记录该层真实矩阵及原BitmapPainter.drawImageRect，再localToRoot；不按fit重建预期几何。Root用本正式依赖1.10.2实际JAR只读确认Image追加clip再paint、GraphicsLayer独立recordingcanvas，未调用private API。
+
+clip-scope初始quad≤2px强原图位置与1.35倍缩放仅施一次已过；其后失败在测试要求全图采样全部留在窗口，正常缩放裁掉边缘。只修该采样前置：保留1.35／25源图点／至少20匹配／跨度>70，在真实slot／viewport的可见源图ROI采样。唯一key dp02-real-slot-draw-observation-visible-roi通过，10:45:57.224→10:46:23.595 UTC（26.371秒），fresh10:46:17.690／1通过／0跳过／4.407秒。实际source14的quad为x295.75–676.45、y−81–459；真实原图ROI21/25、span255。Root独读XML及日志，没有把出界几何当失败或降标准换绿。
+
+从首编译key09:35:11.087到这次绿10:46:23.595可核命令窗口约71分12.5秒；委派后的早期读取／方案分析更早，故本批墙钟更长，已超估。实现、测试前置、诊断和审查未分别计时，不能由Gradle机时反推占比。此间没有全量、正式／preview构建、Android72或原生重复矩阵。Root跟进有不及时之处，已收敛到同一可见ROI及绑定守卫，不扩新观察方案。
+
+Root独审中已修正新／旧model捕获失效、实际资产代际与当前reader代际区分、真实Image重挂标识、层级字段默认序列化丢失及非数字capacity语义。启停／容量／解绑守卫和去诊断代码后的受影响focused及限定格式仍待，因此代码、API Reference／Test Guide、此原聚合报告及roadmap尚未提交，不能称本批完成。基础命令、Image挂载／变换是当前证据层级；缓存图层重放、每个动画帧、tile、GPU、受控迟到伙伴及正式三端性能都不被这项离屏绿替代。原正式包未新增接口能力，版本两处差异保留。
+
+
+#### 基础图片命令观察批次收口（2026-10-07 11:04 UTC）
+
+主代理完成生产接线的独立关键路径检查，原实现者负责主要实现；主代理只接管剩余少量测试守卫和机械去诊断打印，不重新实现绘制／绑定机制。新增guard仍用同method的真实model与已验证record，覆盖非法容量abc／0／513／整数溢出400、stop拒绝迟到、重新start拒旧epoch、capacity2的FIFO/dropped/sequence、同chapter新model清旧捕获、旧model卸载／写入不伤新捕获、普通mode禁止start／写入。FIFO测试直接使用实际record验证存储协议，不将三次协议写入称作三次屏幕绘制；没有产生阅读回执或图片准备事件。
+
+按既有init script只格式八个相关Kotlin文件，key dp02-slot-observation-final-format，11:02:20.338→11:02:39.274 UTC，18.936秒；实际目标app-desktop8／app0／domain0。去日志及格式后仅一个jvmTest任务选两精确方法：`test mode records real original slot draw commands through the mounted reader` 与 `original B1 manual tail cached pointer reverse and return keep artwork in every actual frame`，参数includeIntegrationTests=true／no-parallel／max-workers1，显式MIHON_READER_ORIGINAL_ARCHIVES指向原ignored tmp原CBZ，不让环境skip换绿。key dp02-slot-observation-final-focused，11:04:12.877→11:04:49.711 UTC，36.834秒；fresh11:04:40.245，2通过／0失败／0跳过、8.368秒，两方法分别5.970／2.395秒。实际原图ROI21/25／span255，pointer80帧全artwork。XML归档同key目录；Root独读正确红、最终非零XML／样本及实际argv，无新增全量。
+
+普通模式仍使用原Image(bitmap)，Test Mode显式开启后才使用公开Painter转发原BitmapPainter；原onPagePrepared／onPageDrawn不替换。记录实际Image mount（不是外层PageBox）、holder generation／当前readerGeneration／ticket关系、真实clip-local矩阵与附着rootQuad；stop保留有界记录，换model／open／unmount清理，旧发布者不能清新捕获。默认序列化已确保层级／坐标域常量明确输出；sourceRect是实际base bitmap像素，根quad未裁剪，不冒充屏幕坐标或GPU receipt。没有读取系统屏幕、私有Compose opt-in、额外lease或永久用户配置。
+
+本批约12个本任务文件（7生产接线、1测试、4原文档），超过8文件／400行但同属一个有界绘制观察adapter及其真实HTTP/UI验证、维护说明和原验收证据，不增加独立产品能力／新owner／通用runner。两处版本改动排除。相关格式、focused及UTF-8／diff核验后随同一功能提交交付；旧失败／超估时间仍保留。coordinator workers46604／42328和process17288／30844已终态退出，无本批在途Gradle／应用；无正式或preview构建、Android72、全量或新代理。
+
+本提交只是DP02的必要观察前置，不勾选DP02。当前正式71／72还没有这些新接口；正式每帧稳定、tile、GPU、受控迟到伙伴／重试／真实进度、精确B1/B2时序与固定性能继续原GOAL。下一步应把所必需的帧几何与IO控制一起按最小范围准备，再集中核源码／既有基线并说明正式补验所需构建成本；不能为这次提交自动重跑矩阵或逐日志重建包。
