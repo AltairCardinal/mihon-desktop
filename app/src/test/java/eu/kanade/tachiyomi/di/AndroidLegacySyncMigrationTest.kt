@@ -109,6 +109,11 @@ class AndroidLegacySyncMigrationTest {
                     "('extension', '1.0', 42, 'WORK_PUBLISHED', '/work', '200', 200, 'DAY', 1, 1000, 0)",
                 0,
             )
+            driver.execute(null, "DROP TABLE sync_repair_failures", 0)
+            driver.execute(null, "DROP TRIGGER sync_runtime_pause_transition", 0)
+            driver.execute(null, "DROP TABLE sync_runtime_pause_clock", 0)
+            driver.execute(null, "DROP TABLE chapter_pairing_boundaries", 0)
+            driver.execute(null, "DROP TABLE chapter_pairings", 0)
             driver.execute(null, "DROP TABLE author_archive_presentation_exclusions", 0)
             listOf(
                 "published_date_snapshot_at",
@@ -122,7 +127,7 @@ class AndroidLegacySyncMigrationTest {
 
         Injekt.importModule(AppModule(app))
         Injekt.get<SqlDriver>().use { driver ->
-            assertEquals(40L, queryLong(driver, "PRAGMA user_version"))
+            assertEquals(Database.Schema.version, queryLong(driver, "PRAGMA user_version"))
             assertEquals(
                 200L,
                 queryLong(

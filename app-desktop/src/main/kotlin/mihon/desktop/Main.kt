@@ -77,6 +77,15 @@ import kotlin.system.exitProcess
  */
 suspend fun main(args: Array<String>) {
     DesktopTestProfile.configure(args)
+    try {
+        mihon.desktop.platform.DesktopRecoveryProfile.configure(args)
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        mihon.desktop.sync.DesktopStartupRecovery.show(failure,
+            args.firstOrNull { it.startsWith("--recovery-profile=") }?.substringAfter('='))
+        return
+    }
     // Profile selection must precede crash paths, preferences, the instance broker, and DI.
     CrashHandler.install()
 
@@ -90,6 +99,11 @@ suspend fun main(args: Array<String>) {
 
 internal suspend fun startProductionDesktopApplication(
     args: Array<String>,
+    onStartupFailure: suspend (Throwable) -> Unit = {
+        val testArgs = TestArguments.parse(args)
+        if (testArgs.testMode || testArgs.headless) throw it
+        mihon.desktop.sync.DesktopStartupRecovery.show(it)
+    },
     broker: DesktopExternalActionBroker = DesktopExternalActionBroker(
         (mihon.desktop.test.desktopTestProfile(args)?.paths ?: DesktopPlatformPaths.current()).instanceStateFile,
     ),
@@ -115,7 +129,9 @@ internal suspend fun startProductionDesktopApplication(
     val testArgs = TestArguments.parse(args)
     return try {
         val result = startDesktopInstance(broker, desktopExternalActionRaw(args)) { electedBroker ->
-            if (testArgs.testProfile == null && mihon.desktop.test.desktopTestProfile(args) == null) {
+            if (testArgs.testProfile == null && mihon.desktop.test.desktopTestProfile(args) == null &&
+                DesktopPlatformPaths.current(createDirectories = false).recoveryProfileRoot == null
+            ) {
                 reportDesktopOwnerRegistration(registrar, reportRegistration)
             }
             owner = prepareDesktopOwner(transaction, electedBroker, args, openUriEventPort, ownerIngressDependencies)
@@ -142,7 +158,12 @@ internal suspend fun startProductionDesktopApplication(
         }
         result
     } catch (failure: Throwable) {
-        if (!lifecycleStarted) transaction.closeAndJoin(failure)
+        if (!lifecycleStarted) {
+            transaction.closeAndJoin(failure)
+            if (failure is kotlinx.coroutines.CancellationException) throw failure
+            onStartupFailure(failure)
+            return DesktopInstanceStartResult.Failed(DesktopExternalActionBroker.Failure.OwnerStartFailed)
+        }
         throw failure
     }
 }
@@ -191,7 +212,12 @@ internal class DesktopApplicationCloseCoordinator(
     private var terminalFailure: Throwable? = null
     private var applicationExited = false
 
-    suspend operator fun invoke(applicationExit: () -> Unit = {}) {
+    suspend fun stopForRecovery() {
+        stopRuntime()
+        throwTerminalFailure()
+    }
+
+    private suspend fun stopRuntime() {
         if (closeRequested.compareAndSet(false, true)) {
             runCatching { closeAndJoin() }
                 .exceptionOrNull()
@@ -200,6 +226,10 @@ internal class DesktopApplicationCloseCoordinator(
         } else {
             closeCompleted.await()
         }
+    }
+
+    suspend operator fun invoke(applicationExit: () -> Unit = {}) {
+        stopRuntime()
         applicationExitMutex.withLock {
             if (!applicationExited) {
                 try {
@@ -262,12 +292,19 @@ private suspend fun runDesktopComposeWindowEventLoop(
         ) {
             BindDesktopWindowLifecycle(window, owner.appLock, owner.windowPrivacyController)
             OwnerUiDependencies(owner.ingress) {
+                CompositionLocalProvider(mihon.desktop.sync.LocalDesktopRecoveryRestart provides { root ->
+                    requestClose.stopForRecovery()
+                    val launched = mihon.desktop.platform.DesktopRecoveryLauncher.launch(root)
+                    if (launched) requestClose { exitApplication() }
+                    launched
+                }) {
                 DesktopTheme {
                     DesktopProtectedRoot(owner.appLock) {
                         Navigator(HomeScreen()) { navigator ->
                             DesktopLocalizedNavigatorContent(owner.ingress.uiDependencies.localeAdapter, navigator)
                         }
                     }
+                }
                 }
             }
         }

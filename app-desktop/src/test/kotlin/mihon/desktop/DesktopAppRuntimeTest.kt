@@ -446,6 +446,7 @@ class DesktopAppRuntimeTest {
             runBlocking {
                 startProductionDesktopApplication(
                     args = emptyArray(),
+                    onStartupFailure = { throw it },
                     broker = broker,
                     ownerIngressDependencies = { transaction ->
                         transaction.registerRuntime(runtime)
@@ -458,6 +459,90 @@ class DesktopAppRuntimeTest {
         assertEquals("factory failed", failure.message)
         assertFalse(runtime.isRunning)
         broker.close()
+    }
+
+    @Test
+    fun `startup recovery runs after failed production owner has preserved and closed its runtime`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) = runBlocking {
+        val runtime = headlessRuntime().also(DesktopAppRuntime::start)
+        val broker = DesktopExternalActionBroker(File(tempDir, "recovery-owner.json"))
+        var recovered = false
+        try {
+            startProductionDesktopApplication(
+                args = emptyArray(),
+                broker = broker,
+                ownerIngressDependencies = { transaction ->
+                    transaction.registerRuntime(runtime)
+                    throw IllegalStateException("database unavailable")
+                },
+                onStartupFailure = {
+                    assertEquals("database unavailable", it.message)
+                    assertFalse(runtime.isRunning)
+                    recovered = true
+                },
+            )
+            assertTrue(recovered)
+        } finally {
+            broker.close()
+        }
+    }
+
+    @Test
+    fun `cancelled production startup cleans its owner and never opens failure recovery`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) = runBlocking {
+        val runtime = headlessRuntime().also(DesktopAppRuntime::start)
+        val broker = DesktopExternalActionBroker(File(tempDir, "cancelled-startup.json"))
+        val cancelled = kotlinx.coroutines.CancellationException("user cancelled startup")
+        var recoveryShown = false
+        try {
+            val failure = runCatching {
+                startProductionDesktopApplication(
+                    args = emptyArray(), broker = broker,
+                    ownerIngressDependencies = { transaction ->
+                        transaction.registerRuntime(runtime)
+                        throw cancelled
+                    },
+                    onStartupFailure = { recoveryShown = true },
+                )
+            }.exceptionOrNull()
+            assertSame(cancelled, failure)
+            assertFalse(runtime.isRunning)
+            assertFalse(recoveryShown)
+        } finally { broker.close() }
+    }
+
+    @Test
+    fun `actual main sends a damaged recovery profile to the no DI safety entry`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) = runBlocking {
+        val damaged = File(tempDir, "damaged").apply { mkdirs() }
+        File(damaged, ".mihon-recovery-profile").writeText("damaged-marker", Charsets.UTF_8)
+        var displayed = false
+        io.mockk.mockkObject(mihon.desktop.sync.DesktopStartupRecovery)
+        try {
+            io.mockk.every { mihon.desktop.sync.DesktopStartupRecovery.show(any(), any()) } answers {
+                assertEquals(damaged.path, secondArg<String>())
+                displayed = true
+            }
+            main(arrayOf("--recovery-profile=${damaged.path}"))
+            assertTrue(displayed)
+            assertFalse(File(damaged, "config/mihon.db").exists())
+            assertEquals("damaged-marker", File(damaged, ".mihon-recovery-profile").readText(Charsets.UTF_8))
+        } finally { io.mockk.unmockkObject(mihon.desktop.sync.DesktopStartupRecovery) }
+    }
+
+    @Test
+    fun `profile restart stops runtime and still exits the original application exactly once`() = runBlocking {
+        var stopped = 0
+        var exited = 0
+        val coordinator = DesktopApplicationCloseCoordinator({ stopped++ }, null)
+        coordinator.stopForRecovery()
+        coordinator { exited++ }
+        coordinator { exited++ }
+        assertEquals(1, stopped)
+        assertEquals(1, exited)
     }
 
     @Test
@@ -478,6 +563,7 @@ class DesktopAppRuntimeTest {
             val thrown = runCatching {
                 startProductionDesktopApplication(
                     args = emptyArray(),
+                    onStartupFailure = { throw it },
                     broker = broker,
                     registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar {
                         DesktopUriSchemeRegistration.Result.Configured(

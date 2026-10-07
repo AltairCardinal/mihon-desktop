@@ -223,6 +223,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                     title = stringResource(MR.strings.pref_clear_webview_data),
                     onClick = {
                         try {
+                            check(eu.kanade.tachiyomi.util.system.WebViewUtil.storageAccessible)
                             WebView(context).run {
                                 setDefaultSettings()
                                 clearCache(true)
@@ -231,7 +232,11 @@ object SettingsAdvancedScreen : SearchableSettings {
                                 clearSslPreferences()
                             }
                             WebStorage.getInstance().deleteAllData()
-                            context.applicationInfo?.dataDir?.let { File("$it/app_webview/").deleteRecursively() }
+                            if (eu.kanade.tachiyomi.data.sync.AndroidRecoveryProfile.storageDirectory(context) ==
+                                null
+                            ) {
+                                context.applicationInfo?.dataDir?.let { File("$it/app_webview/").deleteRecursively() }
+                            }
                             context.toast(MR.strings.webview_data_deleted)
                         } catch (e: Throwable) {
                             logcat(LogPriority.ERROR, e)

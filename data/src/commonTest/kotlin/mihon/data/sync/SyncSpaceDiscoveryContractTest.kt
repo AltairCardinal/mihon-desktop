@@ -428,7 +428,7 @@ class SyncSpaceDiscoveryContractTest {
             repositoryJson().replace("\"push\":true", "\"push\":false") to
                 SyncDiscoveryProblem.REPOSITORY_NOT_WRITABLE,
             repositoryJson().replace("\"archived\":false", "\"archived\":true") to
-                SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE,
+                SyncDiscoveryProblem.REPOSITORY_ARCHIVED,
         )) {
             MockWebServer().use { server ->
                 server.start()
@@ -807,6 +807,14 @@ class SyncSpaceDiscoveryContractTest {
                 val result = client(server).discover()
 
                 assertFalse(result is SyncSpaceDiscovery.EmptyRepository)
+                assertEquals(
+                    if (repository.contains("\"archived\":true")) {
+                        SyncDiscoveryProblem.REPOSITORY_ARCHIVED
+                    } else {
+                        SyncDiscoveryProblem.REPOSITORY_DISABLED
+                    },
+                    (result as SyncSpaceDiscovery.Failed).problem,
+                )
             }
         }
     }

@@ -13,6 +13,19 @@ class DesktopPlatformPathsTest {
     lateinit var tempDir: File
 
     @Test
+    fun `explicit production recovery profile separates every writable path from original`() {
+        val root = File(tempDir, "recovery").apply { mkdirs() }
+        File(root, ".mihon-recovery-profile").writeText("mihon-desktop-recovery-profile-v1\n", Charsets.UTF_8)
+        val paths = DesktopPlatformPaths.resolve(
+            "Windows 11", tempDir.path,
+            mapOf("MIHON_RECOVERY_PROFILE" to root.path), createDirectories = false,
+        )
+        assertEquals(File(root, "config").canonicalFile, paths.configDir.canonicalFile)
+        assertTrue(paths.defaultDirectories().all { it.canonicalPath.startsWith(root.canonicalPath + File.separator) })
+        assertEquals(File(root, "config/mihon.db").canonicalFile, paths.databaseFile.canonicalFile)
+    }
+
+    @Test
     fun `windows paths use appdata and localappdata directories`() {
         val paths = DesktopPlatformPaths.resolve(
             osName = "Windows 11",

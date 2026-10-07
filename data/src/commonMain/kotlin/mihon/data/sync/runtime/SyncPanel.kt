@@ -52,6 +52,30 @@ enum class SyncSetupStep {
     ERROR,
     PREPARE_REPOSITORY,
 }
+
+@kotlinx.serialization.Serializable
+enum class SyncInitializationFailureReason {
+    SPACE_IDENTITY_CHANGED,
+    ATTEMPT_INVALID,
+    REPOSITORY_IDENTITY_CHANGED,
+    DEFAULT_BRANCH_CHANGED,
+    NOT_EMPTY,
+    BOOTSTRAP_MISSING,
+    BOOTSTRAP_CHANGED,
+    BOOTSTRAP_UNCONFIRMED,
+    UNRECOGNIZED_DATA,
+    EXISTING_SPACE_REQUIRES_JOIN,
+    REQUEST_UNCONFIRMED,
+    UNKNOWN,
+}
+
+@kotlinx.serialization.Serializable
+data class SyncInitializationFailure(
+    val stage: mihon.domain.sync.transport.SyncInitializationStage,
+    val reason: SyncInitializationFailureReason,
+    val requiresExplicitAction: Boolean,
+)
+
 enum class SyncPasswordProblem { INCORRECT, TOO_LONG, INVALID }
 enum class SyncDecisionScope { ITEM, SELECTED, ALL }
 enum class SyncPanelQuestion {
@@ -61,6 +85,10 @@ enum class SyncPanelQuestion {
     CREATE_NEW_SPACE,
     CONNECT_SPACE,
     CANCEL_RECOVERY_SWITCH,
+    CREATE_REPOSITORY,
+    REPAIR_REPOSITORY_PROPERTIES,
+    AUTHORIZE_REPOSITORY_SCOPE,
+    CONNECT_MANUAL_REPOSITORY,
 }
 
 data class SyncBulkConfirmation(
@@ -114,6 +142,18 @@ data class SyncPanelState(
     val loaded: Boolean = false,
     val connection: SyncConnection? = null,
     val recovery: SyncSpaceRecovery? = null,
+    val recoveryBusy: Boolean = false,
+    val recoveryStep: SyncRecoveryFlowStep = SyncRecoveryFlowStep.CHECK_CONDITIONS,
+    val recoveryOutcome: SyncRecoveryOutcome? = null,
+    val recoveryFailure: SyncRecoveryFailure? = null,
+    val recoveryRepairReport: mihon.data.sync.inbox.SyncRepairReport? = null,
+    val recoveryRepairOffset: Long = 0,
+    val recoveryOldScopes: List<SyncRecoveryScopeSummary> = emptyList(),
+    val externalRecoveryOrigin: String? = null,
+    val recoveryPlatformRequest: SyncRecoveryPlatformRequest? = null,
+    val recoveryPlatformLaunchPending: Boolean = false,
+    val recoveryPersistenceFailed: Boolean = false,
+    val recoveryRestartRequired: Boolean = false,
     val recoveryAuthorization: SyncRecoveryAuthorization = SyncRecoveryAuthorization.IDLE,
     val pendingRecoveryPurpose: SyncRecoveryContinuation? = null,
     val canCancelRecoverySwitch: Boolean = false,
@@ -162,12 +202,19 @@ data class SyncPanelState(
     val authRequestStartedAtMillis: Long? = null,
     val deviceCode: GitHubDeviceCode? = null,
     val authFailure: GitHubAuthFailureReason? = null,
+    val authRetryAtMillis: Long = 0,
     val setupProblem: SyncDiscoveryProblem? = null,
+    val initializationFailure: SyncInitializationFailure? = null,
     val passwordProblem: SyncPasswordProblem? = null,
     val spaces: List<DiscoveredSyncSpace> = emptyList(),
     val setupAccountLogin: String? = null,
     val setupInstallation: SyncAppInstallation? = null,
     val setupRepository: SyncRepository? = null,
+    val repositoryCreationName: String = mihon.data.sync.auth.GitHubSyncSpaceClient.REPOSITORY_NAME,
+    val creationRepositoryId: Long? = null,
+    val creationSubmitted: Boolean = false,
+    val repairMakePrivate: Boolean = false,
+    val repairUnarchive: Boolean = false,
     val legacyRecoveryAvailable: Boolean = false,
     val diagnosticBusy: Boolean = false,
     val diagnosticSnapshot: SyncDiagnosticSnapshot? = null,
@@ -183,6 +230,20 @@ data class SyncPanelState(
 sealed interface SyncPanelAction {
     data object Open : SyncPanelAction
     data object OpenRecovery : SyncPanelAction
+    data object VerifyRecovery : SyncPanelAction
+    data class RepairData(val offset: Long = 0) : SyncPanelAction
+    data object LoadMoreRecoveryFailures : SyncPanelAction
+    data class RetryFailedBulk(val jobId: String) : SyncPanelAction
+    data class OpenRecoveryPlatform(
+        val action: SyncRecoveryPlatformAction,
+        val objectKey: mihon.domain.sync.SyncObjectKey? = null,
+    ) : SyncPanelAction
+    data class RecoveryPlatformReturned(val requestId: String, val restartRequired: Boolean = false) : SyncPanelAction
+    data class RecoveryPlatformFailed(val requestId: String) : SyncPanelAction
+    data class PrepareRepositoryCreation(val name: String) : SyncPanelAction
+    data class PrepareManualRepository(val name: String) : SyncPanelAction
+    data class RepairRepositoryProperties(val makePrivate: Boolean, val unarchive: Boolean) : SyncPanelAction
+    data object AuthorizeRepositoryScope : SyncPanelAction
     data object RecheckSpace : SyncPanelAction
     data object CheckAuthorization : SyncPanelAction
     data object ManageAuthorization : SyncPanelAction
@@ -244,4 +305,6 @@ interface SyncPanel {
 
     /** Claims the one automatic browser launch for this authorization code across sheet remounts. */
     fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean
+
+    fun claimRecoveryPlatform(requestId: String): Boolean = false
 }

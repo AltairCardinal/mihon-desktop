@@ -30,6 +30,9 @@ data class SyncSpaceRecoveryCheck(
     val spaceAddressUpdated: Boolean = false,
     val authorizationConfirmed: Boolean = false,
     val authorizationCredentialRevision: Long? = null,
+    val discoveryProblem: mihon.data.sync.auth.SyncDiscoveryProblem? = null,
+    val networkPhase: mihon.domain.sync.runtime.SyncNetworkFailurePhase? = null,
+    val httpStatus: Int? = null,
 )
 
 internal data class SyncRecoveryAuthorizationCheck(

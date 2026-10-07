@@ -13,13 +13,23 @@ data class DesktopPlatformPaths(
     val logsDir: File,
     val backupsDir: File,
     val instanceStateFile: File = File(configDir, "desktop-instance.json"),
+    val recoveryProfileRoot: File? = null,
 ) {
     companion object {
         fun current(createDirectories: Boolean = true): DesktopPlatformPaths = resolve(
             osName = System.getProperty("os.name"),
             userHome = System.getProperty("user.home"),
-            env = if (DesktopTestProfile.root == null) System.getenv() else emptyMap(),
+            env = DesktopRecoveryProfile.environment(if (DesktopTestProfile.root == null) System.getenv() else emptyMap()),
             createDirectories = createDirectories,
+        )
+
+        /** Path descriptions only; startup must validate the marker before opening any business data. */
+        internal fun preservedRecoveryPaths(root: File): DesktopPlatformPaths = DesktopPlatformPaths(
+            configDir = File(root, "config"), databaseFile = File(root, "config/mihon.db"),
+            networkCacheDir = File(root, "cache/network"), cookiesFile = File(root, "config/cookies.json"),
+            downloadsDir = File(root, "storage/downloads"), extensionsDir = File(root, "extensions"),
+            coversDir = File(root, "covers"), logsDir = File(root, "logs"), backupsDir = File(root, "storage/backups"),
+            recoveryProfileRoot = root,
         )
 
         fun resolve(
@@ -28,6 +38,12 @@ data class DesktopPlatformPaths(
             env: Map<String, String>,
             createDirectories: Boolean = true,
         ): DesktopPlatformPaths {
+            env[DesktopRecoveryProfile.ENVIRONMENT_KEY]?.let { requested ->
+                val root = DesktopRecoveryProfile.validateRoot(File(requested))
+                return preservedRecoveryPaths(root).also {
+                    if (createDirectories) it.defaultDirectories().forEach(File::mkdirs)
+                }
+            }
             val lowerOsName = osName.lowercase()
             val legacyAppDir = File(userHome, ".mihon")
 

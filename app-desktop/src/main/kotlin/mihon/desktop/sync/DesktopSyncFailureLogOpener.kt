@@ -5,9 +5,12 @@ import java.awt.Desktop
 import mihon.desktop.platform.DesktopExternalActionPolicy
 
 internal object DesktopSyncFailureLogOpener {
-    fun open(path: String, launcher: (File) -> Unit = ::openWithSystem): Boolean = try {
+    fun open(path: String,
+        directory: String? = mihon.desktop.platform.DesktopPlatformPaths.current(false).configDir.resolve("sync-failures").path,
+        launcher: (File) -> Unit = ::openWithSystem): Boolean = try {
         val file = File(path).canonicalFile
-        if (!file.isFile || !file.extension.equals("txt", ignoreCase = true)) {
+        if (directory == null || file.parentFile != File(directory).canonicalFile ||
+            !file.isFile || file.length() > 256 * 1024 || !file.extension.equals("txt", ignoreCase = true)) {
             false
         } else {
             launcher(file)

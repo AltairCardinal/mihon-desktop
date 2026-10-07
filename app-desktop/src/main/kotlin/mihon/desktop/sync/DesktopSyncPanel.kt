@@ -39,6 +39,7 @@ fun DesktopLibrarySyncAction() {
     val panel = dependencies.syncPanel ?: return
     val state by panel.state.collectAsState()
     val uriHandler = LocalUriHandler.current
+    val navigator = cafe.adriel.voyager.navigator.LocalNavigator.current
     val triggerFocus = remember { FocusRequester() }
     var wasVisible by remember { mutableStateOf(false) }
     LaunchedEffect(state.visible) {
@@ -55,22 +56,25 @@ fun DesktopLibrarySyncAction() {
             onOpenBrowser = {
                 try {
                     uriHandler.openUri(it)
-                } catch (_: Exception) {
+                } catch (failure: Exception) {
                     dependencies.notificationService.post(
                         DesktopNotification(MR.strings.sync_title.localized(), MR.strings.unknown_error.localized()),
                     )
+                    throw IllegalStateException("System browser unavailable", failure)
                 }
             },
             onCopyCode = {
                 val result = dependencies.shareService.copyText(it)
                 if (result is DesktopShareResult.Failed || result is DesktopShareResult.Unavailable) {
                     dependencies.notificationService.post(result.toDesktopNotification())
+                    error("System clipboard unavailable")
                 }
             },
             onOpenDiagnostic = { path ->
                 if (!DesktopSyncDiagnosticOpener.open(path, panel.diagnosticDirectory)) {
                     dependencies.notificationService.post(DesktopNotification(
                         MR.strings.sync_title.localized(), MR.strings.sync_diagnostic_open_failed.localized()))
+                    error("System report viewer unavailable")
                 }
             },
             onOpenFailureLog = { path ->
@@ -81,7 +85,13 @@ fun DesktopLibrarySyncAction() {
                             MR.strings.sync_failure_log_open_failed.localized(),
                         ),
                     )
+                    error("System report viewer unavailable")
                 }
+            },
+            onOpenRecoveryPlatform = { request ->
+                val stack = requireNotNull(navigator) { "An ordinary recovery navigator is required" }
+                panel.dispatch(SyncPanelAction.Close)
+                stack.push(DesktopSyncRecoveryScreen(request.requestId, request.action))
             },
         )
     }
@@ -95,7 +105,8 @@ internal fun DesktopSyncPanelSheet(
     onOpenBrowser: (String) -> Unit,
     onCopyCode: (String) -> Unit,
     onOpenFailureLog: (String) -> Unit,
-    onOpenDiagnostic: (String) -> Unit = {},
+    onOpenDiagnostic: (String) -> Unit = { error("Report viewer unavailable") },
+    onOpenRecoveryPlatform: ((mihon.data.sync.runtime.SyncRecoveryPlatformRequest) -> Unit)? = null,
 ) {
     ModalBottomSheet(
         onDismissRequest = { panel.dispatch(SyncPanelAction.Close) },
@@ -117,6 +128,7 @@ internal fun DesktopSyncPanelSheet(
             onCopyCode = onCopyCode,
             onOpenFailureLog = onOpenFailureLog,
             onOpenDiagnostic = onOpenDiagnostic,
+            onOpenRecoveryPlatform = onOpenRecoveryPlatform,
         )
     }
 }

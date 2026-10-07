@@ -15,6 +15,7 @@ import kotlinx.serialization.json.longOrNull
 import mihon.data.sync.auth.GitHubAuthClient
 import mihon.data.sync.auth.GitHubTokenRefresher
 import mihon.data.sync.auth.PersistentGitHubCredentialStore
+import mihon.data.sync.auth.SyncProfileAuthorizationGate
 import mihon.data.sync.http.NoopSyncMetrics
 import mihon.data.sync.http.SyncMetrics
 import mihon.data.sync.inbox.SyncInboxProjector
@@ -83,7 +84,21 @@ class SyncRuntime(
 ) : SyncRunPort {
     val preferences = SyncPreferences(preferenceStore)
     val credentials = PersistentGitHubCredentialStore(secureStore)
-    val authorization = GitHubAuthClient(productionClient, endpoints, nowMillis = clock)
+    private val authorizationGate = SyncProfileAuthorizationGate(preferenceStore, clock) {
+        try {
+            rawConnection()?.let { onboarding.storage.connection(it.spaceId, it.generation) }
+                ?.accountId?.let(::accountHttpRequestGate)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+    }
+    val authorization =
+        GitHubAuthClient(productionClient, endpoints, nowMillis = clock, requestGate = authorizationGate)
+    internal fun authorizationNotBeforeMillis(): Long = authorizationGate.notBeforeMillis()
+    internal val instanceId: String = UUID.randomUUID().toString()
+    private val externalRecoveryOrigin = preferenceStore.getString("sync.recovery.external-origin-unverified", "")
     val coordinator = SyncCoordinator(this)
     val runStore = SyncRunStore(handler, clock)
     val diagnostics = SyncDiagnostics(this, diagnosticDirectory, diagnosticEnvironment, clock)
@@ -99,6 +114,11 @@ class SyncRuntime(
             ?.let { runCatching { it.snapshot() }.getOrNull() }
     private val panelDelegate = lazy { SyncPanelController(this, handler, clock = clock) }
     val panel: SyncPanel get() = panelDelegate.value
+    fun markExternalUnverifiedRecoveryOrigin(label: String) {
+        require(label.isNotBlank() && label.length <= 4096)
+        if (externalRecoveryOrigin.get().isEmpty()) externalRecoveryOrigin.set(label)
+    }
+    internal fun externalRecoveryOrigin(): String? = externalRecoveryOrigin.get().takeIf(String::isNotEmpty)
     val baseline = SyncBaselineStore(handler, bootstrap)
     val projector =
         SyncInboxProjector(
@@ -114,6 +134,15 @@ class SyncRuntime(
         )
     private val refresher = GitHubTokenRefresher(authorization, credentials, clock)
     private val connectionMutex = Mutex()
+    internal val recoveryWorkflow by lazy { SyncRecoveryWorkflow(this, handler, clock) }
+
+    internal suspend fun recoveryBinding(): SyncRecoveryBinding = connectionMutex.withLock {
+        val connection = rawConnection() ?: throw SyncSecureStoreException()
+        if (connection.unsupportedFormat) throw UnsupportedSyncSpace()
+        val stored =
+            onboarding.storage.connection(connection.spaceId, connection.generation) ?: throw SyncSecureStoreException()
+        SyncRecoveryBinding(stored, credentials.read()?.revision)
+    }
     private data class FailureReportVersion(val state: SyncRunState, val attemptId: Long, val updatedAt: Long)
 
     internal suspend fun failureLogFor(run: SyncRunSnapshot, force: Boolean = false): SyncFailureLogStatus? {
@@ -824,7 +853,7 @@ class SyncRuntime(
             } catch (_: Exception) {
                 return@withLock SyncSpaceRecoveryCheck(problem = SyncRunProblem.STORAGE)
             }
-            SyncSpaceRecoveryCheck(recovery, checked.problem, checked.spaceAddressUpdated, authorizationConfirmed)
+            checked.copy(recovery = recovery, authorizationConfirmed = authorizationConfirmed)
         }
     }
 
@@ -929,12 +958,18 @@ class SyncRuntime(
                     authorizationConfirmed =
                     authorizationConfirmed && reason != SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED,
                     authorizationCredentialRevision = authorizationCredentialRevision,
+                    discoveryProblem = (failure as? SyncSetupException)?.problem,
+                    networkPhase = (failure as? mihon.data.sync.http.SyncHttpException)?.networkPhase,
+                    httpStatus = (failure as? mihon.data.sync.http.SyncHttpException)?.code,
                 )
             } else {
                 SyncSpaceRecoveryCheck(
                     problem = failure.syncProblem(),
                     authorizationConfirmed = authorizationConfirmed,
                     authorizationCredentialRevision = authorizationCredentialRevision,
+                    discoveryProblem = (failure as? SyncSetupException)?.problem,
+                    networkPhase = (failure as? mihon.data.sync.http.SyncHttpException)?.networkPhase,
+                    httpStatus = (failure as? mihon.data.sync.http.SyncHttpException)?.code,
                 )
             }
         }
@@ -1115,7 +1150,12 @@ class SyncRuntime(
             }
             throw cancelled
         } catch (failure: Exception) {
-            SyncRunResult(SyncRunStatus.FAILED, problem = failure.syncProblem())
+            SyncRunResult(
+                SyncRunStatus.FAILED,
+                problem = failure.syncProblem(),
+                networkPhase = (failure as? mihon.data.sync.http.SyncHttpException)?.networkPhase,
+                httpStatus = (failure as? mihon.data.sync.http.SyncHttpException)?.code,
+            )
         }
         if (!connection.unsupportedFormat && result.problem in setOf(
                 SyncRunProblem.SPACE_UNAVAILABLE,

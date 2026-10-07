@@ -1232,7 +1232,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "initDesktopDI()",
-          "line": 101
+          "line": 115
         }
       ],
       "FIXTURE": [
@@ -4216,7 +4216,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 1093
+          "line": 1106
         }
       ],
       "FIXTURE": [
@@ -4794,7 +4794,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "CrashHandler.install()",
-          "line": 81
+          "line": 90
         }
       ],
       "FIXTURE": [
@@ -33150,7 +33150,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "filterChaptersForDownload.await(manga, chapters)",
-          "line": 1136
+          "line": 1149
         }
       ],
       "FIXTURE": [
@@ -44725,7 +44725,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "internal fun wireDesktopOpenUriEvents",
-          "line": 629
+          "line": 666
         }
       ],
       "FIXTURE": [
@@ -54314,12 +54314,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.initialize",
-          "line": 235
+          "line": 238
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.startApp",
-          "line": 237
+          "line": 240
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",

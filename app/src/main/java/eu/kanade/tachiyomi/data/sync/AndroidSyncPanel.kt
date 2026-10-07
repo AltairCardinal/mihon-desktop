@@ -49,6 +49,7 @@ internal fun AndroidLibrarySyncAction() {
 @Composable
 private fun AndroidSyncPanelSheet(panel: SyncPanel) {
     val context = LocalContext.current
+    val navigator = cafe.adriel.voyager.navigator.LocalNavigator.current
     val actions = remember(context) { AndroidSyncPanelActions(context) }
     AndroidSyncPanelSheet(
         panel,
@@ -56,6 +57,11 @@ private fun AndroidSyncPanelSheet(panel: SyncPanel) {
         actions::copyCode,
         actions::openFailureLog,
         actions::openDiagnostics,
+        onOpenRecoveryPlatform = { request ->
+            val stack = requireNotNull(navigator) { "An ordinary recovery navigator is required" }
+            panel.dispatch(SyncPanelAction.Close)
+            stack.push(AndroidSyncRecoveryScreen(request.requestId, request.action))
+        },
     )
 }
 
@@ -66,7 +72,8 @@ internal fun AndroidSyncPanelSheet(
     onOpenBrowser: (String) -> Unit,
     onCopyCode: (String) -> Unit,
     onOpenFailureLog: (String) -> Unit,
-    onOpenDiagnostic: (String) -> Unit = {},
+    onOpenDiagnostic: (String) -> Unit = { error("Report viewer unavailable") },
+    onOpenRecoveryPlatform: ((mihon.data.sync.runtime.SyncRecoveryPlatformRequest) -> Unit)? = null,
 ) {
     val state by panel.state.collectAsState()
     AdaptiveSheet(
@@ -82,6 +89,7 @@ internal fun AndroidSyncPanelSheet(
             onCopyCode = onCopyCode,
             onOpenFailureLog = onOpenFailureLog,
             onOpenDiagnostic = onOpenDiagnostic,
+            onOpenRecoveryPlatform = onOpenRecoveryPlatform,
         )
     }
 }
@@ -96,7 +104,7 @@ internal class AndroidSyncPanelActions(
                 requireNotNull(
                     mihon.data.sync.runtime.SyncDiagnosticFiles.exportFile(
                         path,
-                        context.cacheDir.resolve("sync-diagnostics").path,
+                        context.applicationContext.cacheDir.resolve("sync-diagnostics").path,
                     ),
                 )
             val uri = diagnosticUri(file)
@@ -107,17 +115,31 @@ internal class AndroidSyncPanelActions(
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             context.startActivity(Intent.createChooser(share, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (_: Exception) {
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
             context.toast(MR.strings.sync_diagnostic_open_failed)
+            throw IllegalStateException("Sync report viewer unavailable", failure)
         }
     }
 
     fun openFailureLog(path: String) {
         try {
             val file = File(path).canonicalFile
-            val directory = context.filesDir.resolve("sync-failures").canonicalFile
-            require(file.parentFile == directory && file.isFile && file.extension.equals("txt", ignoreCase = true))
-            val uri = file.getUriCompat(context)
+            val directory = context.applicationContext.filesDir.resolve("sync-failures").canonicalFile
+            require(
+                file.parentFile == directory && file.isFile && file.length() <= 256 * 1024 &&
+                    file.extension.equals("txt", ignoreCase = true),
+            )
+            // Scoped files sit outside FileProvider's ordinary failure-report root. Share a bounded cache copy.
+            val shared = if (AndroidRecoveryProfile.storageDirectory(context) == null) {
+                file
+            } else {
+                val destination = context.applicationContext.cacheDir.resolve("sync-report-share").apply { mkdirs() }
+                    .resolve("sync-failure-${java.util.UUID.randomUUID()}.txt")
+                file.copyTo(destination, overwrite = false)
+            }
+            val uri = shared.getUriCompat(context)
             val view = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "text/plain")
                 clipData = ClipData.newRawUri("Sync failure log", uri)
@@ -134,15 +156,21 @@ internal class AndroidSyncPanelActions(
                 }
                 context.startActivity(Intent.createChooser(share, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
-        } catch (_: Exception) {
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
             context.toast(MR.strings.sync_failure_log_open_failed)
+            throw IllegalStateException("Sync report viewer unavailable", failure)
         }
     }
 
     fun openBrowser(url: String) {
         val uri = Uri.parse(url)
-        if (uri.scheme != "https" || uri.host != "github.com") return
-        context.openInBrowser(uri, forceDefaultBrowser = true)
+        require(uri.scheme == "https" && uri.host == "github.com")
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 
     fun copyCode(code: String) {
@@ -152,8 +180,9 @@ internal class AndroidSyncPanelActions(
                 putBoolean("android.content.extra.IS_SENSITIVE", true)
             }
             (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
             context.toast(MR.strings.clipboard_copy_error)
+            throw IllegalStateException("Clipboard unavailable", failure)
         }
     }
 }

@@ -21,6 +21,9 @@ enum class SyncTrigger { MANUAL, STARTUP, PERIODIC, RECOVERY }
 enum class SyncRunStatus { SUCCESS, PARTIAL, FAILED, SKIPPED }
 
 @kotlinx.serialization.Serializable
+enum class SyncNetworkFailurePhase { DNS, CONNECT, PROXY_HANDSHAKE, TLS, TIMEOUT, HTTP_RESPONSE, HTTP_BODY, UNKNOWN }
+
+@kotlinx.serialization.Serializable
 enum class SyncRunProblem {
     AUTHORIZATION,
     SPACE_UNAVAILABLE,
@@ -41,6 +44,8 @@ data class SyncRunResult(
     val problem: SyncRunProblem? = null,
     /** Server-advised delay for the next automatic attempt, when available. */
     val retryAfterMillis: Long? = null,
+    val networkPhase: SyncNetworkFailurePhase? = null,
+    val httpStatus: Int? = null,
 )
 
 fun interface SyncRunPort {

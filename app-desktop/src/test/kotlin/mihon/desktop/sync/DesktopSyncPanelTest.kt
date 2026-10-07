@@ -49,6 +49,48 @@ import tachiyomi.domain.manga.interactor.GetLibraryManga
 @OptIn(ExperimentalComposeUiApi::class)
 class DesktopSyncPanelTest {
     @Test
+    fun `production library recovery host pushes a real Screen onto its ordinary navigator`() = runBlocking {
+        val panel = TestPanel()
+        panel.state.value = mihon.data.sync.runtime.SyncPanelState(
+            visible = true, loaded = true, page = SyncPanelPage.RECOVERY,
+            recoveryPlatformRequest = mihon.data.sync.runtime.SyncRecoveryPlatformRequest(
+                "network-fix", mihon.data.sync.runtime.SyncRecoveryPlatformAction.NETWORK),
+            recoveryPlatformLaunchPending = true,
+        )
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) { every { syncPanel } returns panel }
+        val legacy = mockk<java.util.prefs.Preferences>(relaxed = true) {
+            every { get(any(), any()) } returns null
+        }
+        every { dependencies.appPreferences } returns mihon.desktop.settings.DesktopAppPreferences(
+            tachiyomi.core.common.preference.InMemoryPreferenceStore(), legacy)
+        every { dependencies.networkRoutingPort.activeGlobalMode } returns mihon.desktop.settings.GlobalNetworkMode.SYSTEM
+        every { dependencies.networkRoutingPort.activeGlobalProxy } returns null
+        every { dependencies.networkRoutingPort.routeObservations } returns MutableStateFlow(emptyList())
+        val model = LibraryScreenModel(GetLibraryManga(FakeMangaRepository()), GetCategories(FakeCategoryRepository()))
+        var navigation: Navigator? = null
+        val scene = ImageComposeScene(1200, 900, coroutineContext = coroutineContext) {}
+        scene.setContent {
+            MaterialTheme {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ProvideLibraryScreenModelFactory({ model }) {
+                        Navigator(LibraryRootScreen()) { navigator -> navigation = navigator; CurrentScreen() }
+                    }
+                }
+            }
+        }
+        try {
+            repeat(8) { scene.render(); yield() }
+            assertTrue(navigation?.lastItem is DesktopSyncRecoveryScreen)
+            assertFalse(navigation?.lastItem is cafe.adriel.voyager.navigator.tab.Tab)
+            assertEquals("network-fix", (navigation!!.lastItem as DesktopSyncRecoveryScreen).requestId)
+            navigation!!.pop()
+            repeat(8) { scene.render(); yield() }
+            assertTrue(panel.state.value.visible)
+            assertEquals(SyncPanelPage.RECOVERY, panel.state.value.page)
+            assertTrue(panel.actions.any { it is SyncPanelAction.RecoveryPlatformReturned }, panel.actions.toString())
+        } finally { scene.close() }
+    }
+    @Test
     fun `actual library root exposes the sync sheet and nested settings without changing navigator`() = runBlocking {
         val panel = TestPanel()
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) { every { syncPanel } returns panel }
@@ -108,7 +150,7 @@ class DesktopSyncPanelTest {
             panel.state.value = panel.state.value.copy(page = SyncPanelPage.RECOVERY)
             render()
             assertTrue(find("sync-recovery-page") != null)
-            requireNotNull(find("sync-recovery-recheck")!!.config[SemanticsActions.RequestFocus].action).invoke()
+            requireNotNull(find("sync-recovery-verify")!!.config[SemanticsActions.RequestFocus].action).invoke()
             render()
             val recoveryKeyType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
                 .getMethod("access\$getKeyDown\$cp").invoke(null)
@@ -233,7 +275,7 @@ class DesktopSyncPanelTest {
             assertEquals(SyncPanelPage.MAIN, panel.state.value.page)
             mockkObject(DesktopSyncFailureLogOpener)
             try {
-                every { DesktopSyncFailureLogOpener.open(any(), any()) } returns true
+                every { DesktopSyncFailureLogOpener.open(any(), any(), any()) } returns true
                 panel.state.value = panel.state.value.copy(
                     run = SyncRunSnapshot(
                         "report-run", "space", 1, SyncTrigger.MANUAL, SyncRunState.PARTIAL, SyncRunPhase.MERGING,
@@ -244,7 +286,7 @@ class DesktopSyncPanelTest {
                 )
                 render()
                 click("sync-failure-log-open")
-                verify(exactly = 1) { DesktopSyncFailureLogOpener.open("/reports/failure.txt", any()) }
+                verify(exactly = 1) { DesktopSyncFailureLogOpener.open("/reports/failure.txt", any(), any()) }
             } finally {
                 unmockkObject(DesktopSyncFailureLogOpener)
             }
@@ -276,11 +318,14 @@ class DesktopSyncPanelTest {
         override val state = MutableStateFlow(SyncPanelState(loaded = true))
         private val openedDeviceCodes = mutableSetOf<String>()
         override fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean = openedDeviceCodes.add(code.deviceCode)
+        private val openedNativeRequests = mutableSetOf<String>()
+        override fun claimRecoveryPlatform(requestId: String): Boolean = openedNativeRequests.add(requestId)
         val actions = mutableListOf<SyncPanelAction>()
         override fun dispatch(action: SyncPanelAction) {
             actions += action
             state.value = when (action) {
                 SyncPanelAction.Open -> state.value.copy(visible = true)
+                SyncPanelAction.OpenRecovery -> state.value.copy(visible = true, page = SyncPanelPage.RECOVERY)
                 SyncPanelAction.Close -> state.value.copy(visible = false)
                 is SyncPanelAction.Navigate -> state.value.copy(page = action.page)
                 SyncPanelAction.Back -> state.value.copy(page = if (state.value.page == SyncPanelPage.DIAGNOSTICS)

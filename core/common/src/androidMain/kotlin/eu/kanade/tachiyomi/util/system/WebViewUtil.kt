@@ -12,6 +12,8 @@ import tachiyomi.core.common.util.system.logcat
 import kotlin.coroutines.resume
 
 object WebViewUtil {
+    /** Set once before business DI. API < 28 cannot isolate WebView storage in a recovery instance. */
+    var storageAccessible: Boolean = true
     private const val CHROME_PACKAGE = "com.android.chrome"
     private const val SYSTEM_SETTINGS_PACKAGE = "com.android.settings"
 
@@ -28,6 +30,7 @@ object WebViewUtil {
      *   Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.3
      */
     fun getInferredUserAgent(context: Context): String {
+        check(storageAccessible) { "Isolated WebView storage is unavailable on this Android version" }
         return WebView(context)
             .getDefaultUserAgentString()
             .replace("; Android .*?\\)".toRegex(), "; Android 10; K)")
@@ -43,6 +46,7 @@ object WebViewUtil {
     }
 
     fun supportsWebView(context: Context): Boolean {
+        if (!storageAccessible) return false
         try {
             // May throw android.webkit.WebViewFactory$MissingWebViewPackageException if WebView
             // is not installed

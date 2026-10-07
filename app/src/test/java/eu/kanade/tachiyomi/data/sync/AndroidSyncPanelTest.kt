@@ -61,6 +61,46 @@ import uy.kohesive.injekt.registry.default.DefaultRegistrar
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = android.app.Application::class)
 class AndroidSyncPanelTest {
+    @Test
+    fun `native recovery uses an ordinary Screen and returns to its original visible recovery page`() {
+        panel.state.value = panel.state.value.copy(
+            visible = true,
+            page = SyncPanelPage.RECOVERY,
+            recoveryPlatformRequest = mihon.data.sync.runtime.SyncRecoveryPlatformRequest(
+                "native-return",
+                mihon.data.sync.runtime.SyncRecoveryPlatformAction.UPDATE,
+            ),
+            recoveryPlatformLaunchPending = true,
+        )
+        var navigator: cafe.adriel.voyager.navigator.Navigator? = null
+        activity.get().setContent {
+            MaterialTheme {
+                cafe.adriel.voyager.navigator.Navigator(AndroidRecoveryTestRoot()) {
+                    navigator = it
+                    cafe.adriel.voyager.navigator.CurrentScreen()
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue(navigator?.lastItem is AndroidSyncRecoveryScreen)
+            assertFalse(navigator?.lastItem is cafe.adriel.voyager.navigator.tab.Tab)
+        }
+        compose.onNodeWithTag("sync-native-recovery-return").performClick()
+        compose.runOnIdle {
+            assertTrue(panel.state.value.visible)
+            assertEquals(SyncPanelPage.RECOVERY, panel.state.value.page)
+            assertTrue(panel.actions.contains(SyncPanelAction.OpenRecovery))
+        }
+    }
+
+    private class AndroidRecoveryTestRoot : cafe.adriel.voyager.core.screen.Screen {
+        @androidx.compose.runtime.Composable
+        override fun Content() {
+            AndroidLibrarySyncAction()
+        }
+    }
+
     @get:Rule
     val compose = createEmptyComposeRule()
     private lateinit var previous: InjektScope
@@ -238,7 +278,9 @@ class AndroidSyncPanelTest {
                 it.readBytes().toString(Charsets.UTF_8)
             }
             assertEquals("无法恢复的漫画：测试", restored)
-            actions.openFailureLog(outside.absolutePath)
+            org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+                actions.openFailureLog(outside.absolutePath)
+            }
             assertEquals(null, shadowOf(context).nextStartedActivity)
         } finally {
             report.delete()
@@ -358,7 +400,7 @@ class AndroidSyncPanelTest {
         )) {
             invalid.parentFile!!.mkdirs()
             invalid.writeText("private", Charsets.UTF_8)
-            actions.openDiagnostics(invalid.path)
+            org.junit.Assert.assertThrows(IllegalStateException::class.java) { actions.openDiagnostics(invalid.path) }
             assertEquals(null, shadowOf(context).nextStartedActivity)
         }
     }
@@ -435,11 +477,14 @@ class AndroidSyncPanelTest {
         )
         private val openedDeviceCodes = mutableSetOf<String>()
         override fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean = openedDeviceCodes.add(code.deviceCode)
+        private val nativeRequests = mutableSetOf<String>()
+        override fun claimRecoveryPlatform(requestId: String): Boolean = nativeRequests.add(requestId)
         val actions = mutableListOf<SyncPanelAction>()
         override fun dispatch(action: SyncPanelAction) {
             actions += action
             state.value = when (action) {
                 SyncPanelAction.Open -> state.value.copy(visible = true)
+                SyncPanelAction.OpenRecovery -> state.value.copy(visible = true, page = SyncPanelPage.RECOVERY)
                 SyncPanelAction.Close -> state.value.copy(visible = false)
                 is SyncPanelAction.Navigate -> state.value.copy(page = action.page)
                 SyncPanelAction.Back -> state.value.copy(

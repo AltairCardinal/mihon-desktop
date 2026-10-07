@@ -35,6 +35,7 @@ object LegacySyncSchema32Contract {
 
     private fun prepare(driver: SqlDriver, hasRuntime: Boolean) {
         Database.Schema.create(driver)
+        driver.execute(null, "DROP TABLE sync_repair_failures", 0)
         driver.execute(null, "DROP TRIGGER IF EXISTS sync_runtime_pause_transition", 0)
         driver.execute(null, "DROP TABLE IF EXISTS sync_runtime_pause_clock", 0)
         listOf("sync_events_by_batch_confirmation", "sync_pending_upload_round").forEach {

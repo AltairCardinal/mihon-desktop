@@ -25,6 +25,7 @@ import mihon.domain.sync.transport.SyncRepositoryTarget
 import okhttp3.OkHttpClient
 import okio.ByteString.Companion.decodeBase64
 
+@kotlinx.serialization.Serializable
 data class SyncGitHubAccount(val id: Long, val login: String)
 
 enum class SyncRepositorySelection { ALL, SELECTED }
@@ -52,15 +53,22 @@ data class EmptySyncRepositoryCandidate(
     val repository: SyncRepository,
     val defaultBranch: String,
     val installation: SyncAppInstallation? = null,
+    val creationAttemptId: String? = null,
 )
 
+@kotlinx.serialization.Serializable
 enum class SyncDiscoveryProblem {
     NEEDS_INSTALLATION,
     NEEDS_REPOSITORY_ACCESS,
     NEEDS_CONTENTS_PERMISSION,
+    NEEDS_CREATION_PERMISSION,
+    NEEDS_ADMINISTRATION_PERMISSION,
+    NEEDS_INSTALLATION_ACCESS_PERMISSION,
     INSTALLATION_SUSPENDED,
     REPOSITORY_NOT_WRITABLE,
     REPOSITORY_UNAVAILABLE,
+    REPOSITORY_ARCHIVED,
+    REPOSITORY_DISABLED,
     REPOSITORY_NOT_PRIVATE,
     AUTHORIZATION_REQUIRED,
     RATE_LIMITED,
@@ -69,6 +77,9 @@ enum class SyncDiscoveryProblem {
     INCOMPATIBLE,
     NAME_OCCUPIED,
     CREATION_UNCONFIRMED,
+    INITIALIZATION_REQUIRES_ACTION,
+    INITIALIZATION_UNCONFIRMED,
+    STORAGE_ERROR,
     ACCOUNT_CHANGED,
     MULTIPLE_SPACES,
 }
@@ -311,7 +322,15 @@ class GitHubSyncSpaceClient(
             val archived = value.boolean("archived")
             val disabled = value.boolean("disabled")
             if (repo.name == REPOSITORY_NAME && (archived || disabled)) {
-                fail(SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE, account, installation)
+                fail(
+                    if (disabled) {
+                        SyncDiscoveryProblem.REPOSITORY_DISABLED
+                    } else {
+                        SyncDiscoveryProblem.REPOSITORY_ARCHIVED
+                    },
+                    account,
+                    installation,
+                )
             }
             require(value.string("full_name").equals(repo.fullName, ignoreCase = true))
             val id = value.number("id")

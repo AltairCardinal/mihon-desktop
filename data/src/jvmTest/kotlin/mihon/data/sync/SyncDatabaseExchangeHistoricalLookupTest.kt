@@ -443,7 +443,7 @@ class SyncDatabaseExchangeHistoricalLookupTest {
 
             val result = inbox.ingest(invalid, snapshot, entry)
 
-            assertEquals("invalid sync batch", result.error)
+            assertEquals("BATCH_TOO_LARGE: batch must contain 1..256 events", result.error)
             assertEquals(1, counting.discoveredBatchDeletes.get())
             assertTrue(SyncDiscoveryStore(storage.handler).pending("space", 1).isEmpty())
         }

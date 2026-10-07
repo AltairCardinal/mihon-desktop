@@ -69,6 +69,8 @@ class SyncDatabaseExchange(
         var pending = 0
         var problem: SyncRunProblem? = null
         var retryAfterMillis: Long? = null
+        var networkPhase: mihon.domain.sync.runtime.SyncNetworkFailurePhase? = null
+        var httpStatus: Int? = null
         var downloadScope = liveProgress?.scope("download-discovery")
         var downloadTotal: Long? = null
         var uploadScope: String? = null
@@ -443,6 +445,8 @@ class SyncDatabaseExchange(
                         -> SyncRunProblem.NETWORK
                     }
                     retryAfterMillis = result.publish.retryAfterMillis
+                    networkPhase = result.publish.networkPhase
+                    httpStatus = result.publish.httpStatus
                     progress?.phase(
                         SyncRunPhase.UPLOADING,
                         uploadedTotal + downloadedTotal,
@@ -490,6 +494,8 @@ class SyncDatabaseExchange(
         } catch (failure: Exception) {
             problem = failure.syncProblem()
             retryAfterMillis = (failure as? SyncHttpException)?.retryAfterMillis
+            networkPhase = (failure as? SyncHttpException)?.networkPhase
+            httpStatus = (failure as? SyncHttpException)?.code
         }
         liveProgress?.let { runCatching { it.snapshot() } }
         return SyncRunResult(
@@ -504,6 +510,8 @@ class SyncDatabaseExchange(
             pending = pending,
             problem = problem,
             retryAfterMillis = retryAfterMillis,
+            networkPhase = networkPhase,
+            httpStatus = httpStatus,
         )
     }
 }

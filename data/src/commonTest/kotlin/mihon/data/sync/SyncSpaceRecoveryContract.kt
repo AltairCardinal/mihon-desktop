@@ -16,6 +16,7 @@ import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelQuestion
 import mihon.data.sync.runtime.SyncRecoveryAuthorization
 import mihon.data.sync.runtime.SyncRecoveryContinuation
+import mihon.data.sync.runtime.SyncRecoveryPlatformAction
 import mihon.data.sync.runtime.SyncSetupStep
 import mihon.data.sync.runtime.SyncSpaceRecoveryReason
 import mihon.data.sync.runtime.SyncSpaceSwitchStage
@@ -46,6 +47,599 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 abstract class SyncSpaceRecoveryContract {
+    @Test
+    fun `current panel retries recorded repository after authorization without another post`() =
+        runBlocking {
+            open().use { storage ->
+                SyncNativeRepositoryFixture(storage).use { f ->
+                    f.granted = false
+                    f.app.authorize()
+                    f.app.begin()
+                    f.app.panel.act(SyncPanelAction.PrepareRepositoryCreation(f.repository.name))
+                    f.app.panel.act(SyncPanelAction.ConfirmQuestion)
+                    withTimeout(
+                        10_000,
+                    )
+                    {
+                        f.app.panel.state.first {
+                            it.setupStep == SyncSetupStep.ERROR &&
+                                it.creationRepositoryId == 99L
+                        }
+                    }
+                    f.granted = true
+                    f.app.panel.act(SyncPanelAction.RetrySetup)
+                    withTimeout(
+                        10_000,
+                    )
+                    {
+                        f.app.panel.state.first {
+                            !it.setupBusy &&
+                                it.setupStep in setOf(
+                                    SyncSetupStep.NEW_PASSWORD,
+                                    SyncSetupStep.ERROR,
+                                )
+                        }
+                    }
+                    assertEquals(SyncSetupStep.NEW_PASSWORD, f.app.panel.state.value.setupStep)
+                    assertEquals(f.repository, f.app.panel.state.value.setupRepository)
+                    assertEquals(1, f.posts)
+                }
+            }
+        }
+
+    @Test
+    fun `manual private empty repository requires confirmation after native permission rejection`() =
+        runBlocking {
+            open().use { storage ->
+                SyncNativeRepositoryFixture(storage).use { f ->
+                    f.denyCreation = true
+                    f.app.authorize()
+                    f.app.begin()
+                    f.app.panel.act(SyncPanelAction.PrepareRepositoryCreation(f.repository.name))
+                    f.app.panel.act(SyncPanelAction.ConfirmQuestion)
+                    withTimeout(10_000) {
+                        f.app.panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy }
+                    }
+                    assertEquals(SyncDiscoveryProblem.NEEDS_CREATION_PERMISSION, f.app.panel.state.value.setupProblem)
+                    assertEquals(f.repository.name, f.app.panel.state.value.repositoryCreationName)
+                    // Explicit official creation with this name; its description has no private attempt marker.
+                    f.available = true
+                    f.app.panel.act(SyncPanelAction.PrepareManualRepository(f.repository.name))
+                    assertEquals(SyncPanelQuestion.CONNECT_MANUAL_REPOSITORY, f.app.panel.state.value.question)
+                    assertEquals(f.repository, f.app.panel.state.value.setupRepository)
+                    f.app.panel.act(SyncPanelAction.ConfirmQuestion)
+                    withTimeout(
+                        10_000,
+                    )
+                    {
+                        f.app.panel.state.first {
+                            it.setupStep == SyncSetupStep.NEW_PASSWORD ||
+                                (
+                                    it.setupStep == SyncSetupStep.ERROR &&
+                                        !it.setupBusy
+                                    )
+                        }
+                    }
+                    assertEquals(SyncSetupStep.NEW_PASSWORD, f.app.panel.state.value.setupStep)
+                    assertEquals(99L, f.app.panel.state.value.creationRepositoryId)
+                    assertEquals(1, f.posts)
+                    f.app.panel.act(SyncPanelAction.SubmitPassword(""))
+                    withTimeout(
+                        10_000,
+                    )
+                    {
+                        f.app.panel.state.first {
+                            it.setupStep in setOf(
+                                SyncSetupStep.COMPLETE,
+                                SyncSetupStep.ERROR,
+                            ) &&
+                                !it.setupBusy
+                        }
+                    }
+                    assertEquals(SyncSetupStep.COMPLETE, f.app.panel.state.value.setupStep)
+                    assertEquals(f.repository, f.app.runtime.connection()?.repository)
+                    assertEquals(1, f.posts)
+                }
+            }
+        }
+
+    @Test
+    fun `historical recovery success is invalidated by later real failure or new retained rejection`() = runBlocking {
+        for (networkFailure in listOf(true, false)) {
+            open().use { storage ->
+                SyncOnboardingFixture(storage).use { f ->
+                    f.existing("")
+                    f.authorize()
+                    f.begin()
+                    f.panel.act(SyncPanelAction.OpenRecovery)
+                    f.panel.act(SyncPanelAction.VerifyRecovery)
+                    f.panel.awaitRecoveryIdle()
+                    assertEquals(
+                        mihon.data.sync.runtime.SyncRecoveryOutcome.ORIGINAL_VERIFIED,
+                        f.panel.state.value.recoveryOutcome,
+                    )
+                    if (networkFailure) {
+                        f.git.server.dispatcher = failing(f.git.server.dispatcher, "/user", 500)
+                        assertEquals(
+                            SyncRunProblem.NETWORK,
+                            f.runtime.coordinator.synchronize(SyncTrigger.MANUAL).problem,
+                        )
+                    } else {
+                        val inbox = mihon.data.sync.inbox.SyncInboxStore(storage.handler)
+                        inbox.recordRejected(
+                            "space",
+                            1,
+                            "retained-invalid",
+                            "",
+                            "INVALID_PAYLOAD",
+                            "original retained body",
+                        )
+                    }
+                    f.panel.act(SyncPanelAction.OpenRecovery)
+                    assertEquals(
+                        if (networkFailure) {
+                            mihon.data.sync.runtime.SyncRecoveryOutcome.WAITING_EXTERNAL
+                        } else {
+                            mihon.data.sync.runtime.SyncRecoveryOutcome.REMAINING
+                        },
+                        f.panel.state.value.recoveryOutcome,
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `native explicit repository creation verifies fixed id password and real baseline`() =
+        runBlocking {
+            open().use { storage ->
+                storage.favorite("/kept-native-baseline")
+                SyncNativeRepositoryFixture(storage).use { f ->
+                    f.app.authorize()
+                    f.app.begin()
+                    f.app.panel.act(SyncPanelAction.PrepareRepositoryCreation(f.repository.name))
+                    assertEquals(SyncPanelQuestion.CREATE_REPOSITORY, f.app.panel.state.value.question)
+                    assertEquals(f.repository, f.app.panel.state.value.setupRepository)
+                    assertEquals(0, f.posts)
+                    f.app.panel.act(SyncPanelAction.CancelQuestion)
+                    assertEquals(0, f.posts)
+                    f.app.panel.act(SyncPanelAction.PrepareRepositoryCreation(f.repository.name))
+                    f.app.panel.act(SyncPanelAction.ConfirmQuestion)
+                    withTimeout(
+                        10_000,
+                    )
+                    {
+                        f.app.panel.state.first {
+                            it.setupStep == SyncSetupStep.NEW_PASSWORD ||
+                                (
+                                    it.setupStep == SyncSetupStep.ERROR &&
+                                        it.creationSubmitted
+                                    )
+                        }
+                    }
+                    assertEquals(SyncSetupStep.NEW_PASSWORD, f.app.panel.state.value.setupStep)
+                    assertEquals(1, f.posts)
+                    assertEquals(99L, f.app.panel.state.value.creationRepositoryId)
+                    f.app.panel.act(SyncPanelAction.SubmitPassword(""))
+                    withTimeout(
+                        10_000,
+                    )
+                    {
+                        f.app.panel.state.first {
+                            it.setupStep in setOf(
+                                SyncSetupStep.COMPLETE,
+                                SyncSetupStep.ERROR,
+                            ) &&
+                                !it.setupBusy
+                        }
+                    }
+                    assertEquals(SyncSetupStep.COMPLETE, f.app.panel.state.value.setupStep)
+                    assertEquals(f.repository, f.app.runtime.connection()?.repository)
+                    assertEquals(0L, f.app.panel.state.value.importRemaining)
+                    assertEquals("/kept-native-baseline", storage.manga.getLibraryManga().single().manga.url)
+                    assertEquals(1, f.posts)
+                }
+            }
+        }
+
+    @Test
+    fun `native created repository resumes granted scope without another post`() =
+        runBlocking {
+            open().use { storage ->
+                SyncNativeRepositoryFixture(storage).use { f ->
+                    f.granted = false
+                    f.app.authorize()
+                    f.app.begin()
+                    f.app.panel.act(SyncPanelAction.PrepareRepositoryCreation(f.repository.name))
+                    f.app.panel.act(SyncPanelAction.ConfirmQuestion)
+                    withTimeout(
+                        10_000,
+                    )
+                    {
+                        f.app.panel.state.first {
+                            it.setupStep == SyncSetupStep.ERROR &&
+                                it.creationRepositoryId == 99L
+                        }
+                    }
+                    assertEquals(
+                        SyncDiscoveryProblem.NEEDS_INSTALLATION_ACCESS_PERMISSION,
+                        f.app.panel.state.value.setupProblem,
+                    )
+                    assertEquals(1, f.posts)
+                    f.app.runtime.stopPanel()
+                    // The user selected the already created fixed id through the official installation settings.
+                    f.granted = true
+                    val reopened = f.app.runtime()
+                    try {
+                        val panel = reopened.panel as SyncPanelController
+                        panel.act(SyncPanelAction.Open)
+                        panel.act(SyncPanelAction.BeginSetup)
+                        withTimeout(
+                            10_000,
+                        )
+                        {
+                            panel.state.first {
+                                it.setupStep == SyncSetupStep.NEW_PASSWORD ||
+                                    (
+                                        it.setupStep == SyncSetupStep.ERROR &&
+                                            !it.setupBusy
+                                        )
+                            }
+                        }
+                        assertEquals(SyncSetupStep.NEW_PASSWORD, panel.state.value.setupStep)
+                        assertEquals(1, f.posts)
+                        assertEquals(99L, panel.state.value.creationRepositoryId)
+                    } finally {
+                        reopened.stopPanel()
+                    }
+                }
+            }
+        }
+
+    @Test
+    fun `native property confirmation targets the fixed repository then verifies real synchronization`() = runBlocking {
+        open().use { storage ->
+            SyncNativeRepositoryFixture(storage, "mihon-sync").use { f ->
+                f.available = true
+                f.app.existing("")
+                f.app.authorize()
+                f.app.begin()
+                f.archived = true
+                f.privateRepository = false
+                f.app.panel.act(SyncPanelAction.OpenRecovery)
+                f.app.panel.act(SyncPanelAction.RepairRepositoryProperties(makePrivate = true, unarchive = true))
+                assertEquals(SyncPanelQuestion.REPAIR_REPOSITORY_PROPERTIES, f.app.panel.state.value.question)
+                assertEquals(f.repository, f.app.panel.state.value.setupRepository)
+                assertEquals(0, f.patches)
+                f.app.panel.act(SyncPanelAction.ConfirmQuestion)
+                withTimeout(
+                    10_000,
+                )
+                {
+                    f.app.panel.state.first {
+                        !it.recoveryBusy &&
+                            it.recoveryOutcome == mihon.data.sync.runtime.SyncRecoveryOutcome.ORIGINAL_VERIFIED
+                    }
+                }
+                assertEquals(1, f.patches)
+                assertEquals(false, f.archived)
+                assertEquals(true, f.privateRepository)
+            }
+        }
+    }
+
+    @Test
+    fun `native pending repository creation rejects changed account before remote mutation`() = runBlocking {
+        open().use { storage ->
+            SyncNativeRepositoryFixture(storage).use { f ->
+                f.app.authorize()
+                f.app.begin()
+                val credential = f.app.runtime.credentials.read()
+                f.app.panel.act(SyncPanelAction.PrepareRepositoryCreation(f.repository.name))
+                assertEquals(SyncPanelQuestion.CREATE_REPOSITORY, f.app.panel.state.value.question)
+                f.app.accountId = 2
+                f.app.panel.act(SyncPanelAction.ConfirmQuestion)
+                withTimeout(5_000) { f.app.panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy } }
+                assertEquals(SyncDiscoveryProblem.ACCOUNT_CHANGED, f.app.panel.state.value.setupProblem)
+                assertEquals(credential, f.app.runtime.credentials.read())
+                assertEquals(0, f.posts)
+            }
+        }
+    }
+
+    @Test
+    fun `secure store read and write failure still emits claimable minimal storage escape`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                f.runtime.stopPanel()
+                val original = f.secure.values.toMap()
+                f.secure.fail = true
+                val restarted = f.runtime()
+                try {
+                    val panel = restarted.panel as SyncPanelController
+                    panel.act(SyncPanelAction.Open)
+                    panel.act(SyncPanelAction.OpenRecovery)
+                    panel.act(
+                        SyncPanelAction.OpenRecoveryPlatform(
+                            mihon.data.sync.runtime.SyncRecoveryPlatformAction.STORAGE,
+                        ),
+                    )
+                    val request = requireNotNull(panel.state.value.recoveryPlatformRequest)
+                    assertTrue(panel.claimRecoveryPlatform(request.requestId))
+                    assertTrue(request.objects.isEmpty())
+                    assertTrue(request.sourceIds.isEmpty())
+                    assertTrue(panel.state.value.recoveryPersistenceFailed)
+                    assertEquals(original, f.secure.values.toMap())
+                    assertEquals(0, f.userRepoPosts)
+                } finally {
+                    restarted.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `data repair acts through actual remote projection and final synchronization`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                val material = f.existing("")
+                f.authorize()
+                f.begin()
+                open().use { sender ->
+                    sender.connect("remote-repair-actor", f.repository)
+                    sender.favorite("/source-repair-object")
+                    val transport = f.runtime.onboarding.transport("synthetic-token", material, repositoryId = 99)
+                    val sent = mihon.data.sync.runtime.SyncDatabaseExchange(
+                        sender.handler,
+                        sender.baseline,
+                        sender.projector,
+                        transport,
+                        spaceMaterial = material,
+                    ).exchange(
+                        "space",
+                        1,
+                        f.repository,
+                    )
+                    assertEquals(SyncRunStatus.SUCCESS, sent.status)
+                }
+                val transport = f.runtime.onboarding.transport("synthetic-token", material, repositoryId = 99)
+                val snapshot = transport.readSnapshot(f.repository, "space", 1).getOrThrow()
+                val entry = snapshot.batches.single()
+                // A prior transient validator failure is persisted with the actual immutable remote body.
+                // Ordinary synchronization does not rediscover this already admitted batch; repair must refetch it.
+                assertEquals(SyncRunStatus.SUCCESS, f.runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                mihon.data.sync.inbox.SyncInboxStore(storage.handler).recordRejected(
+                    "space",
+                    1,
+                    entry.batchId,
+                    entry.path,
+                    "sync batch could not be authenticated",
+                    requireNotNull(f.git.file(f.repository.branch, entry.path)).decodeToString(),
+                )
+                val batchBlob = snapshot.tree.entries.single { it.path == entry.path }.sha
+                var batchReads = 0
+                val delegate = f.git.server.dispatcher
+                f.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.url.encodedPath.endsWith("/git/blobs/$batchBlob")) batchReads++
+                        return delegate.dispatch(request)
+                    }
+                }
+                f.panel.act(SyncPanelAction.OpenRecovery)
+                f.panel.act(SyncPanelAction.VerifyRecovery)
+                f.panel.awaitRecoveryIdle()
+                assertEquals(mihon.data.sync.runtime.SyncRecoveryOutcome.REMAINING, f.panel.state.value.recoveryOutcome)
+                assertEquals(
+                    entry.batchId,
+                    requireNotNull(
+                        f.panel.state.value.recoveryRepairReport,
+                    ).batches.single().batchId,
+                )
+                assertEquals(0, batchReads, "a read-only check and ordinary sync must not replace the explicit refetch")
+                f.panel.act(SyncPanelAction.RepairData())
+                f.panel.awaitRecoveryIdle()
+                assertTrue(batchReads > 0, "RepairData must execute the real production batch read")
+                assertEquals(
+                    mihon.data.sync.runtime.SyncRecoveryOutcome.ORIGINAL_VERIFIED,
+                    f.panel.state.value.recoveryOutcome,
+                )
+                assertEquals(0L, f.panel.state.value.recoveryRepairReport?.remaining)
+                assertEquals("/source-repair-object", storage.manga.getLibraryManga().single().manga.url)
+            }
+        }
+    }
+
+    @Test
+    fun `recovery HTTP failure retains actual phase and status rather than clearing original problem`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                f.git.server.dispatcher = failing(f.git.server.dispatcher, "/user", 500)
+                f.panel.act(SyncPanelAction.OpenRecovery)
+                f.panel.act(SyncPanelAction.VerifyRecovery)
+                f.panel.awaitRecoveryIdle()
+                assertEquals(
+                    mihon.domain.sync.runtime.SyncNetworkFailurePhase.HTTP_RESPONSE,
+                    f.panel.state.value.recoveryFailure?.networkPhase,
+                )
+                assertEquals(500, f.panel.state.value.recoveryFailure?.httpStatus)
+                assertEquals(
+                    mihon.data.sync.runtime.SyncRecoveryOutcome.WAITING_EXTERNAL,
+                    f.panel.state.value.recoveryOutcome,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `recovery verifies by actual coordinator exchange and retains the recovery page`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                f.panel.act(SyncPanelAction.OpenRecovery)
+                val completion = f.runtime.coordinator.activity.value.completion
+                val requests = f.git.server.requestCount
+                f.panel.act(SyncPanelAction.VerifyRecovery)
+                f.panel.awaitRecoveryIdle()
+                assertTrue(f.runtime.coordinator.activity.value.completion > completion)
+                assertTrue(f.git.server.requestCount > requests)
+                assertEquals(
+                    mihon.data.sync.runtime.SyncRecoveryOutcome.ORIGINAL_VERIFIED,
+                    f.panel.state.value.recoveryOutcome,
+                )
+                assertEquals(SyncPanelPage.RECOVERY, f.panel.state.value.page)
+            }
+        }
+    }
+
+    @Test
+    fun `successful read only recheck retains recovery without claiming a synchronization result`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                f.panel.act(SyncPanelAction.OpenRecovery)
+                val completion = f.runtime.coordinator.activity.value.completion
+                f.panel.act(SyncPanelAction.RecheckSpace)
+                f.panel.awaitRecoveryIdle()
+                assertEquals(SyncPanelPage.RECOVERY, f.panel.state.value.page)
+                assertEquals(completion, f.runtime.coordinator.activity.value.completion)
+                assertNull(f.panel.state.value.recoveryOutcome)
+            }
+        }
+    }
+
+    @Test
+    fun `unreadable sealed binding still opens safe recovery without changing original record`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                val key = f.secure.values.keys.single { it.startsWith("space-") && !it.contains("-recovery") }
+                f.secure.values[key] = "{"
+                f.panel.act(SyncPanelAction.OpenRecovery)
+                assertEquals(SyncPanelPage.RECOVERY, f.panel.state.value.page)
+                assertEquals(SyncRunProblem.STORAGE, f.panel.state.value.recoveryFailure?.problem)
+                assertEquals(false, f.panel.state.value.canChangeSpace)
+                assertEquals("{", f.secure.values[key])
+                assertEquals(0, f.userRepoPosts)
+            }
+        }
+    }
+
+    @Test
+    fun `external recovery action survives close restart and failure without automatic reopen`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                f.panel.act(SyncPanelAction.OpenRecovery)
+                f.panel.act(
+                    SyncPanelAction.OpenRecoveryPlatform(
+                        mihon.data.sync.runtime.SyncRecoveryPlatformAction.NETWORK,
+                    ),
+                )
+                val request = f.panel.state.value.recoveryPlatformRequest
+                assertNotNull(request)
+                assertTrue(f.panel.claimRecoveryPlatform(requireNotNull(request).requestId))
+                assertEquals(false, f.panel.claimRecoveryPlatform(request.requestId))
+                f.panel.act(SyncPanelAction.RecoveryPlatformFailed(request.requestId))
+                f.panel.act(SyncPanelAction.Close)
+                val restarted = f.runtime()
+                try {
+                    val panel = restarted.panel as SyncPanelController
+                    panel.act(SyncPanelAction.Open)
+                    panel.act(SyncPanelAction.OpenRecovery)
+                    assertEquals(request.requestId, panel.state.value.recoveryPlatformRequest?.requestId)
+                    assertEquals(true, panel.state.value.recoveryPlatformRequest?.failed)
+                    assertEquals(false, panel.claimRecoveryPlatform(request.requestId))
+                    assertEquals(
+                        mihon.data.sync.runtime.SyncRecoveryOutcome.WAITING_EXTERNAL,
+                        panel.state.value.recoveryOutcome,
+                    )
+                } finally {
+                    restarted.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `external old profile origin survives restart without claiming original scope success`() =
+        runBlocking {
+            open().use { storage ->
+                SyncOnboardingFixture(storage).use { f ->
+                    f.runtime.markExternalUnverifiedRecoveryOrigin("原来无法读取的配置目录")
+                    f.existing("")
+                    f.authorize()
+                    f.begin()
+                    f.runtime.stopPanel()
+                    val restarted = f.runtime()
+                    try {
+                        val panel = restarted.panel as SyncPanelController
+                        panel.act(SyncPanelAction.Open)
+                        panel.act(SyncPanelAction.OpenRecovery)
+                        panel.act(SyncPanelAction.VerifyRecovery)
+                        panel.awaitRecoveryIdle()
+                        assertEquals("原来无法读取的配置目录", panel.state.value.externalRecoveryOrigin)
+                        assertEquals(
+                            mihon.data.sync.runtime.SyncRecoveryOutcome.NEW_SCOPE_VERIFIED_WITH_OLD_REMAINING,
+                            panel.state.value.recoveryOutcome,
+                        )
+                    } finally {
+                        restarted.stopPanel()
+                    }
+                }
+            }
+        }
+
+    @Test
+    fun `oauth server retry deadline persists before account identity is available`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                val delegate = f.git.server.dispatcher
+                var calls = 0
+                f.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(
+                        request: RecordedRequest,
+                    ): MockResponse =
+                        if (
+                            request.url.encodedPath == "/device"
+                        ) {
+                            calls++
+                            MockResponse.Builder().code(429).addHeader("Retry-After", "120").body("{}").build()
+                        } else {
+                            delegate.dispatch(request)
+                        }
+                }
+                f.runtime.authorization.authorize("public-client") {}
+                val restarted = f.runtime()
+                try {
+                    val result = restarted.authorization.authorize(
+                        "public-client",
+                    )
+                        {
+                        }
+                        as mihon.domain.sync.auth.GitHubDeviceAuthResult.Failed
+                    assertEquals(mihon.domain.sync.auth.GitHubAuthFailureReason.RATE_LIMITED, result.failure.reason)
+                    assertEquals(1, calls)
+                } finally {
+                    restarted.stopPanel()
+                }
+            }
+        }
+    }
+
     protected abstract fun open(): SyncRuntimeStorageContract.Storage
 
     @Test
@@ -241,7 +835,14 @@ abstract class SyncSpaceRecoveryContract {
                     setup.panel.act(SyncPanelAction.Open)
                     setup.panel.act(SyncPanelAction.OpenRecovery)
                     assertEquals(false, setup.panel.state.value.canChangeSpace)
-                    assertEquals(false, setup.panel.state.value.page == SyncPanelPage.RECOVERY)
+                    assertEquals(SyncPanelPage.RECOVERY, setup.panel.state.value.page)
+                    assertEquals(value, setup.secure.values[key])
+                    val requests = setup.git.server.requestCount
+                    setup.panel.act(SyncPanelAction.OpenRecoveryPlatform(SyncRecoveryPlatformAction.STORAGE))
+                    val request = requireNotNull(setup.panel.state.value.recoveryPlatformRequest)
+                    assertTrue(setup.panel.claimRecoveryPlatform(request.requestId))
+                    assertEquals(value, setup.secure.values[key])
+                    assertEquals(requests, setup.git.server.requestCount)
                 }
                 setup.secure.values[key] = binding
                 setup.runtime.credentials.clear()
@@ -249,16 +850,17 @@ abstract class SyncSpaceRecoveryContract {
                 setup.panel.act(SyncPanelAction.OpenRecovery)
                 assertEquals(false, setup.panel.state.value.canChangeSpace)
                 assertEquals(
-                    SyncPanelPage.SETUP,
+                    SyncPanelPage.RECOVERY,
                     setup.panel.state.value.page,
-                    "missing credential cannot open an empty chooser",
+                    "missing credential keeps a safe recovery page without executable replacement choices",
                 )
                 assertEquals(SyncSetupStep.ERROR, setup.panel.state.value.setupStep)
                 setup.authorize()
                 setup.secure.readFailure = true
                 setup.panel.act(SyncPanelAction.OpenRecovery)
                 assertEquals(false, setup.panel.state.value.canChangeSpace)
-                assertEquals(SyncPanelPage.SETUP, setup.panel.state.value.page)
+                assertEquals(SyncPanelPage.RECOVERY, setup.panel.state.value.page)
+                assertEquals(binding, setup.secure.values[key])
                 assertEquals(SyncRunProblem.STORAGE, setup.panel.state.value.problem)
                 setup.secure.readFailure = false
             }
@@ -279,13 +881,18 @@ abstract class SyncSpaceRecoveryContract {
                 assertNull(setup.panel.state.value.connection)
                 setup.panel.act(SyncPanelAction.OpenRecovery)
                 assertEquals(
-                    SyncPanelPage.SETUP,
+                    SyncPanelPage.RECOVERY,
                     setup.panel.state.value.page,
-                    "cold storage failure is not first setup",
+                    "cold storage failure opens only safe recovery, never first setup",
                 )
-                assertEquals(SyncSetupStep.ERROR, setup.panel.state.value.setupStep)
+                assertEquals(SyncRunProblem.STORAGE, setup.panel.state.value.recoveryFailure?.problem)
+                assertNull(setup.panel.state.value.question)
                 assertEquals(false, setup.panel.state.value.canChangeSpace)
                 assertEquals(SyncRunProblem.STORAGE, setup.panel.state.value.problem)
+                setup.panel.act(SyncPanelAction.OpenRecoveryPlatform(SyncRecoveryPlatformAction.STORAGE))
+                val request = requireNotNull(setup.panel.state.value.recoveryPlatformRequest)
+                assertTrue(setup.panel.claimRecoveryPlatform(request.requestId))
+                assertEquals(false, setup.panel.state.value.canChangeSpace)
                 assertEquals(0, setup.git.server.requestCount)
             }
         }

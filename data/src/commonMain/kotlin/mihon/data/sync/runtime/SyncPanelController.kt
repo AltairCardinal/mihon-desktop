@@ -24,6 +24,9 @@ import mihon.data.sync.auth.EmptySyncRepositoryCandidate
 import mihon.data.sync.auth.SyncAppInstallation
 import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.auth.SyncGitHubAccount
+import mihon.data.sync.auth.SyncRepositoryCreationIntent
+import mihon.data.sync.auth.SyncRepositoryRepairTarget
+import mihon.data.sync.auth.SyncSpaceCreation
 import mihon.data.sync.auth.SyncSpaceDiscovery
 import mihon.data.sync.crypto.SyncPasswordInputException
 import mihon.data.sync.crypto.SyncPasswordInputIssue
@@ -73,6 +76,10 @@ class SyncPanelController(
     private var diagnosticReturnPage = SyncPanelPage.SETTINGS
     private var setupExchangeCompletion = -1L
     private var setupAccount: SyncGitHubAccount? = null
+    private var repositoryProposal: SyncRepositoryCreationIntent? = null
+    private var repositoryProposalRevision: Long? = null
+    private var propertyTarget: SyncRepositoryRepairTarget? = null
+    private var propertyRevision: Long? = null
     private var chosenSpace: DiscoveredSyncSpace? = null
     private var emptyRepositoryCandidate: EmptySyncRepositoryCandidate? = null
     private var legacyPending: StoredLegacySyncSetup? = null
@@ -204,6 +211,18 @@ class SyncPanelController(
                 deviceBrowserOpened.compareAndSet(false, true)
         }
 
+    override fun claimRecoveryPlatform(requestId: String): Boolean {
+        while (true) {
+            val before = state.value
+            if (!before.visible || !before.recoveryPlatformLaunchPending ||
+                before.recoveryPlatformRequest?.requestId != requestId || before.recoveryPlatformRequest.failed
+            ) {
+                return false
+            }
+            if (mutableState.compareAndSet(before, before.copy(recoveryPlatformLaunchPending = false))) return true
+        }
+    }
+
     suspend fun stop() {
         lifetime.cancelAndJoin()
         commands.cancel()
@@ -251,6 +270,8 @@ class SyncPanelController(
     private var lastDiagnosticConnection = SyncConnectionFacts(null, null, SyncBindingDecode.UNKNOWN)
 
     private suspend fun refreshFacts(forceFailureLog: Boolean) {
+        // Replacement stays disabled until all critical local recovery facts have been read.
+        mutableState.update { it.copy(canChangeSpace = false) }
         val connectionFacts = runtime.connectionFacts()
         lastDiagnosticConnection = connectionFacts
         val connection = connectionFacts.projection
@@ -267,8 +288,6 @@ class SyncPanelController(
         } else {
             false
         }
-        // Clear stale permission before any optional recovery read can fail.
-        mutableState.update { it.copy(canChangeSpace = canChangeSpace) }
         if (connection?.unsupportedFormat == true) {
             mutableState.update {
                 it.copy(
@@ -305,6 +324,17 @@ class SyncPanelController(
             anchor = null
             loadedCount = 100
             logLimit = 5
+            recoveryVersion++
+            mutableState.update {
+                it.copy(
+                    recoveryOutcome = null,
+                    recoveryFailure = null,
+                    recoveryRepairReport = null,
+                    recoveryOldScopes = emptyList(),
+                    recoveryPlatformRequest = null,
+                    recoveryPlatformLaunchPending = false,
+                )
+            }
         }
         var membership = 0L
         var favorites = 0L
@@ -347,9 +377,27 @@ class SyncPanelController(
             }
         }
         selectedBindings = selectedBindings.filter { (id, binding) -> references[id] == binding }
-        val recovery = runtime.spaceRecovery()
-        val recoveryObservation = runtime.recoveryObservation()
-        val pendingSwitch = runtime.activeSwitch()
+        val recovery = recoveryRead { runtime.spaceRecovery() }
+        val recoveryObservation = recoveryRead { runtime.recoveryObservation() }
+        val pendingSwitch = try {
+            runtime.activeSwitch()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            mutableState.update { it.copy(canChangeSpace = false) }
+            throw failure
+        }
+        val workflow = if (connectionFacts.decode == SyncBindingDecode.OK && connection?.enabled == true &&
+            (
+                state.value.page == SyncPanelPage.RECOVERY ||
+                    state.value.recoveryPlatformRequest != null ||
+                    state.value.recoveryOutcome != null
+                )
+        ) {
+            recoveryRead { runtime.recoveryWorkflow.facts(state.value.recoveryRepairOffset) }
+        } else {
+            null
+        }
         val prefs = runtime.preferences
         val period = prefs.intervalMinutes()
         val next = if (period == 0) {
@@ -391,6 +439,31 @@ class SyncPanelController(
         mutableState.update {
             it.copy(
                 loaded = true,
+                externalRecoveryOrigin = runtime.externalRecoveryOrigin(),
+                authRetryAtMillis = runtime.authorizationNotBeforeMillis(),
+                recoveryStep = workflow?.flow?.step ?: it.recoveryStep,
+                recoveryOutcome = workflow?.flow?.outcome ?: it.recoveryOutcome,
+                recoveryFailure = if (
+                    workflow?.flow?.outcome in setOf(
+                        SyncRecoveryOutcome.ORIGINAL_VERIFIED,
+                        SyncRecoveryOutcome.NEW_SCOPE_VERIFIED_WITH_OLD_REMAINING,
+                    )
+                ) {
+                    null
+                } else {
+                    workflow?.flow?.failure
+                        ?: it.recoveryFailure
+                },
+                recoveryRepairReport = workflow?.report ?: it.recoveryRepairReport,
+                recoveryOldScopes = workflow?.oldScopes ?: it.recoveryOldScopes,
+                recoveryPlatformRequest = if (
+                    workflow?.flow != null
+                ) {
+                    workflow.flow.request
+                } else {
+                    it.recoveryPlatformRequest
+                },
+                recoveryRestartRequired = workflow?.flow?.request?.restartRequired == true,
                 connection = connection,
                 queuedMembership = membership,
                 queuedFavorites = favorites,
@@ -535,49 +608,94 @@ class SyncPanelController(
 
     private suspend fun handle(action: SyncPanelAction) {
         when (action) {
+            SyncPanelAction.VerifyRecovery -> verifyRecovery()
+            is SyncPanelAction.RepairData -> verifyRecovery(action.offset)
+            SyncPanelAction.LoadMoreRecoveryFailures -> {
+                val offset = state.value.recoveryRepairReport?.nextOffset ?: return
+                mutableState.update { it.copy(recoveryRepairOffset = offset) }
+                refresh()
+            }
+            is SyncPanelAction.RetryFailedBulk -> prepareFailedBulkRetry(action.jobId)
+            is SyncPanelAction.OpenRecoveryPlatform -> openRecoveryPlatform(action)
+            is SyncPanelAction.RecoveryPlatformReturned -> {
+                val accepted = recoveryRead {
+                    runtime.recoveryWorkflow.platformReturned(
+                        action.requestId,
+                        action.restartRequired,
+                    )
+                } == true
+                if (accepted) {
+                    verifyRecovery()
+                } else {
+                    refreshRecoveryDisplay()
+                }
+            }
+            is SyncPanelAction.RecoveryPlatformFailed -> {
+                recoveryRead { runtime.recoveryWorkflow.platformFailed(action.requestId) }
+                mutableState.update { current ->
+                    if (current.recoveryPlatformRequest?.requestId == action.requestId) {
+                        current.copy(
+                            recoveryPlatformRequest = current.recoveryPlatformRequest.copy(failed = true),
+                            recoveryPlatformLaunchPending = false,
+                            recoveryOutcome = SyncRecoveryOutcome.WAITING_EXTERNAL,
+                        )
+                    } else {
+                        current
+                    }
+                }
+                refreshRecoveryDisplay()
+            }
+            is SyncPanelAction.PrepareRepositoryCreation -> prepareRepositoryCreation(action.name)
+            is SyncPanelAction.PrepareManualRepository -> {
+                prepareRepositoryCreation(action.name)
+                if (state.value.question == SyncPanelQuestion.CREATE_REPOSITORY) {
+                    mutableState.update {
+                        it.copy(question = SyncPanelQuestion.CONNECT_MANUAL_REPOSITORY)
+                    }
+                }
+            }
+            is SyncPanelAction.RepairRepositoryProperties ->
+                prepareRepositoryProperties(
+                    action.makePrivate,
+                    action.unarchive,
+                )
+            SyncPanelAction.AuthorizeRepositoryScope -> prepareRepositoryProperties(false, false, authorize = true)
             SyncPanelAction.OpenRecovery -> {
+                val source = state.value.takeIf {
+                    it.page == SyncPanelPage.SETUP && it.setupStep == SyncSetupStep.ERROR
+                }?.page ?: state.value.recoveryReturnPage
+                mutableState.update {
+                    it.copy(visible = true, page = SyncPanelPage.RECOVERY, recoveryReturnPage = source)
+                }
                 val facts = try {
                     runtime.connectionFacts()
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
-                    recoveryEntryFailed(SyncRunProblem.STORAGE)
+                    openSafeRecovery(SyncRunProblem.STORAGE)
                     return
                 }
                 val connection = facts.projection
-                if (facts.decode == SyncBindingDecode.MISSING && connection == null) {
+                if (
+                    facts.decode == SyncBindingDecode.MISSING &&
+                    connection == null &&
+                    runtime.externalRecoveryOrigin() == null
+                ) {
                     beginSetup()
                 } else if (facts.decode == SyncBindingDecode.OK && connection?.enabled == true &&
                     !connection.unsupportedFormat
                 ) {
-                    val source = state.value.takeIf {
-                        it.page == SyncPanelPage.SETUP && it.setupStep == SyncSetupStep.ERROR
-                    }?.page ?: state.value.recoveryReturnPage
                     try {
                         refresh()
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Exception) {
-                        recoveryEntryFailed(SyncRunProblem.STORAGE)
+                        openSafeRecovery(SyncRunProblem.STORAGE)
                         return
                     }
-                    if (state.value.canChangeSpace) {
-                        mutableState.update { it.copy(page = SyncPanelPage.RECOVERY, recoveryReturnPage = source) }
-                    } else {
-                        recoveryEntryFailed(
-                            if (lastDiagnosticConnection.decode == SyncBindingDecode.UNSUPPORTED) {
-                                SyncRunProblem.INVALID_DATA
-                            } else if (lastDiagnosticConnection.decode == SyncBindingDecode.OK &&
-                                state.value.connection?.enabled == true
-                            ) {
-                                SyncRunProblem.AUTHORIZATION
-                            } else {
-                                SyncRunProblem.STORAGE
-                            },
-                        )
-                    }
+                    mutableState.update { it.copy(page = SyncPanelPage.RECOVERY, recoveryReturnPage = source) }
                 } else {
-                    recoveryEntryFailed(
+                    openSafeRecovery(
                         if (facts.decode == SyncBindingDecode.UNSUPPORTED) {
                             SyncRunProblem.INVALID_DATA
                         } else {
@@ -619,6 +737,7 @@ class SyncPanelController(
                         notice = null,
                         question = null,
                         deviceCode = null,
+                        recoveryPlatformLaunchPending = false,
                         diagnosticSnapshot = null,
                         diagnosticPath = null,
                         diagnosticFeedback = null,
@@ -843,6 +962,7 @@ class SyncPanelController(
                     return
                 }
                 mutableState.update { it.copy(setupRetryAttempted = true, setupRetryFailed = false) }
+                if (resumePendingRepositoryCreation()) return
                 val intent = runtime.activeSwitch()
                 if (intent != null) {
                     resumeSwitch(intent)
@@ -862,6 +982,10 @@ class SyncPanelController(
                 val question = state.value.question ?: return
                 mutableState.update { it.copy(question = null) }
                 when (question) {
+                    SyncPanelQuestion.CREATE_REPOSITORY -> startRepositoryCreation()
+                    SyncPanelQuestion.CONNECT_MANUAL_REPOSITORY -> startRepositoryCreation(manual = true)
+                    SyncPanelQuestion.REPAIR_REPOSITORY_PROPERTIES -> runRepositoryManagement(authorize = false)
+                    SyncPanelQuestion.AUTHORIZE_REPOSITORY_SCOPE -> runRepositoryManagement(authorize = true)
                     SyncPanelQuestion.CREATE_NEW_SPACE -> beginSwitch(SyncSpaceSwitchPurpose.CREATE)
                     SyncPanelQuestion.CONNECT_SPACE -> {
                         val intent = switchConfirmation ?: return
@@ -930,6 +1054,23 @@ class SyncPanelController(
             return
         }
         val authorized = runtime.credentials.read() != null
+        if (authorized) {
+            try {
+                val session = runtime.onboarding.session()
+                runtime.onboarding.storage.repositoryCreation(session.account.id)?.let { pending ->
+                    setupAccount = session.account
+                    repositoryProposal = pending
+                    repositoryProposalRevision = runtime.credentials.read()?.revision
+                    startRepositoryCreation()
+                    return
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                setupFailed(error)
+                return
+            }
+        }
         mutableState.update {
             it.copy(
                 setupStep = if (authorized) SyncSetupStep.DISCOVERING else SyncSetupStep.SIGN_IN,
@@ -1089,7 +1230,9 @@ class SyncPanelController(
                                 recoveryAuthorization = SyncRecoveryAuthorization.CONFIRMED,
                             )
                         }
-                        if (runtime.activeSwitch() != null) {
+                        if (resumePendingRepositoryCreation()) {
+                            // The already created fixed id and name resume before broad discovery.
+                        } else if (runtime.activeSwitch() != null) {
                             resumeSwitch(requireNotNull(runtime.activeSwitch()))
                         } else if (runtime.spaceRecovery() != null) {
                             mutableState.update { it.copy(page = SyncPanelPage.RECOVERY) }
@@ -1147,7 +1290,7 @@ class SyncPanelController(
                         page = if (preserveSetupError || it.page != page) {
                             it.page
                         } else if (result.recovery == null && result.problem == null) {
-                            SyncPanelPage.MAIN
+                            if (page == SyncPanelPage.RECOVERY) SyncPanelPage.RECOVERY else SyncPanelPage.MAIN
                         } else {
                             SyncPanelPage.RECOVERY
                         },
@@ -1161,7 +1304,444 @@ class SyncPanelController(
         recoveryVersion++
         recoveryJob?.cancelAndJoin()
         recoveryJob = null
-        mutableState.update { it.copy(recovery = it.recovery?.copy(busy = false)) }
+        mutableState.update { it.copy(recovery = it.recovery?.copy(busy = false), recoveryBusy = false) }
+    }
+
+    private suspend fun <T> recoveryRead(block: suspend () -> T): T? = try {
+        block()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun openSafeRecovery(problem: SyncRunProblem) {
+        mutableState.update {
+            it.copy(
+                visible = true,
+                page = SyncPanelPage.RECOVERY,
+                loaded = true,
+                canChangeSpace = false,
+                recoveryFailure = it.recoveryFailure ?: SyncRecoveryFailure(problem),
+                recoveryOutcome = SyncRecoveryOutcome.WAITING_EXTERNAL,
+                externalRecoveryOrigin = runtime.externalRecoveryOrigin(),
+            )
+        }
+    }
+
+    private suspend fun refreshRecoveryDisplay() {
+        try {
+            refresh()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            mutableState.update {
+                it.copy(
+                    recoveryPersistenceFailed = true,
+                    recoveryFailure = it.recoveryFailure
+                        ?: error.recoveryFailure(),
+                )
+            }
+        }
+    }
+
+    private suspend fun openRecoveryPlatform(action: SyncPanelAction.OpenRecoveryPlatform) {
+        if (state.value.recoveryBusy) return
+        val request = try {
+            runtime.recoveryWorkflow.openPlatform(action.action, action.objectKey, state.value.recoveryRepairOffset)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            mutableState.update {
+                it.copy(
+                    recoveryPersistenceFailed = true,
+                    recoveryFailure = it.recoveryFailure
+                        ?: error.recoveryFailure(),
+                )
+            }
+            if (action.action != SyncRecoveryPlatformAction.STORAGE) return
+            // This exit contains no account, object, token or target claim and never writes a broken store.
+            SyncRecoveryPlatformRequest(
+                java.util.UUID.randomUUID().toString(),
+                SyncRecoveryPlatformAction.STORAGE,
+                runtimeInstanceId = runtime.instanceId,
+            )
+        }
+        mutableState.update {
+            it.copy(
+                recoveryPlatformRequest = request,
+                recoveryPlatformLaunchPending = true,
+                recoveryOutcome = SyncRecoveryOutcome.WAITING_EXTERNAL,
+                recoveryStep = SyncRecoveryFlowStep.EXTERNAL_ACTION,
+            )
+        }
+    }
+
+    private fun verifyRecovery(repairOffset: Long? = null) {
+        if (recoveryJob?.isActive == true || state.value.recoveryBusy) return
+        val session = panelSession
+        val version = recoveryVersion
+        mutableState.update { it.copy(recoveryBusy = true, recoveryOutcome = null, recoveryPersistenceFailed = false) }
+        recoveryJob = scope.launch {
+            try {
+                val facts = runtime.recoveryWorkflow.verify(repairOffset)
+                enqueue {
+                    recoveryJob = null
+                    if (session != panelSession || version != recoveryVersion) return@enqueue
+                    mutableState.update {
+                        it.copy(
+                            page = SyncPanelPage.RECOVERY, recoveryBusy = false,
+                            recoveryStep = facts.flow?.step ?: SyncRecoveryFlowStep.CHECK_CONDITIONS,
+                            recoveryOutcome = facts.flow?.outcome,
+                            recoveryFailure = facts.flow?.failure,
+                            recoveryRepairReport = facts.report,
+                            recoveryRepairOffset = repairOffset ?: 0,
+                            recoveryOldScopes = facts.oldScopes,
+                            recoveryPlatformRequest = facts.flow?.request,
+                            recoveryPlatformLaunchPending = false,
+                        )
+                    }
+                    refreshRecoveryDisplay()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                enqueue {
+                    recoveryJob = null
+                    if (session == panelSession && version == recoveryVersion) {
+                        mutableState.update {
+                            it.copy(
+                                recoveryBusy = false,
+                                recoveryOutcome = SyncRecoveryOutcome.WAITING_EXTERNAL,
+                                recoveryFailure = error.recoveryFailure(),
+                                recoveryPersistenceFailed = true,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun prepareFailedBulkRetry(jobId: String) {
+        if (bulkJob?.isActive == true || state.value.recoveryBusy) return
+        cancelConfirmation()
+        val connection = state.value.connection ?: return
+        val previous = handler.await { sync_inboxQueries.getBulkJob(jobId).executeAsOneOrNull() } ?: return
+        if (previous.space_id != connection.spaceId || previous.generation != connection.generation) return
+        val next = runtime.projector.prepareFailedBulkRetry(jobId)
+        val counts = handler.await {
+            sync_inboxQueries.countBulkTypes(next).executeAsList().associate { it.field_ to it.count }
+        }
+        mutableState.update {
+            it.copy(
+                confirmation = SyncBulkConfirmation(
+                    next,
+                    mihon.domain.sync.SyncCancellationDecision.valueOf(
+                        previous.decision,
+                    ),
+                    counts[SyncField.FAVORITE.name]
+                        ?: 0,
+                    counts[SyncField.FOLLOWING.name]
+                        ?: 0,
+                ),
+            )
+        }
+    }
+
+    private suspend fun prepareRepositoryCreation(name: String) {
+        if (state.value.setupBusy || repositoryJob?.isActive == true) return
+        val normalized = name.trim()
+        if (
+            runCatching {
+                mihon.domain.sync.transport.SyncRepository(
+                    "validated-owner",
+                    normalized,
+                    mihon.data.sync.auth.GitHubSyncSpaceClient.BRANCH,
+                )
+            }.isFailure
+        ) {
+            setupFailed(SyncSetupException(SyncDiscoveryProblem.MALFORMED))
+            return
+        }
+        try {
+            val binding = recoveryRead { runtime.recoveryBinding() }
+            val account = setupAccount ?: binding?.stored?.let { SyncGitHubAccount(it.accountId, it.accountLogin) }
+                ?: runtime.onboarding.session().account
+            setupAccount = account
+            val existing = runtime.onboarding.storage.repositoryCreation(account.id)
+            repositoryProposal = existing?.takeIf {
+                it.repositoryName == normalized
+            }
+                ?: SyncRepositoryCreationIntent(
+                    account,
+                    normalized,
+                    java.util.UUID.randomUUID().toString(),
+                )
+            repositoryProposalRevision = runtime.credentials.read()?.revision
+            mutableState.update {
+                it.copy(
+                    repositoryCreationName = normalized,
+                    setupAccountLogin = account.login,
+                    setupRepository = mihon.domain.sync.transport.SyncRepository(
+                        account.login,
+                        normalized,
+                        mihon.data.sync.auth.GitHubSyncSpaceClient.BRANCH,
+                    ),
+                    question = SyncPanelQuestion.CREATE_REPOSITORY,
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            setupFailed(error)
+        }
+    }
+
+    private suspend fun resumePendingRepositoryCreation(): Boolean {
+        try {
+            if (runtime.credentials.read() == null) return false
+            val expected = setupAccount?.id ?: recoveryRead { runtime.recoveryBinding() }?.stored?.accountId
+            if (expected != null && runtime.onboarding.storage.repositoryCreation(expected) == null) return false
+            val session = runtime.onboarding.session(expected)
+            val pending = runtime.onboarding.storage.repositoryCreation(session.account.id) ?: return false
+            setupAccount = session.account
+            switchIntent = runtime.activeSwitch()
+            repositoryProposal = pending
+            repositoryProposalRevision = runtime.credentials.read()?.revision
+            startRepositoryCreation()
+            return true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            setupFailed(error)
+            return true
+        }
+    }
+
+    private fun startRepositoryCreation(manual: Boolean = false) {
+        val proposed = repositoryProposal ?: return
+        if (repositoryJob?.isActive == true || setupJob?.isActive == true) return
+        val sessionVersion = panelSession
+        val version = authVersion
+        mutableState.update { it.copy(setupBusy = true, setupStep = SyncSetupStep.CREATING, setupProblem = null) }
+        repositoryJob = scope.launch {
+            try {
+                val session = runtime.onboarding.session(proposed.account.id)
+                if (
+                    runtime.credentials.read()
+                        ?.revision != repositoryProposalRevision
+                ) {
+                    throw SyncSetupException(
+                        SyncDiscoveryProblem.ACCOUNT_CHANGED,
+                    )
+                }
+                val storage = runtime.onboarding.storage
+                var current = storage.repositoryCreation(proposed.account.id)
+                if (current != null && current.attemptId != proposed.attemptId) {
+                    storage.archiveRepositoryCreation(current)
+                    current = null
+                }
+                if (current == null) {
+                    storage.saveRepositoryCreation(proposed, null)
+                    current = proposed
+                }
+                val persist: suspend (SyncRepositoryCreationIntent) -> Unit = { next ->
+                    storage.saveRepositoryCreation(next, current)
+                    current = next
+                }
+                val manager = runtime.onboarding.repositoryManager(session.token, session.account.id)
+                val result = if (manual) {
+                    manager.confirmManualSelection(requireNotNull(current), persist)
+                } else {
+                    manager.createOrResume(requireNotNull(current), persist)
+                }
+                val recorded = requireNotNull(current)
+                enqueue {
+                    repositoryJob = null
+                    if (sessionVersion != panelSession || version != authVersion || !state.value.visible) return@enqueue
+                    mutableState.update {
+                        it.copy(
+                            creationRepositoryId = recorded.repositoryId,
+                            creationSubmitted = recorded.submitted,
+                            repositoryCreationName = recorded.repositoryName,
+                        )
+                    }
+                    when (result) {
+                        is SyncSpaceCreation.Ready -> {
+                            setupAccount = session.account
+                            emptyRepositoryCandidate = EmptySyncRepositoryCandidate(
+                                session.account,
+                                result.repositoryId,
+                                result.repository,
+                                result.defaultBranch,
+                                state.value.setupInstallation,
+                                recorded.attemptId,
+                            )
+                            mutableState.update {
+                                it.copy(
+                                    setupBusy = false,
+                                    setupStep = SyncSetupStep.NEW_PASSWORD,
+                                    setupRepository = result.repository,
+                                    setupAccountLogin = session.account.login,
+                                    setupProblem = null,
+                                )
+                            }
+                        }
+                        is SyncSpaceCreation.Existing -> selectSpace(result.space)
+                        is SyncSpaceCreation.Failed ->
+                            setupFailed(
+                                SyncSetupException(
+                                    result.problem,
+                                ),
+                                session.account.login,
+                                state.value.setupInstallation,
+                            )
+                    }
+                    refreshRecoveryDisplay()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                enqueue {
+                    repositoryJob = null
+                    if (
+                        sessionVersion == panelSession &&
+                        version == authVersion
+                    ) {
+                        setupFailed(
+                            error,
+                            proposed.account.login,
+                            state.value.setupInstallation,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun prepareRepositoryProperties(
+        makePrivate: Boolean,
+        unarchive: Boolean,
+        authorize: Boolean = false,
+    ) {
+        if (state.value.recoveryBusy || repositoryJob?.isActive == true) return
+        try {
+            val binding = recoveryRead { runtime.recoveryBinding() }
+            val account = setupAccount ?: binding?.stored?.let { SyncGitHubAccount(it.accountId, it.accountLogin) }
+                ?: runtime.onboarding.session().account
+            val creation = runtime.onboarding.storage.repositoryCreation(account.id)
+            val pending = runtime.onboarding.storage.pending(account.id)
+            propertyTarget = when {
+                creation?.repositoryId != null ->
+                    SyncRepositoryRepairTarget(
+                        account,
+                        mihon.domain.sync.transport.SyncRepository(
+                            account.login,
+                            creation.repositoryName,
+                            mihon.data.sync.auth.GitHubSyncSpaceClient.BRANCH,
+                        ),
+                        creation.repositoryId,
+                    )
+                pending != null -> SyncRepositoryRepairTarget(account, pending.repository(), pending.repositoryId)
+                binding != null ->
+                    SyncRepositoryRepairTarget(
+                        account,
+                        binding.stored.repository(),
+                        binding.stored.repositoryId,
+                    )
+                else -> throw SyncSetupException(SyncDiscoveryProblem.CREATION_UNCONFIRMED)
+            }
+            propertyRevision = runtime.credentials.read()?.revision
+            mutableState.update {
+                it.copy(
+                    setupRepository = propertyTarget?.repository,
+                    repairMakePrivate = makePrivate,
+                    repairUnarchive = unarchive,
+                    question = if (authorize) {
+                        SyncPanelQuestion.AUTHORIZE_REPOSITORY_SCOPE
+                    } else {
+                        SyncPanelQuestion.REPAIR_REPOSITORY_PROPERTIES
+                    },
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            mutableState.update {
+                it.copy(
+                    recoveryFailure = error.recoveryFailure(),
+                    recoveryOutcome = SyncRecoveryOutcome.WAITING_EXTERNAL,
+                )
+            }
+        }
+    }
+
+    private fun runRepositoryManagement(authorize: Boolean) {
+        val target = propertyTarget ?: return
+        if (repositoryJob?.isActive == true) return
+        val makePrivate = state.value.repairMakePrivate
+        val unarchive = state.value.repairUnarchive
+        val version = authVersion
+        val visibleSession = panelSession
+        mutableState.update { it.copy(recoveryBusy = true) }
+        repositoryJob = scope.launch {
+            try {
+                val session = runtime.onboarding.session(target.account.id)
+                if (
+                    runtime.credentials.read()
+                        ?.revision != propertyRevision
+                ) {
+                    throw SyncSetupException(
+                        SyncDiscoveryProblem.ACCOUNT_CHANGED,
+                    )
+                }
+                val manager = runtime.onboarding.repositoryManager(session.token, session.account.id)
+                val creation = runtime.onboarding.storage.repositoryCreation(target.account.id)
+                val failure = if (authorize) {
+                    manager.authorizeRepository(target, creation)
+                } else {
+                    manager.repairProperties(target, makePrivate, unarchive)
+                }
+                enqueue {
+                    repositoryJob = null
+                    if (visibleSession != panelSession || version != authVersion) return@enqueue
+                    mutableState.update { it.copy(recoveryBusy = false) }
+                    if (failure != null) {
+                        mutableState.update {
+                            it.copy(
+                                recoveryFailure = SyncSetupException(
+                                    failure,
+                                ).recoveryFailure(),
+                                recoveryOutcome = SyncRecoveryOutcome.WAITING_EXTERNAL,
+                            )
+                        }
+                    } else if (creation != null) {
+                        repositoryProposal = creation
+                        repositoryProposalRevision = runtime.credentials.read()?.revision
+                        startRepositoryCreation()
+                    } else {
+                        verifyRecovery()
+                    }
+                    refreshRecoveryDisplay()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                enqueue {
+                    repositoryJob = null
+                    if (visibleSession == panelSession && version == authVersion) {
+                        mutableState.update {
+                            it.copy(
+                                recoveryBusy = false,
+                                recoveryFailure = error.recoveryFailure(),
+                                recoveryOutcome = SyncRecoveryOutcome.WAITING_EXTERNAL,
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 
     internal suspend fun awaitRecoveryIdle() {
@@ -1265,6 +1845,17 @@ class SyncPanelController(
     }
 
     private fun handleDiscovery(result: SyncSpaceDiscovery, autoSelect: Boolean = true) {
+        setupAccount = when (result) {
+            is SyncSpaceDiscovery.Found -> result.space.account
+            is SyncSpaceDiscovery.Multiple -> result.spaces.firstOrNull()?.account
+            is SyncSpaceDiscovery.EmptyRepository -> result.candidate.account
+            is SyncSpaceDiscovery.NoVisibleSpace -> result.account
+            is SyncSpaceDiscovery.NeedsInstallation -> result.account
+            is SyncSpaceDiscovery.NeedsRepositoryAccess -> result.account
+            is SyncSpaceDiscovery.NeedsContentsPermission -> result.account
+            is SyncSpaceDiscovery.InstallationSuspended -> result.account
+            is SyncSpaceDiscovery.Failed -> result.account ?: setupAccount
+        }
         when (result) {
             is SyncSpaceDiscovery.Found -> {
                 if (autoSelect) {
@@ -1667,6 +2258,7 @@ class SyncPanelController(
                 setupRetryFailed = it.setupRetryAttempted,
                 setupStep = SyncSetupStep.ERROR,
                 setupProblem = problem,
+                initializationFailure = (failure as? SyncSetupException)?.initialization,
                 problem = failure.syncProblem(),
                 setupAccountLogin = accountLogin,
                 setupInstallation = installation,

@@ -14,6 +14,7 @@ class SyncPauseClockMigrationTest {
         try {
             open().use { driver ->
                 Database.Schema.create(driver)
+                driver.execute(null, "DROP TABLE sync_repair_failures", 0)
                 driver.execute(null, "DROP TRIGGER IF EXISTS sync_runtime_pause_transition", 0)
                 driver.execute(null, "DROP TABLE IF EXISTS sync_runtime_pause_clock", 0)
                 driver.execute(
@@ -30,7 +31,7 @@ class SyncPauseClockMigrationTest {
                     0,
                 )
                 DatabaseMigration.migrateAtomically(driver, 40, Database.Schema.version)
-                assertEquals(42L, Database.Schema.version)
+                assertEquals(43L, Database.Schema.version)
                 assertEquals(11_000L, value(driver, "SELECT paused_at FROM sync_runtime_pause_clock"))
                 assertEquals(1_000L, value(driver, "SELECT planned_at FROM sync_runtime_pause_clock"))
                 assertEquals(0L, value(driver, "SELECT planned_paused_millis FROM sync_runtime_pause_clock"))

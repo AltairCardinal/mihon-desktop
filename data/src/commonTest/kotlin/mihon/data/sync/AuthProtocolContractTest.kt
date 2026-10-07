@@ -33,6 +33,30 @@ import java.util.concurrent.TimeUnit
 
 class AuthProtocolContractTest {
     @Test
+    fun `ordinary forbidden device authorization is denied rather than rate limited`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse(code = 403, body = """{"message":"Resource not accessible by integration"}"""))
+            val result = auth(server).authorize("public-client") {} as GitHubDeviceAuthResult.Failed
+            assertEquals("PERMISSION_DENIED", result.failure.reason.name)
+            assertFalse(result.failure.retryable)
+        }
+    }
+
+    @Test
+    fun `secondary rate limit during device authorization remains retryable`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(
+                MockResponse(code = 403, body = """{"message":"You have exceeded a secondary rate limit"}"""),
+            )
+            val result = auth(server).authorize("public-client") {} as GitHubDeviceAuthResult.Failed
+            assertEquals(GitHubAuthFailureReason.RATE_LIMITED, result.failure.reason)
+            assertTrue(result.failure.retryable)
+        }
+    }
+
+    @Test
     fun `device display precedes all polling and every poll observes the current interval`() = runTest {
         MockWebServer().use { server ->
             server.start()

@@ -81,6 +81,88 @@ import java.nio.file.Path as NioPath
 
 @Timeout(30)
 abstract class SyncPanelStorageContract {
+    @Test
+    fun `panel failed bulk retry freezes a new confirmation and never replays applied or invalidated rows`() =
+        runBlocking {
+            open().use { storage ->
+                storage.connect("local", repository)
+                pending(storage, 3)
+                storage.driver.execute(
+                    null,
+                    "CREATE TRIGGER fail_bulk BEFORE UPDATE OF favorite ON mangas WHEN OLD.url IN ('/remote-1','/remote-2') BEGIN SELECT RAISE(ABORT, 'temporary failure'); END",
+                    0,
+                )
+                withPanel(storage) { panel, _ ->
+                    panel.act(SyncPanelAction.Open)
+                    panel.act(SyncPanelAction.PrepareDecision(SyncCancellationDecision.CONFIRM, SyncDecisionScope.ALL))
+                    val originalJob = requireNotNull(panel.state.value.confirmation).jobId
+                    panel.act(SyncPanelAction.ConfirmDecision)
+                    panel.awaitBulkIdle()
+                    assertEquals(1L, storage.projector.bulkProgress(originalJob).outcomes["APPLIED"])
+                    assertEquals(2L, storage.projector.bulkProgress(originalJob).outcomes["FAILED"])
+                    storage.driver.execute(null, "DROP TRIGGER fail_bulk", 0)
+                    val invalidated = storage.manga.getLibraryManga().single { it.manga.url == "/remote-2" }.manga
+                    storage.manga.update(
+                        tachiyomi.domain.manga.model.MangaUpdate(
+                            invalidated.id,
+                            favorite = false,
+                            syncContext = mihon.domain.sync.SyncMutationContext.User,
+                        ),
+                    )
+                    panel.act(SyncPanelAction.RetryFailedBulk(originalJob))
+                    val retry = requireNotNull(panel.state.value.confirmation)
+                    assertTrue(retry.jobId != originalJob)
+                    assertEquals(1L, retry.total)
+                    panel.act(SyncPanelAction.ConfirmDecision)
+                    panel.awaitBulkIdle()
+                    assertEquals(1L, storage.projector.bulkProgress(retry.jobId).outcomes["APPLIED"])
+                    assertEquals(1L, storage.projector.bulkProgress(originalJob).outcomes["APPLIED"])
+                    assertEquals(2L, storage.projector.bulkProgress(originalJob).outcomes["FAILED"])
+                    assertTrue(storage.manga.getLibraryManga().isEmpty())
+                }
+            }
+        }
+
+    @Test
+    fun `initialization changed checkpoint preserves exact required action and never mutates repository`() =
+        runBlocking {
+            open().use { storage ->
+                SyncOnboardingFixture(storage).use { f ->
+                    f.authorize()
+                    val material = SyncSpaceCrypto.create("missing-checkpoint-space", 1, "")
+                    val setup = StoredSyncSetup(
+                        accountId = f.accountId,
+                        accountLogin = f.accountLogin,
+                        attemptId = "missing-checkpoint-attempt-0001",
+                        attemptNonce = "missing-checkpoint-nonce-0001",
+                        newSpace = true,
+                        material = StoredSyncMaterial.from(material),
+                        stage = SyncInitializationStage.BOOTSTRAP_CONFIRMED,
+                        repositoryId = 99,
+                        owner = f.repository.owner,
+                        repository = f.repository.name,
+                        branch = f.repository.branch,
+                        defaultBranch = "main",
+                        confirmedBootstrapCommitSha = "a".repeat(40),
+                        confirmedBootstrapTreeSha = "b".repeat(40),
+                    )
+                    f.runtime.onboarding.storage.save(setup, null)
+                    val error = runCatching { f.runtime.onboarding.resume(setup) }.exceptionOrNull()
+                    assertTrue(error is mihon.data.sync.runtime.SyncSetupException)
+                    val failure = error as mihon.data.sync.runtime.SyncSetupException
+                    assertEquals("INITIALIZATION_REQUIRES_ACTION", failure.problem.name)
+                    assertEquals("BOOTSTRAP_CHANGED", failure.initialization?.reason?.name)
+                    assertEquals(setup, f.runtime.onboarding.storage.pending(f.accountId))
+                    assertEquals(0, f.repositoryWrites)
+                    f.panel.act(SyncPanelAction.Open)
+                    f.panel.act(SyncPanelAction.BeginSetup)
+                    withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.ERROR } }
+                    assertEquals("BOOTSTRAP_CHANGED", f.panel.state.value.initializationFailure?.reason?.name)
+                    assertEquals(0, f.repositoryWrites)
+                }
+            }
+        }
+
     protected abstract fun open(): SyncRuntimeStorageContract.Storage
     private val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync-v1")
 

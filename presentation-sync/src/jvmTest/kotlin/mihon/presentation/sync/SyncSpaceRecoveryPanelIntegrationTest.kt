@@ -14,6 +14,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelPage
+import mihon.data.sync.runtime.SyncPanelQuestion
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.data.sync.runtime.SyncSetupStep
 import mihon.domain.sync.auth.GitHubAccessToken
@@ -81,6 +82,13 @@ class SyncSpaceRecoveryPanelIntegrationTest {
         assertTrue(methods.all { it == "GET" })
         val beforeContinue = paths.size
         click("sync-recovery-repository-created")
+        withTimeout(5_000) {
+            panel.state.first { it.question == SyncPanelQuestion.CONNECT_MANUAL_REPOSITORY }
+        }
+        assertEquals(oldConnection, runtime.connection())
+        assertEquals(oldCredential, runtime.credentials.read())
+        assertEquals(beforeContinue, paths.size, "Preparing a manual target must not send requests before confirmation")
+        click("sync-confirm-question")
         withTimeout(5_000) { panel.state.first { !it.setupBusy && paths.size > beforeContinue } }
         assertEquals(oldConnection, runtime.connection())
         assertTrue(node("sync-password-input") == null, "an uncreated repository cannot start initialization")

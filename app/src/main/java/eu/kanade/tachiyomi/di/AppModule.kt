@@ -170,7 +170,12 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory { ImageSaver(app) }
 
-        addSingletonFactory { AndroidStorageFolderProvider(app) }
+        addSingletonFactory {
+            AndroidStorageFolderProvider(
+                app,
+                eu.kanade.tachiyomi.data.sync.AndroidRecoveryProfile.storageDirectory(app),
+            )
+        }
         addSingletonFactory { LocalSourceFileSystem(get()) }
         addSingletonFactory { LocalCoverManager(app, get()) }
         addSingletonFactory { StorageManager(app, get()) }

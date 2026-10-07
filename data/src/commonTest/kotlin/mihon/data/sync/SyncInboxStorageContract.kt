@@ -3,8 +3,13 @@ package mihon.data.sync
 import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
+import mihon.data.sync.inbox.SyncDataRepairService
 import mihon.data.sync.inbox.SyncInboxExchange
 import mihon.data.sync.inbox.SyncInboxProjector
 import mihon.data.sync.inbox.SyncInboxStore
@@ -29,6 +34,7 @@ import mihon.domain.sync.SyncReceiverDecisionResult
 import mihon.domain.sync.crypto.SyncSecret
 import mihon.domain.sync.transport.SyncPublishStatus
 import mihon.domain.sync.transport.SyncRepository
+import okio.ByteString.Companion.toByteString
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -57,6 +63,272 @@ abstract class SyncInboxStorageContract {
     private val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
     private val secret = SyncSecret.fromBytes(ByteArray(32) { (it + 1).toByte() })
     private val manga = SyncObjectKey(SyncObjectType.MANGA, sourceId = "42", originalUrl = "/manga")
+
+    @Test
+    fun `authenticated protocol and payload rejections retain precise reasons through real receipt`() = runBlocking {
+        val cases = listOf(
+            batch().copy(protocolVersion = 999) to "UNKNOWN_PROTOCOL",
+            batch().copy(objects = listOf(SyncObjectDescriptor(manga, ""))) to "INVALID_PAYLOAD",
+            batch().let { it.copy(events = it.events.map { event -> event.copy(actorId = "different-actor") }) }
+                to "INVALID_ACTOR",
+            batch().let { it.copy(events = it.events.map { event -> event.copy(epoch = 2) }) } to "INVALID_EPOCH",
+            batch().let {
+                it.copy(
+                    spaceId = "other-space",
+                    events = it.events.map { event ->
+                        event.copy(spaceId = "other-space")
+                    },
+                )
+            } to "WRONG_SPACE",
+            batch().let { it.copy(generation = 2, events = it.events.map { event -> event.copy(generation = 2) }) }
+                to "WRONG_GENERATION",
+            batch().let { it.copy(events = it.events.map { event -> event.copy(seq = event.seq + 1) }) }
+                to "INVALID_SEQUENCE",
+            batch().let {
+                it.copy(
+                    batchId = "other-batch",
+                    events = it.events.map { event ->
+                        event.copy(batchId = "other-batch")
+                    },
+                )
+            } to "INVALID_PAYLOAD",
+        )
+        val observed = mutableListOf<Pair<String, String>>()
+        for ((invalid, _) in cases) {
+            SyncGitSafetyContractTest().GitFixture().use { git ->
+                val transport = git.transport()
+                transport.initialize(repository, "space", 1)
+                val engine = mihon.data.sync.crypto.SyncAeadEngineFactory.create()
+                val valid = mihon.domain.sync.crypto.SyncBatchEncryption.encrypt(
+                    engine,
+                    secret,
+                    batch(),
+                    ".mihon-sync/batches/device-a/1/incoming.json",
+                )
+                // Authentic envelope, intentionally invalid semantic content: this is not a bad password.
+                val plaintext = mihon.domain.sync.SyncBatchCodec.rawEncode(invalid).encodeToByteArray()
+                val malformed = valid.copy(
+                    plaintextDigest = engine.sha256(plaintext),
+                    ciphertext = engine.encrypt(secret, plaintext, valid.binding().canonicalAad()),
+                )
+                val initial = transport.readSnapshot(repository, "space", 1).getOrThrow()
+                val prepared = transport.prepare(initial, valid)
+                assertEquals(SyncPublishStatus.PUBLISHED, transport.publish(repository, initial, prepared).status)
+                val digest = malformed.plaintextDigest.toByteString().hex()
+                fun changedManifest(path: String, bindingId: String, isIndex: Boolean): ByteArray {
+                    val aad = mihon.domain.sync.crypto.SyncCryptoBinding(1, "space", 1, bindingId, path)
+                        .canonicalAad()
+                    val decoded = Json.parseToJsonElement(
+                        engine.decrypt(
+                            secret,
+                            mihon.domain.sync.crypto.SyncAeadCiphertext(
+                                requireNotNull(
+                                    git.file(
+                                        "mihon-sync",
+                                        path,
+                                    ),
+                                ),
+                            ),
+                            aad,
+                        ).decodeToString(),
+                    ).jsonObject
+                    val changed = if (isIndex) {
+                        JsonObject(
+                            decoded + (
+                                "batch" to JsonObject(
+                                    decoded.getValue("batch").jsonObject +
+                                        ("digestHex" to JsonPrimitive(digest)),
+                                )
+                                ),
+                        )
+                    } else {
+                        JsonObject(decoded + ("digestHex" to JsonPrimitive(digest)))
+                    }
+                    return engine.encrypt(secret, changed.toString().encodeToByteArray(), aad).bytes
+                }
+                // Simulate a remote producer of unsupported/invalid content without weakening local publication.
+                git.replaceFiles(
+                    "mihon-sync",
+                    mapOf(
+                        valid.path to mihon.data.sync.transport.StoredSyncBatch.fromDomain(malformed).body(),
+                        prepared.indexPath to changedManifest(prepared.indexPath, valid.batchId, true),
+                        prepared.headPath to changedManifest(prepared.headPath, "head-device-a-1", false),
+                    ),
+                )
+                val snapshot = transport.readSnapshot(repository, "space", 1).getOrThrow()
+                open().use { storage ->
+                    storage.connect(repository)
+                    val result = SyncInboxExchange(storage.inbox, SyncBatchSyncService(transport, secret))
+                        .receive(snapshot, snapshot.batches.single())
+                    assertFalse(result.accepted)
+                    val report = SyncDataRepairService(storage.handler, storage.inbox, storage.projector)
+                        .inspect("space", 1)
+                    assertEquals(1L, report.remaining)
+                    observed += result.error.orEmpty().substringBefore(':') to
+                        report.batches.single().reason.substringBefore(':')
+                    assertTrue(storage.journal.pendingEvents("space", 1).isEmpty())
+                }
+            }
+        }
+        assertEquals(cases.map { (_, reason) -> reason to reason }, observed)
+    }
+
+    @Test
+    fun `authenticated duplicate refetch clears transient failure and preserves semantic evidence`() =
+        runBlocking {
+            SyncGitSafetyContractTest().GitFixture().use { git ->
+                val transport = git.transport()
+                transport.initialize(repository, "space", 1)
+                val service = SyncBatchSyncService(transport, secret)
+                val initial = transport.readSnapshot(repository, "space", 1).getOrThrow()
+                service.upload(
+                    repository,
+                    initial,
+                    batch(),
+                    ".mihon-sync/batches/device-a/1/incoming.json",
+                    persist = {},
+                )
+                val snapshot = transport.readSnapshot(repository, "space", 1).getOrThrow()
+                open().use { storage ->
+                    storage.connect(repository)
+                    val exchange = SyncInboxExchange(storage.inbox, service)
+                    assertTrue(exchange.receive(snapshot, snapshot.batches.single()).accepted)
+                    storage.inbox.recordRejected(
+                        "space",
+                        1,
+                        "incoming",
+                        snapshot.batches.single().path,
+                        "sync batch could not be authenticated",
+                        "retained unreadable bytes",
+                    )
+                    val repair = SyncDataRepairService(storage.handler, storage.inbox, storage.projector)
+                    assertEquals(1L, repair.inspect("space", 1).remaining)
+                    assertEquals(0L, repair.refetch(snapshot, exchange, setOf("incoming")).remaining)
+
+                    val invalidDescriptor = batch().copy(objects = listOf(SyncObjectDescriptor(manga, "")))
+                    assertFalse(storage.inbox.ingest(invalidDescriptor).accepted)
+                    val semantic = repair.refetch(snapshot, exchange, setOf("incoming"))
+                    assertEquals(1L, semantic.remaining)
+                    assertTrue(semantic.batches.single().reason.startsWith("INVALID_PAYLOAD"))
+                    assertTrue(storage.journal.pendingEvents("space", 1).isEmpty())
+                }
+            }
+        }
+
+    @Test
+    fun `causal rejection remains a precise repair fact after projection restart and reprocessing`() = runBlocking {
+        val file = File.createTempFile("mihon-causal-repair-", ".db")
+        try {
+            open(file.absolutePath).use { storage ->
+                storage.connect(repository)
+                val parent = membership(1, SyncEffectKind.ADD)
+                val child = membership(2, SyncEffectKind.REMOVE, parent.events.single()).let { value ->
+                    value.copy(
+                        events = value.events.map { event ->
+                            event.copy(
+                                effects = event.effects.map { effect ->
+                                    effect.copy(parents = listOf(parent.events.single().ref("absent-effect")))
+                                },
+                            )
+                        },
+                    )
+                }
+                assertTrue(storage.inbox.ingest(parent).accepted)
+                assertTrue(storage.inbox.ingest(child).accepted)
+                storage.projectAll()
+                assertEquals(
+                    1L,
+                    SyncDataRepairService(storage.handler, storage.inbox, storage.projector)
+                        .inspect("space", 1).remaining,
+                )
+                assertTrue(
+                    queryText(storage.driver, "SELECT reason FROM sync_invalid_events")
+                        .startsWith("MISSING_PARENT_EFFECT"),
+                )
+            }
+            open(file.absolutePath, false).use { storage ->
+                storage.connect(repository)
+                val repair = SyncDataRepairService(storage.handler, storage.inbox, storage.projector)
+                assertEquals(1L, repair.reproject("space", 1).remaining)
+                assertEquals(true, storage.writer.localMembership(manga))
+                assertTrue(storage.journal.pendingEvents("space", 1).isEmpty())
+            }
+        } finally {
+            assertTrue(file.delete())
+        }
+    }
+
+    @Test
+    fun `damaged persisted event is preserved and cannot disappear as empty projection`() = runBlocking {
+        open().use { storage ->
+            storage.connect(repository)
+            storage.inbox.ingest(batch())
+            storage.driver.execute(null, "UPDATE sync_events SET event_json = 'damaged original'", 0)
+            storage.projectAll()
+            val repair = SyncDataRepairService(storage.handler, storage.inbox, storage.projector)
+            assertEquals(1L, repair.inspect("space", 1).remaining)
+            assertEquals("damaged original", queryText(storage.driver, "SELECT event_json FROM sync_events"))
+            assertTrue(queryText(storage.driver, "SELECT reason FROM sync_invalid_events").startsWith("MALFORMED"))
+        }
+    }
+
+    @Test
+    fun `schema 42 upgrade retains existing rejected batches and invalid events after reopen`() = runBlocking {
+        val file = File.createTempFile("mihon-legacy-repair-", ".db")
+        try {
+            open(file.absolutePath).use { storage ->
+                storage.connect(repository)
+                storage.inbox.ingest(batch())
+                storage.handler.await {
+                    sync_inboxQueries.saveInboxBatch(
+                        "space",
+                        1,
+                        "legacy-rejected",
+                        "REJECTED",
+                        "retained original",
+                        "legacy rejection",
+                    )
+                    sync_inboxQueries.invalidateEvent("space", 1, "device-a:1:1", "invalid causal event")
+                }
+                storage.driver.execute(null, "DROP TABLE sync_repair_failures", 0)
+                storage.driver.execute(null, "PRAGMA user_version = 42", 0)
+                DatabaseMigration.migrateAtomically(storage.driver, 42, Database.Schema.version)
+                assertEquals(43L, Database.Schema.version)
+                assertEquals(
+                    2L,
+                    SyncDataRepairService(storage.handler, storage.inbox, storage.projector)
+                        .inspect("space", 1).remaining,
+                )
+            }
+            open(file.absolutePath, false).use { storage ->
+                storage.connect(repository)
+                storage.projectAll()
+                val report = SyncDataRepairService(storage.handler, storage.inbox, storage.projector)
+                    .inspect("space", 1)
+                assertEquals(2L, report.remaining)
+                assertEquals("legacy-rejected", report.batches.single().batchId)
+                assertEquals(
+                    "retained original",
+                    queryText(
+                        storage.driver,
+                        "SELECT body_json FROM sync_inbox_batches WHERE status = 'REJECTED'",
+                    ),
+                )
+            }
+        } finally {
+            assertTrue(file.delete())
+        }
+    }
+
+    private fun queryText(driver: SqlDriver, sql: String): String = driver.executeQuery(
+        null,
+        sql,
+        { cursor ->
+            check(cursor.next().value)
+            app.cash.sqldelight.db.QueryResult.Value(requireNotNull(cursor.getString(0)))
+        },
+        0,
+    ).value
 
     @Test
     fun `authenticated Git receipt survives restart without upload echo`() = runBlocking {
@@ -108,6 +380,175 @@ abstract class SyncInboxStorageContract {
             assertEquals(0, storage.inbox.status("space", 1).receivedBatches)
             assertTrue(storage.inbox.ingest(batch(2, 3)).accepted)
             assertEquals(1, storage.inbox.status("space", 1).receivedBatches)
+        }
+    }
+
+    @Test
+    fun `rejected batch remains readable after restart without journal side effects`() = runBlocking {
+        val file = File.createTempFile("mihon-sync-rejected-", ".db")
+        try {
+            open(file.absolutePath).use { s ->
+                s.connect(repository)
+                assertFalse(s.inbox.ingest(batch(1, 3)).accepted)
+                assertEquals(1L, s.inbox.status("space", 1).rejectedBatches)
+                assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
+            }
+            open(file.absolutePath, false).use { s ->
+                s.connect(repository)
+                assertEquals(1L, s.inbox.status("space", 1).rejectedBatches)
+                assertEquals(0L, s.handler.await { sync_journalQueries.countEvents().executeAsOne() })
+                assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
+            }
+        } finally {
+            assertTrue(file.delete())
+        }
+    }
+
+    @Test
+    fun `wrong scope rejection belongs to active recovery context`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            assertFalse(s.inbox.ingest(batch().copy(spaceId = "foreign")).accepted)
+            assertEquals(1L, SyncDataRepairService(s.handler, s.inbox, s.projector).inspect("space", 1).remaining)
+            assertEquals(0L, s.handler.await { sync_journalQueries.countEvents().executeAsOne() })
+        }
+    }
+
+    @Test
+    fun `missing dependency stays actionable after bounded reprocessing`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            val missing = membership(1, SyncEffectKind.ADD)
+            s.inbox.ingest(membership(2, SyncEffectKind.REMOVE, missing.events.single()))
+            s.projectAll()
+            val repair = SyncDataRepairService(s.handler, s.inbox, s.projector)
+            val report = repair.inspect("space", 1)
+            assertEquals(listOf(missing.events.single().eventId.stableKey), report.missingDependencies)
+            assertEquals(2L, report.remaining)
+            assertEquals(report.missingDependencies, repair.reproject("space", 1).missingDependencies)
+            assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
+        }
+    }
+
+    @Test
+    fun `unreadable field evidence does not crash repair inspection`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            s.inbox.ingest(membership(1, SyncEffectKind.ADD))
+            s.handler.await {
+                val revision = sync_inboxQueries.getFieldState("space", 1, manga.stableKey, "FAVORITE")
+                    .executeAsOne().revision
+                sync_inboxQueries.setFieldState("DESCRIPTION", null, "space", 1, manga.stableKey, "FAVORITE", revision)
+            }
+            s.driver.execute(null, "UPDATE sync_field_state SET object_json = 'damaged'", 0)
+            val report = SyncDataRepairService(s.handler, s.inbox, s.projector).inspect("space", 1)
+            assertTrue(report.remaining > 0)
+            assertEquals("UNREADABLE", report.fields.single().reason)
+        }
+    }
+
+    @Test
+    fun `repair count covers failures beyond a bounded report page`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            repeat(1100) { s.inbox.ingest(batch(1, 3).copy(batchId = "bad-$it")) }
+            val report = SyncDataRepairService(s.handler, s.inbox, s.projector).inspect("space", 1)
+            assertEquals(1100L, report.remaining)
+            assertTrue(report.batches.size <= 1000)
+            assertEquals(100L, report.nextOffset)
+            val last = SyncDataRepairService(s.handler, s.inbox, s.projector).inspect("space", 1, 1000)
+            assertEquals(100, last.batches.size)
+            assertEquals(1100L, last.remaining)
+            assertEquals(null, last.nextOffset)
+        }
+    }
+
+    @Test
+    fun `explicit second page rejection really refetches through guarded authenticated receipt`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            val service = SyncBatchSyncService(transport, secret)
+            val initial = transport.readSnapshot(repository, "space", 1).getOrThrow()
+            service.upload(
+                repository,
+                initial,
+                batch(),
+                ".mihon-sync/batches/device-a/1/incoming.json",
+                persist = {},
+            )
+            val snapshot = transport.readSnapshot(repository, "space", 1).getOrThrow()
+            open().use { s ->
+                s.connect(repository)
+                repeat(110) { s.inbox.ingest(batch(1, 3).copy(batchId = "bad-$it")) }
+                s.inbox.ingest(batch(1, 3))
+                val repair = SyncDataRepairService(s.handler, s.inbox, s.projector)
+                assertFalse(repair.inspect("space", 1).batches.any { it.batchId == "incoming" })
+                repair.refetch(snapshot, SyncInboxExchange(s.inbox, service), setOf("incoming"))
+                assertEquals(1L, s.inbox.status("space", 1).receivedBatches)
+                assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
+                assertTrue(repair.inspect("space", 1, 100).batches.any { it.batchId == "incoming" })
+            }
+        }
+    }
+
+    @Test
+    fun `missing parent refetch uses authenticated snapshot sequence rather than inventing ancestry`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            val service = SyncBatchSyncService(transport, secret)
+            val parent = membership(1, SyncEffectKind.ADD)
+            val child = membership(2, SyncEffectKind.REMOVE, parent.events.single())
+            for (batch in listOf(parent, child)) {
+                val snapshot = transport.readSnapshot(repository, "space", 1).getOrThrow()
+                service.upload(
+                    repository,
+                    snapshot,
+                    batch,
+                    ".mihon-sync/batches/device-a/1/${batch.batchId}.json",
+                    persist = {},
+                )
+            }
+            val snapshot = transport.readSnapshot(repository, "space", 1).getOrThrow()
+            open().use { s ->
+                s.connect(repository)
+                s.inbox.ingest(child)
+                s.projectAll()
+                val repair = SyncDataRepairService(s.handler, s.inbox, s.projector)
+                assertEquals(1, repair.inspect("space", 1).missingDependencies.size)
+                repair.refetch(snapshot, SyncInboxExchange(s.inbox, service), emptySet())
+                s.projectAll()
+                assertTrue(repair.inspect("space", 1).missingDependencies.isEmpty())
+                assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun `explicit last page projection retries its exact object without touching earlier failures`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            val keys = (0..110).map { manga.copy(originalUrl = "/field-${it.toString().padStart(3, '0')}") }
+            keys.forEachIndexed { index, key ->
+                s.inbox.ingest(membership(index + 1L, SyncEffectKind.ADD, key = key).copy(objects = emptyList()))
+            }
+            s.projectAll()
+            val last = keys.last()
+            s.handler.await {
+                sync_inboxQueries.insertDescription(
+                    "space",
+                    1,
+                    last.stableKey,
+                    kotlinx.serialization.json.Json.encodeToString(SyncObjectDescriptor(last, "末页可恢复对象")),
+                )
+            }
+            val repair = SyncDataRepairService(s.handler, s.inbox, s.projector)
+            assertEquals(111L, repair.inspect("space", 1).counts.projectionFields)
+            repair.reproject("space", 1, last, SyncField.FAVORITE)
+            assertEquals(true, s.writer.localMembership(last))
+            assertEquals(null, s.writer.localMembership(keys.first()))
+            assertEquals(110L, repair.inspect("space", 1).counts.projectionFields)
         }
     }
 
@@ -542,9 +983,18 @@ abstract class SyncInboxStorageContract {
             assertEquals(true, s.writer.localMembership(failed.objectKey))
             assertEquals(1L, s.inbox.status("space", 1).pendingDecisions)
             s.driver.execute(null, "DROP TRIGGER fail_decision", 0)
-            val retry = s.projector.startBulk("space", 1, SyncCancellationDecision.CONFIRM)
+            val extraKey = manga.copy(originalUrl = "/not-in-failed-snapshot")
+            val extraAdd = membership(100, SyncEffectKind.ADD, key = extraKey)
+            s.inbox.ingest(extraAdd)
+            s.projectAll()
+            s.inbox.ingest(membership(101, SyncEffectKind.REMOVE, extraAdd.events.single(), extraKey))
+            s.projectAll()
+            val retry = s.projector.prepareFailedBulkRetry(job)
+            assertFalse(retry == job)
             assertEquals(1L, s.projector.processBulk(retry).outcomes["APPLIED"])
             assertEquals(false, s.writer.localMembership(failed.objectKey))
+            assertEquals(true, s.writer.localMembership(extraKey))
+            assertEquals(progress, s.projector.processBulk(job))
         }
     }
 

@@ -2,13 +2,17 @@ package mihon.domain.sync.crypto
 
 import kotlinx.serialization.Serializable
 import mihon.domain.sync.SyncBatch
+import mihon.domain.sync.SyncRejectionReason
 
 const val SYNC_AEAD_ALGORITHM = "AES-256-GCM"
 const val SYNC_AEAD_NONCE_BYTES = 12
 const val SYNC_AEAD_TAG_BYTES = 16
 const val SYNC_MAX_CIPHERTEXT_BYTES = 1024 * 1024
 
-class SyncCryptoException(message: String, cause: Throwable? = null) : IllegalArgumentException(message, cause)
+open class SyncCryptoException(message: String, cause: Throwable? = null) : IllegalArgumentException(message, cause)
+
+/** Authentication succeeded, but the content cannot be admitted by this protocol implementation. */
+class SyncBatchValidationException(val reason: SyncRejectionReason, message: String) : SyncCryptoException(message)
 
 class SyncSecret private constructor(private val value: ByteArray) {
     val bytes: ByteArray get() = value.copyOf()
@@ -289,31 +293,67 @@ object SyncBatchEncryption {
         }
         return when (val decoded = mihon.domain.sync.SyncBatchCodec.decode(plaintext.decodeToString())) {
             is mihon.domain.sync.SyncBatchDecodeResult.Accepted -> {
-                require(decoded.batch.protocolVersion == encrypted.protocolVersion)
-                require(decoded.batch.spaceId == encrypted.spaceId)
-                require(decoded.batch.generation == encrypted.generation)
-                require(decoded.batch.batchId == encrypted.batchId)
-                require(
-                    decoded.batch.events.all {
-                        it.actorId == encrypted.actorId && it.epoch == encrypted.epoch &&
-                            it.batchId == encrypted.batchId
-                    },
+                requireAuthenticatedContent(
+                    decoded.batch.protocolVersion == encrypted.protocolVersion,
+                    SyncRejectionReason.UNKNOWN_PROTOCOL,
+                    "batch protocol differs from authenticated envelope",
                 )
-                require(isStorageId(encrypted.actorId) && isStorageId(encrypted.batchId))
+                requireAuthenticatedContent(
+                    decoded.batch.spaceId == encrypted.spaceId,
+                    SyncRejectionReason.WRONG_SPACE,
+                    "batch space differs from authenticated envelope",
+                )
+                requireAuthenticatedContent(
+                    decoded.batch.generation == encrypted.generation,
+                    SyncRejectionReason.WRONG_GENERATION,
+                    "batch generation differs from authenticated envelope",
+                )
+                requireAuthenticatedContent(
+                    decoded.batch.batchId == encrypted.batchId && isStorageId(encrypted.batchId) &&
+                        decoded.batch.events.all { it.batchId == encrypted.batchId },
+                    SyncRejectionReason.INVALID_PAYLOAD,
+                    "batch identity differs from authenticated envelope",
+                )
+                requireAuthenticatedContent(
+                    isStorageId(encrypted.actorId) && decoded.batch.events.all { it.actorId == encrypted.actorId },
+                    SyncRejectionReason.INVALID_ACTOR,
+                    "batch actor differs from authenticated envelope",
+                )
+                requireAuthenticatedContent(
+                    decoded.batch.events.all { it.epoch == encrypted.epoch },
+                    SyncRejectionReason.INVALID_EPOCH,
+                    "batch epoch differs from authenticated envelope",
+                )
                 val expectedPath = ".mihon-sync/batches/${encrypted.actorId}/${encrypted.epoch}/" +
                     "${encrypted.batchId}.json"
-                require(encrypted.path == expectedPath)
-                requireContiguousSequences(decoded.batch)
-                require(decoded.batch.events.minOfOrNull { it.seq } == encrypted.firstSeq)
-                require(decoded.batch.events.maxOfOrNull { it.seq } == encrypted.lastSeq)
+                requireAuthenticatedContent(
+                    encrypted.path == expectedPath,
+                    SyncRejectionReason.INVALID_PAYLOAD,
+                    "batch path differs from authenticated identity",
+                )
+                try {
+                    requireContiguousSequences(decoded.batch)
+                } catch (_: IllegalArgumentException) {
+                    throw SyncBatchValidationException(SyncRejectionReason.INVALID_SEQUENCE, "invalid batch sequence")
+                }
+                requireAuthenticatedContent(
+                    decoded.batch.events.minOfOrNull { it.seq } == encrypted.firstSeq &&
+                        decoded.batch.events.maxOfOrNull { it.seq } == encrypted.lastSeq,
+                    SyncRejectionReason.INVALID_SEQUENCE,
+                    "batch sequence differs from authenticated envelope",
+                )
                 decoded.batch
             }
             is mihon.domain.sync.SyncBatchDecodeResult.Rejected ->
-                throw SyncCryptoException("decrypted batch rejected")
+                throw SyncBatchValidationException(decoded.reason, decoded.message)
         }
     }
 
     private fun isStorageId(value: String): Boolean = value.matches(Regex("[A-Za-z0-9_-]{1,128}"))
+
+    private fun requireAuthenticatedContent(condition: Boolean, reason: SyncRejectionReason, message: String) {
+        if (!condition) throw SyncBatchValidationException(reason, message)
+    }
 
     private fun requireContiguousSequences(batch: SyncBatch) {
         val sequences = batch.events.map { it.seq }.sorted()

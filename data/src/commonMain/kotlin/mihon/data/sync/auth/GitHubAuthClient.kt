@@ -13,7 +13,10 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import mihon.data.sync.http.SyncHttpClient
 import mihon.data.sync.http.SyncHttpException
+import mihon.data.sync.http.SyncHttpFailureClass
+import mihon.data.sync.http.SyncHttpRequestGate
 import mihon.data.sync.http.SyncHttpResponse
+import mihon.data.sync.http.requireSyncSuccess
 import mihon.domain.sync.auth.GitHubAccessToken
 import mihon.domain.sync.auth.GitHubAuthEndpoints
 import mihon.domain.sync.auth.GitHubAuthException
@@ -40,6 +43,7 @@ class GitHubAuthClient(
     private val waiter: GitHubAuthWaiter = GitHubAuthWaiter { delay(it) },
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
     private val deviceCodeRequestTimeoutMillis: Long = 30_000,
+    requestGate: SyncHttpRequestGate? = null,
 ) : GitHubAuthPort {
     private val http = SyncHttpClient(
         productionClient,
@@ -48,6 +52,7 @@ class GitHubAuthClient(
             endpoints.accessTokenUrl.hostOrNull(),
             endpoints.apiBaseUrl.hostOrNull(),
         ),
+        requestGate = requestGate,
     )
 
     override suspend fun authorize(
@@ -66,7 +71,7 @@ class GitHubAuthClient(
         } catch (error: CancellationException) {
             throw error
         } catch (error: SyncHttpException) {
-            return GitHubDeviceAuthResult.Failed(httpFailure(error.code, error.retryable))
+            return GitHubDeviceAuthResult.Failed(httpFailure(error))
         } catch (error: Exception) {
             return malformed()
         }
@@ -99,13 +104,15 @@ class GitHubAuthClient(
                 } ?: break
             } catch (error: CancellationException) {
                 throw error
+            } catch (error: SyncHttpException) {
+                return GitHubDeviceAuthResult.Failed(httpFailure(error))
             } catch (error: Exception) {
                 return GitHubDeviceAuthResult.Failed(
                     GitHubAuthFailure(GitHubAuthFailureReason.HTTP, "authorization request failed", true),
                 )
             }
             if (response.code !in 200..299) {
-                return GitHubDeviceAuthResult.Failed(httpFailure(response.code))
+                return GitHubDeviceAuthResult.Failed(httpFailure(response))
             }
             val payload = response.parseObject() ?: return malformed()
             val errorElement = payload["error"]
@@ -167,7 +174,7 @@ class GitHubAuthClient(
                     .build(),
             ),
         )
-        if (response.code !in 200..299) throw GitHubAuthException(httpFailure(response.code))
+        if (response.code !in 200..299) throw GitHubAuthException(httpFailure(response))
         val payload = response.parseObject()
         if (payload?.get("error") != null) {
             val failure = when (payload.string("error")) {
@@ -194,7 +201,7 @@ class GitHubAuthClient(
     } catch (error: GitHubAuthException) {
         Result.failure(error)
     } catch (error: SyncHttpException) {
-        Result.failure(GitHubAuthException(httpFailure(error.code, error.retryable)))
+        Result.failure(GitHubAuthException(httpFailure(error)))
     } catch (error: Exception) {
         Result.failure(IllegalStateException("token refresh failed"))
     }
@@ -209,13 +216,7 @@ class GitHubAuthClient(
                     .build(),
             ),
         )
-        if (response.code !in 200..299) {
-            throw SyncHttpException(
-                response.code,
-                "device authorization rejected",
-                retryable = response.code == 429 || response.code >= 500,
-            )
-        }
+        response.requireSyncSuccess()
         val payload = response.parseObject() ?: throw IllegalStateException("device authorization response malformed")
         require(payload["error"] == null) { "device authorization failed" }
         val verificationUri = payload.string("verification_uri")
@@ -239,18 +240,26 @@ class GitHubAuthClient(
         GitHubAuthFailure(GitHubAuthFailureReason.MALFORMED_RESPONSE, "authorization response malformed", false),
     )
 
-    private fun httpFailure(
-        code: Int?,
-        retryable: Boolean = code == 429 || (code != null && code >= 500),
-    ): GitHubAuthFailure =
+    private fun httpFailure(response: SyncHttpResponse): GitHubAuthFailure = try {
+        response.requireSyncSuccess()
+        GitHubAuthFailure(GitHubAuthFailureReason.HTTP, "authorization HTTP request failed", false)
+    } catch (error: SyncHttpException) {
+        httpFailure(error)
+    }
+
+    private fun httpFailure(error: SyncHttpException): GitHubAuthFailure =
         GitHubAuthFailure(
-            when (code) {
-                401 -> GitHubAuthFailureReason.REVOKED
-                403, 429 -> GitHubAuthFailureReason.RATE_LIMITED
+            when {
+                error.code == 401 -> GitHubAuthFailureReason.REVOKED
+                error.failureClass == SyncHttpFailureClass.RATE_LIMITED || error.code == 429 ->
+                    GitHubAuthFailureReason.RATE_LIMITED
+                error.code == 403 && error.failureClass == SyncHttpFailureClass.AUTHORIZATION ->
+                    GitHubAuthFailureReason.PERMISSION_DENIED
                 else -> GitHubAuthFailureReason.HTTP
             },
             "authorization HTTP request failed",
-            retryable,
+            error.retryable,
+            error.retryAfterMillis,
         )
 
     private fun revokedFailure() = GitHubAuthFailure(GitHubAuthFailureReason.REVOKED, "authorization revoked", false)

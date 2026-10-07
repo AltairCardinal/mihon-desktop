@@ -672,6 +672,8 @@ class GitHubSyncTransport(
                     error = "private repository access could not be verified",
                     failureClass = publishFailureClass(error),
                     retryAfterMillis = (error as? SyncHttpException)?.retryAfterMillis,
+                    networkPhase = (error as? SyncHttpException)?.networkPhase,
+                    httpStatus = (error as? SyncHttpException)?.code,
                 )
             }
             if (!private) {
@@ -758,6 +760,8 @@ class GitHubSyncTransport(
                     attempts = attempt,
                     failureClass = publishFailureClass(error),
                     retryAfterMillis = (error as? SyncHttpException)?.retryAfterMillis,
+                    networkPhase = (error as? SyncHttpException)?.networkPhase,
+                    httpStatus = (error as? SyncHttpException)?.code,
                 )
             }
             var refError: Exception? = null
@@ -802,6 +806,8 @@ class GitHubSyncTransport(
                 attempts = attempt,
                 failureClass = publishFailureClass(refError),
                 retryAfterMillis = (refError as? SyncHttpException)?.retryAfterMillis,
+                networkPhase = (refError as? SyncHttpException)?.networkPhase,
+                httpStatus = (refError as? SyncHttpException)?.code,
             )
         }
         error("unreachable publish loop")
@@ -1941,6 +1947,7 @@ class GitHubSyncTransport(
                 failureClass = failureClass,
                 retryAfterMillis = retryAfterMillis,
                 rateLimitResetEpochSeconds = resetEpochSeconds,
+                networkPhase = mihon.domain.sync.runtime.SyncNetworkFailurePhase.HTTP_RESPONSE,
             )
         }
         return this

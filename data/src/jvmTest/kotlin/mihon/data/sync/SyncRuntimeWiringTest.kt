@@ -700,12 +700,18 @@ class SyncRuntimeWiringTest {
                             )
                             assertEquals(1L, runtime.runStore.active("space", 1)?.networkFailureCount)
                         }
-                        setup.now = if (code == 500) 11_000L else 41_000L
+                        setup.now = maxOf(
+                            requireNotNull(runtime.runStore.active("space", 1)).nextRetryAt,
+                            runtime.authorizationNotBeforeMillis(),
+                        )
                     }
                     auth.enqueue(mockwebserver3.MockResponse(code = 500, body = "private diagnostic"))
                     assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).problem)
                     assertEquals(3L, runtime.runStore.active("space", 1)?.networkFailureCount)
-                    setup.now = 161_000L
+                    setup.now = maxOf(
+                        requireNotNull(runtime.runStore.active("space", 1)).nextRetryAt,
+                        runtime.authorizationNotBeforeMillis(),
+                    )
                     auth.enqueue(mockwebserver3.MockResponse(code = 500, body = "private diagnostic"))
                     assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).problem)
                     assertEquals(SyncRunState.FAILED, runtime.runStore.latest("space", 1)?.state)

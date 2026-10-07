@@ -9,10 +9,12 @@ import kotlinx.serialization.json.longOrNull
 import mihon.data.sync.auth.DiscoveredSyncSpace
 import mihon.data.sync.auth.EmptySyncRepositoryCandidate
 import mihon.data.sync.auth.GitHubPrivateRepositorySelector
+import mihon.data.sync.auth.GitHubSyncRepositoryManager
 import mihon.data.sync.auth.GitHubSyncSpaceClient
 import mihon.data.sync.auth.SyncCreationAttempt
 import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.auth.SyncGitHubAccount
+import mihon.data.sync.auth.SyncRepositoryCreationIntent
 import mihon.data.sync.auth.SyncSpaceCreation
 import mihon.data.sync.auth.SyncSpaceDiscovery
 import mihon.data.sync.crypto.SyncSpaceCrypto
@@ -37,7 +39,10 @@ import okhttp3.OkHttpClient
 import okio.Path
 import java.util.UUID
 
-internal class SyncSetupException(val problem: SyncDiscoveryProblem) : IllegalStateException("sync setup failed")
+internal class SyncSetupException(
+    val problem: SyncDiscoveryProblem,
+    val initialization: SyncInitializationFailure? = null,
+) : IllegalStateException("sync setup failed")
 
 internal sealed interface SyncSetupOutcome {
     data class Connected(val setup: StoredSyncSetup) : SyncSetupOutcome
@@ -168,14 +173,22 @@ internal class SyncOnboarding(
             require(intent.accountId == account.id && intent.purpose == SyncSpaceSwitchPurpose.CREATE)
             require(intent.stage == SyncSpaceSwitchStage.PREPARING && intent.target == null)
         }
-        require(candidate.repository.name == GitHubSyncSpaceClient.REPOSITORY_NAME)
+        if (candidate.repository.name != GitHubSyncSpaceClient.REPOSITORY_NAME) {
+            val recorded = candidate.creationAttemptId?.let { storage.repositoryCreation(account.id) }
+                ?: throw SyncSetupException(SyncDiscoveryProblem.CREATION_UNCONFIRMED)
+            require(
+                recorded.attemptId == candidate.creationAttemptId &&
+                    recorded.repositoryId == candidate.repositoryId &&
+                    recorded.repositoryName == candidate.repository.name,
+            )
+        }
         require(candidate.repository.owner.equals(account.login, ignoreCase = true))
         require(candidate.repositoryId > 0 && candidate.defaultBranch.isNotBlank())
         val material = SyncSpaceCrypto.create(UUID.randomUUID().toString(), 1, password)
         return StoredSyncSetup(
             accountId = account.id,
             accountLogin = account.login,
-            attemptId = UUID.randomUUID().toString(),
+            attemptId = candidate.creationAttemptId ?: UUID.randomUUID().toString(),
             attemptNonce = UUID.randomUUID().toString(),
             newSpace = true,
             switchIntentId = intent?.intentId,
@@ -189,6 +202,10 @@ internal class SyncOnboarding(
         ).also {
             storage.save(it, null)
             if (intent != null) storage.saveSwitch(intent.copy(target = it), intent)
+            candidate.creationAttemptId?.let { attempt ->
+                storage.repositoryCreation(account.id)?.takeIf { value -> value.attemptId == attempt }
+                    ?.let { value -> storage.archiveRepositoryCreation(value) }
+            }
         }
     }
 
@@ -259,9 +276,21 @@ internal class SyncOnboarding(
             if (setup.newSpace && setup.stage != SyncInitializationStage.CONNECTED) {
                 phase = SyncFailurePhase.RESUME_INITIALIZE
                 if (setup.stage == SyncInitializationStage.VERIFIED_EMPTY) {
-                    val rechecked = spaces(session.token, requestGate).createOrResume(
-                        SyncCreationAttempt(session.account, setup.attemptId, repositoryId = setup.repositoryId),
-                    ) {}
+                    val creation = storage.repositoryCreationArchive(setup.attemptId)
+                        ?: storage.repositoryCreation(setup.accountId)?.takeIf { it.attemptId == setup.attemptId }
+                    val rechecked = if (creation != null) {
+                        require(
+                            creation.repositoryId == setup.repositoryId &&
+                                creation.repositoryName == setup.repository &&
+                                creation.account.id == setup.accountId,
+                        )
+                        GitHubSyncRepositoryManager(client, { session.token }, apiBaseUrl, requestGate)
+                            .createOrResume(creation) {}
+                    } else {
+                        spaces(session.token, requestGate).createOrResume(
+                            SyncCreationAttempt(session.account, setup.attemptId, repositoryId = setup.repositoryId),
+                        ) {}
+                    }
                     when (rechecked) {
                         is SyncSpaceCreation.Failed -> throw SyncSetupException(rechecked.problem)
                         is SyncSpaceCreation.Existing -> {
@@ -336,7 +365,20 @@ internal class SyncOnboarding(
                             storage.clear(setup)
                             return SyncSetupOutcome.Existing(found.space)
                         }
-                        throw SyncSetupException(SyncDiscoveryProblem.RETRYABLE)
+                        val explicit = result is SyncInitializationResult.NeedsExplicitAction
+                        val reason = when (result) {
+                            is SyncInitializationResult.NeedsExplicitAction -> result.reason
+                            is SyncInitializationResult.Failed -> result.reason
+                            else -> ""
+                        }
+                        throw SyncSetupException(
+                            if (explicit) {
+                                SyncDiscoveryProblem.INITIALIZATION_REQUIRES_ACTION
+                            } else {
+                                SyncDiscoveryProblem.INITIALIZATION_UNCONFIRMED
+                            },
+                            SyncInitializationFailure(setup.stage, initializationReason(reason), explicit),
+                        )
                     }
                 }
             }
@@ -424,7 +466,8 @@ internal class SyncOnboarding(
             ?: throw SyncSetupException(SyncDiscoveryProblem.MALFORMED)
         val disabled = json["disabled"]?.jsonPrimitive?.booleanOrNull
             ?: throw SyncSetupException(SyncDiscoveryProblem.MALFORMED)
-        if (archived || disabled) throw SyncSetupException(SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE)
+        if (disabled) throw SyncSetupException(SyncDiscoveryProblem.REPOSITORY_DISABLED)
+        if (archived) throw SyncSetupException(SyncDiscoveryProblem.REPOSITORY_ARCHIVED)
         val permissions = json["permissions"]?.jsonObject
             ?: throw SyncSetupException(SyncDiscoveryProblem.MALFORMED)
         if (permissions["push"]?.jsonPrimitive?.booleanOrNull != true &&
@@ -476,7 +519,30 @@ internal class SyncOnboarding(
     private fun spaces(token: String, requestGate: SyncHttpRequestGate? = null) =
         GitHubSyncSpaceClient(client, { token }, apiBaseUrl, requestGate)
 
+    fun repositoryManager(token: String, accountId: Long) =
+        GitHubSyncRepositoryManager(client, { token }, apiBaseUrl, runtime.accountHttpRequestGate(accountId))
+
     class Session(val account: SyncGitHubAccount, val token: String, val http: GitHubPrivateRepositorySelector) {
         override fun toString(): String = "SyncSession(<redacted>)"
+    }
+
+    private fun initializationReason(reason: String): SyncInitializationFailureReason = when (reason) {
+        "initialization space identity does not match" -> SyncInitializationFailureReason.SPACE_IDENTITY_CHANGED
+        "initialization attempt identity is invalid" -> SyncInitializationFailureReason.ATTEMPT_INVALID
+        "repository identity changed" -> SyncInitializationFailureReason.REPOSITORY_IDENTITY_CHANGED
+        "repository default branch changed" -> SyncInitializationFailureReason.DEFAULT_BRANCH_CHANGED
+        "repository is not reported empty", "repository is no longer verified empty" ->
+            SyncInitializationFailureReason.NOT_EMPTY
+        "confirmed bootstrap commit is missing", "confirmed bootstrap tree is missing" ->
+            SyncInitializationFailureReason.BOOTSTRAP_MISSING
+        "confirmed bootstrap changed", "confirmed bootstrap identity is malformed" ->
+            SyncInitializationFailureReason.BOOTSTRAP_CHANGED
+        "bootstrap ownership could not be confirmed for this attempt" ->
+            SyncInitializationFailureReason.BOOTSTRAP_UNCONFIRMED
+        "initial sync branch contains unrecognized data" -> SyncInitializationFailureReason.UNRECOGNIZED_DATA
+        "existing sync space requires explicit import" -> SyncInitializationFailureReason.EXISTING_SPACE_REQUIRES_JOIN
+        "sync branch creation could not be confirmed", "initialization ref update failed" ->
+            SyncInitializationFailureReason.REQUEST_UNCONFIRMED
+        else -> SyncInitializationFailureReason.UNKNOWN
     }
 }

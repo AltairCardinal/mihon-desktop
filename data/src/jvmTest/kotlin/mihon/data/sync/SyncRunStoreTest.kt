@@ -38,6 +38,7 @@ class SyncRunStoreTest {
         database.sync_runtimeQueries.insertRuntimeConfirmation(legacy.runId, "PLAN", "round", 0, "PLANNED")
         store.pause(counting.runId)
         // Reconstruct the previous schema, then run the real generated migration.
+        driver.execute(null, "DROP TABLE sync_repair_failures", 0)
         val columns = mutableListOf<String>()
         driver.executeQuery(null, "PRAGMA table_info(sync_runtime_pause_clock)", { cursor ->
             while (cursor.next().value) columns += requireNotNull(cursor.getString(1))
@@ -191,6 +192,7 @@ class SyncRunStoreTest {
     fun `schema 27 migration creates durable runtime tables`() = runBlocking {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(driver)
+        driver.execute(null, "DROP TABLE sync_repair_failures", 0)
         driver.execute(null, "DROP TABLE IF EXISTS sync_runtime_pause_clock", 0)
         driver.execute(null, "DROP INDEX IF EXISTS sync_runtime_active", 0)
         driver.execute(null, "DROP INDEX IF EXISTS sync_runtime_log_order", 0)

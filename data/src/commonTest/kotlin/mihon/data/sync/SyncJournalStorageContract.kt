@@ -374,6 +374,7 @@ abstract class SyncJournalStorageContract {
 internal fun removeSyncJournalSchema(driver: SqlDriver) {
     driver.execute(null, "DROP TRIGGER IF EXISTS sync_runtime_pause_transition", 0)
     listOf(
+        "sync_repair_failures",
         "sync_snapshot_manifest_entries", "sync_snapshot_manifest_batches", "sync_snapshot_manifests",
         "sync_http_account_gates",
         "sync_runtime_pause_clock", "sync_runtime_logs", "sync_runtime_confirmations", "sync_runtime_runs",

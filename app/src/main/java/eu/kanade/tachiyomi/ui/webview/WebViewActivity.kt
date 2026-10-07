@@ -49,6 +49,11 @@ class WebViewActivity : BaseActivity() {
         }
         super.onCreate(savedInstanceState)
 
+        if (!eu.kanade.tachiyomi.data.sync.AndroidRecoveryProfile.canUseInternalWebView(this)) {
+            toast(MR.strings.sync_recovery_webview_limited, Toast.LENGTH_LONG)
+            finish()
+            return
+        }
         if (!WebViewUtil.supportsWebView(this)) {
             toast(MR.strings.information_webview_required, Toast.LENGTH_LONG)
             finish()

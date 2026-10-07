@@ -10,6 +10,7 @@ import mihon.data.sync.http.SyncFailurePhase
 import mihon.data.sync.http.SyncHttpClient
 import mihon.data.sync.runtime.StoredSyncMaterial
 import mihon.data.sync.runtime.StoredSyncSetup
+import mihon.data.sync.runtime.SyncInitializationFailureReason
 import mihon.data.sync.runtime.SyncSetupException
 import mihon.domain.sync.transport.SyncInitializationResult
 import mihon.domain.sync.transport.SyncInitializationStage
@@ -119,7 +120,10 @@ class SyncFailureDiagnosticsIntegrationTest {
                 saved = initializing
                 val output = capture {
                     val failure = runCatching { setup.runtime.onboarding.resume(saved) }.exceptionOrNull()
-                    assertEquals(SyncDiscoveryProblem.RETRYABLE, (failure as SyncSetupException).problem)
+                    val setupFailure = failure as SyncSetupException
+                    assertEquals(SyncDiscoveryProblem.INITIALIZATION_REQUIRES_ACTION, setupFailure.problem)
+                    assertEquals(SyncInitializationFailureReason.BOOTSTRAP_CHANGED, setupFailure.initialization?.reason)
+                    assertEquals(true, setupFailure.initialization?.requiresExplicitAction)
                 }
                 assertTrue(output.contains("phase=RESUME_INITIALIZE_RESULT"), output)
                 assertTrue(output.contains("result=NEEDS_EXPLICIT_ACTION"), output)

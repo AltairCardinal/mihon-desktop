@@ -170,7 +170,10 @@ class DomainModule : InjektModule {
                     build = AndroidBuildConfig.VERSION_CODE.toString(),
                     releaseBuild = !AndroidBuildConfig.DEBUG,
                 ),
-            )
+            ).also { runtime ->
+                eu.kanade.tachiyomi.data.sync.AndroidRecoveryProfile.origin(get<Application>())
+                    ?.let(runtime::markExternalUnverifiedRecoveryOrigin)
+            }
         }
         addSingletonFactory { AndroidSyncScheduler(get<Application>(), get()) }
         addSingletonFactory<CategoryRepository> { CategoryRepositoryImpl(get()) }

@@ -226,6 +226,16 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
         return bulkProgress(jobId)
     }
 
+    /** Creates a new confirmation snapshot. Completed outcomes and changed bindings are never replayed. */
+    suspend fun prepareFailedBulkRetry(jobId: String): String = handler.await(inTransaction = true) {
+        val old = sync_inboxQueries.getBulkJob(jobId).executeAsOne()
+        require(active(old.space_id, old.generation)) { "sync space is not active" }
+        val next = UUID.randomUUID().toString()
+        sync_inboxQueries.insertBulkJob(next, old.space_id, old.generation, old.decision)
+        sync_repairQueries.freezeFailedPending(next, jobId, old.space_id, old.generation)
+        next
+    }
+
     private suspend fun processBulkItem(jobId: String): Boolean {
         var itemId: Long? = null
         return try {
@@ -249,6 +259,16 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
             val failedId = itemId ?: throw failure
             handler.await(inTransaction = true) {
                 sync_inboxQueries.finishBulkItem("FAILED", jobId, failedId)
+                val job = sync_inboxQueries.getBulkJob(jobId).executeAsOne()
+                recordSyncRepairFailure(
+                    job.space_id,
+                    job.generation,
+                    "BULK",
+                    "$jobId:$failedId",
+                    "",
+                    "decision could not be applied",
+                    failure.javaClass.simpleName,
+                )
             }
             true
         }
@@ -453,10 +473,22 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
                 val invalid = sync_inboxQueries.getInvalidEventKeys(spaceId, generation, chunk).executeAsList().toSet()
                 sync_inboxQueries.getEventsByKey(spaceId, generation, chunk).executeAsList().forEach { stored ->
                     if (stored.event_key !in invalid) {
-                        val event = (SyncCodec.decode(stored.event_json) as? SyncDecodeResult.Accepted)?.event
-                        if (event != null) {
-                            events[stored.event_key] = event
-                            event.effects.flatMap { it.parents }.forEach { following += it.eventId.stableKey }
+                        when (val decoded = SyncCodec.decode(stored.event_json)) {
+                            is SyncDecodeResult.Accepted -> {
+                                events[stored.event_key] = decoded.event
+                                decoded.event.effects.flatMap {
+                                    it.parents
+                                }.forEach { following += it.eventId.stableKey }
+                            }
+                            is SyncDecodeResult.Rejected -> {
+                                sync_inboxQueries.invalidateEvent(
+                                    spaceId,
+                                    generation,
+                                    stored.event_key,
+                                    "${decoded.reason}: ${decoded.message}",
+                                )
+                                dirtySyncDependents(spaceId, generation, listOf(stored.event_key))
+                            }
                         }
                     }
                 }
@@ -464,9 +496,16 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
             next = following.filterNot { it in visited }
         }
         val reduced = SyncReducer.reduce(events.values, spaceId, generation)
-        val rejected = reduced.rejections.mapNotNull { it.eventId?.stableKey }.distinct()
-        rejected.forEach { sync_inboxQueries.invalidateEvent(spaceId, generation, it, "invalid causal event") }
-        dirtySyncDependents(spaceId, generation, rejected)
+        val rejected = reduced.rejections.filter { it.eventId != null }.groupBy { it.eventId!!.stableKey }
+        rejected.forEach { (eventKey, reasons) ->
+            sync_inboxQueries.invalidateEvent(
+                spaceId,
+                generation,
+                eventKey,
+                reasons.distinctBy { it.reason }.joinToString("; ") { "${it.reason}: ${it.message}" },
+            )
+        }
+        dirtySyncDependents(spaceId, generation, rejected.keys.toList())
         return reduced
     }
 

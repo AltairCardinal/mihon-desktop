@@ -326,6 +326,7 @@ abstract class SyncSpaceSwitchContract {
                     try {
                         panel.act(SyncPanelAction.Open)
                         assertNotNull(panel.state.value.problem)
+                        Assertions.assertFalse(panel.state.value.canChangeSpace)
                         panel.act(SyncPanelAction.BeginSetup)
                         panel.act(SyncPanelAction.ConnectOtherSpace)
                         panel.act(SyncPanelAction.RecheckSpace)
