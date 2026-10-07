@@ -1003,6 +1003,7 @@ internal fun initUILayer(
             chapterRepository = chapterRepository,
             pairingCoordinator = pairingCoordinator,
             readerIoProbe = mihon.desktop.test.http.ReaderIoTestModeBridge,
+            readerIoGate = mihon.desktop.test.http.ReaderIoTestModeBridge,
             disallowNonAsciiFilenames = {
                 Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get()
             },

@@ -1052,6 +1052,50 @@ internal fun Application.testHttpServer(
         post("/test/reader/next_chapter") { call.readerAction("next_chapter") }
         post("/test/reader/prev_chapter") { call.readerAction("prev_chapter") }
 
+        post("/test/reader/io_control/arm") {
+            val params = parseJsonBody(call.receiveText())
+            val chapter = params["chapterId"]?.toLongOrNull()
+            val page = params["pageIndex"]?.toIntOrNull()
+            val generation = params["generation"]?.toLongOrNull()
+            val range = params["range"]
+            val limit = if (range == "prefix") params["maxBytes"]?.toIntOrNull() else null
+            val timeout = params["timeoutMillis"]?.toLongOrNull()
+            if (chapter == null || page == null || page < 0 || generation == null || generation < 0 ||
+                range !in listOf("full", "prefix") || (range == "prefix" && (limit == null || limit <= 0)) ||
+                timeout == null || timeout !in 1..30_000
+            ) {
+                call.respondText("Invalid read control", status = HttpStatusCode.BadRequest)
+            } else {
+                val owner = readerState.controlledContentOwner(chapter, generation)
+                val controller = ReaderIoTestModeBridge.controller
+                val id = if (owner == null || controller == null) {
+                    null
+                } else {
+                    runCatching { controller.armRead(owner, chapter, page, generation, limit, timeout) }.getOrNull()
+                }
+                if (id == null) {
+                    call.respondText("Reader content owner unavailable", status = HttpStatusCode.Conflict)
+                } else {
+                    call.respondText("{\"id\":$id}", ContentType.Application.Json)
+                }
+            }
+        }
+        get("/test/reader/io_control/state") {
+            val rules = ReaderIoTestModeBridge.controller?.readControlSnapshot().orEmpty()
+            call.respondText("{\"rules\":${Json.encodeToJsonElement(rules)}}", ContentType.Application.Json)
+        }
+        post("/test/reader/io_control/{id}/{action}") {
+            val id = call.parameters["id"]?.toLongOrNull()
+            val action = call.parameters["action"]
+            val resolved = applicationState.testMode && id != null && action in listOf("release", "fail") &&
+                ReaderIoTestModeBridge.controller?.resolveRead(id, action == "fail") == true
+            call.respondText(
+                "{\"success\":$resolved}",
+                ContentType.Application.Json,
+                if (resolved) HttpStatusCode.OK else HttpStatusCode.Conflict,
+            )
+        }
+
         post("/test/reader/draw_observation/start") {
             val rawCapacity = call.request.queryParameters["capacity"]
             val capacity = if (rawCapacity == null) 120 else rawCapacity.toIntOrNull()

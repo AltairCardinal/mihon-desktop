@@ -235,6 +235,7 @@ class DesktopDiWiringTest {
                 factory.configuredPartialDownloadSnapshotLookup,
             )
             assertSame(manager.partialPageReadLeaseSource, factory.configuredPartialPageReadLeaseSource)
+            assertSame(ReaderIoTestModeBridge, factory.configuredReaderIoGate)
 
             manager.enqueue(
                 DownloadItem(

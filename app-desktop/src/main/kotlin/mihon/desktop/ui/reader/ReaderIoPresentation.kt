@@ -26,6 +26,14 @@ internal data class ReaderBaseImageDraw(
     val layoutQuad: List<ReaderDrawPoint>,
     val relativeTransform: List<Double>,
     val monotonicNanos: Long,
+    val localQuad: List<ReaderDrawPoint>,
+    val layoutWidth: Int,
+    val layoutHeight: Int,
+    val level: String = "base-image-draw-command",
+    val coordinatePhase: String = "actual-painter-command",
+    val composeFrameNanos: Long? = null,
+    val lastActualCommand: Long? = null,
+    val lastLayoutCallbackMonotonicNanos: Long? = null,
 )
 
 /** The original BitmapPainter remains the only producer of the observed bitmap command. */
@@ -40,6 +48,35 @@ internal class ReaderObservedBitmapPainter(
     var mountId = 0L
     var coordinates: (() -> LayoutCoordinates?)? = null
     var onDraw: ((ReaderBaseImageDraw) -> Unit)? = null
+    var lastLayoutCallbackMonotonicNanos = 0L
+    private var lastActualCommand: ReaderBaseImageDraw? = null
+
+    /** Reads current applied coordinates at a Compose clock callback, not that tick's future layout. */
+    fun sampleAppliedGeometry(frameNanos: Long): ReaderBaseImageDraw? {
+        val command = lastActualCommand ?: return null
+        val layout = coordinates?.invoke()?.takeIf { it.isAttached } ?: return null
+        if (capture == 0L || command.capture != capture || layout.size.width != command.layoutWidth ||
+            layout.size.height != command.layoutHeight
+        ) {
+            return null
+        }
+        fun root(point: Offset) = layout.localToRoot(point).let { ReaderDrawPoint(it.x, it.y) }
+        return command.copy(
+            rootQuad = command.localQuad.map { root(Offset(it.x, it.y)) },
+            layoutQuad = listOf(
+                Offset.Zero,
+                Offset(layout.size.width.toFloat(), 0f),
+                Offset(layout.size.width.toFloat(), layout.size.height.toFloat()),
+                Offset(0f, layout.size.height.toFloat()),
+            ).map(::root),
+            monotonicNanos = System.nanoTime(),
+            level = "compose-frame-geometry",
+            coordinatePhase = "last-applied-layout-at-compose-clock-callback",
+            composeFrameNanos = frameNanos,
+            lastActualCommand = command.monotonicNanos,
+            lastLayoutCallbackMonotonicNanos = lastLayoutCallbackMonotonicNanos,
+        )
+    }
 
     override fun applyAlpha(alpha: Float): Boolean {
         this.alpha = alpha
@@ -109,18 +146,20 @@ internal class ReaderObservedBitmapPainter(
                     Offset(0f, layout.size.height.toFloat()),
                 ).map(::root)
                 val matrix = DoubleArray(6).also(relative::getMatrix).toList()
-                onDraw?.invoke(
-                    ReaderBaseImageDraw(
-                        capture, mountId, System.identityHashCode(image),
-                        listOf(
-                            srcOffset.x.toFloat(),
-                            srcOffset.y.toFloat(),
-                            (srcOffset.x + srcSize.width).toFloat(),
-                            (srcOffset.y + srcSize.height).toFloat(),
-                        ),
-                        rect, quad, layoutQuad, matrix, System.nanoTime(),
+                val command = ReaderBaseImageDraw(
+                    capture, mountId, System.identityHashCode(image),
+                    listOf(
+                        srcOffset.x.toFloat(),
+                        srcOffset.y.toFloat(),
+                        (srcOffset.x + srcSize.width).toFloat(),
+                        (srcOffset.y + srcSize.height).toFloat(),
                     ),
+                    rect, quad, layoutQuad, matrix, System.nanoTime(),
+                    (0..3).map { ReaderDrawPoint(local[it * 2].toFloat(), local[it * 2 + 1].toFloat()) },
+                    layout.size.width, layout.size.height,
                 )
+                lastActualCommand = command
+                onDraw?.invoke(command)
             }
         }
         drawContext.canvas = observing

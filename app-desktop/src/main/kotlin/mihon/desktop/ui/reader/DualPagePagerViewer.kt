@@ -429,6 +429,11 @@ internal fun DualPagePagerViewer(
                         nativePresentation.prepare(slot.id, page, width, height)
                     },
                     onPageDrawn = { nativePresentation.drawn(slot.id) },
+                    canObserveFrameGeometry = if (mihon.desktop.test.state.applicationState.testMode) {
+                        { capture -> nativePresentation.canSampleGeometry(capture) }
+                    } else {
+                        null
+                    },
                     onObservedImageDraw = if (mihon.desktop.test.state.applicationState.testMode) {
                         { command, identity, key ->
                             nativePresentation.observeImageDraw(slot.id, command, identity, key)

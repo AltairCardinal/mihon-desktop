@@ -1,6 +1,8 @@
 package mihon.desktop.reader
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import mihon.domain.reader.content.ReaderPageContentLease
 import mihon.domain.reader.content.ReaderPageContentOpenCoordinator
 import mihon.domain.reader.content.ReaderPageContentOpenPort
@@ -17,7 +19,10 @@ class DesktopReaderPageContentOwner internal constructor(
     encodedPageReader: suspend (EncodedPageRef) -> ByteArray?,
     ioReporter: ReaderIoReporter,
     encodedPrefixReader: (suspend (EncodedPageRef, Int) -> ByteArray?)? = null,
+    ioGate: ReaderIoGate = ReaderIoGate.None,
 ) : AutoCloseable {
+    private val contentGate = ioGate.bindContentReads()
+    internal val controlOwnerId = contentGate.registerContentOwner()
     private val coordinator = ReaderPageContentOpenCoordinator(
         scope = scope,
         port = ReaderPageContentOpenPort<ByteArray> { request ->
@@ -30,12 +35,23 @@ class DesktopReaderPageContentOwner internal constructor(
                 purpose = ReaderIoPurpose.CURRENT_PAGE,
                 byteLimit = limit,
             )
-            if (limit == null) {
-                encodedPageReader(request.encodedPageRef)
-            } else {
-                requireNotNull(encodedPrefixReader) {
-                    "Bounded header reader is unavailable"
-                }(request.encodedPageRef, limit)
+            try {
+                if (controlOwnerId != 0L) {
+                    contentGate.awaitContentRead(controlOwnerId, request)
+                    currentCoroutineContext().ensureActive()
+                }
+                val bytes = if (limit == null) {
+                    encodedPageReader(request.encodedPageRef)
+                } else {
+                    requireNotNull(encodedPrefixReader) {
+                        "Bounded header reader is unavailable"
+                    }(request.encodedPageRef, limit)
+                }
+                if (controlOwnerId != 0L) contentGate.contentReadCompleted(controlOwnerId, request, bytes?.size, null)
+                bytes
+            } catch (failure: Throwable) {
+                if (controlOwnerId != 0L) contentGate.contentReadCompleted(controlOwnerId, request, null, failure)
+                throw failure
             }
         },
     )
@@ -50,5 +66,11 @@ class DesktopReaderPageContentOwner internal constructor(
 
     internal fun snapshot(): ReaderPageContentOpenSnapshot = coordinator.snapshot()
 
-    override fun close() = coordinator.close()
+    override fun close() {
+        try {
+            coordinator.close()
+        } finally {
+            contentGate.closeContentOwner(controlOwnerId)
+        }
+    }
 }

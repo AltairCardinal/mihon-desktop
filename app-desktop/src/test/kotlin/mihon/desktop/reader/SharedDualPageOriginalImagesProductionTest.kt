@@ -18,7 +18,10 @@ import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.network.NetworkHelper
 import io.ktor.server.cio.CIO
@@ -47,6 +50,7 @@ import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.reader.ReaderIoGate
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.test.http.ReaderIoTestModeBridge
@@ -102,6 +106,170 @@ class SharedDualPageOriginalImagesProductionTest {
     @TempDir lateinit var directory: File
 
     @Test
+    fun `explicit read control holds the real original foreground partner until released`() = runBlocking {
+        val previousMode = applicationState.testMode
+        val previousController = ReaderIoTestModeBridge.controller
+        val controller = ReaderTestModeController()
+        applicationState.testMode = true
+        ReaderIoTestModeBridge.install(controller)
+        val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) { testHttpServer() }.start()
+        try {
+            val port = server.resolvedConnectors().single().port
+            val client = HttpClient.newHttpClient()
+            Fixture("b1", 14, dual = true, controlledReads = true).use { fixture ->
+                readerState.mount(fixture.model)
+                try {
+                    val response = client.send(
+                        HttpRequest.newBuilder(URI("http://127.0.0.1:$port/test/reader/io_control/arm"))
+                            .header("Content-Type", "application/json")
+                            .POST(
+                                HttpRequest.BodyPublishers.ofString(
+                                    """{
+                                      "chapterId":98,"pageIndex":15,"generation":1,
+                                      "range":"full","timeoutMillis":10000
+                                    }""",
+                                ),
+                            ).build(),
+                        HttpResponse.BodyHandlers.ofString(),
+                    )
+                    assertEquals(200, response.statusCode(), "Explicit foreground partner control must be available")
+                    val id = Json.parseToJsonElement(response.body()).jsonObject.getValue("id").jsonPrimitive.content
+                    fixture.pixels(14, ReaderPortraitSingleSlot.RIGHT)
+                    fixture.awaitDrawObservation {
+                        val state = client.send(
+                            HttpRequest.newBuilder(
+                                URI("http://127.0.0.1:$port/test/reader/io_control/state"),
+                            ).GET().build(),
+                            HttpResponse.BodyHandlers.ofString(),
+                        )
+                        Json.parseToJsonElement(state.body()).jsonObject.getValue("rules").jsonArray.any {
+                            it.jsonObject.getValue("id").jsonPrimitive.content == id &&
+                                it.jsonObject.getValue("status").jsonPrimitive.content == "HOLDING"
+                        }
+                    }
+                    fixture.stableWhilePartnerReadHeld(14)
+                    val released = client.send(
+                        HttpRequest.newBuilder(URI("http://127.0.0.1:$port/test/reader/io_control/$id/release"))
+                            .POST(HttpRequest.BodyPublishers.noBody()).build(),
+                        HttpResponse.BodyHandlers.ofString(),
+                    )
+                    assertEquals(200, released.statusCode())
+                    fixture.pixels(15, ReaderPortraitSingleSlot.LEFT)
+                } finally {
+                    readerState.unmount(fixture.model)
+                }
+            }
+        } finally {
+            server.stop(0, 1000)
+            ReaderIoTestModeBridge.clear(controller)
+            previousController?.let(ReaderIoTestModeBridge::install)
+            applicationState.testMode = previousMode
+            controller.close()
+        }
+    }
+
+    @Test
+    fun `explicit foreground read timeout exposes original retry and restores original partner pixels`() = runBlocking {
+        val previousMode = applicationState.testMode
+        val previousController = ReaderIoTestModeBridge.controller
+        val controller = ReaderTestModeController()
+        applicationState.testMode = true
+        ReaderIoTestModeBridge.install(controller)
+        try {
+            Fixture("b1", 14, dual = true, controlledReads = true).use { fixture ->
+                val id = controller.armRead(fixture.contentOwnerId(), 98, 15, 1, null, 5000)
+                fixture.awaitDrawObservation {
+                    controller.readControlSnapshot().any { it.id == id && it.status == "HOLDING" }
+                }
+                fixture.pixels(14, ReaderPortraitSingleSlot.RIGHT)
+                fixture.clickOriginalRetry()
+                assertEquals("TIMED_OUT", controller.readControlSnapshot().single { it.id == id }.status)
+                assertTrue(controller.readControlSnapshot().single { it.id == id }.enteredNanos != null)
+                fixture.pixels(15, ReaderPortraitSingleSlot.LEFT)
+            }
+        } finally {
+            ReaderIoTestModeBridge.clear(controller)
+            previousController?.let(ReaderIoTestModeBridge::install)
+            applicationState.testMode = previousMode
+            controller.close()
+        }
+    }
+
+    @Test
+    fun `explicit observation samples real applied geometry while original image commands remain cached`() =
+        runBlocking {
+            val previousMode = applicationState.testMode
+            val previousController = ReaderIoTestModeBridge.controller
+            val controller = ReaderTestModeController()
+            applicationState.testMode = true
+            ReaderIoTestModeBridge.install(controller)
+            try {
+                Fixture("b1", 14, dual = true).use { fixture ->
+                    readerState.mount(fixture.model)
+                    try {
+                        fixture.pixels(14, ReaderPortraitSingleSlot.RIGHT)
+                        assertTrue(ReaderIoTestModeBridge.startDrawObservation(128))
+                        fixture.awaitDrawObservation {
+                            readerState.slotDrawSnapshot().records.any { it.sourcePageIndex == 14 }
+                        }
+                        repeat(16) { fixture.observationFrame() }
+                        val records = readerState.slotDrawSnapshot().records.filter { it.sourcePageIndex == 14 }
+                        val commands = records.filter { it.level == "base-image-draw-command" }
+                        val geometry = records.filter { it.level == "compose-frame-geometry" }
+                        assertTrue(commands.isNotEmpty(), "A genuine original command must precede geometry replay")
+                        assertTrue(
+                            geometry.size >= 12,
+                            "Cached original images need explicit clock-triggered applied-layout samples; levels=" +
+                                records.map { it.level },
+                        )
+                        assertTrue(commands.size < geometry.size, "Geometry must not manufacture draw commands")
+                        val lastCommand = commands.last()
+                        val commandMount = lastCommand.mountId
+                        val commandAsset = lastCommand.assetIdentity
+                        assertTrue(
+                            geometry.all { sample ->
+                                sample.mountId == commandMount && sample.assetIdentity == commandAsset
+                            },
+                        )
+                        val coordinatePhase = "last-applied-layout-at-compose-clock-callback"
+                        val actualCommandTimes = commands.map { it.monotonicNanos }
+                        assertTrue(
+                            geometry.all { sample ->
+                                val layoutTime = requireNotNull(sample.lastLayoutCallbackMonotonicNanos)
+                                val commandObserved = sample.lastActualCommand in actualCommandTimes
+                                val afterAppliedLayout = sample.monotonicNanos >= layoutTime
+                                sample.coordinatePhase == coordinatePhase && sample.composeFrameNanos != null &&
+                                    commandObserved && afterAppliedLayout
+                            },
+                        )
+                        val initialWidth = geometry.last().rootQuad[1].x - geometry.last().rootQuad[0].x
+                        fixture.model.setZoomState(ZoomState(scale = 1.35f, offsetX = 7f, offsetY = -11f))
+                        // The tick precedes its layout work; allow that callback's applied-layout sample to lag once.
+                        repeat(2) { fixture.observationFrame() }
+                        val moved = readerState.slotDrawSnapshot().records.last {
+                            it.sourcePageIndex == 14 && it.level == "compose-frame-geometry"
+                        }
+                        assertTrue(abs((moved.rootQuad[1].x - moved.rootQuad[0].x) / initialWidth - 1.35f) < .02f)
+                        assertTrue(
+                            moved.imageLayoutQuad.zip(fixture.currentImageLayoutQuad(14)).all { (sample, applied) ->
+                                abs(sample.x - applied.x) < 1f && abs(sample.y - applied.y) < 1f
+                            },
+                            "Geometry is the actual applied Image layout, not an old quad labelled as the next draw",
+                        )
+                        fixture.assertObservedArtworkQuad(14, moved.rootQuad)
+                    } finally {
+                        readerState.unmount(fixture.model)
+                    }
+                }
+            } finally {
+                ReaderIoTestModeBridge.clear(controller)
+                previousController?.let(ReaderIoTestModeBridge::install)
+                applicationState.testMode = previousMode
+                controller.close()
+            }
+        }
+
+    @Test
     fun `test mode records real original slot draw commands through the mounted reader`() = runBlocking {
         val previousMode = applicationState.testMode
         val previousController = ReaderIoTestModeBridge.controller
@@ -134,7 +302,10 @@ class SharedDualPageOriginalImagesProductionTest {
                         .getValue("slotDrawObservation").jsonObject
                     val records = observation.getValue("records").jsonArray.map { it.jsonObject }
                     assertTrue(records.isNotEmpty(), "Actual original Image draws must reach the bound reader")
-                    val actual = records.last { it.getValue("sourcePageIndex").jsonPrimitive.content == "14" }
+                    val actual = records.last {
+                        it.getValue("sourcePageIndex").jsonPrimitive.content == "14" &&
+                            it.getValue("level").jsonPrimitive.content == "base-image-draw-command"
+                    }
                     assertEquals("base-image-draw-command", actual.getValue("level").jsonPrimitive.content)
                     assertEquals(4, actual.getValue("rootQuad").jsonArray.size)
                     assertTrue(actual.getValue("frameId") != JsonNull)
@@ -320,6 +491,7 @@ class SharedDualPageOriginalImagesProductionTest {
         private val heldDecode: Set<Int> = held.filter { it > initial }.toSet(),
         animated: Boolean = false,
         matching: Boolean = false,
+        controlledReads: Boolean = false,
     ) : AutoCloseable {
         private val archive = File(
             requireNotNull(System.getenv("MIHON_READER_ORIGINAL_ARCHIVES")),
@@ -362,6 +534,7 @@ class SharedDualPageOriginalImagesProductionTest {
             null,
             directory.resolve("encoded-$volume-$initial"),
             readerIoProbe = ReaderIoProbe(events::add),
+            readerIoGate = if (controlledReads) ReaderIoTestModeBridge else ReaderIoGate.None,
             pageImageDecoder = DesktopReaderPageImageDecoder { encoded, key ->
                 if (key.pageIndex in heldDecode) {
                     enteredDecodes += key.pageIndex
@@ -475,7 +648,64 @@ class SharedDualPageOriginalImagesProductionTest {
 
         fun observedArtworkBounds(source: Int) = observations.getValue(source).rectangle
         fun observedFrame(source: Int) = observations.getValue(source).frame
+        fun contentOwnerId() = runtime.pageContentOwner.controlOwnerId
+
+        suspend fun clickOriginalRetry() {
+            var retry: SemanticsNode? = null
+            await("The actual failed image must expose its original Retry button") {
+                retry = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.firstOrNull { node ->
+                    node.config.contains(SemanticsActions.OnClick) &&
+                        node.config.contains(SemanticsProperties.Role) &&
+                        node.config[SemanticsProperties.Role] ==
+                        Role.Button &&
+                        Rect(0f, 0f, 700f, 400f).contains(node.boundsInRoot.center) &&
+                        flatten(node).any { child ->
+                            child.config.getOrElse(SemanticsProperties.Text) { emptyList() }
+                                .any { it.text == tachiyomi.i18n.MR.strings.action_retry.localized() }
+                        }
+                }
+                retry != null
+            }
+            val attempt = model.state.value.session.activeChapter.pages[15].attemptGeneration
+            assertTrue(
+                requireNotNull(retry).config[SemanticsActions.OnClick]
+                    .action!!.invoke(),
+                "The original Button action must execute",
+            )
+            await("The original Retry must advance the actual page attempt") {
+                model.state.value.session.activeChapter.pages[15].attemptGeneration > attempt
+            }
+        }
+
         suspend fun awaitDrawObservation(done: () -> Boolean) = await("A real image command must be observed", done)
+        fun observationFrame() = render()
+        fun stableWhilePartnerReadHeld(source: Int) {
+            val first = observations.getValue(source)
+            repeat(12) {
+                val actual = requireNotNull(observe(source, ReaderPortraitSingleSlot.RIGHT))
+                assertEquals(first.frame, actual.frame)
+                assertSame(first.mount, actual.mount)
+                assertEquals(first.rectangle, actual.rectangle)
+            }
+        }
+        fun currentImageLayoutQuad(source: Int): List<mihon.desktop.test.state.ReaderDrawPoint> {
+            val slot = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.first {
+                it.config.contains(DualPageSlotIdKey) &&
+                    it.config[DualPageSlotIdKey].pageId?.sourcePageIndex == source && !it.boundsInRoot.isEmpty
+            }
+            val image = flatten(slot).first {
+                it.config.contains(SemanticsProperties.ContentDescription)
+            }.layoutInfo.coordinates
+            assertTrue(image.isAttached)
+            return listOf(
+                Offset.Zero,
+                Offset(image.size.width.toFloat(), 0f),
+                Offset(image.size.width.toFloat(), image.size.height.toFloat()),
+                Offset(0f, image.size.height.toFloat()),
+            ).map { point ->
+                image.localToRoot(point).let { mihon.desktop.test.state.ReaderDrawPoint(it.x, it.y) }
+            }
+        }
 
         fun assertObservedArtworkQuad(source: Int, quad: List<mihon.desktop.test.state.ReaderDrawPoint>) {
             dispatcher.scheduler.runCurrent()

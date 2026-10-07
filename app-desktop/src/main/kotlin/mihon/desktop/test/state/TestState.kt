@@ -164,6 +164,10 @@ class ReaderState {
     internal fun nextDrawMountId(): Long = drawMountIds.incrementAndGet()
 
     @Synchronized
+    internal fun acceptsSlotDraw(model: mihon.desktop.ui.reader.ReaderScreenModel, capture: Long): Boolean =
+        applicationState.testMode && mounted === model && capture != 0L && capture == drawCaptureRevision.value
+
+    @Synchronized
     internal fun startSlotDrawObservation(capacity: Int = 120): Boolean {
         require(capacity in 1..512)
         if (!applicationState.testMode || mounted == null) return false
@@ -235,6 +239,14 @@ class ReaderState {
 
     @Volatile internal var composeWindowFocused: Boolean = false
         private set
+
+    internal fun controlledContentOwner(chapterId: Long, generation: Long): Long? {
+        if (!applicationState.testMode) return null
+        val model = mounted ?: return null
+        val state = model.state.value
+        if (state.context.chapterId != chapterId || state.session.generation != generation) return null
+        return model.runtime?.pageContentOwner?.controlOwnerId?.takeIf { it != 0L }
+    }
 
     internal fun mountedSnapshot() = mounted?.state?.value
 
@@ -477,6 +489,10 @@ internal data class ReaderSlotDrawRecord(
     val sequence: Long = 0L,
     val level: String,
     val canvasScope: String,
+    val coordinatePhase: String,
+    val composeFrameNanos: Long?,
+    val lastActualCommand: Long?,
+    val lastLayoutCallbackMonotonicNanos: Long?,
 )
 
 @kotlinx.serialization.Serializable

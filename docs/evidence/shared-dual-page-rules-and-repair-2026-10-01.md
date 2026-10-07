@@ -2016,3 +2016,46 @@ Root独审中已修正新／旧model捕获失效、实际资产代际与当前re
 本批约12个本任务文件（7生产接线、1测试、4原文档），超过8文件／400行但同属一个有界绘制观察adapter及其真实HTTP/UI验证、维护说明和原验收证据，不增加独立产品能力／新owner／通用runner。两处版本改动排除。相关格式、focused及UTF-8／diff核验后随同一功能提交交付；旧失败／超估时间仍保留。coordinator workers46604／42328和process17288／30844已终态退出，无本批在途Gradle／应用；无正式或preview构建、Android72、全量或新代理。
 
 本提交只是DP02的必要观察前置，不勾选DP02。当前正式71／72还没有这些新接口；正式每帧稳定、tile、GPU、受控迟到伙伴／重试／真实进度、精确B1/B2时序与固定性能继续原GOAL。下一步应把所必需的帧几何与IO控制一起按最小范围准备，再集中核源码／既有基线并说明正式补验所需构建成本；不能为这次提交自动重跑矩阵或逐日志重建包。
+
+
+#### 后续时序证据口径：HEADER_READ不是事实就绪
+
+Root只读当前DesktopReaderPageContentOwner确认：OPEN_PAGE／HEADER_READ在encodedPageReader／encodedPrefixReader之前发出，只证明真实请求开始。原Mac源17冷跳和Windows冷尾部的正时间差保留为IO先发起证据，不能单凭80.538ms／41.0504ms签前组尺寸／匹配事实已及时可用。此前关于“及时”的结论仅按实际原生结果复用，完整S09时序条件须由会话事实／候选或预留的实际可用状态及有效绘制关联补证，不删除历史失败／通过，不重放已签冷跳／回翻动作。API Reference已明确发起层级。前台受控IO沿当前内容owner真实pageId/generation/maxBytes边界，原non-current gate不代替该能力。
+
+
+#### 缓存重放帧几何：最小红与首次静态绿（尚待批次收口）
+
+下一内聚批次复用原实施者，计划30–50分钟补现有命令上的帧几何与真实页读取控制，已报告成本与采样／取消风险；无新增代理／全量／构建。前期约13分钟未落可执行红，Root要求立即收敛到一个实际问题，不扩整体方案。现Original类新增真实B1/source14/Skia方法，已有命令后16次实际scene.render要求至少12个geometry读，且命令数不能冒增；key dp02-compose-applied-geometry-red，11:25:59.436→11:26:29.091 UTC，fresh11:26:24.241／1失败／0跳过／3.825秒，实际只有base-image-draw-command，正确红因已由Root独读。
+
+最小实现复用真正image-local quad和实际附着坐标，以公共帧时钟触发读取，沿同捕获epoch/model守卫发布；level为compose-frame-geometry、coordinatePhase为last-applied-layout-at-compose-clock-callback，不声称本tick未来layout/newdraw或GPU。首次green key dp02-compose-applied-geometry-green，11:32:09.195→11:32:56.190 UTC，实际非零通过；静态缓存案例不代替变化中的每帧正确性。Root已要求用真实zoom/pan与实际像素核对、守住lastActualCommand/asset关联，并只在explicit捕获安装effect；完整帧几何与IO gate尚待，代码未提交。API Reference先标清字段层级；正式候选仍无新接口，不追认原正式包能力。
+
+
+帧段movement补验已由Root独核：key dp02-compose-applied-geometry-movement，11:37:47.930→11:38:20.120 UTC（32.190秒），fresh11:38:13.788／2通过0跳过0失败、4.666秒（新geometry0.322／原base含guard4.342）。真实model zoom1.35／pan7,−11，允许一个clock回调的已应用布局延迟后，报告Image layout与实际Scene坐标误差<1px，原图可见ROI21/25／span255；记录lastActualCommand确实来自已发生的base命令，不增造新draw。effect只在explicit捕获分支安装，painter/effect绑定实际identity／holder，旧model守卫复用。该绿色只证明所述Compose应用后坐标读取机制，原生每个屏幕帧／GPU和平台差异仍待。帧段冻结后继续真实前台伙伴IO红测，不重跑完整矩阵／Android72，也不为单个观察点重建候选。
+
+#### 前台原图读取控制与重试：红绿及输入证据边界
+
+控制沿现有 DesktopReaderPageContentOwner 的真实内容端口，不新增缓存／内容 owner；Factory 与 production DI 共用 ReaderIoTestModeBridge，普通模式冻结为 None。Test Mode 规则精确绑定当前 owner、chapter/page/generation 与 full／prefix，最多16活动／32历史、最长30秒；未进入的过期规则在状态／新增／匹配时回收，关闭实际 owner 先取消 coordinator 再取消自身规则。释放后才执行原 encoded read，不提供图片 Ready、尺寸事实、配对或进度注入。
+
+真实原B1/source14 RIGHT、伙伴source15 full：`dp02-explicit-foreground-read-control-red` 11:50:19.971→11:50:44.844 UTC，fresh11:50:39.724／1失败0跳过／3.463秒，缺接口404而非预期200。最小接线后 `dp02-explicit-foreground-read-control-green` 11:58:59.631→11:59:46.716，fresh11:59:38.589／1通过0跳过／6.458秒，真实HOLDING时12个scene帧原图／frame／mount／rect稳定，HTTP只释放门闩，source15真实原图LEFT恢复。`dp02-explicit-read-owner-protection` 12:02:53.027→12:03:44.869，两精确方法通过：同章节两个实际 owner 同时挂起、prefix不被full拦截、关闭其一不影响另一、fail后新attempt真实读字节；production DI解析并断言同bridge。Root独读实际 source／argv／XML，未扫描符号代替行为。
+
+自身门闩超时最初传播 CancellationException，原Retry不出现；正确红 `dp02-explicit-read-timeout-red2` 12:07:34.989→12:08:12.585，fresh12:07:55.658／1失败0跳过／15.850秒。修正仅将门闩自身 withTimeoutOrNull 的 null 转 IOException，父作用域取消仍原样传播。`green3` 12:13:21.712→12:14:06.724 的两个失败保留：pointer触发后逻辑目标变15、原期待source15 LEFT未满足；另一个测试错误地把 caller acquire 取消当成实际内容端口退出，现改取消端口所在父作用域，不修改 coordinator 的共享读取消语义。
+
+`dp02-explicit-read-timeout-green4` 12:17:37.572→12:18:07.611，owner fresh12:17:57.992／0.288秒、原图fresh12:17:58.283／8.302秒，2通过0失败0跳过。Retry测试选择实际可见 Role.Button，调用其公共 Semantics OnClick，硬断言真实page attempt递增与source15 LEFT原图像素；这是原按钮动作接线绿，不是鼠标／原生输入通过。即便限定Role.Button，前一次pointer仍出现导航，原因尚未证实，不能将其武断归为祖先误选或删掉失败；S17真实Retry点击保持待验。新控制接口仅在新源码存在，原正式71／72不追认此能力。
+
+#### 本批Windows Computer Use再验身份（2026-10-07 12:26 UTC）
+
+用户已恢复CUA授权；完整插件技能与guidance／api／confirmations复用读取，Node @oai/sky有效。启动前核原正式71 SHA93684e76…c687、精确profile-native-1及空闲59791／59792，launcher23852／runtime18312的CIM路径、启动参数与HTTP监听PID一致，health12:26:09.329718700Z。返回唯一window27135468／Mihon标题和EXE路径，但实际截图为Codex；重新枚举／get_window／activate一次后仍错配。业务输入0，未操作Codex或沿旧坐标继续，也未归因锁屏或声称工具不可用。
+
+仅向已核自身端口POST shutdown，两PID2.498秒自然退出、remaining=[]；ignored `frame-read-batch-cua-mismatch.json`保存结果。此前成功Windows原生证据仍有效，本次不增加通过场景。身份错配需有可判别的新工具状态后续验，不无限重启；当前批次的代码／文档及focused收口独立继续。
+
+随后只做1次Node kernel reset（沿此前成功恢复证据），启动同EXE/profile新35228／47360，health12:30:50.204396800Z，唯一window46468864正确Mihon且CIM／监听47360相符。真实书架点B2→Original B2章节→Left→中心显示控件→Escape；停稳source2 LEFT、页码2/22。Left后的即时图仍为旧广告过渡，不能据此断言source2先RIGHT后LEFT。没有把HEADER开始当开篇事实就绪；旧71 mountedReader=null且缺新控制，S10早／晚条件仍未签。向精确自身端口shutdown，两PID2.471秒自然退出、remaining=[]，ignored `frame-read-batch-cua-recovered.json`及B2两状态JSON保留。恢复成功不证明之前错配根因已修复，不再重复已通过基础场景。
+
+#### 帧几何与前台读取批次最终验证
+
+源码冻结后唯一精确7methods，key `dp02-frame-read-final-focused7`，12:31:42.740→12:32:34.102 UTC（51.362秒），includeIntegrationTests=true、no-parallel、max-workers1；显式原CBZ环境启用真实Original测试。Root独读3份fresh XML：DI12:32:17.624（1／1.822秒）、owner12:32:19.448（1／0.172秒）、Original12:32:19.622（5／13.214秒），合计7通过、0失败、0错误、0跳过、15.208秒。Original五方法分别base/guard4.313、hold/release0.834、applied geometry0.358、cached pointer80帧2.439、timeout/原Retry动作5.266秒；不是整类／模块或正式每帧验证。
+
+严格12个实改Kotlin scoped格式 key `dp02-frame-read-normal-format-final`，12:30:41.504→12:30:55.907（14.404秒）通过；两个DI文件各只加1条接线／断言，旧baseline长行未扩改，未称14文件全部lint绿，新增行与diff核对及真实DI方法通过。此前4次格式失败保留：前两次暴露旧DI长行，后两次因格式重排后长行位置与源码位置不同，逐行猜修产生无效重复；最终一次预排版取得真实5处>120并集中拆分，严格标准未降低。该机械环节应先检查真实重排结果，不能把重复formatCheck称为必要产品测试。
+
+本批预计30–50分钟，首正确帧红11:25:59至最终绿12:32:34已用66分34.7秒，另有约13分钟前置；超估原因包括前期方案停留、真实取消／按钮输入定位及格式重复，均不擦除。14 Kotlin接线／测试与4个原文档共18个本任务文件，超过8文件／400行但同属原DP02的有界观察与读取控制前置，不增加独立用户能力／新缓存／通用runner。Root独立检查真实内容边界、None普通模式、own timeout与父取消、owner隔离／生命周期、已应用坐标层级及新旧绑定；7方法及格式收口后同一功能提交，版本两处排除。最终worker24580／process11100、格式30464／26696均已退出；本轮两个Windows周期全退出，无Mac启动、正式／preview构建、Android72或完整矩阵。
+
+DP02继续未勾选：旧正式71／72仍缺新接口，必须把冻结源码定向带入实际候选才能补正式受控伙伴／真实Retry、B1/B2时序、帧与性能；不能用源码或离屏绿替代产物。新增正式构建超原额度时按roadmap2.3集中说明所需最小成本，不逐观察点重建，也不触发全量重跑。

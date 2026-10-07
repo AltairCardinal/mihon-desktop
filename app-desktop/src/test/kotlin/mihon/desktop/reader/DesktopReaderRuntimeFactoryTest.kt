@@ -24,6 +24,7 @@ import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -101,6 +102,132 @@ class DesktopReaderRuntimeFactoryTest {
 
     @TempDir
     lateinit var tempDir: File
+
+    @Test
+    fun `explicit content read gates isolate owners ranges retries and cancelled reads`(@TempDir tempDir: File) =
+        runBlocking {
+            val controller = mihon.desktop.test.http.ReaderTestModeController()
+            val bytes = tempDir.resolve("original-encoded-page").apply { writeBytes(ByteArray(5000) { it.toByte() }) }
+            val reporter = mihon.domain.reader.observability.ReaderIoReporter(
+                clock = ReaderMonotonicClock { System.nanoTime() },
+            )
+            val readScope = CoroutineScope(SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+            val fullReads = java.util.concurrent.atomic.AtomicInteger()
+            val prefixReads = java.util.concurrent.atomic.AtomicInteger()
+            val one = DesktopReaderPageContentOwner(
+                readScope,
+                {
+                    fullReads.incrementAndGet()
+                    bytes.readBytes()
+                },
+                reporter,
+                { _, limit ->
+                    prefixReads.incrementAndGet()
+                    bytes.inputStream().use { it.readNBytes(limit) }
+                },
+                controller,
+            )
+            val two = DesktopReaderPageContentOwner(
+                readScope,
+                {
+                    fullReads.incrementAndGet()
+                    bytes.readBytes()
+                },
+                reporter,
+                { _, limit ->
+                    prefixReads.incrementAndGet()
+                    bytes.inputStream().use { it.readNBytes(limit) }
+                },
+                controller,
+            )
+            val request = ReaderPageContentOpenRequest(
+                ReaderPageId(ReaderChapterId(98), 15),
+                1,
+                mihon.domain.reader.session.EncodedPageRef(bytes.absolutePath),
+            )
+            suspend fun holding(vararg ids: Long) {
+                kotlinx.coroutines.withTimeout(5000) {
+                    while (!ids.all { id ->
+                            controller.readControlSnapshot().any { it.id == id && it.status == "HOLDING" }
+                        }
+                    ) {
+                        delay(1)
+                    }
+                }
+            }
+            try {
+                val first = controller.armRead(one.controlOwnerId, 98, 15, 1, null, 5000)
+                val second = controller.armRead(two.controlOwnerId, 98, 15, 1, null, 5000)
+                val pendingOne = async { runCatching { one.acquire(request) } }
+                val pendingTwo = async { runCatching { two.acquire(request) } }
+                holding(first, second)
+                assertEquals(0, fullReads.get())
+                one.acquireHeader(request)!!.use {
+                    assertEquals(
+                        5000.coerceAtMost(mihon.domain.reader.ReaderDualPageFactLimits.MAX_HEADER_BYTES.toInt()),
+                        it.content.size,
+                    )
+                }
+                assertEquals(1, prefixReads.get())
+                // Closing this owner cancels its real coordinator before cancelling its own gate.
+                one.close()
+                assertTrue(pendingOne.await().isFailure)
+                assertEquals("HOLDING", controller.readControlSnapshot().single { it.id == second }.status)
+                assertEquals(0, fullReads.get(), "Cancellation must not resume the underlying encoded read")
+                assertTrue(controller.resolveRead(second, fail = true))
+                assertTrue(pendingTwo.await().exceptionOrNull() is java.io.IOException)
+                assertEquals(0, fullReads.get())
+                two.acquire(request.nextAttempt())!!.use { assertArrayEquals(bytes.readBytes(), it.content) }
+                assertEquals(1, fullReads.get())
+                assertEquals("FAILED", controller.readControlSnapshot().single { it.id == second }.status)
+                assertNotNull(controller.readControlSnapshot().single { it.id == second }.completedNanos)
+                var external = 0L
+                val cancelled = runCatching {
+                    kotlinx.coroutines.withTimeout(100) {
+                        DesktopReaderPageContentOwner(
+                            this,
+                            {
+                                fullReads.incrementAndGet()
+                                bytes.readBytes()
+                            },
+                            reporter,
+                            ioGate = controller,
+                        ).use { third ->
+                            external = controller.armRead(third.controlOwnerId, 98, 15, 1, null, 5000)
+                            third.acquire(request)
+                        }
+                    }
+                }
+                assertTrue(cancelled.exceptionOrNull() is kotlinx.coroutines.TimeoutCancellationException)
+                assertTrue(controller.readControlSnapshot().single { it.id == external }.enteredNanos != null)
+                assertEquals("CANCELLED", controller.readControlSnapshot().single { it.id == external }.status)
+                assertEquals(1, fullReads.get())
+                val expired = controller.armRead(two.controlOwnerId, 98, 16, 1, null, 1)
+                delay(5)
+                assertEquals("TIMED_OUT", controller.readControlSnapshot().single { it.id == expired }.status)
+                assertFalse(controller.resolveRead(expired, false))
+                two.close()
+                assertFalse(
+                    controller.resolveRead(first, false),
+                    "Close must not allow a late release to revive a read",
+                )
+                var coarseCalls = 0
+                DesktopReaderPageContentOwner(
+                    this,
+                    { bytes.readBytes() },
+                    reporter,
+                    ioGate = ReaderIoGate { coarseCalls++ },
+                ).use { ordinary ->
+                    ordinary.acquire(request)!!.use { assertArrayEquals(bytes.readBytes(), it.content) }
+                }
+                assertEquals(0, coarseCalls, "Old lambda gates must remain a no-op at the explicit page-read hook")
+            } finally {
+                one.close()
+                two.close()
+                controller.close()
+                readScope.cancel()
+            }
+        }
 
     @Test
     fun `two original encoded header leases survive another page confirming its orientation`() = runBlocking {

@@ -97,6 +97,10 @@ internal class ReaderPagerNativePresentation(
         0L
     }
 
+    internal fun canSampleGeometry(capture: Long): Boolean = binding?.model?.let {
+        mihon.desktop.test.state.readerState.acceptsSlotDraw(it, capture)
+    } == true
+
     internal fun observeImageDraw(
         slot: DisplaySlotId,
         command: ReaderBaseImageDraw,
@@ -139,8 +143,12 @@ internal class ReaderPagerNativePresentation(
                 imageLayoutQuad = command.layoutQuad,
                 clipCanvasTransform = command.relativeTransform,
                 monotonicNanos = command.monotonicNanos,
-                level = "base-image-draw-command",
+                level = command.level,
                 canvasScope = "image-clip-layer-local",
+                coordinatePhase = command.coordinatePhase,
+                composeFrameNanos = command.composeFrameNanos,
+                lastActualCommand = command.lastActualCommand,
+                lastLayoutCallbackMonotonicNanos = command.lastLayoutCallbackMonotonicNanos,
             ),
         )
     }

@@ -12,6 +12,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -28,6 +29,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.isActive
 import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.ZoomState
@@ -87,6 +89,7 @@ internal fun ZoomablePageBox(
     presentationImage: ReaderPresentationImage,
     onPageDrawn: (() -> Unit)? = null,
     onPagePrepared: ((Int, Int) -> Boolean)? = null,
+    canObserveFrameGeometry: ((Long) -> Boolean)? = null,
     onObservedImageDraw: (
         (
             ReaderBaseImageDraw,
@@ -350,7 +353,7 @@ internal fun ZoomablePageBox(
                     null
                 }
                 val observedPainter = if (onObservedImageDraw != null) {
-                    remember(renderedImage.bitmap, observedCapture) {
+                    remember(renderedImage.bitmap, observedCapture, presentationImage.holder, identity) {
                         ReaderObservedBitmapPainter(renderedImage.bitmap)
                     }
                         .apply {
@@ -363,6 +366,19 @@ internal fun ZoomablePageBox(
                         }
                 } else {
                     null
+                }
+                if (observedCapture != 0L && observedPainter != null) {
+                    val latestObservedDraw by rememberUpdatedState(onObservedImageDraw)
+                    val latestCanObserve by rememberUpdatedState(canObserveFrameGeometry)
+                    LaunchedEffect(observedCapture, observedPainter, observedMount, identity) {
+                        while (isActive && latestCanObserve?.invoke(observedCapture) == true) {
+                            withFrameNanos { clock ->
+                                observedPainter.sampleAppliedGeometry(clock)?.let { sample ->
+                                    latestObservedDraw?.invoke(sample, identity, presentationImage.holder.decodeKey)
+                                }
+                            }
+                        }
+                    }
                 }
                 // The base bitmap and region tiles share one preparation boundary. A mounted
                 // prefetch page may decode, but cannot acknowledge clipped-away pixels.
@@ -387,7 +403,10 @@ internal fun ZoomablePageBox(
                             painter = observedPainter,
                             contentDescription = pageLabel,
                             alignment = imageAlignment,
-                            modifier = imageModifier.onGloballyPositioned { observedCoordinates?.set(0, it) },
+                            modifier = imageModifier.onGloballyPositioned {
+                                observedCoordinates?.set(0, it)
+                                observedPainter.lastLayoutCallbackMonotonicNanos = System.nanoTime()
+                            },
                             contentScale = resolvedScale,
                         )
                     } else {

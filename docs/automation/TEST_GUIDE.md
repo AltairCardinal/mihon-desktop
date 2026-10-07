@@ -70,9 +70,15 @@ python scripts/gradle-coordinator.py run --key reader-page-turn -- .\gradlew.bat
 
 原 BitmapPainter 仍执行实际绘制；观察读取 Image 裁剪记录层中的原命令、矩阵和附着坐标，不按 fit 算法重建预期矩形，不制造 prepare／draw 回执，不持有图片 lease。基础图片命令的根坐标是未裁剪几何；缩放／平移后的像素比对必须在实际槽和视口可见交集中取原图样本，不能把正常裁剪判为产品失败。启用造成的正常 Painter 重新安装不计为匹配性能数据。
 
-记录层级是 `base-image-draw-command`，覆盖基础图片的实际绘制命令及当时挂载／变换；region tile、缓存层重放、GPU 呈现与整个动画的每帧几何继续按各自证据验证。`frameId` 是 display ticket 的标识，会被复用；`sequence` 是观察顺序。容量耗尽的 `dropped`、坐标域不支持、旧候选404或未挂载409都必须保留，不能改成通过。Windows Computer Use、Mac 原生生命周期与真实发布身份要求维持。
+`base-image-draw-command` 记录基础图片实际命令；`compose-frame-geometry` 在显式捕获时用公共帧时钟读取最近已应用的 Image 布局，关联最近真实命令、资产与挂载，不制造新绘制回执。其 `coordinatePhase` 明确为 `last-applied-layout-at-compose-clock-callback`；回调发生在本 tick 布局工作之前，不能将读到的上一布局称为本 tick 新 draw 或 GPU 呈现。region tile、系统屏幕每帧与 GPU 继续需要相应证据。`frameId` 是可复用的 display ticket 标识，`sequence` 是观察顺序。容量耗尽的 `dropped`、坐标域不支持、旧候选404或未挂载409都必须保留，不能改成通过。Windows Computer Use、Mac 原生生命周期与真实发布身份要求维持。
 
 这项定向接线验证使用 `SharedDualPageOriginalImagesProductionTest` 的真实 ZIP／Factory／Skia／HTTP 场景；只选择本次观察行为方法和具体守卫，不因此运行整类、完整模块、正式构建或发布矩阵。关闭观察和普通启动继续走原绘制链。
+
+### 阅读器前台读取的显式控制
+
+仅包含新接口的 Test Mode 候选支持 `/test/reader/io_control/arm`、`state` 及 `/{id}/release`、`/{id}/fail`。控制绑定当前实际 reader 的内容 owner、章节、资产代际、零基源页及 full／prefix 范围；不会模拟图片 Ready、配对事实、绘制或保存。先确认真实产品入口、实际 owner 与章节，再按 [API Reference](API_REFERENCE.md) 设置最长30秒的有界规则。`HOLDING` 及 `enteredNanos` 才证明真实读取已进入门闩，`ARMED` 不证明读取发生；full 挂起不同时挂起 prefix。
+
+释放后继续原 encoded reader；显式失败或门闩自身超时产生 IOException，进入现有图片错误／重试路径。调用方作用域取消仍是取消，不转为加载错误；关闭 owner 只取消自身规则。重试通过原按钮及真实 attempt 递增验收，不用 HTTP 写页状态。离屏 Semantics 按钮动作只能验证动作接线，不能替代原生鼠标命中。普通启动绑定 None，不安装这些控制；最多16个活动规则、32条历史，未进入规则到期在状态／匹配／新增检查时回收，不建立后台定时服务。
 
 ### 构建与测试
 

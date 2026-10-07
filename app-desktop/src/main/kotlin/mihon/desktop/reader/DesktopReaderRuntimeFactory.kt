@@ -137,6 +137,7 @@ class DesktopReaderRuntimeFactory internal constructor(
     private val chapterRepository: tachiyomi.domain.chapter.repository.ChapterRepository? = null,
     private val pairingCoordinator: DesktopChapterPairingCoordinator? = null,
 ) {
+    internal val configuredReaderIoGate: ReaderIoGate get() = readerIoGate
     internal val configuredReaderIoProbe: ReaderIoProbe get() = readerIoProbe
     internal val configuredPartialDownloadSnapshotLookup: PartialDownloadSnapshotLookup
         get() = partialDownloadSnapshotLookup
@@ -155,7 +156,8 @@ class DesktopReaderRuntimeFactory internal constructor(
         val normalizedInitialContext = normalizeDownloadIdentity(initialContext)
         val ioReporter = ReaderIoReporter(readerIoProbe.bind(), readerMonotonicClock)
         val store = encodedPageStoreCoordinator.openSessionStore()
-        val pageContentOwner = DesktopReaderPageContentOwner(parentScope, store::read, ioReporter, store::readPrefix)
+        val pageContentOwner =
+            DesktopReaderPageContentOwner(parentScope, store::read, ioReporter, store::readPrefix, readerIoGate)
         lateinit var session: DesktopReaderSession
         val pageImagePipeline = DesktopReaderPageImagePipeline(
             scope = parentScope,

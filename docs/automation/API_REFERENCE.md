@@ -184,6 +184,8 @@ pager 因条漫/加载/错误卸载后，旧几何清除；无实际窗口、有
 512 KiB）。其它事件的 `byteLimit` 可为 `null`；客户端应兼容缺失/未知字段，不能把
 头部读取当作完整编码命中或删去它来满足首帧成本断言。
 
+`OPEN_PAGE`／`HEADER_READ` 在内容 owner 调用实际读取前发出，证明请求已发起，不表示读取完成或尺寸／匹配事实已经可用。验证“前组及时”须核实际共享会话事实、候选／预留或有效绘制状态；不能只比较 `HEADER_READ` 与 `FIRST_PAGE_PRESENTED` 的时间差。
+
 partial fixture 还返回以下页级观测字段：
 
 - `route`、`currentPageIndex`、`snapshotGeneration`；
@@ -206,18 +208,35 @@ probe/open/copy 且图片网络为 0；缺失页才允许一个物理图片请�
 
 | 字段 | 含义 |
 |---|---|
-| `level`、`canvasScope` | `base-image-draw-command`／`image-clip-layer-local`；来自原 BitmapPainter 的真实命令与当前 Image 裁剪记录层。 |
+| `level`、`canvasScope` | `base-image-draw-command` 为原 BitmapPainter 的实际命令，`compose-frame-geometry` 为基于最近实际命令的已应用布局读取；坐标域为 `image-clip-layer-local`。 |
 | `sourcePageIndex`、`chapterId`、`generation`、`attemptGeneration` | 实际图片 holder 的源页、章节、资产代际及尝试代际；不拿当前请求代际替代旧图片代际。 |
 | `readerGeneration`、`frameMatchesAssetGeneration`、`frameId` | 当前 reader 代际、ticket 与资产的代际关联，以及实际 display ticket/frame；`frameId` 可以复用，不是 vsync 编号。 |
 | `locationSequence`、`ticketLocationSequence` | 当前 reader 定位与当前绘制能力的定位，二者不能自动当作同一用户请求。 |
 | `nativeMountId`、`mountId`、`assetIdentity`、`contentIdentity` | 实际原生 presenter／Image 挂载和资源关联的进程内标识；不是持久化键。 |
 | `sourceRect`、`destinationRect`、`clipCanvasTransform` | 原命令的基础 bitmap 像素源矩形、Painter 目标矩形、裁剪层当前仿射矩阵六值 `[m00,m10,m01,m11,m02,m12]`。 |
 | `rootQuad`、`imageLayoutQuad` | 原绘制四角与 Image 布局四角映射到 Compose 根像素坐标；为未裁剪几何，可能超出视口，不是 AWT 屏幕点或系统截图。 |
-| `monotonicNanos`、`sequence` | 实际命令返回后的单调时钟与本次捕获顺序；不代表 GPU 已呈现。 |
+| `monotonicNanos`、`sequence` | 命令记录是原命令返回后的时间，几何记录是坐标读取的时间；`sequence` 为本捕获顺序，不代表 GPU 已呈现。 |
+| `coordinatePhase`、`composeFrameNanos`、`lastActualCommand`、`lastLayoutCallbackMonotonicNanos` | 命令为 `actual-painter-command`；几何为 `last-applied-layout-at-compose-clock-callback`。帧时钟仅触发读取，`lastActualCommand` 关联最近原命令的单调时间，布局回调时间单列；不能把上一已应用布局贴成本次 tick 的新 draw／vsync。 |
 
 观察只在实际附着坐标和当前 Image 裁剪层坐标域可核对时发布；缺记录不等于没有显示。启用时重新安装 Painter 以使真实绘制链记录当前图片，此安装成本不作为自动匹配成本。基础图片命令不包含 region tile 叠层；缓存图层重放、父 pager 动画移动也不一定重新执行命令。该接口不能单独证明屏幕每帧稳定、没有黑帧或 GPU／vsync 性能，须与真实原生观察及相应帧证据组合。
 
 旧候选404表示缺少接口能力，应记录具体候选及缺口，不能归因锁屏，也不通过 HTTP 重新打开模拟 reader 来制造绑定。普通应用启动不安装此观察器。
+
+### 阅读器显式读取控制（Test Mode）
+
+`POST /reader/io_control/arm` 示例：
+
+```json
+{"chapterId":98,"pageIndex":15,"generation":1,"range":"full","timeoutMillis":10000}
+```
+
+绑定当前实际 mounted reader 的内容 owner；`pageIndex` 为零基源索引，`generation` 为当前资产代际。`range` 仅允许 `full` 或 `prefix`；prefix 另需正整数 `maxBytes`，精确匹配实际请求的字节上限。`timeoutMillis` 为1–30000，参数无效返回400；owner／代际不适用、重复规则或活动容量满返回409；成功返回200及 `{"id":...}`。每个 controller 最多16活动规则、32条历史，不触发读取或改变配对／进度。
+
+`GET /reader/io_control/state` 返回 `{"rules":[...]}`，包括 id、ownerId、chapterId、pageIndex、generation、maxBytes、status、enteredNanos、completedNanos、byteCount、attemptGeneration。ARMED 只表示规则已安装；HOLDING／enteredNanos 表示真实内容端口进入，completedNanos／byteCount 描述受控请求结束。OPEN_PAGE／HEADER_READ 仍是读取发起事件，不能作为字节完成或尺寸事实就绪证明。
+
+`POST /reader/io_control/{id}/release` 继续真实 encoded reader；`.../fail` 在同一端口抛出 IOException。成功返回200及 success=true；无效、已结束或非 Test Mode 返回409。自身超时为 TIMED_OUT／IOException，保留原加载错误和 Retry；父作用域取消为 CANCELLED 并原样传播。规则精确区分 owner、full／prefix 与 attempt，不能借重试重新命中已结束规则。reader owner 关闭取消自身规则，另一个 owner 不受影响；尚未进入的规则到期在状态／匹配／新增检查时回收。
+
+此接口不提供原生输入，不直接设置 Ready、KnownFact、配对、绘制或保存。旧候选404只表示缺能力，不代表锁屏；只能在包含该接线的实际产物上执行这些场景。
 
 ### `POST /reader/next_page`
 
