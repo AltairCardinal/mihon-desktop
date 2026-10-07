@@ -1900,3 +1900,37 @@ Mac首次源17→16→17场景的chapter8900741最终真实SQL为last_page_read1
 Windows在锁屏等待期间先核40412／48804的正式路径与profile，正常shutdown并确认两PID退出，再为同一新profile准备专属8900721／8900731真实章节与原SHA的下载CBZ。两者初始last_page_read0／read0、外键通过，没有写阅读回执、配对边界或绘制事实。仅重启同一正式71（launcher43920／GUI3220），UTC13:23:09.255 health通过；WTS仍SessionFlags0＝LOCKED，原生输入0。启动与localhost健康查询组合被工具策略拒绝，实际启动前未发生操作；拆为明确的应用启动和独立只读查询后通过，没有追加权限请求或修改系统策略。保留该窗口供解锁后继续验收；本机真实保存和computer use仍未签收。
 
 本次提交只含一个正式Android性能测试adapter及三份既有维护／证据／roadmap文档，共4文件、超过400行；范围内聚于同一正式验收批次，未增加产品能力。格式及非零ART结果已核，纯证据修改只做一次UTF-8／链接／diff核验，不重跑已通过的测试。两份既有版本差异保留未暂存，DP02不勾选，不以本次提交代替最终交付提交。
+
+
+### 2026-10-07新版验收流程的定向迁移
+
+接续时分支 `codex/shared-dual-page-rules-and-repair`、HEAD `a44e5a389d0b67017aca8a9acc7ba298c6005902`；只存在AppVersion.kt及android-release.properties两处既有版本差异，原字节保护。指定六提交 ef28c04913／e7dfe0e7e5／1f5a0b8533／8a32a29e75／7760b8d4f4／70954cc852 按其合成路径patch整合，不合并92693c1产品历史，也未读取609f未提交原型。AGENTS、Test Guide、Mac指南三处冲突按新规则合并，0877双页专用R8／恢复／原生定位／实际绘制／SQL及失败记录保留；缺失的mac-sync-native-acceptance.py只取来源精确committed blob。Gradle仅追加Windows隔离dist环境变量，保留当前双页test resources及production wiring；已构建正式包没有改变。来源流程历史文档原样引入并注明来源、日志归属和非当前活动计划，不另建本任务状态系统。
+
+按新流程，日常体验默认最小充分验证、行为TDD及production wiring，只有明确发布里程碑才触发发布矩阵；本DP02历史承诺保持，首次完整基线与有效补验可组合收口，不能冒称最终源码重新全量通过。preview不分配正式版本、不隐式跑测试；平台预检与实际原生层分开；Mac统一入口有界亮屏、精确身份及自然关停；Windows使用Node REPL @oai/sky，一次真实动作后刷新，动画最多再观察两次，不重复输入。旧Windows锁屏不作为2026-10-07当前结论。
+
+本轮迁移focused命令为现有Python运行unittest加载 scripts/tests/acceptance-preflight-test.py、desktop-preview-test.py、mac-acceptance-test.py，唯一批次53项：49通过、0失败、0错误、4个macOS-only preview用例在Windows skip，墙钟23.281秒。Mac构建脚本／provenance／原生保护的来源实机与四项Darwin测试有效历史证据复用；本机skip不称Mac本轮重新通过。日志 `app-desktop/tmp/dp02-workflow-20261007/focused-tests.log`。Python314路径受当前权限拒绝，改用已安装runtime Python3.12.14，不安装或修改用户环境。格式／冲突标记和UTF-8定向核验通过；产品测试、Gradle、全量与正式重构建均新增0。
+
+已完整读当前computer-use插件SKILL、guidance/api/confirmations；Node REPL实际导入@oai/sky、list_windows成功，sky.documentation缺失按插件文件读取，不作为工具不可用。尚未操作本次双页窗口，原生结果另记，不能把这一健康检查或609f两轮同步试点升级为双页通过。迁移超过8文件／400行是来源同一流程的规则、执行工具和回归的内聚传播，不新增产品能力；主代理直接迁移，新增代理／独审轮次0。
+
+
+#### 本轮提交权限与Windows实际运行边界
+
+迁移暂存被当前managed sandbox拒绝：Git实际元数据在工作树外 `D:/Shell/Github/mihon/.git/worktrees/mihon4/index.lock`，git add返回Permission denied，未创建提交、没有迁移hash；HEAD仍a44e5a389d。20个迁移／原计划证据文件保留待提交，AppVersion.kt和android-release.properties两处版本改动仍不纳入迁移。不能把已验证文件写成已提交；也不改变Git目录、索引位置或权限绕过限制。
+
+Windows复用原双页正式 `0.11.19.71.32141a9`，本轮launcher SHA-256 `93684e7620fa536a33c5de4ef7c5faffd2a5bed8779305bb739428580044c687`，不是609f同步试点preview。新预检观察activePathCapacity1／modeCapacity2、正常输入桌面，native-tool仍NOT_RUN；这是正常分层，不是锁屏。新profile `app-desktop/tmp/dp02-windows-cua-20261007/profile-native-1`，59791／59792启动前空闲，Start-Process -WindowStyle Hidden启动实际launcher43576／runtime10248。health UTC05:37:57.883通过；CIM受权限拒绝后，公开Win32进程快照／QueryFullProcessImageName／NtQueryInformationProcess只读核两PID的EXE、父子、精确profile及端口参数；最终HTTP监听PID10248另核。
+
+Node @oai/sky两次返回窗口均没有本次EXE；未选择其他Mihon或Explorer窗口，也未发输入。随后唯一有判别力的只读诊断确认：caller在session1／WinSta0，但执行desktop为 `CodexSandboxDesktop-*`；runtime的真实可见窗口标题是本正式版本，矩形[48,48,1072,816]，其线程desktop也是同一CodexSandboxDesktop。现有工具链的交互桌面枚举无法取得这个候选。已证实的是本次窗口在沙箱桌面，不能说产品未创建窗口、显示器断开、用户锁屏或Computer Use未安装；没有切换桌面、修改权限或绕开当前执行隔离。Windows双页原生结果仍NOT_RUN，不用HTTP或窗口元数据代签截图／点击。
+
+重新核精确EXE／PID及HTTP归属后，单次本地shutdown返回success，2.406秒内43576／10248自然退出；没有强杀和本轮遗留应用。退出后只在本新profile准备B1／B2真实章节8900721／8900731与原SHA的下载CBZ，两项初始页0／未读、外键通过，无配对、进度回执或绘制事实注入；预设RTL／双页／匹配只是场景前置，不当作原生设置通过。未再次启动，恢复交互执行环境后可复用该已准备profile。身份、desktop诊断、shutdown和fixture前置沿用ignored目录内少量JSON；本轮原生输入0、产品行为测试／Gradle／全量／正式重构建新增0。流程测试进程已终态，无在途重型验证；Mac原生与Android72未重跑。
+
+本轮范围内的迁移已完成文件和focused验证，提交／Windows输入存在真实执行权限边界。DP02仍欠原Windows双页入口、阅读／稳定呈现／设置／保存和Mac正式时序／逐帧／性能观察；源同步试点与迁移本身都不关闭这些缺口。后续需要允许本仓库Git元数据写入且能在交互桌面启动精确隔离候选的执行上下文，验收授权本身仍有效；不重新申请全量、正式版本或周额度。
+
+#### 流程迁移收口与用户启动边界（2026-10-07）
+
+用户纠正接续方式：只迁移流程，继续开发由用户在原 Codex 应用会话中启动。来源会话不再执行 `codex exec resume`，不代启 DP02 或应用验收；此前 CLI 的 Git 权限失败和隔离桌面记录作为历史保留，不能作为原应用会话的当前阻塞。进程核对确认本次 CLI 客户端 732／40512 和应用 43576／10248 均已退出。
+
+本轮只完成已有迁移的独立核对、补齐遗漏和提交：执行脚本及配套测试与来源 `70954cc852` 的已提交内容一致；Gradle 只增加 Windows preview 隔离目录变量，保留0877已有双页配置。修正 AGENTS 中遗漏的 build-only 首次完整验证边界，补齐历史流程评估文档，以及来源已有 Android 原生保护脚本／测试和模拟器操作说明。源流程试点结论与本分支双页验收严格区分；不合并来源产品历史，不修改产品实现。
+
+验证复用上一轮49通过／4个Darwin跳过的53项流程测试，已核对实际日志且对应代码未改变，不称为本轮重跑。补入的 Android 保护脚本20项定向测试通过、0失败／0跳过，使用模拟adb覆盖真实工具逻辑，无设备或应用启动；日志 `app-desktop/tmp/dp02-workflow-20261007/android-migration-tests.log`。已检查新增文档链接、UTF-8和来源脚本一致性，两处既有版本文件按SHA-256确认未变化；本轮不新增产品测试、Gradle、构建或原生验收。
+
+迁移及本次操作规范／交接修正随同一提交交付。开发继续与 DP02 原验收门槛仍等待用户在原会话启动；迁移完成不等于 DP02 完成，也不会自动修改 Goal 状态、全量预算或发布身份。
