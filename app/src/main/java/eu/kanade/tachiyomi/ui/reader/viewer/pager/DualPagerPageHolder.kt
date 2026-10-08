@@ -107,6 +107,7 @@ class DualPagerPageHolder(
         val callbackIsCurrent: () -> Boolean,
     )
     private val decodeGenerations = mutableMapOf<ReaderPage, Long>()
+    private val presentationDiagnostics = DualPagePresentationDiagnostics()
     internal var presentationScope: Pair<SharedDualPageSession, ReaderDualPageViewportTicket>? =
         viewer.capturePresentation(displayPage)
         private set
@@ -339,6 +340,7 @@ class DualPagerPageHolder(
             errorPages.remove(side)
         }
         displayPage = replacement
+        presentationDiagnostics.retainSources(replacement.visiblePages.map { it.index })
         errorPage = errorPages.values.firstOrNull()
         loadPages()
         beginPresentation()
@@ -510,22 +512,47 @@ class DualPagerPageHolder(
                                 owner.identity.content[page.index].contentVersion != encodedContent ||
                                 beforeFrame.unit.slots.none { it.pageId == pageId && it.position == physicalSlot }
                             ) {
+                                presentationDiagnostics.record(
+                                    "prepare", owner, ticket, page.index, holder, config,
+                                    viewer.config.automaticSpreadMatching, isAnimated, physicalSlot, beforeFrame,
+                                    lockedBefore = pageId in beforeFrame?.lockedPageIds.orEmpty(),
+                                    prepared = false,
+                                    outcome = "NATIVE_CAPABILITY_REJECTED",
+                                )
                                 false
                             } else if (pageId in beforeFrame.lockedPageIds) {
                                 // Keep an actually exposed outgoing image's original physical capability.
+                                presentationDiagnostics.record(
+                                    "retained_lock", owner, ticket, page.index, holder, config,
+                                    viewer.config.automaticSpreadMatching, isAnimated, physicalSlot, beforeFrame,
+                                    lockedBefore = true,
+                                    prepared = true,
+                                    outcome = "ALREADY_LOCKED",
+                                )
                                 true
                             } else {
                                 val beforeRevision = owner.layoutRevision
+                                val submittedHint = if (viewer.config.automaticSpreadMatching) {
+                                    holder.decodedPageSideHint
+                                } else {
+                                    mihon.domain.reader.ReaderPageSideHint.UNKNOWN
+                                }
                                 val accepted = owner.acceptDecodedFact(
                                     ticket,
                                     pageId,
                                     drawWidth,
                                     drawHeight,
-                                    if (viewer.config.automaticSpreadMatching) {
-                                        holder.decodedPageSideHint
-                                    } else {
-                                        mihon.domain.reader.ReaderPageSideHint.UNKNOWN
-                                    },
+                                    submittedHint,
+                                )
+                                val factFrame = owner.frame(ticket)
+                                presentationDiagnostics.record(
+                                    "decoded_fact", owner, ticket, page.index, holder, config,
+                                    viewer.config.automaticSpreadMatching, isAnimated, physicalSlot, factFrame,
+                                    lockedBefore = false,
+                                    beforeFrame = beforeFrame,
+                                    submittedHint = submittedHint,
+                                    accepted = accepted,
+                                    outcome = if (accepted) "ACCEPTED" else "FACT_REJECTED",
                                 )
                                 if (owner.layoutRevision !=
                                     beforeRevision
@@ -533,9 +560,29 @@ class DualPagerPageHolder(
                                     viewer.adapter.refreshDecodedSide(page, owner)
                                 }
                                 val frame = owner.frame(ticket)
-                                accepted && frame != null &&
+                                val prepared = accepted && frame != null &&
                                     frame.unit.slots.any { it.pageId == pageId && it.position == physicalSlot } &&
                                     owner.preparePage(ticket, pageId)
+                                val outcome = when {
+                                    !accepted -> "FACT_REJECTED"
+                                    frame == null -> "FRAME_EXPIRED"
+                                    frame.unit.slots.none { it.pageId == pageId && it.position == physicalSlot } ->
+                                        "SLOT_CHANGED"
+                                    !prepared -> "LOCK_REJECTED"
+                                    else -> "LOCKED"
+                                }
+                                presentationDiagnostics.record(
+                                    "prepare", owner, ticket, page.index, holder, config,
+                                    viewer.config.automaticSpreadMatching, isAnimated, physicalSlot,
+                                    owner.frame(ticket) ?: factFrame,
+                                    lockedBefore = false,
+                                    beforeFrame = beforeFrame,
+                                    submittedHint = submittedHint,
+                                    accepted = accepted,
+                                    prepared = prepared,
+                                    outcome = outcome,
+                                )
+                                prepared
                             }
                         } == true
                     }

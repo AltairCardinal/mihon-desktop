@@ -2208,3 +2208,24 @@ Android签名／工具链预检通过：JDK21.0.11、SDK36、Build Tools36.0.0�
 原AppVersion.kt未修改，SHA256仍为`30fe6cc2d8b5bf17b21831398fa04dcaa6b03b6ee41bcb2ed9d827f846e48212`；Android版本在用户既有code57／aex.39差异上递增，未恢复HEAD版本。两处既有版本文件仍不混入本修复提交，构建清单记录实际消费身份。构建后仅更新文字证据与roadmap，不修改APK输入、不为提交号重建。
 
 **人工待验与收口边界**：用户自行覆盖安装上述APK，保持横屏双页、自动匹配开、翻页动画关；快速连续正向/反向触滑后停止，检查页标与当前位置且不回跳；再从《8月31日的长夏》第97话顺读至“后面没有啦”后回翻。回复结果并连接USB调试，Agent下一轮核设备及包版本后只读目标日志，不代操作应用、不识别图片。已修复的是测试证实的production事件与重建回跳原因；真实第97话、实体触屏、JNI/ART及性能结果仍待，DP02不勾选，也不提升完整发布就绪状态。
+
+#### 第96话开篇物理页侧：诊断候选（2026-10-09）
+
+用户随后明确反馈连续触滑问题“已修复”，本反馈只关闭该实际体验问题，不代签第97话章末回翻或DP02完整验收。新问题为《8月31日的长夏》第96话：源第1页为广告，源第2页漫画右侧有装订留白；用户期望广告在右、漫画在左配成一组，实机却分别呈现广告左、漫画右。此轮禁止图片识别，页内容和留白方向均来自用户描述。
+
+连接同一API31平板后核实aex.40/code58。旧main缓冲仅256KiB，未保留之前操作，随后按目标应用UID实时采集文本。03:32:43–03:32:45的6条DualPageNavigation事件显示源索引0单页到1单页（sequence0→1），并在IDLE重建；该前缀的slots是源索引，并不提供物理左右槽或页侧识别证据。采集文件在忽略目录`app-desktop/tmp/android-dual-page-log-20261009/live-193210Z.txt`，复现后已精准停止对应logcat子进程，没有清日志或代操作阅读器。
+
+源码可确认源索引0有FIRST_PAGE单页规则，页侧提示伙伴搜索也排除索引0；因此现有规则不能满足广告与漫画首页合并的要求。但这并不能证明漫画首页为何显示在右：尚缺是否采到LEFT、是否真正提交、是否先锁定等运行事实。用户明确授权新增诊断APK、覆盖安装后自行复现，本批不调整配对策略。
+
+新增INFO前缀`DualPagePresentation`直接观察真实SSIV绘制前的既有事实/许可：source零基索引、ticket context/serial/sequence与ownerSequence、observedHint/submittedHint/storedHint、原底图是否采样、匹配/裁边/边界/动画配置、actual/proposed物理槽、锁定前后状态及prepare结果。已经锁定而跳过acceptDecodedFact的分支写NOT_SUBMITTED，不把后来观察到的提示冒充已应用；旧frame失效则明确FRAME_EXPIRED/UNAVAILABLE，before快照只表示失效前状态，不重新调用决策推测原因。此信息用于区分采样、提交、失效和锁槽，不承诺自动识别广告语义。
+
+沿用既有logcat，无额外图片解码、IO、上传或日志设置入口；不记录标题、URL、chapter ID或像素。每个holder仅保留当前至多2个源页、3种事件的最近状态，重复draw不重复拼接长字符串/邻页信息或输出；替换未显示伙伴时清理退出源页。日志只读现有owner快照，不改变共享配对、首帧准备顺序或已锁旧画面许可。环形缓冲可能丢旧记录，人工复现需配合实时文本采集；没有可采样的整幅底图时仍保守降级。
+
+
+TDD与审查：首轮gutter用例因缺INFO日志正确AssertionError；同轮UNKNOWN夹具NPE不是行为红，修正后`android-presentation-unknown-correct-red`实际1项因缺日志失败。green中的SLOT_CHANGED预想被实际FRAME_EXPIRED证据否定，仅纠正测试期待并保留后续LEFT槽真实绘制/锁定断言。`android-presentation-diagnostic-green2`两项通过；首次final5被测试名超过120字符的格式检查拦住，未执行测试，短化方法名后同范围补验。最终`android-presentation-diagnostic-final5-fixed`协调器UTC19:49:29–19:50:23退出0；XML fresh19:50:03.737，5执行/0失败/0错误/0跳过，17.851秒，4文件strict Apply/Check通过。覆盖真实底图LEFT修正、UNKNOWN首图与重复draw去重、未采样先锁RIGHT后迟到LEFT不提交，以及旧child回调、保留项显式跳页。完整精确方法及命令见同名协调器JSON；没有扩大到完整类/模块或全量测试。
+
+主代理独立检查生产diff、正确红因及最终XML；同一审查轮修正未提交提示的标注、票据上下文和退出源页的状态清理。共享规则和锁定行为保持；这些Robolectric原生绘制测试不证明第96话真机因果，也不代签ART/性能。实现者已停止写入后才冻结构建输入，新文件预先入索引使提交前后产品指纹可比较。
+
+签名/工具链预检通过；统一`python scripts/build-android.py candidate --offline`完成一次Release候选（Gradle2分30秒），独立verify通过。新增[诊断APK aex.41/code59](D:/Codex/worktrees/0877/mihon/app/artifacts/android/0.19.4-aex.41-vc59-29f9b5ed41-release/Mihon-Fork-0.19.4-aex.41-vc59-release-universal.apk)，SHA256=`e874cbf295f8280c663f2849d130b473853806f21a1eb33b80d3097051c15749`，productionInputs=`59909a36527bb6019c2621be957ab821c8b4bc3c2824eb0d59fe0711b69231ff`。包名、原证书、schema42、R8/资源压缩及四ABI保持；版本在既有code58/aex.40上递增，Desktop72文件SHA未变，两处累计版本差异仍不混入本诊断提交。
+
+按用户本轮明确授权，经统一install入口对同一平板无清数据覆盖安装，安装后拉回APK的身份/版本/证书/哈希一致。设备确认code59/aex.41，firstInstallTime仍为2026-10-04 01:37:07，lastUpdateTime为2026-10-09 03:54:11。未启动或输入应用、未截图；准备按目标UID采集DualPageNavigation与DualPagePresentation文本，由用户打开第96话重现后分析。诊断交付完成不等于配对问题修复，实体阅读/日志因果仍待用户复现，DP02不勾选。

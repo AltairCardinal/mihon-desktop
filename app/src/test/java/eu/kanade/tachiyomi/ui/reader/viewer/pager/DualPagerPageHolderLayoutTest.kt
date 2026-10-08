@@ -57,6 +57,8 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import logcat.LogPriority
+import logcat.LogcatLogger
 import mihon.domain.reader.ReaderPortraitSingleSlot
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -99,6 +101,15 @@ class DualPagerPageHolderLayoutTest {
     private val hosts = mutableListOf<ComponentActivity>()
     private var previousFramePause = false
     private lateinit var previousFrameDelay: Duration
+    private val diagnosticMessages = mutableListOf<String>()
+    private var loggerWasInstalled = false
+    private val diagnosticLogger = object : LogcatLogger {
+        override fun isLoggable(priority: LogPriority) = priority == LogPriority.INFO
+        override fun isLoggable(priority: LogPriority, tag: String) = isLoggable(priority)
+        override fun log(priority: LogPriority, tag: String, message: String) {
+            if (message.startsWith("DualPagePresentation ")) diagnosticMessages += message
+        }
+    }
 
     @Test
     @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
@@ -142,6 +153,21 @@ class DualPagerPageHolderLayoutTest {
             val id = owner.identity.pageIds[3]
             assertEquals(mihon.domain.reader.ReaderPageSideHint.LEFT, owner.pageFact(id)!!.sideHint)
             assertTrue(
+                diagnosticMessages.toString(),
+                diagnosticMessages.any {
+                    "event=decoded_fact" in it && "source=3" in it && "observedHint=LEFT" in it &&
+                        "sample=ORIGINAL_DECODED" in it && "accepted=true" in it && "actual=RIGHT" in it
+                },
+            )
+            assertTrue(
+                diagnosticMessages.toString(),
+                diagnosticMessages.any {
+                    "event=prepare" in it && "source=3" in it && "prepared=false" in it &&
+                        "outcome=FRAME_EXPIRED" in it && "reason=UNAVAILABLE" in it &&
+                        "proposedBefore=3:RIGHT" in it && "submittedHint=LEFT" in it
+                },
+            )
+            assertTrue(
                 owner.displayedHistory.none { frame ->
                     id in frame.lockedPageIds && frame.unit.slots.any { slot ->
                         slot.pageId == id && slot.position == ReaderPortraitSingleSlot.RIGHT
@@ -160,9 +186,120 @@ class DualPagerPageHolderLayoutTest {
                 val frame = requireNotNull(owner.frame(ticket))
                 assertTrue(id in frame.drawnPageIds)
                 assertEquals(ReaderPortraitSingleSlot.LEFT, frame.unit.slots.single { it.pageId == id }.position)
+                assertTrue(
+                    diagnosticMessages.any {
+                        "event=prepare" in it && "source=3" in it && "prepared=true" in it &&
+                            "actual=LEFT" in it && "locked=3:LEFT" in it
+                    },
+                )
             } finally {
                 detach(corrected)
             }
+        } finally {
+            detach(holder)
+        }
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `diagnostics distinguish sampled unknown first page from retained lock without frame spam`() =
+        runTest {
+            Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(true)
+            runCurrent()
+            val encoded = readerTestPng(64, 128)
+            val chapter = ReaderChapter(Chapter.create().copy(id = 9001, mangaId = 1, name = "private-title"))
+            val pages = List(3) { index ->
+                ReaderPage(index, stream = { encoded.inputStream() }).apply {
+                    this.chapter = chapter
+                    status = Page.State.Ready
+                }
+            }
+            chapter.publishLoadedPageListForTest(pages)
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            val holder = DualPagerPageHolder(
+                viewer.activity,
+                viewer,
+                viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[0]) },
+            )
+            try {
+                load(holder, pages[0], "CENTER")
+                measure(holder, 1440, 3120)
+                val image = descendants(holder).filterIsInstance<ReaderPageImageView>().first()
+                paintReaderImage(image, encoded)
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+                val output = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
+                try {
+                    repeat(3) { image.draw(android.graphics.Canvas(output)) }
+                } finally {
+                    output.recycle()
+                }
+                assertTrue(
+                    diagnosticMessages.any {
+                        "event=decoded_fact" in it && "source=0" in it && "observedHint=UNKNOWN" in it &&
+                            "sample=ORIGINAL_DECODED" in it && "matching=true" in it &&
+                            "sideEnabled=true" in it && "crop=false" in it && "animated=false" in it &&
+                            "reason=FIRST_PAGE" in it && "sequence=" in it && "neighbors=" in it
+                    },
+                )
+                assertEquals(1, diagnosticMessages.count { "event=prepare" in it && "source=0" in it })
+                assertEquals(1, diagnosticMessages.count { "event=retained_lock" in it && "source=0" in it })
+                assertTrue(diagnosticMessages.none { "private-title" in it || "9001" in it || "http" in it })
+            } finally {
+                detach(holder)
+            }
+        }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `release presentation diagnostics expose a late known hint skipped by an already locked slot`() = runTest {
+        Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(true)
+        runCurrent()
+        val bitmap = Bitmap.createBitmap(128, 256, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.rgb(40, 40, 40))
+        for (x in 122 until 128) for (y in 0 until 256) bitmap.setPixel(x, y, android.graphics.Color.WHITE)
+        val encoded = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        bitmap.recycle()
+        val chapter = ReaderChapter(Chapter.create().copy(id = 9002, mangaId = 1))
+        val pages = List(6) { index ->
+            ReaderPage(index, stream = { encoded.inputStream() }).apply {
+                this.chapter = chapter
+                status = Page.State.Ready
+            }
+        }
+        chapter.publishLoadedPageListForTest(pages)
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(pages[3])
+        val holder = DualPagerPageHolder(
+            viewer.activity,
+            viewer,
+            viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[3]) },
+        )
+        try {
+            load(holder, pages[3], "RIGHT")
+            measure(holder, 1440, 3120)
+            val image = descendants(holder).filterIsInstance<ReaderPageImageView>().first()
+            // The real native preparation callback arrives before an eligible whole bitmap sample.
+            assertTrue(requireNotNull(image.beforeImageDraw).invoke(128, 256))
+            assertTrue(
+                diagnosticMessages.any {
+                    "event=prepare" in it && "source=3" in it && "sample=NOT_OBSERVED" in it &&
+                        "submittedHint=UNKNOWN" in it && "prepared=true" in it && "lockedBefore=false" in it
+                },
+            )
+            paintReaderImage(image, encoded)
+            assertTrue(
+                diagnosticMessages.any {
+                    "event=retained_lock" in it && "source=3" in it && "observedHint=LEFT" in it &&
+                        "sample=ORIGINAL_DECODED" in it && "storedHint=UNKNOWN" in it &&
+                        "submittedHint=NOT_SUBMITTED" in it && "lockedBefore=true" in it &&
+                        "actual=RIGHT" in it && "context=" in it && "serial=" in it && "ownerSequence=" in it
+                },
+            )
+            val owner = requireNotNull(viewer.adapter.session(chapter))
+            assertEquals(
+                mihon.domain.reader.ReaderPageSideHint.UNKNOWN,
+                owner.pageFact(owner.identity.pageIds[3])!!.sideHint,
+            )
         } finally {
             detach(holder)
         }
@@ -1128,6 +1265,9 @@ class DualPagerPageHolderLayoutTest {
 
     @Before
     fun setUp() {
+        loggerWasInstalled = LogcatLogger.isInstalled
+        if (!loggerWasInstalled) LogcatLogger.install()
+        LogcatLogger.loggers += diagnosticLogger
         previousFramePause = ShadowChoreographer.isPaused()
         previousFrameDelay = ShadowChoreographer.getFrameDelay()
         ShadowChoreographer.setPaused(true)
@@ -1164,6 +1304,8 @@ class DualPagerPageHolderLayoutTest {
 
     @After
     fun tearDown() {
+        LogcatLogger.loggers -= diagnosticLogger
+        if (!loggerWasInstalled) LogcatLogger.uninstall()
         if (::viewer.isInitialized) viewer.destroy()
         hosts.forEach { it.finish() }
         hosts.clear()

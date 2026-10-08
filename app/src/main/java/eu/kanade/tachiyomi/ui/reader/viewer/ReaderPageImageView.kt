@@ -109,6 +109,10 @@ open class ReaderPageImageView @JvmOverloads constructor(
     private var sampledPageBitmap: java.lang.ref.WeakReference<Bitmap>? = null
     private var sampledOrientation: mihon.domain.reader.ReaderImageOrientation? = null
 
+    /** Distinguishes an inconclusive original-bitmap sample from no eligible sample yet. */
+    internal val hasDecodedSideSample: Boolean get() = sampledPageBitmap != null
+    internal val decodedSideConfig: Config? get() = config
+
     private fun resetDecodedSideHint() {
         sampledPageBitmap = null
         sampledOrientation = null
