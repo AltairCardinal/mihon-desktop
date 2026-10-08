@@ -268,6 +268,10 @@ green/refactor及其他任务使用不同key和明确类集合；确认红因是
 
 本接续批次已完成Android原SSIV实际位图→共享页侧→首次锁槽接线，保留原矩阵绘制、旧画面许可和资源寿命；6方法focused零失败／零跳过、5文件格式及一次R8签名候选构建／独立verify通过。[APK aex.38／code56](D:/Codex/worktrees/0877/mihon/app/artifacts/android/0.19.4-aex.38-vc56-ef6c56dbf1-release/Mihon-Fork-0.19.4-aex.38-vc56-release-universal.apk)交用户自行较大范围验收。Android提示目前适用于未裁边静态整幅底图，其他情况仍降级；真实APK运行／升级及性能待用户反馈，原DP02平台缺口继续保留。没有重复完整验证或72样本，原版本脏改不混入功能提交。
 
+用户随后确认aex.38启动闪退，并授权ADB调试；真机API31的生产日志证实数据库42→APK支持40降级异常，原候选运行判为失败。当前仅补齐code55已经发布的40／41迁移及等价当前表／trigger，目标schema42，禁止清数据／改低库版本／合并整产品分支。真实AppModule／SqlDriver红绿、8个新／旧相关方法、格式及1轮数据兼容独审通过；新code57／aex.39构建后须在该设备无清数据覆盖更新和启动，实际结果写同一聚合证据。此缺陷不通过阅读器原图测试绿关闭；原DP02仍未完成。
+
+该启动阻断已关闭：[修复APK code57／aex.39](D:/Codex/worktrees/0877/mihon/app/artifacts/android/0.19.4-aex.39-vc57-8dad3fbb39-release/Mihon-Fork-0.19.4-aex.39-vc57-release-universal.apk)R8签名构建／verify通过，已在用户授权的同一API31平板无清数据覆盖更新并实际启动；首次安装时间保持，系统确认MainActivity前台、同一进程持续存活、无新crash。应用交还用户继续扩大分页验收；不将启动修复扩写成完整升级／性能／DP02签收。
+
 本清单继续原DP02及S17，不创建替代产品目标或另一份执行计划。用户已要求逐项解决下列缺口；范围内诊断、最小修复及focused验证继续自主推进，已有矩阵、正式产物和Android72样本复用。用户已将原roadmap GOAL恢复为active，主代理查询确认；本清单是其逐项完成范围。当前工具只支持查询／状态更新，不能编辑GOAL正文，因此沿用指向本文件的原目标，不创建第二个未完成目标，也不虚报原目标完成。
 
 | 顺序 | 必须解决的内容 | 退出条件／当前状态 |

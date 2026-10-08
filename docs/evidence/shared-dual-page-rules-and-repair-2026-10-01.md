@@ -2149,3 +2149,19 @@ Android签名／工具链预检通过：JDK21.0.11、SDK36、Build Tools36.0.0�
 统一`python scripts/build-android.py candidate`完成一次签名Release构建，协调器`android-candidate` 08:51:42.590–08:54:16.279 UTC（153.689秒），签名／清单随后于08:54:23.691完成；R8／资源压缩开启、四ABI universal、非调试、min26／target36、遥测与更新器关闭。实际[APK](D:/Codex/worktrees/0877/mihon/app/artifacts/android/0.19.4-aex.38-vc56-ef6c56dbf1-release/Mihon-Fork-0.19.4-aex.38-vc56-release-universal.apk)已确认存在，SHA256=`5267286fb4fe97c7302025789cf368a976a140d2e45dc0f0fb34a0c52995bda8`；同目录`artifact.json`记录基线`ef6c56dbf1`、构建前产品差异及新Canvas输入，productionInputs=`0176f40c13a61d8afaed6c420336fe7a1d00d7b61e1674ed048870e88fabece4`。独立`build-android.py verify --artifact ...`退出0，哈希／身份／版本／原证书／v2+v3签名／mapping均匹配。
 
 本批未安装、未操作实体设备、未执行CUA或完整矩阵；构建45696／38588、最终测试21780／9148、绿色补验12168／45660均已退出。Windows用户确认保留；Android源码接线及候选验证已完成，实际APK的JNI／ART、升级与较大范围人工结果交用户验收，CPU/GPU性能不以Robolectric或旧72样本代签。建议同一实际章节横屏双页／自动匹配、关闭裁边，分别冷跳、连续跳页、回翻；含糊留白、大图分块和动画仍遵循设计降级，DP02正式缺口不勾选。
+
+#### aex.38真机启动崩溃与schema42兼容修复
+
+用户安装后直接闪退，并授权连接ADB调试。只读核对华为平板API31，安装版本确为code56／aex.38；目标应用crash buffer记录`SQLiteException: Can't downgrade database from version 42 to 40`，发生在生产Requery／AndroidSqliteDriver首次读库。安装前仅核APK版号／签名、未核同身份分支已发布数据库schema，是本次交付检查遗漏；更高versionCode并不代表数据库兼容。未清应用数据、未降低用户库版本、未操作其他设备或应用。
+
+原先发布code55的提交为`9a6651d5d8`，schema42比本树40多原迁移40／41：暂停计时表／trigger及计划计时两字段。本修复仅逐字引入这两条迁移，当前sync_runtime.sq仅增加与发布版等价的五列表及trigger；generated Schema.version42。未合并同步产品分支、未引43对应42.sqm／恢复UI或queries，AppModule及onDowngrade未改。已有42不执行升级，旧40按原40→41顺序迁移。共11个相关文件为同一兼容批次：3生产SQL，历史fixture／发布SQL测试资源，以及原文档／交付约束；版本文件仍排除本功能提交。
+
+真实AppModule／SqlDriver反例使用当前前40共同schema、移除Clock构造40，种入漫画／进度／PAUSED_USER与PLAN，再实际执行两份已发布SQL资源构造42，避免只改PRAGMA假装旧库。`android-schema42-startup-red` 09:12:20.283–09:13:57.475 UTC复现42→40拒绝；fresh09:13:24.020，原临时禁retry仅含Release，导致同一个正确红重复3次，非3独立用例，随后仅为本轮禁用Debug retry。`android-schema42-startup-green3` 09:16:21.812–09:17:16.515，fresh09:17:02.369／3通过／零skip／13.083秒：42进度15、bookmark1、paused23／planned11／plannedAt1000原样保留；40升级保原计时；fresh42累计暂停2000并验证级联0。
+
+原实施者未实施本次SQL，完成1轮独审：迁移及fixture资源与9a逐字一致，当前五列DDL／trigger文本等价，37—39原迁移未动；实读生成schema42与迁移顺序及green3，签收后再构建／安装。历史fixture仅剥除后来新增Clock，使其真实还原旧库；原数据断言保留，旧目标版本断言改生成当前值。格式最终限定App1／Data2文件并通过；`schema42-final-focused8`实际App4＋Data3通过，fresh09:25:52.916／18.081秒与09:26:44.856／0.312秒。原第8项过滤名称写错而未执行，已用`schema42-rollback-focused1`正确旧不兼容表回滚方法补验，fresh09:28:25.256／1通过／0.210秒。共8真实方法均零failure／error／skip，不冒充同一命令8项或完整模块通过；原APK构建基线与未受影响阅读器定向结果复用。
+
+修复候选分配code57／aex.39，同身份／原证书、目标schema42。版本分配叠加原工作区差异，未reset或混入此前版本修改；Desktop72保持。候选构建冻结输入，完成后仅记录实际APK和这台设备的无清数据覆盖更新／启动结果；较大范围分页和性能仍由用户继续验收。
+
+一次`build-android.py candidate`自然完成，协调器`android-candidate` 09:34:25.483–09:36:43.385 UTC（137.902秒），签名／清单09:36:49.124完成；[修复APK aex.39／code57](D:/Codex/worktrees/0877/mihon/app/artifacts/android/0.19.4-aex.39-vc57-8dad3fbb39-release/Mihon-Fork-0.19.4-aex.39-vc57-release-universal.apk)独立verify通过。SHA256=`3647232d5f9cdc1bd575dbd8799bd98df7da421ab046f28af83818e5f6802850`，productionInputs=`bbaef0afd9bd9be92d8f04c22336c42a118cc18ebb4807378b62aedc09866fdc`；R8／资源压缩／原证书／四ABI／非调试均保持，源码基线8dad及本次SQL差异由artifact.json绑定。
+
+按本次ADB调试授权，经统一install入口对已核对的同一实体设备仅执行无清数据覆盖更新，installed verify成功；设备显示code57／aex.39，firstInstallTime仍为2026-10-04 01:37:07。随后实际MAIN／LAUNCHER启动MainActivity返回ok、WaitTime3055ms，进程8745。短时观察后同一8745仍存活，系统ResumedActivity／mFocusedApp均为本应用MainActivity，该进程crash buffer没有FATAL EXCEPTION／native fatal；末次设备时间17:45:04 CST。这支持本次生产Requery旧42启动路径修复，不据此宣称所有分页／性能／升级矩阵通过。未卸载、未清数据、未改库版本，应用保留在前台供用户继续体验；本批Gradle／测试／安装命令均已退出，不继续设备输入。
