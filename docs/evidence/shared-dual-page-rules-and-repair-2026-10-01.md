@@ -2175,3 +2175,36 @@ Android签名／工具链预检通过：JDK21.0.11、SDK36、Build Tools36.0.0�
 一次`build-android.py candidate`自然完成，协调器`android-candidate` 09:34:25.483–09:36:43.385 UTC（137.902秒），签名／清单09:36:49.124完成；[修复APK aex.39／code57](D:/Codex/worktrees/0877/mihon/app/artifacts/android/0.19.4-aex.39-vc57-8dad3fbb39-release/Mihon-Fork-0.19.4-aex.39-vc57-release-universal.apk)独立verify通过。SHA256=`3647232d5f9cdc1bd575dbd8799bd98df7da421ab046f28af83818e5f6802850`，productionInputs=`bbaef0afd9bd9be92d8f04c22336c42a118cc18ebb4807378b62aedc09866fdc`；R8／资源压缩／原证书／四ABI／非调试均保持，源码基线8dad及本次SQL差异由artifact.json绑定。
 
 按本次ADB调试授权，经统一install入口对已核对的同一实体设备仅执行无清数据覆盖更新，installed verify成功；设备显示code57／aex.39，firstInstallTime仍为2026-10-04 01:37:07。随后实际MAIN／LAUNCHER启动MainActivity返回ok、WaitTime3055ms，进程8745。短时观察后同一8745仍存活，系统ResumedActivity／mFocusedApp均为本应用MainActivity，该进程crash buffer没有FATAL EXCEPTION／native fatal；末次设备时间17:45:04 CST。这支持本次生产Requery旧42启动路径修复，不据此宣称所有分页／性能／升级矩阵通过。未卸载、未清数据、未改库版本，应用保留在前台供用户继续体验；本批Gradle／测试／安装命令均已退出，不继续设备输入。
+
+#### Android连续触滑页标滞后与回跳：纯文字诊断及日志候选（2026-10-09）
+
+接续基线为`cc66bdd964`，用户本轮明确配置为横屏双页RTL、自动匹配开启、翻页动画关闭，要求优先查快速连续触滑时画面持续翻动、页标停在旧位置、停止后回跳的问题。暂停所有图片识别；本轮未读取截图、未操作实体设备。只读`adb devices -l`为空，原交接的实体设备状态没有沿用。流程为1个实施子代理负责production与TDD，主代理完成1轮独立审查及该轮定位问题的补验，再统一候选构建与提交；未扩完整矩阵、Desktop构建或旧72样本。
+
+**已证实原因与修复**：`DualPageR2LPagerViewer`的手势选中回调原来只记录最后一个方向并返回，`currentPage`及shared owner未随实际ViewPager选中移动；IDLE从旧位置只执行一次source导航，因而多次原生选择被折叠并被旧anchor拉回。现在每次native选中执行有界共享方向步进、更新真实activity/ViewModel anchor，手势期间仍冻结native items；IDLE先同步最终选择，再处理deferred chapter window与pending pairing。只推进定位，不在拖动中settle或伪记未显示页面为已读；既有真实绘制/停稳与SQL进度链保持。
+
+另外两个同链反例：迟到宽图事实导致实际items重建时，未ready或terminal transition原来被当前chapter旧logicalTarget覆盖，章末提示回跳；`ChapterTransition.equals`未区分Prev/Next，native槽位定位可能把前章提示移到后章提示。局部保留未ready/terminal native transition，ready destination仍走既有`loadedEntryPage`；Dual adapter新增方向和from/to身份精确的位置查找，由listener、holder位置和replacePairing共用。没有修改共享transition相等语义、数据库、匹配算法或Desktop。
+
+| 验证key | 实际结果与边界 |
+| --- | --- |
+| `android-continuous-drag-red` | 4项执行、4个正确行为失败：首个native源index1选中后owner仍0；late/deferred期望5实际6；回拖原生位置期望2实际4。无skip/retry，production修改前确认 |
+| `android-continuous-drag-green` | 首轮4项通过，不表示所有边界已关闭 |
+| `android-terminal-drag-red` | 首个没有实际items变化的terminal用例通过，不能作红证据 |
+| `android-terminal-late-fact-red` | 加入真实迟到宽图事实，1项执行、1项失败，IDLE后不再是Next提示 |
+| `android-prev-transition-red` | 1项执行、1项失败，实际重建后Prev被定位为Next；主代理独审指出并由原实施者修复 |
+| `android-continuous-drag-final11` | 最终6项native事件＋3项production进度＋2项相邻章接线，共11项通过，零failure/error/skip；限定3个Kotlin文件的Apply/Check通过，墙钟88.666秒，2026-10-09 03:07:49–03:09:18北京时间 |
+
+最终命令经`python scripts/gradle-coordinator.py run --key android-continuous-drag-final11 -- .\gradlew.bat :app:testReleaseUnitTest`执行，11个`--tests`各精确限定方法名；同次执行3文件`:app:spotlessKotlinApply :app:spotlessKotlinCheck`。完整argv及退出状态保留于本地`.gradle-coordinator/android-continuous-drag-final11.json`，日志同名`.log`；非完整模块测试。复验方法范围如下，后续仅有相关变化时按风险选择，不自动重复全部：
+
+- `SharedDualPageAndroidWiringTest`：continuous native drags synchronize every anchor without jumping back at idle；native drag reversal and cancellation retain the actually selected locked group；late native facts publish only after the final gesture anchor and deferred chapter window；native chapter end transition and interrupted back drag do not replay an old forward intent；final native group stays on terminal transition at idle and can drag back；native previous terminal transition retains its direction during late fact publication。
+- `DualPageProgressProductionWiringTest`：unsettled dual viewport does not persist last group during a reversing drag；reversing drag never records the unshown last group；healthy partial image records itself while failed final partner cannot complete chapter。
+- `ReaderAdjacentChapterViewerProductionWiringTest`：loaded adjacent chapters never retain forced or gap transition pages in any viewer；pager single page fast path dispatches when queued chapters become idle。
+
+主代理独立读取production差异、正确红因与最终XML，核实6＋3＋2且零跳过；方向定位问题在同一审查轮由原实施者红绿补验关闭。最终运行后仅更正一条不改变行为的注释；`git diff --check`通过。Robolectric使用真实ViewPager选择回调、shared session与绘制票据，activity/ViewModel anchor接线与既有真实进度测试；未执行实体MotionEvent手势，因此不冒充真机触屏或第97话通过。
+
+**日志与候选**：Release默认INFO阈值，新增稳定消息前缀`DualPageNavigation`，仅selected、idle、实际rebuild三个事件记录native位置、零基source/slots、location sequence、gesture与idle状态；不逐帧输出，不含标题、URL或chapter ID，不新增磁盘日志/网络请求/设置页。Android logcat使用既有环形缓冲，重启或长时间等待可能丢掉旧记录；人工复现后及时按本轮确认设备及目标进程只读提取前缀，不清logcat、不代发触屏输入。日志仅用于定位，DEX中的前缀保留不等于真实设备已输出。
+
+统一`build-android.py check --signing`通过，JDK21、SDK36、Build Tools36.0.0、原证书可用；完成一次`python scripts/build-android.py candidate --offline`，协调器`android-candidate`成功（Gradle 2分42秒），随后独立`verify --artifact`退出0。本轮分配code58／aex.40，包名`app.mihon.desktop.fork`和证书保持，schema42未变；R8、资源压缩、四ABI universal、非调试、v2＋v3签名均核实。实际[带日志候选APK](D:/Codex/worktrees/0877/mihon/app/artifacts/android/0.19.4-aex.40-vc58-cc66bdd964-release/Mihon-Fork-0.19.4-aex.40-vc58-release-universal.apk)存在，SHA256=`33ed084f96176da17df4c225419c20614c9fc0f89bc9332b0f3fba82359ef6dc`；[artifact.json](D:/Codex/worktrees/0877/mihon/app/artifacts/android/0.19.4-aex.40-vc58-cc66bdd964-release/artifact.json)绑定源码基线`cc66bdd964`及实际production差异，productionInputs=`195a84dd5d24cd9c35178b48be9d4be6ccb61ed0268efe7d22cb93a27a4ff6fd`。独立读取release DEX确认诊断前缀保留，只用于日志可用性静态核对，不作为业务验收。
+
+原AppVersion.kt未修改，SHA256仍为`30fe6cc2d8b5bf17b21831398fa04dcaa6b03b6ee41bcb2ed9d827f846e48212`；Android版本在用户既有code57／aex.39差异上递增，未恢复HEAD版本。两处既有版本文件仍不混入本修复提交，构建清单记录实际消费身份。构建后仅更新文字证据与roadmap，不修改APK输入、不为提交号重建。
+
+**人工待验与收口边界**：用户自行覆盖安装上述APK，保持横屏双页、自动匹配开、翻页动画关；快速连续正向/反向触滑后停止，检查页标与当前位置且不回跳；再从《8月31日的长夏》第97话顺读至“后面没有啦”后回翻。回复结果并连接USB调试，Agent下一轮核设备及包版本后只读目标日志，不代操作应用、不识别图片。已修复的是测试证实的production事件与重建回跳原因；真实第97话、实体触屏、JNI/ART及性能结果仍待，DP02不勾选，也不提升完整发布就绪状态。

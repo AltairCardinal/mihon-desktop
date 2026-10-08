@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
 import android.app.Application
+import androidx.viewpager.widget.ViewPager
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.tachiyomi.data.download.DownloadManager
@@ -17,6 +18,7 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.RecordingReaderActivity
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
@@ -56,6 +58,7 @@ class SharedDualPageAndroidWiringTest {
     private lateinit var previousInjekt: InjektScope
     private lateinit var viewer: DualPageR2LPagerViewer
     private lateinit var activity: RecordingReaderActivity
+    private lateinit var model: ReaderViewModel
 
     @Before
     fun setUp() {
@@ -73,7 +76,7 @@ class SharedDualPageAndroidWiringTest {
         Dispatchers.setMain(mainDispatcher)
         activity = Robolectric.buildActivity(RecordingReaderActivity::class.java).get()
         activity.binding = mockk<ReaderActivityBinding>(relaxed = true)
-        val model = mockk<ReaderViewModel>(relaxed = true)
+        model = mockk<ReaderViewModel>(relaxed = true)
         every { model.state } returns MutableStateFlow(ReaderViewModel.State())
         ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
         viewer = DualPageR2LPagerViewer(activity)
@@ -88,6 +91,167 @@ class SharedDualPageAndroidWiringTest {
     }
 
     private var replaceViewerDuringMatching = false
+
+    @Test
+    fun `continuous native drags synchronize every anchor without jumping back at idle`() {
+        val chapter = gestureChapter()
+        val pages = requireNotNull(chapter.pages)
+        val listener = gestureListener()
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
+        selectNative(pages[1])
+        assertEquals(1, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
+        verify { model.onPageSelected(pages[1], listOf(pages[1]), recordProgress = false) }
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_SETTLING)
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
+        selectNative(pages[3])
+        selectNative(pages[5])
+        assertEquals(5, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
+        val position = viewer.pager.currentItem
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_IDLE)
+        assertEquals(position, viewer.pager.currentItem)
+        assertEquals(5, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
+        verify { model.onPageSelected(pages[5], listOf(pages[5]), recordProgress = false) }
+    }
+
+    @Test
+    fun `native drag reversal and cancellation retain the actually selected locked group`() {
+        val chapter = gestureChapter()
+        val pages = requireNotNull(chapter.pages)
+        val listener = gestureListener()
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
+        selectNative(pages[1])
+        lockNativeSelection(chapter)
+        selectNative(pages[3])
+        lockNativeSelection(chapter)
+        selectNative(pages[1])
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        assertTrue(owner.location?.pageId?.sourcePageIndex in 1..2)
+        val position = viewer.pager.currentItem
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_IDLE)
+        assertEquals(position, viewer.pager.currentItem)
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
+        selectNative(pages[0])
+        selectNative(pages[1])
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_IDLE)
+        assertEquals(position, viewer.pager.currentItem)
+        assertTrue(owner.location?.pageId?.sourcePageIndex in 1..2)
+    }
+
+    @Test
+    fun `late native facts publish only after the final gesture anchor and deferred chapter window`() {
+        val chapter = gestureChapter()
+        val pages = requireNotNull(chapter.pages)
+        val listener = gestureListener()
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
+        selectNative(pages[1])
+        val frozen = viewer.adapter.items.toList()
+        viewer.adapter.updatePageDimensions(pages[3], 300, 100)
+        assertEquals(frozen, viewer.adapter.items)
+        selectNative(pages[5])
+        viewer.setChapters(ViewerChapters(chapter, null, chapter(3)))
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_IDLE)
+        assertEquals(5, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
+        assertTrue((viewer.adapter.items[viewer.pager.currentItem] as DisplayPage).containsPage(pages[5]))
+        assertTrue(
+            viewer.adapter.items.filterIsInstance<DisplayPage>().any {
+                it.visiblePages == listOf(pages[3])
+            },
+        )
+    }
+
+    @Test
+    fun `native chapter end transition and interrupted back drag do not replay an old forward intent`() {
+        val chapter = gestureChapter()
+        val pages = requireNotNull(chapter.pages)
+        val listener = gestureListener()
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
+        selectNative(pages[5])
+        viewer.pager.setCurrentItem(0, false)
+        assertTrue(
+            viewer.adapter.items[viewer.pager.currentItem] is
+                eu.kanade.tachiyomi.ui.reader.model.ChapterTransition.Next,
+        )
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_SETTLING)
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
+        selectNative(pages[5])
+        val position = viewer.pager.currentItem
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_IDLE)
+        assertEquals(position, viewer.pager.currentItem)
+        assertTrue((viewer.adapter.items[position] as DisplayPage).containsPage(pages[5]))
+        assertTrue(viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex in 5..6)
+    }
+
+    private fun gestureChapter(): ReaderChapter {
+        Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(true)
+        Injekt.get<ReaderPreferences>().pageTransitions().set(false)
+        mainDispatcher.scheduler.runCurrent()
+        assertTrue(viewer.config.automaticSpreadMatching)
+        assertTrue(!viewer.config.usePageTransitions)
+        return chapter(9).also {
+            viewer.setChapters(ViewerChapters(it, null, null))
+            requireNotNull(it.pages).forEach { page -> viewer.adapter.updatePageDimensions(page, 100, 200) }
+        }
+    }
+
+    @Test
+    fun `final native group stays on terminal transition at idle and can drag back`() {
+        val chapter = gestureChapter()
+        val pages = requireNotNull(chapter.pages)
+        val listener = gestureListener()
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
+        selectNative(pages.last())
+        lockNativeSelection(chapter)
+        viewer.pager.setCurrentItem(0, false)
+        viewer.adapter.updatePageDimensions(pages[3], 300, 100)
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_IDLE)
+        assertTrue(
+            viewer.adapter.items[viewer.pager.currentItem] is
+                eu.kanade.tachiyomi.ui.reader.model.ChapterTransition.Next,
+        )
+        assertTrue(
+            viewer.adapter.items.filterIsInstance<DisplayPage>().any {
+                it.visiblePages == listOf(pages[3])
+            },
+        )
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
+        selectNative(pages.last())
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_IDLE)
+        assertTrue((viewer.adapter.items[viewer.pager.currentItem] as DisplayPage).containsPage(pages.last()))
+        assertTrue(viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex in 7..8)
+    }
+
+    private fun gestureListener() =
+        ReflectionHelpers.getField<ViewPager.SimpleOnPageChangeListener>(viewer, "pagerListener")
+
+    @Test
+    fun `native previous terminal transition retains its direction during late fact publication`() {
+        val chapter = gestureChapter()
+        val listener = gestureListener()
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
+        viewer.pager.setCurrentItem(viewer.adapter.items.lastIndex, false)
+        assertTrue(
+            viewer.adapter.items[viewer.pager.currentItem] is
+                eu.kanade.tachiyomi.ui.reader.model.ChapterTransition.Prev,
+        )
+        viewer.adapter.updatePageDimensions(requireNotNull(chapter.pages)[3], 300, 100)
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_IDLE)
+        assertTrue(
+            viewer.adapter.items[viewer.pager.currentItem] is
+                eu.kanade.tachiyomi.ui.reader.model.ChapterTransition.Prev,
+        )
+    }
+
+    private fun selectNative(page: ReaderPage) {
+        val position = viewer.adapter.items.indexOfFirst { it is DisplayPage && it.containsPage(page) }
+        assertTrue(position >= 0)
+        viewer.pager.setCurrentItem(position, false)
+    }
+
+    private fun lockNativeSelection(chapter: ReaderChapter) {
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        val ticket = requireNotNull(owner.captureViewport())
+        assertTrue(owner.reportDrawn(ticket, requireNotNull(owner.frame(ticket)).unit.pageIds.toSet()))
+    }
 
     @Test
     @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)

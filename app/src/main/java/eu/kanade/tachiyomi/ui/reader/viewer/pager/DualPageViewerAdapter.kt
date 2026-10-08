@@ -124,6 +124,31 @@ class DualPageViewerAdapter(
         return target
     }
 
+    /** Native slots stay frozen during dragging; only their logical source anchor advances. */
+    internal fun selectGesturePage(displayPage: DisplayPage, forward: Boolean) {
+        val entry = chapterPairings[displayPage.firstPage.chapter] ?: return
+        val indices = displayPage.visiblePages.map { it.index }
+        val firstIndex = indices.min()
+        val lastIndex = indices.max()
+        if (displayPage.visiblePages.any { entry.pages.getOrNull(it.index) !== it }) return
+        val owner = entry.session
+        // A native selection may skip several slots when settling is interrupted by another drag.
+        // Use the shared directional move so drawn history and reverse reservations remain authoritative.
+        repeat(entry.pages.size) {
+            val index = owner.location?.pageId?.sourcePageIndex ?: return
+            if (index in indices) {
+                pendingPairing = true
+                startMatching()
+                return
+            }
+            if ((forward && index > lastIndex) || (!forward && index < firstIndex)) return
+            if (!owner.navigate(forward)) return
+            // A missing drawable partner can keep the shared next source unchanged.
+            // Let the existing native selection fallback handle it without looping that intent.
+            if (owner.location?.pageId?.sourcePageIndex == index) return
+        }
+    }
+
     internal fun close() {
         scope.cancel()
         chapterPairings.values.forEach {
@@ -309,6 +334,16 @@ class DualPageViewerAdapter(
 
     override fun getCount(): Int = items.size
 
+    /** Shared transition equality does not distinguish its native direction. */
+    internal fun positionOf(item: Any?): Int = items.indexOfFirst { candidate ->
+        if (item is ChapterTransition) {
+            candidate is ChapterTransition && candidate.javaClass == item.javaClass &&
+                candidate.from === item.from && candidate.to === item.to
+        } else {
+            candidate == item
+        }
+    }
+
     override fun createView(container: ViewGroup, position: Int): View {
         return when (val item = items[position]) {
             is DisplayPage -> DualPagerPageHolder(readerThemedContext, viewer, item)
@@ -326,7 +361,7 @@ class DualPageViewerAdapter(
             }
         }
         if (view is ViewPagerAdapter.PositionableView) {
-            val position = items.indexOf(view.item)
+            val position = positionOf(view.item)
             if (position != -1) return position
             logcat { "Position for ${view.item} not found" }
         }
@@ -349,13 +384,16 @@ class DualPageViewerAdapter(
             ?.let { currentPairing.pages.getOrNull(it) }
         val window = listOfNotNull(chapters.prevChapter, chapters.currChapter, chapters.nextChapter)
         val selectedTransition = (selected as? ChapterTransition)?.takeIf { transition ->
-            window.any { it === transition.from } && window.any { it === transition.to } &&
-                isReadyForDisplay(transition.to)
+            window.any { it === transition.from } &&
+                (transition.to == null || window.any { it === transition.to })
         }
-        // Only this window's restored transition may supersede the current owner's position.
-        val anchor = targetPage ?: selectedTransition?.loadedEntryPage() ?: logicalTarget ?: when (selected) {
-            is DisplayPage -> selected.firstPage
-            else -> null
+        val transitionEntry = selectedTransition?.takeIf { isReadyForDisplay(it.to) }?.loadedEntryPage()
+        // A loading/terminal boundary is itself the native selection, not the old owner's anchor.
+        val retainedTransition = selectedTransition?.takeIf { targetPage == null && transitionEntry == null }
+        val anchor = targetPage ?: transitionEntry ?: if (retainedTransition != null) {
+            null
+        } else {
+            logicalTarget ?: (selected as? DisplayPage)?.firstPage
         }
         val logical = buildList<Any> {
             chapters.prevChapter?.let { chapter ->
@@ -392,10 +430,11 @@ class DualPageViewerAdapter(
             return
         }
         val layoutOnly = selected is DisplayPage && selected.firstPage.chapter === currentChapter
-        viewer.replacePairing(anchor, layoutOnly) {
+        viewer.replacePairing(anchor, layoutOnly, retainedTransition) {
             items = replacement
             notifyDataSetChanged()
         }
+        viewer.logNavigationState("rebuild")
     }
 
     internal fun publishPendingPairing() {

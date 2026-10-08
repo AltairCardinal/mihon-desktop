@@ -21,6 +21,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import logcat.LogPriority
 import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.ReaderAdjacentChapterPolicy
 import mihon.domain.reader.ReaderDualPageSettlement
@@ -62,7 +63,6 @@ class DualPageR2LPagerViewer(
     private var destroyed = false
     private var gestureInProgress = false
     internal val hasActiveGesture: Boolean get() = gestureInProgress
-    private var gestureNavigationForward: Boolean? = null
     private var viewportSize: Pair<Int, Int>? = null
     private fun geometrySettings() = listOf(
         config.imageScaleType,
@@ -112,28 +112,32 @@ class DualPageR2LPagerViewer(
 
         override fun onPageSelected(position: Int) {
             if (replacingPairing || destroyed) return
-            if (gestureInProgress && currentPage is DisplayPage) {
-                val previousPosition = adapter.items.indexOf(currentPage)
-                if (previousPosition >= 0 && previousPosition != position) {
-                    gestureNavigationForward = position < previousPosition
-                    return
+            if (gestureInProgress) {
+                val previousPosition = adapter.positionOf(currentPage)
+                val selected = adapter.items.getOrNull(position) as? DisplayPage
+                if (selected != null && previousPosition >= 0 && previousPosition != position) {
+                    adapter.selectGesturePage(selected, forward = position < previousPosition)
                 }
             }
             if (!activity.isScrollingThroughPages) {
                 activity.hideMenu()
             }
             onPageChange(position)
+            logNavigationState("selected")
         }
 
         override fun onPageScrollStateChanged(state: Int) {
+            if (destroyed) return
             if (state == ViewPager.SCROLL_STATE_DRAGGING) gestureInProgress = true
-            isIdle = state == ViewPager.SCROLL_STATE_IDLE
             if (state == ViewPager.SCROLL_STATE_IDLE) {
                 gestureInProgress = false
-                val forward = gestureNavigationForward
-                gestureNavigationForward = null
-                if (forward != null && !navigateSource(forward, animate = false)) onPageChange(pager.currentItem)
+                // Reconcile the final native slot before deferred chapter/fact publication can move it.
+                onPageChange(pager.currentItem)
+                isIdle = true
                 adapter.publishPendingPairing()
+                logNavigationState("idle")
+            } else {
+                isIdle = false
             }
         }
     }
@@ -390,6 +394,27 @@ class DualPageR2LPagerViewer(
         if (holder.displayPage == currentPage) reportSettledDualViewport()
     }
 
+    internal fun logNavigationState(event: String) {
+        val selected = adapter.items.getOrNull(pager.currentItem)
+        val chapter = when (selected) {
+            is DisplayPage -> selected.firstPage.chapter
+            is ChapterTransition -> selected.from
+            else -> null
+        }
+        val owner = chapter?.let(adapter::session)
+        val slot = when (selected) {
+            is DisplayPage -> selected.visiblePages.joinToString(",") { it.index.toString() }
+            is ChapterTransition.Next -> "next"
+            is ChapterTransition.Prev -> "previous"
+            else -> "none"
+        }
+        logcat(LogPriority.INFO) {
+            "DualPageNavigation event=$event native=${pager.currentItem} slots=$slot " +
+                "source=${owner?.location?.pageId?.sourcePageIndex} sequence=${owner?.location?.sequence} " +
+                "gesture=$gestureInProgress idle=$isIdle"
+        }
+    }
+
     /** Starts the new presentation scope even if the selected native page and its slots were retained. */
     internal fun refreshPresentation() {
         discardObsoletePresentations()
@@ -510,19 +535,28 @@ class DualPageR2LPagerViewer(
 
     fun refreshPairing() = adapter.refreshPairing()
 
-    internal fun replacePairing(anchor: ReaderPage?, layoutOnly: Boolean, replace: () -> Unit) {
+    internal fun replacePairing(
+        anchor: ReaderPage?,
+        layoutOnly: Boolean,
+        transition: ChapterTransition? = null,
+        replace: () -> Unit,
+    ) {
         val wasReplacing = replacingPairing
         replacingPairing = true
         try {
             replace()
-            if (anchor != null && !wasReplacing) {
-                val position = adapter.items.indexOfFirst { it is DisplayPage && it.containsPage(anchor) }
+            if ((anchor != null || transition != null) && !wasReplacing) {
+                val position = if (anchor != null) {
+                    adapter.items.indexOfFirst { it is DisplayPage && it.containsPage(anchor) }
+                } else {
+                    adapter.positionOf(transition)
+                }
                 if (position >= 0) pager.setCurrentItem(position, false)
             }
         } finally {
             replacingPairing = wasReplacing
         }
-        if (!replacingPairing && pager.isVisible && anchor != null) {
+        if (!replacingPairing && pager.isVisible && (anchor != null || transition != null)) {
             onPageChange(pager.currentItem, layoutOnly = layoutOnly)
         }
     }
