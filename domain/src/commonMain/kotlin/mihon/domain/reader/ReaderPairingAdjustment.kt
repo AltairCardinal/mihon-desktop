@@ -17,6 +17,7 @@ fun adjustReaderPairing(
     return if (preceding != null) {
         ReaderPairingAdjustment(forcedSinglePages - preceding, preceding)
     } else {
-        ReaderPairingAdjustment(forcedSinglePages + first, pages.max())
+        // The evidenced opening pair splits at page one; page zero is not a persistable boundary.
+        ReaderPairingAdjustment(forcedSinglePages + first.coerceAtLeast(1), pages.max())
     }
 }

@@ -2229,3 +2229,30 @@ TDD与审查：首轮gutter用例因缺INFO日志正确AssertionError；同轮UN
 签名/工具链预检通过；统一`python scripts/build-android.py candidate --offline`完成一次Release候选（Gradle2分30秒），独立verify通过。新增[诊断APK aex.41/code59](D:/Codex/worktrees/0877/mihon/app/artifacts/android/0.19.4-aex.41-vc59-29f9b5ed41-release/Mihon-Fork-0.19.4-aex.41-vc59-release-universal.apk)，SHA256=`e874cbf295f8280c663f2849d130b473853806f21a1eb33b80d3097051c15749`，productionInputs=`59909a36527bb6019c2621be957ab821c8b4bc3c2824eb0d59fe0711b69231ff`。包名、原证书、schema42、R8/资源压缩及四ABI保持；版本在既有code58/aex.40上递增，Desktop72文件SHA未变，两处累计版本差异仍不混入本诊断提交。
 
 按用户本轮明确授权，经统一install入口对同一平板无清数据覆盖安装，安装后拉回APK的身份/版本/证书/哈希一致。设备确认code59/aex.41，firstInstallTime仍为2026-10-04 01:37:07，lastUpdateTime为2026-10-09 03:54:11。未启动或输入应用、未截图；准备按目标UID采集DualPageNavigation与DualPagePresentation文本，由用户打开第96话重现后分析。诊断交付完成不等于配对问题修复，实体阅读/日志因果仍待用户复现，DP02不勾选。
+
+
+#### 第96话开篇页侧与显式解除手动边界（2026-10-09）
+
+aex.41真机两次用户复现的文字日志已保存到忽略目录`app-desktop/tmp/android-dual-page-log-20261009/aex41-live-195519Z.txt`。首次自动匹配实际关闭，用户核界面确认，03:55:57的source1为NOT_OBSERVED/UNKNOWN/MANUAL_BOUNDARY/RIGHT，不能以此证明识别失败。按建议开启匹配并退出重进后，03:57:57.912的source1在lockedBefore=false时observedHint/submittedHint/storedHint均LEFT、sample=ORIGINAL_DECODED、matching/sideEnabled=true、accepted=true；同时间prepare仍因MANUAL_BOUNDARY选择RIGHT并锁定。source0为FIRST_PAGE/LEFT。由此证实本次物理槽错误来自手动边界优先于页侧的规则，而非采样晚到；首图配对禁令是另外一处需求限制。未识别图片、未代操作设备；两次日志取得后只停止已核身份的目标logcat子进程。
+
+用户随后授权“根据你的方案实现一版apk，我来验收”。本批复用1个实施代理承担共享production和TDD，主代理1轮独审、文档、候选/交付；仅focused回归/格式及1次签名APK，不执行模块完整测试/全量或Desktop构建。新增行为为：手动边界仍独占但可靠页侧控制左右；首图默认独立，足够兼容的附近现成证据允许0/1开篇配对；明确解除source1边界通过原调整按钮/保存链路释放冲突首图历史。无新增UI、持久格式、等待、采样/解码或IO，旧手动记录不会由自动识别删除。迟到自动提示不挪已锁画面，保存失败和迟到保存继续保留既有保护。重新进入不保证已有足够提示；本例推荐在已识别LEFT的漫画首页明确点击既有“调整页面配对”后验收广告右/漫画左。
+
+本批文件范围包含共享规则、呈现历史、调整计算3个生产文件，3个共享/Android行为测试文件及原设计/roadmap/聚合证据3份文档，共9个相关文件；作为一个开篇配对功能批次保持内聚。主要风险是首次页侧规则、旧票据失效和手动保存的合法边界，并非文件数量；不拆成不可独立验收的机械微任务，两处既有版本文件排除提交。
+
+
+**实现与有效TDD证据**：3个共享生产文件改变同一行为：规则把可信纵页提示应用到手动单页的物理槽，首对例外严格限制在目标0/1的附近既有证据；显式manualBoundaries的冲突范围补前邻页，迟到save的protectVisible分支保持；首组重拆记录合法索引1。Android/AppBars→ReaderViewModel→coordinator→真实SQLDelight保存→viewer刷新使用原链，无新增平台独立配对逻辑。关闭匹配保持既有语义，新的严格首组门槛仅用于自动页侧匹配。
+
+`android-opening-evidence-red`共享5项中manual新/旧约束及首对为正确红，晚提示锁槽保护通过；初history夹具把空边界写成不合法非空record形状，不计行为红，改用真实null record协议后`opening-history-correct-red`1执行/1失败，明确旧FIRST_PAGE票据未释放。`opening-legal-split-red`另1执行/1失败，期望索引1实际0。Android新按钮红期望LEFT实际RIGHT，正确失败。第一次green共享5通过、Android被Windows无imagedecoder JNI的测试入口拦住；沿已有region decoder测试工厂修正夹具，不改production；green2共享5+legal1+Android1真实通过。
+
+最终证据按相关性组合，不冒充同一命令全部通过：`opening-side-evidence-final13`共享9项全通过，Android原2项通过、新方法因混合Robolectric graphics sandbox下SQLite driver不可见未到业务断言；原图Desktop1缺env跳过，格式Apply因超120行失败，均未记通过。`opening-side-evidence-final-repair5`修正新方法的非必要NATIVE注解，Android3全部通过（XML UTC20:22:44.308，26.559秒，零failure/error/skip），新短名共享method1通过；但格式仍因formatter展开后超长失败、Desktop仍UP-TO-DATE复用旧skip，不记成功。格式与Desktop组合补命令遇临时init依赖尚未配置app插件的工具错误，仅配置阶段失败，未执行产品测试。
+
+最后拆开工具范围：`opening-side-domain-format-fixed1` UTC20:30:20–20:30:46退出0，5个Domain Kotlin文件strict Apply/Check通过，新共享method1 fresh20:30:45.572通过；App1格式复用repair5有效结果，共6文件。`opening-side-desktop-native-final1`设置既有archive目录、B1 SHA核对一致，仅Test task使用--rerun（没有全局依赖重跑）；UTC20:30:58–20:31:22退出0，fresh20:31:14.379／1真实通过／0skip／7.145秒，执行生产本地CBZ→Skia/Compose→手调/缓存/回翻，不用源码扫描或模拟枚举替代。最终覆盖13个不同focused方法（Domain9、Android3、Desktop1），生产在首次green之后仅加目标0/1局部短路及格式整理，后续为测试环境和机械格式修正；不称最终代码重跑全量或完整模块。
+
+主代理独立核对生产差异、正确红因、命令task/filter分组和新鲜XML，指出首组索引0持久约束、局部首组读取及被误计的格式失败/skip；在同一审查轮关闭。实现代理负责全部production及验证，停止写入后构建。没有新增图片/vision工具调用或实体输入；原图自动化执行原生产渲染不等于真机第96话通过。第96话实机变化待用户验收，DP02不勾选。
+
+
+**候选与安装**：统一`build-android.py candidate --offline`一次R8签名候选通过，协调器UTC20:32:52–20:35:27（155.291秒），随后独立verify退出0。[验收APK aex.42/code60](D:/Codex/worktrees/0877/mihon/app/artifacts/android/0.19.4-aex.42-vc60-6405140bff-release/Mihon-Fork-0.19.4-aex.42-vc60-release-universal.apk) SHA256=`17010f09930d8f4fe8b955b5885cca3c5b287e00fda8fbc8768f91db0528c697`，productionInputs=`1628648966b5918e34e4b64a4b8e4c149d899f79e8029998404f8d872a12f455`。原包名/证书、schema42、R8/资源压缩、四ABI与非调试身份保持；基线6405140bff及构建生产差异由artifact.json绑定。Desktop72文件SHA仍为30fe6cc2d8b5bf17b21831398fa04dcaa6b03b6ee41bcb2ed9d827f846e48212；Android在原code59/aex.41差异上分配60/aex.42，两处版本累计修改不混入本功能提交。
+
+按既有安装授权，经统一install入口在同一API31平板无清数据覆盖更新，拉回已安装APK核身份/版本/证书/哈希与候选一致；设备确认code60/aex.42，firstInstallTime保持2026-10-04 01:37:07，lastUpdateTime2026-10-09 04:36:01。没有代启动/输入应用或图片识别。用户自行验收：横屏双页RTL、自动匹配开、裁边关，进入第96话漫画首页先确认单页在左；底部“调整页面配对”明确解除原边界，检查广告右/漫画左与页码不回跳，下一组再回翻不漏重；再次调整能拆回单页。诊断INFO日志仍可实时采集，真人结果尚待，不宣称第96话实机/ART全部通过或DP02完成。提交后再次核产品指纹与候选一致，文件名旧基线不是代码遗漏，纯证据变更不重复构建。
+
+**本轮真人验收已确认**：用户在已安装aex.42后即时反馈“1. 漫画首页显示在左侧；2. 再点底部‘调整页面配对’后组成广告右、漫画左”。这两项第96话BUG已修复并通过本次真机验收，证据来源是用户文字反馈；未取得截图、未代操作。未报告的重拆/回翻/性能仍不外推通过，DP02保持未完成。交付收尾时启动的仅新事件logcat采集提前退出，没有用于本次因果或验收证据，也不为已确认结果要求重复复现；相关忽略目录metadata保留真实退出状态。仅补文字证据到本批未发布提交，APK生产输入不变，不重建。

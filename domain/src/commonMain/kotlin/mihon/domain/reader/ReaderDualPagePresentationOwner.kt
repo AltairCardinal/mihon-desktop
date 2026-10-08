@@ -574,7 +574,10 @@ internal class ReaderDualPagePresentationOwner(
                 openingClosed = false
             }
             val conflicting = records.values.filter { record ->
-                record.unit.pageIds.any { it in changed || pages.getOrNull(ordinals.getValue(it) - 1) in changed }
+                record.unit.pageIds.any {
+                    it in changed || pages.getOrNull(ordinals.getValue(it) - 1) in changed ||
+                        pages.getOrNull(ordinals.getValue(it) + 1) in changed
+                }
             }
             for (record in conflicting) {
                 if (protectVisible && record.visible) {

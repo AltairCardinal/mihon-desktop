@@ -135,11 +135,34 @@ object SharedDualPageRules {
         } else {
             ReaderPortraitSingleSlot.LEFT
         }
+        val side = facts[target]?.sideHint ?: ReaderPageSideHint.UNKNOWN
+        val evidencedSlot = if (usePageSideHints && portrait(targetIndex)) {
+            when (side) {
+                ReaderPageSideHint.LEFT -> ReaderPortraitSingleSlot.LEFT
+                ReaderPageSideHint.RIGHT -> ReaderPortraitSingleSlot.RIGHT
+                ReaderPageSideHint.UNKNOWN -> null
+            }
+        } else {
+            null
+        }
+        val openingTrailingHint = if (direction == ReaderDirection.RTL) {
+            ReaderPageSideHint.LEFT
+        } else {
+            ReaderPageSideHint.RIGHT
+        }
+        // The first-page exception requires existing compatible facts on both free portrait pages.
+        val evidencedOpeningPair =
+            targetIndex in 0..1 && usePageSideHints && portrait(0) && portrait(1) && free(0) && free(1) &&
+                facts[pages[1]]?.sideHint == openingTrailingHint && facts[pages[0]]?.sideHint != openingTrailingHint
         if (pages.size == 1) return single(ReaderDualPageSingleReason.ONLY_PAGE)
         if (state(targetIndex) == ReaderPageFactState.SPREAD) return single(ReaderDualPageSingleReason.SPREAD)
-        if (targetIndex == 0) return single(ReaderDualPageSingleReason.FIRST_PAGE)
-        if (target in forcedSinglePages) return single(ReaderDualPageSingleReason.MANUAL_BOUNDARY, leadingSlot)
-        val side = facts[target]?.sideHint ?: ReaderPageSideHint.UNKNOWN
+        if (targetIndex == 0) {
+            return if (evidencedOpeningPair) pair(0, 1) else single(ReaderDualPageSingleReason.FIRST_PAGE)
+        }
+        if (target in forcedSinglePages) {
+            return single(ReaderDualPageSingleReason.MANUAL_BOUNDARY, evidencedSlot ?: leadingSlot)
+        }
+        if (targetIndex == 1 && evidencedOpeningPair) return pair(0, 1)
         if (usePageSideHints && state(targetIndex) == ReaderPageFactState.PORTRAIT &&
             side != ReaderPageSideHint.UNKNOWN
         ) {
@@ -163,6 +186,7 @@ object SharedDualPageRules {
         }
         val step = if (forward) 1 else -1
         val partner = targetIndex + step
+        if (usePageSideHints && partner == 0) return single(ReaderDualPageSingleReason.UNRESOLVED, leadingSlot)
         val beyond = targetIndex + step * 2
         val partnerHint = pages.getOrNull(partner)?.let { facts[it]?.sideHint } ?: ReaderPageSideHint.UNKNOWN
         val partnerSlot = if (forward) {

@@ -131,7 +131,7 @@ class SharedDualPageStablePresentationContractTest {
             forcedSinglePages = setOf(ids[3]),
             usePageSideHints = true,
         )
-        assertEquals(ReaderPortraitSingleSlot.RIGHT, manual.unit.slots.single().position)
+        assertEquals(ReaderPortraitSingleSlot.LEFT, manual.unit.slots.single().position)
         val lockedOwner = owner(target = 3)
         lockedOwner.configure(ReaderDirection.RTL, automaticMatching = true)
         fact(lockedOwner, 3)
@@ -240,6 +240,182 @@ class SharedDualPageStablePresentationContractTest {
             },
         )
         return SharedDualPageSession(identity, ReaderDirection.RTL, identity.pageIds[target], mangaId)
+    }
+
+    @Test
+    fun `manual singles use reliable side evidence without dropping their boundary`() {
+        val ids = owner().identity.pageIds
+        for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+            for (automatic in listOf(false, true)) {
+                for (hint in ReaderPageSideHint.entries) {
+                    val decision = SharedDualPageRules.decide(
+                        ids,
+                        mapOf(ids[1] to ReaderPageFact.dimensions(100, 150).copy(sideHint = hint)),
+                        direction,
+                        1,
+                        forcedSinglePages = setOf(ids[1]),
+                        usePageSideHints = automatic,
+                    )
+                    assertEquals(listOf(ids[1]), decision.unit.pageIds)
+                    assertEquals(ReaderDualPageSingleReason.MANUAL_BOUNDARY, decision.unit.singleReason)
+                    val expected = if (automatic && hint != ReaderPageSideHint.UNKNOWN) {
+                        if (hint == ReaderPageSideHint.LEFT) {
+                            ReaderPortraitSingleSlot.LEFT
+                        } else {
+                            ReaderPortraitSingleSlot.RIGHT
+                        }
+                    } else {
+                        if (direction == ReaderDirection.RTL) {
+                            ReaderPortraitSingleSlot.RIGHT
+                        } else {
+                            ReaderPortraitSingleSlot.LEFT
+                        }
+                    }
+                    assertEquals(expected, decision.unit.slots.single().position)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `first pair requires compatible nearby portrait evidence in either direction`() {
+        val ids = owner().identity.pageIds
+        for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+            val trailing = if (direction == ReaderDirection.RTL) ReaderPageSideHint.LEFT else ReaderPageSideHint.RIGHT
+            val leading = if (direction == ReaderDirection.RTL) ReaderPageSideHint.RIGHT else ReaderPageSideHint.LEFT
+            val facts = mapOf(
+                ids[0] to ReaderPageFact.dimensions(100, 150),
+                ids[1] to ReaderPageFact.dimensions(100, 150).copy(sideHint = trailing),
+            )
+            for (target in 0..1) {
+                for (forward in listOf(false, true)) {
+                    fun decide(
+                        observed: Map<ReaderPageId, ReaderPageFact> = facts,
+                        forced: Set<ReaderPageId> = emptySet(),
+                        occupied: Set<ReaderPageId> = emptySet(),
+                        automatic: Boolean = true,
+                    ) = SharedDualPageRules.decide(
+                        ids,
+                        observed,
+                        direction,
+                        target,
+                        forward,
+                        forced,
+                        occupied,
+                        usePageSideHints = automatic,
+                    ).unit
+                    assertEquals(listOf(ids[0], ids[1]), decide().pageIds)
+                    val leadingFacts = facts + (ids[0] to facts.getValue(ids[0]).copy(sideHint = leading))
+                    assertEquals(listOf(ids[0], ids[1]), decide(leadingFacts).pageIds)
+                    val conflicting = facts + (ids[0] to facts.getValue(ids[0]).copy(sideHint = trailing))
+                    assertFalse(decide(conflicting).pageIds.containsAll(listOf(ids[0], ids[1])))
+                    if (target == 0 || forward) {
+                        assertFalse(decide(automatic = false).pageIds.containsAll(listOf(ids[0], ids[1])))
+                    }
+                    for (page in listOf(ids[0], ids[1])) {
+                        assertFalse(decide(forced = setOf(page)).pageIds.containsAll(listOf(ids[0], ids[1])))
+                        assertFalse(decide(occupied = setOf(page)).pageIds.containsAll(listOf(ids[0], ids[1])))
+                        val rejectedStates = listOf(
+                            ReaderPageFactState.UNKNOWN,
+                            ReaderPageFactState.SPREAD,
+                            ReaderPageFactState.FAILED,
+                        )
+                        for (state in rejectedStates) {
+                            val rejected = decide(facts + (page to ReaderPageFact(state)))
+                            assertFalse(rejected.pageIds.containsAll(listOf(ids[0], ids[1])))
+                        }
+                    }
+                    val unknownFact = facts.getValue(ids[1]).copy(sideHint = ReaderPageSideHint.UNKNOWN)
+                    val unknownHint = facts + (ids[1] to unknownFact)
+                    assertFalse(decide(unknownHint).pageIds.containsAll(listOf(ids[0], ids[1])))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `explicit opening adjustment clears first history and late save protects current pixels`() {
+        for (late in listOf(false, true)) {
+            val owner = owner(target = 0, mangaId = 88)
+            owner.configure(ReaderDirection.RTL, automaticMatching = true)
+            val ids = owner.identity.pageIds
+            (0..7).forEach { fact(owner, it) }
+            owner.acceptPairingRestore(
+                owner.beginPairingRestore()!!,
+                ChapterPairingSnapshot(ChapterPairingRecord(1, 8, setOf(1)), 1),
+            )
+            val first = owner.captureViewport()!!
+            assertTrue(owner.reportDrawn(first, setOf(ids[0])))
+            assertEquals(ReaderPortraitSingleSlot.LEFT, owner.frame(first)!!.unit.slots.single().position)
+            owner.goToPage(ids[1])
+            val proposal = owner.captureViewport(preparingPageIds = emptySet())!!
+            assertTrue(owner.acceptDecodedFact(proposal, ids[1], 100, 150, ReaderPageSideHint.LEFT))
+            val manual = owner.captureViewport()!!
+            owner.reportDrawn(manual, setOf(ids[1]))
+            val save = owner.adjustPairing()!!
+            assertEquals(emptySet<Int>(), save.adjustment.forcedSinglePages)
+            val protected = if (late) {
+                owner.goToPage(ids[4])
+                owner.captureViewport()!!.also { owner.reportDrawn(it, owner.targetUnit!!.pageIds.toSet()) }
+            } else {
+                null
+            }
+            val original = protected?.let(owner::frame)
+            val location = owner.location
+            assertTrue(owner.acceptPairingSave(save, ChapterPairingSnapshot(null, 2)))
+            assertEquals(location, owner.location)
+            if (late) {
+                assertEquals(original, owner.frame(protected!!))
+                assertNotNull(owner.frame(first), "A late save must not revoke still-visible first-page pixels")
+                owner.releaseViewport(first)
+                owner.releaseViewport(manual)
+                owner.goToPage(ids[1])
+            } else {
+                assertNull(owner.frame(first), "Explicit adjustment must dispose the conflicting old first-page scope")
+            }
+            val pair = owner.targetUnit!!
+            assertEquals(listOf(ids[0], ids[1]), pair.pageIds)
+            assertEquals(
+                listOf(ReaderPortraitSingleSlot.RIGHT, ReaderPortraitSingleSlot.LEFT),
+                pair.slots.map { it.position },
+            )
+            assertEquals(ids[1], owner.location!!.pageId)
+            val current = owner.captureViewport()!!
+            owner.reportDrawn(current, setOf(ids[0], ids[1]))
+            val split = owner.adjustPairing()!!
+            assertEquals(setOf(1), split.adjustment.forcedSinglePages)
+            assertTrue(owner.acceptPairingSave(split, ChapterPairingSnapshot(ChapterPairingRecord(1, 8, setOf(1)), 3)))
+            assertEquals(ids[1], owner.location!!.pageId)
+            assertEquals(listOf(ids[1]), owner.targetUnit!!.pageIds)
+            assertEquals(ReaderPortraitSingleSlot.LEFT, owner.targetUnit!!.slots.single().position)
+            val projection = owner.units.flatMap { it.pageIds }
+            assertEquals(ids.toSet(), projection.toSet())
+            assertEquals(ids.size, projection.size)
+        }
+    }
+
+    @Test
+    fun `late side evidence never relocates a locked first page or manual single`() {
+        for (target in 0..1) {
+            val owner = owner(target = target, mangaId = 88)
+            owner.configure(ReaderDirection.RTL, automaticMatching = true)
+            val ids = owner.identity.pageIds
+            fact(owner, 0)
+            fact(owner, 1)
+            if (target == 1) {
+                owner.acceptPairingRestore(
+                    owner.beginPairingRestore()!!,
+                    ChapterPairingSnapshot(ChapterPairingRecord(1, 8, setOf(1)), 1),
+                )
+            }
+            val ticket = owner.captureViewport()!!
+            owner.reportDrawn(ticket, setOf(ids[target]))
+            val before = owner.frame(ticket)!!
+            val lateSide = ReaderPageFact.dimensions(100, 150).copy(sideHint = ReaderPageSideHint.LEFT)
+            assertTrue(owner.acceptFact(owner.requestFact(ids[1]), lateSide))
+            assertEquals(before.unit.slots, owner.frame(ticket)!!.unit.slots)
+            assertEquals(before.lockedPageIds, owner.frame(ticket)!!.lockedPageIds)
+        }
     }
 
     private fun fact(owner: SharedDualPageSession, index: Int, wide: Boolean = false) {

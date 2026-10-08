@@ -133,6 +133,89 @@ class AndroidChapterPairingPersistenceWiringTest {
     }
 
     @Test
+    fun `adjust button joins evidenced opening pages and persists a legal split with the same anchor`() = runBlocking {
+        val file = temporaryFolder.newFile("evidenced-opening-pair.db")
+        openDatabase(file, create = true).use { fixture ->
+            seed(fixture.driver)
+            fixture.repository.replace(2, 1, 0, 8, setOf(1))
+            session(fixture, matching = true, readingMode = 6, reuseLoadedPages = true).use { reader ->
+                reader.viewer.adapter.spreadDecoderFactory = {
+                    eu.kanade.tachiyomi.ui.reader.viewer.decodedRegionFactory(it)
+                }
+                val chapter = requireNotNull(reader.model.state.value.currentChapter)
+                val pages = requireNotNull(chapter.pages)
+                awaitPairingStatus(reader, chapter, mihon.domain.reader.ReaderPairingPersistenceStatus.READY)
+                reader.viewer.setChapters(requireNotNull(reader.model.state.value.viewerChapters))
+                reader.viewer.moveToPage(pages[0])
+                val owner = requireNotNull(reader.viewer.adapter.session(chapter))
+                val ids = owner.identity.pageIds
+                val cover = requireNotNull(owner.captureViewport())
+                assertTrue(owner.reportDrawn(cover, setOf(ids[0])))
+                owner.releaseViewport(cover)
+                reader.viewer.moveToPage(pages[1])
+                val proposal = requireNotNull(owner.captureViewport(preparingPageIds = emptySet()))
+                assertTrue(
+                    owner.acceptDecodedFact(proposal, ids[1], 100, 150, mihon.domain.reader.ReaderPageSideHint.LEFT),
+                )
+                reader.viewer.adapter.refreshDecodedSide(pages[1], owner)
+                assertEquals(setOf(1), visiblePair(reader.viewer))
+                assertEquals(
+                    mihon.domain.reader.ReaderPortraitSingleSlot.LEFT,
+                    owner.targetUnit!!.slots.single().position,
+                )
+                val current = requireNotNull(owner.captureViewport())
+                assertTrue(owner.reportDrawn(current, setOf(ids[1])))
+                reader.host.setContent {
+                    val state by reader.model.state.collectAsState()
+                    MaterialTheme { reader.activity.AppBars(state.copy(menuVisible = true)) }
+                }
+                compose.mainClock.advanceTimeBy(500)
+                fun adjust() {
+                    compose.onNodeWithContentDescription(
+                        reader.host.stringResource(MR.strings.action_adjust_page_pairing),
+                    ).assertIsEnabled().performClick()
+                }
+                adjust()
+                withTimeout(5_000) {
+                    while (reader.model.state.value.pairingSaving ||
+                        fixture.repository.load(2, 1).record != null
+                    ) {
+                        yield()
+                    }
+                }
+                assertEquals(setOf(0, 1), visiblePair(reader.viewer))
+                assertEquals(
+                    listOf(
+                        mihon.domain.reader.ReaderPortraitSingleSlot.RIGHT,
+                        mihon.domain.reader.ReaderPortraitSingleSlot.LEFT,
+                    ),
+                    owner.targetUnit!!.slots.map { it.position },
+                )
+                assertEquals(1, owner.location!!.pageId.sourcePageIndex)
+                assertEquals(2, reader.model.state.value.currentPage)
+                val firstPair = requireNotNull(owner.captureViewport())
+                assertTrue(owner.reportDrawn(firstPair, setOf(ids[0], ids[1])))
+                compose.mainClock.advanceTimeBy(500)
+                adjust()
+                withTimeout(5_000) {
+                    while (reader.model.state.value.pairingSaving ||
+                        fixture.repository.load(2, 1).record?.forcedSinglePages != setOf(1)
+                    ) {
+                        yield()
+                    }
+                }
+                assertEquals(setOf(1), visiblePair(reader.viewer))
+                assertEquals(1, owner.location!!.pageId.sourcePageIndex)
+                val projected = reader.viewer.adapter.items.filterIsInstance<DisplayPage>().flatMap {
+                    it.visiblePages.map(ReaderPage::index)
+                }
+                assertEquals(pages.indices.toSet(), projected.toSet())
+                assertEquals(pages.size, projected.size)
+            }
+        }
+    }
+
+    @Test
     fun `dual reading activates and source navigation remains available while original restore is held`() =
         runBlocking {
             val file = temporaryFolder.newFile("nonblocking-dual-restore.db")
