@@ -1,7 +1,9 @@
 package eu.kanade.tachiyomi.ui.reader.viewer
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Matrix
 import android.graphics.PointF
 import android.graphics.Rect
 import android.graphics.RectF
@@ -101,6 +103,61 @@ open class ReaderPageImageView @JvmOverloads constructor(
     private var imageCallbackIsCurrent: () -> Boolean = { true }
     private var animatedDrawableIsCurrent: () -> Boolean = { false }
     private var regionInputStream: java.io.InputStream? = null
+
+    internal var decodedPageSideHint = mihon.domain.reader.ReaderPageSideHint.UNKNOWN
+        private set
+    private var sampledPageBitmap: java.lang.ref.WeakReference<Bitmap>? = null
+    private var sampledOrientation: mihon.domain.reader.ReaderImageOrientation? = null
+
+    private fun resetDecodedSideHint() {
+        sampledPageBitmap = null
+        sampledOrientation = null
+        decodedPageSideHint = mihon.domain.reader.ReaderPageSideHint.UNKNOWN
+    }
+
+    private fun decodedSideEnabled(): Boolean = config?.let {
+        it.pageSideHintEnabled && !it.cropBorders && it.sourceBounds == null
+    } == true
+
+    private fun observeDecodedSide(native: SubsamplingScaleImageView, bitmap: Bitmap, matrix: Matrix) {
+        val current = config ?: return
+        if (!current.pageSideHintEnabled || current.cropBorders || current.sourceBounds != null ||
+            bitmap.isRecycled || bitmap.config == Bitmap.Config.HARDWARE
+        ) {
+            return
+        }
+        if (sampledPageBitmap?.get() === bitmap && sampledOrientation == current.sourceOrientation) return
+        // The same source-to-view geometry distinguishes a whole base image from a region tile.
+        val bounds = RectF(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat())
+        matrix.mapRect(bounds)
+        val fullSize = current.sourceOrientation.orientedSize(native.sWidth, native.sHeight)
+        val first = native.sourceToViewCoord(0f, 0f) ?: return
+        val last = native.sourceToViewCoord(fullSize.width.toFloat(), fullSize.height.toFloat()) ?: return
+        if (kotlin.math.abs(bounds.left - first.x) > 2f || kotlin.math.abs(bounds.top - first.y) > 2f ||
+            kotlin.math.abs(bounds.right - last.x) > 2f || kotlin.math.abs(bounds.bottom - last.y) > 2f
+        ) {
+            return
+        }
+        val region = Rect()
+        native.viewToFileRect(
+            Rect(
+                kotlin.math.floor(bounds.left).toInt() - 1,
+                kotlin.math.floor(bounds.top).toInt() - 1,
+                kotlin.math.ceil(bounds.right).toInt() + 1,
+                kotlin.math.ceil(bounds.bottom).toInt() + 1,
+            ),
+            region,
+        )
+        if (region.left > 0 || region.top > 0 || region.right < native.sWidth || region.bottom < native.sHeight) return
+        val orientation = current.sourceOrientation
+        val size = orientation.orientedSize(bitmap.width, bitmap.height)
+        decodedPageSideHint = mihon.domain.reader.ReaderPageSideHints.classify(size.width, size.height) { x, y ->
+            val (rawX, rawY) = orientation.sourcePixel(x, y, bitmap.width, bitmap.height)
+            bitmap.getPixel(rawX, rawY)
+        }
+        sampledPageBitmap = java.lang.ref.WeakReference(bitmap)
+        sampledOrientation = orientation
+    }
 
     var onImageLoaded: (() -> Unit)? = null
 
@@ -215,6 +272,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     fun setImage(drawable: Drawable, config: Config) {
         val identity = decodeIdentitySource.next(-1)
         imageCallbackIsCurrent = identity::isCurrent
+        resetDecodedSideHint()
         this.config = config
         if (drawable is Animatable) {
             prepareAnimatedImageView()
@@ -233,6 +291,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         callbackIsCurrent: () -> Boolean = { true },
     ) {
         imageCallbackIsCurrent = callbackIsCurrent
+        resetDecodedSideHint()
         this.config = config
         val identity = decodeIdentitySource.next(pageIndex)
         if (isAnimated) {
@@ -251,6 +310,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         callbackIsCurrent: () -> Boolean,
     ) {
         imageCallbackIsCurrent = callbackIsCurrent
+        resetDecodedSideHint()
         this.config = config
         val identity = decodeIdentitySource.next(pageIndex)
         prepareNonAnimatedImageView()
@@ -261,6 +321,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     open fun recycle() {
+        resetDecodedSideHint()
         decodeIdentitySource.invalidate()
         try {
             pageView?.let {
@@ -349,15 +410,26 @@ open class ReaderPageImageView @JvmOverloads constructor(
         } else {
             object : SubsamplingScaleImageView(context) {
                 override fun onDraw(canvas: Canvas) {
-                    val drawable = isReady || isImageLoaded
-                    if (drawable) {
-                        val dimensions = config?.sourceOrientation?.orientedSize(sWidth, sHeight)
-                            ?: mihon.domain.reader.ReaderPageSize(sWidth, sHeight)
-                        if (!prepareNativeImageDraw(dimensions.width, dimensions.height)) return
+                    if (decodedSideEnabled()) {
+                        val observed = ReaderDecodedPageCanvas(canvas) { bitmap, matrix ->
+                            observeDecodedSide(this, bitmap, matrix)
+                            val dimensions = config?.sourceOrientation?.orientedSize(sWidth, sHeight)
+                                ?: mihon.domain.reader.ReaderPageSize(sWidth, sHeight)
+                            prepareNativeImageDraw(dimensions.width, dimensions.height)
+                        }
+                        super.onDraw(observed)
+                        if (observed.drewBitmap && isReady) nativeImageDrawn()
+                    } else {
+                        val drawable = isReady || isImageLoaded
+                        if (drawable) {
+                            val dimensions = config?.sourceOrientation?.orientedSize(sWidth, sHeight)
+                                ?: mihon.domain.reader.ReaderPageSize(sWidth, sHeight)
+                            if (!prepareNativeImageDraw(dimensions.width, dimensions.height)) return
+                        }
+                        // A metadata-only pass initializes normal base tiles without locking geometry.
+                        super.onDraw(canvas)
+                        if (drawable && isReady) nativeImageDrawn()
                     }
-                    // A metadata-only pass initializes normal base tiles without locking geometry.
-                    super.onDraw(canvas)
-                    if (drawable && isReady) nativeImageDrawn()
                 }
             }
         }.apply {
@@ -406,6 +478,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
         identity: DecodeRequestIdentity? = null,
         callbackIsCurrent: () -> Boolean = { true },
     ) = (pageView as? SubsamplingScaleImageView)?.apply {
+        // Retain the original software decode instead of making its optional hardware copy.
+        // Ordinary stream inputs restore this library version's original hardware default.
+        if (data !is BufferedSource) setHardwareConfig(!decodedSideEnabled())
         imageRotation = when (config.sourceOrientation.rotation) {
             mihon.domain.reader.PageRotation.NONE -> ImageRotation.ROTATION_0
             mihon.domain.reader.PageRotation.CLOCKWISE_90 -> ImageRotation.ROTATION_90
@@ -444,7 +519,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
             }
             is BufferedSource -> {
                 if (!isWebtoon || alwaysDecodeLongStripWithSSIV) {
-                    setHardwareConfig(ImageUtil.canUseHardwareBitmap(data))
+                    setHardwareConfig(ImageUtil.canUseHardwareBitmap(data) && !decodedSideEnabled())
                     setImage(boundedSource(ImageSource.inputStream(data.inputStream()), config))
                     isVisible = true
                     return@apply
@@ -596,6 +671,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         val sourceOrientation: mihon.domain.reader.ReaderImageOrientation =
             mihon.domain.reader.ReaderImageOrientation.NORMAL,
         val sourceBounds: mihon.domain.reader.PixelBounds? = null,
+        val pageSideHintEnabled: Boolean = false,
     )
 
     enum class ZoomStartPosition {

@@ -2129,3 +2129,23 @@ Root对校验过的B1原图做只读像素分析：源11至17最外侧左右采�
 Windows preview `dp02-gutter-side-windows-preview` 07:52:21.090–07:52:41.068（19.978秒）通过。[本轮人工体验EXE](<D:/Codex/worktrees/0877/mihon/app-desktop/artifacts/preview/windows/20261008T075221Z-5bf38ba6/Mihon-Desktop-0.11.19.72.1c6f907-unpacked/Mihon Desktop.exe>)已核实存在；manifest记录基线`1c6f9070ab`及本次未提交产品差异，productSource digest=`2cdfcb4833a4d56a664d2bdebc9fac2b21d0224d4871b147ca378944111341fe`，build／sourceIntegrity／productionRuntime PASS，nativeInteraction NOT_RUN。版本两处原有差异及SHA保持不变，不纳入本提交。构建worker49456／process32272、最终验证42436／3832及补验31728／15352均已退出；未操作用户应用、未执行CUA。
 
 待用户人工复验：新包重新打开第169话，开启RTL／双页／自动匹配，分别从首页跳源14、15、16、17，预期13/14、15/16、15/16、17独占；再连续16→17及回翻，观察图片槽位和内容。当前只确认上述源码／原图production定向证据，Windows人工结果仍待，不宣称所有无明确留白漫画或Android均已修复。
+
+#### Windows人工确认后接续Android交付
+
+2026-10-08用户明确反馈本轮Windows“测试正常”，并要求补正常测试流程、交APK自行更大范围验收。该反馈关闭上述体验包的人工复验等待，范围为用户实际体验，不补签完整正式性能／逐帧项目。当前基线为`ef6c56dbf1`，两处已有版本差异保留；新版正常流程继续按本次行为、依赖和风险验证，未受影响完整结果及Android72样本复用。
+
+Android签名／工具链预检通过：JDK21.0.11、SDK36、Build Tools36.0.0和原正式证书可用。只读核对现有工作树的版本元数据，最高候选号为55（另一分支），本树53已交付；新APK须分配更高版本而保持同身份、同证书。版本查询／测试不消耗版号，候选开始前再核分配；原Desktop BUILD72不变。
+
+本次Android常用静态图走SSIV的encoded入口，当前holder没有传页侧提示；旧SSIV `66e0db195d`的实际AAR无公开base bitmap getter、region decoder factory或tile hook，不能用仅Drawable测试宣称常用入口完成。首先核实际公开绘制边界的最小adapter，不使用生产反射、额外解码、整章读取或截图伪造；按真实接线focused红绿、必要格式和一次签名候选交付。用户自行安装／人工验收，不代操作设备；原DP02剩余平台缺口继续保留。
+
+实际实施采用原SSIV公开Canvas绘制入口，未修改依赖或加入第二解码；主实施代理接ImageView／holder／adapter，Root实现窄转发Canvas并独核共享事实／锁槽、资源与旧画面边界，原实施者核转发接口。软件底图仅用于有效静态双页自动匹配，crop／sourceBounds／动画／不完整tile未知；弱引用缓存不持图片lease。原bitmap、matrix、paint只向原Canvas转发一次，实际转发后才报告绘制。已锁旧画面沿原许可，不因新locationSequence被错误拒画。
+
+首方法级red1因测试使用私有配置setter在编译阶段失败，不作TDD行为证据。改走实际ReaderPreferences后`android-gutter-bitmap-holder-red2` fresh08:22:51.231 UTC／1失败0跳过／18.313秒，真实SSIV画出带右留白原PNG后共享提示为UNKNOWN，期望LEFT。初绿`android-gutter-bitmap-holder-green` 08:28:17.451–08:28:52.918／1失败0跳过／9.752秒，暴露Canvas超类构造时调用虚硬件getter、Kotlin字段尚未初始化的NPE；Root修构造期fallback，运行期原Canvas仍必须存在。随后green2 08:41:20.310–08:41:52.504／2通过0跳过／14.950秒，原图片实际LEFT绘制及替换内容租约守卫通过。
+
+5文件定向strict格式`android-gutter-scoped-format2` 08:45:41.245–08:45:55.037（13.792秒）通过；首格式命令只因新测试一行超120失败，已正常换行，未压低标准。最终`android-gutter-final-focused6` 08:47:35.066–08:48:14.358（39.292秒），fresh08:47:55.220／6通过／0失败／0错误／0跳过／17.354秒，范围为新真实页侧、原租约、8种编码方向、过期子回调、已保留项冷跳、宽图完整视口。Root独读XML、原PNG／真实SSIV测试链及最后差异；此前shared3／Desktop2仍适用，不重新跑全量或Android72。Robolectric原Bitmap/Canvas接线不冒充本APK真实JNI／ART或硬件性能运行通过。
+
+构建前再次读取现有工作树元数据及候选目录，最高占用code55／aex.37，本次分配code56／`0.19.4-aex.38`，包名和证书不变；本树原code53工作区内容在忽略目录保留，版本分配叠加其上，不重置到HEAD40，也不把此前版本脏改混入本功能提交。Desktop版本文件SHA仍为`30fe6cc2d8b5bf17b21831398fa04dcaa6b03b6ee41bcb2ed9d827f846e48212`。候选构建冻结全部源码／文档输入，构建完后才记录下面实际产物与人工等待状态。
+
+统一`python scripts/build-android.py candidate`完成一次签名Release构建，协调器`android-candidate` 08:51:42.590–08:54:16.279 UTC（153.689秒），签名／清单随后于08:54:23.691完成；R8／资源压缩开启、四ABI universal、非调试、min26／target36、遥测与更新器关闭。实际[APK](D:/Codex/worktrees/0877/mihon/app/artifacts/android/0.19.4-aex.38-vc56-ef6c56dbf1-release/Mihon-Fork-0.19.4-aex.38-vc56-release-universal.apk)已确认存在，SHA256=`5267286fb4fe97c7302025789cf368a976a140d2e45dc0f0fb34a0c52995bda8`；同目录`artifact.json`记录基线`ef6c56dbf1`、构建前产品差异及新Canvas输入，productionInputs=`0176f40c13a61d8afaed6c420336fe7a1d00d7b61e1674ed048870e88fabece4`。独立`build-android.py verify --artifact ...`退出0，哈希／身份／版本／原证书／v2+v3签名／mapping均匹配。
+
+本批未安装、未操作实体设备、未执行CUA或完整矩阵；构建45696／38588、最终测试21780／9148、绿色补验12168／45660均已退出。Windows用户确认保留；Android源码接线及候选验证已完成，实际APK的JNI／ART、升级与较大范围人工结果交用户验收，CPU/GPU性能不以Robolectric或旧72样本代签。建议同一实际章节横屏双页／自动匹配、关闭裁边，分别冷跳、连续跳页、回翻；含糊留白、大图分块和动画仍遵循设计降级，DP02正式缺口不勾选。

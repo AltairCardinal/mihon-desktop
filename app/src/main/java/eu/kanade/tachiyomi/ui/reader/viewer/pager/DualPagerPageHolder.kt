@@ -466,6 +466,7 @@ class DualPagerPageHolder(
                     },
                     landscapeZoom = false, // handled by dual-page container zoom
                     sourceOrientation = orientation,
+                    pageSideHintEnabled = viewer.config.automaticSpreadMatching && !viewer.config.imageCropBorders,
                 )
 
                 // Ready encoded bytes may reach this collector without a visible Queue state.
@@ -491,7 +492,7 @@ class DualPagerPageHolder(
                         holder.invalidate()
                     }
                 }
-                holder.beforeImageDraw = { _, _ ->
+                holder.beforeImageDraw = { drawWidth, drawHeight ->
                     if (!callbackIsCurrent()) {
                         false
                     } else {
@@ -504,11 +505,38 @@ class DualPagerPageHolder(
                                 Side.CENTER -> (displayPage as? DisplayPage.Single)?.slot
                                     ?: ReaderPortraitSingleSlot.FULL
                             }
-                            val frame = owner.frame(ticket)
-                            pageId != null && frame != null &&
-                                owner.identity.content[page.index].contentVersion == encodedContent &&
-                                frame.unit.slots.any { it.pageId == pageId && it.position == physicalSlot } &&
-                                (pageId in frame.lockedPageIds || owner.preparePage(ticket, pageId))
+                            val beforeFrame = owner.frame(ticket)
+                            if (pageId == null || beforeFrame == null ||
+                                owner.identity.content[page.index].contentVersion != encodedContent ||
+                                beforeFrame.unit.slots.none { it.pageId == pageId && it.position == physicalSlot }
+                            ) {
+                                false
+                            } else if (pageId in beforeFrame.lockedPageIds) {
+                                // Keep an actually exposed outgoing image's original physical capability.
+                                true
+                            } else {
+                                val beforeRevision = owner.layoutRevision
+                                val accepted = owner.acceptDecodedFact(
+                                    ticket,
+                                    pageId,
+                                    drawWidth,
+                                    drawHeight,
+                                    if (viewer.config.automaticSpreadMatching) {
+                                        holder.decodedPageSideHint
+                                    } else {
+                                        mihon.domain.reader.ReaderPageSideHint.UNKNOWN
+                                    },
+                                )
+                                if (owner.layoutRevision !=
+                                    beforeRevision
+                                ) {
+                                    viewer.adapter.refreshDecodedSide(page, owner)
+                                }
+                                val frame = owner.frame(ticket)
+                                accepted && frame != null &&
+                                    frame.unit.slots.any { it.pageId == pageId && it.position == physicalSlot } &&
+                                    owner.preparePage(ticket, pageId)
+                            }
                         } == true
                     }
                 }

@@ -102,6 +102,74 @@ class DualPagerPageHolderLayoutTest {
 
     @Test
     @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `actual decoded Android bitmap provides shared gutter side before locking the current slot`() = runTest {
+        val bitmap = Bitmap.createBitmap(128, 256, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.rgb(40, 40, 40))
+        for (x in 122 until 128) for (y in 0 until 256) bitmap.setPixel(x, y, android.graphics.Color.WHITE)
+        val encoded = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        bitmap.recycle()
+        val chapter = ReaderChapter(Chapter.create().copy(id = 219, mangaId = 1))
+        val pages = List(6) { index ->
+            ReaderPage(index, stream = { encoded.inputStream() }).apply {
+                this.chapter = chapter
+                status = Page.State.Ready
+            }
+        }
+        chapter.publishLoadedPageListForTest(pages)
+        Injekt.get<ReaderPreferences>().automaticSpreadMatching().set(true)
+        runCurrent()
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(pages[3])
+        val holder = DualPagerPageHolder(
+            viewer.activity,
+            viewer,
+            viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[3]) },
+        )
+        try {
+            load(holder, pages[3], "RIGHT")
+            measure(holder, 1440, 3120)
+            val image = descendants(holder).filterIsInstance<ReaderPageImageView>().first()
+            val currentConfig = ReflectionHelpers.getField<ReaderPageImageView.Config>(image, "config")
+            val decoded = requireNotNull(android.graphics.BitmapFactory.decodeByteArray(encoded, 0, encoded.size))
+            image.setImage(android.graphics.drawable.BitmapDrawable(image.resources, decoded), currentConfig)
+            val output = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
+            try {
+                image.draw(android.graphics.Canvas(output))
+            } finally {
+                output.recycle()
+            }
+            val owner = requireNotNull(viewer.adapter.session(chapter))
+            val id = owner.identity.pageIds[3]
+            assertEquals(mihon.domain.reader.ReaderPageSideHint.LEFT, owner.pageFact(id)!!.sideHint)
+            assertTrue(
+                owner.displayedHistory.none { frame ->
+                    id in frame.lockedPageIds && frame.unit.slots.any { slot ->
+                        slot.pageId == id && slot.position == ReaderPortraitSingleSlot.RIGHT
+                    }
+                },
+            )
+            val corrected = DualPagerPageHolder(
+                viewer.activity,
+                viewer,
+                viewer.adapter.items.filterIsInstance<DisplayPage>().single { it.containsPage(pages[3]) },
+            )
+            try {
+                load(corrected, pages[3], "LEFT")
+                paint(corrected, pages[3])
+                val ticket = requireNotNull(corrected.presentationScope).second
+                val frame = requireNotNull(owner.frame(ticket))
+                assertTrue(id in frame.drawnPageIds)
+                assertEquals(ReaderPortraitSingleSlot.LEFT, frame.unit.slots.single { it.pageId == id }.position)
+            } finally {
+                detach(corrected)
+            }
+        } finally {
+            detach(holder)
+        }
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
     fun `actual dual holder consumes each confirmed encoded direction instead of default raw pixels`() = runTest {
         val raw = requireNotNull(javaClass.classLoader?.getResourceAsStream("reader/exif-corners-raw.jpg")).use {
             it.readBytes()

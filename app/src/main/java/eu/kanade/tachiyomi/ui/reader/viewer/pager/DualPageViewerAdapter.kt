@@ -285,6 +285,14 @@ class DualPageViewerAdapter(
     fun appliedForcedSinglePages(): Set<Int> =
         currentChapter?.let(chapterPairings::get)?.session?.pairingState?.committedForcedSinglePages.orEmpty()
 
+    internal fun refreshDecodedSide(page: ReaderPage, owner: SharedDualPageSession) {
+        if (chapterPairings[page.chapter]?.session === owner &&
+            owner.identity.content[page.index].contentVersion == page.encodedContentIdentity()
+        ) {
+            rebuildItems()
+        }
+    }
+
     fun refreshPairing() = rebuildItems()
 
     internal fun releaseContent(chapter: ReaderChapter) {
