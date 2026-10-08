@@ -152,8 +152,12 @@ internal class ReaderDualPagePresentationOwner(
         }
     }
 
+    // Only its origin owns an empty proposal until a physical slot is locked or drawn.
     private fun record(page: ReaderPageId): Record? = membership[page]?.let(records::get)
-        ?: active.values.firstOrNull { it.appendable && page in it.unit.pageIds }
+        ?: active.values.firstOrNull {
+            it.appendable && page in it.unit.pageIds &&
+                (page == it.origin || it.locked.isNotEmpty() || it.drawn.isNotEmpty())
+        }
     private fun candidate(page: ReaderPageId, forward: Boolean = !reverse): ReaderDualPageDecision {
         if (singleMode) {
             return ReaderDualPageDecision(

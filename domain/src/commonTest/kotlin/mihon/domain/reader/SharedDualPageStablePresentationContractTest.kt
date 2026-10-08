@@ -13,6 +13,26 @@ import org.junit.jupiter.api.Test
 /** v3 events run on the real shared owner; no copied pairing or progress reducer. */
 class SharedDualPageStablePresentationContractTest {
     @Test
+    fun `unpainted neighbour proposals cannot claim a new cold jump target`() {
+        for (target in listOf(14, 16)) {
+            val owner = owner(count = 17, target = 0)
+            val ids = owner.identity.pageIds
+            fact(owner, 0)
+            val home = owner.captureViewport(preparingPageIds = setOf(ids[0]))!!
+            assertTrue(owner.reportDrawn(home, setOf(ids[0])))
+            assertTrue(owner.goToPage(ids[target]))
+            val neighbour = owner.captureViewport(ids[target - 1], preparingPageIds = emptySet())!!
+            assertTrue(owner.frame(neighbour)!!.lockedPageIds.isEmpty())
+            assertTrue(owner.frame(neighbour)!!.drawnPageIds.isEmpty())
+            assertEquals(
+                if (target == 14) listOf(14, 15) else listOf(16),
+                owner.targetUnit!!.pageIds.map { it.sourcePageIndex },
+            )
+            assertEquals(setOf(ids[0]), owner.frame(home)!!.drawnPageIds)
+        }
+    }
+
+    @Test
     fun `rapid navigation leaves an unlocked earlier proposal before painting the later target`() {
         val owner = owner(target = 2)
         val ids = owner.identity.pageIds

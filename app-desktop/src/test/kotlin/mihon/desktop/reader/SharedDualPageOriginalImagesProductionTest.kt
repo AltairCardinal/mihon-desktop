@@ -399,6 +399,20 @@ class SharedDualPageOriginalImagesProductionTest {
     }
 
     @Test
+    fun `real home cold jumps preserve forward original B1 tail pairing`() = runBlocking {
+        for (target in listOf(14, 16)) {
+            Fixture("b1", 0, dual = true, animated = true, matching = true).use { fixture ->
+                fixture.pixels(0, ReaderPortraitSingleSlot.LEFT)
+                fixture.assertNotPreviouslyDrawn(target)
+                fixture.model.goToPage(target)
+                fixture.pixels(target, ReaderPortraitSingleSlot.RIGHT)
+                fixture.assertTargetSources(if (target == 14) listOf(14, 15) else listOf(16))
+                if (target == 14) fixture.pixels(15, ReaderPortraitSingleSlot.LEFT)
+            }
+        }
+    }
+
+    @Test
     fun `original B1 manual tail cached pointer reverse and return keep artwork in every actual frame`() = runBlocking {
         Fixture("b1", 0, dual = true, animated = true, matching = true).use { fixture ->
             fixture.pixels(0, ReaderPortraitSingleSlot.LEFT)
@@ -645,6 +659,19 @@ class SharedDualPageOriginalImagesProductionTest {
             ReaderScreenModel::class.java.getDeclaredField("dualSession").apply { isAccessible = true }.get(model)
                 as SharedDualPageSession?,
         )
+
+        fun assertNotPreviouslyDrawn(source: Int) {
+            assertTrue(
+                owner().displayedHistory.none { frame ->
+                    frame.drawnPageIds.any { it.sourcePageIndex == source }
+                },
+                "The cold jump target must not already have a real image history",
+            )
+        }
+
+        fun assertTargetSources(expected: List<Int>) {
+            assertEquals(expected, owner().targetUnit!!.slots.map { it.pageId.sourcePageIndex })
+        }
 
         fun observedArtworkBounds(source: Int) = observations.getValue(source).rectangle
         fun observedFrame(source: Int) = observations.getValue(source).frame

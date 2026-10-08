@@ -2083,3 +2083,29 @@ Root独立检查最终公共手势：只在Main Release已消费时终止本次�
 本批预计10–20分钟收敛；从正确红开始12:41:25.929到最后绿12:56:15.892为14分49.963秒，另有前置只读。共5次所选focused命令与2次2文件格式，实际命令墙钟累计约3分11.9秒，测试体约54秒；它们不等于全部测试工程工时或实现／测试占比。首次正确红、过宽保护的5个回归失败、最终范围绿均保留；没有全量、正式／preview包或新代理。最终5个本任务文件（2代码／测试、3原文档）一次提交，2版本差异排除；worker31936／process27028、格式36100／38076以及22案例39104／48072均已退出，无本批运行中进程。
 
 Mac构建前只读核隔离source仍dec006e，5份既有dirty保留；TestState SHA53029ad8…e3c4e1与原6218入口观察补丁一致，后续最小产品更新仅11个路径，不覆盖测试夹具或合并整个分支。实际Temurin21.0.10+7在项目脚本绝对路径可用，java_home未注册提示不作为JDK缺失；余约2.3GiB、59351无监听，保护44348／47006／55981不动。追加Windows／Mac各一次build-only的集中确认仍待用户回复，自动GOAL继续不视为批准，不为本次修复重复申请同额度。批准后使用最终冻结修复，复用已执行完整基线与相关补验，不重建Android、不重跑72。
+
+### 2026-10-08正式观察结果的边界与用户确认的配对失败
+
+上述构建确认随后已由用户明确批准。Windows正式72（产品541fb4dc47）build-only自然通过，协调器`dp02-windows-approved-observation-20261008`耗时155.073秒；AppVersion按入口从71递增72，既有版本差异继续不混入修复提交。Mac按11个产品路径定向接入541修复，正式73实际版本后缀仍dec006e，构建91.211秒；不能把包名中的补丁身份写成远端Git HEAD。两次构建串行，没有重跑完整矩阵或Android72。
+
+Windows本次真实入口为Original B1 resume（8900722），RTL／双页／自动匹配开启，无手调边界。末端一次click确实请求源17（index16、locationSequence1），实际却显示16/17；控制prefix未阻止另一full读取，控制自身超时且观察丢弃6757条，因此不签“不及时前组”或完整逐帧通过。下一次冷跳源15实际伙伴为源14，第一次误控源16是屏外读取，不签迟到伙伴通过。改控实际伙伴源14后，释放阶段87条无丢弃、当前页55条几何／挂载／内容记录一致；错误阶段57条、真实Retry阶段66条均无丢弃，Retry attempt增长且current index14不变。这些只支持各自采样范围内的稳定性、错误反馈及Retry不翻页，不能代签GPU／整段屏幕逐帧或配对质量。
+
+用户截图明确指出：源14/15（印刷15/16）装订留白在外侧，它们应分别与相邻页配对。该组合判为**配对失败**；此前以页码连续、显示稳定解释为正常的口头判断撤回。原始记录位于忽略目录`app-desktop/tmp/dp02-windows-cua-20261007/formal72-*-20261008.json`。多个场景沿用了同一错配，不能将场景数量当作独立匹配质量通过次数。源码／证据只支持冷跳结果与局部目标规则不符；预计算分组、显示历史和原生接线的具体因果须由本次最小反例确定，不提前宣称边缘评分误判或动画为唯一原因。
+
+用户随后要求重新读取AGENTS与Test Guide，先修分页匹配并交Windows包人工验收。本体验批次复用原实施者、限定focused TDD及必要格式，由Root核关键接线后走preview；不执行CUA、Mac／Android运行、完整矩阵或追加正式版本。只更新本报告与原roadmap，DP02正式收口继续未完成。
+
+#### 首页冷跳尾部：正确反例与最小修复
+
+真实原图新方法从首页0挂载、开启matching和动画，确认目标尚无实际绘制历史后分别goToPage(14／16)，要求源15 RIGHT＋16 LEFT及源17 RIGHT单页。首key `dp02-b1-home-cold-tail-pairing-red`自然失败：1项／0跳过，15.006秒；目标index14仍处旧[13,14]的LEFT，与用户画面一致。补充共享反例`dp02-cold-target-neighbour-proposal-shared-red`只执行首页真实draw→冷跳→邻页empty capture，1项／0跳过／0.093秒因expected[14,15]、actual[13,14]正确失败。
+
+原因确定为`ReaderDualPagePresentationOwner.record`的active fallback：原生分页器为非选中邻页capture空proposal后，查询伙伴页也会取得该未锁／未画的proposal；导航后到达的邻页准备不受move对既有incoming的排除保护。最小修复只允许同origin或已locked／drawn记录参与fallback；真实membership优先、首像素前锁定和部分双页承诺保持，不新增网络／扫描／识别等待，不调整匹配阈值。Root独立核此共享边界及Desktop beginPagerViewport调用。
+
+共享green3（新反例、未锁导航、已锁未draw承诺）0失败／0跳过／0.097秒；原图green2（新首页冷跳、既有手调缓存回翻）0失败／0跳过／7.260秒。源码、共享与实际Compose原图证据共同支持本例修复，不把用户尚未执行的Windows人工验收写成通过，也不承诺所有冷跳均恢复未知的整章装订结构。
+
+旧Mac79114经现有owned_identity核对精确app／profile／59351后仅请求shutdown；响应success，端口关闭，随后79114及wrapper79111均自然退出。无新原生输入、截图或测试；其他保护实例未操作。Windows旧59791实例在本轮进程预检中未发现，不复用历史PID。
+
+最终仅3个代码文件strict格式通过（`dp02-cold-tail-pairing-scoped-format`，12.098秒）。加注释／格式后，同范围共享3项fresh06:45:10.786Z（0.143秒）、原图2项fresh06:45:32.684Z（10.415秒）全部通过，零failure／error／skip；keys为`dp02-cold-target-proposal-shared-refactor3`和`dp02-b1-home-cold-tail-refactor2`。交接时Root一次重复启动尝试被协调器busy拒绝，未执行第二个Gradle，随后监控既有key至PASSED。Root已独读最终XML及diff；没有扩大验证。
+
+Windows preview key `dp02-cold-tail-windows-preview` UTC06:46:42.792–06:47:15.568自然PASSED（32.777秒）。本轮期间另一个文档提交`5fe1ba589f`迁入最新集中CUA规则，只含AGENTS／Test Guide／其证据，不涉及本修复；构建manifest如实记录该HEAD和本次未提交修复，productSource digest=`319909683743647a7fa27333d7e122450ef3c0d4d83934e83ad2f3b65443dc59`。preview不递增AppVersion，原BUILD72及Android53版本差异保留、不提交；build／sourceIntegrity／productionRuntime PASS，nativeInteraction NOT_RUN。
+
+人工体验入口为[本轮Windows EXE](<D:/Codex/worktrees/0877/mihon/app-desktop/artifacts/preview/windows/20261008T064643Z-ce787069/Mihon-Desktop-0.11.19.72.5fe1ba5-unpacked/Mihon Desktop.exe>)，身份见同preview目录的`preview-manifest.json`；保留整个unpacked目录。用户从首页开启RTL／双页／自动匹配，分别在新阅读会话直接跳源15和17，核15/16正确配对与17单页，再检查回翻。源码定向证据已通过，Windows人工结果待反馈，DP02不勾选。
