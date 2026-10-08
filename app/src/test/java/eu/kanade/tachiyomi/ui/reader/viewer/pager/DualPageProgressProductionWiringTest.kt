@@ -543,9 +543,31 @@ class DualPageProgressProductionWiringTest {
             pages[4],
             model.currentReaderPage,
         )
+        val internalIdleEvents = mutableListOf<String>()
+        viewer.pager.addOnPageChangeListener(object : ViewPager.SimpleOnPageChangeListener() {
+            override fun onPageScrollStateChanged(state: Int) {
+                if (state == ViewPager.SCROLL_STATE_IDLE &&
+                    ReflectionHelpers.getField<Boolean>(viewer, "replacingPairing") && internalIdleEvents.size < 8
+                ) {
+                    internalIdleEvents +=
+                        "owner=${viewer.adapter.session(current)?.location?.pageId?.sourcePageIndex}" +
+                        ",native=${viewer.pager.currentItem}"
+                }
+            }
+        })
         viewer.adapter.updatePageDimensions(pages[0], 1800, 1000)
         runCurrent()
-        assertSame(pages[4], model.currentReaderPage)
+        assertSame(
+            "Explicit source=${pages[4].index}, VM=${model.currentReaderPage?.index}, " +
+                "owner=${viewer.adapter.session(current)?.location?.pageId?.sourcePageIndex}, " +
+                "native=${(viewer.adapter.items[viewer.pager.currentItem] as? DisplayPage)?.visiblePages?.map {
+                    it.index
+                }}, " +
+                "internalIdle=$internalIdleEvents",
+            pages[4],
+            model.currentReaderPage,
+        )
+        assertTrue("Regrouping must cover native idle reentrancy during replacement", internalIdleEvents.isNotEmpty())
         val rtl = eu.kanade.tachiyomi.ui.reader.setting.ReadingMode.RIGHT_TO_LEFT
         coEvery { getMangaUseCase.await(1) } returns
             requireNotNull(model.manga).copy(viewerFlags = rtl.flagValue.toLong())

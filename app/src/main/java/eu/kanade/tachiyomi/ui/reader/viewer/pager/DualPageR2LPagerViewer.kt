@@ -60,6 +60,7 @@ class DualPageR2LPagerViewer(
 
     private var currentPage: Any? = null
     private var replacingPairing = false
+    private var awaitingReplacementIdle = false
     private var destroyed = false
     private var gestureInProgress = false
     internal val hasActiveGesture: Boolean get() = gestureInProgress
@@ -128,6 +129,12 @@ class DualPageR2LPagerViewer(
 
         override fun onPageScrollStateChanged(state: Int) {
             if (destroyed) return
+            if (state == ViewPager.SCROLL_STATE_IDLE && replacingPairing) {
+                // ViewPager can settle its old position while notifyDataSetChanged replaces the slots.
+                // Reconcile only after the replacement restores its stable logical anchor.
+                awaitingReplacementIdle = true
+                return
+            }
             if (state == ViewPager.SCROLL_STATE_DRAGGING) gestureInProgress = true
             if (state == ViewPager.SCROLL_STATE_IDLE) {
                 gestureInProgress = false
@@ -140,6 +147,12 @@ class DualPageR2LPagerViewer(
                 isIdle = false
             }
         }
+    }
+
+    private fun completeReplacementIdle() {
+        if (replacingPairing || !awaitingReplacementIdle) return
+        awaitingReplacementIdle = false
+        pagerListener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_IDLE)
     }
 
     init {
@@ -341,6 +354,7 @@ class DualPageR2LPagerViewer(
             replacingPairing = wasReplacing
         }
         onPageChange(pager.currentItem)
+        completeReplacementIdle()
         return true
     }
 
@@ -559,6 +573,7 @@ class DualPageR2LPagerViewer(
         if (!replacingPairing && pager.isVisible && (anchor != null || transition != null)) {
             onPageChange(pager.currentItem, layoutOnly = layoutOnly)
         }
+        completeReplacementIdle()
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

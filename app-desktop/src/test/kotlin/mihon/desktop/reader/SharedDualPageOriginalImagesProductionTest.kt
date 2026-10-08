@@ -117,7 +117,7 @@ class SharedDualPageOriginalImagesProductionTest {
             val port = server.resolvedConnectors().single().port
             val client = HttpClient.newHttpClient()
             Fixture("b1", 14, dual = true, controlledReads = true).use { fixture ->
-                readerState.mount(fixture.model)
+                fixture.mountTestReader()
                 try {
                     val response = client.send(
                         HttpRequest.newBuilder(URI("http://127.0.0.1:$port/test/reader/io_control/arm"))
@@ -205,7 +205,7 @@ class SharedDualPageOriginalImagesProductionTest {
             ReaderIoTestModeBridge.install(controller)
             try {
                 Fixture("b1", 14, dual = true).use { fixture ->
-                    readerState.mount(fixture.model)
+                    fixture.mountTestReader()
                     try {
                         fixture.pixels(14, ReaderPortraitSingleSlot.RIGHT)
                         assertTrue(ReaderIoTestModeBridge.startDrawObservation(128))
@@ -276,12 +276,14 @@ class SharedDualPageOriginalImagesProductionTest {
         val controller = ReaderTestModeController()
         applicationState.testMode = true
         ReaderIoTestModeBridge.install(controller)
+        // A preceding HTTP test entry may remain open without a product model being mounted.
+        readerState.open(7001, 0, 1, false, "prior test entry", "prior test chapter", false, false)
         val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) { testHttpServer() }.start()
         try {
             val port = server.resolvedConnectors().single().port
             val client = HttpClient.newHttpClient()
             Fixture("b1", 14, dual = true).use { fixture ->
-                readerState.mount(fixture.model)
+                fixture.mountTestReader()
                 try {
                     fixture.pixels(14, ReaderPortraitSingleSlot.RIGHT)
                     val start = client.send(
@@ -684,6 +686,20 @@ class SharedDualPageOriginalImagesProductionTest {
             ReaderScreenModel::class.java.getDeclaredField("dualSession").apply { isAccessible = true }.get(model)
                 as SharedDualPageSession?,
         )
+
+        fun mountTestReader() {
+            // This fixture owns its Test Mode entry; a prior HTTP fixture must not retain that entry.
+            readerState.reset()
+            readerState.mount(model)
+            val state = model.state.value
+            assertTrue(readerState.mountedSnapshot() === state)
+            val controlOwner = readerState.controlledContentOwner(state.context.chapterId, state.session.generation)
+            if (runtime.pageContentOwner.controlOwnerId != 0L) {
+                assertEquals(runtime.pageContentOwner.controlOwnerId, controlOwner)
+            } else {
+                assertEquals(null, controlOwner, "A draw-only fixture must not manufacture I/O control ownership")
+            }
+        }
 
         fun assertNotPreviouslyDrawn(source: Int) {
             assertTrue(

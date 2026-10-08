@@ -66,8 +66,11 @@ class WindowsReleaseConfigurationTest {
             "Windows build script must validate the canonical unpackaged executable",
         )
         assertTrue(text.contains("ExpectedVersion"), "Windows script must validate the expected runtime version")
+        val freshBuildArgs = "if (-not ${'$'}Preview) { ${'$'}buildArgs = @('--rerun-tasks') + ${'$'}buildArgs }"
+        val freshArgsIndex = text.indexOf(freshBuildArgs)
+        val buildInvocationIndex = text.indexOf("& ${'$'}Gradle @buildArgs", unpackagedIndex)
         assertTrue(
-            text.contains("--rerun-tasks") && text.indexOf("--rerun-tasks") < unpackagedIndex,
+            unpackagedIndex < freshArgsIndex && freshArgsIndex < buildInvocationIndex,
             "Canonical unpackaged build must bypass stale Gradle UP-TO-DATE state",
         )
         assertTrue(
@@ -104,7 +107,10 @@ class WindowsReleaseConfigurationTest {
             "Runtime acceptance must enter the guarded production extension transaction",
         )
         assertTrue(validator.contains("ExpectedVersion"), "Runtime acceptance must verify the packaged app version")
-        assertTrue(validator.contains("sourceIds"), "Runtime acceptance must verify that production loading exposed sources")
+        assertTrue(
+            validator.contains("sourceIds"),
+            "Runtime acceptance must verify that production loading exposed sources",
+        )
     }
 
     @Test
@@ -204,7 +210,10 @@ class WindowsReleaseConfigurationTest {
         assertTrue(text.contains("uname -s"), "Desktop build script must detect the host platform")
         assertTrue(text.contains("MINGW") && text.contains("MSYS") && text.contains("CYGWIN"))
         assertTrue(text.contains("scripts/build-windows.ps1"), "Windows shell path must call the Windows build script")
-        assertTrue(text.contains("powershell.exe") || text.contains("pwsh"), "Windows shell path must invoke PowerShell")
+        assertTrue(
+            text.contains("powershell.exe") || text.contains("pwsh"),
+            "Windows shell path must invoke PowerShell",
+        )
         assertTrue(text.contains("-ExecutionPolicy") && text.contains("Bypass"))
         assertTrue(
             text.contains("WINDOWS_PS_SCRIPT=\"scripts/build-windows.ps1\""),
@@ -226,9 +235,9 @@ class WindowsReleaseConfigurationTest {
             "Windows build-only mode must explicitly forward SkipTests",
         )
         assertTrue(
-            text.contains("if [[ \"${'$'}MODE\" != \"build-only\" ]]") &&
+            text.contains("if [[ \"${'$'}MODE\" != \"build-only\" && \"${'$'}MODE\" != \"preview\" ]]") &&
                 text.contains("./gradlew :app-desktop:jvmTest"),
-            "macOS must skip tests only in build-only mode",
+            "macOS must skip tests only in explicit build-only or isolated preview mode",
         )
         assertTrue(
             text.contains("hash|msi|build-only)"),

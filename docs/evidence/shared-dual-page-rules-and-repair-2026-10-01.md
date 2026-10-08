@@ -2256,3 +2256,23 @@ aex.41真机两次用户复现的文字日志已保存到忽略目录`app-deskto
 按既有安装授权，经统一install入口在同一API31平板无清数据覆盖更新，拉回已安装APK核身份/版本/证书/哈希与候选一致；设备确认code60/aex.42，firstInstallTime保持2026-10-04 01:37:07，lastUpdateTime2026-10-09 04:36:01。没有代启动/输入应用或图片识别。用户自行验收：横屏双页RTL、自动匹配开、裁边关，进入第96话漫画首页先确认单页在左；底部“调整页面配对”明确解除原边界，检查广告右/漫画左与页码不回跳，下一组再回翻不漏重；再次调整能拆回单页。诊断INFO日志仍可实时采集，真人结果尚待，不宣称第96话实机/ART全部通过或DP02完成。提交后再次核产品指纹与候选一致，文件名旧基线不是代码遗漏，纯证据变更不重复构建。
 
 **本轮真人验收已确认**：用户在已安装aex.42后即时反馈“1. 漫画首页显示在左侧；2. 再点底部‘调整页面配对’后组成广告右、漫画左”。这两项第96话BUG已修复并通过本次真机验收，证据来源是用户文字反馈；未取得截图、未代操作。未报告的重拆/回翻/性能仍不外推通过，DP02保持未完成。交付收尾时启动的仅新事件logcat采集提前退出，没有用于本次因果或验收证据，也不为已确认结果要求重复复现；相关忽略目录metadata保留真实退出状态。仅补文字证据到本批未发布提交，APK生产输入不变，不重建。
+
+
+#### 当前aex.42代码完整测试流程（2026-10-09，用户明确授权）
+
+用户在第96话两项真机确认后，要求对当前版本进行完整测试。本轮是用户明确选择的新完整验证，不以先前focused或旧DP02完整结果代替。基线HEAD=`bde1d2ff11306558a1af70b9de66113bde0c3a4a`，产品指纹=`1628648966b5918e34e4b64a4b8e4c149d899f79e8029998404f8d872a12f455`与现有已签名aex.42/code60 APK一致；独立verify再次通过，APK SHA=`17010f09930d8f4fe8b955b5885cca3c5b287e00fda8fbc8768f91db0528c697`。两处累计版本脏改完整保护，机器基线保存于忽略目录`app-desktop/tmp/current-version-full-test-20261009/baseline.json`，包含源码指纹/差异哈希和测试范围。
+
+本轮承诺范围：按项目入口执行一次Desktop完整JVM/集成；再串行共享JVM、共享Android、Android Release单元、Desktop客户端及全仓spotlessCheck，各完整目标一次，首轮失败保留原suite/XML及日志，后续仅相关focused补验。原图CBZ使用现有已核SHA资产；禁vision/图片识别，实体Android继续由用户操作。当前adb设备列表为空，不将历史设备连接或两项第96话确认外推为完整实机验收。不开启新正式发布/版本分配，不自动Windows/Mac重构建，不用自动化单元测试签原DP02剩余原生/性能项目。1个原实施代理作为唯一重型Gradle协调者承担首轮测试、分类及必要小范围修复，主代理保留基线、独立核证据/相关修复并回写同一聚合报告；初估45–75分钟，完整矩阵不重复，以有效基线与相关补验收口。
+
+
+**首次完整基线结果（保留，不覆盖）**：Desktop通过正式项目入口`build-desktop.sh full-tests`→Windows `-TestOnly -FullTests`执行，协调器`current-full-bde1-desktop` UTC20:44:27–20:50:35，6分06秒Gradle；441 suites/3305 tests/7 failures/0 errors/4条件skip。B协调器`current-full-bde1-remainder` UTC20:52:37–21:11:49，19分11秒；共享JVM103 suites/674 tests与共享Android87/579均新执行零失败/错误/跳过；App Release125/748有1 failure/0 errors/10 skips；客户端8/53为UP-TO-DATE复用2026-10-04完整结果，非本轮新执行；全仓spotlessCheck全部执行或有效UP-TO-DATE，无失败。首轮共5359条测试记录（含53缓存记录）、8 failures、14 skips；不将cache或skip冒充新执行。原suite XML、summary、argv、state及基线差异保存在`.gradle-coordinator/current-full-bde1-desktop.evidence/phase-A/`与`phase-B/`，源snapshot SHA=`cfb5d0eea3e686ec3013466003dcb56127e890acb4962a0e7de8e36d2817dcb1`。全量时生产/测试输入冻结，之后只做相关focused。
+
+**8项失败的分类和处理**：Android唯一失败稳定复现在`DualPageProgressProductionWiringTest`的真实VM模式切换前：显式源索引4（第5页）在宽图事实使分组重排后变成VM/owner索引3，原生实际仍显示[4]。`current-full-idle-reentry-red1`记录真实ViewPager内部IDLE发生在replacingPairing=true时且owner3/native2，随后强ReaderPage对象身份断言正确失败。唯一生产修复15行，将内部IDLE暂存，最外层恢复逻辑锚点后派发原handler；不屏蔽DRAGGING/SETTLING，不丢gesture清理、待章节/事实发布与settled进度。`current-full-idle-fix-green6`及最终12中的6个Android方法通过，覆盖强身份、连续翻页、反转、晚事实/章节、章末及未显示进度。
+
+Desktop三原图失败是测试入口隔离：原HTTP测试entry可能已open，但新原图model无法取得正确观察权限。一次solo三项通过只作为分类；`current-full-reader-stale-entry-red1`刻意留下合法chapter7001旧entry，真实原图观察API仍409，证明该夹具隔离反例。Fixture私有mount方法reset其自有entry后实际mount，并核同一真实model snapshot以及controlledReads开启时真实runtime controlOwnerId；无control的合法0按API契约对应null，不提供假0。中间新增assert因混淆0/null失败不归因生产，也未改HTTPguard或像素oracle；最终三原图通过，持有IO/几何/原绘制断言保留。能力清单失败只修5条当前证据line（ID11、43两条、44、59），逐一核相同semantic symbol，不提升任何状态。两发布治理失败属于旧字符串表示约束：生产Windows非preview仍把--rerun-tasks实际prepend到buildArgs并传Gradle，macOS的合法preview例外早已存在；只更正治理断言及提示，生产构建脚本未变。这6项Desktop确定问题均经相应focused关闭。
+
+作者页首全量“切回All应恢复Late Author50”失败时仍显示Preparing index；`current-full-focused-classify5`单方法复测fresh21:22:40.639通过（2.081秒）。没有证实唯一原因，没有改无关Authors UI/test，保留一次全量失败+solo未再现的不稳定项，不称已修复或全绿。首次14条件skip仍真实保留：Desktop4为Mac JXA、Windows affinity、非release条件和显式性能环境；App的SyncPanel3要求Unix FileProvider路径语义，Windows不可执行；迁移7因Release native SQLite需Android、BuildConfig.DEBUG为false跳过。随后`current-full-aux-and-debug14`针对对应Debug迁移类实际7执行/零fail/error/skip，fresh21:43:32.929、26.917秒，仅补Debug/Robolectric真实迁移层，不能冒充Release JNI/ART或Unix验证。
+
+**修复后定向收口**：`current-full-final-focused12` UTC21:48:52–21:50:00，68秒自然PASS；Android2 progress+4 native事件、Desktop3原图+1能力清单+2治理，共12不同方法、0 failure/error/skip；4个变更Kotlin文件strict Apply/Check通过。主代理独立核新鲜XML、原强身份和HTTP/像素oracle、生产15行diff、所有治理line/状态差异、递归/早返回边界及原gesture生命周期，1轮审查关闭。除已修生产文件外，后续变更是测试入口隔离、治理断言和证据位置；组合证据收口，不描述为最终代码重跑全量。已有原生性能/三端发布缺口继续保持，图片识别和实体输入均未执行。
+
+**修复候选**：原aex.42不含本轮15行真实修复，沿已有APK授权另生成一份本地验收候选，未作稳定发布或Desktop构建。统一`build-android.py candidate --offline`一次完成（UTC21:51:37–21:53:45，127.440秒），独立verify退出0；[aex.43/code61 APK](D:/Codex/worktrees/0877/mihon/app/artifacts/android/0.19.4-aex.43-vc61-bde1d2ff11-release/Mihon-Fork-0.19.4-aex.43-vc61-release-universal.apk) SHA256=`3f6f874c64725675b1a1d27e4d04dccb9314ba0cbc1308201abaef35c0dafe85`，productionInputs=`e76401df1dfa6aa8957326ace27815118dd19fd78521c7f3192b1dfdb8221753`。包名/原证书、schema42、非调试、R8/资源压缩和四ABI保持。候选版号在既有60差异上递增61，Desktop72原SHA不变，两处版本累计改动继续排除本修复提交。最后ADB仍无连接设备，未安装/启动/输入，本APK的真机模式切换与升级尚待；用户此前第96话两项aex.42确认不自动签新二进制全部路径。提交后再次核产品输入与候选一致。

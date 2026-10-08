@@ -4216,7 +4216,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 1087
+          "line": 1088
         }
       ],
       "FIXTURE": [
@@ -28941,7 +28941,7 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/SharedDualPageRules.kt",
           "symbol": "object SharedDualPageRules",
-          "line": 70
+          "line": 103
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -28988,7 +28988,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt",
           "symbol": "fun DualPagePagerViewer(",
-          "line": 209
+          "line": 213
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSpreadSampler.kt",
@@ -29425,7 +29425,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt",
           "symbol": "setMaxTileSize",
-          "line": 366
+          "line": 442
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -33928,7 +33928,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "filterChaptersForDownload.await(manga, chapters)",
-          "line": 1130
+          "line": 1131
         }
       ],
       "FIXTURE": [
