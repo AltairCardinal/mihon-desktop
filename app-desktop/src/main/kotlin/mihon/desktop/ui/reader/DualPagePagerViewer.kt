@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -40,6 +41,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import mihon.desktop.reader.DesktopReaderPresentationImageOwner
+import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.ReaderKeyboardAction
 import mihon.desktop.reader.ReaderPageAction
 import mihon.desktop.reader.ScaleType
@@ -53,6 +55,8 @@ import mihon.desktop.ui.reader.presentation.ReaderPresentationSnapshot
 import mihon.desktop.ui.reader.presentation.VisiblePageSet
 import mihon.desktop.ui.reader.presentation.resolveDualVisiblePages
 import mihon.domain.reader.ReaderNavigationCommand
+import mihon.domain.reader.ReaderPageSideHint
+import mihon.domain.reader.ReaderPageSideHints
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
 import tachiyomi.i18n.MR
@@ -421,12 +425,30 @@ internal fun DualPagePagerViewer(
                     splitHalf = slot.splitHalf,
                     sourceBounds = slot.sourceBounds,
                 )
+                val matching = pagerPresentationBinding?.model?.state?.value?.autoSpreadMatching == true
+                val sideHint = remember(presentationImage.state, matching, slot.splitHalf, slot.sourceBounds) {
+                    if (!matching || slot.splitHalf != null || slot.sourceBounds != null ||
+                        presentationImage.state !is DesktopReaderPresentationImageState.Ready
+                    ) {
+                        ReaderPageSideHint.UNKNOWN
+                    } else {
+                        // Inspect only the already decoded, uncropped page while retaining its real lease.
+                        presentationImage.holder.retainReadyAssetForRender(presentationImage.holder.identity)?.use {
+                            if (it.asset.animationMetadata != null) {
+                                ReaderPageSideHint.UNKNOWN
+                            } else {
+                                val bitmap = it.asset.bitmap.asSkiaBitmap()
+                                ReaderPageSideHints.classify(bitmap.width, bitmap.height, bitmap::getColor)
+                            }
+                        } ?: ReaderPageSideHint.UNKNOWN
+                    }
+                }
                 ZoomablePageBox(
                     onPagePrepared = { width, height ->
                         nativePresentation.setExposed(
                             kotlin.math.abs(pagerState.getOffsetDistanceInPages(pagerIndex)) < 1f,
                         )
-                        nativePresentation.prepare(slot.id, page, width, height)
+                        nativePresentation.prepare(slot.id, page, width, height, sideHint)
                     },
                     onPageDrawn = { nativePresentation.drawn(slot.id) },
                     canObserveFrameGeometry = if (mihon.desktop.test.state.applicationState.testMode) {

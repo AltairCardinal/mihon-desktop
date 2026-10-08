@@ -13,6 +13,138 @@ import org.junit.jupiter.api.Test
 /** v3 events run on the real shared owner; no copied pairing or progress reducer. */
 class SharedDualPageStablePresentationContractTest {
     @Test
+    fun `decoded margin evidence is bounded and ambiguous margins stay unknown`() {
+        val width = 128
+        val height = 256
+        fun image(leftWhite: Boolean, rightWhite: Boolean): IntArray = IntArray(width * height) { index ->
+            val x = index % width
+            if ((leftWhite && x < 6) || (rightWhite && x >= width - 6)) -1 else 0xff303030.toInt()
+        }
+        val left = image(true, false)
+        var reads = 0
+        assertEquals(
+            ReaderPageSideHint.RIGHT,
+            ReaderPageSideHints.classify(width, height) { x, y ->
+                reads++
+                left[y * width + x]
+            },
+        )
+        assertEquals(288, reads)
+        val right = image(false, true)
+        assertEquals(
+            ReaderPageSideHint.LEFT,
+            ReaderPageSideHints.classify(width, height) { x, y ->
+                right[y * width + x]
+            },
+        )
+        for (both in listOf(image(true, true), image(false, false))) {
+            assertEquals(
+                ReaderPageSideHint.UNKNOWN,
+                ReaderPageSideHints.classify(width, height) { x, y ->
+                    both[
+                        y *
+                            width +
+                            x,
+                    ]
+                },
+            )
+        }
+        assertEquals(
+            ReaderPageSideHint.UNKNOWN,
+            ReaderPageSideHints.classify(width, height) { x, _ ->
+                if (x == 1) -1 else 0xff303030.toInt()
+            },
+        )
+    }
+
+    @Test
+    fun `confident decoded side selects either direction without waiting for an unknown earlier partner`() {
+        val cases = listOf(
+            Triple(ReaderDirection.RTL, ReaderPageSideHint.LEFT, listOf(2, 3)),
+            Triple(ReaderDirection.RTL, ReaderPageSideHint.RIGHT, listOf(3, 4)),
+            Triple(ReaderDirection.LTR, ReaderPageSideHint.LEFT, listOf(3, 4)),
+            Triple(ReaderDirection.LTR, ReaderPageSideHint.RIGHT, listOf(2, 3)),
+        )
+        for ((direction, side, expected) in cases) {
+            val owner = owner(target = 3)
+            owner.configure(direction, automaticMatching = true)
+            val ids = owner.identity.pageIds
+            val placeholder = owner.captureViewport(preparingPageIds = emptySet())!!
+            assertTrue(owner.acceptDecodedFact(placeholder, ids[3], 100, 150, side))
+            assertEquals(expected, owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
+            val actual = owner.captureViewport(preparingPageIds = emptySet())!!
+            assertTrue(owner.preparePage(actual, ids[3]))
+            assertTrue(owner.reportDrawn(actual, setOf(ids[3])))
+            val slot = owner.frame(actual)!!.unit.slots.single { it.pageId == ids[3] }
+            assertEquals(
+                if (side ==
+                    ReaderPageSideHint.LEFT
+                ) {
+                    ReaderPortraitSingleSlot.LEFT
+                } else {
+                    ReaderPortraitSingleSlot.RIGHT
+                },
+                slot.position,
+            )
+            val partner = expected.single { it != 3 }
+            assertTrue(owner.acceptDecodedFact(actual, ids[partner], 100, 150, side))
+            assertEquals(listOf(ids[3]), owner.frame(actual)!!.unit.pageIds)
+            assertEquals(slot, owner.frame(actual)!!.unit.slots.single())
+            assertFalse(owner.preparePage(actual, ids[partner]))
+            fact(owner, 3)
+            assertEquals(side, owner.pageFact(ids[3])!!.sideHint, "A late ordinary header must retain the decoded hint")
+        }
+    }
+
+    @Test
+    fun `decoded side respects manual first page automatic switch and physically locked history`() {
+        val earlyPartner = owner(target = 3)
+        earlyPartner.configure(ReaderDirection.RTL, automaticMatching = true)
+        fact(earlyPartner, 3)
+        val earlyIds = earlyPartner.identity.pageIds
+        val pending = earlyPartner.captureViewport(preparingPageIds = emptySet())!!
+        assertTrue(earlyPartner.acceptDecodedFact(pending, earlyIds[4], 100, 150, ReaderPageSideHint.RIGHT))
+        assertEquals(listOf(earlyIds[3]), earlyPartner.targetUnit!!.pageIds)
+        assertFalse(
+            earlyPartner.preparePage(pending, earlyIds[4]),
+            "A leading page cannot first paint in the trailing slot",
+        )
+        val owner = owner(target = 3)
+        val ids = owner.identity.pageIds
+        val off = owner.captureViewport(preparingPageIds = emptySet())!!
+        assertTrue(owner.acceptDecodedFact(off, ids[3], 100, 150, ReaderPageSideHint.LEFT))
+        assertEquals(listOf(3, 4), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
+        owner.configure(ReaderDirection.RTL, automaticMatching = true)
+        val firstPages = owner.identity.pageIds
+        assertTrue(owner.goToPage(firstPages[1]))
+        val opening = owner.captureViewport(preparingPageIds = emptySet())!!
+        assertTrue(owner.acceptDecodedFact(opening, firstPages[1], 100, 150, ReaderPageSideHint.LEFT))
+        assertEquals(listOf(firstPages[1]), owner.targetUnit!!.pageIds)
+        val manual = SharedDualPageRules.decide(
+            firstPages,
+            mapOf(
+                ids[3] to ReaderPageFact.dimensions(100, 150)
+                    .copy(sideHint = ReaderPageSideHint.LEFT),
+            ),
+            ReaderDirection.RTL,
+            3,
+            forcedSinglePages = setOf(ids[3]),
+            usePageSideHints = true,
+        )
+        assertEquals(ReaderPortraitSingleSlot.RIGHT, manual.unit.slots.single().position)
+        val lockedOwner = owner(target = 3)
+        lockedOwner.configure(ReaderDirection.RTL, automaticMatching = true)
+        fact(lockedOwner, 3)
+        val locked = lockedOwner.captureViewport(preparingPageIds = setOf(lockedOwner.identity.pageIds[3]))!!
+        val before = lockedOwner.frame(locked)!!
+        assertTrue(
+            lockedOwner.acceptDecodedFact(locked, lockedOwner.identity.pageIds[3], 100, 150, ReaderPageSideHint.LEFT),
+        )
+        assertEquals(before.unit.slots.first(), lockedOwner.frame(locked)!!.unit.slots.first())
+        assertEquals(before.lockedPageIds, lockedOwner.frame(locked)!!.lockedPageIds)
+    }
+
+    @Test
     fun `unpainted neighbour proposals cannot claim a new cold jump target`() {
         for (target in listOf(14, 16)) {
             val owner = owner(count = 17, target = 0)

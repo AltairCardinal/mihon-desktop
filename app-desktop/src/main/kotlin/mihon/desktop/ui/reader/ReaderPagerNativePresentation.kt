@@ -16,6 +16,7 @@ import mihon.desktop.ui.reader.presentation.DisplayUnitId
 import mihon.desktop.ui.reader.presentation.VisiblePageSet
 import mihon.domain.reader.ReaderDualPageLocationIntent
 import mihon.domain.reader.ReaderDualPageViewportTicket
+import mihon.domain.reader.ReaderPageSideHint
 import mihon.domain.reader.session.ReaderPageSession
 
 /** Binds the native presenter's lifetime to the shared owner's original capability. */
@@ -232,7 +233,13 @@ internal class ReaderPagerNativePresentation(
     }
 
     /** The image invokes this before its first pixel, never from prefetch completion. */
-    fun prepare(slot: DisplaySlotId, content: ReaderPageSession? = null, width: Int = 0, height: Int = 0): Boolean {
+    fun prepare(
+        slot: DisplaySlotId,
+        content: ReaderPageSession? = null,
+        width: Int = 0,
+        height: Int = 0,
+        sideHint: ReaderPageSideHint = ReaderPageSideHint.UNKNOWN,
+    ): Boolean {
         if (!active || !exposed || slot !in expected) return false
         val model = binding?.model ?: return true
         if (binding?.currentGeometry != true) return false
@@ -243,7 +250,7 @@ internal class ReaderPagerNativePresentation(
             if (content == null) {
                 model.prepareDualViewportPage(it, page)
             } else {
-                model.prepareDecodedDualViewportPage(it, content, width, height)
+                model.prepareDecodedDualViewportPage(it, content, width, height, sideHint)
             }
         } == true
         if (prepared()) return true

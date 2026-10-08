@@ -848,12 +848,13 @@ class ReaderScreenModel(
         page: mihon.domain.reader.session.ReaderPageSession,
         width: Int,
         height: Int,
+        sideHint: mihon.domain.reader.ReaderPageSideHint = mihon.domain.reader.ReaderPageSideHint.UNKNOWN,
     ): Boolean = synchronized(productionRuntimeLifecycleLock) {
         if (!isCurrentDualContent(page)) return@synchronized false
         val owner = dualSession ?: return@synchronized false
         if (owner.frame(ticket) == null) return@synchronized false
         val revision = owner.layoutRevision
-        if (!owner.acceptDecodedFact(ticket, page.id, width, height)) return@synchronized false
+        if (!owner.acceptDecodedFact(ticket, page.id, width, height, sideHint)) return@synchronized false
         if (revision != owner.layoutRevision) publishDualSession(owner)
         owner.preparePage(ticket, page.id)
     }

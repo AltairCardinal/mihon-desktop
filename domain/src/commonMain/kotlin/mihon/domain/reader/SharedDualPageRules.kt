@@ -2,6 +2,38 @@ package mihon.domain.reader
 
 import mihon.domain.reader.session.ReaderPageId
 
+enum class ReaderPageSideHint { UNKNOWN, LEFT, RIGHT }
+
+/** Conservative evidence from the oriented, uncropped decoded image; never performs I/O. */
+object ReaderPageSideHints {
+    fun classify(width: Int, height: Int, argbAt: (Int, Int) -> Int): ReaderPageSideHint {
+        if (width < 64 || height < 64 || width >= height) return ReaderPageSideHint.UNKNOWN
+        val left = mutableListOf<Double>()
+        val right = mutableListOf<Double>()
+        for (offset in listOf(.002, .015, .035)) {
+            val x = (width * offset).toInt().coerceIn(1, width - 2)
+            var a = 0
+            var b = 0
+            repeat(48) { sample ->
+                val y = (height * (.04 + .90 * sample / 47)).toInt().coerceIn(0, height - 1)
+                fun white(color: Int) = color ushr 24 >= 240 &&
+                    (color ushr 16 and 255) >= 242 && (color ushr 8 and 255) >= 242 && (color and 255) >= 242
+                if (white(argbAt(x, y))) a++
+                if (white(argbAt(width - 1 - x, y))) b++
+            }
+            left += a / 48.0
+            right += b / 48.0
+        }
+        return when {
+            left.all { it >= .90 } && right.all { it <= .75 } && left.zip(right).all { (a, b) -> a - b >= .25 } ->
+                ReaderPageSideHint.RIGHT
+            right.all { it >= .90 } && left.all { it <= .75 } && left.zip(right).all { (a, b) -> b - a >= .25 } ->
+                ReaderPageSideHint.LEFT
+            else -> ReaderPageSideHint.UNKNOWN
+        }
+    }
+}
+
 enum class ReaderPageFactState { UNKNOWN, PORTRAIT, SPREAD, FAILED }
 
 data class ReaderPageFact(
@@ -10,6 +42,7 @@ data class ReaderPageFact(
     val height: Int = 0,
     val rotation: PageRotation = PageRotation.NONE,
     val sourceOrientation: ReaderImageOrientation = ReaderImageOrientation.NORMAL,
+    val sideHint: ReaderPageSideHint = ReaderPageSideHint.UNKNOWN,
 ) {
     companion object {
         fun dimensions(
@@ -78,6 +111,7 @@ object SharedDualPageRules {
         forcedSinglePages: Set<ReaderPageId> = emptySet(),
         occupied: Set<ReaderPageId> = emptySet(),
         opening: Boolean = targetIndex == 1,
+        usePageSideHints: Boolean = false,
         distance: (ReaderPageId, ReaderPageId) -> Double? = { _, _ -> null },
     ): ReaderDualPageDecision {
         require(direction != ReaderDirection.VERTICAL)
@@ -105,9 +139,41 @@ object SharedDualPageRules {
         if (state(targetIndex) == ReaderPageFactState.SPREAD) return single(ReaderDualPageSingleReason.SPREAD)
         if (targetIndex == 0) return single(ReaderDualPageSingleReason.FIRST_PAGE)
         if (target in forcedSinglePages) return single(ReaderDualPageSingleReason.MANUAL_BOUNDARY, leadingSlot)
+        val side = facts[target]?.sideHint ?: ReaderPageSideHint.UNKNOWN
+        if (usePageSideHints && state(targetIndex) == ReaderPageFactState.PORTRAIT &&
+            side != ReaderPageSideHint.UNKNOWN
+        ) {
+            val slot = if (side ==
+                ReaderPageSideHint.LEFT
+            ) {
+                ReaderPortraitSingleSlot.LEFT
+            } else {
+                ReaderPortraitSingleSlot.RIGHT
+            }
+            val partnerIndex = targetIndex + if (slot == leadingSlot) 1 else -1
+            val partnerPage = pages.getOrNull(partnerIndex)
+            val partnerSide = partnerPage?.let { facts[it]?.sideHint } ?: ReaderPageSideHint.UNKNOWN
+            if (partnerIndex == 0 || !free(partnerIndex) ||
+                state(partnerIndex) in setOf(ReaderPageFactState.SPREAD, ReaderPageFactState.FAILED) ||
+                partnerSide == side
+            ) {
+                return single(ReaderDualPageSingleReason.UNRESOLVED, slot)
+            }
+            return if (partnerIndex < targetIndex) pair(partnerIndex, targetIndex) else pair(targetIndex, partnerIndex)
+        }
         val step = if (forward) 1 else -1
         val partner = targetIndex + step
         val beyond = targetIndex + step * 2
+        val partnerHint = pages.getOrNull(partner)?.let { facts[it]?.sideHint } ?: ReaderPageSideHint.UNKNOWN
+        val partnerSlot = if (forward) {
+            if (direction == ReaderDirection.RTL) ReaderPageSideHint.LEFT else ReaderPageSideHint.RIGHT
+        } else {
+            if (direction == ReaderDirection.RTL) ReaderPageSideHint.RIGHT else ReaderPageSideHint.LEFT
+        }
+        // A ready partner must not lock the wrong side while the target's bitmap is still loading.
+        if (usePageSideHints && partnerHint != ReaderPageSideHint.UNKNOWN && partnerHint != partnerSlot) {
+            return single(ReaderDualPageSingleReason.UNRESOLVED, leadingSlot)
+        }
         if (free(partner) && free(beyond) && portrait(partner) && portrait(beyond)) {
             val later = if (forward) {
                 distance(

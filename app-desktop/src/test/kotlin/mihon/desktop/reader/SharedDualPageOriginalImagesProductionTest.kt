@@ -400,14 +400,39 @@ class SharedDualPageOriginalImagesProductionTest {
 
     @Test
     fun `real home cold jumps preserve forward original B1 tail pairing`() = runBlocking {
-        for (target in listOf(14, 16)) {
+        for (target in listOf(13, 14, 15, 16)) {
             Fixture("b1", 0, dual = true, animated = true, matching = true).use { fixture ->
                 fixture.pixels(0, ReaderPortraitSingleSlot.LEFT)
                 fixture.assertNotPreviouslyDrawn(target)
                 fixture.model.goToPage(target)
-                fixture.pixels(target, ReaderPortraitSingleSlot.RIGHT)
-                fixture.assertTargetSources(if (target == 14) listOf(14, 15) else listOf(16))
-                if (target == 14) fixture.pixels(15, ReaderPortraitSingleSlot.LEFT)
+                fixture.pixels(
+                    target,
+                    if (target % 2 ==
+                        1
+                    ) {
+                        ReaderPortraitSingleSlot.LEFT
+                    } else {
+                        ReaderPortraitSingleSlot.RIGHT
+                    },
+                )
+                val expected = when (target) {
+                    13 -> listOf(12, 13)
+                    14, 15 -> listOf(14, 15)
+                    else -> listOf(16)
+                }
+                fixture.assertTargetSources(expected)
+                for (partner in expected.filter { it != target }) {
+                    fixture.pixels(
+                        partner,
+                        if (partner <
+                            target
+                        ) {
+                            ReaderPortraitSingleSlot.RIGHT
+                        } else {
+                            ReaderPortraitSingleSlot.LEFT
+                        },
+                    )
+                }
             }
         }
     }
@@ -423,10 +448,10 @@ class SharedDualPageOriginalImagesProductionTest {
             assertEquals(setOf(1), fixture.model.state.value.forcedSinglePages)
             // The real slider first lands on source 16 before the explicit source-17 endpoint.
             fixture.model.goToPage(15)
-            fixture.pixels(15, ReaderPortraitSingleSlot.RIGHT)
-            fixture.pixels(16, ReaderPortraitSingleSlot.LEFT)
+            fixture.pixels(15, ReaderPortraitSingleSlot.LEFT)
+            fixture.pixels(14, ReaderPortraitSingleSlot.RIGHT)
             fixture.model.goToPage(16)
-            fixture.pixels(16, ReaderPortraitSingleSlot.LEFT)
+            fixture.pixels(16, ReaderPortraitSingleSlot.RIGHT)
             fixture.cachedTailTurns()
         }
     }
@@ -619,7 +644,7 @@ class SharedDualPageOriginalImagesProductionTest {
             model = factory.createModel(runtime, false, 0, dual)
             // Instrument this exact object; no shallow spy, replacement model, or second owner.
             mockkObject(model)
-            every { model.prepareDecodedDualViewportPage(any(), any(), any(), any()) } answers {
+            every { model.prepareDecodedDualViewportPage(any(), any(), any(), any(), any()) } answers {
                 val accepted = callOriginal()
                 if (accepted && model.state.value.dualPageMode) {
                     val ticket = firstArg<ReaderDualPageViewportTicket>()
@@ -847,7 +872,7 @@ class SharedDualPageOriginalImagesProductionTest {
             try {
                 for (forward in listOf(false, true)) {
                     pointerTurn(forward)
-                    assertEquals(if (forward) 15 else 14, model.state.value.currentPage)
+                    assertEquals(if (forward) 16 else 15, model.state.value.currentPage)
                     repeat(40) { index ->
                         // Inspect existing Ready assets without pinning them across the render.
                         val leases = runtime.presentationImageOwner.retainCachedFullPageAssets()
@@ -950,7 +975,7 @@ class SharedDualPageOriginalImagesProductionTest {
                         dispatcher.scheduler.runCurrent()
                         delay(5)
                     }
-                    if (!forward) pixels(14, ReaderPortraitSingleSlot.RIGHT)
+                    if (!forward) pixels(15, ReaderPortraitSingleSlot.LEFT)
                 }
             } finally {
                 references.values.forEach { it.close() }

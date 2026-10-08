@@ -301,8 +301,13 @@ class SharedDualPageSession(
         }
         accepted[request.requestId]?.let { return it == fact }
         accepted[request.requestId] = fact
-        if (facts[request.content.pageId] != fact) {
-            facts[request.content.pageId] = fact
+        val retained = if (fact.state == ReaderPageFactState.PORTRAIT && fact.sideHint == ReaderPageSideHint.UNKNOWN) {
+            fact.copy(sideHint = facts[request.content.pageId]?.sideHint ?: ReaderPageSideHint.UNKNOWN)
+        } else {
+            fact
+        }
+        if (facts[request.content.pageId] != retained) {
+            facts[request.content.pageId] = retained
             sampleWorkRevision++
             rebuild(request.content.pageId)
         }
@@ -439,6 +444,7 @@ class SharedDualPageSession(
         pageId: ReaderPageId,
         width: Int,
         height: Int,
+        sideHint: ReaderPageSideHint = ReaderPageSideHint.UNKNOWN,
     ): Boolean {
         if (closed || width <= 0 || height <= 0 || ticket.locationSequence != location?.sequence) return false
         val frame = presentation.frame(ticket) ?: return false
@@ -450,8 +456,14 @@ class SharedDualPageSession(
         val actual = ReaderPageFact.dimensions(width, height).copy(
             rotation = content.rotation,
             sourceOrientation = content.sourceOrientation,
+            sideHint = if (width < height) {
+                sideHint.takeUnless { it == ReaderPageSideHint.UNKNOWN }
+                    ?: facts[pageId]?.sideHint ?: ReaderPageSideHint.UNKNOWN
+            } else {
+                ReaderPageSideHint.UNKNOWN
+            },
         )
-        if (facts[pageId]?.state != actual.state) {
+        if (facts[pageId]?.state != actual.state || facts[pageId]?.sideHint != actual.sideHint) {
             facts[pageId] = actual
             sampleWorkRevision++
             rebuild(pageId)

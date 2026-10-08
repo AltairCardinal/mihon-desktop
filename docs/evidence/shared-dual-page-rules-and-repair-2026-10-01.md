@@ -2109,3 +2109,23 @@ Windows本次真实入口为Original B1 resume（8900722），RTL／双页／自
 Windows preview key `dp02-cold-tail-windows-preview` UTC06:46:42.792–06:47:15.568自然PASSED（32.777秒）。本轮期间另一个文档提交`5fe1ba589f`迁入最新集中CUA规则，只含AGENTS／Test Guide／其证据，不涉及本修复；构建manifest如实记录该HEAD和本次未提交修复，productSource digest=`319909683743647a7fa27333d7e122450ef3c0d4d83934e83ad2f3b65443dc59`。preview不递增AppVersion，原BUILD72及Android53版本差异保留、不提交；build／sourceIntegrity／productionRuntime PASS，nativeInteraction NOT_RUN。
 
 人工体验入口为[本轮Windows EXE](<D:/Codex/worktrees/0877/mihon/app-desktop/artifacts/preview/windows/20261008T064643Z-ce787069/Mihon-Desktop-0.11.19.72.5fe1ba5-unpacked/Mihon Desktop.exe>)，身份见同preview目录的`preview-manifest.json`；保留整个unpacked目录。用户从首页开启RTL／双页／自动匹配，分别在新阅读会话直接跳源15和17，核15/16正确配对与17单页，再检查回翻。源码定向证据已通过，Windows人工结果待反馈，DP02不勾选。
+
+#### 2026-10-08人工复验失败：直接跳源16
+
+用户随后提供第169话截图，阅读器16/17、右侧印刷17和左侧印刷18，确认仍错误配对。旧preview人工验收为**失败**，不是因离屏定向绿而通过。本文统一用一基源页编号，源16对应代码index15；印刷页码不能作为source index。上一轮只测冷跳index14和16，遗漏index15。`1c6f9070ab`解决空邻居proposal抢占，不解决`SharedDualPageRules.decide`直接以目标和后页兜底这一规则缺口。
+
+Root对校验过的B1原图做只读像素分析：源11至17最外侧左右采样亮白比例依次约为(1.00,0.26)、(0.50,1.00)、(1.00,0.65)、(0.57,1.00)、(1.00,0.07)、(0.04,1.00)、(1.00,0.61)，内侧1.5%与3.5%处也有相同趋势。这支持本章存在交替的单侧留白，不能推广成所有漫画白边都代表装订。当前连续性score排除纯白边，且冷跳只请求前向窗口，因而没有消费这条本图页侧信息；不把这称为某一对连续性分数误判。
+
+本批复用原实施者，由Root核关键共享路径；增量为从已正常解码的当前位图获得有界页侧提示、首次锁槽前选择前／后伙伴。保留无IO等待、已画不移动、手动边界优先；原图补源14—17逐页新会话冷跳，尤其源16应进入15/16。只做必要focused红绿、格式和一次Windows preview，人工复验交给用户。Android首帧页侧采样未接入，不将共享规则测试冒充Android体验通过；DP02剩余正式验收继续保留。
+
+实施由原代理完成共享规则、owner、会话事实与测试，Root完成3个Desktop适配并核共享边界；双方核对实际prepare接线。共8个产品／测试文件加3个既有文档，属于同一“原位图→页侧提示→锁槽前配对”的完整路径，无持久化或新下载链。三列双侧共288点、阈值与降级边界已写入原设计§7.3。源第一页不能被向前配对吞入；显式边界、已锁历史优先；迟到普通header保留同内容提示，冲突未锁预留可撤销。
+
+原图red key `dp02-b1-gutter-cold-direct-red` 07:29:02.968–07:29:47.186 UTC（44.217秒）：1失败0跳过，源14本应LEFT却实际RIGHT。共享初绿`dp02-gutter-side-shared-green3` 3通过／0跳过／0.101秒。原图初绿尝试`dp02-b1-gutter-cold-direct-green2` 中，4个独立冷跳入口已通过，但修正后的连续跳页／缓存用例失败：源17仍LEFT，不能以独立冷跳绿收口。
+
+旧cached测试原本要求源16 RIGHT＋17 LEFT，正是用户指出的错配；本次按真实正确尾部更新它的预期，保留原80帧逐帧原图oracle。失败进一步暴露默认候选没有核对“伙伴先就绪”的页侧：目标无hint时可能先把已有相反hint的伙伴锁入错误槽。Root接管末项修复，增加默认伙伴槽位兼容检查；`dp02-gutter-partner-first-green2` 07:48:04.334–07:48:27.870（23.537秒）2项通过／0跳过／8.618秒。没有通过移动已画页面或弱化原图oracle消除失败。
+
+最后在原3项共享守卫中加入伙伴先就绪的拒绝锁槽断言，原图每个双页冷跳均核对两张实际图片；8文件strict格式通过，key `dp02-gutter-side-scoped-format3`（9.990秒）。此前两次格式命令分别因PowerShell参数切分和未先配置app插件而在初始化失败，未执行产品测试，修正为既有初始化顺序。最终同范围key `dp02-gutter-side-final-focused5` 07:51:12.895–07:51:49.665（36.771秒）自然通过：shared fresh07:51:31.069／3项／0.100秒，original fresh07:51:39.369／2项／9.029秒，全部零failure／error／skip。Root独读最终XML与差异；仅运行这些方法，没有完整模块或矩阵。
+
+Windows preview `dp02-gutter-side-windows-preview` 07:52:21.090–07:52:41.068（19.978秒）通过。[本轮人工体验EXE](<D:/Codex/worktrees/0877/mihon/app-desktop/artifacts/preview/windows/20261008T075221Z-5bf38ba6/Mihon-Desktop-0.11.19.72.1c6f907-unpacked/Mihon Desktop.exe>)已核实存在；manifest记录基线`1c6f9070ab`及本次未提交产品差异，productSource digest=`2cdfcb4833a4d56a664d2bdebc9fac2b21d0224d4871b147ca378944111341fe`，build／sourceIntegrity／productionRuntime PASS，nativeInteraction NOT_RUN。版本两处原有差异及SHA保持不变，不纳入本提交。构建worker49456／process32272、最终验证42436／3832及补验31728／15352均已退出；未操作用户应用、未执行CUA。
+
+待用户人工复验：新包重新打开第169话，开启RTL／双页／自动匹配，分别从首页跳源14、15、16、17，预期13/14、15/16、15/16、17独占；再连续16→17及回翻，观察图片槽位和内容。当前只确认上述源码／原图production定向证据，Windows人工结果仍待，不宣称所有无明确留白漫画或Android均已修复。
