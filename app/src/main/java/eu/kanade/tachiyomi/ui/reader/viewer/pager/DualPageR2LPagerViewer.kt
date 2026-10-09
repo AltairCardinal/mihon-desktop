@@ -24,7 +24,6 @@ import kotlinx.coroutines.cancel
 import logcat.LogPriority
 import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.ReaderAdjacentChapterPolicy
-import mihon.domain.reader.ReaderChapterOpeningMode
 import mihon.domain.reader.ReaderDualPageSettlement
 import mihon.domain.reader.ReaderDualPageSettlementReason
 import mihon.domain.reader.ReaderDualPageViewportTicket
@@ -538,15 +537,7 @@ class DualPageR2LPagerViewer(
         adapter.adjustPairing()
     }
 
-    fun chapterOpeningMode() = adapter.currentChapter?.let(adapter::session)?.pairingState?.openingMode
-
-    fun pairingOpeningRequest(mode: ReaderChapterOpeningMode): PairingAdjustmentRequest? = pairingAdjustmentRequest(
-        mode,
-    )
-
-    fun pairingAdjustmentRequest(): PairingAdjustmentRequest? = pairingAdjustmentRequest(null)
-
-    private fun pairingAdjustmentRequest(opening: ReaderChapterOpeningMode?): PairingAdjustmentRequest? {
+    fun pairingAdjustmentRequest(): PairingAdjustmentRequest? {
         val selected = currentPage as? DisplayPage ?: return null
         val chapter = selected.firstPage.chapter
         if (chapter !== adapter.currentChapter) return null
@@ -556,11 +547,11 @@ class DualPageR2LPagerViewer(
             "DualPageManual request ui=${selected.visiblePages.map { it.index }}" +
                 " target=${owner.location?.pageId?.sourcePageIndex}" +
                 " direction=RTL" +
-                " opening=${opening ?: owner.pairingState.openingMode}" +
+                " opening=${owner.pairingState.openingMode}" +
                 " boundaries=${owner.pairingState.committedForcedSinglePages.sorted().take(16)}" +
                 " pairs=${owner.pairingState.manualPairStarts.sorted().take(16)}"
         }
-        val save = if (opening == null) adapter.beginPairingAdjustment() else owner.setOpeningMode(opening)
+        val save = adapter.beginPairingAdjustment()
         if (save == null) {
             logcat(LogPriority.INFO) {
                 "DualPageManual rejected state=${owner.pairingState.status}" +

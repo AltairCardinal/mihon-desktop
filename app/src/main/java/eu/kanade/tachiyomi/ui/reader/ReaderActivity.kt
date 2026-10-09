@@ -99,7 +99,6 @@ import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import mihon.domain.reader.ReaderAdjacentChapterEffect
-import mihon.domain.reader.ReaderChapterOpeningMode
 import mihon.domain.reader.ReaderColorFilterParams
 import mihon.domain.reader.ReaderNavigationCommand
 import tachiyomi.core.common.Constants
@@ -615,12 +614,6 @@ open class ReaderActivity : BaseActivity() {
             isPairingUnavailable = state.pairingReadUnavailable,
             isPairingRecordReady = state.pairingRecordReady,
             onRetryPairing = viewModel::retryPairingRestore,
-            openingMode =
-            (state.viewer as? DualPageR2LPagerViewer)?.chapterOpeningMode()
-                ?: ReaderChapterOpeningMode.AUTO,
-            onSelectOpening = { mode ->
-                (state.viewer as? DualPageR2LPagerViewer)?.let { viewModel.setChapterOpening(it, mode) }
-            },
             onClickAdjustPairing = {
                 (state.viewer as? DualPageR2LPagerViewer)?.let(viewModel::adjustChapterPairing)
             },

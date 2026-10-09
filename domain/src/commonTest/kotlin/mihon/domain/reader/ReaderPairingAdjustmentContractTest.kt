@@ -5,6 +5,36 @@ import org.junit.jupiter.api.Test
 
 class ReaderPairingAdjustmentContractTest {
     @Test
+    fun `general adjustment pairs a separate cover and can split and restore it`() {
+        val paired = adjustReaderPairing(0, listOf(0), setOf(1, 6), 8, manualPairStarts = setOf(4))
+        assertEquals(
+            ReaderPairingAdjustment(setOf(6), 0, ReaderChapterOpeningMode.FIRST_PAIR, setOf(4)),
+            paired,
+        )
+        val split = adjustReaderPairing(
+            0,
+            listOf(0, 1),
+            paired.forcedSinglePages,
+            8,
+            paired.openingMode,
+            paired.manualPairStarts,
+        )
+        assertEquals(ReaderChapterOpeningMode.FIRST_SINGLE, split.openingMode)
+        assertEquals(setOf(1, 6), split.forcedSinglePages)
+        assertEquals(setOf(4), split.manualPairStarts)
+        val restored = adjustReaderPairing(
+            1,
+            listOf(1),
+            split.forcedSinglePages,
+            8,
+            split.openingMode,
+            split.manualPairStarts,
+        )
+        assertEquals(ReaderChapterOpeningMode.FIRST_PAIR, restored.openingMode)
+        assertEquals(setOf(6), restored.forcedSinglePages)
+    }
+
+    @Test
     fun `splitting the evidenced first pair persists page one instead of forbidden page zero`() {
         assertEquals(ReaderPairingAdjustment(setOf(1), 1), adjustReaderPairing(1, listOf(0, 1), emptySet()))
         assertEquals(ReaderPairingAdjustment(setOf(1), 1), adjustReaderPairing(0, listOf(0, 1), emptySet()))

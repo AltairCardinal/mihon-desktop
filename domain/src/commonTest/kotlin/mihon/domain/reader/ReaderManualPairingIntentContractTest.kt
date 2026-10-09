@@ -8,6 +8,44 @@ import org.junit.jupiter.api.Test
 
 class ReaderManualPairingIntentContractTest {
     @Test
+    fun `general adjustment pairs cover in both directions and retains legal unknown or failed partners`() {
+        for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+            for (partnerState in listOf(
+                ReaderPageFactState.PORTRAIT,
+                ReaderPageFactState.UNKNOWN,
+                ReaderPageFactState.FAILED,
+            )) {
+                val ids = List(5) { ReaderPageId(ReaderChapterId(7), it) }
+                val session = SharedDualPageSession(
+                    ReaderDualPageIdentity(1, 1, ids.map { ReaderDualPageContentIdentity(it, "fixture") }),
+                    direction,
+                    ids[0],
+                )
+                session.acceptFact(session.requestFact(ids[0]), ReaderPageFact.dimensions(100, 200))
+                session.acceptFact(session.requestFact(ids[1]), ReaderPageFact(partnerState, 100, 200))
+                assertEquals(listOf(ids[0]), session.targetUnit!!.pageIds)
+                session.adjustPairing()
+                assertEquals(listOf(ids[0], ids[1]), session.targetUnit!!.pageIds)
+                assertEquals(
+                    if (direction ==
+                        ReaderDirection.RTL
+                    ) {
+                        ReaderPortraitSingleSlot.RIGHT
+                    } else {
+                        ReaderPortraitSingleSlot.LEFT
+                    },
+                    session.targetUnit!!.slots[0].position,
+                )
+                session.acceptFact(session.requestFact(ids[1]), ReaderPageFact.dimensions(200, 100))
+                assertEquals(listOf(ids[0]), session.targetUnit!!.pageIds)
+                session.goToPage(ids[1])
+                assertEquals(ReaderPortraitSingleSlot.FULL, session.targetUnit!!.slots.single().position)
+                session.close()
+            }
+        }
+    }
+
+    @Test
     fun `legacy following pair respects true spread and a later explicit relationship`() {
         for (wide in listOf(4, 5)) {
             val ids = List(8) { ReaderPageId(ReaderChapterId(7), it) }

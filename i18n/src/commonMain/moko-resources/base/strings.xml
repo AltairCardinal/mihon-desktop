@@ -2154,8 +2154,4 @@
     <string name="creator_frequency_monthly">Monthly</string>
     <string name="creator_settings_saved">Author settings saved</string>
     <string name="desktop_backup_preview_authors">Author archive: %1$d authors</string>
-    <string name="reader_chapter_opening">Chapter opening</string>
-    <string name="reader_chapter_opening_auto">Automatic</string>
-    <string name="reader_chapter_opening_single">First page separately</string>
-    <string name="reader_chapter_opening_pair">First two pages together</string>
 </resources>

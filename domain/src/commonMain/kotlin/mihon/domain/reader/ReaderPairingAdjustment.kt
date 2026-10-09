@@ -22,9 +22,14 @@ fun adjustReaderPairing(
             pages.firstOrNull()
                 ?: return ReaderPairingAdjustment(forcedSinglePages, currentPage, openingMode, manualPairStarts)
         if (first == 0 &&
-            pages.size == 1
+            pages.size == 1 && pageCount > 1
         ) {
-            return ReaderPairingAdjustment(forcedSinglePages, currentPage, openingMode, manualPairStarts)
+            return ReaderPairingAdjustment(
+                forcedSinglePages - 1,
+                0,
+                ReaderChapterOpeningMode.FIRST_PAIR,
+                manualPairStarts - 1,
+            )
         }
         if (first == 0 && pages.size == 2) {
             return ReaderPairingAdjustment(

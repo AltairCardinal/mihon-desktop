@@ -71,7 +71,6 @@ import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.ChapterSkipPolicy
 import mihon.domain.reader.ReaderAdjacentChapterEffect
 import mihon.domain.reader.ReaderChapterEntry
-import mihon.domain.reader.ReaderChapterOpeningMode
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderNavigationCommand
 import mihon.domain.reader.ReaderTransitionDirection
@@ -166,21 +165,12 @@ class ReaderViewModel @JvmOverloads constructor(
         mutableState.update { it.copy(currentPage = page.index + 1) }
     }
 
-    fun adjustChapterPairing(viewer: DualPageR2LPagerViewer) = changeChapterPairing(viewer, null)
-
-    fun setChapterOpening(viewer: DualPageR2LPagerViewer, mode: ReaderChapterOpeningMode) = changeChapterPairing(
-        viewer,
-        mode,
-    )
-
-    private fun changeChapterPairing(viewer: DualPageR2LPagerViewer, opening: ReaderChapterOpeningMode?) {
+    fun adjustChapterPairing(viewer: DualPageR2LPagerViewer) {
         val chapter = state.value.currentChapter ?: return
         val chapterId = chapter.chapter.id ?: return
         val mangaId = manga?.id ?: return
         if (state.value.viewer !== viewer || state.value.pairingSaving) return
-        val request =
-            (if (opening == null) viewer.pairingAdjustmentRequest() else viewer.pairingOpeningRequest(opening))
-                ?: return
+        val request = viewer.pairingAdjustmentRequest() ?: return
         if (chapter !== request.chapter) return
         val sequence = ++pairingSaveSequence
         mutableState.update { it.copy(pairingSaving = true) }

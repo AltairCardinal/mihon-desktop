@@ -2,6 +2,8 @@
 
 日期：2026-10-09。状态：实现、定向验证、独立复审、签名候选及隔离升级完成；两部漫画的用户真机验收待反馈。
 
+后续用户反馈撤销专用开篇菜单，明确保留自动配对规则。前文code63实现和菜单验收清单保留为历史证据；当前要求及后续产物以本文末节为准。
+
 ## 范围与基线
 
 本轮用户授权同时修复额外封面导致的开篇错位，以及手动调整受导航历史影响的问题，交付带事件诊断日志的 Android APK，由用户自行验收。隔离分支 `codex/reader-manual-pairing-fix` 基于 `d52fa599c92287fd8a9fe8c068a3c1a4610ec96c`，不启动原开发会话，不改变其工作树。原设备候选为 `0.19.4-aex.44 / 62`，APK SHA-256 `98358cf03f6673a4fbcf3774323aabaf11641f0578a71be578cdaa2813c3d925`，已通过 ADB 只读核对实际 APK 哈希。原签名、正式包名及数据库升级连续性必须保留。
@@ -84,3 +86,25 @@ Android的默认阅读→明确重试恢复测试在旧基线也失败。该问�
 - APK SHA-256：`e99e734bc1b3b8e01be77e6f412d2a7819210303b1b7480dbd4a756091ddbe71`
 - 产物清单记录基线`d52fa599c9`和冻结的未提交产品输入；productionInputs SHA-256：`23f361c3866cded0dd9179c7e5d65bbbc57bf4d8894fd4c8aaa7c0d5dce4541f`。产品源码构建期间未变化，随后只补充验证记录并统一提交；不能把清单基线误解为未包含本轮修复。
 - 手动边界仅在可合法配对的相邻页生效，真实宽图不裁半；选择章节开篇会定位至本章开头。其他章不继承本章选择。Desktop只覆盖共享接线与自动化测试，没有增加Desktop开篇菜单或声明原生交互验收。
+
+## 后续撤销专用菜单、统一通用调整（2026-10-09）
+
+用户验收code63后要求砍掉“首两页并排”专用功能，进一步明确选择“只删除专用菜单，保留现有自动配对规则”。本批移除Android底栏整个“章节开篇”菜单及仅服务该菜单的Activity/AppBars/ViewModel/Viewer回调、三个语言资源中的四个未使用文案。自动首两页规则和其它自动配对原样保留；所有手动操作仍通过原“调整页面配对”按钮。不是删除首两页合法并排能力，也不是重写配对引擎。
+
+正确红同时证明：旧AppBars仍显示专用菜单；首页单页使用普通调整按钮无操作。最小共享实现仅补pageCount已知、首页单页且至少两页时的普通调整，使用原FIRST_PAIR布局表示，去掉与0/1冲突的边界1及手动pair start1，保留无关区域和当前源页0。拆分及恢复复用code63已有分支；单页章/真实宽页由既有session约束拒绝非法拼接。schema43、format2、opening_mode字段、旧保存记录/CAS/恢复链均不改，不清数据。内部openingMode保留用于现有保存和通用调整，不再是独立用户入口。
+
+TDD与相关回归：domain两个新行为正确失败后最小实现变绿；Android两个真实Compose事件用例分别因旧菜单存在、通用按钮未保存FIRST_PAIR正确失败，修复后通过真实点击→原VM/Viewer→共享命令→SQLite保存→重开恢复。`remove-opening-menu-refactor2`实际66项：domain32（调整4/手调14/自动规则14）、Android25、Desktop模型9；64通过、2失败、0跳过，整体exit1如实保留。9个Kotlin目标Spotless Apply/Check及diff检查通过。测试fixture非void/JUnit发现与误枚举VERTICAL、一次格式参数引用错误属于过程问题，已修正，不当产品红或最终通过证据。
+
+两项旧Android回归失败没有经过新首页调整或AppBars路径：late-wide期望[4]实际[4,5]，last-spread期望[7]实际[6,7]。在既有干净修复工作树HEAD0ed7dce0d2/code63、retry禁用下，以`remove-opening-menu-baseline2`精确执行同两方法，46秒同样失败且差异完全相同；运行前后git status空。故确认先于本批存在，底层原因未诊断，不扩展修复、不改预期求绿、不声称全部阅读器测试通过。原XML/argv/日志在`D:/Codex/worktrees/reader-manual-pairing-fix/mihon/.gradle-coordinator/remove-opening-menu-baseline2-results.xml`及同key.json/.log。本批不重新跑完整模块、全量、原DP02矩阵或性能采样。
+
+主代理独立核菜单调用链删除、首页局部关系修改、宽页/只有一页保护、原保存原子性及新鲜XML；SharedDualPageRules/SharedDualPageSession/PresentationOwner/data均无生产diff。原Desktop BUILD72未提交改动保持；code64版本分配属于本批新改动，沿用原证书。该批跨越菜单接线、共享helper、真实事件测试、文案和文档，是同一能力的内聚撤销及替代入口，不拆成不可独立验收的小提交。正式候选与实际Release UI验收结果在完成后补录。
+
+### code64候选及实际运行边界
+
+统一candidate一次构建完成（Gradle2分27秒），签名及独立verify通过。[aex.46/code64 APK](D:/Codex/worktrees/0877/mihon/app/artifacts/android/0.19.4-aex.46-vc64-d38a558baa-release/Mihon-Fork-0.19.4-aex.46-vc64-release-universal.apk) SHA256=`f008eb560aca875039dc9daf38381ee76c67a52e201bcacfbf6d7ae2a4e2127e`，productionInputs=`abb9aa89bb74ee9bdfe328812230d870eba49be44abfdd802d7f7c1566dd8d3f`。正式包名、原证书、非debuggable、R8/资源压缩、四ABI及schema43保持。专用mihon-pairing-api36以read-only/no-snapshot/no-window、1536MiB/2核启动，只在其明确serial上经统一入口依次验证安装原code63和新code64；未清数据、未卸载、未操作已连接实体设备。code64冷启动MainActivity为COLD/Status ok，PID6101实际RESUMED、同PID无fatal。
+
+Release实机进程中的一次性UI探针明确观察到：工具栏没有专用菜单，原“调整页面配对”的实际无障碍点击形成0:RIGHT/1:LEFT；production日志保存operation1/revision1/current=true，实际SQLite副本也确认format2/pageCount22/revision1/FIRST_PAIR及schema43。源图为现有夹具生成的已知颜色，读取文本/元数据，没有向模型发送图片或识别原图。最初两次探针未找到可点击控件：中心触屏未建立所需工具栏状态，以及Icon描述节点需找到可点击父节点；测试修正用既有菜单键并沿父节点实际点击，不修改产品或放宽保存断言。
+
+**原生重开验收未通过**：第三次完整UI探针前半菜单/按钮/配对通过，但新Activity首屏没有显示已保存的0/1组，`native-ui-parent-result.json`为passed=false（36.857秒）。新画面记录为FIRST_PAGE单页，保存数据本身正确。恢复链本批无diff，初始恢复的可见画面保护是待核推断，尚未给出唯一原因；不能称即时重开恢复、完整Release业务或整个阅读器全部通过。一次性探针源码、三次结果/日志、保存/呈现事件和SQLite副本保存在忽略目录`app-desktop/tmp/remove-opening-menu-acceptance-20261009/`，原失败原样保留，未提交成通过测试或删去失败日志。本轮正式行为测试仍为上面的真实Compose/共享/保存回归；不能拿JVM通过代签本原生失败。
+
+用户明确范围仍是移除专用菜单、保留自动规则。扩大到原恢复链修复及再构建候选已向用户提出独立范围选择，答复前不改恢复协议、不新增候选。本候选可验收菜单移除与通用调整，但带上述恢复限制；原DP02、此前三项自动布局问题及本轮两个已证实code63基线失败保持未关闭。所有版本以实际清单为准，不能为安全回退仅降低APK或数据库版本。

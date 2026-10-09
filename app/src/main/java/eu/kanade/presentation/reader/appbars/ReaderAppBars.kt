@@ -30,7 +30,6 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
-import mihon.domain.reader.ReaderChapterOpeningMode
 import tachiyomi.presentation.core.components.material.padding
 
 private val readerBarsSlideAnimationSpec = tween<IntOffset>(200)
@@ -73,8 +72,6 @@ fun ReaderAppBars(
     isPairingRecordReady: Boolean = true,
     onRetryPairing: () -> Unit = {},
     onClickAdjustPairing: () -> Unit = {},
-    openingMode: ReaderChapterOpeningMode = ReaderChapterOpeningMode.AUTO,
-    onSelectOpening: (ReaderChapterOpeningMode) -> Unit = {},
 ) {
     val isRtl = viewer is R2LPagerViewer || viewer is DualPageR2LPagerViewer
     val backgroundColor = MaterialTheme.colorScheme
@@ -144,8 +141,6 @@ fun ReaderAppBars(
                     isPairingRecordReady = isPairingRecordReady,
                     onRetryPairing = onRetryPairing,
                     onClickAdjustPairing = onClickAdjustPairing,
-                    openingMode = openingMode,
-                    onSelectOpening = onSelectOpening,
                 )
             }
         }

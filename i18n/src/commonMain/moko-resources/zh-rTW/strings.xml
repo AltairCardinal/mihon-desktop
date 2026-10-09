@@ -1574,8 +1574,4 @@
     <string name="creator_work_separate_display_done">已分開顯示此來源版本</string>
     <string name="creator_work_separate_display_undo">復原</string>
     <string name="creator_work_separate_display_failed">無法分開顯示此來源版本，請再試一次。</string>
-    <string name="reader_chapter_opening">章節開篇</string>
-    <string name="reader_chapter_opening_auto">自動</string>
-    <string name="reader_chapter_opening_single">首頁獨立</string>
-    <string name="reader_chapter_opening_pair">首兩頁並排</string>
 </resources>

@@ -133,18 +133,42 @@ class AndroidChapterPairingPersistenceWiringTest {
     }
 
     @Test
-    fun `opening control saves first pair from real reader appbar and restores after reopen`() = runBlocking {
-        val file = temporaryFolder.newFile("opening-control.db")
-        openDatabase(file, create = true).use { first ->
-            seed(first.driver)
-            session(first).use { reader ->
+    fun `real reader appbar offers general adjustment without chapter opening menu`() = runBlocking {
+        openDatabase(temporaryFolder.newFile("reader-appbar.db"), create = true).use { fixture ->
+            seed(fixture.driver)
+            session(fixture).use { reader ->
                 reader.viewer.setChapters(requireNotNull(reader.model.state.value.viewerChapters))
                 reader.host.setContent {
                     MaterialTheme { reader.activity.AppBars(reader.model.state.value.copy(menuVisible = true)) }
                 }
                 compose.mainClock.advanceTimeBy(500)
-                compose.onNodeWithText("Chapter opening").assertIsDisplayed().performClick()
-                compose.onNodeWithText("First two pages together").performClick()
+                compose.onNodeWithText("Chapter opening").assertDoesNotExist()
+                compose.onNodeWithContentDescription(
+                    reader.host.stringResource(MR.strings.action_adjust_page_pairing),
+                ).assertIsDisplayed().assertIsEnabled()
+                Unit
+            }
+        }
+    }
+
+    @Test
+    fun `general adjust button saves first pair from real reader appbar and restores after reopen`() = runBlocking {
+        val file = temporaryFolder.newFile("general-opening-adjustment.db")
+        openDatabase(file, create = true).use { first ->
+            seed(first.driver)
+            session(first).use { reader ->
+                reader.viewer.setChapters(requireNotNull(reader.model.state.value.viewerChapters))
+                val chapter = requireNotNull(reader.model.state.value.currentChapter)
+                reader.viewer.moveToPage(requireNotNull(chapter.pages)[0])
+                assertEquals(setOf(0), visiblePair(reader.viewer))
+                reader.host.setContent {
+                    val state by reader.model.state.collectAsState()
+                    MaterialTheme { reader.activity.AppBars(state.copy(menuVisible = true)) }
+                }
+                compose.mainClock.advanceTimeBy(500)
+                compose.onNodeWithContentDescription(
+                    reader.host.stringResource(MR.strings.action_adjust_page_pairing),
+                ).assertIsEnabled().performClick()
                 withTimeout(5_000) {
                     while (reader.model.state.value.pairingSaving) yield()
                 }
@@ -153,6 +177,7 @@ class AndroidChapterPairingPersistenceWiringTest {
                     first.repository.load(2, 1).record?.openingMode,
                 )
                 assertEquals(setOf(0, 1), visiblePair(reader.viewer))
+                assertFalse(first.database.chaptersQueries.getChapterById(2).executeAsOne().read)
             }
         }
         openDatabase(file).use { reopened ->
