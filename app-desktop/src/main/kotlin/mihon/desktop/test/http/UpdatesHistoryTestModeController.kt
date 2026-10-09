@@ -3,6 +3,7 @@ package mihon.desktop.test.http
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import mihon.desktop.history.HistoryScreenModel
+import mihon.desktop.history.toReaderScreen
 import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.ui.updates.UpcomingScreen
 import mihon.desktop.updates.UpdatesScreenModel
@@ -120,7 +121,13 @@ class UpdatesTestModeController(
             throw error
         } catch (_: Exception) {
             return failure(
-                if (snapshot() != before) TimelineTestFailureCode.PARTIAL_FAILURE else TimelineTestFailureCode.OPERATION_REJECTED,
+                if (snapshot() !=
+                    before
+                ) {
+                    TimelineTestFailureCode.PARTIAL_FAILURE
+                } else {
+                    TimelineTestFailureCode.OPERATION_REJECTED
+                },
             )
         }
         return failureCode?.let(::failure) ?: UpdatesTestActionResult(true, snapshot())
@@ -207,7 +214,9 @@ class UpdatesTestModeController(
 object UpdatesTestModeBridge {
     private val value = AtomicReference<UpdatesTestModeController?>()
     val controller: UpdatesTestModeController? get() = value.get()
-    fun install(controller: UpdatesTestModeController) { value.set(controller) }
+    fun install(controller: UpdatesTestModeController) {
+        value.set(controller)
+    }
     fun clear(expected: UpdatesTestModeController): Boolean = value.compareAndSet(expected, null)
 }
 
@@ -233,8 +242,9 @@ data class HistoryTestActionResult(
     val failureCode: TimelineTestFailureCode? = null,
 )
 
-class HistoryTestModeController(
+class HistoryTestModeController internal constructor(
     private val model: HistoryScreenModel,
+    internal val catalogFixture: HistoryCatalogTestFixture? = null,
 ) {
     private val closed = AtomicBoolean(false)
 
@@ -245,7 +255,7 @@ class HistoryTestModeController(
     fun snapshot(): HistoryTestSnapshot {
         val state = model.state.value
         return HistoryTestSnapshot(
-            searchQuery = state.searchQuery,
+            searchQuery = state.searchQuery.orEmpty(),
             rows = state.items.map {
                 HistoryTestRow(
                     id = it.id,
@@ -290,7 +300,13 @@ class HistoryTestModeController(
             throw error
         } catch (_: Exception) {
             return failure(
-                if (snapshot() != before) TimelineTestFailureCode.PARTIAL_FAILURE else TimelineTestFailureCode.OPERATION_REJECTED,
+                if (snapshot() !=
+                    before
+                ) {
+                    TimelineTestFailureCode.PARTIAL_FAILURE
+                } else {
+                    TimelineTestFailureCode.OPERATION_REJECTED
+                },
             )
         }
         return failureCode?.let(::failure) ?: HistoryTestActionResult(true, snapshot())
@@ -298,6 +314,8 @@ class HistoryTestModeController(
 
     fun close() {
         if (!closed.compareAndSet(false, true)) return
+        model.cancelRead()
+        catalogFixture?.close()
         HistoryTestModeBridge.clear(this)
     }
 
@@ -305,16 +323,18 @@ class HistoryTestModeController(
         val selected = item(params)
         if (selected == null) return rowFailure(params)
         val request = model.readerRequestFor(selected) ?: return TimelineTestFailureCode.OPERATION_REJECTED
-        TestNavigationController.openReader(
-            mangaId = request.mangaId,
-            chapterId = request.chapterId,
-            chapterTitle = request.chapterTitle,
-            mangaTitle = request.mangaTitle,
-            chapterUrl = request.chapterUrl,
-            sourceId = request.sourceId,
-            initialPage = request.initialPage,
-        )
-        return null
+        if (closed.get()) {
+            model.cancelRead()
+            return TimelineTestFailureCode.OWNER_CLOSED
+        }
+        return if (TestNavigationController.navigateToScreen(
+                request.toReaderScreen(model::cancelRead),
+            )
+        ) {
+            null
+        } else {
+            TimelineTestFailureCode.OPERATION_REJECTED
+        }
     }
 
     private fun item(params: Map<String, String>) =
@@ -329,6 +349,8 @@ class HistoryTestModeController(
 object HistoryTestModeBridge {
     private val value = AtomicReference<HistoryTestModeController?>()
     val controller: HistoryTestModeController? get() = value.get()
-    fun install(controller: HistoryTestModeController) { value.set(controller) }
+    fun install(controller: HistoryTestModeController) {
+        value.set(controller)
+    }
     fun clear(expected: HistoryTestModeController): Boolean = value.compareAndSet(expected, null)
 }

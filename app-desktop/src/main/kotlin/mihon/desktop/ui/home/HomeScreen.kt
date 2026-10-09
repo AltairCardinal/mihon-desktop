@@ -1,8 +1,5 @@
 package mihon.desktop.ui.home
 
-import mihon.desktop.LocalDesktopUiDependencies
-import tachiyomi.i18n.MR
-
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -23,19 +20,20 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
-import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.CurrentTab
 import cafe.adriel.voyager.navigator.tab.TabNavigator
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
-import mihon.desktop.network.CloudflareChallenge
+import kotlinx.coroutines.launch
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.network.ChallengeRecoveryAction
 import mihon.desktop.network.ChallengeRecoveryIntent
+import mihon.desktop.network.CloudflareChallenge
 import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.ui.authors.AuthorDetailScreen
 import mihon.desktop.ui.cloudflare.CloudflareBypassDialog
@@ -45,6 +43,7 @@ import mihon.desktop.ui.cloudflare.DesktopChallengeLoginController
 import mihon.desktop.ui.library.LibraryTab
 import mihon.desktop.ui.library.LocalLibraryNavigationHost
 import mihon.desktop.ui.reader.ReaderModeState
+import tachiyomi.i18n.MR
 
 class HomeScreen : Screen {
 
@@ -53,19 +52,21 @@ class HomeScreen : Screen {
         var activeChallenge by remember { mutableStateOf<CloudflareChallenge?>(null) }
         val dependencies = LocalDesktopUiDependencies.current
         val libraryNavigationHost = LocalLibraryNavigationHost.current
+        val historyNavigationHost = mihon.desktop.ui.history.LocalHistoryNavigationHost.current
         val navigator = LocalNavigator.currentOrThrow
         val challengePort = dependencies.challengeUiPort
         val notificationService = dependencies.notificationService
         val authorDiscoveries by remember(dependencies.creatorArchive) {
             dependencies.creatorArchive?.observeUnread(100L) ?: flowOf(emptyList())
         }.collectAsState(emptyList())
-        val controller = remember(challengePort, dependencies.challengeBrowserLoginBridge, dependencies.appPreferences) {
-            DesktopChallengeLoginController(
-                challengePort,
-                dependencies.challengeBrowserLoginBridge,
-                dependencies.appPreferences,
-            )
-        }
+        val controller =
+            remember(challengePort, dependencies.challengeBrowserLoginBridge, dependencies.appPreferences) {
+                DesktopChallengeLoginController(
+                    challengePort,
+                    dependencies.challengeBrowserLoginBridge,
+                    dependencies.appPreferences,
+                )
+            }
         val challengeActions = remember(controller) { DesktopChallengeHomeActionAdapter(controller) }
         val scope = rememberCoroutineScope()
         var actionJob by remember { mutableStateOf<Job?>(null) }
@@ -120,8 +121,10 @@ class HomeScreen : Screen {
                 }
                 val alongsideActiveRecovery = action == DesktopChallengeHomeAction.Close ||
                     action == DesktopChallengeHomeAction.Recover(ChallengeRecoveryIntent.Cancel) ||
-                    (action is DesktopChallengeHomeAction.SubmitClearance &&
-                        uiState.runningAction == ChallengeRecoveryAction.Browser)
+                    (
+                        action is DesktopChallengeHomeAction.SubmitClearance &&
+                            uiState.runningAction == ChallengeRecoveryAction.Browser
+                        )
                 if (alongsideActiveRecovery) {
                     scope.launch { block() }
                 } else {
@@ -161,7 +164,9 @@ class HomeScreen : Screen {
 
                 HomeNavigationHost(
                     modifier = Modifier.onPreviewKeyEvent { event ->
-                        if (tabNavigator.current == LibraryTab && event.type == KeyEventType.KeyUp && !event.isCtrlPressed) {
+                        if (tabNavigator.current == LibraryTab && event.type == KeyEventType.KeyUp &&
+                            !event.isCtrlPressed
+                        ) {
                             libraryNavigationHost.onCtrlReleased()
                         }
                         false
@@ -170,6 +175,7 @@ class HomeScreen : Screen {
                     onSelect = { tab ->
                         if (tabNavigator.current == tab) {
                             if (tab == LibraryTab) libraryNavigationHost.onReselect()
+                            if (tab == mihon.desktop.ui.history.HistoryTab) historyNavigationHost.onReselect()
                         } else {
                             tabNavigator.current = tab
                         }

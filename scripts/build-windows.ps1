@@ -5,6 +5,7 @@ param(
     [switch]$PackageMsi,
     [switch]$VersionAllocated,
     [switch]$EvidenceProvenance,
+    [switch]$Preview,
     [string]$ExpectedVersion
 )
 
@@ -27,6 +28,22 @@ $Python = if ($env:MIHON_PYTHON) {
     $env:MIHON_PYTHON
 } else {
     (Get-Command python -ErrorAction SilentlyContinue).Source
+}
+
+if ($Preview) {
+    if ($TestOnly -or $FullTests -or $PackageMsi -or $EvidenceProvenance) {
+        throw "Preview cannot be combined with tests, MSI, or release evidence"
+    }
+    $SkipTests = $true
+    $VersionAllocated = $true
+    $PreviewId = "$([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'))-$([Guid]::NewGuid().ToString('N').Substring(0,8))"
+    $PreviewDistRoot = Join-Path $RepoRoot "app-desktop\tmp\preview\$PreviewId"
+    $BuildOutputApp = Join-Path $PreviewDistRoot "main\app\Mihon Desktop"
+    $BuildOutputExe = Join-Path $BuildOutputApp "Mihon Desktop.exe"
+    $ArtifactOutputDir = Join-Path $RepoRoot "app-desktop\artifacts\preview\windows\$PreviewId"
+    $PreviewManifest = Join-Path $ArtifactOutputDir "preview-manifest.json"
+    $PreviewBuildStatus = 'NOT_RUN'
+    $PreviewRuntimeStatus = 'NOT_RUN'
 }
 
 if (-not (Test-Path $Gradle)) {
@@ -75,7 +92,16 @@ Write-Host "Native package version: $NativePackageVersion"
 $BuildStartedAt = [DateTime]::UtcNow
 
 Push-Location $RepoRoot
+$PreviewEnvironmentChanged = $false
 try {
+    if ($Preview) {
+        $OriginalWindowsDistRoot = [Environment]::GetEnvironmentVariable('MIHON_WINDOWS_DIST_ROOT', 'Process')
+        $env:MIHON_WINDOWS_DIST_ROOT = $PreviewDistRoot
+        $PreviewEnvironmentChanged = $true
+        if (-not $Python) { throw "Python 3 is required; set MIHON_PYTHON to its executable" }
+        & $Python $ProvenanceTool preview-source --repo $RepoRoot --output $ProvenanceSource | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Unable to fingerprint preview build inputs" }
+    }
     if ($EvidenceProvenance) {
         if (-not $VersionAllocated) {
             throw "Evidence provenance requires an already committed version allocation"
@@ -115,8 +141,11 @@ try {
     # This must remain the final artifact task because packageMsi cleans the shared output tree.
     Write-Host ""
     Write-Host "Building canonical unpackaged Windows application..."
-    & $Gradle --rerun-tasks :app-desktop:createDistributable
+    $buildArgs = @(':app-desktop:createDistributable')
+    if (-not $Preview) { $buildArgs = @('--rerun-tasks') + $buildArgs }
+    & $Gradle @buildArgs
     if ($LASTEXITCODE -ne 0) {
+        if ($Preview) { throw "Preview Gradle build failed with exit code $LASTEXITCODE" }
         exit $LASTEXITCODE
     }
 
@@ -137,12 +166,14 @@ try {
     }
 
     $exeInfo = Get-Item $BuildOutputExe
-    if ($exeInfo.LastWriteTimeUtc -lt $BuildStartedAt.AddSeconds(-2)) {
+    if (-not $Preview -and $exeInfo.LastWriteTimeUtc -lt $BuildStartedAt.AddSeconds(-2)) {
         throw "Canonical unpackaged executable is stale: $BuildOutputExe"
     }
+    if ($Preview) { $PreviewBuildStatus = 'PASS' }
 
     Write-Host ""
     Write-Host "Validating unpackaged runtime version and production APK installation..."
+    if ($Preview) { $PreviewRuntimeStatus = 'TOOL_FAIL' }
     & $ExtensionRuntimeValidator `
         -Executable $BuildOutputExe `
         -ArtifactPath $ExtensionRuntimeFixture `
@@ -153,6 +184,7 @@ try {
         -RepositoryFingerprint "9add655a78e96c4ec7a53ef89dccb557cb5d767489fac5e785d671a5a75d4da2" `
         -ArtifactSha256 "200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8" `
         -ExpectedVersion $ExpectedVersion
+    if ($Preview) { $PreviewRuntimeStatus = 'PASS' }
 
     Write-Host ""
     Write-Host "Validated Mihon Desktop $FullVersion"
@@ -162,12 +194,32 @@ try {
             --output "$BuildOutputApp.task151-provenance.json"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
-    & $UnpackedPublisher -SourceDirectory $BuildOutputApp -OutputRoot $ArtifactOutputDir -FullVersion $FullVersion
+    if ($Preview) {
+        # Validate source consistency before publishing. Revalidate after the copy below.
+        & $Python $ProvenanceTool preview-manifest --repo $RepoRoot --source $ProvenanceSource `
+            --artifact $BuildOutputExe --output $PreviewManifest --platform windows --version $FullVersion `
+            --build-status $PreviewBuildStatus --runtime-status $PreviewRuntimeStatus | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Preview inputs changed during the build" }
+        & $UnpackedPublisher -SourceDirectory $BuildOutputApp -OutputRoot $ArtifactOutputDir -FullVersion $FullVersion 6>$null
+    } else {
+        & $UnpackedPublisher -SourceDirectory $BuildOutputApp -OutputRoot $ArtifactOutputDir -FullVersion $FullVersion
+    }
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     $FinalUnpackedApp = Join-Path $ArtifactOutputDir "Mihon-Desktop-$FullVersion-unpacked"
     $FinalUnpackedExe = Join-Path $FinalUnpackedApp "Mihon Desktop.exe"
     if (-not (Test-Path -LiteralPath $FinalUnpackedExe -PathType Leaf)) {
         throw "Final unpackaged executable was not published: $FinalUnpackedExe"
+    }
+
+    if ($Preview) {
+        & $Python $ProvenanceTool preview-manifest --repo $RepoRoot --source $ProvenanceSource `
+            --artifact $FinalUnpackedExe --output $PreviewManifest --platform windows --version $FullVersion `
+            --build-status $PreviewBuildStatus --runtime-status $PreviewRuntimeStatus | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Preview provenance validation failed" }
+        Write-Host "Preview manifest: $PreviewManifest"
+        Write-Host "Preview build; native interaction acceptance has not run."
+        Write-Host "Final unpacked EXE: $FinalUnpackedExe"
+        return
     }
 
     $ArtifactArchive = Join-Path $ArtifactOutputDir "Mihon-Desktop-$FullVersion-windows.zip"
@@ -186,7 +238,19 @@ try {
     if ($PackageMsi) {
         Write-Host "MSI output: $MsiOutputDir"
     }
+} catch {
+    if ($Preview -and (Test-Path -LiteralPath $ProvenanceSource)) {
+        if ($PreviewBuildStatus -eq 'NOT_RUN') { $PreviewBuildStatus = 'TOOL_FAIL' }
+        & $Python $ProvenanceTool preview-manifest --repo $RepoRoot --source $ProvenanceSource `
+            --artifact $BuildOutputExe --output $PreviewManifest --platform windows --version $FullVersion `
+            --build-status $PreviewBuildStatus --runtime-status $PreviewRuntimeStatus | Out-Null
+        Write-Host "Preview failure manifest: $PreviewManifest"
+    }
+    throw
 } finally {
+    if ($PreviewEnvironmentChanged) {
+        [Environment]::SetEnvironmentVariable('MIHON_WINDOWS_DIST_ROOT', $OriginalWindowsDistRoot, 'Process')
+    }
     Remove-Item -LiteralPath $ProvenanceSource -Force -ErrorAction SilentlyContinue
     Pop-Location
 }

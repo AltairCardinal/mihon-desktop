@@ -93,6 +93,17 @@ class ReaderProgressSettlementRaceTest {
             every { getIncognitoState.await(any()) } returns false
             val recorder = RecordReadingProgress(
                 object : ReadingProgressRepository {
+                    override suspend fun openChapter(
+                        target: tachiyomi.domain.reader.model.ReaderChapterIdentity,
+                    ) =
+                        tachiyomi.domain.reader.model.ReaderOpenContext(
+                            manga,
+                            chapters.first { it.id == target.chapterId },
+                            0,
+                            tachiyomi.domain.reader.model.ReadingSyncSnapshot(),
+                            false,
+                        )
+
                     override suspend fun record(event: ReadingProgressEvent) {
                         recorded.send(event)
                     }

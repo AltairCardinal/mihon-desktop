@@ -170,7 +170,7 @@ class DesktopBatchMigrationController(
     }
 
     fun pause(id: String) {
-        jobs[id]?.cancel()
+        cancelWorker(id)
         scheduler.pause(id)
         update(id) { queue ->
             queue.copy(
@@ -195,7 +195,7 @@ class DesktopBatchMigrationController(
 
     fun cancelItem(id: String, mangaId: Long) {
         if (queue(id)?.items?.firstOrNull { it.mangaId == mangaId }?.status == BatchMigrationItemStatus.RUNNING) {
-            jobs[id]?.cancel()
+            cancelWorker(id)
             scheduler.pause(id)
         }
         updateItem(id, mangaId) { it.copy(status = BatchMigrationItemStatus.CANCELLED, error = null) }
@@ -203,7 +203,7 @@ class DesktopBatchMigrationController(
     }
 
     fun cancelAll(id: String) {
-        jobs[id]?.cancel()
+        cancelWorker(id)
         scheduler.cancel(id)
         update(id) { queue ->
             queue.copy(
@@ -262,6 +262,17 @@ class DesktopBatchMigrationController(
     }
 
     override fun start() = recover()
+
+    private fun cancelWorker(id: String) {
+        val worker = synchronized(jobLock) {
+            jobs[id]?.also { job ->
+                if (stoppingJobs.add(job)) {
+                    job.invokeOnCompletion { synchronized(jobLock) { stoppingJobs.remove(job) } }
+                }
+            }
+        }
+        worker?.cancel()
+    }
 
     override fun stop() {
         val original = synchronized(jobLock) {

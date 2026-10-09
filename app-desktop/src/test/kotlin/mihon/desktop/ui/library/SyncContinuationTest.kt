@@ -4,8 +4,8 @@ import kotlinx.coroutines.test.runTest
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.reader.ReaderNavigator
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.model.Chapter
@@ -43,20 +43,48 @@ class SyncContinuationTest {
     fun `detail continuation chooses earlier unread chapter and keeps synchronized state only for that chapter`() = runTest {
         val manga = Manga.create().copy(id = 10, source = 42, url = "/manga", chapterFlags = Manga.CHAPTER_SORTING_NUMBER)
         val first = Chapter.create().copy(
-            id = 1, mangaId = 10, url = "/first", sourceOrder = 0, chapterNumber = 1.0, lastPageRead = 4,
+            id = 1,
+            mangaId = 10,
+            url = "/first",
+            sourceOrder = 0,
+            chapterNumber = 1.0,
+            lastPageRead = 4,
         )
         val second = Chapter.create().copy(
-            id = 2, mangaId = 10, url = "/second", sourceOrder = 1, chapterNumber = 2.0, read = true,
+            id = 2,
+            mangaId = 10,
+            url = "/second",
+            sourceOrder = 1,
+            chapterNumber = 2.0,
+            read = true,
         )
         val snapshot = ReadingSyncSnapshot()
-        val model = MangaDetailScreenModel(10, readingProgress = progress(ReadingResumePosition(2, 9, snapshot)))
+        val baseline = ReadingSyncSnapshot()
+        val model = MangaDetailScreenModel(
+            10,
+            readingProgress = progress(
+                ReadingResumePosition(2, 9, snapshot),
+                listOf(
+                    tachiyomi.domain.reader.model.ReaderOpenContext(manga, first, 4, baseline, false),
+                    tachiyomi.domain.reader.model.ReaderOpenContext(manga, second, 0, baseline, false),
+                ),
+            ),
+        )
 
         val oldResume = requireNotNull(model.continueReadingRequest(manga, listOf(first, second)))
         assertEquals(first.id, oldResume.chapterId)
         assertEquals(4, oldResume.initialPage)
-        assertNull(oldResume.resumeSnapshot)
+        assertSame(baseline, oldResume.resumeSnapshot)
 
-        val sameChapter = MangaDetailScreenModel(10, readingProgress = progress(ReadingResumePosition(1, 5, snapshot)))
+        val sameChapter = MangaDetailScreenModel(
+            10,
+            readingProgress = progress(
+                ReadingResumePosition(1, 5, snapshot),
+                listOf(
+                    tachiyomi.domain.reader.model.ReaderOpenContext(manga, first, 5, snapshot, true),
+                ),
+            ),
+        )
         val matchingResume = requireNotNull(sameChapter.continueReadingRequest(manga, listOf(first, second)))
         assertEquals(first.id, matchingResume.chapterId)
         assertEquals(5, matchingResume.initialPage)
@@ -85,15 +113,33 @@ class SyncContinuationTest {
     fun `external unread chapter is skipped before choosing an internal unread target`() = runTest {
         val manga = Manga.create().copy(id = 10, source = 42, url = "/manga", chapterFlags = Manga.CHAPTER_SORTING_NUMBER)
         val external = Chapter.create().copy(
-            id = 1, mangaId = 10, url = "external:https://example.com/first", sourceOrder = 0, chapterNumber = 1.0,
+            id = 1,
+            mangaId = 10,
+            url = "external:https://example.com/first",
+            sourceOrder = 0,
+            chapterNumber = 1.0,
         )
         val internal = Chapter.create().copy(
-            id = 2, mangaId = 10, url = "/second", sourceOrder = 1, chapterNumber = 2.0, lastPageRead = 3,
+            id = 2,
+            mangaId = 10,
+            url = "/second",
+            sourceOrder = 1,
+            chapterNumber = 2.0,
+            lastPageRead = 3,
         )
         val chapters = FakeChapterRepository().apply { addAll(listOf(external, internal)) }
         val progress = progress(ReadingResumePosition(external.id, 9, ReadingSyncSnapshot()))
         val library = LibraryScreenModel(getChaptersByMangaId = GetChaptersByMangaId(chapters), readingProgress = progress)
-        val detail = MangaDetailScreenModel(10, readingProgress = progress)
+        val baseline = ReadingSyncSnapshot()
+        val detail = MangaDetailScreenModel(
+            10,
+            readingProgress = progress(
+                ReadingResumePosition(external.id, 9, ReadingSyncSnapshot()),
+                listOf(
+                    tachiyomi.domain.reader.model.ReaderOpenContext(manga, internal, 3, baseline, false),
+                ),
+            ),
+        )
 
         val libraryRequest = requireNotNull(
             library.continueReadingRequest(LibraryManga(manga, emptyList(), 2, 2, 2, 0, 0, 0)),
@@ -106,7 +152,7 @@ class SyncContinuationTest {
         assertNull(ReaderNavigator(libraryRequest.chapters, libraryRequest.currentChapterIndex).nextToRead)
         assertEquals(internal.id, detailRequest.chapterId)
         assertEquals(3, detailRequest.initialPage)
-        assertNull(detailRequest.resumeSnapshot)
+        assertSame(baseline, detailRequest.resumeSnapshot)
     }
 
     @Test
@@ -145,7 +191,17 @@ class SyncContinuationTest {
             Chapter.create().copy(id = 1, mangaId = 10, url = "/first"),
             Chapter.create().copy(id = 2, mangaId = 10, url = "/second", read = true, lastPageRead = 7),
         )
-        val model = MangaDetailScreenModel(10, readingProgress = progress(ReadingSyncSnapshot()))
+        val snapshot = ReadingSyncSnapshot()
+        val model = MangaDetailScreenModel(
+            10,
+            readingProgress = progress(
+                ReadingResumePosition(1, 2, snapshot),
+                listOf(
+                    tachiyomi.domain.reader.model.ReaderOpenContext(manga, chapters[0], 2, snapshot, true),
+                    tachiyomi.domain.reader.model.ReaderOpenContext(manga, chapters[1], 0, ReadingSyncSnapshot(), false),
+                ),
+            ),
+        )
         val request = requireNotNull(model.continueReadingRequest(manga, chapters))
         assertEquals(1L, request.chapterId)
         assertEquals(2, request.initialPage)
@@ -155,7 +211,8 @@ class SyncContinuationTest {
 
     private fun progress(snapshot: ReadingSyncSnapshot) = progress(ReadingResumePosition(1, 2, snapshot))
 
-    private fun progress(position: ReadingResumePosition) = RecordReadingProgress(object : ReadingProgressRepository {
+    private fun progress(position: ReadingResumePosition, openings: List<tachiyomi.domain.reader.model.ReaderOpenContext> = emptyList()) = RecordReadingProgress(object : ReadingProgressRepository {
+        override suspend fun openChapter(target: tachiyomi.domain.reader.model.ReaderChapterIdentity) = openings.firstOrNull { it.chapter.id == target.chapterId }
         override suspend fun record(event: ReadingProgressEvent) = Unit
         override suspend fun resumePosition(mangaId: Long) = position
     })

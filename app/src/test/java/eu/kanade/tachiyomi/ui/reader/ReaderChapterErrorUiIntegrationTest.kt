@@ -80,7 +80,15 @@ class ReaderChapterErrorUiIntegrationTest {
                 getNextChapters = mockk(relaxed = true),
                 upsertHistory = mockk(relaxed = true),
                 updateChapter = mockk(relaxed = true),
-                recordReadingProgress = mockk(relaxed = true),
+                recordReadingProgress = mockk(relaxed = true) {
+                    coEvery { openChapter(any()) } returns tachiyomi.domain.reader.model.ReaderOpenContext(
+                        manga,
+                        chapter,
+                        0,
+                        tachiyomi.domain.reader.model.ReadingSyncSnapshot(),
+                        false,
+                    )
+                },
                 setMangaViewerFlags = mockk(relaxed = true),
                 getIncognitoState = mockk(relaxed = true),
                 pairingCoordinator = emptyChapterPairingCoordinator(),

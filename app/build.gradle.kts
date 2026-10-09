@@ -321,6 +321,7 @@ dependencies {
     implementation(projects.presentationCore)
     implementation(projects.presentationTheme)
     implementation(projects.presentationSync)
+    implementation(projects.presentationHistory)
     implementation(projects.presentationWidget)
     implementation(projects.telemetry)
 

@@ -261,6 +261,18 @@ class DomainModule : InjektModule {
             }
         }
         addFactory { UpdateLibraryMembership(get<MangaRepository>()) }
+        addSingletonFactory {
+            val extensions = get<ExtensionManager>()
+            tachiyomi.data.chapter.SourceChapterCatalogWriter(get(), get(), get(), get()) { sourceId ->
+                SourceDateExtensionIdentity(
+                    extensions.getExtensionPackage(sourceId) ?: "builtin.source",
+                    extensions.getExtensionVersion(sourceId) ?: "builtin",
+                )
+            }
+        }
+        addSingletonFactory<tachiyomi.domain.reader.interactor.ReaderCatalogPreparation> {
+            eu.kanade.tachiyomi.ui.reader.AndroidReaderCatalogPreparation(get(), get(), get(), get())
+        }
         addFactory { UpdateMangaNotes(get()) }
         addFactory { SetMangaCategories(get()) }
         addFactory { GetExcludedScanlators(get()) }

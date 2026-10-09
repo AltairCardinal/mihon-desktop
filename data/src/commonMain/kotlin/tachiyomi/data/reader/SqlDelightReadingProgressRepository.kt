@@ -16,7 +16,11 @@ import mihon.domain.sync.SyncProjection
 import mihon.domain.sync.SyncReadingPolicy
 import mihon.domain.sync.SyncReadingSession
 import tachiyomi.data.Database
+import tachiyomi.data.chapter.ChapterMapper
 import tachiyomi.data.chapter.readChapterUrlIdentity
+import tachiyomi.data.manga.MangaMapper
+import tachiyomi.domain.reader.model.ReaderChapterIdentity
+import tachiyomi.domain.reader.model.ReaderOpenContext
 import tachiyomi.domain.reader.model.ReadingProgressEvent
 import tachiyomi.domain.reader.model.ReadingResumePosition
 import tachiyomi.domain.reader.model.ReadingSyncScope
@@ -24,10 +28,34 @@ import tachiyomi.domain.reader.model.ReadingSyncSnapshot
 import tachiyomi.domain.reader.repository.ReadingProgressRepository
 
 class SqlDelightReadingProgressRepository(private val database: Database) : ReadingProgressRepository {
-    override suspend fun resumePosition(mangaId: Long): ReadingResumePosition? = database.transactionWithResult {
-        val scope = currentSyncScope() ?: return@transactionWithResult null
-        val manga = database.mangasQueries.getMangaById(mangaId).executeAsOneOrNull()
+    override suspend fun openChapter(
+        target: ReaderChapterIdentity,
+    ): ReaderOpenContext? = database.transactionWithResult {
+        val manga = database.mangasQueries.getMangaById(target.mangaId, MangaMapper::mapManga).executeAsOneOrNull()
             ?: return@transactionWithResult null
+        if (manga.source != target.sourceId || manga.url != target.mangaUrl) return@transactionWithResult null
+        val chapter =
+            database.chaptersQueries.getChapterById(target.chapterId, ChapterMapper::mapChapter).executeAsOneOrNull()
+                ?: return@transactionWithResult null
+        if (chapter.mangaId != manga.id || chapter.url != target.chapterUrl) return@transactionWithResult null
+        val resume = if (!chapter.read) resumeInTransaction(manga.id)?.takeIf { it.chapterId == chapter.id } else null
+        ReaderOpenContext(
+            manga,
+            chapter,
+            resume?.pageIndex ?: if (chapter.read) 0 else chapter.lastPageRead.toInt().coerceAtLeast(0),
+            resume?.snapshot ?: syncSnapshot(chapter.id),
+            resumedWithinChapter = resume != null,
+        )
+    }
+
+    override suspend fun resumePosition(mangaId: Long): ReadingResumePosition? = database.transactionWithResult {
+        resumeInTransaction(mangaId)
+    }
+
+    private fun resumeInTransaction(mangaId: Long): ReadingResumePosition? {
+        val scope = currentSyncScope() ?: return null
+        val manga = database.mangasQueries.getMangaById(mangaId).executeAsOneOrNull()
+            ?: return null
         val key = SyncObjectKey(SyncObjectType.MANGA, sourceId = manga.source.toString(), originalUrl = manga.url)
         val refs = database.sync_journalQueries.getHeads(
             scope.spaceId,
@@ -35,7 +63,7 @@ class SqlDelightReadingProgressRepository(private val database: Database) : Read
             key.stableKey,
             SyncField.RESUME_POSITION.name,
         ).executeAsOneOrNull()?.let { Json.decodeFromString<List<SyncEffectRef>>(it) }.orEmpty()
-        if (refs.isEmpty()) return@transactionWithResult null
+        if (refs.isEmpty()) return null
         // Heads are already validated by the journal/projector. Read their envelopes, not the entire history.
         val events = refs.map { it.eventId.stableKey }.distinct().chunked(256).flatMap { chunk ->
             database.sync_inboxQueries.getEventsByKey(scope.spaceId, scope.generation, chunk).executeAsList()
@@ -56,7 +84,7 @@ class SqlDelightReadingProgressRepository(private val database: Database) : Read
             effectsByRef = effects,
         )
         val position = SyncReadingPolicy.chooseResume(projection, SyncReadingSession(key, "", 0, ""))
-            .nextPosition ?: return@transactionWithResult null
+            .nextPosition ?: return null
         val chapter = database.chaptersQueries.getChaptersByMangaId(mangaId, 0).executeAsList().find {
             val identity = database.readChapterUrlIdentity(it._id)
             (identity.aliases + identity.canonicalUrl + it.url).distinct().any { url ->
@@ -67,8 +95,8 @@ class SqlDelightReadingProgressRepository(private val database: Database) : Read
                     parentUrl = manga.url,
                 ).stableKey == position.chapterKey
             }
-        } ?: return@transactionWithResult null
-        ReadingResumePosition(chapter._id, position.pageIndex, syncSnapshot(chapter._id))
+        } ?: return null
+        return ReadingResumePosition(chapter._id, position.pageIndex, syncSnapshot(chapter._id))
     }
 
     override suspend fun record(event: ReadingProgressEvent) {

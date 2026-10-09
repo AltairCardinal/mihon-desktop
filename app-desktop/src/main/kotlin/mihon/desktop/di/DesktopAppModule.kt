@@ -650,14 +650,20 @@ private fun registerDesktopExtension(
         DesktopSourceManager(
             extensionManager = extensionManager,
             preferences = appPreferences,
-            additionalCatalogueSources = mihon.desktop.test.http.ReaderTestModeSourceBridge::sources,
+            additionalCatalogueSources = {
+                mihon.desktop.test.http.ReaderTestModeSourceBridge.sources() +
+                    mihon.desktop.test.http.HistoryCatalogTestSourceBridge.sources()
+            },
         )
     } else {
         DesktopSourceManager(
             extensionManager = extensionManager,
             preferences = appPreferences,
             builtinSources = builtInSources,
-            additionalCatalogueSources = mihon.desktop.test.http.ReaderTestModeSourceBridge::sources,
+            additionalCatalogueSources = {
+                mihon.desktop.test.http.ReaderTestModeSourceBridge.sources() +
+                    mihon.desktop.test.http.HistoryCatalogTestSourceBridge.sources()
+            },
         )
     }
     Injekt.addSingleton<SourceManager>(sourceManager)
@@ -789,6 +795,14 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
     Injekt.addSingleton(SetMangaChapterFlags(mangaRepository))
     Injekt.addSingleton(upsertHistory)
 
+    val catalogWriter = mihon.desktop.domain.SourceChapterCatalogWriter(
+        chapterRepository,
+        Injekt.get<CreatorArchiveRepository>(),
+        Injekt.get<DatabaseHandler>(),
+        Injekt.get<CreatorArchiveBootstrap>(),
+        sourceDateExtensionIdentityProvider,
+    )
+    Injekt.addSingleton(catalogWriter)
     val saveSourceMangaForDetails = SaveSourceMangaForDetails(
         networkToLocalManga,
         mangaRepository,
@@ -800,6 +814,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
         downloadPolicy = { manga -> Injekt.get<FilterChaptersForDownload>().snapshot(manga) },
         disallowNonAsciiFilenames = { Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get() },
         directoryCommit = { manga, request -> Injekt.get<LibraryUpdateChecker>().commitDirectory(manga, request) },
+        catalogWriter = catalogWriter,
     )
     Injekt.addSingleton(saveSourceMangaForDetails)
     Injekt.addSingleton(GetFavorites(mangaRepository))
@@ -1257,6 +1272,11 @@ internal suspend fun initUILayer(
                 encodedCacheDirectory = paths.networkCacheDir.resolve("reader-encoded"),
                 chapterRepository = chapterRepository,
                 pairingCoordinator = pairingCoordinator,
+                catalogPreparation = mihon.desktop.reader.DesktopReaderCatalogPreparation(
+                    mangaRepository,
+                    Injekt.get(),
+                    Injekt.get(),
+                ),
                 readerIoProbe = mihon.desktop.test.http.ReaderIoTestModeBridge,
                 disallowNonAsciiFilenames = {
                     Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get()

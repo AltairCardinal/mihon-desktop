@@ -115,6 +115,30 @@ class MangaDetailLibraryEntryWiringTest {
         val snapshot = tachiyomi.domain.reader.model.ReadingSyncSnapshot()
         val progress = tachiyomi.domain.reader.interactor.RecordReadingProgress(
             object : tachiyomi.domain.reader.repository.ReadingProgressRepository {
+                override suspend fun openChapter(
+                    target: tachiyomi.domain.reader.model.ReaderChapterIdentity,
+                ): tachiyomi.domain.reader.model.ReaderOpenContext {
+                    assertEquals(
+                        tachiyomi.domain.reader.model.ReaderChapterIdentity(
+                            manga.id,
+                            manga.source,
+                            manga.url,
+                            chapter.id,
+                            chapter.url,
+                        ),
+                        target,
+                    )
+                    val currentManga = mangaRepository.getMangaById(target.mangaId)
+                    val currentChapter = requireNotNull(chapterRepository.getChapterById(target.chapterId))
+                    return tachiyomi.domain.reader.model.ReaderOpenContext(
+                        currentManga,
+                        currentChapter,
+                        currentChapter.lastPageRead.toInt(),
+                        snapshot,
+                        resumedWithinChapter = false,
+                    )
+                }
+
                 override suspend fun record(event: tachiyomi.domain.reader.model.ReadingProgressEvent) = Unit
                 override suspend fun resumePosition(mangaId: Long) =
                     tachiyomi.domain.reader.model.ReadingResumePosition(synced.id, 2, snapshot)
@@ -179,7 +203,7 @@ class MangaDetailLibraryEntryWiringTest {
             val reader = navigator.lastItem as DesktopReaderScreen
             assertEquals(chapter.id, reader.chapterId)
             assertEquals(chapter.lastPageRead.toInt(), reader.initialPage)
-            if (resume) assertEquals(null, reader.initialContext().resumeSnapshot)
+            assertEquals(snapshot, reader.initialContext().resumeSnapshot)
         } finally {
             scene.close()
         }

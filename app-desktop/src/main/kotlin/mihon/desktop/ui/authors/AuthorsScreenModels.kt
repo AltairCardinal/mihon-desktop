@@ -1,72 +1,70 @@
 package mihon.desktop.ui.authors
 
 import cafe.adriel.voyager.core.model.ScreenModel
+import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.SManga
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.domain.CreatorDiscoveryScheduler
 import mihon.desktop.domain.CreatorDiscoveryTaskState
 import mihon.desktop.domain.SaveSourceMangaForDetails
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
+import tachiyomi.domain.creator.interactor.CreatorArchive
 import tachiyomi.domain.creator.interactor.CreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
+import tachiyomi.domain.creator.model.ArchiveLanguageSubject
+import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CreatorCardProjection
 import tachiyomi.domain.creator.model.CreatorCardProjectionPage
 import tachiyomi.domain.creator.model.CreatorWorkArchive
-import tachiyomi.domain.creator.model.ArchiveLanguageSubject
-import tachiyomi.domain.creator.model.SourceCheckpoint
+import tachiyomi.domain.creator.model.CreatorWorkArchiveFilter
 import tachiyomi.domain.creator.model.LanguageDimension
+import tachiyomi.domain.creator.model.NewCanonicalWorkDecision
+import tachiyomi.domain.creator.model.SourceCheckpoint
+import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
+import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.model.WorkDecisionProjection
 import tachiyomi.domain.creator.model.WorkDecisionState
-import tachiyomi.domain.creator.interactor.CreatorArchive
-import tachiyomi.domain.creator.service.WorkMatchInput
-import tachiyomi.domain.creator.service.WorkMatchScore
-import tachiyomi.domain.creator.service.WorkMatchScorer
-import tachiyomi.domain.creator.service.WorkMatchEvidenceKind
-import tachiyomi.domain.creator.service.CreatorLibraryIndexState
-import tachiyomi.domain.creator.service.CreatorLibraryIndexer
+import tachiyomi.domain.creator.model.WorkPresentationGroup
 import tachiyomi.domain.creator.service.ChapterVariantInput
 import tachiyomi.domain.creator.service.ChapterVariantNormalizer
 import tachiyomi.domain.creator.service.ChapterVariantSummary
-import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
-import tachiyomi.domain.source.service.SourceManager
-import eu.kanade.tachiyomi.source.CatalogueSource
-import mihon.desktop.DesktopUiDependencies
-import tachiyomi.domain.creator.service.OpenCreatorWorkVersion
-import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
-import tachiyomi.domain.creator.model.SourceWorkNaturalKey
-import tachiyomi.domain.creator.model.NewCanonicalWorkDecision
-import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.service.CreatorIdentityEditor
-import tachiyomi.domain.creator.model.WorkDecisionProjection
-import tachiyomi.domain.creator.model.CreatorWorkArchiveFilter
-import tachiyomi.domain.creator.model.WorkPresentationGroup
-import tachiyomi.domain.library.model.LibraryDisplayMode
-import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.creator.service.CreatorLibraryIndexState
+import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 import tachiyomi.domain.creator.service.CreatorWorkPresentationExclusions
 import tachiyomi.domain.creator.service.CreatorWorkPresentationTitleHistory
+import tachiyomi.domain.creator.service.OpenCreatorWorkVersion
+import tachiyomi.domain.creator.service.WorkMatchEvidenceKind
+import tachiyomi.domain.creator.service.WorkMatchInput
+import tachiyomi.domain.creator.service.WorkMatchScore
+import tachiyomi.domain.creator.service.WorkMatchScorer
 import tachiyomi.domain.creator.service.WorkPresentationGroupService
 import tachiyomi.domain.creator.service.WorkTitleNormalizer
+import tachiyomi.domain.library.model.LibraryDisplayMode
+import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.source.service.SourceManager
 import java.util.Locale
-
-
 
 internal object AuthorsScreenModelFactory {
     fun root(dependencies: DesktopUiDependencies): AuthorsRootScreenModel = AuthorsRootScreenModel(
@@ -273,8 +271,7 @@ class AuthorsRootScreenModel(
     private fun showTab(followedOnly: Boolean) {
         if (followedOnly == state.value.followedOnly) return
         val restorePosition = if (followedOnly) followedScrollPosition else allAuthorsScrollPosition
-        mutableState.update { it.copy(followedOnly = followedOnly) }
-        requestPages(targetCount = restorePosition.lastVisibleIndex + 1, preserveCards = false)
+        requestPages(targetCount = restorePosition.lastVisibleIndex + 1, preserveCards = false, followedOnly = followedOnly)
     }
 
     private fun loadFirstPage() {
@@ -290,14 +287,16 @@ class AuthorsRootScreenModel(
         preserveCards: Boolean,
         query: String = state.value.query,
         queryResetRevision: Long = state.value.queryResetRevision,
+        followedOnly: Boolean = state.value.followedOnly,
     ) {
         pageJob?.cancel()
         val generation = ++pageGeneration
-        val current = state.value.copy(query = query, queryResetRevision = queryResetRevision)
+        val current = state.value.copy(query = query, queryResetRevision = queryResetRevision, followedOnly = followedOnly)
         mutableState.update {
             it.copy(
                 query = query,
                 queryResetRevision = queryResetRevision,
+                followedOnly = followedOnly,
                 cards = if (preserveCards) it.cards else emptyList(),
                 hasMore = if (preserveCards) it.hasMore else false,
                 loading = true,
@@ -354,6 +353,12 @@ class AuthorsRootScreenModel(
     }
 
     override fun onDispose() = scope.cancel()
+
+    // Database owners await children after Voyager's synchronous disposal has cancelled them.
+    suspend fun closeAndJoin() {
+        onDispose()
+        checkNotNull(scope.coroutineContext[Job]).join()
+    }
 }
 
 private data class CreatorListRefreshSnapshot(
@@ -402,14 +407,16 @@ data class AuthorDetailState(
         )
 
     val visibleWorkArchive: CreatorWorkArchive
-        get() = workFilter.apply(CreatorWorkArchive(
-            works = workArchive.works.mapNotNull { work ->
-                work.copy(versions = work.versions.filter { languageFilter.accepts(it.readingLanguage.certainty) })
-                    .takeIf { it.versions.isNotEmpty() }
-            },
-            pending = workArchive.pending.filter { languageFilter.accepts(it.readingLanguage.certainty) },
-            rejected = workArchive.rejected.filter { languageFilter.accepts(it.readingLanguage.certainty) },
-        ))
+        get() = workFilter.apply(
+            CreatorWorkArchive(
+                works = workArchive.works.mapNotNull { work ->
+                    work.copy(versions = work.versions.filter { languageFilter.accepts(it.readingLanguage.certainty) })
+                        .takeIf { it.versions.isNotEmpty() }
+                },
+                pending = workArchive.pending.filter { languageFilter.accepts(it.readingLanguage.certainty) },
+                rejected = workArchive.rejected.filter { languageFilter.accepts(it.readingLanguage.certainty) },
+            ),
+        )
 
     val visiblePresentationGroups: List<WorkPresentationGroup>
         get() = presentationGroups.filter { group ->
@@ -494,11 +501,15 @@ internal class AuthorDetailScreenModel(
     }
 
     val identityEditor = CreatorIdentityEditor(
-        creatorId, identityActions.manageCreatorIdentity, scope,
+        creatorId,
+        identityActions.manageCreatorIdentity,
+        scope,
     )
     private val activeCreatorId: Long get() = identityEditor.state.value.identity?.id ?: creatorId
     private val presentationTitleHistory = CreatorWorkPresentationTitleHistory(
-        libraryPreferences, { activeCreatorId }, preferredDisplayScript,
+        libraryPreferences,
+        { activeCreatorId },
+        preferredDisplayScript,
     )
 
     private fun projectPresentationGroups(
@@ -559,8 +570,8 @@ internal class AuthorDetailScreenModel(
             scope.launch {
                 identityEditor.state.map { it.identity?.id ?: creatorId }.distinctUntilChanged()
                     .flatMapLatest { archive.observeCheckpoints(it) }.collect { checkpoints ->
-                    mutableState.update { it.copy(checkpoints = checkpoints) }
-                }
+                        mutableState.update { it.copy(checkpoints = checkpoints) }
+                    }
             }
         }
         scope.launch {
@@ -591,11 +602,17 @@ internal class AuthorDetailScreenModel(
     }
 
     fun addAlias(alias: String) = scope.launch {
-        runAction { identityActions.addAlias(creatorId, alias); load() }
+        runAction {
+            identityActions.addAlias(creatorId, alias)
+            load()
+        }
     }
 
     fun removeAlias(alias: String) = scope.launch {
-        runAction { identityActions.removeAlias(creatorId, alias); load() }
+        runAction {
+            identityActions.removeAlias(creatorId, alias)
+            load()
+        }
     }
 
     fun merge(targetId: Long) = scope.launch {
@@ -623,7 +640,8 @@ internal class AuthorDetailScreenModel(
         runCatching {
             val opener = OpenCreatorWorkVersion { listed ->
                 requireNotNull(saveSourceMangaForDetails).awaitListedForDetails(
-                    authorArchiveVersionSourceManga(listed), listed.naturalKey.sourceId,
+                    authorArchiveVersionSourceManga(listed),
+                    listed.naturalKey.sourceId,
                 ).manga.id
             }
             mutableEffects.emit(AuthorDetailEffect.OpenManga(opener.await(version), activeCreatorId, version.naturalKey))
@@ -644,7 +662,6 @@ internal class AuthorDetailScreenModel(
             mutableState.update { it.copy(workOpenError = error.message ?: error::class.simpleName) }
         }
     }
-
 
     fun searchWorks(query: String) = mutableState.update { it.copy(workFilter = it.workFilter.copy(query = query)) }
     fun filterSource(sourceId: Long?) = mutableState.update { it.copy(workFilter = it.workFilter.copy(sourceId = sourceId)) }
@@ -732,6 +749,12 @@ internal class AuthorDetailScreenModel(
 
     override fun onDispose() = scope.cancel()
 
+    // Database owners await children after Voyager's synchronous disposal has cancelled them.
+    suspend fun closeAndJoin() {
+        onDispose()
+        checkNotNull(scope.coroutineContext[Job]).join()
+    }
+
     private suspend fun load() {
         val requestedId = activeCreatorId
         runCatching {
@@ -787,7 +810,9 @@ internal class WorkCompareScreenModel(
     private val mutableState = MutableStateFlow(WorkCompareState())
     val state: StateFlow<WorkCompareState> = mutableState.asStateFlow()
 
-    init { scope.launch { load() } }
+    init {
+        scope.launch { load() }
+    }
 
     fun confirm(target: WorkComparisonSuggestion? = null) = review(target, WorkDecisionState.CONFIRMED)
 

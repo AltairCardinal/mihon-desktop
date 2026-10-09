@@ -275,6 +275,7 @@ object TestNavigationController {
         dualPage: Boolean = false,
     ) {
         ReaderIoTestModeBridge.beginScenario(initialPage)
+        mihon.desktop.test.http.ProductionReaderTestModeBridge.reset()
         val readerGeneration = readerState.open(
             chapterId = chapterId,
             page = initialPage,
@@ -312,6 +313,7 @@ object TestNavigationController {
      */
     fun reset() {
         mihon.desktop.ui.browse.BrowseNavigationRequests.selectForLegacyRoute("Browse")
+        mihon.desktop.test.http.ProductionReaderTestModeBridge.reset()
         _pendingExtensions.value = null
         _displayedExtensions.value = null
         _pendingTabNavigation.value = null

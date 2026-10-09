@@ -1,5 +1,6 @@
 package mihon.desktop.ui.migration
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +55,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -283,14 +285,15 @@ data class MigrationSearchScreen(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MigrationConfirmation(
+internal fun MigrationConfirmation(
     sourceId: Long,
     sourceTitle: String,
-    targetSource: CatalogueSource,
+    targetSource: CatalogueSource?,
     target: SManga,
     batchQueueId: String?,
     onDismiss: () -> Unit,
     onCompleted: () -> Unit,
+    onOpenCurrent: (() -> Unit)? = null,
 ) {
     val dependencies = LocalDesktopUiDependencies.current
     val scope = rememberCoroutineScope()
@@ -351,7 +354,7 @@ private fun MigrationConfirmation(
         }
     }
     fun execute(replace: Boolean) {
-        if (busy || source == null) return
+        if (busy || source == null || targetSource == null) return
         busy = true
         error = null
         scope.launch {
@@ -449,7 +452,18 @@ private fun MigrationConfirmation(
         title = { Text(MR.strings.label_migration.localized()) },
         text = {
             Column(Modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState())) {
-                Text("$sourceTitle → ${target.title}")
+                Text(
+                    "$sourceTitle → ${target.title}",
+                    Modifier.then(
+                        if (onOpenCurrent !=
+                            null
+                        ) {
+                            Modifier.clickable(onClick = onOpenCurrent).testTag("history_migrate_current")
+                        } else {
+                            Modifier
+                        },
+                    ),
+                )
                 CheckRow(MR.strings.desktop_ui_copy_chapter_read_status.localized(), copyChapters, editable) {
                     copyChapters =
                         it
@@ -475,13 +489,33 @@ private fun MigrationConfirmation(
         },
         confirmButton = {
             FlowRow {
-                Button(enabled = !busy && source != null && accepted?.replace != false, onClick = {
-                    execute(true)
-                }) { Text(MR.strings.action_migrate.localized()) }
+                Button(
+                    enabled = !busy && source != null && targetSource != null && accepted?.replace != false,
+                    modifier = if (onOpenCurrent !=
+                        null
+                    ) {
+                        Modifier.testTag("history_migrate_confirm")
+                    } else {
+                        Modifier
+                    },
+                    onClick = {
+                        execute(true)
+                    },
+                ) { Text(MR.strings.action_migrate.localized()) }
                 OutlinedButton(enabled = !busy && source != null && accepted?.replace != true, onClick = {
                     execute(false)
                 }) { Text(MR.strings.copy.localized()) }
-                TextButton(enabled = !busy, onClick = { dismiss() }) {
+                TextButton(
+                    enabled = !busy,
+                    modifier = if (onOpenCurrent !=
+                        null
+                    ) {
+                        Modifier.testTag("history_migrate_cancel")
+                    } else {
+                        Modifier
+                    },
+                    onClick = { dismiss() },
+                ) {
                     val closeLabel = if (committedPending) {
                         MR.strings.action_close.localized()
                     } else {

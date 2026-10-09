@@ -384,7 +384,7 @@ class LibraryMangaTestModeController(
         return result
     }
 
-    private fun selectChapter(index: Int): LibraryMangaActionFailureCode? {
+    private suspend fun selectChapter(index: Int): LibraryMangaActionFailureCode? {
         val model = detailModel ?: return LibraryMangaActionFailureCode.DETAIL_NOT_OPEN
         val state = model.state.value
         val manga = state.manga ?: return LibraryMangaActionFailureCode.DETAIL_NOT_OPEN

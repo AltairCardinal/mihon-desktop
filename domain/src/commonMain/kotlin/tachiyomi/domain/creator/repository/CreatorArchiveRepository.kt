@@ -87,6 +87,12 @@ interface CreatorLibraryMangaSource {
 
 interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
 
+    /** Exact source identity, with only a same-manga legacy identity accepted as fallback. */
+    suspend fun getSourceWorkCatalog(
+        sourceWork: SourceWorkNaturalKey,
+        mangaId: Long,
+    ): tachiyomi.domain.creator.model.SourceWorkCatalogObservation? = null
+
     suspend fun getCreatorCardProjectionPage(
         offset: Int,
         limit: Int,

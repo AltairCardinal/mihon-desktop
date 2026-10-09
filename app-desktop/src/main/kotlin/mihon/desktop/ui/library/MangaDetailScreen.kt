@@ -431,19 +431,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 }
                 val request = model.readerRequest(current, model.state.value.chapters, chapter) ?: return@launch
                 navigator.push(
-                    DesktopReaderScreen(
-                        chapterTitle = request.chapterTitle,
-                        mangaId = request.mangaId,
-                        mangaTitle = request.mangaTitle,
-                        isWebtoon = false,
-                        sourceId = request.sourceId,
-                        chapterUrl = request.chapterUrl,
-                        chapterId = request.chapterId,
-                        chapters = request.chapters,
-                        currentChapterIndex = request.currentChapterIndex,
-                        initialPage = request.initialPage,
-                        mangaViewerFlags = request.mangaViewerFlags,
-                    ),
+                    mihon.desktop.reader.desktopReaderScreen(request),
                 )
             }
         }
@@ -790,20 +778,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 scope.launch {
                                     val request = model.continueReadingRequest(manga!!, chapters) ?: return@launch
                                     navigator.push(
-                                        DesktopReaderScreen(
-                                            resumeSnapshot = request.resumeSnapshot,
-                                            chapterTitle = request.chapterTitle,
-                                            mangaId = request.mangaId,
-                                            mangaTitle = request.mangaTitle,
-                                            isWebtoon = false,
-                                            sourceId = request.sourceId,
-                                            chapterUrl = request.chapterUrl,
-                                            chapterId = request.chapterId,
-                                            chapters = request.chapters,
-                                            currentChapterIndex = request.currentChapterIndex,
-                                            initialPage = request.initialPage,
-                                            mangaViewerFlags = request.mangaViewerFlags,
-                                        ),
+                                        mihon.desktop.reader.desktopReaderScreen(request),
                                     )
                                 }
                             },

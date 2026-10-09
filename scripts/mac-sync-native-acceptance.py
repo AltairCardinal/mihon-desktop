@@ -16,6 +16,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+from mac_acceptance_session import SessionFailure, SessionGuard, observe_session, verify_identity
 
 
 def require(condition, message):
@@ -27,12 +28,16 @@ class NativeEvents:
     class Point(ctypes.Structure):
         _fields_ = [("x", ctypes.c_double), ("y", ctypes.c_double)]
 
-    def __init__(self, pid):
+    def __init__(self, pid, target_snapshot=None, session=None):
         self.pid = pid
+        self.target_snapshot = target_snapshot
+        self.session = session or SessionGuard(pid, observe_session, self.native_target)
+        self.session.pid, self.session.target = pid, self.native_target
         self.cg = ctypes.CDLL("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
         self.cf = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
         self.cg.CGPreflightPostEventAccess.restype = ctypes.c_bool
-        require(self.cg.CGPreflightPostEventAccess(), "Native event permission is unavailable")
+        if not self.cg.CGPreflightPostEventAccess():
+            raise SessionFailure('ENV_BLOCKED', 'Native event permission is unavailable')
         self.cg.CGEventCreateKeyboardEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint16, ctypes.c_bool]
         self.cg.CGEventCreateKeyboardEvent.restype = ctypes.c_void_p
         self.cg.CGEventCreateMouseEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint32, self.Point, ctypes.c_uint32]
@@ -44,7 +49,9 @@ class NativeEvents:
         self.cf.CFRelease.argtypes = [ctypes.c_void_p]
 
     def activate(self):
-        require(not self.screen_locked(), "Mac screen is locked; unlock it locally before native acceptance")
+        return self.session.activate(self.activate_pid)
+
+    def activate_pid(self):
         ctypes.CDLL("/System/Library/Frameworks/AppKit.framework/AppKit")
         objc = ctypes.CDLL("/usr/lib/libobjc.A.dylib")
         objc.objc_getClass.argtypes = [ctypes.c_char_p]
@@ -57,39 +64,21 @@ class NativeEvents:
             ("objc_msgSend", objc))
         app = send_id(objc.objc_getClass(b"NSRunningApplication"),
                       objc.sel_registerName(b"runningApplicationWithProcessIdentifier:"), self.pid)
-        require(bool(app), "Observed PID is not a registered running application")
-        require(send_bool(app, objc.sel_registerName(b"activateWithOptions:"), 3),
-                "Could not activate the exact application PID")
+        return bool(app) and send_bool(app, objc.sel_registerName(b"activateWithOptions:"), 3)
 
-    def screen_locked(self):
-        self.cg.CGSessionCopyCurrentDictionary.restype = ctypes.c_void_p
-        self.cf.CFStringCreateWithCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
-        self.cf.CFStringCreateWithCString.restype = ctypes.c_void_p
-        self.cf.CFDictionaryGetValue.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-        self.cf.CFDictionaryGetValue.restype = ctypes.c_void_p
-        self.cf.CFGetTypeID.argtypes = [ctypes.c_void_p]
-        self.cf.CFGetTypeID.restype = ctypes.c_ulong
-        self.cf.CFBooleanGetTypeID.restype = ctypes.c_ulong
-        self.cf.CFBooleanGetValue.argtypes = [ctypes.c_void_p]
-        self.cf.CFBooleanGetValue.restype = ctypes.c_bool
-        session = self.cg.CGSessionCopyCurrentDictionary()
-        require(bool(session), "Mac graphical session metadata is unavailable")
-        key = self.cf.CFStringCreateWithCString(None, b"CGSSessionScreenIsLocked", 0x08000100)
-        try:
-            require(bool(key), "Could not allocate the session metadata key")
-            value = self.cf.CFDictionaryGetValue(session, key)
-            if not value:
-                return False  # No explicit lock flag; window and focus checks still apply.
-            require(self.cf.CFGetTypeID(value) == self.cf.CFBooleanGetTypeID(), "Unsupported screen lock metadata")
-            return bool(self.cf.CFBooleanGetValue(value))
-        finally:
-            if key:
-                self.cf.CFRelease(key)
-            self.cf.CFRelease(session)
+    def native_target(self):
+        if self.target_snapshot is None:
+            return None
+        snap = self.target_snapshot()
+        window = snap.get('window', {})
+        bounds = window.get('contentBounds')
+        hit = bool(bounds) and self.visible_at(bounds)
+        return dict(pid=snap.get('pid'), focused=bool(window.get('focusedWindow')), onScreen=hit, hitTarget=hit)
 
     def post(self, event, system_mouse=False):
         require(bool(event), "CoreGraphics could not allocate an event")
         try:
+            self.session.check()
             if system_mouse:
                 self.cg.CGEventPost(0, event)
             else:
@@ -98,7 +87,7 @@ class NativeEvents:
             self.cf.CFRelease(event)
 
     def key(self, code, shift=False):
-        require(not self.screen_locked(), "Mac screen locked during acceptance; stop native input")
+        self.session.check()
         for down in (True, False):
             event = self.cg.CGEventCreateKeyboardEvent(None, code, down)
             require(bool(event), "CoreGraphics could not allocate a keyboard event")
@@ -107,11 +96,12 @@ class NativeEvents:
         time.sleep(0.15)
 
     def click(self, bounds):
-        require(not self.screen_locked(), "Mac screen locked during acceptance; stop native input")
+        self.session.check()
         x, y, width, height = (bounds[k] for k in ("x", "y", "width", "height"))
         require(all(math.isfinite(v) for v in (x, y, width, height)) and width > 0 and height > 0,
                 "Control has invalid screen bounds")
-        require(self.visible_at(bounds), "The native hit target at the click point is not the verified application")
+        if not self.visible_at(bounds):
+            raise SessionFailure('ENV_BLOCKED', 'Native click hit target is not the verified application')
         point = self.Point(x + width / 2, y + height / 2)
         for kind in (5, 1, 2):  # moved, left down, left up
             event = self.cg.CGEventCreateMouseEvent(None, kind, point, 0)
@@ -173,7 +163,8 @@ class NativeEvents:
         # bounding box alone does not establish which application receives input.
         ax = ctypes.CDLL("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")
         ax.AXIsProcessTrusted.restype = ctypes.c_bool
-        require(ax.AXIsProcessTrusted(), "Native hit-test accessibility permission is unavailable")
+        if not ax.AXIsProcessTrusted():
+            raise SessionFailure('ENV_BLOCKED', 'Native hit-test accessibility permission is unavailable')
         ax.AXUIElementCreateSystemWide.restype = ctypes.c_void_p
         ax.AXUIElementCopyElementAtPosition.argtypes = [
             ctypes.c_void_p, ctypes.c_float, ctypes.c_float, ctypes.POINTER(ctypes.c_void_p)]
@@ -195,7 +186,7 @@ class NativeEvents:
 
 
 class Acceptance:
-    def __init__(self, base, app, profile):
+    def __init__(self, base, app, profile, jmx_port=None, session=None):
         url = urllib.parse.urlsplit(base)
         require(url.scheme == "http" and url.hostname in ("127.0.0.1", "localhost")
                 and url.port is not None and url.path in ("", "/")
@@ -210,11 +201,8 @@ class Acceptance:
         self.pid = snap["pid"]
         command = subprocess.check_output(["ps", "-p", str(self.pid), "-o", "command="],
                                           text=True, encoding="utf-8").strip()
-        require(command.startswith(self.app + "/Contents/MacOS/Mihon Desktop ")
-                and re.search(r"(?:^|\s)--test-profile=" + re.escape(self.profile) + r"(?:\s|$)", command)
-                and "--test-mode" in command and "--headless" not in command,
-                "Observed PID is not the requested isolated visible packaged app")
-        self.events = NativeEvents(self.pid)
+        verify_identity(self.pid, command, self.app, self.profile, url.port, jmx_port)
+        self.events = NativeEvents(self.pid, lambda: self.snapshot()[0], session)
 
     def read(self, path):
         with self.opener.open(self.base + path, timeout=5) as response:
@@ -264,7 +252,6 @@ class Acceptance:
         return self.focused(snap)["tag"]
 
     def run(self):
-        subprocess.run(["open", "-a", self.app], check=True)
         self.events.activate()
         snap = self.wait(lambda _, st: st["loaded"] and not st["visible"],
                          "The panel must initially be closed and loaded")
@@ -280,7 +267,8 @@ class Acceptance:
                 and bounds["x"] + bounds["width"] <= content["x"] + content["width"]
                 and bounds["y"] + bounds["height"] <= content["y"] + content["height"],
                 "Toolbar coordinates are outside the bound application content")
-        require(self.events.visible_at(bounds), "No on-screen application window contains the observed toolbar entry")
+        if not self.events.visible_at(bounds):
+            raise SessionFailure('ENV_BLOCKED', 'Observed toolbar entry is not the current native on-screen hit target')
         print("PASS actual application has an on-screen window at the toolbar entry", flush=True)
         self.events.click(entry2[0]["bounds"])
         self.wait(lambda s, st: st["visible"] and len([
@@ -320,9 +308,14 @@ def main():
     parser.add_argument("--base", required=True)
     parser.add_argument("--app", required=True)
     parser.add_argument("--profile", required=True)
+    parser.add_argument("--jmx-port", type=int)
     args = parser.parse_args()
     require(sys.platform == "darwin", "Run on the Mac owning the visible application")
-    Acceptance(args.base, args.app, args.profile).run()
+    acceptance = Acceptance(args.base, args.app, args.profile, args.jmx_port)
+    try:
+        acceptance.run()
+    finally:
+        acceptance.events.session.close()
 
 
 if __name__ == "__main__":

@@ -98,7 +98,11 @@ class ChapterRepositoryImpl(
                 checkNotNull(mangasQueries.getMangaById(request.mangaId).executeAsOneOrNull()) {
                     "Manga no longer exists"
                 }
-            val stored = chaptersQueries.getChaptersByMangaId(request.mangaId, 0, ::mapChapter).executeAsList()
+            val stored = chaptersQueries.getChaptersByMangaId(
+                request.mangaId,
+                0,
+                ChapterMapper::mapChapter,
+            ).executeAsList()
             val excluded = excluded_scanlatorsQueries.getExcludedScanlatorsByMangaId(
                 request.mangaId,
             ).executeAsList().toSet()
@@ -280,7 +284,7 @@ class ChapterRepositoryImpl(
 
     override suspend fun getChapterByMangaId(mangaId: Long, applyScanlatorFilter: Boolean): List<Chapter> {
         return handler.awaitList {
-            chaptersQueries.getChaptersByMangaId(mangaId, applyScanlatorFilter.toLong(), ::mapChapter)
+            chaptersQueries.getChaptersByMangaId(mangaId, applyScanlatorFilter.toLong(), ChapterMapper::mapChapter)
         }
     }
 
@@ -300,18 +304,18 @@ class ChapterRepositoryImpl(
         return handler.awaitList {
             chaptersQueries.getBookmarkedChaptersByMangaId(
                 mangaId,
-                ::mapChapter,
+                ChapterMapper::mapChapter,
             )
         }
     }
 
     override suspend fun getChapterById(id: Long): Chapter? {
-        return handler.awaitOneOrNull { chaptersQueries.getChapterById(id, ::mapChapter) }
+        return handler.awaitOneOrNull { chaptersQueries.getChapterById(id, ChapterMapper::mapChapter) }
     }
 
     override suspend fun getChapterByMangaIdAsFlow(mangaId: Long, applyScanlatorFilter: Boolean): Flow<List<Chapter>> {
         return handler.subscribeToList {
-            chaptersQueries.getChaptersByMangaId(mangaId, applyScanlatorFilter.toLong(), ::mapChapter)
+            chaptersQueries.getChaptersByMangaId(mangaId, applyScanlatorFilter.toLong(), ChapterMapper::mapChapter)
         }
     }
 
@@ -320,44 +324,8 @@ class ChapterRepositoryImpl(
             chaptersQueries.getChapterByUrlAndMangaId(
                 chapterUrl = url,
                 mangaId = mangaId,
-                mapper = ::mapChapter,
+                mapper = ChapterMapper::mapChapter,
             )
         }
     }
-
-    private fun mapChapter(
-        id: Long,
-        mangaId: Long,
-        url: String,
-        name: String,
-        scanlator: String?,
-        read: Boolean,
-        bookmark: Boolean,
-        lastPageRead: Long,
-        chapterNumber: Double,
-        sourceOrder: Long,
-        dateFetch: Long,
-        dateUpload: Long,
-        lastModifiedAt: Long,
-        version: Long,
-        @Suppress("UNUSED_PARAMETER")
-        isSyncing: Long,
-        memo: ByteArray,
-    ): Chapter = Chapter(
-        id = id,
-        mangaId = mangaId,
-        read = read,
-        bookmark = bookmark,
-        lastPageRead = lastPageRead,
-        dateFetch = dateFetch,
-        sourceOrder = sourceOrder,
-        url = url,
-        name = name,
-        dateUpload = dateUpload,
-        chapterNumber = chapterNumber,
-        scanlator = scanlator,
-        lastModifiedAt = lastModifiedAt,
-        version = version,
-        memo = tachiyomi.data.MemoColumnAdapter.decode(memo),
-    )
 }

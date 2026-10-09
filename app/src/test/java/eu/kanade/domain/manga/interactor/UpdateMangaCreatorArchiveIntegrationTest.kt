@@ -10,7 +10,12 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
@@ -24,6 +29,73 @@ import tachiyomi.domain.manga.model.Manga
 @org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
 @org.robolectric.annotation.Config(sdk = [35], manifest = org.robolectric.annotation.Config.NONE)
 class UpdateMangaCreatorArchiveIntegrationTest {
+    @Test
+    fun `detail updater joins catalog already fetching for reader and retains original chapter sync`() = runBlocking {
+        val manga = Manga.create().copy(id = 42, source = 10, url = "/shared-detail", title = "Shared detail")
+        val entered = CompletableDeferred<Unit>()
+        val detailEntered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val remote = SManga.create().apply {
+            url = manga.url
+            title = manga.title
+        }
+        val remoteChapter = SChapter.create().apply {
+            url = "/shared-detail/1"
+            name = "Chapter 1"
+        }
+        val source = mockk<Source> {
+            every { id } returns manga.source
+            coEvery { getMangaUpdate(any(), any(), any(), any()) } coAnswers {
+                calls.incrementAndGet()
+                entered.complete(Unit)
+                release.await()
+                SMangaUpdate(remote, listOf(remoteChapter))
+            }
+        }
+        val repository = mockk<MangaRepository>(relaxed = true) {
+            coEvery { getMangaById(manga.id) } returns manga
+            coEvery { update(any()) } returns true
+        }
+        val chapters = mockk<ChapterRepository>(relaxed = true) {
+            coEvery { getChapterByMangaId(manga.id) } coAnswers {
+                detailEntered.complete(Unit)
+                emptyList()
+            }
+        }
+        val sync = mockk<eu.kanade.domain.chapter.interactor.SyncChaptersWithSource>(relaxed = true)
+        val updater = UpdateManga(repository, FetchInterval(mockk<GetChaptersByMangaId>()))
+        val reader = async(start = CoroutineStart.UNDISPATCHED) {
+            tachiyomi.domain.source.service.SourceMangaUpdateService().awaitSharedCatalog(
+                source,
+                manga,
+                emptyList(),
+                false,
+            )
+        }
+        withTimeout(5_000) { entered.await() }
+        val detail = async(start = CoroutineStart.UNDISPATCHED) {
+            updater.awaitFromRemote(
+                manga, source, fetchDetails = false, fetchChapters = true,
+                chapterRepository = chapters, syncChaptersWithSource = sync,
+                coverCache = mockk(relaxed = true), libraryPreferences = mockk(relaxed = true),
+                downloadManager = mockk(relaxed = true),
+            )
+        }
+        try {
+            withTimeout(5_000) { detailEntered.await() }
+            assertEquals(1, calls.get())
+            release.complete(Unit)
+            reader.await()
+            detail.await()
+            coVerify(exactly = 1) { sync.await(listOf(remoteChapter), manga, source, false, 0L to 0L) }
+        } finally {
+            release.complete(Unit)
+            reader.cancelAndJoin()
+            detail.cancelAndJoin()
+        }
+    }
+
     @Test
     fun `source chapter refresh records complete archive catalogue facts`() = runBlocking {
         val path = java.nio.file.Files.createTempFile("archive-update-", ".db")

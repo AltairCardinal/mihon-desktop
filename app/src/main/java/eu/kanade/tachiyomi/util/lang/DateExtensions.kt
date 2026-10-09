@@ -1,7 +1,6 @@
 package eu.kanade.tachiyomi.util.lang
 
 import android.content.Context
-import eu.kanade.domain.ui.model.UiDateFormat
 import tachiyomi.core.common.i18n.pluralStringResource
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
@@ -13,7 +12,6 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Date
-import kotlin.math.absoluteValue
 
 fun LocalDateTime.toDateTimestampString(dateTimeFormatter: DateTimeFormatter): String {
     val date = dateTimeFormatter.format(this)
@@ -49,19 +47,18 @@ fun LocalDate.toRelativeString(
     dateFormat: DateTimeFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT),
     today: LocalDate = LocalDate.now(),
 ): String {
-    val difference = UiDateFormat.relativeDays(this, today, relative) ?: return dateFormat.format(this)
-    return when {
-        difference < 0 -> context.pluralStringResource(
-            MR.plurals.upcoming_relative_time,
-            difference.absoluteValue,
-            difference.absoluteValue,
-        )
-        difference < 1 -> context.stringResource(MR.strings.relative_time_today)
-        difference < 7 -> context.pluralStringResource(
+    return when (val label = mihon.presentation.history.historyDateLabel(this, relative, dateFormat, today)) {
+        mihon.presentation.history.HistoryDateLabel.Today -> context.stringResource(MR.strings.relative_time_today)
+        is mihon.presentation.history.HistoryDateLabel.DaysAgo -> context.pluralStringResource(
             MR.plurals.relative_time,
-            difference,
-            difference,
+            label.days,
+            label.days,
         )
-        else -> dateFormat.format(this)
+        is mihon.presentation.history.HistoryDateLabel.Upcoming -> context.pluralStringResource(
+            MR.plurals.upcoming_relative_time,
+            label.days,
+            label.days,
+        )
+        is mihon.presentation.history.HistoryDateLabel.Formatted -> label.text
     }
 }

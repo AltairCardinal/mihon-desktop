@@ -248,3 +248,27 @@ probe/open/copy 且图片网络为 0；缺失页才允许一个物理图片请�
 返回测试动作历史。
 
 `POST /screenshot` 已移除并返回 `404 Not Found`。Test Mode 不提供读取桌面屏幕像素的 API。
+
+### 历史目录隔离夹具（HR01）
+
+以下路径包含 `/test` 前缀。只在 `--test-mode --test-profile=<专用绝对目录>` 启动并验证 profile marker 后创建；没有夹具返回 503。复用目录用于冷启动持久化核对，不使用日常 profile。固定保留作品为 `History catalogue acceptance`，源 ID `9876543210`，空间 `history-catalog-acceptance`；另有活动空间时拒绝造数。
+
+| 方法/路径 | 参数 | 行为 |
+|---|---|---|
+| `POST /test/history/fixture/seed` | `{}` | 独立 sender.db 记录中间章第 1 页，再经真实 outbox/inbox/projector 接收；初始接收库只有该章、dateFetch=0 |
+| `POST /test/history/fixture/advance` | `{}` | 同一发送库记录第 3 章第 2 页并真实投影；用来核对加载期间候选与已打开会话 |
+| `POST /test/history/fixture/mode` | `{"mode":"success"}` | 固定模式为 success/http403/http429/http500/empty/malformed/missing_target/timeout；不接收任意响应体或 URL |
+| `POST /test/history/fixture/hold` | `{}` | 挡住固定目录响应；已知章节仍可打开、加载页和翻页 |
+| `POST /test/history/fixture/release` | `{}` | 放行同一固定目录响应，核对既有 Reader 的邻接补全 |
+| `POST /test/history/fixture/check` | `{}` | 核对隔离身份并返回状态 |
+| `GET /test/history/fixture/state` | 无 | 返回真实接收库、观测和 production 源请求计数 |
+
+seed/advance 使用固定幂等键，重复调用不重复创建用户事件；seed 不负责清空已有完整目录。测试首次稀疏和不同失败模式应使用各自专用新 profile。timeout 延迟 31 秒；关闭 Reader 后既有目录 owner 可安全完成存储，但不得复活旧 Reader。hold/release 仅控制此隔离夹具的固定目录，不接受任意地址或响应。
+
+状态包含 `directoryHeld/chapterCalls/pageCalls/imageCalls/chapterCount/historyCount/historyId/mangaId/favorite/catalogState/catalogCount/outgoingUserEvents` 与每章 `id/url/order/page/read/bookmark/dateFetch`。目录准备前后 outgoingUserEvents 应相同；实际打开阅读器后的正常阅读允许产生真实用户进度事件。计数按当前进程累计，重启后重新计数；数据库与 COMPLETE 观测持久化。
+
+`POST /test/action/history_select` 使用 `{"index":"0"}`（索引来自当前 `/test/state` 历史列表）。动作经共同 history controller 的官方下一章选择和共享 refs/index mapper 打开 production 阅读器；已知本地目标立即进入，不等待目录网络。`history_retry`、`history_read_existing`、`history_cancel` 是已移除的目录预检动作，返回 `UNSUPPORTED_ACTION`，不会改动历史行。查询/刷新等待对应的新查询版本结果，删除及清空保留真实仓库结果。正式应用仍须从实际历史页面执行鼠标/键盘，不以 HTTP 代替焦点验收。
+
+`GET /test/reader/state` 在真实阅读器挂载后返回 `production=true`，包含 `currentChapterId`（当前入口上下文）、`activeChapterId`（实际 session 当前章）、`loadState`、`chapterIds`、`currentChapterIndex`、`initialPage`、`resumeHeadIds`，以及真实 `currentPage/totalPages/hasNextChapter/hasPrevChapter`。稳定成功需章上下文与 activeChapterId 一致、loadState=Loaded，且 totalPages=4；页面请求和图片请求计数必须来自真实 source/runtime。resumeHeadIds 是初始快照的事件/效果身份列表，用于核对会话基线。关闭后保留 `isOpen=false/productionClosed=true` 观测。
+
+真实 session 挂载时，既有 `/test/reader/next_chapter`、`prev_chapter`、`go_to_page`、`close` 优先调用同一生产会话；next_page/prev_page 保持既有页动作语义。未挂载时，原确定性 reader fixture 保持原行为。历史夹具的本地 HTTP source 路由仅提供固定作品详情、三章目录、每章四页与 PNG，实际解析由 production MangaDex source 执行；不提供截图或读取桌面像素。

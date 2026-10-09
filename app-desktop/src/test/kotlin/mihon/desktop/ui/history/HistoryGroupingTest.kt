@@ -1,109 +1,49 @@
 package mihon.desktop.ui.history
 
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+import mihon.desktop.domain.fakes.FakeHistoryRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import tachiyomi.domain.history.interactor.GetHistory
+import tachiyomi.domain.history.interactor.RemoveHistory
 import tachiyomi.domain.history.model.HistoryWithRelations
+import tachiyomi.domain.history.service.HistoryController
+import tachiyomi.domain.history.service.HistoryUiModel
 import tachiyomi.domain.manga.model.MangaCover
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Date
-import java.util.Calendar
 
 class HistoryGroupingTest {
-
-    private fun historyItem(id: Long, readAt: Date?) = HistoryWithRelations(
-        id = id,
-        chapterId = id,
-        mangaId = id,
-        title = "Manga $id",
-        chapterNumber = 1.0,
-        readAt = readAt,
-        readDuration = 0L,
-        coverData = MangaCover(mangaId = id, sourceId = 1L, isMangaFavorite = false, url = null, lastModified = 0L),
-    )
-
-    private fun daysAgo(days: Int): Date {
-        val cal = Calendar.getInstance()
-        cal.set(Calendar.HOUR_OF_DAY, 10)
-        cal.set(Calendar.MINUTE, 0)
-        cal.set(Calendar.SECOND, 0)
-        cal.set(Calendar.MILLISECOND, 0)
-        cal.add(Calendar.DAY_OF_YEAR, -days)
-        return cal.time
-    }
-
     @Test
-    fun `items from same day are grouped together`() {
-        val today = daysAgo(0)
-        val items = listOf(
-            historyItem(1, today),
-            historyItem(2, today),
+    fun `desktop consumes shared headers in repository order including undated rows`() = runTest {
+        val zone = ZoneId.of("UTC")
+        val today = LocalDate.of(2026, 10, 4)
+        fun item(id: Long, day: LocalDate?) = HistoryWithRelations(
+            id,
+            id,
+            id,
+            "Manga $id",
+            1.0,
+            day?.let { Date.from(it.atStartOfDay(zone).toInstant()) },
+            0,
+            MangaCover(id, 1, false, null, 0),
         )
-        val sections = groupHistoryByDate(items)
-        assertEquals(1, sections.size)
-        assertEquals(2, sections[0].items.size)
+        val rows = listOf(item(3, today), item(1, today), item(2, today.minusDays(1)), item(4, null))
+        val repository = FakeHistoryRepository().apply { rows.forEach(::addHistory) }
+        val controller = HistoryController(backgroundScope, GetHistory(repository), RemoveHistory(repository), zone = zone)
+        val state = controller.state.first { it.list != null }
+        assertEquals(listOf(today, today.minusDays(1)), state.list.orEmpty().filterIsInstance<HistoryUiModel.Header>().map { it.date })
+        assertEquals(rows, state.items)
+        controller.close()
     }
 
     @Test
-    fun `items from different days produce separate sections`() {
-        val items = listOf(
-            historyItem(1, daysAgo(0)),
-            historyItem(2, daysAgo(1)),
-            historyItem(3, daysAgo(5)),
-        )
-        val sections = groupHistoryByDate(items)
-        assertEquals(3, sections.size)
-    }
-
-    @Test
-    fun `today label is Today`() {
-        val items = listOf(historyItem(1, daysAgo(0)))
-        val sections = groupHistoryByDate(items)
-        assertEquals("Today", sections[0].dateLabel)
-    }
-
-    @Test
-    fun `yesterday label is Yesterday`() {
-        val items = listOf(historyItem(1, daysAgo(1)))
-        val sections = groupHistoryByDate(items)
-        assertEquals("Yesterday", sections[0].dateLabel)
-    }
-
-    @Test
-    fun `older dates use formatted date string`() {
-        val items = listOf(historyItem(1, daysAgo(10)))
-        val sections = groupHistoryByDate(items)
-        // Should not be "Today" or "Yesterday"
-        val label = sections[0].dateLabel
-        assert(label != "Today" && label != "Yesterday") {
-            "Expected formatted date, got: $label"
-        }
-    }
-
-    @Test
-    fun `null readAt items are excluded from grouping`() {
-        val items = listOf(
-            historyItem(1, daysAgo(0)),
-            historyItem(2, null),
-        )
-        val sections = groupHistoryByDate(items)
-        assertEquals(1, sections.size)
-        assertEquals(1, sections[0].items.size)
-    }
-
-    @Test
-    fun `empty list produces empty sections`() {
-        val sections = groupHistoryByDate(emptyList())
-        assertEquals(0, sections.size)
-    }
-
-    @Test
-    fun `sections preserve original item order within each group`() {
-        val today = daysAgo(0)
-        val items = listOf(
-            historyItem(3, today),
-            historyItem(1, today),
-            historyItem(2, today),
-        )
-        val sections = groupHistoryByDate(items)
-        assertEquals(listOf(3L, 1L, 2L), sections[0].items.map { it.id })
+    fun `desktop empty repository uses the shared empty list`() = runTest {
+        val repository = FakeHistoryRepository()
+        val controller = HistoryController(backgroundScope, GetHistory(repository), RemoveHistory(repository))
+        assertEquals(emptyList<HistoryUiModel>(), controller.state.first { it.list != null }.list)
+        controller.close()
     }
 }

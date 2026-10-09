@@ -1563,7 +1563,6 @@
     <string name="desktop_ui_previous">上一</string>
     <string name="desktop_ui_no_direction_chapter">没有可用的%1$s章</string>
     <string name="desktop_ui_failed_to_load_target">加载 %1$s 失败：%2$s</string>
-    <string name="desktop_ui_missing_chapters">%1$s — 缺少 %2$d 个章节</string>
     <string name="desktop_ui_page_number">第 %1$d 页</string>
     <string name="desktop_ui_page_left">第 %1$d 页（左）</string>
     <string name="desktop_ui_page_right">第 %1$d 页（右）</string>
@@ -2022,4 +2021,12 @@
     <string name="desktop_library_update_waiting">自动更新正在等待以下设备条件：</string>
     <string name="desktop_refresh_hint">继续向上滚动，准备刷新。</string>
     <string name="desktop_refresh_armed">再次向上滚动，刷新「%1$s」。</string>
+    <string name="history_loading_chapters">正在加载章节</string>
+    <string name="history_source_unavailable">源不可用</string>
+    <string name="history_chapter_not_in_catalog">本章不在最新目录中</string>
+    <string name="history_chapter_identity_conflict">章节身份冲突</string>
+    <string name="history_catalog_storage_error">无法读取或保存章节目录</string>
+    <string name="history_retry_chapters">重试加载章节</string>
+    <string name="history_read_existing_chapters">使用已有章节阅读</string>
+    <string name="history_existing_chapters_incomplete">章节列表可能不完整</string>
 </resources>

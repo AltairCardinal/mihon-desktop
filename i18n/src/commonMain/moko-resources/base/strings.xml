@@ -1680,7 +1680,6 @@
     <string name="desktop_ui_author_identity_evidence">%1$s author match · %2$s</string>
     <string name="desktop_ui_open_work">Open work</string>
     <string name="desktop_ui_follow_author">Follow author</string>
-    <string name="desktop_ui_choose_author_identity">Choose the author identity</string>
     <string name="desktop_ui_create_distinct_author">Create separate author</string>
     <string name="desktop_ui_chapter_variant_summary">Chapters: %1$d regular · %2$d split · %3$d decimal · %4$d volumes · %5$d extras · %6$d specials · %7$d duplicate releases · %8$d unknown</string>
     <string name="desktop_ui_missing_chapters">Likely missing chapter numbers: %1$s</string>
@@ -1769,7 +1768,6 @@
     <string name="desktop_ui_previous">previous</string>
     <string name="desktop_ui_no_direction_chapter">No %1$s chapter available</string>
     <string name="desktop_ui_failed_to_load_target">Failed to load %1$s: %2$s</string>
-    <string name="desktop_ui_missing_chapters">%1$s — %2$d missing chapter(s)</string>
     <string name="desktop_ui_page_number">Page %1$d</string>
     <string name="desktop_ui_page_left">Page %1$d (left)</string>
     <string name="desktop_ui_page_right">Page %1$d (right)</string>
@@ -2233,4 +2231,12 @@
     <string name="desktop_library_update_waiting">Automatic updates are waiting for these device conditions:</string>
     <string name="desktop_refresh_hint">Continue scrolling up to prepare a refresh.</string>
     <string name="desktop_refresh_armed">Scroll up again to refresh %1$s.</string>
+    <string name="history_loading_chapters">Loading chapters…</string>
+    <string name="history_source_unavailable">Source unavailable</string>
+    <string name="history_chapter_not_in_catalog">This chapter is not in the latest catalogue</string>
+    <string name="history_chapter_identity_conflict">Chapter identity conflict</string>
+    <string name="history_catalog_storage_error">Unable to read or save the chapter catalogue</string>
+    <string name="history_retry_chapters">Retry loading chapters</string>
+    <string name="history_read_existing_chapters">Read using existing chapters</string>
+    <string name="history_existing_chapters_incomplete">The chapter list may be incomplete</string>
 </resources>
