@@ -36167,8 +36167,8 @@
             {
               "id": "history.group",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "PARTIAL",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "NONE",
               "provenance": {
                 "fixedOriginal": {
@@ -36233,14 +36233,52 @@
                 "change": "CHANGED",
                 "followUpTask": "HI-01"
               },
-              "entry": "Desktop TAB `history` production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:212` (`override fun Content() {` / `val sections = remember(state.items) { groupHistoryByDate(state.items) }`).",
-              "feedback": "The action-specific Desktop production consumer is committed; confirmation policy is `NONE`. HI-01 owns only the remaining upstream-parity delta."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:201` (`state = shared,`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "The shared list displays local date groups and preference-aware localized headers; stable row keys preserve list position.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "state = shared,",
+                    "line": 201,
+                    "contextHash": "02783f40b7063a79a4b55a3d1ec1e58a0498f37d5fa142ccdb9682567d0e8ee7"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryController.kt",
+                    "symbol": "class HistoryController(",
+                    "locator": "if (date != null && date != previous) add(HistoryUiModel.Header(date))",
+                    "line": 275,
+                    "contextHash": "894f33fd88a7b54cc433561bef3ad12b30297404922e3e39b4e10af6e6ac79bd"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "presentation-history/src/commonMain/kotlin/mihon/presentation/history/HistoryContent.kt",
+                    "symbol": "fun HistoryContent(",
+                    "locator": "is HistoryUiModel.Header -> Text(",
+                    "line": 201,
+                    "contextHash": "e63df96a60b23539ea77492f8ba2766e0218c9a3f3ff45c62296c932b86763a6"
+                  }
+                ]
+              }
             },
             {
               "id": "history.search",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "PARTIAL",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "NONE",
               "provenance": {
                 "fixedOriginal": {
@@ -36304,14 +36342,52 @@
                 "status": "UNCHANGED",
                 "change": "UNCHANGED"
               },
-              "entry": "Desktop TAB `history` production entry -> `app-desktop/src/main/kotlin/mihon/desktop/history/HistoryScreenModel.kt:42` (`suspend fun loadHistory(query: String = state.value.searchQuery) {` / `suspend fun loadHistory(query: String = state.value.searchQuery) {`).",
-              "feedback": "The action-specific Desktop production consumer is committed; confirmation policy is `NONE`. HI-01 owns only the remaining upstream-parity delta."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:203` (`onSearchQueryChange = model::updateSearchQuery,`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "Native search preserves caret and selection, clears/closes in place, and the revision-qualified shared list distinguishes no results from no recent history.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "onSearchQueryChange = model::updateSearchQuery,",
+                    "line": 203,
+                    "contextHash": "96a98347cb1c51836dcf9b0cef76966f4bd7eba4640f574d96355c84085edb4a"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryController.kt",
+                    "symbol": "class HistoryController(",
+                    "locator": "getHistory.subscribe(query.orEmpty())",
+                    "line": 130,
+                    "contextHash": "1acb14bfe8e489ddbea193f251c846ec34c8d912ea0b766ee9373b258498b9d8"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "presentation-history/src/commonMain/kotlin/mihon/presentation/history/HistoryContent.kt",
+                    "symbol": "fun HistoryContent(",
+                    "locator": "MR.strings.no_results_found",
+                    "line": 187,
+                    "contextHash": "72c3d162ca2e7e83ead4cb158e65f9d14eea093da7342dbb68911742eee67949"
+                  }
+                ]
+              }
             },
             {
               "id": "history.delete-one",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "GAP",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "REQUIRED",
               "confirmationReason": "确认删除该条阅读历史。",
               "provenance": {
@@ -36362,14 +36438,52 @@
                 "change": "MOVED_OR_REMOVED",
                 "followUpTask": "HI-01"
               },
-              "entry": "Desktop TAB `history` has no committed entry for `history.delete-one`.",
-              "feedback": "No action-specific Desktop result/error feedback is committed; HI-01 must add the entry, feedback, and confirmation behavior (`REQUIRED`)."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:210` (`onDelete = { item -> model.controller.setDialog(tachiyomi.domain.history.service.HistoryDialog.Delete(item)) },`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "Confirmation defaults to this entry; the named checkbox selects all chapters for the work. Cancel/Escape writes nothing and restores valid focus; confirmed removal reacts through the shared list.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "onDelete = { item -> model.controller.setDialog(tachiyomi.domain.history.service.HistoryDialog.Delete(item)) },",
+                    "line": 210,
+                    "contextHash": "6b7bb86a0a1cbfae356a3089d5ce88ad19c1c599a673db350185f644caa5f36f"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryController.kt",
+                    "symbol": "class HistoryController(",
+                    "locator": "if (all) removeHistory.await(item.mangaId) else removeHistory.await(item)",
+                    "line": 256,
+                    "contextHash": "8037f262b7958d797ef64d63b6465aa26337aced43f5817a9d6c9dd63658c796"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "presentation-history/src/commonMain/kotlin/mihon/presentation/history/HistoryDialogs.kt",
+                    "symbol": "fun HistoryDeleteDialog(",
+                    "locator": "onDelete(all)",
+                    "line": 49,
+                    "contextHash": "549e110c32376a85c0da2f5a60011ccc823d530bff37d0709961b40a3ed42a2b"
+                  }
+                ]
+              }
             },
             {
               "id": "history.clear",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "PARTIAL",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "REQUIRED",
               "confirmationReason": "确认清空全部阅读历史。",
               "provenance": {
@@ -36434,14 +36548,52 @@
                 "status": "UNCHANGED",
                 "change": "UNCHANGED"
               },
-              "entry": "Desktop TAB `history` production entry -> `app-desktop/src/main/kotlin/mihon/desktop/history/HistoryScreenModel.kt:56` (`suspend fun clearAllHistory() {` / `suspend fun clearAllHistory() {`).",
-              "feedback": "The action-specific Desktop production consumer is committed; confirmation policy is `REQUIRED`. HI-01 owns only the remaining upstream-parity delta."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:211` (`onClear = { model.controller.setDialog(tachiyomi.domain.history.service.HistoryDialog.DeleteAll) },`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "The always-reachable toolbar action opens confirmation. Successful removal updates the list and shows completion; false does not fabricate success.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "onClear = { model.controller.setDialog(tachiyomi.domain.history.service.HistoryDialog.DeleteAll) },",
+                    "line": 211,
+                    "contextHash": "a34471fc7c42ed61cf4761fc025deff53681b32e5a76af49a30da3f9d242727c"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryController.kt",
+                    "symbol": "class HistoryController(",
+                    "locator": "if (success) eventChannel.send(HistoryEvent.HistoryCleared)",
+                    "line": 261,
+                    "contextHash": "ab3cb1919fbc1dca831185443eabb40e342d749502f702c913a5e8e331d52319"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "tachiyomi.domain.history.service.HistoryEvent.HistoryCleared -> snackbar.showSnackbar(MR.strings.clear_history_completed.localized())",
+                    "line": 194,
+                    "contextHash": "753262418835d194a630cad3a1ed99d37df7e7440864f2148e1354e78e722c5b"
+                  }
+                ]
+              }
             },
             {
               "id": "history.resume",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "GAP",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "NONE",
               "provenance": {
                 "fixedOriginal": {
@@ -36497,14 +36649,52 @@
                 "status": "UNCHANGED",
                 "change": "UNCHANGED"
               },
-              "entry": "Desktop TAB `history` has no committed entry for `history.resume`.",
-              "feedback": "No action-specific Desktop result/error feedback is committed; HI-01 must add the entry, feedback, and confirmation behavior (`NONE`)."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:208` (`onResume = openReader,`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "The row opens the official selected chapter with atomic chapter-specific context. The mounted Reader presents the requested page/spread; valid no-chapter/error deliveries use the existing snackbar.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "onResume = openReader,",
+                    "line": 208,
+                    "contextHash": "ed2015de38300bfbf4aaf4f63c2a509dc1f9e4bf2a9c5317abfd04106f870ac0"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/history/HistoryScreenModel.kt",
+                    "symbol": "internal suspend fun readerDeliveryFor(",
+                    "locator": "val request = mihon.desktop.reader.selectedDesktopReaderOpenContext(manga, chapters, chapter, readingProgress, isDownloaded)",
+                    "line": 89,
+                    "contextHash": "6f41dea327308c4fe2380ef9c7d19aa7fcd0394320313119aa7791df81c1a56c"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "navigator.push(request.toReaderScreen(model::cancelRead))",
+                    "line": 174,
+                    "contextHash": "11e89467ad15073f7a4eefdf22abc9973313e25ec7f9c15dd93bb8981b6d9df9"
+                  }
+                ]
+              }
             },
             {
               "id": "history.next-chapter",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "GAP",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "NONE",
               "provenance": {
                 "fixedOriginal": {
@@ -36554,14 +36744,52 @@
                 "change": "CHANGED",
                 "followUpTask": "HI-01"
               },
-              "entry": "Desktop TAB `history` has no committed entry for `history.next-chapter`.",
-              "feedback": "No action-specific Desktop result/error feedback is committed; HI-01 must add the entry, feedback, and confirmation behavior (`NONE`)."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:185` (`val unregister = navigationHost.registerReselectHandler { openReader(null) }`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "History tab reselect resolves global recent history through shared GetNextChapters independently of search. One live request delivers one Reader navigation or existing no-next-chapter feedback.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "val unregister = navigationHost.registerReselectHandler { openReader(null) }",
+                    "line": 185,
+                    "contextHash": "168f9bd1c4e3292d82d3902d20fd3cc18e819f37ccdf576920e28d2b8497565d"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryController.kt",
+                    "symbol": "class HistoryController(",
+                    "locator": "suspend fun latestChapter(): Chapter? = requireNotNull(getNextChapters).await(onlyUnread = false).firstOrNull()",
+                    "line": 235,
+                    "contextHash": "184b855e652e66aba7b2406b91b361c37590408cd18c9fd2dc662d700a1ac27f"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "navigator.push(request.toReaderScreen(model::cancelRead))",
+                    "line": 174,
+                    "contextHash": "11e89467ad15073f7a4eefdf22abc9973313e25ec7f9c15dd93bb8981b6d9df9"
+                  }
+                ]
+              }
             },
             {
               "id": "history.add-library",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "GAP",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "NONE",
               "provenance": {
                 "fixedOriginal": {
@@ -36611,14 +36839,52 @@
                 "change": "MOVED_OR_REMOVED",
                 "followUpTask": "HI-01"
               },
-              "entry": "Desktop TAB `history` has no committed entry for `history.add-library`.",
-              "feedback": "No action-specific Desktop result/error feedback is committed; HI-01 must add the entry, feedback, and confirmation behavior (`NONE`)."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:209` (`onFavorite = { item -> scope.launch { model.controller.addFavorite(item.mangaId) } },`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "The non-favorite action persists membership using shared default/category/duplicate decisions and existing enhanced tracking timing. Successful reactive membership removes the add action; failures use shared error feedback.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "onFavorite = { item -> scope.launch { model.controller.addFavorite(item.mangaId) } },",
+                    "line": 209,
+                    "contextHash": "f50e65280f8ebfa965857170820289173424ae7f5383f21602c0b3d577ad8862"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryFavoriteActions.kt",
+                    "symbol": "class HistoryFavoriteActions(",
+                    "locator": "when (val result = updateMembership.await(manga, true, categories)) {",
+                    "line": 72,
+                    "contextHash": "febf2e1790454488445ce7dac238c7cba9970d3d202edd058b05193f00e0946a"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "presentation-history/src/commonMain/kotlin/mihon/presentation/history/HistoryContent.kt",
+                    "symbol": "private fun HistoryItem(",
+                    "locator": "onClick = { onFavorite(item) },",
+                    "line": 285,
+                    "contextHash": "6127f6e3e5a33cad39adab6ecf036080022a71e8a031f8cf2c336a695f08a81e"
+                  }
+                ]
+              }
             },
             {
               "id": "history.choose-categories",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "GAP",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "NONE",
               "provenance": {
                 "fixedOriginal": {
@@ -36668,14 +36934,52 @@
                 "change": "MOVED_OR_REMOVED",
                 "followUpTask": "HI-01"
               },
-              "entry": "Desktop TAB `history` has no committed entry for `history.choose-categories`.",
-              "feedback": "No action-specific Desktop result/error feedback is committed; HI-01 must add the entry, feedback, and confirmation behavior (`NONE`)."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:137` (`onConfirm = { scope.launch { model.controller.confirmCategory() } },`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "The real chooser displays named category checkboxes. Confirm persists membership/categories and dismisses; cancel writes no membership, and returning from category management preserves valid current selections.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "onConfirm = { scope.launch { model.controller.confirmCategory() } },",
+                    "line": 137,
+                    "contextHash": "089b955f4312bfb3009be96a143ba0832a8253109f4e80e855a48c698f83248e"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryFavoriteActions.kt",
+                    "symbol": "class HistoryFavoriteActions(",
+                    "locator": "commit(current, categoryIds)",
+                    "line": 68,
+                    "contextHash": "4b5d36e17b93274966975301a18834487e035655e9339e6b50768b31b4fd15a6"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "presentation-history/src/commonMain/kotlin/mihon/presentation/history/HistoryFavoriteDialogs.kt",
+                    "symbol": "fun HistoryCategoryDialog(",
+                    "locator": "TextButton(onClick = onConfirm, modifier = Modifier.testTag(\"history_category_confirm\")) {",
+                    "line": 55,
+                    "contextHash": "4e06abaca2b7f1fe8553bf3b0950ea9174ebe26076b791e9be1f5118e415202d"
+                  }
+                ]
+              }
             },
             {
               "id": "history.duplicate",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "GAP",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "NONE",
               "provenance": {
                 "fixedOriginal": {
@@ -36732,14 +37036,52 @@
                 "change": "CHANGED",
                 "followUpTask": "HI-01"
               },
-              "entry": "Desktop TAB `history` has no committed entry for `history.duplicate`.",
-              "feedback": "No action-specific Desktop result/error feedback is committed; HI-01 must add the entry, feedback, and confirmation behavior (`NONE`)."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:144` (`onConfirm = { scope.launch { model.controller.addFavorite(dialog.manga.id, allowDuplicate = true) } },`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "The duplicate dialog offers cancel, still-add, opening the existing work, and migration. Cancel writes nothing; still-add follows the shared membership decision.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "onConfirm = { scope.launch { model.controller.addFavorite(dialog.manga.id, allowDuplicate = true) } },",
+                    "line": 144,
+                    "contextHash": "4fbfb72fc0be38e0c73bfade2d25e09ed193465bf9d83fcc0d6c1fb3a80e5c9d"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryFavoriteActions.kt",
+                    "symbol": "class HistoryFavoriteActions(",
+                    "locator": "onDialog(HistoryDialog.Duplicate(manga, duplicates))",
+                    "line": 34,
+                    "contextHash": "e4b9741c7854c89bd434ce975be87710fbb2c1c8c1a39d8b796c83b147f68e27"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "presentation-history/src/commonMain/kotlin/mihon/presentation/history/HistoryFavoriteDialogs.kt",
+                    "symbol": "fun HistoryDuplicateDialog(",
+                    "locator": "onMigrate(duplicate.manga)",
+                    "line": 90,
+                    "contextHash": "d54e285265a58504266436dd0b37fdd934f0a0235c679e6c9153d640cbf49aaf"
+                  }
+                ]
+              }
             },
             {
               "id": "history.migrate",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "GAP",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "NONE",
               "provenance": {
                 "fixedOriginal": {
@@ -36789,8 +37131,46 @@
                 "change": "CHANGED",
                 "followUpTask": "HI-01"
               },
-              "entry": "Desktop TAB `history` has no committed entry for `history.migrate`.",
-              "feedback": "No action-specific Desktop result/error feedback is committed; HI-01 must add the entry, feedback, and confirmation behavior (`NONE`)."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:149` (`onMigrate = { model.controller.showMigration(it, dialog.manga) },`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "The existing migration confirmation uses current=existing duplicate and target=clicked history work. Cancel leaves membership untouched; confirmed operations call the real source/migration port, with shared failure feedback.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "onMigrate = { model.controller.showMigration(it, dialog.manga) },",
+                    "line": 149,
+                    "contextHash": "e0b8c2fa5095a721e7ea4e4144c5d2ac54e48240bcc404606d2098e1ff081dba"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryFavoriteAdapters.kt",
+                    "symbol": "internal fun HistoryMigrationDialog(",
+                    "locator": "dependencies.migrateManga.await(dialog.current, remote, target.source, chapters, options, replace)",
+                    "line": 52,
+                    "contextHash": "809d2ad25d6a35a55f3a9304f57c1f484688864cfd80eaf3fbf56cdd77c3e783"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryFavoriteAdapters.kt",
+                    "symbol": "internal fun HistoryMigrationDialog(",
+                    "locator": "MigrationConfirmDialog(dialog.current.title, dialog.target.title, onDismiss, { migrate(it, false) }, { migrate(it, true) }, onOpenCurrent)",
+                    "line": 61,
+                    "contextHash": "47c4062186b22a1a7dc6ce8488a24fdddf234db4dc696ce201a64eb2b8282d94"
+                  }
+                ]
+              }
             }
           ],
           "sourceEntryIds": {

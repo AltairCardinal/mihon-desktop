@@ -8,7 +8,9 @@ HP01 已提交，后续同步生命周期修复、焦点等待校准与 P16 名�
 
 当前正式候选为 Desktop `0.11.19.75.05fdb81`、Android `0.19.4-aex.26` / versionCode 44，实际构建成功；Android 44 为本轮获批的唯一正式重建。旧候选 43 的下述证据保留其版本来源。Android 43 的名称、详情、复选框和分类补验通过；本轮另以实际原生事件完成重复取消、短点进入迁移选择并返回取消、长按打开已有作品、依然添加后两作品共存四分支。Windows/macOS 75 已分别完成受控延迟目录九观测及同 profile 冷启动缓存复验；明确单页模式下 initial/current 均为请求页，完整目录重启后不再次请求图源。旧 AUTO 双页外部断言失败仍保留，未改写成通过。
 
-HP02 未完成，P16 名称缺口已修复并在 Android 新正式候选确认。重复全量请求已撤回，此后采用相关补验。2026-10-05 用户再次确认 Mac 是息屏而非锁屏；文档已有此规则，先前“待解锁”表述不当。短暂显示唤醒后锁屏字段消失，本轮候选窗口/前台/输入权限预检通过；原生搜索和焦点仍需真实结果确认，不能从事件发送成功宣称通过。Android 同步稀疏、延迟目录成败、冷缓存及原生前后章补验已在私有模拟器正式44完成；外部ABI正确红绿、首次助手边界失败和单独导航补验均见末节。不等待真机，本轮零全量重跑。当前仍不勾选 HP02、不运行 finalParityAudit。下文历史临时状态不替代本节当前结论。
+HP02 的剩余 Windows/macOS 原生项已于 2026-10-09 关闭：用户分别确认正式版本75的搜索中间编辑/清空关闭、封面详情返回、删除弹窗 Tab/Shift+Tab/Escape 取消和双页续读目标可见全部通过。来源为用户手动验收；Windows 自动输入的剪贴板错误及随后退出保留原记录，其原因没有由手动通过得到解释。Mac 统一保护实际完成息屏恢复与目标身份检查，截图权限不足的具体链路也保留，不把它推断为锁屏或产品失败。
+
+Android 同步稀疏、延迟目录成败、冷缓存及原生前后章已在私有模拟器正式44完成；外部ABI正确红绿、首次助手边界失败和单独导航补验均见后文。本轮没有追加全量测试或正式构建。最终收口使用首次完整矩阵、已获批复验及后续受影响范围补验的组合证据，不能描述为最终源码重新全量通过。HP02 checkoff 与本报告、Mac维护经验和历史manifest局部维护随同最终验收批次提交；64-capability全局 `finalParityAudit` 不属于这次历史专项的收口验证，不用于批量推进其他capability或父roadmap。下文历史临时状态不替代本节最终结论。
 
 ## 执行基线与归属
 
@@ -643,3 +645,58 @@ python scripts/history-android-formal-fixture.py --output .gradle-coordinator/hi
 实施者结构化回执已交付。自建服务PID37016已按PID/commandLine核对停止，只移除5560本任务tcp18464映射；instrumentation/Gradle均已终态，无host运行PID。保留私有AVD/userdata/helper/正式44，未操作5586。服务停止后虚构图源离线，这是测试夹具边界，不将其当作正常用户图源失败。
 
 本批AGENTS、外部ABI/夹具、Android版本44及本报告一起提交；Mac仅暂存本轮2026-10-05记录，原用户两个段落保持未提交。AppVersion用户草稿70和前序报告按原字节保护。本轮约定的Android同步稀疏、目录成败、缓存及前后章正式模拟器缺口已由上述组合补验关闭，不表示P11–P15所有契约在新APK逐项重跑；Windows/macOS原生搜索/焦点及可见双页仍待实际界面结果，因此HP02保持未勾选、不执行finalParityAudit。本轮零完整模块/全量重跑，一次正式Android候选；旧完整矩阵与相关补验仍为组合证据，不宣称最终代码重新全量通过。
+
+
+## 2026-10-09：Windows 原生搜索补验中断证据
+
+复用正式75 EXE与任务专有 hp02-remaining-win-single profile；前轮实例已退出，本轮 launcher18632/runtime11260，HTTP58971/JMX58972，实际进程路径和参数一致。只读 fixture 为 COMPLETE/3章/1条历史，未重新播种。Computer Use 重新枚举并激活精确候选，实际截图确认书架→历史→搜索入口，搜索编辑区点击后有可见 caret。
+
+`sky.type_text` 输入 abc 后出现原生错误提示 `cannot open system clipboard`，文本未出现，不计搜索输入通过。对当前任务窗口发送 Return 后，截图返回 `no screenshot targets found`；有界重新枚举已无候选窗口，独立进程与58971监听检查均为空。应用已退出，具体退出原因尚未诊断，不能据此归因产品搜索实现或工具。停止后续输入，未运行全量、未重建、未更改产品代码。按当前 TEST_GUIDE 的 Computer Use 收尾规则结束根轮次，后续先离线调查再安排原生补验；HP02保持未勾选。本节为未完成验收的现场记录，尚未形成最终验收提交。
+
+
+## 2026-10-09：Windows 正式75用户手动验收通过
+
+交付并只读确认存在的正式产物为 [Mihon Desktop.exe](<D:/Codex/worktrees/f235/hp02-history-candidate/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.75.05fdb81-unpacked/Mihon Desktop.exe>)。用户在收到该路径及以下四项清单后明确回复“你列出的验收条目全部成功验收完毕”。来源为用户手动验收，不是 Computer Use 自动通过；用户本轮没有另报 profile、阅读模式枚举、系统输入法或窗口尺寸，不补造这些环境事实。
+
+| 实际给出的操作清单 | 用户反馈 | 关闭的Windows缺口 |
+| --- | --- | --- |
+| 历史→搜索输入abc→光标移中间再输入→字符顺序正确；清空、关闭搜索正常 | 全部通过 | 原生搜索编辑及清空/关闭，P01/P02相关剩余项 |
+| 点击封面→详情→返回→搜索与列表位置保留 | 全部通过 | 封面导航与返回状态，P03/P04相关剩余项 |
+| 打开删除弹窗→Tab/Shift+Tab切换→Escape取消→历史记录保留 | 全部通过 | 弹窗键盘与取消路径，P16/P17相关剩余项；未要求实际删除 |
+| 阅读器开启双页→从历史续读→恢复的目标页实际可见 | 全部通过 | 双页目标可见；模式名称未单独报告，旧AUTO断言失败保留原记录 |
+
+本反馈关闭Windows上述原生缺口；跨平台不合并判定，macOS相应原生项仍待实际证据。当前没有新增产品代码或测试/构建需求，不重复Windows输入或全量矩阵。用户手动通过不解释此前剪贴板提示或退出原因，也不将这两个现象描述为产品bug已修复。报告与HP02最终批次一并提交，不单独创建record-evidence状态提交。
+
+
+## 2026-10-09：Mac原生结果观测边界及用户接管
+
+原实施者复用当前统一保护，`mbp-lan`实际可达macOS14.8.4；精确既有app75/runtime55981/open包装器55980、mac-75-single及58981/58982启动参数确认。SessionGuard对自然息屏做单次8秒亮屏，恢复为awake、锁定字段缺失、前台55981，nativePermission=true；目标window18366为on-screen1024×768。AXTrusted=true，AXFocusedWindow及AXFocusedUIElement查询error0、owner55981。没有输入密码或更改系统设置。
+
+实际`CGPreflightScreenCaptureAccess=false`，不执行截图或请求权限；没有另一条已授权的Mac精确窗口画面观测链。上述前置成功不能替代搜索编辑、弹层键盘/回焦或双页可见结果，HTTP独立history controller也不能作为原生结果。当前统一CLI仅sync-main/新profile且依赖旧75没有的syncUI；新历史场景应复用共同保护，不把此场景能力差异解释为锁屏或SSH失败。本轮没有Mac原生事件、产品改动、构建或测试重跑。
+
+用户明确选择“可以，我手动验收 Mac”。停止后续自动输入、截图和激活；临时wake helper已由SessionGuard.close清理，无新增常驻进程。保留既有 [正式Mihon Desktop.app](</Users/altair/Library/Caches/mihon-history-parity-20261004-f235/app-75/Mihon Desktop.app>) 给用户执行与Windows相同的四项清单，结果尚未收到。若需打开，在Mac终端使用`open -a`该精确路径，不加`-n`，避免新开重复实例。HP02仍未勾选，报告及本轮Mac经验维护待最终验收批次提交。
+
+
+## 2026-10-09：Mac手动通过与HP02最终收口
+
+在用户选择Mac手动验收、获知复用同正式候选及与Windows相同四项清单后，用户明确回复“验收通过”。本次记录为macOS正式75的用户手动通过：搜索abc及中间编辑、清空/关闭，封面详情返回保查询/位置，删除弹窗Tab/Shift+Tab及Escape取消保历史，双页续读目标实际可见。没有另报模式枚举、输入法、显示尺寸或新增截图，不补造这些事实；先前自动检查只证明前置，不追溯改记为原生通过。
+
+| 平台与正式产物 | 本轮最终证据与范围 | 结论 |
+| --- | --- | --- |
+| [Windows75 EXE](<D:/Codex/worktrees/f235/hp02-history-candidate/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.75.05fdb81-unpacked/Mihon Desktop.exe>) | 构建日志Final unpacked EXE实际路径；fresh9观测、同profile冷启动缓存1观测；2026-10-09用户四项原生手动反馈 | 已通过计划要求的相关运行及剩余原生项；保留自动剪贴板失败，不声称其原因已修复 |
+| [macOS75 app](</Users/altair/Library/Caches/mihon-history-parity-20261004-f235/app-75/Mihon Desktop.app>) | 项目build-only正式构建；fresh9观测、同profile冷启动缓存1观测；统一保护息屏恢复/身份；2026-10-09用户同四项手动反馈 | 已通过计划要求的相关运行及剩余原生项；外部录屏链权限不足保留，不新增权限要求 |
+| [Android44 APK](<D:/Codex/worktrees/f235/hp02-history-candidate/app/artifacts/android/0.19.4-aex.26-vc44-05fdb81a6a-release/Mihon-Fork-0.19.4-aex.26-vc44-release-universal.apk>) | 连续正式证书、非debug、R8/资源收缩，统一candidate/verify；私有API36模拟器5560实际生产History/Reader/目录成败/缓存/前后章和真实IME/重复分类路径证据 | 已完成对应模拟器可覆盖验收；未操作用户5586或实体设备，不声明硬件专项通过 |
+
+P01–P18索引继续指向已提交production/共享契约和平台接线测试，正式运行与用户结果补齐对应原生边界。数据完整性、共享协议/DI、目录事务及发布身份独立审查已在HP01/Android限定复审记录完成；本轮仅核对最终产物、有效证据和局部状态，不创建额外产品能力、迁移或复审轮次。
+
+保留边界：目录准备是Reader挂载后的限定后台扩展，当前页面不等待远端目录，失败不污染当前页面；已读历史按官方规则续下一章，无下一章给出既定反馈；删除历史不删除作品/章节/下载或重置阅读状态；重复迁移只有显式确认才执行。AUTO组较小current索引的旧助手断言失败仍保留，其目标可见边界由用户双页结果补齐，不将旧失败改写成自动通过。
+
+用户选择手动接管后，无自动输入/截图/激活；Mac既有候选保留供体验，自建临时wake helper已释放，Windows失败实例已退出，不结束用户自行启动的应用。受保护AppVersion草稿70、前序修复报告和Mac原有两段未提交内容保留；仅暂存本次新增Mac经验行，最终提交不混入用户改动。
+
+
+### 历史manifest局部维护边界
+
+仅维护capability64的history动作，不推进其他63项或非Reader父计划。原actionInventory的三方provenance与sourceEntryIds是冻结在95b82fc等revision的基线来源，继续保留原定位及上下文hash；不把新实现回填为旧版本事实。十项当前实现状态与入口/反馈按本批真实行为更新，并以currentDesktopEvidence分别记录本次production的ENTRY/EFFECT/FEEDBACK、当前提交、路径及定位，与聚合验收证据关联。该字段用于区分当前实施与冻结来源，不取代原source graph，也不充当行为测试；状态判断来自已执行的production行为/wiring测试和正式运行及用户验收。元数据核验只检查范围、结构和定位一致性，不被描述为新一轮产品测试。后续源码改变这些行为时必须重新评估证据，不能仅重算hash就保持已验状态。
+
+
+最终局部元数据核验：十项PRESENT/NONE、30个当前production定位与hash、冻结provenance/trackedUpstream和cap64其余字段保持原样、其他63项完全不变，主代理独立核验通过。最终五文件变更超过400行，主要为十动作各三类必要证据记录；内聚于一个已验历史能力，不拆为机械任务。未运行Gradle/full/finalParityAudit，不将定位扫描作行为通过证据。UTF-8及git diff --check通过，最终同批提交。
