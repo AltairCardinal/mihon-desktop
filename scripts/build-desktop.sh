@@ -8,6 +8,7 @@
 #   ./scripts/build-desktop.sh msi         # bump BUILD, build MSI, then rebuild unpackaged app
 #   ./scripts/build-desktop.sh evidence    # build a committed version allocation and seal provenance
 #   ./scripts/build-desktop.sh build-only  # bump BUILD and build after equivalent tests already passed
+#   ./scripts/build-desktop.sh preview     # isolated experience build; no tests or version allocation
 #   ./scripts/build-desktop.sh test-only   # run tests only where supported
 #   ./scripts/build-desktop.sh full-tests  # run full tests only where supported
 #
@@ -21,6 +22,31 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_VERSION_FILE="$REPO_ROOT/app-desktop/src/main/kotlin/mihon/desktop/AppVersion.kt"
 HOST_OS="${MIHON_HOST_OS:-$(uname -s)}"
 MODE="${1:-hash}"
+
+if [[ "$MODE" == "preview" && "$HOST_OS" == "Darwin" ]]; then
+  PREVIEW_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  PREVIEW_OWNED_DIST_ROOT="$(mktemp -d /private/tmp/mihon-preview-dist.XXXXXX)"
+  export MIHON_MACOS_DIST_ROOT="$PREVIEW_OWNED_DIST_ROOT"
+  export MIHON_MACOS_DEPLOY_DIR="$REPO_ROOT/app-desktop/artifacts/preview/macos/$PREVIEW_ID/Mihon Desktop.app"
+  # codesign/jpackage require an APFS output volume, including the published bundle.
+  mkdir -p "$(dirname "$MIHON_MACOS_DEPLOY_DIR")"
+  if ! python3 - "$MIHON_MACOS_DIST_ROOT" "$(dirname "$MIHON_MACOS_DEPLOY_DIR")" <<'PY'
+import plistlib
+import subprocess
+import sys
+for path in sys.argv[1:]:
+    # diskutil accepts a volume/device, not an arbitrary directory. df -P keeps
+    # the device in its first field even when the mountpoint contains spaces.
+    device = subprocess.check_output(['df', '-P', path], text=True).splitlines()[-1].split()[0]
+    info = plistlib.loads(subprocess.check_output(['diskutil', 'info', '-plist', device]))
+    if str(info.get('FilesystemType', '')).lower() != 'apfs':
+        sys.exit('Preview requires APFS for distribution and deployment: ' + path)
+PY
+  then
+    echo "Preview distribution retained: $PREVIEW_OWNED_DIST_ROOT"
+    exit 1
+  fi
+fi
 
 if [[ "$HOST_OS" == "Darwin" ]]; then
   MACOS_PATHS="$(python3 - "$REPO_ROOT" \
@@ -70,7 +96,7 @@ replace_version_constant() {
 
 print_usage_and_exit() {
   echo "Unknown mode: $MODE"
-  echo "Use: hash, feature, stage, msi, evidence, build-only, test-only, or full-tests."
+  echo "Use: hash, feature, stage, msi, evidence, build-only, preview, test-only, or full-tests."
   exit 1
 }
 
@@ -103,7 +129,7 @@ case "$MODE" in
   evidence)
     echo "Evidence build: 0.$STAGE.$FEATURE.$BUILD (committed version allocation required)"
     ;;
-  test-only|full-tests)
+  preview|test-only|full-tests)
     echo "Test version: 0.$STAGE.$FEATURE.$BUILD (version unchanged)"
     ;;
   *)
@@ -115,15 +141,44 @@ GIT_HASH="$(git -C "$REPO_ROOT" rev-parse --short=7 HEAD)"
 FULL_VERSION="0.$STAGE.$FEATURE.$BUILD.$GIT_HASH"
 echo "Full version: $FULL_VERSION"
 
-run_macos() {
+run_macos() (
   local DEPLOY_DIR="$MACOS_DEPLOY_DIR"
   local DIST_DIR="$MIHON_MACOS_DIST_ROOT/main/app/Mihon Desktop.app"
   local PROVENANCE_SOURCE=""
+  local PREVIEW_BUILD_STATUS="NOT_RUN"
+  local PREVIEW_MANIFEST="$(dirname "$DEPLOY_DIR")/preview-manifest.json"
+  local PREVIEW_MANIFEST_ATTEMPTED=false
 
   cleanup_macos_provenance_source() {
-    if [[ -n "${PROVENANCE_SOURCE:-}" ]]; then
-      rm -f -- "$PROVENANCE_SOURCE"
+    local build_exit=$?
+    if [[ "$MODE" == "preview" && $build_exit != 0 && -s "${PROVENANCE_SOURCE:-}" ]]; then
+      if [[ $build_exit != 0 && "$PREVIEW_BUILD_STATUS" == "NOT_RUN" ]]; then
+        PREVIEW_BUILD_STATUS="TOOL_FAIL"
+      fi
+      if [[ "$PREVIEW_MANIFEST_ATTEMPTED" == false ]]; then
+        python3 "$REPO_ROOT/scripts/task15-build-provenance.py" preview-manifest \
+          --repo "$REPO_ROOT" --source "$PROVENANCE_SOURCE" --platform macos \
+          --version "$FULL_VERSION" --artifact "$DEPLOY_DIR" --output "$PREVIEW_MANIFEST" \
+          --build-status "$PREVIEW_BUILD_STATUS" --runtime-status NOT_RUN >/dev/null || build_exit=1
+      fi
+      [[ ! -f "$PREVIEW_MANIFEST" ]] || echo "Preview manifest: $PREVIEW_MANIFEST"
     fi
+    if [[ -n "${PROVENANCE_SOURCE:-}" ]]; then
+      rm -f -- "$PROVENANCE_SOURCE" || build_exit=1
+    fi
+    if [[ "$MODE" == "preview" && -n "${PREVIEW_OWNED_DIST_ROOT:-}" ]]; then
+      if [[ $build_exit == 0 ]]; then
+        # Only remove the exact mktemp directory allocated by this invocation.
+        [[ "$PREVIEW_OWNED_DIST_ROOT" == /private/tmp/mihon-preview-dist.* && \
+          "$(dirname "$PREVIEW_OWNED_DIST_ROOT")" == /private/tmp && \
+          ! -L "$PREVIEW_OWNED_DIST_ROOT" ]] || { echo "Unsafe preview cleanup path" >&2; exit 1; }
+        rm -rf -- "$PREVIEW_OWNED_DIST_ROOT" || build_exit=1
+      fi
+      if [[ $build_exit != 0 && -d "$PREVIEW_OWNED_DIST_ROOT" ]]; then
+        echo "Preview distribution retained: $PREVIEW_OWNED_DIST_ROOT"
+      fi
+    fi
+    exit "$build_exit"
   }
   trap cleanup_macos_provenance_source EXIT
 
@@ -139,9 +194,13 @@ run_macos() {
     PROVENANCE_SOURCE="$(mktemp "${TMPDIR:-/tmp}/mihon-task151-source.XXXXXX")"
     python3 scripts/task15-build-provenance.py source \
       --repo "$REPO_ROOT" --require-version-allocation --output "$PROVENANCE_SOURCE"
+  elif [[ "$MODE" == "preview" ]]; then
+    PROVENANCE_SOURCE="$(mktemp "${TMPDIR:-/tmp}/mihon-preview-source.XXXXXX")"
+    python3 scripts/task15-build-provenance.py preview-source \
+      --repo "$REPO_ROOT" --output "$PROVENANCE_SOURCE" >/dev/null
   fi
   echo ""
-  if [[ "$MODE" != "build-only" ]]; then
+  if [[ "$MODE" != "build-only" && "$MODE" != "preview" ]]; then
     echo "Running desktop JVM tests..."
     if [[ "$MODE" == "full-tests" ]]; then
       ./gradlew :app-desktop:jvmTest -PincludeIntegrationTests=true
@@ -149,7 +208,7 @@ run_macos() {
       ./gradlew :app-desktop:jvmTest
     fi
   else
-    echo "Skipping desktop JVM tests because build-only was explicitly requested."
+    echo "Skipping desktop JVM tests because $MODE was explicitly requested."
   fi
 
   if [[ "$MODE" == "test-only" || "$MODE" == "full-tests" ]]; then
@@ -166,8 +225,13 @@ run_macos() {
   echo "Deploying to $DEPLOY_DIR..."
   [[ -d "$DIST_DIR" ]] || { echo "Built macOS bundle not found: $DIST_DIR" >&2; exit 1; }
   mkdir -p "$(dirname "$DEPLOY_DIR")"
-  rm -rf "$DEPLOY_DIR"
+  if [[ "$MODE" == "preview" ]]; then
+    [[ ! -e "$DEPLOY_DIR" ]] || { echo "Preview destination already exists: $DEPLOY_DIR" >&2; exit 1; }
+  else
+    rm -rf "$DEPLOY_DIR"
+  fi
   cp -R "$DIST_DIR" "$DEPLOY_DIR"
+  PREVIEW_BUILD_STATUS="PASS"
 
   if [[ "$MODE" == "evidence" ]]; then
     local ARTIFACT="$DEPLOY_DIR"
@@ -179,10 +243,19 @@ run_macos() {
     PROVENANCE_SOURCE=""
   fi
 
+  if [[ "$MODE" == "preview" ]]; then
+    PREVIEW_MANIFEST_ATTEMPTED=true
+    python3 scripts/task15-build-provenance.py preview-manifest \
+      --repo "$REPO_ROOT" --source "$PROVENANCE_SOURCE" --platform macos \
+      --version "$FULL_VERSION" --artifact "$DEPLOY_DIR" --output "$PREVIEW_MANIFEST" \
+      --build-status PASS --runtime-status NOT_RUN >/dev/null
+    echo "Preview manifest: $PREVIEW_MANIFEST"
+  fi
+
   echo ""
   echo "Deployed Mihon Desktop $FULL_VERSION"
   echo "Final macOS app: $DEPLOY_DIR"
-}
+)
 
 run_windows() {
   cd "$REPO_ROOT"
@@ -218,6 +291,9 @@ run_windows() {
       ;;
     build-only)
       ps_args+=(-SkipTests -VersionAllocated -ExpectedVersion "$FULL_VERSION")
+      ;;
+    preview)
+      ps_args+=(-Preview)
       ;;
     hash|feature|stage)
       ps_args+=(-VersionAllocated -ExpectedVersion "$FULL_VERSION")

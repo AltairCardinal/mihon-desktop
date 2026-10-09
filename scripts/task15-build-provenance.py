@@ -177,6 +177,59 @@ def source_identity(root: pathlib.Path, require_version_allocation: bool) -> Dic
     return result
 
 
+def preview_source_identity(root: pathlib.Path) -> Dict[str, Any]:
+    """Fingerprint current product inputs without requiring a clean release checkout."""
+    records = []
+    for item in git(root, "ls-files", "--stage", "-z", text=False).split(b"\0"):
+        if not item:
+            continue
+        metadata, raw_path = item.split(b"\t", 1)
+        path = pathlib.PurePosixPath(os.fsdecode(raw_path))
+        if not is_product_input(path):
+            continue
+        absolute = root.joinpath(*path.parts)
+        digest = hashlib.sha256(absolute.read_bytes()).hexdigest() if absolute.is_file() else "MISSING"
+        records.append(f"{metadata[:6].decode()}\t{path.as_posix()}\t{digest}\n")
+    untracked = []
+    for raw_path in git(root, "ls-files", "--others", "--exclude-standard", "-z", text=False).split(b"\0"):
+        if not raw_path:
+            continue
+        path = pathlib.PurePosixPath(os.fsdecode(raw_path))
+        if is_untracked_product_input(path):
+            digest = hashlib.sha256(root.joinpath(*path.parts).read_bytes()).hexdigest()
+            untracked.append({"path": path.as_posix(), "sha256": digest})
+            records.append(f"untracked\t{path.as_posix()}\t{digest}\n")
+    changed = [os.fsdecode(path) for path in git(root, "diff", "--name-only", "-z", "HEAD", text=False).split(b"\0")
+               if path and is_product_input(pathlib.PurePosixPath(os.fsdecode(path)))]
+    diff = git(root, "diff", "--binary", "HEAD", "--", *changed, text=False) if changed else b""
+    return {
+        "sourceCommit": git(root, "rev-parse", "HEAD").strip(),
+        "sourceTree": git(root, "rev-parse", "HEAD^{tree}").strip(),
+        "productSource": {"algorithm": ALGORITHM, "fileCount": len(records),
+                          "digest": hashlib.sha256("".join(sorted(records)).encode()).hexdigest()},
+        "diffSha256": hashlib.sha256(diff).hexdigest(),
+        "untrackedInputs": sorted(untracked, key=lambda item: item["path"]),
+        "dirty": bool(diff or untracked),
+    }
+
+
+def preview_manifest(args: argparse.Namespace) -> Dict[str, Any]:
+    source = load(args.source)
+    changed = args.build_status == "PASS" and source != preview_source_identity(args.repo.resolve())
+    value = {
+        "kind": "preview", "platform": args.platform, "source": source,
+        "version": args.version, "artifactPath": str(args.artifact.resolve()),
+        "build": {"status": args.build_status},
+        "sourceIntegrity": {"status": "TOOL_FAIL" if changed else "PASS" if args.build_status == "PASS" else "NOT_RUN"},
+        "productionRuntime": {"status": args.runtime_status},
+        "nativeInteraction": {"status": "NOT_RUN", "reason": "Requires separate native event acceptance"},
+    }
+    write(args.output, value)
+    if changed:
+        raise ValueError("preview inputs changed during the build; rebuild the current inputs")
+    return value
+
+
 def artifact_identity(path: pathlib.Path) -> Dict[str, Any]:
     if path.is_file():
         content = path.read_bytes()
@@ -947,6 +1000,18 @@ def write_probe(args: argparse.Namespace) -> Dict[str, Any]:
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser()
     subcommands = result.add_subparsers(dest="command", required=True)
+    preview_source = subcommands.add_parser("preview-source")
+    preview_source.add_argument("--repo", type=pathlib.Path, required=True)
+    preview_source.add_argument("--output", type=pathlib.Path, required=True)
+    preview = subcommands.add_parser("preview-manifest")
+    preview.add_argument("--repo", type=pathlib.Path, required=True)
+    preview.add_argument("--source", type=pathlib.Path, required=True)
+    preview.add_argument("--artifact", type=pathlib.Path, required=True)
+    preview.add_argument("--output", type=pathlib.Path, required=True)
+    preview.add_argument("--platform", choices=("windows", "macos"), required=True)
+    preview.add_argument("--version", required=True)
+    preview.add_argument("--build-status", choices=("PASS", "TOOL_FAIL", "NOT_RUN"), required=True)
+    preview.add_argument("--runtime-status", choices=("PASS", "TOOL_FAIL", "NOT_RUN"), required=True)
     for name in ("source", "seal", "verify"):
         command = subcommands.add_parser(name)
         command.add_argument("--repo", type=pathlib.Path, required=True)
@@ -993,7 +1058,12 @@ def parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = parser().parse_args()
     try:
-        if args.command == "source":
+        if args.command == "preview-source":
+            value = preview_source_identity(args.repo.resolve())
+            write(args.output, value)
+        elif args.command == "preview-manifest":
+            value = preview_manifest(args)
+        elif args.command == "source":
             value = source_identity(args.repo.resolve(), args.require_version_allocation)
             write(args.output, value)
         elif args.command == "seal":
