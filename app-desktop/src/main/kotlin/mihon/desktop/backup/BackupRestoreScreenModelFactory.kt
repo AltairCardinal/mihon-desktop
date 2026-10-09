@@ -41,6 +41,8 @@ class BackupRestoreScreenModelFactory(
         mihon.data.sync.journal.NoopBackupRestoreSync,
 ) {
     fun create(): BackupRestoreScreenModel = createModel()
+    fun createForRecovery(report: (mihon.data.sync.runtime.SyncRecoveryPlatformResult) -> Unit): BackupRestoreScreenModel =
+        createModel(recoveryReport = report)
 
     internal fun create(scope: CoroutineScope): BackupRestoreScreenModel = createModel(scope)
 
@@ -49,7 +51,8 @@ class BackupRestoreScreenModelFactory(
         scope: CoroutineScope? = null,
     ): BackupRestoreScreenModel = createModel(scope).also { it.select(target.file) }
 
-    private fun createModel(scope: CoroutineScope? = null): BackupRestoreScreenModel =
+    private fun createModel(scope: CoroutineScope? = null,
+        recoveryReport: ((mihon.data.sync.runtime.SyncRecoveryPlatformResult) -> Unit)? = null): BackupRestoreScreenModel =
         BackupRestoreScreenModel(
             loadPreview = { file ->
                 val backup = withContext(Dispatchers.IO) { DesktopBackupCreator.readBackupFile(file) }
@@ -74,7 +77,9 @@ class BackupRestoreScreenModelFactory(
                     },
                     extensionRepoRepository = extensionRepoRepository,
                     authorArchiveBackupContributor = authorArchiveBackupContributor,
-                    backupRestoreSync = backupRestoreSync,
+                    backupRestoreSync = recoveryReport?.let {
+                        mihon.presentation.sync.SyncRecoveryBackupObserver(backupRestoreSync, it)
+                    } ?: backupRestoreSync,
                 )
                 BackupWorkflow.runRestore {
                     withContext(Dispatchers.IO) { restorer.restore(backup, appSettings, onProgress) }

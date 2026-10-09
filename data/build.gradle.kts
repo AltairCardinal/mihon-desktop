@@ -30,6 +30,7 @@ kotlin {
             }
         }
         commonTest {
+            kotlin.srcDir("src/syncTestFixtures/kotlin")
             dependencies {
                 implementation(libs.bundles.test)
                 implementation(kotlinx.coroutines.test)

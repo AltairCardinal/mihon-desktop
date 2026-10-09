@@ -49,6 +49,41 @@ import tachiyomi.domain.manga.interactor.GetLibraryManga
 @OptIn(ExperimentalComposeUiApi::class)
 class DesktopSyncPanelTest {
     @Test
+    fun `native compatibility page checks source availability and cancelled chooser keeps the task unresolved`() = runBlocking {
+        val panel = TestPanel()
+        panel.state.value = SyncPanelState(visible = true, loaded = true, page = SyncPanelPage.RECOVERY,
+            recoveryPlatformRequest = mihon.data.sync.runtime.SyncRecoveryPlatformRequest("local-update", mihon.data.sync.runtime.SyncRecoveryPlatformAction.UPDATE),
+            recoveryPlatformLaunchPending = true)
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) { every { syncPanel } returns panel }
+        val legacy = mockk<java.util.prefs.Preferences>(relaxed = true) { every { get(any(), any()) } returns null }
+        every { dependencies.appPreferences } returns mihon.desktop.settings.DesktopAppPreferences(
+            tachiyomi.core.common.preference.InMemoryPreferenceStore(), legacy)
+        io.mockk.coEvery { dependencies.filePicker.choose(any()) } returns mihon.desktop.platform.DesktopFilePickerResult.Cancelled
+        val model = LibraryScreenModel(GetLibraryManga(FakeMangaRepository()), GetCategories(FakeCategoryRepository()))
+        val scene = ImageComposeScene(1200, 900, coroutineContext = coroutineContext) {}
+        scene.setContent { MaterialTheme { CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+            ProvideLibraryScreenModelFactory({ model }) { Navigator(LibraryRootScreen()) { CurrentScreen() } }
+        } } }
+        fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+        fun node(tag: String) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.firstOrNull {
+            it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == tag
+        }
+        suspend fun click(tag: String) {
+            withTimeout(5000) { while (node(tag) == null) { scene.render(); yield() } }
+            assertTrue(requireNotNull(node(tag)!!.config[SemanticsActions.OnClick].action).invoke())
+            repeat(5) { scene.render(); yield() }
+        }
+        try {
+            click("sync-compatibility-check")
+            assertTrue(node("sync-compatibility-no-trusted-source") != null)
+            click("sync-compatibility-local-package")
+            click("sync-native-recovery-return")
+            assertTrue(panel.actions.any { it is SyncPanelAction.RecoveryPlatformCompleted &&
+                it.result == mihon.data.sync.runtime.SyncRecoveryPlatformResult.Cancelled })
+        } finally { scene.close() }
+    }
+
+    @Test
     fun `production library recovery host pushes a real Screen onto its ordinary navigator`() = runBlocking {
         val panel = TestPanel()
         panel.state.value = mihon.data.sync.runtime.SyncPanelState(
@@ -66,6 +101,7 @@ class DesktopSyncPanelTest {
         every { dependencies.networkRoutingPort.activeGlobalMode } returns mihon.desktop.settings.GlobalNetworkMode.SYSTEM
         every { dependencies.networkRoutingPort.activeGlobalProxy } returns null
         every { dependencies.networkRoutingPort.routeObservations } returns MutableStateFlow(emptyList())
+        every { dependencies.networkHelper.activeDohProvider } answers { dependencies.appPreferences.dohProvider.get() }
         val model = LibraryScreenModel(GetLibraryManga(FakeMangaRepository()), GetCategories(FakeCategoryRepository()))
         var navigation: Navigator? = null
         val scene = ImageComposeScene(1200, 900, coroutineContext = coroutineContext) {}
@@ -87,7 +123,10 @@ class DesktopSyncPanelTest {
             repeat(8) { scene.render(); yield() }
             assertTrue(panel.state.value.visible)
             assertEquals(SyncPanelPage.RECOVERY, panel.state.value.page)
-            assertTrue(panel.actions.any { it is SyncPanelAction.RecoveryPlatformReturned }, panel.actions.toString())
+            assertTrue(panel.actions.any {
+                it is SyncPanelAction.RecoveryPlatformCompleted &&
+                    it.result == mihon.data.sync.runtime.SyncRecoveryPlatformResult.NoChange
+            }, panel.actions.toString())
         } finally { scene.close() }
     }
     @Test
@@ -150,7 +189,7 @@ class DesktopSyncPanelTest {
             panel.state.value = panel.state.value.copy(page = SyncPanelPage.RECOVERY)
             render()
             assertTrue(find("sync-recovery-page") != null)
-            requireNotNull(find("sync-recovery-verify")!!.config[SemanticsActions.RequestFocus].action).invoke()
+            requireNotNull(find("sync-recovery-create")!!.config[SemanticsActions.RequestFocus].action).invoke()
             render()
             val recoveryKeyType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
                 .getMethod("access\$getKeyDown\$cp").invoke(null)

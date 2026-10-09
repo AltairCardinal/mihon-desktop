@@ -35,6 +35,7 @@ kotlin {
             implementation(kotlinx.coroutines.test)
             runtimeOnly(libs.junit.platform.launcher)
         }
+        getByName("jvmTest").kotlin.srcDir(rootProject.file("data/src/syncTestFixtures/kotlin"))
     }
 }
 

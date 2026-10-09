@@ -82,6 +82,13 @@ android {
         buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = false)}\"")
         buildConfigField("boolean", "TELEMETRY_INCLUDED", "${Config.includeTelemetry}")
         buildConfigField("boolean", "UPDATER_ENABLED", "${Config.enableUpdater}")
+        buildConfigField("String", "FORK_RELEASE_PACKAGE", "\"$releaseApplicationId\"")
+        buildConfigField(
+            "String",
+            "FORK_RELEASE_CERTIFICATE_SHA256",
+            "\"${androidRelease.getProperty("releaseCertificateSha256")}\"",
+        )
+        buildConfigField("int", "FORK_RELEASE_VERSION_CODE", "$releaseVersionCode")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

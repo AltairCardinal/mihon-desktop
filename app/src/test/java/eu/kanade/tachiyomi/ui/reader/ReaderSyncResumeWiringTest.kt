@@ -45,6 +45,31 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 class ReaderSyncResumeWiringTest {
     @Test
+    fun `invalid automatic resume waits for explicit confirmation of the same page`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val fixture = Fixture(pageIndex = 8)
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            fixture.model.eventFlow.collect { }
+        }
+        try {
+            assertTrue(fixture.model.init(1, 1).getOrThrow())
+            val page = fixture.model.state.value.currentChapter!!.pages!![0]
+            fixture.model.onPageSelected(page)
+            val automatic = kotlinx.coroutines.withTimeoutOrNull(500) { fixture.repository.records.receive() }
+            assertEquals(null, automatic, "an automatic fallback must not become user intent")
+            assertTrue(fixture.model.confirmSyncResumePosition(0))
+            val record = awaitValue(fixture.repository.records)
+            assertEquals(0, record.first.lastPageRead)
+            assertEquals(mihon.domain.sync.SyncMutationContext.User, record.first.syncContext)
+            assertEquals(fixture.original.snapshot, record.second)
+        } finally {
+            collector.cancel()
+            fixture.close()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun `ordinary continuation keeps selected unread chapter and its own saved page`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         try {
@@ -191,19 +216,25 @@ class ReaderSyncResumeWiringTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val fixture = Fixture()
         fixture.repository.candidate = ReadingResumePosition(99, 1, snapshot("unavailable"))
+        val events = CopyOnWriteArrayList<ReaderViewModel.Event>()
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            fixture.model.eventFlow.collect(events::add)
+        }
         try {
             assertTrue(fixture.model.init(1, 1).getOrThrow())
             val current = fixture.model.state.value.currentChapter!!
             assertEquals(1L, current.chapter.id)
+            assertTrue(events.contains(ReaderViewModel.Event.SyncResumeChapterUnavailable))
             fixture.model.onPageSelected(requireNotNull(current.pages)[1])
             assertEquals(snapshot("current-heads"), awaitValue(fixture.repository.records).second)
         } finally {
+            collector.cancel()
             fixture.close()
             Dispatchers.resetMain()
         }
     }
 
-    private class Repository(var candidate: ReadingResumePosition?) : ReadingProgressRepository {
+    internal class Repository(var candidate: ReadingResumePosition?) : ReadingProgressRepository {
         var lookups = 0
         val records = Channel<Pair<ReadingProgressEvent, ReadingSyncSnapshot>>(Channel.UNLIMITED)
         override suspend fun resumePosition(mangaId: Long): ReadingResumePosition? {
@@ -219,7 +250,7 @@ class ReaderSyncResumeWiringTest {
         }
     }
 
-    private class Fixture(
+    internal class Fixture(
         pageIndex: Int = 1,
         receiveDuringLoad: Boolean = false,
         savedState: SavedStateHandle = SavedStateHandle(mapOf("resume" to true)),

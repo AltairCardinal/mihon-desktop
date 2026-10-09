@@ -345,10 +345,39 @@ class SyncRuntime(
 
     internal suspend fun activeSwitch(): StoredSyncSpaceSwitch? {
         val connection = rawConnection() ?: return null
-        if (!connection.enabled || connection.unsupportedFormat) return null
+        if (connection.unsupportedFormat) return null
         val stored = onboarding.storage.connection(connection.spaceId, connection.generation) ?: return null
         return onboarding.storage.activeSwitch(stored.accountId)?.takeIf {
             it.stage in setOf(SyncSpaceSwitchStage.PREPARING, SyncSpaceSwitchStage.ACTIVATING)
+        }
+    }
+
+    /** Re-enables only the same sealed identity after authenticated remote verification. */
+    internal suspend fun restoreDisabledConnection() {
+        coordinator.cancelAndJoin()
+        connectionMutex.withLock {
+            val connection = rawConnection() ?: throw SyncSecureStoreException()
+            if (connection.unsupportedFormat) throw UnsupportedSyncSpace()
+            val stored = onboarding.storage.connection(connection.spaceId, connection.generation)
+                ?: throw SyncSecureStoreException()
+            val session = onboarding.session(stored.accountId)
+            onboarding.verifyRepository(session, stored.repository(), stored.repositoryId)
+            val material = stored.material.material()
+            onboarding.transport(
+                session.token,
+                material,
+                repositoryId = stored.repositoryId,
+                requestGate = accountHttpRequestGate(stored.accountId),
+            )
+                .readSnapshot(stored.repository(), connection.spaceId, connection.generation).getOrThrow()
+            require(onboarding.storage.connection(connection.spaceId, connection.generation) == stored)
+            mihon.data.sync.journal.SyncLocalJournal(handler).connect(
+                connection.spaceId,
+                connection.generation,
+                stored.repository(),
+                stored.actorId,
+                stored.epoch,
+            )
         }
     }
 

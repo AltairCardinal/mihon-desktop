@@ -164,6 +164,7 @@ data class DesktopUiDependencies(
     val creatorDiscoveryScheduler: CreatorDiscoveryScheduler? = null,
     val creatorDiscoverySourcePort: CreatorDiscoverySourcePort? = null,
     val updateController: DesktopUpdateController? = null,
+    val recoveryPackageInstaller: mihon.desktop.sync.DesktopRecoveryPackageInstaller? = null,
     val updateScreenModel: DesktopUpdateScreenModel? = null,
     val libraryPreferences: LibraryPreferences? = null,
     val creatorDiscoveryPreferences: tachiyomi.domain.creator.service.CreatorDiscoveryPreferences? = null,
@@ -259,6 +260,10 @@ data class DesktopUiDependencies(
                 creatorDiscoveryScheduler = Injekt.get(),
                 creatorDiscoverySourcePort = Injekt.get(),
                 updateController = Injekt.get(),
+                recoveryPackageInstaller = mihon.desktop.sync.DesktopRecoveryPackageInstaller(
+                    Injekt.get<tachiyomi.data.release.PlatformInfo>().releaseTarget(isFoss = false),
+                    Injekt.get<mihon.desktop.update.DesktopUpdateInstaller>(),
+                ),
                 updateScreenModel = Injekt.get(),
                 libraryPreferences = Injekt.get(),
                 creatorDiscoveryPreferences = Injekt.get(),

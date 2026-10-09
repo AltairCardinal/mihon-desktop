@@ -167,7 +167,19 @@ internal class SyncOnboarding(
             throw SyncSetupException(SyncDiscoveryProblem.CREATION_UNCONFIRMED)
         }
         if (intent == null) {
-            storage.pending(account.id)?.let { return it }
+            storage.pending(account.id)?.let {
+                if (it.repositoryId != candidate.repositoryId || it.repository() != candidate.repository) {
+                    throw SyncSetupException(
+                        SyncDiscoveryProblem.INITIALIZATION_REQUIRES_ACTION,
+                        SyncInitializationFailure(
+                            it.stage,
+                            SyncInitializationFailureReason.REPOSITORY_IDENTITY_CHANGED,
+                            true,
+                        ),
+                    )
+                }
+                return it
+            }
         } else {
             runtime.verifySwitch(intent)
             require(intent.accountId == account.id && intent.purpose == SyncSpaceSwitchPurpose.CREATE)
@@ -457,7 +469,7 @@ internal class SyncOnboarding(
         val ownerId = json["owner"]?.jsonObject?.get("id")?.jsonPrimitive?.longOrNull
             ?: throw SyncSetupException(SyncDiscoveryProblem.MALFORMED)
         if (actualId != repositoryId || ownerId != session.account.id) {
-            throw SyncRequiredResourceUnavailable(SyncRequiredResource.REPOSITORY, 200)
+            throw SyncSetupException(SyncDiscoveryProblem.REPOSITORY_IDENTITY_MISMATCH)
         }
         val private = json["private"]?.jsonPrimitive?.booleanOrNull
             ?: throw SyncSetupException(SyncDiscoveryProblem.MALFORMED)

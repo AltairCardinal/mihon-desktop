@@ -1,5 +1,12 @@
 package mihon.desktop.sync
 
+import mihon.desktop.update.InstallHandedOff
+import mihon.desktop.update.InstallFailure
+import mihon.desktop.update.InstallRejected
+import mihon.desktop.update.InstallManualOnly
+import mihon.desktop.update.ReadyToInstall
+import mihon.presentation.sync.SyncCompatibilityContent
+import mihon.presentation.sync.SyncCompatibilityFeedback
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +44,7 @@ import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.platform.DesktopRecoveryProfile
 import mihon.desktop.ui.settings.DesktopDirectoryOpener
 import mihon.data.sync.runtime.SyncRecoveryPlatformAction
+import mihon.data.sync.runtime.SyncRecoveryPlatformResult
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.ui.settings.GeneralSettingsScreen
@@ -60,6 +68,10 @@ data class DesktopSyncRecoveryScreen(val requestId: String, val action: SyncReco
         var target by remember(requestId) { mutableStateOf<Screen?>(null) }
         var loaded by remember(requestId) { mutableStateOf(false) }
         var blocked by remember(requestId) { mutableStateOf(false) }
+        var result by remember(requestId) { mutableStateOf<SyncRecoveryPlatformResult>(SyncRecoveryPlatformResult.NoChange) }
+        val savedExtensions = remember(requestId) {
+            if (action == SyncRecoveryPlatformAction.EXTENSIONS) dependencies.extensionManager.getInstalledExtensions() else null
+        }
         val savedDoh = remember(requestId) { dependencies.appPreferences.dohProvider.get() }
         fun restartRequired(): Boolean = action == SyncRecoveryPlatformAction.NETWORK && runCatching {
             dependencies.appPreferences.globalNetworkMode.get() != dependencies.networkRoutingPort.activeGlobalMode ||
@@ -69,8 +81,14 @@ data class DesktopSyncRecoveryScreen(val requestId: String, val action: SyncReco
         fun returned() {
             if (panel?.state?.value?.recoveryPlatformRequest?.requestId != requestId) return
             panel.dispatch(SyncPanelAction.OpenRecovery)
-            if (blocked) panel?.dispatch(SyncPanelAction.RecoveryPlatformFailed(requestId))
-            else panel?.dispatch(SyncPanelAction.RecoveryPlatformReturned(requestId, restartRequired()))
+            val actual = when {
+                blocked -> SyncRecoveryPlatformResult.Failed("TARGET_UNAVAILABLE")
+                restartRequired() -> SyncRecoveryPlatformResult.RestartRequired
+                savedExtensions != null && dependencies.extensionManager.getInstalledExtensions() != savedExtensions ->
+                    SyncRecoveryPlatformResult.Changed(request?.objects.orEmpty())
+                else -> panel.state.value.recoveryPlatformResult ?: result
+            }
+            panel.dispatch(SyncPanelAction.RecoveryPlatformCompleted(requestId, actual))
         }
         DisposableEffect(requestId) { onDispose { returned() } }
         LaunchedEffect(requestId) {
@@ -84,7 +102,7 @@ data class DesktopSyncRecoveryScreen(val requestId: String, val action: SyncReco
                     }
                     if (installed != null) ExtensionDetailsScreen(installed.jarFile.absolutePath) else DesktopRecoveryExtensionsScreen(requestId)
                 }
-                SyncRecoveryPlatformAction.BACKUP -> BackupSettingsScreen()
+                SyncRecoveryPlatformAction.BACKUP -> BackupSettingsScreen(recoveryRequestId = requestId)
                 SyncRecoveryPlatformAction.UPDATE, SyncRecoveryPlatformAction.STORAGE -> null
                 SyncRecoveryPlatformAction.MIGRATION, SyncRecoveryPlatformAction.READER -> {
                     val key = request?.objects?.singleOrNull()
@@ -115,12 +133,18 @@ data class DesktopSyncRecoveryScreen(val requestId: String, val action: SyncReco
                     catch (_: Exception) { blocked = true; null }
                 }
             }
-            if (action == SyncRecoveryPlatformAction.UPDATE || request == null) blocked = true
+            if (request == null) blocked = true
             loaded = true
         }
         if (!loaded) Column(Modifier.fillMaxSize().padding(24.dp)) { CircularProgressIndicator() }
         else if (action == SyncRecoveryPlatformAction.STORAGE) {
             DesktopInApplicationStorageRecovery(onBack = outer::pop)
+        } else if (action == SyncRecoveryPlatformAction.UPDATE && request != null) {
+            DesktopRecoveryCompatibilityContent(
+                canInstall = panel?.state?.value?.recoveryPersistenceFailed == false,
+                onResult = { result = it },
+                onBack = outer::pop,
+            )
         } else if (target != null) {
             Navigator(listOf(DesktopRecoveryLandingScreen(requestId, action), target!!)) { CurrentScreen() }
         } else {
@@ -128,11 +152,80 @@ data class DesktopSyncRecoveryScreen(val requestId: String, val action: SyncReco
                 Text(if (action == SyncRecoveryPlatformAction.UPDATE) MR.strings.sync_recovery_no_compatible_package.localized()
                     else MR.strings.sync_recovery_item_identity.localized())
                 Text(MR.strings.sync_recovery_still_remaining.localized())
-                Button(onClick = { outer.push(BackupSettingsScreen()) }) { Text(MR.strings.sync_recovery_backup.localized()) }
+                Button(onClick = {
+                    panel?.dispatch(SyncPanelAction.OpenRecovery)
+                    panel?.dispatch(SyncPanelAction.OpenRecoveryPlatform(SyncRecoveryPlatformAction.BACKUP))
+                    outer.pop()
+                }) { Text(MR.strings.sync_recovery_backup.localized()) }
                 TextButton(onClick = outer::pop) { Text(MR.strings.sync_recovery_platform_return.localized()) }
             }
         }
     }
+}
+
+@Composable
+private fun DesktopRecoveryCompatibilityContent(
+    canInstall: Boolean,
+    onResult: (SyncRecoveryPlatformResult) -> Unit,
+    onBack: () -> Unit,
+) {
+    val dependencies = LocalDesktopUiDependencies.current
+    val scope = rememberCoroutineScope()
+    var feedback by remember { mutableStateOf(SyncCompatibilityFeedback.NOT_CHECKED) }
+    var ready by remember { mutableStateOf<ReadyToInstall?>(null) }
+    SyncCompatibilityContent(
+        version = mihon.desktop.APP_VERSION,
+        feedback = feedback,
+        onCheck = {
+            // The ordinary updater points to upstream Mihon. It is not a trusted release source for this fork.
+            feedback = SyncCompatibilityFeedback.NO_TRUSTED_SOURCE
+            onResult(SyncRecoveryPlatformResult.NoChange)
+        },
+        onChoose = {
+            scope.launch {
+                when (val choice = dependencies.filePicker.choose(DesktopFilePickerRequest.OpenFile(
+                    MR.strings.sync_compatibility_choose.localized(), "MSI / DMG", setOf("msi", "dmg")))) {
+                    DesktopFilePickerResult.Cancelled -> {
+                        feedback = SyncCompatibilityFeedback.CANCELLED
+                        onResult(SyncRecoveryPlatformResult.Cancelled)
+                    }
+                    is DesktopFilePickerResult.Failed -> {
+                        feedback = SyncCompatibilityFeedback.FAILED
+                        onResult(SyncRecoveryPlatformResult.Failed("PACKAGE_PICKER_UNAVAILABLE"))
+                    }
+                    is DesktopFilePickerResult.Selected -> {
+                        feedback = SyncCompatibilityFeedback.SELECTING
+                        val preparation = try {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                dependencies.recoveryPackageInstaller?.prepare(choice.file) ?: InstallManualOnly
+                            }
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) { InstallRejected(InstallFailure.VERIFIER_UNAVAILABLE) }
+                        ready = preparation as? ReadyToInstall
+                        feedback = when (preparation) {
+                            is ReadyToInstall -> SyncCompatibilityFeedback.VERIFIED
+                            InstallManualOnly -> SyncCompatibilityFeedback.MANUAL_ONLY
+                            else -> SyncCompatibilityFeedback.REJECTED
+                        }
+                        onResult(if (ready != null) SyncRecoveryPlatformResult.NoChange else SyncRecoveryPlatformResult.Failed("PACKAGE_NOT_VERIFIED"))
+                    }
+                }
+            }
+        },
+        onInstall = {
+            scope.launch {
+                val candidate = ready
+                feedback = SyncCompatibilityFeedback.SELECTING
+                val installed = canInstall && candidate != null && kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    dependencies.recoveryPackageInstaller?.install(candidate) == InstallHandedOff
+                }
+                feedback = if (installed) SyncCompatibilityFeedback.RESTART_REQUIRED
+                    else SyncCompatibilityFeedback.FAILED
+                onResult(if (installed) SyncRecoveryPlatformResult.RestartRequired else SyncRecoveryPlatformResult.Failed("PACKAGE_INSTALL_FAILED"))
+            }
+        },
+        onBack = onBack,
+    )
 }
 
 private data class DesktopRecoveryLandingScreen(val requestId: String, val action: SyncRecoveryPlatformAction) : Screen {
@@ -210,7 +303,11 @@ private data class DesktopRecoveryExtensionsScreen(val requestId: String) : Scre
                     Text(dependencies.sourceManager.get(id)?.name ?: MR.strings.sync_recovery_affected_content.localized())
                 }
                 Text(MR.strings.sync_recovery_source_alternative.localized())
-                TextButton(onClick = { navigator.push(BackupSettingsScreen()) }) {
+                TextButton(onClick = {
+                    dependencies.syncPanel?.dispatch(SyncPanelAction.OpenRecovery)
+                    dependencies.syncPanel?.dispatch(SyncPanelAction.OpenRecoveryPlatform(SyncRecoveryPlatformAction.BACKUP))
+                    navigator.parent?.pop()
+                }) {
                     Text(MR.strings.sync_recovery_backup.localized())
                 }
             }

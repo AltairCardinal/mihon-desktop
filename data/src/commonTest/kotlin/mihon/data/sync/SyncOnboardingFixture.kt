@@ -66,6 +66,8 @@ internal class SyncOnboardingFixture(
     var accountLogin = "fixture-owner"
     var created = true
     var repositoryPrivate = true
+    var repositoryDisabled = false
+    var installationSuspended = false
     var repositoryWrites = 0
     var repositorySettingsWrites = 0
     var userRepoPosts = 0
@@ -109,7 +111,7 @@ internal class SyncOnboardingFixture(
                     path == "/user/installations" -> response(
                         """
                         {"installations":[{"id":1,"app_slug":"mihon-desktop",
-                        "account":{"id":$accountId,"type":"User"},"suspended_at":null,
+                        "account":{"id":$accountId,"type":"User"},"suspended_at":${if (installationSuspended) "\"2026-10-01\"" else "null"},
                         "permissions":{"contents":"write","metadata":"read"},"repository_selection":"selected"}]}
                         """.trimIndent(),
                     )
@@ -179,7 +181,7 @@ internal class SyncOnboardingFixture(
         put("full_name", repository.fullName)
         put("private", repositoryPrivate)
         put("archived", false)
-        put("disabled", false)
+        put("disabled", repositoryDisabled)
         put("size", if (runCatching { git.head("main") }.isSuccess) 1 else 0)
         put("default_branch", "main")
         put("description", "")

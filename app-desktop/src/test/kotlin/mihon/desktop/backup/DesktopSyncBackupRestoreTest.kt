@@ -114,7 +114,13 @@ class DesktopSyncBackupRestoreTest {
                 backupManga = backup().backupManga +
                     BackupManga(source = 42, url = "/bad", title = "Bad", favorite = true),
             )
-            assertTrue(s.restorer().restore(partial).hasErrors)
+            val reports = mutableListOf<mihon.data.sync.runtime.SyncRecoveryPlatformResult>()
+            val observed = mihon.presentation.sync.SyncRecoveryBackupObserver(s.sync, reports::add)
+            assertTrue(s.restorer(observed).restore(partial).hasErrors)
+            assertEquals(1, reports.size, "the actual Desktop restore must return its partial result")
+            val report = reports.single() as mihon.data.sync.runtime.SyncRecoveryPlatformResult.PartialFailure
+            assertEquals(1L, report.remaining)
+            assertEquals(listOf("/bad"), report.failedObjects.map { it.originalUrl })
             assertEquals("PARTIAL", s.text("SELECT state FROM sync_restore_runs"))
             val id = requireNotNull(s.text("SELECT import_id FROM sync_restore_runs"))
             assertEquals(2L, s.baseline.process(id).total)
@@ -219,14 +225,14 @@ class DesktopSyncBackupRestoreTest {
             "device",
             1,
         )
-        fun restorer() = DesktopBackupRestorer(
+        fun restorer(syncOverride: mihon.data.sync.journal.BackupRestoreSync = sync) = DesktopBackupRestorer(
             mangas,
             chapters,
             categories,
             history,
             preferenceStore = preferences,
             authorArchiveBackupContributor = authors,
-            backupRestoreSync = sync,
+            backupRestoreSync = syncOverride,
         )
         fun text(sql: String): String? = driver.executeQuery(
             null,

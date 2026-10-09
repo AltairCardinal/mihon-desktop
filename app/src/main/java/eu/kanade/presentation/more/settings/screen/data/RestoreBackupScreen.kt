@@ -47,6 +47,7 @@ class RestoreBackupScreen(
     @Composable
     override fun Content() {
         val context = LocalContext.current
+        val recoveryRequestId = eu.kanade.tachiyomi.data.sync.LocalSyncBackupRecoveryRequest.current
         val navigator = LocalNavigator.currentOrThrow
         val model = rememberScreenModel { RestoreBackupScreenModel(context, uri) }
         val state by model.state.collectAsState()
@@ -65,7 +66,7 @@ class RestoreBackupScreen(
                 actionLabel = stringResource(MR.strings.action_restore),
                 actionEnabled = state.canRestore && state.options.canRestore(),
                 onClickAction = {
-                    model.startRestore()
+                    model.startRestore(recoveryRequestId)
                     navigator.pop()
                 },
             ) {
@@ -181,11 +182,12 @@ private class RestoreBackupScreenModel(
         }
     }
 
-    fun startRestore() {
+    fun startRestore(recoveryRequestId: String? = null) {
         BackupRestoreJob.start(
             context = context,
             uri = uri.toUri(),
             options = state.value.options,
+            recoveryRequestId = recoveryRequestId,
         )
     }
 

@@ -38,6 +38,7 @@ import mihon.data.sync.auth.SyncGitHubAccount
 import mihon.data.sync.auth.SyncInstallationAccountType
 import mihon.data.sync.auth.SyncRepositorySelection
 import mihon.data.sync.inbox.SyncPendingItem
+import mihon.data.sync.runtime.SyncBindingDecode
 import mihon.data.sync.runtime.SyncBulkConfirmation
 import mihon.data.sync.runtime.SyncBulkStatus
 import mihon.data.sync.runtime.SyncConnection
@@ -53,6 +54,8 @@ import mihon.data.sync.runtime.SyncProgressDirection
 import mihon.data.sync.runtime.SyncProgressFact
 import mihon.data.sync.runtime.SyncProgressHold
 import mihon.data.sync.runtime.SyncProgressStage
+import mihon.data.sync.runtime.SyncRecoveryAction
+import mihon.data.sync.runtime.SyncRecoveryActionAvailability
 import mihon.data.sync.runtime.SyncRecoveryAuthorization
 import mihon.data.sync.runtime.SyncRecoveryContinuation
 import mihon.data.sync.runtime.SyncRecoveryPlatformAction
@@ -90,6 +93,75 @@ import java.util.Locale
 
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelContentTest {
+    @Test
+    fun `successful main run still exposes unfinished backup scope and a direct recovery action`() = rendered(
+        connected().copy(
+            run = visualRun(SyncRunPhase.COMPLETE).copy(state = SyncRunState.SUCCEEDED),
+            recoveryExternalScopes = listOf(
+                mihon.data.sync.runtime.SyncRecoveryExternalScope(
+                    "partial-backup",
+                    SyncRecoveryPlatformAction.BACKUP,
+                    remaining = 2,
+                ),
+            ),
+        ),
+    ) {
+        awaitTag("sync-main-external-recovery")
+        click("sync-main-external-recovery")
+        assertEquals(listOf(SyncPanelAction.OpenRecovery), actions)
+    }
+
+    @Test
+    fun `chapter identity has a truthful backup route instead of opening manga migration`() = rendered(
+        connected().copy(
+            page = SyncPanelPage.RECOVERY,
+            recoveryRepairReport = mihon.data.sync.inbox.SyncRepairReport(
+                "space",
+                1,
+                emptyList(),
+                listOf(
+                    mihon.data.sync.inbox.SyncProjectionFailure(
+                        SyncObjectKey(SyncObjectType.CHAPTER, "42", originalUrl = "/chapter", parentUrl = "/manga"),
+                        mihon.domain.sync.SyncField.READ_STATUS,
+                        "Affected chapter",
+                        "IDENTITY",
+                        "chapter-key",
+                    ),
+                ),
+                emptyList(),
+                emptyList(),
+            ),
+        ),
+    ) {
+        awaitTag("sync-recovery-page")
+        revealRecoveryControl("sync-recovery-map-chapter-key")
+        click("sync-recovery-map-chapter-key")
+        val request = actions.filterIsInstance<SyncPanelAction.OpenRecoveryPlatform>().single()
+        assertEquals(SyncRecoveryPlatformAction.BACKUP, request.action)
+    }
+
+    @Test
+    fun `diagnostic export failure retains inline facts and offers copy without changing original failure`() = rendered(
+        connected().copy(
+            page = SyncPanelPage.DIAGNOSTICS,
+            problem = SyncRunProblem.NETWORK,
+            diagnosticFeedback = mihon.data.sync.runtime.SyncDiagnosticFeedback.SAVE_FAILED,
+            diagnosticSnapshot = mihon.data.sync.runtime.SyncDiagnosticSnapshot(
+                status = mihon.data.sync.runtime.SyncDiagnosticStatus.READ_FAILED,
+            ),
+        ),
+    ) {
+        awaitTag("sync-diagnostic-details-toggle")
+        click("sync-diagnostic-details-toggle")
+        render()
+        scroll("sync-diagnostics-list", 6)
+        awaitTag("sync-diagnostic-copy-summary")
+        click("sync-diagnostic-copy-summary")
+        assertEquals(listOf(panel.state.value.diagnosticSnapshot!!.json()), copied)
+        assertEquals(SyncRunProblem.NETWORK, panel.state.value.problem)
+        assertTrue(actions.none { it == SyncPanelAction.VerifyRecovery || it == SyncPanelAction.CreateNewSpace })
+    }
+
     @Test
     fun `failed official creation guide retains the requested repository in its visible address`() = rendered(
         connected().copy(
@@ -153,11 +225,17 @@ class SyncPanelContentTest {
             ),
         ),
     ) {
-        awaitTag("sync-recovery-verify")
-        assertFalse(hasTag("sync-recovery-network"))
-        click("sync-recovery-verify")
-        assertEquals(listOf(SyncPanelAction.VerifyRecovery), actions)
-        assertFalse(hasTag("sync-recovery-create"))
+        awaitTag("sync-recovery-page")
+        for (index in 0..12) {
+            scroll("sync-recovery-page", index)
+            if (texts().contains(MR.strings.sync_recovery_service_wait.localized())) break
+        }
+        assertTrue(texts().contains(MR.strings.sync_recovery_service_wait.localized()))
+        assertEquals(SyncRecoveryAction.WAIT_SERVICE, panel.state.value.recoveryPrimaryAction.action)
+        revealRecoveryControl("sync-recovery-recheck")
+        click("sync-recovery-recheck")
+        assertEquals(listOf(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CHECK_CONDITIONS)), actions)
+        assertFalse(actions.contains(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CREATE_SPACE)))
     }
 
     @Test
@@ -204,12 +282,12 @@ class SyncPanelContentTest {
             Triple(
                 SyncDiscoveryProblem.REPOSITORY_ARCHIVED,
                 "sync-recovery-unarchive",
-                SyncPanelAction.RepairRepositoryProperties(false, true),
+                SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.REPAIR_REPOSITORY_PROPERTIES),
             ),
             Triple(
                 SyncDiscoveryProblem.REPOSITORY_NOT_PRIVATE,
                 "sync-recovery-make-private",
-                SyncPanelAction.RepairRepositoryProperties(true, false),
+                SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.REPAIR_REPOSITORY_PROPERTIES),
             ),
         )) {
             rendered(
@@ -239,7 +317,7 @@ class SyncPanelContentTest {
     ) {
         awaitTag("sync-repository-authorize-native")
         click("sync-repository-authorize-native")
-        assertEquals(listOf(SyncPanelAction.AuthorizeRepositoryScope), actions)
+        assertEquals(listOf(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.AUTHORIZE_REPOSITORY)), actions)
         assertFalse(hasTag("sync-repository-create-native"))
     }
 
@@ -266,6 +344,7 @@ class SyncPanelContentTest {
         ),
     ) {
         render()
+        revealRecoveryControl("sync-recovery-source-technical-object-id")
         assertFalse(texts().contains("SOURCE"))
         assertFalse(texts().contains("technical-object-id"))
         assertTrue(texts().contains(MR.strings.sync_recovery_item_source.localized()))
@@ -289,7 +368,7 @@ class SyncPanelContentTest {
         awaitTag("sync-recovery-authorization")
         assertFalse(hasTag("sync-recovery-repair"))
         click("sync-recovery-authorization")
-        assertEquals(listOf(SyncPanelAction.CheckAuthorization), actions)
+        assertEquals(listOf(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CONNECT_GITHUB)), actions)
     }
 
     @Test
@@ -360,8 +439,8 @@ class SyncPanelContentTest {
     fun `unknown recovery keeps a real verification action ahead of diagnostic export`() = rendered(
         connected().copy(page = SyncPanelPage.RECOVERY, problem = SyncRunProblem.UNKNOWN),
     ) {
-        awaitTag("sync-recovery-verify")
-        click("sync-recovery-verify")
+        awaitTag("sync-recovery-recheck")
+        click("sync-recovery-recheck")
         assertTrue(actions.isNotEmpty())
         assertFalse(actions.contains(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS)))
     }
@@ -369,16 +448,20 @@ class SyncPanelContentTest {
     @Test
     fun `recovery method recommends the observed next step before auxiliary recheck`() {
         val cases = listOf(
-            Triple(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE, "sync-recovery-create", SyncPanelAction.CreateNewSpace),
+            Triple(
+                SyncSpaceRecoveryReason.SPACE_UNAVAILABLE,
+                "sync-recovery-create",
+                SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CREATE_SPACE),
+            ),
             Triple(
                 SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED,
                 "sync-recovery-authorization",
-                SyncPanelAction.CheckAuthorization,
+                SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CONNECT_GITHUB),
             ),
             Triple(
                 SyncSpaceRecoveryReason.SPACE_DATA_INVALID,
                 "sync-recovery-verify",
-                SyncPanelAction.VerifyRecovery,
+                SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.VERIFY_SYNC),
             ),
         )
         for ((reason, tag, action) in cases) {
@@ -390,7 +473,10 @@ class SyncPanelContentTest {
                 assertEquals(listOf(action), actions)
                 revealRecoveryControl("sync-recovery-recheck")
                 click("sync-recovery-recheck")
-                assertEquals(listOf(action, SyncPanelAction.RecheckSpace), actions)
+                assertEquals(
+                    listOf(action, SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CHECK_CONDITIONS)),
+                    actions,
+                )
             }
         }
     }
@@ -451,10 +537,12 @@ class SyncPanelContentTest {
             recoveryAuthorization = SyncRecoveryAuthorization.CONFIRMED,
         ),
     ) {
-        awaitTag("sync-recovery-manage-authorization")
+        awaitTag("sync-recovery-page")
+        revealRecoveryControl("sync-recovery-manage-authorization")
         assertFalse(hasTag("sync-recovery-authorization"))
         click("sync-recovery-manage-authorization")
-        assertEquals(listOf(SyncPanelAction.ManageAuthorization), actions)
+        assertTrue(actions.contains(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.MANAGE_AUTHORIZATION)))
+        assertEquals(1, opened.size)
     }
 
     @Test
@@ -561,7 +649,16 @@ class SyncPanelContentTest {
                 awaitTag("sync-recovery-continue")
                 assertTrue(texts().contains(MR.strings.sync_recovery_continue.localized(Locale.US)))
                 click("sync-recovery-continue")
-                assertEquals(listOf(SyncPanelAction.ContinueRecovery), actions)
+                assertEquals(
+                    listOf(
+                        if (page == SyncPanelPage.MAIN) {
+                            SyncPanelAction.ContinueRecovery
+                        } else {
+                            SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CONTINUE_SETUP)
+                        },
+                    ),
+                    actions,
+                )
                 assertTrue(opened.isEmpty())
             }
         }
@@ -751,7 +848,10 @@ class SyncPanelContentTest {
                         scroll("sync-recovery-page", 2)
                         awaitTag("sync-recovery-recheck")
                         click("sync-recovery-recheck")
-                        assertEquals(SyncPanelAction.RecheckSpace, actions.last())
+                        assertEquals(
+                            SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CHECK_CONDITIONS),
+                            actions.last(),
+                        )
                     }
                     panel.state.value = panel.state.value.copy(problem = SyncRunProblem.SPACE_UNAVAILABLE)
                     render()
@@ -838,22 +938,30 @@ class SyncPanelContentTest {
     ) {
         awaitTag("sync-recovery-page")
         for ((index, entry) in listOf(
-            "sync-recovery-recheck" to SyncPanelAction.RecheckSpace,
-            "sync-recovery-authorization" to SyncPanelAction.CheckAuthorization,
-            "sync-recovery-connect-other" to SyncPanelAction.ConnectOtherSpace,
-            "sync-recovery-create" to SyncPanelAction.CreateNewSpace,
+            "sync-recovery-recheck" to SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CHECK_CONDITIONS),
+            "sync-recovery-manage-authorization" to
+                SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.MANAGE_AUTHORIZATION),
+            "sync-recovery-connect-other" to SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CHOOSE_SPACE),
+            "sync-recovery-create" to SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CREATE_SPACE),
         ).withIndex()) {
             val (tag, action) = entry
-            scroll("sync-recovery-page", index + 1)
+            revealRecoveryControl(tag)
             awaitTag(tag)
             click(tag)
-            assertEquals(action, actions.last())
+            if (tag == "sync-recovery-manage-authorization") {
+                assertEquals(
+                    listOf(action, SyncPanelAction.RecoveryOfficialOpened(SyncRecoveryAction.MANAGE_AUTHORIZATION)),
+                    actions.takeLast(2),
+                )
+            } else {
+                assertEquals(action, actions.last())
+            }
         }
         click("sync-back")
         assertEquals(SyncPanelAction.Back, actions.last())
         click("sync-close")
         assertEquals(SyncPanelAction.Close, actions.last())
-        assertTrue(opened.isEmpty())
+        assertEquals(1, opened.size)
     }
 
     @Test
@@ -901,10 +1009,10 @@ class SyncPanelContentTest {
         for ((index, tag) in listOf(
             "sync-recovery-create",
             "sync-recovery-connect-other",
-            "sync-recovery-authorization",
+            "sync-recovery-manage-authorization",
             "sync-recovery-recheck",
         ).withIndex()) {
-            scroll("sync-recovery-page", index + 1)
+            revealRecoveryControl(tag)
             awaitTag(tag)
             assertTrue(node(tag).config.contains(SemanticsProperties.Disabled), tag)
         }
@@ -943,12 +1051,15 @@ class SyncPanelContentTest {
                 )
                 try {
                     fixture.setContent()
-                    fixture.awaitTag("sync-recovery-repair")
+                    fixture.awaitTag("sync-recovery-extensions")
                     assertFalse(fixture.texts().contains(MR.strings.sync_recovery_check_available.localized()))
-                    val primary = fixture.geometry("sync-recovery-repair")
+                    val primary = fixture.geometry("sync-recovery-extensions")
                     assertTrue(primary.left >= 0 && primary.right <= width && primary.bottom <= height)
-                    fixture.click("sync-recovery-repair")
-                    assertEquals(SyncPanelAction.RepairData(0), fixture.actions.last())
+                    fixture.click("sync-recovery-extensions")
+                    assertEquals(
+                        SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.EXTENSIONS),
+                        fixture.actions.last(),
+                    )
                     System.getProperty("mihon.sync.visualDir")?.let(::File)?.let { directory ->
                         directory.mkdirs()
                         fixture.scene.render().use { image ->
@@ -1004,7 +1115,7 @@ class SyncPanelContentTest {
                         1 to "sync-recovery-verify",
                         2 to "sync-recovery-details",
                         2 to "sync-recovery-connect-other",
-                        3 to "sync-recovery-authorization",
+                        3 to "sync-recovery-manage-authorization",
                         4 to "sync-recovery-create",
                         5 to "sync-recovery-recheck",
                     )) {
@@ -1056,10 +1167,12 @@ class SyncPanelContentTest {
         assertTrue(texts().any { it.contains("deleted or can no longer be used") })
         click("sync-setup-recovery-open")
         assertTrue(actions.contains(SyncPanelAction.OpenRecovery))
+        revealSetupControl("sync-setup-error-details")
         click("sync-setup-error-details")
         assertTrue(actions.contains(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS)))
+        revealSetupControl("sync-setup-retry")
         click("sync-setup-retry")
-        assertTrue(actions.contains(SyncPanelAction.RetrySetup))
+        assertTrue(actions.contains(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CHECK_CONDITIONS)))
     }
 
     @Test
@@ -1073,10 +1186,10 @@ class SyncPanelContentTest {
                 canChangeSpace = false,
             ),
         ) {
-            awaitTag("sync-setup-configure-space")
-            assertFalse(hasTag("sync-setup-recovery-open"))
-            click("sync-setup-configure-space")
-            assertTrue(actions.contains(SyncPanelAction.BeginSetup))
+            awaitTag("sync-setup-recovery-open")
+            assertFalse(hasTag("sync-setup-configure-space"))
+            click("sync-setup-recovery-open")
+            assertTrue(actions.contains(SyncPanelAction.OpenRecovery))
         }
         renderedEnglish(
             connected().copy(
@@ -1101,11 +1214,13 @@ class SyncPanelContentTest {
         assertTrue(texts().contains(MR.strings.sync_recovery_check_pending.localized(Locale.US)))
         assertFalse(texts().contains(MR.strings.sync_recovery_check_available.localized(Locale.US)))
         assertFalse(texts().contains(MR.strings.sync_recovery_check_unavailable.localized(Locale.US)))
+        revealRecoveryControl("sync-recovery-create")
         click("sync-recovery-create")
-        assertTrue(actions.contains(SyncPanelAction.CreateNewSpace))
+        assertTrue(actions.contains(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CREATE_SPACE)))
+        revealRecoveryControl("sync-recovery-connect-other")
         click("sync-recovery-connect-other")
-        assertTrue(actions.contains(SyncPanelAction.ConnectOtherSpace))
-        assertFalse(hasTag("sync-recovery-recheck"))
+        assertTrue(actions.contains(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CHOOSE_SPACE)))
+        assertFalse(actions.contains(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.VERIFY_SYNC)))
     }
 
     @Test
@@ -1122,7 +1237,9 @@ class SyncPanelContentTest {
         assertTrue(texts().contains("Retry was unsuccessful."))
         panel.state.value = panel.state.value.copy(setupBusy = true)
         render()
+        revealSetupControl("sync-setup-recovery-open")
         assertTrue(node("sync-setup-recovery-open").config.contains(SemanticsProperties.Disabled))
+        revealSetupControl("sync-setup-retry")
         assertTrue(node("sync-setup-retry").config.contains(SemanticsProperties.Disabled))
     }
 
@@ -1139,7 +1256,7 @@ class SyncPanelContentTest {
             awaitTag("sync-setup-retry")
             assertTrue(hasTag("sync-setup-error"), "current discovery error must not be hidden by an older run")
             click("sync-setup-retry")
-            assertTrue(actions.contains(SyncPanelAction.RetrySetup))
+            assertTrue(actions.contains(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CHECK_CONDITIONS)))
             panel.state.value = panel.state.value.copy(
                 setupInstallation = SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 2),
             )
@@ -2340,9 +2457,9 @@ class SyncPanelContentTest {
             setupStep = SyncSetupStep.ERROR,
             setupProblem = SyncDiscoveryProblem.AUTHORIZATION_REQUIRED,
         )
-        awaitTag("sync-setup-recovery-authorization")
-        click("sync-setup-recovery-authorization")
-        assertEquals(SyncPanelAction.CheckAuthorization, actions.last())
+        awaitTag("sync-repo-reconnect")
+        click("sync-repo-reconnect")
+        assertEquals(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CONNECT_GITHUB), actions.last())
         click("sync-setup-recovery-open")
         assertEquals(SyncPanelAction.OpenRecovery, actions.last())
     }
@@ -2378,12 +2495,12 @@ class SyncPanelContentTest {
     ) {
         awaitTag("sync-repo-reconnect")
         click("sync-repo-reconnect")
-        assertEquals(SyncPanelAction.Authorize, actions.last())
+        assertEquals(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CONNECT_GITHUB), actions.last())
         assertTrue(opened.isEmpty())
         assertFalse(hasTag("sync-install-app"))
         assertFalse(hasTag("sync-create-repo"))
         click("sync-setup-retry")
-        assertEquals(SyncPanelAction.RetrySetup, actions.last())
+        assertEquals(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CHECK_CONDITIONS), actions.last())
     }
 
     @Test
@@ -2393,6 +2510,7 @@ class SyncPanelContentTest {
             page = SyncPanelPage.SETUP,
             setupStep = SyncSetupStep.ERROR,
             setupProblem = SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS,
+            recoveryCredentialAvailable = true,
             setupAccountLogin = "owner&other=a/b",
             setupInstallation = SyncAppInstallation(
                 7,
@@ -2404,11 +2522,13 @@ class SyncPanelContentTest {
         awaitTag("sync-install-app")
         assertTrue(hasTag("sync-installation-scope-warning"))
         assertTrue(texts().any { it == MR.strings.sync_setup_manage_installation.localized(Locale.getDefault()) })
+        revealSetupControl("sync-create-private-repo")
         click("sync-create-private-repo")
         assertEquals(
             "https://github.com/new?name=mihon-sync&visibility=private&owner=owner%26other%3Da%2Fb",
             opened.last(),
         )
+        revealSetupControl("sync-install-app")
         click("sync-install-app")
         assertEquals("https://github.com/settings/installations/7", opened.last())
         assertFalse(opened.last().contains("/settings/installations?"))
@@ -2442,6 +2562,7 @@ class SyncPanelContentTest {
 
         panel.state.value = panel.state.value.copy(
             setupProblem = SyncDiscoveryProblem.REPOSITORY_NOT_WRITABLE,
+            recoveryCredentialAvailable = true,
             setupInstallation = SyncAppInstallation(13, SyncRepositorySelection.SELECTED, 1),
         )
         render()
@@ -3113,11 +3234,11 @@ class SyncPanelContentTest {
             authFailure = GitHubAuthFailureReason.HTTP,
         ),
     ) {
-        awaitTag("sync-authorize")
+        awaitTag("sync-recovery-network")
         assertTrue(texts().contains("无法完成 GitHub 授权请求，请检查网络或代理后重试。"))
         assertTrue(opened.isEmpty())
-        click("sync-authorize")
-        assertEquals(SyncPanelAction.Authorize, actions.last())
+        click("sync-recovery-network")
+        assertEquals(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.NETWORK), actions.last())
     }
 
     @Test
@@ -3802,6 +3923,7 @@ class SyncPanelContentTest {
             recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.SPACE_UNAVAILABLE),
             canChangeSpace = false,
             problem = SyncRunProblem.STORAGE,
+            recoveryBindingStatus = SyncBindingDecode.READ_FAILED,
         ),
     ) {
         awaitTag("sync-recovery-card")
@@ -3814,7 +3936,15 @@ class SyncPanelContentTest {
         panel.state.value = panel.state.value.copy(page = SyncPanelPage.RECOVERY)
         render()
         revealRecoveryControl("sync-recovery-connect-other")
-        assertTrue(node("sync-recovery-connect-other").config.contains(SemanticsProperties.Disabled))
+        assertEquals(
+            SyncRecoveryAction.STORAGE,
+            (
+                panel.state.value.recoveryAlternativeActions.first {
+                    it.action == SyncRecoveryAction.CHOOSE_SPACE
+                }.availability as SyncRecoveryActionAvailability.NeedsStep
+                ).step,
+        )
+        assertTrue(texts().contains(MR.strings.sync_recovery_storage.localized(Locale.US)))
         assertFalse(actions.any { it is SyncPanelAction.CreateNewSpace || it is SyncPanelAction.ConnectOtherSpace })
     }
 
@@ -3853,7 +3983,10 @@ class SyncPanelContentTest {
                 fixture.click("sync-setup-error-details")
                 assertEquals(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS), fixture.actions.last())
                 fixture.click("sync-recheck-installation")
-                assertEquals(SyncPanelAction.RetrySetup, fixture.actions.last())
+                assertEquals(
+                    SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CHECK_CONDITIONS),
+                    fixture.actions.last(),
+                )
             } finally {
                 fixture.scene.close()
             }
@@ -4124,13 +4257,50 @@ class SyncPanelContentTest {
         }
         suspend fun revealRecoveryControl(value: String, viewportHeight: Int = 720) {
             for (index in 0..24) {
-                scroll("sync-recovery-page", index)
+                try {
+                    scroll("sync-recovery-page", index)
+                } catch (_: IllegalArgumentException) {
+                    break
+                }
                 if (hasTag(value)) {
                     val bounds = geometry(value)
                     if (bounds.height >= 48f && bounds.top >= 0 && bounds.bottom <= viewportHeight) return
                 }
             }
             error("Recovery control is not reachable: $value")
+        }
+        suspend fun revealSetupControl(value: String) {
+            scroll("sync-setup-list", 0)
+            for (index in 0..24) {
+                try {
+                    scroll("sync-setup-list", index)
+                } catch (_: IllegalArgumentException) {
+                    break
+                }
+                if (hasTag(value)) {
+                    val bounds = geometry(value)
+                    if (bounds.height >= 48f && bounds.top >= 0 && bounds.bottom <= 720) return
+                }
+            }
+            scroll("sync-setup-list", 0)
+            repeat(30) {
+                if (hasTag(value)) {
+                    val bounds = geometry(value)
+                    if (bounds.height >= 48f && bounds.top >= 0 && bounds.bottom <= 720) return
+                }
+                withContext(object : MonotonicFrameClock {
+                    override suspend fun <R> withFrameNanos(onFrame: (Long) -> R): R {
+                        delay(16)
+                        return onFrame(System.nanoTime())
+                    }
+                }) {
+                    node("sync-setup-list").config[SemanticsActions.ScrollByOffset]
+                        .invoke(androidx.compose.ui.geometry.Offset(0f, 100f))
+                }
+                delay(30)
+                render()
+            }
+            error("Setup control is not reachable: $value")
         }
         suspend fun scroll(value: String, index: Int) {
             requireNotNull(node(value).config[SemanticsActions.ScrollToIndex].action).invoke(index)

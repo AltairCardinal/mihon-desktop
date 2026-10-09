@@ -103,6 +103,8 @@ class DesktopSyncWiringTest {
             assertEquals("", reopened.activeBulkJob(longSpace, 2).get())
             assertSame(runtime, Injekt.get<SyncRuntime>())
             assertSame(runtime.panel, mihon.desktop.DesktopUiDependencies.fromInjekt().syncPanel)
+            assertTrue(mihon.desktop.DesktopUiDependencies.fromInjekt().recoveryPackageInstaller != null)
+            assertSame(Injekt.get<mihon.desktop.update.InstallerTrust>(), Injekt.get<mihon.desktop.update.DesktopUpdateInstaller>().trust)
             assertTrue(Injekt.get<SyncSecureStore>() is DesktopSyncSecureStore)
             assertSame(runtime.coordinator, Injekt.get<DesktopSyncScheduler>().coordinator)
             assertEquals(SyncRunStatus.SKIPPED, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)

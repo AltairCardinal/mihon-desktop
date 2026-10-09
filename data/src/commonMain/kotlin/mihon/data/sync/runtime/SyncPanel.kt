@@ -146,6 +146,14 @@ data class SyncPanelState(
     val recoveryStep: SyncRecoveryFlowStep = SyncRecoveryFlowStep.CHECK_CONDITIONS,
     val recoveryOutcome: SyncRecoveryOutcome? = null,
     val recoveryFailure: SyncRecoveryFailure? = null,
+    val recoveryStepFailure: SyncRecoveryFailure? = null,
+    val recoveryPlatformResult: SyncRecoveryPlatformResult? = null,
+    val recoveryBindingStatus: SyncBindingDecode = SyncBindingDecode.UNKNOWN,
+    val recoveryCredentialAvailable: Boolean = false,
+    val recoveryOfficialAction: SyncRecoveryAction? = null,
+    val recoveryConditionsVerified: Boolean = false,
+    val recoveryExternalScopes: List<SyncRecoveryExternalScope> = emptyList(),
+    val recoveryRepairMadeNoProgress: Boolean = false,
     val recoveryRepairReport: mihon.data.sync.inbox.SyncRepairReport? = null,
     val recoveryRepairOffset: Long = 0,
     val recoveryOldScopes: List<SyncRecoveryScopeSummary> = emptyList(),
@@ -222,12 +230,21 @@ data class SyncPanelState(
     val diagnosticFeedback: SyncDiagnosticFeedback? = null,
 ) {
     val queuedTotal: Long get() = queuedMembership + queuedReading
+    val canOpenRecovery: Boolean get() = true
+    val recoveryPrimaryAction: SyncRecoveryActionDecision get() = recoveryDecision()
+    val recoveryAlternativeActions: List<SyncRecoveryActionDecision> get() = recoveryAlternatives()
 
     // Device codes and transient authentication details must never be logged.
     override fun toString(): String = "SyncPanelState(page=$page, visible=$visible, busy=$busy)"
 }
 
 sealed interface SyncPanelAction {
+    data class ExecuteRecoveryAction(val action: SyncRecoveryAction) : SyncPanelAction
+    data class RecoveryPlatformCompleted(
+        val requestId: String,
+        val result: SyncRecoveryPlatformResult,
+    ) : SyncPanelAction
+    data class RecoveryOfficialOpened(val action: SyncRecoveryAction) : SyncPanelAction
     data object Open : SyncPanelAction
     data object OpenRecovery : SyncPanelAction
     data object VerifyRecovery : SyncPanelAction

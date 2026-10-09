@@ -20,6 +20,7 @@ internal data class SyncRecoveryFacts(
     val flow: StoredSyncRecoveryFlow?,
     val report: SyncRepairReport,
     val oldScopes: List<SyncRecoveryScopeSummary>,
+    val externalScopes: List<SyncRecoveryExternalScope> = emptyList(),
 )
 
 /** Coordinates the existing engine and repairs. It does not grant access, relax guards, or upload its own events. */
@@ -55,10 +56,15 @@ internal class SyncRecoveryWorkflow(
                 )
             }
             val current = if (it.credentialRevision == context.credentialRevision) {
-                it.copy(request = request)
+                it.copy(
+                    request = request,
+                    repairMadeNoProgress = it.repairMadeNoProgress &&
+                        it.repairReportFingerprint == report.recoveryFingerprint(),
+                )
             } else {
                 it.copy(
                     outcome = SyncRecoveryOutcome.WAITING_EXTERNAL,
+                    conditionsVerified = false,
                     step = SyncRecoveryFlowStep.CHECK_CONDITIONS,
                     request = request?.copy(
                         failed = true,
@@ -98,7 +104,12 @@ internal class SyncRecoveryWorkflow(
                 current
             }
         }
-        return SyncRecoveryFacts(flow, report, oldScopes(context))
+        return SyncRecoveryFacts(
+            flow,
+            report,
+            oldScopes(context),
+            flow?.externalScopes.orEmpty() + runtime.onboarding.storage.unboundRecoveryFlow()?.externalScopes.orEmpty(),
+        )
     }
 
     suspend fun openPlatform(
@@ -183,6 +194,71 @@ internal class SyncRecoveryWorkflow(
         return true
     }
 
+    suspend fun officialOpened(action: SyncRecoveryAction) {
+        val context = runtime.recoveryBinding()
+        update(context) {
+            it.copy(
+                officialAction = action,
+                outcome = SyncRecoveryOutcome.WAITING_EXTERNAL,
+                step = SyncRecoveryFlowStep.EXTERNAL_ACTION,
+            )
+        }
+    }
+
+    suspend fun conditionsChecked(succeeded: Boolean, expected: SyncRecoveryBinding): Boolean {
+        if (!succeeded) return false
+        val context = runtime.recoveryBinding()
+        if (!expected.matches(context)) return false
+        update(context) {
+            it.copy(
+                officialAction = null,
+                conditionsVerified = true,
+                secondaryFailure = null,
+                step = SyncRecoveryFlowStep.CHECK_CONDITIONS,
+            )
+        }
+        return true
+    }
+
+    suspend fun platformCompleted(requestId: String, result: SyncRecoveryPlatformResult): Boolean {
+        val context = runtime.recoveryBinding()
+        val flow = runtime.onboarding.storage.recoveryFlow(context.stored) ?: return false
+        val request = flow.request?.takeIf { it.requestId == requestId && !it.failed } ?: return false
+        if (flow.credentialRevision != context.credentialRevision) return false
+        if (result is SyncRecoveryPlatformResult.Changed && request.objects.isNotEmpty() &&
+            result.objects.any { it !in request.objects }
+        ) {
+            return false
+        }
+        val restart = result == SyncRecoveryPlatformResult.RestartRequired
+        update(context) {
+            it.copy(
+                step = if (restart) SyncRecoveryFlowStep.EXTERNAL_ACTION else SyncRecoveryFlowStep.CHECK_CONDITIONS,
+                outcome = SyncRecoveryOutcome.WAITING_EXTERNAL,
+                request = request.copy(
+                    result = result.boundedMetadata(),
+                    failed = result is SyncRecoveryPlatformResult.Failed,
+                    restartRequired = restart,
+                ),
+                externalScopes = it.externalScopes.afterPlatformResult(request, result),
+            )
+        }
+        val unbound = runtime.onboarding.storage.unboundRecoveryFlow()
+        if (!unbound?.externalScopes.isNullOrEmpty()) {
+            runtime.onboarding.storage.saveUnboundRecoveryFlow(
+                requireNotNull(unbound).copy(
+                    externalScopes = unbound.externalScopes.afterPlatformResult(
+                        request,
+                        result,
+                        recordNewFailure = false,
+                    ),
+                ),
+                unbound,
+            )
+        }
+        return true
+    }
+
     suspend fun platformReturned(requestId: String, restartRequired: Boolean): Boolean {
         val context = runtime.recoveryBinding()
         val flow = runtime.onboarding.storage.recoveryFlow(context.stored) ?: return false
@@ -206,6 +282,9 @@ internal class SyncRecoveryWorkflow(
 
     suspend fun verify(repairOffset: Long? = null): SyncRecoveryFacts {
         var context = runtime.recoveryBinding()
+        val beforeRepair = repairOffset?.let {
+            repair.inspect(context.descriptor.spaceId, context.descriptor.generation, it)
+        }
         try {
             val active = runtime.runStore.active(context.descriptor.spaceId, context.descriptor.generation)
             val previous = runtime.onboarding.storage.recoveryFlow(context.stored)
@@ -219,7 +298,7 @@ internal class SyncRecoveryWorkflow(
                 it.copy(
                     step = SyncRecoveryFlowStep.CHECK_CONDITIONS,
                     outcome = null,
-                    failure = null,
+                    conditionsVerified = false,
                     request = null,
                     result = null,
                 )
@@ -229,19 +308,21 @@ internal class SyncRecoveryWorkflow(
             require(context.matches(afterCheck)) { "sync recovery context changed" }
             context = afterCheck
             if (checked.problem != null || checked.recovery != null) {
+                val failure = SyncRecoveryFailure(
+                    problem = checked.problem ?: when (checked.recovery?.reason) {
+                        SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED -> SyncRunProblem.AUTHORIZATION
+                        SyncSpaceRecoveryReason.SPACE_DATA_INVALID -> SyncRunProblem.INVALID_DATA
+                        else -> SyncRunProblem.SPACE_UNAVAILABLE
+                    },
+                    discovery = checked.discoveryProblem,
+                    networkPhase = checked.networkPhase,
+                    httpStatus = checked.httpStatus,
+                )
                 update(context) {
                     it.copy(
                         outcome = SyncRecoveryOutcome.WAITING_EXTERNAL,
-                        failure = SyncRecoveryFailure(
-                            problem = checked.problem ?: when (checked.recovery?.reason) {
-                                SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED -> SyncRunProblem.AUTHORIZATION
-                                SyncSpaceRecoveryReason.SPACE_DATA_INVALID -> SyncRunProblem.INVALID_DATA
-                                else -> SyncRunProblem.SPACE_UNAVAILABLE
-                            },
-                            discovery = checked.discoveryProblem,
-                            networkPhase = checked.networkPhase,
-                            httpStatus = checked.httpStatus,
-                        ),
+                        failure = it.failure ?: failure,
+                        secondaryFailure = failure.takeIf { _ -> it.failure != null && it.failure != failure },
                     )
                 }
                 return facts(repairOffset ?: 0)
@@ -314,6 +395,8 @@ internal class SyncRecoveryWorkflow(
             require(context.matches(runtime.recoveryBinding())) { "sync recovery context changed" }
             val report = repair.inspect(context.descriptor.spaceId, context.descriptor.generation, repairOffset ?: 0)
             val old = oldScopes(context)
+            val external = runtime.onboarding.storage.recoveryFlow(context.stored)?.externalScopes.orEmpty() +
+                runtime.onboarding.storage.unboundRecoveryFlow()?.externalScopes.orEmpty()
             val unpublished = handler.await {
                 sync_journalQueries.getPendingCategoryCounts(
                     context.descriptor.spaceId,
@@ -329,7 +412,7 @@ internal class SyncRecoveryWorkflow(
             val verified = result.status == SyncRunStatus.SUCCESS &&
                 result.problem == null &&
                 report.remaining == 0L &&
-                unpublished == 0L
+                unpublished == 0L && external.isEmpty()
             val outcome = when {
                 verified &&
                     (
@@ -340,6 +423,7 @@ internal class SyncRecoveryWorkflow(
                     SyncRecoveryOutcome.NEW_SCOPE_VERIFIED_WITH_OLD_REMAINING
                 verified -> SyncRecoveryOutcome.ORIGINAL_VERIFIED
                 report.remaining > 0 ||
+                    external.isNotEmpty() ||
                     unpublished > 0 ||
                     result.status == SyncRunStatus.PARTIAL ->
                     SyncRecoveryOutcome.REMAINING
@@ -358,27 +442,71 @@ internal class SyncRecoveryWorkflow(
             }
             update(context) {
                 it.copy(
-                    step = if (verified) SyncRecoveryFlowStep.COMPLETE else SyncRecoveryFlowStep.CHECK_CONDITIONS,
+                    step = if (verified) {
+                        SyncRecoveryFlowStep.COMPLETE
+                    } else {
+                        SyncRecoveryFlowStep.CHECK_CONDITIONS
+                    },
                     outcome = outcome,
+                    repairMadeNoProgress = beforeRepair?.let { before ->
+                        val sameFacts = report.counts == before.counts &&
+                            report.batches == before.batches &&
+                            report.fields == before.fields &&
+                            report.events == before.events &&
+                            report.missingDependencies == before.missingDependencies &&
+                            report.failedBulkItems == before.failedBulkItems
+                        before.remaining > 0 && sameFacts
+                    } ?: it.repairMadeNoProgress,
+                    repairReportFingerprint = if (beforeRepair != null) {
+                        report.recoveryFingerprint()
+                    } else {
+                        it.repairReportFingerprint
+                    },
+                    conditionsVerified = result.problem == null,
                     result = result,
                     verifiedRunId = verifiedRunId,
-                    failure = result.problem?.let { problem ->
-                        SyncRecoveryFailure(
-                            problem,
-                            networkPhase = result.networkPhase,
-                            httpStatus = result.httpStatus,
-                        )
+                    failure = if (verified) {
+                        null
+                    } else {
+                        it.failure ?: result.problem?.let { problem ->
+                            SyncRecoveryFailure(
+                                problem,
+                                networkPhase = result.networkPhase,
+                                httpStatus = result.httpStatus,
+                            )
+                        }
+                    },
+                    secondaryFailure = if (verified) {
+                        null
+                    } else {
+                        result.problem?.let { problem ->
+                            SyncRecoveryFailure(
+                                problem,
+                                networkPhase = result.networkPhase,
+                                httpStatus = result.httpStatus,
+                            )
+                        }
                     },
                 )
             }
-            return SyncRecoveryFacts(runtime.onboarding.storage.recoveryFlow(context.stored), report, old)
+            return SyncRecoveryFacts(
+                runtime.onboarding.storage.recoveryFlow(context.stored),
+                report,
+                old,
+                external,
+            )
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
             // A result for an old target is never written onto a newer binding.
             if (context.matches(runtime.recoveryBinding())) {
                 update(context) {
-                    it.copy(outcome = SyncRecoveryOutcome.WAITING_EXTERNAL, failure = error.recoveryFailure())
+                    it.copy(
+                        outcome = SyncRecoveryOutcome.WAITING_EXTERNAL,
+                        conditionsVerified = false,
+                        failure = it.failure ?: error.recoveryFailure(),
+                        secondaryFailure = error.recoveryFailure(),
+                    )
                 }
             }
             return facts(repairOffset ?: 0)
@@ -413,6 +541,42 @@ internal class SyncRecoveryWorkflow(
 
     private suspend fun oldScopes(context: SyncRecoveryBinding): List<SyncRecoveryScopeSummary> {
         val scopes = mutableListOf<SyncRecoveryScopeSummary>()
+        val local = runtime.onboarding.storage.unboundRecoveryFlow()
+        for (id in local?.archivedSetupIds.orEmpty().take(64)) {
+            val setup = runtime.onboarding.storage.archivedSetup(id)
+                ?: local?.accountId?.let { runtime.onboarding.storage.pending(it) }?.takeIf { it.attemptId == id }
+            if (setup == null) {
+                scopes += SyncRecoveryScopeSummary(
+                    null,
+                    null,
+                    "此前未完成的同步设置",
+                    0,
+                    remoteUnverified = true,
+                    remainingUnknown = true,
+                )
+            } else {
+                val descriptor = setup.material.material().descriptor
+                val report = repair.inspect(descriptor.spaceId, descriptor.generation)
+                scopes += SyncRecoveryScopeSummary(
+                    descriptor.spaceId,
+                    descriptor.generation,
+                    setup.repository().fullName,
+                    report.remaining,
+                    remoteUnverified = true,
+                    remainingUnknown = true,
+                )
+            }
+        }
+        if (local?.archivedSetupsTruncated == true) {
+            scopes += SyncRecoveryScopeSummary(
+                null,
+                null,
+                "还有此前未核验的设置",
+                0,
+                remoteUnverified = true,
+                remainingUnknown = true,
+            )
+        }
         val visited = mutableSetOf<String>()
         var current = runtime.onboarding.storage.activeSwitch(context.stored.accountId)
         repeat(64) {
@@ -427,6 +591,7 @@ internal class SyncRecoveryWorkflow(
                 scopes.none { it.spaceId == descriptor.spaceId && it.generation == descriptor.generation }
             ) {
                 val report = repair.inspect(descriptor.spaceId, descriptor.generation)
+                val external = runtime.onboarding.storage.recoveryFlow(intent.oldConnection)?.externalScopes.orEmpty()
                 val queued = handler.await {
                     sync_journalQueries.getPendingCategoryCounts(
                         descriptor.spaceId,
@@ -440,9 +605,10 @@ internal class SyncRecoveryWorkflow(
                     descriptor.spaceId,
                     descriptor.generation,
                     intent.oldConnection.repository().fullName,
-                    report.remaining,
+                    external.mapNotNull { it.remaining }.fold(report.remaining, Math::addExact),
                     queued,
                     remoteUnverified = true,
+                    remainingUnknown = external.any { it.remaining == null },
                 )
             }
             current = intent.previousIntentId?.let { runtime.onboarding.storage.switchIntent(it) }
@@ -459,3 +625,16 @@ internal fun Exception.recoveryFailure(): SyncRecoveryFailure = SyncRecoveryFail
     networkPhase = (this as? SyncHttpException)?.networkPhase,
     httpStatus = (this as? SyncHttpException)?.code,
 )
+
+private fun SyncRepairReport.recoveryFingerprint(): String =
+    mihon.data.sync.transport.SyncSnapshotManifestCrypto.sha256(
+        listOf(
+            counts.toString(),
+            offset.toString(),
+            batches.toString(),
+            fields.toString(),
+            events.toString(),
+            missingDependencies.toString(),
+            failedBulkItems.toString(),
+        ).joinToString("\u0000").encodeToByteArray(),
+    )

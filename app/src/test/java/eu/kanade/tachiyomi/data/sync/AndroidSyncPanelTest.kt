@@ -86,11 +86,26 @@ class AndroidSyncPanelTest {
             assertTrue(navigator?.lastItem is AndroidSyncRecoveryScreen)
             assertFalse(navigator?.lastItem is cafe.adriel.voyager.navigator.tab.Tab)
         }
+        compose.onNodeWithTag("sync-compatibility-check").performClick()
+        compose.onNodeWithTag("sync-compatibility-no-trusted-source").assertIsDisplayed()
+        compose.onNodeWithTag("sync-compatibility-local-package").performClick()
+        compose.runOnIdle {
+            assertEquals(
+                Intent.ACTION_OPEN_DOCUMENT,
+                shadowOf(activity.get()).nextStartedActivityForResult.intent.action,
+            )
+        }
         compose.onNodeWithTag("sync-native-recovery-return").performClick()
         compose.runOnIdle {
             assertTrue(panel.state.value.visible)
             assertEquals(SyncPanelPage.RECOVERY, panel.state.value.page)
             assertTrue(panel.actions.contains(SyncPanelAction.OpenRecovery))
+            assertTrue(
+                panel.actions.any {
+                    it is SyncPanelAction.RecoveryPlatformCompleted &&
+                        it.result == mihon.data.sync.runtime.SyncRecoveryPlatformResult.NoChange
+                },
+            )
         }
     }
 

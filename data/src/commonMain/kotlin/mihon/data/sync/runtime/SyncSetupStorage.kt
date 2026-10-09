@@ -146,6 +146,27 @@ internal data class StoredLegacySyncSetup(
 internal class SyncSetupStorage(private val secure: SyncSecureStore) {
     private val json = Json { encodeDefaults = true }
 
+    suspend fun unboundRecoveryFlow(): StoredUnboundSyncRecoveryFlow? =
+        secure.read("sync-recovery-unbound-v1")?.let { decode<StoredUnboundSyncRecoveryFlow>(it, 1) }
+
+    suspend fun saveUnboundRecoveryFlow(
+        value: StoredUnboundSyncRecoveryFlow,
+        expected: StoredUnboundSyncRecoveryFlow?,
+    ) {
+        val key = "sync-recovery-unbound-v1"
+        val before = secure.read(key)
+        require(
+            before?.let {
+                decode<StoredUnboundSyncRecoveryFlow>(it, 1)
+            } == expected,
+        ) { "sync recovery context changed" }
+        require(value.version == 1 && (value.accountId == null || value.accountId > 0))
+        require(value.repositoryId == null || value.repositoryId > 0)
+        val encoded = json.encodeToString(value)
+        require(encoded.length <= 64 * 1024)
+        if (!secure.compareAndSet(key, before, encoded)) throw SyncSecureStoreException()
+    }
+
     suspend fun repositoryCreation(accountId: Long): mihon.data.sync.auth.SyncRepositoryCreationIntent? =
         secure.read("sync-repository-creation-v1-$accountId")?.let {
             decode<StoredSyncRepositoryCreation>(it, 1).intent.also { value ->
@@ -352,6 +373,30 @@ internal class SyncSetupStorage(private val secure: SyncSecureStore) {
         val key = value.switchIntentId?.let(::switchSetupKey) ?: setupKey(value.accountId)
         val before = secure.read(key) ?: return
         if (decode<StoredSyncSetup>(before, 3) != value) return
+        if (!secure.compareAndSet(key, before, null)) throw SyncSecureStoreException()
+    }
+
+    suspend fun archivedSetup(attemptId: String): StoredSyncSetup? {
+        require(attemptId.matches(ATTEMPT_PATTERN))
+        return secure.read("sync-setup-archive-v3-$attemptId")?.let {
+            decode<StoredSyncSetup>(it, 3).also { value ->
+                require(value.attemptId == attemptId)
+                value.material.material()
+                value.repository()
+            }
+        }
+    }
+
+    /** Preserve the exact original before removing only its active setup pointer after explicit replacement. */
+    suspend fun archivePending(value: StoredSyncSetup) {
+        require(value.switchIntentId == null && value.attemptId.matches(ATTEMPT_PATTERN))
+        val key = setupKey(value.accountId)
+        val before = secure.read(key) ?: return
+        require(decode<StoredSyncSetup>(before, 3) == value) { "sync setup changed" }
+        val archiveKey = "sync-setup-archive-v3-${value.attemptId}"
+        val previousArchive = secure.read(archiveKey)
+        require(previousArchive == null || previousArchive == before)
+        if (previousArchive == null && !secure.compareAndSet(archiveKey, null, before)) throw SyncSecureStoreException()
         if (!secure.compareAndSet(key, before, null)) throw SyncSecureStoreException()
     }
 

@@ -33,7 +33,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -234,45 +236,82 @@ open class ReaderActivity : BaseActivity() {
             .onEach(::setChapters)
             .launchIn(lifecycleScope)
 
-        viewModel.eventFlow
-            .onEach { event ->
-                when (event) {
-                    ReaderViewModel.Event.ReloadViewerChapters -> {
-                        viewModel.state.value.viewerChapters?.let(::setChapters)
+        subscribeReaderEvents()
+    }
+
+    internal fun subscribeReaderEvents() = viewModel.eventFlow.onEach(::handleReaderEvent).launchIn(lifecycleScope)
+    private var resumeRecoveryVisible by mutableStateOf(false)
+    private var resumeConfirmationVisible by mutableStateOf(false)
+    private var resumeChapterMissing by mutableStateOf(false)
+
+    internal fun handleReaderEvent(event: ReaderViewModel.Event) {
+        when (event) {
+            ReaderViewModel.Event.ReloadViewerChapters -> {
+                viewModel.state.value.viewerChapters?.let(::setChapters)
+            }
+            ReaderViewModel.Event.PageChanged -> {
+                displayRefreshHost.flash()
+            }
+            ReaderViewModel.Event.SyncResumePageUnavailable -> {
+                resumeChapterMissing = false
+                resumeRecoveryVisible = true
+            }
+            ReaderViewModel.Event.SyncResumeChapterUnavailable -> {
+                resumeChapterMissing = true
+                resumeRecoveryVisible = true
+            }
+            ReaderViewModel.Event.ChapterPairingSaveFailed -> {
+                toast(MR.strings.desktop_reader_pairing_save_failed)
+            }
+            ReaderViewModel.Event.ProgressSaveFailed -> {
+                toast(MR.strings.reader_progress_save_failed)
+            }
+            ReaderViewModel.Event.ChapterPairingInvalid -> {
+                toast(MR.strings.desktop_reader_pairing_invalid)
+            }
+            is ReaderViewModel.Event.SetOrientation -> {
+                setOrientation(event.orientation)
+            }
+            is ReaderViewModel.Event.SavedImage -> {
+                onSaveImageResult(event.result)
+            }
+            is ReaderViewModel.Event.ShareImage -> {
+                onShareImageResult(event.uri, event.page)
+            }
+            is ReaderViewModel.Event.CopyImage -> {
+                onCopyImageResult(event.uri)
+            }
+            is ReaderViewModel.Event.SetCoverResult -> {
+                onSetAsCoverResult(event.result)
+            }
+        }
+    }
+
+    @Composable
+    internal fun SyncResumeRecoveryNotice() {
+        if (resumeRecoveryVisible) {
+            mihon.presentation.sync.SyncReadingPositionRecovery(
+                onChoose = {
+                    resumeRecoveryVisible = false
+                    if (resumeChapterMissing) {
+                        openMangaScreen()
+                    } else {
+                        resumeConfirmationVisible = true
+                        setMenuVisibility(true)
                     }
-                    ReaderViewModel.Event.PageChanged -> {
-                        displayRefreshHost.flash()
-                    }
-                    ReaderViewModel.Event.SyncResumePageUnavailable -> {
-                        toast(MR.strings.sync_resume_page_unavailable)
-                    }
-                    ReaderViewModel.Event.ChapterPairingSaveFailed -> {
-                        toast(MR.strings.desktop_reader_pairing_save_failed)
-                    }
-                    ReaderViewModel.Event.ProgressSaveFailed -> {
-                        toast(MR.strings.reader_progress_save_failed)
-                    }
-                    ReaderViewModel.Event.ChapterPairingInvalid -> {
-                        toast(MR.strings.desktop_reader_pairing_invalid)
-                    }
-                    is ReaderViewModel.Event.SetOrientation -> {
-                        setOrientation(event.orientation)
-                    }
-                    is ReaderViewModel.Event.SavedImage -> {
-                        onSaveImageResult(event.result)
-                    }
-                    is ReaderViewModel.Event.ShareImage -> {
-                        onShareImageResult(event.uri, event.page)
-                    }
-                    is ReaderViewModel.Event.CopyImage -> {
-                        onCopyImageResult(event.uri)
-                    }
-                    is ReaderViewModel.Event.SetCoverResult -> {
-                        onSetAsCoverResult(event.result)
-                    }
+                },
+                onDismiss = { resumeRecoveryVisible = false },
+                chapterMissing = resumeChapterMissing,
+            )
+        }
+        if (resumeConfirmationVisible) {
+            mihon.presentation.sync.SyncReadingPositionConfirmation {
+                if (viewModel.confirmSyncResumePosition(viewModel.state.value.currentPage)) {
+                    resumeConfirmationVisible =
+                        false
                 }
             }
-            .launchIn(lifecycleScope)
+        }
     }
 
     private fun ReaderActivityBinding.setComposeOverlay(): Unit = composeOverlay.setComposeContent {
@@ -305,6 +344,7 @@ open class ReaderActivity : BaseActivity() {
             AppBars(state = state)
         }
 
+        SyncResumeRecoveryNotice()
         val onDismissRequest = viewModel::closeDialog
         when (val dialog = state.dialog) {
             is ReaderViewModel.Dialog.Loading -> {
@@ -557,6 +597,7 @@ open class ReaderActivity : BaseActivity() {
             currentPage = state.currentPage,
             totalPages = state.totalPages,
             onPageIndexChange = {
+                if (viewModel.confirmSyncResumePosition(it)) resumeConfirmationVisible = false
                 isScrollingThroughPages = true
                 moveToPageIndex(it)
             },

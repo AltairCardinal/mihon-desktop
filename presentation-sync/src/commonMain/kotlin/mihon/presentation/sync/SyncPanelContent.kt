@@ -133,11 +133,15 @@ import mihon.data.sync.runtime.SyncProgressDirection
 import mihon.data.sync.runtime.SyncProgressFact
 import mihon.data.sync.runtime.SyncProgressHold
 import mihon.data.sync.runtime.SyncProgressStage
+import mihon.data.sync.runtime.SyncRecoveryAction
+import mihon.data.sync.runtime.SyncRecoveryActionAvailability
+import mihon.data.sync.runtime.SyncRecoveryActionDecision
 import mihon.data.sync.runtime.SyncRecoveryAuthorization
 import mihon.data.sync.runtime.SyncRecoveryContinuation
 import mihon.data.sync.runtime.SyncRecoveryOutcome
 import mihon.data.sync.runtime.SyncRecoveryPlatformAction
 import mihon.data.sync.runtime.SyncRecoveryPlatformRequest
+import mihon.data.sync.runtime.SyncRecoveryPlatformResult
 import mihon.data.sync.runtime.SyncRunPhase
 import mihon.data.sync.runtime.SyncRunSnapshot
 import mihon.data.sync.runtime.SyncRunState
@@ -217,11 +221,12 @@ fun SyncPanelContent(
             }
         }
     }
-    var externalUnavailable by remember(state.visible, state.page) { mutableStateOf(false) }
-    var failedBrowserAddress by remember(state.visible, state.page) { mutableStateOf<String?>(null) }
-    fun externalAction(action: (String) -> Unit, value: String, browser: Boolean = false) {
+    var externalUnavailable by remember(state.visible) { mutableStateOf(false) }
+    var failedBrowserAddress by remember(state.visible) { mutableStateOf<String?>(null) }
+    fun externalAction(action: (String) -> Unit, value: String, browser: Boolean = false): Boolean {
         try {
             action(value)
+            return true
         } catch (
             cancelled: kotlinx.coroutines.CancellationException,
         ) {
@@ -237,9 +242,10 @@ fun SyncPanelContent(
                 ).containsMatchIn(value)
                 failedBrowserAddress = if (sensitive) value.substringBefore('?') else value
             }
+            return false
         }
     }
-    val openBrowserSafely: (String) -> Unit = { externalAction(onOpenBrowser, it, browser = true) }
+    val openBrowserSafely: (String) -> Boolean = { externalAction(onOpenBrowser, it, browser = true) }
     val copyCodeSafely: (String) -> Unit = { externalAction(onCopyCode, it) }
     val openFailureLogSafely: (String) -> Unit = { externalAction(onOpenFailureLog, it) }
     val openDiagnosticSafely: (String) -> Unit = { externalAction(onOpenDiagnostic, it) }
@@ -292,10 +298,11 @@ fun SyncPanelContent(
                 state,
                 panel::dispatch,
                 openDiagnosticSafely,
+                copyCodeSafely,
                 Modifier.weight(1f),
             )
             SyncPanelPage.HISTORY -> RecordsPage(state, Modifier.weight(1f))
-            SyncPanelPage.RECOVERY -> RecoveryPage(state, panel::dispatch, Modifier.weight(1f))
+            SyncPanelPage.RECOVERY -> RecoveryPage(state, panel::dispatch, openBrowserSafely, Modifier.weight(1f))
             SyncPanelPage.SETUP -> SetupPage(
                 state,
                 presentation,
@@ -483,6 +490,11 @@ private fun RecoverySummary(state: SyncPanelState, dispatch: (SyncPanelAction) -
         modifier.fillMaxWidth().padding(24.dp).testTag("sync-recovery-summary"),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        if (state.recoveryExternalScopes.isNotEmpty() || state.recoveryOldScopes.isNotEmpty()) {
+            item {
+                ExternalRecoveryNotice(state, dispatch)
+            }
+        }
         item {
             Surface(
                 modifier = Modifier.fillMaxWidth().testTag("sync-recovery-card"),
@@ -564,18 +576,16 @@ private fun RecoverySummary(state: SyncPanelState, dispatch: (SyncPanelAction) -
 }
 
 @Composable
-private fun RecoveryPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit, modifier: Modifier) {
+private fun RecoveryPage(
+    state: SyncPanelState,
+    dispatch: (SyncPanelAction) -> Unit,
+    openBrowser: (String) -> Boolean,
+    modifier: Modifier,
+) {
     val reason = state.recovery?.reason
-    val problem = state.recoveryFailure?.problem ?: state.problem
     val report = state.recoveryRepairReport
     val discovery = state.recoveryFailure?.discovery ?: state.setupProblem
-    val needsAuthorization =
-        reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED && !state.recoveryAuthorizationConfirmed
     val pending = reason == SyncSpaceRecoveryReason.SWITCH_PENDING
-    val invalid = reason == SyncSpaceRecoveryReason.SPACE_DATA_INVALID
-    val needsDataVerification = invalid && (report?.remaining ?: 0L) == 0L
-    val serviceWait = problem == SyncRunProblem.NETWORK &&
-        state.recoveryFailure?.httpStatus?.let { it >= 500 || it == 429 } == true
     LazyColumn(
         modifier.fillMaxWidth().padding(24.dp).testTag("sync-recovery-page"),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -599,6 +609,11 @@ private fun RecoveryPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> U
                     Text(syncString(recoveryBody(state)))
                 }
                 RecoveryFacts(state)
+                (
+                    discovery ?: SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE.takeIf {
+                        reason == SyncSpaceRecoveryReason.SPACE_UNAVAILABLE
+                    }
+                    )?.let { Text(setupProblemText(it), Modifier.testTag("sync-recovery-cause")) }
                 state.recoveryFailure?.networkPhase?.let { phase ->
                     val label = when (phase) {
                         SyncNetworkFailurePhase.DNS -> MR.strings.sync_network_phase_dns
@@ -653,6 +668,39 @@ private fun RecoveryPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> U
                         Modifier.testTag("sync-recovery-platform-failed"),
                     )
                 }
+                state.recoveryPlatformResult?.let { result ->
+                    Text(
+                        syncString(
+                            when (result) {
+                                SyncRecoveryPlatformResult.Cancelled -> MR.strings.sync_recovery_return_cancelled
+                                SyncRecoveryPlatformResult.NoChange -> MR.strings.sync_recovery_return_no_change
+                                is SyncRecoveryPlatformResult.Changed -> MR.strings.sync_recovery_return_changed
+                                is SyncRecoveryPlatformResult.PartialFailure -> MR.strings.sync_recovery_still_remaining
+                                is SyncRecoveryPlatformResult.Failed -> MR.strings.sync_recovery_platform_failed
+                                SyncRecoveryPlatformResult.RestartRequired -> MR.strings.requires_app_restart
+                            },
+                        ),
+                        Modifier.testTag("sync-recovery-platform-result"),
+                    )
+                }
+                state.recoveryStepFailure?.let { failure ->
+                    Text(syncString(MR.strings.sync_error_retry_failed), Modifier.testTag("sync-recovery-step-failed"))
+                    failure.discovery?.let { Text(setupProblemText(it)) }
+                    failure.problem?.let { Text(problemText(it)) }
+                }
+                state.recoveryExternalScopes.forEach { scope ->
+                    Text(
+                        syncString(
+                            if (scope.remaining == null) {
+                                MR.strings.sync_recovery_backup_unknown_scope
+                            } else {
+                                MR.strings.sync_recovery_backup_remaining
+                            },
+                            scope.remaining ?: 0,
+                        ),
+                        Modifier.testTag("sync-recovery-external-scope-${scope.requestId}"),
+                    )
+                }
                 if (pending) {
                     Text(
                         syncString(recoveryWaiting(state)),
@@ -674,120 +722,16 @@ private fun RecoveryPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> U
                 Text(syncString(MR.strings.sync_recovery_cooldown, remainingSeconds))
             }
         }
-        when {
-            pending -> {
-                item { ContinueSwitchAction(state, dispatch) }
-                if (state.canCancelRecoverySwitch) item { RecoveryCancelAction(state, dispatch) }
-            }
-            state.run?.state == SyncRunState.PAUSED_USER -> item {
-                Action("sync-recovery-resume", MR.strings.sync_resume, !state.recoveryBusy, primary = true) {
-                    dispatch(SyncPanelAction.ResumeSync)
-                }
-            }
-            state.importPaused && state.importRemaining > 0 -> item {
-                Action("sync-recovery-resume-import", MR.strings.sync_resume, !state.recoveryBusy, primary = true) {
-                    dispatch(SyncPanelAction.ResumeImport)
-                }
-            }
-            problem == SyncRunProblem.STORAGE -> item {
-                RecoveryPlatformAction(
-                    "sync-recovery-storage",
-                    MR.strings.sync_recovery_storage,
-                    SyncRecoveryPlatformAction.STORAGE,
-                    state,
-                    dispatch,
-                    primary = true,
-                )
-            }
-            needsAuthorization || problem == SyncRunProblem.AUTHORIZATION ||
-                discovery == SyncDiscoveryProblem.AUTHORIZATION_REQUIRED -> item {
-                RecoveryAuthorizationAction(state, dispatch, primary = true)
-            }
-            discovery == SyncDiscoveryProblem.REPOSITORY_ARCHIVED -> item {
-                Action(
-                    "sync-recovery-unarchive",
-                    MR.strings.sync_repository_properties_confirm,
-                    state.recoveryActionsEnabled,
-                    primary = true,
-                ) {
-                    dispatch(SyncPanelAction.RepairRepositoryProperties(false, true))
-                }
-            }
-            discovery == SyncDiscoveryProblem.REPOSITORY_NOT_PRIVATE -> item {
-                Action(
-                    "sync-recovery-make-private",
-                    MR.strings.sync_repository_properties_confirm,
-                    state.recoveryActionsEnabled,
-                    primary = true,
-                ) {
-                    dispatch(SyncPanelAction.RepairRepositoryProperties(true, false))
-                }
-            }
-            serviceWait -> item {
-                Text(syncString(MR.strings.sync_recovery_service_wait))
-                Action(
-                    "sync-recovery-verify",
-                    MR.strings.sync_recovery_verify,
-                    !state.recoveryBusy && state.nowMillis >= state.authRetryAtMillis,
-                    primary = true,
-                ) {
-                    dispatch(SyncPanelAction.VerifyRecovery)
-                }
-            }
-            problem == SyncRunProblem.NETWORK -> item {
-                RecoveryPlatformAction(
-                    "sync-recovery-network",
-                    MR.strings.sync_recovery_network,
-                    SyncRecoveryPlatformAction.NETWORK,
-                    state,
-                    dispatch,
-                    primary = true,
-                )
-            }
-            discovery in setOf(
-                SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION,
-                SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS,
-                SyncDiscoveryProblem.NEEDS_INSTALLATION_ACCESS_PERMISSION,
-                SyncDiscoveryProblem.NEEDS_ADMINISTRATION_PERMISSION,
-                SyncDiscoveryProblem.NEEDS_CREATION_PERMISSION,
-            ) -> item {
-                RecoveryAuthorizationAction(state, dispatch, primary = true)
-            }
-            report?.remaining?.let { it > 0 } == true && !pending -> item {
-                Action(
-                    "sync-recovery-repair",
-                    MR.strings.sync_recovery_repair_data,
-                    !state.recoveryBusy,
-                    primary = true,
-                ) {
-                    dispatch(SyncPanelAction.RepairData(state.recoveryRepairOffset))
-                }
-            }
-            problem == SyncRunProblem.UNKNOWN || needsDataVerification -> item {
-                Action("sync-recovery-verify", MR.strings.sync_recovery_verify, !state.recoveryBusy, primary = true) {
-                    dispatch(SyncPanelAction.VerifyRecovery)
-                }
-            }
-            reason == null -> item {
-                Action(
-                    "sync-recovery-create",
-                    MR.strings.sync_recovery_create,
-                    state.canChangeSpace && state.recoveryActionsEnabled,
-                    modifier = Modifier.fillMaxWidth(),
-                    tonal = true,
-                ) { dispatch(SyncPanelAction.CreateNewSpace) }
-            }
-            else -> item { RecoveryCreateAction(state, dispatch, primary = true) }
-        }
-        if (problem != SyncRunProblem.UNKNOWN && !needsDataVerification &&
-            !(serviceWait)
-        ) {
+        item { RecoveryDecisionAction(state.recoveryPrimaryAction, state, dispatch, openBrowser, primary = true) }
+        if (state.recoveryAlternativeActions.isNotEmpty()) {
             item {
-                Action("sync-recovery-verify", MR.strings.sync_recovery_verify, !state.recoveryBusy) {
-                    dispatch(SyncPanelAction.VerifyRecovery)
-                }
+                Text(syncString(MR.strings.sync_recovery_other_actions), style = MaterialTheme.typography.titleSmall)
             }
         }
+        state.recoveryAlternativeActions.forEach { decision ->
+            item { RecoveryDecisionAction(decision, state, dispatch, openBrowser) }
+        }
+        if (pending && state.canCancelRecoverySwitch) item { RecoveryCancelAction(state, dispatch) }
         item {
             Action("sync-recovery-details", MR.strings.sync_recovery_details) {
                 dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
@@ -831,8 +775,16 @@ private fun RecoveryPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> U
                         )
                         "IDENTITY" -> RecoveryPlatformAction(
                             "sync-recovery-map-${failure.objectIdentity}",
-                            MR.strings.sync_recovery_migration,
-                            SyncRecoveryPlatformAction.MIGRATION,
+                            if (failure.objectKey?.type == mihon.domain.sync.SyncObjectType.MANGA) {
+                                MR.strings.sync_recovery_migration
+                            } else {
+                                MR.strings.sync_recovery_backup
+                            },
+                            if (failure.objectKey?.type == mihon.domain.sync.SyncObjectType.MANGA) {
+                                SyncRecoveryPlatformAction.MIGRATION
+                            } else {
+                                SyncRecoveryPlatformAction.BACKUP
+                            },
                             state,
                             dispatch,
                             objectKey = failure.objectKey,
@@ -902,56 +854,180 @@ private fun RecoveryPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> U
                 }
             }
         }
-        item {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                RecoveryPlatformAction(
-                    "sync-recovery-backup",
-                    MR.strings.sync_recovery_backup,
-                    SyncRecoveryPlatformAction.BACKUP,
-                    state,
-                    dispatch,
-                )
-                RecoveryPlatformAction(
-                    "sync-recovery-update",
-                    MR.strings.sync_recovery_update,
-                    SyncRecoveryPlatformAction.UPDATE,
-                    state,
-                    dispatch,
-                )
-                if (problem != SyncRunProblem.STORAGE) {
-                    RecoveryPlatformAction(
-                        "sync-recovery-storage",
-                        MR.strings.sync_recovery_storage,
-                        SyncRecoveryPlatformAction.STORAGE,
-                        state,
-                        dispatch,
-                    )
-                }
-            }
+    }
+}
+
+@Composable
+private fun RecoveryDecisionAction(
+    decision: SyncRecoveryActionDecision,
+    state: SyncPanelState,
+    dispatch: (SyncPanelAction) -> Unit,
+    openBrowser: (String) -> Boolean,
+    primary: Boolean = false,
+) {
+    if (decision.availability == SyncRecoveryActionAvailability.NotApplicable) return
+    val action = decision.action
+    val setup = state.page == SyncPanelPage.SETUP
+    val discovery = state.recoveryStepFailure?.discovery ?: state.setupProblem ?: state.recoveryFailure?.discovery
+    val tag = when (action) {
+        SyncRecoveryAction.CREATE_SPACE -> "sync-recovery-create"
+        SyncRecoveryAction.CHOOSE_SPACE -> "sync-recovery-connect-other"
+        SyncRecoveryAction.CONNECT_GITHUB -> if (setup) "sync-repo-reconnect" else "sync-recovery-authorization"
+        SyncRecoveryAction.INSTALL_APP, SyncRecoveryAction.RESTORE_INSTALLATION -> "sync-install-app"
+        SyncRecoveryAction.AUTHORIZE_REPOSITORY -> "sync-repository-authorize-native"
+        SyncRecoveryAction.CHECK_CONDITIONS -> if (setup) "sync-setup-retry" else "sync-recovery-recheck"
+        SyncRecoveryAction.VERIFY_SYNC -> "sync-recovery-verify"
+        SyncRecoveryAction.REPAIR_REPOSITORY_PROPERTIES -> if (discovery == SyncDiscoveryProblem.REPOSITORY_ARCHIVED) {
+            "sync-recovery-unarchive"
+        } else {
+            "sync-recovery-make-private"
         }
-        item {
+        SyncRecoveryAction.MANAGE_AUTHORIZATION -> if (setup) {
+            "sync-install-app"
+        } else {
+            "sync-recovery-manage-authorization"
+        }
+        SyncRecoveryAction.CONTINUE_SETUP -> when {
+            state.recovery?.reason == SyncSpaceRecoveryReason.SWITCH_PENDING -> "sync-recovery-continue"
+            setup -> "sync-setup-retry"
+            else -> "sync-recovery-continue-setup"
+        }
+        SyncRecoveryAction.EDIT_REPOSITORY_NAME -> "sync-recovery-edit-name"
+        SyncRecoveryAction.OFFICIAL_CREATE -> "sync-create-private-repo"
+        SyncRecoveryAction.RESTORE_REPOSITORY -> "sync-recovery-restore-repository"
+        SyncRecoveryAction.ENABLE_SYNC -> "sync-recovery-enable"
+        SyncRecoveryAction.NETWORK -> "sync-recovery-network"
+        SyncRecoveryAction.STORAGE -> "sync-recovery-storage"
+        SyncRecoveryAction.UPDATE -> "sync-recovery-update"
+        SyncRecoveryAction.BACKUP -> "sync-recovery-backup"
+        SyncRecoveryAction.EXTENSIONS -> "sync-recovery-extensions"
+        SyncRecoveryAction.MIGRATION -> "sync-recovery-migration"
+        SyncRecoveryAction.READER -> "sync-recovery-reader"
+        SyncRecoveryAction.REPAIR_DATA -> "sync-recovery-repair"
+        SyncRecoveryAction.RESUME_SYNC -> "sync-recovery-resume"
+        SyncRecoveryAction.RESUME_IMPORT -> "sync-recovery-resume-import"
+        SyncRecoveryAction.WAIT_EXTERNAL, SyncRecoveryAction.WAIT_SERVICE -> "sync-recovery-wait"
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (primary && (
+                action == SyncRecoveryAction.RESTORE_INSTALLATION ||
+                    state.recoveryOfficialAction == SyncRecoveryAction.RESTORE_INSTALLATION
+                )
+        ) {
+            Text(syncString(MR.strings.sync_recovery_installation_restriction))
+        }
+        if (primary && (
+                action == SyncRecoveryAction.RESTORE_REPOSITORY ||
+                    state.recoveryOfficialAction == SyncRecoveryAction.RESTORE_REPOSITORY
+                )
+        ) {
+            Text(syncString(MR.strings.sync_recovery_repository_restriction))
+        }
+        if (state.recoveryOfficialAction != null && primary) {
+            Text(
+                syncString(
+                    if (state.recoveryOfficialAction in setOf(
+                            SyncRecoveryAction.RESTORE_INSTALLATION,
+                            SyncRecoveryAction.RESTORE_REPOSITORY,
+                        )
+                    ) {
+                        MR.strings.sync_recovery_official_waiting_restricted
+                    } else {
+                        MR.strings.sync_recovery_official_waiting
+                    },
+                ),
+                Modifier.testTag("sync-recovery-official-waiting"),
+            )
+        }
+        (decision.availability as? SyncRecoveryActionAvailability.NeedsStep)?.let {
+            Text(syncString(MR.strings.sync_recovery_prerequisite, syncString(recoveryActionLabel(it.step))))
+        }
+        if (decision.availability is SyncRecoveryActionAvailability.Waiting) {
+            Text(
+                syncString(
+                    if (action ==
+                        SyncRecoveryAction.WAIT_SERVICE
+                    ) {
+                        MR.strings.sync_recovery_service_wait
+                    } else {
+                        MR.strings.sync_recovery_waiting_external
+                    },
+                ),
+            )
+        } else {
+            val nextStep = (decision.availability as? SyncRecoveryActionAvailability.NeedsStep)?.step
             Action(
-                "sync-recovery-connect-other",
-                MR.strings.sync_recovery_connect_other,
-                state.recoveryActionsEnabled && state.canChangeSpace,
-                modifier = if (reason == null) Modifier.fillMaxWidth() else Modifier,
-                tonal = reason == null,
+                tag,
+                if (action == SyncRecoveryAction.CHECK_CONDITIONS && state.recoveryOfficialAction != null) {
+                    MR.strings.sync_recovery_official_continue
+                } else if (action == SyncRecoveryAction.CONTINUE_SETUP &&
+                    state.recovery?.reason == SyncSpaceRecoveryReason.SWITCH_PENDING
+                ) {
+                    MR.strings.sync_recovery_continue
+                } else {
+                    recoveryActionLabel(nextStep ?: action)
+                },
+                state.recoveryActionsEnabled && !state.busy,
+                primary = primary,
             ) {
-                dispatch(SyncPanelAction.ConnectOtherSpace)
-            }
-        }
-        if (!needsAuthorization && (reason != null || state.recoveryAuthorizationConfirmed)) {
-            item { RecoveryAuthorizationAction(state, dispatch) }
-        }
-        if (pending || needsAuthorization || invalid) item { RecoveryCreateAction(state, dispatch) }
-        if (reason != null) {
-            item {
-                Action("sync-recovery-recheck", MR.strings.sync_recovery_recheck, state.recoveryActionsEnabled) {
-                    dispatch(SyncPanelAction.RecheckSpace)
+                dispatch(SyncPanelAction.ExecuteRecoveryAction(action))
+                val installationUrl = state.setupInstallation?.let { installation ->
+                    state.setupAccountLogin?.let { githubInstallationManagementUrl(installation, it) }
+                } ?: "https://github.com/settings/installations"
+                val opened = when (action) {
+                    SyncRecoveryAction.INSTALL_APP -> openBrowser(GITHUB_APP_INSTALL_URL)
+                    SyncRecoveryAction.RESTORE_INSTALLATION, SyncRecoveryAction.MANAGE_AUTHORIZATION -> openBrowser(
+                        installationUrl,
+                    )
+                    SyncRecoveryAction.OFFICIAL_CREATE -> openBrowser(
+                        githubRepositoryCreationUrl(state.setupAccountLogin, state.repositoryCreationName),
+                    )
+                    SyncRecoveryAction.RESTORE_REPOSITORY -> {
+                        val repository = state.setupRepository ?: state.connection?.repository
+                        if (repository != null) {
+                            openBrowser(
+                                "https://github.com/${encodeQueryParameter(repository.owner)}/" +
+                                    "${encodeQueryParameter(repository.name)}/settings",
+                            )
+                        } else {
+                            openBrowser("https://github.com/settings/repositories")
+                        }
+                    }
+                    else -> false
                 }
+                if (opened) dispatch(SyncPanelAction.RecoveryOfficialOpened(action))
             }
         }
     }
+}
+
+private fun recoveryActionLabel(action: SyncRecoveryAction): StringResource = when (action) {
+    SyncRecoveryAction.CONNECT_GITHUB -> MR.strings.sync_reconnect
+    SyncRecoveryAction.INSTALL_APP -> MR.strings.sync_setup_install_app
+    SyncRecoveryAction.AUTHORIZE_REPOSITORY -> MR.strings.sync_repository_scope_confirm
+    SyncRecoveryAction.CREATE_SPACE -> MR.strings.sync_recovery_create
+    SyncRecoveryAction.CHOOSE_SPACE -> MR.strings.sync_recovery_connect_other
+    SyncRecoveryAction.CHECK_CONDITIONS -> MR.strings.sync_recovery_recheck
+    SyncRecoveryAction.NETWORK -> MR.strings.sync_recovery_network
+    SyncRecoveryAction.STORAGE -> MR.strings.sync_recovery_storage
+    SyncRecoveryAction.UPDATE -> MR.strings.sync_recovery_update
+    SyncRecoveryAction.BACKUP -> MR.strings.sync_recovery_backup
+    SyncRecoveryAction.EXTENSIONS -> MR.strings.sync_recovery_extensions
+    SyncRecoveryAction.MIGRATION -> MR.strings.sync_recovery_migration
+    SyncRecoveryAction.READER -> MR.strings.sync_recovery_reader
+    SyncRecoveryAction.REPAIR_DATA -> MR.strings.sync_recovery_repair_data
+    SyncRecoveryAction.VERIFY_SYNC -> MR.strings.sync_recovery_verify
+    SyncRecoveryAction.CONTINUE_SETUP -> MR.strings.sync_setup_retry
+    SyncRecoveryAction.EDIT_REPOSITORY_NAME -> MR.strings.sync_repository_name
+    SyncRecoveryAction.REPAIR_REPOSITORY_PROPERTIES -> MR.strings.sync_repository_properties_confirm
+    SyncRecoveryAction.MANAGE_AUTHORIZATION, SyncRecoveryAction.RESTORE_INSTALLATION -> {
+        MR.strings.sync_setup_manage_installation
+    }
+    SyncRecoveryAction.RESUME_SYNC, SyncRecoveryAction.ENABLE_SYNC -> MR.strings.sync_resume
+    SyncRecoveryAction.RESUME_IMPORT -> MR.strings.sync_resume
+    SyncRecoveryAction.OFFICIAL_CREATE -> MR.strings.sync_setup_create_repo
+    SyncRecoveryAction.RESTORE_REPOSITORY -> MR.strings.sync_recovery_restore_repository
+    SyncRecoveryAction.WAIT_EXTERNAL, SyncRecoveryAction.WAIT_SERVICE -> MR.strings.sync_recovery_waiting_external
 }
 
 private fun recoveryReasonCode(reason: String): String {
@@ -996,43 +1072,6 @@ private fun RecoveryPlatformAction(
 ) {
     Action(tag, label, !state.recoveryBusy, primary = primary) {
         dispatch(SyncPanelAction.OpenRecoveryPlatform(action, objectKey))
-    }
-}
-
-@Composable
-private fun RecoveryAuthorizationAction(
-    state: SyncPanelState,
-    dispatch: (SyncPanelAction) -> Unit,
-    primary: Boolean = false,
-) {
-    Action(
-        if (state.recoveryAuthorizationConfirmed) {
-            "sync-recovery-manage-authorization"
-        } else {
-            "sync-recovery-authorization"
-        },
-        if (state.recoveryAuthorizationConfirmed) {
-            MR.strings.sync_recovery_manage_authorization
-        } else {
-            MR.strings.sync_recovery_authorization
-        },
-        state.recoveryActionsEnabled,
-        primary = primary,
-    ) {
-        dispatch(
-            if (state.recoveryAuthorizationConfirmed) {
-                SyncPanelAction.ManageAuthorization
-            } else {
-                SyncPanelAction.CheckAuthorization
-            },
-        )
-    }
-}
-
-@Composable
-private fun RecoveryCreateAction(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit, primary: Boolean = false) {
-    Action("sync-recovery-create", MR.strings.sync_recovery_create, state.recoveryActionsEnabled, primary = primary) {
-        dispatch(SyncPanelAction.CreateNewSpace)
     }
 }
 
@@ -1192,6 +1231,11 @@ private fun MainPage(
     }
     val continuingSetup = state.setupStep !in setOf(SyncSetupStep.SIGN_IN, SyncSetupStep.COMPLETE)
     LazyColumn(state = listState, modifier = modifier.testTag("sync-pending-list")) {
+        if (state.recoveryExternalScopes.isNotEmpty() || state.recoveryOldScopes.isNotEmpty()) {
+            item {
+                ExternalRecoveryNotice(state, dispatch)
+            }
+        }
         item("summary") {
             if (state.run == null && !state.busy) {
                 SyncStatusHeader(state, continuingSetup, dispatch)
@@ -1379,6 +1423,33 @@ private fun MainPage(
             .distinctUntilChanged()
             .filter { it >= state.pending.size - 3 }
             .collect { dispatch(SyncPanelAction.LoadMore) }
+    }
+}
+
+@Composable
+private fun ExternalRecoveryNotice(state: SyncPanelState, dispatch: (SyncPanelAction) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        state.recoveryExternalScopes.forEach { scope ->
+            Text(
+                syncString(
+                    if (scope.remaining == null) {
+                        MR.strings.sync_recovery_backup_unknown_scope
+                    } else {
+                        MR.strings.sync_recovery_backup_remaining
+                    },
+                    scope.remaining ?: 0,
+                ),
+            )
+        }
+        state.recoveryOldScopes.forEach { scope ->
+            Text(syncString(MR.strings.sync_recovery_unverified_origin, scope.label))
+        }
+        if (state.recoveryOutcome == SyncRecoveryOutcome.NEW_SCOPE_VERIFIED_WITH_OLD_REMAINING) {
+            Text(syncString(MR.strings.sync_recovery_new_verified))
+        }
+        Action("sync-main-external-recovery", MR.strings.sync_recovery_choose, !state.recoveryBusy) {
+            dispatch(SyncPanelAction.OpenRecovery)
+        }
     }
 }
 
@@ -1791,6 +1862,7 @@ private fun DiagnosticPage(
     state: SyncPanelState,
     dispatch: (SyncPanelAction) -> Unit,
     onOpenDiagnostic: (String) -> Unit,
+    onCopySummary: (String) -> Unit,
     modifier: Modifier,
 ) {
     var technicalExpanded by remember { mutableStateOf(false) }
@@ -1893,6 +1965,13 @@ private fun DiagnosticPage(
                     Action("sync-diagnostic-export", MR.strings.sync_diagnostic_export, !state.diagnosticBusy) {
                         dispatch(SyncPanelAction.ExportDiagnostics)
                     }
+                    Action(
+                        "sync-diagnostic-copy-summary",
+                        MR.strings.sync_diagnostic_copy_summary,
+                        !state.diagnosticBusy,
+                    ) {
+                        onCopySummary(snapshot.json())
+                    }
                     state.diagnosticPath?.let { path ->
                         Action("sync-diagnostic-open", MR.strings.sync_diagnostic_open, !state.diagnosticBusy) {
                             onOpenDiagnostic(path)
@@ -1943,7 +2022,7 @@ private fun SetupPage(
     toggleDetails: () -> Unit,
     detailScroll: androidx.compose.foundation.ScrollState,
     dispatch: (SyncPanelAction) -> Unit,
-    openBrowser: (String) -> Unit,
+    openBrowser: (String) -> Boolean,
     copyCode: (String) -> Unit,
     claimBrowser: (GitHubDeviceCode) -> Boolean,
     onOpenFailureLog: (String) -> Unit,
@@ -2046,25 +2125,27 @@ private fun SetupPage(
                     }
                 }
                 state.authFailure?.let { failure ->
+                    item { Text(authFailureText(failure), Modifier.testTag("sync-auth-failure")) }
                     item {
-                        Text(
-                            syncString(
-                                if (failure == GitHubAuthFailureReason.HTTP) {
-                                    MR.strings.sync_auth_request_failed
-                                } else {
-                                    MR.strings.sync_auth_failed
-                                },
-                            ),
+                        RecoveryDecisionAction(
+                            state.recoveryPrimaryAction,
+                            state,
+                            dispatch,
+                            openBrowser,
+                            primary = true,
                         )
                     }
+                    item { ErrorRecoveryExit(state, dispatch, "sync-auth") }
                 }
-                if (state.deviceCode == null || state.authFailure != null) {
+                if (state.authFailure == null && state.deviceCode == null) {
                     item {
                         Action(
                             "sync-authorize",
-                            if (state.authFailure == null) MR.strings.sync_connect else MR.strings.sync_auth_retry,
+                            MR.strings.sync_connect,
                             !state.setupBusy && state.nowMillis >= state.authRetryAtMillis,
-                        ) { dispatch(SyncPanelAction.Authorize) }
+                        ) {
+                            dispatch(SyncPanelAction.Authorize)
+                        }
                     }
                 }
                 item {
@@ -2291,19 +2372,9 @@ private fun SetupPage(
                 val problem = state.setupProblem
                 val installationGuidance = problem in INSTALLATION_RECOVERY_PROBLEMS &&
                     problem != SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE
-                item { SetupErrorActions(state, dispatch, installationGuidance) }
+                item { SetupErrorActions(state, dispatch, openBrowser, installationGuidance) }
                 if (state.creationSubmitted && state.creationRepositoryId != null) {
                     item { Text(state.setupRepository?.fullName ?: state.repositoryCreationName) }
-                    item {
-                        Action(
-                            "sync-repository-authorize-native",
-                            MR.strings.sync_repository_scope_confirm,
-                            !state.setupBusy && state.nowMillis >= state.authRetryAtMillis,
-                            primary = true,
-                        ) {
-                            dispatch(SyncPanelAction.AuthorizeRepositoryScope)
-                        }
-                    }
                 }
                 val needsRepositoryGuide = problem in setOf(
                     SyncDiscoveryProblem.NEEDS_INSTALLATION,
@@ -2327,56 +2398,6 @@ private fun SetupPage(
                         }
                     }
                 }
-                val installationIsMissing = problem == SyncDiscoveryProblem.NEEDS_INSTALLATION
-                val manageInstallation = problem in setOf(
-                    SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS,
-                    SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION,
-                    SyncDiscoveryProblem.INSTALLATION_SUSPENDED,
-                    SyncDiscoveryProblem.REPOSITORY_NOT_WRITABLE,
-                    SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE,
-                )
-                val installationManagementUrl = if (manageInstallation) {
-                    state.setupInstallation?.let { installation ->
-                        state.setupAccountLogin?.let { login -> githubInstallationManagementUrl(installation, login) }
-                    }
-                } else {
-                    null
-                }
-                if (installationIsMissing || installationManagementUrl != null) {
-                    item {
-                        Action(
-                            "sync-install-app",
-                            if (installationIsMissing) {
-                                MR.strings.sync_setup_install_app
-                            } else {
-                                MR.strings.sync_setup_manage_installation
-                            },
-                        ) {
-                            openBrowser(
-                                if (installationIsMissing) {
-                                    GITHUB_APP_INSTALL_URL
-                                } else {
-                                    requireNotNull(installationManagementUrl)
-                                },
-                            )
-                        }
-                    }
-                    item {
-                        Action("sync-recheck-installation", MR.strings.sync_setup_recheck, !state.setupBusy) {
-                            dispatch(SyncPanelAction.RetrySetup)
-                        }
-                    }
-                }
-                if (!state.canChangeSpace && problem !in INSTALLATION_RECOVERY_PROBLEMS) {
-                    item {
-                        Action(
-                            "sync-setup-retry",
-                            if (state.setupBusy) MR.strings.sync_error_retry_busy else MR.strings.sync_setup_retry,
-                            !state.setupBusy,
-                            primary = true,
-                        ) { dispatch(SyncPanelAction.RetrySetup) }
-                    }
-                }
                 if (state.legacyRecoveryAvailable) {
                     item {
                         Text(
@@ -2387,13 +2408,6 @@ private fun SetupPage(
                     item {
                         Action("sync-abandon-legacy", MR.strings.sync_setup_abandon_legacy, !state.setupBusy) {
                             dispatch(SyncPanelAction.Ask(SyncPanelQuestion.ABANDON_LEGACY))
-                        }
-                    }
-                }
-                if (!state.canChangeSpace && problem == SyncDiscoveryProblem.AUTHORIZATION_REQUIRED) {
-                    item {
-                        Action("sync-repo-reconnect", MR.strings.sync_reconnect, !state.setupBusy) {
-                            dispatch(SyncPanelAction.Authorize)
                         }
                     }
                 }
@@ -2415,58 +2429,28 @@ private fun SetupPage(
 private fun SetupErrorActions(
     state: SyncPanelState,
     dispatch: (SyncPanelAction) -> Unit,
+    openBrowser: (String) -> Boolean,
     installationGuidance: Boolean,
 ) {
-    val enabled = state.recoveryActionsEnabled && !state.busy
-    val reason = state.recovery?.reason
-    val unavailable = reason == SyncSpaceRecoveryReason.SPACE_UNAVAILABLE ||
-        state.setupProblem == SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE
-    val authorization = reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED ||
-        state.setupProblem == SyncDiscoveryProblem.AUTHORIZATION_REQUIRED ||
-        state.problem == SyncRunProblem.AUTHORIZATION
-    val pending = reason == SyncSpaceRecoveryReason.SWITCH_PENDING || state.pendingRecoveryPurpose != null
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (state.setupRetryFailed) {
             Text(syncString(MR.strings.sync_error_retry_failed), Modifier.testTag("sync-setup-retry-failed"))
         }
-        if (state.canChangeSpace) {
-            when {
-                pending -> ContinueSwitchAction(state, dispatch)
-                unavailable -> {
-                    Text(syncString(MR.strings.sync_error_space_unavailable))
-                    Action("sync-setup-recovery-open", MR.strings.sync_switch, enabled, primary = true) {
-                        dispatch(SyncPanelAction.OpenRecovery)
-                    }
-                    Action("sync-setup-recovery-recheck", MR.strings.sync_recovery_recheck, enabled) {
-                        dispatch(SyncPanelAction.RecheckSpace)
-                    }
-                }
-                authorization -> {
-                    Action("sync-setup-recovery-authorization", MR.strings.sync_reconnect, enabled, primary = true) {
-                        dispatch(SyncPanelAction.CheckAuthorization)
-                    }
-                }
-                else -> {
-                    Action(
-                        "sync-setup-retry",
-                        if (state.setupBusy) MR.strings.sync_error_retry_busy else MR.strings.sync_setup_retry,
-                        enabled,
-                        primary = true,
-                    ) { dispatch(SyncPanelAction.RetrySetup) }
-                }
-            }
+        RecoveryDecisionAction(state.recoveryPrimaryAction, state, dispatch, openBrowser, primary = true)
+        if (!installationGuidance) {
+            state.recoveryAlternativeActions.firstOrNull {
+                it.action == SyncRecoveryAction.CHECK_CONDITIONS
+            }?.let { RecoveryDecisionAction(it, state, dispatch, openBrowser) }
         }
-        if (!unavailable || !state.canChangeSpace) {
-            ErrorRecoveryExit(
-                state,
-                dispatch,
-                "sync-setup",
-                showDiagnostics = !installationGuidance,
-                allowConfigureSpace = !installationGuidance,
-            )
-        } else if (!installationGuidance) {
-            Action("sync-setup-error-details", MR.strings.sync_recovery_details, enabled) {
-                dispatch(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS))
+        state.recoveryAlternativeActions.firstOrNull { it.action == SyncRecoveryAction.MANAGE_AUTHORIZATION }?.let {
+            RecoveryDecisionAction(it, state, dispatch, openBrowser)
+        }
+        ErrorRecoveryExit(state, dispatch, "sync-setup", showDiagnostics = !installationGuidance)
+        if (installationGuidance) {
+            Action("sync-recheck-installation", MR.strings.sync_setup_recheck, !state.setupBusy) {
+                dispatch(
+                    SyncPanelAction.ExecuteRecoveryAction(mihon.data.sync.runtime.SyncRecoveryAction.CHECK_CONDITIONS),
+                )
             }
         }
     }
@@ -2478,24 +2462,13 @@ private fun ErrorRecoveryExit(
     dispatch: (SyncPanelAction) -> Unit,
     prefix: String,
     showDiagnostics: Boolean = true,
-    allowConfigureSpace: Boolean = true,
 ) {
     val enabled = state.recoveryActionsEnabled && !state.busy
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (state.canChangeSpace || state.problem in setOf(SyncRunProblem.STORAGE, SyncRunProblem.INVALID_DATA) ||
-            state.setupProblem == SyncDiscoveryProblem.INCOMPATIBLE
-        ) {
+        if (state.canOpenRecovery) {
             Text(syncString(MR.strings.sync_error_recovery_hint))
             Action("$prefix-recovery-open", MR.strings.sync_recovery_choose, enabled) {
                 dispatch(SyncPanelAction.OpenRecovery)
-            }
-        } else if (allowConfigureSpace && state.page == SyncPanelPage.SETUP &&
-            state.loaded && state.connection == null &&
-            state.problem !in setOf(SyncRunProblem.STORAGE, SyncRunProblem.INVALID_DATA) &&
-            state.setupProblem != SyncDiscoveryProblem.INCOMPATIBLE
-        ) {
-            Action("sync-setup-configure-space", MR.strings.sync_error_configure_space, enabled) {
-                dispatch(SyncPanelAction.BeginSetup)
             }
         }
         if (showDiagnostics) {
@@ -3253,6 +3226,19 @@ private fun syncEtaDuration(seconds: Long): String = when {
 }
 
 @Composable
+private fun authFailureText(failure: GitHubAuthFailureReason): String = syncString(
+    when (failure) {
+        GitHubAuthFailureReason.HTTP -> MR.strings.sync_auth_request_failed
+        GitHubAuthFailureReason.MALFORMED_RESPONSE -> MR.strings.sync_auth_malformed
+        GitHubAuthFailureReason.ACCESS_DENIED -> MR.strings.sync_auth_denied
+        GitHubAuthFailureReason.PERMISSION_DENIED -> MR.strings.sync_auth_permission_denied
+        GitHubAuthFailureReason.EXPIRED -> MR.strings.sync_auth_expired
+        GitHubAuthFailureReason.REVOKED -> MR.strings.sync_auth_revoked
+        GitHubAuthFailureReason.RATE_LIMITED -> MR.strings.sync_setup_rate_limited
+    },
+)
+
+@Composable
 private fun setupProblemText(problem: SyncDiscoveryProblem): String = syncString(
     when (problem) {
         SyncDiscoveryProblem.NEEDS_INSTALLATION -> MR.strings.sync_setup_needs_installation
@@ -3264,6 +3250,7 @@ private fun setupProblemText(problem: SyncDiscoveryProblem): String = syncString
         SyncDiscoveryProblem.INSTALLATION_SUSPENDED -> MR.strings.sync_setup_installation_suspended
         SyncDiscoveryProblem.REPOSITORY_NOT_WRITABLE -> MR.strings.sync_setup_not_writable
         SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE -> MR.strings.sync_setup_repository_unavailable
+        SyncDiscoveryProblem.REPOSITORY_IDENTITY_MISMATCH -> MR.strings.sync_setup_repository_identity_mismatch
         SyncDiscoveryProblem.REPOSITORY_ARCHIVED -> MR.strings.sync_repository_archived
         SyncDiscoveryProblem.REPOSITORY_DISABLED -> MR.strings.sync_repository_disabled
         SyncDiscoveryProblem.AUTHORIZATION_REQUIRED -> MR.strings.sync_setup_authorization
