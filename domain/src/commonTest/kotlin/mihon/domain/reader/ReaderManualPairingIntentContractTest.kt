@@ -4,9 +4,72 @@ import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ReaderManualPairingIntentContractTest {
+    @Test
+    fun `background restore replaces an empty opening proposal before any physical slot is locked`() {
+        for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
+            val owner = owner(mangaId = 1, initialIndex = 0)
+            val ids = owner.identity.pageIds
+            owner.configure(direction)
+            val restore = owner.beginPairingRestore()!!
+            val pending = owner.captureViewport(preparingPageIds = emptySet())!!
+            assertEquals(emptySet<ReaderPageId>(), owner.frame(pending)!!.lockedPageIds)
+            assertTrue(owner.acceptPairingRestore(restore, firstPairSnapshot()))
+            assertNull(owner.frame(pending), "An empty proposal must not preserve a default first-page layout")
+            val current = owner.captureViewport()!!
+            assertEquals(listOf(ids[0], ids[1]), owner.frame(current)!!.unit.pageIds)
+            assertEquals(
+                if (direction == ReaderDirection.RTL) ReaderPortraitSingleSlot.RIGHT else ReaderPortraitSingleSlot.LEFT,
+                owner.frame(current)!!.unit.slots.first().position,
+            )
+            assertEquals(emptySet<ReaderPageId>(), owner.frame(current)!!.drawnPageIds)
+        }
+    }
+
+    @Test
+    fun `late restore preserves a user entered loading group and its next navigation target`() {
+        val owner = owner(mangaId = 1, initialIndex = 0)
+        val ids = owner.identity.pageIds
+        val restore = owner.beginPairingRestore()!!
+        assertTrue(owner.navigate(true))
+        val current = owner.captureViewport(preparingPageIds = emptySet())!!
+        val before = owner.frame(current)!!
+        assertEquals(listOf(ids[1], ids[2]), before.unit.pageIds)
+        assertTrue(owner.acceptPairingRestore(restore, firstPairSnapshot()))
+        assertEquals(before, owner.frame(current))
+        assertEquals(ids[1], owner.location!!.pageId)
+        assertTrue(owner.navigate(true))
+        assertEquals(ids[3], owner.location!!.pageId)
+    }
+
+    @Test
+    fun `background restore preserves a physically locked opening even before draw acknowledgement`() {
+        for (drawn in listOf(false, true)) {
+            val owner = owner(mangaId = 1, initialIndex = 0)
+            val ids = owner.identity.pageIds
+            val restore = owner.beginPairingRestore()!!
+            val current = owner.captureViewport()!!
+            if (drawn) assertTrue(owner.reportDrawn(current, setOf(ids[0])))
+            val before = owner.frame(current)!!
+            assertTrue(owner.acceptPairingRestore(restore, firstPairSnapshot()))
+            assertEquals(before, owner.frame(current))
+            assertEquals(ids[0], owner.location!!.pageId)
+            owner.goToPage(ids[3])
+            owner.releaseViewport(current)
+            owner.goToPage(ids[0])
+            assertEquals(listOf(ids[0], ids[1]), owner.targetUnit!!.pageIds)
+        }
+    }
+
+    private fun firstPairSnapshot() = ChapterPairingSnapshot(
+        ChapterPairingRecord(2, 5, emptySet(), openingMode = ReaderChapterOpeningMode.FIRST_PAIR),
+        1,
+    )
+
     @Test
     fun `general adjustment pairs cover in both directions and retains legal unknown or failed partners`() {
         for (direction in listOf(ReaderDirection.RTL, ReaderDirection.LTR)) {
@@ -377,7 +440,7 @@ class ReaderManualPairingIntentContractTest {
         owner.releaseViewport(ticket)
     }
 
-    private fun owner(mangaId: Long? = null): SharedDualPageSession {
+    private fun owner(mangaId: Long? = null, initialIndex: Int = 1): SharedDualPageSession {
         val ids = List(5) { ReaderPageId(ReaderChapterId(7), it) }
         return SharedDualPageSession(
             ReaderDualPageIdentity(
@@ -388,7 +451,7 @@ class ReaderManualPairingIntentContractTest {
                 },
             ),
             ReaderDirection.RTL,
-            ids[1],
+            ids[initialIndex],
             mangaId,
         ).also { session ->
             ids.forEach { session.acceptFact(session.requestFact(it), ReaderPageFact.dimensions(100, 200)) }

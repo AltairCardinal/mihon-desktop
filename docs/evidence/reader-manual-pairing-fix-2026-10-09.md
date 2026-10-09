@@ -108,3 +108,34 @@ Release实机进程中的一次性UI探针明确观察到：工具栏没有专�
 **原生重开验收未通过**：第三次完整UI探针前半菜单/按钮/配对通过，但新Activity首屏没有显示已保存的0/1组，`native-ui-parent-result.json`为passed=false（36.857秒）。新画面记录为FIRST_PAGE单页，保存数据本身正确。恢复链本批无diff，初始恢复的可见画面保护是待核推断，尚未给出唯一原因；不能称即时重开恢复、完整Release业务或整个阅读器全部通过。一次性探针源码、三次结果/日志、保存/呈现事件和SQLite副本保存在忽略目录`app-desktop/tmp/remove-opening-menu-acceptance-20261009/`，原失败原样保留，未提交成通过测试或删去失败日志。本轮正式行为测试仍为上面的真实Compose/共享/保存回归；不能拿JVM通过代签本原生失败。
 
 用户明确范围仍是移除专用菜单、保留自动规则。扩大到原恢复链修复及再构建候选已向用户提出独立范围选择，答复前不改恢复协议、不新增候选。本候选可验收菜单移除与通用调整，但带上述恢复限制；原DP02、此前三项自动布局问题及本轮两个已证实code63基线失败保持未关闭。所有版本以实际清单为准，不能为安全回退仅降低APK或数据库版本。
+
+## 2026-10-09 code66：首次空预备帧恢复已保存配对
+
+用户在已安装code64上报告：漫画柜《不死之身的斯黛菈公主》第14话首次打开第1张LEFT单页，继续第2张RIGHT单页，翻到第3张后返回才出现第1张RIGHT/第2张LEFT。本批按该反馈修复首次恢复，不重新增加专用菜单或改自动匹配规则。真机仅核版本并读取现有文本缓冲，未取得本次操作事件；不能凭缺少日志否定反馈。模型未读取图片。
+
+### 原因及最小修复
+
+code64在隔离API36模拟器再次执行原Release UI探针：原按钮保存成功，但新Activity恢复首对失败（37.815秒），原结果保留于`app-desktop/tmp/pairing-initial-restore-20261009/native-code64-red-result.json`。共享红测进一步确认：capture(emptySet)产生尚无locked/drawn图片的visible预备帧，后台restore把它当成已显示画面标为invalidAfterRelease，之后仍沿默认单页准备首张图片。
+
+`manualBoundaries`现在只保护有实际slot锁定、已有draw回执或导航后已挂载（activeSequence>0）的visible记录；初始sequence=0且没有任何图片承诺的预备帧失效，原ticket也失效，由既有wiring重新采用已保存关系。保留已锁但尚未drawn的画面和用户已经进入的loading组；恢复不改变location，不伪造阅读，也不增加数据库/识别等待。仅此共享呈现条件变更；无数据迁移、无新缓存、无新Load协议。若本地记录直到图片已锁定后才返回，仍保护当前画面，这一边界没有被取消。
+
+### TDD、审查和关联证据
+
+- `initial-pairing-restore-red`：16项中1项按正确原因失败，初始空ticket未失效；XML另存`shared-red.xml`。
+- 初版只保护locked/drawn，独审发现会改变已进入但未出图的页组。新增`initial-pairing-navigation-red`：17项中1项正确失败（late restore使已进入[1,2]的frame失效）。补activeSequence保护后`initial-pairing-navigation-green`：17项manual及9项group/rapid契约均通过，14秒；XML红证据保留`navigation-red.xml`。左右阅读方向、锁定未绘制、真实已绘制、迟到恢复后继续按组导航都有production行为断言。
+- 首轮`initial-pairing-restore-green`：共享16通过；Android25中23通过，仍失败`restored manual boundary survives a late wide image dimension callback`（[4]实际[4,5]）与`restored RTL last spread settles the last source page and marks chapter read`（[7]实际[6,7]）；Desktop9通过。上述两项与前一批干净code63 `remove-opening-menu-baseline2`复现断言相同，未弱化预期或冒称已修复。
+- 稳定条件的`initial-pairing-restore-refactor`选择共享26、Android6条实际保存/重开、读取挂起仍能翻页、取消重试、相邻默认恢复及保存跨生命周期接线，Desktop9条持久化模型集成；未运行完整模块或全量。最终状态见本节后续产物结果。
+- 复用原代理做独立只读审查，确认共享条件边界及initial sequence事实；实施由主代理接管。审查指出原生重复准备需在真实split后从source1返回source0，已通过实际按键修正，不清除保存行。代理无写入、无Gradle，未把未执行runtime标PASS。
+- 将原一次性失败探针纳入正式Android原生回归，保留真实按钮→保存→新Activity恢复的原失败断言；重复执行时通过原按钮拆分/重新配对准备夹具，不清除用户或模拟器数据库。
+
+### 最终构建及运行结果
+
+`initial-pairing-restore-refactor`通过（8分23秒，含Release/R8测试构建）：共享26、Android6、Desktop9共41项通过，0失败/跳过，3个Kotlin文件格式检查通过。测试准备步骤随后修正并通过`initial-pairing-native-package`格式及重新编译；原证书测试APK SHA256=`b6dd0b40c2d2cbffa53a0c04ac04146f09f743aaa595eb5e6ec0dc9e1def2291`。
+
+首份内部候选aex.47/code65 SHA256=`57c118989d12190faa11eff642553e811459fd3f0590204560eaee2b9bd43db5`，统一candidate/校验/模拟器覆盖安装通过；原生回归`native-code65-result.json`为PASS（8.589秒，OK 1 test）。新Activity首次prepare记录即context1/source0 RIGHT、source1 LEFT，没有先锁旧单页再挪动。此为合成夹具的真实Release生产链验收，不代签用户漫画原图。
+
+最终真机只读核对发现：本轮开始为code64，结束前已被另一份code65更新；实际拉取APK SHA256=`4982bd37702dbe0af0e1bad70fd4018c7312dac99542ae8ed87ca43209aa6474`，与本轮内部候选不同。尚不知其来源，未擅自覆盖。已向用户确认是否同时验收其他功能，并按正式候选不得复用版本号的规则将最终交付分配为aex.48/code66。此调整仅版本元数据，复用上述行为测试，但最终APK仍须独立构建及原生验证。
+
+最终[aex.48/code66 APK](D:/Codex/worktrees/0877/mihon/app/artifacts/android/0.19.4-aex.48-vc66-c0bc82d27d-release/Mihon-Fork-0.19.4-aex.48-vc66-release-universal.apk)已由统一candidate构建（2分24秒）、原证书校验及模拟器覆盖安装验证通过。SHA256=`b6f2187e39c5251a602f6e17af2650fec155d95acb463791b98467657f4d2770`，productionInputs=`241ab1906df3f135ef72fc5d30d686b718ec6828f4333b34415a113de252d4da`。Release/R8、资源压缩、非debuggable、四ABI、schema43/format2保持。`native-code66-result.json`原生重开回归PASS（6.456秒、OK 1 test），实际交付APK已覆盖验证，不仅复用code65结果。
+
+本轮未安装或触屏操作物理设备，未清数据、未做图片识别。保留其来源待确认的code65；用户待验路径为覆盖安装本轮候选后，重新进入已保存首两页配对的第14话，预期首屏第1张右、第2张左，无须先翻到第3张再返回。首次读取确实迟至已锁图之后的保护边界仍如前述，不能宣称所有数据库迟到情况都会即时重排。两项Android基线失败、此前自动布局三项及原DP02未因此关闭。

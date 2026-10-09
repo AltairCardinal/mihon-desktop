@@ -739,8 +739,10 @@ internal class ReaderDualPagePresentationOwner(
                 }
             }
             for (record in conflicting) {
-                if (protectVisible && record.visible) {
-                    // A delayed save changes future visits, never the pixels still being exposed.
+                val committed = record.locked.isNotEmpty() || record.drawn.isNotEmpty() || record.activeSequence > 0
+                if (protectVisible && record.visible && committed) {
+                    // Preserve physical slots and groups already entered by navigation, even while loading.
+                    // Only the initial empty proposal can adopt restored intent before its first pixel.
                     record.invalidAfterRelease = true
                 } else {
                     discard(record)
