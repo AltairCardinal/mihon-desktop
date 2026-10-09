@@ -2,11 +2,21 @@ package eu.kanade.tachiyomi.ui.reader.viewer
 
 import android.graphics.Color
 import android.os.SystemClock
+import android.util.Log
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.ViewConfiguration
+import android.view.ViewGroup
 import eu.kanade.tachiyomi.ui.reader.HostReaderArtFixture
+import eu.kanade.tachiyomi.ui.reader.actualArtField
+import eu.kanade.tachiyomi.ui.reader.actualArtReaderState
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagerPageHolder
+import mihon.domain.reader.ReaderDualPageViewportTicket
+import mihon.domain.reader.SharedDualPageSession
+import mihon.domain.reader.session.ReaderPageId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
@@ -15,6 +25,7 @@ import java.util.concurrent.TimeUnit
 
 @RunWith(Parameterized::class)
 class SharedDualPageSourceNavigationNativeTest(private val input: String) {
+    private var lastTapUp = 0L
     companion object {
         @JvmStatic
         @Parameterized.Parameters(name = "source-{0}")
@@ -22,7 +33,7 @@ class SharedDualPageSourceNavigationNativeTest(private val input: String) {
     }
 
     @Test
-    fun realNavigationTargetsTheUnpaintedPartnerAndTheNextRequestCanContinue() {
+    fun realNavigationSkipsTheCurrentGroupWithoutAcknowledgingTheHeldPartner() {
         HostReaderArtFixture("copymanga").use { fixture ->
             val release = CountDownLatch(1)
             fixture.beforeImageRequest.set { index -> if (index == 2) check(release.await(90, TimeUnit.SECONDS)) }
@@ -46,14 +57,55 @@ class SharedDualPageSourceNavigationNativeTest(private val input: String) {
                 fixture.await("The real navigation event must change its logical source target") {
                     fixture.logicalPageIndex() != 1
                 }
-                assertEquals("An unpainted D cannot be swallowed by its candidate group", 2, fixture.logicalPageIndex())
-                assertEquals("Merely targeting D must not mark it read", 1L, fixture.progress().first)
+                Log.i(
+                    "NativeSourceInput",
+                    "$input first source=${fixture.logicalPageIndex()} progress=${fixture.progress()}",
+                )
+                assertEquals(
+                    "All inputs must enter the next E/F group, not stop at held D",
+                    3,
+                    fixture.logicalPageIndex(),
+                )
+                assertEquals("Held D's original response must remain unreleased", 1L, release.count)
+                assertHeldPartnerHasNoDrawnAcknowledgement(fixture)
+                assertTrue("Only C or the real E/F group may have reached SQL", fixture.progress().first in 1L..4L)
                 next(fixture)
-                fixture.await("A second request must continue beyond unpainted D") { fixture.logicalPageIndex() != 2 }
-                assertEquals(3, fixture.logicalPageIndex())
+                fixture.await("A second request must enter the next whole group") { fixture.logicalPageIndex() != 3 }
+                Log.i(
+                    "NativeSourceInput",
+                    "$input second source=${fixture.logicalPageIndex()} progress=${fixture.progress()}",
+                )
+                assertEquals(5, fixture.logicalPageIndex())
+                assertEquals(1L, release.count)
+                assertHeldPartnerHasNoDrawnAcknowledgement(fixture)
+                assertTrue("SQL must never run ahead of actual visited G/H group", fixture.progress().first in 1L..6L)
             } finally {
                 release.countDown()
             }
+        }
+    }
+
+    private fun assertHeldPartnerHasNoDrawnAcknowledgement(fixture: HostReaderArtFixture) {
+        fixture.onReaderMain { activity ->
+            val viewer = actualArtField<Viewer?>(actualArtReaderState(activity), "viewer")
+            val pager = actualArtField<ViewGroup>(requireNotNull(viewer), "pager")
+            var observedScopes = 0
+            for (index in 0 until pager.childCount) {
+                val holder = pager.getChildAt(index) as? DualPagerPageHolder ?: continue
+                val scope = actualArtField<Pair<SharedDualPageSession, ReaderDualPageViewportTicket>?>(
+                    holder,
+                    "presentationScope",
+                ) ?: continue
+                val (owner, ticket) = scope
+                val frame = requireNotNull(owner.frame(ticket)) { "A live native scope requires its actual frame" }
+                val drawn = actualArtField<Set<ReaderPageId>>(frame, "drawnPageIds")
+                observedScopes++
+                assertTrue(
+                    "A held original page cannot acquire a drawn acknowledgement",
+                    drawn.none { actualArtField<Int>(it, "sourcePageIndex") == 2 },
+                )
+            }
+            assertTrue("No-D acknowledgement must observe at least one real native frame", observedScopes > 0)
         }
     }
 
@@ -63,8 +115,28 @@ class SharedDualPageSourceNavigationNativeTest(private val input: String) {
         when (input) {
             "key" -> fixture.key(KeyEvent.KEYCODE_DPAD_LEFT)
             "tap" -> {
-                fixture.touchWindow(MotionEvent.ACTION_DOWN, now, now, width * 0.05f, 1200f)
-                fixture.touchWindow(MotionEvent.ACTION_UP, now, now + 30, width * 0.05f, 1200f)
+                fixture.await("Independent tap requires a settled native viewport") {
+                    var idle = false
+                    fixture.onReaderMain { activity ->
+                        val state = actualArtReaderState(activity)
+                        val viewer = actualArtField<Viewer?>(state, "viewer")
+                        val pager = actualArtField<Any>(requireNotNull(viewer), "pager")
+                        val field = generateSequence<Class<*>>(pager.javaClass) { it.superclass }
+                            .flatMap { it.declaredFields.asSequence() }.first { it.name == "mScrollState" }
+                        field.isAccessible = true
+                        idle = field.getInt(pager) == 0
+                    }
+                    idle
+                }
+                val interval = ViewConfiguration.getDoubleTapTimeout().toLong() + 50
+                if (lastTapUp != 0L) {
+                    SystemClock.sleep((lastTapUp + interval - SystemClock.uptimeMillis()).coerceAtLeast(0))
+                }
+                val down = SystemClock.uptimeMillis()
+                fixture.touchWindow(MotionEvent.ACTION_DOWN, down, down, width * 0.05f, 1200f)
+                SystemClock.sleep(30)
+                lastTapUp = SystemClock.uptimeMillis()
+                fixture.touchWindow(MotionEvent.ACTION_UP, down, lastTapUp, width * 0.05f, 1200f)
             }
             "wheel" -> fixture.onReaderMain { activity ->
                 val pointer = MotionEvent.PointerProperties().apply {
@@ -89,15 +161,17 @@ class SharedDualPageSourceNavigationNativeTest(private val input: String) {
             "drag" -> {
                 fixture.touchWindow(MotionEvent.ACTION_DOWN, now, now, width * 0.15f, 1200f)
                 for (step in 1..6) {
+                    SystemClock.sleep(30)
                     fixture.touchWindow(
                         MotionEvent.ACTION_MOVE,
                         now,
-                        now + step * 30,
+                        SystemClock.uptimeMillis(),
                         width * (0.15f + step * 0.11f),
                         1200f,
                     )
                 }
-                fixture.touchWindow(MotionEvent.ACTION_UP, now, now + 210, width * 0.85f, 1200f)
+                SystemClock.sleep(30)
+                fixture.touchWindow(MotionEvent.ACTION_UP, now, SystemClock.uptimeMillis(), width * 0.85f, 1200f)
             }
         }
     }

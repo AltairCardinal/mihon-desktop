@@ -128,25 +128,15 @@ class DualPageViewerAdapter(
     internal fun selectGesturePage(displayPage: DisplayPage, forward: Boolean) {
         val entry = chapterPairings[displayPage.firstPage.chapter] ?: return
         val indices = displayPage.visiblePages.map { it.index }
-        val firstIndex = indices.min()
-        val lastIndex = indices.max()
         if (displayPage.visiblePages.any { entry.pages.getOrNull(it.index) !== it }) return
         val owner = entry.session
-        // A native selection may skip several slots when settling is interrupted by another drag.
-        // Use the shared directional move so drawn history and reverse reservations remain authoritative.
-        repeat(entry.pages.size) {
-            val index = owner.location?.pageId?.sourcePageIndex ?: return
-            if (index in indices) {
-                pendingPairing = true
-                startMatching()
-                return
-            }
-            if ((forward && index > lastIndex) || (!forward && index < firstIndex)) return
-            if (!owner.navigate(forward)) return
-            // A missing drawable partner can keep the shared next source unchanged.
-            // Let the existing native selection fallback handle it without looping that intent.
-            if (owner.location?.pageId?.sourcePageIndex == index) return
+        // Only the selected native group was entered; skipped slots must not acquire shared ownership.
+        if (owner.location?.pageId?.sourcePageIndex !in indices) {
+            val anchor = if (forward) indices.min() else indices.max()
+            if (!owner.goToPage(owner.identity.pageIds[anchor], forward)) return
         }
+        pendingPairing = true
+        startMatching()
     }
 
     internal fun close() {

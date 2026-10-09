@@ -100,16 +100,23 @@ class SharedDualPageRuntimeProgressProductionTest {
             },
             mangaId = 10,
             progressTracker = tracker,
+            pageCount = 6,
         )
         fun lastRead() = database.chaptersQueries.getChapterById(7).executeAsOne().last_page_read
+        var diagnostic: () -> String = { "SQL=${lastRead()}" }
+        var frameTimeNanos = 0L
+        fun renderFrame() {
+            frameTimeNanos += 16_000_000L
+            fixture.scene.render(frameTimeNanos).close()
+        }
         fun pumpUntil(done: () -> Boolean) {
             val deadline = System.nanoTime() + 5_000_000_000L
             while (!done() && System.nanoTime() < deadline) {
-                fixture.scene.render().close()
+                renderFrame()
                 runCurrent()
                 Thread.sleep(5)
             }
-            assertTrue(done(), "Partner-first native runtime did not reach the real SQL repository")
+            assertTrue(done(), "Partner-first native runtime did not reach SQL: ${diagnostic()}")
         }
         fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
         fun model() = fixture.scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
@@ -121,6 +128,14 @@ class SharedDualPageRuntimeProgressProductionTest {
             native.javaClass.getDeclaredField("binding").apply { isAccessible = true }.get(native)
                 as ReaderPagerPresentationBinding
         }.model
+        diagnostic = {
+            val active = model()
+            val owner = active.javaClass.getDeclaredField("dualSession").apply { isAccessible = true }
+                .get(active) as mihon.domain.reader.SharedDualPageSession
+            "page=${active.state.value.currentPage}/visible=${active.state.value.visiblePageIds}/" +
+                "location=${owner.location}/unit=${owner.targetUnit}/history=${owner.displayedHistory}/" +
+                "SQL=${lastRead()}"
+        }
         try {
             fixture.releaseBackgroundGates()
             pumpUntil { lastRead() == 2L }
@@ -131,21 +146,29 @@ class SharedDualPageRuntimeProgressProductionTest {
             assertEquals(1, model().runtime!!.session.state.value.context.initialPage)
             assertEquals(setOf(2), model().state.value.visiblePageIds.map { it.sourcePageIndex }.toSet())
             assertEquals(1L, database.reading_eventsQueries.countByChapter(7).executeAsOne())
-            // The ordinary LTR next tap must still process the unpainted C source page.
+            // Ordinary LTR navigation visits the next whole group even while C is still decoding.
             fixture.scene.sendPointerEvent(PointerEventType.Press, Offset(600f, 240f), button = PointerButton.Primary)
             fixture.scene.sendPointerEvent(PointerEventType.Release, Offset(600f, 240f), button = PointerButton.Primary)
             runCurrent()
-            assertEquals(1, model().state.value.currentPage)
+            assertEquals(3, model().state.value.currentPage)
+            pumpUntil { lastRead() == 4L }
+            fixture.scene.sendPointerEvent(PointerEventType.Press, Offset(40f, 240f), button = PointerButton.Primary)
+            fixture.scene.sendPointerEvent(PointerEventType.Release, Offset(40f, 240f), button = PointerButton.Primary)
+            runCurrent()
+            assertEquals(2, model().state.value.currentPage)
             current.complete(Unit)
             pumpUntil { model().state.value.visiblePageIds.map { it.sourcePageIndex }.toSet() == setOf(1, 2) }
             val appendedEvents = database.reading_eventsQueries.countByChapter(7).executeAsOne()
             repeat(20) {
-                fixture.scene.render().close()
+                renderFrame()
                 runCurrent()
                 Thread.sleep(5)
-                assertEquals(2L, lastRead(), "Appending earlier C cannot regress D's actual progress")
+                assertEquals(4L, lastRead(), "Returning and appending earlier C cannot regress E/F actual progress")
             }
-            assertEquals(1, model().state.value.currentPage)
+            assertEquals(setOf(1, 2), model().state.value.visiblePageIds.map { it.sourcePageIndex }.toSet())
+            val returnedAnchor = model().state.value.currentPage
+            assertTrue(returnedAnchor in 1..2)
+            // The runtime materialization context retains its initial page; scheduling has its own anchor.
             assertEquals(1, model().runtime!!.session.state.value.context.initialPage)
             assertEquals(appendedEvents, database.reading_eventsQueries.countByChapter(7).executeAsOne())
             val actualCurrent = model().runtime!!.session.state.value.snapshot.activeChapter.pages[1]

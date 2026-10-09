@@ -222,11 +222,11 @@ class SharedDualPageSession(
     }
 
     /** A location is retained until a real navigation or identity disposal; pager settling never replaces it. */
-    fun goToPage(pageId: ReaderPageId): Boolean {
+    fun goToPage(pageId: ReaderPageId, forward: Boolean? = null): Boolean {
         if (closed || pageId !in identity.pageIds) return false
         val sequence = (location?.sequence ?: -1) + 1
-        navigationForward = true
-        presentation.move(pageId, null, location?.pageId, sequence)
+        navigationForward = forward ?: true
+        presentation.move(pageId, forward, location?.pageId, sequence)
         location = ReaderDualPageLocationIntent(pageId, identity.generation, sequence)
         requests.clear()
         accepted.clear()

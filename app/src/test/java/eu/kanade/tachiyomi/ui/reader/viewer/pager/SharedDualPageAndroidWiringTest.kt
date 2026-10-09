@@ -93,6 +93,42 @@ class SharedDualPageAndroidWiringTest {
     private var replaceViewerDuringMatching = false
 
     @Test
+    fun `real key input turns whole loading groups and exact jump keeps its entered second source`() {
+        val chapter = chapter(9)
+        val pages = requireNotNull(chapter.pages)
+        viewer.config.usePageTransitions = false
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(pages[1])
+        viewer.adapter.updatePageDimensions(pages[1], 100, 200)
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        val current = requireNotNull(owner.captureViewport())
+        assertTrue(owner.reportDrawn(current, setOf(owner.identity.pageIds[1])))
+        fun next() = viewer.handleKeyEvent(
+            android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DPAD_LEFT),
+        )
+        assertTrue(next())
+        assertEquals(3, owner.location!!.pageId.sourcePageIndex)
+        assertEquals(
+            listOf(3, 4),
+            (viewer.adapter.items[viewer.pager.currentItem] as DisplayPage).visiblePages.map {
+                it.index
+            },
+        )
+        assertTrue(next())
+        assertEquals(5, owner.location!!.pageId.sourcePageIndex)
+        assertTrue(
+            viewer.handleKeyEvent(
+                android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DPAD_RIGHT),
+            ),
+        )
+        assertEquals(listOf(3, 4), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
+        viewer.moveToPage(pages[4])
+        assertEquals(4, owner.location!!.pageId.sourcePageIndex)
+        assertEquals(listOf(3, 4), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
+        assertTrue(owner.frame(current)?.drawnPageIds.orEmpty().none { it.sourcePageIndex == 2 })
+    }
+
+    @Test
     fun `continuous native drags synchronize every anchor without jumping back at idle`() {
         val chapter = gestureChapter()
         val pages = requireNotNull(chapter.pages)
@@ -105,7 +141,12 @@ class SharedDualPageAndroidWiringTest {
         listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
         selectNative(pages[3])
         selectNative(pages[5])
-        assertEquals(5, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
+        assertEquals(
+            "Native selected source5 must remain logical source5; units=" +
+                viewer.adapter.session(chapter)?.units?.map { it.pageIds.map { page -> page.sourcePageIndex } },
+            5,
+            viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex,
+        )
         val position = viewer.pager.currentItem
         listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_IDLE)
         assertEquals(position, viewer.pager.currentItem)
@@ -222,6 +263,22 @@ class SharedDualPageAndroidWiringTest {
 
     private fun gestureListener() =
         ReflectionHelpers.getField<ViewPager.SimpleOnPageChangeListener>(viewer, "pagerListener")
+
+    @Test
+    fun `cold reverse native selection preserves the frozen group without claiming its earlier neighbour`() {
+        val chapter = gestureChapter()
+        val pages = requireNotNull(chapter.pages)
+        val listener = gestureListener()
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_DRAGGING)
+        selectNative(pages[7])
+        selectNative(pages[5])
+        val selected = viewer.adapter.items[viewer.pager.currentItem] as DisplayPage
+        assertEquals(listOf(5, 6), selected.visiblePages.map { it.index })
+        val owner = requireNotNull(viewer.adapter.session(chapter))
+        assertEquals(selected.visiblePages.map { it.index }, owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
+        listener.onPageScrollStateChanged(ViewPager.SCROLL_STATE_IDLE)
+        assertEquals(listOf(5, 6), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
+    }
 
     @Test
     fun `native previous terminal transition retains its direction during late fact publication`() {

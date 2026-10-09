@@ -321,7 +321,7 @@ class ReaderPageTurnPresentationTest {
                 assertEquals(3, fixture.page)
                 assertTrue(
                     4 !in fixture.presented,
-                    "The second request must not skip source four before its first real pixel",
+                    "The first group turn has not drawn its loading partner",
                 )
             }
             fixture.tap(forward = true, rtl = rtl)
@@ -331,9 +331,9 @@ class ReaderPageTurnPresentationTest {
             }
 
             assertEquals(
-                if (dual) 4 else 2,
+                if (dual) 5 else 2,
                 fixture.page,
-                "A loading destination cannot consume its undrawn planned partner",
+                "Each turn advances beyond the whole current group even while its partner is loading",
             )
             assertEquals(setOf(GREEN), fixture.frame())
         }

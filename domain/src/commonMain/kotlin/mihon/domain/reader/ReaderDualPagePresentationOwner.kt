@@ -31,6 +31,7 @@ internal class ReaderDualPagePresentationOwner(
         val origin: ReaderPageId = unit.anchor,
         val forward: Boolean = true,
         var invalidAfterRelease: Boolean = false,
+        var entered: Boolean = false,
     ) {
         fun snapshot() = ReaderDualPageFrame(id, unit, locked.toSet(), drawn.toSet())
     }
@@ -90,17 +91,19 @@ internal class ReaderDualPagePresentationOwner(
         for (old in previous.records.values) {
             val slots = old.unit.slots.filter { it.pageId in unchanged || it.pageId !in old.locked }
             val locked = old.locked.filterTo(mutableSetOf()) { it in unchanged }
-            if (locked.isEmpty() || slots.isEmpty()) continue
+            if ((locked.isEmpty() && !old.entered) || slots.isEmpty()) continue
             val copy = Record(
                 old.id, old.unit.copy(slots = slots), locked,
                 old.drawn.filterTo(mutableSetOf()) { it in unchanged },
                 old.visible, old.appendable, old.reserved && slots.size == 2, old.activeSequence,
                 old.origin.takeIf { it in unchanged } ?: slots.first().pageId, old.forward,
                 old.invalidAfterRelease,
+                old.entered && old.unit.pageIds.all { it in unchanged },
             )
             records[copy.id] = copy
             if (copy.visible) active[copy.id] = copy
-            copy.unit.pageIds.filter { previous.membership[it] == old.id }.forEach { membership[it] = copy.id }
+            copy.unit.pageIds.filter { it in unchanged && previous.membership[it] == old.id }
+                .forEach { membership[it] = copy.id }
         }
     }
 
@@ -235,6 +238,7 @@ internal class ReaderDualPagePresentationOwner(
         active[record.id] = record
         record.appendable = true
         record.activeSequence = location.sequence
+        if (page == location.pageId) enter(record)
         for (id in ready) {
             record.locked += id
             membership[id] = record.id
@@ -325,8 +329,11 @@ internal class ReaderDualPagePresentationOwner(
             projection = null
             return
         }
-        // A later image already at the trailing slot commits the earlier loading slot as well.
-        val keep = if (record.drawn.any { it != record.unit.anchor }) record.unit.pageIds.toSet() else record.drawn
+        val keep = if (record.entered || record.drawn.any { it != record.unit.anchor }) {
+            record.unit.pageIds.toSet()
+        } else {
+            record.drawn
+        }
         val removed = record.unit.pageIds.filter { it !in keep }
         removed.forEach { if (membership[it] == record.id) membership.remove(it) }
         record.locked.retainAll(keep)
@@ -339,40 +346,45 @@ internal class ReaderDualPagePresentationOwner(
     }
 
     fun navigate(from: ReaderPageId, forward: Boolean): ReaderPageId? {
-        val record = record(from)
-        if (record != null && record.drawn.isNotEmpty()) {
-            val missing = record.unit.pageIds.firstOrNull { it !in record.drawn }
-            if (missing != null && (forward || ordinals.getValue(missing) <= ordinals.getValue(from))) return missing
-        }
-        val ordinal = if (record == null || record.drawn.isEmpty()) {
-            ordinals.getValue(from)
+        val current = enteredRecord(from)
+        val ordinal = if (forward) {
+            current.unit.pageIds.maxOf(ordinals::getValue)
         } else {
-            if (forward) record.drawn.maxOf(ordinals::getValue) else record.unit.pageIds.minOf(ordinals::getValue)
+            current.unit.pageIds.minOf(ordinals::getValue)
         }
         return pages.getOrNull(ordinal + if (forward) 1 else -1)
     }
 
+    private fun enter(record: Record) {
+        check(record.unit.pageIds.all { membership[it] == null || membership[it] == record.id })
+        record.entered = true
+        record.unit.pageIds.forEach { membership[it] = record.id }
+    }
+
+    private fun enteredRecord(page: ReaderPageId, unit: ReaderDualPageUnit? = null): Record =
+        (
+            record(page) ?: Record(
+                ReaderDualPageFrameId(identity().generation, context, serial++),
+                unit ?: candidate(page).unit,
+                visible = false,
+                origin = page,
+                forward = !reverse,
+            ).also { records[it.id] = it }
+            ).also {
+            it.appendable = true
+            refresh(it)
+            enter(it)
+        }
+
     fun move(target: ReaderPageId, forward: Boolean?, from: ReaderPageId?, sequence: Long) {
-        val outgoing = from?.let(::record)
+        val outgoing = from?.let(::enteredRecord)
         val incoming = record(target)?.takeUnless {
             // A mounted loading proposal has no geometry promise; the new logical target owns its decision.
-            (it.locked.isEmpty() && it.drawn.isEmpty() && target != it.origin) ||
-                (it === outgoing && target != it.unit.anchor && target !in it.drawn && it.unit.anchor in it.drawn)
+            !it.entered && it.locked.isEmpty() && it.drawn.isEmpty() && target != it.origin
         }
         val leaving = (active.values + listOfNotNull(outgoing)).distinct().filter { it !== incoming }
         for (record in leaving) {
             record.appendable = false
-            if (record === outgoing && record.drawn.none { it != record.unit.anchor }) {
-                val keep = record.drawn
-                record.unit.pageIds.filter { it !in keep }.forEach {
-                    if (membership[it] == record.id) membership.remove(it)
-                }
-                record.locked.retainAll(keep)
-                if (keep.isNotEmpty()) {
-                    record.unit =
-                        record.unit.copy(slots = record.unit.slots.filter { it.pageId in keep })
-                }
-            }
         }
         incoming?.activeSequence = sequence
         reported.clear()
@@ -380,6 +392,7 @@ internal class ReaderDualPagePresentationOwner(
         if (forward == null || from == null || reservations[target] == null) reservations.clear()
         projectionTarget = target
         projection = null
+        enteredRecord(target)
     }
 
     /** Only active windows need reconsideration; already locked physical slots are copied unchanged. */
@@ -432,8 +445,50 @@ internal class ReaderDualPagePresentationOwner(
 
     private fun refresh(record: Record) {
         if (!record.appendable || record.invalidAfterRelease) return
+        val decisionFacts = if (record.entered) {
+            object : Map<ReaderPageId, ReaderPageFact> by facts {
+                override fun get(key: ReaderPageId): ReaderPageFact? = facts[key]?.let {
+                    if (it.state == ReaderPageFactState.FAILED) it.copy(state = ReaderPageFactState.UNKNOWN) else it
+                }
+            }
+        } else {
+            facts
+        }
+        val nextDecision = if (record.entered) {
+            SharedDualPageRules.decide(
+                pages, decisionFacts, direction, ordinals.getValue(record.origin), record.forward, forced,
+                occupiedByOthers(record), usePageSideHints = automatic,
+                distance = { a, b -> if (automatic) distance(a, b) else null },
+            )
+        } else {
+            null
+        }
+        if (record.entered) {
+            val wasSpread = record.unit.singleReason == ReaderDualPageSingleReason.SPREAD
+            val structuralChange = record.unit.slots.any { slot ->
+                val fact = facts[slot.pageId]
+                val hintConflicts = when (fact?.sideHint) {
+                    ReaderPageSideHint.LEFT -> slot.position != ReaderPortraitSingleSlot.LEFT
+                    ReaderPageSideHint.RIGHT -> slot.position != ReaderPortraitSingleSlot.RIGHT
+                    else -> false
+                }
+                (fact?.state == ReaderPageFactState.SPREAD && slot.position != ReaderPortraitSingleSlot.FULL) ||
+                    (record.unit.pageIds.size == 2 && slot.pageId in forced) ||
+                    (automatic && fact?.state == ReaderPageFactState.PORTRAIT && hintConflicts) ||
+                    (wasSpread && fact?.state == ReaderPageFactState.PORTRAIT)
+            }
+            val matchedBoundary = !record.reserved && nextDecision?.reservedPair != null
+            val openingPair = record.unit.singleReason == ReaderDualPageSingleReason.FIRST_PAGE &&
+                nextDecision?.unit?.pageIds?.size == 2
+            if (!structuralChange && !matchedBoundary && !openingPair) {
+                if (!record.unit.certain && record.unit.pageIds.all(::known)) {
+                    updateUnit(record, record.unit.copy(certain = true))
+                }
+                return
+            }
+        }
         if (record.locked.isEmpty()) {
-            val next = candidate(record.origin, record.forward).unit
+            val next = nextDecision?.unit ?: candidate(record.origin, record.forward).unit
             if (next != record.unit) {
                 if (next.id != record.unit.id) tickets.keys.removeAll { tickets[it] === record }
                 updateUnit(record, next)
@@ -458,7 +513,7 @@ internal class ReaderDualPagePresentationOwner(
                 } else {
                     val fact = facts[slot.pageId]
                     val side = fact?.sideHint ?: ReaderPageSideHint.UNKNOWN
-                    fact?.state !in setOf(ReaderPageFactState.SPREAD, ReaderPageFactState.FAILED) &&
+                    fact?.state != ReaderPageFactState.SPREAD &&
                         slot.pageId !in forced && membership[slot.pageId]?.let { it != record.id } != true &&
                         (
                             side == ReaderPageSideHint.UNKNOWN ||
@@ -481,7 +536,7 @@ internal class ReaderDualPagePresentationOwner(
             return
         }
         val next = SharedDualPageRules.decide(
-            pages, facts, direction, ordinals.getValue(record.origin), record.forward, forced,
+            pages, decisionFacts, direction, ordinals.getValue(record.origin), record.forward, forced,
             occupiedByOthers(record), opening = false,
             usePageSideHints = automatic,
             distance = { a, b -> if (automatic) distance(a, b) else null },
@@ -509,6 +564,7 @@ internal class ReaderDualPagePresentationOwner(
             if (membership[it] == record.id) membership.remove(it)
         }
         record.unit = next
+        if (record.entered) next.pageIds.forEach { membership[it] = record.id }
     }
 
     private fun discard(record: Record) {

@@ -238,7 +238,7 @@ class SharedDualPageNativeStablePresentationTest {
     }
 
     @Test
-    fun `actual forward drag reaches undrawn partner before the following candidate viewport`() = runTest {
+    fun `actual forward drag reaches the next group without reading its held old partner`() = runTest {
         Fixture(this).use { fixture ->
             fixture.pump()
             fixture.dragForward()
@@ -246,13 +246,12 @@ class SharedDualPageNativeStablePresentationTest {
                 fixture.frame()
                 runCurrent()
             }
-            assertEquals(2, fixture.page)
-            assertEquals(
-                listOf(setOf(1)),
-                fixture.reports.map {
-                    it.mapTo(mutableSetOf(), ReaderPageId::sourcePageIndex)
-                },
-            )
+            assertEquals(3, fixture.page)
+            assertTrue(!fixture.partner.isCompleted)
+            val reports = fixture.reports.map { it.mapTo(mutableSetOf(), ReaderPageId::sourcePageIndex) }
+            assertTrue(reports.any { it == setOf(1) })
+            assertTrue(reports.any { it == setOf(3, 4) }, "The entered next group must really paint and report")
+            assertTrue(reports.all { 2 !in it }, "The held old partner must never be reported read")
         }
     }
 
@@ -286,13 +285,13 @@ class SharedDualPageNativeStablePresentationTest {
     }
 
     @Test
-    fun `actual rapid tap navigation targets missing source partner before the following page`() = runTest {
+    fun `actual rapid tap navigation advances whole groups past a held source partner`() = runTest {
         Fixture(this).use { fixture ->
             fixture.pump()
             fixture.tapForward()
-            assertEquals(2, fixture.page, "A planned but undrawn partner must not be skipped by the native pager")
+            assertEquals(3, fixture.page, "A held partner does not consume a separate native turn")
             fixture.tapForward()
-            assertEquals(3, fixture.page, "An unpainted loading target must not consume or block the next request")
+            assertEquals(5, fixture.page, "The next request advances beyond the whole loading group")
             assertEquals(
                 listOf(setOf(1)),
                 fixture.reports.map {
@@ -303,13 +302,13 @@ class SharedDualPageNativeStablePresentationTest {
     }
 
     @Test
-    fun `production wheel navigation also reaches unpainted source partner without reporting it read`() = runTest {
+    fun `production wheel navigation advances whole groups without reading the held partner`() = runTest {
         Fixture(this).use { fixture ->
             fixture.pump()
             fixture.wheelForward()
-            assertEquals(2, fixture.page)
-            fixture.wheelForward()
             assertEquals(3, fixture.page)
+            fixture.wheelForward()
+            assertEquals(5, fixture.page)
             assertEquals(
                 listOf(setOf(1)),
                 fixture.reports.map {
