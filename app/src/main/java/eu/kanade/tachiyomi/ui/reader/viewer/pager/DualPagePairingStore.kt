@@ -126,9 +126,13 @@ class DualPagePairingStore(val requiresRestoration: Boolean = false) {
         }
     }
 
-    internal fun beginRestore(chapter: ReaderChapter, pages: List<ReaderPage>): RestoreRequest? {
+    internal fun beginRestore(
+        chapter: ReaderChapter,
+        pages: List<ReaderPage>,
+        explicit: Boolean = false,
+    ): RestoreRequest? {
         val owner = ensure(chapter, pages).session
-        return owner.beginPairingRestore()?.let { RestoreRequest(chapter, pages, owner, it) }
+        return owner.beginPairingRestore(explicit)?.let { RestoreRequest(chapter, pages, owner, it) }
     }
 
     internal fun acceptRestore(operation: RestoreRequest, snapshot: ChapterPairingSnapshot): Boolean {

@@ -133,6 +133,39 @@ class AndroidChapterPairingPersistenceWiringTest {
     }
 
     @Test
+    fun `opening control saves first pair from real reader appbar and restores after reopen`() = runBlocking {
+        val file = temporaryFolder.newFile("opening-control.db")
+        openDatabase(file, create = true).use { first ->
+            seed(first.driver)
+            session(first).use { reader ->
+                reader.viewer.setChapters(requireNotNull(reader.model.state.value.viewerChapters))
+                reader.host.setContent {
+                    MaterialTheme { reader.activity.AppBars(reader.model.state.value.copy(menuVisible = true)) }
+                }
+                compose.mainClock.advanceTimeBy(500)
+                compose.onNodeWithText("Chapter opening").assertIsDisplayed().performClick()
+                compose.onNodeWithText("First two pages together").performClick()
+                withTimeout(5_000) {
+                    while (reader.model.state.value.pairingSaving) yield()
+                }
+                assertEquals(
+                    mihon.domain.reader.ReaderChapterOpeningMode.FIRST_PAIR,
+                    first.repository.load(2, 1).record?.openingMode,
+                )
+                assertEquals(setOf(0, 1), visiblePair(reader.viewer))
+            }
+        }
+        openDatabase(file).use { reopened ->
+            session(reopened).use { reader ->
+                reader.viewer.setChapters(requireNotNull(reader.model.state.value.viewerChapters))
+                val pages = requireNotNull(reader.model.state.value.currentChapter?.pages)
+                reader.viewer.moveToPage(pages[1])
+                assertEquals(setOf(0, 1), visiblePair(reader.viewer))
+            }
+        }
+    }
+
+    @Test
     fun `adjust button joins evidenced opening pages and persists a legal split with the same anchor`() = runBlocking {
         val file = temporaryFolder.newFile("evidenced-opening-pair.db")
         openDatabase(file, create = true).use { fixture ->
@@ -178,7 +211,8 @@ class AndroidChapterPairingPersistenceWiringTest {
                 adjust()
                 withTimeout(5_000) {
                     while (reader.model.state.value.pairingSaving ||
-                        fixture.repository.load(2, 1).record != null
+                        fixture.repository.load(2, 1).record?.openingMode !=
+                        mihon.domain.reader.ReaderChapterOpeningMode.FIRST_PAIR
                     ) {
                         yield()
                     }
@@ -812,20 +846,20 @@ class AndroidChapterPairingPersistenceWiringTest {
             seed(fixture.driver)
             val attempts = AtomicInteger()
             val repository = object : ChapterPairingRepository by fixture.repository {
-                override suspend fun replace(
+                override suspend fun replaceLayout(
                     chapterId: Long,
                     mangaId: Long,
                     expectedRevision: Long,
                     pageCount: Int,
-                    forcedSinglePages: Set<Int>,
+                    adjustment: mihon.domain.reader.ReaderPairingAdjustment,
                 ): ChapterPairingSnapshot {
                     if (attempts.incrementAndGet() == 1) throw IOException("pairing database unavailable")
-                    return fixture.repository.replace(
+                    return fixture.repository.replaceLayout(
                         chapterId,
                         mangaId,
                         expectedRevision,
                         pageCount,
-                        forcedSinglePages,
+                        adjustment,
                     )
                 }
             }
@@ -958,17 +992,17 @@ class AndroidChapterPairingPersistenceWiringTest {
             val attempts = AtomicInteger()
             val failure = AtomicReference<Throwable?>()
             val observed = object : ChapterPairingRepository by fixture.repository {
-                override suspend fun replace(
+                override suspend fun replaceLayout(
                     chapterId: Long,
                     mangaId: Long,
                     expectedRevision: Long,
                     pageCount: Int,
-                    forcedSinglePages: Set<Int>,
+                    adjustment: mihon.domain.reader.ReaderPairingAdjustment,
                 ): ChapterPairingSnapshot {
                     attempts.incrementAndGet()
-                    assertEquals(setOf(3), forcedSinglePages)
+                    assertEquals(setOf(3), adjustment.forcedSinglePages)
                     return try {
-                        fixture.repository.replace(chapterId, mangaId, expectedRevision, pageCount, forcedSinglePages)
+                        fixture.repository.replaceLayout(chapterId, mangaId, expectedRevision, pageCount, adjustment)
                     } catch (error: Throwable) {
                         failure.set(error)
                         throw error
@@ -1135,21 +1169,21 @@ class AndroidChapterPairingPersistenceWiringTest {
             val entered = CompletableDeferred<Unit>()
             val release = CompletableDeferred<Unit>()
             val delayed = object : ChapterPairingRepository by fixture.repository {
-                override suspend fun replace(
+                override suspend fun replaceLayout(
                     chapterId: Long,
                     mangaId: Long,
                     expectedRevision: Long,
                     pageCount: Int,
-                    forcedSinglePages: Set<Int>,
+                    adjustment: mihon.domain.reader.ReaderPairingAdjustment,
                 ): ChapterPairingSnapshot {
                     entered.complete(Unit)
                     release.await()
-                    return fixture.repository.replace(
+                    return fixture.repository.replaceLayout(
                         chapterId,
                         mangaId,
                         expectedRevision,
                         pageCount,
-                        forcedSinglePages,
+                        adjustment,
                     )
                 }
             }
@@ -1228,21 +1262,21 @@ class AndroidChapterPairingPersistenceWiringTest {
                     return fixture.repository.load(chapterId, mangaId)
                 }
 
-                override suspend fun replace(
+                override suspend fun replaceLayout(
                     chapterId: Long,
                     mangaId: Long,
                     expectedRevision: Long,
                     pageCount: Int,
-                    forcedSinglePages: Set<Int>,
+                    adjustment: mihon.domain.reader.ReaderPairingAdjustment,
                 ): ChapterPairingSnapshot {
                     entered.complete(Unit)
                     release.await()
-                    return fixture.repository.replace(
+                    return fixture.repository.replaceLayout(
                         chapterId,
                         mangaId,
                         expectedRevision,
                         pageCount,
-                        forcedSinglePages,
+                        adjustment,
                     )
                 }
             }
@@ -1295,12 +1329,12 @@ class AndroidChapterPairingPersistenceWiringTest {
             val release = CompletableDeferred<Unit>()
             val scheduler = TestCoroutineScheduler()
             val failing = object : ChapterPairingRepository by fixture.repository {
-                override suspend fun replace(
+                override suspend fun replaceLayout(
                     chapterId: Long,
                     mangaId: Long,
                     expectedRevision: Long,
                     pageCount: Int,
-                    forcedSinglePages: Set<Int>,
+                    adjustment: mihon.domain.reader.ReaderPairingAdjustment,
                 ): ChapterPairingSnapshot {
                     entered.complete(Unit)
                     release.await()

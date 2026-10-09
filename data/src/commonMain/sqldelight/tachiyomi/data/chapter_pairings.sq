@@ -3,6 +3,7 @@ CREATE TABLE chapter_pairings (
     format_version INTEGER NOT NULL,
     page_count INTEGER NOT NULL,
     revision INTEGER NOT NULL,
+    opening_mode TEXT NOT NULL DEFAULT 'AUTO',
     FOREIGN KEY(chapter_id) REFERENCES chapters(_id) ON DELETE CASCADE
 );
 
@@ -18,6 +19,25 @@ CREATE TABLE chapter_pairing_revisions (
     revision INTEGER NOT NULL,
     FOREIGN KEY(chapter_id) REFERENCES chapters(_id) ON DELETE CASCADE
 );
+
+CREATE TABLE chapter_pairing_pairs (
+    chapter_id INTEGER NOT NULL,
+    page_ordinal INTEGER NOT NULL,
+    PRIMARY KEY(chapter_id, page_ordinal),
+    FOREIGN KEY(chapter_id) REFERENCES chapter_pairings(chapter_id) ON DELETE CASCADE
+);
+
+selectPairs:
+SELECT page_ordinal FROM chapter_pairing_pairs WHERE chapter_id = :chapterId ORDER BY page_ordinal;
+
+deletePairs:
+DELETE FROM chapter_pairing_pairs WHERE chapter_id = :chapterId;
+
+insertPair:
+INSERT INTO chapter_pairing_pairs(chapter_id, page_ordinal) VALUES (:chapterId, :pageOrdinal);
+
+setOpeningMode:
+UPDATE chapter_pairings SET opening_mode = :openingMode WHERE chapter_id = :chapterId;
 
 chapterBelongsToManga:
 SELECT EXISTS(SELECT 1 FROM chapters WHERE _id = :chapterId AND manga_id = :mangaId);

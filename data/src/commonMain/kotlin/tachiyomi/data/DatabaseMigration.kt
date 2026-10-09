@@ -343,6 +343,8 @@ object DatabaseMigration {
                     val legacyShape = columns + "attempt"
                     val currentShape = columns + setOf("attempt_id", "network_failure_count")
                     requireTableWithOneShape(driver, table, legacyShape, currentShape)
+                } else if (table == "chapter_pairings") {
+                    requireTableWithOneShape(driver, table, columns, columns + "opening_mode")
                 } else {
                     requireTable(driver, table, columns)
                 }
@@ -350,11 +352,24 @@ object DatabaseMigration {
         }
         if (hasObject(driver, "table", "chapter_pairings")) requireChapterPairingShape(driver)
         if (hasObject(driver, "table", "chapter_pairing_boundaries")) requireChapterPairingBoundaryShape(driver)
+        if (hasObject(
+                driver,
+                "table",
+                "chapter_pairing_pairs",
+            )
+        ) {
+            requireChapterPairingBoundaryShape(driver, "chapter_pairing_pairs")
+        }
         if (hasObject(driver, "table", "chapter_pairing_revisions")) requireChapterPairingRevisionShape(driver)
     }
 
     private fun requireChapterPairingShape(driver: SqlDriver) {
-        requireTable(driver, "chapter_pairings", setOf("chapter_id", "format_version", "page_count", "revision"))
+        requireTableWithOneShape(
+            driver,
+            "chapter_pairings",
+            setOf("chapter_id", "format_version", "page_count", "revision"),
+            setOf("chapter_id", "format_version", "page_count", "revision", "opening_mode"),
+        )
         require(
             queryCount(
                 driver,
@@ -373,19 +388,19 @@ object DatabaseMigration {
         }
     }
 
-    private fun requireChapterPairingBoundaryShape(driver: SqlDriver) {
-        requireTable(driver, "chapter_pairing_boundaries", setOf("chapter_id", "page_ordinal"))
+    private fun requireChapterPairingBoundaryShape(driver: SqlDriver, table: String = "chapter_pairing_boundaries") {
+        requireTable(driver, table, setOf("chapter_id", "page_ordinal"))
         require(
             queryCount(
                 driver,
-                "SELECT COUNT(*) FROM pragma_table_info('chapter_pairing_boundaries') " +
+                "SELECT COUNT(*) FROM pragma_table_info('$table') " +
                     "WHERE (name='chapter_id' AND pk=1) OR (name='page_ordinal' AND pk=2)",
             ) == 2L,
         )
         require(
             queryCount(
                 driver,
-                "SELECT COUNT(*) FROM pragma_foreign_key_list('chapter_pairing_boundaries') " +
+                "SELECT COUNT(*) FROM pragma_foreign_key_list('$table') " +
                     "WHERE \"from\"='chapter_id' AND \"table\"='chapter_pairings' AND \"to\"='chapter_id' " +
                     "AND on_delete='CASCADE'",
             ) == 1L,

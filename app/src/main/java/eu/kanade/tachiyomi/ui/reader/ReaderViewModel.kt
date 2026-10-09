@@ -71,6 +71,7 @@ import mihon.domain.reader.ChapterPairingSnapshot
 import mihon.domain.reader.ChapterSkipPolicy
 import mihon.domain.reader.ReaderAdjacentChapterEffect
 import mihon.domain.reader.ReaderChapterEntry
+import mihon.domain.reader.ReaderChapterOpeningMode
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderNavigationCommand
 import mihon.domain.reader.ReaderTransitionDirection
@@ -165,27 +166,51 @@ class ReaderViewModel @JvmOverloads constructor(
         mutableState.update { it.copy(currentPage = page.index + 1) }
     }
 
-    fun adjustChapterPairing(viewer: DualPageR2LPagerViewer) {
+    fun adjustChapterPairing(viewer: DualPageR2LPagerViewer) = changeChapterPairing(viewer, null)
+
+    fun setChapterOpening(viewer: DualPageR2LPagerViewer, mode: ReaderChapterOpeningMode) = changeChapterPairing(
+        viewer,
+        mode,
+    )
+
+    private fun changeChapterPairing(viewer: DualPageR2LPagerViewer, opening: ReaderChapterOpeningMode?) {
         val chapter = state.value.currentChapter ?: return
         val chapterId = chapter.chapter.id ?: return
         val mangaId = manga?.id ?: return
         if (state.value.viewer !== viewer || state.value.pairingSaving) return
-        val request = viewer.pairingAdjustmentRequest() ?: return
+        val request =
+            (if (opening == null) viewer.pairingAdjustmentRequest() else viewer.pairingOpeningRequest(opening))
+                ?: return
         if (chapter !== request.chapter) return
         val sequence = ++pairingSaveSequence
         mutableState.update { it.copy(pairingSaving = true) }
+        logcat(LogPriority.INFO) {
+            "DualPageManual save requested" +
+                " operation=${request.save.operationId}" +
+                " revision=${request.save.expectedRevision}" +
+                " target=${request.save.adjustment.currentPage}" +
+                " opening=${request.save.adjustment.openingMode}" +
+                " boundaries=${request.save.adjustment.forcedSinglePages.sorted().take(16)}" +
+                " pairs=${request.save.adjustment.manualPairStarts.sorted().take(16)}"
+        }
         val accepted = pairingCoordinator.submit(chapterId) {
-            replace(
+            replaceLayout(
                 chapterId,
                 mangaId,
                 request.save.expectedRevision,
                 request.pages.size,
-                request.save.adjustment.forcedSinglePages,
+                request.save.adjustment,
             )
         }
         viewModelScope.launch(pairingCallbackDispatcher) {
             try {
                 val saved = accepted.await()
+                logcat(LogPriority.INFO) {
+                    "DualPageManual saved" +
+                        " operation=${request.save.operationId}" +
+                        " revision=${saved.revision}" +
+                        " current=${isCurrentPairingRequest(request, mangaId, sequence)}"
+                }
                 if (!isCurrentPairingRequest(request, mangaId, sequence)) return@launch
                 if (dualPagePairings.acceptSave(request, saved)) {
                     (state.value.viewer as? DualPageR2LPagerViewer)?.refreshPairing()
@@ -196,6 +221,12 @@ class ReaderViewModel @JvmOverloads constructor(
             } catch (error: Throwable) {
                 if (!isCurrentPairingRequest(request, mangaId, sequence)) return@launch
                 val conflict = error is mihon.domain.reader.StaleChapterPairingException
+                logcat(LogPriority.INFO) {
+                    "DualPageManual save rejected" +
+                        " operation=${request.save.operationId}" +
+                        " conflict=$conflict" +
+                        " type=${error::class.simpleName}"
+                }
                 if (!dualPagePairings.failSave(request, conflict)) return@launch
                 mutableState.update { it.copy(pairingSaving = false) }
                 eventChannel.send(Event.ChapterPairingSaveFailed)
@@ -486,6 +517,7 @@ class ReaderViewModel @JvmOverloads constructor(
         activationIntent: ReaderChapterWindowIntent.OpenAdjacent? = null,
         canActivate: () -> Boolean = { true },
         useDefaultPairing: Boolean = false,
+        explicitPairingRestore: Boolean = false,
     ): ReadingActivation? {
         if (activationIntent == null) {
             loader.loadChapter(chapter)
@@ -507,8 +539,10 @@ class ReaderViewModel @JvmOverloads constructor(
             chapterList.getOrNull(chapterPos + 1),
         )
 
-        val restoreInBackground = withUIContext { !useDefaultPairing && usesDualPageViewer() }
-        if (!restoreInBackground && !restoreChapterPairing(chapter, useDefaultPairing, canActivate) {
+        val restoreInBackground =
+            withUIContext { !useDefaultPairing && !explicitPairingRestore && usesDualPageViewer() }
+        if (!restoreInBackground &&
+            !restoreChapterPairing(chapter, useDefaultPairing, canActivate, explicitPairingRestore) {
                 if (canActivate()) {
                     pairingRetryChapter = chapter
                     mutableState.update { it.copy(dialog = Dialog.PairingRestoreError(chapter)) }
@@ -815,6 +849,7 @@ class ReaderViewModel @JvmOverloads constructor(
         chapter: ReaderChapter,
         useDefault: Boolean = false,
         canActivate: () -> Boolean = { true },
+        explicit: Boolean = false,
         onFailure: () -> Unit,
     ): Boolean {
         val chapterId = requireNotNull(chapter.chapter.id)
@@ -828,7 +863,7 @@ class ReaderViewModel @JvmOverloads constructor(
         while (true) {
             val operation = withUIContext {
                 if (!canActivate() || manga?.id != mangaId) return@withUIContext null
-                chapter.pages?.let { dualPagePairings.beginRestore(chapter, it) }.also {
+                chapter.pages?.let { dualPagePairings.beginRestore(chapter, it, explicit) }.also {
                     publishPairingRecordAvailability()
                 }
             } ?: return false
@@ -1420,7 +1455,7 @@ class ReaderViewModel @JvmOverloads constructor(
                 return@launchIO
             }
             try {
-                val activation = loadChapter(chapterLoader, chapter, intent)
+                val activation = loadChapter(chapterLoader, chapter, intent, explicitPairingRestore = true)
                 if (activation != null) eventChannel.send(Event.ReloadViewerChapters)
             } catch (error: CancellationException) {
                 throw error

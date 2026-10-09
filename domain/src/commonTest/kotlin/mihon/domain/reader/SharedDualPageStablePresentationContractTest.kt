@@ -463,7 +463,21 @@ class SharedDualPageStablePresentationContractTest {
             }
             val original = protected?.let(owner::frame)
             val location = owner.location
-            assertTrue(owner.acceptPairingSave(save, ChapterPairingSnapshot(null, 2)))
+            assertTrue(
+                owner.acceptPairingSave(
+                    save,
+                    ChapterPairingSnapshot(
+                        ChapterPairingRecord(
+                            2,
+                            8,
+                            save.adjustment.forcedSinglePages,
+                            openingMode = save.adjustment.openingMode,
+                            manualPairStarts = save.adjustment.manualPairStarts,
+                        ),
+                        2,
+                    ),
+                ),
+            )
             assertEquals(location, owner.location)
             if (late) {
                 assertEquals(original, owner.frame(protected!!))
@@ -485,7 +499,21 @@ class SharedDualPageStablePresentationContractTest {
             owner.reportDrawn(current, setOf(ids[0], ids[1]))
             val split = owner.adjustPairing()!!
             assertEquals(setOf(1), split.adjustment.forcedSinglePages)
-            assertTrue(owner.acceptPairingSave(split, ChapterPairingSnapshot(ChapterPairingRecord(1, 8, setOf(1)), 3)))
+            assertTrue(
+                owner.acceptPairingSave(
+                    split,
+                    ChapterPairingSnapshot(
+                        ChapterPairingRecord(
+                            2,
+                            8,
+                            split.adjustment.forcedSinglePages,
+                            openingMode = split.adjustment.openingMode,
+                            manualPairStarts = split.adjustment.manualPairStarts,
+                        ),
+                        3,
+                    ),
+                ),
+            )
             assertEquals(ids[1], owner.location!!.pageId)
             assertEquals(listOf(ids[1]), owner.targetUnit!!.pageIds)
             assertEquals(ReaderPortraitSingleSlot.LEFT, owner.targetUnit!!.slots.single().position)
@@ -1154,7 +1182,21 @@ class SharedDualPageStablePresentationContractTest {
             val frame = owner.frame(current)!!
             val location = owner.location
             if (releaseBeforeSave) owner.releaseViewport(original)
-            assertTrue(owner.acceptPairingSave(save, ChapterPairingSnapshot(ChapterPairingRecord(1, 8, setOf(1)), 2)))
+            assertTrue(
+                owner.acceptPairingSave(
+                    save,
+                    ChapterPairingSnapshot(
+                        ChapterPairingRecord(
+                            2,
+                            8,
+                            save.adjustment.forcedSinglePages,
+                            openingMode = save.adjustment.openingMode,
+                            manualPairStarts = save.adjustment.manualPairStarts,
+                        ),
+                        2,
+                    ),
+                ),
+            )
             assertEquals(location, owner.location)
             assertEquals(frame.unit.slots, owner.frame(current)!!.unit.slots)
             if (!releaseBeforeSave) owner.releaseViewport(original)

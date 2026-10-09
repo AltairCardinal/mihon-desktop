@@ -165,6 +165,8 @@ Single、Webtoon 和 Dual 是 registry 中同级策略：
 
 ### 章节手动双页边界（CP-01 Desktop）
 
+2026-10-09增量：当前章级模型在原独占边界上增加开篇方式和明确相邻配对，见[本轮修复契约与验证](../evidence/reader-manual-pairing-fix-2026-10-09.md)。下述CP-01仅forced-single的描述保留历史来源；新状态仅在边界、明确配对均为空且开篇方式为自动时清除，revision继续保留。显式布局经同一CAS、共享owner及两端应用级协调器消费，不改变同步/备份或阅读进度格式。旧格式兼容与数据库升级结果以增量报告为准。
+
 `ChapterPairingRepository` 是手动 forced-single 边界的章级持久接口；SQLDelight 文件库保存格式版本、
 页数、边界及独立的单调 revision。读取和写入都核对真实章节与漫画归属；边界清空时删除配对状态及边界，
 但保留 revision 元数据以防旧会话在清空后重建时通过过期 CAS。删除章节由外键级联清除三张表。

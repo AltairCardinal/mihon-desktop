@@ -14,6 +14,7 @@ class DatabaseMigrationCompatibilityTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         createLegacyFixture(driver)
         driver.execute(null, "PRAGMA foreign_keys=OFF", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS chapter_pairing_pairs", 0)
         driver.execute(null, "DROP TABLE chapter_pairing_boundaries", 0)
         driver.execute(null, "DROP TABLE chapter_pairings", 0)
         driver.execute(null, "DROP TABLE chapter_pairing_revisions", 0)
@@ -46,6 +47,7 @@ class DatabaseMigrationCompatibilityTest {
     fun `schema 39 refuses incompatible preexisting chapter pairing table`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         createLegacyFixture(driver)
+        driver.execute(null, "DROP TABLE IF EXISTS chapter_pairing_pairs", 0)
         driver.execute(null, "DROP TABLE chapter_pairing_boundaries", 0)
         driver.execute(null, "DROP TABLE chapter_pairings", 0)
         driver.execute(null, "DROP TABLE chapter_pairing_revisions", 0)
@@ -115,7 +117,7 @@ class DatabaseMigrationCompatibilityTest {
 
     @Test
     fun `current schema reserves compatibility migration after published sync schema`() {
-        Database.Schema.version shouldBe 42L
+        Database.Schema.version shouldBe 43L
     }
 
     @Test
@@ -577,6 +579,8 @@ class DatabaseMigrationCompatibilityTest {
 
     private fun createLegacyFixture(driver: app.cash.sqldelight.db.SqlDriver) {
         Database.Schema.create(driver)
+        driver.execute(null, "DROP TABLE IF EXISTS chapter_pairing_pairs", 0)
+        driver.execute(null, "ALTER TABLE chapter_pairings DROP COLUMN opening_mode", 0)
         // These fixtures represent schemas predating the published pause-clock migrations.
         driver.execute(null, "DROP TRIGGER IF EXISTS sync_runtime_pause_transition", 0)
         driver.execute(null, "DROP TABLE IF EXISTS sync_runtime_pause_clock", 0)

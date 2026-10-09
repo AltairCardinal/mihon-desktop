@@ -19,6 +19,8 @@ data class ReaderPairingPersistenceState(
     val committedForcedSinglePages: Set<Int> = emptySet(),
     val revision: Long? = null,
     val notice: ReaderPairingPersistenceNotice = ReaderPairingPersistenceNotice.NONE,
+    val openingMode: ReaderChapterOpeningMode = ReaderChapterOpeningMode.AUTO,
+    val manualPairStarts: Set<Int> = emptySet(),
 )
 
 sealed interface ReaderPairingPersistenceRequest {
@@ -30,6 +32,8 @@ sealed interface ReaderPairingPersistenceRequest {
         override val identity: ReaderDualPageIdentity,
         override val mangaId: Long,
         override val operationId: Long,
+        val explicit: Boolean = false,
+        val locationSequence: Long? = null,
     ) : ReaderPairingPersistenceRequest
 
     data class Save(
@@ -75,7 +79,7 @@ class ReaderPairingPersistenceOwner(val identity: ReaderDualPageIdentity, mangaI
         return next
     }
 
-    fun beginRestore(): ReaderPairingPersistenceRequest.Load? {
+    fun beginRestore(explicit: Boolean = false, locationSequence: Long? = null): ReaderPairingPersistenceRequest.Load? {
         val mangaId = mangaId ?: return null
         if (closed ||
             pending is ReaderPairingPersistenceRequest.Load ||
@@ -85,7 +89,13 @@ class ReaderPairingPersistenceOwner(val identity: ReaderDualPageIdentity, mangaI
         }
         // A reload supersedes delivery of an older save, not the accepted repository write.
         // The platform coordinator completes that write before this new read executes.
-        return ReaderPairingPersistenceRequest.Load(identity, mangaId, nextOperationId++).also {
+        return ReaderPairingPersistenceRequest.Load(
+            identity,
+            mangaId,
+            nextOperationId++,
+            explicit,
+            locationSequence,
+        ).also {
             pending = it
             state = state.copy(status = ReaderPairingPersistenceStatus.RESTORING)
         }
@@ -108,6 +118,8 @@ class ReaderPairingPersistenceOwner(val identity: ReaderDualPageIdentity, mangaI
             } else {
                 ReaderPairingPersistenceNotice.NONE
             },
+            record?.openingMode ?: ReaderChapterOpeningMode.AUTO,
+            record?.manualPairStarts?.toSet().orEmpty(),
         )
         return true
     }
@@ -127,13 +139,20 @@ class ReaderPairingPersistenceOwner(val identity: ReaderDualPageIdentity, mangaI
     }
 
     fun beginSave(adjustment: ReaderPairingAdjustment, locationSequence: Long): ReaderPairingPersistenceRequest.Save? {
-        if (closed || pending != null || adjustment.forcedSinglePages == state.committedForcedSinglePages) return null
+        val unchanged = adjustment.forcedSinglePages == state.committedForcedSinglePages &&
+            adjustment.openingMode == state.openingMode && adjustment.manualPairStarts == state.manualPairStarts
+        if (closed || pending != null || unchanged) return null
         require(adjustment.currentPage in identity.content.indices)
         require(adjustment.forcedSinglePages.all { it in 1 until identity.content.size })
         if (state.status == ReaderPairingPersistenceStatus.TEMPORARY ||
             state.status == ReaderPairingPersistenceStatus.DEFAULT_UNVERIFIED
         ) {
-            state = state.copy(committedForcedSinglePages = adjustment.forcedSinglePages.toSet())
+            state =
+                state.copy(
+                    committedForcedSinglePages = adjustment.forcedSinglePages.toSet(),
+                    openingMode = adjustment.openingMode,
+                    manualPairStarts = adjustment.manualPairStarts.toSet(),
+                )
             return null
         }
         if (state.status != ReaderPairingPersistenceStatus.READY &&
@@ -148,7 +167,10 @@ class ReaderPairingPersistenceOwner(val identity: ReaderDualPageIdentity, mangaI
             mangaId,
             nextOperationId++,
             revision,
-            adjustment.copy(forcedSinglePages = adjustment.forcedSinglePages.toSet()),
+            adjustment.copy(
+                forcedSinglePages = adjustment.forcedSinglePages.toSet(),
+                manualPairStarts = adjustment.manualPairStarts.toSet(),
+            ),
             locationSequence,
         ).also {
             pending = it
@@ -160,17 +182,28 @@ class ReaderPairingPersistenceOwner(val identity: ReaderDualPageIdentity, mangaI
         if (!accepts(request)) return false
         val proposed = request.adjustment.forcedSinglePages
         val record = snapshot.record
-        val matches = if (proposed.isEmpty()) {
+        val matches = if (proposed.isEmpty() && request.adjustment.openingMode == ReaderChapterOpeningMode.AUTO &&
+            request.adjustment.manualPairStarts.isEmpty()
+        ) {
             record == null
         } else {
-            record?.isValidFor(identity.content.size) == true && record.forcedSinglePages == proposed
+            record?.isValidFor(identity.content.size) == true && record.forcedSinglePages == proposed &&
+                record.openingMode == request.adjustment.openingMode &&
+                record.manualPairStarts == request.adjustment.manualPairStarts
         }
         if (!matches || snapshot.revision <= request.expectedRevision) {
             failSave(request, conflict = false)
             return false
         }
         pending = null
-        state = ReaderPairingPersistenceState(ReaderPairingPersistenceStatus.READY, proposed, snapshot.revision)
+        state =
+            ReaderPairingPersistenceState(
+                ReaderPairingPersistenceStatus.READY,
+                proposed,
+                snapshot.revision,
+                openingMode = request.adjustment.openingMode,
+                manualPairStarts = request.adjustment.manualPairStarts,
+            )
         return true
     }
 

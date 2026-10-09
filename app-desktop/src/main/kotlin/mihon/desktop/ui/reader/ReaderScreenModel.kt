@@ -1116,12 +1116,12 @@ class ReaderScreenModel(
         val context = _state.value.context
         coordinator.submit(context.chapterId) {
             runCatching {
-                replace(
+                replaceLayout(
                     context.chapterId,
                     request.mangaId,
                     request.expectedRevision,
                     request.identity.pageIds.size,
-                    request.adjustment.forcedSinglePages,
+                    request.adjustment,
                 )
             }.fold(
                 onSuccess = { snapshot ->

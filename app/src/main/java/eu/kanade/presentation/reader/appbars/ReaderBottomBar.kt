@@ -1,16 +1,24 @@
 package eu.kanade.presentation.reader.appbars
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -20,6 +28,7 @@ import androidx.compose.ui.semantics.stateDescription
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
+import mihon.domain.reader.ReaderChapterOpeningMode
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 
@@ -40,6 +49,8 @@ fun ReaderBottomBar(
     isPairingRecordReady: Boolean = true,
     onRetryPairing: () -> Unit = {},
     onClickAdjustPairing: () -> Unit = {},
+    openingMode: ReaderChapterOpeningMode = ReaderChapterOpeningMode.AUTO,
+    onSelectOpening: (ReaderChapterOpeningMode) -> Unit = {},
 ) {
     Row(
         modifier = modifier
@@ -89,6 +100,37 @@ fun ReaderBottomBar(
                     painter = painterResource(R.drawable.ic_adjust_pairing_24dp),
                     contentDescription = stringResource(MR.strings.action_adjust_page_pairing),
                 )
+            }
+            Box {
+                var openingMenu by remember { mutableStateOf(false) }
+                val options = listOf(
+                    ReaderChapterOpeningMode.AUTO to MR.strings.reader_chapter_opening_auto,
+                    ReaderChapterOpeningMode.FIRST_SINGLE to MR.strings.reader_chapter_opening_single,
+                    ReaderChapterOpeningMode.FIRST_PAIR to MR.strings.reader_chapter_opening_pair,
+                )
+                TextButton(
+                    onClick = { openingMenu = true },
+                    enabled =
+                    isPairingRecordReady && !isPairingSaving && !isPairingUnavailable,
+                ) {
+                    Text(stringResource(MR.strings.reader_chapter_opening))
+                }
+                DropdownMenu(expanded = openingMenu, onDismissRequest = { openingMenu = false }) {
+                    options.forEach { (mode, label) ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(label)) },
+                            onClick = {
+                                openingMenu = false
+                                onSelectOpening(mode)
+                            },
+                            leadingIcon = if (mode == openingMode) {
+                                { Text("✓") }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                }
             }
             if (isPairingUnavailable) {
                 IconButton(onClick = onRetryPairing) {

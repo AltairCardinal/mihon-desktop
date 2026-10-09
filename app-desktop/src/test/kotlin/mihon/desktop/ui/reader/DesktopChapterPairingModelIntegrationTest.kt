@@ -6,6 +6,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.reader.DesktopChapterPairingCoordinator
 import mihon.desktop.reader.desktopReaderSessionState
+import mihon.domain.reader.ReaderPairingAdjustment
 import mihon.domain.reader.ChapterPairingRecord
 import mihon.domain.reader.ChapterPairingRepository
 import mihon.domain.reader.ChapterPairingSnapshot
@@ -22,18 +23,18 @@ class DesktopChapterPairingModelIntegrationTest {
     fun `actual repository read begins with the shared restoring ticket and first binding keeps it`() = runTest {
         val gate = CompletableDeferred<Unit>()
         var reads = 0
-        val repository = object : ChapterPairingRepository {
+        val repository = object : CompleteLayoutRepository() {
             override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
                 reads++
                 gate.await()
                 return ChapterPairingSnapshot(ChapterPairingRecord(1, 8, setOf(3)), 4)
             }
-            override suspend fun replace(
+            override suspend fun replaceLayout(
                 chapterId: Long,
                 mangaId: Long,
                 expectedRevision: Long,
                 pageCount: Int,
-                forcedSinglePages: Set<Int>,
+                adjustment: ReaderPairingAdjustment,
             ): ChapterPairingSnapshot = error("No write")
         }
         val reader = loaded(11, generation = 1)
@@ -61,7 +62,7 @@ class DesktopChapterPairingModelIntegrationTest {
     @Test
     fun `late read from prior chapter cannot replace the new chapter pairing`() = runTest {
         val oldReadGate = CompletableDeferred<Unit>()
-        val repository = object : ChapterPairingRepository {
+        val repository = object : CompleteLayoutRepository() {
             override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
                 if (chapterId == 11L) oldReadGate.await()
                 return ChapterPairingSnapshot(
@@ -70,12 +71,12 @@ class DesktopChapterPairingModelIntegrationTest {
                 )
             }
 
-            override suspend fun replace(
+            override suspend fun replaceLayout(
                 chapterId: Long,
                 mangaId: Long,
                 expectedRevision: Long,
                 pageCount: Int,
-                forcedSinglePages: Set<Int>,
+                adjustment: ReaderPairingAdjustment,
             ): ChapterPairingSnapshot = error("No save expected")
         }
         val coordinator = DesktopChapterPairingCoordinator(repository, backgroundScope)
@@ -100,19 +101,19 @@ class DesktopChapterPairingModelIntegrationTest {
     fun `accepted save finishes after reader dispose and same chapter reopen waits for it`() = runTest {
         val saveGate = CompletableDeferred<Unit>()
         var snapshot = ChapterPairingSnapshot(null, 0)
-        val repository = object : ChapterPairingRepository {
+        val repository = object : CompleteLayoutRepository() {
             override suspend fun load(chapterId: Long, mangaId: Long) = snapshot
 
-            override suspend fun replace(
+            override suspend fun replaceLayout(
                 chapterId: Long,
                 mangaId: Long,
                 expectedRevision: Long,
                 pageCount: Int,
-                forcedSinglePages: Set<Int>,
+                adjustment: ReaderPairingAdjustment,
             ): ChapterPairingSnapshot {
                 saveGate.await()
                 if (snapshot.revision != expectedRevision) throw StaleChapterPairingException()
-                snapshot = ChapterPairingSnapshot(ChapterPairingRecord(1, pageCount, forcedSinglePages), 1)
+                snapshot = ChapterPairingSnapshot(layoutRecord(pageCount, adjustment), 1)
                 return snapshot
             }
         }
@@ -145,7 +146,7 @@ class DesktopChapterPairingModelIntegrationTest {
     @Test
     fun `old chapter save completion cannot change the newly activated chapter`() = runTest {
         val oldSaveGate = CompletableDeferred<Unit>()
-        val repository = object : ChapterPairingRepository {
+        val repository = object : CompleteLayoutRepository() {
             override suspend fun load(chapterId: Long, mangaId: Long) =
                 if (chapterId == 11L) {
                     ChapterPairingSnapshot(null, 0)
@@ -153,15 +154,15 @@ class DesktopChapterPairingModelIntegrationTest {
                     ChapterPairingSnapshot(ChapterPairingRecord(1, 8, setOf(4)), 3)
                 }
 
-            override suspend fun replace(
+            override suspend fun replaceLayout(
                 chapterId: Long,
                 mangaId: Long,
                 expectedRevision: Long,
                 pageCount: Int,
-                forcedSinglePages: Set<Int>,
+                adjustment: ReaderPairingAdjustment,
             ): ChapterPairingSnapshot {
                 oldSaveGate.await()
-                return ChapterPairingSnapshot(ChapterPairingRecord(1, pageCount, forcedSinglePages), 1)
+                return ChapterPairingSnapshot(layoutRecord(pageCount, adjustment), 1)
             }
         }
         val coordinator = DesktopChapterPairingCoordinator(repository, backgroundScope)
@@ -195,22 +196,22 @@ class DesktopChapterPairingModelIntegrationTest {
         val newReadGate = CompletableDeferred<Unit>()
         var reads = 0
         var snapshot = ChapterPairingSnapshot(ChapterPairingRecord(1, 8, setOf(4)), 1)
-        val repository = object : ChapterPairingRepository {
+        val repository = object : CompleteLayoutRepository() {
             override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
                 if (++reads > 1) newReadGate.await()
                 return snapshot
             }
 
-            override suspend fun replace(
+            override suspend fun replaceLayout(
                 chapterId: Long,
                 mangaId: Long,
                 expectedRevision: Long,
                 pageCount: Int,
-                forcedSinglePages: Set<Int>,
+                adjustment: ReaderPairingAdjustment,
             ): ChapterPairingSnapshot {
                 saveGate.await()
                 snapshot =
-                    ChapterPairingSnapshot(ChapterPairingRecord(1, pageCount, forcedSinglePages), expectedRevision + 1)
+                    ChapterPairingSnapshot(layoutRecord(pageCount, adjustment), expectedRevision + 1)
                 return snapshot
             }
         }
@@ -250,21 +251,21 @@ class DesktopChapterPairingModelIntegrationTest {
     fun `old save cannot cross manga switch before pairing epoch advances`() = runTest {
         val saveGate = CompletableDeferred<Unit>()
         val newReadGate = CompletableDeferred<Unit>()
-        val repository = object : ChapterPairingRepository {
+        val repository = object : CompleteLayoutRepository() {
             override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
                 if (mangaId == 20L) newReadGate.await()
                 return ChapterPairingSnapshot(null, 0)
             }
 
-            override suspend fun replace(
+            override suspend fun replaceLayout(
                 chapterId: Long,
                 mangaId: Long,
                 expectedRevision: Long,
                 pageCount: Int,
-                forcedSinglePages: Set<Int>,
+                adjustment: ReaderPairingAdjustment,
             ): ChapterPairingSnapshot {
                 saveGate.await()
-                return ChapterPairingSnapshot(ChapterPairingRecord(1, pageCount, forcedSinglePages), 1)
+                return ChapterPairingSnapshot(layoutRecord(pageCount, adjustment), 1)
             }
         }
         val coordinator = DesktopChapterPairingCoordinator(repository, backgroundScope)
@@ -302,18 +303,18 @@ class DesktopChapterPairingModelIntegrationTest {
     fun `wrong manga identity is a restore error while direct temporary file remains session only`() = runTest {
         var reads = 0
         var writes = 0
-        val repository = object : ChapterPairingRepository {
+        val repository = object : CompleteLayoutRepository() {
             override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
                 reads++
                 throw MissingChapterPairingIdentityException()
             }
 
-            override suspend fun replace(
+            override suspend fun replaceLayout(
                 chapterId: Long,
                 mangaId: Long,
                 expectedRevision: Long,
                 pageCount: Int,
-                forcedSinglePages: Set<Int>,
+                adjustment: ReaderPairingAdjustment,
             ): ChapterPairingSnapshot {
                 writes++
                 error("A missing identity cannot write")
@@ -358,21 +359,21 @@ class DesktopChapterPairingModelIntegrationTest {
     fun `read failure default session cannot overwrite unknown record until retry succeeds`() = runTest {
         var failRead = true
         var writes = 0
-        val repository = object : ChapterPairingRepository {
+        val repository = object : CompleteLayoutRepository() {
             override suspend fun load(chapterId: Long, mangaId: Long): ChapterPairingSnapshot {
                 if (failRead) error("injected read failure")
                 return ChapterPairingSnapshot(ChapterPairingRecord(1, 8, setOf(2)), 7)
             }
 
-            override suspend fun replace(
+            override suspend fun replaceLayout(
                 chapterId: Long,
                 mangaId: Long,
                 expectedRevision: Long,
                 pageCount: Int,
-                forcedSinglePages: Set<Int>,
+                adjustment: ReaderPairingAdjustment,
             ): ChapterPairingSnapshot {
                 writes++
-                return ChapterPairingSnapshot(ChapterPairingRecord(1, pageCount, forcedSinglePages), 8)
+                return ChapterPairingSnapshot(layoutRecord(pageCount, adjustment), 8)
             }
         }
         val model = ReaderScreenModel(
@@ -402,19 +403,19 @@ class DesktopChapterPairingModelIntegrationTest {
     fun `failed save keeps prior pairing and retry replaces invalid stored record`() = runTest {
         var failSave = true
         var snapshot = ChapterPairingSnapshot(ChapterPairingRecord(1, 9, setOf(2)), 3)
-        val repository = object : ChapterPairingRepository {
+        val repository = object : CompleteLayoutRepository() {
             override suspend fun load(chapterId: Long, mangaId: Long) = snapshot
 
-            override suspend fun replace(
+            override suspend fun replaceLayout(
                 chapterId: Long,
                 mangaId: Long,
                 expectedRevision: Long,
                 pageCount: Int,
-                forcedSinglePages: Set<Int>,
+                adjustment: ReaderPairingAdjustment,
             ): ChapterPairingSnapshot {
                 if (failSave) error("injected write failure")
                 snapshot =
-                    ChapterPairingSnapshot(ChapterPairingRecord(1, pageCount, forcedSinglePages), expectedRevision + 1)
+                    ChapterPairingSnapshot(layoutRecord(pageCount, adjustment), expectedRevision + 1)
                 return snapshot
             }
         }
@@ -457,4 +458,23 @@ class DesktopChapterPairingModelIntegrationTest {
     private fun loaded(chapterId: Long, generation: Long, pageCount: Int = 8) =
         desktopReaderSessionState(chapterId = chapterId, generation = generation, pageCount = pageCount)
             .let { it.copy(context = it.context.copy(mangaId = 10L)) }
+}
+
+private fun layoutRecord(pageCount: Int, adjustment: ReaderPairingAdjustment) = ChapterPairingRecord(
+    2, pageCount, adjustment.forcedSinglePages,
+    openingMode = adjustment.openingMode,
+    manualPairStarts = adjustment.manualPairStarts,
+)
+
+private abstract class CompleteLayoutRepository : ChapterPairingRepository {
+    override suspend fun replace(
+        chapterId: Long,
+        mangaId: Long,
+        expectedRevision: Long,
+        pageCount: Int,
+        forcedSinglePages: Set<Int>,
+    ): ChapterPairingSnapshot = replaceLayout(
+        chapterId, mangaId, expectedRevision, pageCount,
+        ReaderPairingAdjustment(forcedSinglePages, 0),
+    )
 }

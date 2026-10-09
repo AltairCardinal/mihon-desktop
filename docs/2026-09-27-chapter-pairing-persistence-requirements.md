@@ -1,5 +1,7 @@
 # 按章节持久保存手动双页调整
 
+2026-10-09兼容扩展见[章级开篇与手动双页修复](evidence/reader-manual-pairing-fix-2026-10-09.md)：复用本记录和CAS链路，新增显式相邻配对与章级开篇方式，兼容旧记录；本文“仅保存独占边界”的字段限制由该增量替代。其余本机保存、失败保护、章节身份、同步/备份边界保持。此链接不表示下述旧验收计划已经全部通过。
+
 日期：2026-09-27。状态：实施中；CP-01/02 已完成，CP-03 正式产物已构建、收口验收仍未通过。本文的 SOURCE 表以最初规划时的 `167840dc96` 为核对基线，不表示当前代码仍保持该旧状态。最新验证与未完成项见[证据报告](roadmap/2026-09-27-chapter-pairing-persistence-evidence.md)。
 
 配套 [Roadmap](roadmap/2026-09-27-chapter-pairing-persistence-roadmap.md)。延续 [双页与继续阅读契约](2026-09-24-reader-dual-page-and-continue-design.md)，不改写章节选择、已读判定或同步位置优先级。

@@ -355,11 +355,16 @@ class SharedDualPageSession(
         rebuild()
     }
 
-    fun beginPairingRestore(): ReaderPairingPersistenceRequest.Load? = pairingPersistence.beginRestore()
+    fun beginPairingRestore(explicit: Boolean = false): ReaderPairingPersistenceRequest.Load? =
+        pairingPersistence.beginRestore(explicit, location?.sequence.takeIf { explicit })
 
     fun acceptPairingRestore(request: ReaderPairingPersistenceRequest.Load, snapshot: ChapterPairingSnapshot): Boolean {
         if (!pairingPersistence.acceptRestore(request, snapshot)) return false
-        applyPairingState()
+        applyPairingState(
+            explicit = true,
+            protectVisible =
+            !request.explicit || request.locationSequence != location?.sequence,
+        )
         return true
     }
 
@@ -376,14 +381,27 @@ class SharedDualPageSession(
     fun adjustPairing(): ReaderPairingPersistenceRequest.Save? {
         if (closed || presentationMode != ReaderPresentationMode.DUAL) return null
         val unit = targetUnit ?: return null
+        if (unit.singleReason in
+            setOf(ReaderDualPageSingleReason.SPREAD, ReaderDualPageSingleReason.ONLY_PAGE)
+        ) {
+            return null
+        }
         val ordinalById = identity.pageIds.withIndex().associate { it.value to it.index }
         val current = location?.pageId?.let(ordinalById::get) ?: return null
         val adjustment = adjustReaderPairing(
             current,
             unit.pageIds.map(ordinalById::getValue),
             pairingState.committedForcedSinglePages,
+            identity.content.size,
+            pairingState.openingMode,
+            pairingState.manualPairStarts,
         )
-        if (adjustment.forcedSinglePages == pairingState.committedForcedSinglePages) return null
+        if (adjustment.forcedSinglePages == pairingState.committedForcedSinglePages &&
+            adjustment.manualPairStarts == pairingState.manualPairStarts &&
+            adjustment.openingMode == pairingState.openingMode
+        ) {
+            return null
+        }
         val request = pairingPersistence.beginSave(adjustment, location?.sequence ?: 0)
         if ((
                 pairingState.status == ReaderPairingPersistenceStatus.TEMPORARY ||
@@ -392,6 +410,23 @@ class SharedDualPageSession(
             pairingState.committedForcedSinglePages == adjustment.forcedSinglePages
         ) {
             applyPairingState(adjustment.currentPage)
+        }
+        return request
+    }
+
+    fun setOpeningMode(mode: ReaderChapterOpeningMode): ReaderPairingPersistenceRequest.Save? {
+        if (closed || presentationMode != ReaderPresentationMode.DUAL || identity.content.size < 2) return null
+        val adjustment = ReaderPairingAdjustment(
+            pairingState.committedForcedSinglePages - 1,
+            0,
+            mode,
+            pairingState.manualPairStarts - 1,
+        )
+        val request = pairingPersistence.beginSave(adjustment, location?.sequence ?: 0)
+        if (pairingState.status in
+            setOf(ReaderPairingPersistenceStatus.TEMPORARY, ReaderPairingPersistenceStatus.DEFAULT_UNVERIFIED)
+        ) {
+            applyPairingState(0)
         }
         return request
     }
@@ -422,7 +457,7 @@ class SharedDualPageSession(
         val ready = preparingPageIds ?: unit.pageIds.filterTo(mutableSetOf()) {
             facts[it]?.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD) &&
                 (
-                    it == unit.anchor ||
+                    it == unit.anchor || presentation.isManualUnit(unit) ||
                         facts[unit.anchor]?.state in setOf(ReaderPageFactState.PORTRAIT, ReaderPageFactState.SPREAD)
                     )
         }
@@ -542,7 +577,13 @@ class SharedDualPageSession(
         protectVisible: Boolean = false,
     ) {
         forcedSinglePages = pairingState.committedForcedSinglePages.mapTo(mutableSetOf()) { identity.pageIds[it] }
-        presentation.manualBoundaries(forcedSinglePages, explicit, protectVisible)
+        presentation.manualBoundaries(
+            forcedSinglePages,
+            explicit,
+            protectVisible,
+            pairingState.manualPairStarts,
+            pairingState.openingMode,
+        )
         sampleWorkRevision++
         if (targetOrdinal != null) {
             // Adjusting pairing relocates the display, but does not create or retain a reading cause.

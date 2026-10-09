@@ -48,6 +48,8 @@ internal class ReaderDualPagePresentationOwner(
     private var context = 0L
     private var reverse = false
     private var forced: Set<ReaderPageId> = emptySet()
+    private var manualPairStarts: Set<Int> = emptySet()
+    private var openingMode = ReaderChapterOpeningMode.AUTO
     private var automatic = false
     private var singleMode = false
     private var openingThrough = 0
@@ -167,6 +169,7 @@ internal class ReaderDualPagePresentationOwner(
                 ReaderDualPageUnit(listOf(ReaderDualPageSlot(page, ReaderPortraitSingleSlot.FULL)), known(page)),
             )
         }
+        explicitUnit(page)?.let { return ReaderDualPageDecision(it) }
         reservations[page]?.let { pair ->
             val unit = dual(pair.first, pair.second)
             val compatible = !automatic || unit.slots.all { slot ->
@@ -181,12 +184,73 @@ internal class ReaderDualPagePresentationOwner(
         }
         val index = ordinals.getValue(page)
         return SharedDualPageRules.decide(
-            pages, facts, direction, index, forward, forced, membership.keys,
+            pages, facts, direction, index, forward, forced, membership.keys + manualOccupied() + openingOccupied(),
             opening = index == 1 || (!openingClosed && index == openingThrough + 1),
             usePageSideHints = automatic,
             distance = { a, b -> if (automatic) distance(a, b) else null },
         )
     }
+
+    private fun manualOccupied(): Set<ReaderPageId> {
+        val starts = manualPairStarts + setOfNotNull(0.takeIf { openingMode == ReaderChapterOpeningMode.FIRST_PAIR })
+        return starts.filter { start ->
+            start in 0 until pages.lastIndex &&
+                facts[pages[start]]?.state != ReaderPageFactState.SPREAD &&
+                facts[pages[start + 1]]?.state != ReaderPageFactState.SPREAD
+        }.flatMapTo(mutableSetOf()) { listOf(pages[it], pages[it + 1]) }
+    }
+
+    private fun openingOccupied(): Set<ReaderPageId> = if (openingMode ==
+        ReaderChapterOpeningMode.FIRST_SINGLE
+    ) {
+        pages.take(1).toSet()
+    } else {
+        emptySet()
+    }
+
+    private fun explicitUnit(page: ReaderPageId, owner: Record? = null): ReaderDualPageUnit? {
+        val index = ordinals.getValue(page)
+        val pairStart = manualPairStarts.firstOrNull { index == it || index == it + 1 }
+            ?: 0.takeIf { index in 0..1 && openingMode == ReaderChapterOpeningMode.FIRST_PAIR }
+        if (pairStart != null) {
+            val a = pages.getOrNull(pairStart) ?: return null
+            val b = pages.getOrNull(pairStart + 1) ?: return null
+            // User intent overrides heuristic sides, but never real image structure.
+            if (facts[a]?.state != ReaderPageFactState.SPREAD && facts[b]?.state != ReaderPageFactState.SPREAD &&
+                a !in forced &&
+                b !in forced
+            ) {
+                val desired = listOf(a, b)
+                val conflicts = desired.mapNotNull { membership[it]?.let(records::get) }.distinct().filter {
+                    it !==
+                        owner &&
+                        it.unit.pageIds != desired
+                }
+                if (conflicts.any { it.visible }) return null
+                conflicts.forEach(::discard)
+                return dual(a, b)
+            }
+        }
+        if (index == 0 && openingMode == ReaderChapterOpeningMode.FIRST_SINGLE &&
+            facts[page]?.state != ReaderPageFactState.SPREAD
+        ) {
+            return ReaderDualPageUnit(
+                listOf(ReaderDualPageSlot(page, ReaderPortraitSingleSlot.FULL)),
+                known(page),
+                ReaderDualPageSingleReason.FIRST_PAGE,
+            )
+        }
+        return null
+    }
+
+    fun isManualUnit(unit: ReaderDualPageUnit): Boolean = unit.pageIds.size == 2 &&
+        (
+            ordinals.getValue(unit.anchor) in manualPairStarts ||
+                (unit.anchor == pages.first() && openingMode == ReaderChapterOpeningMode.FIRST_PAIR)
+            )
+
+    private fun hasExplicitPair(record: Record) =
+        isManualUnit(record.unit) && record.unit.pageIds.none { facts[it]?.state == ReaderPageFactState.SPREAD }
 
     private fun dual(first: ReaderPageId, second: ReaderPageId) =
         SharedDualPageRules.pairedUnit(first, second, direction, known(first) && known(second))
@@ -230,7 +294,10 @@ internal class ReaderDualPagePresentationOwner(
         // A later slot needs a known anchor or its own decoded evidence fixing its physical side.
         val ready = preparingPages.filterTo(mutableSetOf()) { id ->
             id in record.unit.pageIds && (singleMode || known(id)) &&
-                (singleMode || id == record.unit.anchor || known(record.unit.anchor) || confirmsOwnSide(record, id)) &&
+                (
+                    singleMode || hasExplicitPair(record) || id == record.unit.anchor || known(record.unit.anchor) ||
+                        confirmsOwnSide(record, id)
+                    ) &&
                 (membership[id] == null || membership[id] == record.id)
         }
         if (ready.size != preparingPages.size) return null
@@ -269,7 +336,7 @@ internal class ReaderDualPagePresentationOwner(
         if (!record.visible || !record.appendable || ticket.locationSequence != record.activeSequence ||
             page !in record.unit.pageIds || (!singleMode && !known(page)) ||
             (
-                !singleMode && page != record.unit.anchor && !known(
+                !singleMode && !hasExplicitPair(record) && page != record.unit.anchor && !known(
                     record.unit.anchor,
                 ) && !confirmsOwnSide(record, page)
                 ) ||
@@ -455,9 +522,9 @@ internal class ReaderDualPagePresentationOwner(
             facts
         }
         val nextDecision = if (record.entered) {
-            SharedDualPageRules.decide(
+            explicitUnit(record.origin, record)?.let { ReaderDualPageDecision(it) } ?: SharedDualPageRules.decide(
                 pages, decisionFacts, direction, ordinals.getValue(record.origin), record.forward, forced,
-                occupiedByOthers(record), usePageSideHints = automatic,
+                occupiedByOthers(record) + manualOccupied() + openingOccupied(), usePageSideHints = automatic,
                 distance = { a, b -> if (automatic) distance(a, b) else null },
             )
         } else {
@@ -474,10 +541,13 @@ internal class ReaderDualPagePresentationOwner(
                 }
                 (fact?.state == ReaderPageFactState.SPREAD && slot.position != ReaderPortraitSingleSlot.FULL) ||
                     (record.unit.pageIds.size == 2 && slot.pageId in forced) ||
-                    (automatic && fact?.state == ReaderPageFactState.PORTRAIT && hintConflicts) ||
+                    (
+                        automatic && !hasExplicitPair(record) && fact?.state == ReaderPageFactState.PORTRAIT &&
+                            hintConflicts
+                        ) ||
                     (wasSpread && fact?.state == ReaderPageFactState.PORTRAIT)
             }
-            val matchedBoundary = !record.reserved && nextDecision?.reservedPair != null
+            val matchedBoundary = !hasExplicitPair(record) && !record.reserved && nextDecision?.reservedPair != null
             val openingPair = record.unit.singleReason == ReaderDualPageSingleReason.FIRST_PAGE &&
                 nextDecision?.unit?.pageIds?.size == 2
             if (!structuralChange && !matchedBoundary && !openingPair) {
@@ -495,6 +565,15 @@ internal class ReaderDualPagePresentationOwner(
             }
             return
         }
+        // A real wide image may never occupy an unpainted half slot, including a manual pending anchor.
+        val compatibleSlots = record.unit.slots.filter {
+            it.pageId in record.locked ||
+                facts[it.pageId]?.state != ReaderPageFactState.SPREAD
+        }
+        if (compatibleSlots != record.unit.slots && record.unit.pageIds.size == 2) {
+            updateUnit(record, record.unit.copy(slots = compatibleSlots))
+            return
+        }
         val first = record.unit.anchor
         val fixed = record.unit.slots.filter { it.pageId in record.locked }
         val leading = if (direction ==
@@ -504,7 +583,7 @@ internal class ReaderDualPagePresentationOwner(
         } else {
             ReaderPortraitSingleSlot.LEFT
         }
-        if (automatic &&
+        if (automatic && !hasExplicitPair(record) &&
             fixed.any { (facts[it.pageId]?.sideHint ?: ReaderPageSideHint.UNKNOWN) != ReaderPageSideHint.UNKNOWN }
         ) {
             val kept = record.unit.slots.filter { slot ->
@@ -535,12 +614,13 @@ internal class ReaderDualPagePresentationOwner(
             }
             return
         }
-        val next = SharedDualPageRules.decide(
-            pages, decisionFacts, direction, ordinals.getValue(record.origin), record.forward, forced,
-            occupiedByOthers(record), opening = false,
-            usePageSideHints = automatic,
-            distance = { a, b -> if (automatic) distance(a, b) else null },
-        )
+        val next =
+            explicitUnit(record.origin, record)?.let { ReaderDualPageDecision(it) } ?: SharedDualPageRules.decide(
+                pages, decisionFacts, direction, ordinals.getValue(record.origin), record.forward, forced,
+                occupiedByOthers(record) + manualOccupied() + openingOccupied(), opening = false,
+                usePageSideHints = automatic,
+                distance = { a, b -> if (automatic) distance(a, b) else null },
+            )
         if (next.reservedPair != null) {
             publishReservation(next.reservedPair)
             updateUnit(record, record.unit.copy(slots = fixed))
@@ -620,9 +700,32 @@ internal class ReaderDualPagePresentationOwner(
         factsChanged()
     }
 
-    fun manualBoundaries(next: Set<ReaderPageId>, explicit: Boolean, protectVisible: Boolean = false) {
-        val changed = next.symmetricDifference(forced)
+    fun manualBoundaries(
+        next: Set<ReaderPageId>,
+        explicit: Boolean,
+        protectVisible: Boolean = false,
+        pairs: Set<Int> = emptySet(),
+        opening: ReaderChapterOpeningMode = ReaderChapterOpeningMode.AUTO,
+    ) {
+        // A legacy single boundary promises its immediately following legal pair. Derive only
+        // this local relation, never a whole-chapter phase and never a new persisted user choice.
+        val followingPairs = next.mapNotNullTo(mutableSetOf()) { boundary ->
+            val start = ordinals.getValue(boundary) + 1
+            start.takeIf {
+                it in 1 until pages.lastIndex && pages[it] !in next && pages[it + 1] !in next &&
+                    pairs.none { explicitStart -> explicitStart in it - 1..it + 1 }
+            }
+        }
+        val nextPairs = pairs + followingPairs
+        val changed = next.symmetricDifference(forced).toMutableSet()
+        (nextPairs.symmetricDifference(manualPairStarts)).forEach { ordinal ->
+            pages.getOrNull(ordinal)?.let(changed::add)
+            pages.getOrNull(ordinal + 1)?.let(changed::add)
+        }
+        if (opening != openingMode) changed.addAll(pages.take(2))
         forced = next
+        manualPairStarts = nextPairs
+        openingMode = opening
         if (explicit) {
             if (changed.any { ordinals.getValue(it) <= openingEnd + 1 }) {
                 openingThrough = 0
@@ -647,7 +750,10 @@ internal class ReaderDualPagePresentationOwner(
             context++
             projection = null
         }
-        reservations.entries.removeAll { (_, pair) -> pair.first in next || pair.second in next }
+        reservations.entries.removeAll { (_, pair) ->
+            pair.first in next || pair.second in next || pair.first in changed ||
+                pair.second in changed
+        }
         factsChanged()
     }
 

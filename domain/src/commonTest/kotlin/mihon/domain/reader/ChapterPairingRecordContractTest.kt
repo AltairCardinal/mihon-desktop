@@ -10,7 +10,7 @@ class ChapterPairingRecordContractTest {
         val valid = ChapterPairingRecord(ChapterPairingRecord.FORMAT_VERSION, 8, setOf(1, 4))
         assertTrue(valid.isValidFor(8))
         assertFalse(valid.isValidFor(9))
-        assertFalse(valid.copy(formatVersion = 2).isValidFor(8))
+        assertFalse(valid.copy(formatVersion = 3).isValidFor(8))
         assertFalse(valid.copy(forcedSinglePages = setOf(1, 8)).isValidFor(8))
         assertFalse(valid.copy(forcedSinglePages = emptySet()).isValidFor(8))
         assertFalse(valid.copy(corrupt = true).isValidFor(8))
