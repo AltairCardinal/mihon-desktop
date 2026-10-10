@@ -39,3 +39,22 @@ App 管理员在 [Permissions & events](https://github.com/settings/apps/mihon-d
 - `creation-permission-desktop-candidate`：首次 Desktop 门禁 3253 项执行，1 项清理临时目录失败、2 项跳过。`creation-permission-desktop-di-recheck` 中原失败用例通过，但另一项先前已通过的用例出现同类 `DirectoryNotEmptyException`。组合结果未出现业务断言失败；临时目录清理仍存在不稳定性，不报告重新全量全绿，不扩展到无关运行时重构。
 - `creation-permission-desktop-build`：复用上述同源组合证据，由标准脚本 `build-only` 完成 Windows 构建、运行版本及生产扩展安装链路验收。正式产物 `app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.88.d7edbc0-unpacked/Mihon Desktop.exe`。
 - `android-candidate`：标准 `scripts/build-android.py candidate --offline` 完成 Release、R8/资源压缩、原证书签名及身份校验。APK 为 `app/artifacts/android/0.19.4-aex.50-vc68-d7edbc00f7-release/Mihon-Fork-0.19.4-aex.50-vc68-release-universal.apk`，SHA-256 `f594a7a0f666869a79dfb9c23e2072905ce13d9d34bc8ee68d1cb1dfc1114b11`。未隐式安装、上传或操作真实同步。
+
+## 安装与授权失败页的交互规则
+
+共享恢复决策以最新已观察到的安装、授权、仓库和网络阻塞为先；未完成的空间设置/切换记录及旧初始化回执不覆盖当前阻塞。仅在没有当前阻塞时推荐接续设置，按钮明确表示继续设置，而非笼统的重试。
+
+缺少安装时显示已确认的 GitHub 账号、尚未安装的同步应用和待检查的同步空间，唯一主操作为安装并授权；仓库状态未知时只提供“还没有同步仓库？创建同步空间”次操作，不声称仓库缺失。设置说明默认折叠，诊断可按需进入；其他安装/授权异常保留折叠的其他解决方式，不叠加通用重试与更换提示。
+
+Android/Desktop 共享 Compose LocalWindowInfo 的窗口焦点事实：成功打开 GitHub 后，观察一次实际失焦再聚焦，自动执行一次只读检查；同一次外部动作不因后续切窗重复请求。再次打开 GitHub 才重新允许自动检查。返回不表示安装或授权成功；检查仍无安装时推荐继续安装，网络/权限/限流请求失败保留外部步骤记录并呈现真实阻塞。自动返回检查不恢复尚未完成的远端创建或初始化写入，不越过用户确认；原设置和连接记录保留，查到有效仓库后进入选择/密码等既有步骤。
+
+2026-10-10 本轮基线为 `2c89d30eac`。普通设置与切换设置复用已观察的账号/安装事实；完成安装只清除已确认的外部步骤，不把原同步空间标为已经恢复。设置页携带旧暂停任务时，先解决当前安装阻塞；主界面的暂停/恢复语义保留。
+
+本轮证据与交付：
+
+- 有效行为红：`setup-redesign-red`、`setup-redesign-review-red`、`setup-redesign-latest-observation-red`、`setup-redesign-switch-official-red`、`setup-redesign-paused-old-red`，分别确认未完成设置、旧初始化、历史 HTTP 失败、切换发现分支和旧暂停任务造成错误推荐。
+- 组合绿证据：`setup-redesign-latest-observation-green` 28 项；最后事实记录及返回 wiring 改动由 `setup-redesign-switch-official-green` 7 项补验，旧暂停优先级由 `setup-redesign-paused-old-final` 3 项补验。执行真实 HTTP/controller/Compose 点击，覆盖只读返回、只检查一次、检查未完成不误认批准、慢请求关闭重开、保留原绑定、继续安装/空间设置与既有暂停交互。正常 data/presentation/i18n 格式及 `git diff --check` 通过，未重复全量。
+- 主代理独立检查实际 Compose 离屏中文首屏：Android 400×800、Desktop 560×680，确认一个安装主按钮、状态卡、未知空间待检查及教程默认收起。图片在忽略的 `presentation-sync/build/sync-visual/`，不作为实体设备或系统浏览器返回的业务验收。
+- `android-candidate` 正式构建并核验 aex.51 / versionCode 69，原 fork 证书连续、不可调试、R8/资源压缩。APK：`app/artifacts/android/0.19.4-aex.51-vc69-2c89d30eac-release/Mihon-Fork-0.19.4-aex.51-vc69-release-universal.apk`，SHA-256 `4f993452d39518ce901901a594b6cc525b3270b248e8330bf56982b5dda3f57e`。用户明确授权后，通过独立安装命令安装到当前连接的华为 PCE-W30，并核对安装身份；未代操作真实同步。
+- `setup-redesign-desktop-candidate` 首次完整 Desktop 门禁执行 3253 项、2 项失败、2 项跳过。两项均为 DI 用例结束后的临时目录删除 `DirectoryNotEmptyException`，首次失败 XML 保存在忽略的协调器目录。`setup-redesign-desktop-cleanup-recheck` 只补验这两项并通过，组合结果不等于最终重新全量全绿。
+- `setup-redesign-desktop-build` 复用同源组合证据，由标准 `build-only` 脚本完成正式 Windows 构建及运行版本/生产扩展安装链路验收。正式 EXE：`app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.90.2c89d30-unpacked/Mihon Desktop.exe`。Android 候选先完成并安装，随后分配 Desktop 构建号；每个平台按自身构建时的冻结输入记录，不将两个构建时点描述为同一生产输入哈希。

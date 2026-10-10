@@ -151,6 +151,7 @@ data class SyncPanelState(
     val recoveryBindingStatus: SyncBindingDecode = SyncBindingDecode.UNKNOWN,
     val recoveryCredentialAvailable: Boolean = false,
     val recoveryOfficialAction: SyncRecoveryAction? = null,
+    val recoveryOfficialCheckAttempted: Boolean = false,
     val recoveryConditionsVerified: Boolean = false,
     val recoveryExternalScopes: List<SyncRecoveryExternalScope> = emptyList(),
     val recoveryRepairMadeNoProgress: Boolean = false,
@@ -246,6 +247,7 @@ sealed interface SyncPanelAction {
         val result: SyncRecoveryPlatformResult,
     ) : SyncPanelAction
     data class RecoveryOfficialOpened(val action: SyncRecoveryAction) : SyncPanelAction
+    data object RecoveryOfficialReturned : SyncPanelAction
     data object Open : SyncPanelAction
     data object OpenRecovery : SyncPanelAction
     data object VerifyRecovery : SyncPanelAction

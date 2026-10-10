@@ -53,19 +53,17 @@ data class SyncRecoveryActionDecision(
 
 internal fun SyncPanelState.recoveryDecision(): SyncRecoveryActionDecision {
     fun ready(action: SyncRecoveryAction) = recoveryActionDecision(action)
+    val latestSetupObservation = page == SyncPanelPage.SETUP && setupProblem != null
     val discovery = if (recoveryConditionsVerified) {
         null
+    } else if (latestSetupObservation) {
+        setupProblem
     } else {
         recoveryStepFailure?.discovery ?: setupProblem
             ?: recoveryFailure?.discovery
     }
-    if (run?.state == SyncRunState.PAUSED_USER) return ready(SyncRecoveryAction.RESUME_SYNC)
-    if (importPaused && importRemaining > 0) return ready(SyncRecoveryAction.RESUME_IMPORT)
-    if (recovery?.reason == SyncSpaceRecoveryReason.SWITCH_PENDING ||
-        pendingRecoveryPurpose != null
-    ) {
-        return ready(SyncRecoveryAction.CONTINUE_SETUP)
-    }
+    if (!latestSetupObservation && run?.state == SyncRunState.PAUSED_USER) return ready(SyncRecoveryAction.RESUME_SYNC)
+    if (!latestSetupObservation && importPaused && importRemaining > 0) return ready(SyncRecoveryAction.RESUME_IMPORT)
     if (recoveryPersistenceFailed || problem == SyncRunProblem.STORAGE ||
         (
             !recoveryConditionsVerified &&
@@ -75,14 +73,15 @@ internal fun SyncPanelState.recoveryDecision(): SyncRecoveryActionDecision {
     ) {
         return ready(SyncRecoveryAction.STORAGE)
     }
-    if (recoveryOfficialAction != null) return ready(SyncRecoveryAction.CHECK_CONDITIONS)
-    if (!recoveryConditionsVerified && (recoveryStepFailure?.httpStatus ?: recoveryFailure?.httpStatus ?: 0) >= 500) {
+    if (!latestSetupObservation && !recoveryConditionsVerified &&
+        (recoveryStepFailure?.httpStatus ?: recoveryFailure?.httpStatus ?: 0) >= 500
+    ) {
         return SyncRecoveryActionDecision(
             SyncRecoveryAction.WAIT_SERVICE,
             SyncRecoveryActionAvailability.Waiting(SyncDiscoveryProblem.RETRYABLE),
         )
     }
-    authFailure?.takeIf { !recoveryConditionsVerified }?.let { failure ->
+    authFailure?.takeIf { !recoveryConditionsVerified && !latestSetupObservation }?.let { failure ->
         return when (failure) {
             GitHubAuthFailureReason.HTTP -> ready(SyncRecoveryAction.NETWORK)
             GitHubAuthFailureReason.MALFORMED_RESPONSE -> ready(SyncRecoveryAction.NETWORK)
@@ -102,14 +101,34 @@ internal fun SyncPanelState.recoveryDecision(): SyncRecoveryActionDecision {
             -> ready(SyncRecoveryAction.CONNECT_GITHUB)
         }
     }
-    if (authRetryAtMillis > nowMillis || discovery == SyncDiscoveryProblem.RATE_LIMITED) {
+    if ((!latestSetupObservation && authRetryAtMillis > nowMillis) || discovery == SyncDiscoveryProblem.RATE_LIMITED) {
         return SyncRecoveryActionDecision(
             SyncRecoveryAction.WAIT_EXTERNAL,
             SyncRecoveryActionAvailability.Waiting(discovery, authRetryAtMillis.takeIf { it > nowMillis }),
         )
     }
     val init = if (recoveryConditionsVerified) null else initializationFailure ?: recoveryFailure?.initialization
-    if (init != null) {
+    if (recoveryOfficialAction != null && !recoveryOfficialCheckAttempted &&
+        discovery in setOf(
+            SyncDiscoveryProblem.NEEDS_INSTALLATION,
+            SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS,
+            SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION,
+            SyncDiscoveryProblem.NEEDS_ADMINISTRATION_PERMISSION,
+            SyncDiscoveryProblem.NEEDS_CREATION_PERMISSION,
+            SyncDiscoveryProblem.INSTALLATION_SUSPENDED,
+            SyncDiscoveryProblem.REPOSITORY_DISABLED,
+        )
+    ) {
+        return ready(SyncRecoveryAction.CHECK_CONDITIONS)
+    }
+    if (init != null && (
+            discovery == null || discovery in setOf(
+                SyncDiscoveryProblem.INITIALIZATION_REQUIRES_ACTION,
+                SyncDiscoveryProblem.INITIALIZATION_UNCONFIRMED,
+                SyncDiscoveryProblem.CREATION_UNCONFIRMED,
+            )
+            )
+    ) {
         return ready(
             when (init.reason) {
                 SyncInitializationFailureReason.SPACE_IDENTITY_CHANGED,
@@ -174,6 +193,9 @@ internal fun SyncPanelState.recoveryDecision(): SyncRecoveryActionDecision {
         (recovery?.reason == SyncSpaceRecoveryReason.AUTHORIZATION_REQUIRED || problem == SyncRunProblem.AUTHORIZATION)
     ) {
         return ready(SyncRecoveryAction.CONNECT_GITHUB)
+    }
+    if (recovery?.reason == SyncSpaceRecoveryReason.SWITCH_PENDING || pendingRecoveryPurpose != null) {
+        return ready(SyncRecoveryAction.CONTINUE_SETUP)
     }
     val report = recoveryRepairReport
     val reasons = report?.let {

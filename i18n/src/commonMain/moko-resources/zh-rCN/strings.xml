@@ -1737,7 +1737,7 @@
     <string name="sync_setup_repository_guide">1. 创建私有仓库 mihon-sync，确认所有者是你的 GitHub 账号。保持仓库为空，不要添加 README、许可证或其他初始化文件。</string>
     <string name="sync_setup_app_guide">2. 安装 Mihon GitHub App 时，只授权 mihon-sync，不要选择“所有仓库”。</string>
     <string name="sync_setup_recheck_guide">3. 返回这里，点击“重新检查”。确认通过后继续同步设置。</string>
-    <string name="sync_setup_needs_installation">此 GitHub 账号尚未安装 Mihon GitHub App。请先创建专用私有仓库，再安装 App 并只授予 mihon-sync 访问权。</string>
+    <string name="sync_setup_needs_installation">请为当前账号安装 Mihon 同步应用，并授权用于同步的仓库。</string>
     <string name="sync_setup_needs_repository_access">Mihon GitHub App 已安装，但当前安装无法看到 mihon-sync。仓库可能尚未创建，也可能未包含在此安装授权中。仅登录 GitHub 不会授予仓库访问权。</string>
     <string name="sync_setup_missing_contents">Mihon GitHub App 安装缺少 Contents 写入权限。请在 GitHub 更新此安装的权限，然后重新检查。</string>
     <string name="sync_setup_installation_suspended">Mihon GitHub App 安装已暂停，解除限制可能需要 App 管理员或 GitHub 处理。可查看安装状态及可用步骤；没有恢复权限时请等待处理。</string>
@@ -2171,4 +2171,17 @@
     <string name="sync_repository_permission_checking">正在检查创建仓库权限…</string>
     <string name="sync_repository_permission_browser">当前安装尚未获准在应用内创建仓库。请前往 GitHub 创建私有空仓库，再返回这里继续。</string>
     <string name="sync_repository_permission_unknown">暂时无法确认创建仓库权限。可以重新检查，或前往 GitHub 创建私有空仓库，再返回这里继续。</string>
+    <string name="sync_setup_finish_title">完成 GitHub 同步设置</string>
+    <string name="sync_setup_current_account">当前账号：%1$s</string>
+    <string name="sync_setup_connected_status">GitHub 已连接</string>
+    <string name="sync_setup_installation_pending">同步应用尚未安装</string>
+    <string name="sync_setup_space_pending">同步空间待检查</string>
+    <string name="sync_setup_install_authorize">安装并授权同步应用</string>
+    <string name="sync_setup_continue_install">继续安装与授权</string>
+    <string name="sync_setup_no_repository">还没有同步仓库？创建同步空间</string>
+    <string name="sync_setup_check_continue">检查并继续</string>
+    <string name="sync_setup_instructions">设置说明</string>
+    <string name="sync_setup_installation_not_found">仍未检测到安装，请确认在同一 GitHub 账号下完成设置。</string>
+    <string name="sync_setup_continue_title">继续同步设置</string>
+    <string name="sync_setup_other_options">其他解决方式</string>
 </resources>

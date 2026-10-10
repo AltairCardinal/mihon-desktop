@@ -1,8 +1,15 @@
 package mihon.presentation.sync
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.WindowInfo
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -61,6 +68,138 @@ import java.util.concurrent.ConcurrentHashMap
 
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncSpaceRecoveryPanelIntegrationTest {
+    @Test
+    fun `official return missing installation checks once and retains actionable installation`() = fixture(
+        missingInstallation = true,
+    ) {
+        click("sync-now")
+        withTimeout(5_000) { panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy } }
+        click("sync-install-app")
+        withTimeout(5_000) { panel.state.first { it.recoveryOfficialAction == SyncRecoveryAction.INSTALL_APP } }
+        val before = paths.count { it == "/user/installations" }
+        changeFocus(false)
+        changeFocus(true)
+        withTimeout(5_000) {
+            panel.state.first {
+                it.recoveryOfficialCheckAttempted && !it.setupBusy &&
+                    paths.count { path -> path == "/user/installations" } > before
+            }
+        }
+        assertEquals(SyncDiscoveryProblem.NEEDS_INSTALLATION, panel.state.value.setupProblem)
+        assertEquals(SyncRecoveryAction.INSTALL_APP, panel.state.value.recoveryPrimaryAction.action)
+        awaitNode("sync-install-app")
+        assertTrue(node("sync-setup-retry") == null)
+        assertTrue(node("sync-setup-recovery-open") == null)
+        val after = paths.count { it == "/user/installations" }
+        changeFocus(false)
+        changeFocus(true)
+        repeat(10) {
+            scene.render()
+            yield()
+        }
+        assertEquals(after, paths.count { it == "/user/installations" })
+        assertTrue(methods.all { it == "GET" })
+        assertTrue(paths.none { it == "/access/token" })
+    }
+
+    @Test
+    fun `official return confirmed installation advances to repository without repeating authorization`() = fixture(
+        missingInstallation = true,
+    ) {
+        click("sync-now")
+        withTimeout(5_000) { panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy } }
+        click("sync-install-app")
+        withTimeout(5_000) { panel.state.first { it.recoveryOfficialAction != null } }
+        installationAvailable = true
+        changeFocus(false)
+        changeFocus(true)
+        withTimeout(5_000) {
+            panel.state.first {
+                !it.setupBusy && it.setupProblem == SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS
+            }
+        }
+        assertEquals(null, panel.state.value.recoveryOfficialAction)
+        assertNotNull(panel.state.value.setupInstallation)
+        assertEquals(SyncRecoveryAction.AUTHORIZE_REPOSITORY, panel.state.value.recoveryPrimaryAction.action)
+        assertTrue(paths.none { it == "/access/token" || it == "/user/repos" })
+    }
+
+    @Test
+    fun `official return failed HTTP check preserves progress and shows network action`() = fixture(
+        missingInstallation = true,
+    ) {
+        click("sync-now")
+        withTimeout(5_000) { panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy } }
+        click("sync-install-app")
+        withTimeout(5_000) { panel.state.first { it.recoveryOfficialAction != null } }
+        installationFailure = 500
+        changeFocus(false)
+        changeFocus(true)
+        withTimeout(5_000) {
+            panel.state.first { it.recoveryOfficialCheckAttempted && !it.setupBusy && it.setupProblem != null }
+        }
+        assertTrue(panel.state.value.setupProblem != SyncDiscoveryProblem.NEEDS_INSTALLATION)
+        assertEquals(SyncRecoveryAction.NETWORK, panel.state.value.recoveryPrimaryAction.action)
+        assertEquals(SyncRecoveryAction.INSTALL_APP, panel.state.value.recoveryOfficialAction)
+        assertTrue(methods.all { it == "GET" })
+    }
+
+    @Test
+    fun `official return during pending switch preserves original binding and avoids remote writes`() = fixture {
+        click("sync-recovery-open")
+        installationAvailable = false
+        scroll("sync-recovery-page", 3)
+        click("sync-recovery-connect-other")
+        withTimeout(5_000) {
+            panel.state.first { it.setupProblem == SyncDiscoveryProblem.NEEDS_INSTALLATION && !it.setupBusy }
+        }
+        assertEquals(SyncRecoveryAction.INSTALL_APP, panel.state.value.recoveryPrimaryAction.action)
+        click("sync-install-app")
+        withTimeout(5_000) { panel.state.first { it.recoveryOfficialAction != null } }
+        installationAvailable = true
+        changeFocus(false)
+        changeFocus(true)
+        withTimeout(5_000) { panel.state.first { it.setupStep == SyncSetupStep.CHOOSE_SPACE && !it.setupBusy } }
+        assertEquals(null, panel.state.value.recoveryOfficialAction)
+        assertNotNull(panel.state.value.setupInstallation)
+        assertEquals(oldConnection, runtime.connection())
+        assertEquals(oldCredential, runtime.credentials.read())
+        assertTrue(methods.all { it == "GET" })
+        assertTrue(panel.state.value.recovery != null)
+    }
+
+    @Test
+    fun `official return slow read remains closeable and cannot change a reopened session`() = fixture(
+        missingInstallation = true,
+    ) {
+        click("sync-now")
+        withTimeout(5_000) { panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy } }
+        click("sync-install-app")
+        withTimeout(5_000) { panel.state.first { it.recoveryOfficialAction != null } }
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val released = java.util.concurrent.CountDownLatch(1)
+        installationBarrier = entered to released
+        try {
+            changeFocus(false)
+            changeFocus(true)
+            withTimeout(5_000) { while (entered.count != 0L) yield() }
+            click("sync-close")
+            withTimeout(1_000) { panel.state.first { !it.visible } }
+            panel.dispatch(SyncPanelAction.Open)
+            withTimeout(1_000) { panel.state.first { it.visible && it.page == SyncPanelPage.MAIN } }
+        } finally {
+            released.countDown()
+            installationBarrier = null
+        }
+        repeat(10) {
+            scene.render()
+            yield()
+        }
+        assertEquals(SyncPanelPage.MAIN, panel.state.value.page)
+        assertFalse(panel.state.value.setupBusy)
+        assertTrue(methods.all { it == "GET" })
+    }
+
     @Test
     fun `missing effective creation permission offers browser creation before any native request`() = fixture(
         deletedPendingSetup = true,
@@ -477,6 +616,7 @@ class SyncSpaceRecoveryPanelIntegrationTest {
         @Volatile var nativePermission: String?,
     ) {
         @Volatile var installationAvailable = !missingInstallation
+        var windowFocused by mutableStateOf(true)
 
         @Volatile var installationFailure: Int? = null
 
@@ -716,13 +856,21 @@ class SyncSpaceRecoveryPanelIntegrationTest {
             oldConnection = runtime.connection()
             oldCredential = runtime.credentials.read()
             scene.setContent {
-                MaterialTheme {
-                    SyncPanelContent(
-                        panel,
-                        onOpenBrowser = opened::add,
-                        onCopyCode = {},
-                        onOpenRecoveryPlatform = platformRequests::add,
-                    )
+                val platformWindow = LocalWindowInfo.current
+                val observedWindow = remember(platformWindow) {
+                    object : WindowInfo by platformWindow {
+                        override val isWindowFocused: Boolean get() = windowFocused
+                    }
+                }
+                CompositionLocalProvider(LocalWindowInfo provides observedWindow) {
+                    MaterialTheme {
+                        SyncPanelContent(
+                            panel,
+                            onOpenBrowser = opened::add,
+                            onCopyCode = {},
+                            onOpenRecoveryPlatform = platformRequests::add,
+                        )
+                    }
                 }
             }
             panel.dispatch(SyncPanelAction.Open)
@@ -741,6 +889,13 @@ class SyncSpaceRecoveryPanelIntegrationTest {
 
         fun node(tag: String) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.firstOrNull {
             it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == tag
+        }
+        suspend fun changeFocus(focused: Boolean) {
+            windowFocused = focused
+            repeat(3) {
+                scene.render()
+                yield()
+            }
         }
         suspend fun awaitNode(tag: String): SemanticsNode = withTimeout(5_000) {
             while (node(tag) == null) {

@@ -2042,7 +2042,7 @@
     <string name="sync_setup_repository_guide">1. Create a private mihon-sync repository under your GitHub account. Keep it empty; do not add a README, license, or .gitignore. GitHub may ignore prefilled values, so check the owner, name, and visibility before creating it.</string>
     <string name="sync_setup_app_guide">2. Install the Mihon GitHub App and select only mihon-sync. Do not select All repositories. Signing in does not install the App or grant repository access.</string>
     <string name="sync_setup_recheck_guide">3. Return here and recheck. Mihon will verify your account, App installation, repository ID, privacy, and access before offering initialization.</string>
-    <string name="sync_setup_needs_installation">The Mihon GitHub App is not installed for this account. Create the private repository first, then install the App and grant it access only to mihon-sync.</string>
+    <string name="sync_setup_needs_installation">Install the Mihon sync app for this account and authorize the repository used for synchronization.</string>
     <string name="sync_setup_needs_repository_access">The Mihon GitHub App is installed, but mihon-sync is not visible to this installation. The repository may not exist yet, or this installation may not include it. Signing in alone does not grant repository access.</string>
     <string name="sync_setup_missing_contents">The Mihon GitHub App installation is missing Contents write permission. Update its permissions in GitHub, then recheck.</string>
     <string name="sync_setup_installation_suspended">The Mihon GitHub App installation is suspended. Restoring it may require the app administrator or GitHub. View the installation status and available steps; wait if you have no recovery permission.</string>
@@ -2382,4 +2382,17 @@
     <string name="sync_repository_permission_checking">Checking repository creation permission…</string>
     <string name="sync_repository_permission_browser">This installation cannot create repositories in the app. Create a private empty repository in GitHub, then return here to continue.</string>
     <string name="sync_repository_permission_unknown">Repository creation permission could not be confirmed. Check again, or create a private empty repository in GitHub and return here to continue.</string>
+    <string name="sync_setup_finish_title">Finish GitHub sync setup</string>
+    <string name="sync_setup_current_account">Current account: %1$s</string>
+    <string name="sync_setup_connected_status">GitHub connected</string>
+    <string name="sync_setup_installation_pending">Sync app not installed</string>
+    <string name="sync_setup_space_pending">Sync space not checked yet</string>
+    <string name="sync_setup_install_authorize">Install and authorize sync app</string>
+    <string name="sync_setup_continue_install">Continue installation and authorization</string>
+    <string name="sync_setup_no_repository">No sync repository yet? Create a sync space</string>
+    <string name="sync_setup_check_continue">Check and continue</string>
+    <string name="sync_setup_instructions">Setup instructions</string>
+    <string name="sync_setup_installation_not_found">Installation was not detected. Complete setup using the same GitHub account.</string>
+    <string name="sync_setup_continue_title">Continue sync setup</string>
+    <string name="sync_setup_other_options">Other ways to resolve this</string>
 </resources>

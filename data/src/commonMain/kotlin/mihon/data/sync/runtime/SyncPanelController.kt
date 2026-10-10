@@ -631,6 +631,20 @@ class SyncPanelController(
             is SyncPanelAction.ExecuteRecoveryAction -> executeRecoveryAction(action.action)
             is SyncPanelAction.RecoveryPlatformCompleted -> completeRecoveryPlatform(action)
             is SyncPanelAction.RecoveryOfficialOpened -> recoveryOfficialOpened(action.action)
+            SyncPanelAction.RecoveryOfficialReturned -> {
+                if (state.value.visible && state.value.recoveryOfficialAction != null &&
+                    !state.value.recoveryOfficialCheckAttempted &&
+                    !state.value.setupBusy && !state.value.recoveryBusy
+                ) {
+                    mutableState.update { it.copy(recoveryOfficialCheckAttempted = true) }
+                    if (state.value.page == SyncPanelPage.SETUP) {
+                        // Returning from GitHub only verifies facts. Never resume a pending remote write here.
+                        discover(autoSelect = false, inspectPending = false)
+                    } else {
+                        recheckSpace()
+                    }
+                }
+            }
             SyncPanelAction.VerifyRecovery -> verifyRecovery()
             is SyncPanelAction.RepairData -> verifyRecovery(action.offset)
             SyncPanelAction.LoadMoreRecoveryFailures -> {
@@ -1376,6 +1390,7 @@ class SyncPanelController(
         mutableState.update {
             it.copy(
                 recoveryOfficialAction = action,
+                recoveryOfficialCheckAttempted = false,
                 recoveryOutcome = SyncRecoveryOutcome.WAITING_EXTERNAL,
             )
         }
@@ -1430,8 +1445,11 @@ class SyncPanelController(
             SyncRecoveryAction.CREATE_SPACE -> handle(SyncPanelAction.CreateNewSpace)
             SyncRecoveryAction.CHOOSE_SPACE -> beginSwitch(SyncSpaceSwitchPurpose.CONNECT)
             SyncRecoveryAction.CHECK_CONDITIONS -> {
-                if (runtime.connectionFacts().decode == SyncBindingDecode.MISSING) {
-                    discover(autoSelect = false)
+                mutableState.update { it.copy(recoveryOfficialCheckAttempted = it.recoveryOfficialAction != null) }
+                if (state.value.page == SyncPanelPage.SETUP ||
+                    runtime.connectionFacts().decode == SyncBindingDecode.MISSING
+                ) {
+                    discover()
                 } else {
                     recheckSpace()
                 }
@@ -2216,7 +2234,7 @@ class SyncPanelController(
         awaitIdle()
     }
 
-    private fun discover(autoSelect: Boolean = true) {
+    private fun discover(autoSelect: Boolean = true, inspectPending: Boolean = true) {
         if (setupJob?.isActive == true || repositoryJob?.isActive == true) return
         val version = authVersion
         mutableState.update {
@@ -2236,7 +2254,13 @@ class SyncPanelController(
                     enqueue { if (version == authVersion) handleSwitchDiscovery(found, intent) }
                     return@launch
                 }
-                when (val pending = runtime.onboarding.pendingForCurrentAccount()) {
+                when (
+                    val pending = if (inspectPending) {
+                        runtime.onboarding.pendingForCurrentAccount()
+                    } else {
+                        SyncPendingSetup.None
+                    }
+                ) {
                     is SyncPendingSetup.Current -> enqueue {
                         if (version == authVersion) {
                             setupAccount = SyncGitHubAccount(pending.setup.accountId, pending.setup.accountLogin)
@@ -2318,7 +2342,8 @@ class SyncPanelController(
         }
     }
 
-    private suspend fun handleDiscovery(result: SyncSpaceDiscovery, autoSelect: Boolean = true) {
+    private suspend fun recordDiscoveryFacts(result: SyncSpaceDiscovery) {
+        val officialAction = state.value.recoveryOfficialAction
         val completedOfficial = when (state.value.recoveryOfficialAction) {
             SyncRecoveryAction.INSTALL_APP, SyncRecoveryAction.RESTORE_INSTALLATION ->
                 result !is SyncSpaceDiscovery.NeedsInstallation &&
@@ -2330,7 +2355,13 @@ class SyncPanelController(
             else -> false
         }
         if (completedOfficial) {
-            mutableState.update { it.copy(recoveryOfficialAction = null, recoveryPlatformResult = null) }
+            mutableState.update {
+                it.copy(
+                    recoveryOfficialAction = null,
+                    recoveryOfficialCheckAttempted = false,
+                    recoveryPlatformResult = null,
+                )
+            }
         }
         setupAccount = when (result) {
             is SyncSpaceDiscovery.Found -> result.space.account
@@ -2343,8 +2374,23 @@ class SyncPanelController(
             is SyncSpaceDiscovery.InstallationSuspended -> result.account
             is SyncSpaceDiscovery.Failed -> result.account ?: setupAccount
         }
+        val installation = when (result) {
+            is SyncSpaceDiscovery.Found -> result.space.installation
+            is SyncSpaceDiscovery.Multiple -> result.spaces.firstOrNull()?.installation
+            is SyncSpaceDiscovery.EmptyRepository -> result.candidate.installation
+            is SyncSpaceDiscovery.NoVisibleSpace -> result.installation
+            is SyncSpaceDiscovery.NeedsInstallation -> null
+            is SyncSpaceDiscovery.NeedsRepositoryAccess -> result.installation
+            is SyncSpaceDiscovery.NeedsContentsPermission -> result.installation
+            is SyncSpaceDiscovery.InstallationSuspended -> result.installation
+            is SyncSpaceDiscovery.Failed -> result.installation ?: state.value.setupInstallation
+        }
+        mutableState.update { it.copy(setupInstallation = installation) }
         if (completedOfficial) {
             try {
+                if (runtime.connectionFacts().decode == SyncBindingDecode.OK) {
+                    runtime.recoveryWorkflow.officialCompleted(requireNotNull(officialAction))
+                }
                 saveUnboundRecovery()
             } catch (
                 cancelled: CancellationException,
@@ -2359,6 +2405,10 @@ class SyncPanelController(
                 }
             }
         }
+    }
+
+    private suspend fun handleDiscovery(result: SyncSpaceDiscovery, autoSelect: Boolean = true) {
+        recordDiscoveryFacts(result)
         when (result) {
             is SyncSpaceDiscovery.Found -> {
                 if (autoSelect) {
@@ -2625,6 +2675,7 @@ class SyncPanelController(
         if (choices != null || found is SyncSpaceDiscovery.NoVisibleSpace ||
             found is SyncSpaceDiscovery.NeedsRepositoryAccess
         ) {
+            recordDiscoveryFacts(found)
             val old = intent.oldConnection.material.material().descriptor
             val candidates = choices.orEmpty().filter {
                 it.account.id == intent.accountId &&
@@ -2642,6 +2693,7 @@ class SyncPanelController(
                 )
             }
         } else if (found is SyncSpaceDiscovery.EmptyRepository && intent.purpose == SyncSpaceSwitchPurpose.CONNECT) {
+            recordDiscoveryFacts(found)
             mutableState.update {
                 it.copy(
                     setupStep = SyncSetupStep.CHOOSE_SPACE,
@@ -2813,6 +2865,8 @@ class SyncPanelController(
                 setupRetryFailed = it.setupRetryAttempted,
                 setupStep = SyncSetupStep.ERROR,
                 setupProblem = problem,
+                recoveryStepFailure = null,
+                recoveryConditionsVerified = false,
                 initializationFailure = (failure as? SyncSetupException)?.initialization,
                 problem = failure.syncProblem(),
                 setupAccountLogin = accountLogin ?: it.setupAccountLogin,

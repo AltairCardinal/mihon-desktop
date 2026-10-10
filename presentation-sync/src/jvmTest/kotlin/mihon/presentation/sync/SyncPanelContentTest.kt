@@ -94,6 +94,164 @@ import java.util.Locale
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelContentTest {
     @Test
+    fun `setup recommendation latest installation blocker precedes paused old sync or import`() {
+        for (pausedImport in listOf(false, true)) {
+            renderedEnglish(
+                SyncPanelState(
+                    visible = true,
+                    loaded = true,
+                    page = SyncPanelPage.SETUP,
+                    setupStep = SyncSetupStep.ERROR,
+                    setupProblem = SyncDiscoveryProblem.NEEDS_INSTALLATION,
+                    setupAccountLogin = "owner",
+                    importPaused = pausedImport,
+                    importRemaining = if (pausedImport) 1 else 0,
+                    run = if (pausedImport) {
+                        null
+                    } else {
+                        visualRun(SyncRunPhase.IMPORTING).copy(state = SyncRunState.PAUSED_USER)
+                    },
+                ),
+            ) {
+                assertEquals(SyncRecoveryAction.INSTALL_APP, panel.state.value.recoveryPrimaryAction.action)
+                awaitTag("sync-install-app")
+                assertFalse(hasTag("sync-recovery-resume"))
+                assertFalse(hasTag("sync-recovery-resume-import"))
+                click("sync-install-app")
+                assertTrue(actions.contains(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.INSTALL_APP)))
+                assertFalse(
+                    actions.any {
+                        it == SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.RESUME_SYNC) ||
+                            it == SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.RESUME_IMPORT)
+                    },
+                )
+                panel.state.value = panel.state.value.copy(page = SyncPanelPage.MAIN)
+                assertEquals(
+                    if (pausedImport) SyncRecoveryAction.RESUME_IMPORT else SyncRecoveryAction.RESUME_SYNC,
+                    panel.state.value.recoveryPrimaryAction.action,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `setup recommendation latest installation result overrides an earlier failed request`() = renderedEnglish(
+        SyncPanelState(
+            visible = true,
+            loaded = true,
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.ERROR,
+            setupProblem = SyncDiscoveryProblem.NEEDS_INSTALLATION,
+            setupAccountLogin = "owner",
+            recoveryStepFailure = mihon.data.sync.runtime.SyncRecoveryFailure(
+                discovery = SyncDiscoveryProblem.RETRYABLE,
+                httpStatus = 500,
+            ),
+        ),
+    ) {
+        assertEquals(SyncRecoveryAction.INSTALL_APP, panel.state.value.recoveryPrimaryAction.action)
+        awaitTag("sync-install-app")
+    }
+
+    @Test
+    fun `setup recommendation authorization alternatives remain accessible without duplicate recovery exit`() =
+        renderedEnglish(
+            connected().copy(
+                page = SyncPanelPage.SETUP,
+                setupStep = SyncSetupStep.ERROR,
+                setupProblem = SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION,
+                setupAccountLogin = "owner",
+                setupInstallation = SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1),
+                recoveryConditionsVerified = false,
+            ),
+        ) {
+            assertEquals(SyncRecoveryAction.MANAGE_AUTHORIZATION, panel.state.value.recoveryPrimaryAction.action)
+            awaitTag("sync-install-app")
+            assertFalse(hasTag("sync-setup-recovery-open"))
+            assertFalse(hasTag("sync-recovery-connect-other"))
+            click("sync-setup-alternatives-toggle")
+            awaitTag("sync-recovery-connect-other")
+            click("sync-recovery-connect-other")
+            assertEquals(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CHOOSE_SPACE), actions.last())
+        }
+
+    @Test
+    fun `setup recommendation latest installation blocker overrides stale initialization receipt`() = renderedEnglish(
+        SyncPanelState(
+            visible = true,
+            loaded = true,
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.ERROR,
+            setupProblem = SyncDiscoveryProblem.NEEDS_INSTALLATION,
+            setupAccountLogin = "owner",
+            initializationFailure = mihon.data.sync.runtime.SyncInitializationFailure(
+                mihon.domain.sync.transport.SyncInitializationStage.BOOTSTRAP_SUBMITTING,
+                mihon.data.sync.runtime.SyncInitializationFailureReason.UNKNOWN,
+                true,
+            ),
+        ),
+    ) {
+        assertEquals(SyncRecoveryAction.INSTALL_APP, panel.state.value.recoveryPrimaryAction.action)
+        awaitTag("sync-install-app")
+    }
+
+    @Test
+    fun `setup recommendation installation blocker precedes pending continuation and hides duplicate actions`() =
+        renderedEnglish(
+            SyncPanelState(
+                visible = true,
+                loaded = true,
+                page = SyncPanelPage.SETUP,
+                setupStep = SyncSetupStep.ERROR,
+                setupProblem = SyncDiscoveryProblem.NEEDS_INSTALLATION,
+                setupAccountLogin = "owner",
+                pendingRecoveryPurpose = SyncRecoveryContinuation.CREATE,
+                recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.SWITCH_PENDING),
+                setupRetryFailed = true,
+            ),
+        ) {
+            assertEquals(SyncRecoveryAction.INSTALL_APP, panel.state.value.recoveryPrimaryAction.action)
+            awaitTag("sync-install-app")
+            assertFalse(hasTag("sync-setup-retry"))
+            assertFalse(hasTag("sync-setup-recovery-open"))
+            assertFalse(hasTag("sync-setup-retry-failed"))
+            assertFalse(texts().contains(MR.strings.sync_setup_repository_guide.localized(Locale.US)))
+            val beforeVisual = Locale.getDefault()
+            try {
+                Locale.setDefault(Locale.SIMPLIFIED_CHINESE)
+                captureVisuals("installation")
+            } finally {
+                Locale.setDefault(beforeVisual)
+            }
+            click("sync-install-app")
+            assertTrue(actions.contains(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.INSTALL_APP)))
+            assertTrue(actions.contains(SyncPanelAction.RecoveryOfficialOpened(SyncRecoveryAction.INSTALL_APP)))
+            assertEquals(listOf("https://github.com/apps/mihon-desktop/installations/new"), opened)
+            awaitTag("sync-setup-error-details")
+            click("sync-setup-error-details")
+            assertEquals(SyncPanelAction.Navigate(SyncPanelPage.DIAGNOSTICS), actions.last())
+        }
+
+    @Test
+    fun `setup recommendation actual network failure overrides an opened installation step`() = renderedEnglish(
+        SyncPanelState(
+            visible = true,
+            loaded = true,
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.ERROR,
+            setupProblem = SyncDiscoveryProblem.RETRYABLE,
+            setupAccountLogin = "owner",
+            pendingRecoveryPurpose = SyncRecoveryContinuation.CREATE,
+            recoveryOfficialAction = SyncRecoveryAction.INSTALL_APP,
+        ),
+    ) {
+        assertEquals(SyncRecoveryAction.NETWORK, panel.state.value.recoveryPrimaryAction.action)
+        awaitTag("sync-recovery-network")
+        assertFalse(hasTag("sync-install-app"))
+        assertFalse(hasTag("sync-setup-retry-failed"))
+    }
+
+    @Test
     fun `successful main run still exposes unfinished backup scope and a direct recovery action`() = rendered(
         connected().copy(
             run = visualRun(SyncRunPhase.COMPLETE).copy(state = SyncRunState.SUCCEEDED),
@@ -4183,6 +4341,7 @@ class SyncPanelContentTest {
                         when (name) {
                             "main" -> "sync-keep-selected"
                             "password" -> "sync-password-input"
+                            "installation" -> "sync-install-app"
                             else -> "sync-settings-list"
                         },
                     )

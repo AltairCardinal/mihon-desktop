@@ -220,6 +220,14 @@ internal class SyncRecoveryWorkflow(
         return true
     }
 
+    /** Completion of one observed official step does not verify the original sync space. */
+    suspend fun officialCompleted(action: SyncRecoveryAction) {
+        val context = runtime.recoveryBinding()
+        update(context) {
+            if (it.officialAction == action) it.copy(officialAction = null, outcome = null) else it
+        }
+    }
+
     suspend fun platformCompleted(requestId: String, result: SyncRecoveryPlatformResult): Boolean {
         val context = runtime.recoveryBinding()
         val flow = runtime.onboarding.storage.recoveryFlow(context.stored) ?: return false

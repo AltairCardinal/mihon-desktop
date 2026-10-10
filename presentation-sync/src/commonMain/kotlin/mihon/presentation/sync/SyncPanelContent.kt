@@ -94,6 +94,7 @@ import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -209,6 +210,26 @@ fun SyncPanelContent(
 ) {
     val state by panel.state.collectAsState()
     if (!state.visible) return
+    // The same Compose window-focus fact is supplied by Android and Desktop. Returning is not approval.
+    val focused = LocalWindowInfo.current.isWindowFocused
+    var browserLaunched by remember(panel) { mutableStateOf(false) }
+    var browserLeft by remember(panel) { mutableStateOf(false) }
+    val dispatch: (SyncPanelAction) -> Unit = { action ->
+        if (action is SyncPanelAction.RecoveryOfficialOpened) {
+            // Only the confirmed official recovery launch arms return checking, not an arbitrary browser link.
+            browserLaunched = true
+            browserLeft = !focused
+        }
+        panel.dispatch(action)
+    }
+    LaunchedEffect(focused, state.recoveryOfficialAction, browserLaunched) {
+        if (browserLaunched && !focused) browserLeft = true
+        if (browserLaunched && browserLeft && focused && state.recoveryOfficialAction != null) {
+            browserLaunched = false
+            browserLeft = false
+            panel.dispatch(SyncPanelAction.RecoveryOfficialReturned)
+        }
+    }
     LaunchedEffect(state.recoveryPlatformRequest?.requestId, state.recoveryPlatformLaunchPending) {
         val request = state.recoveryPlatformRequest ?: return@LaunchedEffect
         if (state.recoveryPlatformLaunchPending && panel.claimRecoveryPlatform(request.requestId)) {
@@ -273,7 +294,7 @@ fun SyncPanelContent(
         }
     }
     Column(modifier.fillMaxSize()) {
-        PanelHeader(state, panel::dispatch)
+        PanelHeader(state, dispatch)
         HorizontalDivider()
         if (externalUnavailable) {
             Text(
@@ -292,24 +313,24 @@ fun SyncPanelContent(
         when (state.page) {
             SyncPanelPage.MAIN -> MainPage(state, presentation, detailsExpanded, {
                 detailsExpanded = !detailsExpanded
-            }, detailScroll, panel::dispatch, openFailureLogSafely, listState, Modifier.weight(1f))
-            SyncPanelPage.SETTINGS -> SettingsPage(state, panel::dispatch, Modifier.weight(1f))
+            }, detailScroll, dispatch, openFailureLogSafely, listState, Modifier.weight(1f))
+            SyncPanelPage.SETTINGS -> SettingsPage(state, dispatch, Modifier.weight(1f))
             SyncPanelPage.DIAGNOSTICS -> DiagnosticPage(
                 state,
-                panel::dispatch,
+                dispatch,
                 openDiagnosticSafely,
                 copyCodeSafely,
                 Modifier.weight(1f),
             )
             SyncPanelPage.HISTORY -> RecordsPage(state, Modifier.weight(1f))
-            SyncPanelPage.RECOVERY -> RecoveryPage(state, panel::dispatch, openBrowserSafely, Modifier.weight(1f))
+            SyncPanelPage.RECOVERY -> RecoveryPage(state, dispatch, openBrowserSafely, Modifier.weight(1f))
             SyncPanelPage.SETUP -> SetupPage(
                 state,
                 presentation,
                 detailsExpanded,
                 { detailsExpanded = !detailsExpanded },
                 detailScroll,
-                panel::dispatch,
+                dispatch,
                 openBrowserSafely,
                 copyCodeSafely,
                 panel::claimDeviceCodeBrowser,
@@ -923,7 +944,7 @@ private fun RecoveryDecisionAction(
         ) {
             Text(syncString(MR.strings.sync_recovery_repository_restriction))
         }
-        if (state.recoveryOfficialAction != null && primary) {
+        if (state.recoveryOfficialAction != null && primary && !state.recoveryOfficialCheckAttempted) {
             Text(
                 syncString(
                     if (state.recoveryOfficialAction in setOf(
@@ -959,7 +980,13 @@ private fun RecoveryDecisionAction(
             Action(
                 tag,
                 if (action == SyncRecoveryAction.CHECK_CONDITIONS && state.recoveryOfficialAction != null) {
-                    MR.strings.sync_recovery_official_continue
+                    MR.strings.sync_setup_check_continue
+                } else if (action == SyncRecoveryAction.INSTALL_APP) {
+                    if (state.recoveryOfficialAction == SyncRecoveryAction.INSTALL_APP) {
+                        MR.strings.sync_setup_continue_install
+                    } else {
+                        MR.strings.sync_setup_install_authorize
+                    }
                 } else if (action == SyncRecoveryAction.CONTINUE_SETUP &&
                     state.recovery?.reason == SyncSpaceRecoveryReason.SWITCH_PENDING
                 ) {
@@ -1017,7 +1044,7 @@ private fun recoveryActionLabel(action: SyncRecoveryAction): StringResource = wh
     SyncRecoveryAction.READER -> MR.strings.sync_recovery_reader
     SyncRecoveryAction.REPAIR_DATA -> MR.strings.sync_recovery_repair_data
     SyncRecoveryAction.VERIFY_SYNC -> MR.strings.sync_recovery_verify
-    SyncRecoveryAction.CONTINUE_SETUP -> MR.strings.sync_setup_retry
+    SyncRecoveryAction.CONTINUE_SETUP -> MR.strings.sync_setup_continue_title
     SyncRecoveryAction.EDIT_REPOSITORY_NAME -> MR.strings.sync_repository_name
     SyncRecoveryAction.REPAIR_REPOSITORY_PROPERTIES -> MR.strings.sync_repository_properties_confirm
     SyncRecoveryAction.MANAGE_AUTHORIZATION, SyncRecoveryAction.RESTORE_INSTALLATION -> {
@@ -2054,7 +2081,10 @@ private fun SetupPage(
         ) {
             item { CircularProgressIndicator(Modifier.size(24.dp)) }
         }
-        state.setupProblem?.takeUnless { state.setupStep == SyncSetupStep.MERGING && state.showingCompactRun }
+        state.setupProblem?.takeUnless {
+            (state.setupStep == SyncSetupStep.MERGING && state.showingCompactRun) ||
+                (state.setupStep == SyncSetupStep.ERROR && it == SyncDiscoveryProblem.NEEDS_INSTALLATION)
+        }
             ?.let { item { Text(setupProblemText(it), Modifier.testTag("sync-setup-error")) } }
         state.setupInstallation?.takeUnless {
             state.setupStep == SyncSetupStep.MERGING && state.showingCompactRun
@@ -2412,7 +2442,7 @@ private fun SetupPage(
                     SyncDiscoveryProblem.NEEDS_INSTALLATION,
                     SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS,
                 )
-                if (needsRepositoryGuide) {
+                if (needsRepositoryGuide && !installationGuidance) {
                     item {
                         Text(syncString(MR.strings.sync_setup_repository_guide))
                     }
@@ -2464,9 +2494,49 @@ private fun SetupErrorActions(
     openBrowser: (String) -> Boolean,
     installationGuidance: Boolean,
 ) {
+    var guideExpanded by remember(state.setupProblem) { mutableStateOf(false) }
+    var alternativesExpanded by remember(state.setupProblem) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (state.setupRetryFailed) {
-            Text(syncString(MR.strings.sync_error_retry_failed), Modifier.testTag("sync-setup-retry-failed"))
+        if (state.setupProblem == SyncDiscoveryProblem.NEEDS_INSTALLATION) {
+            Text(syncString(MR.strings.sync_setup_finish_title), style = MaterialTheme.typography.titleLarge)
+            state.setupAccountLogin?.let { account ->
+                Text(
+                    syncString(MR.strings.sync_setup_current_account, account),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.CheckCircle, null, Modifier.size(20.dp))
+                        Text(
+                            syncString(MR.strings.sync_setup_connected_status),
+                            Modifier.padding(start = 12.dp).testTag("sync-setup-account-confirmed"),
+                        )
+                    }
+                    Text(
+                        syncString(MR.strings.sync_setup_installation_pending),
+                        Modifier.testTag("sync-setup-install-pending"),
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        syncString(MR.strings.sync_setup_space_pending),
+                        Modifier.testTag("sync-setup-space-pending"),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+            Text(syncString(MR.strings.sync_setup_needs_installation))
+            if (state.recoveryOfficialCheckAttempted) {
+                Text(syncString(MR.strings.sync_setup_installation_not_found))
+            }
         }
         RecoveryDecisionAction(state.recoveryPrimaryAction, state, dispatch, openBrowser, primary = true)
         if (!installationGuidance) {
@@ -2474,16 +2544,44 @@ private fun SetupErrorActions(
                 it.action == SyncRecoveryAction.CHECK_CONDITIONS
             }?.let { RecoveryDecisionAction(it, state, dispatch, openBrowser) }
         }
-        state.recoveryAlternativeActions.firstOrNull { it.action == SyncRecoveryAction.MANAGE_AUTHORIZATION }?.let {
-            RecoveryDecisionAction(it, state, dispatch, openBrowser)
-        }
-        ErrorRecoveryExit(state, dispatch, "sync-setup", showDiagnostics = !installationGuidance)
         if (installationGuidance) {
-            Action("sync-recheck-installation", MR.strings.sync_setup_recheck, !state.setupBusy) {
-                dispatch(
-                    SyncPanelAction.ExecuteRecoveryAction(mihon.data.sync.runtime.SyncRecoveryAction.CHECK_CONDITIONS),
-                )
+            if (state.setupProblem == SyncDiscoveryProblem.NEEDS_INSTALLATION && state.setupAccountLogin != null) {
+                Action("sync-setup-create-space", MR.strings.sync_setup_no_repository, !state.setupBusy) {
+                    dispatch(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CREATE_SPACE))
+                }
             }
+            if (state.recoveryPrimaryAction.action != SyncRecoveryAction.CHECK_CONDITIONS) {
+                Action("sync-recheck-installation", MR.strings.sync_setup_check_continue, !state.setupBusy) {
+                    dispatch(
+                        SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CHECK_CONDITIONS),
+                    )
+                }
+            }
+            TextButton(
+                onClick = { guideExpanded = !guideExpanded },
+                modifier = Modifier.testTag("sync-setup-instructions-toggle"),
+            ) { Text(syncString(MR.strings.sync_setup_instructions)) }
+            if (guideExpanded) {
+                Text(syncString(MR.strings.sync_setup_repository_guide))
+                Text(syncString(MR.strings.sync_setup_app_guide))
+                Text(syncString(MR.strings.sync_setup_recheck_guide))
+            }
+            if (state.setupProblem != SyncDiscoveryProblem.NEEDS_INSTALLATION) {
+                TextButton(
+                    onClick = { alternativesExpanded = !alternativesExpanded },
+                    modifier = Modifier.testTag("sync-setup-alternatives-toggle"),
+                ) { Text(syncString(MR.strings.sync_setup_other_options)) }
+                if (alternativesExpanded) {
+                    state.recoveryAlternativeActions.filter {
+                        it.action != SyncRecoveryAction.CHECK_CONDITIONS
+                    }.forEach { RecoveryDecisionAction(it, state, dispatch, openBrowser) }
+                }
+            }
+        } else {
+            state.recoveryAlternativeActions.firstOrNull {
+                it.action == SyncRecoveryAction.MANAGE_AUTHORIZATION
+            }?.let { RecoveryDecisionAction(it, state, dispatch, openBrowser) }
+            ErrorRecoveryExit(state, dispatch, "sync-setup")
         }
     }
 }
