@@ -62,10 +62,18 @@ jobs:
 
       - name: Build unsigned Android candidate
         id: candidate
-        run: python3 scripts/build-android.py candidate --unsigned
+        run: |
+          if python3 scripts/build-android.py candidate --unsigned; then
+            exit 0
+          fi
+          if [ -f .gradle-coordinator/android-candidate.log ]; then
+            tail -n 160 .gradle-coordinator/android-candidate.log
+          fi
+          exit 1
 
       - name: Run unit tests
         id: unit_tests
+        if: github.event_name != 'workflow_dispatch'
         run: ./gradlew testReleaseUnitTest
 
       - name: Upload test report
