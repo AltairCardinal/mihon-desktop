@@ -1,0 +1,96 @@
+import kotlin.Boolean;
+
+CREATE TABLE sync_repair_failures (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    target TEXT NOT NULL,
+    evidence_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    original TEXT NOT NULL,
+    resolved INTEGER AS Boolean NOT NULL DEFAULT 0,
+    PRIMARY KEY(space_id, generation, kind, target, evidence_id)
+);
+
+recordFailure:
+INSERT OR IGNORE INTO sync_repair_failures(space_id, generation, kind, target, evidence_id, path, reason, original)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+getFailures:
+SELECT * FROM sync_repair_failures WHERE space_id = ? AND generation = ? AND resolved = 0 AND kind = 'BATCH'
+ORDER BY kind, target, evidence_id LIMIT :limit OFFSET :offset;
+
+getRejectedTargets:
+SELECT DISTINCT target FROM sync_repair_failures
+WHERE space_id = :spaceId AND generation = :generation AND kind = 'BATCH' AND resolved = 0
+AND target IN :batchIds;
+
+getRejectedEvents:
+SELECT i.event_key, i.reason, e.batch_id FROM sync_invalid_events i
+LEFT JOIN sync_events e USING (space_id, generation, event_key)
+WHERE i.space_id = :spaceId AND i.generation = :generation
+AND NOT EXISTS (SELECT 1 FROM sync_repair_failures f
+    WHERE f.space_id = i.space_id AND f.generation = i.generation
+    AND f.kind = 'BATCH' AND f.target = e.batch_id AND f.resolved = 0)
+ORDER BY i.event_key LIMIT :limit OFFSET :offset;
+
+resolveBatchReadFailure:
+UPDATE sync_repair_failures SET resolved = 1
+WHERE space_id = ? AND generation = ? AND kind = 'BATCH' AND target = ?
+AND reason IN ('sync batch could not be decoded', 'sync batch could not be authenticated');
+
+getProjectionFailures:
+SELECT s.*, coalesce(d.description_json, '') AS description FROM sync_field_state s
+LEFT JOIN sync_descriptions d USING (space_id, generation, object_key)
+WHERE s.space_id = ? AND s.generation = ? AND s.status IN ('SOURCE', 'DESCRIPTION', 'IDENTITY', 'DEPENDENCY')
+ORDER BY s.object_key, s.field LIMIT :limit OFFSET :offset;
+
+getObjectProjectionFailures:
+SELECT * FROM sync_field_state WHERE space_id = :spaceId AND generation = :generation AND object_key = :objectKey
+AND status IN ('SOURCE', 'DESCRIPTION', 'IDENTITY', 'DEPENDENCY') ORDER BY field;
+
+getMissingDependencies:
+SELECT DISTINCT d.parent_key FROM sync_event_dependencies d
+LEFT JOIN sync_events e ON e.space_id = d.space_id AND e.generation = d.generation AND e.event_key = d.parent_key
+WHERE d.space_id = ? AND d.generation = ? AND e.event_key IS NULL
+ORDER BY d.parent_key LIMIT :limit OFFSET :offset;
+
+retryProjection:
+UPDATE sync_field_state SET dirty = 1, revision = revision + 1
+WHERE space_id = ? AND generation = ? AND object_key = ? AND field = ? AND revision = ?
+AND status IN ('SOURCE', 'DESCRIPTION', 'IDENTITY', 'DEPENDENCY');
+
+getFailedBulkItems:
+SELECT j.space_id, j.generation, j.decision, b.*, coalesce(p.title, '') AS title
+FROM sync_bulk_items b JOIN sync_bulk_jobs j USING (job_id)
+LEFT JOIN sync_pending_decisions p ON p._id = b.pending_id AND p.binding = b.binding
+WHERE j.space_id = ? AND j.generation = ? AND b.outcome = 'FAILED'
+AND p.binding = b.binding
+ORDER BY b.job_id, b.pending_id LIMIT :limit OFFSET :offset;
+
+getRepairCounts:
+SELECT
+ (SELECT count(DISTINCT target) FROM sync_repair_failures
+  WHERE space_id = :spaceId AND generation = :generation AND kind = 'BATCH' AND resolved = 0) AS batches,
+ (SELECT count(*) FROM sync_field_state
+  WHERE space_id = :spaceId AND generation = :generation
+  AND status IN ('SOURCE', 'DESCRIPTION', 'IDENTITY', 'DEPENDENCY')) AS fields,
+ (SELECT count(DISTINCT d.parent_key) FROM sync_event_dependencies d
+  LEFT JOIN sync_events e ON e.space_id = d.space_id AND e.generation = d.generation AND e.event_key = d.parent_key
+  WHERE d.space_id = :spaceId AND d.generation = :generation AND e.event_key IS NULL) AS dependencies,
+ (SELECT count(DISTINCT p._id) FROM sync_bulk_items b JOIN sync_bulk_jobs j USING(job_id)
+  JOIN sync_pending_decisions p ON p._id = b.pending_id AND p.binding = b.binding
+  WHERE j.space_id = :spaceId AND j.generation = :generation AND b.outcome = 'FAILED') AS bulk,
+ (SELECT count(*) FROM sync_invalid_events i
+  LEFT JOIN sync_events e USING (space_id, generation, event_key)
+  WHERE i.space_id = :spaceId AND i.generation = :generation
+  AND NOT EXISTS (SELECT 1 FROM sync_repair_failures f
+      WHERE f.space_id = i.space_id AND f.generation = i.generation
+      AND f.kind = 'BATCH' AND f.target = e.batch_id AND f.resolved = 0)) AS events;
+
+freezeFailedPending:
+INSERT INTO sync_bulk_items(job_id, pending_id, object_key, field, object_json, binding)
+SELECT :newJob, p._id, p.object_key, p.field, p.object_json, p.binding
+FROM sync_bulk_items b JOIN sync_pending_decisions p ON p._id = b.pending_id AND p.binding = b.binding
+WHERE b.job_id = :oldJob AND b.outcome = 'FAILED' AND p.space_id = :spaceId AND p.generation = :generation;

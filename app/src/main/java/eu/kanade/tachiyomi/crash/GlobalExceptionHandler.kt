@@ -42,6 +42,14 @@ class GlobalExceptionHandler private constructor(
     ) {
         val intent = Intent(applicationContext, activity).apply {
             putExtra(INTENT_EXTRA, Json.encodeToString(ThrowableSerializer, exception))
+            if (generateSequence(exception) { it.cause }.any {
+                    it is mihon.domain.sync.security.SyncSecureStoreException ||
+                        it is android.database.sqlite.SQLiteException ||
+                        it.javaClass.name.startsWith("io.requery.android.database.sqlite.SQLite")
+                }
+            ) {
+                putExtra("sync-safe-recovery", true)
+            }
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK)
         }

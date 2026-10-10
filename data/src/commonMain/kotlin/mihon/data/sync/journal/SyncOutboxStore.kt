@@ -19,9 +19,21 @@ import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.Sync_batches
 
-data class SyncFrozenUploadRound(val totalItems: Long, val batchIds: List<String>)
+data class SyncFrozenUploadRound(
+    val totalItems: Long,
+    val batchIds: List<String>,
+    val batchItems: Map<String, Long> = emptyMap(),
+)
 
 class SyncOutboxStore(private val handler: DatabaseHandler) {
+    /** Plan membership is immutable; execution still follows the durable actor sequence. */
+    suspend fun orderedBatchIds(spaceId: String, generation: Long, members: Set<String>): List<String> =
+        handler.await {
+            requireActive(spaceId, generation)
+            sync_journalQueries.getPendingUploadRoundBatches(spaceId, generation).executeAsList()
+                .map { it.batch_id }.filter { it in members }
+        }
+
     private val remoteGuard = SyncRemoteSnapshotGuard(handler)
 
     suspend fun observeSnapshot(snapshot: SyncSnapshot) = remoteGuard.observe(snapshot)
@@ -32,7 +44,11 @@ class SyncOutboxStore(private val handler: DatabaseHandler) {
             requireActive(spaceId, generation)
             sync_journalQueries.sealSpaceBatches(spaceId, generation)
             val batches = sync_journalQueries.getPendingUploadRoundBatches(spaceId, generation).executeAsList()
-            SyncFrozenUploadRound(batches.sumOf { it.event_count }, batches.map { it.batch_id })
+            SyncFrozenUploadRound(
+                batches.sumOf { it.event_count },
+                batches.map { it.batch_id },
+                batches.associate { it.batch_id to it.event_count },
+            )
         }
 
     suspend fun nextBatch(spaceId: String, generation: Long, frozenBatchId: String? = null): SyncBatch? =

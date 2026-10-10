@@ -209,18 +209,21 @@ suspend fun initDesktopDI(
     syncRepositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
 ) {
     val paths = DesktopPlatformPaths.current(createDirectories = false)
-    val preferenceStore = DesktopPreferenceStore()
-    initDesktopDI(paths, preferenceStore, syncRepositoryScope)
+    initDesktopDI(paths, syncRepositoryScope = syncRepositoryScope)
 }
 
 internal suspend fun initDesktopDI(
     paths: DesktopPlatformPaths,
-    preferenceStore: DesktopPreferenceStore,
+    preferenceStore: DesktopPreferenceStore = paths.recoveryProfileRoot
+        ?.let(mihon.desktop.platform.DesktopRecoveryProfile::preferences) ?: DesktopPreferenceStore(),
     syncRepositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
 ) {
     initAndroidCompatApplication()
     prepareDesktopProfile(paths, preferenceStore)
     initConfigLayer(paths.configDir, preferenceStore)
+    paths.recoveryProfileRoot?.let { root ->
+        Injekt.addSingleton<FolderProvider>(DesktopStorageFolderProvider(File(root, "storage")))
+    }
     val networkHelper = initNetworkLayer(paths, preferenceStore)
     val handler = initDataLayer(paths)
     initExtensionLayer(paths, networkHelper, handler)
@@ -694,7 +697,10 @@ private fun registerDesktopExtension(
     val extensionController = SourceExtensionTestModeController(extensionScreenModel)
     Injekt.addSingleton(extensionController)
     SourceExtensionTestModeBridge.install(extensionController)
-    registerDesktopTracking(sourceManager, networkHelper.client, trackerServiceRegistry)
+    registerDesktopTracking(sourceManager, networkHelper.client, trackerServiceRegistry,
+        DesktopCredentialStore(mihon.desktop.platform.DesktopRecoveryProfile.credentialBackend(
+            paths.recoveryProfileRoot, OsCredentialBackend(),
+        )))
     val extensionRepoService = ExtensionRepoService(Injekt.get<NetworkHelper>(), Injekt.get<Json>())
     Injekt.addSingleton(extensionRepoService)
     Injekt.addSingleton(GetExtensionRepo(extensionRepoRepository))
@@ -708,10 +714,10 @@ private fun registerDesktopTracking(
     sourceManager: SourceManager,
     client: OkHttpClient,
     trackerServiceRegistry: TrackerServiceRegistry? = null,
+    credentialStore: DesktopCredentialStore = DesktopCredentialStore(),
 ) {
     val trackRepository = Injekt.get<TrackRepository>()
     val chapterRepository = Injekt.get<ChapterRepository>()
-    val credentialStore = DesktopCredentialStore()
     val oauthCallbackBroker = DesktopTrackerOAuthCallbackBroker()
     val enhancedTrackerContexts = mihon.desktop.tracking.DesktopEnhancedTrackerContextProvider().apply {
         attach(sourceManager)
@@ -962,7 +968,9 @@ internal suspend fun initUILayer(
     downloadFileOperations: mihon.desktop.download.DownloadFileOperations =
         mihon.desktop.download.DefaultDownloadFileOperations,
     credentialBackendFactory: (CredentialNamespace) -> mihon.desktop.platform.CredentialBackend =
-        { namespace -> OsCredentialBackend(namespace = namespace) },
+        { namespace -> mihon.desktop.platform.DesktopRecoveryProfile.credentialBackend(
+            paths.recoveryProfileRoot, OsCredentialBackend(namespace = namespace),
+        ) },
     profileDirectoryOpener: (File) -> Boolean = mihon.desktop.ui.settings.DesktopDirectoryOpener::open,
     nativeSharePort: DesktopNativeSharePort = defaultDesktopNativeSharePort(),
     trackerConnectivity: mihon.desktop.tracking.DesktopNetworkConnectivity =
@@ -1304,7 +1312,16 @@ internal suspend fun initUILayer(
             persistentObjectCacheDirectory = paths.networkCacheDir.resolve("mihon-sync-objects").toOkioPath(),
             failureLogDirectory = paths.logsDir.resolve("sync-failures").toOkioPath(),
             repositoryScope = syncRepositoryScope,
+            diagnosticDirectory = paths.networkCacheDir.resolve("sync-diagnostics").toOkioPath(),
+            diagnosticEnvironment = mihon.data.sync.runtime.SyncDiagnosticEnvironment(
+                platform = "DESKTOP", appVersion = mihon.desktop.APP_VERSION,
+                sourceRevision = BuildInfo.GIT_HASH, releaseIdentity = "mihon.desktop",
+                build = mihon.desktop.AppVersion.BUILD.toString(), releaseBuild = !BuildInfo.IS_NON_RELEASE_BUILD,
+            ),
         )
+        paths.recoveryProfileRoot?.let(mihon.desktop.platform.DesktopRecoveryProfile::originalLabel)?.let {
+            syncRuntime.markExternalUnverifiedRecoveryOrigin(it)
+        }
         Injekt.addSingleton(syncRuntime)
         val syncScheduler = mihon.desktop.sync.DesktopSyncScheduler(
             syncRuntime.coordinator,

@@ -700,12 +700,18 @@ class SyncRuntimeWiringTest {
                             )
                             assertEquals(1L, runtime.runStore.active("space", 1)?.networkFailureCount)
                         }
-                        setup.now = if (code == 500) 11_000L else 41_000L
+                        setup.now = maxOf(
+                            requireNotNull(runtime.runStore.active("space", 1)).nextRetryAt,
+                            runtime.authorizationNotBeforeMillis(),
+                        )
                     }
                     auth.enqueue(mockwebserver3.MockResponse(code = 500, body = "private diagnostic"))
                     assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).problem)
                     assertEquals(3L, runtime.runStore.active("space", 1)?.networkFailureCount)
-                    setup.now = 161_000L
+                    setup.now = maxOf(
+                        requireNotNull(runtime.runStore.active("space", 1)).nextRetryAt,
+                        runtime.authorizationNotBeforeMillis(),
+                    )
                     auth.enqueue(mockwebserver3.MockResponse(code = 500, body = "private diagnostic"))
                     assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).problem)
                     assertEquals(SyncRunState.FAILED, runtime.runStore.latest("space", 1)?.state)
@@ -1143,8 +1149,14 @@ class SyncRuntimeWiringTest {
                 runtime.credentials.clear()
                 assertEquals(SyncRunProblem.AUTHORIZATION, runtime.coordinator.synchronize(SyncTrigger.MANUAL).problem)
                 assertEquals(SyncRunState.BLOCKED, runtime.runStore.active("space", 1)?.state)
+                val blocked = requireNotNull(runtime.runStore.active("space", 1))
+                val requests = setup.git.server.requestCount
                 setup.secure.fail = true
-                assertEquals(SyncRunProblem.STORAGE, runtime.coordinator.synchronize(SyncTrigger.MANUAL).problem)
+                val failedStorage = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                assertEquals(SyncRunProblem.STORAGE, failedStorage.problem)
+                assertEquals(SyncRunStatus.FAILED, failedStorage.status)
+                assertEquals(blocked, runtime.runStore.active("space", 1))
+                assertEquals(requests, setup.git.server.requestCount)
             }
         }
     }

@@ -29,7 +29,7 @@
       if (active && age >= 10) explanation = age >= 60 ? '已有一段时间没有新进展，可查看详情' : '正在等待当前步骤返回';
       const reasons = { paused: '已完成的进度会保留，继续需由你手动操作', pausing: '正在保存进度', network: '网络恢复后将按现有调度继续', system: '正在等待系统安排', retry: `服务暂时限制请求，${Math.max(0, Math.ceil((fact.nextRetryAt - now) / 1000))} 秒后自动重试`, recovering: '正在恢复已保存的进度', succeeded: fact.noWork ? '没有需要同步的数据' : '本次数据已完成同步', partial: '本次已结束，仍有数据需要处理', failed: fact.exhausted ? '已达到重试次数上限，进度已保留' : '本次同步未完成，进度已保留', blocked: 'GitHub 授权需要重新连接', cancelled: '已确认的结果会保留' };
       explanation = fact.reason || reasons[fact.state] || explanation;
-      const elapsedSeconds = Math.max(0, Math.floor(((terminal ? fact.endedAt : now) - fact.startedAt) / 1000));
+      const elapsedSeconds = Math.max(0, Math.floor(((terminal ? fact.endedAt : fact.state === 'paused' ? fact.pausedAt ?? now : now) - fact.startedAt - (fact.pausedMillis || 0)) / 1000));
       const elapsed = `${String(Math.floor(elapsedSeconds / 60)).padStart(2, '0')}:${String(elapsedSeconds % 60).padStart(2, '0')}`;
       const percent = stable && !terminal && fact.state !== 'recovering' && ['接收', '上传'].includes(fact.action) && Number.isFinite(fact.percent) ? fact.percent : null;
       const specific = { 准备: '正在准备数据', 接收: '正在接收数据', 校验: '正在校验数据', 合并: '正在合并数据', 上传: '正在上传数据', 核对: '正在核对结果' };
@@ -38,7 +38,26 @@
       return { ...fact, title: fact.state === 'succeeded' && fact.noWork ? '已是最新' : titles[fact.state], action, percent, elapsed, eta, explanation, active, terminal, age };
     };
   }
-  const api = { createDisplay, terminalStates, duration };
+  const clockText = seconds => {
+    const value = Math.max(0, Math.ceil(seconds));
+    return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
+  };
+  function createCompactDisplay(clock = Date.now) {
+    const display = createDisplay(clock);
+    return fact => {
+      const f = display(fact);
+      const completed = Number.isSafeInteger(f.confirmed) && f.confirmed >= 0 ? f.confirmed : null;
+      const total = Number.isSafeInteger(f.total) && f.total >= 0 && (completed === null || completed <= f.total) ? f.total : null;
+      const completionPercent = total !== null && completed !== null
+        ? total > 0 ? completed / total * 100 : f.state === 'succeeded' ? 100 : 0
+        : null;
+      const title = titles[f.state];
+      const eta = f.eta === duration(f.wholeEta) && Number.isFinite(f.wholeEta) ? clockText(f.wholeEta) : '—';
+      const counting = fact.phase === 'counting';
+      return { ...f, counting, completionPercent, summary: counting ? f.state === 'paused' ? '已暂停统计' : '正在统计数据' : `${title}，已完成${completed ?? '—'}/${total ?? '—'}条`, time: counting ? null : `已用${f.elapsed}，剩余估时${eta}` };
+    };
+  }
+  const api = { createDisplay, createCompactDisplay, terminalStates, duration };
   if (typeof module === 'object') module.exports = api;
   else root.MihonSyncProgress = api;
 })(typeof window === 'object' ? window : globalThis);

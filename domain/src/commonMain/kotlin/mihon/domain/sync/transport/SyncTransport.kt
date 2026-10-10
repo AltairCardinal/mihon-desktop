@@ -107,6 +107,8 @@ data class SyncPublishResult(
     val confirmedSnapshot: SyncSnapshot? = null,
     val failureClass: SyncPublishFailureClass? = null,
     val retryAfterMillis: Long? = null,
+    val networkPhase: mihon.domain.sync.runtime.SyncNetworkFailurePhase? = null,
+    val httpStatus: Int? = null,
 )
 
 sealed interface SyncInitializationResult {
@@ -209,4 +211,6 @@ data class SyncPreparedUpload(
 data class SyncReceiveResult(
     val batch: SyncBatch?,
     val error: String? = null,
+    /** Original encrypted payload for local quarantine; never included in panel summaries. */
+    val evidence: String? = null,
 )

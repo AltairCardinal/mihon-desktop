@@ -76,6 +76,12 @@ class DesktopBackupRestorer(
         appSettings: Boolean,
         onProgress: suspend (RestoreProgress) -> Unit = {},
     ): RestoreResult {
+        (backupRestoreSync as? mihon.presentation.sync.SyncRecoveryBackupObserver)?.expectObjects(
+            backup.backupManga.map { mihon.domain.sync.SyncObjectKey(mihon.domain.sync.SyncObjectType.MANGA,
+                sourceId = it.source.toString(), originalUrl = it.url) } + backup.backupAuthorArchive?.watches.orEmpty().map {
+                mihon.domain.sync.SyncObjectKey(mihon.domain.sync.SyncObjectType.AUTHOR, portableKey = it.creatorPortableKey)
+            },
+        )
         val importId = if (backup.backupManga.isNotEmpty() || backup.backupAuthorArchive != null) {
             backupRestoreSync.begin()
         } else {
@@ -88,6 +94,7 @@ class DesktopBackupRestorer(
                 importId,
                 onProgress,
             ).also {
+                (backupRestoreSync as? mihon.presentation.sync.SyncRecoveryBackupObserver)?.errorCount(it.errors.size)
                 outcome = if (it.hasErrors) SyncRestoreOutcome.PARTIAL else SyncRestoreOutcome.COMPLETED
             }
         } catch (error: CancellationException) {

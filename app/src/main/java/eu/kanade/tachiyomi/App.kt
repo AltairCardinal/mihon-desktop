@@ -81,6 +81,17 @@ import java.io.File
 import java.security.Security
 
 class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factory {
+    internal var profileStartupIssue: Boolean = false
+        private set
+    override fun attachBaseContext(base: Context) {
+        val wrapped = try {
+            eu.kanade.tachiyomi.data.sync.AndroidRecoveryProfile.wrap(base, this, currentProcessName())
+        } catch (_: Exception) {
+            profileStartupIssue = true
+            base
+        }
+        super.attachBaseContext(wrapped)
+    }
 
     internal fun startSync(scope: CoroutineScope) {
         scope.launch(Dispatchers.IO) {
@@ -110,6 +121,15 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
     override fun onCreate() {
         super<Application>.onCreate()
         if (isErrorHandlerProcess(currentProcessName())) return
+        if (profileStartupIssue) {
+            startActivity(
+                Intent(this, CrashActivity::class.java)
+                    .putExtra("sync-safe-recovery", true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
+            )
+            android.os.Process.killProcess(android.os.Process.myPid())
+            return
+        }
 
         patchInjekt()
         TelemetryConfig.init(applicationContext)
@@ -122,10 +142,7 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         }
 
         // Avoid potential crashes
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val process = getProcessName()
-            if (packageName != process) WebView.setDataDirectorySuffix(process)
-        }
+        eu.kanade.tachiyomi.data.sync.AndroidRecoveryProfile.configureWebView(this, currentProcessName() ?: packageName)
 
         Injekt.importModule(PreferenceModule(this))
         Injekt.importModule(AppModule(this))

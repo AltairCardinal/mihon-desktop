@@ -6,6 +6,10 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.runTest
 import mihon.data.sync.http.InMemorySyncMetrics
 import mihon.data.sync.http.SyncHttpClient
+import mihon.data.sync.http.SyncHttpException
+import mihon.data.sync.http.SyncHttpResponse
+import mihon.data.sync.http.rateLimitNotBeforeMillis
+import mihon.data.sync.http.requireSyncSuccess
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.Cache
@@ -37,6 +41,57 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 class SyncHttpSafetyContractTest {
+    @Test
+    fun `actual production DNS failure retains its phase without retaining unsafe cause text`() = runTest {
+        val production = OkHttpClient.Builder().dns {
+            throw java.net.UnknownHostException("unsafe-host-detail")
+        }.build()
+        val http = SyncHttpClient(production, setOf("fixture.example"))
+        val error = runCatching {
+            http.execute(http.request("https://fixture.example/private", "GET"))
+        }.exceptionOrNull() as SyncHttpException
+        assertEquals(mihon.domain.sync.runtime.SyncNetworkFailurePhase.DNS, error.networkPhase)
+        assertFalse(error.toString().contains("unsafe-host-detail"))
+    }
+
+    @Test
+    fun `actual HTTP proxy connect rejection remains handshake rather than origin authorization`() = runTest {
+        MockWebServer().use { proxy ->
+            proxy.start()
+            proxy.enqueue(MockResponse(code = 403, body = "{}"))
+            val production = OkHttpClient.Builder().proxy(
+                Proxy(Proxy.Type.HTTP, java.net.InetSocketAddress("127.0.0.1", proxy.port)),
+            ).build()
+            val http = SyncHttpClient(production, setOf("fixture.example"))
+            val error = runCatching {
+                http.execute(http.request("https://fixture.example/private", "GET"))
+            }.exceptionOrNull() as SyncHttpException
+            assertEquals("CONNECT", proxy.takeRequest().method)
+            assertEquals(mihon.domain.sync.runtime.SyncNetworkFailurePhase.PROXY_HANDSHAKE, error.networkPhase)
+            assertNull(error.code)
+        }
+    }
+
+    @Test
+    fun `real server HTTP failure retains response phase and status`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse(code = 500, body = "{}"))
+            val http = SyncHttpClient(OkHttpClient(), setOf(server.url("/").host))
+            val error = runCatching {
+                http.execute(http.request(server.url("/").toString(), "GET")).requireSyncSuccess()
+            }.exceptionOrNull() as SyncHttpException
+            assertEquals(mihon.domain.sync.runtime.SyncNetworkFailurePhase.HTTP_RESPONSE, error.networkPhase)
+            assertEquals(500, error.code)
+        }
+    }
+
+    @Test
+    fun `forbidden retry after creates the same deadline used by account admission`() {
+        val response = SyncHttpResponse(403, mapOf("retry-after" to "120"), "{}".encodeToByteArray())
+        assertEquals(121_000L, response.rateLimitNotBeforeMillis(1_000))
+    }
+
     @Test
     fun `short and empty HTTP bodies are complete responses rather than unexpected EOF`() = runTest {
         MockWebServer().use { server ->

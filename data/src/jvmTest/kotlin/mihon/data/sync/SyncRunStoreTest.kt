@@ -11,9 +11,11 @@ import mihon.data.sync.runtime.SyncRunStore
 import mihon.domain.sync.runtime.SyncTrigger
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.data.Database
+import tachiyomi.data.DatabaseMigration
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.History
 import tachiyomi.data.JvmDatabaseHandler
@@ -22,6 +24,38 @@ import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
 
 class SyncRunStoreTest {
+    @Test
+    fun `schema 41 migration retains legacy plan and counting pause clocks`() = runBlocking {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        Database.Schema.create(driver)
+        val database = Database(
+            driver,
+            History.Adapter(DateColumnAdapter),
+            Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        )
+        val store = SyncRunStore(JvmDatabaseHandler(database, driver), clock = { 1_000L })
+        val legacy = store.start("space", 1, SyncTrigger.MANUAL)
+        val counting = store.start("space", 1, SyncTrigger.MANUAL)
+        database.sync_runtimeQueries.insertRuntimeConfirmation(legacy.runId, "PLAN", "round", 0, "PLANNED")
+        store.pause(counting.runId)
+        // Reconstruct the previous schema, then run the real generated migration.
+        driver.execute(null, "DROP TABLE sync_repair_failures", 0)
+        val columns = mutableListOf<String>()
+        driver.executeQuery(null, "PRAGMA table_info(sync_runtime_pause_clock)", { cursor ->
+            while (cursor.next().value) columns += requireNotNull(cursor.getString(1))
+            app.cash.sqldelight.db.QueryResult.Value(Unit)
+        }, 0).value
+        for (column in listOf("planned_at", "planned_paused_millis")) {
+            if (column in columns) driver.execute(null, "ALTER TABLE sync_runtime_pause_clock DROP COLUMN $column", 0)
+        }
+        Database.Schema.migrate(driver, 41, Database.Schema.version)
+        val restored = store.get(legacy.runId)!!
+        assertEquals(1_000L, restored.planStartedAt)
+        assertEquals(0L, restored.planPausedMillis)
+        assertNull(store.get(counting.runId)!!.planStartedAt)
+        assertEquals(1_000L, store.get(counting.runId)!!.pausedAt)
+    }
+
     @Test
     fun `latest run is the newer insertion when timestamps tie`() = runBlocking {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
@@ -167,6 +201,8 @@ class SyncRunStoreTest {
             driver.execute(null, "DROP TABLE $table", 0)
         }
 
+        driver.execute(null, "DROP TABLE sync_repair_failures", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS sync_runtime_pause_clock", 0)
         driver.execute(null, "DROP INDEX IF EXISTS sync_runtime_active", 0)
         driver.execute(null, "DROP INDEX IF EXISTS sync_runtime_log_order", 0)
         driver.execute(null, "DROP INDEX IF EXISTS sync_events_by_batch_confirmation", 0)
@@ -200,7 +236,7 @@ class SyncRunStoreTest {
             }
         driver.execute(null, "PRAGMA user_version = 27", 0)
 
-        Database.Schema.migrate(driver, 27, Database.Schema.version)
+        DatabaseMigration.migrateAtomically(driver, 27, Database.Schema.version)
         val database = Database(
             driver,
             History.Adapter(DateColumnAdapter),

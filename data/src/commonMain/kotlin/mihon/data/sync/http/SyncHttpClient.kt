@@ -3,6 +3,7 @@ package mihon.data.sync.http
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
+import mihon.domain.sync.runtime.SyncNetworkFailurePhase
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.CookieJar
@@ -32,14 +33,47 @@ enum class SyncHttpFailureClass {
     UNKNOWN,
 }
 
-class SyncHttpException(
+open class SyncHttpException(
     val code: Int? = null,
     message: String,
     val retryable: Boolean = false,
     val failureClass: SyncHttpFailureClass = SyncHttpFailureClass.UNKNOWN,
     val retryAfterMillis: Long? = null,
     val rateLimitResetEpochSeconds: Long? = null,
+    val networkPhase: mihon.domain.sync.runtime.SyncNetworkFailurePhase? = null,
 ) : IllegalStateException(message)
+
+internal enum class SyncRequiredResource { REPOSITORY, SPACE_DATA }
+
+internal class SyncRequiredResourceUnavailable(val resource: SyncRequiredResource, code: Int = 404) :
+    SyncHttpException(code, "required sync resource is unavailable")
+
+/** Applies the same status/rate-limit distinction to onboarding account and repository reads. */
+internal fun SyncHttpResponse.requireSyncSuccess(): SyncHttpResponse {
+    if (code in 200..299) return this
+    val now = System.currentTimeMillis()
+    val message = body.decodeToString().lowercase()
+    val secondaryLimit = message.contains("secondary rate") || message.contains("abuse detection")
+    val limited = code == 429 || (
+        code == 403 && (
+            headers["x-ratelimit-remaining"] == "0" || headers["retry-after"] != null || secondaryLimit
+            )
+        )
+    val failure = when {
+        limited -> SyncHttpFailureClass.RATE_LIMITED
+        code == 401 || code == 403 -> SyncHttpFailureClass.AUTHORIZATION
+        code >= 500 -> SyncHttpFailureClass.SERVER
+        else -> SyncHttpFailureClass.UNKNOWN
+    }
+    throw SyncHttpException(
+        code,
+        "GitHub sync request failed",
+        limited || code >= 500,
+        failure,
+        retryAfterMillis = rateLimitNotBeforeMillis(now)?.let { (it - now).coerceAtLeast(0) },
+        networkPhase = SyncNetworkFailurePhase.HTTP_RESPONSE,
+    )
+}
 
 data class SyncHttpResponse(
     val code: Int,
@@ -55,7 +89,8 @@ internal fun SyncHttpResponse.rateLimitNotBeforeMillis(nowMillis: Long): Long? {
     val message = body.decodeToString().lowercase()
     val secondary = message.contains("secondary rate") || message.contains("abuse detection")
     val primaryExhausted = headers["x-ratelimit-remaining"] == "0"
-    if (code != 429 && !(code == 403 && (primaryExhausted || secondary))) return null
+    val retryAfterHint = headers["retry-after"] != null
+    if (code != 429 && !(code == 403 && (primaryExhausted || secondary || retryAfterHint))) return null
 
     val retryAfterDeadline = headers["retry-after"]?.let { value ->
         value.trim().toLongOrNull()?.let { seconds ->
@@ -191,15 +226,28 @@ class SyncHttpClient(
             continuation.invokeOnCancellation { call.cancel() }
             call.enqueue(object : Callback {
                 override fun onFailure(call: Call, error: IOException) {
+                    if (!call.isCanceled()) SyncFailureDiagnostics.record(SyncFailurePhase.HTTP_CALL, error)
                     metrics.recordHttp(0L, failed = true)
                     if (!continuation.isCancelled) {
                         continuation.resumeWithException(
-                            SyncHttpException(message = "sync network request failed", retryable = true),
+                            SyncHttpException(
+                                message = "sync network request failed",
+                                retryable = true,
+                                failureClass = SyncHttpFailureClass.NETWORK,
+                                networkPhase = networkFailurePhase(error),
+                            ),
                         )
                     }
                 }
 
                 override fun onResponse(call: Call, response: Response) {
+                    if (response.code !in 200..299) {
+                        SyncFailureDiagnostics.record(
+                            SyncFailurePhase.HTTP_RESPONSE,
+                            status = response.code,
+                            kind = SyncFailureKind.HTTP,
+                        )
+                    }
                     try {
                         val result = response.use {
                             val headers = it.headers.toMap().mapKeys { (key, _) -> key.lowercase() }
@@ -217,6 +265,7 @@ class SyncHttpClient(
                     } catch (error: CancellationException) {
                         if (!continuation.isCancelled) continuation.resumeWithException(error)
                     } catch (error: Exception) {
+                        SyncFailureDiagnostics.record(SyncFailurePhase.HTTP_BODY, error, response.code)
                         metrics.recordHttp(0L, failed = true)
                         if (!continuation.isCancelled) {
                             continuation.resumeWithException(
@@ -227,6 +276,12 @@ class SyncHttpClient(
                                         response.code,
                                         "sync response could not be read",
                                         retryable = error is IOException,
+                                        failureClass = if (error is IOException) {
+                                            SyncHttpFailureClass.NETWORK
+                                        } else {
+                                            SyncHttpFailureClass.UNKNOWN
+                                        },
+                                        networkPhase = SyncNetworkFailurePhase.HTTP_BODY,
                                     )
                                 },
                             )
@@ -289,4 +344,25 @@ class SyncHttpClient(
         .method(method, body)
         .apply { headers.forEach { (key, value) -> header(key, value) } }
         .build()
+}
+
+private fun networkFailurePhase(error: Throwable): SyncNetworkFailurePhase {
+    val visited = mutableSetOf<Throwable>()
+    var current: Throwable? = error
+    repeat(8) {
+        val cause = current?.takeIf { visited.add(it) } ?: return SyncNetworkFailurePhase.UNKNOWN
+        when {
+            cause is java.net.UnknownHostException -> return SyncNetworkFailurePhase.DNS
+            cause is javax.net.ssl.SSLException -> return SyncNetworkFailurePhase.TLS
+            cause is java.io.InterruptedIOException -> return SyncNetworkFailurePhase.TIMEOUT
+            cause is java.net.ConnectException -> return SyncNetworkFailurePhase.CONNECT
+            cause is IOException && (
+                cause.message?.startsWith("Unexpected response code for CONNECT:") == true ||
+                    cause.message == "Failed to authenticate with proxy" ||
+                    cause.message?.startsWith("SOCKS:") == true
+                ) -> return SyncNetworkFailurePhase.PROXY_HANDSHAKE
+        }
+        current = cause.cause
+    }
+    return SyncNetworkFailurePhase.UNKNOWN
 }

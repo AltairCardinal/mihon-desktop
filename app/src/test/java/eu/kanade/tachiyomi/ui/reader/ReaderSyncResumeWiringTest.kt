@@ -46,6 +46,36 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 class ReaderSyncResumeWiringTest {
     @Test
+    fun `invalid automatic resume waits for explicit confirmation of the same page`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val fixture = Fixture(pageIndex = 8)
+        fixture.repository.openedContext = fixture.repository.responses.getValue(1).copy(
+            pageIndex = 8,
+            snapshot = fixture.original.snapshot,
+            resumedWithinChapter = true,
+        )
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            fixture.model.eventFlow.collect { }
+        }
+        try {
+            assertTrue(fixture.model.init(1, 1).getOrThrow())
+            val page = fixture.model.state.value.currentChapter!!.pages!![0]
+            fixture.model.onPageSelected(page)
+            val automatic = kotlinx.coroutines.withTimeoutOrNull(500) { fixture.repository.records.receive() }
+            assertEquals(null, automatic, "an automatic fallback must not become user intent")
+            assertTrue(fixture.model.confirmSyncResumePosition(0))
+            val record = awaitValue(fixture.repository.records)
+            assertEquals(0, record.first.lastPageRead)
+            assertEquals(mihon.domain.sync.SyncMutationContext.User, record.first.syncContext)
+            assertEquals(fixture.original.snapshot, record.second)
+        } finally {
+            collector.cancel()
+            fixture.close()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun `post fetch chapter query failure is silent and leaves active reader intact`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val port = tachiyomi.domain.reader.interactor.ReaderCatalogPreparation { emptyList() }
@@ -313,23 +343,37 @@ class ReaderSyncResumeWiringTest {
     }
 
     @Test
-    fun `missing exact synchronized chapter retains normal continuation without guessing`() = runTest {
+    fun `missing global synchronized candidate preserves selected chapter without inventing a warning`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val fixture = Fixture()
         fixture.repository.candidate = ReadingResumePosition(99, 1, snapshot("unavailable"))
+        val events = CopyOnWriteArrayList<ReaderViewModel.Event>()
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            fixture.model.eventFlow.collect(events::add)
+        }
         try {
             assertTrue(fixture.model.init(1, 1).getOrThrow())
             val current = fixture.model.state.value.currentChapter!!
             assertEquals(1L, current.chapter.id)
+            assertTrue(
+                events.isEmpty(),
+                "An unavailable non-selected global candidate is not a selected reader failure",
+            )
+            assertEquals(
+                1,
+                fixture.repository.lookups,
+                "Selected opening must stay atomic without a global resume query",
+            )
             fixture.model.onPageSelected(requireNotNull(current.pages)[1])
             assertEquals(snapshot("current-heads"), awaitValue(fixture.repository.records).second)
         } finally {
+            collector.cancel()
             fixture.close()
             Dispatchers.resetMain()
         }
     }
 
-    private class Repository(var candidate: ReadingResumePosition?) : ReadingProgressRepository {
+    internal class Repository(var candidate: ReadingResumePosition?) : ReadingProgressRepository {
         var openedContext: tachiyomi.domain.reader.model.ReaderOpenContext? = null
         var responses: Map<Long, tachiyomi.domain.reader.model.ReaderOpenContext> = emptyMap()
         override suspend fun openChapter(
@@ -356,7 +400,7 @@ class ReaderSyncResumeWiringTest {
         }
     }
 
-    private class Fixture(
+    internal class Fixture(
         pageIndex: Int = 1,
         receiveDuringLoad: Boolean = false,
         savedState: SavedStateHandle = SavedStateHandle(mapOf("resume" to true)),

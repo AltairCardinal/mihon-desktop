@@ -16,6 +16,7 @@ import mihon.data.sync.http.SyncHttpClient
 import mihon.data.sync.http.SyncHttpException
 import mihon.data.sync.http.SyncHttpRequestGate
 import mihon.data.sync.http.SyncHttpResponse
+import mihon.data.sync.http.requireSyncSuccess
 import mihon.domain.sync.transport.SyncRepository
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -44,6 +45,27 @@ class GitHubPrivateRepositorySelector(
 
     internal suspend fun arrays(path: String): List<JsonElement> =
         collectPages("$baseUrl$path") { response -> response.jsonArray().toList() }.flatten()
+
+    /** Fixed repository ids within the current user's existing App grant, using the bounded page reader. */
+    internal suspend fun authorizedRepositoryIds(accountId: Long): Set<Long> =
+        authorizedRepositoryObjects(accountId).map { requireNotNull(it["id"]?.jsonPrimitive?.longOrNull) }.toSet()
+
+    internal suspend fun authorizedRepositoryObjects(accountId: Long): List<JsonObject> {
+        val installations = objects("/user/installations?per_page=100&page=1", "installations").filter {
+            it["app_slug"]?.jsonPrimitive?.content == "mihon-desktop" &&
+                it["account"]?.jsonObject?.get("id")?.jsonPrimitive?.longOrNull == accountId
+        }
+        require(installations.size <= 1) { "sync installation identity is ambiguous" }
+        val installation = installations.singleOrNull() ?: return emptyList()
+        val id = requireNotNull(installation["id"]?.jsonPrimitive?.longOrNull)
+        require(installation.containsKey("suspended_at"))
+        if (installation["suspended_at"] != kotlinx.serialization.json.JsonNull) return emptyList()
+        val contents = requireNotNull(installation["permissions"]?.jsonObject?.get("contents"))
+        if (contents.jsonPrimitive.content != "write") {
+            return emptyList()
+        }
+        return objects("/user/installations/$id/repositories?per_page=100&page=1", "repositories")
+    }
 
     /** A 409 is empty-repository evidence only when GitHub's response body says exactly that. */
     internal suspend fun matchingRefs(path: String): List<JsonObject> =
@@ -110,14 +132,7 @@ class GitHubPrivateRepositorySelector(
                     true,
                 )
             }
-            if (response.code !in 200..299) {
-                throw SyncHttpException(
-                    response.code,
-                    "GitHub repository request failed",
-                    response.code == 429 || response.code >= 500 || response.headers["retry-after"] != null ||
-                        response.headers["x-ratelimit-remaining"] == "0",
-                )
-            }
+            response.requireSyncSuccess()
             pages += try {
                 read(response)
             } catch (error: CancellationException) {

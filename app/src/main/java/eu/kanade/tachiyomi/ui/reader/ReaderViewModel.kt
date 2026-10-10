@@ -243,6 +243,9 @@ class ReaderViewModel @JvmOverloads constructor(
     private var progressHandle: AndroidReaderProgressCoordinator.ReaderHandle? = null
     private val acceptedReadState = mutableMapOf<Long, Boolean>()
     private var readingActivation: ReadingActivation? = null
+    private var resumeSelectionRequired = false
+    private var explicitResumePage: Int? = null
+    private var resumeViewport: Pair<ReaderPage, List<ReaderPage>>? = null
     private var pendingDualViewport: PendingDualViewport? = null
     private var initialOpenContext: tachiyomi.domain.reader.model.ReaderOpenContext? = null
     private var catalogJob: kotlinx.coroutines.Job? = null
@@ -586,6 +589,9 @@ class ReaderViewModel @JvmOverloads constructor(
             val window = requireNotNull(windowReduction.snapshot)
             val activation = ReadingActivation(newChapters.currChapter, window.activationSequence, session)
             val invalidResumePage = resume != null && resume.pageIndex !in chapter.pages.orEmpty().indices
+            resumeSelectionRequired = invalidResumePage
+            explicitResumePage = null
+            resumeViewport = null
             if (resume != null) {
                 chapterPageIndex = if (invalidResumePage) 0 else resume.pageIndex
                 chapter.requestedPage = chapterPageIndex
@@ -817,6 +823,13 @@ class ReaderViewModel @JvmOverloads constructor(
         onPageSelected(page, listOf(page))
     }
 
+    fun confirmSyncResumePosition(pageIndex: Int): Boolean {
+        if (!resumeSelectionRequired || pageIndex !in getCurrentChapter()?.pages.orEmpty().indices) return false
+        explicitResumePage = pageIndex
+        resumeViewport?.takeIf { it.first.index == pageIndex }?.let { onPageSelected(it.first, it.second) }
+        return true
+    }
+
     fun onPageSelected(page: ReaderPage, visiblePages: List<ReaderPage>, recordProgress: Boolean = true) {
         pendingDualViewport = null
         // InsertPage doesn't change page progress
@@ -979,6 +992,11 @@ class ReaderViewModel @JvmOverloads constructor(
         val visiblePageIds = visiblePages.mapTo(linkedSetOf()) { ReaderPageId(chapterId, it.index) }
         if (visiblePageIds.isEmpty() || visiblePageIds.any { it.sourcePageIndex !in chapterPages.indices }) {
             return false
+        }
+        if (resumeSelectionRequired) {
+            resumeViewport = page to visiblePages.toList()
+            if (explicitResumePage != page.index) return false
+            resumeSelectionRequired = false
         }
         val progress = ReaderProgressPolicy.reduce(
             ReaderProgressSignal.ViewportSettled(
@@ -1506,6 +1524,7 @@ class ReaderViewModel @JvmOverloads constructor(
         data object ReloadViewerChapters : Event
         data object PageChanged : Event
         data object SyncResumePageUnavailable : Event
+        data object SyncResumeChapterUnavailable : Event
         data class SetOrientation(val orientation: Int) : Event
         data class SetCoverResult(val result: SetAsCoverResult) : Event
 

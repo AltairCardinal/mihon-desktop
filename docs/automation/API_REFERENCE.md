@@ -55,7 +55,7 @@ http://localhost:8080/test
 | `window` | 实际主窗口的 `active`、`focused`、`density`、`contentBounds`；挂载时提供，包含当前 `focusedWindow` 元数据（若存在） |
 | `controls` | 当前实际挂载的白名单控件；每项含 `tag`、`group`（`toolbar` 或 `panel`）、`bounds`（`x/y/width/height`）、`density`、`focused`、`ownerFocused`、`enabled` |
 
-固定 tag 为 `sync-open`、`sync-back`、`sync-close`、`sync-settings`、`sync-now`、`sync-history`、`sync-drag-handle`、`sync-settings-history`、`sync-settings-connect`、`sync-disconnect`、`sync-switch`、`sync-password-help`。未挂载的 tag 不返回；这不是任意页面的完整控件树，不能据此验收白名单未覆盖的密码输入或授权控件。
+固定 tag 为 `sync-open`、`sync-back`、`sync-close`、`sync-settings`、`sync-now`、`sync-history`、`sync-drag-handle`、`sync-settings-history`、`sync-settings-connect`、`sync-disconnect`、`sync-switch`、`sync-password-help`、`sync-progress-details-toggle`（同步摘要详情的展开/收起）。未挂载的 tag 不返回；这不是任意页面的完整控件树，不能据此验收白名单未覆盖的密码输入或授权控件。
 
 普通控件的 `focused` 来自 Compose 焦点事件；背景 owner 可能保留该记录。默认 `sync-drag-handle` 的点击/焦点目标位于 Material 外层，其内层 modifier 收不到父焦点事件：Desktop 使用本次窗口及实际拥有的聚焦子窗口的公共 AWT Accessibility `FOCUSED` 状态和几何信息，匹配已观测把手的中心与宽度。该读取有界、去环，不读取名称、角色、文本或值，也不更改默认把手行为。此平台桥接须在真实 Mac 运行中验证，不能仅凭 adapter 单测宣称原生通过。
 
@@ -272,3 +272,19 @@ seed/advance 使用固定幂等键，重复调用不重复创建用户事件；s
 `GET /test/reader/state` 在真实阅读器挂载后返回 `production=true`，包含 `currentChapterId`（当前入口上下文）、`activeChapterId`（实际 session 当前章）、`loadState`、`chapterIds`、`currentChapterIndex`、`initialPage`、`resumeHeadIds`，以及真实 `currentPage/totalPages/hasNextChapter/hasPrevChapter`。稳定成功需章上下文与 activeChapterId 一致、loadState=Loaded，且 totalPages=4；页面请求和图片请求计数必须来自真实 source/runtime。resumeHeadIds 是初始快照的事件/效果身份列表，用于核对会话基线。关闭后保留 `isOpen=false/productionClosed=true` 观测。
 
 真实 session 挂载时，既有 `/test/reader/next_chapter`、`prev_chapter`、`go_to_page`、`close` 优先调用同一生产会话；next_page/prev_page 保持既有页动作语义。未挂载时，原确定性 reader fixture 保持原行为。历史夹具的本地 HTTP source 路由仅提供固定作品详情、三章目录、每章四页与 PNG，实际解析由 production MangaDex source 执行；不提供截图或读取桌面像素。
+
+## 同步空间恢复（仅 Test Mode）
+
+`GET /test/sync` 读取与原生同步面板相同的 controller 投影。新增 `recoveryReason`（无恢复问题时为 `null`，否则为固定枚举 `AUTHORIZATION_REQUIRED`、`SPACE_UNAVAILABLE`、`SPACE_DATA_INVALID` 或 `SWITCH_PENDING`）及 `recoveryBusy`（检查是否正在执行）。`SWITCH_PENDING` 表示尚未完成的本机切换意图，不证明旧远端不可访问。不返回账号、仓库 ID、远端 URL、密码、密钥或持久恢复材料。
+
+以下 POST 入口将动作发送至该原生 panel；`202 Accepted` 只表示已入队，不能作为检查成功、切换完成或同步成功的证据，须继续读取面板状态并核对运行结果。未知动作返回 `400`，缺少运行中的 panel 返回 `503`。
+
+| 入口 | 原生动作 |
+|---|---|
+| `/test/sync/open_recovery` | 打开恢复方式页 |
+| `/test/sync/recheck_space` | 重新核对旧空间可访问性与身份，不启动同步 |
+| `/test/sync/check_authorization` | 进入原授权恢复流程 |
+| `/test/sync/connect_other_space` | 进入其他空间发现与选择流程 |
+| `/test/sync/create_new_space` | 请求创建新空间的确认，不创建 GitHub 仓库，不跳过用户确认 |
+
+检查可能访问真实 GitHub，因此真实账号操作仍须具备相应任务授权；自动化失败矩阵应使用隔离的 MockWebServer。上述接口不接受任意仓库地址、密钥或恢复材料，也不提供自动确认危险操作的入口。

@@ -26,6 +26,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -150,6 +152,16 @@ data class DesktopReaderScreen(
             onDispose { binding?.let(mihon.desktop.test.http.ProductionReaderTestModeBridge::clear) }
         }
         val state by model.state.collectAsState()
+        var resumeNoticeDismissed by remember(state.context.chapterId) { mutableStateOf(false) }
+        if (state.resumePageUnavailable && !resumeNoticeDismissed) {
+            mihon.presentation.sync.SyncReadingPositionRecovery(
+                onChoose = {
+                    resumeNoticeDismissed = true
+                    if (!model.state.value.showUI) model.toggleUI()
+                },
+                onDismiss = { resumeNoticeDismissed = true },
+            )
+        }
         val notifications = LocalDesktopUiDependencies.current.notificationService
         LaunchedEffect(state.context.chapterId, state.resumePageUnavailable) {
             if (state.resumePageUnavailable) {
@@ -672,6 +684,13 @@ internal fun ReaderViewport(
                     modifier = Modifier.align(Alignment.TopCenter),
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.7f)),
                 )
+            }
+            if (state.resumePageUnavailable && state.showUI) {
+                Box(Modifier.align(Alignment.TopCenter).padding(top = 64.dp)) {
+                    mihon.presentation.sync.SyncReadingPositionConfirmation {
+                        model.confirmSyncResumePosition(model.state.value.currentPage)
+                    }
+                }
             }
         }
     }

@@ -2,12 +2,17 @@ package mihon.data.sync
 
 import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.encodeToString
@@ -53,6 +58,8 @@ import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
 import okhttp3.OkHttpClient
+import okio.ByteString.Companion.encodeUtf8
+import okio.Path.Companion.toPath
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -70,11 +77,95 @@ import tachiyomi.data.History
 import tachiyomi.data.Mangas
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
+import java.nio.file.Files
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.nio.file.Path as NioPath
 
 @Timeout(30)
 abstract class SyncPanelStorageContract {
+    @Test
+    fun `panel failed bulk retry freezes a new confirmation and never replays applied or invalidated rows`() =
+        runBlocking {
+            open().use { storage ->
+                storage.connect("local", repository)
+                pending(storage, 3)
+                storage.driver.execute(
+                    null,
+                    "CREATE TRIGGER fail_bulk BEFORE UPDATE OF favorite ON mangas WHEN OLD.url IN ('/remote-1','/remote-2') BEGIN SELECT RAISE(ABORT, 'temporary failure'); END",
+                    0,
+                )
+                withPanel(storage) { panel, _ ->
+                    panel.act(SyncPanelAction.Open)
+                    panel.act(SyncPanelAction.PrepareDecision(SyncCancellationDecision.CONFIRM, SyncDecisionScope.ALL))
+                    val originalJob = requireNotNull(panel.state.value.confirmation).jobId
+                    panel.act(SyncPanelAction.ConfirmDecision)
+                    panel.awaitBulkIdle()
+                    assertEquals(1L, storage.projector.bulkProgress(originalJob).outcomes["APPLIED"])
+                    assertEquals(2L, storage.projector.bulkProgress(originalJob).outcomes["FAILED"])
+                    storage.driver.execute(null, "DROP TRIGGER fail_bulk", 0)
+                    val invalidated = storage.manga.getLibraryManga().single { it.manga.url == "/remote-2" }.manga
+                    storage.manga.update(
+                        tachiyomi.domain.manga.model.MangaUpdate(
+                            invalidated.id,
+                            favorite = false,
+                            syncContext = mihon.domain.sync.SyncMutationContext.User,
+                        ),
+                    )
+                    panel.act(SyncPanelAction.RetryFailedBulk(originalJob))
+                    val retry = requireNotNull(panel.state.value.confirmation)
+                    assertTrue(retry.jobId != originalJob)
+                    assertEquals(1L, retry.total)
+                    panel.act(SyncPanelAction.ConfirmDecision)
+                    panel.awaitBulkIdle()
+                    assertEquals(1L, storage.projector.bulkProgress(retry.jobId).outcomes["APPLIED"])
+                    assertEquals(1L, storage.projector.bulkProgress(originalJob).outcomes["APPLIED"])
+                    assertEquals(2L, storage.projector.bulkProgress(originalJob).outcomes["FAILED"])
+                    assertTrue(storage.manga.getLibraryManga().isEmpty())
+                }
+            }
+        }
+
+    @Test
+    fun `initialization changed checkpoint preserves exact required action and never mutates repository`() =
+        runBlocking {
+            open().use { storage ->
+                SyncOnboardingFixture(storage).use { f ->
+                    f.authorize()
+                    val material = SyncSpaceCrypto.create("missing-checkpoint-space", 1, "")
+                    val setup = StoredSyncSetup(
+                        accountId = f.accountId,
+                        accountLogin = f.accountLogin,
+                        attemptId = "missing-checkpoint-attempt-0001",
+                        attemptNonce = "missing-checkpoint-nonce-0001",
+                        newSpace = true,
+                        material = StoredSyncMaterial.from(material),
+                        stage = SyncInitializationStage.BOOTSTRAP_CONFIRMED,
+                        repositoryId = 99,
+                        owner = f.repository.owner,
+                        repository = f.repository.name,
+                        branch = f.repository.branch,
+                        defaultBranch = "main",
+                        confirmedBootstrapCommitSha = "a".repeat(40),
+                        confirmedBootstrapTreeSha = "b".repeat(40),
+                    )
+                    f.runtime.onboarding.storage.save(setup, null)
+                    val error = runCatching { f.runtime.onboarding.resume(setup) }.exceptionOrNull()
+                    assertTrue(error is mihon.data.sync.runtime.SyncSetupException)
+                    val failure = error as mihon.data.sync.runtime.SyncSetupException
+                    assertEquals("INITIALIZATION_REQUIRES_ACTION", failure.problem.name)
+                    assertEquals("BOOTSTRAP_CHANGED", failure.initialization?.reason?.name)
+                    assertEquals(setup, f.runtime.onboarding.storage.pending(f.accountId))
+                    assertEquals(0, f.repositoryWrites)
+                    f.panel.act(SyncPanelAction.Open)
+                    f.panel.act(SyncPanelAction.BeginSetup)
+                    withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.ERROR } }
+                    assertEquals("BOOTSTRAP_CHANGED", f.panel.state.value.initializationFailure?.reason?.name)
+                    assertEquals(0, f.repositoryWrites)
+                }
+            }
+        }
+
     protected abstract fun open(): SyncRuntimeStorageContract.Storage
     private val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync-v1")
 
@@ -108,6 +199,426 @@ abstract class SyncPanelStorageContract {
                 parent.cancelAndJoin()
                 client.connectionPool.evictAll()
                 client.dispatcher.executorService.shutdown()
+            }
+        }
+    }
+
+    @Test
+    fun `visible panel observes durable plan confirmations and cancels isolated run subscriptions`() = runBlocking {
+        open().use { storage ->
+            val subscriptions = java.util.concurrent.atomic.AtomicInteger()
+            val readGate = java.util.concurrent.atomic.AtomicReference<
+                Pair<CompletableDeferred<Unit>, CompletableDeferred<Unit>>?,
+                >(null)
+            val tracked = SyncRuntimeStorageContract.Storage(
+                storage.driver,
+                object : DatabaseHandler by storage.handler {
+                    override suspend fun <T> await(inTransaction: Boolean, block: suspend Database.() -> T): T {
+                        val result = storage.handler.await(inTransaction, block)
+                        if (result is mihon.data.sync.runtime.SyncRunSnapshot) {
+                            readGate.getAndSet(null)?.let { (entered, release) ->
+                                entered.complete(Unit)
+                                release.await()
+                            }
+                        }
+                        return result
+                    }
+                    override fun <T : Any> subscribeToOneOrNull(block: Database.() -> app.cash.sqldelight.Query<T>) =
+                        storage.handler.subscribeToOneOrNull(block)
+                            .onStart { subscriptions.incrementAndGet() }
+                            .onCompletion { subscriptions.decrementAndGet() }
+                },
+            )
+            SyncOnboardingFixture(tracked).use { f ->
+                tracked.connect("plan-observer", repository)
+                val runs = f.runtime.runStore
+                val run = runs.start("space", 1, mihon.domain.sync.runtime.SyncTrigger.MANUAL)
+                assertTrue(runs.claim(run.runId, "owner", 1))
+                f.panel.act(SyncPanelAction.Open)
+                withTimeout(5000) { f.panel.state.first { it.visible && it.run?.runId == run.runId } }
+                withTimeout(5000) { while (subscriptions.get() < 2) kotlinx.coroutines.delay(10) }
+                val planRead = CompletableDeferred<Unit>()
+                val planRelease = CompletableDeferred<Unit>()
+                readGate.set(planRead to planRelease)
+                val stalePlanRefresh = async { f.panel.act(SyncPanelAction.Open) }
+                withTimeout(5000) { planRead.await() }
+                runs.freezePlan(
+                    run.runId,
+                    "owner",
+                    listOf(
+                        mihon.data.sync.runtime.SyncRunPlanBatch(
+                            mihon.data.sync.runtime.SyncProgressDirection.UPLOAD,
+                            "first",
+                            3,
+                        ),
+                        mihon.data.sync.runtime.SyncRunPlanBatch(
+                            mihon.data.sync.runtime.SyncProgressDirection.UPLOAD,
+                            "second",
+                            2,
+                        ),
+                    ),
+                )
+                withTimeout(5000) { f.panel.state.first { it.run?.plannedItems == 5L } }
+                planRelease.complete(Unit)
+                stalePlanRefresh.await()
+                assertEquals(5L, f.panel.state.value.run!!.plannedItems)
+                assertEquals(0L, f.panel.state.value.run!!.confirmedItems)
+                val frames = mutableListOf<Pair<Long?, Long>>()
+                val observing = launch {
+                    f.panel.state.collect { current ->
+                        current.run?.takeIf { it.runId == run.runId }?.let {
+                            frames +=
+                                it.plannedItems to it.confirmedItems
+                        }
+                    }
+                }
+                val countRead = CompletableDeferred<Unit>()
+                val countRelease = CompletableDeferred<Unit>()
+                readGate.set(countRead to countRelease)
+                val staleCountRefresh = async { f.panel.act(SyncPanelAction.Open) }
+                withTimeout(5000) { countRead.await() }
+                runs.confirmed(run.runId, "owner", mihon.data.sync.runtime.SyncProgressDirection.UPLOAD, "first", 3)
+                withTimeout(5000) { f.panel.state.first { it.run?.confirmedItems == 3L } }
+                countRelease.complete(Unit)
+                staleCountRefresh.await()
+                assertEquals(3L, f.panel.state.value.run!!.confirmedItems)
+                repeat(10) { f.panel.act(SyncPanelAction.Open) }
+                assertEquals(5L, f.panel.state.value.run!!.plannedItems)
+                f.panel.act(SyncPanelAction.Close)
+                withTimeout(5000) { while (subscriptions.get() != 1) kotlinx.coroutines.delay(10) }
+                runs.confirmed(run.runId, "owner", mihon.data.sync.runtime.SyncProgressDirection.UPLOAD, "second", 2)
+                kotlinx.coroutines.delay(50)
+                assertEquals(3L, f.panel.state.value.run!!.confirmedItems)
+                f.panel.act(SyncPanelAction.Open)
+                assertEquals(5L, f.panel.state.value.run!!.confirmedItems)
+                runs.finish(run.runId, mihon.data.sync.runtime.SyncRunState.SUCCEEDED)
+                f.panel.act(SyncPanelAction.Open)
+                assertEquals(mihon.data.sync.runtime.SyncRunState.SUCCEEDED, f.panel.state.value.run!!.state)
+                observing.cancelAndJoin()
+                assertTrue(frames.isNotEmpty())
+                assertTrue(frames.all { it.first == 5L }, frames.toString())
+                assertTrue(
+                    frames.zipWithNext().all { (before, after) ->
+                        before.second <= after.second
+                    },
+                    frames.toString(),
+                )
+                val next = runs.start("space", 1, mihon.domain.sync.runtime.SyncTrigger.MANUAL)
+                assertTrue(runs.claim(next.runId, "next-owner", 1))
+                f.panel.act(SyncPanelAction.Open)
+                withTimeout(5000) { f.panel.state.first { it.run?.runId == next.runId } }
+                runs.freezePlan(
+                    next.runId,
+                    "next-owner",
+                    listOf(
+                        mihon.data.sync.runtime.SyncRunPlanBatch(
+                            mihon.data.sync.runtime.SyncProgressDirection.UPLOAD,
+                            "old-space",
+                            2,
+                        ),
+                    ),
+                )
+                withTimeout(5000) { f.panel.state.first { it.run?.plannedItems == 2L } }
+                assertEquals(0L, f.panel.state.value.run!!.confirmedItems)
+                storage.handler.await { sync_journalQueries.disconnectSpace("space", 1) }
+                tracked.baseline.connectAndImport("other-space", 2, repository, "other-observer", 1)
+                val other = runs.start("other-space", 2, mihon.domain.sync.runtime.SyncTrigger.MANUAL)
+                assertTrue(runs.claim(other.runId, "other-owner", 1))
+                f.panel.act(SyncPanelAction.Open)
+                withTimeout(5000) { f.panel.state.first { it.run?.runId == other.runId } }
+                runs.freezePlan(other.runId, "other-owner", emptyList())
+                withTimeout(5000) { f.panel.state.first { it.run?.plannedItems == 0L } }
+                runs.confirmed(
+                    next.runId,
+                    "next-owner",
+                    mihon.data.sync.runtime.SyncProgressDirection.UPLOAD,
+                    "old-space",
+                    2,
+                )
+                kotlinx.coroutines.delay(50)
+                assertEquals(other.runId, f.panel.state.value.run!!.runId)
+                assertEquals("other-space", f.panel.state.value.run!!.spaceId)
+                assertEquals(2L, f.panel.state.value.run!!.generation)
+                assertEquals(0L, f.panel.state.value.run!!.confirmedItems)
+                f.panel.act(SyncPanelAction.Close)
+                withTimeout(5000) { while (subscriptions.get() != 1) kotlinx.coroutines.delay(10) }
+            }
+        }
+    }
+
+    @Test
+    fun `diagnostic snapshot reads actual disconnected history and excludes sensitive output`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                storage.connect("diagnostic-private-actor", repository)
+                val run = f.runtime.runStore.start("space", 1, mihon.domain.sync.runtime.SyncTrigger.MANUAL)
+                f.runtime.runStore.finish(
+                    run.runId,
+                    mihon.data.sync.runtime.SyncRunState.CANCELLED,
+                    "private-token-account-title-url",
+                )
+                storage.handler.await { sync_journalQueries.disconnectSpace("space", 1) }
+                f.panel.act(SyncPanelAction.Open)
+                val before = f.runtime.runStore.latest("space", 1)
+                val snapshot = f.runtime.diagnostics.capture(f.panel.state.value)
+                assertEquals(mihon.data.sync.runtime.SyncDiagnosticStatus.OK, snapshot.status)
+                assertEquals(false, snapshot.connection.exchangeEnabled)
+                assertEquals(mihon.data.sync.runtime.SyncBindingDecode.MISSING, snapshot.connection.storedBindingDecode)
+                assertEquals("LATEST", snapshot.runSource)
+                assertEquals("CANCELLED", snapshot.latestRun?.state)
+                assertEquals("OTHER", snapshot.latestRun?.stopReason)
+                assertEquals(before, f.runtime.runStore.latest("space", 1))
+                val output = snapshot.json()
+                listOf(
+                    "fixture-owner",
+                    "private-sync",
+                    "diagnostic-private-actor",
+                    run.runId,
+                    "private-token-account-title-url",
+                ).forEach { assertFalse(output.contains(it), it) }
+                assertFalse(snapshot.crossProcessComparable)
+                assertFalse(f.runtime.coordinator.activity.value.running)
+            }
+        }
+    }
+
+    @Test
+    fun `diagnostic snapshot distinguishes raw unsupported binding from disabled projection`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                storage.connect("actor", repository)
+                val key = "space-" + "1:space".encodeUtf8().sha256().hex()
+                f.secure.values[key] = "{\"version\":1}"
+                storage.handler.await { sync_journalQueries.disconnectSpace("space", 1) }
+                f.panel.act(SyncPanelAction.Open)
+                val snapshot = f.runtime.diagnostics.capture(f.panel.state.value)
+                assertEquals(mihon.data.sync.runtime.SyncDiagnosticStatus.OK, snapshot.status)
+                assertEquals(
+                    mihon.data.sync.runtime.SyncBindingDecode.UNSUPPORTED,
+                    snapshot.connection.storedBindingDecode,
+                )
+                assertEquals(false, snapshot.connection.panelUnsupportedFormat)
+                assertEquals(false, snapshot.connection.panelConnectionEnabled)
+            }
+        }
+    }
+
+    @Test
+    fun `diagnostic snapshot reports binding read failure without reporting disabled`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                storage.connect("actor", repository)
+                f.runtime.stopPanel()
+                f.secure.readFailure = true
+                val snapshot = f.runtime.diagnostics.capture(mihon.data.sync.runtime.SyncPanelState())
+                assertEquals(mihon.data.sync.runtime.SyncDiagnosticStatus.READ_FAILED, snapshot.status)
+                assertEquals("UNKNOWN", snapshot.runSource)
+                assertEquals(
+                    mihon.data.sync.runtime.SyncBindingDecode.READ_FAILED,
+                    snapshot.connection.storedBindingDecode,
+                )
+                assertNull(snapshot.connection.exchangeEnabled)
+                assertNull(snapshot.connection.panelConnectionEnabled)
+                assertFalse(snapshot.json().contains("private-sensitive-read-error"))
+                assertTrue(f.runtime.connection()!!.enabled)
+            }
+        }
+    }
+
+    @Test
+    fun `diagnostic snapshot rejects identity changing during real storage decode`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                storage.connect("actor", repository)
+                f.runtime.stopPanel()
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                val captureName = "identity-changing-diagnostic-capture"
+                f.secure.nextSpaceReadCoroutineName = captureName
+                f.secure.nextSpaceRead = entered to release
+                val collecting = async(CoroutineName(captureName)) {
+                    f.runtime.diagnostics.capture(mihon.data.sync.runtime.SyncPanelState())
+                }
+                withTimeout(5000) { entered.await() }
+                assertTrue(collecting.isActive, "the capture must still be waiting inside its real secure read")
+                storage.handler.await { sync_journalQueries.disconnectSpace("space", 1) }
+                f.runtime.baseline.connectAndImport("other-private-space", 2, repository, "actor", 1)
+                release.complete(Unit)
+                val snapshot = collecting.await()
+                assertEquals(mihon.data.sync.runtime.SyncDiagnosticStatus.INCONSISTENT, snapshot.status)
+                assertNull(snapshot.connection.spaceAlias)
+                assertNull(snapshot.activeRun)
+                assertNull(snapshot.latestRun)
+                assertFalse(snapshot.json().contains("other-private-space"))
+            }
+        }
+    }
+
+    @Test
+    fun `diagnostic snapshot memory ring retains only last 128 transitions`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.runtime.stopPanel()
+                repeat(200) { f.runtime.diagnostics.record(mihon.data.sync.runtime.SyncDiagnosticEventKind.OPEN) }
+                val snapshot = f.runtime.diagnostics.capture(mihon.data.sync.runtime.SyncPanelState())
+                assertEquals(128, snapshot.events.size)
+            }
+        }
+    }
+
+    @Test
+    fun `diagnostic snapshot preserves production user cancellation reason`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                storage.connect("actor", repository)
+                val run = f.runtime.runStore.start("space", 1, mihon.domain.sync.runtime.SyncTrigger.MANUAL)
+                f.runtime.runStore.cancel(run.runId)
+                f.runtime.stopPanel()
+                val snapshot = f.runtime.diagnostics.capture(mihon.data.sync.runtime.SyncPanelState())
+                assertEquals("USER", snapshot.latestRun?.stopReason)
+                assertEquals("user", f.runtime.runStore.get(run.runId)?.stopReason)
+            }
+        }
+    }
+
+    @Test
+    fun `diagnostic snapshot rejects stale panel identity even when storage is stable`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                storage.connect("actor", repository)
+                val oldConnection = f.runtime.connection()
+                f.runtime.stopPanel()
+                storage.handler.await { sync_journalQueries.disconnectSpace("space", 1) }
+                f.runtime.baseline.connectAndImport("another-private-space", 2, repository, "actor", 1)
+                val oldPanel = mihon.data.sync.runtime.SyncPanelState(loaded = true, connection = oldConnection)
+                val snapshot = f.runtime.diagnostics.capture(oldPanel)
+                assertEquals(mihon.data.sync.runtime.SyncDiagnosticStatus.INCONSISTENT, snapshot.status)
+                assertNull(snapshot.connection.spaceAlias)
+                assertFalse(snapshot.json().contains("another-private-space"))
+            }
+        }
+    }
+
+    @Test
+    fun `diagnostic snapshot association survives restart only in opted in private session`() = runBlocking {
+        open().use { storage ->
+            val directory = Files.createTempDirectory("sync-diag-association").toString().toPath()
+            SyncOnboardingFixture(storage, diagnosticDirectory = directory).use { f ->
+                storage.connect("actor", repository)
+                f.runtime.stopPanel()
+                assertTrue(f.runtime.diagnostics.beginSession())
+                val first = f.runtime.diagnostics.capture(mihon.data.sync.runtime.SyncPanelState())
+                val restarted = f.runtime()
+                val second = restarted.diagnostics.capture(mihon.data.sync.runtime.SyncPanelState())
+                assertEquals(first.snapshotAlias, second.previousSnapshotAlias)
+                assertEquals(first.connection.spaceAlias, second.connection.spaceAlias)
+                assertTrue(first.processSession != second.processSession)
+                restarted.diagnostics.record(mihon.data.sync.runtime.SyncDiagnosticEventKind.OPEN)
+                assertTrue(restarted.diagnostics.endSession())
+                val after = restarted.diagnostics.capture(mihon.data.sync.runtime.SyncPanelState())
+                assertFalse(after.crossProcessComparable)
+                assertNull(after.previousSnapshotAlias)
+                assertTrue(after.events.isEmpty())
+                assertTrue(first.connection.spaceAlias != after.connection.spaceAlias)
+                assertFalse(Files.exists(NioPath.of(directory.toString(), "private/session.json")))
+            }
+        }
+    }
+
+    @Test
+    fun `diagnostic snapshot expired cache cleanup failure cannot break business observations`() = runBlocking {
+        open().use { storage ->
+            val directory = Files.createTempDirectory("sync-diag-expiry").toString().toPath()
+            SyncOnboardingFixture(storage, diagnosticDirectory = directory).use { f ->
+                storage.connect("actor", repository)
+                f.runtime.stopPanel()
+                assertTrue(f.runtime.diagnostics.beginSession())
+                val cache = NioPath.of(directory.toString(), "private/session.json")
+                Files.delete(cache)
+                Files.createDirectory(cache)
+                Files.write(cache.resolve("blocked"), "synthetic".toByteArray(Charsets.UTF_8))
+                f.now += 86_400_001
+                f.runtime.diagnostics.record(mihon.data.sync.runtime.SyncDiagnosticEventKind.OPEN)
+                val snapshot = f.runtime.diagnostics.capture(mihon.data.sync.runtime.SyncPanelState())
+                assertFalse(snapshot.crossProcessComparable)
+                assertTrue(f.runtime.connection()!!.enabled)
+            }
+        }
+    }
+
+    @Test
+    fun `diagnostic snapshot reads secure binding and preferences without HTTP or mutations`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.existing("")
+                f.authorize()
+                f.begin()
+                f.runtime.stopPanel()
+                f.runtime.preferences.startup.set(false)
+                f.runtime.preferences.periodMinutes.set(15)
+                f.runtime.preferences.importPaused.set(true)
+                val runBefore = f.runtime.runStore.latest("space", 1)
+                val secureBefore = f.secure.values.toMap()
+                val requests = f.repositoryTokens.size
+                val snapshot = f.runtime.diagnostics.capture(mihon.data.sync.runtime.SyncPanelState())
+                assertEquals(mihon.data.sync.runtime.SyncBindingDecode.OK, snapshot.connection.storedBindingDecode)
+                assertEquals(true, snapshot.connection.panelConnectionEnabled)
+                assertEquals(false, snapshot.startup)
+                assertEquals(15, snapshot.periodMinutes)
+                assertEquals(true, snapshot.importPaused)
+                assertEquals(requests, f.repositoryTokens.size)
+                assertEquals(secureBefore, f.secure.values.toMap())
+                assertEquals(runBefore, f.runtime.runStore.latest("space", 1))
+                assertFalse(snapshot.json().contains(f.accountLogin))
+                assertFalse(snapshot.json().contains("synthetic-token"))
+            }
+        }
+    }
+
+    @Test
+    fun `diagnostic snapshot live session expires by monotonic deadline after wall clock rollback`() = runBlocking {
+        open().use { storage ->
+            val directory = Files.createTempDirectory("sync-diag-monotonic").toString().toPath()
+            SyncOnboardingFixture(storage).use { f ->
+                f.runtime.stopPanel()
+                var monotonic = 0L
+                val diagnostics = mihon.data.sync.runtime.SyncDiagnostics(
+                    f.runtime,
+                    directory,
+                    mihon.data.sync.runtime.SyncDiagnosticEnvironment(),
+                    { f.now },
+                    { monotonic },
+                )
+                assertTrue(diagnostics.beginSession())
+                f.now -= 60_000
+                monotonic = 86_400_000_000_001L
+                val snapshot = diagnostics.capture(mihon.data.sync.runtime.SyncPanelState())
+                assertFalse(snapshot.crossProcessComparable)
+                assertFalse(Files.exists(NioPath.of(directory.toString(), "private/session.json")))
+            }
+        }
+    }
+
+    @Test
+    fun `diagnostic snapshot records real coordinator state and typed refresh failures`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.panel.act(SyncPanelAction.Open)
+                val snapshot = f.runtime.diagnostics.capture(f.panel.state.value)
+                assertTrue(
+                    snapshot.events.any {
+                        it.kind == mihon.data.sync.runtime.SyncDiagnosticEventKind.COORDINATOR &&
+                            it.coordinatorRunning == false
+                    },
+                )
+                f.panel.awaitIdle()
+                f.runtime.diagnostics.record(
+                    mihon.data.sync.runtime.SyncDiagnosticEventKind.REFRESH_END,
+                    mihon.data.sync.runtime.SyncDiagnosticRefreshSource.OPEN,
+                    failed = true,
+                )
+                val failed = f.runtime.diagnostics.capture(f.panel.state.value)
+                assertEquals(mihon.data.sync.runtime.SyncDiagnosticStatus.READ_FAILED, failed.lastRefreshError)
             }
         }
     }
@@ -856,6 +1367,160 @@ abstract class SyncPanelStorageContract {
     }
 
     @Test
+    fun `disconnected legacy binding verifies real device authorization before independent setup`() = runBlocking {
+        for (accountId in listOf(1L, 2L)) {
+            open().use { storage ->
+                SyncOnboardingFixture(storage).use { f ->
+                    storage.connect("legacy-device", f.repository)
+                    f.authorize("old-device-credential")
+                    val key = "space-" + "1:space".encodeUtf8().sha256().hex()
+                    val legacy = """{"version":1,"actorId":"legacy-device","epoch":1}"""
+                    f.secure.values[key] = legacy
+                    storage.favorite("/retained-device-queue")
+                    f.panel.act(SyncPanelAction.Open)
+                    f.panel.act(SyncPanelAction.Ask(mihon.data.sync.runtime.SyncPanelQuestion.DISCONNECT))
+                    f.panel.act(SyncPanelAction.ConfirmQuestion)
+                    assertNull(f.runtime.credentials.read())
+                    val queued = mihon.data.sync.journal.SyncLocalJournal(storage.handler).pendingEvents("space", 1)
+                    f.accountId = accountId
+                    if (accountId != 1L) f.accountLogin = "second-owner"
+                    val releaseToken = java.util.concurrent.CountDownLatch(1)
+                    val deviceRequests = java.util.concurrent.atomic.AtomicInteger()
+                    val delegate = f.git.server.dispatcher
+                    f.git.server.dispatcher = object : Dispatcher() {
+                        override fun dispatch(request: RecordedRequest): MockResponse {
+                            if (request.url.encodedPath == "/device") deviceRequests.incrementAndGet()
+                            if (request.url.encodedPath == "/token") {
+                                check(releaseToken.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                            }
+                            return delegate.dispatch(request)
+                        }
+                    }
+                    try {
+                        f.panel.act(SyncPanelAction.Authorize)
+                        val waiting = withTimeout(5_000) {
+                            f.panel.state.first { it.deviceCode != null || !it.setupBusy }
+                        }
+                        assertNotNull(waiting.deviceCode, "disconnected legacy data must not block the device request")
+                        assertEquals(1, deviceRequests.get())
+                        assertNull(f.runtime.credentials.read(), "a device code is not accepted authorization")
+                        releaseToken.countDown()
+                        withTimeout(10_000) {
+                            f.panel.state.first {
+                                !it.setupBusy && it.deviceCode == null &&
+                                    it.setupStep in setOf(SyncSetupStep.NEW_PASSWORD, SyncSetupStep.ERROR) &&
+                                    f.runtime.credentials.read() != null
+                            }
+                        }
+                        assertEquals("synthetic-token", f.runtime.credentials.read()!!.credential.accessToken)
+                        assertEquals(accountId, f.runtime.onboarding.session().account.id)
+                        assertEquals(0, f.repositoryWrites, "authorization must not initialize or upload old data")
+                        if (accountId == 1L) {
+                            assertEquals(SyncSetupStep.NEW_PASSWORD, f.panel.state.value.setupStep)
+                            f.panel.create("")
+                            withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
+                            assertTrue(f.runtime.connection()!!.spaceId != "space")
+                        } else {
+                            assertEquals(SyncSetupStep.ERROR, f.panel.state.value.setupStep)
+                            assertEquals(
+                                mihon.data.sync.auth.SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS,
+                                f.panel.state.value.setupProblem,
+                            )
+                            assertFalse(f.runtime.connection()!!.enabled)
+                        }
+                        assertEquals(legacy, f.secure.values[key])
+                        assertEquals(
+                            queued,
+                            mihon.data.sync.journal.SyncLocalJournal(storage.handler).pendingEvents("space", 1),
+                        )
+                        assertEquals(0, f.userRepoPosts)
+                    } finally {
+                        releaseToken.countDown()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `authorization keeps enabled unsupported unreadable and known other account bindings closed`() = runBlocking {
+        for (kind in listOf("enabled-unsupported", "disabled-unreadable", "known-other-account")) {
+            open().use { storage ->
+                SyncOnboardingFixture(storage).use { f ->
+                    storage.connect("legacy-device", f.repository)
+                    f.authorize("protected-device-credential")
+                    val key = "space-" + "1:space".encodeUtf8().sha256().hex()
+                    if (kind == "known-other-account") {
+                        val material = SyncSpaceCrypto.create("space", 1, "")
+                        f.runtime.onboarding.storage.bind(
+                            mihon.data.sync.runtime.StoredSyncConnection(
+                                accountId = 1,
+                                accountLogin = f.accountLogin,
+                                repositoryId = 99,
+                                owner = f.repository.owner,
+                                repository = f.repository.name,
+                                branch = f.repository.branch,
+                                material = StoredSyncMaterial.from(material),
+                                actorId = "legacy-device",
+                                epoch = 1,
+                            ),
+                            null,
+                        )
+                        f.accountId = 2
+                    } else {
+                        f.secure.values[key] = "{\"version\":1}"
+                    }
+                    if (kind == "disabled-unreadable") {
+                        storage.handler.await { sync_journalQueries.disconnectSpace("space", 1) }
+                    }
+                    val secure = object : SyncSecureStore by f.secure {
+                        override suspend fun read(key: String): String? {
+                            if (kind == "disabled-unreadable" && key.startsWith("space-")) {
+                                throw mihon.domain.sync.security.SyncSecureStoreException()
+                            }
+                            return f.secure.read(key)
+                        }
+                    }
+                    val runtime = SyncRuntime(
+                        storage.handler, storage.bootstrap, storage.creators, storage.creators, { true }, secure,
+                        f.preferences, f.client, f.endpoints,
+                    )
+                    try {
+                        val original = f.secure.values[key]
+                        val revision = runtime.credentials.read()!!.revision
+                        val checking = runCatching {
+                            runtime.recordRecoveryAuthorization(
+                                mihon.data.sync.runtime.SyncRecoveryAuthorization.CHECKING,
+                            )
+                        }
+                        assertEquals(kind == "known-other-account", checking.isSuccess)
+                        assertTrue(
+                            runCatching {
+                                runtime.acceptAuthorization(
+                                    revision,
+                                    GitHubAccessToken(
+                                        "unaccepted-device-token",
+                                        null,
+                                        "bearer",
+                                        emptySet(),
+                                        null,
+                                        null,
+                                    ),
+                                )
+                            }.isFailure,
+                        )
+                        assertEquals("protected-device-credential", runtime.credentials.read()!!.credential.accessToken)
+                        assertEquals(original, f.secure.values[key])
+                        assertEquals(0, f.repositoryWrites)
+                    } finally {
+                        runtime.stopPanel()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     fun `onboarding resumes after database binding succeeds but connected marker persistence fails`() = runBlocking {
         open().use { storage ->
             storage.favorite("/first-import")
@@ -1509,6 +2174,129 @@ abstract class SyncPanelStorageContract {
                 withTimeout(5_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
                 assertFalse(f.panel.state.value.importPaused)
                 assertEquals(0L, f.panel.state.value.queuedTotal)
+            }
+        }
+    }
+
+    @Test
+    fun `cancelled history survives disconnected setup and a separate new manual round`() = runBlocking {
+        open().use { storage ->
+            storage.connect("local", repository)
+            withPanel(storage) { panel, runtime ->
+                val old = runtime.runStore.start("space", 1, mihon.domain.sync.runtime.SyncTrigger.MANUAL)
+                assertTrue(runtime.runStore.claim(old.runId, "fixture-owner", 1))
+                runtime.runStore.confirmed(
+                    old.runId,
+                    "fixture-owner",
+                    mihon.data.sync.runtime.SyncProgressDirection.UPLOAD,
+                    "batch",
+                    1536,
+                )
+                runtime.runStore.cancel(old.runId)
+                storage.handler.await { sync_journalQueries.disconnectSpace("space", 1) }
+                panel.act(SyncPanelAction.Open)
+                assertEquals(mihon.data.sync.runtime.SyncPanelRunSource.LATEST, panel.state.value.runSource)
+                panel.act(SyncPanelAction.BeginSetup)
+                assertEquals(SyncPanelPage.SETUP, panel.state.value.page)
+                assertFalse(runtime.connection()!!.enabled)
+                assertEquals(old.runId, runtime.runStore.latest("space", 1)!!.runId)
+                assertEquals(1536L, runtime.runStore.get(old.runId)!!.confirmedItems)
+                storage.handler.await { sync_journalQueries.activateSpace("space", 1) }
+                panel.act(SyncPanelAction.Open)
+                panel.act(SyncPanelAction.Synchronize)
+                withTimeout(5_000) { panel.state.first { it.run != null && it.run!!.runId != old.runId } }
+                withTimeout(5_000) {
+                    panel.state.first { it.run?.state == mihon.data.sync.runtime.SyncRunState.BLOCKED }
+                }
+                assertEquals(mihon.data.sync.runtime.SyncPanelRunSource.ACTIVE, panel.state.value.runSource)
+                assertEquals(0L, panel.state.value.run!!.confirmedItems)
+                assertEquals(mihon.data.sync.runtime.SyncRunState.CANCELLED, runtime.runStore.get(old.runId)!!.state)
+                assertEquals(1536L, runtime.runStore.get(old.runId)!!.confirmedItems)
+            }
+        }
+    }
+
+    @Test
+    fun `process recovery reclaims the existing partial frozen plan instead of starting another run`() = runBlocking {
+        open().use { storage ->
+            storage.connect("actor", repository)
+            withPanel(storage) { _, runtime ->
+                val run = runtime.runStore.start("space", 1, mihon.domain.sync.runtime.SyncTrigger.MANUAL)
+                assertTrue(runtime.runStore.claim(run.runId, "owner", 1))
+                runtime.runStore.freezePlan(
+                    run.runId,
+                    "owner",
+                    listOf(
+                        mihon.data.sync.runtime.SyncRunPlanBatch(
+                            mihon.data.sync.runtime.SyncProgressDirection.UPLOAD,
+                            "remaining-upload",
+                            3,
+                        ),
+                    ),
+                )
+                runtime.runStore.finish(run.runId, mihon.data.sync.runtime.SyncRunState.PARTIAL, ownerSession = "owner")
+                assertTrue(runtime.hasResumableRun())
+                assertTrue(runtime.isRecoveryDue())
+                runtime.coordinator.synchronize(mihon.domain.sync.runtime.SyncTrigger.RECOVERY)
+                assertEquals(run.runId, runtime.runStore.latest("space", 1)!!.runId)
+                assertEquals(3L, runtime.runStore.get(run.runId)!!.plannedItems)
+                assertEquals(2L, runtime.runStore.get(run.runId)!!.attemptId)
+                // This fixture has no secure connection material; recovery must retain that existing guard.
+                assertEquals(mihon.data.sync.runtime.SyncRunState.BLOCKED, runtime.runStore.get(run.runId)!!.state)
+            }
+        }
+    }
+
+    @Test
+    fun `process recovery does not automatically retry a partial run containing only pending receipts`() = runBlocking {
+        open().use { storage ->
+            storage.connect("actor", repository)
+            withPanel(storage) { _, runtime ->
+                val run = runtime.runStore.start("space", 1, mihon.domain.sync.runtime.SyncTrigger.MANUAL)
+                assertTrue(runtime.runStore.claim(run.runId, "owner", 1))
+                runtime.runStore.freezePlan(
+                    run.runId,
+                    "owner",
+                    listOf(
+                        mihon.data.sync.runtime.SyncRunPlanBatch(
+                            mihon.data.sync.runtime.SyncProgressDirection.DOWNLOAD,
+                            "pending-receipt",
+                            1,
+                        ),
+                    ),
+                )
+                runtime.runStore.expectDownload(run.runId, "owner", "pending-receipt", 1)
+                runtime.runStore.finish(run.runId, mihon.data.sync.runtime.SyncRunState.PARTIAL, ownerSession = "owner")
+                assertFalse(runtime.hasResumableRun())
+                assertFalse(runtime.isRecoveryDue())
+                val result = runtime.coordinator.synchronize(mihon.domain.sync.runtime.SyncTrigger.RECOVERY)
+                assertEquals(mihon.domain.sync.runtime.SyncRunStatus.SKIPPED, result.status)
+                assertEquals(run.runId, runtime.runStore.latest("space", 1)!!.runId)
+                assertEquals(1L, runtime.runStore.get(run.runId)!!.attemptId)
+            }
+        }
+    }
+
+    @Test
+    fun `resuming import never bypasses the durable user pause or creates another run`() = runBlocking {
+        open().use { storage ->
+            storage.favorite("/baseline")
+            storage.connect("actor", repository)
+            withPanel(storage) { panel, runtime ->
+                runtime.preferences.importPaused.set(true)
+                val run = runtime.runStore.start("space", 1, mihon.domain.sync.runtime.SyncTrigger.MANUAL)
+                runtime.runStore.pause(run.runId)
+                panel.act(SyncPanelAction.Open)
+                panel.act(SyncPanelAction.ResumeImport)
+                assertFalse(runtime.preferences.importPaused.get())
+                repeat(10) {
+                    kotlinx.coroutines.delay(20)
+                    assertEquals(run.runId, runtime.runStore.latest("space", 1)!!.runId)
+                    assertEquals(
+                        mihon.data.sync.runtime.SyncRunState.PAUSED_USER,
+                        runtime.runStore.get(run.runId)!!.state,
+                    )
+                }
             }
         }
     }

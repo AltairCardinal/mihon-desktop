@@ -96,7 +96,7 @@
     const shell = platform === 'android' ? 'android-shell' : 'windows-shell';
     const frame = platform === 'android' ? `<div class="android-statusbar"><span>9:41</span><span class="status-icons">${view.icon('wifi')}${view.icon('signal')}${view.icon('battery')}</span></div>` : `<div class="desktop-windowbar"><span class="desktop-title"><img src="./mihon-desktop.png" alt="Mihon Desktop 图标"><span>Mihon Desktop 0.11.19.33 · 本地原型</span></span><span class="window-controls" aria-hidden="true"><i></i><i></i><i class="window-close"></i></span></div>`;
     const nav = state.ui.reader || (state.ui.detail && platform === 'android') ? '' : view.renderNav(spec(), state.ui.route, navIndicators());
-    return `<section class="app-window ${shell}" data-platform="${platform}" data-testid="app-window">${frame}<div class="app-body">${content}</div>${nav}${platform === 'android' ? '<div class="gesture-area" aria-hidden="true"></div>' : ''}${state.ui.syncOpen ? renderSyncSheet() : ''}${extensions.modal()}</section>`;
+    return `<section class="app-window ${shell}" data-platform="${platform}" data-sync-design="${preview?.fullSyncReview && preview.reviewMode === 'proposal' ? 'modern' : 'source'}" data-native-sync="${Boolean(preview?.fullSyncReview)}" data-sync-palette="${preview?.syncPalette || 'default'}" data-testid="app-window">${frame}<div class="app-body">${content}</div>${nav}${platform === 'android' ? '<div class="gesture-area" aria-hidden="true"></div>' : ''}${state.ui.syncOpen ? renderSyncSheet() : ''}${extensions.modal()}</section>`;
   }
 
   function renderUpdatesActions() {
@@ -181,14 +181,14 @@
   }
   function renderSyncHeader(settings) {
     const subpage = interactions.screen();
-    return `<header class="sheet-header">${subpage || settings ? iconButton('back', '返回上一页', `data-action="${subpage ? 'ix-back' : 'close-sync-settings'}" data-testid="sync-settings-back"`) : ''}<div class="sheet-title"><h2 id="sync-sheet-title">${subpage ? interactions.title() : settings ? '同步设置' : '同步'}</h2><p>${esc(currentDevice().name)} · 书架</p></div><div class="appbar-actions">${subpage || settings ? '' : iconButton('settings', '同步设置', 'data-action="sync-settings" data-testid="sync-settings"')}${iconButton('close', '关闭同步', 'data-action="close-sync" data-testid="sync-close"')}</div></header>`;
+    return `<header class="sheet-header">${subpage || settings ? iconButton('back', '返回上一页', `data-action="${subpage ? 'ix-back' : 'close-sync-settings'}" data-testid="sync-settings-back"`) : ''}<div class="sheet-title"><h2 id="sync-sheet-title">${subpage ? preview?.fullSyncReview ? (preview.reviewMode === 'proposal' ? interactions.title() : ({ activity: '同步记录', diagnostics: '同步诊断' }[interactions.screen()] || '同步')) : interactions.title() : settings ? '同步设置' : '同步'}</h2><p>${esc(preview?.fullSyncReview ? (settings || subpage) ? '' : state.ui.interactions?.fields.device || '' : currentDevice().name)}${preview?.fullSyncReview && (!state.ui.interactions?.fields.device || settings || subpage) ? '' : ' · 书架'}</p></div><div class="appbar-actions">${subpage || settings ? '' : iconButton('settings', '同步设置', 'data-action="sync-settings" data-testid="sync-settings"')}${iconButton('close', '关闭同步', 'data-action="close-sync" data-testid="sync-close"')}</div></header>`;
   }
   function renderPendingToolbar(pending) {
     if (state.ui.selecting) {
       const selectionHeader = `<div class="sheet-header selection-header">${iconButton('close', '退出选择', 'data-action="selection-cancel" data-testid="selection-cancel"')}<div class="sheet-title"><h2 id="selection-title" data-testid="selection-count">已选 ${(state.ui.selectedIds || []).length} 项</h2></div><div class="appbar-actions">${iconButton('selectAll', '全选', 'data-action="selection-all" data-testid="selection-all"')}${iconButton('flipToBack', '反选', 'data-action="selection-invert" data-testid="selection-invert"')}</div></div>`;
       return `<div class="pending-toolbar">${selectionHeader}${renderBatchBar()}</div>`;
     }
-    return `<div class="pending-toolbar"><div class="pending-toolbar-heading"><strong>待手动处理的同步 · ${pending}</strong>${renderBatchTools()}</div></div>`;
+    return `<div class="pending-toolbar"><div class="pending-toolbar-heading"><strong>${preview?.fullSyncReview && preview.reviewMode === 'proposal' ? '待确认' : '待手动处理的同步'} · ${pending}</strong>${renderBatchTools()}</div></div>`;
   }
 
   function renderBatchTools() {
@@ -204,12 +204,12 @@
   function renderSyncSheet() {
     const settings = state.ui.syncSettingsOpen;
     const content = interactions.screen() ? interactions.renderScreen() : settings ? renderSyncSettingsPage() : `<div class="sync-panel-scroll">${renderSyncPage()}</div>`;
-    return `<div class="sheet-layer"><button class="sheet-scrim" tabindex="-1" aria-label="关闭同步" data-action="close-sync" data-testid="sync-scrim"></button><section class="sync-settings-sheet sync-panel-sheet" data-settings="${Boolean(settings || interactions.screen())}" role="dialog" aria-modal="true" aria-labelledby="sync-sheet-title" tabindex="-1"><div class="sheet-drag-handle" data-sheet-drag data-testid="sync-drag" aria-hidden="true"><span></span></div>${renderSyncHeader(settings)}${content}${isWindows() ? '' : '<div class="gesture-area" aria-hidden="true"></div>'}${renderBatchReview()}</section></div>`;
+    return `<div class="sheet-layer"><button class="sheet-scrim" tabindex="-1" aria-label="关闭同步" data-action="close-sync" data-testid="sync-scrim"></button><section class="sync-settings-sheet sync-panel-sheet" data-settings="${Boolean(settings || interactions.screen())}" role="dialog" aria-modal="true" aria-labelledby="sync-sheet-title" tabindex="-1">${preview?.fullSyncReview && !isWindows() ? '' : '<div class="sheet-drag-handle" data-sheet-drag data-testid="sync-drag" aria-hidden="true"><span></span></div>'}${renderSyncHeader(settings)}${content}${isWindows() ? '' : '<div class="gesture-area" aria-hidden="true"></div>'}${renderBatchReview()}</section></div>`;
   }
 
   function closeSyncLayer() {
     if (state.ui.batchReview) state.ui.batchReview = null;
-    else if (interactions.screen()) interactions.back();
+    else if (interactions.screen()) interactions.handle('ix-back', {});
     else if (state.ui.selecting) clearBatchSelection();
     else if (state.ui.syncSettingsOpen) state.ui.syncSettingsOpen = false;
     else state.ui.syncOpen = false;
@@ -229,6 +229,7 @@
   }
 
   function renderSyncPage() {
+    if (interactions.needsRecovery()) return `<section class="sync-content modern-main" data-testid="sync-panel">${interactions.status({})}</section>`;
     if (!interactions.connected()) return interactions.unconfigured();
     const current = currentDevice();
     const pending = current.confirmations.length;
@@ -236,13 +237,25 @@
     const result = state.ui.syncResult;
     const batchResult = state.ui.batchResult;
     const busy = state.ui.busy && state.ui.busyDeviceId === current.id;
+    if (state.ui.interactions?.progress?.compact && !(preview?.fullSyncReview ? ['succeeded', 'failed', 'partial', 'blocked', 'cancelled'].includes(state.ui.interactions.progress.state) : state.ui.interactions.progress.state === 'succeeded')) {
+      return `<section class="sync-content" data-testid="sync-panel">${interactions.status({ total: current.pendingOutgoing.length, membership, reading, pending, busy, online: state.online })}</section>`;
+    }
+    if (preview?.fullSyncReview && preview.reviewMode === 'proposal') {
+      return `<section class="sync-content modern-main" data-testid="sync-panel">
+        ${interactions.status({ total: current.pendingOutgoing.length, membership, reading, pending, busy, online: state.online })}
+        ${interactions.summary()}${interactions.importStatus()}
+        ${batchResult ? `<div class="snackbar-inline" data-testid="batch-result">${esc(batchResult.message)}</div>` : ''}
+        ${pending ? `<section class="sync-list pending-list">${renderPendingToolbar(pending)}<p class="modern-muted">其他设备取消了以下内容。确认前，本设备仍会保留。</p>${current.confirmations.map(renderConfirmation).join('')}</section>` : '<div class="modern-empty">' + view.icon('check') + '没有待确认的内容</div>'}
+        <button class="modern-record-link" data-action="ix-activity" data-testid="ix-activity">${view.icon('history')}<span>同步记录</span>${view.icon('chevron')}</button>
+      </section>`;
+    }
     return `<section class="sync-content" data-testid="sync-panel">
       ${interactions.status({ total: current.pendingOutgoing.length, membership, reading, pending, busy, online: state.online })}
       ${result && !interactions.hasProgress() ? `<div class="snackbar-inline ${result.ok ? 'success' : 'failure'}" data-testid="sync-result">${view.icon(result.ok ? 'check' : 'info')}<span>${esc(result.message)}</span></div>` : ''}
       ${batchResult ? `<div class="snackbar-inline ${batchResult.ok ? 'success' : 'failure'}" data-testid="batch-result">${view.icon(batchResult.ok ? 'check' : 'info')}<span>${esc(batchResult.message)}</span></div>` : ''}
       ${interactions.summary()}${interactions.importStatus()}
       ${pending ? `<div class="sync-list pending-list">${renderPendingToolbar(pending)}${current.confirmations.map(renderConfirmation).join('')}</div>` : '<div class="sync-empty">当前没有待确认的操作</div>'}
-      <div class="sync-record-link">${button('查看同步记录', 'data-action="ix-activity" data-testid="ix-activity"', 'm-button-text')}</div>
+      <div class="sync-record-link">${button(preview?.fullSyncReview ? '同步记录' : '查看同步记录', 'data-action="ix-activity" data-testid="ix-activity"', 'm-button-text')}</div>
     </section>`;
   }
 
@@ -251,6 +264,7 @@
   }
 
   function renderSyncSettingsPage() {
+    if (preview?.fullSyncReview) return interactions.nativeSettings();
     const current = currentDevice();
     return `<div class="sheet-settings-content sync-settings-page">${interactions.settings()}<p class="settings-section-label">自动同步 · 仅此设备</p>${renderSetting('startup-setting', '启动时自动同步', current.settings.startupSync, '应用启动后在后台同步，不影响当前操作')}${renderSetting('periodic-setting', '后台定期同步', current.settings.periodicSync, isWindows() ? '应用运行期间执行' : '系统允许时自动同步')}${interactions.settingsFooter()}</div>`;
   }
@@ -291,6 +305,10 @@
     const isAuthor = item.kind === 'author-remove';
     const selected = (state.ui.selectedIds || []).includes(item.id);
     const title = isAuthor ? `取消关注「${creator(item.objectId).name}」` : `取消收藏《${book(item.objectId).title}》`;
+    if (preview?.fullSyncReview) {
+      const nativeTitle = isAuthor ? creator(item.objectId).name : book(item.objectId).title;
+      return `<article class="native-confirmation native-pending-row ${selected ? 'is-selected' : ''}" data-pending-id="${esc(item.id)}" data-testid="confirmation-${esc(item.id)}"><div class="native-pending-copy">${state.ui.selecting ? `<button role="checkbox" aria-label="选择${esc(nativeTitle)}" aria-checked="${selected}" data-select-id="${esc(item.id)}">${selected ? '☑' : '☐'}</button>` : ''}<div><strong>${esc(nativeTitle)}</strong><small>${preview.reviewMode === 'proposal' ? (isAuthor ? '作者关注' : '漫画收藏') : (isAuthor ? '作者' : '漫画')}${preview.reviewMode === 'proposal' ? ' · 来自 ' + esc(item.sourceName || '其他设备') : ''}</small></div></div>${state.ui.selecting ? '' : `<div class="confirmation-actions">${button('保留在此设备', `data-ignore="${esc(item.id)}" data-testid="ignore-${esc(item.id)}"`, 'm-button-text')}${button('在此设备取消', `data-confirm="${esc(item.id)}" data-testid="confirm-${esc(item.id)}"`, 'm-button-text')}</div>`}</article>`;
+    }
     return `<article class="native-confirmation ${selected ? 'is-selected' : ''}" data-pending-id="${esc(item.id)}" data-testid="confirmation-${esc(item.id)}"><button class="confirmation-icon selection-toggle" role="checkbox" aria-label="选择${esc(title)}" aria-checked="${selected}" data-select-id="${esc(item.id)}" data-testid="select-${esc(item.id)}">${view.icon(selected ? 'check' : isAuthor ? 'authors' : 'bookmark')}</button><div class="row-copy"><strong>${esc(title)}</strong><small>来自 ${esc(item.sourceName)} · 确认前保留本设备状态</small></div>${state.ui.selecting ? '' : `<div class="confirmation-actions">${button('在此设备取消', `data-confirm="${esc(item.id)}" data-testid="confirm-${esc(item.id)}"`, 'm-button-danger')}${button('保留在此设备', `data-ignore="${esc(item.id)}" data-testid="ignore-${esc(item.id)}"`, 'm-button-text')}</div>`}</article>`;
   }
 
@@ -396,6 +414,8 @@
     if (scroll) state.ui.syncScroll = scroll.scrollTop;
     const progressScroll = root.querySelector('[data-testid="sync-progress-details"]')?.scrollTop || 0;
     const subpageScroll = root.querySelector('.ix-page')?.scrollTop || 0;
+    const diagnostic = root.querySelector('details.modern-diagnostic');
+    if (diagnostic && state.ui.interactions) state.ui.interactions.diagnosticDetailsOpen = diagnostic.open;
     root.innerHTML = `<div class="prototype-root platform-${state.ui.platform} theme-${state.ui.theme}">${renderPreviewTools()}${renderWindowShell(renderRoute())}<div class="prototype-notice ${state.ui.tone}">${view.icon(state.ui.tone === 'failure' ? 'info' : 'cloud')}<span data-testid="notice">${esc(state.ui.notice)}</span></div></div>`;
     if (passwordPage) root.querySelector('[data-ix-screen="password"]')?.replaceWith(passwordPage);
     if (state.ui.syncOpen) {
@@ -432,10 +452,14 @@
   }
 
   function scheduleSync(trigger) {
+    if (interactions.needsRecovery()) { interactions.handle('ix-recovery-open', {}); render(); return; }
+    if (preview?.fullSyncReview && ((trigger === 'periodic' && !currentDevice().settings.periodicSync) || (trigger === 'startup' && !currentDevice().settings.startupSync))) {
+      notice('此设备已关闭这项自动同步。'); render(); return;
+    }
     if (state.ui.busy) { notice('同步正在进行，可以继续切换页面；请稍候查看本轮结果。'); render(); return; }
-    interactions.beginSync();
-    const deviceId = state.selectedDevice; state.ui.busy = true; state.ui.busyDeviceId = deviceId; notice(`${model.TRIGGER_LABELS[trigger]}已开始；页面仍可继续操作。`); render();
-    const timer = window.setTimeout(() => {
+    const deviceId = state.selectedDevice; state.ui.busy = true; state.ui.busyDeviceId = deviceId; notice(`${model.TRIGGER_LABELS[trigger]}已开始；页面仍可继续操作。`);
+    interactions.beginSync(trigger, () => {
+      const timer = window.setTimeout(() => {
       if (state.ui.timerId !== timer) return;
       const result = model.triggerSync(state, deviceId, trigger);
       interactions.didSync(result.ok);
@@ -446,8 +470,10 @@
       }
       if (state.ui.syncOpen && state.selectedDevice === deviceId) state.ui.syncResult = result;
       state.ui.timerId = null; state.ui.busy = false; state.ui.busyDeviceId = null; notice(result.message, result.ok ? 'success' : 'failure'); render();
-    }, 420);
-    state.ui.timerId = timer;
+      }, 420);
+      state.ui.timerId = timer;
+    });
+    render();
   }
 
   function switchPlatform(platform) {
@@ -531,6 +557,8 @@
     else if (target.dataset.theme) { state.ui.theme = target.dataset.theme; notice(`已切换${state.ui.theme === 'light' ? '浅色' : '深色'}主题。`); }
     else if (target.dataset.route) navigateRoute(target.dataset.route);
     else if (target.dataset.browseTab) state.ui.browseTab = target.dataset.browseTab;
+    else if (target.dataset.confirm && preview?.fullSyncReview) { state.ui.batchReview = { choice: 'confirm', ids: [target.dataset.confirm], deviceId: state.selectedDevice }; }
+    else if (target.dataset.ignore && preview?.fullSyncReview) { state.ui.batchReview = { choice: 'ignore', ids: [target.dataset.ignore], deviceId: state.selectedDevice }; }
     else if (target.dataset.confirm) { model.confirmCancellation(state, state.selectedDevice, target.dataset.confirm); notice('已确认取消，仅改变当前接收设备。', 'success'); }
     else if (target.dataset.ignore) { model.ignoreCancellation(state, state.selectedDevice, target.dataset.ignore); notice('已忽略本次取消；不反向恢复来源设备。'); }
     else if (target.dataset.conflict) { model.resolveConflict(state, state.selectedDevice, target.dataset.conflict, target.dataset.choice); notice('冲突已处理，新决定已进入待上传队列。', 'success'); }

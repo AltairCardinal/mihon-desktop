@@ -229,3 +229,8 @@ SELECT chapters.* FROM chapters JOIN mangas ON mangas._id = chapters.manga_id
 WHERE mangas.url = :mangaUrl AND mangas.source = :sourceId
 AND (chapters.url = :chapterUrl OR EXISTS(SELECT 1 FROM chapter_url_aliases A WHERE A.chapter_id = chapters._id AND A.url = :chapterUrl))
 ORDER BY CASE WHEN chapters.url = :chapterUrl THEN 0 ELSE 1 END, chapters._id LIMIT 1;
+
+updateRepositoryAddress:
+UPDATE sync_spaces SET repository_owner = :newOwner, repository_name = :newName
+WHERE space_id = :spaceId AND generation = :generation AND active = 1
+AND repository_owner = :oldOwner AND repository_name = :oldName AND repository_branch = :branch;

@@ -94,8 +94,17 @@ class BackupRestoreSyncWiringTest {
                     "WHEN NEW.url = '/bad' BEGIN SELECT RAISE(ABORT, 'injected'); END",
                 0,
             )
-            f.restore(Backup(backupManga = listOf(BackupManga(42, "/good", "Good"), BackupManga(42, "/bad", "Bad"))))
+            val reports = mutableListOf<mihon.data.sync.runtime.SyncRecoveryPlatformResult>()
+            f.restore(
+                Backup(backupManga = listOf(BackupManga(42, "/good", "Good"), BackupManga(42, "/bad", "Bad"))),
+                report = reports::add,
+            )
                 .restore(f.uri, options)
+            assertEquals(1, reports.size, "the actual Android restore must return its partial result")
+            val report = reports.single() as mihon.data.sync.runtime.SyncRecoveryPlatformResult.PartialFailure
+            assertEquals(1L, report.remaining)
+            assertEquals(listOf("/bad"), report.failedObjects.map { it.originalUrl })
+            assertEquals(listOf("/good"), report.succeededObjects.map { it.originalUrl })
             assertEquals(SyncRestoreOutcome.PARTIAL, f.sync.outcome)
             val id = requireNotNull(f.sync.id)
             assertEquals("PARTIAL", f.handler.await { sync_restoreQueries.getRun(id).executeAsOne().state })
@@ -256,7 +265,11 @@ class BackupRestoreSyncWiringTest {
             creatorIndexWriter = creators,
             fetchInterval = FetchInterval(GetChaptersByMangaId(chapters)),
         )
-        fun restore(backup: Backup, manga: MangaRestorer? = null): BackupRestorer {
+        fun restore(
+            backup: Backup,
+            manga: MangaRestorer? = null,
+            report: ((mihon.data.sync.runtime.SyncRecoveryPlatformResult) -> Unit)? = null,
+        ): BackupRestorer {
             prepareBackup(backup)
             val nativeManga = manga ?: nativeManga()
             return BackupRestorer(
@@ -269,6 +282,7 @@ class BackupRestoreSyncWiringTest {
                 mangaRestorer = nativeManga,
                 authorArchiveBackupContributor = SqlDelightAuthorArchiveBackupContributor(handler),
                 backupRestoreSync = sync,
+                onRecoveryResult = report,
             )
         }
         override fun close() = driver.close()

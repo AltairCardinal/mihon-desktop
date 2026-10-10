@@ -16,11 +16,11 @@ class DesktopSyncFailureLogOpenerTest {
     fun `opens existing report file and reports native launch failure`() {
         val report = File(directory, "report.txt").apply { writeText("失败详情", Charsets.UTF_8) }
         var opened: File? = null
-        assertTrue(DesktopSyncFailureLogOpener.open(report.path) { opened = it })
+        assertTrue(DesktopSyncFailureLogOpener.open(report.path, directory.path) { opened = it })
         assertEquals(report.canonicalFile, opened)
-        assertFalse(DesktopSyncFailureLogOpener.open(report.path) { error("no viewer") })
+        assertFalse(DesktopSyncFailureLogOpener.open(report.path, directory.path) { error("no viewer") })
         Files.delete(report.toPath())
-        assertFalse(DesktopSyncFailureLogOpener.open(report.path) { error("must not launch") })
-        assertFalse(DesktopSyncFailureLogOpener.open(directory.path) { error("must not launch") })
+        assertFalse(DesktopSyncFailureLogOpener.open(report.path, directory.path) { error("must not launch") })
+        assertFalse(DesktopSyncFailureLogOpener.open(directory.path, directory.path) { error("must not launch") })
     }
 }

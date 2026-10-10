@@ -24,6 +24,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import mihon.data.sync.auth.hasExplicitEmptyRepositoryMessage
 import mihon.data.sync.crypto.SyncAeadEngineFactory
+import mihon.data.sync.http.SyncFailureDiagnostics
+import mihon.data.sync.http.SyncFailurePhase
 import mihon.data.sync.http.SyncHttpBodyWork
 import mihon.data.sync.http.SyncHttpClient
 import mihon.data.sync.http.SyncHttpException
@@ -418,97 +420,98 @@ class GitHubSyncTransport(
             treeCacheMutex.withLock { !hasValidatedSnapshot } &&
             !manifestStore.hasPriorManifestForScope(expectedSpaceId, expectedGeneration, manifestContext)
         val tree = getTree(repository, commit.treeSha, validationScope, coldTree)
-        require(!tree.truncated && tree.entries.size <= maxTreeEntries) { "sync tree is truncated or oversized" }
+        requireRemoteData(!tree.truncated && tree.entries.size <= maxTreeEntries) {
+            "sync tree is truncated or oversized"
+        }
         val files = tree.entries.associateBy { it.path }
-        require(files.size == tree.entries.size) { "sync tree contains duplicate paths" }
+        requireRemoteData(files.size == tree.entries.size) { "sync tree contains duplicate paths" }
         spaceMaterial?.let { material ->
             require(
                 material.descriptor.spaceId == expectedSpaceId && material.descriptor.generation == expectedGeneration,
             ) {
                 "sync space identity mismatch"
             }
-            val descriptor = files[SyncSpaceDescriptorCodec.PATH] ?: error("sync space descriptor is missing")
-            require(descriptor.type == "blob" && descriptor.mode == "100644") {
+            val descriptor = files[SyncSpaceDescriptorCodec.PATH]
+                ?: throw SyncRemoteDataInvalid("sync space descriptor is missing")
+            requireRemoteData(descriptor.type == "blob" && descriptor.mode == "100644") {
                 "space descriptor must be a regular file"
             }
             val remote = SyncSpaceDescriptorCodec.decode(
                 getBlob(repository, descriptor.sha, validationScope = validationScope).content,
             ).getOrThrow()
-            require(remote == material.descriptor) { "sync space descriptor changed" }
+            if (remote != material.descriptor) throw SyncRemoteDataInvalid("sync space descriptor changed")
         }
         val indexEntries = tree.entries.filter { it.type == "blob" && it.path.startsWith(".mihon-sync/index/") }
-        require(indexEntries.isNotEmpty()) { "sync index is missing" }
-        require(indexEntries.size <= 10_000) { "sync index exceeds entry limit" }
+        if (indexEntries.isEmpty()) throw SyncRemoteDataInvalid("sync index is missing")
+        requireRemoteData(indexEntries.size <= 10_000) { "sync index exceeds entry limit" }
         val shards = indexEntries.map { entry ->
-            require(entry.mode == "100644") { "sync index must be a regular file" }
-            decryptShard(
-                getBlob(repository, entry.sha, validationScope = validationScope).content,
-                entry.path,
-                expectedSpaceId,
-                expectedGeneration,
-            )
+            requireRemoteData(entry.mode == "100644") { "sync index must be a regular file" }
+            val bytes = getBlob(repository, entry.sha, validationScope = validationScope).content
+            decodeRemoteData { decryptShard(bytes, entry.path, expectedSpaceId, expectedGeneration) }
         }
         val bootstrap = shards.filter { it.batch == null }
-        require(
+        requireRemoteData(
             bootstrap.size == 1 && bootstrap.single().path == ".mihon-sync/index/bootstrap/0/bootstrap.bin" &&
                 bootstrap.single().previousPath == null,
         ) { "sync bootstrap is missing or invalid" }
         val paths = shards.associateBy { it.path }
         val chains = shards.filter { it.batch != null }.groupBy { it.actorId to it.epoch }
         val heads = tree.entries.filter { it.type == "blob" && it.path.startsWith(".mihon-sync/heads/") }.map { entry ->
-            require(entry.mode == "100644") { "sync head must be a regular file" }
-            decryptHead(
-                getBlob(repository, entry.sha, validationScope = validationScope).content,
-                entry.path,
-                expectedSpaceId,
-                expectedGeneration,
-            )
+            requireRemoteData(entry.mode == "100644") { "sync head must be a regular file" }
+            val bytes = getBlob(repository, entry.sha, validationScope = validationScope).content
+            decodeRemoteData { decryptHead(bytes, entry.path, expectedSpaceId, expectedGeneration) }
         }
-        require(heads.size == chains.size && heads.map { it.actorId to it.epoch }.toSet() == chains.keys) {
+        requireRemoteData(heads.size == chains.size && heads.map { it.actorId to it.epoch }.toSet() == chains.keys) {
             "sync actor head is missing or duplicated"
         }
         // Walk each actor once from its authenticated head, rejecting gaps, forks and unreachable shards.
         for (head in heads) {
             val chain = chains.getValue(head.actorId to head.epoch)
             val visited = mutableSetOf<String>()
-            var node = paths[head.indexPath] ?: error("sync head points to a missing index")
-            val latest = requireNotNull(node.batch)
-            require(
+            var node = paths[head.indexPath] ?: throw SyncRemoteDataInvalid("sync head points to a missing index")
+            val latest = requireRemoteValue(node.batch)
+            requireRemoteData(
                 latest.batchId == head.batchId && latest.lastSeq == head.lastSeq && latest.digestHex == head.digestHex,
             ) {
                 "sync head does not match its index"
             }
             while (true) {
-                require(visited.add(node.path)) { "sync index chain contains a cycle" }
-                require(node.actorId == head.actorId && node.epoch == head.epoch) { "sync index chain crosses actor" }
-                val batch = requireNotNull(node.batch) { "sync actor chain enters bootstrap" }
+                requireRemoteData(visited.add(node.path)) { "sync index chain contains a cycle" }
+                requireRemoteData(node.actorId == head.actorId && node.epoch == head.epoch) {
+                    "sync index chain crosses actor"
+                }
+                val batch = requireRemoteValue(node.batch) { "sync actor chain enters bootstrap" }
                 val previousPath = node.previousPath
                 if (previousPath == null) {
-                    require(batch.firstSeq == 1L) { "sync actor chain has a missing prefix" }
+                    requireRemoteData(batch.firstSeq == 1L) { "sync actor chain has a missing prefix" }
                     break
                 }
-                val previous = paths[previousPath] ?: error("sync index chain is broken")
-                val previousBatch = requireNotNull(previous.batch)
-                require(previousBatch.lastSeq < Long.MAX_VALUE && previousBatch.lastSeq + 1 == batch.firstSeq) {
+                val previous = paths[previousPath] ?: throw SyncRemoteDataInvalid("sync index chain is broken")
+                val previousBatch = requireRemoteValue(previous.batch)
+                requireRemoteData(
+                    previousBatch.lastSeq < Long.MAX_VALUE && previousBatch.lastSeq + 1 == batch.firstSeq,
+                ) {
                     "sync index sequence chain is incomplete"
                 }
                 node = previous
             }
-            require(visited.size == chain.size) { "sync index contains an unreachable branch" }
+            requireRemoteData(visited.size == chain.size) { "sync index contains an unreachable branch" }
         }
         val index = shards.mapNotNull { shard ->
             shard.batch?.let { batch ->
-                require(batch.path == ".mihon-sync/batches/${batch.actorId}/${batch.epoch}/${batch.batchId}.json") {
+                requireRemoteData(
+                    batch.path == ".mihon-sync/batches/${batch.actorId}/${batch.epoch}/${batch.batchId}.json",
+                ) {
                     "sync batch path is invalid"
                 }
-                require(
+                requireRemoteData(
                     batch.digestHex.matches(Regex("[0-9a-f]{64}")) &&
                         batch.firstSeq > 0 && batch.lastSeq >= batch.firstSeq,
                 ) {
                     "sync index batch metadata is invalid"
                 }
                 val file = files[batch.path]
-                require(file != null && file.type == "blob" && file.mode == "100644") {
+                requireRemoteData(file != null && file.type == "blob" && file.mode == "100644") {
                     "sync indexed batch is missing"
                 }
                 SyncBatchIndexEntry(
@@ -517,11 +520,11 @@ class GitHubSyncTransport(
                 )
             }
         }
-        require(index.map { it.batchId }.toSet().size == index.size) { "sync batch ids are duplicated" }
+        requireRemoteData(index.map { it.batchId }.toSet().size == index.size) { "sync batch ids are duplicated" }
         val storedPaths = tree.entries
             .filter { it.type == "blob" && it.path.startsWith(".mihon-sync/batches/") }
             .map { it.path }.toSet()
-        require(storedPaths == index.map { it.path }.toSet()) { "sync batch has no authenticated index" }
+        requireRemoteData(storedPaths == index.map { it.path }.toSet()) { "sync batch has no authenticated index" }
         val snapshot = SyncSnapshot(repository, ref.objectSha, tree, expectedSpaceId, expectedGeneration, index)
         snapshotFence?.let { rememberSnapshotFence(snapshot, it) }
         if (manifestStore != null && manifestContext != null) {
@@ -542,6 +545,13 @@ class GitHubSyncTransport(
         }
         treeCacheMutex.withLock { hasValidatedSnapshot = true }
         snapshot
+    }.recoverCatching { failure ->
+        if (failure is SyncHttpException && failure.code == 404) {
+            throw mihon.data.sync.http.SyncRequiredResourceUnavailable(
+                mihon.data.sync.http.SyncRequiredResource.SPACE_DATA,
+            )
+        }
+        throw failure
     }
 
     private suspend fun rememberSnapshotFence(snapshot: SyncSnapshot, fence: SyncRemoteSnapshotFence) {
@@ -662,6 +672,8 @@ class GitHubSyncTransport(
                     error = "private repository access could not be verified",
                     failureClass = publishFailureClass(error),
                     retryAfterMillis = (error as? SyncHttpException)?.retryAfterMillis,
+                    networkPhase = (error as? SyncHttpException)?.networkPhase,
+                    httpStatus = (error as? SyncHttpException)?.code,
                 )
             }
             if (!private) {
@@ -748,6 +760,8 @@ class GitHubSyncTransport(
                     attempts = attempt,
                     failureClass = publishFailureClass(error),
                     retryAfterMillis = (error as? SyncHttpException)?.retryAfterMillis,
+                    networkPhase = (error as? SyncHttpException)?.networkPhase,
+                    httpStatus = (error as? SyncHttpException)?.code,
                 )
             }
             var refError: Exception? = null
@@ -792,6 +806,8 @@ class GitHubSyncTransport(
                 attempts = attempt,
                 failureClass = publishFailureClass(refError),
                 retryAfterMillis = (refError as? SyncHttpException)?.retryAfterMillis,
+                networkPhase = (refError as? SyncHttpException)?.networkPhase,
+                httpStatus = (refError as? SyncHttpException)?.code,
             )
         }
         error("unreachable publish loop")
@@ -879,7 +895,8 @@ class GitHubSyncTransport(
         initializeAttempt(repository, spaceId, generation, intent, saveCheckpoint)
     } catch (error: CancellationException) {
         throw error
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+        SyncFailureDiagnostics.record(SyncFailurePhase.RESUME_INITIALIZE, error, stage = intent.stage)
         SyncInitializationResult.Failed("sync initialization could not be confirmed")
     }
 
@@ -1930,6 +1947,7 @@ class GitHubSyncTransport(
                 failureClass = failureClass,
                 retryAfterMillis = retryAfterMillis,
                 rateLimitResetEpochSeconds = resetEpochSeconds,
+                networkPhase = mihon.domain.sync.runtime.SyncNetworkFailurePhase.HTTP_RESPONSE,
             )
         }
         return this

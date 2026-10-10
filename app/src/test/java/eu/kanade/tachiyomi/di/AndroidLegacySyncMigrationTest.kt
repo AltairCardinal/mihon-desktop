@@ -88,6 +88,7 @@ class AndroidLegacySyncMigrationTest {
         file.parentFile!!.mkdirs()
         JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}").use { driver ->
             Database.Schema.create(driver)
+            LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
             driver.execute(
                 null,
                 "INSERT INTO author_archive_source_works(source_id, stable_source_url, title, normalized_title, " +
@@ -109,6 +110,11 @@ class AndroidLegacySyncMigrationTest {
                     "('extension', '1.0', 42, 'WORK_PUBLISHED', '/work', '200', 200, 'DAY', 1, 1000, 0)",
                 0,
             )
+            driver.execute(null, "DROP TABLE sync_repair_failures", 0)
+            driver.execute(null, "DROP TRIGGER sync_runtime_pause_transition", 0)
+            driver.execute(null, "DROP TABLE sync_runtime_pause_clock", 0)
+            driver.execute(null, "DROP TABLE chapter_pairing_boundaries", 0)
+            driver.execute(null, "DROP TABLE chapter_pairings", 0)
             driver.execute(null, "DROP TABLE author_archive_presentation_exclusions", 0)
             listOf(
                 "published_date_snapshot_at",
@@ -122,7 +128,7 @@ class AndroidLegacySyncMigrationTest {
 
         Injekt.importModule(AppModule(app))
         Injekt.get<SqlDriver>().use { driver ->
-            assertEquals(40L, queryLong(driver, "PRAGMA user_version"))
+            assertEquals(Database.Schema.version, queryLong(driver, "PRAGMA user_version"))
             assertEquals(
                 200L,
                 queryLong(
@@ -136,6 +142,109 @@ class AndroidLegacySyncMigrationTest {
                 queryLong(
                     driver,
                     "SELECT COUNT(*) FROM sqlite_master WHERE name = 'author_archive_presentation_exclusions'",
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `production Android callback upgrades main schema 41 without losing history identity`() {
+        preparePublishedShape(version = 41, hasDirectory = true, hasPause = false)
+        assertPublishedShapeMigrated()
+    }
+
+    @Test
+    fun `production Android callback upgrades accepted feature schema 43 with chapter identity repair`() {
+        preparePublishedShape(version = 43, hasDirectory = false, hasPause = true)
+        assertPublishedShapeMigrated()
+    }
+
+    @Test
+    fun `production Android callback rolls back accepted feature 43 when identity repair fails`() {
+        preparePublishedShape(version = 43, hasDirectory = false, hasPause = true)
+        val file = app.getDatabasePath("tachiyomi.db")
+        JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}").use { driver ->
+            driver.execute(null, "CREATE TABLE chapter_url_aliases(unexpected TEXT)", 0)
+        }
+        Injekt.importModule(AppModule(app))
+        assertThrows(Exception::class.java) {
+            Injekt.get<SqlDriver>().use { driver -> queryLong(driver, "PRAGMA user_version") }
+        }
+        JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}").use { driver ->
+            assertEquals(43L, queryLong(driver, "PRAGMA user_version"))
+            assertEquals(
+                1L,
+                queryLong(
+                    driver,
+                    "SELECT COUNT(*) FROM sync_remote_guards WHERE latest_head = 'published-head'",
+                ),
+            )
+            assertEquals(
+                0L,
+                queryLong(
+                    driver,
+                    "SELECT COUNT(*) FROM sqlite_master WHERE name = 'chapter_directory_phases'",
+                ),
+            )
+            assertEquals(
+                1L,
+                queryLong(
+                    driver,
+                    "SELECT COUNT(*) FROM pragma_table_info('chapter_url_aliases') WHERE name = 'unexpected'",
+                ),
+            )
+        }
+    }
+
+    private fun preparePublishedShape(version: Int, hasDirectory: Boolean, hasPause: Boolean) {
+        val file = app.getDatabasePath("tachiyomi.db")
+        file.parentFile!!.mkdirs()
+        JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}").use { driver ->
+            Database.Schema.create(driver)
+            driver.execute(
+                null,
+                "INSERT INTO sync_remote_guards(space_id, generation, repository_owner, repository_name, " +
+                    "repository_branch, latest_head) VALUES ('preserved-space', 1, 'owner', 'repo', " +
+                    "'main', 'published-head')",
+                0,
+            )
+            if (!hasDirectory) LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
+            if (!hasPause) {
+                driver.execute(null, "DROP TABLE sync_repair_failures", 0)
+                driver.execute(null, "DROP TRIGGER sync_runtime_pause_transition", 0)
+                driver.execute(null, "DROP TABLE sync_runtime_pause_clock", 0)
+            }
+            driver.execute(null, "PRAGMA user_version = $version", 0)
+        }
+    }
+
+    private fun assertPublishedShapeMigrated() {
+        Injekt.importModule(AppModule(app))
+        Injekt.get<SqlDriver>().use { driver ->
+            assertEquals(Database.Schema.version, queryLong(driver, "PRAGMA user_version"))
+            assertEquals(
+                1L,
+                queryLong(
+                    driver,
+                    "SELECT COUNT(*) FROM sync_remote_guards WHERE latest_head = 'published-head'",
+                ),
+            )
+            listOf("chapter_url_aliases", "chapter_id_floor", "chapter_directory_phases", "sync_repair_failures")
+                .forEach { table ->
+                    assertEquals(
+                        table,
+                        1L,
+                        queryLong(
+                            driver,
+                            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '$table'",
+                        ),
+                    )
+                }
+            assertEquals(
+                1L,
+                queryLong(
+                    driver,
+                    "SELECT COUNT(*) FROM pragma_table_info('sync_runtime_pause_clock') WHERE name = 'planned_at'",
                 ),
             )
         }

@@ -66,6 +66,61 @@ import uy.kohesive.injekt.registry.default.DefaultRegistrar
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = android.app.Application::class)
 class AndroidSyncPanelTest {
+    @Test
+    fun `native recovery uses an ordinary Screen and returns to its original visible recovery page`() {
+        panel.state.value = panel.state.value.copy(
+            visible = true,
+            page = SyncPanelPage.RECOVERY,
+            recoveryPlatformRequest = mihon.data.sync.runtime.SyncRecoveryPlatformRequest(
+                "native-return",
+                mihon.data.sync.runtime.SyncRecoveryPlatformAction.UPDATE,
+            ),
+            recoveryPlatformLaunchPending = true,
+        )
+        var navigator: cafe.adriel.voyager.navigator.Navigator? = null
+        activity.get().setContent {
+            MaterialTheme {
+                cafe.adriel.voyager.navigator.Navigator(AndroidRecoveryTestRoot()) {
+                    navigator = it
+                    cafe.adriel.voyager.navigator.CurrentScreen()
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue(navigator?.lastItem is AndroidSyncRecoveryScreen)
+            assertFalse(navigator?.lastItem is cafe.adriel.voyager.navigator.tab.Tab)
+        }
+        compose.onNodeWithTag("sync-compatibility-check").performClick()
+        compose.onNodeWithTag("sync-compatibility-no-trusted-source").assertIsDisplayed()
+        compose.onNodeWithTag("sync-compatibility-local-package").performClick()
+        compose.runOnIdle {
+            assertEquals(
+                Intent.ACTION_OPEN_DOCUMENT,
+                shadowOf(activity.get()).nextStartedActivityForResult.intent.action,
+            )
+        }
+        compose.onNodeWithTag("sync-native-recovery-return").performClick()
+        compose.runOnIdle {
+            assertTrue(panel.state.value.visible)
+            assertEquals(SyncPanelPage.RECOVERY, panel.state.value.page)
+            assertTrue(panel.actions.contains(SyncPanelAction.OpenRecovery))
+            assertTrue(
+                panel.actions.any {
+                    it is SyncPanelAction.RecoveryPlatformCompleted &&
+                        it.result == mihon.data.sync.runtime.SyncRecoveryPlatformResult.NoChange
+                },
+            )
+        }
+    }
+
+    private class AndroidRecoveryTestRoot : cafe.adriel.voyager.core.screen.Screen {
+        @androidx.compose.runtime.Composable
+        override fun Content() {
+            AndroidLibrarySyncAction()
+        }
+    }
+
     @get:Rule
     val compose = createEmptyComposeRule()
     private lateinit var previous: InjektScope
@@ -99,18 +154,79 @@ class AndroidSyncPanelTest {
         showToolbar()
         compose.onNodeWithTag("sync-open").assertIsDisplayed().performClick()
         compose.onNodeWithText("99+").assertIsDisplayed()
-        compose.onNodeWithTag("sync-now").assertIsDisplayed()
+        compose.onNodeWithTag("sync-wait").assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithTag("sync-settings").performClick()
         compose.onNodeWithTag("sync-settings-list", useUnmergedTree = true)
             .performScrollToNode(hasTestTag("sync-password-status"))
         compose.onNodeWithTag("sync-password-status", useUnmergedTree = true).performScrollTo()
         compose.onNodeWithTag("sync-password-status", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithTag("sync-back").performClick()
-        compose.onNodeWithTag("sync-now").assertIsDisplayed()
+        compose.onNodeWithTag("sync-wait").assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithTag("sync-close").performClick()
         compose.runOnIdle {
             assertFalse(panel.state.value.visible)
             assertFalse(panel.actions.contains(SyncPanelAction.CancelSync))
+        }
+    }
+
+    @Test
+    fun `native shared sheet renders the same compact plan in main and setup merging`() {
+        panel.state.value = panel.state.value.copy(
+            run = SyncRunSnapshot(
+                "compact-run", "space", 1, SyncTrigger.MANUAL, SyncRunState.RUNNING, SyncRunPhase.DOWNLOADING,
+                6, 100, 0, 0, 0, attemptId = 1, nextRetryAt = 0, lastProgressAt = 1000,
+                stopReason = null, ownerSession = "fixture", createdAt = 1000, updatedAt = 1000,
+                confirmedItems = 4, plannedItems = 10,
+            ),
+        )
+        showToolbar()
+        compose.onNodeWithTag("sync-open").performClick()
+        fun assertCompact() {
+            val track = compose.onNodeWithTag("sync-progress-track", useUnmergedTree = true).fetchSemanticsNode()
+            assertEquals(
+                0.4f,
+                track.config[androidx.compose.ui.semantics.SemanticsProperties.ProgressBarRangeInfo].current,
+            )
+            val status = compose.onNodeWithTag("sync-progress-status", useUnmergedTree = true).fetchSemanticsNode()
+            assertTrue(
+                status.config[androidx.compose.ui.semantics.SemanticsProperties.Text].single().text.contains("4/10"),
+            )
+            compose.onNodeWithTag("sync-round-time", useUnmergedTree = true).assertExists()
+            compose.onNodeWithTag("sync-progress-details-toggle", useUnmergedTree = true).assertDoesNotExist()
+        }
+        assertCompact()
+        compose.runOnIdle {
+            panel.state.value = panel.state.value.copy(page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.MERGING)
+        }
+        assertCompact()
+        compose.onNodeWithTag("sync-back").performClick()
+        compose.onNodeWithTag("sync-pause-run").performClick()
+        compose.runOnIdle { assertEquals(SyncPanelAction.PauseSync, panel.actions.last()) }
+        compose.onNodeWithTag("sync-close").performClick()
+        compose.runOnIdle { assertFalse(panel.state.value.visible) }
+    }
+
+    @Test
+    fun `native wrapper routes disconnected cancelled history to shared setup`() {
+        panel.state.value = panel.state.value.copy(
+            connection = panel.state.value.connection!!.copy(enabled = false),
+            run = SyncRunSnapshot(
+                "cancelled-run", "space", 1, SyncTrigger.MANUAL, SyncRunState.CANCELLED, SyncRunPhase.COMPLETE,
+                0, 0, 0, 0, 0, attemptId = 1, nextRetryAt = 0, lastProgressAt = 1000,
+                stopReason = "user", ownerSession = null, createdAt = 1000, updatedAt = 17_515_000,
+                confirmedItems = 1536,
+            ),
+        )
+        showToolbar()
+        compose.onNodeWithTag("sync-open").performClick()
+        compose.onNodeWithTag("sync-now").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("sync-authorize").assertIsDisplayed()
+        compose.runOnIdle {
+            assertEquals(SyncPanelPage.SETUP, panel.state.value.page)
+            assertFalse(panel.state.value.connection!!.enabled)
+            assertEquals(1536L, panel.state.value.run!!.confirmedItems)
+            assertTrue(panel.actions.contains(SyncPanelAction.BeginSetup))
+            assertFalse(panel.actions.contains(SyncPanelAction.Synchronize))
         }
     }
 
@@ -250,7 +366,9 @@ class AndroidSyncPanelTest {
                 it.readBytes().toString(Charsets.UTF_8)
             }
             assertEquals("无法恢复的漫画：测试", restored)
-            actions.openFailureLog(outside.absolutePath)
+            org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+                actions.openFailureLog(outside.absolutePath)
+            }
             assertEquals(null, shadowOf(context).nextStartedActivity)
         } finally {
             report.delete()
@@ -347,6 +465,84 @@ class AndroidSyncPanelTest {
         }
     }
 
+    @Test
+    fun `diagnostic adapter shares generated JSON and blocks private or unrelated files`() {
+        val context = activity.get()
+        val directory = context.cacheDir.resolve("sync-diagnostics").apply { mkdirs() }
+        val file = directory.resolve("sync-diagnostic-01234567-0123-0123-0123-012345678901.json")
+        file.writeText("{}", Charsets.UTF_8)
+        val uri = android.net.Uri.parse("content://synthetic-test/diagnostic.json")
+        val actions = AndroidSyncPanelActions(context, diagnosticUri = { uri })
+        actions.openDiagnostics(file.path)
+        val chooser = requireNotNull(shadowOf(context).nextStartedActivity)
+        assertEquals(Intent.ACTION_CHOOSER, chooser.action)
+        val share = chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+        assertEquals(Intent.ACTION_SEND, share.action)
+        assertEquals("application/json", share.type)
+        assertEquals(uri, share.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM))
+        assertEquals(uri, share.clipData!!.getItemAt(0).uri)
+        assertTrue(share.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+        for (invalid in listOf(
+            context.filesDir.resolve(file.name),
+            directory.resolve("private/session.json"),
+            directory.resolve("arbitrary.json"),
+            directory.resolve("sync-diagnostic-private.txt"),
+        )) {
+            invalid.parentFile!!.mkdirs()
+            invalid.writeText("private", Charsets.UTF_8)
+            org.junit.Assert.assertThrows(IllegalStateException::class.java) { actions.openDiagnostics(invalid.path) }
+            assertEquals(null, shadowOf(context).nextStartedActivity)
+        }
+    }
+
+    @Test
+    fun `native diagnostics open dispatches to platform JSON adapter`() {
+        val path = activity.get().cacheDir.resolve("sync-diagnostics/sync-diagnostic-fixture.json").path
+        panel.state.value = panel.state.value.copy(
+            page = SyncPanelPage.DIAGNOSTICS,
+            diagnosticSnapshot = mihon.data.sync.runtime.SyncDiagnosticSnapshot(
+                status = mihon.data.sync.runtime.SyncDiagnosticStatus.OK,
+            ),
+            diagnosticPath = path,
+        )
+        io.mockk.mockkConstructor(AndroidSyncPanelActions::class)
+        try {
+            every { anyConstructed<AndroidSyncPanelActions>().openDiagnostics(path) } returns Unit
+            showToolbar()
+            compose.onNodeWithTag("sync-open").performClick()
+            compose.onNodeWithTag("sync-diagnostic-details-toggle").performClick()
+            compose.onNodeWithTag("sync-diagnostics-list", useUnmergedTree = true)
+                .performScrollToNode(hasTestTag("sync-diagnostic-open"))
+            compose.onNodeWithTag("sync-diagnostic-open").performClick()
+            io.mockk.verify(exactly = 1) { anyConstructed<AndroidSyncPanelActions>().openDiagnostics(path) }
+        } finally {
+            io.mockk.unmockkConstructor(AndroidSyncPanelActions::class)
+        }
+    }
+
+    @Test
+    fun `native diagnostics entry returns via system back to settings`() {
+        showToolbar()
+        compose.onNodeWithTag("sync-open").performClick()
+        compose.onNodeWithTag("sync-settings").performClick()
+        compose.onNodeWithTag("sync-settings-list", useUnmergedTree = true)
+            .performScrollToNode(hasTestTag("sync-settings-diagnostics"))
+        compose.onNodeWithTag("sync-settings-diagnostics").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("sync-diagnostic-capture").assertIsDisplayed().performClick()
+        compose.runOnUiThread {
+            (ShadowDialog.getLatestDialog() as ComponentDialog).onBackPressedDispatcher.onBackPressed()
+        }
+        compose.runOnIdle { assertEquals(SyncPanelPage.SETTINGS, panel.state.value.page) }
+        compose.onNodeWithTag("sync-settings-list", useUnmergedTree = true)
+            .performScrollToNode(hasTestTag("sync-settings-diagnostics"))
+        compose.onNodeWithTag("sync-settings-diagnostics").assertIsDisplayed()
+        compose.onNodeWithTag("sync-back").performClick()
+        compose.runOnIdle {
+            assertEquals(SyncPanelPage.MAIN, panel.state.value.page)
+            assertTrue(panel.actions.contains(SyncPanelAction.CaptureDiagnostics))
+        }
+    }
+
     private fun requireUnixFileProviderHost() {
         // AndroidX FileProvider compares canonical paths with a literal '/', while Robolectric
         // uses the host filesystem. Run these real-provider integration tests on a Unix host.
@@ -371,11 +567,14 @@ class AndroidSyncPanelTest {
         )
         private val openedDeviceCodes = mutableSetOf<String>()
         override fun claimDeviceCodeBrowser(code: GitHubDeviceCode): Boolean = openedDeviceCodes.add(code.deviceCode)
+        private val nativeRequests = mutableSetOf<String>()
+        override fun claimRecoveryPlatform(requestId: String): Boolean = nativeRequests.add(requestId)
         val actions = mutableListOf<SyncPanelAction>()
         override fun dispatch(action: SyncPanelAction) {
             actions += action
             state.value = when (action) {
                 SyncPanelAction.Open -> state.value.copy(visible = true)
+                SyncPanelAction.OpenRecovery -> state.value.copy(visible = true, page = SyncPanelPage.RECOVERY)
                 SyncPanelAction.Close -> state.value.copy(visible = false)
                 is SyncPanelAction.Navigate -> state.value.copy(page = action.page)
                 SyncPanelAction.ShowPasswordHelp -> state.value.copy(
@@ -388,8 +587,17 @@ class AndroidSyncPanelTest {
                         passwordHelpReturn = state.value.passwordHelpReturn + 1,
                     )
                 } else {
-                    state.value.copy(page = SyncPanelPage.MAIN)
+                    state.value.copy(
+                        page = if (state.value.page ==
+                            SyncPanelPage.DIAGNOSTICS
+                        ) {
+                            SyncPanelPage.SETTINGS
+                        } else {
+                            SyncPanelPage.MAIN
+                        },
+                    )
                 }
+                SyncPanelAction.BeginSetup -> state.value.copy(page = SyncPanelPage.SETUP)
                 else -> state.value
             }
         }

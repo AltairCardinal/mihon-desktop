@@ -421,7 +421,22 @@ class ReaderScreenModel(
         onNextChapterPrefetchChanged(context, firstViewportPageCount)
     }
 
+    fun confirmSyncResumePosition(page: Int): Boolean {
+        val current = _state.value
+        if (!current.resumePageUnavailable || page !in current.session.activeChapter.pages.indices) return false
+        layoutProgressAnchor = null
+        _state.update { it.copy(resumePageUnavailable = false) }
+        lastSettledViewport = null
+        val id = current.session.activeChapter.pages[page].id
+        if (current.currentPage == page && id in current.visiblePageIds) {
+            lastSettledViewport = SettledViewportIdentity(current.session.generation, current.visiblePageIds, id)
+            onViewportSettled(current.visiblePageIds, id)
+        }
+        return true
+    }
+
     fun goToPage(page: Int) {
+        confirmSyncResumePosition(page)
         layoutProgressAnchor = null
         _state.update { state ->
             val max = (state.session.activeChapter.pages.size - 1).coerceAtLeast(0)
@@ -492,7 +507,7 @@ class ReaderScreenModel(
             pageIds = visiblePages.pageIds,
             activePageId = activePageId,
         )
-        if (layoutOnly) {
+        if (layoutOnly || current.resumePageUnavailable) {
             if (lastSettledViewport != identity && lastLayoutScheduledViewport != identity) {
                 lastLayoutScheduledViewport = identity
                 onViewportLayoutSettled(visiblePages.pageIds, activePageId)

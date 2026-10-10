@@ -59,16 +59,23 @@ import java.util.prefs.Preferences
 
 class DesktopReaderPartialFeedbackTest {
 
-    @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
     @Test
-    fun `mounted production reader does not render partial download snackbar`(@TempDir tempDir: File) = runTest {
+    fun `mounted production reader does not render partial download snackbar`(@TempDir tempDir: File) =
+        mountedReader(tempDir)
+
+    @Test
+    fun `out of range resume offers native position selection and uses the existing page control`(@TempDir tempDir: File) =
+        mountedReader(tempDir, initialPage = 99, expectRecovery = true)
+
+    @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
+    private fun mountedReader(tempDir: File, initialPage: Int = 0, expectRecovery: Boolean = false) = runTest {
         val fixture = partialSession(
             chapterId = 7L,
             readerGeneration = 1L,
             attemptGeneration = 11L,
             localPages = 2,
             totalPages = 5,
-        )
+        ).let { it.copy(context = it.context.copy(initialPage = initialPage)) }
         val core = ReaderSessionCore(ReaderChapterId(7L), sessionId = "partial-feedback-ui")
         val opening = core.openChapter(ReaderChapterId(7L))
         core.acceptChapterMaterialization(
@@ -156,10 +163,23 @@ class DesktopReaderPartialFeedbackTest {
 
             render(scene)
             assertEquals(2, model.state.value.session.activeChapter.pages.count { it.partialPageCandidate != null })
+            if (expectRecovery) {
+                assertTrue(model.state.value.resumePageUnavailable)
+                val choose = nodes(scene).firstOrNull { it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.TestTag) &&
+                    it.config[androidx.compose.ui.semantics.SemanticsProperties.TestTag] == "sync-reader-choose-position" }
+                org.junit.jupiter.api.Assertions.assertNotNull(choose, "the actual invalid resume must provide an actionable repair")
+                assertTrue(requireNotNull(choose!!.config[SemanticsActions.OnClick].action).invoke())
+                render(scene)
+                assertTrue(model.state.value.showUI)
+                val slider = nodes(scene).first { it.config.contains(SemanticsActions.SetProgress) }
+                assertTrue(requireNotNull(slider.config[SemanticsActions.SetProgress].action).invoke(1f))
+                assertEquals(1, model.state.value.currentPage)
+            } else {
             assertTrue(
                 nodes(scene).none { it.config.contains(SemanticsActions.Dismiss) },
                 "Partial chapters must not mount a dismissible download progress Snackbar",
             )
+            }
         } finally {
             runCatching(scene::close)
             runtime.close()

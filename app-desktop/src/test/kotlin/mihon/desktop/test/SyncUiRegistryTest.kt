@@ -13,6 +13,26 @@ import org.junit.jupiter.api.Test
 
 class SyncUiRegistryTest {
     @Test
+    fun `summary disclosure reaches read only observation and removes its mounted control`() {
+        val registry = SyncUiRegistry()
+        registry.start()
+        val observer = registry.observer()
+        val tag = "sync-progress-details-toggle"
+        assertTrue(observer.observes(tag))
+        assertFalse(observer.observes("sync-password"))
+        val token = Any()
+        observer.update(token, SyncUiControl(tag, 10f, 20f, 100f, 48f, 1f, true, true, true))
+        val controls = registry.snapshot(buildJsonObject { put("active", true) })
+            .getValue("controls").jsonArray
+        assertEquals(tag, controls.single().jsonObject.getValue("tag").jsonPrimitive.content)
+        assertTrue(controls.single().jsonObject.getValue("focused").jsonPrimitive.content.toBoolean())
+        observer.remove(token)
+        assertTrue(registry.snapshot(buildJsonObject { put("active", true) })
+            .getValue("controls").jsonArray.isEmpty())
+        registry.stop()
+    }
+
+    @Test
     fun `window unmount clears controls and old binding cannot clear a restarted session`() {
         val registry = SyncUiRegistry()
         val window = io.mockk.mockk<java.awt.Window>()

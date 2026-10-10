@@ -52,7 +52,7 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
 
-data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
+data class BackupSettingsScreen(val initialBackup: File? = null, val recoveryRequestId: String? = null) : Screen {
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -77,7 +77,12 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
         val createTitle = DesktopSettingsAnchorResources.createBackup.localized()
         val restoreTitle = DesktopSettingsAnchorResources.restoreBackup.localized()
 
-        val restoreModel = if (initialBackup == null) {
+        val restoreModel = if (recoveryRequestId != null) {
+            val panel = LocalDesktopUiDependencies.current.syncPanel
+            rememberScreenModel { backupFactory.createForRecovery { result ->
+                panel?.dispatch(mihon.data.sync.runtime.SyncPanelAction.RecoveryPlatformCompleted(recoveryRequestId, result))
+            } }
+        } else if (initialBackup == null) {
             rememberScreenModel { backupFactory.create() }
         } else {
             rememberScreenModel { backupFactory.create(DesktopExternalActionTarget.Backup(initialBackup)) }

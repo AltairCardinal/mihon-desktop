@@ -18,13 +18,17 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
+import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.SourceDateExtensionIdentity
 import tachiyomi.domain.creator.model.SourceDateField
 import tachiyomi.domain.creator.model.SourceDatePrecision
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.manga.interactor.FetchInterval
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.repository.MangaRepository
 
 @org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
 @org.robolectric.annotation.Config(sdk = [35], manifest = org.robolectric.annotation.Config.NONE)

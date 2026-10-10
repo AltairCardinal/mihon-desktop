@@ -327,7 +327,22 @@ class SyncRuntimeRestartRecoveryAcceptanceTest {
 
     private suspend fun SyncOnboardingFixture.completeSetup(password: String) {
         if (panel.state.value.setupStep != SyncSetupStep.COMPLETE) {
-            panel.act(SyncPanelAction.SubmitPassword(password))
+            panel.act(
+                if (panel.state.value.setupStep == SyncSetupStep.NEW_PASSWORD) {
+                    SyncPanelAction.SubmitCreateSpace(
+                        requireNotNull(panel.state.value.createContextId),
+                        if (password.isEmpty()) {
+                            mihon.data.sync.runtime.SyncCreateProtection.NONE
+                        } else {
+                            mihon.data.sync.runtime.SyncCreateProtection.PASSWORD
+                        },
+                        password,
+                        password.isNotEmpty(),
+                    )
+                } else {
+                    SyncPanelAction.SubmitPassword(password)
+                },
+            )
             withTimeout(10_000) {
                 panel.state.first {
                     it.setupStep == SyncSetupStep.COMPLETE || it.setupStep == SyncSetupStep.ERROR

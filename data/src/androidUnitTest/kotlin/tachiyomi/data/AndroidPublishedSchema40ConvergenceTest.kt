@@ -1,0 +1,3 @@
+package tachiyomi.data
+
+class AndroidPublishedSchema40ConvergenceTest : PublishedSchema40ConvergenceContract()

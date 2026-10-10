@@ -6,6 +6,9 @@
 
 - active-child-plan: [Desktop 实机交互迭代](./2026-09-30-desktop-interaction-iteration-roadmap.md)（2026-09-30 开始；此前作者计划的历史完成项与待修复项保持原状态）
 
+- 同步分支整合记录：[同步空间不可用恢复](./2026-10-03-sync-space-recovery-roadmap.md)（保留其独立验收状态；本次合并不切换主干活动计划，也不代勾 macOS 或其他未完成验收）。
+- 此前活动专项：[同步进度整轮计数与简洁展示](./2026-09-28-sync-progress-display-roadmap.md)（SP04已交付；SP03原生人工验收状态保留，不由本次恢复计划代为勾选）。
+
 - 已完成专项：[阅读器双页与继续阅读行为迭代](./2026-09-24-reader-dual-page-and-continue-iteration-roadmap.md)（2026-09-26，COMPLETE；不改变当前作者页活动计划）。
 
 - 此前完成专项：[Android 新版扩展系统完整兼容 Roadmap](./2026-09-12-android-extension-v2-compatibility-roadmap.md)（2026-09-16，COMPLETE）。产品提交 `b3d81b34dc`；rc9正式Android/ARM业务及Windows/macOS限定回归已验收。MangaPlus live仍未验证成功，明确限制和证据以子计划为准。

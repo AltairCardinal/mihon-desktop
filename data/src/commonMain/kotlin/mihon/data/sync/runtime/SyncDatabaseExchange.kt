@@ -60,6 +60,8 @@ class SyncDatabaseExchange(
     internal val snapshotEvidenceEvaluations: Long get() = inboxStore.remoteGuard.evidenceEvaluations
 
     suspend fun exchange(spaceId: String, generation: Long, repository: SyncRepository): SyncRunResult {
+        var runPlan = progress?.plan()
+        val persistentPlan = progress?.supportsFrozenPlan == true
         var uploaded = 0
         var downloaded = 0
         var uploadedTotal = initialUploaded
@@ -67,6 +69,8 @@ class SyncDatabaseExchange(
         var pending = 0
         var problem: SyncRunProblem? = null
         var retryAfterMillis: Long? = null
+        var networkPhase: mihon.domain.sync.runtime.SyncNetworkFailurePhase? = null
+        var httpStatus: Int? = null
         var downloadScope = liveProgress?.scope("download-discovery")
         var downloadTotal: Long? = null
         var uploadScope: String? = null
@@ -88,7 +92,7 @@ class SyncDatabaseExchange(
             }
             if (!enabled) return SyncRunResult(SyncRunStatus.SKIPPED)
             progress?.phase(SyncRunPhase.CHECKING, processed = 0, total = 0)
-            while (allowImport()) {
+            while (runPlan == null && allowImport()) {
                 val importId = handler.await {
                     sync_importQueries.getNextPendingImport(spaceId, generation).executeAsOneOrNull()
                 } ?: break
@@ -186,6 +190,45 @@ class SyncDatabaseExchange(
                 SyncProgressDirection.DOWNLOAD,
             )
             var snapshot = transport.readSnapshot(repository, spaceId, generation).getOrThrow()
+            if (persistentPlan) {
+                observeSnapshot(snapshot)
+                if (runPlan == null) {
+                    val downloads = discovery.allPending(spaceId, generation)
+                    val uploads = outboxStore.freezeRound(spaceId, generation)
+                    runPlan = progress!!.freezePlan(
+                        uploads.batchItems.map { (id, count) ->
+                            SyncRunPlanBatch(SyncProgressDirection.UPLOAD, id, count)
+                        } + downloads.map { entry ->
+                            SyncRunPlanBatch(
+                                SyncProgressDirection.DOWNLOAD,
+                                entry.batchId,
+                                entry.lastSeq - entry.firstSeq + 1,
+                            )
+                        },
+                    )
+                }
+                progress!!.reconcilePublishedPlan()
+                runPlan = progress.plan()
+                val uploadMembers = requireNotNull(runPlan).batches.filter {
+                    it.direction == SyncProgressDirection.UPLOAD && !it.confirmed
+                }
+                frozenUploadBatchIds = outboxStore.orderedBatchIds(
+                    spaceId,
+                    generation,
+                    uploadMembers.map { it.batchId }.toSet(),
+                )
+                uploadRoundTotal = uploadMembers.sumOf { it.itemCount }
+                uploadRemainingExpected = uploadRoundTotal
+                uploadScope = liveProgress?.scope("upload-round-${uploadRound++}")
+            }
+            suspend fun pendingDownloads() = if (persistentPlan) {
+                val memberIds = requireNotNull(runPlan).batches.filter {
+                    it.direction == SyncProgressDirection.DOWNLOAD && !it.confirmed
+                }.map { it.batchId }.toSet()
+                discovery.allPending(spaceId, generation).filter { it.batchId in memberIds }.take(128)
+            } else {
+                discovery.pending(spaceId, generation)
+            }
             var catchUpSegments = 0
             var performedExchangeWork = false
             var downloadRound = 0
@@ -194,7 +237,7 @@ class SyncDatabaseExchange(
                 progress?.phase(SyncRunPhase.DOWNLOADING, downloadedTotal, 0, completed = downloadedTotal)
                 observeSnapshot(snapshot)
                 if (downloadRound == 0) liveProgress?.hold(SyncProgressHold.ACTIVE)
-                val discovered = discovery.pending(spaceId, generation)
+                val discovered = pendingDownloads()
                 val newDownloadRound = downloadHead != snapshot.head
                 if (newDownloadRound) {
                     downloadHead = snapshot.head
@@ -295,12 +338,12 @@ class SyncDatabaseExchange(
                 pending = store.status(spaceId, generation).pendingDecisions.toInt()
                 // Discovery is paged to keep each durable query bounded. Drain every page before
                 // reporting completion or switching to uploads so large snapshots converge fully.
-                if (discovery.pending(spaceId, generation, limit = 1).isNotEmpty()) {
+                if (pendingDownloads().isNotEmpty()) {
                     yield()
                     continue
                 }
                 progress?.phase(SyncRunPhase.UPLOADING, uploadedTotal, 0, completed = uploadedTotal)
-                if (liveProgress != null && (uploadScope == null || uploadRemainingExpected == 0L)) {
+                if (!persistentPlan && liveProgress != null && (uploadScope == null || uploadRemainingExpected == 0L)) {
                     val frozen = outboxStore.freezeRound(spaceId, generation)
                     frozenUploadBatchIds = frozen.batchIds
                     frozenUploadBatchIndex = 0
@@ -310,12 +353,12 @@ class SyncDatabaseExchange(
                         uploadRemainingExpected = frozen.totalItems
                     }
                 }
-                val frozenBatchId = if (liveProgress == null) {
+                val frozenBatchId = if (!persistentPlan && liveProgress == null) {
                     null
                 } else {
                     frozenUploadBatchIds.getOrNull(frozenUploadBatchIndex)
                 }
-                val result = if (liveProgress != null && frozenBatchId == null) {
+                val result = if ((persistentPlan || liveProgress != null) && frozenBatchId == null) {
                     null
                 } else {
                     outbox.uploadNext(
@@ -371,6 +414,7 @@ class SyncDatabaseExchange(
                     if (finalHead == snapshot.head) break
                     snapshot = transport.readSnapshot(repository, spaceId, generation).getOrThrow()
                     observeSnapshot(snapshot)
+                    if (persistentPlan) break
                     catchUpSegments++
                     if (catchUpSegments > MAX_CATCH_UP_SEGMENTS) {
                         if (discovery.pending(spaceId, generation, limit = 1).isNotEmpty()) {
@@ -401,6 +445,8 @@ class SyncDatabaseExchange(
                         -> SyncRunProblem.NETWORK
                     }
                     retryAfterMillis = result.publish.retryAfterMillis
+                    networkPhase = result.publish.networkPhase
+                    httpStatus = result.publish.httpStatus
                     progress?.phase(
                         SyncRunPhase.UPLOADING,
                         uploadedTotal + downloadedTotal,
@@ -417,7 +463,7 @@ class SyncDatabaseExchange(
                     )
                     break
                 }
-                if (liveProgress != null) frozenUploadBatchIndex++
+                if (persistentPlan || liveProgress != null) frozenUploadBatchIndex++
                 val publishedCount = handler.await {
                     sync_journalQueries.getBatch(spaceId, generation, result.publish.batchId).executeAsOne().event_count
                 }.toInt()
@@ -441,13 +487,15 @@ class SyncDatabaseExchange(
             hasUnconfirmedProjection = if (progress == null) {
                 receivedThisExchange.any { !store.canConfirmReceivedBatch(spaceId, generation, it) }
             } else {
-                progress.hasUnconfirmedDownloads()
+                progress.hasUnconfirmedDownloads() || progress.hasUnfinishedPlan()
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
             problem = failure.syncProblem()
             retryAfterMillis = (failure as? SyncHttpException)?.retryAfterMillis
+            networkPhase = (failure as? SyncHttpException)?.networkPhase
+            httpStatus = (failure as? SyncHttpException)?.code
         }
         liveProgress?.let { runCatching { it.snapshot() } }
         return SyncRunResult(
@@ -462,6 +510,8 @@ class SyncDatabaseExchange(
             pending = pending,
             problem = problem,
             retryAfterMillis = retryAfterMillis,
+            networkPhase = networkPhase,
+            httpStatus = httpStatus,
         )
     }
 }
@@ -510,6 +560,8 @@ private fun SyncBatch.itemLogs(result: String): List<SyncBatchLogEntry> {
 }
 
 internal fun Exception.syncProblem(): SyncRunProblem = when (this) {
+    is mihon.data.sync.transport.SyncRemoteDataInvalid -> SyncRunProblem.INVALID_DATA
+    is mihon.data.sync.http.SyncRequiredResourceUnavailable -> SyncRunProblem.SPACE_UNAVAILABLE
     is mihon.domain.sync.crypto.SyncCryptoException -> SyncRunProblem.INVALID_DATA
     is UnsupportedSyncSpace -> SyncRunProblem.INVALID_DATA
     is SyncSetupException -> when (problem) {
@@ -531,7 +583,7 @@ internal fun Exception.syncProblem(): SyncRunProblem = when (this) {
         SyncHttpFailureClass.RATE_LIMITED,
         SyncHttpFailureClass.SERVER,
         -> SyncRunProblem.NETWORK
-        SyncHttpFailureClass.UNKNOWN -> if (code == 401 || code == 403) {
+        SyncHttpFailureClass.UNKNOWN -> if (!retryable && (code == 401 || code == 403)) {
             SyncRunProblem.AUTHORIZATION
         } else {
             SyncRunProblem.NETWORK

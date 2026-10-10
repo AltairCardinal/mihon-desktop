@@ -12,8 +12,7 @@ class DatabaseMigrationCompatibilityTest {
     @Test
     fun `schema 40 preserves chapter identity and initializes the non reusable floor and alias foreign keys`() {
         JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).use { driver ->
-            Database.Schema.create(driver)
-            LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
+            createLegacySchema(driver)
             driver.execute(null, "PRAGMA foreign_keys=ON", 0)
             driver.execute(null, "PRAGMA user_version=40", 0)
             driver.execute(
@@ -55,8 +54,7 @@ class DatabaseMigrationCompatibilityTest {
     @Test
     fun `schema 39 adds chapter pairing tables without changing chapter progress`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        Database.Schema.create(driver)
-        LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
+        createLegacySchema(driver)
         driver.execute(null, "PRAGMA foreign_keys=OFF", 0)
         driver.execute(null, "DROP TABLE chapter_pairing_boundaries", 0)
         driver.execute(null, "DROP TABLE chapter_pairings", 0)
@@ -89,8 +87,7 @@ class DatabaseMigrationCompatibilityTest {
     @Test
     fun `schema 39 refuses incompatible preexisting chapter pairing table`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        Database.Schema.create(driver)
-        LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
+        createLegacySchema(driver)
         driver.execute(null, "DROP TABLE chapter_pairing_boundaries", 0)
         driver.execute(null, "DROP TABLE chapter_pairings", 0)
         driver.execute(null, "DROP TABLE chapter_pairing_revisions", 0)
@@ -160,14 +157,13 @@ class DatabaseMigrationCompatibilityTest {
 
     @Test
     fun `current schema reserves compatibility migration after published sync schema`() {
-        Database.Schema.version shouldBe 41L
+        Database.Schema.version shouldBe 44L
     }
 
     @Test
     fun `published sync schema 38 gains author projection columns and local exclusions`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        Database.Schema.create(driver)
-        LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
+        createLegacySchema(driver)
         driver.execute(null, "DROP TABLE author_archive_presentation_exclusions", 0)
         listOf(
             "published_date_snapshot_at",
@@ -197,8 +193,7 @@ class DatabaseMigrationCompatibilityTest {
     @Test
     fun `schema 37 preserves confirmed downloads only for successful runs`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        Database.Schema.create(driver)
-        LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
+        createLegacySchema(driver)
         driver.execute(null, "DROP TABLE sync_runtime_confirmations", 0)
         driver.execute(null, "ALTER TABLE sync_runtime_runs DROP COLUMN confirmed_items", 0)
         driver.execute(null, "DROP INDEX sync_events_by_batch_confirmation", 0)
@@ -224,8 +219,7 @@ class DatabaseMigrationCompatibilityTest {
     @Test
     fun `schema 36 migration adds guard revision and normalized snapshot rows without deleting metadata`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        Database.Schema.create(driver)
-        LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
+        createLegacySchema(driver)
         dropSnapshotManifestAdditions(driver)
         driver.execute(
             null,
@@ -262,8 +256,7 @@ class DatabaseMigrationCompatibilityTest {
     @Test
     fun `schema 33 migration creates the durable snapshot manifest table`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        Database.Schema.create(driver)
-        LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
+        createLegacySchema(driver)
         driver.execute(null, "DROP TABLE sync_snapshot_manifests", 0)
         driver.execute(null, "PRAGMA user_version = 33", 0)
 
@@ -281,8 +274,7 @@ class DatabaseMigrationCompatibilityTest {
     @Test
     fun `schema 34 migration separates retry failures from the persisted claim id`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        Database.Schema.create(driver)
-        LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
+        createLegacySchema(driver)
         driver.execute(null, "DROP TABLE sync_http_account_gates", 0)
         driver.execute(null, "DROP TABLE sync_runtime_logs", 0)
         driver.execute(null, "DROP TABLE sync_runtime_runs", 0)
@@ -361,8 +353,7 @@ class DatabaseMigrationCompatibilityTest {
     @Test
     fun `same-number manifest table with incompatible shape fails without advancing schema`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        Database.Schema.create(driver)
-        LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
+        createLegacySchema(driver)
         driver.execute(null, "DROP TABLE sync_snapshot_manifests", 0)
         driver.execute(null, "CREATE TABLE sync_snapshot_manifests(space_id TEXT NOT NULL PRIMARY KEY)", 0)
         driver.execute(null, "PRAGMA user_version = 33", 0)
@@ -478,8 +469,7 @@ class DatabaseMigrationCompatibilityTest {
     @Test
     fun `unknown same-number sync table shape fails without advancing the database`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        Database.Schema.create(driver)
-        LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
+        createLegacySchema(driver)
         driver.execute(null, "DROP TABLE sync_runtime_logs", 0)
         driver.execute(null, "DROP TABLE sync_runtime_runs", 0)
         driver.execute(
@@ -520,6 +510,14 @@ class DatabaseMigrationCompatibilityTest {
         }
     }
 
+    private fun createLegacySchema(driver: JdbcSqliteDriver) {
+        Database.Schema.create(driver)
+        LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
+        driver.execute(null, "DROP TABLE sync_repair_failures", 0)
+        driver.execute(null, "DROP TRIGGER IF EXISTS sync_runtime_pause_transition", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS sync_runtime_pause_clock", 0)
+    }
+
     private fun dropLateAuthorAdditions(driver: JdbcSqliteDriver) {
         driver.execute(null, "DROP TABLE IF EXISTS author_archive_presentation_exclusions", 0)
         listOf(
@@ -554,8 +552,7 @@ class DatabaseMigrationCompatibilityTest {
     ).value
 
     private fun prepareSyncSchema28(driver: JdbcSqliteDriver) {
-        Database.Schema.create(driver)
-        LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
+        createLegacySchema(driver)
         driver.execute(
             null,
             "INSERT INTO sync_runtime_runs(" +
@@ -586,8 +583,7 @@ class DatabaseMigrationCompatibilityTest {
     }
 
     private fun prepareAuthorSchema29(driver: JdbcSqliteDriver) {
-        Database.Schema.create(driver)
-        LegacySyncSchema32Contract.removeChapterDirectoryAdditions(driver)
+        createLegacySchema(driver)
         dropLateAuthorAdditions(driver)
         driver.execute(
             null,

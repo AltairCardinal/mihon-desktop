@@ -2,6 +2,14 @@
   'use strict';
   const model = window.MihonSyncModel;
   const root = document.getElementById('preview');
+  const responsiveReview = document.body.dataset.responsiveReview === 'true';
+  const query = new URLSearchParams(location.search);
+  const requestedDevice = query.get('device');
+  let chosenDevice = ['both', 'android', 'windows'].includes(requestedDevice) ? requestedDevice : null;
+  const defaultDevice = () => window.innerWidth >= 1360 && !window.matchMedia('(pointer: coarse)').matches ? 'both' : 'android';
+  const previewDevice = () => chosenDevice || defaultDevice();
+  let pairedTriggerDevice = 'windows';
+  let androidReviewWidth = '390';
   let sharedState = model.createDemoState();
   const frames = () => [...root.querySelectorAll('iframe')];
   const apps = () => frames().map(frame => frame.contentWindow?.__mihonSyncDemo).filter(Boolean);
@@ -9,6 +17,9 @@
   const localKeys = new Set(['ui', 'selectedDevice']);
   window.MihonPreview = {
     theme: 'dark',
+    reviewMode: 'proposal',
+    syncPalette: 'amoled',
+    fullSyncReview: document.body.dataset.syncReview === 'full',
     connect() {
       const local = {};
       return new Proxy(local, {
@@ -23,11 +34,11 @@
       frames().filter(frame => frame.contentWindow !== source).forEach(frame => frame.contentWindow?.__mihonSyncDemo?.render(false));
     },
   };
-  root.innerHTML = `<details class="preview-tools" data-testid="preview-tools" open>
+  root.innerHTML = `${responsiveReview ? `<div class="preview-device-switch" role="group" aria-label="预览设备"><button class="m-button" data-preview-device="both" data-testid="preview-device-both" aria-pressed="false">并列双端</button><button class="m-button" data-preview-device="android" data-testid="preview-device-android" aria-pressed="false">仅 Android</button><button class="m-button" data-preview-device="windows" data-testid="preview-device-windows" aria-pressed="false">仅 Windows</button></div>` : ''}<details class="preview-tools" data-testid="preview-tools" open>
     <summary><span class="tool-summary-icon">${window.MihonSyncView.icon('settings')}</span><strong>演示预览</strong><span class="tool-summary-muted">Windows Desktop 与 Android 并列</span></summary>
     <div class="preview-tool-panel">
       <div class="tool-group"><span>双端主题</span><div class="tool-choice"><button class="m-button" data-theme="light" data-testid="theme-light">浅色</button><button class="m-button is-selected" data-theme="dark" data-testid="theme-dark">深色</button></div></div>
-      <div class="tool-group"><label for="trigger-device">触发设备</label><select id="trigger-device" aria-label="触发设备"><option value="windows">电脑 B</option><option value="android">手机 A</option></select><button class="m-button" data-trigger="startup" data-testid="startup-sync">模拟启动同步</button><button class="m-button" data-trigger="periodic" data-testid="periodic-sync">模拟定期到期</button></div>
+      <div class="tool-group"><span class="preview-field-choice" data-trigger-choice${responsiveReview ? '' : ' style="display:contents"'}><label for="trigger-device">触发设备</label><select id="trigger-device" aria-label="触发设备"><option value="windows">电脑 B</option><option value="android">手机 A</option></select></span><button class="m-button" data-trigger="startup" data-testid="startup-sync">模拟启动同步</button><button class="m-button" data-trigger="periodic" data-testid="periodic-sync">模拟定期到期</button></div>
       <div class="tool-group tool-actions"><button class="m-button" data-command="network" data-testid="network-toggle">切换离线</button><button class="m-button" data-command="many" data-testid="many-pending">120 项待处理</button><button class="m-button tool-reset" data-command="reset" data-testid="reset-demo">重置演示</button></div>
       <div class="tool-group"><label for="interaction-scene">交互场景</label><select id="interaction-scene" aria-label="交互场景"><option value="pending-upload">待确认期间继续同步</option><option value="mixed">自动处理分歧</option><option value="setup">首次创建同步空间</option><option value="setup-existing">已有同步空间 · 未设密码</option><option value="setup-protected">已有同步空间 · 密码 mihon-demo</option><option value="setup-find-failed">同步空间查找失败</option><option value="setup-create-failed">同步空间创建失败</option><option value="auth-expired">设备验证码过期</option><option value="import">已有数据首次合并</option><option value="empty-device">空设备加入</option><option value="interrupted">设备待机后恢复 · 进度与日志</option><option value="user-paused">用户主动暂停 · 手动继续</option><option value="waiting-network">等待网络后自动继续</option><option value="unknown-total">远端总量未知</option><option value="retry-exhausted">自动重试已耗尽</option><option value="auth-blocked">授权阻塞</option><option value="success">同步成功收口</option><option value="network">连接暂时中断</option><option value="access">需要重新连接 GitHub</option><option value="key">同步密码不匹配</option><option value="empty">同步空间待创建</option><option value="unknown">上传结果待核对</option><option value="batch">批量部分完成</option></select><button class="m-button" data-command="scene" data-testid="show-interaction-scene">显示场景</button></div>
       <div class="tool-group progress-review-tools"><label for="progress-scene">进度审阅</label><select id="progress-scene" aria-label="同步进度场景"><option value="continuous">正常连续演示</option><option value="rapid">高频动作与新增数据</option><option value="whole-eta">可信整体剩余</option><option value="local-eta">仅局部／请求估算</option><option value="wait-10">10 秒没有新进展</option><option value="wait-60">60 秒没有新进展</option><option value="transfer-complete">传输 100% 后核对</option><option value="paused">暂停与恢复</option><option value="retry">限流倒计时与重试</option><option value="partial">部分完成与失败日志</option><option value="succeeded">成功终态</option><option value="latest">已是最新</option></select><button class="m-button" data-command="progress-scene" data-testid="show-progress-scene">显示在所选设备</button><button class="m-button m-button-primary" data-command="progress-both" data-testid="show-progress-both">双端显示进度</button></div>
@@ -36,6 +47,73 @@
     </div>
   </details><div class="parallel-scroll"><div class="device-pair"></div></div>`;
 
+  if (window.MihonPreview.fullSyncReview) {
+    root.querySelector('.preview-tool-panel').insertAdjacentHTML('afterbegin', `<div class="tool-group"><label for="sync-review-mode">对照</label><select id="sync-review-mode"><option value="proposal">新版设计 · 整理信息与操作</option><option value="baseline">当前实机 · 对照</option></select><label for="sync-palette">配色</label><select id="sync-palette"><option value="amoled">黑色表面＋粉色（截图参考）</option><option value="default">默认 Tachiyomi</option></select><span class="preview-field-choice" data-android-width-choice><label for="android-review-width">Android宽度</label><select id="android-review-width"><option value="390">390px 手机</option><option value="560">560px 宽屏</option><option value="320">320px 窄屏</option></select></span></div>`);
+    root.querySelector('#interaction-scene').insertAdjacentHTML('afterbegin', `<optgroup label="空间恢复审阅"><option value="space-deleted">旧空间已删除 · 完整恢复</option><option value="space-auth">授权失效 · 授权后仍需检查空间</option><option value="space-renamed">旧空间改名 · 检查后自动恢复</option><option value="space-check-failed">检查连接失败 · 保留旧结论</option><option value="space-switch-pending">新空间连接中断 · 继续上次操作</option><option value="space-existing">旧空间不可用 · 已有新空间可连接</option></optgroup>`);
+    root.querySelector('#interaction-scene').value = 'pending-upload';
+    root.addEventListener('change', event => {
+      if (event.target.id === 'sync-review-mode') window.MihonPreview.reviewMode = event.target.value;
+      else if (event.target.id === 'sync-palette') window.MihonPreview.syncPalette = event.target.value;
+      else if (event.target.id === 'android-review-width') {
+        androidReviewWidth = event.target.value;
+        if (responsiveReview) updatePreviewLayout();
+        else root.querySelector('#preview-android').style.width = androidReviewWidth + 'px';
+        return;
+      } else return;
+      apps().forEach(app => app.render(false));
+    });
+  }
+  // Only the review container adapts. Existing frame instances own navigation, focus and timers.
+  function sizeSingleFrame() {
+    if (!responsiveReview || previewDevice() === 'both') return;
+    const frame = root.querySelector('#preview-' + previewDevice());
+    if (!frame) return;
+    const top = frame.getBoundingClientRect().top + window.scrollY;
+    root.style.setProperty('--preview-single-height', Math.max(320, window.innerHeight - top - 12) + 'px');
+  }
+  function updatePreviewLayout() {
+    if (!responsiveReview) return;
+    const device = previewDevice();
+    root.dataset.previewDevice = device;
+    root.classList.add('responsive-review');
+    root.style.setProperty('--preview-android-width', androidReviewWidth + 'px');
+    root.querySelectorAll('[data-preview-device]').forEach(button => {
+      const selected = button.dataset.previewDevice === device;
+      button.classList.toggle('is-selected', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
+    root.querySelectorAll('.device-column').forEach(column => {
+      const frame = column.querySelector('iframe');
+      column.hidden = device !== 'both' && frame.dataset.platform !== device;
+      if (frame.dataset.platform === 'android') {
+        frame.style.width = device === 'both' ? androidReviewWidth + 'px' : '100%';
+      }
+      if (frame.contentDocument?.body) frame.contentDocument.body.dataset.previewSingle = String(device !== 'both');
+    });
+    const trigger = root.querySelector('#trigger-device');
+    trigger.value = device === 'both' ? pairedTriggerDevice : device;
+    root.querySelector('[data-trigger-choice]').hidden = device !== 'both';
+    root.querySelector('[data-android-width-choice]').hidden = device !== 'both';
+    root.querySelector('[data-testid="show-progress-both"]').textContent = device === 'both' ? '双端显示进度' : '显示同步进度';
+    root.querySelector('.tool-summary-muted').textContent = device === 'both' ? 'Windows Desktop 与 Android 并列' : device === 'android' ? 'Android · 随窗口调整' : 'Windows Desktop · 随窗口调整';
+    root.querySelector('.preview-boundary').textContent = device === 'both'
+      ? '场景显示在所选设备。GitHub 授权在本地模拟窗口完成，无需真实账号；已有密码空间的演示密码为 mihon-demo。仅供交互审阅。'
+      : '场景显示在当前可见设备。GitHub 授权在本地模拟窗口完成，无需真实账号；已有密码空间的演示密码为 mihon-demo。仅供交互审阅。';
+    sizeSingleFrame();
+  }
+  if (responsiveReview) {
+    root.querySelector('.preview-tools').open = previewDevice() === 'both' && window.innerWidth >= 1360;
+    root.addEventListener('change', event => {
+      if (event.target.id === 'trigger-device' && previewDevice() === 'both') pairedTriggerDevice = event.target.value;
+    });
+    root.querySelector('.preview-tools').addEventListener('toggle', sizeSingleFrame);
+    window.addEventListener('resize', updatePreviewLayout);
+    const observer = new ResizeObserver(sizeSingleFrame);
+    observer.observe(root.querySelector('.preview-tools'));
+    observer.observe(root.querySelector('.preview-device-switch'));
+    const notice = document.querySelector('.prototype-notice');
+    if (notice) observer.observe(notice);
+  }
   function mountFrames(afterLoad) {
     frames().forEach(frame => {
       const timer = frame.contentWindow?.__mihonSyncDemo?.state.ui.timerId;
@@ -53,15 +131,21 @@
       frame.id = 'preview-' + platform;
       frame.dataset.platform = platform;
       frame.title = label.textContent;
-      frame.srcdoc = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="./styles.css"></head><body><div id="app" class="app-shell"></div><script src="./ui-view.js"></script><script src="./sync-progress.js"></script><script src="./sync-interactions.js"></script><script src="./extension-suggestions.js"></script><script src="./app.js"></script></body></html>';
-      frame.addEventListener('load', () => { if (afterLoad) afterLoad(frame); }, { once: true });
+      frame.srcdoc = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="./styles.css">' + (responsiveReview ? '<link rel="stylesheet" href="./preview-layout.css">' : '') + '</head><body' + (responsiveReview ? ' class="responsive-preview" data-preview-single="' + (previewDevice() !== 'both') + '"' : '') + '><div id="app" class="app-shell"></div><script src="./ui-view.js"></script><script src="./sync-progress.js"></script><script src="./sync-interactions.js"></script><script src="./extension-suggestions.js"></script><script src="./app.js"></script></body></html>';
+      frame.addEventListener('load', () => { if (afterLoad) afterLoad(frame); updatePreviewLayout(); }, { once: true });
       column.append(label, frame);
       pair.append(column);
     }
+    updatePreviewLayout();
   }
   root.addEventListener('click', event => {
     const button = event.target.closest('button');
     if (!button) return;
+    if (button.dataset.previewDevice) {
+      chosenDevice = button.dataset.previewDevice;
+      updatePreviewLayout();
+      return;
+    }
     const targetPlatform = root.querySelector('#trigger-device').value;
     const target = root.querySelector('#preview-' + targetPlatform)?.contentWindow?.__mihonSyncDemo;
     if (button.dataset.theme) {
@@ -77,7 +161,8 @@
     } else if (button.dataset.command === 'progress-scene' && target) {
       target.showInteractionScenario('progress-' + root.querySelector('#progress-scene').value);
     } else if (button.dataset.command === 'progress-both') {
-      apps().forEach(app => app.showInteractionScenario('progress-' + root.querySelector('#progress-scene').value));
+      const targets = responsiveReview && previewDevice() !== 'both' ? [target].filter(Boolean) : apps();
+      targets.forEach(app => app.showInteractionScenario('progress-' + root.querySelector('#progress-scene').value));
     } else if (button.dataset.command === 'network') {
       model.setOnline(sharedState, !sharedState.online);
       button.textContent = sharedState.online ? '切换离线' : '恢复在线';
@@ -91,11 +176,9 @@
       } : null);
     }
   });
-  const params = new URLSearchParams(window.location.search);
-  const progressScene = params.get('progress');
-  mountFrames(params.get('review') === 'password' ? frame => {
-    frame.contentWindow.__mihonSyncDemo.showInteractionScenario('setup-password-review');
-  } : progressScene ? frame => {
-    frame.contentWindow.__mihonSyncDemo.showInteractionScenario('progress-' + progressScene);
-  } : null);
+  const progressScene = query.get('progress') || document.body.dataset.progressScene;
+  const progressChoice = root.querySelector('#progress-scene');
+  progressChoice.insertAdjacentHTML('afterbegin', `<optgroup label="新版：两行信息＋完成进度"><option value="compact-upload">纯上传 · 同步中</option><option value="compact-start">首次上传 · 从0开始</option><option value="compact-download">纯下载 · 同步中</option><option value="compact-bidirectional">双向同步 · 固定整轮总数</option><option value="compact-paused">暂停与继续 · 保留比例</option><option value="compact-unknown">统计中 · 等待后开始同步</option><option value="compact-complete">同步完成 · 100%</option><option value="compact-failed">连接中断 · 继续同步</option></optgroup>`);
+  progressChoice.value = progressScene || 'continuous';
+  mountFrames(query.get('review') === 'password' ? frame => { frame.contentWindow.__mihonSyncDemo.showInteractionScenario('setup-password-review'); } : progressScene ? frame => { frame.contentWindow.__mihonSyncDemo.showInteractionScenario('progress-' + progressScene); } : null);
 })();

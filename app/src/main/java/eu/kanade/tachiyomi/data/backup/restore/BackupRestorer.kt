@@ -47,7 +47,11 @@ class BackupRestorer(
     private val mangaRestorer: MangaRestorer = MangaRestorer(),
     private val authorArchiveBackupContributor: AuthorArchiveBackupContributor = Injekt.get(),
     private val backupRestoreSync: BackupRestoreSync = Injekt.get(),
+    onRecoveryResult: ((mihon.data.sync.runtime.SyncRecoveryPlatformResult) -> Unit)? = null,
 ) {
+    private val observedSync: BackupRestoreSync = onRecoveryResult?.let {
+        mihon.presentation.sync.SyncRecoveryBackupObserver(backupRestoreSync, it)
+    } ?: backupRestoreSync
 
     private var restoreAmount = 0
     private var restoreProgress = 0
@@ -78,7 +82,25 @@ class BackupRestorer(
 
     private suspend fun restoreFromFile(uri: Uri, options: RestoreOptions) {
         val backup = BackupDecoder(context).decode(uri)
-        val importId = if (options.libraryEntries) backupRestoreSync.begin() else null
+        (observedSync as? mihon.presentation.sync.SyncRecoveryBackupObserver)?.expectObjects(
+            if (options.libraryEntries) {
+                backup.backupManga.map {
+                    mihon.domain.sync.SyncObjectKey(
+                        mihon.domain.sync.SyncObjectType.MANGA,
+                        sourceId = it.source.toString(),
+                        originalUrl = it.url,
+                    )
+                } + backup.backupAuthorArchive?.watches.orEmpty().map {
+                    mihon.domain.sync.SyncObjectKey(
+                        mihon.domain.sync.SyncObjectType.AUTHOR,
+                        portableKey = it.creatorPortableKey,
+                    )
+                }
+            } else {
+                emptyList()
+            },
+        )
+        val importId = if (options.libraryEntries) observedSync.begin() else null
         var outcome = SyncRestoreOutcome.FAILED
         try {
             restoreBackup(backup, options, importId)
@@ -88,7 +110,8 @@ class BackupRestorer(
             throw error
         } finally {
             if (options.libraryEntries) {
-                withContext(NonCancellable) { backupRestoreSync.finish(importId, outcome) }
+                (observedSync as? mihon.presentation.sync.SyncRecoveryBackupObserver)?.errorCount(errors.size)
+                withContext(NonCancellable) { observedSync.finish(importId, outcome) }
             }
         }
     }
@@ -151,7 +174,7 @@ class BackupRestorer(
             backup.backupAuthorArchive?.let { section ->
                 currentCoroutineContext().ensureActive()
                 try {
-                    backupRestoreSync.restoreAuthors(importId, section.watches.map { it.creatorPortableKey }) {
+                    observedSync.restoreAuthors(importId, section.watches.map { it.creatorPortableKey }) {
                         authorArchiveBackupContributor.restoreSection(section)
                     }
                 } catch (error: CancellationException) {
@@ -193,7 +216,7 @@ class BackupRestorer(
                 ensureActive()
 
                 try {
-                    backupRestoreSync.restoreManga(importId, it.source, it.url) {
+                    observedSync.restoreManga(importId, it.source, it.url) {
                         mangaRestorer.restore(it, backupCategories)
                     }
                 } catch (e: CancellationException) {
