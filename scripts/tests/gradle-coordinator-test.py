@@ -420,6 +420,7 @@ class GradleCoordinatorTest(unittest.TestCase):
             import importlib.util
             import pathlib
             import sys
+            import time
 
             spec = importlib.util.spec_from_file_location("coordinator", sys.argv[1])
             module = importlib.util.module_from_spec(spec)
@@ -430,13 +431,25 @@ class GradleCoordinatorTest(unittest.TestCase):
             def flaky(state_dir, key, state):
                 calls[0] += 1
                 if calls[0] == 2:
+                    # A process identity is available before its Python body runs.
+                    # Inject only after this exact child publishes its ready PID.
+                    ready = pathlib.Path(sys.argv[3])
+                    deadline = time.monotonic() + 5
+                    while not ready.exists():
+                        if time.monotonic() >= deadline:
+                            raise TimeoutError("managed child did not publish readiness")
+                        time.sleep(0.01)
+                    child_pid = int(ready.read_text(encoding="utf-8"))
+                    assert child_pid == state["processPid"]
+                    assert module.process_identity(child_pid) == state["processIdentity"]
                     raise OSError("injected state write failure")
                 return original(state_dir, key, state)
 
             module.write_state = flaky
             child_code = (
                 "import os,pathlib,sys,time; "
-                "pathlib.Path(sys.argv[1]).write_text(str(os.getpid()), encoding='utf-8'); "
+                "ready = pathlib.Path(sys.argv[1]); temporary = ready.with_suffix('.tmp'); "
+                "temporary.write_text(str(os.getpid()), encoding='utf-8'); temporary.replace(ready); "
                 "time.sleep(5)"
             )
             args = module.parser().parse_args(
@@ -466,6 +479,11 @@ class GradleCoordinatorTest(unittest.TestCase):
             check=False,
         )
         self.assertEqual(1, completed.returncode, completed.stderr or completed.stdout)
+        state = json.loads((self.state_dir / "startup-failure.json").read_text(encoding="utf-8"))
+        self.assertEqual("FAILED", state["status"])
+        self.assertEqual(1, state["exitCode"])
+        self.assertEqual("OSError: injected state write failure", state["error"])
+        self.assertTrue(child_pid_file.exists(), "the injected failure must follow actual child readiness")
         child_pid = int(child_pid_file.read_text(encoding="utf-8"))
         self.assertIsNone(COORDINATOR_MODULE.process_identity(child_pid))
 

@@ -32,6 +32,25 @@
 
 迁移和真实设备授权的新行为均有正确原因的失败测试，再完成最小实现及补验；观察接线强化红测 2 项正确失败，绿测 11 项通过。复用未受后续改动影响的通过结果，没有反复运行全量测试。
 
+## CI 环境补验
+
+PR #1 的首次 Android CI 在依赖审查阶段因仓库没有启用 Dependency graph 而停止。用户按推荐仅启用依赖图后，依赖差异 API 可用；漏洞提醒仍保持关闭。第二次 Android CI 的依赖审查、格式检查和 Android 构建入口 23 项测试通过（其中 2 项为平台条件跳过），随后构建协调器的 Linux 启动故障测试因 PID 文件不存在失败。
+
+该测试与生产协调器在整合前后均未改变。未修改的单例在 Ubuntu 24.04 / Python 3.12.3 真实复现同一失败，Windows 单例通过。原因是测试在协调器取得进程身份后立即注入状态写入异常，而 Linux 子进程尚未执行到 PID 文件写入；生产清理及时结束了它。补丁仅修正测试夹具：子进程原子发布就绪 PID，注入器在 5 秒有界条件等待内核对其 PID 和身份后，再抛出原来的写入异常。保留真实进程身份消失断言，增加 `FAILED`、退出码和原异常的核验；生产协调器保持原样。
+
+Windows 和现有 WSL Ubuntu 24.04 均运行以下 5 个 focused 用例，各 5/5 通过且无跳过：
+
+```text
+python scripts/tests/gradle-coordinator-test.py
+  GradleCoordinatorTest.test_foreground_startup_failure_reaps_started_child
+  GradleCoordinatorTest.test_foreground_owns_direct_child_without_background_worker
+  GradleCoordinatorTest.test_foreground_preserves_fast_success_and_nonzero_exit
+  GradleCoordinatorTest.test_foreground_stop_does_not_kill_unrelated_process
+  GradleCoordinatorTest.test_foreground_timeout_cleans_up_managed_process
+```
+
+上面是同一命令的参数列表。未重跑本地完整协调器或应用测试，原应用通过证据不受测试夹具影响。新提交的最终云端门禁结果仍以 PR 检查记录为准。
+
 ## 交付边界
 
 本次是已验收同步分支的集成与回归收口，没有重新构建或安装已验收 APK。Android 正式身份、证书连续性及较高版本号保持；后续正式候选必须走统一构建入口递增版本并包含 schema 44。主干的 Android 与 Desktop 必需 CI 检查通过后，按 PR 流程合入；远端合并状态以 PR 为准。
