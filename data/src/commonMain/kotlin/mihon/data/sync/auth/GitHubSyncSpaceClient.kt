@@ -36,6 +36,14 @@ data class SyncAppInstallation(
     val repositorySelection: SyncRepositorySelection,
     val authorizedRepositoryCount: Int? = null,
     val accountType: SyncInstallationAccountType = SyncInstallationAccountType.USER,
+    val canCreateRepository: Boolean = false,
+)
+
+/** Fresh effective installation permissions, never OAuth scopes or public App registration defaults. */
+data class SyncRepositoryCreationPermission(
+    val account: SyncGitHubAccount? = null,
+    val installation: SyncAppInstallation? = null,
+    val problem: SyncDiscoveryProblem? = null,
 )
 
 data class DiscoveredSyncSpace(
@@ -161,6 +169,23 @@ class GitHubSyncSpaceClient(
         SyncSpaceDiscovery.Failed(error.problem())
     }
 
+    suspend fun checkRepositoryCreationPermission(expectedAccountId: Long? = null): SyncRepositoryCreationPermission =
+        try {
+            val (account, installation) = session().inspectInstallation(expectedAccountId)
+            SyncRepositoryCreationPermission(
+                account,
+                installation,
+                if (installation.canCreateRepository) null else SyncDiscoveryProblem.NEEDS_CREATION_PERMISSION,
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: DiscoveryException) {
+            SyncRepositoryCreationPermission(error.account, error.installation, error.problem)
+        } catch (error: Exception) {
+            SyncFailureDiagnostics.record(SyncFailurePhase.DISCOVERY, error)
+            SyncRepositoryCreationPermission(problem = error.problem())
+        }
+
     suspend fun createOrResume(
         attempt: SyncCreationAttempt,
         persist: suspend (SyncCreationAttempt) -> Unit,
@@ -203,7 +228,7 @@ class GitHubSyncSpaceClient(
     private inner class Session(token: String) {
         val api = GitHubPrivateRepositorySelector(productionClient, { token }, apiBaseUrl, requestGate)
 
-        suspend fun scan(expectedAccountId: Long?): Scan {
+        suspend fun inspectInstallation(expectedAccountId: Long?): Pair<SyncGitHubAccount, SyncAppInstallation> {
             val user = get("/user").checked().objectBody()
             require(user.string("type") == "User")
             val account = SyncGitHubAccount(user.number("id"), user.string("login"))
@@ -232,8 +257,14 @@ class GitHubSyncSpaceClient(
                 "selected" -> SyncRepositorySelection.SELECTED
                 else -> error("invalid repository selection")
             }
-            val initialInstallation =
-                SyncAppInstallation(installationId, repositorySelection, accountType = accountType)
+            val permissions = installation.obj("permissions")
+            val initialInstallation = SyncAppInstallation(
+                installationId,
+                repositorySelection,
+                accountType = accountType,
+                canCreateRepository = permissions.optionalString("repository_creation") == "write" ||
+                    permissions.optionalString("administration") == "write",
+            )
             when (val suspendedAt = installation["suspended_at"]) {
                 null -> fail(SyncDiscoveryProblem.MALFORMED, account, initialInstallation)
                 JsonNull -> Unit
@@ -248,6 +279,12 @@ class GitHubSyncSpaceClient(
             if (installation.obj("permissions").optionalString("contents") != "write") {
                 fail(SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION, account, initialInstallation)
             }
+            return account to initialInstallation
+        }
+
+        suspend fun scan(expectedAccountId: Long?): Scan {
+            val (account, initialInstallation) = inspectInstallation(expectedAccountId)
+            val installationId = initialInstallation.id
             val repositories = api.objects(
                 "/user/installations/$installationId/repositories?per_page=100&page=1",
                 "repositories",

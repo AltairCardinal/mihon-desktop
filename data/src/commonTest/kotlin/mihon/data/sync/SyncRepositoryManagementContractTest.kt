@@ -20,6 +20,22 @@ import org.junit.jupiter.api.Test
 
 class SyncRepositoryManagementContractTest {
     @Test
+    fun `creation-only automatic repository access is read back without administration or scope PUT`() = runTest {
+        server(installationPermissions = "\"contents\":\"write\",\"repository_creation\":\"write\"").use { server ->
+            var recorded = intent()
+            assertEquals(
+                SyncSpaceCreation.Ready(repository, 99, "main"),
+                manager(server).createOrResume(recorded) { recorded = it },
+            )
+            val requests = List(server.requestCount) { server.takeRequest() }
+            assertEquals(1, requests.count { it.method == "POST" })
+            assertEquals(0, requests.count { it.method == "PUT" })
+            assertTrue(requests.any { it.url.encodedPath == "/user/installations/7/repositories" })
+            assertTrue(requests.any { it.url.encodedPath == "/repositories/99" })
+        }
+    }
+
+    @Test
     fun `confirmed creation id survives unknown permissions and waits for official scope selection`() = runTest {
         val withoutPermissions = repo().replace("\"permissions\":{\"push\":true,\"admin\":true},", "")
         server(postBody = withoutPermissions, visibleAfterPost = false).use { server ->
@@ -455,6 +471,7 @@ class SyncRepositoryManagementContractTest {
         patchBody: String = repo(),
         applyPatch: Boolean = true,
         metadataCode: Int = 200,
+        installationPermissions: String = "\"contents\":\"write\"",
     ) = MockWebServer().apply {
         start()
         var posted = false
@@ -484,7 +501,7 @@ class SyncRepositoryManagementContractTest {
                         body =
                         """{"installations":[{"id":7,"app_slug":"mihon-desktop",""" +
                             """"account":{"id":42,"type":"User"},"suspended_at":null,""" +
-                            """"permissions":{"contents":"write"}}]}""",
+                            """"permissions":{$installationPermissions}}]}""",
                     )
                 request.url.encodedPath == "/user/installations/7/repositories" ->
                     MockResponse(

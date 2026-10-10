@@ -923,7 +923,8 @@ abstract class SyncSpaceRecoveryContract {
                     f.app.git.server.dispatcher = failing(f.app.git.server.dispatcher, "/user", 500)
                     f.app.panel.act(SyncPanelAction.PrepareRepositoryCreation(f.repository.name))
                     assertEquals(f.app.accountLogin, f.app.panel.state.value.setupAccountLogin)
-                    assertNotNull(f.app.panel.state.value.setupInstallation)
+                    assertTrue(f.app.panel.state.value.setupInstallation?.canCreateRepository != true)
+                    assertEquals(SyncDiscoveryProblem.RETRYABLE, f.app.panel.state.value.creationPermissionProblem)
                 }
             }
         }

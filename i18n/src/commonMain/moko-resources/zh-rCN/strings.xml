@@ -2168,4 +2168,7 @@
     <string name="sync_reader_confirm_position">确认当前页为正确阅读位置</string>
     <string name="sync_reader_position_boundary">请使用阅读器控件选择实际章节与页码。自动回退不会更正同步位置，只有你的明确选择才会更正。</string>
     <string name="sync_resume_chapter_unavailable">保存的章节无法对应当前可用章节。请刷新章节列表或修复图源，再明确选择实际章节与阅读位置。</string>
+    <string name="sync_repository_permission_checking">正在检查创建仓库权限…</string>
+    <string name="sync_repository_permission_browser">当前安装尚未获准在应用内创建仓库。请前往 GitHub 创建私有空仓库，再返回这里继续。</string>
+    <string name="sync_repository_permission_unknown">暂时无法确认创建仓库权限。可以重新检查，或前往 GitHub 创建私有空仓库，再返回这里继续。</string>
 </resources>

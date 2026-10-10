@@ -71,6 +71,9 @@ internal class SyncOnboarding(
 ) {
     suspend fun discover(): SyncSpaceDiscovery = spaces(runtime.accessToken()).discover()
 
+    suspend fun checkRepositoryCreationPermission(expectedAccountId: Long? = null) =
+        spaces(runtime.accessToken()).checkRepositoryCreationPermission(expectedAccountId)
+
     suspend fun pending(): StoredSyncSetup? = storage.pending(session().account.id)
 
     suspend fun pendingForCurrentAccount(): SyncPendingSetup {

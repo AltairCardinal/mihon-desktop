@@ -62,6 +62,131 @@ import java.util.concurrent.ConcurrentHashMap
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncSpaceRecoveryPanelIntegrationTest {
     @Test
+    fun `missing effective creation permission offers browser creation before any native request`() = fixture(
+        deletedPendingSetup = true,
+        nativePermission = null,
+    ) {
+        click("sync-now")
+        click("sync-authorize")
+        withTimeout(10_000) { panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy } }
+        click("sync-setup-recovery-open")
+        click("sync-recovery-create")
+        click("sync-confirm-question")
+        withTimeout(5_000) {
+            panel.state.first { it.setupStep == SyncSetupStep.PREPARE_REPOSITORY && !it.setupBusy }
+        }
+        awaitNode("sync-create-private-repo")
+        scene.render()
+        assertTrue(
+            node("sync-repository-create-native") == null,
+            "native creation must not be offered without permission",
+        )
+        click("sync-create-private-repo")
+        assertTrue(opened.single().startsWith("https://github.com/new?name=mihon-sync&visibility=private"))
+        repositoryCreated = true
+        repositoryAuthorized = true
+        click("sync-recovery-repository-created")
+        withTimeout(5_000) { panel.state.first { it.question == SyncPanelQuestion.CONNECT_MANUAL_REPOSITORY } }
+        assertEquals(oldConnection, runtime.connection())
+        click("sync-confirm-question")
+        withTimeout(10_000) { panel.state.first { it.setupStep == SyncSetupStep.NEW_PASSWORD && !it.setupBusy } }
+        click("sync-password-submit")
+        withTimeout(20_000) {
+            panel.state.first { it.setupStep == SyncSetupStep.COMPLETE && it.run?.state == SyncRunState.SUCCEEDED }
+        }
+        assertTrue(paths.none { it == "/user/repos" })
+    }
+
+    @Test
+    fun `creation permission revoked after proposal blocks the real confirmation POST`() = fixture(
+        deletedPendingSetup = true,
+    ) {
+        click("sync-now")
+        click("sync-authorize")
+        withTimeout(10_000) { panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy } }
+        click("sync-setup-recovery-open")
+        click("sync-recovery-create")
+        click("sync-confirm-question")
+        withTimeout(5_000) {
+            panel.state.first { it.setupStep == SyncSetupStep.PREPARE_REPOSITORY && !it.setupBusy }
+        }
+        click("sync-repository-create-native")
+        withTimeout(5_000) { panel.state.first { it.question == SyncPanelQuestion.CREATE_REPOSITORY } }
+        nativePermission = null
+        click("sync-confirm-question")
+        withTimeout(5_000) { panel.state.first { !it.setupBusy } }
+        assertFalse(paths.contains("/user/repos"), "revoked permission must never be tested with a creation POST")
+        assertEquals(SyncDiscoveryProblem.NEEDS_CREATION_PERMISSION, panel.state.value.setupProblem)
+        assertEquals(oldConnection, runtime.connection())
+    }
+
+    @Test
+    fun `unknown creation permission retains browser path and recheck reads the newly accepted grant`() = fixture(
+        deletedPendingSetup = true,
+        nativePermission = null,
+    ) {
+        click("sync-now")
+        click("sync-authorize")
+        withTimeout(10_000) { panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy } }
+        click("sync-setup-recovery-open")
+        click("sync-recovery-create")
+        installationFailure = 500
+        click("sync-confirm-question")
+        withTimeout(5_000) {
+            panel.state.first { it.setupStep == SyncSetupStep.PREPARE_REPOSITORY && !it.setupBusy }
+        }
+        awaitNode("sync-repository-permission-status")
+        assertEquals(SyncDiscoveryProblem.RETRYABLE, panel.state.value.creationPermissionProblem)
+        assertTrue(node("sync-repository-create-native") == null)
+        click("sync-create-private-repo")
+        assertEquals(1, opened.size)
+        installationFailure = null
+        nativePermission = "repository_creation"
+        click("sync-repository-permission-recheck")
+        withTimeout(5_000) { panel.state.first { it.setupInstallation?.canCreateRepository == true && !it.setupBusy } }
+        awaitNode("sync-repository-create-native")
+        assertTrue(paths.none { it == "/user/repos" })
+        assertEquals(oldConnection, runtime.connection())
+    }
+
+    @Test
+    fun `slow creation permission check can close before HTTP finishes and cannot unlock reopened session`() = fixture(
+        deletedPendingSetup = true,
+        nativePermission = null,
+    ) {
+        click("sync-now")
+        click("sync-authorize")
+        withTimeout(10_000) { panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy } }
+        click("sync-setup-recovery-open")
+        click("sync-recovery-create")
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val released = java.util.concurrent.CountDownLatch(1)
+        installationBarrier = entered to released
+        try {
+            click("sync-confirm-question")
+            withTimeout(5_000) {
+                while (entered.count != 0L) yield()
+            }
+            click("sync-close")
+            withTimeout(1_000) { panel.state.first { !it.visible } }
+            nativePermission = "repository_creation"
+            panel.dispatch(SyncPanelAction.Open)
+            withTimeout(1_000) { panel.state.first { it.visible && it.page == SyncPanelPage.MAIN } }
+        } finally {
+            released.countDown()
+            installationBarrier = null
+        }
+        repeat(10) {
+            scene.render()
+            yield()
+        }
+        assertEquals(SyncPanelPage.MAIN, panel.state.value.page)
+        assertTrue(panel.state.value.setupInstallation?.canCreateRepository != true)
+        assertFalse(panel.state.value.setupBusy)
+        assertTrue(paths.none { it == "/user/repos" })
+    }
+
+    @Test
     fun `actual partial backup callback remains actionable after closing and reopening sync`() = fixture {
         click("sync-recovery-open")
         withTimeout(5_000) { panel.state.first { it.page == SyncPanelPage.RECOVERY } }
@@ -324,6 +449,7 @@ class SyncSpaceRecoveryPanelIntegrationTest {
         deletedPendingSetup: Boolean = false,
         missingInstallation: Boolean = false,
         deviceCodeFails: Boolean = false,
+        nativePermission: String? = "administration",
         block: suspend Fixture.() -> Unit,
     ) = runBlocking {
         val fixture = Fixture(
@@ -332,6 +458,7 @@ class SyncSpaceRecoveryPanelIntegrationTest {
             deletedPendingSetup,
             missingInstallation,
             deviceCodeFails,
+            nativePermission,
         )
         try {
             fixture.initialize()
@@ -347,8 +474,15 @@ class SyncSpaceRecoveryPanelIntegrationTest {
         val deletedPendingSetup: Boolean,
         val missingInstallation: Boolean,
         val deviceCodeFails: Boolean,
+        @Volatile var nativePermission: String?,
     ) {
         @Volatile var installationAvailable = !missingInstallation
+
+        @Volatile var installationFailure: Int? = null
+
+        @Volatile var installationBarrier:
+            Pair<java.util.concurrent.CountDownLatch, java.util.concurrent.CountDownLatch>? =
+            null
         val paths = java.util.Collections.synchronizedList(mutableListOf<String>())
         val methods = java.util.Collections.synchronizedList(mutableListOf<String>())
         val opened = mutableListOf<String>()
@@ -397,6 +531,12 @@ class SyncSpaceRecoveryPanelIntegrationTest {
                 override fun dispatch(request: RecordedRequest): MockResponse {
                     paths += request.url.encodedPath
                     methods += request.method
+                    if (request.url.encodedPath == "/user/installations") {
+                        installationBarrier?.let { (entered, released) ->
+                            entered.countDown()
+                            check(released.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                        }
+                    }
                     if (deletedPendingSetup) {
                         if (request.url.encodedPath == "/user/repos" && request.method == "POST") {
                             val creation = kotlinx.serialization.json.Json.parseToJsonElement(request.body!!.utf8())
@@ -443,7 +583,9 @@ class SyncSpaceRecoveryPanelIntegrationTest {
                         } else {
                             MockResponse(body = """{"id":42,"login":"fixture","type":"User"}""")
                         }
-                        "/user/installations" -> if (!installationAvailable) {
+                        "/user/installations" -> if (installationFailure != null) {
+                            MockResponse(code = requireNotNull(installationFailure), body = "{}")
+                        } else if (!installationAvailable) {
                             MockResponse(body = """{"installations":[]}""")
                         } else {
                             MockResponse(
@@ -451,7 +593,8 @@ class SyncSpaceRecoveryPanelIntegrationTest {
                                 {"installations":[{"id":7,"app_slug":"mihon-desktop",
                                 "account":{"id":42,"type":"User"},"suspended_at":null,
                                 "repository_selection":"selected",
-                                "permissions":{"contents":"write","metadata":"read"}}]}
+                                "permissions":{"contents":"write","metadata":"read"
+                                ${nativePermission?.let { ",\"$it\":\"write\"" }.orEmpty()}}}]}
                                 """.trimIndent(),
                             )
                         }

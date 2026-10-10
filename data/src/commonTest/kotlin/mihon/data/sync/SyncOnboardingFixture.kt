@@ -112,7 +112,7 @@ internal class SyncOnboardingFixture(
                         """
                         {"installations":[{"id":1,"app_slug":"mihon-desktop",
                         "account":{"id":$accountId,"type":"User"},"suspended_at":${if (installationSuspended) "\"2026-10-01\"" else "null"},
-                        "permissions":{"contents":"write","metadata":"read"},"repository_selection":"selected"}]}
+                        "permissions":{"administration":"write","contents":"write","metadata":"read"},"repository_selection":"selected"}]}
                         """.trimIndent(),
                     )
                     path == "/user/installations/1/repositories" -> response(
@@ -209,6 +209,12 @@ internal class SyncOnboardingFixture(
 internal suspend fun SyncPanelController.act(action: SyncPanelAction) {
     dispatch(action)
     awaitIdle()
+    if (action is SyncPanelAction.PrepareRepositoryCreation ||
+        action == SyncPanelAction.CheckRepositoryCreationPermission
+    ) {
+        kotlinx.coroutines.withTimeout(5_000) { state.first { !it.setupBusy } }
+        awaitIdle()
+    }
 }
 
 internal class MemorySyncSecureStore : SyncSecureStore {

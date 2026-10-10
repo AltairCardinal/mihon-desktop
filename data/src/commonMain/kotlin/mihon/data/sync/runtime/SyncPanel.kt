@@ -221,6 +221,7 @@ data class SyncPanelState(
     val repositoryCreationName: String = mihon.data.sync.auth.GitHubSyncSpaceClient.REPOSITORY_NAME,
     val creationRepositoryId: Long? = null,
     val creationSubmitted: Boolean = false,
+    val creationPermissionProblem: SyncDiscoveryProblem? = null,
     val repairMakePrivate: Boolean = false,
     val repairUnarchive: Boolean = false,
     val legacyRecoveryAvailable: Boolean = false,
@@ -257,6 +258,7 @@ sealed interface SyncPanelAction {
     ) : SyncPanelAction
     data class RecoveryPlatformReturned(val requestId: String, val restartRequired: Boolean = false) : SyncPanelAction
     data class RecoveryPlatformFailed(val requestId: String) : SyncPanelAction
+    data object CheckRepositoryCreationPermission : SyncPanelAction
     data class PrepareRepositoryCreation(val name: String) : SyncPanelAction
     data class PrepareManualRepository(val name: String) : SyncPanelAction
     data class RepairRepositoryProperties(val makePrivate: Boolean, val unarchive: Boolean) : SyncPanelAction

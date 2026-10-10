@@ -264,6 +264,7 @@ class SyncPanelContentTest {
             page = SyncPanelPage.SETUP,
             setupStep = SyncSetupStep.PREPARE_REPOSITORY,
             setupAccountLogin = "fixture",
+            setupInstallation = SyncAppInstallation(7, SyncRepositorySelection.SELECTED, canCreateRepository = true),
         ),
     ) {
         awaitTag("sync-repository-name")

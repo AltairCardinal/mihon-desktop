@@ -25,6 +25,7 @@ import mihon.data.sync.auth.SyncAppInstallation
 import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.auth.SyncGitHubAccount
 import mihon.data.sync.auth.SyncRepositoryCreationIntent
+import mihon.data.sync.auth.SyncRepositoryCreationPermission
 import mihon.data.sync.auth.SyncRepositoryRepairTarget
 import mihon.data.sync.auth.SyncSpaceCreation
 import mihon.data.sync.auth.SyncSpaceDiscovery
@@ -667,14 +668,10 @@ class SyncPanelController(
                 }
                 refreshRecoveryDisplay()
             }
+            SyncPanelAction.CheckRepositoryCreationPermission -> checkRepositoryCreationPermission()
             is SyncPanelAction.PrepareRepositoryCreation -> prepareRepositoryCreation(action.name)
             is SyncPanelAction.PrepareManualRepository -> {
-                prepareRepositoryCreation(action.name)
-                if (state.value.question == SyncPanelQuestion.CREATE_REPOSITORY) {
-                    mutableState.update {
-                        it.copy(question = SyncPanelQuestion.CONNECT_MANUAL_REPOSITORY)
-                    }
-                }
+                prepareRepositoryCreation(action.name, manual = true)
             }
             is SyncPanelAction.RepairRepositoryProperties ->
                 prepareRepositoryProperties(
@@ -1440,8 +1437,11 @@ class SyncPanelController(
                 }
             }
             SyncRecoveryAction.CONTINUE_SETUP -> handle(SyncPanelAction.RetrySetup)
-            SyncRecoveryAction.EDIT_REPOSITORY_NAME -> mutableState.update {
-                it.copy(page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.PREPARE_REPOSITORY, setupBusy = false)
+            SyncRecoveryAction.EDIT_REPOSITORY_NAME -> {
+                mutableState.update {
+                    it.copy(page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.PREPARE_REPOSITORY)
+                }
+                checkRepositoryCreationPermission()
             }
             SyncRecoveryAction.REPAIR_REPOSITORY_PROPERTIES -> {
                 val problem = state.value.recoveryStepFailure?.discovery ?: state.value.setupProblem
@@ -1842,7 +1842,65 @@ class SyncPanelController(
         }
     }
 
-    private suspend fun prepareRepositoryCreation(name: String) {
+    private suspend fun checkRepositoryCreationPermission(onGranted: (suspend () -> Unit)? = null) {
+        if (repositoryJob?.isActive == true) return
+        val revision = runtime.credentials.read()?.revision
+        val expected = setupAccount?.id ?: recoveryRead { runtime.recoveryBinding() }?.stored?.accountId
+        val version = authVersion
+        val session = panelSession
+        val page = state.value.page
+        val step = state.value.setupStep
+        mutableState.update { it.copy(setupBusy = true, setupInstallation = null, creationPermissionProblem = null) }
+        repositoryJob = scope.launch {
+            val checked = try {
+                val permission = runtime.onboarding.checkRepositoryCreationPermission(expected)
+                if (runtime.credentials.read()?.revision != revision) {
+                    throw SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED)
+                }
+                permission
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                SyncRepositoryCreationPermission(
+                    problem = (error as? SyncSetupException)?.problem ?: SyncDiscoveryProblem.RETRYABLE,
+                )
+            }
+            enqueue {
+                if (version != authVersion || session != panelSession || !state.value.visible ||
+                    state.value.page != page || state.value.setupStep != step
+                ) {
+                    return@enqueue
+                }
+                repositoryJob = null
+                if (runtime.credentials.read()?.revision != revision) {
+                    mutableState.update {
+                        it.copy(
+                            setupBusy = false,
+                            setupInstallation = null,
+                            creationPermissionProblem = SyncDiscoveryProblem.ACCOUNT_CHANGED,
+                        )
+                    }
+                    return@enqueue
+                }
+                checked.account?.let { setupAccount = it }
+                mutableState.update {
+                    it.copy(
+                        setupBusy = false,
+                        setupInstallation = checked.installation,
+                        setupAccountLogin = checked.account?.login ?: it.setupAccountLogin,
+                        creationPermissionProblem = checked.problem,
+                    )
+                }
+                if (checked.problem == null && checked.installation?.canCreateRepository == true) onGranted?.invoke()
+            }
+        }
+    }
+
+    private suspend fun prepareRepositoryCreation(
+        name: String,
+        manual: Boolean = false,
+        permissionChecked: Boolean = false,
+    ) {
         if (state.value.setupBusy || repositoryJob?.isActive == true) return
         val normalized = name.trim()
         if (
@@ -1858,6 +1916,10 @@ class SyncPanelController(
             return
         }
         try {
+            if (!manual && !permissionChecked) {
+                checkRepositoryCreationPermission { prepareRepositoryCreation(name, permissionChecked = true) }
+                return
+            }
             val binding = recoveryRead { runtime.recoveryBinding() }
             val account = setupAccount ?: binding?.stored?.let { SyncGitHubAccount(it.accountId, it.accountLogin) }
                 ?: runtime.onboarding.session().account
@@ -1881,7 +1943,11 @@ class SyncPanelController(
                         normalized,
                         mihon.data.sync.auth.GitHubSyncSpaceClient.BRANCH,
                     ),
-                    question = SyncPanelQuestion.CREATE_REPOSITORY,
+                    question = if (manual) {
+                        SyncPanelQuestion.CONNECT_MANUAL_REPOSITORY
+                    } else {
+                        SyncPanelQuestion.CREATE_REPOSITORY
+                    },
                 )
             }
         } catch (cancelled: CancellationException) {
@@ -1928,6 +1994,13 @@ class SyncPanelController(
                     throw SyncSetupException(
                         SyncDiscoveryProblem.ACCOUNT_CHANGED,
                     )
+                }
+                if (!manual && !proposed.submitted && proposed.repositoryId == null) {
+                    val permission = runtime.onboarding.checkRepositoryCreationPermission(proposed.account.id)
+                    permission.problem?.let { throw SyncSetupException(it) }
+                    if (runtime.credentials.read()?.revision != repositoryProposalRevision) {
+                        throw SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED)
+                    }
                 }
                 val storage = runtime.onboarding.storage
                 var current = storage.repositoryCreation(proposed.account.id)
@@ -2487,7 +2560,7 @@ class SyncPanelController(
                     question = null,
                 )
             }
-            if (purpose == SyncSpaceSwitchPurpose.CONNECT) beginSetup()
+            if (purpose == SyncSpaceSwitchPurpose.CONNECT) beginSetup() else checkRepositoryCreationPermission()
             return
         }
         if (facts.decode != SyncBindingDecode.OK || facts.projection?.unsupportedFormat == true) {
@@ -2537,6 +2610,7 @@ class SyncPanelController(
             }
         } else if (intent.purpose == SyncSpaceSwitchPurpose.CREATE && newlyCreated) {
             mutableState.update { it.copy(setupStep = SyncSetupStep.PREPARE_REPOSITORY) }
+            checkRepositoryCreationPermission()
         } else {
             discover(autoSelect = false)
         }

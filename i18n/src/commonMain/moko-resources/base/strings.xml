@@ -2379,4 +2379,7 @@
     <string name="sync_reader_confirm_position">Confirm this page as the correct position</string>
     <string name="sync_reader_position_boundary">Choose a real chapter and page using the reader controls. The automatic fallback does not correct the synced position; only your explicit selection does.</string>
     <string name="sync_resume_chapter_unavailable">The saved chapter cannot be matched to an available chapter. Refresh the chapter list or repair the source, then explicitly choose a real chapter and reading position.</string>
+    <string name="sync_repository_permission_checking">Checking repository creation permission…</string>
+    <string name="sync_repository_permission_browser">This installation cannot create repositories in the app. Create a private empty repository in GitHub, then return here to continue.</string>
+    <string name="sync_repository_permission_unknown">Repository creation permission could not be confirmed. Check again, or create a private empty repository in GitHub and return here to continue.</string>
 </resources>

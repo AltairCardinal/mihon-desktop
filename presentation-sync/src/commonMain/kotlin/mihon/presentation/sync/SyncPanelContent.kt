@@ -2313,6 +2313,8 @@ private fun SetupPage(
             }
             SyncSetupStep.COMPLETE -> { }
             SyncSetupStep.PREPARE_REPOSITORY -> {
+                val nativeCreationAllowed = !state.setupBusy && state.setupInstallation?.canCreateRepository == true &&
+                    state.creationPermissionProblem == null
                 item {
                     Text(
                         syncString(MR.strings.sync_recovery_prepare_title),
@@ -2321,6 +2323,22 @@ private fun SetupPage(
                     )
                 }
                 item { Text(syncString(MR.strings.sync_recovery_prepare_body)) }
+                if (state.setupBusy) {
+                    item { Text(syncString(MR.strings.sync_repository_permission_checking)) }
+                } else if (state.creationPermissionProblem != null) {
+                    item {
+                        Text(
+                            syncString(
+                                if (state.creationPermissionProblem == SyncDiscoveryProblem.NEEDS_CREATION_PERMISSION) {
+                                    MR.strings.sync_repository_permission_browser
+                                } else {
+                                    MR.strings.sync_repository_permission_unknown
+                                },
+                            ),
+                            Modifier.testTag("sync-repository-permission-status"),
+                        )
+                    }
+                }
                 if (!state.creationSubmitted) {
                     item {
                         OutlinedTextField(
@@ -2332,14 +2350,16 @@ private fun SetupPage(
                             modifier = Modifier.fillMaxWidth().testTag("sync-repository-name"),
                         )
                     }
-                    item {
-                        Action(
-                            "sync-repository-create-native",
-                            MR.strings.sync_repository_create_confirm,
-                            !state.setupBusy && repositoryName.isNotBlank() &&
-                                state.nowMillis >= state.authRetryAtMillis,
-                            primary = true,
-                        ) { dispatch(SyncPanelAction.PrepareRepositoryCreation(repositoryName)) }
+                    if (nativeCreationAllowed) {
+                        item {
+                            Action(
+                                "sync-repository-create-native",
+                                MR.strings.sync_repository_create_confirm,
+                                !state.setupBusy && repositoryName.isNotBlank() &&
+                                    state.nowMillis >= state.authRetryAtMillis,
+                                primary = true,
+                            ) { dispatch(SyncPanelAction.PrepareRepositoryCreation(repositoryName)) }
+                        }
                     }
                 } else {
                     item { Text(state.setupRepository?.fullName ?: state.repositoryCreationName) }
@@ -2355,7 +2375,12 @@ private fun SetupPage(
                     }
                 }
                 item {
-                    Action("sync-create-private-repo", MR.strings.sync_setup_create_repo, !state.setupBusy) {
+                    Action(
+                        "sync-create-private-repo",
+                        MR.strings.sync_setup_create_repo,
+                        !state.setupBusy,
+                        primary = !nativeCreationAllowed,
+                    ) {
                         openBrowser(githubRepositoryCreationUrl(state.setupAccountLogin, repositoryName))
                     }
                 }
@@ -2366,6 +2391,13 @@ private fun SetupPage(
                         enabled = !state.setupBusy,
                         primary = false,
                     ) { dispatch(SyncPanelAction.PrepareManualRepository(repositoryName)) }
+                }
+                if (state.creationPermissionProblem != null && !state.setupBusy) {
+                    item {
+                        Action("sync-repository-permission-recheck", MR.strings.sync_recovery_recheck) {
+                            dispatch(SyncPanelAction.CheckRepositoryCreationPermission)
+                        }
+                    }
                 }
             }
             SyncSetupStep.ERROR -> {
