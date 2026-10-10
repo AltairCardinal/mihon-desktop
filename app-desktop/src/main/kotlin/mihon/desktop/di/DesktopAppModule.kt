@@ -892,7 +892,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
                 } == true
                 val guarded = plan.affectedDownloadIds(stored, titleChanged)
                 manager.withDirectoryChanges(guarded) {
-                    val result = chapterRepository.syncDirectory(request.copy(guardedChapterIds = guarded))
+                    val result = catalogWriter.commitDirectory(latestManga, request.copy(guardedChapterIds = guarded))
                     result.phase?.let { phase ->
                         chapterRepository.finishDirectoryFiles(phase) { p, change ->
                             Injekt.get<mihon.desktop.download.DesktopDownloadProvider>().renameDirectoryChapter(

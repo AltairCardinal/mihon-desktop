@@ -91,6 +91,36 @@ class WindowsPreviewTest(unittest.TestCase):
         runtime = json.loads(self.root.joinpath("runtime-call.json").read_text(encoding="utf-8-sig"))
         self.assertEqual(data["version"], runtime["version"])
 
+    def test_formal_and_explicit_build_only_dispatch_keep_fresh_artifact(self) -> None:
+        fixture = self.root / "gradle-fixture.py"
+        source = fixture.read_text(encoding="utf-8")
+        source = source.replace(
+            "root=Path(__file__).parent\n",
+            "root=Path(__file__).parent\n"
+            "with (root/'gradle-calls.jsonl').open('a',encoding='utf-8') as output:\n"
+            "    output.write(json.dumps(sys.argv[1:])+'\\n')\n",
+        )
+        fixture.write_text(source, encoding="utf-8")
+        environment = dict(os.environ, MIHON_HOST_OS="MINGW64_NT", MIHON_PYTHON=sys.executable,
+                           MIHON_POWERSHELL_BIN="powershell.exe", PYTHONUTF8="1", PYTHONIOENCODING="utf-8",
+                           PYTHONDONTWRITEBYTECODE="1")
+        calls_file = self.root / "gradle-calls.jsonl"
+        for mode, expected in (
+            ("hash", [[":app-desktop:jvmTest"], ["--rerun-tasks", ":app-desktop:createDistributable"]]),
+            ("build-only", [["--rerun-tasks", ":app-desktop:createDistributable"]]),
+        ):
+            with self.subTest(mode=mode):
+                calls_file.unlink(missing_ok=True)
+                result = subprocess.run(
+                    [str(BASH), "scripts/build-desktop.sh", mode], cwd=self.root, env=environment,
+                    text=True, encoding="utf-8", capture_output=True, check=False,
+                )
+                # The existing fixture deliberately refuses formal packaging after dispatch/validation.
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("Preview must not archive a formal release", result.stdout + result.stderr)
+                calls = [json.loads(line) for line in calls_file.read_text(encoding="utf-8").splitlines()]
+                self.assertEqual(expected, calls)
+
     def test_build_failure_cannot_publish_or_claim_pass(self) -> None:
         result = self.run_preview(FIXTURE_GRADLE_FAIL="1")
         self.assertNotEqual(0, result.returncode)

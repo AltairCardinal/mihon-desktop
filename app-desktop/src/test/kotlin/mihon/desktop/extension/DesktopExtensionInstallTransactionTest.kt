@@ -20,6 +20,7 @@ import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.currentCoroutineContext
@@ -872,29 +873,42 @@ class DesktopExtensionInstallTransactionTest {
     fun `real cancellation during reload restores old runtime and files`(@TempDir directory: Path) = runBlocking {
         val snapshot = installedSnapshot(directory)
         val loader = BlockingReloadLoader(directory.toFile())
+        val installFlight = CompletableDeferred<Job>()
         val manager = transactionManager(
             loader = loader,
-            artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
+            artifactProvider = { _, destination ->
+                installFlight.complete(requireNotNull(currentCoroutineContext()[Job]))
+                destination.writeBytes(sourceJar(FixtureNewSource::class.java))
+            },
         ).also { it.loadAll() }
         val installedBefore = manager.installedExtensions.value
         loader.blockNextReload = true
         val install = async { manager.installExtensionStates(artifact(FixtureNewSource.ID)).last() }
-        loader.reloadEntered.awaitLatch()
+        try {
+            loader.reloadEntered.awaitLatch()
+            install.cancel()
+            withTimeout(2_000) {
+                while (!installFlight.await().isCancelled) yield()
+            }
+            loader.allowReload.countDown()
+            install.join()
+            waitUntil { manager.getSource(FixtureOldSource.ID) != null }
 
-        install.cancel()
-        loader.allowReload.countDown()
-        install.join()
-        waitUntil { manager.getSource(FixtureOldSource.ID) != null }
-
-        snapshot.assertUnchanged()
-        assertNotNull(manager.getSource(FixtureOldSource.ID))
-        assertNull(manager.getSource(FixtureNewSource.ID))
-        assertEquals(
-            installedBefore.map { it.copy(sources = emptyList()) to it.sources.map { source -> source.id } },
-            manager.installedExtensions.value.map { it.copy(sources = emptyList()) to it.sources.map { source -> source.id } },
-        )
-        assertNoTransactionFiles(directory)
-        manager.close()
+            snapshot.assertUnchanged()
+            assertNotNull(manager.getSource(FixtureOldSource.ID))
+            assertNull(manager.getSource(FixtureNewSource.ID))
+            assertEquals(
+                installedBefore.map { it.copy(sources = emptyList()) to it.sources.map { source -> source.id } },
+                manager.installedExtensions.value.map { it.copy(sources = emptyList()) to it.sources.map { source -> source.id } },
+            )
+            assertNoTransactionFiles(directory)
+        } finally {
+            withContext(NonCancellable) {
+                install.cancel()
+                loader.allowReload.countDown()
+                try { install.join() } finally { manager.close() }
+            }
+        }
     }
 
     @Test

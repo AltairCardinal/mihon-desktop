@@ -125,6 +125,19 @@ class LibraryMangaTestModeHttpTest {
 
                 val sort = post(baseUrl, "/test/action/sort", """{"mode":"unreadCount","ascending":"false"}""")
                 assertEquals(200, sort.statusCode(), sort.body())
+                // The action accepts the model-owned asynchronous category sort. Observe its
+                // actual HTTP projection before asserting the committed model and selection.
+                val sorted = withTimeoutOrNull(1_000) {
+                    while (true) {
+                        val current = get(baseUrl, "/test/state").json().getValue("library").jsonObject
+                        if (current.getValue("sortMode").jsonPrimitive.content == SortMode.UNREAD_COUNT.name &&
+                            !current.getValue("sortAscending").jsonPrimitive.boolean
+                        ) return@withTimeoutOrNull current
+                        delay(20)
+                    }
+                    null
+                }
+                assertNotNull(sorted, "accepted category sort never reached the real HTTP state")
                 assertEquals(SortMode.UNREAD_COUNT, context.libraryScreenModel.state.value.sortMode)
                 assertFalse(context.libraryScreenModel.state.value.sortAscending)
 

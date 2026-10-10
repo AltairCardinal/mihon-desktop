@@ -2620,7 +2620,7 @@
                       "path": "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopNetworkHelper.kt",
                       "symbol": "DesktopNetworkHelper",
                       "locator": "val cookieJar = DesktopCookieJar(",
-                      "line": 65,
+                      "line": 86,
                       "contextHash": "55090ab5684f0e4d700fcf546d4436c7fc4034d9f58da29503153f7aaa93df1b",
                       "reason": "Constructs the Desktop persistent cookie adapter."
                     },
@@ -11983,7 +11983,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
           "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY",
-          "line": 1138
+            "line": 1146
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
@@ -45125,7 +45125,7 @@
                   "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/BackupSettingsScreen.kt",
                   "symbol": "override fun Content() {",
                   "locator": "snackbar.showSnackbar(backupPresentationText(BackupPresentationText.CreateCancelled))",
-                  "line": 59,
+                  "line": 142,
                   "contextHash": "fe74202300169fff93beccbd8fe17769812e0538e09f6406ed0544e9401a5c37",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -45402,7 +45402,7 @@
                   "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupRestorer.kt",
                   "symbol": "private suspend fun restoreChapters(",
                   "locator": "toInsert += Chapter.create().copy(",
-                  "line": 386,
+                  "line": 299,
                   "contextHash": "63a513979fd40a28a6d5980ac87cd811178672f7798b16658771f12564c82c42",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -45795,7 +45795,7 @@
                   "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/BackupSettingsScreen.kt",
                   "symbol": "override fun Content() {",
                   "locator": "val file = when (val result = backupFilePicker.choose(request)) {",
-                  "line": 59,
+                  "line": 186,
                   "contextHash": "5515b0d7654c341f736cad987327bf9ee0443e197fc2c1e3de4b358bff25a6ce",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -45840,7 +45840,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/data/RestoreBackupScreen.kt",
                   "symbol": "private fun validate(uri: Uri) {",
                   "locator": "canRestore = false,",
-                  "line": 194,
+                  "line": 198,
                   "contextHash": "405b145290d54143727d7220dc573a1d1e17d9b644e407b5f84a905dad8ee2e5",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -45853,7 +45853,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/data/RestoreBackupScreen.kt",
                   "symbol": "private fun validate(uri: Uri) {",
                   "locator": "canRestore = false,",
-                  "line": 194,
+                  "line": 198,
                   "contextHash": "405b145290d54143727d7220dc573a1d1e17d9b644e407b5f84a905dad8ee2e5",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -45911,7 +45911,7 @@
                   "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt",
                   "symbol": "suspend fun restore(uri: Uri, options: RestoreOptions) {",
                   "locator": "suspend fun restore(uri: Uri, options: RestoreOptions) {",
-                  "line": 65,
+                  "line": 48,
                   "contextHash": "fc144d311312ed44413f8a6b477269e456278378edd9a4b8f09343686869cec5",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -45924,7 +45924,7 @@
                   "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt",
                   "symbol": "suspend fun restore(uri: Uri, options: RestoreOptions) {",
                   "locator": "suspend fun restore(uri: Uri, options: RestoreOptions) {",
-                  "line": 65,
+                  "line": 48,
                   "contextHash": "fc144d311312ed44413f8a6b477269e456278378edd9a4b8f09343686869cec5",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -46046,7 +46046,7 @@
                   "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt",
                   "symbol": "class BackupRestorer(",
                   "locator": "private var restoreProgress = 0",
-                  "line": 39,
+                  "line": 40,
                   "contextHash": "30c811328daafda7d7b70d10655d15a32e99ae1b7d239ac8ee5b80bacbe92f93",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -46059,7 +46059,7 @@
                   "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt",
                   "symbol": "class BackupRestorer(",
                   "locator": "private var restoreProgress = 0",
-                  "line": 39,
+                  "line": 40,
                   "contextHash": "30c811328daafda7d7b70d10655d15a32e99ae1b7d239ac8ee5b80bacbe92f93",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -46111,7 +46111,7 @@
                   "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestoreJob.kt",
                   "symbol": "override suspend fun doWork(): Result {",
                   "locator": "context.cancelNotification(Notifications.ID_RESTORE_PROGRESS)",
-                  "line": 32,
+                  "line": 56,
                   "contextHash": "8aad6281a60e6371d7a566f7e5538dafbdae25c2b7c52deb0eeb85ce1981405e",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -46124,7 +46124,7 @@
                   "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestoreJob.kt",
                   "symbol": "override suspend fun doWork(): Result {",
                   "locator": "context.cancelNotification(Notifications.ID_RESTORE_PROGRESS)",
-                  "line": 32,
+                  "line": 56,
                   "contextHash": "8aad6281a60e6371d7a566f7e5538dafbdae25c2b7c52deb0eeb85ce1981405e",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -46137,7 +46137,7 @@
                   "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/BackupSettingsScreen.kt",
                   "symbol": "override fun Content() {",
                   "locator": "dismissButton = { TextButton(onClick = restoreModel::cancel) { Text(MR.strings.action_cancel.localized()) } },",
-                  "line": 59,
+                  "line": 102,
                   "contextHash": "59bac40d5779c0a71ef10485444371ef62f07db19e3846f42944f78fe370898b",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -46670,7 +46670,7 @@
                   "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/BackupSettingsScreen.kt",
                   "symbol": "override fun Content() {",
                   "locator": "onClick = { appPrefs.autoBackupInterval.set(interval.name) },",
-                  "line": 59,
+                  "line": 252,
                   "contextHash": "115f35763359b73fbcd7fcb532a567da2f821c115e7ad77210f00f0e927e33a7",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -46741,7 +46741,7 @@
                   "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/BackupRestoreScreenModelFactory.kt",
                   "symbol": "private fun String.toBackupPath(): Path {",
                   "locator": "private fun String.toBackupPath(): Path {",
-                  "line": 116,
+                  "line": 104,
                   "contextHash": "cdfc1f29b609bf302e9e7a6d3853ff48d0a5b431157540dc1fcec31982a2ca6d",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -46946,7 +46946,7 @@
                   "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/BackupSettingsScreen.kt",
                   "symbol": "private fun RestoreStatus(",
                   "locator": "private fun RestoreStatus(",
-                  "line": 401,
+                  "line": 379,
                   "contextHash": "2676ce0d08adf387f6ae0f01b3cf8ffa631dfc0c41cdca9999e7de58cd3a5eda",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -53240,7 +53240,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "title = stringResource(MR.strings.pref_dump_crash_logs),",
-                  "line": 81,
+                  "line": 93,
                   "contextHash": "a214bfcfbeef4f71df26f421efa33cda3cd0b45a845ee9d51b6fc89e09d1a7ea",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -53253,7 +53253,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "title = stringResource(MR.strings.pref_dump_crash_logs),",
-                  "line": 81,
+                  "line": 93,
                   "contextHash": "a214bfcfbeef4f71df26f421efa33cda3cd0b45a845ee9d51b6fc89e09d1a7ea",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -53303,7 +53303,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "preference = networkPreferences.verboseLogging,",
-                  "line": 81,
+                  "line": 102,
                   "contextHash": "d5459a952445252e0b3db93563bb621fa9636b9c218679b3182802d4bec3eae4",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -53316,7 +53316,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "preference = networkPreferences.verboseLogging(),",
-                  "line": 81,
+                  "line": 102,
                   "contextHash": "e5734ce40b520042d15d794077b3328e66d5ac2c4b99857502db1844d03ca2a5",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -53366,7 +53366,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "onClick = { navigator.push(DebugInfoScreen()) },",
-                  "line": 81,
+                  "line": 112,
                   "contextHash": "e37e01fb6a067edda4698ebb24659d21c03c19ac14ff450c14bd5a6f36f3c450",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -53379,7 +53379,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "onClick = { navigator.push(DebugInfoScreen()) },",
-                  "line": 81,
+                  "line": 112,
                   "contextHash": "e37e01fb6a067edda4698ebb24659d21c03c19ac14ff450c14bd5a6f36f3c450",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -53429,7 +53429,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "onClick = { navigator.push(OnboardingScreen()) },",
-                  "line": 81,
+                  "line": 116,
                   "contextHash": "eeb567eaca03150ee1bdfe7707f545b965f1a5062ef84c493eb855a14031a1b1",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -53442,7 +53442,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "onClick = { navigator.push(OnboardingScreen()) },",
-                  "line": 81,
+                  "line": 116,
                   "contextHash": "eeb567eaca03150ee1bdfe7707f545b965f1a5062ef84c493eb855a14031a1b1",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -53492,7 +53492,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {",
-                  "line": 81,
+                  "line": 121,
                   "contextHash": "c5507019daca8f75e192dd69beb37c8d24cb126e19fcaf3a4135f15fb15b4796",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -53505,7 +53505,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {",
-                  "line": 81,
+                  "line": 121,
                   "contextHash": "c5507019daca8f75e192dd69beb37c8d24cb126e19fcaf3a4135f15fb15b4796",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -53555,7 +53555,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getBackgroundActivityGroup(): Preference.PreferenceGroup {",
                   "locator": "context.toast(MR.strings.battery_optimization_disabled)",
-                  "line": 136,
+                  "line": 162,
                   "contextHash": "2a87eb7e82a0dc2b3f920d77b3517bcbe33d6717e5eb089d107382ad5fbfcb70",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -53568,7 +53568,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getBackgroundActivityGroup(): Preference.PreferenceGroup {",
                   "locator": "context.toast(MR.strings.battery_optimization_disabled)",
-                  "line": 136,
+                  "line": 162,
                   "contextHash": "2a87eb7e82a0dc2b3f920d77b3517bcbe33d6717e5eb089d107382ad5fbfcb70",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -53618,7 +53618,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getBackgroundActivityGroup(): Preference.PreferenceGroup {",
                   "locator": "private fun getBackgroundActivityGroup(): Preference.PreferenceGroup {",
-                  "line": 136,
+                  "line": 137,
                   "contextHash": "eb056bc314874c483f6e641e4a7db2510a8c55dd549c15b7906c269efdbdd094",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -53631,7 +53631,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getBackgroundActivityGroup(): Preference.PreferenceGroup {",
                   "locator": "private fun getBackgroundActivityGroup(): Preference.PreferenceGroup {",
-                  "line": 136,
+                  "line": 137,
                   "contextHash": "eb056bc314874c483f6e641e4a7db2510a8c55dd549c15b7906c269efdbdd094",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -53681,7 +53681,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getDataGroup(): Preference.PreferenceGroup {",
                   "locator": "context.toast(MR.strings.download_cache_invalidated)",
-                  "line": 175,
+                  "line": 188,
                   "contextHash": "d1276ab922fbe942b7b17717c54706d7522c68c9583df6bb03aa420b25d74553",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -53694,7 +53694,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getDataGroup(): Preference.PreferenceGroup {",
                   "locator": "context.toast(MR.strings.download_cache_invalidated)",
-                  "line": 175,
+                  "line": 190,
                   "contextHash": "ecb5f3c3114f73f4e0f505ee84210005c7191c9271f3a91a9cfba76b8e8d602b",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -53809,7 +53809,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "networkHelper.cookieJar.removeAll()",
-                  "line": 203,
+                  "line": 216,
                   "contextHash": "45c041c967507b834774324c926b271cd8e05b53b329c7d710341b1f5c310743",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -53822,7 +53822,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "networkHelper.cookieJar.removeAll()",
-                  "line": 203,
+                  "line": 219,
                   "contextHash": "45c041c967507b834774324c926b271cd8e05b53b329c7d710341b1f5c310743",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -53882,7 +53882,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "context.applicationInfo?.dataDir?.let { File(\"$it/app_webview/\").deleteRecursively() }",
-                  "line": 203,
+                  "line": 232,
                   "contextHash": "c47e381cc6c9c030289c19fb931daf11207631d8051e3d2e9ea77ec32e6b35b0",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -53895,7 +53895,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "context.applicationInfo?.dataDir?.let { File(\"$it/app_webview/\").deleteRecursively() }",
-                  "line": 203,
+                  "line": 235,
                   "contextHash": "c47e381cc6c9c030289c19fb931daf11207631d8051e3d2e9ea77ec32e6b35b0",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -53945,7 +53945,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "preference = networkPreferences.dohProvider,",
-                  "line": 203,
+                  "line": 241,
                   "contextHash": "85e65ea1070f059a34bb8a3335e54656795ebc739ec72e29d391ca2d8430a5c7",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -53958,7 +53958,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "preference = networkPreferences.dohProvider(),",
-                  "line": 203,
+                  "line": 244,
                   "contextHash": "e7f9c743d46b5733c98465e7e565a0d775a253a47c0b5a1f184f9232808cc184",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -54009,7 +54009,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "preference = userAgentPref,",
-                  "line": 203,
+                  "line": 264,
                   "contextHash": "e6f76df437a740d7cc58fc3599ee14ab2da464638348296f86f557e86925aaae",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -54022,7 +54022,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "preference = userAgentPref,",
-                  "line": 203,
+                  "line": 267,
                   "contextHash": "e6f76df437a740d7cc58fc3599ee14ab2da464638348296f86f557e86925aaae",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -54073,7 +54073,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "userAgentPref.delete()",
-                  "line": 203,
+                  "line": 282,
                   "contextHash": "ac4c5d3c418a65bc9ce400aa31e051900935573d0eba340ff9067717ef66691d",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -54086,7 +54086,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "userAgentPref.delete()",
-                  "line": 203,
+                  "line": 285,
                   "contextHash": "ac4c5d3c418a65bc9ce400aa31e051900935573d0eba340ff9067717ef66691d",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -54136,7 +54136,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getLibraryGroup(",
                   "locator": "onClick = { MetadataUpdateJob.startNow(context) },",
-                  "line": 298,
+                  "line": 302,
                   "contextHash": "93b32ea6d562b0f462ea1014cc565f7a68943d74bf2276cd806df47537773d05",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -54149,7 +54149,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getLibraryGroup(",
                   "locator": "onClick = { MetadataUpdateJob.startNow(context) },",
-                  "line": 298,
+                  "line": 305,
                   "contextHash": "93b32ea6d562b0f462ea1014cc565f7a68943d74bf2276cd806df47537773d05",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -54201,7 +54201,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getLibraryGroup(",
                   "locator": "val success = Injekt.get<ResetViewerFlags>().await()",
-                  "line": 298,
+                  "line": 309,
                   "contextHash": "05638c4b75fc3f4f5691c94216dade429f36860f479a5b183511a1ceb77719ef",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -54214,7 +54214,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getLibraryGroup(",
                   "locator": "val success = Injekt.get<ResetViewerFlags>().await()",
-                  "line": 298,
+                  "line": 312,
                   "contextHash": "05638c4b75fc3f4f5691c94216dade429f36860f479a5b183511a1ceb77719ef",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -54264,7 +54264,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getLibraryGroup(",
                   "locator": "preference = libraryPreferences.updateMangaTitles,",
-                  "line": 298,
+                  "line": 322,
                   "contextHash": "c5ba93911a030576cede5e074300104b4e580f06662d298e7ae99a1e03f0a7ee",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -54277,7 +54277,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getLibraryGroup(",
                   "locator": "preference = libraryPreferences.updateMangaTitles(),",
-                  "line": 298,
+                  "line": 325,
                   "contextHash": "f128a11ca673f36f89a02377d73f86a16ade4974cc6578d13d476f690efb5d6a",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -54327,7 +54327,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getLibraryGroup(",
                   "locator": "preference = libraryPreferences.disallowNonAsciiFilenames,",
-                  "line": 298,
+                  "line": 327,
                   "contextHash": "10d74f3d1e311c73b41e1170525f431c53b79a1c8bd3e845bffea7069fed915b",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -54340,7 +54340,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getLibraryGroup(",
                   "locator": "preference = libraryPreferences.disallowNonAsciiFilenames(),",
-                  "line": 298,
+                  "line": 330,
                   "contextHash": "5c823603af0f9de9b6598878f5f1ac6d3731163e1ee744a40aba8921f3b7acc6",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -54390,7 +54390,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getExtensionsGroup(",
                   "locator": "preference = extensionInstallerPref,",
-                  "line": 396,
+                  "line": 425,
                   "contextHash": "f19cfc908bf90a4a2cfb8b871e962e8b7bbc8a3d6e83e87221ade64abd261eca",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -54403,7 +54403,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getExtensionsGroup(",
                   "locator": "preference = extensionInstallerPref,",
-                  "line": 396,
+                  "line": 428,
                   "contextHash": "f19cfc908bf90a4a2cfb8b871e962e8b7bbc8a3d6e83e87221ade64abd261eca",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -54455,7 +54455,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getExtensionsGroup(",
                   "locator": "trustExtension.revokeAll()",
-                  "line": 396,
+                  "line": 452,
                   "contextHash": "2fe9075792a0881e7841be5c75d5605cef9451cd806a1837d01e6491b9f8318a",
                   "revision": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
                   "sourceEntryIds": [
@@ -54468,7 +54468,7 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getExtensionsGroup(",
                   "locator": "trustExtension.revokeAll()",
-                  "line": 396,
+                  "line": 455,
                   "contextHash": "2fe9075792a0881e7841be5c75d5605cef9451cd806a1837d01e6491b9f8318a",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [
@@ -57587,7 +57587,7 @@
                   "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
                   "symbol": "private fun registerDesktopExtension(",
                   "locator": "extensionManager.loadAll()",
-                  "line": 628,
+                  "line": 523,
                   "contextHash": "30d5a5353a2ccba1bc4dfeb86099b2097cdda4e657f695e4009b50af15a4ed9a",
                   "revision": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5",
                   "sourceEntryIds": [

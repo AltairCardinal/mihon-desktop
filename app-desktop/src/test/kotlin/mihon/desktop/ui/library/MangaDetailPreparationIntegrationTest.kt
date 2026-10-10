@@ -112,6 +112,8 @@ class MangaDetailPreparationIntegrationTest {
             assertEquals(manga, mangas.getMangaById(manga.id))
             assertEquals(historyBefore, Injekt.get<GetHistory>().await(manga.id))
             // A manual refresh uses the same failure feedback and may not change the foreign binding.
+            click(scene, MR.strings.label_more.localized())
+            settle(scene) { nodes(scene).any { labels(it).contains(MR.strings.check_for_updates.localized()) } }
             click(scene, MR.strings.check_for_updates.localized())
             settle(scene) { calls.get() == 1 && owner.refreshStates.value[key] is SourceMangaRefreshState.Failure }
             assertTrue(nodes(scene).any { labels(it).contains(MR.strings.history_chapter_identity_conflict.localized()) })
@@ -121,12 +123,14 @@ class MangaDetailPreparationIntegrationTest {
             archive.upsertSourceWork(source.id, manga.url, manga.id, manga.title, null, null, null, detailsFetchedAt = null)
             click(scene, MR.strings.action_retry.localized())
             settle(scene) { calls.get() == 2 && owner.refreshStates.value[key] == null }
-            settle(scene) { nodes(scene).any { labels(it).contains(chapter.name) } }
+            settle(scene) { nodes(scene).any { labels(it).contains("Ch.2") } }
             assertEquals(3, chapters.getChapterByMangaId(manga.id).size)
             val retained = requireNotNull(chapters.getChapterById(chapter.id))
             assertTrue(retained.bookmark)
             assertEquals(2, retained.lastPageRead)
-            assertEquals(chapter.name, retained.name)
+            assertEquals(chapter.id, retained.id)
+            assertEquals(chapter.url, retained.url)
+            assertEquals("Ch.2", retained.name, "An explicit detail refresh applies the source chapter name")
             assertEquals(historyBefore, Injekt.get<GetHistory>().await(manga.id))
             assertTrue(nodes(scene).none { labels(it).contains(MR.strings.history_chapter_identity_conflict.localized()) })
             assertTrue(uncaught.isEmpty())

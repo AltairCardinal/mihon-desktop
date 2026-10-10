@@ -358,9 +358,17 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         }
         LaunchedEffect(manga?.id) {
             val currentManga = manga ?: return@LaunchedEffect
-            if (model.state.value.chapters.isNotEmpty()) return@LaunchedEffect
             if (sourceRefreshState is SourceMangaRefreshState.Loading) return@LaunchedEffect
             val currentSource = model.sourceFor(currentManga) ?: return@LaunchedEffect
+            val preparation = when (
+                val result = dependencies.saveSourceMangaForDetails.prepareForDetails(currentManga)
+            ) {
+                is mihon.desktop.extension.SourceCallResult.Success -> result.value
+                is mihon.desktop.extension.SourceCallResult.Error,
+                is mihon.desktop.extension.SourceCallResult.Timeout,
+                -> return@LaunchedEffect
+            }
+            if (!preparation.needsRefresh) return@LaunchedEffect
             dependencies.saveSourceMangaForDetails.refreshFromSource(
                 source = currentSource,
                 listedManga = currentManga.toSourceMangaForRefresh(),
@@ -1346,7 +1354,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 Text(
-                                    text = desktopSourceErrorMessage(failure.error),
+                                    text = mangaDetailSourceRefreshErrorMessage(failure.error),
                                     color = MaterialTheme.colorScheme.onErrorContainer,
                                 )
                                 TextButton(onClick = refreshFromSource) {
@@ -1517,6 +1525,14 @@ internal fun mangaDetailChapterContentState(
 }
 
 internal fun Manga.toSourceMangaForRefresh(): SManga = toSourceManga()
+
+internal fun mangaDetailSourceRefreshErrorMessage(error: mihon.domain.error.AppError): String = when {
+    error is mihon.domain.error.AppError.Storage &&
+        error.cause?.message.orEmpty().contains("identity", ignoreCase = true) ->
+        MR.strings.history_chapter_identity_conflict.localized()
+    error is mihon.domain.error.AppError.Storage -> MR.strings.history_catalog_storage_error.localized()
+    else -> desktopSourceErrorMessage(error)
+}
 
 private fun coil3.Image.toDesktopBufferedImage(): java.awt.image.BufferedImage {
     val bitmap = toBitmap()

@@ -51,6 +51,40 @@ python scripts/tests/gradle-coordinator-test.py
 
 上面是同一命令的参数列表。未重跑本地完整协调器或应用测试，原应用通过证据不受测试夹具影响。新提交的最终云端门禁结果仍以 PR 检查记录为准。
 
+## 完整 CI 首轮失败与 focused 关闭证据
+
+首次 Desktop CI `38069938724` 执行 3769 项，19 项失败、4 项跳过。日志与报告保留在
+`.gradle-coordinator/github-desktop-head78-failed.log` 和 `github-desktop-head78-report/`。
+用户批准继续修复 CI 阻塞；仍使用原两位代理，本地不重复完整测试。该批超过 8 文件/400 行，
+是 canonical 目录、详情生产接线及同轮门禁的内聚修复；数据库提交边界由主代理独立审查，
+发布依赖和构建分派由未实施该区域的代理独立审查，不按文件拆散可验收能力。
+
+| 原失败范围 | 修复与最终 focused 证据 |
+| --- | --- |
+| 目录 9、历史 HTTP 1、详情准备 1、详情交互 1 | 复用 canonical 目录提交，恢复完整作者归档观察与事务回滚、详情准备和错误反馈；共享 JVM/Android 12 项及 Desktop 31 项组合通过。新 SQL 契约先正确失败再通过；`sync-ci-canonical-contract-red`、`sync-ci-catalog-data-refactor`、`sync-ci-catalog-optional-green`、`sync-ci-catalog-preparation-final` |
+| 排序、删除准备、扩展取消、焦点各 1 | 夹具等待真实异步状态后保留原操作与结果断言，不改变正常产品行为；`sync-ci-native-four-focused` 4/4，强化焦点等待后 `sync-ci-native-focus-synchronized` 1/1 |
+| action inventory 1 | 恢复固定 revision 的 55 个来源行号，保留原 locator/contextHash、决策及状态；`sync-ci-root-metadata-build-contracts` 的该用例通过。此项是来源文档守卫，不是行为证据 |
+| Windows 发布配置 2 | 旧字符串顺序断言改为真实统一 Bash/PowerShell 分派，覆盖默认测试、build-only、显式 preview 和强制重新生成正式产物；`sync-ci-root-final-contracts-green` 3/3（包含最终 manifest 来源守卫），无跳过 |
+
+最后的 Windows 分派补验暴露 PowerShell 被 Java 启动时输出使用系统 GBK；发布脚本显式以 UTF-8 输出，
+保留 Python 严格解码，不忽略错误。`scripts/tests/desktop-preview-test.py` 两个对应方法独立执行通过。
+以上关闭原 19 项失败，是基线加相关补验的组合证据，不能描述为最终代码本地重跑 3769 项全绿。
+
+Android `38071888540` 的候选构建底层日志未打印；隔离诊断 run `38073842908` 复现
+`:app:mergeReleaseNativeLibs` 因原 FlexibleAdapter `c8013533` 的 JitPack AAR/JAR 均 HTTP 404 而失败。
+主工作流现在在候选失败时打印协调器日志，仍完整执行原单元测试；诊断分支的跳过仅用于诊断，不合入。
+
+保留原 gav 和原 AAR 字节，在 `gradle/pinned-maven/` 携带固定 publication、上游 Apache-2.0 许可证和来源说明；
+POM 根据相同上游 commit 重建，settings 仅将该模块路由到本地仓库并核对 AAR/POM SHA-256。
+`sync-ci-pinned-adapter-production-green` 通过真实 production settings 验证坐标和仓库文件路径，并执行原失败的
+`:app:mergeReleaseNativeLibs --offline` 通过；其他依赖复用缓存，不能称为冷缓存完整构建。
+版本、应用 RecyclerView 选择和消费声明未变，来源及 hash 见[固定 publication 说明](../../gradle/pinned-maven/README.md)。
+
+独立发布审查批准：核对上游原 commit 的声明与 LICENSE、缓存原 AAR 与镜像逐字节一致、模块路由及 hash
+失败边界、真实 artifact 路径和 Windows 分派夹具。主代理核对 canonical 事务和详情真实接线，没有新增导航。
+最终 `sync-ci-final-format` 的全仓 `spotlessCheck --offline` 通过，`git diff --check` 通过。
+最终云端完整门禁以该修复提交对应的 PR 检查为准，尚未在本地重复全量。
+
 ## 交付边界
 
 本次是已验收同步分支的集成与回归收口，没有重新构建或安装已验收 APK。Android 正式身份、证书连续性及较高版本号保持；后续正式候选必须走统一构建入口递增版本并包含 schema 44。主干的 Android 与 Desktop 必需 CI 检查通过后，按 PR 流程合入；远端合并状态以 PR 为准。

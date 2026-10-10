@@ -10,6 +10,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
 
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $Gradle = Join-Path $RepoRoot "gradlew.bat"

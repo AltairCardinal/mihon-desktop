@@ -22,16 +22,10 @@ import mihon.desktop.extension.safeSourceCall
 import mihon.domain.error.AppError
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.domain.chapter.model.Chapter
-import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.chapter.service.finishDirectoryPhase
 import tachiyomi.domain.chapter.service.observeDirectoryPhase
-import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.SourceDateExtensionIdentity
-import tachiyomi.domain.creator.model.SourceDateField
-import tachiyomi.domain.creator.model.SourceDateObservation
-import tachiyomi.domain.creator.model.SourceDatePrecision
-import tachiyomi.domain.creator.model.SourceDateQualityIdentity
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.service.CreatorSourceWorkKey
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
@@ -39,6 +33,7 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceMangaUpdateService
+import tachiyomi.domain.source.service.toSourceAppError
 import tachiyomi.domain.source.service.toSourceManga
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -182,7 +177,13 @@ class SaveSourceMangaForDetails(
                         } catch (error: kotlinx.coroutines.CancellationException) {
                             throw error
                         } catch (error: Exception) {
-                            SourceCallResult.Error(AppError.Storage(error)).also {
+                            SourceCallResult.Error(
+                                if (error is tachiyomi.domain.chapter.service.ChapterDirectoryDownloadConflictException) {
+                                    error.toSourceAppError()
+                                } else {
+                                    AppError.Storage(error)
+                                },
+                            ).also {
                                 updateRefreshState(key, SourceMangaRefreshState.Failure(it.error))
                             }
                         }
@@ -332,6 +333,8 @@ class SaveSourceMangaForDetails(
         block()
     } catch (error: kotlinx.coroutines.CancellationException) {
         throw error
+    } catch (error: tachiyomi.domain.chapter.service.ChapterDirectoryDownloadConflictException) {
+        throw error
     } catch (error: Exception) {
         throw SourceCatalogStorageException(error)
     }
@@ -421,10 +424,14 @@ class SaveSourceMangaForDetails(
         }
     }
 
-    private suspend fun listedForDetails(manga: Manga): ListedMangaForDetails = ListedMangaForDetails(
-        manga = manga,
-        needsRefresh = !manga.initialized || chapterRepository.getChapterByMangaId(manga.id).isEmpty(),
-    )
+    private suspend fun listedForDetails(manga: Manga): ListedMangaForDetails {
+        val needsCatalog = if (manga.source != 0L && creatorArchiveRepository != null) {
+            catalogWriter.needsRefresh(manga)
+        } else {
+            chapterRepository.getChapterByMangaId(manga.id).isEmpty()
+        }
+        return ListedMangaForDetails(manga, needsRefresh = !manga.initialized || needsCatalog)
+    }
 
     suspend fun await(
         sManga: SManga,
@@ -438,84 +445,88 @@ class SaveSourceMangaForDetails(
         expectedManga: Manga? = null,
     ): Manga {
         require(complete) { "Source chapter directory is incomplete" }
-        if (sChapters.isEmpty() && sourceId != 0L) throw tachiyomi.domain.chapter.model.NoChaptersException()
-        require(sChapters.all { it.url.isNotBlank() })
-        val storedManga = if (expectedManga != null) {
+        // Migration can supply metadata without a directory. Network callers validate empty responses first.
+        if (sChapters.isEmpty() && sourceId != 0L) {
+            return awaitReaderCatalog(sManga, sourceId, sChapters, fetchDetails, expectedManga)
+        }
+        val remote = if (sChapters.isEmpty()) sChapters else catalogWriter.validate(sChapters)
+        val existing = if (expectedManga != null) {
             val current = mangaRepository.getMangaById(expectedManga.id)
             check(
-                current.source == expectedManga.source && current.url == expectedManga.url && sourceId ==
-                    current.source && sManga.url == current.url,
+                current.source == expectedManga.source && current.url == expectedManga.url &&
+                    sourceId == current.source && sManga.url == current.url,
             ) { "Source manga identity conflict" }
             current
         } else {
-            mangaRepository.getMangaByUrlAndSourceId(sManga.url, sourceId) ?: awaitListed(sManga, sourceId)
+            mangaRepository.getMangaByUrlAndSourceId(sManga.url, sourceId)
         }
-        chapterRepository.pendingDirectoryPhase(storedManga.id)?.let { phase ->
-            completePhase(storedManga, phase)
-            return mangaRepository.getMangaById(storedManga.id)
+        existing?.let { manga ->
+            chapterRepository.pendingDirectoryPhase(manga.id)?.let { phase ->
+                completePhase(manga, phase)
+                return mangaRepository.getMangaById(manga.id)
+            }
         }
+        val identity = existing ?: Manga.create().copy(
+            source = sourceId, url = sManga.url, title = sManga.title,
+            thumbnailUrl = sManga.thumbnail_url, initialized = false, memo = sManga.memo,
+            chapterFlags = initialChapterFlags(),
+        )
         val now = System.currentTimeMillis()
         val extension = sourceDateExtensionIdentityProvider(sourceId)
-        val policy = if (origin ==
-            "DETAIL_REFRESH"
-        ) {
-            downloadPolicy(storedManga)
+        val disallowNonAscii = disallowNonAsciiFilenames()
+        val prepared = tachiyomi.domain.chapter.service.ChapterDirectoryPlan.prepare(identity, remote, prepareChapter)
+        val policy = if (origin == "DETAIL_REFRESH") {
+            downloadPolicy(identity)
         } else {
             mihon.domain.chapter.interactor.DownloadNewChapterPolicy(false, false)
         }
-        val workKey = CreatorSourceWorkKey.stableUrl(
-            storedManga.url,
-            storedManga.title,
-            storedManga.author,
-            storedManga.artist,
-        )
-        val metadata = if (fetchDetails) {
-            MangaUpdate(
-                id = storedManga.id,
-                title = sManga.title,
-                author = sManga.author,
-                updateAuthor = true,
-                artist = sManga.artist,
-                updateArtist = true,
-                description = sManga.description,
-                genre = sManga.genre?.split(", ")?.takeIf { it.isNotEmpty() },
-                status = sManga.status.toLong(),
-                thumbnailUrl = sManga.thumbnail_url,
-                updateStrategy = sManga.update_strategy,
-                initialized = true,
-                memo = sManga.memo,
-            )
-        } else {
-            MangaUpdate(storedManga.id, memo = sManga.memo)
-        }
-        val committed = directoryCommit(
-            storedManga,
-            tachiyomi.domain.chapter.service.ChapterDirectoryCommit(
-                mangaId = storedManga.id,
-                source = tachiyomi.domain.chapter.service.ChapterDirectoryPlan.prepare(
-                    storedManga,
-                    sChapters,
-                    prepareChapter,
-                ),
-                now = now,
-                allowEmpty = sourceId == 0L,
-                complete = complete,
-                mangaMetadata = metadata,
-                metadataOnlyForNonFavorites = true,
-                effects = tachiyomi.domain.chapter.service.ChapterDirectoryEffects(
-                    sourceId, sourceName, storedManga.url, storedManga.title, origin, now,
-                    extension.packageName, extension.version, workKey,
-                    sChapters.map { tachiyomi.domain.chapter.service.DirectoryChapterDate(it.url, it.date_upload) },
-                    downloadEnabled = policy.enabled, downloadUnreadOnly = policy.unreadOnly,
-                    observe = creatorArchiveRepository != null, disallowNonAsciiFilenames = disallowNonAsciiFilenames(),
-                ),
+        fun request(manga: Manga) = tachiyomi.domain.chapter.service.ChapterDirectoryCommit(
+            mangaId = manga.id,
+            source = prepared.map { it.copy(chapter = it.chapter.copy(mangaId = manga.id)) },
+            now = now,
+            allowEmpty = sourceId == 0L,
+            complete = complete,
+            mangaMetadata = if (fetchDetails) {
+                MangaUpdate(
+                    id = manga.id, title = sManga.title, author = sManga.author, updateAuthor = true,
+                    artist = sManga.artist, updateArtist = true, description = sManga.description,
+                    genre = sManga.genre?.split(", ")?.takeIf { it.isNotEmpty() },
+                    status = sManga.status.toLong(), thumbnailUrl = sManga.thumbnail_url,
+                    updateStrategy = sManga.update_strategy, initialized = true, memo = sManga.memo,
+                )
+            } else {
+                MangaUpdate(manga.id, memo = sManga.memo)
+            },
+            metadataOnlyForNonFavorites = true,
+            effects = tachiyomi.domain.chapter.service.ChapterDirectoryEffects(
+                sourceId, sourceName, manga.url, manga.title, origin, now,
+                extension.packageName, extension.version,
+                CreatorSourceWorkKey.stableUrl(manga.url, manga.title, manga.author, manga.artist),
+                prepared.map {
+                    tachiyomi.domain.chapter.service.DirectoryChapterDate(it.chapter.url, it.originalUploadDate)
+                },
+                downloadEnabled = policy.enabled, downloadUnreadOnly = policy.unreadOnly,
+                observe = creatorArchiveRepository != null,
+                disallowNonAsciiFilenames = disallowNonAscii,
             ),
         )
-        val dbManga = mangaRepository.getMangaById(storedManga.id)
-        committed.phase?.let { completePhase(dbManga, it) }
-
-        return dbManga
+        val (storedManga, committed) = if (existing != null) {
+            existing to directoryCommit(existing, request(existing))
+        } else {
+            catalogWriter.transaction {
+                check(mangaRepository.getMangaByUrlAndSourceId(sManga.url, sourceId) == null) {
+                    "Source manga identity conflict"
+                }
+                catalogWriter.validateWorkIdentity(identity)
+                val created = networkToLocalManga(identity)
+                created to catalogWriter.commitDirectory(created, request(created))
+            }
+        }
+        val persisted = mangaRepository.getMangaById(storedManga.id)
+        committed.phase?.let { completePhase(persisted, it) }
+        return persisted
     }
+
     private suspend fun completePhase(manga: Manga, phase: tachiyomi.domain.chapter.service.ChapterDirectoryPhase) {
         val consumer = finishPendingDirectory
         if (consumer != null) {

@@ -1283,10 +1283,18 @@ class LibrarySettingsPolicyInteractionTest {
                     val visited = mutableSetOf<List<String>>()
                     var closedLoop = false
                     for (step in 0 until 80) {
+                        val previousFocus = requireNotNull(scene.activeFocused())
+                        // An existing focus is not evidence that this Tab has completed.
+                        // Wait for the actual next focus target before sending another key.
                         scene.key(Key.Tab, shift = shift)
-                        scene.renderUntil(message = "Native stage 24: default=$defaultDialog") {
-                            scene.activeFocused() !=
-                                null
+                        scene.renderUntil(
+                            message = "Native Tab did not advance: default=$defaultDialog shift=$shift " +
+                                "step=$step previous=${previousFocus.id}:${scene.labels(previousFocus)}",
+                        ) {
+                            scene.activeFocused()?.let { focused ->
+                                focused.id != previousFocus.id &&
+                                    focused.config.contains(SemanticsActions.RequestFocus)
+                            } == true
                         }
                         val focused = requireNotNull(scene.activeFocused())
                         val identity = scene.labels(focused)

@@ -152,6 +152,7 @@ class SourceChapterCatalogIntegrationTest {
         repository.upsertSourceWork(42, manga.url, null, manga.title, null, null, null, detailsFetchedAt = null)
         owner.await(listed(), 42, remote(), fetchDetails = false)
         assertEquals(manga.id, Injekt.get<DatabaseHandler>().await { author_archiveQueries.getArchiveSourceWorkByKey(42, manga.url).executeAsOne().manga_id })
+        val committedManga = Injekt.get<MangaRepository>().getMangaById(manga.id)
         repository.upsertSourceWork(42, manga.url, other.id, "Rebound", null, null, null, detailsFetchedAt = null)
         val before = Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id)
         assertThrows(Exception::class.java) {
@@ -166,7 +167,7 @@ class SourceChapterCatalogIntegrationTest {
                 )
             }
         }
-        assertEquals(manga, Injekt.get<MangaRepository>().getMangaById(manga.id))
+        assertEquals(committedManga, Injekt.get<MangaRepository>().getMangaById(manga.id))
         assertEquals(before, Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id))
         assertEquals(other.id, Injekt.get<DatabaseHandler>().await { author_archiveQueries.getArchiveSourceWorkByKey(42, manga.url).executeAsOne().manga_id })
     }
@@ -239,7 +240,11 @@ class SourceChapterCatalogIntegrationTest {
         val before = chapters.getChapterByMangaId(manga.id)
         val driver = Injekt.get<SqlDriver>()
         driver.execute(null, "CREATE TRIGGER reject_update BEFORE UPDATE ON chapters BEGIN SELECT RAISE(ABORT, 'injected update failure'); END", 0)
-        assertThrows(Exception::class.java) { runBlocking { owner.await(listed(), 42, remote(), fetchDetails = false) } }
+        assertThrows(Exception::class.java) {
+            runBlocking {
+                owner.await(listed(), 42, remote().onEach { it.name += " corrected" }, fetchDetails = false)
+            }
+        }
         assertEquals(before, chapters.getChapterByMangaId(manga.id))
         driver.execute(null, "DROP TRIGGER reject_update", 0)
         driver.execute(null, "CREATE TRIGGER reject_observation BEFORE UPDATE ON author_archive_source_works WHEN NEW.chapter_count_state = 'COMPLETE' BEGIN SELECT RAISE(ABORT, 'injected observation failure'); END", 0)
