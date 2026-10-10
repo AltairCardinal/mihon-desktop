@@ -139,22 +139,30 @@ class HistoryScreenModelTest {
                 viewerFlags = 0x22L,
             ),
         )
+        val item = sampleHistory(chapterId = 100L, mangaId = 10L)
+        val historyRepository = FakeHistoryRepository().apply { addHistory(item) }
         val model = buildModel(
+            historyRepository = historyRepository,
             chapterRepository = chapterRepository,
             mangaRepository = mangaRepository,
         )
+        try {
+            model.loadHistory()
+            assertEquals(listOf(item), model.state.value.items)
+            val request = model.readerRequestFor(item)
 
-        val request = model.readerRequestFor(sampleHistory(chapterId = 100L, mangaId = 10L))
-
-        assertNotNull(request)
-        assertEquals("Chapter 1", request?.chapterTitle)
-        assertEquals("Test Manga", request?.mangaTitle)
-        assertEquals(42L, request?.sourceId)
-        assertEquals("/ch/1", request?.chapterUrl)
-        assertEquals(100L, request?.chapterId)
-        assertEquals(10L, request?.mangaId)
-        assertEquals(0x22L, request?.mangaViewerFlags)
-        assertEquals(3, request?.initialPage)
+            assertNotNull(request)
+            assertEquals("Chapter 1", request?.chapterTitle)
+            assertEquals("Test Manga", request?.mangaTitle)
+            assertEquals(42L, request?.sourceId)
+            assertEquals("/ch/1", request?.chapterUrl)
+            assertEquals(100L, request?.chapterId)
+            assertEquals(10L, request?.mangaId)
+            assertEquals(0x22L, request?.mangaViewerFlags)
+            assertEquals(3, request?.initialPage)
+        } finally {
+            model.onDispose()
+        }
     }
 
     @Test

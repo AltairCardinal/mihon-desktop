@@ -115,6 +115,18 @@ Root 独立审查共享历史恢复入口与 Android 夹具；原实施者未修
 该批超过 8 文件/400 行，内聚于同轮 CI 真实前置、异步收尾与唯一共享焦点修复，未升级依赖、改变数据协议或扩展 UI。
 最终合并仍以新提交的两个完整云端门禁为准，不用本地组合证据替代主干保护检查。
 
+## 单项历史请求夹具收尾
+
+`1afbec9f4e` 的 Desktop 完整 run `38086418993` 执行 3769 项，只剩
+`HistoryScreenModelTest.reader request uses chapter and manga data` 1 项失败、4 项条件跳过；前轮 10 项未再失败。
+该测试把临时历史条目交给模型，但 repository 为空；Default scope 的初始加载一旦完成，生产的“条目仍存在”
+保护会正确拒绝该请求。显式加载空 repository 的 `sync-ci-head1af-history-model-red` 复现同一失败。
+
+仅在该用例播种同一历史行、等待真实加载并核对 items，再保留原 chapter/manga/source/viewerFlags/initialPage=3
+断言，结束 dispose observer。`sync-ci-head1af-history-model-green` 1/1 通过、无跳过；
+`sync-ci-head1af-history-model-format` 全仓格式通过，Root 只读审查批准。生产代码与其他夹具未改，
+不以“还没有加载”放松历史存续保护，也没有再次运行本地完整模块。
+
 ## 交付边界
 
 本次是已验收同步分支的集成与回归收口，没有重新构建或安装已验收 APK。Android 正式身份、证书连续性及较高版本号保持；后续正式候选必须走统一构建入口递增版本并包含 schema 44。主干的 Android 与 Desktop 必需 CI 检查通过后，按 PR 流程合入；远端合并状态以 PR 为准。
