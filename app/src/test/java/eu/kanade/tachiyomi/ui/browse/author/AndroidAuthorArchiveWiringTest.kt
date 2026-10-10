@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.browse.author
 
+import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.core.screen.Screen
 import eu.kanade.tachiyomi.data.library.CreatorDiscoveryJob
 import eu.kanade.tachiyomi.test.ScreenModelTestHost
@@ -178,7 +179,11 @@ class AndroidAuthorArchiveWiringTest {
             assertEquals("/specific-version", stored.url)
             assertEquals(false, stored.favorite)
         } finally {
-            modelHost.close()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                val ownedJob = model?.screenModelScope?.coroutineContext?.get(kotlinx.coroutines.Job)
+                modelHost.close()
+                ownedJob?.join()
+            }
             driver.close()
             kotlinx.coroutines.Dispatchers.resetMain()
         }

@@ -1,5 +1,7 @@
 package mihon.data.sync
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -32,6 +34,7 @@ import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.coroutineContext
 
 /** Real Git object server plus GitHub identity/install discovery HTTP contract, without copying sync logic. */
 internal class SyncOnboardingFixture(
@@ -40,6 +43,7 @@ internal class SyncOnboardingFixture(
     val client: OkHttpClient = OkHttpClient(),
     tokenUrl: String? = null,
     val repositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
+    val diagnosticDirectory: Path? = null,
 ) : AutoCloseable {
     val repository = SyncRepository("fixture-owner", repositoryScope.repositoryName, GitHubSyncSpaceClient.BRANCH)
     val git = SyncGitSafetyContractTest().GitFixture(empty = true, repositoryOverride = repository)
@@ -63,6 +67,8 @@ internal class SyncOnboardingFixture(
     var accountLogin = "fixture-owner"
     var created = true
     var repositoryPrivate = true
+    var repositoryDisabled = false
+    var installationSuspended = false
     var repositoryWrites = 0
     var repositorySettingsWrites = 0
     var userRepoPosts = 0
@@ -106,8 +112,8 @@ internal class SyncOnboardingFixture(
                     path == "/user/installations" -> response(
                         """
                         {"installations":[{"id":1,"app_slug":"mihon-desktop",
-                        "account":{"id":$accountId,"type":"User"},"suspended_at":null,
-                        "permissions":{"contents":"write","metadata":"read"},"repository_selection":"selected"}]}
+                        "account":{"id":$accountId,"type":"User"},"suspended_at":${if (installationSuspended) "\"2026-10-01\"" else "null"},
+                        "permissions":{"administration":"write","contents":"write","metadata":"read"},"repository_selection":"selected"}]}
                         """.trimIndent(),
                     )
                     path == "/user/installations/1/repositories" -> response(
@@ -150,6 +156,7 @@ internal class SyncOnboardingFixture(
         preferences, client, endpoints, clock = { now },
         persistentObjectCacheDirectory = persistentObjectCacheDirectory,
         failureLogDirectory = failureLogDirectory,
+        diagnosticDirectory = diagnosticDirectory,
         syncMetrics = metrics,
         progressTelemetryEnabled = progressTelemetryEnabled,
         repositoryScope = repositoryScope,
@@ -182,7 +189,7 @@ internal class SyncOnboardingFixture(
         put("full_name", repository.fullName)
         put("private", repositoryPrivate)
         put("archived", false)
-        put("disabled", false)
+        put("disabled", repositoryDisabled)
         put("size", if (runCatching { git.head("main") }.isSuccess) 1 else 0)
         put("default_branch", "main")
         put("description", "")
@@ -210,15 +217,37 @@ internal class SyncOnboardingFixture(
 internal suspend fun SyncPanelController.act(action: SyncPanelAction) {
     dispatch(action)
     awaitIdle()
+    if (action is SyncPanelAction.PrepareRepositoryCreation ||
+        action == SyncPanelAction.CheckRepositoryCreationPermission
+    ) {
+        kotlinx.coroutines.withTimeout(5_000) { state.first { !it.setupBusy } }
+        awaitIdle()
+    }
 }
 
 internal class MemorySyncSecureStore : SyncSecureStore {
+    var readFailure = false
+    var nextSpaceRead: Pair<CompletableDeferred<Unit>, CompletableDeferred<Unit>>? = null
+    var nextSpaceReadCoroutineName: String? = null
     val values = ConcurrentHashMap<String, String>()
     var fail = false
     var rejectConnectedSetup = false
     var rejectInitialSetup = false
+    var afterWrite: ((String, String?) -> Unit)? = null
+    var beforeWrite: ((String, String?) -> Unit)? = null
     override suspend fun read(key: String): String? {
-        if (fail) throw mihon.domain.sync.security.SyncSecureStoreException()
+        if (fail || readFailure) throw mihon.domain.sync.security.SyncSecureStoreException()
+        nextSpaceRead?.takeIf {
+            key.startsWith("space-") &&
+                (
+                    nextSpaceReadCoroutineName == null ||
+                        coroutineContext[CoroutineName]?.name == nextSpaceReadCoroutineName
+                    )
+        }?.let { gate ->
+            nextSpaceRead = null
+            gate.first.complete(Unit)
+            gate.second.await()
+        }
         return values[key]
     }
     override suspend fun compareAndSet(key: String, expected: String?, value: String?): Boolean = synchronized(values) {
@@ -229,8 +258,10 @@ internal class MemorySyncSecureStore : SyncSecureStore {
         ) {
             throw mihon.domain.sync.security.SyncSecureStoreException()
         }
+        beforeWrite?.invoke(key, value)
         if (values[key] != expected) return@synchronized false
         if (value == null) values.remove(key) else values[key] = value
+        afterWrite?.invoke(key, value)
         true
     }
 }

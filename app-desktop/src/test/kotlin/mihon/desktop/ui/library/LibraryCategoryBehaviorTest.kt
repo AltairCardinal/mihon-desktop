@@ -745,12 +745,27 @@ class LibraryCategoryBehaviorTest {
             }
             assertTrue(provider.hasMangaDownloads(mangas[0].source, mangas[0].title))
 
+            suspend fun awaitRemovalReady() {
+                val count = MR.strings.desktop_library_removal_download_count.localized(Locale.getDefault(), 1)
+                withTimeout(5_000) {
+                    while (true) {
+                        render(scene)
+                        val controls = toggleNodes(scene)
+                        if (controls.size == 2 &&
+                            controls.none { it.config.contains(SemanticsProperties.Disabled) } &&
+                            nodes(scene).any { count in it.semanticLabels() }
+                        ) break
+                        delay(10)
+                    }
+                }
+            }
+
             suspend fun openRemoval(title: String) {
                 render(scene)
                 longClick(scene, title)
                 render(scene)
                 openSelectionDelete(scene)
-                render(scene)
+                awaitRemovalReady()
             }
 
             suspend fun openContextRemoval(title: String) {
@@ -767,7 +782,7 @@ class LibraryCategoryBehaviorTest {
                 )
                 render(scene)
                 click(scene, MR.strings.remove_from_library.localized())
-                render(scene)
+                awaitRemovalReady()
             }
 
             openContextRemoval(mangas[0].title)

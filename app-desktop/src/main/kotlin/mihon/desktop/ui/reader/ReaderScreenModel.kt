@@ -109,10 +109,78 @@ class ReaderScreenModel(
 
     @Volatile private var pairingEpoch = 0L
 
+    @Volatile private var catalogActivationEpoch = 0L
+
     @Volatile private var pairingRequest: PairingRequest? = null
 
     init {
         beginPairingRestore(initialSessionState)
+    }
+
+    internal fun attachCatalog(
+        refs: List<mihon.desktop.reader.ReaderChapterRef>,
+        opened: tachiyomi.domain.reader.model.ReaderOpenContext?,
+        preparation: tachiyomi.domain.reader.interactor.ReaderCatalogPreparation?,
+        map: (List<tachiyomi.domain.chapter.model.Chapter>) -> List<mihon.desktop.reader.ReaderChapterRef>,
+    ) {
+        _state.update { it.copy(chapterRefs = refs) }
+        if (opened == null || preparation == null) return
+        val initial = state.value.context
+        val epoch = catalogActivationEpoch
+        val completion = tachiyomi.domain.reader.interactor.ReaderCatalogCompletion(opened, preparation)
+        ownedRuntimeScope?.launch {
+            try {
+                val chapters = completion.await() ?: return@launch
+                val updated = map(chapters)
+                synchronized(productionRuntimeLifecycleLock) {
+                    if (disposeRequested || productionRuntimeClosed || catalogActivationEpoch !=
+                        epoch
+                    ) {
+                        return@synchronized
+                    }
+                    _state.update { current ->
+                        if (current.context.mangaId != initial.mangaId || current.context.chapterId != initial
+                                .chapterId ||
+                            current.context.sourceId != initial.sourceId || current.context.chapterUrl !=
+                            initial.chapterUrl
+                        ) {
+                            current
+                        } else {
+                            val index = updated.indexOfFirst {
+                                it.id == initial.chapterId && it.url == initial
+                                    .chapterUrl
+                            }
+                            val activeRef = current.chapterRefs.firstOrNull {
+                                it.id == initial.chapterId && it
+                                    .url == initial.chapterUrl
+                            }
+                            val neighbors = updated.map {
+                                if (it.id == initial.chapterId && activeRef !=
+                                    null
+                                ) {
+                                    activeRef
+                                } else {
+                                    it
+                                }
+                            }
+                            if (index < 0) {
+                                current
+                            } else {
+                                current.copy(
+                                    chapterRefs = neighbors,
+                                    context =
+                                    current.context.copy(chapterIndex = index),
+                                )
+                            }
+                        }
+                    }
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Neighbor metadata is optional; keep the already mounted pages and causal session.
+            }
+        }
     }
 
     private fun buildInitialState(
@@ -184,7 +252,10 @@ class ReaderScreenModel(
                 current.currentPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
             }
             current.copy(
-                context = reader.context,
+                context = reader.context.copy(
+                    chapterIndex = current.chapterRefs.indexOfFirst { it.id == reader.context.chapterId }
+                        .takeIf { it >= 0 } ?: reader.context.chapterIndex,
+                ),
                 session = reader.snapshot,
                 currentPage = currentPage,
                 resumePageUnavailable = if (chapterChanged || firstStablePageList) {
@@ -339,6 +410,7 @@ class ReaderScreenModel(
             _state.value.session.generation == generation && _state.value.session.activeChapter.pages.size == pageCount
 
     fun activateChapter(context: DesktopReaderChapterContext) {
+        catalogActivationEpoch++
         onChapterActivated(context)?.let(::acceptSessionState)
     }
 
@@ -349,7 +421,22 @@ class ReaderScreenModel(
         onNextChapterPrefetchChanged(context, firstViewportPageCount)
     }
 
+    fun confirmSyncResumePosition(page: Int): Boolean {
+        val current = _state.value
+        if (!current.resumePageUnavailable || page !in current.session.activeChapter.pages.indices) return false
+        layoutProgressAnchor = null
+        _state.update { it.copy(resumePageUnavailable = false) }
+        lastSettledViewport = null
+        val id = current.session.activeChapter.pages[page].id
+        if (current.currentPage == page && id in current.visiblePageIds) {
+            lastSettledViewport = SettledViewportIdentity(current.session.generation, current.visiblePageIds, id)
+            onViewportSettled(current.visiblePageIds, id)
+        }
+        return true
+    }
+
     fun goToPage(page: Int) {
+        confirmSyncResumePosition(page)
         layoutProgressAnchor = null
         _state.update { state ->
             val max = (state.session.activeChapter.pages.size - 1).coerceAtLeast(0)
@@ -420,7 +507,7 @@ class ReaderScreenModel(
             pageIds = visiblePages.pageIds,
             activePageId = activePageId,
         )
-        if (layoutOnly) {
+        if (layoutOnly || current.resumePageUnavailable) {
             if (lastSettledViewport != identity && lastLayoutScheduledViewport != identity) {
                 lastLayoutScheduledViewport = identity
                 onViewportLayoutSettled(visiblePages.pageIds, activePageId)

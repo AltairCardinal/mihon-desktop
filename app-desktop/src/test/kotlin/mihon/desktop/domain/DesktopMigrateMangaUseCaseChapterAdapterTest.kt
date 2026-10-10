@@ -6,8 +6,6 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.spyk
 import kotlinx.coroutines.test.runTest
-import mihon.desktop.domain.fakes.FakeChapterRepository
-import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.domain.migration.MigrationCommit
 import mihon.domain.migration.MigrationReceipt
 import mihon.domain.migration.models.MigrationFlag
@@ -18,12 +16,41 @@ import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 
 class DesktopMigrateMangaUseCaseChapterAdapterTest {
+    private lateinit var storage: DirectorySqlFixture
+
+    @org.junit.jupiter.api.BeforeEach fun openStorage() {
+        storage = DirectorySqlFixture()
+    }
+
+    @org.junit.jupiter.api.AfterEach fun closeStorage() {
+        storage.close()
+    }
+
     @Test
     fun `Desktop production adapter delegates chapter state to the atomic migration repository`() = runTest {
-        val mangas = spyk(FakeMangaRepository())
-        val chapters = FakeChapterRepository()
-        val source = Manga.create().copy(id = 10, source = 1, url = "/source", title = "Source", favorite = true)
-        mangas.seed(source)
+        val mangas = spyk(storage.mangas)
+        var directoryCommits = 0
+        var standaloneWrites = 0
+        val chapters = object : tachiyomi.domain.chapter.repository.ChapterRepository by storage.chapters {
+            override suspend fun syncDirectory(
+                request: tachiyomi.domain.chapter.service.ChapterDirectoryCommit,
+            ): tachiyomi.domain.chapter.service.ChapterDirectoryResult {
+                directoryCommits++
+                return storage.chapters.syncDirectory(request)
+            }
+
+            override suspend fun update(chapterUpdate: tachiyomi.domain.chapter.model.ChapterUpdate) {
+                standaloneWrites++
+                storage.chapters.update(chapterUpdate)
+            }
+
+            override suspend fun updateAll(chapterUpdates: List<tachiyomi.domain.chapter.model.ChapterUpdate>) {
+                standaloneWrites++
+                storage.chapters.updateAll(chapterUpdates)
+            }
+        }
+        mangas.seed(Manga.create().copy(id = 10, source = 1, url = "/source", title = "Source", favorite = true))
+        val source = mangas.getMangaById(10)
         var receipt: MigrationReceipt? = null
         var accepted: MigrationCommit? = null
         coEvery { mangas.migrationReceipt(source.id) } answers { receipt }
@@ -39,17 +66,7 @@ class DesktopMigrateMangaUseCaseChapterAdapterTest {
             { receipt = requireNotNull(receipt).copy(filesComplete = true) }
         coEvery { mangas.acknowledgeMigration(any()) } answers { receipt = null }
         val useCase = DesktopMigrateMangaUseCase(
-            SaveSourceMangaForDetails(NetworkToLocalManga(mangas), mangas, chapters, directoryCommit = { _, _ ->
-                tachiyomi.domain.chapter.service.ChapterDirectoryResult(
-                    tachiyomi.domain.chapter.service.ChapterDirectoryPlan(
-                        emptyList(),
-                        emptyList(),
-                        emptyList(),
-                        emptySet(),
-                    ),
-                    emptyList(),
-                )
-            }),
+            SaveSourceMangaForDetails(NetworkToLocalManga(mangas), mangas, chapters),
             mangas,
         )
         val target = useCase.await(
@@ -74,7 +91,9 @@ class DesktopMigrateMangaUseCaseChapterAdapterTest {
         assertEquals(source.id, accepted?.sourceMangaId)
         assertEquals(target.id, accepted?.targetMangaId)
         assertTrue(target.id != source.id)
-        assertTrue(chapters.updates.isEmpty(), "No retired standalone chapter writes can bypass the atomic repository")
+        assertEquals(1, directoryCommits)
+        assertEquals(0, standaloneWrites, "No retired standalone chapter writes can bypass the atomic repository")
+        assertEquals(listOf("/1"), chapters.getChapterByMangaId(target.id).map { it.url })
         assertEquals(source, mangas.getMangaById(source.id))
     }
 }

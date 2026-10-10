@@ -302,3 +302,91 @@
     void bindLong(int,java.lang.Long);
     void bindString(int,java.lang.String);
 }
+
+# Exact external formal history fixture ABI. R8/resource shrinking stay enabled.
+-keepclassmembers,allowoptimization class mihon.data.sync.journal.SyncLocalJournal {
+    public <init>(tachiyomi.data.DatabaseHandler);
+    public java.lang.Object connect(java.lang.String,long,mihon.domain.sync.transport.SyncRepository,java.lang.String,long,kotlin.coroutines.Continuation);
+}
+-keepclassmembers,allowoptimization class mihon.domain.sync.transport.SyncRepository {
+    public <init>(java.lang.String,java.lang.String,java.lang.String);
+}
+-keepclassmembers,allowoptimization class mihon.domain.sync.SyncBatchCodec {
+    public static mihon.domain.sync.SyncBatchCodec INSTANCE;
+    public mihon.domain.sync.SyncBatchDecodeResult decode(java.lang.String);
+}
+-keepclassmembers,allowoptimization class mihon.domain.sync.SyncBatchDecodeResult$Accepted {
+    public mihon.domain.sync.SyncBatch getBatch();
+}
+-keepclassmembers,allowoptimization class mihon.data.sync.inbox.SyncInboxStore {
+    public <init>(tachiyomi.data.DatabaseHandler);
+    public java.lang.Object ingest(mihon.domain.sync.SyncBatch,kotlin.coroutines.Continuation);
+}
+-keepclassmembers,allowoptimization class mihon.data.sync.inbox.SyncReceptionResult {
+    public boolean getAccepted();
+}
+-keepclassmembers,allowoptimization class mihon.data.sync.runtime.SyncRuntime {
+    public mihon.data.sync.inbox.SyncInboxProjector getProjector();
+}
+-keepclassmembers,allowoptimization class mihon.data.sync.inbox.SyncInboxProjector {
+    public java.lang.Object project(java.lang.String,long,int,kotlin.jvm.functions.Function0,kotlin.jvm.functions.Function2,kotlin.coroutines.Continuation);
+}
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.ui.reader.ReaderActivity {
+    public eu.kanade.tachiyomi.ui.reader.ReaderViewModel getViewModel();
+}
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.ui.reader.ReaderViewModel {
+    public kotlinx.coroutines.flow.StateFlow getState();
+    private eu.kanade.tachiyomi.ui.reader.ReaderViewModel$ReadingActivation readingActivation;
+    private tachiyomi.domain.reader.model.ReaderOpenContext initialOpenContext;
+    private kotlinx.coroutines.Job catalogJob;
+}
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.ui.reader.ReaderViewModel$State {
+    public int getCurrentPage();
+    public eu.kanade.tachiyomi.ui.reader.model.ReaderChapter getCurrentChapter();
+    public eu.kanade.tachiyomi.ui.reader.model.ViewerChapters getViewerChapters();
+}
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.ui.reader.ReaderViewModel$ReadingActivation {
+    private tachiyomi.domain.reader.interactor.ReadingProgressSession session;
+}
+-keepclassmembers,allowoptimization class tachiyomi.domain.reader.interactor.ReadingProgressSession {
+    private tachiyomi.domain.reader.model.ReadingSyncSnapshot snapshot;
+}
+-keepclassmembers,allowoptimization class tachiyomi.domain.reader.model.ReaderOpenContext {
+    private int pageIndex;
+    private tachiyomi.domain.reader.model.ReadingSyncSnapshot snapshot;
+}
+-keepclassmembers,allowoptimization class tachiyomi.domain.reader.model.ReadingSyncSnapshot {
+    private java.util.Map heads;
+}
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.ui.reader.model.ReaderChapter {
+    public eu.kanade.tachiyomi.data.database.models.Chapter getChapter();
+    public java.util.List getPages();
+}
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.ui.reader.model.ViewerChapters {
+    public eu.kanade.tachiyomi.ui.reader.model.ReaderChapter getPrevChapter();
+    public eu.kanade.tachiyomi.ui.reader.model.ReaderChapter getNextChapter();
+}
+-keepclassmembers,allowoptimization interface eu.kanade.tachiyomi.data.database.models.Chapter {
+    public java.lang.Long getId();
+}
+-keepclassmembers,allowoptimization interface eu.kanade.tachiyomi.source.model.SChapter {
+    public java.lang.String getUrl();
+}
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.ui.reader.AndroidReaderProgressCoordinator {
+    public java.lang.Object awaitAccepted(long,kotlin.coroutines.Continuation);
+}
+-keepclassmembers,allowoptimization class com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView {
+    public boolean isReady();
+}
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences {
+    public tachiyomi.core.common.preference.Preference defaultReadingMode();
+}
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerPageHolder {
+    public eu.kanade.tachiyomi.ui.reader.model.ReaderPage getPage();
+}
+-keepclassmembers,allowoptimization class mihon.domain.sync.SyncEffectRef {
+    private mihon.domain.sync.SyncEventId eventId;
+}
+-keepclassmembers,allowoptimization class mihon.domain.sync.SyncEventId {
+    private java.lang.String actorId;
+}

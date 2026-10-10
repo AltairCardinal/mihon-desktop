@@ -3,6 +3,7 @@ package eu.kanade.presentation.history
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import eu.kanade.tachiyomi.ui.history.HistoryScreenModel
 import tachiyomi.domain.history.model.HistoryWithRelations
+import tachiyomi.domain.history.service.HistoryUiModel
 import tachiyomi.domain.manga.model.MangaCover
 import java.time.Instant
 import java.time.LocalDate
@@ -10,9 +11,9 @@ import java.time.temporal.ChronoUnit
 import java.util.Date
 import kotlin.random.Random
 
-class HistoryScreenModelStateProvider : PreviewParameterProvider<HistoryScreenModel.State> {
+class HistoryScreenModelStateProvider : PreviewParameterProvider<tachiyomi.domain.history.service.HistoryState> {
 
-    private val multiPage = HistoryScreenModel.State(
+    private val multiPage = tachiyomi.domain.history.service.HistoryState(
         searchQuery = null,
         list =
         listOf(HistoryUiModelExamples.headerToday)
@@ -26,7 +27,7 @@ class HistoryScreenModelStateProvider : PreviewParameterProvider<HistoryScreenMo
         dialog = null,
     )
 
-    private val shortRecent = HistoryScreenModel.State(
+    private val shortRecent = tachiyomi.domain.history.service.HistoryState(
         searchQuery = null,
         list = listOf(
             HistoryUiModelExamples.headerToday,
@@ -35,7 +36,7 @@ class HistoryScreenModelStateProvider : PreviewParameterProvider<HistoryScreenMo
         dialog = null,
     )
 
-    private val shortFuture = HistoryScreenModel.State(
+    private val shortFuture = tachiyomi.domain.history.service.HistoryState(
         searchQuery = null,
         list = listOf(
             HistoryUiModelExamples.headerTomorrow,
@@ -44,23 +45,23 @@ class HistoryScreenModelStateProvider : PreviewParameterProvider<HistoryScreenMo
         dialog = null,
     )
 
-    private val empty = HistoryScreenModel.State(
+    private val empty = tachiyomi.domain.history.service.HistoryState(
         searchQuery = null,
         list = listOf(),
         dialog = null,
     )
 
-    private val loadingWithSearchQuery = HistoryScreenModel.State(
+    private val loadingWithSearchQuery = tachiyomi.domain.history.service.HistoryState(
         searchQuery = "Example Search Query",
     )
 
-    private val loading = HistoryScreenModel.State(
+    private val loading = tachiyomi.domain.history.service.HistoryState(
         searchQuery = null,
         list = null,
         dialog = null,
     )
 
-    override val values: Sequence<HistoryScreenModel.State> = sequenceOf(
+    override val values: Sequence<tachiyomi.domain.history.service.HistoryState> = sequenceOf(
         multiPage,
         shortRecent,
         shortFuture,

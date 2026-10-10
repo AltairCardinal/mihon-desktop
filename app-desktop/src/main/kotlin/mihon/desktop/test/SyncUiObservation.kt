@@ -22,7 +22,8 @@ internal class SyncUiRegistry : SyncUiObserver {
     private val controls = linkedMapOf<Any, SyncUiControl>()
     private var window: Window? = null
     private val tags = setOf("sync-open", "sync-back", "sync-close", "sync-settings", "sync-now", "sync-history", "sync-drag-handle",
-        "sync-settings-history", "sync-settings-connect", "sync-disconnect", "sync-switch", "sync-password-help")
+        "sync-settings-history", "sync-settings-connect", "sync-disconnect", "sync-switch", "sync-password-help",
+        "sync-progress-details-toggle")
 
     @Synchronized
     override fun observes(tag: String) = running && tag in tags

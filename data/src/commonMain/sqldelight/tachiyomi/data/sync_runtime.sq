@@ -27,6 +27,26 @@ CREATE TABLE sync_runtime_runs (
 
 CREATE INDEX sync_runtime_active ON sync_runtime_runs(space_id, generation, state);
 
+CREATE TABLE IF NOT EXISTS sync_runtime_pause_clock (
+    run_id TEXT NOT NULL PRIMARY KEY REFERENCES sync_runtime_runs(run_id) ON DELETE CASCADE,
+    paused_millis INTEGER NOT NULL DEFAULT 0 CHECK(paused_millis >= 0),
+    paused_at INTEGER,
+    planned_at INTEGER,
+    planned_paused_millis INTEGER NOT NULL DEFAULT 0 CHECK(planned_paused_millis >= 0)
+);
+
+CREATE TRIGGER IF NOT EXISTS sync_runtime_pause_transition
+AFTER UPDATE OF state ON sync_runtime_runs
+WHEN old.state != new.state AND (old.state = 'PAUSED_USER' OR new.state = 'PAUSED_USER')
+BEGIN
+    INSERT OR IGNORE INTO sync_runtime_pause_clock(run_id) VALUES (new.run_id);
+    UPDATE sync_runtime_pause_clock SET
+        paused_millis = paused_millis + CASE WHEN old.state = 'PAUSED_USER'
+            THEN MAX(0, new.updated_at - COALESCE(paused_at, old.updated_at)) ELSE 0 END,
+        paused_at = CASE WHEN new.state = 'PAUSED_USER' THEN new.updated_at ELSE NULL END
+    WHERE run_id = new.run_id;
+END;
+
 CREATE TABLE sync_runtime_logs (
     run_id TEXT NOT NULL REFERENCES sync_runtime_runs(run_id) ON DELETE CASCADE,
     log_key TEXT NOT NULL,
@@ -57,6 +77,16 @@ INSERT INTO sync_runtime_runs(
 getRuntimeRun:
 SELECT * FROM sync_runtime_runs WHERE run_id = ?;
 
+getRuntimePauseClock:
+SELECT * FROM sync_runtime_pause_clock WHERE run_id = ?;
+
+ensureRuntimePauseClock:
+INSERT OR IGNORE INTO sync_runtime_pause_clock(run_id) VALUES (?);
+
+startRuntimePlanClock:
+UPDATE sync_runtime_pause_clock SET planned_at = ?, planned_paused_millis = paused_millis
+WHERE run_id = ? AND planned_at IS NULL;
+
 getRuntimeConfirmation:
 SELECT * FROM sync_runtime_confirmations
 WHERE run_id = ? AND direction = ? AND batch_id = ?;
@@ -64,6 +94,36 @@ WHERE run_id = ? AND direction = ? AND batch_id = ?;
 insertRuntimeConfirmation:
 INSERT INTO sync_runtime_confirmations(run_id, direction, batch_id, item_count, status)
 VALUES (?, ?, ?, ?, ?);
+
+getRuntimePlanMarker:
+SELECT 1 FROM sync_runtime_confirmations WHERE run_id = ? AND direction = 'PLAN' AND batch_id = 'round';
+
+getRuntimePlanMembers:
+SELECT * FROM sync_runtime_confirmations WHERE run_id = ? AND direction IN ('UPLOAD', 'DOWNLOAD')
+ORDER BY direction, batch_id;
+
+getRuntimePlannedItems:
+SELECT COALESCE(SUM(item_count), 0)
+FROM sync_runtime_confirmations WHERE run_id = :runId AND direction IN ('UPLOAD', 'DOWNLOAD')
+HAVING EXISTS (
+    SELECT 1 FROM sync_runtime_confirmations WHERE run_id = :runId AND direction = 'PLAN' AND batch_id = 'round'
+);
+
+hasPlannedRuntimeWork:
+SELECT 1 FROM sync_runtime_confirmations
+WHERE run_id = :runId AND direction IN ('UPLOAD', 'DOWNLOAD') AND status = 'PLANNED'
+AND EXISTS (SELECT 1 FROM sync_runtime_confirmations WHERE run_id = :runId AND direction = 'PLAN' AND batch_id = 'round')
+LIMIT 1;
+
+hasUnfinishedRuntimePlan:
+SELECT 1 FROM sync_runtime_confirmations
+WHERE run_id = :runId AND direction IN ('UPLOAD', 'DOWNLOAD') AND status != 'CONFIRMED'
+AND EXISTS (SELECT 1 FROM sync_runtime_confirmations WHERE run_id = :runId AND direction = 'PLAN' AND batch_id = 'round')
+LIMIT 1;
+
+expectPlannedRuntimeDownload:
+UPDATE sync_runtime_confirmations SET status = 'PENDING'
+WHERE run_id = ? AND direction = 'DOWNLOAD' AND batch_id = ? AND status = 'PLANNED';
 
 getPendingRuntimeReceipts:
 SELECT * FROM sync_runtime_confirmations WHERE run_id = ? AND direction = 'DOWNLOAD' AND status = 'PENDING';
@@ -128,7 +188,8 @@ WHERE run_id = ? AND direction = 'DOWNLOAD' AND status = 'PENDING' LIMIT 1;
 
 markRuntimeConfirmation:
 UPDATE sync_runtime_confirmations SET status = 'CONFIRMED'
-WHERE run_id = ? AND direction = ? AND batch_id = ? AND status = 'PENDING';
+WHERE run_id = ? AND direction = ? AND batch_id = ?
+AND (status = 'PENDING' OR (status = 'PLANNED' AND direction = 'UPLOAD'));
 
 addRuntimeConfirmedItemsOwned:
 UPDATE sync_runtime_runs SET confirmed_items = confirmed_items + ?, updated_at = ?
@@ -141,7 +202,9 @@ WHERE space_id = ? AND generation = ?
     state IN ('QUEUED', 'RUNNING', 'WAITING_NETWORK', 'WAITING_RETRY', 'WAITING_SYSTEM', 'BLOCKED', 'PAUSED_USER')
     OR (state = 'PARTIAL' AND EXISTS (
       SELECT 1 FROM sync_runtime_confirmations c
-      WHERE c.run_id = sync_runtime_runs.run_id AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING'
+      WHERE c.run_id = sync_runtime_runs.run_id
+      AND ((c.direction = 'DOWNLOAD' AND c.status = 'PENDING')
+           OR (c.direction IN ('UPLOAD', 'DOWNLOAD') AND c.status = 'PLANNED'))
     ))
   )
 ORDER BY updated_at DESC, rowid DESC LIMIT 1;
@@ -171,7 +234,9 @@ WHERE run_id = ?
     state IN ('QUEUED', 'RUNNING', 'WAITING_NETWORK', 'WAITING_RETRY', 'WAITING_SYSTEM')
     OR (state = 'PARTIAL' AND EXISTS (
       SELECT 1 FROM sync_runtime_confirmations c
-      WHERE c.run_id = sync_runtime_runs.run_id AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING'
+      WHERE c.run_id = sync_runtime_runs.run_id
+      AND ((c.direction = 'DOWNLOAD' AND c.status = 'PENDING')
+           OR (c.direction IN ('UPLOAD', 'DOWNLOAD') AND c.status = 'PLANNED'))
     ))
   )
   AND (owner_session IS NULL OR owner_session = ?);

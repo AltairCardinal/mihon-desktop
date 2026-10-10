@@ -209,18 +209,21 @@ suspend fun initDesktopDI(
     syncRepositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
 ) {
     val paths = DesktopPlatformPaths.current(createDirectories = false)
-    val preferenceStore = DesktopPreferenceStore()
-    initDesktopDI(paths, preferenceStore, syncRepositoryScope)
+    initDesktopDI(paths, syncRepositoryScope = syncRepositoryScope)
 }
 
 internal suspend fun initDesktopDI(
     paths: DesktopPlatformPaths,
-    preferenceStore: DesktopPreferenceStore,
+    preferenceStore: DesktopPreferenceStore = paths.recoveryProfileRoot
+        ?.let(mihon.desktop.platform.DesktopRecoveryProfile::preferences) ?: DesktopPreferenceStore(),
     syncRepositoryScope: mihon.data.sync.auth.SyncRepositoryScope = mihon.data.sync.auth.SyncRepositoryScope.Default,
 ) {
     initAndroidCompatApplication()
     prepareDesktopProfile(paths, preferenceStore)
     initConfigLayer(paths.configDir, preferenceStore)
+    paths.recoveryProfileRoot?.let { root ->
+        Injekt.addSingleton<FolderProvider>(DesktopStorageFolderProvider(File(root, "storage")))
+    }
     val networkHelper = initNetworkLayer(paths, preferenceStore)
     val handler = initDataLayer(paths)
     initExtensionLayer(paths, networkHelper, handler)
@@ -650,14 +653,20 @@ private fun registerDesktopExtension(
         DesktopSourceManager(
             extensionManager = extensionManager,
             preferences = appPreferences,
-            additionalCatalogueSources = mihon.desktop.test.http.ReaderTestModeSourceBridge::sources,
+            additionalCatalogueSources = {
+                mihon.desktop.test.http.ReaderTestModeSourceBridge.sources() +
+                    mihon.desktop.test.http.HistoryCatalogTestSourceBridge.sources()
+            },
         )
     } else {
         DesktopSourceManager(
             extensionManager = extensionManager,
             preferences = appPreferences,
             builtinSources = builtInSources,
-            additionalCatalogueSources = mihon.desktop.test.http.ReaderTestModeSourceBridge::sources,
+            additionalCatalogueSources = {
+                mihon.desktop.test.http.ReaderTestModeSourceBridge.sources() +
+                    mihon.desktop.test.http.HistoryCatalogTestSourceBridge.sources()
+            },
         )
     }
     Injekt.addSingleton<SourceManager>(sourceManager)
@@ -688,7 +697,10 @@ private fun registerDesktopExtension(
     val extensionController = SourceExtensionTestModeController(extensionScreenModel)
     Injekt.addSingleton(extensionController)
     SourceExtensionTestModeBridge.install(extensionController)
-    registerDesktopTracking(sourceManager, networkHelper.client, trackerServiceRegistry)
+    registerDesktopTracking(sourceManager, networkHelper.client, trackerServiceRegistry,
+        DesktopCredentialStore(mihon.desktop.platform.DesktopRecoveryProfile.credentialBackend(
+            paths.recoveryProfileRoot, OsCredentialBackend(),
+        )))
     val extensionRepoService = ExtensionRepoService(Injekt.get<NetworkHelper>(), Injekt.get<Json>())
     Injekt.addSingleton(extensionRepoService)
     Injekt.addSingleton(GetExtensionRepo(extensionRepoRepository))
@@ -702,10 +714,10 @@ private fun registerDesktopTracking(
     sourceManager: SourceManager,
     client: OkHttpClient,
     trackerServiceRegistry: TrackerServiceRegistry? = null,
+    credentialStore: DesktopCredentialStore = DesktopCredentialStore(),
 ) {
     val trackRepository = Injekt.get<TrackRepository>()
     val chapterRepository = Injekt.get<ChapterRepository>()
-    val credentialStore = DesktopCredentialStore()
     val oauthCallbackBroker = DesktopTrackerOAuthCallbackBroker()
     val enhancedTrackerContexts = mihon.desktop.tracking.DesktopEnhancedTrackerContextProvider().apply {
         attach(sourceManager)
@@ -789,6 +801,14 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
     Injekt.addSingleton(SetMangaChapterFlags(mangaRepository))
     Injekt.addSingleton(upsertHistory)
 
+    val catalogWriter = mihon.desktop.domain.SourceChapterCatalogWriter(
+        chapterRepository,
+        Injekt.get<CreatorArchiveRepository>(),
+        Injekt.get<DatabaseHandler>(),
+        Injekt.get<CreatorArchiveBootstrap>(),
+        sourceDateExtensionIdentityProvider,
+    )
+    Injekt.addSingleton(catalogWriter)
     val saveSourceMangaForDetails = SaveSourceMangaForDetails(
         networkToLocalManga,
         mangaRepository,
@@ -800,6 +820,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
         downloadPolicy = { manga -> Injekt.get<FilterChaptersForDownload>().snapshot(manga) },
         disallowNonAsciiFilenames = { Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get() },
         directoryCommit = { manga, request -> Injekt.get<LibraryUpdateChecker>().commitDirectory(manga, request) },
+        catalogWriter = catalogWriter,
     )
     Injekt.addSingleton(saveSourceMangaForDetails)
     Injekt.addSingleton(GetFavorites(mangaRepository))
@@ -871,7 +892,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
                 } == true
                 val guarded = plan.affectedDownloadIds(stored, titleChanged)
                 manager.withDirectoryChanges(guarded) {
-                    val result = chapterRepository.syncDirectory(request.copy(guardedChapterIds = guarded))
+                    val result = catalogWriter.commitDirectory(latestManga, request.copy(guardedChapterIds = guarded))
                     result.phase?.let { phase ->
                         chapterRepository.finishDirectoryFiles(phase) { p, change ->
                             Injekt.get<mihon.desktop.download.DesktopDownloadProvider>().renameDirectoryChapter(
@@ -947,7 +968,9 @@ internal suspend fun initUILayer(
     downloadFileOperations: mihon.desktop.download.DownloadFileOperations =
         mihon.desktop.download.DefaultDownloadFileOperations,
     credentialBackendFactory: (CredentialNamespace) -> mihon.desktop.platform.CredentialBackend =
-        { namespace -> OsCredentialBackend(namespace = namespace) },
+        { namespace -> mihon.desktop.platform.DesktopRecoveryProfile.credentialBackend(
+            paths.recoveryProfileRoot, OsCredentialBackend(namespace = namespace),
+        ) },
     profileDirectoryOpener: (File) -> Boolean = mihon.desktop.ui.settings.DesktopDirectoryOpener::open,
     nativeSharePort: DesktopNativeSharePort = defaultDesktopNativeSharePort(),
     trackerConnectivity: mihon.desktop.tracking.DesktopNetworkConnectivity =
@@ -1257,6 +1280,11 @@ internal suspend fun initUILayer(
                 encodedCacheDirectory = paths.networkCacheDir.resolve("reader-encoded"),
                 chapterRepository = chapterRepository,
                 pairingCoordinator = pairingCoordinator,
+                catalogPreparation = mihon.desktop.reader.DesktopReaderCatalogPreparation(
+                    mangaRepository,
+                    Injekt.get(),
+                    Injekt.get(),
+                ),
                 readerIoProbe = mihon.desktop.test.http.ReaderIoTestModeBridge,
                 disallowNonAsciiFilenames = {
                     Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get()
@@ -1284,7 +1312,16 @@ internal suspend fun initUILayer(
             persistentObjectCacheDirectory = paths.networkCacheDir.resolve("mihon-sync-objects").toOkioPath(),
             failureLogDirectory = paths.logsDir.resolve("sync-failures").toOkioPath(),
             repositoryScope = syncRepositoryScope,
+            diagnosticDirectory = paths.networkCacheDir.resolve("sync-diagnostics").toOkioPath(),
+            diagnosticEnvironment = mihon.data.sync.runtime.SyncDiagnosticEnvironment(
+                platform = "DESKTOP", appVersion = mihon.desktop.APP_VERSION,
+                sourceRevision = BuildInfo.GIT_HASH, releaseIdentity = "mihon.desktop",
+                build = mihon.desktop.AppVersion.BUILD.toString(), releaseBuild = !BuildInfo.IS_NON_RELEASE_BUILD,
+            ),
         )
+        paths.recoveryProfileRoot?.let(mihon.desktop.platform.DesktopRecoveryProfile::originalLabel)?.let {
+            syncRuntime.markExternalUnverifiedRecoveryOrigin(it)
+        }
         Injekt.addSingleton(syncRuntime)
         val syncScheduler = mihon.desktop.sync.DesktopSyncScheduler(
             syncRuntime.coordinator,

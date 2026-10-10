@@ -1,15 +1,22 @@
 package mihon.data.sync
 
 import app.cash.sqldelight.db.SqlDriver
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import mihon.data.sync.auth.SyncRepositoryScope
 import mihon.data.sync.auth.SyncSpaceDiscovery
+import mihon.data.sync.inbox.SyncDiscoveryStore
 import mihon.data.sync.inbox.SyncInboxProjector
 import mihon.data.sync.inbox.SyncInboxStore
 import mihon.data.sync.journal.SyncBaselineStore
 import mihon.data.sync.journal.SyncLocalJournal
 import mihon.data.sync.projection.SyncRemoteProjectionWriter
 import mihon.data.sync.runtime.SyncDatabaseExchange
+import mihon.data.sync.runtime.SyncProgressDirection
+import mihon.data.sync.runtime.SyncProgressReporter
+import mihon.data.sync.runtime.SyncRunPlanBatch
+import mihon.data.sync.runtime.SyncRunState
+import mihon.data.sync.runtime.SyncRunStore
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.data.sync.runtime.SyncSetupOutcome
 import mihon.data.sync.transport.SyncBatchSyncService
@@ -23,9 +30,12 @@ import mihon.domain.sync.SyncMutationContext
 import mihon.domain.sync.SyncObjectKey
 import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.SyncOrigin
+import mihon.domain.sync.crypto.SyncEncryptedBatch
 import mihon.domain.sync.crypto.SyncSecret
 import mihon.domain.sync.runtime.SyncRunStatus
 import mihon.domain.sync.runtime.SyncTrigger
+import mihon.domain.sync.transport.SyncBatchIndexEntry
+import mihon.domain.sync.transport.SyncGitTree
 import mihon.domain.sync.transport.SyncPreparedUpload
 import mihon.domain.sync.transport.SyncPublishResult
 import mihon.domain.sync.transport.SyncPublishStatus
@@ -34,6 +44,8 @@ import mihon.domain.sync.transport.SyncSnapshot
 import mihon.domain.sync.transport.SyncTransportPort
 import mockwebserver3.MockResponse
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.data.Database
@@ -51,6 +63,73 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 
 abstract class SyncRuntimeStorageContract {
+    @Test
+    fun `plan timing excludes counting pauses and survives store reconstruction`() = runBlocking {
+        open().use { storage ->
+            storage.connect("plan-clock", repository)
+            var now = 1_000L
+            val store = SyncRunStore(storage.handler, clock = { now })
+            val run = store.start("space", 1, SyncTrigger.MANUAL)
+            assertTrue(store.claim(run.runId, "owner", 1))
+            assertNull(store.get(run.runId)!!.planStartedAt)
+            now = 11_000
+            store.pause(run.runId)
+            now = 41_000
+            assertTrue(store.resumeIfAllowed(run.runId))
+            assertTrue(store.claim(run.runId, "owner", 2))
+            now = 51_000
+            store.freezePlan(run.runId, "owner", emptyList())
+            assertEquals(51_000L, store.get(run.runId)!!.planStartedAt)
+            assertEquals(30_000L, store.get(run.runId)!!.planPausedMillis)
+            now = 61_000
+            store.freezePlan(run.runId, "owner", emptyList())
+            assertEquals(51_000L, store.get(run.runId)!!.planStartedAt)
+            store.pause(run.runId)
+            now = 91_000
+            val reopened = SyncRunStore(storage.handler, clock = { now })
+            assertTrue(reopened.resumeIfAllowed(run.runId))
+            val restored = reopened.get(run.runId)!!
+            assertEquals(51_000L, restored.planStartedAt)
+            assertEquals(30_000L, restored.planPausedMillis)
+            assertEquals(60_000L, restored.pausedMillis)
+            assertEquals(
+                10_000L,
+                now - restored.planStartedAt!! -
+                    (restored.pausedMillis - restored.planPausedMillis),
+            )
+        }
+    }
+
+    @Test
+    fun `pause clock persists repeated pauses and ignores duplicate pause and rejected ownership`() = runBlocking {
+        open().use { storage ->
+            var now = 1_000L
+            val store = SyncRunStore(storage.handler, clock = { now })
+            val run = store.start("space", 1, SyncTrigger.MANUAL)
+            assertTrue(store.claim(run.runId, "owner", 1))
+            now = 11_000
+            store.pause(run.runId)
+            assertEquals(11_000L, store.get(run.runId)!!.pausedAt)
+            now = 21_000
+            store.pause(run.runId)
+            assertEquals(11_000L, store.get(run.runId)!!.pausedAt)
+            val reopened = SyncRunStore(storage.handler, clock = { now })
+            now = 71_000
+            assertTrue(reopened.resumeIfAllowed(run.runId))
+            assertEquals(60_000L, reopened.get(run.runId)!!.pausedMillis)
+            assertNull(reopened.get(run.runId)!!.pausedAt)
+            now = 76_000
+            reopened.pause(run.runId)
+            now = 96_000
+            reopened.finish(run.runId, SyncRunState.FAILED, ownerSession = "stale")
+            assertEquals(SyncRunState.PAUSED_USER, reopened.get(run.runId)!!.state)
+            reopened.cancel(run.runId)
+            assertEquals(80_000L, reopened.get(run.runId)!!.pausedMillis)
+            assertNull(reopened.get(run.runId)!!.pausedAt)
+            assertEquals(15_000L, reopened.get(run.runId)!!.let { it.updatedAt - it.createdAt - it.pausedMillis })
+        }
+    }
+
     protected abstract fun open(): Storage
     protected val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
     protected val secret = SyncSecret.fromBytes(ByteArray(32) { (it + 1).toByte() })
@@ -70,6 +149,98 @@ abstract class SyncRuntimeStorageContract {
                 assertTrue(result is SyncSetupOutcome.Connected)
                 assertEquals(fixture.repository, fixture.runtime.connection()?.repository)
                 assertTrue(fixture.repositoryWrites > 0)
+            }
+        }
+    }
+
+    @Test
+    fun `unconfirmed frozen members prevent success and retain partial recovery`() = runBlocking {
+        open().use { storage ->
+            storage.connect("plan-fixture", repository)
+            val store = SyncRunStore(storage.handler)
+            val run = store.start("space", 1, SyncTrigger.MANUAL)
+            assertTrue(store.claim(run.runId, "owner", 1))
+            storage.handler.await {
+                sync_runtimeQueries.insertRuntimeConfirmation(run.runId, "PLAN", "round", 0, "PLANNED")
+                sync_runtimeQueries.insertRuntimeConfirmation(run.runId, "UPLOAD", "upload", 3, "PLANNED")
+            }
+            store.finish(run.runId, SyncRunState.SUCCEEDED, ownerSession = "owner")
+            assertEquals(SyncRunState.PARTIAL, store.get(run.runId)!!.state)
+            assertEquals(run.runId, store.active("space", 1)!!.runId)
+            assertTrue(store.claim(run.runId, "replacement", 2))
+            assertEquals(3L, store.get(run.runId)!!.plannedItems)
+            assertEquals(0L, store.get(run.runId)!!.confirmedItems)
+        }
+    }
+
+    @Test
+    fun `frozen run plan is durable immutable and distinct from pending receipts`() = runBlocking {
+        open().use { storage ->
+            storage.connect("plan-fixture", repository)
+            val store = SyncRunStore(storage.handler)
+            val run = store.start("space", 1, SyncTrigger.MANUAL)
+            assertTrue(store.claim(run.runId, "owner", 1))
+            assertNull(store.get(run.runId)!!.plannedItems)
+            val upload = SyncRunPlanBatch(
+                SyncProgressDirection.UPLOAD,
+                "upload",
+                3,
+            )
+            val download = SyncRunPlanBatch(
+                SyncProgressDirection.DOWNLOAD,
+                "download",
+                2,
+            )
+            assertEquals(5L, store.freezePlan(run.runId, "owner", listOf(upload, download)).totalItems)
+            assertEquals(0L, store.get(run.runId)!!.confirmedItems)
+            assertEquals(5L, store.get(run.runId)!!.plannedItems)
+            assertTrue(!store.hasUnconfirmedDownloads(run.runId, "owner"))
+            store.expectDownload(run.runId, "owner", "download", 2)
+            assertTrue(store.hasUnconfirmedDownloads(run.runId, "owner"))
+            assertTrue(store.confirmReceived(run.runId, "owner").isEmpty())
+            val confirmed = store.confirmed(run.runId, "owner", upload.direction, upload.batchId, upload.itemCount)
+            assertEquals(3L, confirmed)
+            val reopened = SyncRunStore(storage.handler)
+            assertEquals(5L, reopened.plan(run.runId)!!.totalItems)
+            assertEquals(3L, reopened.get(run.runId)!!.confirmedItems)
+            assertEquals(5L, reopened.freezePlan(run.runId, "owner", emptyList()).totalItems)
+            val empty = reopened.start("space", 1, SyncTrigger.MANUAL)
+            assertTrue(reopened.claim(empty.runId, "next-owner", 1))
+            assertEquals(0L, reopened.freezePlan(empty.runId, "next-owner", emptyList()).totalItems)
+            assertEquals(0L, reopened.get(empty.runId)!!.plannedItems)
+        }
+    }
+
+    @Test
+    fun `frozen uploads execute actor sequences rather than reverse lexical batch ids`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            open().use { storage ->
+                storage.connect("ordered", repository)
+                storage.seedUploadBatch("z-first", 1, 256)
+                storage.seedUploadBatch("a-second", 257, 44)
+                val runs = SyncRunStore(storage.handler)
+                val run = runs.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runs.claim(run.runId, "owner", 1))
+                val result = SyncDatabaseExchange(
+                    storage.handler,
+                    storage.baseline,
+                    storage.projector,
+                    transport,
+                    secret,
+                    progress = runs.reporter(run.runId, "owner"),
+                ).exchange("space", 1, repository)
+                assertEquals(SyncRunStatus.SUCCESS, result.status, result.toString())
+                assertEquals(300, result.uploaded)
+                assertEquals(300L, runs.get(run.runId)!!.plannedItems)
+                assertEquals(300L, runs.get(run.runId)!!.confirmedItems)
+                assertEquals(
+                    300L,
+                    storage.handler.await {
+                        sync_journalQueries.countPublishedEvents("space", 1).executeAsOne()
+                    },
+                )
             }
         }
     }
@@ -130,6 +301,418 @@ abstract class SyncRuntimeStorageContract {
                 assertEquals(pending, isolated.onboarding.storage.pending(pending.accountId))
                 assertEquals(null, isolated.connection())
                 isolated.stopPanel()
+            }
+        }
+    }
+
+    @Test
+    fun `reopened frozen uploads preserve sequence after published confirmation interruption`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            open().use { storage ->
+                storage.connect("ordered", repository)
+                storage.seedUploadBatch("z-first", 1, 256)
+                storage.seedUploadBatch("m-second", 257, 256)
+                storage.seedUploadBatch("a-third", 513, 44)
+                val runs = SyncRunStore(storage.handler)
+                val run = runs.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runs.claim(run.runId, "owner", 1))
+                val reporter = runs.reporter(run.runId, "owner")
+                val interrupted = object : SyncProgressReporter by reporter {
+                    override suspend fun confirmed(direction: SyncProgressDirection, batchId: String, itemCount: Long) {
+                        assertEquals("z-first", batchId)
+                        throw CancellationException("stop after first ordered publication before confirmation")
+                    }
+                }
+                try {
+                    SyncDatabaseExchange(
+                        storage.handler,
+                        storage.baseline,
+                        storage.projector,
+                        transport,
+                        secret,
+                        progress = interrupted,
+                    ).exchange("space", 1, repository)
+                    org.junit.jupiter.api.Assertions.fail<Unit>("first sequence must publish before interruption")
+                } catch (_: CancellationException) {
+                    // Published outbox is durable; its planned safety confirmation remains to reconcile.
+                }
+                assertEquals(556L, runs.get(run.runId)!!.plannedItems)
+                assertEquals(0L, runs.get(run.runId)!!.confirmedItems)
+                assertTrue(runs.releaseForRecovery(run.runId))
+                val reopened = SyncRunStore(storage.handler)
+                assertTrue(reopened.claim(run.runId, "replacement", 2))
+                storage.favorite("/deferred-after-interruption")
+                val result = SyncDatabaseExchange(
+                    storage.handler,
+                    storage.baseline,
+                    storage.projector,
+                    transport,
+                    secret,
+                    progress = reopened.reporter(run.runId, "replacement"),
+                ).exchange("space", 1, repository)
+                assertEquals(SyncRunStatus.SUCCESS, result.status, result.toString())
+                assertEquals(300, result.uploaded)
+                assertEquals(556L, reopened.get(run.runId)!!.plannedItems)
+                assertEquals(556L, reopened.get(run.runId)!!.confirmedItems)
+                assertEquals(1, SyncLocalJournal(storage.handler).pendingEvents("space", 1).size)
+            }
+        }
+    }
+
+    @Test
+    fun `persistent run freezes both directions and defers new work without live progress`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            open().use { sender ->
+                repeat(3) { sender.favorite("/remote-plan-$it") }
+                sender.connect("sender", repository)
+                assertEquals(3, sender.exchange(transport, secret, repository).uploaded)
+                open().use { receiver ->
+                    repeat(2) { receiver.favorite("/local-plan-$it") }
+                    receiver.connect("receiver", repository)
+                    val runs = SyncRunStore(receiver.handler)
+                    val run = runs.start("space", 1, SyncTrigger.MANUAL)
+                    assertTrue(runs.claim(run.runId, "owner", 1))
+                    val receiptFrames = mutableListOf<Pair<Long?, Long>>()
+                    val observing = object : SyncTransportPort by transport {
+                        override suspend fun readBatch(
+                            snapshot: SyncSnapshot,
+                            entry: SyncBatchIndexEntry,
+                        ): Result<SyncEncryptedBatch> {
+                            val current = runs.get(run.runId)!!
+                            receiptFrames += current.plannedItems to current.confirmedItems
+                            if (receiptFrames.size == 1) receiver.favorite("/deferred-local")
+                            return transport.readBatch(snapshot, entry)
+                        }
+                    }
+                    val result = SyncDatabaseExchange(
+                        receiver.handler,
+                        receiver.baseline,
+                        receiver.projector,
+                        observing,
+                        secret,
+                        progress = runs.reporter(run.runId, "owner"),
+                    ).exchange("space", 1, repository)
+                    assertEquals(
+                        5L to 0L,
+                        receiptFrames.first(),
+                        "the first receipt must see the complete fixed plan",
+                    )
+                    assertEquals(SyncRunStatus.SUCCESS, result.status, "problem=${result.problem}")
+                    assertEquals(2, result.uploaded)
+                    assertEquals(3, result.downloaded)
+                    assertEquals(5L, runs.get(run.runId)!!.plannedItems)
+                    assertEquals(5L, runs.get(run.runId)!!.confirmedItems)
+                    assertEquals(1, SyncLocalJournal(receiver.handler).pendingEvents("space", 1).size)
+                    assertEquals(1, receiver.exchange(transport, secret, repository).uploaded)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `published plan member recovers safety confirmation once without extending the run`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            open().use { storage ->
+                storage.connect("recovery", repository)
+                storage.favorite("/published-before-stop")
+                val runs = SyncRunStore(storage.handler)
+                val run = runs.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runs.claim(run.runId, "owner", 1))
+                val persistent = runs.reporter(run.runId, "owner")
+                val interrupted = object : SyncProgressReporter by persistent {
+                    override suspend fun confirmed(
+                        direction: SyncProgressDirection,
+                        batchId: String,
+                        itemCount: Long,
+                    ) {
+                        throw CancellationException("fixture stops after durable publication")
+                    }
+                }
+                try {
+                    SyncDatabaseExchange(
+                        storage.handler,
+                        storage.baseline,
+                        storage.projector,
+                        transport,
+                        secret,
+                        progress = interrupted,
+                    ).exchange("space", 1, repository)
+                    org.junit.jupiter.api.Assertions.fail<Unit>("fixture must interrupt after publication")
+                } catch (_: CancellationException) {
+                    // Outbox acknowledgement committed; run confirmation did not.
+                }
+                assertEquals(1L, runs.get(run.runId)!!.plannedItems)
+                assertEquals(0L, runs.get(run.runId)!!.confirmedItems)
+                assertTrue(runs.releaseForRecovery(run.runId))
+                assertTrue(runs.claim(run.runId, "replacement", 2))
+                storage.favorite("/next-round")
+                repeat(2) {
+                    val result = SyncDatabaseExchange(
+                        storage.handler,
+                        storage.baseline,
+                        storage.projector,
+                        transport,
+                        secret,
+                        progress = runs.reporter(run.runId, "replacement"),
+                    ).exchange("space", 1, repository)
+                    assertEquals(SyncRunStatus.SUCCESS, result.status, "problem=${result.problem}")
+                    assertEquals(0, result.uploaded)
+                    assertEquals(1L, runs.get(run.runId)!!.plannedItems)
+                    assertEquals(1L, runs.get(run.runId)!!.confirmedItems)
+                }
+                assertEquals(1, SyncLocalJournal(storage.handler).pendingEvents("space", 1).size)
+            }
+        }
+    }
+
+    @Test
+    fun `frozen run defers remote discovery after the final ref changes`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            open().use { storage ->
+                storage.connect("receiver", repository)
+                storage.favorite("/planned-local")
+                val runs = SyncRunStore(storage.handler)
+                val run = runs.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runs.claim(run.runId, "owner", 1))
+                var latePublished = false
+                val observing = object : SyncTransportPort by transport {
+                    override suspend fun readCurrentHead(
+                        repository: SyncRepository,
+                        expectedSpaceId: String,
+                        expectedGeneration: Long,
+                    ): Result<String> {
+                        if (!latePublished) {
+                            latePublished = true
+                            val result = publishRemoteBatch(
+                                transport,
+                                remoteFavoriteBatch("late-plan-remote", "other-device", "/late-plan"),
+                            )
+                            assertEquals(SyncPublishStatus.PUBLISHED, result.status)
+                        }
+                        return transport.readCurrentHead(repository, expectedSpaceId, expectedGeneration)
+                    }
+                }
+                val result = SyncDatabaseExchange(
+                    storage.handler,
+                    storage.baseline,
+                    storage.projector,
+                    observing,
+                    secret,
+                    progress = runs.reporter(run.runId, "owner"),
+                ).exchange("space", 1, repository)
+                assertEquals(SyncRunStatus.SUCCESS, result.status)
+                assertEquals(1, result.uploaded)
+                assertEquals(0, result.downloaded)
+                assertEquals(1L, runs.get(run.runId)!!.plannedItems)
+                assertEquals(1L, runs.get(run.runId)!!.confirmedItems)
+                assertEquals(
+                    listOf("late-plan-remote"),
+                    SyncDiscoveryStore(storage.handler).allPending("space", 1).map { it.batchId },
+                )
+                assertEquals(1, storage.exchange(transport, secret, repository).downloaded)
+            }
+        }
+    }
+
+    @Test
+    fun `exchange freezes the complete authenticated discovery before the first batch read`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            val initial = transport.readSnapshot(repository, "space", 1).getOrThrow()
+            val service = SyncBatchSyncService(transport, secret)
+            val files = mutableMapOf<String, ByteArray>()
+            repeat(130) { index ->
+                val actor = "plan-device-$index"
+                val batch = remoteFavoriteBatch("plan-batch-$index", actor, "/large-plan-$index")
+                val upload = service.prepare(initial, batch, ".mihon-sync/batches/$actor/1/${batch.batchId}.json")
+                files[upload.encryptedBatch.path] =
+                    mihon.data.sync.transport.StoredSyncBatch.fromDomain(upload.encryptedBatch).body()
+                files[upload.indexPath] = upload.indexCiphertext.bytes
+                files[upload.headPath] = upload.headCiphertext.bytes
+            }
+            // One bounded fixture commit holds 130 genuine encrypted batches/index shards/heads.
+            git.replaceFiles(repository.branch, files)
+            open().use { storage ->
+                storage.connect("receiver", repository)
+                storage.favorite("/planned-upload")
+                val runs = SyncRunStore(storage.handler)
+                val run = runs.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runs.claim(run.runId, "owner", 1))
+                var firstRead: Pair<Long?, Long>? = null
+                val observing = object : SyncTransportPort by transport {
+                    override suspend fun readBatch(
+                        snapshot: SyncSnapshot,
+                        entry: SyncBatchIndexEntry,
+                    ): Result<SyncEncryptedBatch> {
+                        val current = runs.get(run.runId)!!
+                        firstRead = current.plannedItems to current.confirmedItems
+                        transport.readBatch(snapshot, entry).getOrThrow()
+                        // A real network-class interruption preserves discovery and confirms nothing.
+                        throw java.io.IOException("fixture stops after authenticating the first encrypted batch")
+                    }
+                }
+                val result = SyncDatabaseExchange(
+                    storage.handler,
+                    storage.baseline,
+                    storage.projector,
+                    observing,
+                    secret,
+                    progress = runs.reporter(run.runId, "owner"),
+                ).exchange("space", 1, repository)
+                assertEquals(131L to 0L, firstRead)
+                assertEquals(SyncRunStatus.FAILED, result.status)
+                assertEquals(mihon.domain.sync.runtime.SyncRunProblem.NETWORK, result.problem)
+                assertEquals(131L, runs.get(run.runId)!!.plannedItems)
+                assertEquals(0L, runs.get(run.runId)!!.confirmedItems)
+                assertEquals(131, runs.plan(run.runId)!!.batches.size)
+                assertEquals(130, SyncDiscoveryStore(storage.handler).allPending("space", 1).size)
+                assertEquals(1, SyncLocalJournal(storage.handler).pendingEvents("space", 1).size)
+                assertTrue(runs.confirmReceived(run.runId, "owner").isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun `complete discovery plan includes more than one execution page`() = runBlocking {
+        open().use { storage ->
+            storage.connect("discovery-plan", repository)
+            val entries = (0 until 130).map { index ->
+                SyncBatchIndexEntry(
+                    "remote-$index",
+                    ".mihon-sync/batches/a/1/remote-$index.json",
+                    "a".repeat(64),
+                    index.toLong() + 1,
+                    index.toLong() + 1,
+                )
+            }
+            val discovery = SyncDiscoveryStore(storage.handler)
+            discovery.observe(
+                SyncSnapshot(
+                    repository,
+                    "a".repeat(40),
+                    SyncGitTree("b".repeat(40), emptyList(), false),
+                    "space",
+                    1,
+                    entries,
+                ),
+            )
+            assertEquals(128, discovery.pending("space", 1).size)
+            val runs = SyncRunStore(storage.handler)
+            val run = runs.start("space", 1, SyncTrigger.MANUAL)
+            assertTrue(runs.claim(run.runId, "owner", 1))
+            val complete = discovery.allPending("space", 1)
+            assertEquals(130, complete.size)
+            assertEquals(
+                130L,
+                runs.freezePlan(
+                    run.runId,
+                    "owner",
+                    complete.map {
+                        SyncRunPlanBatch(
+                            SyncProgressDirection.DOWNLOAD,
+                            it.batchId,
+                            it.lastSeq - it.firstSeq + 1,
+                        )
+                    },
+                ).totalItems,
+            )
+            assertEquals(0L, runs.terminalSummary(run.runId)!!.pendingDownloadEvents)
+            assertTrue(!runs.hasUnconfirmedDownloads(run.runId, "owner"))
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking { runs.expectDownload(run.runId, "owner", "outside-plan", 1) }
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking {
+                    runs.confirmed(run.runId, "owner", SyncProgressDirection.UPLOAD, "outside", 1)
+                }
+            }
+            assertEquals(0L, runs.get(run.runId)!!.confirmedItems)
+            assertEquals(130L, runs.get(run.runId)!!.plannedItems)
+        }
+    }
+
+    @Test
+    fun `frozen run reconstructs legacy counts and rejects stale ownership atomically`() = runBlocking {
+        open().use { storage ->
+            storage.connect("legacy-plan", repository)
+            val runs = SyncRunStore(storage.handler)
+            val run = runs.start("space", 1, SyncTrigger.MANUAL)
+            assertTrue(runs.claim(run.runId, "owner", 1))
+            runs.confirmed(run.runId, "owner", SyncProgressDirection.UPLOAD, "old-upload", 3)
+            runs.expectDownload(run.runId, "owner", "old-download", 2)
+            assertNull(runs.get(run.runId)!!.plannedItems)
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking { runs.freezePlan(run.runId, "wrong-owner", emptyList()) }
+            }
+            assertNull(runs.plan(run.runId))
+            val plan = runs.freezePlan(run.runId, "owner", emptyList())
+            assertEquals(5L, plan.totalItems)
+            assertEquals(3L, runs.get(run.runId)!!.confirmedItems)
+            assertTrue(plan.batches.single { it.batchId == "old-upload" }.confirmed)
+            assertEquals(2L, runs.terminalSummary(run.runId)!!.pendingDownloadEvents)
+            assertTrue(
+                !runs.hasPlannedWork(run.runId),
+                "pending receipts alone must not create automatic recovery work",
+            )
+            val next = runs.start("space", 1, SyncTrigger.MANUAL)
+            assertTrue(runs.claim(next.runId, "next-owner", 1))
+            val valid = SyncRunPlanBatch(
+                SyncProgressDirection.UPLOAD,
+                "valid-member",
+                1,
+            )
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking {
+                    val invalid = valid.copy(batchId = "bad", itemCount = 0)
+                    runs.freezePlan(next.runId, "next-owner", listOf(valid, invalid))
+                }
+            }
+            assertNull(runs.plan(next.runId))
+            assertNull(
+                storage.handler.await {
+                    sync_runtimeQueries.getRuntimeConfirmation(next.runId, "UPLOAD", "valid-member")
+                        .executeAsOneOrNull()
+                },
+            )
+            SyncLocalJournal(storage.handler).disconnect("space", 1)
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking { runs.freezePlan(next.runId, "next-owner", listOf(valid)) }
+            }
+            assertNull(runs.plan(next.runId))
+        }
+    }
+
+    @Test
+    fun `frozen run with zero items succeeds after preflight with an explicit zero plan`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            open().use { storage ->
+                storage.connect("empty-plan", repository)
+                val runs = SyncRunStore(storage.handler)
+                val run = runs.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runs.claim(run.runId, "owner", 1))
+                val result = SyncDatabaseExchange(
+                    storage.handler,
+                    storage.baseline,
+                    storage.projector,
+                    transport,
+                    secret,
+                    progress = runs.reporter(run.runId, "owner"),
+                ).exchange("space", 1, repository)
+                assertEquals(SyncRunStatus.SUCCESS, result.status)
+                assertEquals(0L, runs.get(run.runId)!!.plannedItems)
+                assertEquals(0L, runs.get(run.runId)!!.confirmedItems)
+                assertTrue(!runs.hasUnfinishedPlan(run.runId, "owner"))
             }
         }
     }
@@ -454,6 +1037,17 @@ abstract class SyncRuntimeStorageContract {
         val baseline = SyncBaselineStore(handler, bootstrap)
         val projector =
             SyncInboxProjector(handler, SyncRemoteProjectionWriter(handler, creators, creators, bootstrap, { true }))
+        suspend fun seedUploadBatch(batchId: String, firstSeq: Long, count: Int) {
+            // Seed only an empty batch identity; actual repository mutations create all events and outbox rows.
+            handler.await {
+                val header = mihon.domain.sync.SyncBatchCodec.rawEncode(
+                    SyncBatch(1, "space", 1, batchId, emptyList()),
+                ).encodeToByteArray().size.toLong()
+                sync_journalQueries.insertBatch("space", 1, batchId, "ordered", 1, firstSeq, firstSeq, header)
+            }
+            repeat(count) { favorite("/$batchId-$it") }
+            handler.await { sync_journalQueries.sealBatch("space", 1, batchId) }
+        }
         suspend fun connect(
             actor: String,
             repository: SyncRepository,

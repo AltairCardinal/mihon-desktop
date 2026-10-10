@@ -6,6 +6,7 @@ import mihon.data.sync.http.SyncHttpException
 import mihon.data.sync.http.SyncHttpFailureClass
 import mihon.domain.sync.SyncBatch
 import mihon.domain.sync.crypto.SyncBatchEncryption
+import mihon.domain.sync.crypto.SyncBatchValidationException
 import mihon.domain.sync.crypto.SyncSecret
 import mihon.domain.sync.crypto.SyncSpaceMaterial
 import mihon.domain.sync.transport.SyncBatchIndexEntry
@@ -71,7 +72,15 @@ class SyncBatchSyncService(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            SyncReceiveResult(null, "sync batch could not be authenticated")
+            SyncReceiveResult(
+                null,
+                if (error is SyncBatchValidationException) {
+                    "${error.reason}: ${error.message}"
+                } else {
+                    "sync batch could not be authenticated"
+                },
+                java.util.Base64.getEncoder().encodeToString(encrypted.ciphertext.bytes),
+            )
         }
     }
 }

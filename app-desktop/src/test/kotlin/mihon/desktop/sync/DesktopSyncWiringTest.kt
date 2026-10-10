@@ -38,8 +38,11 @@ class DesktopSyncWiringTest {
             node.removeNode()
         }
     }
+
     @Test
-    fun `ordinary continuation stops when all chapters are read while history retains sync candidate`(@TempDir folder: File) = runBlocking {
+    fun `all read final chapters stop library detail and official history continuation`(
+        @TempDir folder: File,
+    ) = runBlocking {
         val node = Preferences.userRoot().node("mihon-sync-resume-di-" + UUID.randomUUID())
         val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node))
         try {
@@ -80,9 +83,9 @@ class DesktopSyncWiringTest {
             assertEquals(null, library)
             assertEquals(null, detail)
             val history = Injekt.get<tachiyomi.domain.history.interactor.GetHistory>().subscribe("").first().single()
-            val request = mihon.desktop.history.HistoryScreenModelFactory.create().readerRequestFor(history)
-            assertEquals(2, request?.initialPage)
-            assertTrue(request?.resumeSnapshot?.heads?.isNotEmpty() == true)
+            val model = mihon.desktop.history.HistoryScreenModelFactory.create()
+            assertEquals(null, model.readerRequestFor(history))
+            model.onDispose()
         } finally {
             context.closeAndJoin()
             node.removeNode()
@@ -118,6 +121,8 @@ class DesktopSyncWiringTest {
             assertEquals("", reopened.activeBulkJob(longSpace, 2).get())
             assertSame(runtime, Injekt.get<SyncRuntime>())
             assertSame(runtime.panel, mihon.desktop.DesktopUiDependencies.fromInjekt().syncPanel)
+            assertTrue(mihon.desktop.DesktopUiDependencies.fromInjekt().recoveryPackageInstaller != null)
+            assertSame(Injekt.get<mihon.desktop.update.InstallerTrust>(), Injekt.get<mihon.desktop.update.DesktopUpdateInstaller>().trust)
             assertTrue(Injekt.get<SyncSecureStore>() is DesktopSyncSecureStore)
             assertSame(runtime.coordinator, Injekt.get<DesktopSyncScheduler>().coordinator)
             assertEquals(SyncRunStatus.SKIPPED, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)

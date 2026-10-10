@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.github.arkon.FlexibleAdapter</groupId>
+  <artifactId>flexible-adapter</artifactId>
+  <version>c8013533</version>
+  <packaging>aar</packaging>
+  <name>FlexibleAdapter</name>
+  <description>Unmodified pinned artifact; publication metadata reconstructed from upstream commit c80135339bcff5f7f8c2c2380329dfc155b26232.</description>
+  <url>https://github.com/arkon/FlexibleAdapter</url>
+  <licenses><license><name>The Apache Software License, Version 2.0</name><url>https://www.apache.org/licenses/LICENSE-2.0.txt</url><distribution>repo</distribution></license></licenses>
+  <developers><developer><id>davideas</id><name>Davide Steduto</name></developer></developers>
+  <scm><url>https://github.com/arkon/FlexibleAdapter</url><connection>scm:git:https://github.com/arkon/FlexibleAdapter.git</connection><tag>c80135339bcff5f7f8c2c2380329dfc155b26232</tag></scm>
+  <dependencies><dependency><groupId>androidx.recyclerview</groupId><artifactId>recyclerview</artifactId><version>1.1.0</version><scope>runtime</scope></dependency></dependencies>
+</project>

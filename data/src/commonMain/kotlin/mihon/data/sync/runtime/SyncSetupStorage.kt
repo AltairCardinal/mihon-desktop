@@ -54,6 +54,7 @@ internal data class StoredSyncConnection(
     val material: StoredSyncMaterial,
     val actorId: String,
     val epoch: Long,
+    val switchIntentId: String? = null,
 ) {
     fun repository() = SyncRepository(owner, repository, branch)
     override fun toString(): String = "StoredSyncConnection(<redacted>)"
@@ -111,6 +112,8 @@ internal data class StoredSyncSetup(
     val defaultBranch: String? = null,
     val confirmedBootstrapCommitSha: String? = null,
     val confirmedBootstrapTreeSha: String? = null,
+    val switchIntentId: String? = null,
+    val settled: Boolean = false,
 ) {
     fun account() = SyncGitHubAccount(accountId, accountLogin)
     fun repository() = SyncRepository(owner, repository, branch)
@@ -142,6 +145,178 @@ internal data class StoredLegacySyncSetup(
 /** Versioned records contain only verified data keys, never the user's password or a password-derived KEK. */
 internal class SyncSetupStorage(private val secure: SyncSecureStore) {
     private val json = Json { encodeDefaults = true }
+
+    suspend fun unboundRecoveryFlow(): StoredUnboundSyncRecoveryFlow? =
+        secure.read("sync-recovery-unbound-v1")?.let { decode<StoredUnboundSyncRecoveryFlow>(it, 1) }
+
+    suspend fun saveUnboundRecoveryFlow(
+        value: StoredUnboundSyncRecoveryFlow,
+        expected: StoredUnboundSyncRecoveryFlow?,
+    ) {
+        val key = "sync-recovery-unbound-v1"
+        val before = secure.read(key)
+        require(
+            before?.let {
+                decode<StoredUnboundSyncRecoveryFlow>(it, 1)
+            } == expected,
+        ) { "sync recovery context changed" }
+        require(value.version == 1 && (value.accountId == null || value.accountId > 0))
+        require(value.repositoryId == null || value.repositoryId > 0)
+        val encoded = json.encodeToString(value)
+        require(encoded.length <= 64 * 1024)
+        if (!secure.compareAndSet(key, before, encoded)) throw SyncSecureStoreException()
+    }
+
+    suspend fun repositoryCreation(accountId: Long): mihon.data.sync.auth.SyncRepositoryCreationIntent? =
+        secure.read("sync-repository-creation-v1-$accountId")?.let {
+            decode<StoredSyncRepositoryCreation>(it, 1).intent.also { value ->
+                require(value.account.id == accountId && value.attemptId.matches(ATTEMPT_PATTERN))
+                require(value.repositoryId == null || value.repositoryId > 0)
+                SyncRepository(
+                    value.account.login,
+                    value.repositoryName,
+                    mihon.data.sync.auth.GitHubSyncSpaceClient.BRANCH,
+                )
+            }
+        }
+
+    suspend fun repositoryCreationArchive(attemptId: String): mihon.data.sync.auth.SyncRepositoryCreationIntent? {
+        require(attemptId.matches(ATTEMPT_PATTERN))
+        return secure.read("sync-repository-creation-archive-v1-$attemptId")?.let {
+            decode<StoredSyncRepositoryCreation>(it, 1).intent
+        }
+    }
+
+    suspend fun saveRepositoryCreation(
+        value: mihon.data.sync.auth.SyncRepositoryCreationIntent,
+        expected: mihon.data.sync.auth.SyncRepositoryCreationIntent?,
+    ) {
+        require(value.attemptId.matches(ATTEMPT_PATTERN))
+        val key = "sync-repository-creation-v1-${value.account.id}"
+        val before = secure.read(key)
+        require(
+            before?.let {
+                decode<StoredSyncRepositoryCreation>(it, 1).intent
+            } == expected,
+        ) { "repository creation changed" }
+        if (expected?.submitted == true) {
+            require(value.attemptId == expected.attemptId && value.repositoryName == expected.repositoryName)
+            require(expected.repositoryId == null || value.repositoryId == expected.repositoryId)
+        }
+        if (!secure.compareAndSet(
+                key,
+                before,
+                json.encodeToString(StoredSyncRepositoryCreation(intent = value)),
+            )
+        ) {
+            throw SyncSecureStoreException()
+        }
+    }
+
+    suspend fun archiveRepositoryCreation(value: mihon.data.sync.auth.SyncRepositoryCreationIntent) {
+        val key = "sync-repository-creation-archive-v1-${value.attemptId}"
+        val encoded = json.encodeToString(StoredSyncRepositoryCreation(intent = value))
+        val before = secure.read(key)
+        require(before == null || before == encoded)
+        if (before == null && !secure.compareAndSet(key, null, encoded)) throw SyncSecureStoreException()
+        val currentKey = "sync-repository-creation-v1-${value.account.id}"
+        val current = secure.read(currentKey)
+        if (current?.let { decode<StoredSyncRepositoryCreation>(it, 1).intent } == value &&
+            !secure.compareAndSet(currentKey, current, null)
+        ) {
+            throw SyncSecureStoreException()
+        }
+    }
+
+    suspend fun recoveryFlow(connection: StoredSyncConnection): StoredSyncRecoveryFlow? {
+        val descriptor = connection.material.material().descriptor
+        val raw =
+            secure.read(connectionKey(descriptor.spaceId, descriptor.generation) + "-recovery-flow-v1") ?: return null
+        return decode<StoredSyncRecoveryFlow>(raw, 1).takeIf { it.bindingRevision == connection.recoveryRevision() }
+    }
+
+    suspend fun saveRecoveryFlow(
+        connection: StoredSyncConnection,
+        value: StoredSyncRecoveryFlow,
+        expected: StoredSyncRecoveryFlow?,
+    ) {
+        val descriptor = connection.material.material().descriptor
+        require(value.version == 1 && value.bindingRevision == connection.recoveryRevision())
+        require(value.updatedAtMillis >= 0)
+        val current = connection(descriptor.spaceId, descriptor.generation)
+        require(current?.recoveryRevision() == value.bindingRevision) { "sync recovery target changed" }
+        val key = connectionKey(descriptor.spaceId, descriptor.generation) + "-recovery-flow-v1"
+        val before = secure.read(key)
+        val decoded = before?.let { decode<StoredSyncRecoveryFlow>(it, 1) }
+        require(
+            decoded?.takeIf {
+                it.bindingRevision == connection.recoveryRevision()
+            } == expected,
+        ) { "sync recovery flow changed" }
+        val encoded = json.encodeToString(value)
+        require(encoded.length <= 64 * 1024)
+        if (!secure.compareAndSet(key, before, encoded)) throw SyncSecureStoreException()
+    }
+
+    suspend fun recoveryObservation(connection: StoredSyncConnection): StoredSyncRecoveryObservation? {
+        val descriptor = connection.material.material().descriptor
+        val value = secure.read(connectionKey(descriptor.spaceId, descriptor.generation) + "-recovery-observation")
+            ?: return null
+        return decodeObservation(value)?.takeIf {
+            it.bindingRevision == connection.snapshotManifestBinding().connectionRevision
+        }
+    }
+
+    suspend fun updateRecoveryObservation(
+        connection: StoredSyncConnection,
+        update: (StoredSyncRecoveryObservation) -> StoredSyncRecoveryObservation,
+    ) {
+        val descriptor = connection.material.material().descriptor
+        val key = connectionKey(descriptor.spaceId, descriptor.generation) + "-recovery-observation"
+        val before = secure.read(key)
+        val decoded = before?.let(::decodeObservation)
+        // Unknown display records are never permission to rewrite a future format.
+        if (before != null && decoded == null) return
+        val revision = connection.snapshotManifestBinding().connectionRevision
+        val previous = decoded?.takeIf { it.bindingRevision == revision }
+            ?: StoredSyncRecoveryObservation(bindingRevision = revision)
+        val next = update(previous)
+        require(next.version == 1 && next.bindingRevision == revision)
+        val current = connection(descriptor.spaceId, descriptor.generation)
+        require(current?.snapshotManifestBinding()?.connectionRevision == revision) { "sync binding changed" }
+        if (!secure.compareAndSet(key, before, json.encodeToString(next))) throw SyncSecureStoreException()
+    }
+
+    private fun decodeObservation(value: String): StoredSyncRecoveryObservation? = try {
+        decode<StoredSyncRecoveryObservation>(value, 1).also {
+            require(it.lastCheckedAtMillis == null || it.lastCheckedAtMillis >= 0)
+            require(it.authorizationConfirmedAtMillis == null || it.authorizationConfirmedAtMillis >= 0)
+            require(it.credentialRevision == null || it.credentialRevision > 0)
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    suspend fun recovery(connection: StoredSyncConnection): SyncSpaceRecovery? {
+        val descriptor = connection.material.material().descriptor
+        val value = secure.read(connectionKey(descriptor.spaceId, descriptor.generation) + "-recovery") ?: return null
+        val recovery = decode<StoredSyncSpaceRecovery>(value, 1)
+        return recovery.takeIf { it.bindingRevision == connection.snapshotManifestBinding().connectionRevision }
+            ?.let { SyncSpaceRecovery(it.reason) }
+    }
+
+    suspend fun setRecovery(connection: StoredSyncConnection, reason: SyncSpaceRecoveryReason?) {
+        val descriptor = connection.material.material().descriptor
+        val key = connectionKey(descriptor.spaceId, descriptor.generation) + "-recovery"
+        val before = secure.read(key)
+        val revision = connection.snapshotManifestBinding().connectionRevision
+        val previous = before?.let { decode<StoredSyncSpaceRecovery>(it, 1) }
+        if (reason == null && previous?.bindingRevision != revision) return
+        val after = reason?.let {
+            json.encodeToString(StoredSyncSpaceRecovery(bindingRevision = revision, reason = it))
+        }
+        if (!secure.compareAndSet(key, before, after)) throw SyncSecureStoreException()
+    }
 
     suspend fun pending(accountId: Long): StoredSyncSetup? = secure.read(setupKey(accountId))?.let {
         decode<StoredSyncSetup>(it, 3).also { value ->
@@ -184,16 +359,53 @@ internal class SyncSetupStorage(private val secure: SyncSecureStore) {
 
     suspend fun save(value: StoredSyncSetup, expected: StoredSyncSetup?) {
         require(value.version == 3)
-        val key = setupKey(value.accountId)
+        val key = value.switchIntentId?.let(::switchSetupKey) ?: setupKey(value.accountId)
         val before = secure.read(key)
         require(before?.let { decode<StoredSyncSetup>(it, 3) } == expected) { "sync setup changed" }
         if (!secure.compareAndSet(key, before, json.encodeToString(value))) throw SyncSecureStoreException()
     }
 
     suspend fun clear(value: StoredSyncSetup) {
-        val key = setupKey(value.accountId)
+        if (value.switchIntentId != null) {
+            val settled = value.copy(settled = true)
+            if (setupFor(value) == settled) return
+            try {
+                save(settled, value)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                // Runtime and panel can observe the same drained queue; accept only the identical settled record.
+                if (setupFor(value) != settled) throw error
+            }
+            return
+        }
+        val key = value.switchIntentId?.let(::switchSetupKey) ?: setupKey(value.accountId)
         val before = secure.read(key) ?: return
         if (decode<StoredSyncSetup>(before, 3) != value) return
+        if (!secure.compareAndSet(key, before, null)) throw SyncSecureStoreException()
+    }
+
+    suspend fun archivedSetup(attemptId: String): StoredSyncSetup? {
+        require(attemptId.matches(ATTEMPT_PATTERN))
+        return secure.read("sync-setup-archive-v3-$attemptId")?.let {
+            decode<StoredSyncSetup>(it, 3).also { value ->
+                require(value.attemptId == attemptId)
+                value.material.material()
+                value.repository()
+            }
+        }
+    }
+
+    /** Preserve the exact original before removing only its active setup pointer after explicit replacement. */
+    suspend fun archivePending(value: StoredSyncSetup) {
+        require(value.switchIntentId == null && value.attemptId.matches(ATTEMPT_PATTERN))
+        val key = setupKey(value.accountId)
+        val before = secure.read(key) ?: return
+        require(decode<StoredSyncSetup>(before, 3) == value) { "sync setup changed" }
+        val archiveKey = "sync-setup-archive-v3-${value.attemptId}"
+        val previousArchive = secure.read(archiveKey)
+        require(previousArchive == null || previousArchive == before)
+        if (previousArchive == null && !secure.compareAndSet(archiveKey, null, before)) throw SyncSecureStoreException()
         if (!secure.compareAndSet(key, before, null)) throw SyncSecureStoreException()
     }
 
@@ -233,11 +445,98 @@ internal class SyncSetupStorage(private val secure: SyncSecureStore) {
         if (!secure.compareAndSet(key, before, json.encodeToString(value))) throw SyncSecureStoreException()
     }
 
+    suspend fun setupFor(value: StoredSyncSetup): StoredSyncSetup? =
+        value.switchIntentId?.let { switchSetup(it) } ?: pending(value.accountId)
+
+    suspend fun pendingForConnection(value: StoredSyncConnection): StoredSyncSetup? =
+        (value.switchIntentId?.let { switchSetup(it) } ?: pending(value.accountId))?.takeIf { !it.settled }
+
+    suspend fun switchSetup(intentId: String): StoredSyncSetup? =
+        secure.read(switchSetupKey(intentId))?.let { decode<StoredSyncSetup>(it, 3) }
+
+    suspend fun activeSwitch(accountId: Long): StoredSyncSpaceSwitch? {
+        val pointer = secure.read("sync-switch-pointer-v1-$accountId") ?: return null
+        val id = decode<StoredSyncSpaceSwitchPointer>(pointer, 1).intentId
+        var intent = requireNotNull(switchIntent(id))
+        require(intent.accountId == accountId)
+        if (intent.stage == SyncSpaceSwitchStage.PREPARING && intent.target == null) {
+            switchSetup(id)?.let { checkpoint ->
+                require(checkpoint.accountId == accountId && checkpoint.switchIntentId == id)
+                val repaired = intent.copy(target = checkpoint)
+                saveSwitch(repaired, intent)
+                intent = repaired
+            }
+        }
+        return intent
+    }
+
+    suspend fun switchIntent(intentId: String): StoredSyncSpaceSwitch? {
+        require(intentId.matches(ATTEMPT_PATTERN))
+        return secure.read("sync-switch-intent-v1-$intentId")?.let {
+            decode<StoredSyncSpaceSwitch>(it, 1).also { value ->
+                require(value.intentId == intentId && value.accountId == value.oldConnection.accountId)
+                require(value.oldBindingRevision == value.oldConnection.snapshotManifestBinding().connectionRevision)
+                require(value.previousIntentId == null || value.previousIntentId.matches(ATTEMPT_PATTERN))
+                require(value.previousIntentId != value.intentId)
+                require(value.target == null || value.target.switchIntentId == intentId)
+                require(value.targetConnection == null || value.targetConnection.switchIntentId == intentId)
+            }
+        }
+    }
+
+    suspend fun saveSwitch(value: StoredSyncSpaceSwitch, expected: StoredSyncSpaceSwitch?) {
+        require(value.version == 1 && value.intentId.matches(ATTEMPT_PATTERN))
+        val key = "sync-switch-intent-v1-${value.intentId}"
+        val before = secure.read(key)
+        require(before?.let { decode<StoredSyncSpaceSwitch>(it, 1) } == expected) { "sync switch changed" }
+        if (!secure.compareAndSet(key, before, json.encodeToString(value))) throw SyncSecureStoreException()
+    }
+
+    suspend fun startSwitch(value: StoredSyncSpaceSwitch) {
+        val key = "sync-switch-pointer-v1-${value.accountId}"
+        val before = secure.read(key)
+        before?.let {
+            val previous = requireNotNull(switchIntent(decode<StoredSyncSpaceSwitchPointer>(it, 1).intentId))
+            require(previous.stage in setOf(SyncSpaceSwitchStage.COMPLETE, SyncSpaceSwitchStage.CANCELLED))
+        }
+        saveSwitch(value, null)
+        val next = json.encodeToString(StoredSyncSpaceSwitchPointer(intentId = value.intentId))
+        if (!secure.compareAndSet(key, before, next)) throw SyncSecureStoreException()
+    }
+
+    suspend fun addressUpdate(spaceId: String, generation: Long): StoredSyncAddressUpdate? =
+        secure.read(connectionKey(spaceId, generation) + "-address-v1")?.let {
+            decode<StoredSyncAddressUpdate>(it, 1)
+        }
+
+    suspend fun saveAddressUpdate(value: StoredSyncAddressUpdate, expected: StoredSyncAddressUpdate?) {
+        val descriptor = value.before.material.material().descriptor
+        val key = connectionKey(descriptor.spaceId, descriptor.generation) + "-address-v1"
+        val before = secure.read(key)
+        require(before?.let { decode<StoredSyncAddressUpdate>(it, 1) } == expected)
+        require(
+            value.before.accountId == value.after.accountId &&
+                value.before.repositoryId == value.after.repositoryId,
+        )
+        require(
+            value.before.material == value.after.material && value.before.actorId == value.after.actorId &&
+                value.before.epoch == value.after.epoch,
+        )
+        if (!secure.compareAndSet(key, before, json.encodeToString(value))) throw SyncSecureStoreException()
+    }
+
+    private fun switchSetupKey(intentId: String): String {
+        require(intentId.matches(ATTEMPT_PATTERN))
+        return "sync-switch-setup-v1-$intentId"
+    }
+
     private inline fun <reified T> decode(value: String, expectedVersion: Int): T {
         require(value.length <= 64 * 1024) { "sync secure record exceeds limit" }
-        val version = runCatching {
+        val version = try {
             Json.parseToJsonElement(value).jsonObject["version"]?.jsonPrimitive?.intOrNull
-        }.getOrNull()
+        } catch (_: Exception) {
+            throw SyncSecureStoreException()
+        }
         if (version != expectedVersion) throw UnsupportedSyncSpace()
         return try {
             json.decodeFromString<T>(value)
@@ -265,4 +564,12 @@ internal class SyncSetupStorage(private val secure: SyncSecureStore) {
         val ATTEMPT_PATTERN = Regex("[A-Za-z0-9_-]{16,128}")
         val GIT_SHA_PATTERN = Regex("[0-9a-f]{40,64}")
     }
+}
+
+@Serializable
+internal data class StoredSyncRepositoryCreation(
+    val version: Int = 1,
+    val intent: mihon.data.sync.auth.SyncRepositoryCreationIntent,
+) {
+    override fun toString(): String = "StoredSyncRepositoryCreation(<redacted>)"
 }

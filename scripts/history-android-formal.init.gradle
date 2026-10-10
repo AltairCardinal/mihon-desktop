@@ -1,0 +1,24 @@
+// External instrumentation for the unchanged, signed production fork. Never changes host identity/R8/signing.
+gradle.beforeProject { project ->
+    project.pluginManager.withPlugin('com.android.application') {
+        if (project.path == ':app') {
+            project.extensions.getByName('androidComponents').finalizeDsl { android ->
+                if (android.defaultConfig.applicationId != 'app.mihon.desktop.fork' ||
+                    android.testBuildType != 'release' ||
+                    project.extensions.extraProperties.has('mihon.acceptanceIdentity')) {
+                    throw new GradleException('History instrumentation requires the ordinary release fork')
+                }
+                def release = android.buildTypes.getByName('release')
+                if (!release.minifyEnabled || !release.shrinkResources || release.debuggable || release.signingConfig != null) {
+                    throw new GradleException('History instrumentation must not alter formal release settings')
+                }
+                android.defaultConfig.testApplicationId = 'app.mihon.desktop.fork.test'
+                def tests = android.sourceSets.getByName('androidTest')
+                tests.java.setSrcDirs(['src/historyFormalAndroidTest/java'])
+                tests.assets.setSrcDirs([])
+                tests.manifest.srcFile('src/historyFormalAndroidTest/AndroidManifest.xml')
+            }
+            project.dependencies.add('androidTestImplementation', 'androidx.test.uiautomator:uiautomator:2.3.0')
+        }
+    }
+}

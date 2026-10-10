@@ -195,6 +195,14 @@ class AndroidSyncRuntimeWiringTest {
                 context.filesDir.resolve("sync-failures").absolutePath,
                 property(runtime, "failureLogDirectory").toString(),
             )
+            assertEquals(
+                context.cacheDir.resolve("sync-diagnostics").absolutePath,
+                runtime.diagnosticDirectory.toString(),
+            )
+            val diagnostic = runtime.diagnostics.capture(mihon.data.sync.runtime.SyncPanelState())
+            assertEquals(eu.kanade.tachiyomi.BuildConfig.VERSION_NAME, diagnostic.environment.appVersion)
+            assertEquals(eu.kanade.tachiyomi.BuildConfig.COMMIT_SHA, diagnostic.environment.sourceRevision)
+            assertEquals(eu.kanade.tachiyomi.BuildConfig.APPLICATION_ID, diagnostic.environment.releaseIdentity)
             val worker = TestListenableWorkerBuilder<SyncWorker>(context).build()
             assertEquals(ListenableWorker.Result.success(), worker.doWork())
             assertEquals(1L, runtime.coordinator.activity.value.completion)

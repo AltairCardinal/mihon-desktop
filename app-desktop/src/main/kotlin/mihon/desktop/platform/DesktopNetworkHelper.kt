@@ -82,6 +82,7 @@ class DesktopNetworkHelper(
     override val routeObservations: StateFlow<List<DesktopRouteObservation>> = routeMonitor.observations
     override val activeGlobalMode: GlobalNetworkMode = globalMode
     override val activeGlobalProxy: DesktopProxyRuntimeConfig? = proxyConfig
+    val activeDohProvider: DohProvider = dohProvider
 
     val cookieJar = DesktopCookieJar(
         storageFile = cookieStorageFile,

@@ -1,0 +1,3 @@
+# Preserve the exact upstream archive and license bytes in every checkout.
+*.aar binary -eol
+LICENSE -text -eol whitespace=-blank-at-eof

@@ -77,6 +77,7 @@ import tachiyomi.domain.manga.interactor.UpdateManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
+import tachiyomi.domain.source.service.toSourceChapter
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addFactory
@@ -187,7 +188,7 @@ class MangaDetailInteractionTest {
                 }
             }
             try {
-                withDetail(root, directorySources = listOf(source), mangaTransform = {
+                withDetail(root, completeCatalog = true, directorySources = listOf(source), mangaTransform = {
                     it.copy(source = source.id, url = "/manga/current-work")
                 }) { scene, model, manga, _ ->
                     scene.wheel(Offset(900f, 400f), -4f)
@@ -268,7 +269,7 @@ class MangaDetailInteractionTest {
                     return mockwebserver3.MockResponse.Builder().body(body).build()
                 }
             }
-            withDetail(root, directorySources = listOf(source), mangaTransform = {
+            withDetail(root, completeCatalog = true, directorySources = listOf(source), mangaTransform = {
                 it.copy(source = source.id, url = "/manga/wheel-work")
             }) { scene, model, manga, _ ->
                 scene.wheel(Offset(200f, 400f), -4f)
@@ -2510,7 +2511,7 @@ class MangaDetailInteractionTest {
     fun `narrow large font primary actions have real in-window bounds and sequential keyboard reachability`(
         @TempDir root: File,
     ) = runBlocking {
-        withDetail(root, mangaTransform = { it.copy(favorite = true) }, httpSource = true) { scene, _, _, _ ->
+        withDetail(root, completeCatalog = true, mangaTransform = { it.copy(favorite = true) }, httpSource = true) { scene, _, _, _ ->
             scene.resize(320, 680)
             scene.fontScale = 2f
             Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().themeMode.set(
@@ -4002,7 +4003,7 @@ class MangaDetailInteractionTest {
                     return mockwebserver3.MockResponse.Builder().body(body).build()
                 }
             }
-            withDetail(root, directorySources = listOf(source), mangaTransform = {
+            withDetail(root, completeCatalog = true, directorySources = listOf(source), mangaTransform = {
                 it.copy(source = source.id, url = "/manga/work")
             }) { scene, model, manga, chapters ->
                 val manager = Injekt.get<mihon.desktop.download.DesktopDownloadManager>()
@@ -4069,6 +4070,7 @@ class MangaDetailInteractionTest {
         coverPicker: CoverFilePicker? = null,
         httpSource: Boolean = false,
         directorySources: List<eu.kanade.tachiyomi.source.CatalogueSource>? = null,
+        completeCatalog: Boolean = false,
         downloadManagerFactory: (
             (mihon.desktop.download.DesktopDownloadManager) -> mihon.desktop.download.DesktopDownloadManager
         )? = null,
@@ -4138,7 +4140,7 @@ class MangaDetailInteractionTest {
                 assertTrue(mangas.update(MangaUpdate(manga.id, notes = requestedNotes)))
                 assertEquals(requestedNotes, mangas.getMangaById(manga.id).notes)
             }
-            val chapters = Injekt.get<ChapterRepository>().addAll(
+            val seededChapters = Injekt.get<ChapterRepository>().addAll(
                 (1..200).map { number ->
                     Chapter.create().copy(
                         mangaId = manga.id,
@@ -4149,6 +4151,14 @@ class MangaDetailInteractionTest {
                     )
                 },
             )
+            val chapters = if (completeCatalog) {
+                val writer = Injekt.get<tachiyomi.data.chapter.SourceChapterCatalogWriter>()
+                writer.transaction { writer.merge(manga, seededChapters.map { it.toSourceChapter() }) }
+                assertFalse(writer.needsRefresh(manga), "The event starts from a complete persisted directory")
+                Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id).sortedBy { it.sourceOrder }
+            } else {
+                seededChapters
+            }
             lateinit var model: MangaDetailScreenModel
             scene.setContent {
                 CompositionLocalProvider(

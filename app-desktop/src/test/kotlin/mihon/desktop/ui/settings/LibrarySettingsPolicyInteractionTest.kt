@@ -1281,15 +1281,44 @@ class LibrarySettingsPolicyInteractionTest {
                     }
                     val start = scene.labels(requireNotNull(scene.activeFocused()))
                     val visited = mutableSetOf<List<String>>()
+                    val focusTrace = mutableListOf<String>()
                     var closedLoop = false
                     for (step in 0 until 80) {
+                        val previousFocus = requireNotNull(scene.activeFocused())
+                        val previousLabels = scene.labels(previousFocus)
+                        var lastPlacedFocus: Triple<Int, Rect, Float?>? = null
+                        var stableFrames = 0
+                        // Beyond-bounds search may focus a temporary unplaced LazyColumn row.
+                        // Observe a placed visible target and settled scrolling before another key.
                         scene.key(Key.Tab, shift = shift)
-                        scene.renderUntil(message = "Native stage 24: default=$defaultDialog") {
-                            scene.activeFocused() !=
-                                null
+                        scene.renderUntil(
+                            message = "Native Tab did not advance: default=$defaultDialog shift=$shift " +
+                                "step=$step previous=${previousFocus.id}:$previousLabels",
+                        ) {
+                            val focused = scene.activeFocused()
+                            val list = scene.activeNodes().firstOrNull {
+                                it.config.contains(SemanticsProperties.VerticalScrollAxisRange)
+                            }
+                            val scroll = list?.config?.get(SemanticsProperties.VerticalScrollAxisRange)?.value?.invoke()
+                            val bounds = focused?.boundsInRoot
+                            val visibleHeight = list?.boundsInRoot?.height ?: 680f
+                            val placed = focused != null && focused.id != previousFocus.id &&
+                                focused.config.contains(SemanticsActions.RequestFocus) &&
+                                focused.layoutInfo.isAttached && focused.layoutInfo.isPlaced &&
+                                bounds != null && bounds.width > 0f && bounds.height > 0f &&
+                                bounds.height + .5f >= minOf(focused.layoutInfo.height.toFloat(), visibleHeight)
+                            val observed = if (placed) Triple(focused!!.id, bounds!!, scroll) else null
+                            stableFrames = if (observed != null && observed == lastPlacedFocus) stableFrames + 1 else 0
+                            lastPlacedFocus = observed
+                            stableFrames >= 2
                         }
                         val focused = requireNotNull(scene.activeFocused())
                         val identity = scene.labels(focused)
+                        val scroll = scene.activeNodes().firstOrNull {
+                            it.config.contains(SemanticsProperties.VerticalScrollAxisRange)
+                        }?.config?.get(SemanticsProperties.VerticalScrollAxisRange)?.value?.invoke()
+                        focusTrace += "$step ${previousFocus.id}:$previousLabels " +
+                            "-> ${focused.id}:$identity bounds=${focused.boundsInRoot} scroll=$scroll"
                         visited += identity
                         if (identity == start && visited.size > 1) {
                             closedLoop = true
@@ -1299,7 +1328,8 @@ class LibrarySettingsPolicyInteractionTest {
                     assertTrue(
                         closedLoop && visited.size >= 3,
                         "Native focus loop default=$defaultDialog shift=$shift start=$start visited=$visited " +
-                            "actual=" + scene.activeFocused()?.let(scene::labels),
+                            "actual=" + scene.activeFocused()?.let(scene::labels) +
+                            " tail=" + focusTrace.takeLast(12),
                     )
                 }
                 val lazy = scene.activeNodes().single { it.config.contains(SemanticsActions.ScrollToIndex) }

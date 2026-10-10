@@ -20,11 +20,14 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -105,6 +108,8 @@ data class DesktopReaderScreen(
     val localChapterPath: String? = null,
     @Transient val progressTracker: ReaderProgressTracker? = null,
     @Transient val resumeSnapshot: tachiyomi.domain.reader.model.ReadingSyncSnapshot? = null,
+    @Transient val opening: tachiyomi.domain.reader.model.ReaderOpenContext? = null,
+    val downloadedOnly: Boolean = false,
     @Transient val onProductionClosed: () -> Unit = {},
 ) : Screen {
 
@@ -125,10 +130,38 @@ data class DesktopReaderScreen(
                 dualPageOverride = isDualPage,
                 progressTrackerOverride = progressTracker,
                 onProductionClosed = onProductionClosed,
+                chapters = chapters,
+                opening = opening,
+                downloadedOnly = downloadedOnly,
             )
         }
         val runtime = checkNotNull(model.runtime)
+        DisposableEffect(runtime) {
+            val binding = if (progressTracker == null) {
+                mihon.desktop.test.http.ProductionReaderBinding(
+                    model,
+                    chapters,
+                    transition = { direction, nav -> requestAdjacentChapterTransition(direction, model, nav) },
+                    closeReader = { navigator.pop() },
+                    currentChapters = { model.state.value.chapterRefs },
+                )
+            } else {
+                null
+            }
+            binding?.let(mihon.desktop.test.http.ProductionReaderTestModeBridge::install)
+            onDispose { binding?.let(mihon.desktop.test.http.ProductionReaderTestModeBridge::clear) }
+        }
         val state by model.state.collectAsState()
+        var resumeNoticeDismissed by remember(state.context.chapterId) { mutableStateOf(false) }
+        if (state.resumePageUnavailable && !resumeNoticeDismissed) {
+            mihon.presentation.sync.SyncReadingPositionRecovery(
+                onChoose = {
+                    resumeNoticeDismissed = true
+                    if (!model.state.value.showUI) model.toggleUI()
+                },
+                onDismiss = { resumeNoticeDismissed = true },
+            )
+        }
         val notifications = LocalDesktopUiDependencies.current.notificationService
         LaunchedEffect(state.context.chapterId, state.resumePageUnavailable) {
             if (state.resumePageUnavailable) {
@@ -169,8 +202,8 @@ data class DesktopReaderScreen(
         val skipRead = state.skipReadChapters
         val skipFiltered = state.skipFilteredChapters
         val skipDuplicate = state.skipDuplicateChapters
-        val readerNav = remember(chapters, state.context.chapterIndex, skipRead, skipFiltered, skipDuplicate) {
-            chapters.takeIf { it.isNotEmpty() }?.let {
+        val readerNav = remember(state.chapterRefs, state.context.chapterIndex, skipRead, skipFiltered, skipDuplicate) {
+            state.chapterRefs.takeIf { it.isNotEmpty() }?.let {
                 ReaderNavigator(
                     chapters = it,
                     currentIndex = state.context.chapterIndex.coerceIn(it.indices),
@@ -297,7 +330,7 @@ data class DesktopReaderScreen(
             return false
         }
         model.clearChapterTransition()
-        model.activateChapter(chapterContext(target, direction))
+        model.activateChapter(chapterContext(target, direction, model.state.value.chapterRefs))
         return true
     }
 
@@ -308,7 +341,7 @@ data class DesktopReaderScreen(
         dualPage: Boolean,
     ) {
         val nextContext = readerNavigator?.nextToRead?.let { target ->
-            chapterContext(target, ReaderTransitionDirection.NEXT)
+            chapterContext(target, ReaderTransitionDirection.NEXT, model.state.value.chapterRefs)
         }
         val firstViewportPageCount = when {
             readingMode == ReadingMode.WEBTOON -> WEBTOON_FIRST_VIEWPORT_PAGES
@@ -321,6 +354,7 @@ data class DesktopReaderScreen(
     private fun chapterContext(
         target: ReaderChapterRef,
         direction: ReaderTransitionDirection,
+        refs: List<ReaderChapterRef> = chapters,
     ) = DesktopReaderChapterContext(
         chapterId = target.id,
         sourceId = sourceId,
@@ -328,7 +362,7 @@ data class DesktopReaderScreen(
         mangaTitle = mangaTitle,
         chapterTitle = target.name,
         chapterNumber = target.chapterNumber,
-        chapterIndex = ReaderNavigator.indexForId(chapters, target.id),
+        chapterIndex = ReaderNavigator.indexForId(refs, target.id),
         initialPage = initialPageForChapterNavigation(
             if (direction == ReaderTransitionDirection.PREVIOUS) {
                 ReaderChapterNavigationDirection.Previous
@@ -650,6 +684,13 @@ internal fun ReaderViewport(
                     modifier = Modifier.align(Alignment.TopCenter),
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.7f)),
                 )
+            }
+            if (state.resumePageUnavailable && state.showUI) {
+                Box(Modifier.align(Alignment.TopCenter).padding(top = 64.dp)) {
+                    mihon.presentation.sync.SyncReadingPositionConfirmation {
+                        model.confirmSyncResumePosition(model.state.value.currentPage)
+                    }
+                }
             }
         }
     }

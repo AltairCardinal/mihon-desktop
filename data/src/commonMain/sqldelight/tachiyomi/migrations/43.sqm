@@ -1,0 +1,3 @@
+-- Force published sync schema 43 through the production compatibility repair before upgrade.
+-- The existing index is a checkpoint only; partial families are rejected before this statement.
+CREATE INDEX IF NOT EXISTS chapter_url_alias_chapter ON chapter_url_aliases(chapter_id);

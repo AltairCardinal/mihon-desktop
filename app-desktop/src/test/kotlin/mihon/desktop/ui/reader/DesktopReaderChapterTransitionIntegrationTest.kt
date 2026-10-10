@@ -16,11 +16,11 @@ import kotlinx.coroutines.test.runTest
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.DesktopNotificationService
-import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.DesktopReaderChapterContentPortFactory
+import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.DesktopReaderEncodedPageStore
-import mihon.desktop.reader.DesktopReaderPageFetchPortFactory
 import mihon.desktop.reader.DesktopReaderPageContentOwner
+import mihon.desktop.reader.DesktopReaderPageFetchPortFactory
 import mihon.desktop.reader.DesktopReaderPageImagePipeline
 import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.DesktopReaderProgressPort
@@ -30,8 +30,8 @@ import mihon.desktop.reader.DesktopReaderSession
 import mihon.desktop.reader.DesktopReaderSessionState
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
-import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ReaderPageIoObserver
+import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.domain.reader.ReaderTransitionDirection
@@ -156,7 +156,10 @@ class DesktopReaderChapterTransitionIntegrationTest {
                 context,
                 ReaderSessionCore(ReaderChapterId(1L), sessionId = "boundary-test").snapshot,
             ),
-            onChapterActivated = { activations++; null },
+            onChapterActivated = {
+                activations++
+                null
+            },
         )
         val screen = DesktopReaderScreen(
             chapterTitle = "Chapter 1",
@@ -297,10 +300,11 @@ class DesktopReaderChapterTransitionIntegrationTest {
             },
             runtime = runtime,
         )
+        model.attachCatalog(chapters, null, null) { emptyList() }
         val productionClosedCallback = slot<() -> Unit>()
         val factory = mockk<DesktopReaderRuntimeFactory> {
             every {
-                createScreenModel(any(), any(), any(), any(), any(), capture(productionClosedCallback))
+                createScreenModel(any(), any(), any(), any(), any(), capture(productionClosedCallback), chapters, null)
             } returns model
         }
         val screen = DesktopReaderScreen(

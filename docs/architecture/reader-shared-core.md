@@ -415,6 +415,21 @@ Android `DualPagerPageHolder` 与 Desktop `DualPagePagerViewer` 的普通双页�
 5. 数据库、备份和 `last_page_read` 格式保持不变；encoded cache 是可丢弃派生数据。
 6. 迁移失败时回滚入口 wiring，不恢复长期双 scheduler、双 progress policy 或 renderer 内 source fallback。
 
+## Desktop 完整目录与作者归档的提交边界
+
+详情准备复用 `SourceChapterCatalogWriter.needsRefresh` 判断目录是否有完整、匹配当前漫画身份的观察证据；
+存在本地章节本身不代表目录已完整。Reader 的非删除式准备继续走原入口，不改成详情的 canonical 替换语义。
+Desktop 详情刷新通过既有下载变更保护调用 `commitDirectory`，复用 `ChapterRepository.syncDirectory` 的
+排序、删除及 phase 协议，不另建目录实现。
+
+网络抓取、下载预留、文件改名和后续文件 phase 均在数据库事务外。事务内核对漫画 ID、source、URL、
+归档自然键及 effects 身份，提交元数据和章节，再以已持久化元数据创建或更新作者归档作品、记录完整目录观察，
+核验数量和关联并确认 observation phase。无作者、非书库作品仍可形成完整目录证据；任一数据库写入或观察
+失败回滚整个提交，不能留下新作品身份、半套章节或虚假 COMPLETE。已存在的正 dateFetch 保留，仅补齐缺失值。
+
+文件 phase 未完成时保留既有恢复协议；不在事务内操作文件，也不提前确认文件完成。空远端目录和身份冲突
+通过详情原有错误与重试入口反馈。无归档 adapter 的旧构造仅保持 metadata-only 兼容，不能作为生产完整目录证明。
+
 ## Authority 分层维护规则
 
 - fixed-main 只证明固定原版用户语义；共享提取完成、可靠性加固或平台实现不能反向成为上游来源证据。

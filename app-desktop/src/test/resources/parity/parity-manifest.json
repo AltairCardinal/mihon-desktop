@@ -1217,7 +1217,7 @@
         {
           "path": "app/src/main/java/eu/kanade/domain/DomainModule.kt",
           "symbol": "override fun InjektRegistrar.registerInjectables",
-          "line": 148
+          "line": 149
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -1232,7 +1232,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "initDesktopDI(syncScope)",
-          "line": 106
+          "line": 120
         }
       ],
       "FIXTURE": [
@@ -1273,13 +1273,13 @@
               "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
               "symbol": "internal suspend fun startProductionDesktopApplication(",
               "kind": "PLATFORM_ADAPTER",
-              "line": 92
+              "line": 101
             },
             {
               "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
               "symbol": "internal suspend fun initUILayer(",
               "kind": "PLATFORM_ADAPTER",
-              "line": 934
+              "line": 960
             }
           ]
         },
@@ -4511,7 +4511,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 1365
+          "line": 1402
         }
       ],
       "FIXTURE": [
@@ -5089,7 +5089,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "CrashHandler.install()",
-          "line": 82
+          "line": 91
         }
       ],
       "FIXTURE": [
@@ -5663,7 +5663,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/App.kt",
           "symbol": "internal fun startSync(scope: CoroutineScope) {",
-          "line": 85
+          "line": 96
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -11983,7 +11983,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
           "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY",
-          "line": 1163
+            "line": 1146
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
@@ -21154,7 +21154,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "initialChapterFlags = { Injekt.get<SetMangaDefaultChapterFlags>().initialFlags() },",
-          "line": 798
+          "line": 818
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
@@ -31399,7 +31399,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
           "symbol": "private suspend fun loadChapter",
-          "line": 456
+          "line": 507
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt",
@@ -31467,7 +31467,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
           "symbol": "fun acceptSessionState",
-          "line": 171
+          "line": 239
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt",
@@ -31858,7 +31858,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt",
           "symbol": "readerPreferences.grayscale().changes()",
-          "line": 1074
+          "line": 1115
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt",
@@ -31878,12 +31878,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "ReaderViewportColorLayer(state.colorFilter)",
-          "line": 593
+          "line": 627
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "internal fun ReaderViewportColorLayer",
-          "line": 726
+          "line": 767
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
@@ -32058,7 +32058,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
           "symbol": "val submission = handle.submit(",
-          "line": 959
+          "line": 1025
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderProgressCoordinator.kt",
@@ -32082,7 +32082,7 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/tachiyomi/domain/reader/interactor/RecordReadingProgress.kt",
           "symbol": "class RecordReadingProgress",
-          "line": 9
+          "line": 11
         },
         {
           "kind": "SHARED",
@@ -32374,7 +32374,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
           "symbol": "filterAndroidReaderChapters(",
-          "line": 289
+          "line": 300
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/util/chapter/ChapterGetNextUnread.kt",
@@ -32421,7 +32421,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
           "symbol": "suspend fun persistViewerFlags(",
-          "line": 802
+          "line": 889
         }
       ],
       "FIXTURE": [
@@ -35181,7 +35181,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "downloadPolicy = { manga -> Injekt.get<FilterChaptersForDownload>().snapshot(manga) }",
-          "line": 831
+          "line": 852
         }
       ],
       "FIXTURE": [
@@ -36568,7 +36568,7 @@
         {
           "path": "app/src/main/java/eu/kanade/domain/manga/interactor/UpdateManga.kt",
           "symbol": "return tachiyomi.domain.source.service.sourceMangaMetadata(",
-          "line": 191
+          "line": 190
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -38387,8 +38387,8 @@
             {
               "id": "history.group",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "PARTIAL",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "NONE",
               "provenance": {
                 "fixedOriginal": {
@@ -38453,14 +38453,52 @@
                 "change": "CHANGED",
                 "followUpTask": "HI-01"
               },
-              "entry": "Desktop TAB `history` production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:212` (`override fun Content() {` / `val sections = remember(state.items) { groupHistoryByDate(state.items) }`).",
-              "feedback": "The action-specific Desktop production consumer is committed; confirmation policy is `NONE`. HI-01 owns only the remaining upstream-parity delta."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:201` (`state = shared,`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "The shared list displays local date groups and preference-aware localized headers; stable row keys preserve list position.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "state = shared,",
+                    "line": 201,
+                    "contextHash": "02783f40b7063a79a4b55a3d1ec1e58a0498f37d5fa142ccdb9682567d0e8ee7"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryController.kt",
+                    "symbol": "class HistoryController(",
+                    "locator": "if (date != null && date != previous) add(HistoryUiModel.Header(date))",
+                    "line": 275,
+                    "contextHash": "894f33fd88a7b54cc433561bef3ad12b30297404922e3e39b4e10af6e6ac79bd"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "presentation-history/src/commonMain/kotlin/mihon/presentation/history/HistoryContent.kt",
+                    "symbol": "fun HistoryContent(",
+                    "locator": "is HistoryUiModel.Header -> Text(",
+                    "line": 201,
+                    "contextHash": "e63df96a60b23539ea77492f8ba2766e0218c9a3f3ff45c62296c932b86763a6"
+                  }
+                ]
+              }
             },
             {
               "id": "history.search",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "PARTIAL",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "NONE",
               "provenance": {
                 "fixedOriginal": {
@@ -38524,14 +38562,52 @@
                 "status": "UNCHANGED",
                 "change": "UNCHANGED"
               },
-              "entry": "Desktop TAB `history` production entry -> `app-desktop/src/main/kotlin/mihon/desktop/history/HistoryScreenModel.kt:42` (`suspend fun loadHistory(query: String = state.value.searchQuery) {` / `suspend fun loadHistory(query: String = state.value.searchQuery) {`).",
-              "feedback": "The action-specific Desktop production consumer is committed; confirmation policy is `NONE`. HI-01 owns only the remaining upstream-parity delta."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:203` (`onSearchQueryChange = model::updateSearchQuery,`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "Native search preserves caret and selection, clears/closes in place, and the revision-qualified shared list distinguishes no results from no recent history.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "onSearchQueryChange = model::updateSearchQuery,",
+                    "line": 203,
+                    "contextHash": "96a98347cb1c51836dcf9b0cef76966f4bd7eba4640f574d96355c84085edb4a"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryController.kt",
+                    "symbol": "class HistoryController(",
+                    "locator": "getHistory.subscribe(query.orEmpty())",
+                    "line": 130,
+                    "contextHash": "1acb14bfe8e489ddbea193f251c846ec34c8d912ea0b766ee9373b258498b9d8"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "presentation-history/src/commonMain/kotlin/mihon/presentation/history/HistoryContent.kt",
+                    "symbol": "fun HistoryContent(",
+                    "locator": "MR.strings.no_results_found",
+                    "line": 187,
+                    "contextHash": "72c3d162ca2e7e83ead4cb158e65f9d14eea093da7342dbb68911742eee67949"
+                  }
+                ]
+              }
             },
             {
               "id": "history.delete-one",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "GAP",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "REQUIRED",
               "confirmationReason": "确认删除该条阅读历史。",
               "provenance": {
@@ -38582,14 +38658,52 @@
                 "change": "MOVED_OR_REMOVED",
                 "followUpTask": "HI-01"
               },
-              "entry": "Desktop TAB `history` has no committed entry for `history.delete-one`.",
-              "feedback": "No action-specific Desktop result/error feedback is committed; HI-01 must add the entry, feedback, and confirmation behavior (`REQUIRED`)."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:210` (`onDelete = { item -> model.controller.setDialog(tachiyomi.domain.history.service.HistoryDialog.Delete(item)) },`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "Confirmation defaults to this entry; the named checkbox selects all chapters for the work. Cancel/Escape writes nothing and restores valid focus; confirmed removal reacts through the shared list.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "onDelete = { item -> model.controller.setDialog(tachiyomi.domain.history.service.HistoryDialog.Delete(item)) },",
+                    "line": 210,
+                    "contextHash": "6b7bb86a0a1cbfae356a3089d5ce88ad19c1c599a673db350185f644caa5f36f"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryController.kt",
+                    "symbol": "class HistoryController(",
+                    "locator": "if (all) removeHistory.await(item.mangaId) else removeHistory.await(item)",
+                    "line": 256,
+                    "contextHash": "8037f262b7958d797ef64d63b6465aa26337aced43f5817a9d6c9dd63658c796"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "presentation-history/src/commonMain/kotlin/mihon/presentation/history/HistoryDialogs.kt",
+                    "symbol": "fun HistoryDeleteDialog(",
+                    "locator": "onDelete(all)",
+                    "line": 49,
+                    "contextHash": "549e110c32376a85c0da2f5a60011ccc823d530bff37d0709961b40a3ed42a2b"
+                  }
+                ]
+              }
             },
             {
               "id": "history.clear",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "PARTIAL",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "REQUIRED",
               "confirmationReason": "确认清空全部阅读历史。",
               "provenance": {
@@ -38654,14 +38768,52 @@
                 "status": "UNCHANGED",
                 "change": "UNCHANGED"
               },
-              "entry": "Desktop TAB `history` production entry -> `app-desktop/src/main/kotlin/mihon/desktop/history/HistoryScreenModel.kt:56` (`suspend fun clearAllHistory() {` / `suspend fun clearAllHistory() {`).",
-              "feedback": "The action-specific Desktop production consumer is committed; confirmation policy is `REQUIRED`. HI-01 owns only the remaining upstream-parity delta."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:211` (`onClear = { model.controller.setDialog(tachiyomi.domain.history.service.HistoryDialog.DeleteAll) },`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "The always-reachable toolbar action opens confirmation. Successful removal updates the list and shows completion; false does not fabricate success.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "onClear = { model.controller.setDialog(tachiyomi.domain.history.service.HistoryDialog.DeleteAll) },",
+                    "line": 211,
+                    "contextHash": "a34471fc7c42ed61cf4761fc025deff53681b32e5a76af49a30da3f9d242727c"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryController.kt",
+                    "symbol": "class HistoryController(",
+                    "locator": "if (success) eventChannel.send(HistoryEvent.HistoryCleared)",
+                    "line": 261,
+                    "contextHash": "ab3cb1919fbc1dca831185443eabb40e342d749502f702c913a5e8e331d52319"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "tachiyomi.domain.history.service.HistoryEvent.HistoryCleared -> snackbar.showSnackbar(MR.strings.clear_history_completed.localized())",
+                    "line": 194,
+                    "contextHash": "753262418835d194a630cad3a1ed99d37df7e7440864f2148e1354e78e722c5b"
+                  }
+                ]
+              }
             },
             {
               "id": "history.resume",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "GAP",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "NONE",
               "provenance": {
                 "fixedOriginal": {
@@ -38717,14 +38869,52 @@
                 "status": "UNCHANGED",
                 "change": "UNCHANGED"
               },
-              "entry": "Desktop TAB `history` has no committed entry for `history.resume`.",
-              "feedback": "No action-specific Desktop result/error feedback is committed; HI-01 must add the entry, feedback, and confirmation behavior (`NONE`)."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:208` (`onResume = openReader,`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "The row opens the official selected chapter with atomic chapter-specific context. The mounted Reader presents the requested page/spread; valid no-chapter/error deliveries use the existing snackbar.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "onResume = openReader,",
+                    "line": 208,
+                    "contextHash": "ed2015de38300bfbf4aaf4f63c2a509dc1f9e4bf2a9c5317abfd04106f870ac0"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/history/HistoryScreenModel.kt",
+                    "symbol": "internal suspend fun readerDeliveryFor(",
+                    "locator": "val request = mihon.desktop.reader.selectedDesktopReaderOpenContext(manga, chapters, chapter, readingProgress, isDownloaded)",
+                    "line": 89,
+                    "contextHash": "6f41dea327308c4fe2380ef9c7d19aa7fcd0394320313119aa7791df81c1a56c"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "navigator.push(request.toReaderScreen(model::cancelRead))",
+                    "line": 174,
+                    "contextHash": "11e89467ad15073f7a4eefdf22abc9973313e25ec7f9c15dd93bb8981b6d9df9"
+                  }
+                ]
+              }
             },
             {
               "id": "history.next-chapter",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "GAP",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "NONE",
               "provenance": {
                 "fixedOriginal": {
@@ -38774,14 +38964,52 @@
                 "change": "CHANGED",
                 "followUpTask": "HI-01"
               },
-              "entry": "Desktop TAB `history` has no committed entry for `history.next-chapter`.",
-              "feedback": "No action-specific Desktop result/error feedback is committed; HI-01 must add the entry, feedback, and confirmation behavior (`NONE`)."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:185` (`val unregister = navigationHost.registerReselectHandler { openReader(null) }`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "History tab reselect resolves global recent history through shared GetNextChapters independently of search. One live request delivers one Reader navigation or existing no-next-chapter feedback.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "val unregister = navigationHost.registerReselectHandler { openReader(null) }",
+                    "line": 185,
+                    "contextHash": "168f9bd1c4e3292d82d3902d20fd3cc18e819f37ccdf576920e28d2b8497565d"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryController.kt",
+                    "symbol": "class HistoryController(",
+                    "locator": "suspend fun latestChapter(): Chapter? = requireNotNull(getNextChapters).await(onlyUnread = false).firstOrNull()",
+                    "line": 235,
+                    "contextHash": "184b855e652e66aba7b2406b91b361c37590408cd18c9fd2dc662d700a1ac27f"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "navigator.push(request.toReaderScreen(model::cancelRead))",
+                    "line": 174,
+                    "contextHash": "11e89467ad15073f7a4eefdf22abc9973313e25ec7f9c15dd93bb8981b6d9df9"
+                  }
+                ]
+              }
             },
             {
               "id": "history.add-library",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "GAP",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "NONE",
               "provenance": {
                 "fixedOriginal": {
@@ -38831,14 +39059,52 @@
                 "change": "MOVED_OR_REMOVED",
                 "followUpTask": "HI-01"
               },
-              "entry": "Desktop TAB `history` has no committed entry for `history.add-library`.",
-              "feedback": "No action-specific Desktop result/error feedback is committed; HI-01 must add the entry, feedback, and confirmation behavior (`NONE`)."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:209` (`onFavorite = { item -> scope.launch { model.controller.addFavorite(item.mangaId) } },`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "The non-favorite action persists membership using shared default/category/duplicate decisions and existing enhanced tracking timing. Successful reactive membership removes the add action; failures use shared error feedback.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "onFavorite = { item -> scope.launch { model.controller.addFavorite(item.mangaId) } },",
+                    "line": 209,
+                    "contextHash": "f50e65280f8ebfa965857170820289173424ae7f5383f21602c0b3d577ad8862"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryFavoriteActions.kt",
+                    "symbol": "class HistoryFavoriteActions(",
+                    "locator": "when (val result = updateMembership.await(manga, true, categories)) {",
+                    "line": 72,
+                    "contextHash": "febf2e1790454488445ce7dac238c7cba9970d3d202edd058b05193f00e0946a"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "presentation-history/src/commonMain/kotlin/mihon/presentation/history/HistoryContent.kt",
+                    "symbol": "private fun HistoryItem(",
+                    "locator": "onClick = { onFavorite(item) },",
+                    "line": 285,
+                    "contextHash": "6127f6e3e5a33cad39adab6ecf036080022a71e8a031f8cf2c336a695f08a81e"
+                  }
+                ]
+              }
             },
             {
               "id": "history.choose-categories",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "GAP",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "NONE",
               "provenance": {
                 "fixedOriginal": {
@@ -38888,14 +39154,52 @@
                 "change": "MOVED_OR_REMOVED",
                 "followUpTask": "HI-01"
               },
-              "entry": "Desktop TAB `history` has no committed entry for `history.choose-categories`.",
-              "feedback": "No action-specific Desktop result/error feedback is committed; HI-01 must add the entry, feedback, and confirmation behavior (`NONE`)."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:137` (`onConfirm = { scope.launch { model.controller.confirmCategory() } },`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "The real chooser displays named category checkboxes. Confirm persists membership/categories and dismisses; cancel writes no membership, and returning from category management preserves valid current selections.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "onConfirm = { scope.launch { model.controller.confirmCategory() } },",
+                    "line": 137,
+                    "contextHash": "089b955f4312bfb3009be96a143ba0832a8253109f4e80e855a48c698f83248e"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryFavoriteActions.kt",
+                    "symbol": "class HistoryFavoriteActions(",
+                    "locator": "commit(current, categoryIds)",
+                    "line": 68,
+                    "contextHash": "4b5d36e17b93274966975301a18834487e035655e9339e6b50768b31b4fd15a6"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "presentation-history/src/commonMain/kotlin/mihon/presentation/history/HistoryFavoriteDialogs.kt",
+                    "symbol": "fun HistoryCategoryDialog(",
+                    "locator": "TextButton(onClick = onConfirm, modifier = Modifier.testTag(\"history_category_confirm\")) {",
+                    "line": 55,
+                    "contextHash": "4e06abaca2b7f1fe8553bf3b0950ea9174ebe26076b791e9be1f5118e415202d"
+                  }
+                ]
+              }
             },
             {
               "id": "history.duplicate",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "GAP",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "NONE",
               "provenance": {
                 "fixedOriginal": {
@@ -38952,14 +39256,52 @@
                 "change": "CHANGED",
                 "followUpTask": "HI-01"
               },
-              "entry": "Desktop TAB `history` has no committed entry for `history.duplicate`.",
-              "feedback": "No action-specific Desktop result/error feedback is committed; HI-01 must add the entry, feedback, and confirmation behavior (`NONE`)."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:144` (`onConfirm = { scope.launch { model.controller.addFavorite(dialog.manga.id, allowDuplicate = true) } },`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "The duplicate dialog offers cancel, still-add, opening the existing work, and migration. Cancel writes nothing; still-add follows the shared membership decision.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "onConfirm = { scope.launch { model.controller.addFavorite(dialog.manga.id, allowDuplicate = true) } },",
+                    "line": 144,
+                    "contextHash": "4fbfb72fc0be38e0c73bfade2d25e09ed193465bf9d83fcc0d6c1fb3a80e5c9d"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryFavoriteActions.kt",
+                    "symbol": "class HistoryFavoriteActions(",
+                    "locator": "onDialog(HistoryDialog.Duplicate(manga, duplicates))",
+                    "line": 34,
+                    "contextHash": "e4b9741c7854c89bd434ce975be87710fbb2c1c8c1a39d8b796c83b147f68e27"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "presentation-history/src/commonMain/kotlin/mihon/presentation/history/HistoryFavoriteDialogs.kt",
+                    "symbol": "fun HistoryDuplicateDialog(",
+                    "locator": "onMigrate(duplicate.manga)",
+                    "line": 90,
+                    "contextHash": "d54e285265a58504266436dd0b37fdd934f0a0235c679e6c9153d640cbf49aaf"
+                  }
+                ]
+              }
             },
             {
               "id": "history.migrate",
               "migrationTag": "direct-reuse",
-              "implementationStatus": "GAP",
-              "followUpTask": "HI-01",
+              "implementationStatus": "PRESENT",
+              "followUpTask": "NONE",
               "confirmation": "NONE",
               "provenance": {
                 "fixedOriginal": {
@@ -39009,8 +39351,46 @@
                 "change": "CHANGED",
                 "followUpTask": "HI-01"
               },
-              "entry": "Desktop TAB `history` has no committed entry for `history.migrate`.",
-              "feedback": "No action-specific Desktop result/error feedback is committed; HI-01 must add the entry, feedback, and confirmation behavior (`NONE`)."
+              "entry": "Desktop History production entry -> `app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt:149` (`onMigrate = { model.controller.showMigration(it, dialog.manga) },`); currentDesktopEvidence records the executed shared/platform effect and visible feedback.",
+              "feedback": "The existing migration confirmation uses current=existing duplicate and target=clicked history work. Cancel leaves membership untouched; confirmed operations call the real source/migration port, with shared failure feedback.",
+              "currentDesktopEvidence": {
+                "task": "HP01/HP02",
+                "revision": "current-fork@c060f8b41032d56688764316d638a424b945af5d",
+                "evidenceReport": "docs/evidence/history-upstream-parity-2026-10-04.md",
+                "authorityBoundary": "NR0-01 provenance/source graph are the frozen historical baseline; these current anchors record subsequently implemented and verified history behavior.",
+                "anchors": [
+                  {
+                    "roles": [
+                      "ENTRY"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryTab.kt",
+                    "symbol": "internal fun ContentWithModel(",
+                    "locator": "onMigrate = { model.controller.showMigration(it, dialog.manga) },",
+                    "line": 149,
+                    "contextHash": "e0b8c2fa5095a721e7ea4e4144c5d2ac54e48240bcc404606d2098e1ff081dba"
+                  },
+                  {
+                    "roles": [
+                      "EFFECT"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryFavoriteAdapters.kt",
+                    "symbol": "internal fun HistoryMigrationDialog(",
+                    "locator": "dependencies.migrateManga.await(dialog.current, remote, target.source, chapters, options, replace)",
+                    "line": 52,
+                    "contextHash": "809d2ad25d6a35a55f3a9304f57c1f484688864cfd80eaf3fbf56cdd77c3e783"
+                  },
+                  {
+                    "roles": [
+                      "FEEDBACK"
+                    ],
+                    "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/history/HistoryFavoriteAdapters.kt",
+                    "symbol": "internal fun HistoryMigrationDialog(",
+                    "locator": "MigrationConfirmDialog(dialog.current.title, dialog.target.title, onDismiss, { migrate(it, false) }, { migrate(it, true) }, onOpenCurrent)",
+                    "line": 61,
+                    "contextHash": "47c4062186b22a1a7dc6ce8488a24fdddf234db4dc696ce201a64eb2b8282d94"
+                  }
+                ]
+              }
             }
           ],
           "sourceEntryIds": {
@@ -39242,7 +39622,7 @@
     },
     "status": "VERIFIED",
     "authoritativeImplementation": "Fixed-main HistoryScreenModel observes GetHistory and removes entries through RemoveHistory.",
-    "desktopImplementation": "Desktop HistoryScreenModel consumes shared history/chapter/manga use cases",
+    "desktopImplementation": "Android and Desktop consume the same HistoryController state; Desktop history and detail use the selected Reader opening adapter.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       {
@@ -39253,7 +39633,7 @@
     "sharedImplementationPaths": [
       "domain/src/commonMain/kotlin/tachiyomi/domain/history/interactor/GetHistory.kt",
       "domain/src/commonMain/kotlin/tachiyomi/domain/history/interactor/RemoveHistory.kt",
-      "data/src/commonMain/kotlin/mihon/data/sync/inbox/SyncHistoryPolicy.kt"
+      "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryController.kt"
     ],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/eu/kanade/tachiyomi/ui/history/HistoryScreenModel.kt"
@@ -39273,8 +39653,8 @@
       "CURRENT_ANDROID": [
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/history/HistoryScreenModel.kt",
-          "symbol": "getHistory.subscribe(query ?: \"\")",
-          "line": 74
+          "symbol": "val state = controller.state",
+          "line": 60
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -39283,13 +39663,19 @@
           "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/interactor/GetHistory.kt",
           "symbol": "class GetHistory",
           "line": 8
+        },
+        {
+          "kind": "SHARED",
+          "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/service/HistoryController.kt",
+          "symbol": "class HistoryController(",
+          "line": 65
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/history/HistoryScreenModel.kt",
-          "symbol": "getHistory.subscribe(query).first()",
-          "line": 45
+          "symbol": "val state = controller.state",
+          "line": 32
         }
       ],
       "FIXTURE": [
@@ -39302,8 +39688,7 @@
       ]
     },
     "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/history/HistoryScreenModelTest.kt",
-      "data/src/commonTest/kotlin/mihon/data/sync/SyncHistorySuppressionContract.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/history/HistoryScreenModelTest.kt"
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/history/HistoryScreenModelTest.kt": [
@@ -39324,18 +39709,6 @@
       }
     },
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
-    "interactionIterationEvidence": {
-      "RI13": {
-        "behaviorMethods": {
-          "data/src/commonTest/kotlin/mihon/data/sync/SyncHistorySuppressionContract.kt": [
-            "relinked current URL cannot bypass an accepted canonical chapter history clear"
-          ]
-        },
-        "evidenceReport": "docs/evidence/desktop-interaction-iteration-2026-09-30.md",
-        "verification": "108 unique affected methods passed; 0 skipped; exact historical behaviorMethods retained."
-      }
-    },
-    "verificationScope": " RI13 canonical chapter identity protects accepted history clear after relink, retaining immutable prior journals and existing read/page/duration semantics. Local aliases do not extend the old sync wire protocol.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -40883,7 +41256,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationSearchScreen.kt",
           "symbol": "data class MigrationSearchScreen(",
-          "line": 87
+          "line": 89
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopMigrationFiles.kt",
@@ -41761,7 +42134,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/migration/DesktopBatchMigrationController.kt",
           "symbol": "fun checkpointAccepts(",
-          "line": 563
+          "line": 574
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationBatchQueueScreen.kt",
@@ -45508,14 +45881,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/data/RestoreBackupScreen.kt",
                   "symbol": "private fun validate(uri: Uri) {",
                   "locator": "canRestore = false,",
-                  "line": 198,
+                  "line": 194,
                   "contextHash": "405b145290d54143727d7220dc573a1d1e17d9b644e407b5f84a905dad8ee2e5"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/data/RestoreBackupScreen.kt",
                   "symbol": "private fun validate(uri: Uri) {",
                   "locator": "canRestore = false,",
-                  "line": 220,
+                  "line": 194,
                   "contextHash": "405b145290d54143727d7220dc573a1d1e17d9b644e407b5f84a905dad8ee2e5"
                 },
                 "summary": "backup-restore.precheck: action locator and context are unchanged at tracked upstream.",
@@ -45571,14 +45944,14 @@
                   "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt",
                   "symbol": "suspend fun restore(uri: Uri, options: RestoreOptions) {",
                   "locator": "suspend fun restore(uri: Uri, options: RestoreOptions) {",
-                  "line": 48,
+                  "line": 65,
                   "contextHash": "fc144d311312ed44413f8a6b477269e456278378edd9a4b8f09343686869cec5"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt",
                   "symbol": "suspend fun restore(uri: Uri, options: RestoreOptions) {",
                   "locator": "suspend fun restore(uri: Uri, options: RestoreOptions) {",
-                  "line": 60,
+                  "line": 65,
                   "contextHash": "fc144d311312ed44413f8a6b477269e456278378edd9a4b8f09343686869cec5"
                 },
                 "summary": "backup-restore.options: action locator and context are unchanged at tracked upstream.",
@@ -45714,7 +46087,7 @@
                   "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt",
                   "symbol": "class BackupRestorer(",
                   "locator": "private var restoreProgress = 0",
-                  "line": 40,
+                  "line": 39,
                   "contextHash": "30c811328daafda7d7b70d10655d15a32e99ae1b7d239ac8ee5b80bacbe92f93"
                 },
                 "summary": "backup-restore.progress: the fixed action locator is absent from the tracked version of the same path.",
@@ -45779,14 +46152,14 @@
                   "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestoreJob.kt",
                   "symbol": "override suspend fun doWork(): Result {",
                   "locator": "context.cancelNotification(Notifications.ID_RESTORE_PROGRESS)",
-                  "line": 56,
+                  "line": 32,
                   "contextHash": "8aad6281a60e6371d7a566f7e5538dafbdae25c2b7c52deb0eeb85ce1981405e"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestoreJob.kt",
                   "symbol": "override suspend fun doWork(): Result {",
                   "locator": "context.cancelNotification(Notifications.ID_RESTORE_PROGRESS)",
-                  "line": 56,
+                  "line": 32,
                   "contextHash": "8aad6281a60e6371d7a566f7e5538dafbdae25c2b7c52deb0eeb85ce1981405e"
                 },
                 "summary": "backup-restore.cancel: action locator and context are unchanged at tracked upstream.",
@@ -46054,7 +46427,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt",
           "symbol": "suspend fun restore",
-          "line": 61
+          "line": 65
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -47647,7 +48020,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "internal fun wireDesktopOpenUriEvents",
-          "line": 668
+          "line": 703
         }
       ],
       "FIXTURE": [
@@ -52900,14 +53273,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "title = stringResource(MR.strings.pref_dump_crash_logs),",
-                  "line": 93,
+                  "line": 81,
                   "contextHash": "a214bfcfbeef4f71df26f421efa33cda3cd0b45a845ee9d51b6fc89e09d1a7ea"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "title = stringResource(MR.strings.pref_dump_crash_logs),",
-                  "line": 90,
+                  "line": 81,
                   "contextHash": "a214bfcfbeef4f71df26f421efa33cda3cd0b45a845ee9d51b6fc89e09d1a7ea"
                 },
                 "summary": "advanced.dump-crash-logs: action locator and context are unchanged at tracked upstream.",
@@ -52963,14 +53336,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "preference = networkPreferences.verboseLogging,",
-                  "line": 102,
+                  "line": 81,
                   "contextHash": "d5459a952445252e0b3db93563bb621fa9636b9c218679b3182802d4bec3eae4"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "preference = networkPreferences.verboseLogging,",
-                  "line": 99,
+                  "line": 81,
                   "contextHash": "d5459a952445252e0b3db93563bb621fa9636b9c218679b3182802d4bec3eae4"
                 },
                 "summary": "advanced.verbose-logging: action locator and context are unchanged at tracked upstream.",
@@ -53026,14 +53399,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "onClick = { navigator.push(DebugInfoScreen()) },",
-                  "line": 112,
+                  "line": 81,
                   "contextHash": "e37e01fb6a067edda4698ebb24659d21c03c19ac14ff450c14bd5a6f36f3c450"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "onClick = { navigator.push(DebugInfoScreen()) },",
-                  "line": 109,
+                  "line": 81,
                   "contextHash": "e37e01fb6a067edda4698ebb24659d21c03c19ac14ff450c14bd5a6f36f3c450"
                 },
                 "summary": "advanced.debug-info: action locator and context are unchanged at tracked upstream.",
@@ -53089,14 +53462,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "onClick = { navigator.push(OnboardingScreen()) },",
-                  "line": 116,
+                  "line": 81,
                   "contextHash": "eeb567eaca03150ee1bdfe7707f545b965f1a5062ef84c493eb855a14031a1b1"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "onClick = { navigator.push(OnboardingScreen()) },",
-                  "line": 113,
+                  "line": 81,
                   "contextHash": "eeb567eaca03150ee1bdfe7707f545b965f1a5062ef84c493eb855a14031a1b1"
                 },
                 "summary": "advanced.onboarding-guide: action locator and context are unchanged at tracked upstream.",
@@ -53152,14 +53525,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {",
-                  "line": 121,
+                  "line": 81,
                   "contextHash": "c5507019daca8f75e192dd69beb37c8d24cb126e19fcaf3a4135f15fb15b4796"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "override fun getPreferences(): List<Preference> {",
                   "locator": "val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {",
-                  "line": 118,
+                  "line": 81,
                   "contextHash": "c5507019daca8f75e192dd69beb37c8d24cb126e19fcaf3a4135f15fb15b4796"
                 },
                 "summary": "advanced.manage-notifications: action locator and context are unchanged at tracked upstream.",
@@ -53215,14 +53588,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getBackgroundActivityGroup(): Preference.PreferenceGroup {",
                   "locator": "context.toast(MR.strings.battery_optimization_disabled)",
-                  "line": 162,
+                  "line": 136,
                   "contextHash": "2a87eb7e82a0dc2b3f920d77b3517bcbe33d6717e5eb089d107382ad5fbfcb70"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getBackgroundActivityGroup(): Preference.PreferenceGroup {",
                   "locator": "context.toast(MR.strings.battery_optimization_disabled)",
-                  "line": 159,
+                  "line": 136,
                   "contextHash": "2a87eb7e82a0dc2b3f920d77b3517bcbe33d6717e5eb089d107382ad5fbfcb70"
                 },
                 "summary": "advanced.battery-optimization: action locator and context are unchanged at tracked upstream.",
@@ -53278,14 +53651,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getBackgroundActivityGroup(): Preference.PreferenceGroup {",
                   "locator": "private fun getBackgroundActivityGroup(): Preference.PreferenceGroup {",
-                  "line": 137,
+                  "line": 136,
                   "contextHash": "eb056bc314874c483f6e641e4a7db2510a8c55dd549c15b7906c269efdbdd094"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getBackgroundActivityGroup(): Preference.PreferenceGroup {",
                   "locator": "private fun getBackgroundActivityGroup(): Preference.PreferenceGroup {",
-                  "line": 134,
+                  "line": 136,
                   "contextHash": "eb056bc314874c483f6e641e4a7db2510a8c55dd549c15b7906c269efdbdd094"
                 },
                 "summary": "advanced.background-help: action locator and context are unchanged at tracked upstream.",
@@ -53341,14 +53714,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getDataGroup(): Preference.PreferenceGroup {",
                   "locator": "context.toast(MR.strings.download_cache_invalidated)",
-                  "line": 188,
+                  "line": 175,
                   "contextHash": "d1276ab922fbe942b7b17717c54706d7522c68c9583df6bb03aa420b25d74553"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getDataGroup(): Preference.PreferenceGroup {",
                   "locator": "context.toast(MR.strings.download_cache_invalidated)",
-                  "line": 185,
+                  "line": 175,
                   "contextHash": "d1276ab922fbe942b7b17717c54706d7522c68c9583df6bb03aa420b25d74553"
                 },
                 "summary": "advanced.download-reindex: action locator and context are unchanged at tracked upstream.",
@@ -53477,14 +53850,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "networkHelper.cookieJar.removeAll()",
-                  "line": 216,
+                  "line": 203,
                   "contextHash": "45c041c967507b834774324c926b271cd8e05b53b329c7d710341b1f5c310743"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "networkHelper.cookieJar.removeAll()",
-                  "line": 213,
+                  "line": 203,
                   "contextHash": "a98b800fa73763b98a63d733049f51038667cf40713736c343010dab1a62c6cb"
                 },
                 "summary": "advanced.clear-cookies: action locator remains, but its local production context changed at tracked upstream.",
@@ -53542,14 +53915,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "context.applicationInfo?.dataDir?.let { File(\"$it/app_webview/\").deleteRecursively() }",
-                  "line": 232,
+                  "line": 203,
                   "contextHash": "c47e381cc6c9c030289c19fb931daf11207631d8051e3d2e9ea77ec32e6b35b0"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "context.applicationInfo?.dataDir?.let { File(\"$it/app_webview/\").deleteRecursively() }",
-                  "line": 229,
+                  "line": 203,
                   "contextHash": "c47e381cc6c9c030289c19fb931daf11207631d8051e3d2e9ea77ec32e6b35b0"
                 },
                 "summary": "advanced.clear-webview-data: action locator and context are unchanged at tracked upstream.",
@@ -53605,14 +53978,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "preference = networkPreferences.dohProvider,",
-                  "line": 241,
+                  "line": 203,
                   "contextHash": "85e65ea1070f059a34bb8a3335e54656795ebc739ec72e29d391ca2d8430a5c7"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "preference = networkPreferences.dohProvider,",
-                  "line": 238,
+                  "line": 203,
                   "contextHash": "79dd2103dfdd41c98ca6505b6a7d03f6c87179e8f66c2240996b9f402b60fc06"
                 },
                 "summary": "advanced.doh-provider: action locator remains, but its local production context changed at tracked upstream.",
@@ -53669,14 +54042,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "preference = userAgentPref,",
-                  "line": 264,
+                  "line": 203,
                   "contextHash": "e6f76df437a740d7cc58fc3599ee14ab2da464638348296f86f557e86925aaae"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "preference = userAgentPref,",
-                  "line": 261,
+                  "line": 203,
                   "contextHash": "e6f76df437a740d7cc58fc3599ee14ab2da464638348296f86f557e86925aaae"
                 },
                 "summary": "advanced.user-agent: action locator and context are unchanged at tracked upstream.",
@@ -53733,14 +54106,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "userAgentPref.delete()",
-                  "line": 282,
+                  "line": 203,
                   "contextHash": "ac4c5d3c418a65bc9ce400aa31e051900935573d0eba340ff9067717ef66691d"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getNetworkGroup(",
                   "locator": "userAgentPref.delete()",
-                  "line": 279,
+                  "line": 203,
                   "contextHash": "ac4c5d3c418a65bc9ce400aa31e051900935573d0eba340ff9067717ef66691d"
                 },
                 "summary": "advanced.reset-user-agent: action locator and context are unchanged at tracked upstream.",
@@ -53796,14 +54169,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getLibraryGroup(",
                   "locator": "onClick = { MetadataUpdateJob.startNow(context) },",
-                  "line": 302,
+                  "line": 298,
                   "contextHash": "93b32ea6d562b0f462ea1014cc565f7a68943d74bf2276cd806df47537773d05"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getLibraryGroup(",
                   "locator": "onClick = { MetadataUpdateJob.startNow(context) },",
-                  "line": 299,
+                  "line": 298,
                   "contextHash": "bdbb08fad5529108221d20af23f3ca4a97f8ab6c71cb53bd24c15108ee4e0140"
                 },
                 "summary": "advanced.refresh-library-covers: action locator remains, but its local production context changed at tracked upstream.",
@@ -53861,14 +54234,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getLibraryGroup(",
                   "locator": "val success = Injekt.get<ResetViewerFlags>().await()",
-                  "line": 309,
+                  "line": 298,
                   "contextHash": "05638c4b75fc3f4f5691c94216dade429f36860f479a5b183511a1ceb77719ef"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getLibraryGroup(",
                   "locator": "val success = Injekt.get<ResetViewerFlags>().await()",
-                  "line": 306,
+                  "line": 298,
                   "contextHash": "05638c4b75fc3f4f5691c94216dade429f36860f479a5b183511a1ceb77719ef"
                 },
                 "summary": "advanced.reset-viewer-flags: action locator and context are unchanged at tracked upstream.",
@@ -53924,14 +54297,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getLibraryGroup(",
                   "locator": "preference = libraryPreferences.updateMangaTitles,",
-                  "line": 322,
+                  "line": 298,
                   "contextHash": "c5ba93911a030576cede5e074300104b4e580f06662d298e7ae99a1e03f0a7ee"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getLibraryGroup(",
                   "locator": "preference = libraryPreferences.updateMangaTitles,",
-                  "line": 319,
+                  "line": 298,
                   "contextHash": "c5ba93911a030576cede5e074300104b4e580f06662d298e7ae99a1e03f0a7ee"
                 },
                 "summary": "advanced.update-manga-titles: action locator and context are unchanged at tracked upstream.",
@@ -53987,14 +54360,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getLibraryGroup(",
                   "locator": "preference = libraryPreferences.disallowNonAsciiFilenames,",
-                  "line": 327,
+                  "line": 298,
                   "contextHash": "10d74f3d1e311c73b41e1170525f431c53b79a1c8bd3e845bffea7069fed915b"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getLibraryGroup(",
                   "locator": "preference = libraryPreferences.disallowNonAsciiFilenames,",
-                  "line": 324,
+                  "line": 298,
                   "contextHash": "10d74f3d1e311c73b41e1170525f431c53b79a1c8bd3e845bffea7069fed915b"
                 },
                 "summary": "advanced.ascii-filenames: action locator and context are unchanged at tracked upstream.",
@@ -54050,14 +54423,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getExtensionsGroup(",
                   "locator": "preference = extensionInstallerPref,",
-                  "line": 425,
+                  "line": 396,
                   "contextHash": "f19cfc908bf90a4a2cfb8b871e962e8b7bbc8a3d6e83e87221ade64abd261eca"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getExtensionsGroup(",
                   "locator": "preference = extensionInstallerPref,",
-                  "line": 421,
+                  "line": 396,
                   "contextHash": "da3d36d16f989d96296fa63ddadffd71915fc08e655d5901e900aef9831df0fb"
                 },
                 "summary": "advanced.extension-installer: action locator remains, but its local production context changed at tracked upstream.",
@@ -54115,14 +54488,14 @@
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getExtensionsGroup(",
                   "locator": "trustExtension.revokeAll()",
-                  "line": 452,
+                  "line": 396,
                   "contextHash": "2fe9075792a0881e7841be5c75d5605cef9451cd806a1837d01e6491b9f8318a"
                 },
                 "tracked": {
                   "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
                   "symbol": "private fun getExtensionsGroup(",
                   "locator": "trustExtension.revokeAll()",
-                  "line": 447,
+                  "line": 396,
                   "contextHash": "2fe9075792a0881e7841be5c75d5605cef9451cd806a1837d01e6491b9f8318a"
                 },
                 "summary": "advanced.revoke-extension-trust: action locator and context are unchanged at tracked upstream.",
@@ -56820,7 +57193,7 @@
         {
           "path": "app/build.gradle.kts",
           "symbol": "implementation(projects.domain)",
-          "line": 320
+          "line": 327
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -57519,12 +57892,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.initialize",
-          "line": 254
+          "line": 257
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.startApp",
-          "line": 256
+          "line": 259
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",

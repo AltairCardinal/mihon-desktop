@@ -264,6 +264,8 @@ class DesktopDiWiringTest {
             assertNotNull(Injekt.get<DesktopExtensionApi>())
             assertNotNull(Injekt.get<DesktopDownloadIdentityResolver>())
             assertNotNull(Injekt.get<DesktopReaderRuntimeFactory>())
+            assertNotNull(Injekt.get<mihon.desktop.domain.SourceChapterCatalogWriter>())
+            assertNotNull(Injekt.get<mihon.desktop.domain.SaveSourceMangaForDetails>())
             assertNotNull(Injekt.get<ChapterPairingRepository>())
             assertSame(
                 Injekt.get<DesktopChapterPairingCoordinator>(),

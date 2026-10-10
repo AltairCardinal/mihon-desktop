@@ -20,26 +20,26 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonObject
+import mihon.desktop.migration.BatchMigrationRequest
+import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.test.state.applicationState
 import mihon.desktop.test.state.downloadState
 import mihon.desktop.test.state.historyState
 import mihon.desktop.test.state.readerState
 import mihon.desktop.test.state.updatesState
-import mihon.desktop.ui.browse.SourceBrowseTestFailureCode
-import mihon.desktop.ui.browse.SourceBrowseTestModeBridge
-import mihon.desktop.ui.browse.SourceBrowseTestSnapshot
-import java.time.Instant
-import mihon.desktop.migration.BatchMigrationRequest
-import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.tracking.TrackingTestFailureCode
 import mihon.desktop.tracking.TrackingTestModeController
 import mihon.desktop.tracking.TrackingTestState
+import mihon.desktop.ui.browse.SourceBrowseTestFailureCode
+import mihon.desktop.ui.browse.SourceBrowseTestModeBridge
+import mihon.desktop.ui.browse.SourceBrowseTestSnapshot
 import mihon.desktop.ui.settings.DesktopUpdateIntent
 import mihon.desktop.ui.settings.DesktopUpdateScreenModel
 import mihon.desktop.ui.settings.presentation
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicReference
 
 object MigrationBatchTestBridge {
@@ -159,98 +159,100 @@ internal fun currentTestStateJson(updateModel: DesktopUpdateScreenModel? = null)
     val settings = SettingsTestModeBridge.controller?.snapshot()
     val tracking = TrackingTestBridge.controller?.snapshot()
     val authors = AuthorArchiveTestModeBridge.controller?.snapshot()
-    return jsonText(buildJsonObject {
-        put("currentScreen", JsonPrimitive(state.currentScreen.value ?: "HomeScreen"))
-        put("isLoading", JsonPrimitive(state.isLoading.value))
-        put("appLocked", JsonPrimitive(state.appLocked.value))
-        put("notifications", JsonArray(emptyList()))
-        put("screens", JsonArray(state.screens.value.map(::JsonPrimitive)))
-        put("actions", JsonArray(state.actions.value.map(::JsonPrimitive)))
-        put("testMode", JsonPrimitive(state.testMode))
-        put("downloadQueueSize", JsonPrimitive(downloads?.rows?.size ?: dlState.queueSize))
-        put("downloadsPaused", JsonPrimitive(downloads?.paused ?: dlState.isPaused))
-        put("updateCount", JsonPrimitive(updates?.rows?.size ?: upState.count))
-        put("hasUnreadUpdates", JsonPrimitive(updates?.rows?.any { !it.read } ?: upState.hasUnread))
-        put("historyCount", JsonPrimitive(history?.rows?.size ?: histState.count))
-        put("migrationQueueCount", JsonPrimitive(migrationQueues))
-        val update = updateModel?.state?.value?.presentation()
-        put("updateStatus", update?.status?.let(::JsonPrimitive) ?: JsonNull)
-        put("updateProgress", update?.progress?.let(::JsonPrimitive) ?: JsonNull)
-        put("updateReleasePage", update?.releasePage?.let(::JsonPrimitive) ?: JsonNull)
-        put("timestamp", JsonPrimitive(Instant.now().toString()))
-        put(
-            "updates",
-            updates?.let {
-                Json.encodeToJsonElement(UpdatesTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "downloads",
-            downloads?.let {
-                Json.encodeToJsonElement(DownloadTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "history",
-            history?.let {
-                Json.encodeToJsonElement(HistoryTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "backup",
-            backup?.let {
-                Json.encodeToJsonElement(BackupTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "settings",
-            settings?.let {
-                Json.encodeToJsonElement(SettingsTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "tracking",
-            tracking?.let {
-                Json.encodeToJsonElement(TrackingTestState.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "authors",
-            authors?.let {
-                Json.encodeToJsonElement(AuthorArchiveTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "extension",
-            SourceExtensionTestModeBridge.controller?.snapshot()?.let {
-                Json.encodeToJsonElement(SourceExtensionTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "browse",
-            BrowseSearchTestModeBridge.controller?.snapshot()?.let {
-                Json.encodeToJsonElement(BrowseSearchTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "source",
-            SourceBrowseTestModeBridge.port?.snapshot()?.let {
-                Json.encodeToJsonElement(SourceBrowseTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "library",
-            LibraryMangaTestModeBridge.controller?.snapshot()?.let {
-                Json.encodeToJsonElement(LibraryTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-        put(
-            "detail",
-            LibraryMangaTestModeBridge.controller?.detailSnapshot()?.let {
-                Json.encodeToJsonElement(MangaDetailTestSnapshot.serializer(), it)
-            } ?: JsonNull,
-        )
-    })
+    return jsonText(
+        buildJsonObject {
+            put("currentScreen", JsonPrimitive(state.currentScreen.value ?: "HomeScreen"))
+            put("isLoading", JsonPrimitive(state.isLoading.value))
+            put("appLocked", JsonPrimitive(state.appLocked.value))
+            put("notifications", JsonArray(emptyList()))
+            put("screens", JsonArray(state.screens.value.map(::JsonPrimitive)))
+            put("actions", JsonArray(state.actions.value.map(::JsonPrimitive)))
+            put("testMode", JsonPrimitive(state.testMode))
+            put("downloadQueueSize", JsonPrimitive(downloads?.rows?.size ?: dlState.queueSize))
+            put("downloadsPaused", JsonPrimitive(downloads?.paused ?: dlState.isPaused))
+            put("updateCount", JsonPrimitive(updates?.rows?.size ?: upState.count))
+            put("hasUnreadUpdates", JsonPrimitive(updates?.rows?.any { !it.read } ?: upState.hasUnread))
+            put("historyCount", JsonPrimitive(history?.rows?.size ?: histState.count))
+            put("migrationQueueCount", JsonPrimitive(migrationQueues))
+            val update = updateModel?.state?.value?.presentation()
+            put("updateStatus", update?.status?.let(::JsonPrimitive) ?: JsonNull)
+            put("updateProgress", update?.progress?.let(::JsonPrimitive) ?: JsonNull)
+            put("updateReleasePage", update?.releasePage?.let(::JsonPrimitive) ?: JsonNull)
+            put("timestamp", JsonPrimitive(Instant.now().toString()))
+            put(
+                "updates",
+                updates?.let {
+                    Json.encodeToJsonElement(UpdatesTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "downloads",
+                downloads?.let {
+                    Json.encodeToJsonElement(DownloadTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "history",
+                history?.let {
+                    Json.encodeToJsonElement(HistoryTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "backup",
+                backup?.let {
+                    Json.encodeToJsonElement(BackupTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "settings",
+                settings?.let {
+                    Json.encodeToJsonElement(SettingsTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "tracking",
+                tracking?.let {
+                    Json.encodeToJsonElement(TrackingTestState.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "authors",
+                authors?.let {
+                    Json.encodeToJsonElement(AuthorArchiveTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "extension",
+                SourceExtensionTestModeBridge.controller?.snapshot()?.let {
+                    Json.encodeToJsonElement(SourceExtensionTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "browse",
+                BrowseSearchTestModeBridge.controller?.snapshot()?.let {
+                    Json.encodeToJsonElement(BrowseSearchTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "source",
+                SourceBrowseTestModeBridge.port?.snapshot()?.let {
+                    Json.encodeToJsonElement(SourceBrowseTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "library",
+                LibraryMangaTestModeBridge.controller?.snapshot()?.let {
+                    Json.encodeToJsonElement(LibraryTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+            put(
+                "detail",
+                LibraryMangaTestModeBridge.controller?.detailSnapshot()?.let {
+                    Json.encodeToJsonElement(MangaDetailTestSnapshot.serializer(), it)
+                } ?: JsonNull,
+            )
+        },
+    )
 }
 
 private fun actionJson(
@@ -300,6 +302,7 @@ internal fun Application.testHttpServer(
 ) {
     routing {
         syncTestRoutes(syncPanel, syncSecureStore)
+        historyCatalogTestRoutes()
         // Health check
         get("/test/health") {
             call.respondText(
@@ -686,91 +689,93 @@ internal fun Application.testHttpServer(
             val trackingResult = trackingController?.execute(action, params)
 
             // Process actions
-            if (!isExtensionAction && !isLibraryAction && !isBrowseAction && !isSourceLoginAction && !isDownloadAction && !isUpdatesAction && !isHistoryAction && !isBackupAction && !isSettingsAction && !isTrackingAction) when (action) {
-                // Read chapter - open reader
-                "read_chapter", "start_reading" -> {
-                    val mangaId = params["mangaId"]?.toLongOrNull()
-                        ?: params["mangaIndex"]?.toLongOrNull()
-                        ?: params["chapterId"]?.toLongOrNull()
-                        ?: 0L
-                    if (mangaId > 0) {
-                        val chapterId = params["chapterId"]?.toLongOrNull() ?: mangaId
-                        val chapterTitle = params["chapterTitle"] ?: "Chapter ${params["chapterIndex"] ?: 0}"
-                        val dualPage = params["dualPage"]?.toBooleanStrictOrNull()
-                        if (params.containsKey("dualPage") && dualPage == null) {
-                            call.respondText(
-                                jsonText(actionJson(action, false, "INVALID_DUAL_PAGE")),
-                                ContentType.Application.Json,
-                                HttpStatusCode.BadRequest,
-                            )
-                            return@post
-                        }
-                        val fixtureController = ReaderIoTestModeBridge.controller
-                        val fixture = if (fixtureController != null) {
-                            val spec = try {
-                                parseReaderFixtureSpec(params)
-                            } catch (error: IllegalArgumentException) {
+            if (!isExtensionAction && !isLibraryAction && !isBrowseAction && !isSourceLoginAction && !isDownloadAction && !isUpdatesAction && !isHistoryAction && !isBackupAction && !isSettingsAction && !isTrackingAction) {
+                when (action) {
+                    // Read chapter - open reader
+                    "read_chapter", "start_reading" -> {
+                        val mangaId = params["mangaId"]?.toLongOrNull()
+                            ?: params["mangaIndex"]?.toLongOrNull()
+                            ?: params["chapterId"]?.toLongOrNull()
+                            ?: 0L
+                        if (mangaId > 0) {
+                            val chapterId = params["chapterId"]?.toLongOrNull() ?: mangaId
+                            val chapterTitle = params["chapterTitle"] ?: "Chapter ${params["chapterIndex"] ?: 0}"
+                            val dualPage = params["dualPage"]?.toBooleanStrictOrNull()
+                            if (params.containsKey("dualPage") && dualPage == null) {
                                 call.respondText(
-                                    jsonText(actionJson(action, false, "INVALID_READER_FIXTURE: ${error.message}")),
+                                    jsonText(actionJson(action, false, "INVALID_DUAL_PAGE")),
                                     ContentType.Application.Json,
                                     HttpStatusCode.BadRequest,
                                 )
                                 return@post
                             }
-                            fixtureController.prepareFixtureAwait(
-                                spec = spec,
+                            val fixtureController = ReaderIoTestModeBridge.controller
+                            val fixture = if (fixtureController != null) {
+                                val spec = try {
+                                    parseReaderFixtureSpec(params)
+                                } catch (error: IllegalArgumentException) {
+                                    call.respondText(
+                                        jsonText(actionJson(action, false, "INVALID_READER_FIXTURE: ${error.message}")),
+                                        ContentType.Application.Json,
+                                        HttpStatusCode.BadRequest,
+                                    )
+                                    return@post
+                                }
+                                fixtureController.prepareFixtureAwait(
+                                    spec = spec,
+                                    mangaId = mangaId,
+                                    chapterId = chapterId,
+                                    chapterTitle = chapterTitle,
+                                )
+                            } else {
+                                null
+                            }
+                            TestNavigationController.openReader(
                                 mangaId = mangaId,
                                 chapterId = chapterId,
-                                chapterTitle = chapterTitle,
+                                chapterTitle = fixture?.chapterTitle ?: chapterTitle,
+                                mangaTitle = fixture?.mangaTitle ?: "Manga",
+                                chapterUrl = fixture?.chapterUrl.orEmpty(),
+                                sourceId = fixture?.sourceId ?: 0L,
+                                initialPage = params["chapterIndex"]?.toIntOrNull() ?: 0,
+                                pageCount = fixture?.spec?.pageCount ?: params["pageCount"]?.toIntOrNull() ?: 20,
+                                localChapterPath = fixture?.localChapterPath,
+                                dualPage = dualPage ?: false,
                             )
-                        } else {
-                            null
+
+                            applicationState.setCurrentScreen("ReaderScreen")
+                            applicationState.recordAction(action, mapOf("mangaId" to mangaId, "chapterId" to chapterId))
                         }
-                        TestNavigationController.openReader(
-                            mangaId = mangaId,
-                            chapterId = chapterId,
-                            chapterTitle = fixture?.chapterTitle ?: chapterTitle,
-                            mangaTitle = fixture?.mangaTitle ?: "Manga",
-                            chapterUrl = fixture?.chapterUrl.orEmpty(),
-                            sourceId = fixture?.sourceId ?: 0L,
-                            initialPage = params["chapterIndex"]?.toIntOrNull() ?: 0,
-                            pageCount = fixture?.spec?.pageCount ?: params["pageCount"]?.toIntOrNull() ?: 20,
-                            localChapterPath = fixture?.localChapterPath,
-                            dualPage = dualPage ?: false,
-                        )
-
-                        applicationState.setCurrentScreen("ReaderScreen")
-                        applicationState.recordAction(action, mapOf("mangaId" to mangaId, "chapterId" to chapterId))
                     }
-                }
 
-                // Reader actions
-                "reader_next_page", "reader_prev_page", "reader_next_chapter", "reader_prev_chapter",
-                "reader_mode", "reader_zoom",
-                -> { }
-                // Browse actions
-                // Migration actions
-                "migration_search", "migration_select" -> { }
-                "migration_submit" -> {
-                    val mangaId = params["mangaId"]?.toLongOrNull() ?: 0L
-                    if (mangaId > 0) {
-                        MigrationBatchTestBridge.controller?.submit(
-                            listOf(BatchMigrationRequest(mangaId, params["title"] ?: "Manga $mangaId")),
-                        )
+                    // Reader actions
+                    "reader_next_page", "reader_prev_page", "reader_next_chapter", "reader_prev_chapter",
+                    "reader_mode", "reader_zoom",
+                    -> { }
+                    // Browse actions
+                    // Migration actions
+                    "migration_search", "migration_select" -> { }
+                    "migration_submit" -> {
+                        val mangaId = params["mangaId"]?.toLongOrNull() ?: 0L
+                        if (mangaId > 0) {
+                            MigrationBatchTestBridge.controller?.submit(
+                                listOf(BatchMigrationRequest(mangaId, params["title"] ?: "Manga $mangaId")),
+                            )
+                        }
                     }
-                }
-                "migration_pause" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.pause(it) }
-                "migration_resume" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.resume(it) }
-                "migration_cancel_all" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.cancelAll(it) }
-                "migration_cancel_item" -> {
-                    val mangaId = params["mangaId"]?.toLongOrNull()
-                    val queueId = params["queueId"]
-                    if (mangaId != null && queueId != null) MigrationBatchTestBridge.controller?.cancelItem(queueId, mangaId)
-                }
-                "migration_retry" -> {
-                    val mangaId = params["mangaId"]?.toLongOrNull()
-                    val queueId = params["queueId"]
-                    if (mangaId != null && queueId != null) MigrationBatchTestBridge.controller?.retryItem(queueId, mangaId)
+                    "migration_pause" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.pause(it) }
+                    "migration_resume" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.resume(it) }
+                    "migration_cancel_all" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.cancelAll(it) }
+                    "migration_cancel_item" -> {
+                        val mangaId = params["mangaId"]?.toLongOrNull()
+                        val queueId = params["queueId"]
+                        if (mangaId != null && queueId != null) MigrationBatchTestBridge.controller?.cancelItem(queueId, mangaId)
+                    }
+                    "migration_retry" -> {
+                        val mangaId = params["mangaId"]?.toLongOrNull()
+                        val queueId = params["queueId"]
+                        if (mangaId != null && queueId != null) MigrationBatchTestBridge.controller?.retryItem(queueId, mangaId)
+                    }
                 }
             }
 
@@ -787,125 +792,125 @@ internal fun Application.testHttpServer(
                     TrackingTestFailureCode.OWNER_CLOSED,
                     -> HttpStatusCode.ServiceUnavailable
                     null -> when (settingsResult?.failureCode) {
-                    SettingsTestFailureCode.MISSING_PARAMETER,
-                    SettingsTestFailureCode.INVALID_PARAMETER,
-                    SettingsTestFailureCode.UNSUPPORTED_ACTION,
-                    -> HttpStatusCode.BadRequest
-                    SettingsTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
-                    SettingsTestFailureCode.CONFIRMATION_REQUIRED,
-                    SettingsTestFailureCode.AUTHENTICATION_FAILED,
-                    SettingsTestFailureCode.OPERATION_IN_PROGRESS,
-                    SettingsTestFailureCode.OPERATION_REJECTED,
-                    SettingsTestFailureCode.NAVIGATION_REJECTED,
-                    -> HttpStatusCode.Conflict
-                    SettingsTestFailureCode.BACKEND_UNAVAILABLE,
-                    SettingsTestFailureCode.PORT_FAILURE,
-                    SettingsTestFailureCode.OWNER_CLOSED,
-                    -> HttpStatusCode.ServiceUnavailable
-                    null -> when (backupResult?.failureCode) {
-                    BackupTestFailureCode.MISSING_PARAMETER,
-                    BackupTestFailureCode.INVALID_PARAMETER,
-                    BackupTestFailureCode.UNSUPPORTED_ACTION,
-                    -> HttpStatusCode.BadRequest
-                    BackupTestFailureCode.CONFIRMATION_REQUIRED,
-                    BackupTestFailureCode.OPERATION_IN_PROGRESS,
-                    BackupTestFailureCode.OPERATION_REJECTED,
-                    BackupTestFailureCode.WORKFLOW_FAILED,
-                    BackupTestFailureCode.PARTIAL_FAILURE,
-                    -> HttpStatusCode.Conflict
-                    BackupTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
-                    null -> when (historyResult?.failureCode) {
-                    TimelineTestFailureCode.MISSING_PARAMETER,
-                    TimelineTestFailureCode.INVALID_PARAMETER,
-                    TimelineTestFailureCode.UNSUPPORTED_ACTION,
-                    -> HttpStatusCode.BadRequest
-                    TimelineTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
-                    TimelineTestFailureCode.OPERATION_REJECTED,
-                    TimelineTestFailureCode.PARTIAL_FAILURE,
-                    -> HttpStatusCode.Conflict
-                    TimelineTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
-                    null -> when (updatesResult?.failureCode) {
-                    TimelineTestFailureCode.MISSING_PARAMETER,
-                    TimelineTestFailureCode.INVALID_PARAMETER,
-                    TimelineTestFailureCode.UNSUPPORTED_ACTION,
-                    -> HttpStatusCode.BadRequest
-                    TimelineTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
-                    TimelineTestFailureCode.OPERATION_REJECTED,
-                    TimelineTestFailureCode.PARTIAL_FAILURE,
-                    -> HttpStatusCode.Conflict
-                    TimelineTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
-                    null -> when (downloadResult?.failureCode) {
-                    DownloadTestFailureCode.MISSING_PARAMETER,
-                    DownloadTestFailureCode.INVALID_PARAMETER,
-                    DownloadTestFailureCode.UNSUPPORTED_ACTION,
-                    -> HttpStatusCode.BadRequest
-                    DownloadTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
-                    DownloadTestFailureCode.OPERATION_REJECTED,
-                    DownloadTestFailureCode.PARTIAL_FAILURE,
-                    -> HttpStatusCode.Conflict
-                    DownloadTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
-                    null -> when (browseResult?.failureCode) {
-                    BrowseSearchTestFailureCode.MISSING_PARAMETER,
-                    BrowseSearchTestFailureCode.BLANK_QUERY,
-                    BrowseSearchTestFailureCode.UNSUPPORTED_ACTION,
-                    -> HttpStatusCode.BadRequest
-                    BrowseSearchTestFailureCode.SOURCE_NOT_FOUND,
-                    BrowseSearchTestFailureCode.ROW_NOT_FOUND,
-                    -> HttpStatusCode.NotFound
-                    BrowseSearchTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
-                    BrowseSearchTestFailureCode.STALE_GENERATION,
-                    BrowseSearchTestFailureCode.RECOVERY_UNAVAILABLE,
-                    BrowseSearchTestFailureCode.OPERATION_REJECTED,
-                    -> HttpStatusCode.Conflict
-                    null -> when (sourceResult?.failureCode) {
-                    SourceBrowseTestFailureCode.MISSING_TOKEN,
-                    SourceBrowseTestFailureCode.MISSING_HEADER,
-                    -> HttpStatusCode.BadRequest
-                    SourceBrowseTestFailureCode.STALE_GENERATION,
-                    SourceBrowseTestFailureCode.NO_ACTIVE_LOGIN,
-                    SourceBrowseTestFailureCode.ATTEMPT_MISMATCH,
-                    SourceBrowseTestFailureCode.TERMINAL,
-                    SourceBrowseTestFailureCode.OPERATION_REJECTED,
-                    SourceBrowseTestFailureCode.PORT_CLOSED,
-                    -> HttpStatusCode.Conflict
-                    null -> when (extensionResult?.failureCode) {
-                    SourceExtensionActionFailureCode.MISSING_PARAMETER,
-                    SourceExtensionActionFailureCode.UNSUPPORTED_ACTION,
-                    -> HttpStatusCode.BadRequest
-                    SourceExtensionActionFailureCode.UNKNOWN_PACKAGE -> HttpStatusCode.NotFound
-                    SourceExtensionActionFailureCode.ACTION_UNAVAILABLE,
-                    SourceExtensionActionFailureCode.NO_PENDING_TRUST,
-                    SourceExtensionActionFailureCode.TRUST_PACKAGE_MISMATCH,
-                    SourceExtensionActionFailureCode.OPERATION_REJECTED,
-                    -> HttpStatusCode.Conflict
-                        null -> when (libraryResult?.failureCode) {
-                            LibraryMangaActionFailureCode.MISSING_PARAMETER,
-                            LibraryMangaActionFailureCode.INVALID_PARAMETER,
-                            LibraryMangaActionFailureCode.UNSUPPORTED_ACTION,
+                        SettingsTestFailureCode.MISSING_PARAMETER,
+                        SettingsTestFailureCode.INVALID_PARAMETER,
+                        SettingsTestFailureCode.UNSUPPORTED_ACTION,
+                        -> HttpStatusCode.BadRequest
+                        SettingsTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
+                        SettingsTestFailureCode.CONFIRMATION_REQUIRED,
+                        SettingsTestFailureCode.AUTHENTICATION_FAILED,
+                        SettingsTestFailureCode.OPERATION_IN_PROGRESS,
+                        SettingsTestFailureCode.OPERATION_REJECTED,
+                        SettingsTestFailureCode.NAVIGATION_REJECTED,
+                        -> HttpStatusCode.Conflict
+                        SettingsTestFailureCode.BACKEND_UNAVAILABLE,
+                        SettingsTestFailureCode.PORT_FAILURE,
+                        SettingsTestFailureCode.OWNER_CLOSED,
+                        -> HttpStatusCode.ServiceUnavailable
+                        null -> when (backupResult?.failureCode) {
+                            BackupTestFailureCode.MISSING_PARAMETER,
+                            BackupTestFailureCode.INVALID_PARAMETER,
+                            BackupTestFailureCode.UNSUPPORTED_ACTION,
                             -> HttpStatusCode.BadRequest
-                            LibraryMangaActionFailureCode.ROW_NOT_FOUND,
-                            LibraryMangaActionFailureCode.DETAIL_NOT_FOUND,
-                            -> HttpStatusCode.NotFound
-                            LibraryMangaActionFailureCode.DETAIL_NOT_OPEN,
-                            LibraryMangaActionFailureCode.ACTION_UNAVAILABLE,
-                            LibraryMangaActionFailureCode.OPERATION_REJECTED,
-                            LibraryMangaActionFailureCode.PARTIAL_FAILURE,
-                            LibraryMangaActionFailureCode.LIBRARY_LOADING,
-                            LibraryMangaActionFailureCode.DETAIL_LOADING,
+                            BackupTestFailureCode.CONFIRMATION_REQUIRED,
+                            BackupTestFailureCode.OPERATION_IN_PROGRESS,
+                            BackupTestFailureCode.OPERATION_REJECTED,
+                            BackupTestFailureCode.WORKFLOW_FAILED,
+                            BackupTestFailureCode.PARTIAL_FAILURE,
                             -> HttpStatusCode.Conflict
-                            LibraryMangaActionFailureCode.LIBRARY_UNAVAILABLE,
-                            LibraryMangaActionFailureCode.DETAIL_LOAD_FAILED,
-                            LibraryMangaActionFailureCode.PORT_CLOSED,
-                            -> HttpStatusCode.ServiceUnavailable
-                            null -> HttpStatusCode.OK
+                            BackupTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
+                            null -> when (historyResult?.failureCode) {
+                                TimelineTestFailureCode.MISSING_PARAMETER,
+                                TimelineTestFailureCode.INVALID_PARAMETER,
+                                TimelineTestFailureCode.UNSUPPORTED_ACTION,
+                                -> HttpStatusCode.BadRequest
+                                TimelineTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
+                                TimelineTestFailureCode.OPERATION_REJECTED,
+                                TimelineTestFailureCode.PARTIAL_FAILURE,
+                                -> HttpStatusCode.Conflict
+                                TimelineTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
+                                null -> when (updatesResult?.failureCode) {
+                                    TimelineTestFailureCode.MISSING_PARAMETER,
+                                    TimelineTestFailureCode.INVALID_PARAMETER,
+                                    TimelineTestFailureCode.UNSUPPORTED_ACTION,
+                                    -> HttpStatusCode.BadRequest
+                                    TimelineTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
+                                    TimelineTestFailureCode.OPERATION_REJECTED,
+                                    TimelineTestFailureCode.PARTIAL_FAILURE,
+                                    -> HttpStatusCode.Conflict
+                                    TimelineTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
+                                    null -> when (downloadResult?.failureCode) {
+                                        DownloadTestFailureCode.MISSING_PARAMETER,
+                                        DownloadTestFailureCode.INVALID_PARAMETER,
+                                        DownloadTestFailureCode.UNSUPPORTED_ACTION,
+                                        -> HttpStatusCode.BadRequest
+                                        DownloadTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
+                                        DownloadTestFailureCode.OPERATION_REJECTED,
+                                        DownloadTestFailureCode.PARTIAL_FAILURE,
+                                        -> HttpStatusCode.Conflict
+                                        DownloadTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
+                                        null -> when (browseResult?.failureCode) {
+                                            BrowseSearchTestFailureCode.MISSING_PARAMETER,
+                                            BrowseSearchTestFailureCode.BLANK_QUERY,
+                                            BrowseSearchTestFailureCode.UNSUPPORTED_ACTION,
+                                            -> HttpStatusCode.BadRequest
+                                            BrowseSearchTestFailureCode.SOURCE_NOT_FOUND,
+                                            BrowseSearchTestFailureCode.ROW_NOT_FOUND,
+                                            -> HttpStatusCode.NotFound
+                                            BrowseSearchTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
+                                            BrowseSearchTestFailureCode.STALE_GENERATION,
+                                            BrowseSearchTestFailureCode.RECOVERY_UNAVAILABLE,
+                                            BrowseSearchTestFailureCode.OPERATION_REJECTED,
+                                            -> HttpStatusCode.Conflict
+                                            null -> when (sourceResult?.failureCode) {
+                                                SourceBrowseTestFailureCode.MISSING_TOKEN,
+                                                SourceBrowseTestFailureCode.MISSING_HEADER,
+                                                -> HttpStatusCode.BadRequest
+                                                SourceBrowseTestFailureCode.STALE_GENERATION,
+                                                SourceBrowseTestFailureCode.NO_ACTIVE_LOGIN,
+                                                SourceBrowseTestFailureCode.ATTEMPT_MISMATCH,
+                                                SourceBrowseTestFailureCode.TERMINAL,
+                                                SourceBrowseTestFailureCode.OPERATION_REJECTED,
+                                                SourceBrowseTestFailureCode.PORT_CLOSED,
+                                                -> HttpStatusCode.Conflict
+                                                null -> when (extensionResult?.failureCode) {
+                                                    SourceExtensionActionFailureCode.MISSING_PARAMETER,
+                                                    SourceExtensionActionFailureCode.UNSUPPORTED_ACTION,
+                                                    -> HttpStatusCode.BadRequest
+                                                    SourceExtensionActionFailureCode.UNKNOWN_PACKAGE -> HttpStatusCode.NotFound
+                                                    SourceExtensionActionFailureCode.ACTION_UNAVAILABLE,
+                                                    SourceExtensionActionFailureCode.NO_PENDING_TRUST,
+                                                    SourceExtensionActionFailureCode.TRUST_PACKAGE_MISMATCH,
+                                                    SourceExtensionActionFailureCode.OPERATION_REJECTED,
+                                                    -> HttpStatusCode.Conflict
+                                                    null -> when (libraryResult?.failureCode) {
+                                                        LibraryMangaActionFailureCode.MISSING_PARAMETER,
+                                                        LibraryMangaActionFailureCode.INVALID_PARAMETER,
+                                                        LibraryMangaActionFailureCode.UNSUPPORTED_ACTION,
+                                                        -> HttpStatusCode.BadRequest
+                                                        LibraryMangaActionFailureCode.ROW_NOT_FOUND,
+                                                        LibraryMangaActionFailureCode.DETAIL_NOT_FOUND,
+                                                        -> HttpStatusCode.NotFound
+                                                        LibraryMangaActionFailureCode.DETAIL_NOT_OPEN,
+                                                        LibraryMangaActionFailureCode.ACTION_UNAVAILABLE,
+                                                        LibraryMangaActionFailureCode.OPERATION_REJECTED,
+                                                        LibraryMangaActionFailureCode.PARTIAL_FAILURE,
+                                                        LibraryMangaActionFailureCode.LIBRARY_LOADING,
+                                                        LibraryMangaActionFailureCode.DETAIL_LOADING,
+                                                        -> HttpStatusCode.Conflict
+                                                        LibraryMangaActionFailureCode.LIBRARY_UNAVAILABLE,
+                                                        LibraryMangaActionFailureCode.DETAIL_LOAD_FAILED,
+                                                        LibraryMangaActionFailureCode.PORT_CLOSED,
+                                                        -> HttpStatusCode.ServiceUnavailable
+                                                        null -> HttpStatusCode.OK
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
-                    }
-                    }
-                    }
-                    }
-                    }
-                    }
-                    }
                     }
                 },
             ) {
@@ -973,6 +978,11 @@ internal fun Application.testHttpServer(
 
         // Reader navigation endpoints
         post("/test/reader/next_page") {
+            ProductionReaderTestModeBridge.binding?.let { binding ->
+                val accepted = binding.page(binding.snapshot().currentPage + 1)
+                call.respondText("""{"success":$accepted,"production":true}""", ContentType.Application.Json)
+                return@post
+            }
             val currentPage = readerState.currentPage
             val totalPages = readerState.totalPages
 
@@ -996,6 +1006,11 @@ internal fun Application.testHttpServer(
         }
 
         post("/test/reader/prev_page") {
+            ProductionReaderTestModeBridge.binding?.let { binding ->
+                val accepted = binding.page(binding.snapshot().currentPage - 1)
+                call.respondText("""{"success":$accepted,"production":true}""", ContentType.Application.Json)
+                return@post
+            }
             val currentPage = readerState.currentPage
             val totalPages = readerState.totalPages
 
@@ -1026,6 +1041,15 @@ internal fun Application.testHttpServer(
             }
             val params = parseJsonBody(body)
             val targetPage = params["page"]?.toIntOrNull() ?: 0
+            ProductionReaderTestModeBridge.binding?.let { binding ->
+                val accepted = binding.page(targetPage)
+                call.respondText(
+                    """{"success":$accepted,"production":true}""",
+                    ContentType.Application.Json,
+                    if (accepted) HttpStatusCode.OK else HttpStatusCode.BadRequest,
+                )
+                return@post
+            }
             val totalPages = readerState.totalPages
 
             if (targetPage in 0 until totalPages) {
@@ -1048,6 +1072,11 @@ internal fun Application.testHttpServer(
         }
 
         post("/test/reader/next_chapter") {
+            ProductionReaderTestModeBridge.binding?.let { binding ->
+                val accepted = binding.adjacent(mihon.domain.reader.ReaderTransitionDirection.NEXT)
+                call.respondText("""{"success":$accepted,"production":true}""", ContentType.Application.Json)
+                return@post
+            }
             if (readerState.hasNextChapter) {
                 applicationState.recordAction("reader_next_chapter", mapOf("chapterId" to readerState.currentChapterId))
                 call.respondText(
@@ -1067,6 +1096,11 @@ internal fun Application.testHttpServer(
         }
 
         post("/test/reader/prev_chapter") {
+            ProductionReaderTestModeBridge.binding?.let { binding ->
+                val accepted = binding.adjacent(mihon.domain.reader.ReaderTransitionDirection.PREVIOUS)
+                call.respondText("""{"success":$accepted,"production":true}""", ContentType.Application.Json)
+                return@post
+            }
             if (readerState.hasPrevChapter) {
                 applicationState.recordAction("reader_prev_chapter", mapOf("chapterId" to readerState.currentChapterId))
                 call.respondText(
@@ -1086,6 +1120,11 @@ internal fun Application.testHttpServer(
         }
 
         post("/test/reader/close") {
+            ProductionReaderTestModeBridge.binding?.let { binding ->
+                binding.close()
+                call.respondText("""{"success":true,"production":true}""", ContentType.Application.Json)
+                return@post
+            }
             readerState.requestClose()
             applicationState.recordAction("reader_close", emptyMap())
             TestNavigationController.navigateBack()
@@ -1102,20 +1141,28 @@ internal fun Application.testHttpServer(
                 contentType = ContentType.Application.Json,
                 status = HttpStatusCode.OK,
             ) {
+                val production = ProductionReaderTestModeBridge.snapshot()
                 val events = ReaderIoTestModeBridge.controller?.snapshot().orEmpty()
                 val fixtureController = ReaderIoTestModeBridge.controller
                 buildJsonObject {
-                    put("isOpen", JsonPrimitive(readerState.isOpen))
+                    put("production", JsonPrimitive(production != null))
+                    put("activeChapterId", production?.activeChapterId?.let(::JsonPrimitive) ?: JsonNull)
+                    put("loadState", production?.loadState?.let(::JsonPrimitive) ?: JsonNull)
+                    put("chapterIds", kotlinx.serialization.json.buildJsonArray { production?.chapterIds?.forEach { add(JsonPrimitive(it)) } })
+                    put("currentChapterIndex", production?.currentChapterIndex?.let(::JsonPrimitive) ?: JsonNull)
+                    put("initialPage", production?.initialPage?.let(::JsonPrimitive) ?: JsonNull)
+                    put("resumeHeadIds", kotlinx.serialization.json.buildJsonArray { production?.resumeHeadIds?.forEach { add(JsonPrimitive(it)) } })
+                    put("isOpen", JsonPrimitive(production?.isOpen ?: readerState.isOpen))
                     put("closeRequested", JsonPrimitive(readerState.closeRequested))
-                    put("productionClosed", JsonPrimitive(readerState.productionClosed))
-                    put("currentPage", JsonPrimitive(readerState.currentPage))
-                    put("totalPages", JsonPrimitive(readerState.totalPages))
-                    put("currentChapterId", JsonPrimitive(readerState.currentChapterId))
+                    put("productionClosed", JsonPrimitive(production?.productionClosed ?: readerState.productionClosed))
+                    put("currentPage", JsonPrimitive(production?.currentPage ?: readerState.currentPage))
+                    put("totalPages", JsonPrimitive(production?.totalPages ?: readerState.totalPages))
+                    put("currentChapterId", JsonPrimitive(production?.currentChapterId ?: readerState.currentChapterId))
                     put("isWebtoon", JsonPrimitive(readerState.isWebtoon))
-                    put("mangaTitle", JsonPrimitive(readerState.mangaTitle))
-                    put("chapterTitle", JsonPrimitive(readerState.chapterTitle))
-                    put("hasNextChapter", JsonPrimitive(readerState.hasNextChapter))
-                    put("hasPrevChapter", JsonPrimitive(readerState.hasPrevChapter))
+                    put("mangaTitle", JsonPrimitive(production?.mangaTitle ?: readerState.mangaTitle))
+                    put("chapterTitle", JsonPrimitive(production?.chapterTitle ?: readerState.chapterTitle))
+                    put("hasNextChapter", JsonPrimitive(production?.hasNextChapter ?: readerState.hasNextChapter))
+                    put("hasPrevChapter", JsonPrimitive(production?.hasPrevChapter ?: readerState.hasPrevChapter))
                     put("productionEvents", Json.encodeToJsonElement(events))
                     put("firstPagePresented", JsonPrimitive(events.any { it.type == "FIRST_PAGE_PRESENTED" }))
                     put("readerFixture", fixtureController?.fixtureDescriptor()?.toJson() ?: JsonNull)

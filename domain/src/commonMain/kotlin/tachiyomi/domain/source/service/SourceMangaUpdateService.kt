@@ -8,6 +8,14 @@ import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
 
 class SourceMangaUpdateService {
+    suspend fun awaitSharedCatalog(
+        source: Source,
+        manga: Manga,
+        chapters: List<Chapter>,
+        fetchDetails: Boolean,
+    ): SMangaUpdate =
+        SharedReaderCatalogRequests.await(source, manga, chapters, fetchDetails)
+
     suspend fun await(
         source: Source,
         manga: Manga,

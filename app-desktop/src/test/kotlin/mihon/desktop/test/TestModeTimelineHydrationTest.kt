@@ -67,8 +67,9 @@ class TestModeTimelineHydrationTest {
     private fun historyModel(repository: FakeHistoryRepository) = HistoryScreenModel(
         GetHistory(repository),
         RemoveHistory(repository),
-        GetChapter(FakeChapterRepository()),
+
         GetManga(FakeMangaRepository()),
+        getNextChapters = tachiyomi.domain.history.interactor.GetNextChapters(tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(FakeChapterRepository()), GetManga(FakeMangaRepository()), repository),
     )
 
     private fun update() = UpdatesWithRelations(

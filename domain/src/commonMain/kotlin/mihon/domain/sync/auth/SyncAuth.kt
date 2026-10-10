@@ -43,6 +43,7 @@ enum class GitHubAuthFailureReason {
     HTTP,
     MALFORMED_RESPONSE,
     ACCESS_DENIED,
+    PERMISSION_DENIED,
     EXPIRED,
     RATE_LIMITED,
     REVOKED,
@@ -52,6 +53,7 @@ data class GitHubAuthFailure(
     val reason: GitHubAuthFailureReason,
     val message: String,
     val retryable: Boolean,
+    val retryAfterMillis: Long? = null,
 )
 
 /** A safe, actionable refresh failure; never retains the remote payload or an unsafe cause. */

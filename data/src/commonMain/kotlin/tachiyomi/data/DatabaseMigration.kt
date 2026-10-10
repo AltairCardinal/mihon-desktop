@@ -15,12 +15,175 @@ object DatabaseMigration {
             rejectIncompatibleExistingObjects(driver)
             repairMissingRuntimeFamilyForSchema32(driver, oldVersion)
             repairMissingAuthorColumnsForSyncSchema(driver, oldVersion)
-            Database.Schema.migrate(driver, oldVersion, newVersion)
+            // Both published branches used migration 40 for different object families. Converge
+            // at schema 41 before the unchanged sync 41/42 migrations consume the pause clock.
+            val familyBoundary = 41L
+            if (oldVersion < familyBoundary) {
+                Database.Schema.migrate(driver, oldVersion, minOf(newVersion, familyBoundary))
+            }
+            if (newVersion > familyBoundary) {
+                repairPublishedSchema40Families(driver, maxOf(oldVersion, familyBoundary))
+                Database.Schema.migrate(driver, maxOf(oldVersion, familyBoundary), newVersion)
+            }
             if (newVersion >= COMPATIBILITY_SCHEMA_VERSION) {
                 validateCompatibility(driver)
             }
             driver.execute(null, "PRAGMA user_version = $newVersion", 0)
         }
+    }
+
+    /** Repairs only completely absent released families; partial families fail the transaction. */
+    private fun repairPublishedSchema40Families(driver: SqlDriver, recordedVersion: Long) {
+        val chapterFamily = listOf(
+            "table" to "chapter_url_aliases",
+            "index" to "chapter_url_alias_chapter",
+            "trigger" to "consistent_chapter_url_alias_insert",
+            "trigger" to "consistent_chapter_url_alias_update",
+            "table" to "chapter_id_floor",
+            "trigger" to "chapter_id_floor_insert_guard",
+            "trigger" to "chapter_id_floor_delete_guard",
+            "trigger" to "chapter_id_floor_insert",
+            "trigger" to "chapter_id_floor_delete",
+            "table" to "chapter_directory_phases",
+        )
+        val pauseFamily = listOf(
+            "table" to "sync_runtime_pause_clock",
+            "trigger" to "sync_runtime_pause_transition",
+        )
+        val chaptersPresent = requireCompleteOrAbsentFamily(driver, "chapter identity", chapterFamily)
+        val pausePresent = requireCompleteOrAbsentFamily(driver, "sync pause clock", pauseFamily)
+        require(pausePresent || recordedVersion == 41L) {
+            "Missing sync pause clock in published schema $recordedVersion; refusing to reconstruct lost clocks"
+        }
+        if (chaptersPresent) requirePublishedChapterIdentity(driver)
+        if (pausePresent) requirePublishedPauseClock(driver, recordedVersion >= 42)
+
+        if (!chaptersPresent) {
+            // Reuse the authoritative, unchanged chapter DDL. This repairs a missing physical
+            // family in the sync branch; it never changes or replays an existing chapter family.
+            Database.Schema.migrate(driver, 40, 41)
+        }
+        if (!pausePresent) {
+            driver.execute(
+                null,
+                """
+                CREATE TABLE sync_runtime_pause_clock (
+                    run_id TEXT NOT NULL PRIMARY KEY REFERENCES sync_runtime_runs(run_id) ON DELETE CASCADE,
+                    paused_millis INTEGER NOT NULL DEFAULT 0 CHECK(paused_millis >= 0),
+                    paused_at INTEGER
+                )
+                """.trimIndent(),
+                0,
+            )
+            driver.execute(
+                null,
+                """
+                CREATE TRIGGER sync_runtime_pause_transition
+                AFTER UPDATE OF state ON sync_runtime_runs
+                WHEN old.state != new.state AND (old.state = 'PAUSED_USER' OR new.state = 'PAUSED_USER')
+                BEGIN
+                    INSERT OR IGNORE INTO sync_runtime_pause_clock(run_id) VALUES (new.run_id);
+                    UPDATE sync_runtime_pause_clock SET
+                        paused_millis = paused_millis + CASE WHEN old.state = 'PAUSED_USER'
+                            THEN MAX(0, new.updated_at - COALESCE(paused_at, old.updated_at)) ELSE 0 END,
+                        paused_at = CASE WHEN new.state = 'PAUSED_USER' THEN new.updated_at ELSE NULL END
+                    WHERE run_id = new.run_id;
+                END
+                """.trimIndent(),
+                0,
+            )
+            driver.execute(
+                null,
+                "INSERT INTO sync_runtime_pause_clock(run_id, paused_millis, paused_at) " +
+                    "SELECT run_id, 0, updated_at FROM sync_runtime_runs WHERE state = 'PAUSED_USER'",
+                0,
+            )
+        }
+        requirePublishedChapterIdentity(driver)
+        requirePublishedPauseClock(driver, requirePlanClock = pausePresent && recordedVersion >= 42)
+    }
+
+    private fun requireCompleteOrAbsentFamily(
+        driver: SqlDriver,
+        family: String,
+        objects: List<Pair<String, String>>,
+    ): Boolean {
+        val present = objects.map { (type, name) -> hasObject(driver, type, name) }
+        require(present.all { it } || present.none { it }) {
+            "Incomplete $family schema; refusing partial repair"
+        }
+        return present.all { it }
+    }
+
+    private fun requirePublishedChapterIdentity(driver: SqlDriver) {
+        requireTable(driver, "chapter_url_aliases", setOf("chapter_id", "manga_id", "url", "canonical_url"))
+        requireTable(driver, "chapter_id_floor", setOf("singleton", "value"))
+        requireTable(driver, "chapter_directory_phases", setOf("manga_id", "phase_id", "payload"))
+        require(
+            queryCount(
+                driver,
+                "SELECT COUNT(*) FROM pragma_table_info('chapter_url_aliases') " +
+                    "WHERE (name='manga_id' AND pk=1) OR (name='url' AND pk=2)",
+            ) == 2L,
+        ) { "Incompatible chapter URL alias key" }
+        require(
+            queryCount(
+                driver,
+                "SELECT COUNT(*) FROM pragma_foreign_key_list('chapter_url_aliases') " +
+                    "WHERE on_delete='CASCADE' AND ((\"from\"='chapter_id' " +
+                    "AND \"table\"='chapters' AND \"to\"='_id') " +
+                    "OR (\"from\"='manga_id' AND \"table\"='mangas' " +
+                    "AND \"to\"='_id'))",
+            ) == 2L,
+        ) { "Incompatible chapter URL alias cascade" }
+        require(
+            queryCount(
+                driver,
+                "SELECT COUNT(*) FROM pragma_table_info('chapter_id_floor') " +
+                    "WHERE name='singleton' AND pk=1",
+            ) == 1L &&
+                queryCount(driver, "SELECT COUNT(*) FROM chapter_id_floor") == 1L &&
+                queryCount(
+                    driver,
+                    "SELECT COUNT(*) FROM chapter_id_floor WHERE singleton=1 " +
+                        "AND value >= (SELECT coalesce(max(_id),0) FROM chapters)",
+                ) == 1L,
+        ) { "Incompatible chapter identity floor" }
+        require(
+            queryCount(
+                driver,
+                "SELECT COUNT(*) FROM pragma_table_info('chapter_directory_phases') " +
+                    "WHERE name='manga_id' AND pk=1",
+            ) == 1L &&
+                queryCount(
+                    driver,
+                    "SELECT COUNT(*) FROM pragma_foreign_key_list('chapter_directory_phases') " +
+                        "WHERE \"from\"='manga_id' AND \"table\"='mangas' " +
+                        "AND \"to\"='_id' AND on_delete='CASCADE'",
+                ) == 1L,
+        ) { "Incompatible chapter directory identity" }
+    }
+
+    private fun requirePublishedPauseClock(driver: SqlDriver, requirePlanClock: Boolean) {
+        requireTable(driver, "sync_runtime_pause_clock", setOf("run_id", "paused_millis", "paused_at"))
+        val planColumns = tableColumns(driver, "sync_runtime_pause_clock") intersect
+            setOf("planned_at", "planned_paused_millis")
+        require(planColumns.size == 2 || (!requirePlanClock && planColumns.isEmpty())) {
+            "Incomplete sync pause plan clock; refusing partial repair"
+        }
+        require(
+            queryCount(
+                driver,
+                "SELECT COUNT(*) FROM pragma_table_info('sync_runtime_pause_clock') " +
+                    "WHERE name='run_id' AND pk=1",
+            ) == 1L &&
+                queryCount(
+                    driver,
+                    "SELECT COUNT(*) FROM pragma_foreign_key_list('sync_runtime_pause_clock') " +
+                        "WHERE \"from\"='run_id' AND \"table\"='sync_runtime_runs' AND \"to\"='run_id' " +
+                        "AND on_delete='CASCADE'",
+                ) == 1L,
+        ) { "Incompatible sync pause clock identity" }
     }
 
     /** Repairs the published author v31/v32 family before the generated sync migrations run. */

@@ -1,48 +1,26 @@
 package eu.kanade.tachiyomi.ui.history
 
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.runtime.Immutable
-import cafe.adriel.voyager.core.model.StateScreenModel
+import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
-import eu.kanade.core.util.insertSeparators
-import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.track.interactor.AddTracks
-import eu.kanade.presentation.history.HistoryUiModel
-import eu.kanade.tachiyomi.util.lang.toLocalDate
-import kotlinx.collections.immutable.ImmutableList
-import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import logcat.LogPriority
-import tachiyomi.core.common.preference.CheckboxState
-import tachiyomi.core.common.preference.mapAsCheckboxState
 import tachiyomi.core.common.util.lang.launchIO
-import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.interactor.GetCategories
-import tachiyomi.domain.category.interactor.SetMangaCategories
-import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.history.interactor.GetHistory
 import tachiyomi.domain.history.interactor.GetNextChapters
 import tachiyomi.domain.history.interactor.RemoveHistory
 import tachiyomi.domain.history.model.HistoryWithRelations
+import tachiyomi.domain.history.service.HistoryController
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
-import tachiyomi.domain.manga.model.MangaWithChapterCount
-import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -56,222 +34,114 @@ class HistoryScreenModel(
     private val getNextChapters: GetNextChapters = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val removeHistory: RemoveHistory = Injekt.get(),
-    private val setMangaCategories: SetMangaCategories = Injekt.get(),
-    private val updateManga: UpdateManga = Injekt.get(),
-    val snackbarHostState: SnackbarHostState = SnackbarHostState(),
     private val sourceManager: SourceManager = Injekt.get(),
-    private val recordReadingProgress: RecordReadingProgress = Injekt.get(),
-) : StateScreenModel<HistoryScreenModel.State>(State()) {
+    private val updateMembership: tachiyomi.domain.manga.interactor.UpdateLibraryMembership = Injekt.get(),
+    private val readerActionDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO,
+) : ScreenModel {
 
     private val _events: Channel<Event> = Channel(Channel.UNLIMITED)
     val events: Flow<Event> = _events.receiveAsFlow()
 
+    val controller = HistoryController(
+        screenModelScope,
+        getHistory,
+        removeHistory,
+        getNextChapters,
+        favoriteActions = tachiyomi.domain.history.service.HistoryFavoriteActions(
+            getManga,
+            getCategories,
+            getDuplicateLibraryManga,
+            libraryPreferences,
+            updateMembership,
+            bindEnhanced = { addTracks.bindEnhancedTrackers(it, sourceManager.getOrStub(it.source)) },
+        ),
+    )
+
+    val state = controller.state
+
     init {
         screenModelScope.launch {
-            state.map { it.searchQuery }
-                .distinctUntilChanged()
-                .flatMapLatest { query ->
-                    getHistory.subscribe(query ?: "")
-                        .distinctUntilChanged()
-                        .catch { error ->
-                            logcat(LogPriority.ERROR, error)
-                            _events.send(Event.InternalError)
-                        }
-                        .map { it.toHistoryUiModels() }
-                        .flowOn(Dispatchers.IO)
-                }
-                .collect { newList -> mutableState.update { it.copy(list = newList) } }
-        }
-    }
-
-    private fun List<HistoryWithRelations>.toHistoryUiModels(): List<HistoryUiModel> {
-        return map { HistoryUiModel.Item(it) }
-            .insertSeparators { before, after ->
-                val beforeDate = before?.item?.readAt?.time?.toLocalDate()
-                val afterDate = after?.item?.readAt?.time?.toLocalDate()
-                when {
-                    beforeDate != afterDate && afterDate != null -> HistoryUiModel.Header(afterDate)
-                    // Return null to avoid adding a separator between two items.
-                    else -> null
-                }
+            controller.events.collect { event ->
+                _events.send(
+                    when (event) {
+                        tachiyomi.domain.history.service.HistoryEvent.InternalError -> Event.InternalError
+                        tachiyomi.domain.history.service.HistoryEvent.HistoryCleared -> Event.HistoryCleared
+                        is tachiyomi.domain.history.service.HistoryEvent.OpenChapter -> Event.OpenChapter(
+                            event.chapter,
+                            event.requestToken,
+                        )
+                    },
+                )
             }
+        }
     }
 
-    suspend fun getNextChapter(): Chapter? {
-        return withIOContext {
-            val latest = getHistory.subscribe("").first().firstOrNull()
-            latest?.let { synchronizedResumeChapter(it.mangaId) }
-                ?: getNextChapters.await(onlyUnread = false).firstOrNull()
-        }
+    suspend fun getNextChapter(): Chapter? = controller.latestChapter()
+
+    fun resumeLatest() {
+        val token = controller.beginReaderRequest() ?: return
+        screenModelScope.launch(readerActionDispatcher) { controller.resumeLatest(token) }
     }
 
     fun getNextChapterForManga(mangaId: Long, chapterId: Long) {
-        screenModelScope.launchIO {
-            val synchronized = synchronizedResumeChapter(mangaId)
-            sendNextChapterEvent(
-                synchronized?.let(::listOf) ?: getNextChapters.await(mangaId, chapterId, onlyUnread = false),
-            )
+        val token = controller.beginReaderRequest() ?: return
+        screenModelScope.launch(readerActionDispatcher) {
+            controller.resume(token, mangaId, chapterId)
         }
     }
 
-    private suspend fun synchronizedResumeChapter(mangaId: Long): Chapter? {
-        val position = recordReadingProgress.resumePosition(mangaId) ?: return null
-        return getNextChapters.await(mangaId, onlyUnread = false).firstOrNull { it.id == position.chapterId }
-    }
-
-    private suspend fun sendNextChapterEvent(chapters: List<Chapter>) {
-        val chapter = chapters.firstOrNull()
-        _events.send(Event.OpenChapter(chapter))
-    }
-
     fun removeFromHistory(history: HistoryWithRelations) {
+        controller.invalidateReaderRequests()
         screenModelScope.launchIO {
-            removeHistory.await(history)
+            controller.remove(history)
         }
     }
 
     fun removeAllFromHistory(mangaId: Long) {
+        controller.invalidateReaderRequests()
         screenModelScope.launchIO {
             removeHistory.await(mangaId)
         }
     }
 
     fun removeAllHistory() {
+        controller.invalidateReaderRequests()
         screenModelScope.launchIO {
-            val result = removeHistory.awaitAll()
+            val result = controller.clear()
             if (!result) return@launchIO
-            _events.send(Event.HistoryCleared)
         }
     }
 
     fun updateSearchQuery(query: String?) {
-        mutableState.update { it.copy(searchQuery = query) }
+        controller.updateSearchQuery(query)
     }
 
-    fun setDialog(dialog: Dialog?) {
-        mutableState.update { it.copy(dialog = dialog) }
-    }
-
-    /**
-     * Get user categories.
-     *
-     * @return List of categories, not including the default category
-     */
-    suspend fun getCategories(): List<Category> {
-        return getCategories.await().filterNot { it.isSystemCategory }
-    }
-
-    private fun moveMangaToCategory(mangaId: Long, categories: Category?) {
-        val categoryIds = listOfNotNull(categories).map { it.id }
-        moveMangaToCategory(mangaId, categoryIds)
-    }
-
-    private fun moveMangaToCategory(mangaId: Long, categoryIds: List<Long>) {
-        screenModelScope.launchIO {
-            setMangaCategories.await(mangaId, categoryIds)
-        }
-    }
-
-    fun moveMangaToCategoriesAndAddToLibrary(manga: Manga, categories: List<Long>) {
-        moveMangaToCategory(manga.id, categories)
-        if (manga.favorite) return
-
-        screenModelScope.launchIO {
-            updateManga.awaitUpdateFavorite(manga.id, true)
-        }
-    }
-
-    private suspend fun getMangaCategoryIds(manga: Manga): List<Long> {
-        return getCategories.await(manga.id)
-            .map { it.id }
+    fun setDialog(dialog: tachiyomi.domain.history.service.HistoryDialog?) {
+        controller.setDialog(dialog)
     }
 
     fun addFavorite(mangaId: Long) {
-        screenModelScope.launchIO {
-            val manga = getManga.await(mangaId) ?: return@launchIO
-
-            val duplicates = getDuplicateLibraryManga(manga)
-            if (duplicates.isNotEmpty()) {
-                mutableState.update { it.copy(dialog = Dialog.DuplicateManga(manga, duplicates)) }
-                return@launchIO
-            }
-
-            addFavorite(manga)
-        }
+        screenModelScope.launchIO { controller.addFavorite(mangaId) }
     }
 
     fun addFavorite(manga: Manga) {
-        screenModelScope.launchIO {
-            // Move to default category if applicable
-            val categories = getCategories()
-            val defaultCategoryId = libraryPreferences.defaultCategory().get().toLong()
-            val defaultCategory = categories.find { it.id == defaultCategoryId }
+        screenModelScope.launchIO { controller.addFavorite(manga.id, allowDuplicate = true) }
+    }
 
-            when {
-                // Default category set
-                defaultCategory != null -> {
-                    val result = updateManga.awaitUpdateFavorite(manga.id, true)
-                    if (!result) return@launchIO
-                    moveMangaToCategory(manga.id, defaultCategory)
-                }
+    fun moveMangaToCategoriesAndAddToLibrary(manga: Manga, categories: List<Long>) {
+        screenModelScope.launchIO { controller.confirmCategory(manga, categories) }
+    }
 
-                // Automatic 'Default' or no categories
-                defaultCategoryId == 0L || categories.isEmpty() -> {
-                    val result = updateManga.awaitUpdateFavorite(manga.id, true)
-                    if (!result) return@launchIO
-                    moveMangaToCategory(manga.id, null)
-                }
-
-                // Choose a category
-                else -> showChangeCategoryDialog(manga)
-            }
-
-            // Sync with tracking services if applicable
-            addTracks.bindEnhancedTrackers(manga, sourceManager.getOrStub(manga.source))
-        }
+    fun confirmCategory() {
+        screenModelScope.launchIO { controller.confirmCategory() }
     }
 
     fun showMigrateDialog(target: Manga, current: Manga) {
-        mutableState.update { currentState ->
-            currentState.copy(dialog = Dialog.Migrate(target = target, current = current))
-        }
-    }
-
-    fun showChangeCategoryDialog(manga: Manga) {
-        screenModelScope.launch {
-            val categories = getCategories()
-            val selection = getMangaCategoryIds(manga)
-            mutableState.update { currentState ->
-                currentState.copy(
-                    dialog = Dialog.ChangeCategory(
-                        manga = manga,
-                        initialSelection = categories.mapAsCheckboxState { it.id in selection }.toImmutableList(),
-                    ),
-                )
-            }
-        }
-    }
-
-    @Immutable
-    data class State(
-        val searchQuery: String? = null,
-        val list: List<HistoryUiModel>? = null,
-        val dialog: Dialog? = null,
-    )
-
-    sealed interface Dialog {
-        data object DeleteAll : Dialog
-        data class Delete(val history: HistoryWithRelations) : Dialog
-        data class DuplicateManga(val manga: Manga, val duplicates: List<MangaWithChapterCount>) : Dialog
-        data class ChangeCategory(
-            val manga: Manga,
-            val initialSelection: ImmutableList<CheckboxState<Category>>,
-        ) : Dialog
-        data class Migrate(val target: Manga, val current: Manga) : Dialog
+        controller.showMigration(current, target)
     }
 
     sealed interface Event {
-        data class OpenChapter(val chapter: Chapter?) : Event
+        data class OpenChapter(val chapter: Chapter?, val requestToken: Long) : Event
         data object InternalError : Event
         data object HistoryCleared : Event
     }

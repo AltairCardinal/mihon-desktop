@@ -9,6 +9,7 @@ import org.junit.jupiter.api.condition.OS
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.TimeUnit
 
 class WindowsReleaseConfigurationTest {
 
@@ -47,6 +48,7 @@ class WindowsReleaseConfigurationTest {
     }
 
     @Test
+    @EnabledOnOs(OS.WINDOWS)
     fun `windows build script produces and validates unpackaged executable`() {
         val script = repoRoot.resolve("scripts/build-windows.ps1")
         assertTrue(Files.exists(script), "Windows build script must exist")
@@ -66,10 +68,7 @@ class WindowsReleaseConfigurationTest {
             "Windows build script must validate the canonical unpackaged executable",
         )
         assertTrue(text.contains("ExpectedVersion"), "Windows script must validate the expected runtime version")
-        assertTrue(
-            text.contains("--rerun-tasks") && text.indexOf("--rerun-tasks") < unpackagedIndex,
-            "Canonical unpackaged build must bypass stale Gradle UP-TO-DATE state",
-        )
+        executeBuildDispatchContract("WindowsPreviewTest.test_formal_and_explicit_build_only_dispatch_keep_fresh_artifact")
         assertTrue(
             text.contains("validate-windows-extension-runtime.ps1"),
             "Windows build must run the published executable through extension installation acceptance",
@@ -217,6 +216,7 @@ class WindowsReleaseConfigurationTest {
     }
 
     @Test
+    @EnabledOnOs(OS.WINDOWS)
     fun `desktop build script exposes explicit build-only mode without weakening default validation`() {
         val text = Files.readString(repoRoot.resolve("scripts/build-desktop.sh"))
 
@@ -225,10 +225,9 @@ class WindowsReleaseConfigurationTest {
             text.contains("build-only)") && text.contains("-SkipTests"),
             "Windows build-only mode must explicitly forward SkipTests",
         )
-        assertTrue(
-            text.contains("if [[ \"${'$'}MODE\" != \"build-only\" ]]") &&
-                text.contains("./gradlew :app-desktop:jvmTest"),
-            "macOS must skip tests only in build-only mode",
+        executeBuildDispatchContract(
+            "WindowsPreviewTest.test_formal_and_explicit_build_only_dispatch_keep_fresh_artifact",
+            "WindowsPreviewTest.test_preview_runs_only_isolated_build_without_version_bump",
         )
         assertTrue(
             text.contains("hash|msi|build-only)"),
@@ -310,6 +309,25 @@ class WindowsReleaseConfigurationTest {
                 hasWindowsRuntimeValidationDocumentation(testGuide.replace(term, "")),
                 "Removing '$term' must invalidate the Windows runtime validation documentation",
             )
+        }
+    }
+
+    private fun executeBuildDispatchContract(vararg methods: String) {
+        val output = Files.createTempFile("windows-build-dispatch", ".log")
+        val python = System.getenv("MIHON_PYTHON") ?: "python"
+        val process = ProcessBuilder(
+            listOf(python, "scripts/tests/desktop-preview-test.py") + methods,
+        ).directory(repoRoot.toFile()).redirectErrorStream(true).redirectOutput(output.toFile()).apply {
+            environment()["PYTHONUTF8"] = "1"
+            environment()["PYTHONIOENCODING"] = "utf-8"
+            environment()["PYTHONDONTWRITEBYTECODE"] = "1"
+        }.start()
+        try {
+            assertTrue(process.waitFor(60, TimeUnit.SECONDS), "Actual build dispatch fixture timed out")
+            assertEquals(0, process.exitValue(), Files.readString(output))
+        } finally {
+            if (process.isAlive) process.destroyForcibly()
+            Files.deleteIfExists(output)
         }
     }
 

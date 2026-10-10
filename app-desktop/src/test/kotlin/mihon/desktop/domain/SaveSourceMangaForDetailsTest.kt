@@ -5,8 +5,11 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import mihon.desktop.domain.fakes.FakeCatalogueSource
+import mihon.desktop.domain.fakes.FakeChapterRepository
+import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.domain.error.AppError
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -31,6 +34,271 @@ class SaveSourceMangaForDetailsTest {
 
     @org.junit.jupiter.api.AfterEach fun closeStorage() {
         storage.close()
+    }
+
+    @Test
+    fun `reader only preparation never calls deleting directory commit or drops absent local progress`() = runBlocking {
+        val mangas = storage.mangas
+        val backend = storage.chapters
+        val manga = Manga.create().copy(
+            id = 71,
+            source = 42,
+            url = "/reader-only",
+            title = "Reader only",
+            initialized = true,
+        )
+        mangas.seed(manga)
+        backend.addAll(
+            listOf(
+                Chapter.create().copy(mangaId = manga.id, url = "/current", name = "Current"),
+                Chapter.create().copy(
+                    mangaId = manga.id,
+                    url = "/absent",
+                    name = "Absent",
+                    bookmark = true,
+                    lastPageRead = 7,
+                    dateFetch = 123,
+                ),
+            ),
+        )
+        val retained = backend.getChapterByMangaId(manga.id).single { it.url == "/absent" }
+        var deletingCommits = 0
+        val chapters = object : tachiyomi.domain.chapter.repository.ChapterRepository by backend {
+            override suspend fun syncDirectory(
+                request: tachiyomi.domain.chapter.service.ChapterDirectoryCommit,
+            ): tachiyomi.domain.chapter.service.ChapterDirectoryResult {
+                deletingCommits++
+                return backend.syncDirectory(request)
+            }
+        }
+        val owner = SaveSourceMangaForDetails(NetworkToLocalManga(mangas), mangas, chapters)
+        val details = owner.prepareForDetails(manga) as mihon.desktop.extension.SourceCallResult.Success
+        assertFalse(details.value.needsRefresh)
+        val source = object : eu.kanade.tachiyomi.source.Source {
+            override val id = 42L
+            override val name = "Reader only"
+            override suspend fun getMangaUpdate(
+                manga: SManga,
+                chapters: List<SChapter>,
+                fetchDetails: Boolean,
+                fetchChapters: Boolean,
+            ): eu.kanade.tachiyomi.source.model.SMangaUpdate =
+                eu.kanade.tachiyomi.source.model.SMangaUpdate(
+                    manga,
+                    listOf("/current", "/new").map { url ->
+                        SChapter.create().apply {
+                            this.url = url
+                            name = url
+                        }
+                    },
+                )
+        }
+        assertInstanceOf(
+            mihon.desktop.extension.SourceCallResult.Success::class.java,
+            owner.awaitPrepared(source, manga),
+        )
+        assertEquals(0, deletingCommits)
+        val after = backend.getChapterByMangaId(manga.id).single { it.id == retained.id }
+        assertEquals(retained, after)
+    }
+
+    @Test
+    fun `explicit detail refresh joining reader flight retains accepted download policy`() = runBlocking {
+        val mangas = storage.mangas
+        val chapters = storage.chapters
+        var policyCalls = 0
+        val owner = SaveSourceMangaForDetails(
+            NetworkToLocalManga(mangas),
+            mangas,
+            chapters,
+            downloadPolicy = {
+                policyCalls++
+                mihon.domain.chapter.interactor.DownloadNewChapterPolicy(false, false)
+            },
+        )
+        val listed = SManga.create().apply {
+            url = "/policy"
+            title = "Policy"
+        }
+        val manga = owner.awaitListed(listed, 42)
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var calls = 0
+        val source = object : eu.kanade.tachiyomi.source.Source {
+            override val id = 42L
+            override val name = "Policy"
+            override suspend fun getMangaUpdate(
+                manga: SManga,
+                chapters: List<SChapter>,
+                fetchDetails: Boolean,
+                fetchChapters: Boolean,
+            ): eu.kanade.tachiyomi.source.model.SMangaUpdate {
+                calls++
+                entered.complete(Unit)
+                release.await()
+                return eu.kanade.tachiyomi.source.model.SMangaUpdate(
+                    manga,
+                    listOf(
+                        SChapter.create().apply {
+                            url = "/policy/1"
+                            name = "Policy 1"
+                        },
+                    ),
+                )
+            }
+        }
+        kotlinx.coroutines.coroutineScope {
+            val reader = async { owner.awaitPrepared(source, manga) }
+            entered.await()
+            val details = owner.refreshFromSource(source, listed, origin = "DETAIL_REFRESH")
+            release.complete(Unit)
+            assertInstanceOf(mihon.desktop.extension.SourceCallResult.Success::class.java, reader.await())
+            details.join()
+        }
+        assertEquals(1, calls)
+        assertEquals(1, chapters.getChapterByMangaId(manga.id).size)
+        assertEquals(1, policyCalls, "The explicit main detail-refresh policy must survive a reader-first flight")
+    }
+
+    @Test
+    fun `detail preparation cancellation propagates without publishing a failure`() = runBlocking<Unit> {
+        val mangas = FakeMangaRepository()
+        val manga = Manga.create().copy(id = 71, source = 42, url = "/cancel", title = "Cancel", initialized = true)
+        mangas.seed(manga)
+        val cancellation = kotlinx.coroutines.CancellationException("Cancelled catalogue check")
+        val chapters = object : tachiyomi.domain.chapter.repository.ChapterRepository by FakeChapterRepository() {
+            override suspend fun getChapterByMangaId(
+                mangaId: Long,
+                applyScanlatorFilter: Boolean,
+            ): List<Chapter> = throw cancellation
+        }
+        val owner = SaveSourceMangaForDetails(NetworkToLocalManga(mangas), mangas, chapters)
+        val thrown = org.junit.jupiter.api.Assertions.assertThrows(
+            kotlinx.coroutines.CancellationException::class.java,
+        ) {
+            runBlocking { owner.prepareForDetails(manga) }
+        }
+        org.junit.jupiter.api.Assertions.assertSame(cancellation, thrown)
+        val legacy = org.junit.jupiter.api.Assertions.assertThrows(
+            kotlinx.coroutines.CancellationException::class.java,
+        ) {
+            runBlocking {
+                owner.awaitListedForDetails(
+                    SManga.create().apply {
+                        url = manga.url
+                        title = manga.title
+                    },
+                    manga.source,
+                )
+            }
+        }
+        org.junit.jupiter.api.Assertions.assertSame(cancellation, legacy)
+        assertEquals(emptyMap<SourceMangaRefreshKey, SourceMangaRefreshState>(), owner.refreshStates.value)
+    }
+
+    @Test
+    fun `another work prepares independently while the first source response waits`() = runBlocking<Unit> {
+        val mangas = FakeMangaRepository()
+        val chapters = FakeChapterRepository()
+        val owner = SaveSourceMangaForDetails(NetworkToLocalManga(mangas), mangas, chapters)
+        val first = owner.awaitListed(
+            SManga.create().apply {
+                url = "/first"
+                title = "First"
+            },
+            42,
+        )
+        val second = owner.awaitListed(
+            SManga.create().apply {
+                url = "/second"
+                title = "Second"
+            },
+            42,
+        )
+        val reached = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val source = object : eu.kanade.tachiyomi.source.Source {
+            override val id = 42L
+            override val name = "Two works"
+            override suspend fun getMangaUpdate(
+                manga: SManga,
+                chapters: List<SChapter>,
+                fetchDetails: Boolean,
+                fetchChapters: Boolean,
+            ): eu.kanade.tachiyomi.source.model.SMangaUpdate {
+                if (manga.url == first.url) {
+                    reached.complete(Unit)
+                    release.await()
+                }
+                return eu.kanade.tachiyomi.source.model.SMangaUpdate(
+                    manga,
+                    listOf(
+                        SChapter.create().apply {
+                            url = manga.url + "/1"
+                            name = manga.title + " 1"
+                        },
+                    ),
+                )
+            }
+        }
+        kotlinx.coroutines.coroutineScope {
+            val pending = async { owner.awaitPrepared(source, first) }
+            reached.await()
+            val independent = owner.awaitPrepared(source, second)
+            assertEquals(second.id, (independent as mihon.desktop.extension.SourceCallResult.Success).value.manga.id)
+            assertEquals(listOf("/second/1"), chapters.getChapterByMangaId(second.id).map { it.url })
+            release.complete(Unit)
+            assertEquals(first.id, (pending.await() as mihon.desktop.extension.SourceCallResult.Success).value.manga.id)
+            assertEquals(listOf("/first/1"), chapters.getChapterByMangaId(first.id).map { it.url })
+        }
+    }
+
+    @Test
+    fun `detail refresh shares source request and cancellation of a waiter preserves another`() = runBlocking<Unit> {
+        val mangas = storage.mangas
+        val chapters = storage.chapters
+        val owner = SaveSourceMangaForDetails(NetworkToLocalManga(mangas), mangas, chapters)
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val source = object : eu.kanade.tachiyomi.source.Source {
+            override val id = 42L
+            override val name = "Shared"
+            override suspend fun getMangaUpdate(
+                manga: SManga,
+                chapters: List<SChapter>,
+                fetchDetails: Boolean,
+                fetchChapters: Boolean,
+            ): eu.kanade.tachiyomi.source.model.SMangaUpdate {
+                calls.incrementAndGet()
+                entered.complete(Unit)
+                release.await()
+                return eu.kanade.tachiyomi.source.model.SMangaUpdate(
+                    manga,
+                    listOf(
+                        SChapter.create().apply {
+                            url = "/1"
+                            name = "Chapter 1"
+                        },
+                    ),
+                )
+            }
+        }
+        val listed = SManga.create().apply {
+            url = "/shared"
+            title = "Shared"
+        }
+        val first = owner.refreshFromSource(source, listed)
+        entered.await()
+        val second = owner.refreshFromSource(source, listed)
+        first.cancel()
+        release.complete(Unit)
+        second.join()
+        assertEquals(1, calls.get())
+        assertEquals(1, chapters.addedChapters.size)
+        val stored = requireNotNull(mangas.getMangaByUrlAndSourceId(listed.url, source.id))
+        assertEquals(listOf("/1"), chapters.getChapterByMangaId(stored.id).map { it.url })
+        assertEquals(null, owner.refreshStates.value[SourceMangaRefreshKey(42, "/shared")])
     }
 
     @Test

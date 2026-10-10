@@ -48,6 +48,23 @@ import java.util.prefs.Preferences
 
 class ReaderScreenModelTest {
     @Test
+    fun `automatic invalid resume fallback does not write but explicit same page selection reaches production progress bridge`() {
+        val reader = desktopReaderSessionState(chapterId = 7L, pageCount = 3, initialPage = 10)
+        val recorded = mutableListOf<ReaderPageId>()
+        val model = ReaderScreenModel(initialSessionState = reader,
+            onViewportSettled = { _, active -> recorded += active })
+        val page = reader.snapshot.activeChapter.pages.first().id
+        val viewport = VisiblePageSet(DisplayUnitId(ReaderPresentationMode.SINGLE_PAGED,
+            listOf(DisplaySlotId(page, PageSplitHalf.RIGHT))), setOf(page), page)
+        model.settleSinglePage(viewport)
+        assertTrue(recorded.isEmpty(), "the automatic fallback itself must not correct the synchronized position")
+        assertTrue(model.confirmSyncResumePosition(0))
+        assertEquals(listOf(page), recorded)
+        model.settleSinglePage(viewport)
+        assertEquals(listOf(page), recorded, "the same already accepted viewport must not be replayed")
+    }
+
+    @Test
     fun `manual pairing survives switching dual page mode off and on`() {
         val reader = desktopReaderSessionState(chapterId = 7L, pageCount = 8)
         val model = ReaderScreenModel(initialSessionState = reader, dualPageOverride = true)

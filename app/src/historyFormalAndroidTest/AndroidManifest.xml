@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    android:versionCode="160001"
+    android:versionName="1.6.0">
+    <!-- This external test APK is also an ordinary, explicitly trusted local fixture extension. -->
+    <uses-feature android:name="tachiyomi.extension" android:required="false" />
+    <application android:label="HP02 local history fixture">
+        <meta-data android:name="tachiyomix.name" android:value="HP02 local history fixture" />
+        <meta-data android:name="tachiyomix.extensionLib" android:value="1.6" />
+        <meta-data android:name="tachiyomi.extension.nsfw" android:value="0" />
+        <meta-data android:name="tachiyomi.extension.class" android:value="mihon.history.fixture.HistoryFormalSource" />
+    </application>
+</manifest>

@@ -22,6 +22,7 @@ import mihon.domain.reader.session.ReaderSessionSnapshot
  * constructed and asserted in plain JVM unit tests.
  */
 data class ReaderState(
+    val chapterRefs: List<mihon.desktop.reader.ReaderChapterRef> = emptyList(),
     // ── Page data ────────────────────────────────────────────────────────────
     val context: DesktopReaderChapterContext = DesktopReaderChapterContext(
         chapterId = 0L,

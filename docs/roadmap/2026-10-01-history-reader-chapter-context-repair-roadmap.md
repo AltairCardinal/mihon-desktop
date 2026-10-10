@@ -1,15 +1,17 @@
 ---
-status: planned
+status: superseded
 date: 2026-10-01
 ---
 
 # 历史续读与同步后章节目录修复 roadmap
 
+> 2026-10-04：后续工作由[历史页上游行为对齐与双端共享 roadmap](2026-10-04-history-upstream-parity-roadmap.md)承接，设计依据为[新设计](../2026-10-04-history-upstream-parity-design.md)。替代原因是用户明确要求对齐官方历史行为，撤销历史页源目录预检和独立失败流程。下面 HR01 已完成、HR02 未完成及既有批准/失败记录保留为历史事实，不再按旧 UX 继续收口；有效数据修复不回滚。新计划当前只完成规划，不能把本次文档变更或旧测试批准当作代码实施、再次 full 或重建候选的授权。
+
 ## 1. 目标、范围与执行状态
 
 规格唯一入口：[修复设计](../2026-10-01-history-reader-chapter-context-repair-design.md)。目标：Desktop 历史打开已同步阅读记录后，能按真实目录跳转前后章；没有完整本机目录时按需补载，保留既有进度、历史和下载。验收固定为 H01–H15，不能在实施后因未完成而改为不适用。
 
-规划基线：`main@5affb165495dff62dfbadf420c0f3e94bb971ace`。本文件是尚未激活的产品 child plan，进度从第一个未勾选项推导，不声明 active-task，不改父 roadmap 的 active-child-plan。用户本轮只要求设计与 roadmap；本轮没有执行下列实施、测试或发布。
+规划基线：`main@5affb165495dff62dfbadf420c0f3e94bb971ace`。最初规划轮仅创建设计与 roadmap，未执行实施、测试或发布。2026-10-01 用户随后授权实施，本计划在 `D:/Codex/worktrees/f235/mihon`、实施基线 `5f13b080547ab2fcdcd6deb7ecdfa463e2765421` 激活；原设计基线与 H01–H15 冻结契约保持不变。产品 child plan 仍从第一个未勾选项推导进度，不声明 active-task，不改父 roadmap 的 active-child-plan。HR01 实现、独立审查、一次修复复审及相关验证已通过，checkoff 随本功能提交完成；HR02 为当前第一个未勾选项；实际证据只维护[唯一聚合报告](../evidence/history-reader-chapter-context-repair-2026-10-01.md)。
 
 一个功能批次涵盖目录准备、历史导航和生产集成；这些部分共同交付同一个用户能力，分开提交孤立 helper、单个测试类或只补传参不能验收完整修复。采用两个任务：HR01 完整功能批次、HR02 最终交付。HR01 内按接口和写入边界串行实施，不把内部步骤当成各自完成的产品任务。
 
@@ -17,9 +19,9 @@ date: 2026-10-01
 
 | 项目 | 计划预算与边界 |
 |---|---|
-| 本轮文档 | 主代理，0 子代理；设计与 roadmap 各 1 份，一次 UTF-8/链接/内容/diff 核验，只提交两份新文档；不运行 Gradle/构建 |
-| 未来技能 | 无必需专门技能；遵守 TDD、Desktop UI 规范、现有架构与构建规范。macOS 执行前读 MACOS_ACCEPTANCE；不引入 HTML、媒体生成或新插件 |
-| 未来实施者 | 1 名实施子代理承担 HR01 主实现与 focused 验证；主代理冻结接口、协调 Gradle、独立审查、整合和最终验收。连续修复复用同一代理，不重复实施其文件 |
+| 原规划轮 | 主代理，0 子代理；设计与 roadmap 各 1 份，一次 UTF-8/链接/内容/diff 核验，只提交两份新文档；该轮未运行 Gradle/构建 |
+| 实施技能 | 无必需专门技能；遵守 TDD、Desktop UI 规范、现有架构与构建规范。macOS 执行前读 MACOS_ACCEPTANCE；不引入 HTML、媒体生成或新插件 |
+| 实施者 | 1 名实施子代理承担 HR01 主实现与 focused 验证；主代理冻结接口、协调 Gradle、独立审查、整合和最终验收。连续修复复用同一代理，不重复实施其文件 |
 | 真实并行 | 实施者写代码时，主代理可只读核对 SDK/脚本/当前平台可用性；不同文件读检查可并行。共享 data/domain/UI 落库与 wiring 串行，不并发跑重型 Gradle |
 | 审查 | 独立审查 1 轮，覆盖 HR01 稳定整体 diff，重点 H09/H10/H11/H15；由未实施代码的主代理执行。阻塞修复复审最多 1 轮，只看修复及影响路径 |
 | focused 验证 | HR01 按 A/B/C 三个行为范围，各一组红→绿→重构运行；扩写失败用例仍属于相应 focused 范围。批次完成后一次受影响回归+格式；必要失败诊断/修复只复跑受影响 focused，不提前全模块 |
@@ -31,11 +33,21 @@ date: 2026-10-01
 
 预计 HR01 约 12–20 个文件，涉及 domain/data 窄接口、Desktop adapter/UI/DI、共享契约及平台测试；行数可能超过 400。内聚性理由是同一历史续读能力的目录、状态与真实 wiring 必须联合验证；风险集中于数据保留和目录完整性，不为满足估算拆开不可验收的 helper。执行前报告实际范围和预算；不因估算增长自动重规划。
 
+2026-10-01 HR02 首次 Desktop full 实际 3265 项/58 失败后，用户明确批准追加：同一实施代理以红绿重构修复作者页“关注/全部”切换的非零滚动恢复，主代理对 History 必要回归修复与作者修复执行额外独立审查 1 轮，再执行 Desktop full 1 次；预计增加 45–90 分钟，不新增代理。原始失败证据保留，原 Android/domain/data/test-desktop/格式完整矩阵额度尚未使用。作者范围限定现有筛选状态、分页与双列表位置保持，保留搜索、关注、详情导航和既有 mounted 验收，不能用放宽断言替代修复；已证实混合 scope/cards 状态与单次滚动失败的因果边界分开记录。该项是首次 full 发现的独立用户能力，随必要测试和文档独立提交。再次 full 后若仍失败，不自动追加完整测试。
+
+2026-10-01 获批 Desktop 复验实际 3268 项/1 失败、Mac focused 19 项/1 失败后，用户再次明确批准：修复迁移 controller 的取消/关停等待与真实 runtime/文件测试；同一实施者完成原作者页剩余修复；主代理追加限定独立复审 1 轮，并在修复、相关验证与提交完成后追加 Desktop full 1 次。无新代理，预计增加 45–75 分钟；不改变迁移策略、其他产品能力或冻结验收。其余原最终矩阵额度尚未使用。旧失败证据和取消竞态的因果边界保留，不自动重复 full。
+
+2026-10-01 迁移与作者恢复已提交至`c6ed1458871a1bc7c22376ae6ad7d33de82829d5`后，第三次获批Desktop full实际3274项/1失败/0 errors/3 skipped，原始trace在唯一聚合报告引用日志中保留。唯一失败为下一Sources用例开始前残留作者presentation-exclusion SQLite查询的stmt pointer is closed；full首发旧fixture尚未唯一定位。原实施者在既有作者范围内用真实SQL闸门执行正确红绿重构，增加root/detail owned scope可等待关停并修正实际作者SQLite fixture的全部model等待顺序，两平台受影响focused均26/0且四文件格式通过。用户随后明确批准追加限定独立复审1轮与Desktop full1次，预计20–35分钟、无新代理；主代理限定复审已通过，需随本修复相关测试/必要文档提交后才执行获批full。其他完整矩阵及正式运行尚待验，HR02不提前勾选；再次失败仍保留证据，不能自动追加full或扩大能力。
+
+2026-10-01 全部原最终矩阵与两平台69正式构建通过后，正式运行发现H15真实reader HTTP动作500及H05未收藏目录冷启动重复获取。原实施者在限定原范围执行正确红绿：仅三处显式Swing调度及writer自然键缓存对null书架关联的处理，生产library detach/共享协议/schema不改；Windows/Mac各18项受影响定向通过，四文件格式通过。主代理已申请限定独立复审1轮、Desktop完整测试1次、两平台各正式候选重建1次及必要运行复验，预计20–35分钟、无新代理；本段记录时待用户批准，未追加复审/full/构建，HR02仍未勾选。Mac已确认旧69候选可见，但现场取消与焦点观察尚待反馈。具体原失败及修复证据只保存于唯一聚合报告。
+
+2026-10-03 用户针对上述两项已定向通过的正式运行修复明确回复“批准”，授权限定独立复审1次、Desktop完整测试1次、两平台各正式重建1次及相关运行复验，预计20–35分钟、不含现场等待、无新代理。主代理限定独立复审已通过，修复及必要文档提交后执行唯一获批full，原其他最终矩阵继续有效；失败不自动追加，HR02未勾选。
+
 新增 schema/同步协议、Android 产品修复、下载更名/删除、额外代理/审查轮次、再次 full、实体设备安装/操作或不可逆发布均不属于本预算。出现需要时说明具体证据、成本和替代方案，暂停扩展并等待决定；范围内必要诊断继续。工具或签名/平台不可用记录真实阻塞，不把未执行验收标为通过。
 
 ## 3. HR01：完整修复历史续读、目录补载与生产导航
 
-- [ ] **HR01 完成：H01–H15 对应功能与相关自动化覆盖已实现、独立审查通过、受影响验证通过并提交。正式平台运行证据由 HR02 补齐。**
+- [x] **HR01 完成：H01–H15 对应功能与相关自动化覆盖已实现、独立审查通过、受影响验证通过并提交。正式平台运行证据由 HR02 补齐。**
 
 ### 启动前置
 
@@ -137,7 +149,7 @@ date: 2026-10-01
 
 ## 5. 命令与实施回执模板
 
-以下仅为执行模板，本规划轮不运行。新增测试类名称以实现为准，执行前确认存在并实际被运行。所有重型 Gradle 由同一协调者串行执行，协调器还在运行时不启动第二份。
+以下为执行模板；实际命令和结果以唯一聚合报告及协调器日志为准。新增测试类名称以实现为准，执行前确认存在并实际被运行。所有重型 Gradle 由同一协调者串行执行，协调器还在运行时不启动第二份。
 
 ```powershell
 $ErrorActionPreference = 'Stop'
@@ -162,18 +174,18 @@ python scripts/gradle-coordinator.py run --key history-sync-focused -- .\gradlew
 # HR02 才可执行：除 Desktop full 外的一次最终组合
 python scripts/gradle-coordinator.py run --key history-reader-final -- .\gradlew.bat :domain:jvmTest :data:jvmTest :data:testDebugUnitTest :app:testReleaseUnitTest :test-desktop:test spotlessCheck
 
-# HR02 Desktop full 与正式 Windows 构建；入口已使用协调器，不外层嵌套
-bash scripts/build-desktop.sh full-tests
-bash scripts/build-desktop.sh build-only
+# HR02 Desktop full 与正式 Windows 构建；当前入口内部没有协调器，从外层串行包装
+python scripts/gradle-coordinator.py run --key history-desktop-full -- bash scripts/build-desktop.sh full-tests
+python scripts/gradle-coordinator.py run --key history-desktop-build -- bash scripts/build-desktop.sh build-only
 ```
 
 data 新增共享契约必须同时有 JVM 与 Android focused 类，命令在类冻结后加入 A 的执行集合；不为缺少 wrapper 偷跑整个模块。检查 Android SDK 的 android.jar/aapt2.exe/adb.exe，用户级环境历史记录不能替代当前存在性。境外依赖请求遵守代理和一次追加重试；本地 MockWebServer/Test Mode 绕过代理。网络不可替代依赖仍失败时记录真实阻塞，继续独立文档/诊断工作。
 
 建议子代理委派内容：目标=完整 HR01；背景=设计基线和 H01–H15；前置=干净任务写入边界及现有用户 diff 清单；修改范围=A/B/C 指定入口；禁止=协议/schema/Android UI/下载删除/提前 full/正式构建；验收=三组 focused TDD、一次批次回归、真实 wiring 与数据安全；交付=相关 diff、首红和绿证据、风险、进程状态及结构化回执。尚未独立审查/提交时 `status` 明确为待验，不勾选 HR01。
 
-## 6. 本轮文档核验与后续手动清单
+## 6. 原规划轮核验与后续手动清单
 
-本轮只核验源码事实、设计与任务映射、链接、UTF-8 和 Git diff；没有运行功能测试、构建、同步或读取用户实际数据库。两项产品任务均未勾选。后续最小手动清单如下，不能代替 H 矩阵自动化：
+原规划轮只核验源码事实、设计与任务映射、链接、UTF-8 和 Git diff；未运行功能测试、构建、同步或读取用户实际数据库。激活后的 HR01 自动化证据见唯一聚合报告，两项产品任务在完成各自审查、验证与提交前均保持未勾选。后续最小手动清单如下，不能代替 H 矩阵自动化：
 
 - [ ] Windows 既有完整目录作品 → 历史阅读中间章 → 上一/下一章均正确，返回历史保留查询与位置。
 - [ ] Windows 首次接收其他设备的中间章记录 → 历史阅读 → 加载目录后切前后章，原进度与书签不丢。

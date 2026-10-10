@@ -42,6 +42,13 @@ class SyncDiscoveryStore(private val handler: DatabaseHandler) {
             .map(::decode)
     }
 
+    /** Matches the protocol's bounded authenticated index, rather than a single execution page. */
+    suspend fun allPending(spaceId: String, generation: Long): List<SyncBatchIndexEntry> = handler.await {
+        val entries = sync_inboxQueries.getDiscoveredBatches(spaceId, generation, 10_001).executeAsList()
+        require(entries.size <= 10_000) { "sync discovery exceeds index entry limit" }
+        entries.map(::decode)
+    }
+
     suspend fun complete(spaceId: String, generation: Long, batchId: String) = handler.await {
         sync_inboxQueries.deleteDiscoveredBatch(spaceId, generation, batchId)
     }

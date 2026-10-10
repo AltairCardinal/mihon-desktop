@@ -1,5 +1,6 @@
 package mihon.data.sync.runtime
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonObject
@@ -8,16 +9,23 @@ import kotlinx.serialization.json.longOrNull
 import mihon.data.sync.auth.DiscoveredSyncSpace
 import mihon.data.sync.auth.EmptySyncRepositoryCandidate
 import mihon.data.sync.auth.GitHubPrivateRepositorySelector
+import mihon.data.sync.auth.GitHubSyncRepositoryManager
 import mihon.data.sync.auth.GitHubSyncSpaceClient
 import mihon.data.sync.auth.SyncCreationAttempt
 import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.auth.SyncGitHubAccount
+import mihon.data.sync.auth.SyncRepositoryCreationIntent
 import mihon.data.sync.auth.SyncSpaceCreation
 import mihon.data.sync.auth.SyncSpaceDiscovery
 import mihon.data.sync.crypto.SyncSpaceCrypto
+import mihon.data.sync.http.SyncFailureDiagnostics
+import mihon.data.sync.http.SyncFailurePhase
 import mihon.data.sync.http.SyncHttpBodyObserver
 import mihon.data.sync.http.SyncHttpException
 import mihon.data.sync.http.SyncHttpRequestGate
+import mihon.data.sync.http.SyncRequiredResource
+import mihon.data.sync.http.SyncRequiredResourceUnavailable
+import mihon.data.sync.http.requireSyncSuccess
 import mihon.data.sync.transport.GitHubSyncTransport
 import mihon.data.sync.transport.SyncSnapshotManifestBinding
 import mihon.data.sync.transport.SyncSnapshotManifestStore
@@ -31,7 +39,10 @@ import okhttp3.OkHttpClient
 import okio.Path
 import java.util.UUID
 
-internal class SyncSetupException(val problem: SyncDiscoveryProblem) : IllegalStateException("sync setup failed")
+internal class SyncSetupException(
+    val problem: SyncDiscoveryProblem,
+    val initialization: SyncInitializationFailure? = null,
+) : IllegalStateException("sync setup failed")
 
 internal sealed interface SyncSetupOutcome {
     data class Connected(val setup: StoredSyncSetup) : SyncSetupOutcome
@@ -66,15 +77,18 @@ internal class SyncOnboarding(
             throw SyncSetupException(SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE)
         }
     }
+    suspend fun discover(repositoryName: String? = null, expectedAccountId: Long? = null): SyncSpaceDiscovery {
+        requireLocalScope()
+        repositoryName?.let(::requireRepository)
+        return spaces(runtime.accessToken()).discover(expectedAccountId, repositoryName)
+    }
+
+    suspend fun checkRepositoryCreationPermission(expectedAccountId: Long? = null) =
+        spaces(runtime.accessToken()).checkRepositoryCreationPermission(expectedAccountId)
 
     private suspend fun requireLocalScope() {
         if (!runtime.repositoryScope.isolated) return
         runtime.connection()?.let { requireRepository(it.repository.name) }
-    }
-
-    suspend fun discover(): SyncSpaceDiscovery {
-        requireLocalScope()
-        return spaces(runtime.accessToken()).discover()
     }
 
     suspend fun pending(): StoredSyncSetup? {
@@ -84,16 +98,30 @@ internal class SyncOnboarding(
 
     suspend fun pendingForCurrentAccount(): SyncPendingSetup {
         requireLocalScope()
-        val current = session().account.id
-        storage.legacyPending(current)?.let {
-            requireRepository(it.repository)
-            return SyncPendingSetup.Legacy(it)
+        var phase = SyncFailurePhase.PENDING_ACCOUNT
+        try {
+            val current = session().account.id
+            phase = SyncFailurePhase.PENDING_STORAGE
+            storage.legacyPending(current)?.let {
+                requireRepository(it.repository)
+                return SyncPendingSetup.Legacy(it)
+            }
+            val connection = runtime.connection()
+            val binding = connection?.takeIf { it.enabled && !it.unsupportedFormat }
+                ?.let { storage.connection(it.spaceId, it.generation) }
+            val pending = binding?.takeIf { it.accountId == current }?.let { storage.pendingForConnection(it) }
+                ?: storage.pending(current)?.takeIf { binding == null || it.material == binding.material }
+            pending?.let {
+                requireRepository(it.repository)
+                return SyncPendingSetup.Current(it)
+            }
+            return SyncPendingSetup.None
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            SyncFailureDiagnostics.record(phase, error)
+            throw error
         }
-        storage.pending(current)?.let {
-            requireRepository(it.repository)
-            return SyncPendingSetup.Current(it)
-        }
-        return SyncPendingSetup.None
     }
 
     /** Reads the fixed repository and valid v2 descriptors without changing the legacy local record. */
@@ -160,31 +188,60 @@ internal class SyncOnboarding(
         storage.abandonLegacy(setup)
     }
 
-    suspend fun create(candidate: EmptySyncRepositoryCandidate, password: String): StoredSyncSetup {
+    suspend fun create(
+        candidate: EmptySyncRepositoryCandidate,
+        password: String,
+        intent: StoredSyncSpaceSwitch? = null,
+    ): StoredSyncSetup {
         requireLocalScope()
         requireRepository(candidate.repository.name)
         SyncSpaceCrypto.validatePassword(password)
         val account = candidate.account
         session(account.id)
-        if (storage.legacyPending(account.id) !=
+        if (intent == null && storage.legacyPending(account.id) !=
             null
         ) {
             throw SyncSetupException(SyncDiscoveryProblem.CREATION_UNCONFIRMED)
         }
-        storage.pending(account.id)?.let {
-            requireRepository(it.repository)
-            return it
+        if (intent == null) {
+            storage.pending(account.id)?.let {
+                if (it.repositoryId != candidate.repositoryId || it.repository() != candidate.repository) {
+                    throw SyncSetupException(
+                        SyncDiscoveryProblem.INITIALIZATION_REQUIRES_ACTION,
+                        SyncInitializationFailure(
+                            it.stage,
+                            SyncInitializationFailureReason.REPOSITORY_IDENTITY_CHANGED,
+                            true,
+                        ),
+                    )
+                }
+                requireRepository(it.repository)
+                return it
+            }
+        } else {
+            runtime.verifySwitch(intent)
+            require(intent.accountId == account.id && intent.purpose == SyncSpaceSwitchPurpose.CREATE)
+            require(intent.stage == SyncSpaceSwitchStage.PREPARING && intent.target == null)
         }
-        require(candidate.repository.name == runtime.repositoryScope.repositoryName)
+        if (!runtime.repositoryScope.isolated && candidate.repository.name != GitHubSyncSpaceClient.REPOSITORY_NAME) {
+            val recorded = candidate.creationAttemptId?.let { storage.repositoryCreation(account.id) }
+                ?: throw SyncSetupException(SyncDiscoveryProblem.CREATION_UNCONFIRMED)
+            require(
+                recorded.attemptId == candidate.creationAttemptId &&
+                    recorded.repositoryId == candidate.repositoryId &&
+                    recorded.repositoryName == candidate.repository.name,
+            )
+        }
         require(candidate.repository.owner.equals(account.login, ignoreCase = true))
         require(candidate.repositoryId > 0 && candidate.defaultBranch.isNotBlank())
         val material = SyncSpaceCrypto.create(UUID.randomUUID().toString(), 1, password)
         return StoredSyncSetup(
             accountId = account.id,
             accountLogin = account.login,
-            attemptId = UUID.randomUUID().toString(),
+            attemptId = candidate.creationAttemptId ?: UUID.randomUUID().toString(),
             attemptNonce = UUID.randomUUID().toString(),
             newSpace = true,
+            switchIntentId = intent?.intentId,
             material = StoredSyncMaterial.from(material),
             stage = SyncInitializationStage.VERIFIED_EMPTY,
             repositoryId = candidate.repositoryId,
@@ -192,18 +249,40 @@ internal class SyncOnboarding(
             repository = candidate.repository.name,
             branch = GitHubSyncSpaceClient.BRANCH,
             defaultBranch = candidate.defaultBranch,
-        ).also { storage.save(it, null) }
+        ).also {
+            storage.save(it, null)
+            if (intent != null) storage.saveSwitch(intent.copy(target = it), intent)
+            candidate.creationAttemptId?.let { attempt ->
+                storage.repositoryCreation(account.id)?.takeIf { value -> value.attemptId == attempt }
+                    ?.let { value -> storage.archiveRepositoryCreation(value) }
+            }
+        }
     }
 
-    suspend fun join(space: DiscoveredSyncSpace, material: SyncSpaceMaterial): StoredSyncSetup {
+    suspend fun join(
+        space: DiscoveredSyncSpace,
+        material: SyncSpaceMaterial,
+        intent: StoredSyncSpaceSwitch? = null,
+    ): StoredSyncSetup {
         requireLocalScope()
         requireRepository(space.repository.name)
         require(material.descriptor == space.descriptor)
         session(space.account.id)
-        if (storage.legacyPending(space.account.id) != null) {
+        if (intent == null && storage.legacyPending(space.account.id) != null) {
             throw SyncSetupException(SyncDiscoveryProblem.CREATION_UNCONFIRMED)
         }
-        val pending = storage.pending(space.account.id)
+        if (intent != null) {
+            runtime.verifySwitch(intent)
+            require(intent.accountId == space.account.id && intent.stage == SyncSpaceSwitchStage.PREPARING)
+            require(intent.target == null)
+            verifyRepository(session(space.account.id), space.repository, space.repositoryId)
+            transport(
+                runtime.accessToken(),
+                material,
+                repositoryId = space.repositoryId,
+            ).readSnapshot(space.repository, material.descriptor.spaceId, material.descriptor.generation).getOrThrow()
+        }
+        val pending = if (intent == null) storage.pending(space.account.id) else null
         if (pending != null) {
             requireRepository(pending.repository)
             if (pending.material == StoredSyncMaterial.from(material) && pending.repositoryId == space.repositoryId) {
@@ -220,112 +299,179 @@ internal class SyncOnboarding(
             attemptId = UUID.randomUUID().toString(),
             attemptNonce = UUID.randomUUID().toString(),
             newSpace = false,
+            switchIntentId = intent?.intentId,
             material = StoredSyncMaterial.from(material),
             stage = SyncInitializationStage.SPACE_CONFIRMED,
             repositoryId = space.repositoryId,
             owner = space.repository.owner,
             repository = space.repository.name,
             branch = space.repository.branch,
-        ).also { storage.save(it, null) }
+        ).also {
+            storage.save(it, null)
+            if (intent != null) storage.saveSwitch(intent.copy(target = it), intent)
+        }
     }
 
     suspend fun resume(initial: StoredSyncSetup): SyncSetupOutcome {
         requireLocalScope()
         requireRepository(initial.repository)
-        var setup = storage.pending(initial.accountId)
-            ?.takeIf { it.attemptId == initial.attemptId } ?: throw IllegalStateException("sync setup changed")
-        requireRepository(setup.repository)
-        val session = session(setup.accountId)
-        val material = setup.material.material()
-        val requestGate = runtime.accountHttpRequestGate(session.account.id)
-        if (setup.newSpace) {
-            if (setup.stage == SyncInitializationStage.VERIFIED_EMPTY) {
-                val rechecked = spaces(session.token, requestGate).createOrResume(
-                    SyncCreationAttempt(session.account, setup.attemptId, repositoryId = setup.repositoryId),
-                ) {}
-                when (rechecked) {
-                    is SyncSpaceCreation.Failed -> throw SyncSetupException(rechecked.problem)
-                    is SyncSpaceCreation.Existing -> {
-                        if (rechecked.space.repositoryId != setup.repositoryId ||
-                            rechecked.space.descriptor != material.descriptor
-                        ) {
-                            if (!setup.matchesFixedRepository(rechecked.space)) {
+        var phase = SyncFailurePhase.RESUME_LOAD
+        var diagnosticNewSpace = initial.newSpace
+        var diagnosticStage = initial.stage
+        try {
+            var setup = storage.setupFor(initial)
+                ?.takeIf { it.attemptId == initial.attemptId } ?: throw IllegalStateException("sync setup changed")
+            requireRepository(setup.repository)
+            diagnosticNewSpace = setup.newSpace
+            diagnosticStage = setup.stage
+            phase = SyncFailurePhase.RESUME_ACCOUNT
+            val session = session(setup.accountId)
+            phase = SyncFailurePhase.RESUME_LOAD
+            val material = setup.material.material()
+            val requestGate = runtime.accountHttpRequestGate(session.account.id)
+            if (setup.newSpace && setup.stage != SyncInitializationStage.CONNECTED) {
+                phase = SyncFailurePhase.RESUME_INITIALIZE
+                if (setup.stage == SyncInitializationStage.VERIFIED_EMPTY) {
+                    val creation = storage.repositoryCreationArchive(setup.attemptId)
+                        ?: storage.repositoryCreation(setup.accountId)?.takeIf { it.attemptId == setup.attemptId }
+                    val rechecked = if (creation != null) {
+                        require(
+                            creation.repositoryId == setup.repositoryId &&
+                                creation.repositoryName == setup.repository &&
+                                creation.account.id == setup.accountId,
+                        )
+                        GitHubSyncRepositoryManager(client, { session.token }, apiBaseUrl, requestGate)
+                            .createOrResume(creation) {}
+                    } else {
+                        spaces(session.token, requestGate).createOrResume(
+                            SyncCreationAttempt(session.account, setup.attemptId, repositoryId = setup.repositoryId),
+                        ) {}
+                    }
+                    when (rechecked) {
+                        is SyncSpaceCreation.Failed -> throw SyncSetupException(rechecked.problem)
+                        is SyncSpaceCreation.Existing -> {
+                            if (rechecked.space.repositoryId != setup.repositoryId ||
+                                rechecked.space.descriptor != material.descriptor
+                            ) {
+                                if (!setup.matchesFixedRepository(rechecked.space)) {
+                                    throw SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED)
+                                }
+                                require(setup.switchIntentId == null) { "sync target descriptor changed" }
+                                storage.clear(setup)
+                                return SyncSetupOutcome.Existing(rechecked.space)
+                            }
+                        }
+                        is SyncSpaceCreation.Ready -> {
+                            if (rechecked.repositoryId != setup.repositoryId ||
+                                rechecked.defaultBranch != setup.defaultBranch
+                            ) {
                                 throw SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED)
                             }
-                            storage.clear(setup)
-                            return SyncSetupOutcome.Existing(rechecked.space)
-                        }
-                    }
-                    is SyncSpaceCreation.Ready -> {
-                        if (rechecked.repositoryId != setup.repositoryId ||
-                            rechecked.defaultBranch != setup.defaultBranch
-                        ) {
-                            throw SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED)
                         }
                     }
                 }
+                phase = SyncFailurePhase.RESUME_VERIFY_REPOSITORY
+                verifyRepository(session, setup.repository(), setup.repositoryId)
+                phase = SyncFailurePhase.RESUME_INITIALIZE
+                val result = transport(
+                    session.token,
+                    material,
+                    repositoryId = setup.repositoryId,
+                    persistentObjectCacheDirectory = runtime.persistentObjectCacheDirectory,
+                    requestGate = requestGate,
+                ).initialize(
+                    setup.repository(),
+                    material.descriptor.spaceId,
+                    material.descriptor.generation,
+                    setup.initializationIntent(),
+                ) { checkpoint ->
+                    require(checkpoint.stage.ordinal >= setup.stage.ordinal) { "sync setup stage moved backwards" }
+                    val next = setup.copy(
+                        stage = checkpoint.stage,
+                        confirmedBootstrapCommitSha = checkpoint.bootstrapCommitSha,
+                        confirmedBootstrapTreeSha = checkpoint.bootstrapTreeSha,
+                    )
+                    phase = SyncFailurePhase.RESUME_SAVE
+                    storage.save(next, setup)
+                    setup = next
+                    diagnosticStage = next.stage
+                    phase = SyncFailurePhase.RESUME_INITIALIZE
+                }
+                SyncFailureDiagnostics.record(
+                    SyncFailurePhase.RESUME_INITIALIZE_RESULT,
+                    newSpace = setup.newSpace,
+                    stage = setup.stage,
+                    result = result,
+                )
+                when (result) {
+                    is SyncInitializationResult.Initialized, is SyncInitializationResult.Adopted -> {
+                        if (setup.stage != SyncInitializationStage.SPACE_CONFIRMED &&
+                            setup.stage != SyncInitializationStage.CONNECTED
+                        ) {
+                            throw SyncSetupException(SyncDiscoveryProblem.RETRYABLE)
+                        }
+                    }
+                    else -> {
+                        val found = spaces(session.token, requestGate).discover(setup.accountId)
+                        if (found is SyncSpaceDiscovery.Found && found.space.descriptor != material.descriptor) {
+                            if (!setup.matchesFixedRepository(found.space)) {
+                                throw SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED)
+                            }
+                            require(setup.switchIntentId == null) { "sync target descriptor changed" }
+                            storage.clear(setup)
+                            return SyncSetupOutcome.Existing(found.space)
+                        }
+                        val explicit = result is SyncInitializationResult.NeedsExplicitAction
+                        val reason = when (result) {
+                            is SyncInitializationResult.NeedsExplicitAction -> result.reason
+                            is SyncInitializationResult.Failed -> result.reason
+                            else -> ""
+                        }
+                        throw SyncSetupException(
+                            if (explicit) {
+                                SyncDiscoveryProblem.INITIALIZATION_REQUIRES_ACTION
+                            } else {
+                                SyncDiscoveryProblem.INITIALIZATION_UNCONFIRMED
+                            },
+                            SyncInitializationFailure(setup.stage, initializationReason(reason), explicit),
+                        )
+                    }
+                }
             }
-            verifyRepository(session, setup.repository(), setup.repositoryId)
-            val result = transport(
+            phase = SyncFailurePhase.RESUME_VERIFY_REPOSITORY
+            verifyRepository(session, setup.repository(), requireNotNull(setup.repositoryId))
+            phase = SyncFailurePhase.RESUME_READ_SNAPSHOT
+            transport(
                 session.token,
                 material,
-                repositoryId = setup.repositoryId,
+                repositoryId = requireNotNull(setup.repositoryId),
+                manifestStore = snapshotManifestStore,
+                manifestBinding = setup.snapshotManifestBinding(),
                 persistentObjectCacheDirectory = runtime.persistentObjectCacheDirectory,
                 requestGate = requestGate,
-            ).initialize(
+            ).readSnapshot(
                 setup.repository(),
                 material.descriptor.spaceId,
                 material.descriptor.generation,
-                setup.initializationIntent(),
-            ) { checkpoint ->
-                require(checkpoint.stage.ordinal >= setup.stage.ordinal) { "sync setup stage moved backwards" }
-                val next = setup.copy(
-                    stage = checkpoint.stage,
-                    confirmedBootstrapCommitSha = checkpoint.bootstrapCommitSha,
-                    confirmedBootstrapTreeSha = checkpoint.bootstrapTreeSha,
-                )
-                storage.save(next, setup)
-                setup = next
-            }
-            when (result) {
-                is SyncInitializationResult.Initialized, is SyncInitializationResult.Adopted -> {
-                    if (setup.stage != SyncInitializationStage.SPACE_CONFIRMED &&
-                        setup.stage != SyncInitializationStage.CONNECTED
-                    ) {
-                        throw SyncSetupException(SyncDiscoveryProblem.RETRYABLE)
-                    }
-                }
-                else -> {
-                    val found = spaces(session.token, requestGate).discover(setup.accountId)
-                    if (found is SyncSpaceDiscovery.Found && found.space.descriptor != material.descriptor) {
-                        if (!setup.matchesFixedRepository(found.space)) {
-                            throw SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED)
-                        }
-                        storage.clear(setup)
-                        return SyncSetupOutcome.Existing(found.space)
-                    }
-                    throw SyncSetupException(SyncDiscoveryProblem.RETRYABLE)
-                }
-            }
+            ).getOrThrow()
+            phase = SyncFailurePhase.RESUME_BIND
+            runtime.bindSetup(setup)
+            val connected = setup.copy(stage = SyncInitializationStage.CONNECTED)
+            phase = SyncFailurePhase.RESUME_SAVE
+            val current = requireNotNull(storage.setupFor(setup))
+            if (current != connected) storage.save(connected, current)
+            return SyncSetupOutcome.Connected(connected)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            SyncFailureDiagnostics.record(
+                phase,
+                error,
+                newSpace = diagnosticNewSpace,
+                stage = diagnosticStage,
+            )
+            throw error
         }
-        verifyRepository(session, setup.repository(), requireNotNull(setup.repositoryId))
-        transport(
-            session.token,
-            material,
-            repositoryId = requireNotNull(setup.repositoryId),
-            manifestStore = snapshotManifestStore,
-            manifestBinding = setup.snapshotManifestBinding(),
-            persistentObjectCacheDirectory = runtime.persistentObjectCacheDirectory,
-            requestGate = requestGate,
-        ).readSnapshot(
-            setup.repository(),
-            material.descriptor.spaceId,
-            material.descriptor.generation,
-        ).getOrThrow()
-        runtime.bindSetup(setup)
-        val connected = setup.copy(stage = SyncInitializationStage.CONNECTED)
-        storage.save(connected, setup)
-        return SyncSetupOutcome.Connected(connected)
     }
 
     suspend fun complete(setup: StoredSyncSetup) {
@@ -336,8 +482,8 @@ internal class SyncOnboarding(
         }
     }
 
-    suspend fun session(expectedAccountId: Long? = null): Session {
-        val token = runtime.accessToken()
+    suspend fun session(expectedAccountId: Long? = null, accessToken: String? = null): Session {
+        val token = accessToken ?: runtime.accessToken()
         val http = GitHubPrivateRepositorySelector(
             client,
             { token },
@@ -345,7 +491,7 @@ internal class SyncOnboarding(
             expectedAccountId?.let(runtime::accountHttpRequestGate),
         )
         val response = http.requestPath("/user")
-        if (response.code !in 200..299) throw SyncHttpException(response.code, "GitHub account lookup failed", false)
+        response.requireSyncSuccess()
         val user = Json.parseToJsonElement(response.body.decodeToString()).jsonObject
         val id = user["id"]?.jsonPrimitive?.longOrNull ?: throw SyncSetupException(SyncDiscoveryProblem.MALFORMED)
         val login = user["login"]?.jsonPrimitive?.content ?: throw SyncSetupException(SyncDiscoveryProblem.MALFORMED)
@@ -361,12 +507,15 @@ internal class SyncOnboarding(
     suspend fun verifyRepository(session: Session, repository: SyncRepository, repositoryId: Long) {
         requireRepository(repository.name)
         val response = session.http.requestPath("/repos/${repository.fullName}")
-        if (response.code !in 200..299) throw SyncHttpException(response.code, "GitHub repository lookup failed", false)
+        if (response.code == 404) throw SyncRequiredResourceUnavailable(SyncRequiredResource.REPOSITORY)
+        response.requireSyncSuccess()
         val json = Json.parseToJsonElement(response.body.decodeToString()).jsonObject
-        if (json["id"]?.jsonPrimitive?.longOrNull != repositoryId ||
-            json["owner"]?.jsonObject?.get("id")?.jsonPrimitive?.longOrNull != session.account.id
-        ) {
-            throw SyncSetupException(SyncDiscoveryProblem.ACCOUNT_CHANGED)
+        val actualId = json["id"]?.jsonPrimitive?.longOrNull
+            ?: throw SyncSetupException(SyncDiscoveryProblem.MALFORMED)
+        val ownerId = json["owner"]?.jsonObject?.get("id")?.jsonPrimitive?.longOrNull
+            ?: throw SyncSetupException(SyncDiscoveryProblem.MALFORMED)
+        if (actualId != repositoryId || ownerId != session.account.id) {
+            throw SyncSetupException(SyncDiscoveryProblem.REPOSITORY_IDENTITY_MISMATCH)
         }
         val private = json["private"]?.jsonPrimitive?.booleanOrNull
             ?: throw SyncSetupException(SyncDiscoveryProblem.MALFORMED)
@@ -375,7 +524,8 @@ internal class SyncOnboarding(
             ?: throw SyncSetupException(SyncDiscoveryProblem.MALFORMED)
         val disabled = json["disabled"]?.jsonPrimitive?.booleanOrNull
             ?: throw SyncSetupException(SyncDiscoveryProblem.MALFORMED)
-        if (archived || disabled) throw SyncSetupException(SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE)
+        if (disabled) throw SyncSetupException(SyncDiscoveryProblem.REPOSITORY_DISABLED)
+        if (archived) throw SyncSetupException(SyncDiscoveryProblem.REPOSITORY_ARCHIVED)
         val permissions = json["permissions"]?.jsonObject
             ?: throw SyncSetupException(SyncDiscoveryProblem.MALFORMED)
         if (permissions["push"]?.jsonPrimitive?.booleanOrNull != true &&
@@ -427,7 +577,30 @@ internal class SyncOnboarding(
     private fun spaces(token: String, requestGate: SyncHttpRequestGate? = null) =
         GitHubSyncSpaceClient(client, { token }, apiBaseUrl, requestGate, runtime.repositoryScope)
 
+    fun repositoryManager(token: String, accountId: Long) =
+        GitHubSyncRepositoryManager(client, { token }, apiBaseUrl, runtime.accountHttpRequestGate(accountId))
+
     class Session(val account: SyncGitHubAccount, val token: String, val http: GitHubPrivateRepositorySelector) {
         override fun toString(): String = "SyncSession(<redacted>)"
+    }
+
+    private fun initializationReason(reason: String): SyncInitializationFailureReason = when (reason) {
+        "initialization space identity does not match" -> SyncInitializationFailureReason.SPACE_IDENTITY_CHANGED
+        "initialization attempt identity is invalid" -> SyncInitializationFailureReason.ATTEMPT_INVALID
+        "repository identity changed" -> SyncInitializationFailureReason.REPOSITORY_IDENTITY_CHANGED
+        "repository default branch changed" -> SyncInitializationFailureReason.DEFAULT_BRANCH_CHANGED
+        "repository is not reported empty", "repository is no longer verified empty" ->
+            SyncInitializationFailureReason.NOT_EMPTY
+        "confirmed bootstrap commit is missing", "confirmed bootstrap tree is missing" ->
+            SyncInitializationFailureReason.BOOTSTRAP_MISSING
+        "confirmed bootstrap changed", "confirmed bootstrap identity is malformed" ->
+            SyncInitializationFailureReason.BOOTSTRAP_CHANGED
+        "bootstrap ownership could not be confirmed for this attempt" ->
+            SyncInitializationFailureReason.BOOTSTRAP_UNCONFIRMED
+        "initial sync branch contains unrecognized data" -> SyncInitializationFailureReason.UNRECOGNIZED_DATA
+        "existing sync space requires explicit import" -> SyncInitializationFailureReason.EXISTING_SPACE_REQUIRES_JOIN
+        "sync branch creation could not be confirmed", "initialization ref update failed" ->
+            SyncInitializationFailureReason.REQUEST_UNCONFIRMED
+        else -> SyncInitializationFailureReason.UNKNOWN
     }
 }

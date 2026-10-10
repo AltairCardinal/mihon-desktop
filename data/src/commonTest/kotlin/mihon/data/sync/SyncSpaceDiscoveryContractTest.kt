@@ -30,6 +30,50 @@ import org.junit.jupiter.api.Test
 
 class SyncSpaceDiscoveryContractTest {
     @Test
+    fun `creation preflight uses effective installation grants and never performs a write`() = runTest {
+        for ((permission, allowed) in listOf(
+            "repository_creation" to true,
+            "administration" to true,
+            "contents" to false,
+        )) {
+            MockWebServer().use { server ->
+                server.start()
+                enqueueIdentity(server, permissions = """{"contents":"write","$permission":"write"}""")
+                val checked = client(server).checkRepositoryCreationPermission(42)
+                assertEquals(allowed, checked.installation?.canCreateRepository)
+                assertEquals(
+                    if (allowed) null else SyncDiscoveryProblem.NEEDS_CREATION_PERMISSION,
+                    checked.problem,
+                )
+                assertEquals(2, server.requestCount)
+                repeat(server.requestCount) { assertEquals("GET", server.takeRequest().method) }
+            }
+        }
+    }
+
+    @Test
+    fun `creation preflight never treats denied malformed or unavailable authorization as a grant`() = runTest {
+        for ((code, body, problem) in listOf(
+            Triple(401, "{}", SyncDiscoveryProblem.AUTHORIZATION_REQUIRED),
+            Triple(403, "{}", SyncDiscoveryProblem.AUTHORIZATION_REQUIRED),
+            Triple(429, "{}", SyncDiscoveryProblem.RATE_LIMITED),
+            Triple(500, "{}", SyncDiscoveryProblem.RETRYABLE),
+            Triple(200, "not-json", SyncDiscoveryProblem.MALFORMED),
+            Triple(200, "{\"installations\":[]}", SyncDiscoveryProblem.NEEDS_INSTALLATION),
+        )) {
+            MockWebServer().use { server ->
+                server.start()
+                server.enqueue(MockResponse(body = ACCOUNT))
+                server.enqueue(MockResponse(code = code, body = body))
+                val checked = client(server).checkRepositoryCreationPermission(42)
+                assertEquals(problem, checked.problem)
+                assertEquals(null, checked.installation)
+                repeat(server.requestCount) { assertEquals("GET", server.takeRequest().method) }
+            }
+        }
+    }
+
+    @Test
     fun `recovery rejects a polluted sync branch even when default bootstrap is intact`() = runTest {
         for (pollution in listOf("README", "tampered-bootstrap")) {
             MockWebServer().use { server ->
@@ -279,7 +323,7 @@ class SyncSpaceDiscoveryContractTest {
                 SyncSpaceDiscovery.Failed(
                     SyncDiscoveryProblem.RETRYABLE,
                     SyncGitHubAccount(42, "synthetic-user"),
-                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1, canCreateRepository = true),
                 ),
                 result,
             )
@@ -360,7 +404,7 @@ class SyncSpaceDiscoveryContractTest {
                     assertEquals(
                         SyncSpaceDiscovery.NeedsRepositoryAccess(
                             SyncGitHubAccount(42, "synthetic-user"),
-                            SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 0),
+                            SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 0, canCreateRepository = true),
                         ),
                         result,
                     )
@@ -396,7 +440,7 @@ class SyncSpaceDiscoveryContractTest {
                     SyncSpaceDiscovery.Failed(
                         SyncDiscoveryProblem.INCOMPATIBLE,
                         SyncGitHubAccount(42, "synthetic-user"),
-                        SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1),
+                        SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1, canCreateRepository = true),
                     ),
                     client(server).discover(),
                 )
@@ -413,7 +457,7 @@ class SyncSpaceDiscoveryContractTest {
                 SyncSpaceDiscovery.Failed(
                     SyncDiscoveryProblem.REPOSITORY_NOT_PRIVATE,
                     SyncGitHubAccount(42, "synthetic-user"),
-                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1, canCreateRepository = true),
                 ),
                 client(server).discover(),
             )
@@ -428,7 +472,7 @@ class SyncSpaceDiscoveryContractTest {
             repositoryJson().replace("\"push\":true", "\"push\":false") to
                 SyncDiscoveryProblem.REPOSITORY_NOT_WRITABLE,
             repositoryJson().replace("\"archived\":false", "\"archived\":true") to
-                SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE,
+                SyncDiscoveryProblem.REPOSITORY_ARCHIVED,
         )) {
             MockWebServer().use { server ->
                 server.start()
@@ -439,7 +483,7 @@ class SyncSpaceDiscoveryContractTest {
                     SyncSpaceDiscovery.Failed(
                         problem,
                         SyncGitHubAccount(42, "synthetic-user"),
-                        SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1),
+                        SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1, canCreateRepository = true),
                     ),
                     client(server).discover(),
                 )
@@ -467,7 +511,7 @@ class SyncSpaceDiscoveryContractTest {
             assertEquals(
                 SyncSpaceDiscovery.NeedsRepositoryAccess(
                     SyncGitHubAccount(42, "synthetic-user"),
-                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 0),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 0, canCreateRepository = true),
                 ),
                 client.discover(),
             )
@@ -540,7 +584,7 @@ class SyncSpaceDiscoveryContractTest {
             assertEquals(
                 SyncSpaceDiscovery.NeedsRepositoryAccess(
                     SyncGitHubAccount(42, "synthetic-user"),
-                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 0),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 0, canCreateRepository = true),
                 ),
                 result,
             )
@@ -603,7 +647,7 @@ class SyncSpaceDiscoveryContractTest {
             assertEquals(
                 SyncSpaceDiscovery.InstallationSuspended(
                     SyncGitHubAccount(42, "synthetic-user"),
-                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, canCreateRepository = true),
                 ),
                 client(server).discover(),
             )
@@ -621,7 +665,7 @@ class SyncSpaceDiscoveryContractTest {
                 SyncSpaceDiscovery.Failed(
                     SyncDiscoveryProblem.MALFORMED,
                     SyncGitHubAccount(42, "synthetic-user"),
-                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, canCreateRepository = true),
                 ),
                 client(server).discover(),
             )
@@ -708,8 +752,16 @@ class SyncSpaceDiscoveryContractTest {
             .replace("\"id\":99", "\"id\":100")
             .replace("\"size\":0", "\"size\":1")
         val cases: List<Triple<String, List<String>, SyncAppInstallation>> = listOf(
-            Triple("all", emptyList(), SyncAppInstallation(7, SyncRepositorySelection.ALL, 1)),
-            Triple("selected", listOf(secondary), SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 2)),
+            Triple(
+                "all",
+                emptyList(),
+                SyncAppInstallation(7, SyncRepositorySelection.ALL, 1),
+            ),
+            Triple(
+                "selected",
+                listOf(secondary),
+                SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 2),
+            ),
         )
         for ((selection, extras, expectedInstallation) in cases) {
             emptyRepositoryServer(
@@ -807,6 +859,14 @@ class SyncSpaceDiscoveryContractTest {
                 val result = client(server).discover()
 
                 assertFalse(result is SyncSpaceDiscovery.EmptyRepository)
+                assertEquals(
+                    if (repository.contains("\"archived\":true")) {
+                        SyncDiscoveryProblem.REPOSITORY_ARCHIVED
+                    } else {
+                        SyncDiscoveryProblem.REPOSITORY_DISABLED
+                    },
+                    (result as SyncSpaceDiscovery.Failed).problem,
+                )
             }
         }
     }

@@ -1,21 +1,37 @@
 ---
-status: planned
+status: in_progress
 date: 2026-09-28
 ---
 
 # 同步进度稳定展示实施 Roadmap
 
+## 2026-10-02 当前迭代
+
+用户批准简洁 DEMO 并要求实现统一“同步中”与上传/下载/双向整轮 X/N；当前规格以设计文档开头的修订及 T01–T06 为准。SP01/SP02 勾选记录是历史交付，不代表仍使用七槽运行卡。SP04已随本轮功能交付，当前首个未完成批次为SP03人工门禁，继续保留，不因本轮自动化通过而删除。
+
+### SP04：固定整轮计划、安全计数及简洁共享 UI
+
+- [x] 完成持久整轮计划与真实交换、恢复、安全 ACK 接线；共享 Android/JVM 契约先红后绿，稳定数据接口经独立审查后接入 UI。
+- [x] MAIN/首次合并统一两行“同步中”信息、X/N 确定进度条及整轮 ETA；保留暂停继续与失败处理，更新真实 Compose/controller/platform wiring 测试。
+- [x] 更新双端 DEMO、规格与聚合证据；完成整合、独立审查和必要修复，验证后随功能提交。
+
+边界：复用确认表与既有 transport/outbox/discovery/projection，不改变远端协议、加密、授权或数据库 schema；不是同步速度专项。超过128的发现必须完整冻结；新工作后续run执行；未知统计前置不得伪装已知。旧阶段 `total` 不复用为新整轮分母。实施由原实施代理承担，主代理管接口/文档/HTML/整合，原审查代理作一轮连续独立审查。
+
+预算：最多2代理，1轮审查及必要1轮修复复审；过程仅focused红绿/相关验证；所有实现完成后集中全量 Android/Desktop 一次，正式 Windows/macOS 构建与隔离运行、Android正式候选验证。不安装或操作用户实体设备。预计2–4小时，主要成本为跨宿主 Kotlin测试、R8和正式构建；新增协议迁移或不可替代环境阻塞须先报告。证据统一在[本轮记录](../evidence/sync-total-progress-2026-10-02.md)，不另建逐任务报告。
+
 ## 1. 范围与启动条件
 
-需求权威：[同步进度显示开发规格](../2026-09-28-sync-progress-display-design.md)，重点为第 13–17 节；UI 审阅基线：[双端 HTML DEMO](../prototypes/multi-device-sync/index.html?progress=continuous)，提交 `b652df9ccf`，用户已确认通过。生产代码核对基线 `02c48df981886d7e0b80722cd4fd8bc81a5a2ccc`。本次只编写文档，未开始下列产品任务。
+需求权威：[同步进度显示开发规格](../2026-09-28-sync-progress-display-design.md)，重点为第 13–17 节；UI 审阅基线：[双端 HTML DEMO](../prototypes/multi-device-sync/index.html?progress=continuous)，提交 `b652df9ccf`，用户已确认通过。生产代码核对基线 `02c48df981886d7e0b80722cd4fd8bc81a5a2ccc`。2026-09-28规划轮仅编写文档；2026-09-30按用户指示启动下列产品任务。
 
 目标：Android/Desktop 的“书架 → 同步”及首次配置合并页面，统一使用固定七槽摘要、单条进度轨道与可展开详情。动作/ETA/日志更新不让正常运行中的摘要反复增减行；安全确认、等待恢复、失败处理和原操作入口继续真实可用。
 
 范围外：同步协议、数据库迁移、确认/去重算法、估算器重写、后台唤醒策略、真实账号授权流程改造、密码安全方案、书架其他功能、通知中心重设计。Android 前台通知沿用固定标题/正文。HTML 原型不继续增加业务模型，正式实现不复制其模拟计时器或 `sent + applied` 口径。
 
-本文件是尚未激活的产品 child plan，进度从首个未勾选项推导，不声明 `active-task`。启动时核对实际父执行计划和 worktree 占用，在不覆盖其他工作前提下登记唯一 `active-child-plan`；本轮不修改现有父指针或 parity capability 状态。若当前执行体系没有父计划，由执行者明确挂接后启动，不凭文件名猜测正在执行的父任务。
+本文件是已在隔离分支激活的产品 child plan，进度从首个未勾选项推导，不声明 `active-task`。启动时核对实际父执行计划和 worktree 占用，在不覆盖其他工作前提下登记唯一 `active-child-plan`；规划轮未修改父指针；本次仅在隔离分支挂接父计划，不修改 parity capability 状态。若当前执行体系没有父计划，由执行者明确挂接后启动，不凭文件名猜测正在执行的父任务。
 
 开始实施前必须：读取仓库及 Desktop UI 规范；检查 HEAD 与本基线差异；保护并行密码原型、书架等改动；复核 `SyncPanelContent/Controller/ProgressFact` 有无新行为；固定规格 P1–P14、D01–D10 的测试入口。只复核有变化的接口，不重新盘点全部 130 条文案。
+
+2026-09-30 启动记录：用户明确要求实施本计划。工作树 `D:/Codex/worktrees/dc4c/mihon` 启动时干净，HEAD `41e7e5ff1ef92b382de1b3134e11cf94ae1883f4`，分支 `codex/sync-progress-display`；本分支父计划唯一指针已挂接本文，不修改其他 worktree。相对规划基线，共享 controller/事实接口未改，新增同步 UI review wrapper 须保留。作者专项保持历史验收与待修复记录，不在本分支恢复。实施预算遵循第 4 节，实际验收及平台阻塞统一记入证据文件。
 
 ## 2. 任务与依赖
 
@@ -25,11 +41,13 @@ date: 2026-09-28
 | SP02 | 暂停恢复、终态与错误处理不丢入口，关闭重开不闪旧状态 | SP01 接口与组件稳定 | 同一共享组件、必要的 controller 局部修复、共享存储契约、双端 wiring 测试 | P8–P10、P14；D05–D08，并复验受影响 SP01 项 |
 | SP03 | 两端正式版本可验收，证据与提交完整 | SP01/SP02 功能代码及独立审查通过 | 测试、构建/运行证据、必要文档及版本文件 | 完整 P/D 矩阵与平台门禁 |
 
+2026-09-30：SP01/SP02在同一共享组件内连续实现，以一个内聚功能提交交付；定向验证181项、178通过、3项Windows条件跳过，唯一修复复审通过。批次与代码/测试一同提交后勾选；SP03正式发布和人工门禁仍未完成。
+
 SP01 → SP02 → SP03 串行；它们共享同一面板和 controller，不安排冲突文件并写。SP01/SP02 为同一用户能力的两个可审查交付批次；不把映射器、资源字符串或单个测试类拆成没有产品入口的任务。
 
 ### SP01：共享稳定摘要、详情与真实状态接入
 
-- [ ] **SP01 完成：双端共享固定摘要与详情已实现、审查、验证并提交。**
+- [x] **SP01 完成：双端共享固定摘要与详情已实现、审查、验证并提交。**
 
 **用户路径**：书架同步按钮 → 同步主面板 → 立即同步；以及设置完成授权后 → 首次合并。主卡固定呈现状态/主操作、确认量、稳定动作、单轨道、时间、说明和详情入口。详情内看到局部计数、请求比例、队列与日志。
 
@@ -49,7 +67,7 @@ SP01 → SP02 → SP03 串行；它们共享同一面板和 controller，不安�
 
 ### SP02：恢复、结果归位与操作语义收口
 
-- [ ] **SP02 完成：等待、暂停恢复、终态和错误路径经真实 controller 与双端 wiring 验证、审查并提交。**
+- [x] **SP02 完成：等待、暂停恢复、终态和错误路径经真实 controller 与双端 wiring 验证、审查并提交。**
 
 **用户路径**：运行中暂停/继续 → 关闭/重开 → 等待自动重试 → 成功或部分完成 → 查看原因/打开失败日志/处理待决定项；首次合并与批处理分别暂停/继续。
 
@@ -69,7 +87,11 @@ SP01 → SP02 → SP03 串行；它们共享同一面板和 controller，不安�
 
 ### SP03：跨平台测试、正式构建与交付验收
 
+2026-10-02验收使用T01–T06及仍适用的安全确认、恢复、终态和平台P/D门禁。用户明确要求隐藏运行期详情并改为两条信息，因此原七槽/展开详情不再是当前运行布局要求；这是本次实施前已冻结的需求修订，旧交付证据继续保留。原生人工门禁没有取消。
+
 - [ ] **SP03 完成：必做平台验收与证据完整，正式产物及最终提交可追溯。**
+
+2026-09-30自动化收口：完整Android及受影响模块、完整Desktop与格式通过；Windows/macOS正式构建及隔离TestMode通过，Android原证书code36正式候选已生成并verify。真实账号、原生Tab/系统读屏、实体Android运行与升级仍待用户验收，因此本项保持未勾选，不降低必做门禁。命令结果、正式产物与来源统一见[聚合验收记录](../evidence/sync-progress-display-2026-09-28.md)。
 
 **前提**：SP01/SP02 focused 测试和独立审查通过，已冻结本轮产品 diff。实际执行前报告可用 Windows/macOS/Android 环境、预计构建耗时和签名状态；不要将历史环境记录视为当前可用。
 
@@ -86,7 +108,7 @@ SP01 → SP02 → SP03 串行；它们共享同一面板和 controller，不安�
 
 ## 3. 分层验证命令与证据要求
 
-以下是执行时模板，本规划轮未运行。Windows 验证前设置 UTF-8、`PYTHONDONTWRITEBYTECODE=1`、`$ErrorActionPreference='Stop'`；Android 必要时设置 `ANDROID_HOME/ANDROID_SDK_ROOT=D:\Android\Sdk`。境外下载按项目代理要求；已有 Gradle 任务运行时先查协调器，不启动第二个重任务。
+以下是执行命令模板，实际结果见聚合证据。Windows 验证前设置 UTF-8、`PYTHONDONTWRITEBYTECODE=1`、`$ErrorActionPreference='Stop'`；Android 必要时设置 `ANDROID_HOME/ANDROID_SDK_ROOT=D:\Android\Sdk`。境外下载按项目代理要求；已有 Gradle 任务运行时先查协调器，不启动第二个重任务。
 
 ```powershell
 # SP01：只运行相关共享 UI 类；新类名以实现为准
@@ -103,9 +125,9 @@ python scripts/gradle-coordinator.py run --key sync-display-desktop-panel -- .\g
 # SP03：共享 UI 完整测试、Android 完整测试及格式；其他改变过的模块同轮补全
 python scripts/gradle-coordinator.py run --key sync-display-final -- .\gradlew.bat :presentation-sync:jvmTest :app:testReleaseUnitTest :test-desktop:test spotlessCheck -Pmihon.testBuildType=release
 
-# Windows Desktop 完整测试一次；脚本内置协调器，不再外层嵌套
-bash scripts/build-desktop.sh full-tests
-bash scripts/build-desktop.sh build-only
+# Windows Desktop 完整测试一次；当前脚本没有内置协调器，使用唯一外层协调器
+python scripts/gradle-coordinator.py run --key sync-display-desktop-full -- "C:\Program Files\Git\bin\bash.exe" scripts/build-desktop.sh full-tests
+python scripts/gradle-coordinator.py run --key sync-display-windows-build -- "C:\Program Files\Git\bin\bash.exe" scripts/build-desktop.sh build-only
 
 # Android 正式交付入口，不隐式安装
 python scripts/build-android.py check --signing
@@ -117,16 +139,16 @@ python scripts/build-android.py verify --artifact "<本轮候选APK绝对路径>
 
 ## 4. 调度、审查和成本边界
 
-当前文档任务：主代理直接完成，0 子代理，1 次文档核验，不运行 Gradle/构建。下一轮开始产品实施时，先声明当轮预算，再将 **SP01 主实现与 focused TDD 交给实施子代理**；主代理负责接口、验收和整合，不重复写委派文件。SP02 优先复用同一实施者，按前置串行交付。
+历史规划轮：主代理直接完成，0 子代理，1 次文档核验，不运行 Gradle/构建。当前产品实施按已声明预算，将 **SP01 主实现与 focused TDD 交给实施子代理**；主代理负责接口、验收和整合，不重复写委派文件。SP02 优先复用同一实施者，按前置串行交付。
 
-未来完整实施建议预算为最多 2 个子代理：1 个实施者、1 个未实施目标代码的审查者。真实并行仅限稳定 diff 的只读证据检查与不写冲突文件的环境预检；重型 Gradle 由主协调者串行。独立审查 1 轮，在 SP01/SP02 稳定里程碑合并检查；阻塞修复复审最多 1 轮。未完成审查的批次保持未勾选；若出现必须在下游前审查的高风险协议/数据改动，属于当前范围外，先暂停重规划。
+当前完整实施预算为最多 2 个子代理：1 个实施者、1 个未实施目标代码的审查者。真实并行仅限稳定 diff 的只读证据检查与不写冲突文件的环境预检；重型 Gradle 由主协调者串行。独立审查 1 轮，在 SP01/SP02 稳定里程碑合并检查；阻塞修复复审最多 1 轮。未完成审查的批次保持未勾选；若出现必须在下游前审查的高风险协议/数据改动，属于当前范围外，先暂停重规划。
 
 红绿次数以正确失败→最小实现→重构为一组，每批只跑对应 focused 测试；全量 Android/Desktop 在 SP03 集中一次。产物为生产代码/测试、方案必要更新、一个聚合验收记录及正式构建包；过程日志由现有协调器保存，不额外生成逐任务报告或大 diff 包。
 
-粗估墙钟：SP01 2–4 小时，SP02 2–3 小时，SP03 2–4 小时；合计 6–11 小时，取决于现有夹具、编译缓存与平台可用性，不是时限承诺。本轮编写 roadmap 不授权启动这些构建/实施或外部部署。主要成本为 Compose/双端 JVM 测试、正式打包和平台运行，不包含新联网服务、付费模型生成或 Docker 部署。
+粗估墙钟：SP01 2–4 小时，SP02 2–3 小时，SP03 2–4 小时；合计 6–11 小时，取决于现有夹具、编译缓存与平台可用性，不是时限承诺。历史规划轮不授权构建/实施；本次用户明确要求实现roadmap，已授权上述实施、测试和隔离构建验收，不包含外部服务部署。主要成本为 Compose/双端 JVM 测试、正式打包和平台运行，不包含新联网服务、付费模型生成或 Docker 部署。
 
 工具缺失先使用现有仓库工具和平台夹具；无法替代的 macOS、签名、读屏/实体设备验证记录真实阻塞。新增代理/审查轮次/完整测试，或发现必须改协议、数据迁移、显著扩张范围时，先说明失败证据、原因、影响和新增成本，等待用户决定；范围内必要读取与诊断继续。
 
-## 5. 本次规划交付核验
+## 5. 历史规划交付核验
 
 本轮只核对字段、action、状态枚举、控制器恢复与计时链路、共享组件、现有测试/构建入口，以及方案与 roadmap 的相对链接和 Markdown 差异。开发规格 P1–P14、D01–D10 均映射到上面的批次；产品 checkbox 全部保持未勾选。没有运行产品测试、构建或宣布原生 BUG 已修复。

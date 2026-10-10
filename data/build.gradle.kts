@@ -30,6 +30,7 @@ kotlin {
             }
         }
         commonTest {
+            kotlin.srcDir("src/syncTestFixtures/kotlin")
             dependencies {
                 implementation(libs.bundles.test)
                 implementation(kotlinx.coroutines.test)
@@ -44,6 +45,7 @@ kotlin {
             }
         }
         val androidUnitTest by getting {
+            kotlin.srcDir("src/schema40Contract/kotlin")
             dependencies {
                 implementation(libs.sqldelight.jvm.driver)
                 runtimeOnly(libs.junit.platform.launcher)
@@ -58,6 +60,7 @@ kotlin {
             }
         }
         jvmTest {
+            kotlin.srcDir("src/schema40Contract/kotlin")
             kotlin.srcDir("src/creatorEntryContract/kotlin")
             kotlin.srcDir("src/testFixtures/kotlin/tachiyomi/data")
             dependencies {

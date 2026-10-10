@@ -372,10 +372,12 @@ abstract class SyncJournalStorageContract {
 
 /** Reconstruct the schema before synchronization when a test starts from the generated current schema. */
 internal fun removeSyncJournalSchema(driver: SqlDriver) {
+    driver.execute(null, "DROP TRIGGER IF EXISTS sync_runtime_pause_transition", 0)
     listOf(
+        "sync_repair_failures",
         "sync_snapshot_manifest_entries", "sync_snapshot_manifest_batches", "sync_snapshot_manifests",
         "sync_http_account_gates",
-        "sync_runtime_logs", "sync_runtime_confirmations", "sync_runtime_runs",
+        "sync_runtime_pause_clock", "sync_runtime_logs", "sync_runtime_confirmations", "sync_runtime_runs",
         "sync_restore_units", "sync_restore_runs",
         "sync_history_watermarks", "sync_history_clears",
         "sync_private_reading", "sync_import_heads", "sync_import_entries", "sync_imports",

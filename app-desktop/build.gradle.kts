@@ -151,6 +151,7 @@ kotlin {
                 implementation(projects.i18n)
                 implementation(projects.presentationTheme)
                 implementation(projects.presentationSync)
+                implementation(projects.presentationHistory)
 
                 // Network
                 implementation(libs.okhttp.core)
@@ -472,7 +473,7 @@ compose.desktop {
             val distributionRoot = if (System.getProperty("os.name").startsWith("Mac", ignoreCase = true)) {
                 providers.environmentVariable("MIHON_MACOS_DIST_ROOT").getOrElse("/tmp/mihon-dist")
             } else {
-                "/tmp/mihon-dist"
+                providers.environmentVariable("MIHON_WINDOWS_DIST_ROOT").getOrElse("/tmp/mihon-dist")
             }
             outputBaseDir.set(project.file(distributionRoot))
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi)

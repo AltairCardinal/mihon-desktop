@@ -31,7 +31,11 @@ class FakeHistoryRepository : HistoryRepository {
 
     override suspend fun getLastHistory(): HistoryWithRelations? = historyItems.lastOrNull()
     override suspend fun getTotalReadDuration(): Long = historyItems.sumOf { it.readDuration }
-    override suspend fun getHistoryByMangaId(mangaId: Long): List<History> = emptyList()
+    override suspend fun getHistoryByMangaId(
+        mangaId: Long,
+    ): List<History> = historyItems.filter {
+        it.mangaId == mangaId
+    }.map { History(it.id, it.chapterId, it.readAt, it.readDuration) }
 
     override suspend fun resetHistory(historyId: Long) {
         historyItems.removeAll { it.id == historyId }

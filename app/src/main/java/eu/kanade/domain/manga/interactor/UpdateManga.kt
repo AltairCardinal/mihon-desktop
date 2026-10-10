@@ -60,13 +60,12 @@ class UpdateManga(
             }
         }
         val chapters = chapterRepository.getChapterByMangaId(manga.id)
-        val update = tachiyomi.domain.source.service.SourceMangaUpdateService().await(
-            source,
-            manga,
-            chapters,
-            fetchDetails,
-            fetchChapters,
-        )
+        val service = tachiyomi.domain.source.service.SourceMangaUpdateService()
+        val update = if (fetchChapters) {
+            service.awaitSharedCatalog(source, manga, chapters, fetchDetails)
+        } else {
+            service.await(source, manga, chapters, fetchDetails, fetchChapters = false)
+        }
         val latestManga = mangaRepository.getMangaById(manga.id)
         if (requireFavorite && !latestManga.favorite) return latestManga to emptyList()
         val currentManga: Manga

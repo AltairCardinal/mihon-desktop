@@ -22,6 +22,7 @@ import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.i18n.MR
+import uy.kohesive.injekt.api.get
 
 class BackupRestoreJob(private val context: Context, workerParams: WorkerParameters) :
     CoroutineWorker(context, workerParams) {
@@ -37,11 +38,23 @@ class BackupRestoreJob(private val context: Context, workerParams: WorkerParamet
         }
 
         val isSync = inputData.getBoolean(SYNC_KEY, false)
+        val recoveryRequestId = inputData.getString(RECOVERY_REQUEST_KEY)
 
         setForegroundSafely()
 
         return try {
-            BackupRestorer(context, notifier, isSync).restore(uri, options)
+            BackupRestorer(
+                context,
+                notifier,
+                isSync,
+                onRecoveryResult = recoveryRequestId?.let { id ->
+                    { result ->
+                        uy.kohesive.injekt.Injekt.get<mihon.data.sync.runtime.SyncRuntime>().panel.dispatch(
+                            mihon.data.sync.runtime.SyncPanelAction.RecoveryPlatformCompleted(id, result),
+                        )
+                    }
+                },
+            ).restore(uri, options)
             Result.success()
         } catch (e: Exception) {
             if (e is CancellationException) {
@@ -79,11 +92,13 @@ class BackupRestoreJob(private val context: Context, workerParams: WorkerParamet
             uri: Uri,
             options: RestoreOptions,
             sync: Boolean = false,
+            recoveryRequestId: String? = null,
         ) {
             val inputData = workDataOf(
                 LOCATION_URI_KEY to uri.toString(),
                 SYNC_KEY to sync,
                 OPTIONS_KEY to options.asBooleanArray(),
+                RECOVERY_REQUEST_KEY to recoveryRequestId,
             )
             val request = OneTimeWorkRequestBuilder<BackupRestoreJob>()
                 .addTag(TAG)
@@ -102,4 +117,5 @@ private const val TAG = "BackupRestore"
 
 private const val LOCATION_URI_KEY = "location_uri" // String
 private const val SYNC_KEY = "sync" // Boolean
+private const val RECOVERY_REQUEST_KEY = "syncRecoveryRequest" // request ID only, never complete object lists
 private const val OPTIONS_KEY = "options" // BooleanArray

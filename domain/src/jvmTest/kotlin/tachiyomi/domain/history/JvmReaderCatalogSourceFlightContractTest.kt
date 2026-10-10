@@ -1,0 +1,3 @@
+package tachiyomi.domain.history
+
+class JvmReaderCatalogSourceFlightContractTest : ReaderCatalogSourceFlightContract()

@@ -153,11 +153,18 @@ class DualPageProgressProductionWiringTest {
         val manga = Manga.create().copy(
             id = 1,
             source = 7,
+            url = "/",
             title = "Dual page progress",
             chapterFlags = Manga.CHAPTER_SORTING_NUMBER,
         )
         val chapters = (1L..3L).map { id ->
-            Chapter.create().copy(id = id, mangaId = manga.id, name = "Chapter $id", chapterNumber = id.toDouble())
+            Chapter.create().copy(
+                id = id,
+                mangaId = manga.id,
+                url = "/$id",
+                name = "Chapter $id",
+                chapterNumber = id.toDouble(),
+            )
         }
         dbFile = File.createTempFile("reader-progress-", ".sqlite")
         driver = JdbcSqliteDriver("jdbc:sqlite:${dbFile.absolutePath}")
@@ -169,7 +176,7 @@ class DualPageProgressProductionWiringTest {
         )
         driver.execute(
             null,
-            "INSERT INTO mangas(_id, source, url, artist, author, description, genre, title, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, notes, is_syncing) VALUES (1, 7, '/', NULL, NULL, NULL, NULL, 'Dual page progress', 0, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, 0, '', 0)",
+            "INSERT INTO mangas(_id, source, url, artist, author, description, genre, title, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, notes, is_syncing) VALUES (1, 7, '/', NULL, NULL, NULL, NULL, 'Dual page progress', 0, NULL, 0, 0, 0, 0, 0, ${Manga.CHAPTER_SORTING_NUMBER}, 0, 0, 0, 0, 0, NULL, 0, '', 0)",
             0,
         )
         chapters.forEach { chapter ->
@@ -537,7 +544,7 @@ class DualPageProgressProductionWiringTest {
             }
             assertFalse(opening.isCompleted)
             coVerify(exactly = 1) { getMangaUseCase.await(1) }
-            coVerify(exactly = 1) { getChaptersUseCase.await(1, applyScanlatorFilter = true) }
+            coVerify(exactly = 2) { getChaptersUseCase.await(1, applyScanlatorFilter = true) }
             release.complete(Unit)
             withContext(Dispatchers.Default) {
                 withTimeout(10_000) { progressCoordinator.awaitAccepted(1) }
@@ -552,7 +559,7 @@ class DualPageProgressProductionWiringTest {
             assertTrue("The reopened Reader must finish after the accepted writer drains", completed)
             opening.await().getOrThrow()
             coVerify(exactly = 2) { getMangaUseCase.await(1) }
-            coVerify(exactly = 2) {
+            coVerify(exactly = 4) {
                 getChaptersUseCase.await(1, applyScanlatorFilter = true)
             }
             assertEquals(4L, database.chaptersQueries.getChapterById(2).executeAsOne().last_page_read)

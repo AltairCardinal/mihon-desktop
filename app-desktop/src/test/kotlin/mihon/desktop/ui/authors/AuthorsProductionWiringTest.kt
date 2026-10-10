@@ -13,16 +13,12 @@ import io.mockk.coVerify
 import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
-import java.util.Locale
-import java.util.UUID
-import java.util.prefs.Preferences
-import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.filterIsInstance
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
@@ -35,62 +31,65 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
-import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
+import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.data.Database
+import tachiyomi.data.DateColumnAdapter
+import tachiyomi.data.History
+import tachiyomi.data.JvmDatabaseHandler
+import tachiyomi.data.Mangas
+import tachiyomi.data.StringListColumnAdapter
+import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.domain.creator.interactor.CreatorArchive
+import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
 import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
+import tachiyomi.domain.creator.model.ArchiveLanguageSubject
+import tachiyomi.domain.creator.model.ArchiveWatchPolicy
+import tachiyomi.domain.creator.model.CanonicalWork
+import tachiyomi.domain.creator.model.CanonicalWorkArchiveGroup
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CreatorCardProjection
 import tachiyomi.domain.creator.model.CreatorCardProjectionPage
-import tachiyomi.domain.creator.model.CanonicalWork
-import tachiyomi.domain.creator.model.ArchiveWatchPolicy
 import tachiyomi.domain.creator.model.CreatorRelationOrigin
 import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.DecisionActor
-import tachiyomi.domain.creator.model.DiscoveryCommit
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.DiscoveryCandidateState
+import tachiyomi.domain.creator.model.DiscoveryCommit
 import tachiyomi.domain.creator.model.DiscoveryKind
+import tachiyomi.domain.creator.model.LanguageCertainty
+import tachiyomi.domain.creator.model.LanguageDimension
+import tachiyomi.domain.creator.model.LanguageEvidenceKind
+import tachiyomi.domain.creator.model.LanguageProjectionContract
 import tachiyomi.domain.creator.model.MangaCreator
+import tachiyomi.domain.creator.model.SourceDateQualityStatus
+import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
+import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.model.WorkDecisionContract
+import tachiyomi.domain.creator.model.WorkDecisionProjection
+import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorLibraryMangaSource
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter
+import tachiyomi.domain.creator.service.ChapterVariantType
 import tachiyomi.domain.creator.service.CreatorDiscoveryResult
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
 import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 import tachiyomi.domain.creator.service.CreatorWorkPresentationExclusions
+import tachiyomi.domain.library.model.LibraryDisplayMode
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import java.nio.file.Path
-import tachiyomi.domain.creator.model.LanguageProjectionContract
-import tachiyomi.domain.creator.model.CanonicalWorkArchiveGroup
-import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
-import tachiyomi.domain.creator.model.ArchiveLanguageSubject
-import tachiyomi.domain.creator.service.ChapterVariantType
-import tachiyomi.domain.creator.model.LanguageEvidenceKind
-import tachiyomi.domain.creator.model.SourceWorkNaturalKey
-import tachiyomi.domain.creator.model.LanguageDimension
-import tachiyomi.domain.creator.model.WorkDecisionState
-import tachiyomi.domain.creator.model.WorkDecisionContract
-import tachiyomi.domain.creator.model.WorkDecisionProjection
-import tachiyomi.core.common.preference.DesktopPreferenceStore
-import tachiyomi.domain.library.model.LibraryDisplayMode
-import tachiyomi.domain.library.service.LibraryPreferences
-import tachiyomi.domain.creator.model.LanguageCertainty
-import tachiyomi.domain.creator.model.SourceDateQualityStatus
-import tachiyomi.data.UpdateStrategyColumnAdapter
-import tachiyomi.data.StringListColumnAdapter
-import tachiyomi.data.JvmDatabaseHandler
-import tachiyomi.data.DateColumnAdapter
-import tachiyomi.data.Database
-import tachiyomi.data.History
-import tachiyomi.data.Mangas
-
+import java.util.Locale
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.prefs.Preferences
 
 @OptIn(ExperimentalComposeUiApi::class)
 class AuthorsProductionWiringTest {
@@ -221,7 +220,7 @@ class AuthorsProductionWiringTest {
             model.markWorkSeenAfterNavigation(opened.creatorId, opened.sourceWork)
             assertTrue(repository.getUnreadWorkDiscoveries(10L).isEmpty())
         } finally {
-            model.onDispose()
+            model.closeAndJoin()
             driver.close()
         }
     }
@@ -233,8 +232,12 @@ class AuthorsProductionWiringTest {
         )
         Database.Schema.create(driver)
         val handler = JvmDatabaseHandler(
-            Database(driver, historyAdapter = History.Adapter(DateColumnAdapter),
-                mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter)), driver,
+            Database(
+                driver,
+                historyAdapter = History.Adapter(DateColumnAdapter),
+                mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+            ),
+            driver,
         )
         val preferenceNode = Preferences.userRoot().node("/mihon-tests/author-title-${UUID.randomUUID()}")
         val preferences = LibraryPreferences(DesktopPreferenceStore(preferenceNode))
@@ -271,16 +274,16 @@ class AuthorsProductionWiringTest {
             add(10L, "/new-traditional", "《詭譎屋》")
             withTimeout(5_000) { checkNotNull(detail).state.first { it.presentationGroups.singleOrNull()?.sourceCount == 3 } }
             assertEquals("詭譎屋", checkNotNull(detail).state.value.presentationGroups.single().title)
-            detail?.onDispose()
+            detail?.closeAndJoin()
             detail = model(tachiyomi.domain.creator.service.WorkTitleNormalizer.DisplayScript.TRADITIONAL)
             withTimeout(5_000) { checkNotNull(detail).state.first { it.presentationGroups.singleOrNull()?.sourceCount == 3 } }
             assertEquals("詭譎屋", checkNotNull(detail).state.value.presentationGroups.single().title)
-            detail?.onDispose()
+            detail?.closeAndJoin()
             detail = model(tachiyomi.domain.creator.service.WorkTitleNormalizer.DisplayScript.SIMPLIFIED)
             withTimeout(5_000) { checkNotNull(detail).state.first { it.presentationGroups.singleOrNull()?.sourceCount == 3 } }
             assertEquals("诡谲屋", checkNotNull(detail).state.value.presentationGroups.single().title)
         } finally {
-            detail?.onDispose()
+            detail?.closeAndJoin()
             handler.close()
             driver.close()
             preferenceNode.removeNode()
@@ -294,8 +297,12 @@ class AuthorsProductionWiringTest {
         )
         Database.Schema.create(driver)
         val handler = JvmDatabaseHandler(
-            Database(driver, historyAdapter = History.Adapter(DateColumnAdapter),
-                mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter)), driver,
+            Database(
+                driver,
+                historyAdapter = History.Adapter(DateColumnAdapter),
+                mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+            ),
+            driver,
         )
         val repository = tachiyomi.data.creator.CreatorRepositoryImpl(handler)
         val creator = repository.upsertCreator("Focus Author")
@@ -312,7 +319,10 @@ class AuthorsProductionWiringTest {
             every { get(any<Long>()) } returns null
             every { getOrStub(any()) } answers {
                 val sourceId = firstArg<Long>()
-                mockk { every { id } returns sourceId; every { name } returns "Source $sourceId" }
+                mockk {
+                    every { id } returns sourceId
+                    every { name } returns "Source $sourceId"
+                }
             }
         }
         val dependencies = mockk<DesktopUiDependencies> {
@@ -327,6 +337,7 @@ class AuthorsProductionWiringTest {
             every { saveSourceMangaForDetails } returns mockk()
             every { libraryPreferences } returns LibraryPreferences(DesktopPreferenceStore(preferenceNode))
         }
+        val modelOwner = AuthorsModelsFixtureOwner()
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         fun tagged(tag: String) = nodes(scene, unmerged = true).first { node ->
             node.config.getOrElse(SemanticsProperties.TestTag) { "" } == tag
@@ -342,14 +353,22 @@ class AuthorsProductionWiringTest {
             withTimeout(5_000) {
                 while (nodes(scene, unmerged = true).none {
                         it.config.getOrElse(SemanticsProperties.TestTag) { "" } == oldCard
-                    }) { scene.render(); kotlinx.coroutines.delay(10) }
+                    }
+                ) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
             }
             tagged(oldCard).config[SemanticsActions.OnClick].action?.invoke()
             withTimeout(5_000) {
                 while (nodes(scene).count { node ->
                         node.config.getOrElse(SemanticsProperties.Text) { emptyList() }
                             .any { it.text == MR.strings.creator_work_separate_display.localized() }
-                    } < 2) { scene.render(); kotlinx.coroutines.delay(10) }
+                    } < 2
+                ) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
             }
             nodes(scene).first { node ->
                 node.config.contains(SemanticsActions.OnClick) &&
@@ -360,17 +379,27 @@ class AuthorsProductionWiringTest {
                 while (nodes(scene, unmerged = true).none { node ->
                         node.config.getOrElse(SemanticsProperties.TestTag) { "" } == newCard &&
                             node.config.getOrElse(SemanticsProperties.Focused) { false }
-                    }) { scene.render(); kotlinx.coroutines.delay(10) }
+                    }
+                ) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
             }
-            assertTrue(nodes(scene, unmerged = true).none {
-                it.config.getOrElse(SemanticsProperties.TestTag) { "" } == oldCard
-            })
+            assertTrue(
+                nodes(scene, unmerged = true).none {
+                    it.config.getOrElse(SemanticsProperties.TestTag) { "" } == oldCard
+                },
+            )
             assertTrue(tagged(newCard).config.getOrElse(SemanticsProperties.Focused) { false })
         } finally {
-            scene.close()
-            handler.close()
-            driver.close()
-            preferenceNode.removeNode()
+            try {
+                scene.close()
+            } finally {
+                modelOwner.closeAndJoin()
+                handler.close()
+                driver.close()
+                preferenceNode.removeNode()
+            }
         }
     }
 
@@ -409,6 +438,7 @@ class AuthorsProductionWiringTest {
             every { saveSourceMangaForDetails } returns mockk(relaxed = true)
             every { libraryPreferences } returns preferences
         }
+        val modelOwner = AuthorsModelsFixtureOwner()
         val scene = ImageComposeScene(320, 900, coroutineContext = coroutineContext) {}
         try {
             scene.setContent {
@@ -434,9 +464,13 @@ class AuthorsProductionWiringTest {
                 "The mounted author detail should expose its display mode control",
             )
         } finally {
-            scene.close()
-            handler.close()
-            preferenceNode.removeNode()
+            try {
+                scene.close()
+            } finally {
+                modelOwner.closeAndJoin()
+                handler.close()
+                preferenceNode.removeNode()
+            }
         }
     }
 
@@ -511,6 +545,7 @@ class AuthorsProductionWiringTest {
             every { libraryPreferences } returns preferences
         }
 
+        val modelOwner = AuthorsModelsFixtureOwner()
         fun mount() = ImageComposeScene(320, 960, coroutineContext = coroutineContext) {}.also { scene ->
             scene.setContent {
                 androidx.compose.material3.MaterialTheme {
@@ -536,8 +571,9 @@ class AuthorsProductionWiringTest {
         suspend fun awaitTag(scene: ImageComposeScene, tag: String) {
             withTimeout(5_000) {
                 while (nodes(scene, unmerged = true).none {
-                    it.config.getOrElse(SemanticsProperties.TestTag) { "" } == tag
-                }) {
+                        it.config.getOrElse(SemanticsProperties.TestTag) { "" } == tag
+                    }
+                ) {
                     scene.render()
                     kotlinx.coroutines.delay(10)
                 }
@@ -547,9 +583,11 @@ class AuthorsProductionWiringTest {
         try {
             awaitWork(scene)
             assertTrue(!preferences.creatorWorkDisplayModeOverride().isSet())
-            assertTrue(nodes(scene, unmerged = true).none {
-                it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-sources-${work.id}"
-            })
+            assertTrue(
+                nodes(scene, unmerged = true).none {
+                    it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-sources-${work.id}"
+                },
+            )
             tagged(scene, "creator-display-mode-button").config[SemanticsActions.OnClick].action?.invoke()
             awaitTag(scene, "creator-display-mode-option-LIST")
             tagged(scene, "creator-display-mode-option-LIST")
@@ -559,9 +597,11 @@ class AuthorsProductionWiringTest {
             assertEquals(LibraryDisplayMode.List, preferences.creatorWorkDisplayModeOverride().get())
             awaitTag(scene, "creator-work-sources-${work.id}")
             assertTrue(texts(scene).any { it.contains("Source 241") })
-            assertTrue(nodes(scene, unmerged = true).none {
-                it.config.getOrElse(SemanticsProperties.TestTag) { "" }.startsWith("creator-version-")
-            })
+            assertTrue(
+                nodes(scene, unmerged = true).none {
+                    it.config.getOrElse(SemanticsProperties.TestTag) { "" }.startsWith("creator-version-")
+                },
+            )
 
             tagged(scene, "creator-display-mode-button").config[SemanticsActions.OnClick].action?.invoke()
             awaitTag(scene, "creator-display-mode-option-COMPACT_GRID")
@@ -570,20 +610,28 @@ class AuthorsProductionWiringTest {
             withTimeout(5_000) {
                 while (nodes(scene, unmerged = true).any {
                         it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-sources-${work.id}"
-                    }) { scene.render(); kotlinx.coroutines.delay(10) }
+                    }
+                ) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
             }
-            assertTrue(nodes(scene, unmerged = true).none {
-                it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-sources-${work.id}"
-            })
+            assertTrue(
+                nodes(scene, unmerged = true).none {
+                    it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-sources-${work.id}"
+                },
+            )
 
             tagged(scene, "creator-display-mode-button").config[SemanticsActions.OnClick].action?.invoke()
             awaitTag(scene, "creator-display-mode-option-COMFORTABLE_GRID")
             tagged(scene, "creator-display-mode-option-COMFORTABLE_GRID")
                 .config[SemanticsActions.OnClick].action?.invoke()
             scene.render()
-            assertTrue(nodes(scene, unmerged = true).none {
-                it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-sources-${work.id}"
-            })
+            assertTrue(
+                nodes(scene, unmerged = true).none {
+                    it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-sources-${work.id}"
+                },
+            )
 
             preferences.displayMode().set(LibraryDisplayMode.List)
             scene.close()
@@ -605,9 +653,13 @@ class AuthorsProductionWiringTest {
                 "Comfortable grid must place the title below its cover after the shelf mode changes and remounts",
             )
         } finally {
-            scene.close()
-            handler.close()
-            preferenceNode.removeNode()
+            try {
+                scene.close()
+            } finally {
+                modelOwner.closeAndJoin()
+                handler.close()
+                preferenceNode.removeNode()
+            }
         }
     }
 
@@ -622,12 +674,16 @@ class AuthorsProductionWiringTest {
     }
 
     private fun verifyNarrowArchive(decision: tachiyomi.domain.creator.model.WorkDecisionState?) = runBlocking {
-        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
-            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY)
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(driver)
-        val handler = JvmDatabaseHandler(Database(driver,
-            historyAdapter = History.Adapter(DateColumnAdapter),
-            mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter)), driver)
+        val handler = JvmDatabaseHandler(
+            Database(
+                driver,
+                historyAdapter = History.Adapter(DateColumnAdapter),
+                mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+            ),
+            driver,
+        )
         val repository = tachiyomi.data.creator.CreatorRepositoryImpl(handler)
         val coverFile = directory.resolve("cover.png").toFile()
         val coverImage = java.awt.image.BufferedImage(128, 176, java.awt.image.BufferedImage.TYPE_INT_RGB)
@@ -640,9 +696,11 @@ class AuthorsProductionWiringTest {
         javax.imageio.ImageIO.write(coverImage, "png", coverFile)
         val coverServer = mockwebserver3.MockWebServer()
         repeat(4) {
-            coverServer.enqueue(mockwebserver3.MockResponse.Builder()
-                .addHeader("Content-Type", "image/png")
-                .body(okio.Buffer().write(coverFile.readBytes())).build())
+            coverServer.enqueue(
+                mockwebserver3.MockResponse.Builder()
+                    .addHeader("Content-Type", "image/png")
+                    .body(okio.Buffer().write(coverFile.readBytes())).build(),
+            )
         }
         coverServer.start()
         val preferenceNode = Preferences.userRoot().node("/mihon-tests/ax03-narrow-${UUID.randomUUID()}")
@@ -654,17 +712,31 @@ class AuthorsProductionWiringTest {
         val archive = CreatorArchive(repository, repository)
         val work = archive.createWork("平行天堂 Parallel Paradise", target.id, null)
         val mangaRepository = tachiyomi.data.manga.MangaRepositoryImpl(handler, NoopCreatorLibraryIndexWriter)
-        val mangas = mangaRepository.insertNetworkManga((1L..3L).map { source ->
-            Manga.create().copy(source = source, url = "/version", title = "Version $source", favorite = false)
-        })
+        val mangas = mangaRepository.insertNetworkManga(
+            (1L..3L).map { source ->
+                Manga.create().copy(source = source, url = "/version", title = "Version $source", favorite = false)
+            },
+        )
         mangas.forEach { manga ->
             repository.upsertSourceWork(manga.source, manga.url, manga.id, manga.title, "冈本伦", null, coverServer.url("/cover.png").toString(), null)
             val key = tachiyomi.domain.creator.model.SourceWorkNaturalKey(manga.source, manga.url)
-            repository.upsertSourceWorkCreator(key, target.id, CreatorRole.AUTHOR, 0,
+            repository.upsertSourceWorkCreator(
+                key, target.id, CreatorRole.AUTHOR, 0,
                 tachiyomi.domain.creator.model.CreatorRelationOrigin.AUTOMATIC,
-                tachiyomi.domain.creator.model.CreatorRelationVerification.VERIFIED, "冈本伦", 1.0, "fixture")
-            if (decision != null) archive.decide(key, work.id, decision,
-                null, 1.0, "fixture", manga.source, "version-${manga.source}")
+                tachiyomi.domain.creator.model.CreatorRelationVerification.VERIFIED, "冈本伦", 1.0, "fixture",
+            )
+            if (decision != null) {
+                archive.decide(
+                    key,
+                    work.id,
+                    decision,
+                    null,
+                    1.0,
+                    "fixture",
+                    manga.source,
+                    "version-${manga.source}",
+                )
+            }
         }
         val grouped = decision == tachiyomi.domain.creator.model.WorkDecisionState.CONFIRMED
         val currentArchive = repository.getCreatorWorkArchive(target.id)
@@ -682,7 +754,10 @@ class AuthorsProductionWiringTest {
             every { get(any<Long>()) } returns null
             every { getOrStub(any()) } answers {
                 val sourceId = firstArg<Long>()
-                mockk { every { id } returns sourceId; every { name } returns "Source $sourceId long edition" }
+                mockk {
+                    every { id } returns sourceId
+                    every { name } returns "Source $sourceId long edition"
+                }
             }
         }
         val dependencies = mockk<DesktopUiDependencies> {
@@ -699,14 +774,20 @@ class AuthorsProductionWiringTest {
         fun sourceLabel(id: Int) = "Source $id long edition · ${MR.strings.desktop_ui_source_missing.localized()}"
         fun cardSourceName(id: Int) = "Source $id long edition (${MR.strings.desktop_ui_source_missing.localized()})"
         val allSourceNames = (1..3).joinToString(" · ") { cardSourceName(it) }
+        val modelOwner = AuthorsModelsFixtureOwner()
         try {
             for (dark in listOf(false, true)) {
                 val scene = ImageComposeScene(320, if (grouped) 1100 else 2200, coroutineContext = coroutineContext) {}
                 var mountedNavigator: Navigator? = null
                 try {
                     scene.setContent {
-                        androidx.compose.material3.MaterialTheme(colorScheme = if (dark)
-                            androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme()) {
+                        androidx.compose.material3.MaterialTheme(
+                            colorScheme = if (dark) {
+                                androidx.compose.material3.darkColorScheme()
+                            } else {
+                                androidx.compose.material3.lightColorScheme()
+                            },
+                        ) {
                             CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
                                 Navigator(AuthorDetailScreen(target.id)) { nav ->
                                     mountedNavigator = nav
@@ -718,9 +799,16 @@ class AuthorsProductionWiringTest {
                         }
                     }
                     withTimeout(5000) {
-                        while ((if (decision == WorkDecisionState.REJECTED) sourceLabel(1) else
-                                if (grouped) allSourceNames else cardSourceName(1)) !in texts(scene)) {
-                            scene.render(); kotlinx.coroutines.delay(10)
+                        while ((
+                                if (decision == WorkDecisionState.REJECTED) {
+                                    sourceLabel(1)
+                                } else {
+                                    if (grouped) allSourceNames else cardSourceName(1)
+                                }
+                                ) !in texts(scene)
+                        ) {
+                            scene.render()
+                            kotlinx.coroutines.delay(10)
                         }
                     }
                     val cover = nodes(scene, unmerged = true).single {
@@ -752,17 +840,23 @@ class AuthorsProductionWiringTest {
                     val output = java.nio.file.Paths.get("build/ga02/author-${decision?.name?.lowercase() ?: "pending"}-320-${if (dark) "dark" else "light"}.png")
                     java.nio.file.Files.createDirectories(output.parent)
                     var rendered = byteArrayOf()
-                    try { withTimeout(5000) {
-                        rendered = checkNotNull(scene.render().encodeToData()).bytes
-                        assertTrue(cover.boundsInRoot.width > 0 && cover.boundsInRoot.height > 0)
+                    try {
+                        withTimeout(5000) {
+                            rendered = checkNotNull(scene.render().encodeToData()).bytes
+                            assertTrue(cover.boundsInRoot.width > 0 && cover.boundsInRoot.height > 0)
+                        }
+                    } finally {
+                        java.nio.file.Files.write(output, rendered)
                     }
-                    } finally { java.nio.file.Files.write(output, rendered) }
                     if (decision == null) {
                         val pendingVersion = checkNotNull(firstVersion)
-                        assertTrue(nodes(scene, unmerged = true).none {
-                            it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
-                                "creator-pending-more-${pendingVersion.sourceWorkId}"
-                        }, "Pending work cards must not offer work comparison")
+                        assertTrue(
+                            nodes(scene, unmerged = true).none {
+                                it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                                    "creator-pending-more-${pendingVersion.sourceWorkId}"
+                            },
+                            "Pending work cards must not offer work comparison",
+                        )
                     }
                     val search = nodes(scene).single { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-search" }
                     search.config[SemanticsActions.SetText].action?.invoke(AnnotatedString("ZZZ-no-match"))
@@ -781,9 +875,13 @@ class AuthorsProductionWiringTest {
                     if (decision == WorkDecisionState.REJECTED) {
                         clickableTextNode(scene, sourceLabel(2)).config[SemanticsActions.OnClick].action?.invoke()
                     } else {
-                        val selected = if (grouped) currentArchive.works.single().versions.single {
-                            it.naturalKey.sourceId == 2L
-                        } else checkNotNull(firstVersion)
+                        val selected = if (grouped) {
+                            currentArchive.works.single().versions.single {
+                                it.naturalKey.sourceId == 2L
+                            }
+                        } else {
+                            checkNotNull(firstVersion)
+                        }
                         val card = nodes(scene, unmerged = true).single {
                             it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-card-$rowKey"
                         }
@@ -792,20 +890,29 @@ class AuthorsProductionWiringTest {
                             while (nodes(scene, unmerged = true).none {
                                     it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
                                         "creator-source-version-${selected.sourceWorkId}"
-                                }) { scene.render(); kotlinx.coroutines.delay(10) }
+                                }
+                            ) {
+                                scene.render()
+                                kotlinx.coroutines.delay(10)
+                            }
                         }
                         if (grouped) {
-                            assertTrue(currentArchive.works.single().versions.all { version ->
-                                nodes(scene, unmerged = true).any {
-                                    it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
-                                        "creator-source-version-${version.sourceWorkId}"
-                                }
-                            })
+                            assertTrue(
+                                currentArchive.works.single().versions.all { version ->
+                                    nodes(scene, unmerged = true).any {
+                                        it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                                            "creator-source-version-${version.sourceWorkId}"
+                                    }
+                                },
+                            )
                         }
-                        assertTrue(nodes(scene, unmerged = true).none {
-                            it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
-                                "creator-source-compare-more-${selected.sourceWorkId}"
-                        }, "The source chooser must not offer work comparison")
+                        assertTrue(
+                            nodes(scene, unmerged = true).none {
+                                it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                                    "creator-source-compare-more-${selected.sourceWorkId}"
+                            },
+                            "The source chooser must not offer work comparison",
+                        )
                         nodes(scene, unmerged = true).single {
                             it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
                                 "creator-source-open-${selected.sourceWorkId}"
@@ -813,16 +920,20 @@ class AuthorsProductionWiringTest {
                     }
                     withTimeout(5000) {
                         while (mountedNavigator?.lastItem !is mihon.desktop.ui.library.MangaDetailScreen) {
-                            scene.render(); kotlinx.coroutines.delay(10)
+                            scene.render()
+                            kotlinx.coroutines.delay(10)
                         }
                     }
                     assertEquals(
                         if (decision == WorkDecisionState.REJECTED || grouped) mangas[1].id else mangas[0].id,
                         (mountedNavigator!!.lastItem as mihon.desktop.ui.library.MangaDetailScreen).mangaId,
                     )
-                } finally { scene.close() }
+                } finally {
+                    scene.close()
+                }
             }
         } finally {
+            modelOwner.closeAndJoin()
             handler.close()
             coverServer.close()
             preferenceNode.removeNode()
@@ -831,13 +942,16 @@ class AuthorsProductionWiringTest {
 
     @Test
     fun `actual desktop detail editor obeys shared identity contract`() = runBlocking {
-        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
-            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY)
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(driver)
-        val database = Database(driver,
+        val database = Database(
+            driver,
             historyAdapter = History.Adapter(DateColumnAdapter),
-            mangasAdapter = Mangas.Adapter(StringListColumnAdapter,
-                UpdateStrategyColumnAdapter))
+            mangasAdapter = Mangas.Adapter(
+                StringListColumnAdapter,
+                UpdateStrategyColumnAdapter,
+            ),
+        )
         val handler = JvmDatabaseHandler(database, driver)
         var model: AuthorDetailScreenModel? = null
         try {
@@ -854,7 +968,10 @@ class AuthorsProductionWiringTest {
                 }
                 AuthorsScreenModelFactory.detail(id, false, dependencies).also { model = it }.identityEditor
             }
-        } finally { model?.onDispose(); handler.close() }
+        } finally {
+            model?.closeAndJoin()
+            handler.close()
+        }
     }
 
     @Test
@@ -863,16 +980,23 @@ class AuthorsProductionWiringTest {
             app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
         )
         Database.Schema.create(driver)
-        val database = Database(driver,
+        val database = Database(
+            driver,
             historyAdapter = History.Adapter(DateColumnAdapter),
-            mangasAdapter = Mangas.Adapter(StringListColumnAdapter,
-                UpdateStrategyColumnAdapter))
+            mangasAdapter = Mangas.Adapter(
+                StringListColumnAdapter,
+                UpdateStrategyColumnAdapter,
+            ),
+        )
         val handler = JvmDatabaseHandler(database, driver)
         var failNext = false
         var attempts = 0
         val repository = tachiyomi.data.creator.CreatorRepositoryImpl(handler, identityMutationHook = {
             attempts++
-            if (failNext) { failNext = false; error("write failed") }
+            if (failNext) {
+                failNext = false
+                error("write failed")
+            }
         })
         val target = repository.upsertCreator("Primary")
         repository.upsertCreator("Other")
@@ -890,6 +1014,7 @@ class AuthorsProductionWiringTest {
             every { saveSourceMangaForDetails } returns mockk()
             every { libraryPreferences } returns null
         }
+        val modelOwner = AuthorsModelsFixtureOwner()
         val scene = ImageComposeScene(600, 800, coroutineContext = coroutineContext) {}
         try {
             scene.setContent {
@@ -897,50 +1022,94 @@ class AuthorsProductionWiringTest {
                     Navigator(AuthorDetailScreen(target.id))
                 }
             }
-            withTimeout(5000) { while (MR.strings.desktop_ui_add_author_alias.localized() !in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
+            withTimeout(5000) {
+                while (MR.strings.desktop_ui_add_author_alias.localized() !in texts(scene)) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
+            }
             clickableTextNode(scene, MR.strings.desktop_ui_add_author_alias.localized())
                 .config[SemanticsActions.OnClick].action?.invoke()
-            withTimeout(5000) { while ("Other" !in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
+            withTimeout(5000) {
+                while ("Other" !in texts(scene)) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
+            }
             clickableTextNode(scene, "Other").config[SemanticsActions.OnClick].action?.invoke()
             clickableTextNode(scene, MR.strings.action_add.localized()).config[SemanticsActions.OnClick].action?.invoke()
-            withTimeout(5000) { while ("write failed" !in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
+            withTimeout(5000) {
+                while ("write failed" !in texts(scene)) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
+            }
             assertTrue(repository.getIdentitySnapshot(target.id).aliases.isEmpty())
             assertTrue("Other" in texts(scene))
             val submit = clickableTextNode(scene, MR.strings.action_add.localized()).config[SemanticsActions.OnClick].action
             submit?.invoke()
             submit?.invoke()
             withTimeout(5000) {
-                while (repository.getIdentitySnapshot(target.id).aliases != listOf("Other")) { scene.render(); kotlinx.coroutines.delay(10) }
+                while (repository.getIdentitySnapshot(target.id).aliases != listOf("Other")) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
             }
             org.junit.jupiter.api.Assertions.assertEquals(2, attempts)
             withTimeout(5000) {
                 while (!clickableTextNode(scene, MR.strings.desktop_ui_add_author_alias.localized())
-                    .config.getOrElse(SemanticsProperties.Focused) { false }) { scene.render(); kotlinx.coroutines.delay(10) }
-            }
-            clickableTextNode(scene, "Other").config[SemanticsActions.OnClick].action?.invoke()
-            withTimeout(5000) { while (MR.strings.action_cancel.localized() !in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
-            clickableTextNode(scene, MR.strings.action_cancel.localized()).config[SemanticsActions.OnClick].action?.invoke()
-            withTimeout(5000) {
-                while (!clickableTextNode(scene, "Other").config.getOrElse(SemanticsProperties.Focused) { false }) {
-                    scene.render(); kotlinx.coroutines.delay(10)
+                        .config.getOrElse(SemanticsProperties.Focused) { false }
+                ) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
                 }
             }
             clickableTextNode(scene, "Other").config[SemanticsActions.OnClick].action?.invoke()
-            withTimeout(5000) { while (MR.strings.action_ok.localized() !in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
+            withTimeout(5000) {
+                while (MR.strings.action_cancel.localized() !in texts(scene)) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
+            }
+            clickableTextNode(scene, MR.strings.action_cancel.localized()).config[SemanticsActions.OnClick].action?.invoke()
+            withTimeout(5000) {
+                while (!clickableTextNode(scene, "Other").config.getOrElse(SemanticsProperties.Focused) { false }) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
+            }
+            clickableTextNode(scene, "Other").config[SemanticsActions.OnClick].action?.invoke()
+            withTimeout(5000) {
+                while (MR.strings.action_ok.localized() !in texts(scene)) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
+            }
             clickableTextNode(scene, MR.strings.action_ok.localized()).config[SemanticsActions.OnClick].action?.invoke()
             withTimeout(5000) {
-                while (repository.getIdentitySnapshot(target.id).displayName != "Other") { scene.render(); kotlinx.coroutines.delay(10) }
+                while (repository.getIdentitySnapshot(target.id).displayName != "Other") {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
             }
             assertTrue(repository.getIdentitySnapshot(target.id).aliases == listOf("Primary"))
             withTimeout(5000) {
                 while (nodes(scene).none { node ->
-                    node.config.getOrElse(SemanticsProperties.Focused) { false } &&
-                        node.config.getOrElse(SemanticsProperties.Text) { emptyList() }.any { it.text == "Other" }
-                }) { scene.render(); kotlinx.coroutines.delay(10) }
+                        node.config.getOrElse(SemanticsProperties.Focused) { false } &&
+                            node.config.getOrElse(SemanticsProperties.Text) { emptyList() }.any { it.text == "Other" }
+                    }
+                ) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
             }
         } finally {
-            scene.close()
-            handler.close()
+            try {
+                scene.close()
+            } finally {
+                modelOwner.closeAndJoin()
+                handler.close()
+            }
         }
     }
 
@@ -1014,17 +1183,23 @@ class AuthorsProductionWiringTest {
                 while (action !in texts(scene)) scene.render()
             }
             withTimeout(5000) {
-                while (!(                MR.strings.desktop_ui_chapter_variant_summary.localized(
-                    Locale.getDefault(),
-                    0,
-                    1,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                ) in texts(scene))) { scene.render(); kotlinx.coroutines.delay(10) }
+                while (!(
+                        MR.strings.desktop_ui_chapter_variant_summary.localized(
+                            Locale.getDefault(),
+                            0,
+                            1,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                        ) in texts(scene)
+                        )
+                ) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
             }
             withTimeout(5000) {
                 while (MR.strings.creator_work_chapters_unknown.localized() !in texts(scene)) {
@@ -1176,8 +1351,14 @@ class AuthorsProductionWiringTest {
     @Test
     fun `mounted work comparison confirms an existing suggested script variant target`() = runBlocking {
         val creatorRepository = mockk<CreatorRepository>(relaxed = true)
+        val archiveReloaded = CompletableDeferred<Unit>()
+        val archiveReads = java.util.concurrent.atomic.AtomicInteger()
+        val fixtureArchive = scriptVariantSuggestedArchive()
         val archiveRepository = mockk<CreatorArchiveRepository>(relaxed = true) {
-            coEvery { getCreatorWorkArchive(7L) } returns scriptVariantSuggestedArchive()
+            coEvery { getCreatorWorkArchive(7L) } coAnswers {
+                if (archiveReads.incrementAndGet() > 1) archiveReloaded.complete(Unit)
+                fixtureArchive
+            }
         }
         val saved = Manga.create().copy(id = 12L, source = 10L, url = "/traditional", title = "詭譎屋")
         val dependencies = mockk<DesktopUiDependencies> {
@@ -1204,6 +1385,7 @@ class AuthorsProductionWiringTest {
                 while (action !in texts(scene)) scene.render()
             }
             clickableTextNode(scene, action).config[SemanticsActions.OnClick].action?.invoke()
+            withTimeout(5_000) { archiveReloaded.await() }
             coVerify {
                 archiveRepository.appendUserWorkDecisionIfCurrent(
                     SourceWorkNaturalKey(11L, "/suggested"),
@@ -1230,7 +1412,6 @@ class AuthorsProductionWiringTest {
             scene.close()
         }
     }
-
 
     @Test
     fun `mounted author explains unsupported split without changing identity`() = runBlocking {
@@ -1283,7 +1464,8 @@ class AuthorsProductionWiringTest {
             }
             withTimeout(5000) {
                 while (MR.strings.desktop_ui_split_author_identity.localized() !in texts(scene)) {
-                    scene.render(); kotlinx.coroutines.delay(10)
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
                 }
             }
             clickableTextNode(scene, MR.strings.desktop_ui_split_author_identity.localized())
@@ -1291,7 +1473,9 @@ class AuthorsProductionWiringTest {
             scene.render()
             assertTrue(MR.strings.creator_split_unavailable.localized() in texts(scene))
             coVerify(exactly = 0) { archiveRepository.removeManualCreatorAlias(any(), any()) }
-        } finally { scene.close() }
+        } finally {
+            scene.close()
+        }
     }
 
     @Test
@@ -1331,8 +1515,24 @@ class AuthorsProductionWiringTest {
                     archiveRepository.importPresentationExclusions(mapOf(7L to setOf(sourceWork)))
                     archiveRepository.getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any())
                 }
-            } finally { model.onDispose() }
-        } finally { node.removeNode() }
+            } finally {
+                model.closeAndJoin()
+            }
+        } finally {
+            node.removeNode()
+        }
+    }
+
+    @Test
+    fun `author retry consumers honor Chinese locale through production factory`() {
+        val previousLocale = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.SIMPLIFIED_CHINESE)
+            `mounted authors root renders production failure and retry reaches empty library`()
+            `mounted author cards remain visible when projection refresh fails and retry recovers`()
+        } finally {
+            Locale.setDefault(previousLocale)
+        }
     }
 
     @Test
@@ -1357,7 +1557,7 @@ class AuthorsProductionWiringTest {
             every { observeUnreadWorkDiscoveries(any()) } returns flowOf(emptyList())
             coEvery { getPresentationExclusions(any()) } returns emptySet()
             coEvery {
-                getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any())
+                getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any(), any())
             } returns tachiyomi.domain.creator.model.CreatorCardProjectionPage(0, 50, false, emptyList())
         }
         val dependencies = mockk<DesktopUiDependencies> {
@@ -1429,7 +1629,7 @@ class AuthorsProductionWiringTest {
             every { observeUnreadWorkDiscoveries(any()) } returns flowOf(emptyList())
             coEvery { getPresentationExclusions(any()) } returns emptySet()
             coEvery {
-                getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any())
+                getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any(), any())
             } coAnswers {
                 if (projectionCalls.incrementAndGet() == 2) error("projection temporarily unavailable")
                 page
@@ -1623,7 +1823,10 @@ class AuthorsProductionWiringTest {
         }
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
         fun tagged(tag: String) = nodes(scene).single { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == tag }
-        fun click(tag: String) { tagged(tag).config[SemanticsActions.OnClick].action?.invoke(); scene.render() }
+        fun click(tag: String) {
+            tagged(tag).config[SemanticsActions.OnClick].action?.invoke()
+            scene.render()
+        }
         try {
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) { Navigator(AuthorsRootScreen()) }
@@ -1637,7 +1840,10 @@ class AuthorsProductionWiringTest {
             click("creator-settings-open")
             click("creator-frequency-weekly")
             click("creator-settings-save")
-            repeat(5) { scene.render(); kotlinx.coroutines.yield() }
+            repeat(5) {
+                scene.render()
+                kotlinx.coroutines.yield()
+            }
             check(preferences.current() == tachiyomi.domain.creator.service.CreatorCheckFrequency.WEEKLY)
             check(tagged("creator-settings-open").config[SemanticsProperties.Focused])
             kotlinx.coroutines.withTimeout(5_000) {
@@ -1646,7 +1852,11 @@ class AuthorsProductionWiringTest {
                     kotlinx.coroutines.delay(10)
                 }
             }
-        } finally { scene.close(); indexer.stop(); node.removeNode() }
+        } finally {
+            scene.close()
+            indexer.stop()
+            node.removeNode()
+        }
     }
 
     private fun retryNode(scene: ImageComposeScene): SemanticsNode = nodes(scene).single { node ->
@@ -1794,8 +2004,8 @@ class AuthorsProductionWiringTest {
 
     private fun nodes(scene: ImageComposeScene, unmerged: Boolean = false): List<SemanticsNode> =
         scene.semanticsOwners.flatMap { owner ->
-        flatten(if (unmerged) owner.unmergedRootSemanticsNode else owner.rootSemanticsNode)
-    }
+            flatten(if (unmerged) owner.unmergedRootSemanticsNode else owner.rootSemanticsNode)
+        }
 
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
 

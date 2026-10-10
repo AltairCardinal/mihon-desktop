@@ -17,6 +17,7 @@ import mihon.domain.sync.SyncEventEnvelope
 import mihon.domain.sync.transport.SyncBatchIndexEntry
 import mihon.domain.sync.transport.SyncSnapshot
 import tachiyomi.data.DatabaseHandler
+import java.security.MessageDigest
 
 private data class DiscoveredBatchKey(val spaceId: String, val generation: Long, val batchId: String)
 
@@ -74,9 +75,20 @@ class SyncInboxStore(private val handler: DatabaseHandler) {
 
     private suspend fun ingest(batch: SyncBatch, discoveredBatch: DiscoveredBatchKey?): SyncReceptionResult {
         val encoded = SyncBatchCodec.rawEncode(batch)
-        if (!validBatch(batch, encoded)) {
+        val scope = discoveredBatch ?: handler.await {
+            sync_journalQueries.getActiveSpace().executeAsOneOrNull()?.let {
+                DiscoveredBatchKey(it.space_id, it.generation, batch.batchId)
+            }
+        } ?: DiscoveredBatchKey(batch.spaceId, batch.generation, batch.batchId)
+        val error = when {
+            batch.spaceId != scope.spaceId -> "WRONG_SPACE"
+            batch.generation != scope.generation -> "WRONG_GENERATION"
+            else -> batchValidationError(batch, encoded)
+        }
+        if (error != null) {
+            recordRejected(scope.spaceId, scope.generation, scope.batchId, "", error, encoded)
             if (discoveredBatch != null) deleteDiscoveredBatch(discoveredBatch)
-            return SyncReceptionResult(false, error = "invalid sync batch")
+            return SyncReceptionResult(false, error = error)
         }
         val active = handler.await {
             sync_journalQueries.getSpace(batch.spaceId, batch.generation).executeAsOneOrNull()?.let {
@@ -94,6 +106,7 @@ class SyncInboxStore(private val handler: DatabaseHandler) {
             val previous = sync_inboxQueries.getReceivedBatch(batch.spaceId, batch.generation, batch.batchId)
                 .executeAsOneOrNull()
             if (previous == encoded) {
+                sync_repairQueries.resolveBatchReadFailure(batch.spaceId, batch.generation, batch.batchId)
                 sync_inboxQueries.deleteDiscoveredBatch(queueKey.spaceId, queueKey.generation, queueKey.batchId)
                 return@await SyncReceptionResult(true, duplicate = true, batch = batch)
             }
@@ -119,6 +132,15 @@ class SyncInboxStore(private val handler: DatabaseHandler) {
                     "REJECTED",
                     encoded,
                     "conflicting immutable batch or event",
+                )
+                recordSyncRepairFailure(
+                    batch.spaceId,
+                    batch.generation,
+                    "BATCH",
+                    batch.batchId,
+                    "",
+                    "conflicting immutable batch or event",
+                    encoded,
                 )
                 sync_inboxQueries.deleteDiscoveredBatch(queueKey.spaceId, queueKey.generation, queueKey.batchId)
                 return@await SyncReceptionResult(false, error = "conflicting immutable batch or event")
@@ -147,9 +169,22 @@ class SyncInboxStore(private val handler: DatabaseHandler) {
             }
             dirtySyncDependents(batch.spaceId, batch.generation, inserted)
             sync_inboxQueries.saveInboxBatch(batch.spaceId, batch.generation, batch.batchId, "RECEIVED", encoded, null)
+            sync_repairQueries.resolveBatchReadFailure(batch.spaceId, batch.generation, batch.batchId)
             sync_inboxQueries.deleteDiscoveredBatch(queueKey.spaceId, queueKey.generation, queueKey.batchId)
             SyncReceptionResult(true, batch = batch)
         }
+    }
+
+    internal suspend fun recordRejected(
+        spaceId: String,
+        generation: Long,
+        batchId: String,
+        path: String,
+        reason: String,
+        original: String,
+    ) = handler.await(inTransaction = true) {
+        recordSyncRepairFailure(spaceId, generation, "BATCH", batchId, path, reason, original)
+        sync_inboxQueries.saveInboxBatch(spaceId, generation, batchId, "REJECTED", original, reason)
     }
 
     private suspend fun deleteDiscoveredBatch(batch: DiscoveredBatchKey) = handler.await(inTransaction = true) {
@@ -192,21 +227,26 @@ class SyncInboxStore(private val handler: DatabaseHandler) {
         }
     }
 
-    private fun validBatch(batch: SyncBatch, encoded: String): Boolean {
-        if (SyncBatchCodec.decode(encoded) !is SyncBatchDecodeResult.Accepted) return false
-        val first = batch.events.firstOrNull() ?: return false
+    private fun batchValidationError(batch: SyncBatch, encoded: String): String? {
+        val decoded = SyncBatchCodec.decode(encoded)
+        if (decoded is SyncBatchDecodeResult.Rejected) return "${decoded.reason}: ${decoded.message}"
+        val first = batch.events.firstOrNull() ?: return "BATCH_TOO_LARGE: batch is empty"
         if (!batch.batchId.matches(Regex("[A-Za-z0-9_-]{1,128}")) ||
             !first.actorId.matches(Regex("[A-Za-z0-9_-]{1,128}"))
         ) {
-            return false
+            return "INVALID_SEQUENCE: invalid batch or actor identity"
         }
         if (batch.events.any {
                 it.batchId != batch.batchId || it.actorId != first.actorId || it.epoch != first.epoch
             }
         ) {
-            return false
+            return "INVALID_SEQUENCE: batch actor or epoch differs"
         }
-        return batch.events.sortedBy(SyncEventEnvelope::seq).zipWithNext().all { (a, b) -> b.seq == a.seq + 1 }
+        return if (batch.events.sortedBy(SyncEventEnvelope::seq).zipWithNext().all { (a, b) -> b.seq == a.seq + 1 }) {
+            null
+        } else {
+            "INVALID_SEQUENCE: batch sequence is not contiguous"
+        }
     }
 }
 
@@ -224,6 +264,14 @@ class SyncInboxExchange(private val store: SyncInboxStore, private val service: 
         val batch = received.batch ?: run {
             // A structurally invalid batch is terminal for this discovered entry; network
             // failures throw before this branch and leave it durable for a later retry.
+            store.recordRejected(
+                snapshot.spaceId,
+                snapshot.generation,
+                entry.batchId,
+                entry.path,
+                received.error ?: "sync batch rejected",
+                received.evidence ?: entry.digestHex,
+            )
             store.completeDiscovery(snapshot.spaceId, snapshot.generation, entry.batchId)
             return SyncReceptionResult(false, error = received.error)
         }
@@ -231,4 +279,18 @@ class SyncInboxExchange(private val store: SyncInboxStore, private val service: 
         // delete here added a transaction for every normal batch without strengthening recovery.
         return store.ingest(batch, snapshot, entry)
     }
+}
+
+internal fun tachiyomi.data.Database.recordSyncRepairFailure(
+    spaceId: String,
+    generation: Long,
+    kind: String,
+    target: String,
+    path: String,
+    reason: String,
+    original: String,
+) {
+    val digest = MessageDigest.getInstance("SHA-256").digest((reason + "\n" + original).toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it.toInt() and 255) }
+    sync_repairQueries.recordFailure(spaceId, generation, kind, target, digest, path, reason, original)
 }

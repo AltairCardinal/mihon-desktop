@@ -24,7 +24,7 @@ import java.util.Date
 class HistoryScreenModelTest {
 
     @Test
-    fun `history continuation adopts another synchronized chapter`() = runTest {
+    fun `history continuation keeps official selected chapter and opening baseline`() = runTest {
         val chapters = FakeChapterRepository()
         chapters.addAll(
             listOf(
@@ -37,21 +37,30 @@ class HistoryScreenModelTest {
         val progress = tachiyomi.domain.reader.interactor.RecordReadingProgress(
             object : tachiyomi.domain.reader.repository.ReadingProgressRepository {
                 override suspend fun record(event: tachiyomi.domain.reader.model.ReadingProgressEvent) = Unit
-                override suspend fun resumePosition(mangaId: Long) =
-                    tachiyomi.domain.reader.model.ReadingResumePosition(2, 2, snapshot)
+                override suspend fun openChapter(target: tachiyomi.domain.reader.model.ReaderChapterIdentity) =
+                    tachiyomi.domain.reader.model.ReaderOpenContext(
+                        mangas.getMangaById(10),
+                        requireNotNull(chapters.getChapterById(1)),
+                        0,
+                        snapshot,
+                        false,
+                    )
+                override suspend fun resumePosition(mangaId: Long) = error("Selection must not consult a different synchronized chapter")
             },
         )
-        val history = FakeHistoryRepository()
+        val history = FakeHistoryRepository().apply { addHistory(sampleHistory(chapterId = 1, mangaId = 10)) }
         val model = HistoryScreenModel(
             GetHistory(history),
             RemoveHistory(history),
-            GetChapter(chapters),
+
             GetManga(mangas),
             progress,
+            getChapters = tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(chapters),
+            getNextChapters = tachiyomi.domain.history.interactor.GetNextChapters(tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(chapters), GetManga(mangas), history),
         )
         val request = requireNotNull(model.readerRequestFor(sampleHistory(chapterId = 1, mangaId = 10)))
-        assertEquals(2L, request.chapterId)
-        assertEquals(2, request.initialPage)
+        assertEquals(1L, request.chapterId)
+        assertEquals(0, request.initialPage)
         assertEquals(snapshot, request.resumeSnapshot)
     }
 
@@ -61,7 +70,7 @@ class HistoryScreenModelTest {
         val state: StateFlow<HistoryState> = model.state
 
         assertNotNull(state)
-        assertEquals("", state.value.searchQuery)
+        assertNull(state.value.searchQuery)
         assertTrue(state.value.items.isEmpty())
         assertFalse(state.value.showClearAllDialog)
     }
@@ -130,22 +139,30 @@ class HistoryScreenModelTest {
                 viewerFlags = 0x22L,
             ),
         )
+        val item = sampleHistory(chapterId = 100L, mangaId = 10L)
+        val historyRepository = FakeHistoryRepository().apply { addHistory(item) }
         val model = buildModel(
+            historyRepository = historyRepository,
             chapterRepository = chapterRepository,
             mangaRepository = mangaRepository,
         )
+        try {
+            model.loadHistory()
+            assertEquals(listOf(item), model.state.value.items)
+            val request = model.readerRequestFor(item)
 
-        val request = model.readerRequestFor(sampleHistory(chapterId = 100L, mangaId = 10L))
-
-        assertNotNull(request)
-        assertEquals("Chapter 1", request?.chapterTitle)
-        assertEquals("Test Manga", request?.mangaTitle)
-        assertEquals(42L, request?.sourceId)
-        assertEquals("/ch/1", request?.chapterUrl)
-        assertEquals(100L, request?.chapterId)
-        assertEquals(10L, request?.mangaId)
-        assertEquals(0x22L, request?.mangaViewerFlags)
-        assertEquals(3, request?.initialPage)
+            assertNotNull(request)
+            assertEquals("Chapter 1", request?.chapterTitle)
+            assertEquals("Test Manga", request?.mangaTitle)
+            assertEquals(42L, request?.sourceId)
+            assertEquals("/ch/1", request?.chapterUrl)
+            assertEquals(100L, request?.chapterId)
+            assertEquals(10L, request?.mangaId)
+            assertEquals(0x22L, request?.mangaViewerFlags)
+            assertEquals(3, request?.initialPage)
+        } finally {
+            model.onDispose()
+        }
     }
 
     @Test
@@ -163,8 +180,10 @@ class HistoryScreenModelTest {
         return HistoryScreenModel(
             getHistory = GetHistory(historyRepository),
             removeHistory = RemoveHistory(historyRepository),
-            getChapter = GetChapter(chapterRepository),
+
             getManga = GetManga(mangaRepository),
+            getChapters = tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(chapterRepository),
+            getNextChapters = tachiyomi.domain.history.interactor.GetNextChapters(tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(chapterRepository), GetManga(mangaRepository), historyRepository),
         )
     }
 

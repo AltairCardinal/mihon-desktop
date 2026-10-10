@@ -77,15 +77,11 @@ class AppModule(val app: Application) : InjektModule {
                     },
                 ) {
                     override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
-                        DatabaseMigration.repairMissingRuntimeFamilyForSchema32(
+                        DatabaseMigration.migrateAtomically(
                             AndroidSqliteDriver(db),
                             oldVersion.toLong(),
+                            newVersion.toLong(),
                         )
-                        DatabaseMigration.repairMissingAuthorColumnsForSyncSchema(
-                            AndroidSqliteDriver(db),
-                            oldVersion.toLong(),
-                        )
-                        super.onUpgrade(db, oldVersion, newVersion)
                     }
 
                     override fun onOpen(db: SupportSQLiteDatabase) {
@@ -170,7 +166,12 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory { ImageSaver(app) }
 
-        addSingletonFactory { AndroidStorageFolderProvider(app) }
+        addSingletonFactory {
+            AndroidStorageFolderProvider(
+                app,
+                eu.kanade.tachiyomi.data.sync.AndroidRecoveryProfile.storageDirectory(app),
+            )
+        }
         addSingletonFactory { LocalSourceFileSystem(get()) }
         addSingletonFactory { LocalCoverManager(app, get()) }
         addSingletonFactory { StorageManager(app, get()) }
