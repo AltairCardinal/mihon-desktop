@@ -2184,4 +2184,18 @@
     <string name="sync_setup_installation_not_found">仍未检测到安装，请确认在同一 GitHub 账号下完成设置。</string>
     <string name="sync_setup_continue_title">继续同步设置</string>
     <string name="sync_setup_other_options">其他解决方式</string>
+    <string name="sync_setup_prepare_space_title">1. 准备同步空间</string>
+    <string name="sync_setup_repository_first_hint">先在当前 GitHub 账号下创建私有空仓库，或填写已有仓库的名称。</string>
+    <string name="sync_setup_install_after_repository">下一步：安装同步应用并授权该仓库，再检查连接。</string>
+    <string name="sync_setup_create_space_browser">创建同步空间</string>
+    <string name="sync_setup_created_continue">我已创建，继续</string>
+    <string name="sync_setup_use_existing_repository">使用已有仓库</string>
+    <string name="sync_setup_browser_creation_unverified">从 GitHub 返回不代表创建成功。准备好仓库后继续，安装应用后再验证。</string>
+    <string name="sync_setup_install_space_title">2. 安装并授权同步应用</string>
+    <string name="sync_setup_space_prepared_unverified">同步空间已准备：%1$s（待验证）</string>
+    <string name="sync_setup_install_selected_space">安装 Mihon 同步应用，并只授权 %1$s。返回后将检查安装与仓库访问权限。</string>
+    <string name="sync_setup_edit_prepared_space">修改同步空间</string>
+    <string name="sync_setup_authorize_selected_space">授权此同步空间</string>
+    <string name="sync_setup_selected_access_unconfirmed">尚未确认对 %1$s 的访问权限。请将此仓库授权给同步应用，再检查连接。</string>
+    <string name="sync_setup_installed_status">同步应用已安装，待授权此空间</string>
 </resources>

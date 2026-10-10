@@ -83,6 +83,9 @@ internal data class StoredUnboundSyncRecoveryFlow(
     val request: SyncRecoveryPlatformRequest? = null,
     val officialAction: SyncRecoveryAction? = null,
     val externalScopes: List<SyncRecoveryExternalScope> = emptyList(),
+    val repositoryDraftName: String? = null,
+    val repositoryPreparedName: String? = null,
+    val repositoryDraftSwitchId: String? = null,
     val archivedSetupIds: List<String> = emptyList(),
     val archivedSetupsTruncated: Boolean = false,
 ) {

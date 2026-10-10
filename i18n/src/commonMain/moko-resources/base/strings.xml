@@ -2395,4 +2395,18 @@
     <string name="sync_setup_installation_not_found">Installation was not detected. Complete setup using the same GitHub account.</string>
     <string name="sync_setup_continue_title">Continue sync setup</string>
     <string name="sync_setup_other_options">Other ways to resolve this</string>
+    <string name="sync_setup_prepare_space_title">1. Prepare your sync space</string>
+    <string name="sync_setup_repository_first_hint">Create a private, empty repository under this GitHub account, or enter the name of an existing repository.</string>
+    <string name="sync_setup_install_after_repository">Next: install the sync app and authorize this repository, then check the connection.</string>
+    <string name="sync_setup_create_space_browser">Create sync space in browser</string>
+    <string name="sync_setup_created_continue">I created it; continue</string>
+    <string name="sync_setup_use_existing_repository">Use this existing repository</string>
+    <string name="sync_setup_browser_creation_unverified">Returning from GitHub does not confirm creation. Continue after preparing the repository; Mihon will verify it after installation.</string>
+    <string name="sync_setup_install_space_title">2. Install and authorize sync app</string>
+    <string name="sync_setup_space_prepared_unverified">Space prepared: %1$s (verification pending)</string>
+    <string name="sync_setup_install_selected_space">Install the Mihon sync app and grant access only to %1$s. Returning will check the installation and repository access.</string>
+    <string name="sync_setup_edit_prepared_space">Change prepared sync space</string>
+    <string name="sync_setup_authorize_selected_space">Authorize this sync space</string>
+    <string name="sync_setup_selected_access_unconfirmed">Access to %1$s is not confirmed. Grant the sync app access to this repository, then check again.</string>
+    <string name="sync_setup_installed_status">Sync app installed; repository access pending</string>
 </resources>

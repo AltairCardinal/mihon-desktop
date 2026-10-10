@@ -367,7 +367,16 @@ internal class SyncSetupStorage(private val secure: SyncSecureStore) {
 
     suspend fun clear(value: StoredSyncSetup) {
         if (value.switchIntentId != null) {
-            save(value.copy(settled = true), value)
+            val settled = value.copy(settled = true)
+            if (setupFor(value) == settled) return
+            try {
+                save(settled, value)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                // Runtime and panel can observe the same drained queue; accept only the identical settled record.
+                if (setupFor(value) != settled) throw error
+            }
             return
         }
         val key = value.switchIntentId?.let(::switchSetupKey) ?: setupKey(value.accountId)

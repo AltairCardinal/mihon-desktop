@@ -220,6 +220,9 @@ data class SyncPanelState(
     val setupInstallation: SyncAppInstallation? = null,
     val setupRepository: SyncRepository? = null,
     val repositoryCreationName: String = mihon.data.sync.auth.GitHubSyncSpaceClient.REPOSITORY_NAME,
+    /** A user statement that a named repository is ready; never a verified repository identity. */
+    val repositoryPreparedName: String? = null,
+    val repositoryPreparationEditing: Boolean = false,
     val creationRepositoryId: Long? = null,
     val creationSubmitted: Boolean = false,
     val creationPermissionProblem: SyncDiscoveryProblem? = null,
@@ -235,6 +238,20 @@ data class SyncPanelState(
     val canOpenRecovery: Boolean get() = true
     val recoveryPrimaryAction: SyncRecoveryActionDecision get() = recoveryDecision()
     val recoveryAlternativeActions: List<SyncRecoveryActionDecision> get() = recoveryAlternatives()
+    val needsRepositoryPreparation: Boolean get() = repositoryPreparationEditing ||
+        (
+            repositoryPreparedName == null && setupRepository == null &&
+                (
+                    (
+                        creationPermissionProblem == SyncDiscoveryProblem.NEEDS_INSTALLATION &&
+                            setupStep == SyncSetupStep.PREPARE_REPOSITORY
+                        ) ||
+                        (
+                            setupProblem == SyncDiscoveryProblem.NEEDS_INSTALLATION &&
+                                (connection == null || pendingRecoveryPurpose == SyncRecoveryContinuation.CREATE)
+                            )
+                    )
+            )
 
     // Device codes and transient authentication details must never be logged.
     override fun toString(): String = "SyncPanelState(page=$page, visible=$visible, busy=$busy)"
@@ -248,6 +265,9 @@ sealed interface SyncPanelAction {
     ) : SyncPanelAction
     data class RecoveryOfficialOpened(val action: SyncRecoveryAction) : SyncPanelAction
     data object RecoveryOfficialReturned : SyncPanelAction
+    data class PrepareBrowserRepository(val name: String) : SyncPanelAction
+    data class ConfirmRepositoryPrepared(val name: String) : SyncPanelAction
+    data object EditRepositoryPreparation : SyncPanelAction
     data object Open : SyncPanelAction
     data object OpenRecovery : SyncPanelAction
     data object VerifyRecovery : SyncPanelAction

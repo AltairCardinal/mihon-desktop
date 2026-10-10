@@ -69,11 +69,150 @@ import java.util.concurrent.ConcurrentHashMap
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncSpaceRecoveryPanelIntegrationTest {
     @Test
+    fun `repository first new space archives old creation after draft restart and explicit confirmation`() = fixture(
+        browserFirstRepository = true,
+        repositoryTargetName = "tablet-sync",
+    ) {
+        stored["sync-repository-creation-v1-42"] =
+            """{"version":1,"intent":{"account":{"id":42,"login":"fixture"},""" +
+            """"repositoryName":"old-sync","attemptId":"old-creation-00001","submitted":true,""" +
+            """"repositoryId":99,"creationAdminConfirmed":true,"manuallyConfirmed":false}}"""
+        installationAvailable = false
+        click("sync-recovery-open")
+        click("sync-recovery-create")
+        click("sync-confirm-question")
+        withTimeout(5_000) {
+            panel.state.first { it.setupStep == SyncSetupStep.PREPARE_REPOSITORY && !it.setupBusy }
+        }
+        val input = awaitEditable("sync-repository-name")
+        requireNotNull(input.config[SemanticsActions.SetText].action)
+            .invoke(androidx.compose.ui.text.AnnotatedString("tablet-sync"))
+        scene.render()
+        click("sync-create-private-repo")
+        withTimeout(5_000) { panel.state.first { it.recoveryOfficialAction == SyncRecoveryAction.OFFICIAL_CREATE } }
+        assertTrue(opened.single().contains("name=tablet-sync"))
+        changeFocus(false)
+        changeFocus(true)
+        assertEquals(oldConnection, runtime.connection())
+        repositoryCreated = true
+        click("sync-recovery-repository-created")
+        awaitNode("sync-install-app")
+        restartPreparedPanel()
+        assertEquals("tablet-sync", panel.state.value.repositoryCreationName)
+        assertEquals("tablet-sync", panel.state.value.repositoryPreparedName)
+        assertEquals(oldConnection, runtime.connection())
+        awaitNode("sync-install-app")
+        assertTrue(stored["sync-repository-creation-v1-42"]!!.contains("old-creation-00001"))
+        installationAvailable = true
+        repositoryAuthorized = true
+        click("sync-install-app")
+        withTimeout(5_000) { panel.state.first { it.recoveryOfficialAction == SyncRecoveryAction.INSTALL_APP } }
+        changeFocus(false)
+        changeFocus(true)
+        withTimeout(10_000) {
+            panel.state.first { it.setupStep == SyncSetupStep.NEW_PASSWORD && !it.setupBusy }
+        }
+        assertEquals(oldConnection, runtime.connection())
+        assertEquals(oldCredential, runtime.credentials.read())
+        assertTrue(stored.values.any { it.contains("old-creation-00001") && it.contains("\"repositoryId\":99") })
+        assertTrue(stored["sync-repository-creation-v1-42"]!!.contains("tablet-sync"))
+        assertTrue(methods.all { it == "GET" })
+        click("sync-password-submit")
+        withTimeout(5_000) { panel.state.first { it.question == SyncPanelQuestion.CONNECT_SPACE } }
+        assertEquals(oldConnection, runtime.connection())
+        click("sync-confirm-question")
+        val completed = runCatching {
+            withTimeout(20_000) {
+                panel.state.first { it.setupStep == SyncSetupStep.COMPLETE && it.run?.state == SyncRunState.SUCCEEDED }
+            }
+        }.getOrNull()
+        assertNotNull(
+            completed,
+            "switch completion: step=${panel.state.value.setupStep}, problem=${panel.state.value.setupProblem}, " +
+                "init=${panel.state.value.initializationFailure}, run=${panel.state.value.run?.state}, " +
+                "stop=${panel.state.value.run?.stopReason}, paths=${paths.takeLast(12)}",
+        )
+        assertEquals("tablet-sync", runtime.connection()?.repository?.name)
+        assertTrue(paths.none { it == "/user/repos" })
+    }
+
+    @Test
+    fun `repository first browser path verifies chosen space after installation`() = fixture(
+        missingInstallation = true,
+        browserFirstRepository = true,
+        repositoryTargetName = "tablet-sync",
+    ) {
+        click("sync-now")
+        withTimeout(5_000) { panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy } }
+        val input = awaitEditable("sync-repository-name")
+        requireNotNull(input.config[SemanticsActions.SetText].action)
+            .invoke(androidx.compose.ui.text.AnnotatedString("tablet-sync"))
+        scene.render()
+        assertTrue(node("sync-recovery-repository-created") == null)
+        val initialCreate = awaitNode("sync-create-private-repo")
+        assertEquals(input.size.width, initialCreate.size.width)
+        click("sync-create-private-repo")
+        withTimeout(5_000) { panel.state.first { it.recoveryOfficialAction == SyncRecoveryAction.OFFICIAL_CREATE } }
+        assertTrue(opened.single().contains("name=tablet-sync"))
+        val continueButton = awaitNode("sync-recovery-repository-created")
+        assertEquals(input.size.width, continueButton.size.width)
+        assertTrue(awaitNode("sync-create-private-repo").size.width < input.size.width)
+        requireNotNull(awaitEditable("sync-repository-name").config[SemanticsActions.SetText].action)
+            .invoke(androidx.compose.ui.text.AnnotatedString("different-sync"))
+        repeat(3) {
+            scene.render()
+            yield()
+        }
+        assertEquals(input.size.width, awaitNode("sync-create-private-repo").size.width)
+        assertTrue(node("sync-recovery-repository-created") == null)
+        requireNotNull(awaitEditable("sync-repository-name").config[SemanticsActions.SetText].action)
+            .invoke(androidx.compose.ui.text.AnnotatedString("tablet-sync"))
+        repeat(3) {
+            scene.render()
+            yield()
+        }
+        assertEquals(input.size.width, awaitNode("sync-recovery-repository-created").size.width)
+        val before = paths.size
+        changeFocus(false)
+        changeFocus(true)
+        repeat(5) {
+            scene.render()
+            yield()
+        }
+        assertEquals(before, paths.size, "browser return cannot check a private repository before installation")
+        assertTrue(node("sync-install-app") == null)
+        repositoryCreated = true
+        click("sync-recovery-repository-created")
+        awaitNode("sync-install-app")
+        assertEquals(null, runtime.connection())
+        assertTrue(paths.none { it.startsWith("/repos/fixture/tablet-sync") })
+        installationAvailable = true
+        repositoryAuthorized = true
+        click("sync-install-app")
+        withTimeout(5_000) { panel.state.first { it.recoveryOfficialAction == SyncRecoveryAction.INSTALL_APP } }
+        changeFocus(false)
+        changeFocus(true)
+        withTimeout(10_000) { panel.state.first { it.setupStep == SyncSetupStep.NEW_PASSWORD && !it.setupBusy } }
+        assertEquals("tablet-sync", panel.state.value.setupRepository?.name)
+        assertTrue(paths.contains("/repos/fixture/tablet-sync"))
+        assertTrue(methods.all { it == "GET" })
+        assertTrue(paths.none { it == "/user/repos" || it == "/access/token" })
+        click("sync-password-submit")
+        withTimeout(20_000) {
+            panel.state.first { it.setupStep == SyncSetupStep.COMPLETE && it.run?.state == SyncRunState.SUCCEEDED }
+        }
+        assertEquals("tablet-sync", runtime.connection()?.repository?.name)
+        assertTrue(paths.none { it == "/user/repos" })
+    }
+
+    @Test
     fun `official return missing installation checks once and retains actionable installation`() = fixture(
         missingInstallation = true,
     ) {
         click("sync-now")
         withTimeout(5_000) { panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy } }
+        click("sync-setup-use-existing")
+        awaitNode("sync-install-app")
         click("sync-install-app")
         withTimeout(5_000) { panel.state.first { it.recoveryOfficialAction == SyncRecoveryAction.INSTALL_APP } }
         val before = paths.count { it == "/user/installations" }
@@ -108,6 +247,8 @@ class SyncSpaceRecoveryPanelIntegrationTest {
     ) {
         click("sync-now")
         withTimeout(5_000) { panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy } }
+        click("sync-setup-use-existing")
+        awaitNode("sync-install-app")
         click("sync-install-app")
         withTimeout(5_000) { panel.state.first { it.recoveryOfficialAction != null } }
         installationAvailable = true
@@ -120,7 +261,7 @@ class SyncSpaceRecoveryPanelIntegrationTest {
         }
         assertEquals(null, panel.state.value.recoveryOfficialAction)
         assertNotNull(panel.state.value.setupInstallation)
-        assertEquals(SyncRecoveryAction.AUTHORIZE_REPOSITORY, panel.state.value.recoveryPrimaryAction.action)
+        assertEquals(SyncRecoveryAction.MANAGE_AUTHORIZATION, panel.state.value.recoveryPrimaryAction.action)
         assertTrue(paths.none { it == "/access/token" || it == "/user/repos" })
     }
 
@@ -130,6 +271,8 @@ class SyncSpaceRecoveryPanelIntegrationTest {
     ) {
         click("sync-now")
         withTimeout(5_000) { panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy } }
+        click("sync-setup-use-existing")
+        awaitNode("sync-install-app")
         click("sync-install-app")
         withTimeout(5_000) { panel.state.first { it.recoveryOfficialAction != null } }
         installationFailure = 500
@@ -174,6 +317,8 @@ class SyncSpaceRecoveryPanelIntegrationTest {
     ) {
         click("sync-now")
         withTimeout(5_000) { panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy } }
+        click("sync-setup-use-existing")
+        awaitNode("sync-install-app")
         click("sync-install-app")
         withTimeout(5_000) { panel.state.first { it.recoveryOfficialAction != null } }
         val entered = java.util.concurrent.CountDownLatch(1)
@@ -399,6 +544,8 @@ class SyncSpaceRecoveryPanelIntegrationTest {
         click("sync-now")
         withTimeout(5_000) { panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy } }
         assertEquals(SyncDiscoveryProblem.NEEDS_INSTALLATION, panel.state.value.setupProblem)
+        click("sync-setup-use-existing")
+        awaitNode("sync-install-app")
         click("sync-install-app")
         withTimeout(5_000) { panel.state.first { it.recoveryOfficialAction != null } }
         awaitNode("sync-recovery-official-waiting")
@@ -417,16 +564,9 @@ class SyncSpaceRecoveryPanelIntegrationTest {
             panel.state.value.recoveryOfficialAction,
             "the verified installation step must not be repeated",
         )
-        val next = panel.state.value.recoveryPrimaryAction
-        assertEquals(SyncRecoveryAction.AUTHORIZE_REPOSITORY, next.action)
-        assertEquals(
-            SyncRecoveryAction.CREATE_SPACE,
-            (next.availability as SyncRecoveryActionAvailability.NeedsStep).step,
-        )
-        click("sync-repository-authorize-native")
-        click("sync-confirm-question")
-        withTimeout(5_000) { panel.state.first { it.setupStep == SyncSetupStep.PREPARE_REPOSITORY && !it.setupBusy } }
-        assertEquals(1, opened.size)
+        assertEquals(SyncRecoveryAction.MANAGE_AUTHORIZATION, panel.state.value.recoveryPrimaryAction.action)
+        click("sync-install-app")
+        assertEquals(2, opened.size)
         assertTrue(paths.none { it == "/access/token" })
     }
 
@@ -589,6 +729,8 @@ class SyncSpaceRecoveryPanelIntegrationTest {
         missingInstallation: Boolean = false,
         deviceCodeFails: Boolean = false,
         nativePermission: String? = "administration",
+        browserFirstRepository: Boolean = false,
+        repositoryTargetName: String = "mihon-sync",
         block: suspend Fixture.() -> Unit,
     ) = runBlocking {
         val fixture = Fixture(
@@ -598,6 +740,8 @@ class SyncSpaceRecoveryPanelIntegrationTest {
             missingInstallation,
             deviceCodeFails,
             nativePermission,
+            browserFirstRepository,
+            repositoryTargetName,
         )
         try {
             fixture.initialize()
@@ -614,6 +758,8 @@ class SyncSpaceRecoveryPanelIntegrationTest {
         val missingInstallation: Boolean,
         val deviceCodeFails: Boolean,
         @Volatile var nativePermission: String?,
+        val browserFirstRepository: Boolean,
+        val repositoryTargetName: String,
     ) {
         @Volatile var installationAvailable = !missingInstallation
         var windowFocused by mutableStateOf(true)
@@ -627,10 +773,10 @@ class SyncSpaceRecoveryPanelIntegrationTest {
         val methods = java.util.Collections.synchronizedList(mutableListOf<String>())
         val opened = mutableListOf<String>()
         val platformRequests = mutableListOf<SyncRecoveryPlatformRequest>()
-        val git = if (deletedPendingSetup) {
+        val git = if (deletedPendingSetup || browserFirstRepository) {
             SyncGitHttpFixture(
                 empty = true,
-                repositoryOverride = SyncRepository("fixture", "mihon-sync", "mihon-sync-v1"),
+                repositoryOverride = SyncRepository("fixture", repositoryTargetName, "mihon-sync-v1"),
             )
         } else {
             null
@@ -642,8 +788,8 @@ class SyncSpaceRecoveryPanelIntegrationTest {
         private var creationDescription = ""
         private fun createdRepository(): String = buildJsonObject {
             put("id", kotlinx.serialization.json.JsonPrimitive(199))
-            put("name", kotlinx.serialization.json.JsonPrimitive("mihon-sync"))
-            put("full_name", kotlinx.serialization.json.JsonPrimitive("fixture/mihon-sync"))
+            put("name", kotlinx.serialization.json.JsonPrimitive(repositoryTargetName))
+            put("full_name", kotlinx.serialization.json.JsonPrimitive("fixture/$repositoryTargetName"))
             put(
                 "owner",
                 buildJsonObject {
@@ -677,7 +823,7 @@ class SyncSpaceRecoveryPanelIntegrationTest {
                             check(released.await(5, java.util.concurrent.TimeUnit.SECONDS))
                         }
                     }
-                    if (deletedPendingSetup) {
+                    if (deletedPendingSetup || browserFirstRepository) {
                         if (request.url.encodedPath == "/user/repos" && request.method == "POST") {
                             val creation = kotlinx.serialization.json.Json.parseToJsonElement(request.body!!.utf8())
                             creationDescription = (creation as kotlinx.serialization.json.JsonObject)["description"]
@@ -691,14 +837,18 @@ class SyncSpaceRecoveryPanelIntegrationTest {
                             repositoryAuthorized = true
                             return MockResponse(code = 204)
                         }
-                        if (request.url.encodedPath in setOf("/repos/fixture/mihon-sync", "/repositories/199")) {
+                        if (request.url.encodedPath in
+                            setOf("/repos/fixture/$repositoryTargetName", "/repositories/199")
+                        ) {
                             return if (repositoryCreated) {
                                 MockResponse(body = createdRepository())
                             } else {
                                 MockResponse(code = 404, body = "{}")
                             }
                         }
-                        if (repositoryCreated && request.url.encodedPath.startsWith("/repos/fixture/mihon-sync/")) {
+                        if (repositoryCreated &&
+                            request.url.encodedPath.startsWith("/repos/fixture/$repositoryTargetName/")
+                        ) {
                             return git!!.server.dispatcher.dispatch(request)
                         }
                     }
@@ -812,14 +962,16 @@ class SyncSpaceRecoveryPanelIntegrationTest {
                 }
         }
         val client = OkHttpClient()
-        val runtime = SyncRuntime(
-            handler, bootstrap, creators, creators, { true }, secure, InMemoryPreferenceStore(), client,
+        private val preferences = InMemoryPreferenceStore()
+        private fun newRuntime() = SyncRuntime(
+            handler, bootstrap, creators, creators, { true }, secure, preferences, client,
             GitHubAuthEndpoints(
                 apiBaseUrl = server.url("/").toString().removeSuffix("/"),
                 deviceCodeUrl = server.url("/device/code").toString(),
                 accessTokenUrl = server.url("/access/token").toString(),
             ),
         )
+        var runtime = newRuntime()
         val panel get() = runtime.panel
         var oldConnection: SyncConnection? = null
         var oldCredential: GitHubStoredCredential? = null
@@ -855,6 +1007,22 @@ class SyncSpaceRecoveryPanelIntegrationTest {
             }
             oldConnection = runtime.connection()
             oldCredential = runtime.credentials.read()
+            bindScene()
+            panel.dispatch(SyncPanelAction.Open)
+            withTimeout(5_000) { panel.state.first { it.visible && it.loaded } }
+            if (firstSetupFailure || deletedPendingSetup || missingInstallation || deviceCodeFails) return
+            panel.dispatch(SyncPanelAction.RecheckSpace)
+            withTimeout(5_000) {
+                panel.state.first { it.visible && it.loaded && it.recovery?.busy == false }
+            }
+            // Recheck legitimately leaves the methods page; reopening exercises the production MAIN entry.
+            panel.dispatch(SyncPanelAction.Close)
+            withTimeout(5_000) { panel.state.first { !it.visible } }
+            panel.dispatch(SyncPanelAction.Open)
+            withTimeout(5_000) { panel.state.first { it.visible && it.loaded && it.page == SyncPanelPage.MAIN } }
+        }
+
+        private fun bindScene() {
             scene.setContent {
                 val platformWindow = LocalWindowInfo.current
                 val observedWindow = remember(platformWindow) {
@@ -873,22 +1041,45 @@ class SyncSpaceRecoveryPanelIntegrationTest {
                     }
                 }
             }
-            panel.dispatch(SyncPanelAction.Open)
-            withTimeout(5_000) { panel.state.first { it.visible && it.loaded } }
-            if (firstSetupFailure || deletedPendingSetup || missingInstallation || deviceCodeFails) return
-            panel.dispatch(SyncPanelAction.RecheckSpace)
-            withTimeout(5_000) {
-                panel.state.first { it.visible && it.loaded && it.recovery?.busy == false }
-            }
-            // Recheck legitimately leaves the methods page; reopening exercises the production MAIN entry.
+        }
+
+        suspend fun restartPreparedPanel() {
             panel.dispatch(SyncPanelAction.Close)
             withTimeout(5_000) { panel.state.first { !it.visible } }
+            runtime.stopPanel()
+            runtime = newRuntime()
+            bindScene()
             panel.dispatch(SyncPanelAction.Open)
-            withTimeout(5_000) { panel.state.first { it.visible && it.loaded && it.page == SyncPanelPage.MAIN } }
+            val restored = runCatching {
+                withTimeout(5_000) {
+                    panel.state.first {
+                        it.visible && it.loaded && !it.setupBusy &&
+                            it.repositoryPreparedName == repositoryTargetName && it.setupStep == SyncSetupStep.ERROR
+                    }
+                }
+            }.getOrNull()
+            val state = panel.state.value
+            val saved = stored["sync-recovery-unbound-v1"]?.let {
+                kotlinx.serialization.json.Json.parseToJsonElement(it) as kotlinx.serialization.json.JsonObject
+            }
+            assertNotNull(
+                restored,
+                "restart: page=${state.page}, step=${state.setupStep}, problem=${state.setupProblem}, " +
+                    "draft=${state.repositoryCreationName}, prepared=${state.repositoryPreparedName}, " +
+                    "savedPrepared=${saved?.get("repositoryPreparedName")}, " +
+                    "savedSwitch=${saved?.get("repositoryDraftSwitchId")}",
+            )
         }
 
         fun node(tag: String) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.firstOrNull {
             it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == tag
+        }
+        suspend fun awaitEditable(tag: String): SemanticsNode = withTimeout(5_000) {
+            while (node(tag)?.config?.contains(SemanticsActions.SetText) != true) {
+                scene.render()
+                yield()
+            }
+            requireNotNull(node(tag))
         }
         suspend fun changeFocus(focused: Boolean) {
             windowFocused = focused

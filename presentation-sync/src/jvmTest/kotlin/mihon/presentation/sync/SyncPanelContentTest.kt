@@ -94,6 +94,35 @@ import java.util.Locale
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelContentTest {
     @Test
+    fun `repository first setup prepares space before offering app installation`() = renderedEnglish(
+        SyncPanelState(
+            visible = true,
+            loaded = true,
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.ERROR,
+            setupProblem = SyncDiscoveryProblem.NEEDS_INSTALLATION,
+            setupAccountLogin = "owner",
+        ),
+    ) {
+        assertEquals(SyncRecoveryAction.OFFICIAL_CREATE, panel.state.value.recoveryPrimaryAction.action)
+        awaitTag("sync-repository-name")
+        awaitTag("sync-create-private-repo")
+        assertFalse(hasTag("sync-install-app"))
+        val originalLocale = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.SIMPLIFIED_CHINESE)
+            captureVisuals("repository-step1")
+            panel.state.value = panel.state.value.copy(repositoryPreparedName = "mihon-sync")
+            captureVisuals("repository-step2")
+            panel.state.value = panel.state.value.copy(repositoryPreparedName = null)
+        } finally {
+            Locale.setDefault(originalLocale)
+        }
+        click("sync-create-private-repo")
+        assertTrue(opened.single().startsWith("https://github.com/new?name=mihon-sync&visibility=private"))
+    }
+
+    @Test
     fun `setup recommendation latest installation blocker precedes paused old sync or import`() {
         for (pausedImport in listOf(false, true)) {
             renderedEnglish(
@@ -104,6 +133,7 @@ class SyncPanelContentTest {
                     setupStep = SyncSetupStep.ERROR,
                     setupProblem = SyncDiscoveryProblem.NEEDS_INSTALLATION,
                     setupAccountLogin = "owner",
+                    repositoryPreparedName = "mihon-sync",
                     importPaused = pausedImport,
                     importRemaining = if (pausedImport) 1 else 0,
                     run = if (pausedImport) {
@@ -143,6 +173,7 @@ class SyncPanelContentTest {
             setupStep = SyncSetupStep.ERROR,
             setupProblem = SyncDiscoveryProblem.NEEDS_INSTALLATION,
             setupAccountLogin = "owner",
+            repositoryPreparedName = "mihon-sync",
             recoveryStepFailure = mihon.data.sync.runtime.SyncRecoveryFailure(
                 discovery = SyncDiscoveryProblem.RETRYABLE,
                 httpStatus = 500,
@@ -161,6 +192,7 @@ class SyncPanelContentTest {
                 setupStep = SyncSetupStep.ERROR,
                 setupProblem = SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION,
                 setupAccountLogin = "owner",
+                repositoryPreparedName = "mihon-sync",
                 setupInstallation = SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1),
                 recoveryConditionsVerified = false,
             ),
@@ -184,6 +216,7 @@ class SyncPanelContentTest {
             setupStep = SyncSetupStep.ERROR,
             setupProblem = SyncDiscoveryProblem.NEEDS_INSTALLATION,
             setupAccountLogin = "owner",
+            repositoryPreparedName = "mihon-sync",
             initializationFailure = mihon.data.sync.runtime.SyncInitializationFailure(
                 mihon.domain.sync.transport.SyncInitializationStage.BOOTSTRAP_SUBMITTING,
                 mihon.data.sync.runtime.SyncInitializationFailureReason.UNKNOWN,
@@ -205,6 +238,7 @@ class SyncPanelContentTest {
                 setupStep = SyncSetupStep.ERROR,
                 setupProblem = SyncDiscoveryProblem.NEEDS_INSTALLATION,
                 setupAccountLogin = "owner",
+                repositoryPreparedName = "mihon-sync",
                 pendingRecoveryPurpose = SyncRecoveryContinuation.CREATE,
                 recovery = SyncSpaceRecovery(SyncSpaceRecoveryReason.SWITCH_PENDING),
                 setupRetryFailed = true,
@@ -241,6 +275,7 @@ class SyncPanelContentTest {
             setupStep = SyncSetupStep.ERROR,
             setupProblem = SyncDiscoveryProblem.RETRYABLE,
             setupAccountLogin = "owner",
+            repositoryPreparedName = "mihon-sync",
             pendingRecoveryPurpose = SyncRecoveryContinuation.CREATE,
             recoveryOfficialAction = SyncRecoveryAction.INSTALL_APP,
         ),
@@ -4118,6 +4153,7 @@ class SyncPanelContentTest {
                     setupStep = SyncSetupStep.ERROR,
                     setupProblem = problem,
                     setupAccountLogin = "owner",
+                    repositoryPreparedName = "mihon-sync",
                     setupInstallation = if (problem == SyncDiscoveryProblem.NEEDS_INSTALLATION) {
                         null
                     } else {
@@ -4342,6 +4378,8 @@ class SyncPanelContentTest {
                             "main" -> "sync-keep-selected"
                             "password" -> "sync-password-input"
                             "installation" -> "sync-install-app"
+                            "repository-step1" -> "sync-create-private-repo"
+                            "repository-step2" -> "sync-install-app"
                             else -> "sync-settings-list"
                         },
                     )

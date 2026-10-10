@@ -20,6 +20,59 @@ import org.junit.jupiter.api.Test
 
 class SyncRepositoryManagementContractTest {
     @Test
+    fun `browser verified record never gains native permission for automatic scope repair on resume`() = runTest {
+        server(existing = repo()).use { server ->
+            val original = server.dispatcher
+            var invisible = false
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (invisible && request.url.encodedPath == "/repos/${repository.fullName}") {
+                        return MockResponse(code = 404, body = "{}")
+                    }
+                    return original.dispatch(request)
+                }
+            }
+            var saved = intent()
+            assertEquals(
+                SyncSpaceCreation.Ready(repository, 99, "main"),
+                manager(server).verifyManualSelection(saved) { saved = it },
+            )
+            assertTrue(saved.submitted)
+            assertTrue(saved.manuallyConfirmed)
+            assertFalse(saved.creationAdminConfirmed)
+            invisible = true
+            assertEquals(
+                SyncSpaceCreation.Failed(SyncDiscoveryProblem.CREATION_UNCONFIRMED),
+                manager(server).createOrResume(saved) { saved = it },
+            )
+            assertTrue(List(server.requestCount) { server.takeRequest().method }.all { it == "GET" })
+        }
+    }
+
+    @Test
+    fun `browser verification cannot repair access or create after the repository disappears`() = runTest {
+        server(existing = repo()).use { server ->
+            val original = server.dispatcher
+            var namedReads = 0
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (request.url.encodedPath == "/repos/${repository.fullName}" && ++namedReads > 1) {
+                        return MockResponse(code = 404, body = "{}")
+                    }
+                    return original.dispatch(request)
+                }
+            }
+            var saved = intent().copy(submitted = true, repositoryId = 99, manuallyConfirmed = true)
+            assertEquals(
+                SyncSpaceCreation.Failed(SyncDiscoveryProblem.CREATION_UNCONFIRMED),
+                manager(server).verifyManualSelection(saved) { saved = it },
+            )
+            assertFalse(saved.creationAdminConfirmed)
+            assertTrue(List(server.requestCount) { server.takeRequest().method }.all { it == "GET" })
+        }
+    }
+
+    @Test
     fun `creation-only automatic repository access is read back without administration or scope PUT`() = runTest {
         server(installationPermissions = "\"contents\":\"write\",\"repository_creation\":\"write\"").use { server ->
             var recorded = intent()

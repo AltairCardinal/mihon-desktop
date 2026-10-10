@@ -631,12 +631,28 @@ class SyncPanelController(
             is SyncPanelAction.ExecuteRecoveryAction -> executeRecoveryAction(action.action)
             is SyncPanelAction.RecoveryPlatformCompleted -> completeRecoveryPlatform(action)
             is SyncPanelAction.RecoveryOfficialOpened -> recoveryOfficialOpened(action.action)
+            is SyncPanelAction.PrepareBrowserRepository -> prepareBrowserRepository(action.name)
+            is SyncPanelAction.ConfirmRepositoryPrepared -> confirmRepositoryPrepared(action.name)
+            SyncPanelAction.EditRepositoryPreparation -> {
+                mutableState.update {
+                    it.copy(
+                        page = SyncPanelPage.SETUP,
+                        setupStep = SyncSetupStep.PREPARE_REPOSITORY,
+                        repositoryPreparationEditing = true,
+                    )
+                }
+            }
             SyncPanelAction.RecoveryOfficialReturned -> {
                 if (state.value.visible && state.value.recoveryOfficialAction != null &&
                     !state.value.recoveryOfficialCheckAttempted &&
                     !state.value.setupBusy && !state.value.recoveryBusy
                 ) {
                     mutableState.update { it.copy(recoveryOfficialCheckAttempted = true) }
+                    if (state.value.recoveryOfficialAction == SyncRecoveryAction.OFFICIAL_CREATE &&
+                        state.value.needsRepositoryPreparation
+                    ) {
+                        return
+                    }
                     if (state.value.page == SyncPanelPage.SETUP) {
                         // Returning from GitHub only verifies facts. Never resume a pending remote write here.
                         discover(autoSelect = false, inspectPending = false)
@@ -761,6 +777,13 @@ class SyncPanelController(
                 runtime.diagnostics.record(SyncDiagnosticEventKind.OPEN)
                 mutableState.update { it.copy(visible = true, page = SyncPanelPage.MAIN, notice = null) }
                 refresh(forceFailureLog = true, source = SyncDiagnosticRefreshSource.OPEN)
+                if (restoreBoundRepositoryPreparation()) {
+                    if (state.value.repositoryPreparedName != null) {
+                        discover(autoSelect = false, inspectPending = false)
+                    } else {
+                        checkRepositoryCreationPermission()
+                    }
+                }
             }
             SyncPanelAction.Close -> {
                 runtime.diagnostics.record(SyncDiagnosticEventKind.CLOSE)
@@ -784,7 +807,11 @@ class SyncPanelController(
                 }
             }
             SyncPanelAction.Back -> {
-                if (state.value.question != null) {
+                if (state.value.repositoryPreparationEditing) {
+                    mutableState.update {
+                        it.copy(repositoryPreparationEditing = false, setupStep = SyncSetupStep.ERROR)
+                    }
+                } else if (state.value.question != null) {
                     mutableState.update { it.copy(question = null) }
                 } else if (state.value.page == SyncPanelPage.RECOVERY && state.value.recoveryReturnPage != null) {
                     cancelRecovery()
@@ -1094,6 +1121,12 @@ class SyncPanelController(
         }
         val authorized = runtime.credentials.read() != null
         if (authorized) {
+            if (runtime.connectionFacts().decode == SyncBindingDecode.MISSING) {
+                restoreUnboundRecovery()
+            } else if (restoreBoundRepositoryPreparation()) {
+                discover(autoSelect = false, inspectPending = false)
+                return
+            }
             try {
                 val session = runtime.onboarding.session()
                 runtime.onboarding.storage.repositoryCreation(session.account.id)?.let { pending ->
@@ -1297,6 +1330,35 @@ class SyncPanelController(
         }
     }
 
+    private suspend fun restoreBoundRepositoryPreparation(): Boolean {
+        val saved = runtime.onboarding.storage.unboundRecoveryFlow() ?: return false
+        val intent = runtime.activeSwitch() ?: return false
+        if (intent.stage != SyncSpaceSwitchStage.PREPARING || intent.target != null ||
+            saved.repositoryDraftSwitchId != intent.intentId || saved.accountId != intent.accountId ||
+            saved.credentialRevision != runtime.credentials.read()?.revision || saved.accountLogin == null ||
+            saved.repositoryDraftName == null
+        ) {
+            return false
+        }
+        switchIntent = intent
+        setupAccount = SyncGitHubAccount(intent.accountId, saved.accountLogin)
+        mutableState.update {
+            it.copy(
+                page = SyncPanelPage.SETUP,
+                setupStep = SyncSetupStep.PREPARE_REPOSITORY,
+                setupAccountLogin = saved.accountLogin,
+                repositoryCreationName = saved.repositoryDraftName,
+                repositoryPreparedName = saved.repositoryPreparedName,
+                pendingRecoveryPurpose = if (intent.purpose == SyncSpaceSwitchPurpose.CREATE) {
+                    SyncRecoveryContinuation.CREATE
+                } else {
+                    SyncRecoveryContinuation.CONNECT
+                },
+            )
+        }
+        return true
+    }
+
     private suspend fun restoreUnboundRecovery() {
         try {
             val saved = runtime.onboarding.storage.unboundRecoveryFlow() ?: return
@@ -1308,6 +1370,12 @@ class SyncPanelController(
             mutableState.update {
                 it.copy(
                     recoveryFailure = it.recoveryFailure ?: saved.failure,
+                    repositoryCreationName = if (current) {
+                        saved.repositoryDraftName ?: it.repositoryCreationName
+                    } else {
+                        mihon.data.sync.auth.GitHubSyncSpaceClient.REPOSITORY_NAME
+                    },
+                    repositoryPreparedName = saved.repositoryPreparedName.takeIf { current },
                     setupAccountLogin = if (current) {
                         saved.accountLogin ?: it.setupAccountLogin
                     } else {
@@ -1358,6 +1426,9 @@ class SyncPanelController(
                 } ?: before?.failure,
                 request = request,
                 officialAction = state.value.recoveryOfficialAction,
+                repositoryDraftName = state.value.repositoryCreationName,
+                repositoryPreparedName = state.value.repositoryPreparedName,
+                repositoryDraftSwitchId = switchIntent?.intentId,
                 archivedSetupIds = before?.archivedSetupIds.orEmpty(),
                 archivedSetupsTruncated = before?.archivedSetupsTruncated ?: false,
                 externalScopes = if (request?.result != null) {
@@ -1370,6 +1441,67 @@ class SyncPanelController(
             },
             before,
         )
+    }
+
+    private fun validRepositoryDraft(name: String): String? = name.trim().takeIf { normalized ->
+        runCatching {
+            mihon.domain.sync.transport.SyncRepository(
+                "validated-owner",
+                normalized,
+                mihon.data.sync.auth.GitHubSyncSpaceClient.BRANCH,
+            )
+        }.isSuccess
+    }
+
+    private suspend fun prepareBrowserRepository(name: String) {
+        if (state.value.setupBusy || setupAccount == null) return
+        val normalized = validRepositoryDraft(name) ?: return
+        mutableState.update {
+            it.copy(
+                repositoryCreationName = normalized,
+                repositoryPreparedName = it.repositoryPreparedName.takeIf { prepared -> prepared == normalized },
+                setupStep = SyncSetupStep.PREPARE_REPOSITORY,
+            )
+        }
+        try {
+            saveUnboundRecovery()
+            executeRecoveryStep(SyncRecoveryAction.OFFICIAL_CREATE)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            setupFailed(error)
+        }
+    }
+
+    private suspend fun confirmRepositoryPrepared(name: String) {
+        if (state.value.setupBusy || setupAccount == null) return
+        val normalized = validRepositoryDraft(name) ?: return
+        mutableState.update {
+            it.copy(
+                repositoryCreationName = normalized,
+                repositoryPreparedName = normalized,
+                repositoryPreparationEditing = false,
+                recoveryOfficialAction = null,
+                recoveryOfficialCheckAttempted = false,
+                setupStep = SyncSetupStep.ERROR,
+                setupProblem = if (it.setupInstallation == null) {
+                    SyncDiscoveryProblem.NEEDS_INSTALLATION
+                } else {
+                    SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS
+                },
+            )
+        }
+        try {
+            saveUnboundRecovery()
+            if (runtime.connectionFacts().decode == SyncBindingDecode.OK) {
+                runtime.recoveryWorkflow.officialCompleted(SyncRecoveryAction.OFFICIAL_CREATE)
+            }
+            if (state.value.setupInstallation != null) discover(autoSelect = false, inspectPending = false)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            setupFailed(error)
+        }
     }
 
     private suspend fun recoveryOfficialOpened(action: SyncRecoveryAction) {
@@ -2237,6 +2369,8 @@ class SyncPanelController(
     private fun discover(autoSelect: Boolean = true, inspectPending: Boolean = true) {
         if (setupJob?.isActive == true || repositoryJob?.isActive == true) return
         val version = authVersion
+        val preparedName = state.value.repositoryPreparedName
+        val expectedAccount = setupAccount?.id.takeIf { preparedName != null }
         mutableState.update {
             it.copy(
                 setupStep = SyncSetupStep.DISCOVERING,
@@ -2250,7 +2384,7 @@ class SyncPanelController(
                 if (switchIntent != null) {
                     val intent = requireNotNull(switchIntent)
                     runtime.verifySwitch(intent)
-                    val found = runtime.onboarding.discover()
+                    val found = discoverPreparedRepository(preparedName, expectedAccount)
                     enqueue { if (version == authVersion) handleSwitchDiscovery(found, intent) }
                     return@launch
                 }
@@ -2306,7 +2440,7 @@ class SyncPanelController(
                     }
                     SyncPendingSetup.None -> {
                         legacyPending = null
-                        val found = runtime.onboarding.discover()
+                        val found = discoverPreparedRepository(preparedName, expectedAccount)
                         enqueue {
                             if (version == authVersion) handleDiscovery(found, autoSelect)
                         }
@@ -2317,6 +2451,73 @@ class SyncPanelController(
             } catch (failure: Exception) {
                 enqueue { if (version == authVersion) setupFailed(failure) }
             }
+        }
+    }
+
+    private suspend fun discoverPreparedRepository(name: String?, accountId: Long?): SyncSpaceDiscovery {
+        val found = runtime.onboarding.discover(name, accountId)
+        if (name == null || found !is SyncSpaceDiscovery.EmptyRepository) return found
+        val candidate = found.candidate
+        val storage = runtime.onboarding.storage
+        var recorded = storage.repositoryCreation(candidate.account.id)
+        if (recorded != null && (
+                recorded.repositoryName != name ||
+                    (recorded.repositoryId != null && recorded.repositoryId != candidate.repositoryId)
+                )
+        ) {
+            val activeIntent = switchIntent
+            val unbound = storage.unboundRecoveryFlow()
+            val explicitUnboundCreate = runtime.connectionFacts().decode == SyncBindingDecode.MISSING &&
+                state.value.pendingRecoveryPurpose == SyncRecoveryContinuation.CREATE &&
+                unbound?.purpose == SyncRecoveryContinuation.CREATE.name &&
+                unbound.accountId == candidate.account.id &&
+                unbound.credentialRevision == runtime.credentials.read()?.revision
+            if (activeIntent?.purpose == SyncSpaceSwitchPurpose.CREATE &&
+                activeIntent.stage == SyncSpaceSwitchStage.PREPARING && activeIntent.target == null &&
+                activeIntent.accountId == candidate.account.id
+            ) {
+                runtime.verifySwitch(activeIntent)
+            } else if (!explicitUnboundCreate) {
+                return SyncSpaceDiscovery.Failed(
+                    SyncDiscoveryProblem.REPOSITORY_IDENTITY_MISMATCH,
+                    candidate.account,
+                    candidate.installation,
+                )
+            }
+            storage.archiveRepositoryCreation(recorded)
+            recorded = null
+        }
+        val proposal = (
+            recorded ?: SyncRepositoryCreationIntent(
+                candidate.account,
+                name,
+                java.util.UUID.randomUUID().toString(),
+            )
+            ).copy(
+            submitted = true,
+            repositoryId = candidate.repositoryId,
+            manuallyConfirmed = true,
+            creationAdminConfirmed = false,
+        )
+        // This is a readback continuation of an already observed repository, never a creation POST proposal.
+        storage.saveRepositoryCreation(proposal, recorded)
+        recorded = proposal
+        val session = runtime.onboarding.session(candidate.account.id)
+        val result = runtime.onboarding.repositoryManager(session.token, session.account.id)
+            .verifyManualSelection(proposal) { next ->
+                storage.saveRepositoryCreation(next, recorded)
+                recorded = next
+            }
+        return when (result) {
+            is SyncSpaceCreation.Ready -> SyncSpaceDiscovery.EmptyRepository(
+                candidate.copy(creationAttemptId = requireNotNull(recorded).attemptId),
+            )
+            is SyncSpaceCreation.Existing -> SyncSpaceDiscovery.Found(result.space)
+            is SyncSpaceCreation.Failed -> SyncSpaceDiscovery.Failed(
+                result.problem,
+                candidate.account,
+                candidate.installation,
+            )
         }
     }
 
@@ -2352,6 +2553,8 @@ class SyncPanelController(
             SyncRecoveryAction.OFFICIAL_CREATE ->
                 result is SyncSpaceDiscovery.EmptyRepository ||
                     result is SyncSpaceDiscovery.Found
+            SyncRecoveryAction.MANAGE_AUTHORIZATION, SyncRecoveryAction.AUTHORIZE_REPOSITORY ->
+                result is SyncSpaceDiscovery.EmptyRepository || result is SyncSpaceDiscovery.Found
             else -> false
         }
         if (completedOfficial) {
@@ -2608,6 +2811,12 @@ class SyncPanelController(
                     setupBusy = false,
                     setupProblem = null,
                     question = null,
+                    repositoryPreparedName = null,
+                    pendingRecoveryPurpose = if (purpose == SyncSpaceSwitchPurpose.CREATE) {
+                        SyncRecoveryContinuation.CREATE
+                    } else {
+                        SyncRecoveryContinuation.CONNECT
+                    },
                 )
             }
             if (purpose == SyncSpaceSwitchPurpose.CONNECT) beginSetup() else checkRepositoryCreationPermission()
@@ -2649,6 +2858,13 @@ class SyncPanelController(
                 spaces = emptyList(),
                 switchTargetRepository = intent.target?.repository(),
                 switchPendingDecisions = it.pendingTotal,
+                setupRepository = if (newlyCreated) null else it.setupRepository,
+                repositoryPreparedName = if (newlyCreated) null else it.repositoryPreparedName,
+                pendingRecoveryPurpose = if (intent.purpose == SyncSpaceSwitchPurpose.CREATE) {
+                    SyncRecoveryContinuation.CREATE
+                } else {
+                    SyncRecoveryContinuation.CONNECT
+                },
             )
         }
         val target = intent.target?.let { runtime.onboarding.storage.setupFor(it) }

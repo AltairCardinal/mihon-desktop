@@ -40,7 +40,9 @@ App 管理员在 [Permissions & events](https://github.com/settings/apps/mihon-d
 - `creation-permission-desktop-build`：复用上述同源组合证据，由标准脚本 `build-only` 完成 Windows 构建、运行版本及生产扩展安装链路验收。正式产物 `app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.88.d7edbc0-unpacked/Mihon Desktop.exe`。
 - `android-candidate`：标准 `scripts/build-android.py candidate --offline` 完成 Release、R8/资源压缩、原证书签名及身份校验。APK 为 `app/artifacts/android/0.19.4-aex.50-vc68-d7edbc00f7-release/Mihon-Fork-0.19.4-aex.50-vc68-release-universal.apk`，SHA-256 `f594a7a0f666869a79dfb9c23e2072905ce13d9d34bc8ee68d1cb1dfc1114b11`。未隐式安装、上传或操作真实同步。
 
-## 安装与授权失败页的交互规则
+## 安装与授权失败页的交互规则（上一轮记录）
+
+此节保留 `2c89d30eac` 基线迭代的设计与证据。首次连接的当前顺序以文末“先准备空间，再安装与授权”为准；以下“安装为主操作”现在仅适用于目标空间已准备的安装步骤。
 
 共享恢复决策以最新已观察到的安装、授权、仓库和网络阻塞为先；未完成的空间设置/切换记录及旧初始化回执不覆盖当前阻塞。仅在没有当前阻塞时推荐接续设置，按钮明确表示继续设置，而非笼统的重试。
 
@@ -58,3 +60,21 @@ Android/Desktop 共享 Compose LocalWindowInfo 的窗口焦点事实：成功打
 - `android-candidate` 正式构建并核验 aex.51 / versionCode 69，原 fork 证书连续、不可调试、R8/资源压缩。APK：`app/artifacts/android/0.19.4-aex.51-vc69-2c89d30eac-release/Mihon-Fork-0.19.4-aex.51-vc69-release-universal.apk`，SHA-256 `4f993452d39518ce901901a594b6cc525b3270b248e8330bf56982b5dda3f57e`。用户明确授权后，通过独立安装命令安装到当前连接的华为 PCE-W30，并核对安装身份；未代操作真实同步。
 - `setup-redesign-desktop-candidate` 首次完整 Desktop 门禁执行 3253 项、2 项失败、2 项跳过。两项均为 DI 用例结束后的临时目录删除 `DirectoryNotEmptyException`，首次失败 XML 保存在忽略的协调器目录。`setup-redesign-desktop-cleanup-recheck` 只补验这两项并通过，组合结果不等于最终重新全量全绿。
 - `setup-redesign-desktop-build` 复用同源组合证据，由标准 `build-only` 脚本完成正式 Windows 构建及运行版本/生产扩展安装链路验收。正式 EXE：`app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.90.2c89d30-unpacked/Mihon Desktop.exe`。Android 候选先完成并安装，随后分配 Desktop 构建号；每个平台按自身构建时的冻结输入记录，不将两个构建时点描述为同一生产输入哈希。
+
+## 先准备空间，再安装与授权（2026-10-10）
+
+首次连接发现尚未安装 App 且没有已准备目标时，先复用仓库准备页：填写仓库名称，在浏览器创建私有空仓库，或选用该名称的已有仓库。创建页返回只保留草稿，不请求私有仓库、不标记创建成功；用户点击“我已创建，继续”或“使用已有仓库”后，才进入安装/授权此仓库步骤。目标仅记作用户声明“已准备、待验证”，不生成连接、密码、actor 或原生创建提案。已有 App 且实际具备创建权限时仍使用原生创建确认；已有有效空间/授权不要求重复创建或安装。
+
+安装/授权返回后的自动检查使用本次选择的名称，保留账号、实际安装权限、仓库列表与固定 ID 校验；403、限流或网络失败不当作仓库不存在。只读验证到私有空仓库后，复用手动选取的固定 ID continuation（submitted=true），禁用自动访问授权写入；自定义名称通过同一扫描/空仓库证明与既有初始化保护。最终密码/初始化及切换确认仍使用原路径，旧连接在新目标确认前保持有效。
+
+草稿和声明以 unbound recovery 的可选字段持久化，兼容旧记录；无绑定时按凭据 revision 恢复。有旧绑定的新空间切换另外绑定 active switch ID、账号和凭据 revision，只恢复草稿字段，不把无绑定流程的历史错误/外部对象范围当成当前绑定状态。返回修改不会丢掉此前的准备声明，修改名称后仍需重新明确确认。旧原生创建记录只有在已确认创建新空间、切换守卫通过且新目标已实际验证后，才用既有 CAS 归档保留；其他上下文继续拒绝替换固定 ID。
+
+实际旧绑定→新空间的完整回归还覆盖双重结算：运行时和面板可能同时观察到导入队列已清空。switch checkpoint 仅在完整记录等价、只差 settled 标志时接受已完成读回；身份、material、其他字段变化或真实读取失败继续拒绝，不将同步成功后的重复结算误报为连接失败。首次有权限时的原生创建、显式授权和固定 ID 保护继续使用原路径。
+
+本批次基线 `2f878e0184`。16 个实现、资源、说明及测试文件沿同一准备/授权/连接链路修改，另含两端构建版本分配；涉及只读 HTTP、固定 ID、草稿作用域及切换结算，按一个完整用户能力审查，没有新增恢复系统或数据库表。
+
+- 行为红：`repository-first-red`、`repository-first-old-record-red`、`repository-first-primary-red` 与完整旧绑定路径，分别确认步骤顺序、旧记录接续、按钮主次和成功后重复结算的错误。
+- 组合验证：`repository-first-settlement-green` 中两条真实 HTTP/controller/Compose 完整路径及首屏测试通过；该 run 随后因新 unit fixture 编译失败结束，不能记作整个命令成功。`repository-first-settlement-guards-final` 随后 23 项通过，覆盖 20 个 HTTP manager 用例及草稿/凭据、严格结算和过期官方回调的 3 项共享契约；其余未受局部修复影响的 focused 通过证据复用。正常 data/presentation/i18n 格式与 `git diff --check` 通过。
+- 独立审阅实际 Compose 两步中文图，确认首次创建为主、首次没有继续按钮、准备目标标为待验证、安装位于第二步；浏览器同名打开后继续为主、改名恢复创建，由真实事件测试覆盖。图在忽略的 `presentation-sync/build/sync-visual/`，不作为真实 GitHub 写入验收。
+- 正式 APK aex.52 / versionCode 70：`app/artifacts/android/0.19.4-aex.52-vc70-2f878e0184-release/Mihon-Fork-0.19.4-aex.52-vc70-release-universal.apk`，SHA-256 `0a3af0085e0804bad5ed92ab63b18fbeba2537ac6c8bd0bf1ce9a522d1c88bdb`。标准候选构建、原 fork 证书及包身份核验通过；用户明确授权后独立安装到当前连接的华为 PCE-W30，安装后核验通过，未代操作真实同步。
+- `repository-first-desktop-candidate` 标准脚本一次完成完整 Desktop 门禁与正式构建：3253 项执行，0 失败、0 错误、2 项跳过；运行版本与生产扩展安装链路验收通过。正式 EXE：`app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.91.2f878e0-unpacked/Mihon Desktop.exe`。Android 先构建安装，Desktop 后分配版本，各产物依据各自冻结输入追溯。

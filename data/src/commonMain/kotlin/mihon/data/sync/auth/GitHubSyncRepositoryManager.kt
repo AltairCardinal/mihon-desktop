@@ -47,6 +47,12 @@ class GitHubSyncRepositoryManager(
     suspend fun createOrResume(
         intent: SyncRepositoryCreationIntent,
         persist: suspend (SyncRepositoryCreationIntent) -> Unit,
+    ): SyncSpaceCreation = createOrResume(intent, persist, allowAccessMutation = true)
+
+    private suspend fun createOrResume(
+        intent: SyncRepositoryCreationIntent,
+        persist: suspend (SyncRepositoryCreationIntent) -> Unit,
+        allowAccessMutation: Boolean,
     ): SyncSpaceCreation = try {
         require(intent.attemptId.matches(Regex("[A-Za-z0-9_-]{16,128}")))
         val repository = SyncRepository(intent.account.login, intent.repositoryName, GitHubSyncSpaceClient.BRANCH)
@@ -56,7 +62,7 @@ class GitHubSyncRepositoryManager(
         var response = api.requestPath("/repos/${repository.fullName}")
         if (response.code == 404) {
             if (current.submitted) {
-                if (current.repositoryId == null || !current.creationAdminConfirmed) {
+                if (current.repositoryId == null || !current.creationAdminConfirmed || !allowAccessMutation) {
                     failManagement(SyncDiscoveryProblem.CREATION_UNCONFIRMED)
                 }
                 ensureRepositoryAccess(
@@ -180,6 +186,18 @@ class GitHubSyncRepositoryManager(
     suspend fun confirmManualSelection(
         intent: SyncRepositoryCreationIntent,
         persist: suspend (SyncRepositoryCreationIntent) -> Unit,
+    ): SyncSpaceCreation = confirmManualSelection(intent, persist, allowAccessMutation = true)
+
+    /** A browser return verifies an already prepared repository; it may never repair access with a write. */
+    suspend fun verifyManualSelection(
+        intent: SyncRepositoryCreationIntent,
+        persist: suspend (SyncRepositoryCreationIntent) -> Unit,
+    ): SyncSpaceCreation = confirmManualSelection(intent, persist, allowAccessMutation = false)
+
+    private suspend fun confirmManualSelection(
+        intent: SyncRepositoryCreationIntent,
+        persist: suspend (SyncRepositoryCreationIntent) -> Unit,
+        allowAccessMutation: Boolean,
     ): SyncSpaceCreation = try {
         val api = session(intent.account)
         val repository = SyncRepository(intent.account.login, intent.repositoryName, GitHubSyncSpaceClient.BRANCH)
@@ -197,10 +215,11 @@ class GitHubSyncRepositoryManager(
             submitted = true,
             repositoryId = value.number("id"),
             manuallyConfirmed = true,
-            creationAdminConfirmed = (value["permissions"] as? JsonObject)?.get("admin") == JsonPrimitive(true),
+            creationAdminConfirmed = allowAccessMutation &&
+                (value["permissions"] as? JsonObject)?.get("admin") == JsonPrimitive(true),
         )
         persistSafely(confirmed, persist)
-        createOrResume(confirmed, persist)
+        createOrResume(confirmed, persist, allowAccessMutation)
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (error: Exception) {

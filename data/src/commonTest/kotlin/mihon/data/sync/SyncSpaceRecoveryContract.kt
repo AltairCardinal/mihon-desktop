@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.crypto.SyncAeadEngineFactory
+import mihon.data.sync.crypto.SyncSpaceCrypto
 import mihon.data.sync.runtime.SyncDatabaseExchange
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelController
@@ -56,6 +57,90 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 abstract class SyncSpaceRecoveryContract {
+    @Test
+    fun `repository switch settlement is idempotent only for the identical fixed target`() = runBlocking {
+        val secure = MemorySyncSecureStore()
+        val storage = mihon.data.sync.runtime.SyncSetupStorage(secure)
+        val setup = mihon.data.sync.runtime.StoredSyncSetup(
+            accountId = 42, accountLogin = "fixture", attemptId = "settle-attempt-00001",
+            attemptNonce = "settle-nonce-000001", newSpace = true,
+            material = mihon.data.sync.runtime.StoredSyncMaterial.from(SyncSpaceCrypto.create("new-space", 1, "")),
+            stage = mihon.domain.sync.transport.SyncInitializationStage.CONNECTED,
+            repositoryId = 199, owner = "fixture", repository = "tablet-sync", branch = "mihon-sync-v1",
+            defaultBranch = "main", switchIntentId = "settle-switch-000001",
+            confirmedBootstrapCommitSha = "a".repeat(40), confirmedBootstrapTreeSha = "b".repeat(40),
+        )
+        storage.save(setup, null)
+        storage.clear(setup)
+        storage.clear(setup)
+        assertEquals(setup.copy(settled = true), storage.setupFor(setup))
+        for (changed in listOf(
+            setup.copy(repositoryId = 299),
+            setup.copy(
+                material = mihon.data.sync.runtime.StoredSyncMaterial.from(
+                    SyncSpaceCrypto.create("foreign-space", 1, ""),
+                ),
+            ),
+        )) {
+            assertTrue(runCatching { storage.clear(changed) }.isFailure)
+        }
+        assertEquals(setup.copy(settled = true), storage.setupFor(setup))
+        secure.readFailure = true
+        assertTrue(runCatching { storage.clear(setup) }.isFailure)
+    }
+
+    @Test
+    fun `repository preparation survives restart without becoming a native write attempt or crossing credentials`() =
+        runBlocking {
+            open().use { storage ->
+                SyncOnboardingFixture(storage).use { f ->
+                    val original = f.git.server.dispatcher
+                    var privateRepositoryReads = 0
+                    f.git.server.dispatcher = object : Dispatcher() {
+                        override fun dispatch(request: RecordedRequest): MockResponse {
+                            if (request.url.encodedPath.startsWith("/repos/")) privateRepositoryReads++
+                            if (request.url.encodedPath == "/user/installations") {
+                                return MockResponse(body = """{"installations":[]}""")
+                            }
+                            return original.dispatch(request)
+                        }
+                    }
+                    f.authorize()
+                    f.begin()
+                    assertEquals(SyncRecoveryAction.OFFICIAL_CREATE, f.panel.state.value.recoveryPrimaryAction.action)
+                    f.panel.act(SyncPanelAction.PrepareBrowserRepository("tablet-sync"))
+                    f.panel.act(SyncPanelAction.RecoveryOfficialOpened(SyncRecoveryAction.OFFICIAL_CREATE))
+                    f.panel.act(SyncPanelAction.RecoveryOfficialReturned)
+                    assertEquals(0, privateRepositoryReads)
+                    assertNull(f.runtime.onboarding.storage.repositoryCreation(f.accountId))
+                    f.panel.act(SyncPanelAction.ConfirmRepositoryPrepared("tablet-sync"))
+                    f.panel.act(SyncPanelAction.EditRepositoryPreparation)
+                    assertEquals("tablet-sync", f.panel.state.value.repositoryPreparedName)
+                    f.panel.act(SyncPanelAction.Back)
+                    assertEquals("tablet-sync", f.panel.state.value.repositoryPreparedName)
+                    f.panel.act(SyncPanelAction.Close)
+                    val restarted = f.runtime()
+                    try {
+                        val panel = restarted.panel as SyncPanelController
+                        panel.act(SyncPanelAction.Open)
+                        panel.act(SyncPanelAction.BeginSetup)
+                        withTimeout(5_000) { panel.state.first { !it.setupBusy } }
+                        assertEquals("tablet-sync", panel.state.value.repositoryPreparedName)
+                        assertEquals("tablet-sync", panel.state.value.repositoryCreationName)
+                        assertEquals(SyncRecoveryAction.INSTALL_APP, panel.state.value.recoveryPrimaryAction.action)
+                        assertNull(restarted.connection())
+                        assertNull(restarted.onboarding.storage.repositoryCreation(f.accountId))
+                        f.authorize("different-credential")
+                        panel.act(SyncPanelAction.OpenRecovery)
+                        assertNull(panel.state.value.repositoryPreparedName)
+                        assertEquals("mihon-sync", panel.state.value.repositoryCreationName)
+                    } finally {
+                        restarted.stopPanel()
+                    }
+                }
+            }
+        }
+
     @Test
     fun `action regression observed properties execute fixed repository repair`() = runBlocking {
         for (archived in listOf(false, true)) {

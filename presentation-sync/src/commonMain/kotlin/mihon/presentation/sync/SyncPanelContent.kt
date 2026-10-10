@@ -981,6 +981,8 @@ private fun RecoveryDecisionAction(
                 tag,
                 if (action == SyncRecoveryAction.CHECK_CONDITIONS && state.recoveryOfficialAction != null) {
                     MR.strings.sync_setup_check_continue
+                } else if (action == SyncRecoveryAction.MANAGE_AUTHORIZATION && state.repositoryPreparedName != null) {
+                    MR.strings.sync_setup_authorize_selected_space
                 } else if (action == SyncRecoveryAction.INSTALL_APP) {
                     if (state.recoveryOfficialAction == SyncRecoveryAction.INSTALL_APP) {
                         MR.strings.sync_setup_continue_install
@@ -2066,9 +2068,6 @@ private fun SetupPage(
     }
     // Session-local text only: closing or leaving this step discards unsubmitted input.
     var password by remember(state.visible, state.setupStep, state.setupRepository) { mutableStateOf(TextFieldValue()) }
-    var repositoryName by remember(state.setupAccountLogin, state.repositoryCreationName) {
-        mutableStateOf(state.repositoryCreationName)
-    }
     var showPassword by remember(state.visible, state.setupStep) { mutableStateOf(false) }
     val passwordFocus = remember { FocusRequester() }
     LazyColumn(
@@ -2083,7 +2082,12 @@ private fun SetupPage(
         }
         state.setupProblem?.takeUnless {
             (state.setupStep == SyncSetupStep.MERGING && state.showingCompactRun) ||
-                (state.setupStep == SyncSetupStep.ERROR && it == SyncDiscoveryProblem.NEEDS_INSTALLATION)
+                (
+                    state.setupStep == SyncSetupStep.ERROR && (
+                        it == SyncDiscoveryProblem.NEEDS_INSTALLATION ||
+                            (state.repositoryPreparedName != null && it == SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS)
+                        )
+                    )
         }
             ?.let { item { Text(setupProblemText(it), Modifier.testTag("sync-setup-error")) } }
         state.setupInstallation?.takeUnless {
@@ -2343,92 +2347,7 @@ private fun SetupPage(
             }
             SyncSetupStep.COMPLETE -> { }
             SyncSetupStep.PREPARE_REPOSITORY -> {
-                val nativeCreationAllowed = !state.setupBusy && state.setupInstallation?.canCreateRepository == true &&
-                    state.creationPermissionProblem == null
-                item {
-                    Text(
-                        syncString(MR.strings.sync_recovery_prepare_title),
-                        Modifier.testTag("sync-recovery-prepare"),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-                item { Text(syncString(MR.strings.sync_recovery_prepare_body)) }
-                if (state.setupBusy) {
-                    item { Text(syncString(MR.strings.sync_repository_permission_checking)) }
-                } else if (state.creationPermissionProblem != null) {
-                    item {
-                        Text(
-                            syncString(
-                                if (state.creationPermissionProblem == SyncDiscoveryProblem.NEEDS_CREATION_PERMISSION) {
-                                    MR.strings.sync_repository_permission_browser
-                                } else {
-                                    MR.strings.sync_repository_permission_unknown
-                                },
-                            ),
-                            Modifier.testTag("sync-repository-permission-status"),
-                        )
-                    }
-                }
-                if (!state.creationSubmitted) {
-                    item {
-                        OutlinedTextField(
-                            value = repositoryName,
-                            onValueChange = { repositoryName = it },
-                            label = { Text(syncString(MR.strings.sync_repository_name)) },
-                            singleLine = true,
-                            enabled = !state.setupBusy,
-                            modifier = Modifier.fillMaxWidth().testTag("sync-repository-name"),
-                        )
-                    }
-                    if (nativeCreationAllowed) {
-                        item {
-                            Action(
-                                "sync-repository-create-native",
-                                MR.strings.sync_repository_create_confirm,
-                                !state.setupBusy && repositoryName.isNotBlank() &&
-                                    state.nowMillis >= state.authRetryAtMillis,
-                                primary = true,
-                            ) { dispatch(SyncPanelAction.PrepareRepositoryCreation(repositoryName)) }
-                        }
-                    }
-                } else {
-                    item { Text(state.setupRepository?.fullName ?: state.repositoryCreationName) }
-                    item {
-                        Action(
-                            "sync-repository-authorize-native",
-                            MR.strings.sync_repository_scope_confirm,
-                            !state.setupBusy && state.nowMillis >= state.authRetryAtMillis,
-                            primary = true,
-                        ) {
-                            dispatch(SyncPanelAction.AuthorizeRepositoryScope)
-                        }
-                    }
-                }
-                item {
-                    Action(
-                        "sync-create-private-repo",
-                        MR.strings.sync_setup_create_repo,
-                        !state.setupBusy,
-                        primary = !nativeCreationAllowed,
-                    ) {
-                        openBrowser(githubRepositoryCreationUrl(state.setupAccountLogin, repositoryName))
-                    }
-                }
-                item {
-                    Action(
-                        "sync-recovery-repository-created",
-                        MR.strings.sync_recovery_repository_created,
-                        enabled = !state.setupBusy,
-                        primary = false,
-                    ) { dispatch(SyncPanelAction.PrepareManualRepository(repositoryName)) }
-                }
-                if (state.creationPermissionProblem != null && !state.setupBusy) {
-                    item {
-                        Action("sync-repository-permission-recheck", MR.strings.sync_recovery_recheck) {
-                            dispatch(SyncPanelAction.CheckRepositoryCreationPermission)
-                        }
-                    }
-                }
+                item { RepositoryPreparationContent(state, dispatch, openBrowser) }
             }
             SyncSetupStep.ERROR -> {
                 val problem = state.setupProblem
@@ -2488,17 +2407,166 @@ private fun SetupPage(
 }
 
 @Composable
+private fun RepositoryPreparationContent(
+    state: SyncPanelState,
+    dispatch: (SyncPanelAction) -> Unit,
+    openBrowser: (String) -> Boolean,
+) {
+    var name by remember(state.repositoryCreationName) {
+        mutableStateOf(state.repositoryCreationName)
+    }
+    val browserFirst = state.needsRepositoryPreparation
+    val browserCreationOpened = state.recoveryOfficialAction == SyncRecoveryAction.OFFICIAL_CREATE &&
+        name.trim() == state.repositoryCreationName
+    val nativeAllowed = !browserFirst && !state.setupBusy && state.setupInstallation?.canCreateRepository == true &&
+        state.creationPermissionProblem == null
+    val validName = name.trim().isNotEmpty() && runCatching {
+        mihon.domain.sync.transport.SyncRepository("validated-owner", name.trim(), "mihon-sync-v1")
+    }.isSuccess
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text(
+            syncString(
+                if (browserFirst) {
+                    MR.strings.sync_setup_prepare_space_title
+                } else {
+                    MR.strings.sync_recovery_prepare_title
+                },
+            ),
+            Modifier.testTag("sync-recovery-prepare"),
+            style = MaterialTheme.typography.titleLarge,
+        )
+        state.setupAccountLogin?.let { login ->
+            Text(
+                syncString(MR.strings.sync_setup_current_account, login),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (browserFirst) {
+            Text(syncString(MR.strings.sync_setup_repository_first_hint))
+            Text(
+                syncString(MR.strings.sync_setup_install_after_repository),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Text(syncString(MR.strings.sync_recovery_prepare_body))
+        }
+        if (state.setupBusy) {
+            Text(syncString(MR.strings.sync_repository_permission_checking))
+        } else if (!browserFirst && state.creationPermissionProblem != null) {
+            Text(
+                syncString(
+                    if (state.creationPermissionProblem == SyncDiscoveryProblem.NEEDS_CREATION_PERMISSION) {
+                        MR.strings.sync_repository_permission_browser
+                    } else {
+                        MR.strings.sync_repository_permission_unknown
+                    },
+                ),
+                Modifier.testTag("sync-repository-permission-status"),
+            )
+        }
+        if (!state.creationSubmitted || browserFirst) {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(syncString(MR.strings.sync_repository_name)) },
+                singleLine = true,
+                enabled = !state.setupBusy,
+                modifier = Modifier.fillMaxWidth().testTag("sync-repository-name"),
+            )
+            if (nativeAllowed) {
+                Action(
+                    "sync-repository-create-native",
+                    MR.strings.sync_repository_create_confirm,
+                    !state.setupBusy && validName && state.nowMillis >= state.authRetryAtMillis,
+                    primary = true,
+                ) {
+                    dispatch(SyncPanelAction.PrepareRepositoryCreation(name.trim()))
+                }
+            }
+        } else {
+            Text(state.setupRepository?.fullName ?: state.repositoryCreationName)
+            Action(
+                "sync-repository-authorize-native",
+                MR.strings.sync_repository_scope_confirm,
+                !state.setupBusy && state.nowMillis >= state.authRetryAtMillis,
+                primary = true,
+            ) {
+                dispatch(SyncPanelAction.AuthorizeRepositoryScope)
+            }
+        }
+        Action(
+            "sync-create-private-repo",
+            if (browserFirst) MR.strings.sync_setup_create_space_browser else MR.strings.sync_setup_create_repo,
+            !state.setupBusy && validName,
+            primary = !nativeAllowed && !browserCreationOpened,
+        ) {
+            if (browserFirst) dispatch(SyncPanelAction.PrepareBrowserRepository(name.trim()))
+            openBrowser(githubRepositoryCreationUrl(state.setupAccountLogin, name.trim()))
+                .also { opened ->
+                    if (opened && browserFirst) {
+                        dispatch(SyncPanelAction.RecoveryOfficialOpened(SyncRecoveryAction.OFFICIAL_CREATE))
+                    }
+                }
+        }
+        if (!browserFirst || browserCreationOpened) {
+            Action(
+                "sync-recovery-repository-created",
+                if (browserFirst) {
+                    MR.strings.sync_setup_created_continue
+                } else {
+                    MR.strings.sync_recovery_repository_created
+                },
+                !state.setupBusy && validName,
+                primary = browserFirst && browserCreationOpened,
+            ) {
+                dispatch(
+                    if (browserFirst) {
+                        SyncPanelAction.ConfirmRepositoryPrepared(name.trim())
+                    } else {
+                        SyncPanelAction.PrepareManualRepository(name.trim())
+                    },
+                )
+            }
+        }
+        if (browserFirst) {
+            Action(
+                "sync-setup-use-existing",
+                MR.strings.sync_setup_use_existing_repository,
+                !state.setupBusy && validName,
+            ) {
+                dispatch(SyncPanelAction.ConfirmRepositoryPrepared(name.trim()))
+            }
+            Text(
+                syncString(MR.strings.sync_setup_browser_creation_unverified),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else if (state.creationPermissionProblem != null && !state.setupBusy) {
+            Action("sync-repository-permission-recheck", MR.strings.sync_recovery_recheck) {
+                dispatch(SyncPanelAction.CheckRepositoryCreationPermission)
+            }
+        }
+    }
+}
+
+@Composable
 private fun SetupErrorActions(
     state: SyncPanelState,
     dispatch: (SyncPanelAction) -> Unit,
     openBrowser: (String) -> Boolean,
     installationGuidance: Boolean,
 ) {
+    if (state.needsRepositoryPreparation) {
+        RepositoryPreparationContent(state, dispatch, openBrowser)
+        return
+    }
     var guideExpanded by remember(state.setupProblem) { mutableStateOf(false) }
     var alternativesExpanded by remember(state.setupProblem) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (state.setupProblem == SyncDiscoveryProblem.NEEDS_INSTALLATION) {
-            Text(syncString(MR.strings.sync_setup_finish_title), style = MaterialTheme.typography.titleLarge)
+        if (state.setupProblem == SyncDiscoveryProblem.NEEDS_INSTALLATION ||
+            (state.repositoryPreparedName != null && state.setupProblem == SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS)
+        ) {
+            Text(syncString(MR.strings.sync_setup_install_space_title), style = MaterialTheme.typography.titleLarge)
             state.setupAccountLogin?.let { account ->
                 Text(
                     syncString(MR.strings.sync_setup_current_account, account),
@@ -2520,20 +2588,42 @@ private fun SetupErrorActions(
                         )
                     }
                     Text(
-                        syncString(MR.strings.sync_setup_installation_pending),
-                        Modifier.testTag("sync-setup-install-pending"),
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    Text(
-                        syncString(MR.strings.sync_setup_space_pending),
+                        syncString(
+                            if (state.repositoryPreparedName != null) {
+                                MR.strings.sync_setup_space_prepared_unverified
+                            } else {
+                                MR.strings.sync_setup_space_pending
+                            },
+                            state.repositoryPreparedName ?: state.repositoryCreationName,
+                        ),
                         Modifier.testTag("sync-setup-space-pending"),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    Text(
+                        syncString(
+                            if (state.setupInstallation != null) {
+                                MR.strings.sync_setup_installed_status
+                            } else {
+                                MR.strings.sync_setup_installation_pending
+                            },
+                        ),
+                        Modifier.testTag("sync-setup-install-pending"),
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.titleSmall,
+                    )
                 }
             }
-            Text(syncString(MR.strings.sync_setup_needs_installation))
+            Text(
+                syncString(
+                    if (state.setupInstallation != null) {
+                        MR.strings.sync_setup_selected_access_unconfirmed
+                    } else {
+                        MR.strings.sync_setup_install_selected_space
+                    },
+                    state.repositoryPreparedName ?: state.setupRepository?.name ?: state.repositoryCreationName,
+                ),
+            )
             if (state.recoveryOfficialCheckAttempted) {
                 Text(syncString(MR.strings.sync_setup_installation_not_found))
             }
@@ -2546,8 +2636,8 @@ private fun SetupErrorActions(
         }
         if (installationGuidance) {
             if (state.setupProblem == SyncDiscoveryProblem.NEEDS_INSTALLATION && state.setupAccountLogin != null) {
-                Action("sync-setup-create-space", MR.strings.sync_setup_no_repository, !state.setupBusy) {
-                    dispatch(SyncPanelAction.ExecuteRecoveryAction(SyncRecoveryAction.CREATE_SPACE))
+                Action("sync-setup-edit-space", MR.strings.sync_setup_edit_prepared_space, !state.setupBusy) {
+                    dispatch(SyncPanelAction.EditRepositoryPreparation)
                 }
             }
             if (state.recoveryPrimaryAction.action != SyncRecoveryAction.CHECK_CONDITIONS) {

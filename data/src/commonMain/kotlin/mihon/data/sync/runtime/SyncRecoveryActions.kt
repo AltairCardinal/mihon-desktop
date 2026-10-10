@@ -159,10 +159,18 @@ internal fun SyncPanelState.recoveryDecision(): SyncRecoveryActionDecision {
                     SyncRecoveryAction.CONNECT_GITHUB
                 }
                 SyncDiscoveryProblem.ACCOUNT_CHANGED -> SyncRecoveryAction.CONNECT_GITHUB
-                SyncDiscoveryProblem.NEEDS_INSTALLATION -> SyncRecoveryAction.INSTALL_APP
+                SyncDiscoveryProblem.NEEDS_INSTALLATION -> if (needsRepositoryPreparation) {
+                    SyncRecoveryAction.OFFICIAL_CREATE
+                } else {
+                    SyncRecoveryAction.INSTALL_APP
+                }
                 SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS,
                 SyncDiscoveryProblem.NEEDS_INSTALLATION_ACCESS_PERMISSION,
-                -> SyncRecoveryAction.AUTHORIZE_REPOSITORY
+                -> if (repositoryPreparedName != null && setupRepository == null && creationRepositoryId == null) {
+                    SyncRecoveryAction.MANAGE_AUTHORIZATION
+                } else {
+                    SyncRecoveryAction.AUTHORIZE_REPOSITORY
+                }
                 SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION,
                 SyncDiscoveryProblem.NEEDS_ADMINISTRATION_PERMISSION,
                 SyncDiscoveryProblem.REPOSITORY_NOT_WRITABLE,

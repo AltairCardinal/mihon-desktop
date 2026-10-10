@@ -69,7 +69,8 @@ internal class SyncOnboarding(
     val storage: SyncSetupStorage,
     private val snapshotManifestStore: SyncSnapshotManifestStore,
 ) {
-    suspend fun discover(): SyncSpaceDiscovery = spaces(runtime.accessToken()).discover()
+    suspend fun discover(repositoryName: String? = null, expectedAccountId: Long? = null): SyncSpaceDiscovery =
+        spaces(runtime.accessToken()).discover(expectedAccountId, repositoryName)
 
     suspend fun checkRepositoryCreationPermission(expectedAccountId: Long? = null) =
         spaces(runtime.accessToken()).checkRepositoryCreationPermission(expectedAccountId)
