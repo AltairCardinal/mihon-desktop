@@ -153,7 +153,10 @@ class HistoryReaderCatalogCompletionIntegrationTest {
                 )
                 manga = Injekt.get<MangaRepository>().getMangaById(manga.id)
                 val preparedDetail = Injekt.get<SaveSourceMangaForDetails>().prepareForDetails(manga)
-                assertFalse((preparedDetail as mihon.desktop.extension.SourceCallResult.Success).value.needsRefresh)
+                assertTrue(
+                    (preparedDetail as mihon.desktop.extension.SourceCallResult.Success).value.needsRefresh,
+                    "An initialized sparse directory needs completion while its downloaded-only entry snapshot stays fixed",
+                )
                 val library = Injekt.get<tachiyomi.domain.library.service.LibraryPreferences>()
                 library.downloadedOnly().set(true)
                 val detail = mihon.desktop.ui.library.MangaDetailScreenModel(

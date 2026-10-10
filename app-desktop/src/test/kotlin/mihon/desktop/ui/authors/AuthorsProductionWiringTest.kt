@@ -1351,8 +1351,14 @@ class AuthorsProductionWiringTest {
     @Test
     fun `mounted work comparison confirms an existing suggested script variant target`() = runBlocking {
         val creatorRepository = mockk<CreatorRepository>(relaxed = true)
+        val archiveReloaded = CompletableDeferred<Unit>()
+        val archiveReads = java.util.concurrent.atomic.AtomicInteger()
+        val fixtureArchive = scriptVariantSuggestedArchive()
         val archiveRepository = mockk<CreatorArchiveRepository>(relaxed = true) {
-            coEvery { getCreatorWorkArchive(7L) } returns scriptVariantSuggestedArchive()
+            coEvery { getCreatorWorkArchive(7L) } coAnswers {
+                if (archiveReads.incrementAndGet() > 1) archiveReloaded.complete(Unit)
+                fixtureArchive
+            }
         }
         val saved = Manga.create().copy(id = 12L, source = 10L, url = "/traditional", title = "詭譎屋")
         val dependencies = mockk<DesktopUiDependencies> {
@@ -1379,6 +1385,7 @@ class AuthorsProductionWiringTest {
                 while (action !in texts(scene)) scene.render()
             }
             clickableTextNode(scene, action).config[SemanticsActions.OnClick].action?.invoke()
+            withTimeout(5_000) { archiveReloaded.await() }
             coVerify {
                 archiveRepository.appendUserWorkDecisionIfCurrent(
                     SourceWorkNaturalKey(11L, "/suggested"),

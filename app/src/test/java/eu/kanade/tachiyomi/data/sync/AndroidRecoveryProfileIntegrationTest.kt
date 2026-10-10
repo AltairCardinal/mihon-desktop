@@ -1,13 +1,20 @@
 package eu.kanade.tachiyomi.data.sync
 
 import android.app.Application
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import eu.kanade.domain.DomainModule
 import eu.kanade.tachiyomi.App
+import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.di.AppModule
 import eu.kanade.tachiyomi.di.PreferenceModule
+import io.mockk.every
+import io.mockk.mockkConstructor
+import io.mockk.unmockkConstructor
+import io.mockk.verify
+import io.requery.android.database.sqlite.RequerySQLiteOpenHelperFactory
 import kotlinx.coroutines.runBlocking
 import mihon.data.sync.security.EncryptedFileSyncSecureStore
 import mihon.data.sync.security.SyncRecordCipher
@@ -87,21 +94,44 @@ class AndroidRecoveryProfileIntegrationTest {
         val originalBytes = original.readBytes()
         AndroidRecoveryProfile.createAndSelect(raw)
         val app = attachedProductionApp()
-        Injekt.importModule(PreferenceModule(app))
-        Injekt.importModule(AppModule(app))
-        Injekt.get<SqlDriver>().use { driver ->
-            val count = driver.executeQuery(
-                null,
-                "SELECT count(*) FROM sqlite_master WHERE name = 'old_profile_marker'",
-                mapper = { cursor ->
-                    QueryResult.Value(if (cursor.next().value) cursor.getLong(0)!! else -1L)
-                },
-                parameters = 0,
-            ).value
-            assertEquals(0L, count)
+        var nativeFactoryCalls = 0
+        if (!BuildConfig.DEBUG) {
+            // Requery's Android-only sqlite3x cannot load in the host JVM. Adapt only its helper
+            // creation; the actual release DI factory selection and production callback remain guarded.
+            mockkConstructor(RequerySQLiteOpenHelperFactory::class)
+            every { anyConstructed<RequerySQLiteOpenHelperFactory>().create(any()) } answers {
+                assertTrue(self is RequerySQLiteOpenHelperFactory)
+                nativeFactoryCalls++
+                FrameworkSQLiteOpenHelperFactory().create(firstArg())
+            }
         }
-        assertTrue(originalBytes.contentEquals(original.readBytes()))
-        assertTrue(app.getDatabasePath("tachiyomi.db").isFile)
+        try {
+            Injekt.importModule(PreferenceModule(app))
+            Injekt.importModule(AppModule(app))
+            Injekt.get<SqlDriver>().use { driver ->
+                val count = driver.executeQuery(
+                    null,
+                    "SELECT count(*) FROM sqlite_master WHERE name = 'old_profile_marker'",
+                    mapper = { cursor ->
+                        QueryResult.Value(if (cursor.next().value) cursor.getLong(0)!! else -1L)
+                    },
+                    parameters = 0,
+                ).value
+                assertEquals(0L, count)
+            }
+            if (!BuildConfig.DEBUG) {
+                assertEquals(1, nativeFactoryCalls)
+                verify(exactly = 1) {
+                    anyConstructed<RequerySQLiteOpenHelperFactory>().create(
+                        match { it.context === app && it.name == "tachiyomi.db" },
+                    )
+                }
+            }
+            assertTrue(originalBytes.contentEquals(original.readBytes()))
+            assertTrue(app.getDatabasePath("tachiyomi.db").isFile)
+        } finally {
+            if (!BuildConfig.DEBUG) unmockkConstructor(RequerySQLiteOpenHelperFactory::class)
+        }
     }
 
     @Test

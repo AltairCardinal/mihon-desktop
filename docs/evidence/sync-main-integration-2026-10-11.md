@@ -85,6 +85,36 @@ POM 根据相同上游 commit 重建，settings 仅将该模块路由到本地�
 最终 `sync-ci-final-format` 的全仓 `spotlessCheck --offline` 通过，`git diff --check` 通过。
 最终云端完整门禁以该修复提交对应的 PR 检查为准，尚未在本地重复全量。
 
+## 修复提交完整门禁的后续回归
+
+提交 `1f075c3d686e` 对应 PR 合成测试提交 `c705ab645aca`，后者父提交为远端 main 与该 head。
+两者 tree 均为 `4154a287fff5b4385de1e3afd132a6c466017b0b`，实际 Git diff 为空。
+候选 artifact 的 sourceRevision 记录合成提交，不把它写成 head commit；测试源码树等价。
+
+Desktop run `38078741145` 完整执行 3769 项，10 项失败、4 项跳过；Android run `38078741144`
+候选构建成功，data 552 项中 3 失败；app 767 次执行中 12 失败、7 跳过（包含既有重试的重复执行）。
+保留各自 `github-*-head1f-failed.log` 与报告，不把日志中重复失败当作不同用户能力。
+
+该轮失败的相关关闭证据（仍是组合补验，不是本地完整重跑）：
+
+| 范围 | 原因、处理与 focused 证据 |
+| --- | --- |
+| Desktop 迁移适配、下载过滤目录快照、详情 4 项 | 迁移使用真实 SQL 及仅委派的调用计数；稀疏目录应 needsRefresh=true；4 个事件测试用真实 writer 建立 COMPLETE 前置，保留 HTTP、拒绝、滚轮、键盘、过滤和身份断言。`sync-ci-head1f-catalog-red` 正确失败，`sync-ci-head1f-catalog-green` 5 项通过，加 `sync-ci-head1f-migration-adapter-green` 1 项通过 |
+| Windows 构建路径 | 真实 8.3 TEMP 父目录复现原失败；夹具 canonicalize 临时路径，保留实际默认、build-only、preview 分派与发布隔离断言。短路径与普通路径各 2 项通过，产品构建语义未改 |
+| data 迁移、面板生命周期、新同名空间 | 旧 schema 43 断言改为 44；已成功设置的面板还观察持久进度，前置应为精确 5 个 listener；新仓库准备/确认路径复用现事件，真实 HTTP 夹具补齐按 ID 读回。`sync-ci-head1f-data-red` 双端 6 项正确失败，`sync-ci-head1f-data-green` 6/6 通过，保留 stop 后 0 listener、已受理交换完成、旧记录/绑定、新 ID、sealed password 断言 |
+| Desktop 原生历史、作者、窄屏分类焦点 | 作者等待双决定后的实际 archive reload；Tab 等待真实 attached/placed、完全可见目标及稳定滚动，保留 80 步/原帧数、双向闭环、背景隔离与关闭回焦断言。`sync-ci-head1f-native-red` 作者通过，`sync-ci-head1f-native-green` 原生历史及分类通过；共享新例的前置失败不计作此项通过证据 |
+| 共享历史恢复焦点 | 正确场景使用实际父 coroutineContext、打开搜索、编辑、封面/详情焦点、saveable 返回，原入口明确被 `history_search_input` 抢焦点；`sync-ci-head1f-shared-history-context-red` 正确红，恢复 mount capture 后 `sync-ci-head1f-shared-history-context-green` 3/3 通过。格式化后的 `sync-ci-head1f-final-focused-formatted` 该类 3 项再次通过，但该命令整体因其他编译问题失败，不将其整体记绿 |
+| Android 目录协同、profile、作者、扩展与错误反馈 | 正确类型的偏好与完整 sync 参数、真实 SQL/下载操作委派、取消并 join 后关闭存储、真实 ScreenModel job 排空及同测试 scheduler；Release profile 仅 host helper 桥接。`sync-ci-head1f-app-six-red` 正确复现持续失败，未改的 Toast 实际通过；`sync-ci-head1f-app-five-green` 4 个修改用例通过，整体仍因 Reader 的 scalar-only MemoryPrefs 缺 StringSet 失败。Reader 改用已有独立 AndroidPreferenceStore 后，`sync-ci-head1f-reader-final` 单项通过，保留目录/元数据/phase/仅 1 次网络请求断言 |
+| 最终契约与格式 | `sync-ci-head1f-reader-final` 整体 PASSED：Android Reader 1 项、Desktop 来源契约 12 项及实际 Windows 分派 2 项全通过、无跳过，全仓 `spotlessCheck` 通过。此前的无效任务名、过长测试名与测试 API 泛型编译问题不作为验证通过证据；各自修正后由该有效命令收口 |
+
+Android 候选为本次 CI 的未签名包，实际 manifest/hash 一致，4 个 ABI 均包含 `libsqlite3x.so`。
+Release profile JVM 测试用限定的 host helper 桥接执行真实数据库和生产 callback，同时核对实际 Requery
+factory、context、数据库名称；这不是 Android JNI 的实机验收。没有替换产品的 Release SQLite 工厂。
+
+Root 独立审查共享历史恢复入口与 Android 夹具；原实施者未修改 Root 的 data/Windows 区域并完成该区域只读复核。
+该批超过 8 文件/400 行，内聚于同轮 CI 真实前置、异步收尾与唯一共享焦点修复，未升级依赖、改变数据协议或扩展 UI。
+最终合并仍以新提交的两个完整云端门禁为准，不用本地组合证据替代主干保护检查。
+
 ## 交付边界
 
 本次是已验收同步分支的集成与回归收口，没有重新构建或安装已验收 APK。Android 正式身份、证书连续性及较高版本号保持；后续正式候选必须走统一构建入口递增版本并包含 schema 44。主干的 Android 与 Desktop 必需 CI 检查通过后，按 PR 流程合入；远端合并状态以 PR 为准。

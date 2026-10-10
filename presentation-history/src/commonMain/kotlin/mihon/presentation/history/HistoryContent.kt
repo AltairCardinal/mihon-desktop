@@ -132,9 +132,12 @@ fun HistoryContent(
                     }
                 } else {
                     val focus = remember { FocusRequester() }
+                    // Decide at mount time: restoring a missing row clears its saved anchor
+                    // when the toolbar receives focus, and must not trigger initial editor focus.
+                    val requestInitialSearchFocus = remember { focusAnchor == null }
                     val input = remember { HistorySearchInputState(state.searchQuery.orEmpty()) }
                     input.align(state.searchQuery.orEmpty())
-                    LaunchedEffect(Unit) { if (focusAnchor == null) focus.requestFocus() }
+                    LaunchedEffect(Unit) { if (requestInitialSearchFocus) focus.requestFocus() }
                     IconButton(
                         onClick = { onSearchQueryChange(null) },
                         modifier = Modifier.focusRequester(toolbarFocus)

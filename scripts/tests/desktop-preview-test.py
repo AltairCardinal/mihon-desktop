@@ -17,7 +17,8 @@ BASH = Path(r"C:\Program Files\Git\bin\bash.exe") if sys.platform == "win32" els
 class WindowsPreviewTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory(prefix="mihon-preview-")
-        self.root = Path(self.temporary.name)
+        # PowerShell resolves Windows short (8.3) TEMP paths before publishing.
+        self.root = Path(self.temporary.name).resolve()
         self.scripts = self.root / "scripts"
         self.scripts.mkdir()
         for name in ("build-desktop.sh", "build-windows.ps1", "publish-windows-unpacked.ps1", "task15-build-provenance.py"):

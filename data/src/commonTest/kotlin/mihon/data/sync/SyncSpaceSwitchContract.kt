@@ -352,8 +352,21 @@ abstract class SyncSpaceSwitchContract {
                 val panel = fixture.old.panel
                 panel.act(SyncPanelAction.CreateNewSpace)
                 panel.act(SyncPanelAction.ConfirmQuestion)
-                panel.act(SyncPanelAction.RetrySetup)
-                withTimeout(5_000) { panel.state.first { !it.setupBusy && it.setupStep == SyncSetupStep.NEW_PASSWORD } }
+                panel.act(SyncPanelAction.CheckRepositoryCreationPermission)
+                assertEquals(SyncSetupStep.PREPARE_REPOSITORY, panel.state.value.setupStep)
+                panel.act(SyncPanelAction.ConfirmRepositoryPrepared("mihon-sync"))
+                try {
+                    withTimeout(5_000) {
+                        panel.state.first { !it.setupBusy && it.setupStep == SyncSetupStep.NEW_PASSWORD }
+                    }
+                } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
+                    val state = panel.state.value
+                    throw AssertionError(
+                        "new repository was not selected: step=${state.setupStep}, busy=${state.setupBusy}, " +
+                            "problem=${state.setupProblem}, permission=${state.creationPermissionProblem}",
+                        error,
+                    )
+                }
                 panel.act(
                     SyncPanelAction.SubmitCreateSpace(
                         requireNotNull(panel.state.value.createContextId),

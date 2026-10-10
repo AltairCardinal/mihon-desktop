@@ -14,8 +14,11 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -150,21 +153,42 @@ class AndroidReaderCatalogPreparationWiringTest {
                 }
                 try {
                     withTimeout(5_000) { entered.await() }
-                    val preferences = mockk<LibraryPreferences> {
-                        every { markDuplicateReadChapterAsRead().get() } returns emptySet()
-                    }
-                    val sync = io.mockk.spyk(
-                        SyncChaptersWithSource(
-                            mockk(relaxed = true), mockk(relaxed = true), storage.chapters,
-                            ShouldUpdateDbChapter(), storage.updateManga,
-                            UpdateChapter(storage.chapters), storage.getChapters,
-                            GetExcludedScanlators(storage.handler), preferences,
+                    val app = org.robolectric.RuntimeEnvironment.getApplication()
+                    val preferences = LibraryPreferences(
+                        tachiyomi.core.common.preference.AndroidPreferenceStore(
+                            app,
+                            app.getSharedPreferences(
+                                "reader-detail-flight-${System.nanoTime()}",
+                                android.content.Context.MODE_PRIVATE,
+                            ),
                         ),
                     )
-                    // Finish the real file read before starting the second waiter. Its first suspension
-                    // is then the shared network gate, rather than an unrelated SQLite dispatcher.
+                    val downloads = mockk<eu.kanade.tachiyomi.data.download.DownloadManager>(relaxed = true)
+                    coEvery {
+                        downloads.withDirectoryChanges(
+                            any(),
+                            any<suspend () -> tachiyomi.domain.chapter.service.ChapterDirectoryResult>(),
+                        )
+                    } coAnswers { secondArg<suspend () -> tachiyomi.domain.chapter.service.ChapterDirectoryResult>()() }
+                    // Pre-read the actual phase and chapters so the second waiter's first suspension
+                    // joins the held network request. Subsequent phase reads still execute real SQL.
+                    val initialPhase = storage.chapters.pendingDirectoryPhase(manga.id)
+                    assertEquals(null, initialPhase)
                     val localChapters = storage.chapters.getChapterByMangaId(manga.id)
+                    var firstPhaseRead = true
+                    val commits = mutableListOf<tachiyomi.domain.chapter.service.ChapterDirectoryCommit>()
                     val detailChapterReader = object : ChapterRepository by storage.chapters {
+                        override suspend fun pendingDirectoryPhase(
+                            mangaId: Long,
+                        ): tachiyomi.domain.chapter.service.ChapterDirectoryPhase? {
+                            assertEquals(manga.id, mangaId)
+                            if (firstPhaseRead) {
+                                firstPhaseRead = false
+                                return initialPhase
+                            }
+                            return storage.chapters.pendingDirectoryPhase(mangaId)
+                        }
+
                         override suspend fun getChapterByMangaId(
                             mangaId: Long,
                             applyScanlatorFilter: Boolean,
@@ -172,7 +196,20 @@ class AndroidReaderCatalogPreparationWiringTest {
                             assertEquals(manga.id, mangaId)
                             return localChapters
                         }
+
+                        override suspend fun syncDirectory(
+                            request: tachiyomi.domain.chapter.service.ChapterDirectoryCommit,
+                        ): tachiyomi.domain.chapter.service.ChapterDirectoryResult {
+                            commits += request
+                            return storage.chapters.syncDirectory(request)
+                        }
                     }
+                    val sync = SyncChaptersWithSource(
+                        downloads, mockk(relaxed = true), detailChapterReader,
+                        ShouldUpdateDbChapter(), storage.updateManga,
+                        UpdateChapter(storage.chapters), storage.getChapters,
+                        GetExcludedScanlators(storage.handler), preferences,
+                    )
                     val detail = async(start = CoroutineStart.UNDISPATCHED) {
                         storage.updateManga.awaitFromRemote(
                             manga, source, false, true,
@@ -180,29 +217,26 @@ class AndroidReaderCatalogPreparationWiringTest {
                             coverCache = mockk(
                                 relaxed = true,
                             ),
-                            libraryPreferences = mockk(relaxed = true), downloadManager = mockk(relaxed = true),
+                            libraryPreferences = preferences, downloadManager = downloads,
                         )
                     }
                     release.complete(Unit)
                     detail.await()
                     assertEquals(1, reader.await()?.size)
-                    io.mockk.coVerify(exactly = 1) {
-                        sync.await(
-                            any(),
-                            match {
-                                it.id == manga.id &&
-                                    it.source == manga.source &&
-                                    it.url == manga.url
-                            },
-                            source,
-                            false,
-                            0L to 0L,
-                        )
-                    }
+                    val committed = commits.single()
+                    assertEquals(manga.id, committed.mangaId)
+                    assertEquals(manga.id, committed.mangaMetadata?.id)
+                    assertTrue(committed.complete)
+                    assertEquals(72L, committed.effects?.sourceId)
+                    assertEquals(manga.url, committed.effects?.mangaUrl)
+                    assertEquals(listOf("/one"), committed.source.map { it.chapter.url })
+                    assertEquals(null, storage.chapters.pendingDirectoryPhase(manga.id))
                     assertEquals(1, requests.get())
                 } finally {
-                    release.complete(Unit)
-                    reader.cancel()
+                    withContext(NonCancellable) {
+                        release.complete(Unit)
+                        reader.cancelAndJoin()
+                    }
                 }
             }
         } finally {

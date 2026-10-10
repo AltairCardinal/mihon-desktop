@@ -150,9 +150,19 @@ abstract class SyncPanelLifecycleContract {
                 fixture.existing("")
                 fixture.authorize()
                 fixture.begin()
-                withTimeout(5_000) {
-                    fixture.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE }
-                    observer.active.first { it == 4 }
+                try {
+                    withTimeout(5_000) {
+                        fixture.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE }
+                        // Completed setup also observes its selected persistent run.
+                        observer.active.first { it == 5 }
+                    }
+                } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
+                    val state = fixture.panel.state.value
+                    throw AssertionError(
+                        "setup did not complete: step=${state.setupStep}, busy=${state.setupBusy}, " +
+                            "problem=${state.setupProblem}, run=${state.run?.state}, listeners=${observer.active.value}",
+                        error,
+                    )
                 }
                 storage.favorite("/accepted-after-setup")
                 val entered = CompletableDeferred<Unit>()

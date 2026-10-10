@@ -12,9 +12,11 @@ import io.mockk.just
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -62,12 +64,14 @@ class UpdateMangaCreatorArchiveIntegrationTest {
             coEvery { update(any()) } returns true
         }
         val chapters = mockk<ChapterRepository>(relaxed = true) {
+            coEvery { pendingDirectoryPhase(manga.id) } returns null
             coEvery { getChapterByMangaId(manga.id) } coAnswers {
                 detailEntered.complete(Unit)
                 emptyList()
             }
         }
         val sync = mockk<eu.kanade.domain.chapter.interactor.SyncChaptersWithSource>(relaxed = true)
+        coEvery { sync.await(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns emptyList()
         val updater = UpdateManga(repository, FetchInterval(mockk<GetChaptersByMangaId>()))
         val reader = async(start = CoroutineStart.UNDISPATCHED) {
             tachiyomi.domain.source.service.SourceMangaUpdateService().awaitSharedCatalog(
@@ -82,7 +86,10 @@ class UpdateMangaCreatorArchiveIntegrationTest {
             updater.awaitFromRemote(
                 manga, source, fetchDetails = false, fetchChapters = true,
                 chapterRepository = chapters, syncChaptersWithSource = sync,
-                coverCache = mockk(relaxed = true), libraryPreferences = mockk(relaxed = true),
+                coverCache = mockk(relaxed = true),
+                libraryPreferences = tachiyomi.domain.library.service.LibraryPreferences(
+                    tachiyomi.core.common.preference.InMemoryPreferenceStore(),
+                ),
                 downloadManager = mockk(relaxed = true),
             )
         }
@@ -92,11 +99,23 @@ class UpdateMangaCreatorArchiveIntegrationTest {
             release.complete(Unit)
             reader.await()
             detail.await()
-            coVerify(exactly = 1) { sync.await(listOf(remoteChapter), manga, source, false, 0L to 0L) }
+            coVerify(exactly = 1) {
+                sync.await(
+                    listOf(remoteChapter), manga, source, false, 0L to 0L,
+                    mangaMetadata = match { it?.id == manga.id && it.memo == remote.memo },
+                    chapterListComplete = true,
+                    effects = match {
+                        it?.sourceId == manga.source && it.mangaUrl == manga.url && it.origin == "BROWSE"
+                    },
+                    observe = any(),
+                )
+            }
         } finally {
-            release.complete(Unit)
-            reader.cancelAndJoin()
-            detail.cancelAndJoin()
+            withContext(NonCancellable) {
+                release.complete(Unit)
+                reader.cancelAndJoin()
+                detail.cancelAndJoin()
+            }
         }
     }
 

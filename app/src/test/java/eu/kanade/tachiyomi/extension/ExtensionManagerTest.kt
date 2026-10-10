@@ -1241,6 +1241,7 @@ class ExtensionManagerTest {
         val manager = manager(
             initial = listOf(LoadResult.Success(stale)),
             available = listOf(available()),
+            scope = backgroundScope,
         )
         manager.isInitialized.await { it }
 
@@ -1257,6 +1258,9 @@ class ExtensionManagerTest {
         trust: TrustExtension = mockk(relaxed = true),
         loader: suspend (Context, String) -> LoadResult = { _, _ -> LoadResult.Error },
         receiver: (ExtensionInstallReceiver.Listener) -> Unit = {},
+        scope: kotlinx.coroutines.CoroutineScope = kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob(),
+        ),
     ) = ExtensionManager(
         context = mockk(relaxed = true),
         preferences = preferences(),
@@ -1267,6 +1271,7 @@ class ExtensionManagerTest {
         catalogFailuresProvider = { failures },
         installerFactory = { installer },
         installReceiverRegistrar = receiver,
+        scope = scope,
     )
 
     private fun preferences() = mockk<SourcePreferences>(relaxed = true) {

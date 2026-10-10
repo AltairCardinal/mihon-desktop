@@ -293,7 +293,7 @@ abstract class SyncInboxStorageContract {
                 storage.driver.execute(null, "DROP TABLE sync_repair_failures", 0)
                 storage.driver.execute(null, "PRAGMA user_version = 42", 0)
                 DatabaseMigration.migrateAtomically(storage.driver, 42, Database.Schema.version)
-                assertEquals(43L, Database.Schema.version)
+                assertEquals(44L, Database.Schema.version)
                 assertEquals(
                     2L,
                     SyncDataRepairService(storage.handler, storage.inbox, storage.projector)

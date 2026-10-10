@@ -75,11 +75,14 @@ internal class SyncSpaceSwitchFixture(val storage: SyncRuntimeStorageContract.St
                     if (path.startsWith("/repos/${repository.fullName}/")) return delegate.dispatch(request)
                 }
                 val target = targets.values.firstOrNull {
-                    path == "/repos/${it.repository.fullName}" || path.startsWith("/repos/${it.repository.fullName}/")
+                    path == "/repos/${it.repository.fullName}" || path.startsWith(
+                        "/repos/${it.repository.fullName}/",
+                    ) ||
+                        (request.method == "GET" && path == "/repositories/${it.id}")
                 }
                 if (target != null) {
                     if (target.id in unavailableTargets) return MockResponse(code = 404, body = "{}")
-                    return if (path == "/repos/${target.repository.fullName}") {
+                    return if (path == "/repos/${target.repository.fullName}" || path == "/repositories/${target.id}") {
                         MockResponse(code = 200, body = repositoryJson(target.id, target.repository, target.git))
                     } else {
                         target.git.server.dispatcher.dispatch(request)
