@@ -244,3 +244,61 @@ Android 执行 `python scripts/build-android.py candidate --offline`，内部协
 体验步骤：Windows 退出旧版后打开上述 EXE；Android 自行安装上述同签名候选。两端进入阅读器的双页模式，选择封面或尾部孤页，双击/捏合放大后向另一半拖动，应能跨原槽位；复位回到原页侧，恢复正常翻页。普通单页、FULL 宽页沿用既有行为。
 
 预研边界：未做长期帧时间、最慢帧、解码任务峰值和内存对照，未覆盖不同实体设备、厂商系统或 Release APK 的运行/升级验收。首次采样修复证明减少了不必要的细档请求，不等于已经量化整机性能收益。本批保护配对、缓存和资源生命周期，仍需用户体验反馈与上述性能验证才能据此判断稳定发布就绪。
+
+## 用户验收后的正式开发与主干收口（2026-10-11–12）
+
+用户确认上述双端体验验收通过，并要求正式开发、测试通过后合并主干。本批从 `e32e73ee63d182eedae4e8592c0e9bf75dcdde98` 继续，主干基线为 `027ca888d24ff94a327eaf61963cbb7d8b274aa9`。复用两位平台实施者，主代理串行运行验证并独立审查实际代码、红因、输入与资源接线；没有新增代理、全量测试或发布矩阵。
+
+### 正式加固与结论
+
+整视口相机、半槽初始 Fit、原生高清解码和缓存复用方案保持。此次仅修复测试证实的两个边界：
+
+- Windows 原生输入取消产生的已消费释放，原先仍会记录为双击候选，紧随其后的拖动可能误复位。输入结束时清除该候选，正常双击和翻页逻辑保持。真实事件覆盖普通单页、双页及 Mouse/Touch。
+- Android 双页 holder 卸载原先只释放呈现记录、取消绑定任务，没有回收左右原生图片。现在沿用普通单页的 `recycle()` 路径，释放 decoder、输入流和瓦片；重新挂载保留 View，重新绑定有效像素。既有 Pager 单击菜单/导航接线本来有效，无需另造手势处理。
+
+本批超过 400 行主要来自两端真实组件和原生窗口回归、有限次数的资源与帧观察；产品变化限于上述输入收尾与图片释放。没有改配对、持久化、下载、缓存策略、解码并发或依赖。主代理复核共享输入的正常/取消路径、Android 代次失效与取消/回收顺序，并核对测试能在原实现失败；未发现剩余相关阻塞。
+
+### 红绿、重构与影响范围验证
+
+所有 Gradle 经协调器串行执行，离线、单 worker。Android 继续精确 class/method 过滤、1 GiB test heap、单 fork；格式检查只覆盖本批修改文件。
+
+| 协调器 key | 结果及有效范围 |
+| --- | --- |
+| `zoom-formal-android-detach-red` | 夹具重复挂载导致已有 parent，未到产品断言，不计正确红测 |
+| `zoom-formal-android-detach-red2` | 正确红测：真实 Activity 中卸载 holder 后原 Bitmap 未回收；1 项失败，57 秒 |
+| `zoom-formal-android-detach-green` | 同一方法 1/1 通过，45 秒；再次挂载绘制成功，新增用例无 JNI/后台任务异常 |
+| `zoom-formal-android-focused` | 32/32 通过：Viewport 11、holder 接线 16、方向接线 5；3 个修改文件 Spotless/ktlint、Debug 和 AndroidTest 构建通过，2 分 35 秒 |
+| `zoom-formal-desktop-hardening` | 3 项中取消后卸载恢复、缩放中 resize 通过；循环尚未进入时，夹具误把反向返回 `[1,2]` 的当前页预期为 1，实际既有语义为 2 |
+| `zoom-formal-desktop-cycles` | 测试缺少内部 Compose API 的局部 opt-in，编译失败；不计行为红测 |
+| `zoom-formal-desktop-cycles2` | 四轮资源循环通过；原生取消后连续拖动的偏移预期 `[-30,-60,-90,-120]`，实际全 0，形成正确红测；39 秒 |
+| `zoom-formal-desktop-cancel-green` | 原取消方法保持不变，最小修复后 1/1 通过，34 秒 |
+| `zoom-formal-desktop-refactor` | 受影响真实组件类 28/28 通过，2 个修改文件 Spotless/ktlint 通过，45 秒；包括正常/取消/卸载的 Mouse/Touch 输入、跨槽像素与右键、触点变化、迟到伙伴、曝光、反馈、窗口变化和资源循环 |
+
+日志及独立保存的 XML 位于本机 `.gradle-coordinator/` 对应 key，Android 最终 XML 位于 `zoom-formal-android-focused-results/`。这是当前影响范围的验证，不是完整模块或仓库全量通过。Android 旧的宿主 bitmap 夹具仍不能替代设备 JNI 验证；实际随包 decoder 由下述原生循环覆盖。
+
+此前配对断言已在真实主干工作树、未修改的 `027ca888` 上单独运行：`zoom-formal-main-pairing-baseline`，26 秒，同样在 `DesktopReaderProductRegressionTest.manual boundary removes conflicting automatic edge and retains unrelated edge` 第 40 行失败。其调用链及相关生产/helper 文件与本次缩放变更无差异。本批保留该已证实的主干既有失败，不改变配对语义，也不把它算作本次测试通过。
+
+### 有界稳定性与帧观察
+
+Windows 使用真实 `ReaderContent` / ComposeScene / Skia 图片管线，以原输入入口做 4 轮 pinch、Mouse/Touch 连续拖动、双击复位和快速往返翻页。暖机后整个循环读取与解码均保持 6 次、holder 峰值 6，测试图片驻留/固定内存保持 36,864 bytes；关闭后缓存、租约、holder、驻留/固定/在途字节均归零，原生图片释放数等于解码数。
+
+最终重构复验的离屏 `scene.render()` 记录：冷阶段 370 次，p95 3.383 ms、max 9.332 ms；暖阶段 656 次，p95 2.574 ms、max 6.477 ms。首次循环记录分别为冷 p95 4.600 / max 338.208 ms、暖 p95 2.709 / max 6.306 ms，原始结果保留，未删异常值。这些是小型合成图片的离屏渲染观察，排除了夹具 sleep，不包含实际 Windows GPU 呈现、屏幕帧间隔或真实大图解码性能；按帧采样的在途峰值 0 也不代表没有执行过任务。
+
+Android 沿用专属 `mihon-zoom-preview` AVD（API 36、x86_64、1536 MiB、2 核、SwiftShader）。启动前检查空闲内存，核对 AVD、宿主 `.dev`、vc72 与原 Debug 证书；实际安装 APK SHA-256 与本轮文件一致。实体设备未操作。此次仅更新隔离开发宿主，不安装正式 Release 或改变用户数据。
+
+原生新方法 `SharedDualPageSingleGestureNativeTest#repeatedGesturesKeepTapNavigationAndReleaseNativeResources` 通过真实窗口、原 HTTP/loader、SSIV、随包 JNI decoder 和既有 Pager 点按执行：4 轮捏合细化、取消拖动、缩放时菜单开关、双击复位，随后左右点按翻页/返回并退出。确认原 image/native/decoder/provider 在手势和相邻翻页中复用，不重新请求封面；退出后 decoder/provider 清空，观察过的 17 张瓦片均回收，前台原生任务归零。
+
+首跑在 `fixture.cold()`、尚未进入场景前失败。专属旧模拟器中存在 5 个零字节 `.0` 文件，其 key 均不在 journal；`ChapterCache.clear()` 只按 journal 删除，因此夹具的物理清空断言失败。已保存目录/journal 证据，在再次核对 AVD、零长度及无索引后，仅删除这 5 个测试空孤儿；没有修改产品缓存、夹具断言或其他数据。其产生原因未确认，不将其归因于本次缩放改动。
+
+原用例重跑 `zoom-formal-android-native-cycles2.log` **1/1 通过，19.683 秒**。真实 Window FrameMetrics：340 帧，p50 19.698 ms、p95 37.778 ms、max 201.842 ms，丢失的指标报告 0。原生产 executor 的观察包装记录提交 16 个任务、排队加运行的未完成任务峰值 4、结束 0；包装在 finally 恢复。PSS 起始 358,431 KiB，轮末采样峰值 358,431 KiB，退出后 352,493 KiB；不是连续采样的全局峰值。此软件模拟器存在超过帧预算的样本，不能据此宣称实体设备帧率达标，也没有修复前后同机硬件性能对照。循环完成后模拟器同步并正常关闭。
+
+自动化实际使用的内部构建产物（不作为新的正式交付候选）：
+
+- [Android Debug 验收宿主](D:/Codex/worktrees/b7b3/mihon/app/build/outputs/apk/debug/app-universal-debug.apk)，SHA-256 `3779a61582edffe30d01c91bca7121a47f8586a10b1fea74e2ce40eff07e9548`。
+- [Android instrumentation 测试包](D:/Codex/worktrees/b7b3/mihon/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk)，SHA-256 `55070c3da02a5c96dc2f5526738fe091818b79dcb804937ff31da3812c37544a`。
+
+### 合并与交付边界
+
+本批交付为正式实现、回归证据及本地主干合并，不另分配正式版本或发布安装包。前节体验 EXE/APK 对应已验收的预研源码，保留其真实版本和来源；本轮两项加固包含在新的源码提交中，不能将旧包标为该新提交的构建。用户体验验收与此次自动化共同支持本功能合入主干，不表示完整稳定发布矩阵、长期压力或不同实体硬件性能已通过。
+
+合并前保护两工作树既有未跟踪 `docs/human/`，仅暂存本任务文件。Git fetch 已核对远端；本地主干有既有未推送提交，本批合并仅针对本地 `main`，不擅自推送无关历史。最终提交和主干包含关系由本轮完成报告记录。

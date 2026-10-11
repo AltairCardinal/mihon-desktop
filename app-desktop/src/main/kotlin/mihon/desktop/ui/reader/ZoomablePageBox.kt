@@ -137,10 +137,13 @@ internal fun Modifier.readerZoomInput(
                     lastPanPosition = pressed.first().position
                 }
                 if (pressed.isEmpty()) {
-                    if (!moved && !resetTap && System.currentTimeMillis() - downTime < 400) {
+                    // Native cancellation releases are consumed; they cannot seed a later double tap.
+                    val consumed = event.changes.any { it.isConsumed }
+                    if (consumed) lastTapTime = 0L
+                    if (!consumed && !moved && !resetTap && System.currentTimeMillis() - downTime < 400) {
                         lastTapTime = System.currentTimeMillis()
                         lastTapPosition = event.changes.first().position
-                        if (gestureZoom.scale <= 1f && event.changes.none { it.isConsumed }) {
+                        if (gestureZoom.scale <= 1f) {
                             latestTap?.invoke(lastTapPosition, size.width.toFloat(), size.height.toFloat())
                         }
                     }

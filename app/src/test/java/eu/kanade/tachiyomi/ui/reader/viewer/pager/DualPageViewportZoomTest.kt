@@ -119,6 +119,55 @@ class DualPageViewportZoomTest {
     }
 
     @Test
+    fun detachingHalfSlotReleasesNativePixelsAndRebindingCreatesFreshContent() = runTest {
+        var image: ReaderPageImageView? = null
+        mockkConstructor(Decoder::class)
+        try {
+            every { anyConstructed<Decoder>().init(any(), any()) } answers { Point(400, 800) }
+            every { anyConstructed<Decoder>().decodeRegion(any(), any()) } answers {
+                val region = firstArg<Rect>()
+                val sample = secondArg<Int>()
+                Bitmap.createBitmap(
+                    (region.width() + sample - 1) / sample,
+                    (region.height() + sample - 1) / sample,
+                    Bitmap.Config.ARGB_8888,
+                ).apply { eraseColor(Color.RED) }
+            }
+            every { anyConstructed<Decoder>().isReady() } returns true
+            every { anyConstructed<Decoder>().recycle() } answers { Unit }
+            // subject() already mounts through the real ComponentActivity window lifecycle.
+            val subject = subject(ReaderPortraitSingleSlot.LEFT)
+            image = subject.image
+            awaitNativeCodecTasks()
+            val original = ReflectionHelpers.getField<Bitmap>(subject.native, "bitmap")
+            val parent = subject.holder.parent as ViewGroup
+            assertTrue("The resource must belong to an attached production holder", subject.holder.isAttachedToWindow)
+
+            parent.removeView(subject.holder)
+
+            assertTrue("Leaving the window must release the original native bitmap", original.isRecycled)
+            assertEquals("A detached native image must release its source dimensions", 0, subject.native.sWidth)
+
+            parent.addView(subject.holder)
+            load(subject.holder, subject.pages.first(), "CENTER")
+            paintReaderImage(subject.image, subject.encoded)
+            invokeFixture("measure", subject.holder, 1440, 3120)
+            settle(subject.holder)
+            assertSame(subject.native, subject.image.getChildAt(0))
+            val rebound = ReflectionHelpers.getField<Bitmap>(subject.native, "bitmap")
+            assertTrue("Rebinding must own a fresh live bitmap", rebound !== original && !rebound.isRecycled)
+            assertTrue("The reattached production image must paint again", pixels(subject.holder).width() > 0)
+        } finally {
+            image?.recycle()
+            try {
+                awaitNativeCodecTasks()
+            } finally {
+                unmockkConstructor(Decoder::class)
+            }
+        }
+    }
+
+    @Test
     fun nativeViewportKeepsLockedFitAndIncreasesSamplingDetail() = runTest {
         val subject = subject(ReaderPortraitSingleSlot.LEFT, 1600, 3200)
         assertEquals(

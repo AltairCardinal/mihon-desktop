@@ -285,6 +285,8 @@ class DualPagerPageHolder(
         contentReloadJobs.clear()
         pageLoadJobs.values.forEach(Job::cancel)
         pageLoadJobs.clear()
+        leftHolder?.recycle()
+        rightHolder?.recycle()
     }
 
     override fun onAttachedToWindow() {

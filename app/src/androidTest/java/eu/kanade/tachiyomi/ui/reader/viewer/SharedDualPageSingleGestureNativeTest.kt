@@ -3,19 +3,196 @@ package eu.kanade.tachiyomi.ui.reader.viewer
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.Animatable
+import android.os.Bundle
+import android.os.Debug
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
+import android.view.FrameMetrics
 import android.view.MotionEvent
+import android.view.Window
+import androidx.test.platform.app.InstrumentationRegistry
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import eu.kanade.tachiyomi.ui.reader.HostReaderArtFixture
+import eu.kanade.tachiyomi.ui.reader.actualArtReaderState
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DisplayPage
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagerPageHolder
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
+import java.util.Collections
+import java.util.IdentityHashMap
+import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 class SharedDualPageSingleGestureNativeTest {
+    @Test
+    fun repeatedGesturesKeepTapNavigationAndReleaseNativeResources() {
+        HostReaderArtFixture("copymanga").use { fixture ->
+            val encoded = HostReaderArtFixture.png(1600, 3200, Color.RED)
+            fixture.images.set(List(22) { encoded })
+            fixture.response.set(200 to fixture.successWithImageIdentity("gesture_loop_${SystemClock.uptimeMillis()}"))
+            fixture.configure(mode = 6)
+            fixture.cold()
+            fixture.launch(initialPage = 0)
+            fixture.awaitStable("The original cover must paint before repeated input") {
+                fixture.containsColor(Color.RED)
+            }
+            val before = fixture.observeSlot(Color.RED)
+            val image = before.mount as ReaderPageImageView
+            lateinit var native: SubsamplingScaleImageView
+            lateinit var decoder: Any
+            lateinit var provider: Any
+            val imageRequests = fixture.imagePageRequests.get(0)
+            val submitted = AtomicInteger()
+            val active = AtomicInteger()
+            val peak = AtomicInteger()
+            val durations = Collections.synchronizedList(mutableListOf<Long>())
+            val dropped = AtomicInteger()
+            val bitmaps = Collections.newSetFromMap(IdentityHashMap<Bitmap, Boolean>())
+            val memoryBefore = Debug.getPss()
+            var peakPss = memoryBefore
+            lateinit var window: Window
+            lateinit var originalExecutor: Executor
+            val metrics = Window.OnFrameMetricsAvailableListener { _, frame, lost ->
+                frame.getMetric(FrameMetrics.TOTAL_DURATION).takeIf { it >= 0 }?.let(durations::add)
+                dropped.addAndGet(lost)
+            }
+            fixture.onReaderMain { activity ->
+                native = image.getChildAt(0) as SubsamplingScaleImageView
+                decoder = requireNotNull(nativeField(native, "decoder"))
+                provider = requireNotNull(nativeField(native, "provider"))
+                window = activity.window
+                window.addOnFrameMetricsAvailableListener(metrics, Handler(Looper.getMainLooper()))
+                activity.hideMenu()
+                originalExecutor = nativeField(native, "executor") as Executor
+                // Observe only this native view's subsequent tasks, retaining the production executor.
+                native.setExecutor { task ->
+                    submitted.incrementAndGet()
+                    val count = active.incrementAndGet()
+                    peak.updateAndGet { maxOf(it, count) }
+                    val completed = AtomicBoolean()
+                    fun complete() {
+                        if (completed.compareAndSet(false, true)) active.decrementAndGet()
+                    }
+                    try {
+                        originalExecutor.execute {
+                            try {
+                                task.run()
+                            } finally {
+                                complete()
+                            }
+                        }
+                    } catch (failure: Throwable) {
+                        complete()
+                        throw failure
+                    }
+                }
+            }
+            try {
+                fixture.awaitStable("The existing reader menu must start hidden") {
+                    var hidden = false
+                    fixture.onReaderMain { hidden = !actualArtReaderState(it).menuVisible }
+                    hidden
+                }
+                repeat(4) {
+                    pinch(fixture, before.content.exactCenterX(), before.content.exactCenterY(), image.height / 6f, 4f)
+                    fixture.awaitStable("A repeated pinch must refine actual native tiles") {
+                        var ready = false
+                        fixture.onReaderMain {
+                            ready = image.viewportScale > 2f && decodedTiles(native).any { it.first == 1 }
+                        }
+                        ready
+                    }
+                    val down = SystemClock.uptimeMillis()
+                    val x = image.width / 2f
+                    val y = image.height / 2f
+                    fixture.touchWindow(MotionEvent.ACTION_DOWN, down, down, x, y)
+                    fixture.touchWindow(MotionEvent.ACTION_MOVE, down, down + 30, x + 80, y)
+                    fixture.touchWindow(MotionEvent.ACTION_CANCEL, down, down + 60, x + 80, y)
+                    for (visible in listOf(true, false)) {
+                        singleTap(fixture, x, y)
+                        fixture.awaitStable("A zoomed single tap must toggle the existing menu exactly once") {
+                            var matches = false
+                            fixture.onReaderMain { matches = actualArtReaderState(it).menuVisible == visible }
+                            matches
+                        }
+                    }
+                    fixture.onReaderMain {
+                        assertSame(native, image.getChildAt(0))
+                        assertSame(decoder, nativeField(native, "decoder"))
+                        assertSame(provider, nativeField(native, "provider"))
+                        bitmaps += decodedTiles(native).map { it.second }
+                    }
+                    assertEquals(
+                        "Gestures must not reopen the original image",
+                        imageRequests,
+                        fixture.imagePageRequests.get(0),
+                    )
+                    assertEquals("Pinch, cancelled drag and menu taps must not navigate", 0, fixture.logicalPageIndex())
+                    doubleTap(fixture, x, y)
+                    fixture.awaitStable("A following double tap must still reset the shared viewport") {
+                        var reset = false
+                        fixture.onReaderMain { reset = image.viewportScale == 1f }
+                        reset
+                    }
+                    peakPss = maxOf(peakPss, Debug.getPss())
+                }
+                singleTap(fixture, image.width * 0.1f, image.height / 2f)
+                fixture.awaitStable("The existing left tap region must navigate to the next source page") {
+                    fixture.logicalPageIndex()?.let { it > 0 } == true
+                }
+                singleTap(fixture, image.width * 0.9f, image.height / 2f)
+                fixture.awaitStable("The existing right tap region must return to the cover") {
+                    fixture.logicalPageIndex() == 0
+                }
+                assertSame(
+                    "Returning within the pager retains the original mounted image",
+                    image,
+                    fixture.observeSlot(Color.RED).mount,
+                )
+                fixture.onReaderMain {
+                    assertSame(decoder, nativeField(native, "decoder"))
+                    bitmaps += decodedTiles(native).map { it.second }
+                }
+            } finally {
+                fixture.onReaderMain {
+                    native.setExecutor(originalExecutor)
+                    window.removeOnFrameMetricsAvailableListener(metrics)
+                }
+            }
+            fixture.finish()
+            fixture.awaitStable("All accepted native work must exit after the reader closes") {
+                active.get() == 0 && ReaderPageImageView.foregroundWork.value == 0
+            }
+            assertNull("Closing the reader releases its original decoder", nativeField(native, "decoder"))
+            assertNull("Closing the reader releases its original input provider", nativeField(native, "provider"))
+            assertTrue(
+                "Closing the reader recycles every observed native tile",
+                bitmaps.isNotEmpty() && bitmaps.all { it.isRecycled },
+            )
+            assertTrue("Repeated zoom must execute actual region decode tasks", submitted.get() > 0)
+            val frames = synchronized(durations) { durations.sorted() }
+            assertTrue("Frame metrics must come from the actual reader Window", frames.isNotEmpty())
+            val evidence = "cycles=4 frames=${frames.size} p50Ns=${frames[frames.size / 2]} " +
+                "p95Ns=${frames[(frames.size - 1) * 95 / 100]} maxNs=${frames.last()} " +
+                "droppedMetricReports=${dropped.get()} nativeTasks=${submitted.get()} peakNativeTasks=${peak.get()} " +
+                "remainingNativeTasks=${ReaderPageImageView.foregroundWork.value} observedTiles=${bitmaps.size} " +
+                "pssBeforeKb=$memoryBefore observedPeakPssKb=$peakPss pssAfterKb=${Debug.getPss()} " +
+                "renderer=${android.os.Build.HARDWARE} scope=software-emulator-observation"
+            InstrumentationRegistry.getInstrumentation().sendStatus(
+                0,
+                Bundle().apply {
+                    putString("dualPageGestureMetrics", evidence)
+                },
+            )
+        }
+    }
+
     @Test
     fun halfSlotSingleZoomUsesTheFullNativeViewportAndKeepsItsOriginalImage() {
         HostReaderArtFixture("copymanga").use { fixture ->
@@ -292,5 +469,11 @@ class SharedDualPageSingleGestureNativeTest {
             fixture.touchWindow(MotionEvent.ACTION_DOWN, down, down, x, y)
             fixture.touchWindow(MotionEvent.ACTION_UP, down, down + 30, x, y)
         }
+    }
+
+    private fun singleTap(fixture: HostReaderArtFixture, x: Float, y: Float) {
+        val down = SystemClock.uptimeMillis()
+        fixture.touchWindow(MotionEvent.ACTION_DOWN, down, down, x, y)
+        fixture.touchWindow(MotionEvent.ACTION_UP, down, down + 30, x, y)
     }
 }

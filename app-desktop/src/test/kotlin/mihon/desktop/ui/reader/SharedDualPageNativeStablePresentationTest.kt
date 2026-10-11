@@ -24,6 +24,7 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.scene.ComposeScenePointer
+import androidx.compose.ui.scene.ComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.unit.dp
@@ -71,12 +72,164 @@ import java.util.prefs.Preferences
 import java.io.File
 import java.awt.image.BufferedImage
 import java.util.IdentityHashMap
+import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.roundToInt
 
 /** Pixels and reading callbacks come from the production Compose image/pager pipeline. */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class SharedDualPageNativeStablePresentationTest {
+    @Test
+    fun `hardening repeated zoom pan reset and rapid turns reuse bounded images and release on exit`() = runTest {
+        Fixture(this, measureFrames = true).use { fixture ->
+            fixture.partner.complete(Unit)
+            fixture.pump()
+            fixture.jump(0)
+            fixture.settle(60)
+            fixture.tapForward()
+            fixture.settle(60)
+            repeat(2) {
+                fixture.tapForward()
+                fixture.settle(60)
+            }
+            repeat(2) {
+                fixture.tapBackward()
+                fixture.settle(60)
+            }
+            // Reverse navigation names the last page of the preceding group: 5 -> 4 -> 2.
+            assertEquals(2, fixture.page)
+            assertEquals(setOf(1, 2), fixture.visibleSources())
+            val warm = fixture.resourceSnapshot()
+            val opens = fixture.sourceOpens.get()
+            val decodes = fixture.decodedImages.get()
+            val holders = fixture.imageHolderCount()
+            assertTrue(opens > 0 && decodes > 0)
+            assertEquals(0, warm.inFlightCount)
+            fixture.beginWarmMeasurements()
+            repeat(4) { cycle ->
+                val images = fixture.imageOwners(1)
+                fixture.pinchAndContinue()
+                assertEquals(ZoomState(scale = 2f, offsetX = 130f), fixture.zoomState)
+                val type = if (cycle % 2 == 0) PointerType.Mouse else PointerType.Touch
+                assertEquals(listOf(100f, 70f, 40f, 10f), fixture.mousePan(type))
+                assertSame(images.first, fixture.imageOwners(1).first)
+                assertSame(images.second, fixture.imageOwners(1).second)
+                fixture.doubleTap()
+                assertEquals(ZoomState(), fixture.zoomState)
+                fixture.tapForward()
+                fixture.tapForward()
+                fixture.settle(60)
+                assertEquals(5, fixture.page)
+                fixture.tapBackward()
+                fixture.tapBackward()
+                fixture.settle(60)
+                assertEquals(2, fixture.page)
+                assertEquals(setOf(1, 2), fixture.visibleSources())
+                val after = fixture.resourceSnapshot()
+                assertEquals(opens, fixture.sourceOpens.get(), "Warm native turns must not reopen source content")
+                assertEquals(decodes, fixture.decodedImages.get(), "Zoom and turns reuse decoded image resources")
+                assertEquals(warm.cache.entryCount, after.cache.entryCount)
+                assertEquals(warm.memory.residentBytes, after.memory.residentBytes)
+                assertEquals(warm.memory.pinnedBytes, after.memory.pinnedBytes)
+                assertEquals(0L, after.memory.inFlightBytes)
+                assertEquals(0, after.inFlightCount)
+                assertEquals(holders, fixture.imageHolderCount(), "Returning to the same viewport cannot grow holders")
+            }
+            fixture.printMeasurements()
+            fixture.close()
+            runCurrent()
+            val closed = fixture.resourceSnapshot()
+            assertTrue(closed.closed)
+            assertEquals(0, closed.inFlightCount)
+            assertEquals(0, closed.cache.entryCount)
+            assertEquals(0L, closed.memory.residentBytes)
+            assertEquals(0L, closed.memory.pinnedBytes)
+            assertEquals(0L, closed.memory.inFlightBytes)
+            assertEquals(0, fixture.contentLeaseCount())
+            assertEquals(0, fixture.imageHolderCount())
+            assertEquals(fixture.decodedImages.get(), fixture.releasedImages.get())
+        }
+    }
+
+    @Test
+    fun `hardening native pointer cancellation is neither a tap nor the first half of a double tap`() = runTest {
+        for (dual in listOf(false, true)) {
+            for (type in listOf(PointerType.Mouse, PointerType.Touch)) {
+                Fixture(this, dual = dual).use { fixture ->
+                    fixture.partner.complete(Unit)
+                    fixture.pump()
+                    fixture.pointer(PointerEventType.Press, 20f, type)
+                    fixture.cancelPointerInput()
+                    assertEquals(1, fixture.page, "A cancelled press cannot navigate: $dual $type")
+                    fixture.setZoom(ZoomState(scale = 2f))
+                    fixture.settle()
+                    fixture.pointer(PointerEventType.Press, 320f, type)
+                    fixture.cancelPointerInput()
+                    assertEquals(ZoomState(scale = 2f), fixture.zoomState)
+                    assertEquals(listOf(-30f, -60f, -90f, -120f), fixture.mousePan(type), "$dual $type")
+                    assertEquals(1, fixture.page)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `hardening ordinary and dual readers resume Mouse and Touch pan after gesture disposal`() = runTest {
+        for (dual in listOf(false, true)) {
+            for (type in listOf(PointerType.Mouse, PointerType.Touch)) {
+                Fixture(this, dual = dual).use { fixture ->
+                    fixture.partner.complete(Unit)
+                    fixture.pump()
+                    fixture.setZoom(ZoomState(scale = 2f))
+                    fixture.settle()
+                    fixture.pointer(PointerEventType.Press, 320f, type)
+                    fixture.pointer(PointerEventType.Move, 290f, type)
+                    assertEquals(ZoomState(scale = 2f, offsetX = -30f), fixture.zoomState, "$dual $type")
+                    fixture.mountReader(false)
+                    fixture.pointer(PointerEventType.Move, 260f, type)
+                    fixture.pointer(PointerEventType.Release, 260f, type)
+                    assertEquals(ZoomState(scale = 2f, offsetX = -30f), fixture.zoomState)
+                    fixture.mountReader(true)
+                    assertEquals(listOf(-60f, -90f, -120f, -150f), fixture.mousePan(type), "$dual $type")
+                    assertEquals(1, fixture.page, "A cancelled zoomed drag must not turn the page")
+                    fixture.doubleTap()
+                    assertEquals(ZoomState(), fixture.zoomState)
+                    fixture.tapForward()
+                    fixture.settle(60)
+                    assertEquals(if (dual) 3 else 2, fixture.page)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `hardening zoomed resize preserves images and input in ordinary and dual readers`() = runTest {
+        for (dual in listOf(false, true)) {
+            Fixture(this, dual = dual).use { fixture ->
+                fixture.partner.complete(Unit)
+                fixture.pump()
+                fixture.setZoom(ZoomState(scale = 2f, offsetX = -100f))
+                fixture.settle()
+                val before = fixture.imageOwners(1)
+                val bounds = fixture.redRectangle()
+                fixture.resize(360)
+                fixture.settle()
+                assertEquals(ZoomState(scale = 2f, offsetX = -100f), fixture.zoomState)
+                assertTrue(fixture.hasRedPixels())
+                assertSame(before.first, fixture.imageOwners(1).first)
+                assertSame(before.second, fixture.imageOwners(1).second)
+                fixture.resize(400)
+                fixture.settle()
+                assertEquals(bounds, fixture.redRectangle())
+                assertEquals(listOf(-130f, -160f, -190f, -220f), fixture.mousePan())
+                assertEquals(1, fixture.page)
+                fixture.doubleTap()
+                assertEquals(ZoomState(), fixture.zoomState)
+            }
+        }
+    }
+
     @Test
     fun `dual zoom right click on the crossed spine copies the visible page`() = runTest {
         for (initialPage in listOf(0, 1)) {
@@ -613,6 +766,7 @@ class SharedDualPageNativeStablePresentationTest {
         imageWidth: Int = 32,
         imageHeight: Int = 48,
         mode: ReadingMode = ReadingMode.RTL,
+        private val measureFrames: Boolean = false,
     ) : AutoCloseable {
         private val root = Preferences.userRoot().node("/mihon/native-stable/${System.nanoTime()}")
         private val store = DesktopPreferenceStore(root.node("store"))
@@ -622,6 +776,9 @@ class SharedDualPageNativeStablePresentationTest {
         val partner = CompletableDeferred<Unit>()
         val current = CompletableDeferred<Unit>()
         val retries = mutableListOf<Int>()
+        val sourceOpens = AtomicInteger()
+        val decodedImages = AtomicInteger()
+        val releasedImages = AtomicInteger()
         private val copiedColors = CopyOnWriteArrayList<Int>()
         private val menus = IdentityHashMap<ContextMenuState, List<ContextMenuItem>>()
         private val menuRepresentation = object : ContextMenuRepresentation {
@@ -643,7 +800,14 @@ class SharedDualPageNativeStablePresentationTest {
             onPageRetry = { retries += it.sourcePageIndex },
         )
         private val reporter = ReaderIoReporter(ReaderIoProbe.None, ReaderMonotonicClock { 0L })
-        private val content = DesktopReaderPageContentOwner(scope, { byteArrayOf(1) }, reporter)
+        private val content = DesktopReaderPageContentOwner(
+            scope,
+            {
+                sourceOpens.incrementAndGet()
+                byteArrayOf(1)
+            },
+            reporter,
+        )
         private val pipeline = DesktopReaderPageImagePipeline(
             scope,
             content,
@@ -655,6 +819,7 @@ class SharedDualPageNativeStablePresentationTest {
                 val bitmapWidth = if (width > 512) 32 else width
                 val bitmapHeight = (imageHeight.toDouble() * bitmapWidth / width).roundToInt()
                 val bitmap = Bitmap().apply { allocN32Pixels(bitmapWidth, bitmapHeight) }
+                decodedImages.incrementAndGet()
                 Canvas(bitmap).use {
                     it.clear(
                         when (key.pageIndex) {
@@ -676,7 +841,10 @@ class SharedDualPageNativeStablePresentationTest {
                     imageHeight,
                     bitmapWidth * bitmapHeight.toLong() * 4,
                     bitmapWidth != width,
-                    disposer = bitmap::close,
+                    disposer = {
+                        releasedImages.incrementAndGet()
+                        bitmap.close()
+                    },
                 )
             },
         )
@@ -691,6 +859,17 @@ class SharedDualPageNativeStablePresentationTest {
             )
         private val scene = ImageComposeScene(canvasWidth, canvasHeight, coroutineContext = scope.coroutineContext) {}
         private var viewportWidth by mutableStateOf(canvasWidth.dp)
+        private var readerMounted by mutableStateOf(true)
+        private var closed = false
+        private class FrameMeasurements {
+            val renderNanos = mutableListOf<Long>()
+            var peakResidentBytes = 0L
+            var peakPinnedBytes = 0L
+            var peakInFlight = 0
+            var peakHolders = 0
+        }
+        private val measurements = linkedMapOf("cold" to FrameMeasurements(), "warm" to FrameMeasurements())
+        private var measurementPhase = "cold"
         private var time = 0L
         val page get() = model.state.value.currentPage
         val zoomState get() = model.state.value.zoomState
@@ -737,12 +916,32 @@ class SharedDualPageNativeStablePresentationTest {
             frame()
             scope.runCurrent()
         }
-        fun mousePan(): List<Float> {
+        fun pointer(event: PointerEventType, x: Float, type: PointerType) {
+            scene.sendPointerEvent(
+                event,
+                Offset(x, 200f),
+                type = type,
+                button = if (type == PointerType.Mouse && event != PointerEventType.Move) PointerButton.Primary else null,
+            )
+            settle(2)
+        }
+        @OptIn(androidx.compose.ui.InternalComposeUiApi::class)
+        fun cancelPointerInput() {
+            // ImageComposeScene does not expose the native scene's cancellation entrypoint.
+            val field = scene.javaClass.getDeclaredField("scene").apply { isAccessible = true }
+            (field.get(scene) as ComposeScene).cancelPointerInput()
+            settle(2)
+        }
+        fun mountReader(mounted: Boolean) {
+            readerMounted = mounted
+            settle()
+        }
+        fun mousePan(type: PointerType = PointerType.Mouse): List<Float> {
             scene.sendPointerEvent(
                 PointerEventType.Press,
                 Offset(320f, 200f),
-                type = PointerType.Mouse,
-                button = PointerButton.Primary,
+                type = type,
+                button = if (type == PointerType.Mouse) PointerButton.Primary else null,
             )
             scope.runCurrent()
             val offsets = buildList {
@@ -750,7 +949,7 @@ class SharedDualPageNativeStablePresentationTest {
                     scene.sendPointerEvent(
                         PointerEventType.Move,
                         Offset(320f - (index + 1) * 30f, 200f),
-                        type = PointerType.Mouse,
+                        type = type,
                     )
                     settle(2)
                     add(zoomState.offsetX)
@@ -759,8 +958,8 @@ class SharedDualPageNativeStablePresentationTest {
             scene.sendPointerEvent(
                 PointerEventType.Release,
                 Offset(200f, 200f),
-                type = PointerType.Mouse,
-                button = PointerButton.Primary,
+                type = type,
+                button = if (type == PointerType.Mouse) PointerButton.Primary else null,
             )
             settle(20)
             return offsets
@@ -775,9 +974,16 @@ class SharedDualPageNativeStablePresentationTest {
                 holder to (holder.state.value as DesktopReaderPresentationImageState.Ready).asset
             }
         }
+        fun resourceSnapshot() = pipeline.snapshot()
+        fun contentLeaseCount() = content.snapshot().activeLeaseCounts.values.sum()
+        fun imageHolderCount(): Int {
+            val lockField = owner.javaClass.getDeclaredField("lock").apply { isAccessible = true }
+            val holdersField = owner.javaClass.getDeclaredField("holders").apply { isAccessible = true }
+            return synchronized(lockField.get(owner)) { (holdersField.get(owner) as Set<*>).size }
+        }
         fun crop() = model.setCropBordersPager(true)
-        fun resize() {
-            viewportWidth = 360.dp
+        fun resize(width: Int = 360) {
+            viewportWidth = width.dp
         }
         fun retry() = model.retryPage(model.state.value.session.activeChapter.pages[1].id)
         fun attempt(index: Int) = model.state.value.session.activeChapter.pages[index].attemptGeneration
@@ -865,7 +1071,7 @@ class SharedDualPageNativeStablePresentationTest {
                 ) {
                     val state by model.state.collectAsState()
                     Box(Modifier.requiredSize(viewportWidth, canvasHeight.dp)) {
-                        ReaderContent(state, model, scope, "", "", owner, null, {}, {})
+                        if (readerMounted) ReaderContent(state, model, scope, "", "", owner, null, {}, {})
                     }
                 }
             }
@@ -883,9 +1089,40 @@ class SharedDualPageNativeStablePresentationTest {
         }
         fun frame() {
             time += 16_000_000L
+            val before = if (measureFrames) System.nanoTime() else 0L
             scene.render(time).close()
+            if (measureFrames) {
+                val sample = measurements.getValue(measurementPhase)
+                sample.renderNanos += System.nanoTime() - before
+                val resources = pipeline.snapshot()
+                sample.peakResidentBytes = maxOf(sample.peakResidentBytes, resources.memory.residentBytes)
+                sample.peakPinnedBytes = maxOf(sample.peakPinnedBytes, resources.memory.pinnedBytes)
+                sample.peakInFlight = maxOf(sample.peakInFlight, resources.inFlightCount)
+                sample.peakHolders = maxOf(sample.peakHolders, imageHolderCount())
+            }
             // The production content/transform owners dispatch genuine I/O outside TestScope.
             Thread.sleep(5)
+        }
+        fun beginWarmMeasurements() {
+            measurementPhase = "warm"
+        }
+        fun printMeasurements() {
+            for ((phase, sample) in measurements) {
+                val sorted = sample.renderNanos.sorted()
+                assertTrue(sorted.isNotEmpty())
+                val p95 = sorted[((sorted.size - 1) * 0.95).roundToInt()] / 1_000_000.0
+                val max = sorted.last() / 1_000_000.0
+                println(
+                    String.format(
+                        Locale.ROOT,
+                        "OFFSCREEN_RENDER phase=%s frames=%d p95Ms=%.3f maxMs=%.3f " +
+                            "sampledPeakResidentBytes=%d sampledPeakPinnedBytes=%d " +
+                            "sampledPeakInFlight=%d sampledPeakHolders=%d sourceOpens=%d decodedImages=%d",
+                        phase, sorted.size, p95, max, sample.peakResidentBytes, sample.peakPinnedBytes,
+                        sample.peakInFlight, sample.peakHolders, sourceOpens.get(), decodedImages.get(),
+                    ),
+                )
+            }
         }
         private fun bounds(color: Int): Pair<Int, Int>? {
             time += 16_000_000L
@@ -903,6 +1140,11 @@ class SharedDualPageNativeStablePresentationTest {
         fun tapForward() {
             scene.sendPointerEvent(PointerEventType.Press, Offset(20f, 200f), button = PointerButton.Primary)
             scene.sendPointerEvent(PointerEventType.Release, Offset(20f, 200f), button = PointerButton.Primary)
+            scope.runCurrent()
+        }
+        fun tapBackward() {
+            scene.sendPointerEvent(PointerEventType.Press, Offset(380f, 200f), button = PointerButton.Primary)
+            scene.sendPointerEvent(PointerEventType.Release, Offset(380f, 200f), button = PointerButton.Primary)
             scope.runCurrent()
         }
         fun dragForward() {
@@ -979,6 +1221,8 @@ class SharedDualPageNativeStablePresentationTest {
             }
         }
         override fun close() {
+            if (closed) return
+            closed = true
             scene.close()
             owner.close()
             pipeline.close()
