@@ -61,6 +61,48 @@ class DualPageViewportZoomTest {
     private val fixture = DualPagerPageHolderLayoutTest()
     private val mounted = mutableListOf<DualPagerPageHolder>()
 
+    @Test
+    fun diagnosticFileReceivesRealLoadingAndDrawCallbacks() = runTest {
+        val directory = kotlin.io.path.createTempDirectory("reader-diagnostics").toFile()
+        val sink = eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnosticSink({ directory })
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.sink = sink
+        try {
+            val subject = subject(ReaderPortraitSingleSlot.LEFT)
+            settle(subject.holder)
+            val page = subject.pages.first()
+            page.status = Page.State.Queue
+            assertEquals(false, subject.image.beforeImageDraw?.invoke(400, 800))
+            invokeFixture("detach", subject.holder)
+            page.status = Page.State.Ready
+            load(subject.holder, page, "CENTER")
+            paintReaderImage(subject.image, subject.encoded)
+            settle(subject.holder)
+            sink.close()
+            val text = directory.listFiles()!!.joinToString { it.readText() }
+            for (event in listOf("read_start", "read_complete", "decode_start", "decode_ready", "drawn")) {
+                assertTrue("Missing production event $event: $text", text.contains("event=$event"))
+            }
+            assertTrue(text.contains("chapter=61011 sourceIndex=0"))
+            assertTrue(text.contains("reason=STALE_CALLBACK"))
+            assertTrue("The real dual viewer jump must reach the file", text.contains("event=jump "))
+            val holderEvents = text.lineSequence().filter {
+                it.contains("event=read_start ") || it.contains("event=drawn ") || it.contains("event=prepare ")
+            }.toList()
+            val holderIds = holderEvents.map { Regex("holder=(\\d+)").find(it)?.groupValues?.get(1) }
+            assertTrue("Loading and presentation must identify their holder", holderIds.all { it != null })
+            assertEquals("Rebinding must retain the same holder identity", 1, holderIds.distinct().size)
+            assertEquals(
+                "Repeated native frames must not flood the file",
+                2,
+                text.lineSequence().count { it.contains("event=drawn ") },
+            )
+        } finally {
+            eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.sink = null
+            sink.close()
+            directory.deleteRecursively()
+        }
+    }
+
     @Before
     fun setUp() = fixture.setUp()
 

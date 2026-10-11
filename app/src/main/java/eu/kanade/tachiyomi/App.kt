@@ -132,6 +132,7 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         }
 
         patchInjekt()
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.initialize(applicationContext)
         TelemetryConfig.init(applicationContext)
 
         GlobalExceptionHandler.initialize(applicationContext, CrashActivity::class.java)

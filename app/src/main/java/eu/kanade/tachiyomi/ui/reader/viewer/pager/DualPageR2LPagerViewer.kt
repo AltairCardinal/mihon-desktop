@@ -248,6 +248,7 @@ class DualPageR2LPagerViewer(
     }
 
     override fun moveToPage(page: ReaderPage) {
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record("jump", page, activity.diagnosticSession)
         adapter.selectPage(page, publishLayout = true)
         positionPage(page)
     }
@@ -343,6 +344,12 @@ class DualPageR2LPagerViewer(
 
     private fun navigateSource(forward: Boolean, animate: Boolean = config.usePageTransitions): Boolean {
         val chapter = (currentPage as? DisplayPage)?.firstPage?.chapter ?: return false
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record(
+            if (forward) "next" else "previous",
+            chapter.chapter.id,
+            adapter.session(chapter)?.location?.pageId?.sourcePageIndex,
+            session = activity.diagnosticSession,
+        )
         val wasReplacing = replacingPairing
         replacingPairing = true
         try {
@@ -422,6 +429,19 @@ class DualPageR2LPagerViewer(
             is ChapterTransition.Prev -> "previous"
             else -> "none"
         }
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record(
+            event,
+            chapter?.chapter?.id,
+            owner?.location?.pageId?.sourcePageIndex,
+            mapOf(
+                "position" to pager.currentItem,
+                "visible" to slot,
+                "sequence" to owner?.location?.sequence,
+                "gesture" to gestureInProgress,
+                "idle" to isIdle,
+            ),
+            activity.diagnosticSession,
+        )
         logcat(LogPriority.INFO) {
             "DualPageNavigation event=$event native=${pager.currentItem} slots=$slot " +
                 "source=${owner?.location?.pageId?.sourcePageIndex} sequence=${owner?.location?.sequence} " +

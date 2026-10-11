@@ -13,7 +13,7 @@ import mihon.domain.reader.session.ReaderPageId
 import tachiyomi.core.common.util.system.logcat
 
 /** Observes existing native facts and locks; never samples pixels or asks the owner for a new decision. */
-internal class DualPagePresentationDiagnostics {
+internal class DualPagePresentationDiagnostics(private val session: String, private val holder: Long) {
     private data class State(
         val context: Long,
         val serial: Long,
@@ -113,6 +113,27 @@ internal class DualPagePresentationDiagnostics {
                     "${adjacent?.sideHint ?: ReaderPageSideHint.UNKNOWN}"
             }
         }.joinToString(",")
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record(
+            event,
+            pageId.chapterId.value,
+            source,
+            mapOf(
+                "holder" to holder,
+                "sequence" to ticket.locationSequence, "ownerSequence" to state.ownerSequence,
+                "context" to state.context, "serial" to state.serial,
+                "observedHint" to state.observedHint, "submittedHint" to state.submittedHint,
+                "storedHint" to state.storedHint, "sample" to state.sampled,
+                "matching" to matching, "sideEnabled" to state.sideEnabled, "crop" to state.crop,
+                "bounded" to state.bounded, "animated" to animated, "actual" to actual,
+                "proposed" to proposed, "proposedBefore" to proposedBefore,
+                "reasonBefore" to beforeFrame?.unit?.singleReason,
+                "layoutRevision" to state.revision, "factState" to state.factState,
+                "reason" to frame?.unit?.singleReason, "lockedBefore" to lockedBefore,
+                "locked" to locked, "accepted" to accepted, "prepared" to prepared,
+                "outcome" to outcome, "neighbors" to neighbors,
+            ),
+            session,
+        )
         logcat(LogPriority.INFO) {
             "DualPagePresentation event=$event source=$source sequence=${ticket.locationSequence} " +
                 "ownerSequence=${state.ownerSequence} context=${state.context} serial=${state.serial} " +

@@ -111,7 +111,21 @@ class DualPagerPageHolder(
         val callbackIsCurrent: () -> Boolean,
     )
     private val decodeGenerations = mutableMapOf<ReaderPage, Long>()
-    private val presentationDiagnostics = DualPagePresentationDiagnostics()
+    private val diagnosticSession = viewer.activity.diagnosticSession
+    private val diagnosticHolder = eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.nextHolderId()
+    private val presentationDiagnostics = DualPagePresentationDiagnostics(diagnosticSession, diagnosticHolder)
+    private val diagnosticStates = mutableMapOf<Pair<Int, String>, List<Pair<String, Any?>>>()
+    private fun diagnose(event: String, page: ReaderPage, vararg fields: Pair<String, Any?>) {
+        val values = fields.filter { it.first != "elapsedMs" }
+        if (diagnosticStates.put(page.index to event, values) == values) return
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record(
+            event,
+            page,
+            diagnosticSession,
+            "holder" to diagnosticHolder,
+            *fields,
+        )
+    }
     internal var presentationScope: Pair<SharedDualPageSession, ReaderDualPageViewportTicket>? =
         viewer.capturePresentation(displayPage)
         private set
@@ -128,6 +142,15 @@ class DualPagerPageHolder(
         }
         presentationScope?.let(viewer::releasePresentation)
         presentationScope = next
+        displayPage.visiblePages.forEach { page ->
+            diagnose(
+                "ticket_bound",
+                page,
+                "serial" to next?.second?.frameId?.serial,
+                "sequence" to next?.second?.locationSequence,
+                "context" to next?.second?.frameId?.context,
+            )
+        }
         rightHolder?.invalidateImageDraw()
         leftHolder?.invalidateImageDraw()
     }
@@ -273,6 +296,7 @@ class DualPagerPageHolder(
     }
 
     override fun onDetachedFromWindow() {
+        displayPage.visiblePages.forEach { diagnose("holder_detach", it, "attachment" to attachmentGeneration) }
         zoomAnimator?.cancel()
         super.onDetachedFromWindow()
         attachmentGeneration++
@@ -386,6 +410,7 @@ class DualPagerPageHolder(
         }
         displayPage = replacement
         presentationDiagnostics.retainSources(replacement.visiblePages.map { it.index })
+        diagnosticStates.keys.removeAll { key -> replacement.visiblePages.none { it.index == key.first } }
         errorPage = errorPages.values.firstOrNull()
         loadPages()
         beginPresentation()
@@ -394,6 +419,15 @@ class DualPagerPageHolder(
 
     private suspend fun loadSinglePage(page: ReaderPage, side: Side) {
         val loader = page.chapter.pageLoader ?: return
+        val loaderType = when (loader) {
+            is eu.kanade.tachiyomi.ui.reader.loader.DownloadPageLoader -> "DOWNLOAD"
+            is eu.kanade.tachiyomi.ui.reader.loader.ArchivePageLoader -> "ARCHIVE"
+            is eu.kanade.tachiyomi.ui.reader.loader.DirectoryPageLoader -> "DIRECTORY"
+            is eu.kanade.tachiyomi.ui.reader.loader.EpubPageLoader -> "EPUB"
+            is eu.kanade.tachiyomi.ui.reader.loader.HttpPageLoader -> "HTTP"
+            else -> "OTHER"
+        }
+        diagnose("loader_start", page, "loader" to loaderType, "attachment" to attachmentGeneration)
         supervisorScope {
             launchIO { loader.loadPage(page) }
             launch {
@@ -414,6 +448,19 @@ class DualPagerPageHolder(
                 }
             }
             page.statusFlow.collectLatest { state ->
+                val diagnosticState = when (state) {
+                    Page.State.Queue -> "QUEUE"
+                    Page.State.LoadPage -> "LOAD_PAGE"
+                    Page.State.DownloadImage -> "DOWNLOAD_IMAGE"
+                    Page.State.Ready -> "READY"
+                    is Page.State.Error -> "ERROR"
+                }
+                diagnose(
+                    "page_state",
+                    page,
+                    "state" to diagnosticState,
+                    "error" to (state as? Page.State.Error)?.error?.javaClass?.simpleName,
+                )
                 when (state) {
                     Page.State.Queue -> {
                         clearRendered(page)
@@ -465,12 +512,21 @@ class DualPagerPageHolder(
     private suspend fun setImage(page: ReaderPage, side: Side) {
         if (retainsVisibleContent(page)) return
         val generation = clearRendered(page)
+        val started = System.nanoTime()
+        diagnose("header_start", page, "generation" to generation)
         val attachment = attachmentGeneration
         val encodedContent = page.encodedContentIdentity()
         withIOContext { page.publishHeaderFact() }
+        diagnose(
+            "header_complete",
+            page,
+            "generation" to generation,
+            "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
+        )
         if (attachment != attachmentGeneration || page.encodedContentIdentity() != encodedContent ||
             decodeGenerations[page] != generation
         ) {
+            diagnose("display_rejected", page, "reason" to "STALE_HEADER", "generation" to generation)
             return
         }
         beginPresentation()
@@ -479,6 +535,7 @@ class DualPagerPageHolder(
         val dimensionsRequest = viewer.adapter.captureDimensions(page)
         val streamFn = page.stream ?: return
         try {
+            diagnose("read_start", page, "generation" to generation)
             val (source, isAnimated, background) = withIOContext {
                 val source = streamFn().use { Buffer().readFrom(it) }
                 val isAnimated = ImageUtil.isAnimatedAndSupported(source)
@@ -489,16 +546,31 @@ class DualPagerPageHolder(
                 }
                 Triple(source, isAnimated, background)
             }
+            diagnose(
+                "read_complete",
+                page,
+                "generation" to generation,
+                "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
+            )
             withUIContext {
-                if (attachment != attachmentGeneration) return@withUIContext
+                if (attachment != attachmentGeneration) {
+                    diagnose("display_rejected", page, "reason" to "DETACHED_AFTER_READ", "generation" to generation)
+                    return@withUIContext
+                }
                 // Decode dimensions before displaying
                 val (rawWidth, rawHeight) = withIOContext {
                     ImageUtil.getImageDimensions(source.peek())
                 }
                 val (w, h) = orientation.orientedSize(rawWidth, rawHeight)
-                if (attachment != attachmentGeneration || page.contentIdentity() != content) return@withUIContext
+                if (attachment != attachmentGeneration || page.contentIdentity() != content) {
+                    diagnose("display_rejected", page, "reason" to "STALE_CONTENT", "generation" to generation)
+                    return@withUIContext
+                }
                 viewer.adapter.acceptDecodedDimensions(page, dimensionsRequest, w, h, orientation)
-                if (page !in displayPage.visiblePages || decodeGenerations[page] != generation) return@withUIContext
+                if (page !in displayPage.visiblePages || decodeGenerations[page] != generation) {
+                    diagnose("display_rejected", page, "reason" to "REBOUND", "generation" to generation)
+                    return@withUIContext
+                }
                 onDimensionsDecoded(side, w, h)
 
                 val config = ReaderPageImageView.Config(
@@ -530,6 +602,13 @@ class DualPagerPageHolder(
                         (page.contentIdentity() == content || retainsVisibleContent(page))
                 }
                 holder.onImageLoaded = {
+                    diagnose(
+                        "decode_ready",
+                        page,
+                        "generation" to generation,
+                        "accepted" to callbackIsCurrent(),
+                        "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
+                    )
                     if (callbackIsCurrent()) {
                         if (errorPages[side] === page) {
                             errorLayouts[side]?.root?.isVisible = false
@@ -541,9 +620,13 @@ class DualPagerPageHolder(
                 }
                 holder.beforeImageDraw = { drawWidth, drawHeight ->
                     if (!callbackIsCurrent()) {
+                        diagnose("display_rejected", page, "reason" to "STALE_CALLBACK", "generation" to generation)
                         false
                     } else {
                         if (presentationScope == null) beginPresentation()
+                        if (presentationScope == null) {
+                            diagnose("display_rejected", page, "reason" to "NO_TICKET", "generation" to generation)
+                        }
                         presentationScope?.let { (owner, ticket) ->
                             val pageId = owner.identity.pageIds.getOrNull(page.index)
                             val physicalSlot = when (side) {
@@ -642,24 +725,42 @@ class DualPagerPageHolder(
                                 renderedPages[page] = content
                                 visibleContentLeases[page] = content
                                 removeProgressIndicator(side)
+                                diagnose(
+                                    "drawn",
+                                    page,
+                                    "generation" to generation,
+                                    "serial" to ticket.frameId.serial,
+                                    "reason" to "PROGRESS_HIDDEN",
+                                    "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
+                                    "rendered" to renderedPages.keys.joinToString(",") { it.index.toString() },
+                                )
                                 post { viewer.onHolderDisplayStateChanged(this@DualPagerPageHolder) }
                             }
                         }
                     }
                 }
                 holder.onImageLoadError = { error ->
+                    diagnose("decode_error", page, "error" to error?.javaClass?.simpleName, "generation" to generation)
                     if (callbackIsCurrent()) {
                         setError(error, page, side)
                     }
                 }
                 decodedImages[page] = BoundImage(source.clone(), isAnimated, config, callbackIsCurrent)
                 slot(side)?.applyTransform()
+                diagnose("decode_start", page, "generation" to generation)
                 holder.setImage(source, isAnimated, config, page.index, callbackIsCurrent = callbackIsCurrent)
                 if (!isAnimated) holder.pageBackground = background
             }
         } catch (e: CancellationException) {
+            diagnose(
+                "load_cancelled",
+                page,
+                "generation" to generation,
+                "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
+            )
             throw e
         } catch (e: Throwable) {
+            diagnose("load_error", page, "error" to e.javaClass.simpleName, "generation" to generation)
             logcat(LogPriority.ERROR, e)
             withUIContext {
                 if (attachment == attachmentGeneration && page.contentIdentity() == content &&

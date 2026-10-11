@@ -117,6 +117,8 @@ import java.io.ByteArrayOutputStream
 import tachiyomi.presentation.core.i18n.stringResource as composeStringResource
 
 open class ReaderActivity : BaseActivity() {
+    internal val diagnosticSession: String = java.util.UUID.randomUUID().toString()
+    private var diagnosticChapter: Long? = null
 
     companion object {
         fun newIntent(
@@ -167,6 +169,7 @@ open class ReaderActivity : BaseActivity() {
      * Called when the activity is created. Initializes the presenter and configuration.
      */
     override fun onCreate(savedInstanceState: Bundle?) {
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record("reader_start", session = diagnosticSession)
         registerSecureActivity(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             overrideActivityTransition(
@@ -442,6 +445,7 @@ open class ReaderActivity : BaseActivity() {
      * Called when the activity is destroyed. Cleans up the viewer, configuration and any view.
      */
     override fun onDestroy() {
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record("reader_end", session = diagnosticSession)
         super.onDestroy()
         adaptiveViewport?.close()
         installedViewer?.let { viewer ->
@@ -888,6 +892,20 @@ open class ReaderActivity : BaseActivity() {
     }
 
     private fun onPageSelected(page: ReaderPage, visiblePages: List<ReaderPage>) {
+        if (diagnosticChapter != page.chapter.chapter.id) {
+            diagnosticChapter = page.chapter.chapter.id
+            eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record(
+                "chapter_changed",
+                page,
+                diagnosticSession,
+            )
+        }
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record(
+            "page_selected",
+            page,
+            diagnosticSession,
+            "visible" to visiblePages.joinToString(",") { it.index.toString() },
+        )
         if (changingLayout || protectedLayoutPage === page) {
             onLayoutPageSelected(page)
         } else {
@@ -922,6 +940,7 @@ open class ReaderActivity : BaseActivity() {
         layoutOnly: Boolean,
     ) {
         if (installedViewer != null && viewModel.state.value.viewer !== source) return
+        eu.kanade.tachiyomi.ui.reader.diagnostics.ReaderDiagnostics.record("logical_anchor", page, diagnosticSession)
         if (layoutOnly || changingLayout || protectedLayoutPage === page) {
             onLayoutPageSelected(page)
         } else {
