@@ -4,6 +4,8 @@
 
 后续决定（2026-09-25）：用户取消 Desktop 作者详情通往 `WorkCompareScreen` 的入口。下文原批次提到“保留 Desktop 比较入口”仅记录当时的实施基线；当前 Desktop 契约以本段为准。Desktop 待处理作品卡、来源选择窗口及待定／已拒绝独立条目均不显示进入比较页的「更多」操作；点击作品仍打开来源窗口，选择具体版本仍进入相应漫画详情。比较页及归档数据保留，Android 的「更多 → 作品校正」不受此决定影响。
 
+后续决定（2026-10-11，Android）：作者页移除所有作品卡的「更多 → 作品校正」入口及对应弹窗；保留作品点击、来源选择、归档关系和既有校正数据。移除顶部「作品数／来源版本数」概览，保留筛选后的作品计数。Android 封面外层与 `MangaCover.Book` 统一为 2:3，图片和标题渐变共用边界，封面内部不额外裁圆角，由整张卡片裁切外轮廓。日期按实际字体与可用宽度测量：完整说明能单行容纳时保留，否则只显示对应完整日期；窗口宽度、显示模式和字号变化时重新判断，日期缺失时不虚构日期。简体中文的别名动作及弹窗标题为「关联别名」。下文保留的旧 Android 校正入口与概览要求仅为历史基线，当前以本段为准；Desktop 布局不在本次变更范围，共享中文别名资源同时生效。
+
 - 审核基线：[双端交互 DEMO](prototypes/author-identity/index.html)，提交 `8fae5d0ff85aa89c9c7efb5aa69a2b7e55581f83`；[DEMO 说明](prototypes/author-identity/README.md)。
 - 历史能力与数据规则沿用[作者页体验迭代设计](2026-09-18-author-experience-iteration-design.md)及[实现审查修复计划](roadmap/2026-09-21-branch-implementation-review-fixes-roadmap.md)。本文只覆盖与本次审核交互冲突的作品卡呈现和直接审阅按钮；其他规则不变。
 - 实施计划：[本轮 Roadmap](roadmap/2026-09-25-author-work-list-source-display-roadmap.md)。

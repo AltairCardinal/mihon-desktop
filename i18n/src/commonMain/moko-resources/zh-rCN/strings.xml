@@ -2284,4 +2284,5 @@
     <string name="sync_setup_authorize_selected_space">授权此同步空间</string>
     <string name="sync_setup_selected_access_unconfirmed">尚未确认对 %1$s 的访问权限。请将此仓库授权给同步应用，再检查连接。</string>
     <string name="sync_setup_installed_status">同步应用已安装，待授权此空间</string>
+    <string name="desktop_ui_add_author_alias">关联别名</string>
 </resources>

@@ -67,6 +67,28 @@ class AndroidAuthorArchiveWiringTest {
     }
 
     @Test
+    fun `Android discovery verifies authors before exposing archive works`() = runTest {
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
+        )
+        Database.Schema.create(driver)
+        val handler = AndroidDatabaseHandler(
+            Database(
+                driver,
+                historyAdapter = History.Adapter(DateColumnAdapter),
+                mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+            ),
+            driver,
+        )
+        try {
+            tachiyomi.data.creator.verifyCreatorDiscoveryMetadata(handler)
+            tachiyomi.data.creator.verifyCreatorDiscoveryArchiveProjection(handler)
+        } finally {
+            driver.close()
+        }
+    }
+
+    @Test
     fun `Android author list imports legacy exclusions before its first SQL card page`() = runTest {
         kotlinx.coroutines.Dispatchers.setMain(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler))
         try {

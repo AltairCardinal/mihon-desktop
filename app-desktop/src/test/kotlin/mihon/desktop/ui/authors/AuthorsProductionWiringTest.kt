@@ -98,6 +98,28 @@ class AuthorsProductionWiringTest {
     lateinit var directory: Path
 
     @Test
+    fun `desktop discovery verifies authors before exposing archive works`() = runBlocking {
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
+        )
+        Database.Schema.create(driver)
+        val handler = JvmDatabaseHandler(
+            Database(
+                driver,
+                historyAdapter = History.Adapter(DateColumnAdapter),
+                mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+            ),
+            driver,
+        )
+        try {
+            tachiyomi.data.creator.verifyCreatorDiscoveryMetadata(handler)
+            tachiyomi.data.creator.verifyCreatorDiscoveryArchiveProjection(handler)
+        } finally {
+            driver.close()
+        }
+    }
+
+    @Test
     fun `desktop archive state applies shared work search and source contract`() {
         tachiyomi.data.creator.verifyCreatorWorkFilterProjection { archive, filter ->
             AuthorDetailState(workArchive = archive, workFilter = filter).visibleWorkArchive

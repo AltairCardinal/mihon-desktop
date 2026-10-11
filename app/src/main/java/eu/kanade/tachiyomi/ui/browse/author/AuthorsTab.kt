@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -28,7 +29,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -69,8 +69,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.model.ScreenModel
@@ -779,14 +782,6 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                         Text(stringResource(MR.strings.desktop_ui_check_new_works))
                     }
                 }
-                Text(
-                    stringResource(
-                        MR.strings.creator_work_version_count,
-                        state.presentationGroups.size + state.archive.rejected.size,
-                        state.presentationGroups.sumOf { it.sourceCount } +
-                            state.archive.rejected.size,
-                    ),
-                )
                 state.error?.let { Text(it) }
                 CreatorWorkFilters(
                     state.workFilter.query,
@@ -808,7 +803,6 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                     Text(stringResource(MR.strings.creator_work_filter_empty))
                 }
                 val mode = state.effectiveWorkDisplayMode
-                val pendingSourceWorkIds = state.archive.pending.mapTo(mutableSetOf()) { it.sourceWorkId }
                 if (mode == LibraryDisplayMode.List) {
                     LazyColumn(Modifier.fillMaxWidth().weight(1f).testTag("creator-work-list")) {
                         items(state.visiblePresentationCards, key = { "presentation-${it.groupKey}" }) { group ->
@@ -832,10 +826,6 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                                 mode = mode,
                                 focusRequester = focusRequester,
                                 sourceNames = sourceNamesForGroup(group, model),
-                                pendingVersion = group.members.singleOrNull()?.takeIf {
-                                    group.canonicalWorkId == null && it.sourceWorkId in pendingSourceWorkIds
-                                },
-                                onReview = model::openReview,
                                 onClick = {
                                     showSourceChooserFor = group.groupKey
                                 },
@@ -844,7 +834,6 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                         items(state.visiblePendingVersions, key = { "pending-${it.sourceWorkId}" }) { version ->
                             CreatorArchiveWorkRow(version.title, version.thumbnailUrl) {
                                 CreatorVersionButton(version, model)
-                                CreatorPendingMore(version, model::openReview)
                             }
                         }
                         items(state.visibleArchive.rejected, key = { "rejected-${it.sourceWorkId}" }) { version ->
@@ -885,10 +874,6 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                                 mode = mode,
                                 focusRequester = focusRequester,
                                 sourceNames = sourceNamesForGroup(group, model),
-                                pendingVersion = group.members.singleOrNull()?.takeIf {
-                                    group.canonicalWorkId == null && it.sourceWorkId in pendingSourceWorkIds
-                                },
-                                onReview = model::openReview,
                                 onClick = {
                                     showSourceChooserFor = group.groupKey
                                 },
@@ -901,7 +886,6 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                         ) { version ->
                             CreatorArchiveWorkRow(version.title, version.thumbnailUrl) {
                                 CreatorVersionButton(version, model)
-                                CreatorPendingMore(version, model::openReview)
                             }
                         }
                         items(
@@ -917,42 +901,6 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                     }
                 }
             }
-        }
-        state.reviewing?.let { version ->
-            AlertDialog(
-                modifier = Modifier.testTag("creator-review-dialog"),
-                onDismissRequest = model::closeReview,
-                title = { Text(version.title) },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(MR.strings.desktop_ui_pending_work_suggestions))
-                        OutlinedTextField(
-                            value = state.languageTag,
-                            onValueChange = model::languageTag,
-                            label = { Text(stringResource(MR.strings.desktop_ui_language_tag)) },
-                        )
-                        Button(onClick = model::setReadingLanguage) {
-                            Text(stringResource(MR.strings.desktop_ui_correct_reading_language))
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        enabled = !state.reviewActionRunning,
-                        onClick = { model.decide(WorkDecisionState.CONFIRMED) },
-                    ) {
-                        Text(stringResource(MR.strings.desktop_ui_confirm_same_work))
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        enabled = !state.reviewActionRunning,
-                        onClick = { model.decide(WorkDecisionState.REJECTED) },
-                    ) {
-                        Text(stringResource(MR.strings.desktop_ui_reject_same_work))
-                    }
-                },
-            )
         }
     }
 }
@@ -1064,18 +1012,16 @@ private fun sourceNamesForGroup(
 }
 
 @Composable
-private fun CreatorArchiveWorkCard(
+internal fun CreatorArchiveWorkCard(
     title: String,
     version: SourceWorkArchiveVersion?,
-    dateLabel: String?,
+    dateLabel: CreatorWorkDateLabel?,
     favorite: Boolean,
     unread: Boolean,
     key: String,
     mode: LibraryDisplayMode,
     focusRequester: FocusRequester,
     sourceNames: List<String>,
-    pendingVersion: SourceWorkArchiveVersion?,
-    onReview: (SourceWorkArchiveVersion) -> Unit,
     onClick: () -> Unit,
 ) {
     val cardModifier = Modifier
@@ -1096,7 +1042,7 @@ private fun CreatorArchiveWorkCard(
                     title = title,
                     favorite = favorite,
                     key = key,
-                    modifier = Modifier.width(64.dp).height(88.dp),
+                    modifier = Modifier.width(64.dp).aspectRatio(MangaCover.Book.ratio),
                 )
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -1112,13 +1058,12 @@ private fun CreatorArchiveWorkCard(
                         modifier = Modifier.testTag("creator-work-sources-$key"),
                     )
                     dateLabel?.let { date ->
-                        Text(
+                        CreatorWorkDate(
                             date,
+                            key = key,
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.testTag("creator-work-first-seen-$key"),
                         )
                     }
-                    pendingVersion?.let { CreatorPendingMore(it, onReview) }
                 }
             }
         }
@@ -1130,7 +1075,7 @@ private fun CreatorArchiveWorkCard(
                         title = title,
                         favorite = favorite,
                         key = key,
-                        modifier = Modifier.fillMaxWidth().aspectRatio(0.7f),
+                        modifier = Modifier.fillMaxWidth().aspectRatio(MangaCover.Book.ratio),
                     )
                     Text(
                         title,
@@ -1142,14 +1087,13 @@ private fun CreatorArchiveWorkCard(
                     )
                     unreadWorkLabel(unread, key)
                     dateLabel?.let { date ->
-                        Text(
+                        CreatorWorkDate(
                             date,
+                            key = key,
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(horizontal = 8.dp)
-                                .testTag("creator-work-first-seen-$key"),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         )
                     }
-                    pendingVersion?.let { CreatorPendingMore(it, onReview) }
                 }
             }
         }
@@ -1161,21 +1105,18 @@ private fun CreatorArchiveWorkCard(
                         title = title,
                         favorite = favorite,
                         key = key,
-                        modifier = Modifier.fillMaxWidth().aspectRatio(0.7f),
+                        modifier = Modifier.fillMaxWidth().aspectRatio(MangaCover.Book.ratio),
                         compactTitle = true,
                     )
                     dateLabel?.let { date ->
-                        Text(
+                        CreatorWorkDate(
                             date,
+                            key = key,
                             style = MaterialTheme.typography.labelSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
-                                .testTag("creator-work-first-seen-$key"),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
                         )
                     }
                     unreadWorkLabel(unread, key)
-                    pendingVersion?.let { CreatorPendingMore(it, onReview) }
                 }
             }
         }
@@ -1207,7 +1148,9 @@ private fun CreatorArchiveWorkCover(
         version?.let {
             MangaCover.Book(
                 data = it.toMangaCover(),
-                modifier = Modifier.fillMaxSize().alpha(if (favorite) 0.34f else 1f),
+                modifier = Modifier.matchParentSize().alpha(if (favorite) 0.34f else 1f)
+                    .testTag("creator-cover-image-$key"),
+                shape = RectangleShape,
             )
         } ?: Text(
             title,
@@ -1217,7 +1160,7 @@ private fun CreatorArchiveWorkCover(
         )
         if (compactTitle) {
             Box(
-                modifier = Modifier.fillMaxSize().background(
+                modifier = Modifier.matchParentSize().testTag("creator-cover-scrim-$key").background(
                     Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.82f))),
                 ),
             )
@@ -1242,11 +1185,11 @@ private fun CreatorArchiveWorkCover(
     }
 }
 
-private fun SourceWorkArchiveVersion.toMangaCover() = tachiyomi.domain.manga.model.MangaCover(
+internal fun SourceWorkArchiveVersion.toMangaCover() = tachiyomi.domain.manga.model.MangaCover(
     mangaId = mangaId ?: -sourceWorkId,
     sourceId = naturalKey.sourceId,
     isMangaFavorite = inLibrary,
-    url = naturalKey.stableSourceUrl,
+    url = thumbnailUrl,
     lastModified = detailsFetchedAt ?: 0L,
 )
 
@@ -1254,18 +1197,32 @@ private fun earliestFirstSeenDate(versions: List<SourceWorkArchiveVersion>): Str
     .mapNotNull { it.firstSeenDate?.takeIf(String::isNotBlank) }
     .minOrNull()
 
+internal data class CreatorWorkDateLabel(val full: String, val date: String)
+
 @Composable
-private fun groupDateLabel(group: WorkPresentationGroup): String? {
-    val publishedDateAt = group.publishedDateAt
-    return when {
-        group.publishedDateQuality == SourceDateQualityStatus.TRUSTED && publishedDateAt != null ->
-            stringResource(MR.strings.creator_work_published_date, sourceDateDisplayDate(publishedDateAt))
-        publishedDateAt != null -> stringResource(
-            MR.strings.creator_work_published_date_retained,
-            sourceDateDisplayDate(publishedDateAt),
+private fun CreatorWorkDate(label: CreatorWorkDateLabel, key: String, style: TextStyle, modifier: Modifier = Modifier) {
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(modifier) {
+        val fullWidth = measurer.measure(label.full, style, softWrap = false).size.width
+        Text(
+            if (fullWidth <= constraints.maxWidth) label.full else label.date,
+            style = style,
+            modifier = Modifier.testTag("creator-work-first-seen-$key"),
         )
-        else -> group.firstSeenDate?.let { date -> stringResource(MR.strings.desktop_ui_first_seen, date) }
     }
+}
+
+@Composable
+private fun groupDateLabel(group: WorkPresentationGroup): CreatorWorkDateLabel? {
+    val publishedDateAt = group.publishedDateAt
+    val date = publishedDateAt?.let(::sourceDateDisplayDate) ?: group.firstSeenDate ?: return null
+    val full = when {
+        group.publishedDateQuality == SourceDateQualityStatus.TRUSTED && publishedDateAt != null ->
+            stringResource(MR.strings.creator_work_published_date, date)
+        publishedDateAt != null -> stringResource(MR.strings.creator_work_published_date_retained, date)
+        else -> stringResource(MR.strings.desktop_ui_first_seen, date)
+    }
+    return CreatorWorkDateLabel(full, date)
 }
 
 @Composable
@@ -1317,7 +1274,7 @@ private fun CreatorArchiveWorkRow(
         coil3.compose.AsyncImage(
             thumbnailUrl,
             null,
-            modifier = Modifier.width(64.dp).height(88.dp),
+            modifier = Modifier.width(64.dp).aspectRatio(MangaCover.Book.ratio),
             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
         )
         Column(Modifier.weight(1f)) {
@@ -1337,32 +1294,6 @@ private fun CreatorVersionButton(version: SourceWorkArchiveVersion, model: Andro
                 ""
             },
         )
-    }
-}
-
-@Composable
-private fun CreatorPendingMore(
-    version: SourceWorkArchiveVersion,
-    onReview: (SourceWorkArchiveVersion) -> Unit,
-) {
-    var expanded by remember(version.sourceWorkId) { mutableStateOf(false) }
-    Box {
-        IconButton(
-            onClick = { expanded = true },
-            modifier = Modifier.testTag("creator-pending-more-${version.sourceWorkId}"),
-        ) {
-            Icon(Icons.Default.MoreVert, contentDescription = stringResource(MR.strings.label_more))
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(MR.strings.creator_work_correction)) },
-                onClick = {
-                    expanded = false
-                    onReview(version)
-                },
-                modifier = Modifier.testTag("creator-pending-correct-${version.sourceWorkId}"),
-            )
-        }
     }
 }
 

@@ -63,7 +63,7 @@ class CreatorDiscoveryPlanningTest {
     }
 
     @Test
-    fun `identity gate verifies exact fields or structured match and keeps search-only result possible`() {
+    fun `identity gate requires exact details even when structured search claims a match`() {
         val aliases = listOf("ONE", "ワン")
         val exact = CreatorIdentityEvidenceEvaluator.evaluate(
             aliases,
@@ -80,11 +80,18 @@ class CreatorDiscoveryPlanningTest {
 
         assertEquals(CreatorRelationVerification.VERIFIED, exact.verification)
         assertEquals(CreatorRole.BOTH, exact.role)
-        assertEquals(CreatorRelationVerification.VERIFIED, structured.verification)
-        assertEquals(CreatorRole.AUTHOR, structured.role)
-        assertEquals("author-id:one", structured.evidence)
+        assertEquals(CreatorRelationVerification.POSSIBLE, structured.verification)
+        assertEquals(CreatorRole.UNKNOWN, structured.role)
         assertEquals(CreatorRelationVerification.POSSIBLE, possible.verification)
         assertEquals(CreatorRole.UNKNOWN, possible.role)
+    }
+
+    @Test
+    fun `identity gate keeps exact coauthor tokens distinct from normalized near names`() {
+        val result = CreatorIdentityEvidenceEvaluator.evaluate(listOf("ONE"), work(author = "one, ONE"))
+
+        assertEquals(CreatorRelationVerification.VERIFIED, result.verification)
+        assertEquals(CreatorRole.AUTHOR, result.role)
     }
 
     @Test
