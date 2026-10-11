@@ -83,6 +83,41 @@ class LibraryPageCompositionTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
+    fun `category indicator survives uncategorized tab appearing and disappearing`() = runTest {
+        val categories = FakeCategoryRepository().apply {
+            insert(Category(1L, "H", 1L, 0L))
+        }
+        val categorized = sampleLibraryManga(sampleManga(1L, "Categorized", 1L)).copy(categories = listOf(1L))
+        val uncategorized = sampleLibraryManga(sampleManga(2L, "Uncategorized work", 1L)).copy(categories = listOf(0L))
+        val model = rootModel(listOf(categorized), categories)
+        val scene = rootScene(model)
+        try {
+            render(scene)
+            model.setCategories(listOf(Category(0L, "Default", 0L, 0L)) + categories.getAll())
+            render(scene)
+            assertEquals(listOf(1L), model.state.value.categories.map { it.id })
+            repeat(3) {
+                model.setAllItems(listOf(categorized, uncategorized))
+                assertEquals(1, model.state.value.selectedCategoryIndex)
+                render(scene)
+                assertTrue(semanticLabels(scene).contains("Categorized"))
+                click(scene, "Default")
+                render(scene)
+                assertTrue(semanticLabels(scene).contains("Uncategorized work"))
+                click(scene, "H")
+                render(scene)
+                model.setAllItems(listOf(categorized))
+                assertEquals(0, model.state.value.selectedCategoryIndex)
+                render(scene)
+                assertTrue(semanticLabels(scene).contains("Categorized"))
+            }
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
     fun `accepted root success survives leaving without replaying stale feedback`() = runTest {
         val manga = sampleManga(90L, "Lifecycle manga", 7L)
         val mangaRepository = FakeMangaRepository().apply {

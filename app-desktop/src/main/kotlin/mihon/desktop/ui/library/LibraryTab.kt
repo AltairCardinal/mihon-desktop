@@ -61,6 +61,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -762,6 +764,12 @@ class LibraryRootScreen : Screen {
                         selectedTabIndex = selectedCategoryIndex,
                         modifier = Modifier.fillMaxWidth(),
                         edgePadding = 8.dp,
+                        indicator = { tabPositions ->
+                            // Subcomposition can still expose the previous layout during a category update.
+                            tabPositions.getOrNull(selectedCategoryIndex)?.let { position ->
+                                TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(position))
+                            }
+                        },
                     ) {
                         categoryTabs.forEachIndexed { index, cat ->
                             Tab(
