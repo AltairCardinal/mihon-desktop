@@ -185,3 +185,34 @@ code64在隔离API36模拟器再次执行原Release UI探针：原按钮保存�
 - `merge-desktop-partner-green`通过，23秒：ReaderScreenModel24项及SharedSpread原方法1项，共25项，0失败/跳过。SharedSpread保持挂起旧解码任务时仍能真实画出目标原图的要求；单调帧时钟及等待当前帧满足原像素条件后，原强断言通过。主代理独立核查最后production差异、真实native presenter测试与XML，确认修复复审指出的伙伴遗漏已关闭。
 - 组合证据：数据JVM39、Android共享迁移9、Android生产迁移12、阅读恢复13、竞态1、双页进度37全部通过；Android配对25项的两项已证实旧基线失败保留，其余通过证据加6条夹具补验有效。Desktop最初17类160项结果与最后25项补验共同覆盖最终161个已选用例。这里是首次定向结果加局部修复补验，不是最终代码重新通过完整模块/全量。
 - 独立审查1轮及修复复审1轮已执行；没有新增代理、追加正式审查轮次或扩大验证。最后Desktop小修复由原实施代理按有效红绿实现，主代理作整合核验。实际交付是本地主干合并，不生成APK/EXE、不安装、不推送远程。主干并行文案提交及原工作树未提交版本差异均保留。
+
+
+## 2026-10-11 两项 Android 配对失败的诊断与修复
+
+基线为本地主干 `43fbde5057bcd14297cd2b083049f5a5705263da`，整合工作树初始无改动。本轮只处理两项保留失败及直接相关的 Android 跳页接线，不修改共享配对算法、schema、发布版本或其他 DP02 待验范围。下述诊断索引均从0开始。
+
+### 已证实原因
+
+- `restored manual boundary survives a late wide image dimension callback` 是过时断言。状态输出证明：初始逻辑目标5、owner组[4,5]、原生组[4,5]；进入宽图2后两端均[2]；跳回4时两端仍为已经进入过的[4,5]。原断言要求[4]会拆掉有效既有组合，与当前局部决策及已进入组保留规则不符。用例现先断言初始owner/原生组，随后保留宽图独占、手动边界{3}、源页锚点4、真实数据库记录及返回边界页单页的强断言。此项不改产品规则，也不把空绘制历史描述为实际图片已画出。
+- `restored RTL last spread settles the last source page and marks chapter read` 是产品缺陷。状态输出证明跳到7后逻辑目标7、owner组[7]，但原生ViewPager仍选中旧列表[6,7]，且没有锁定/绘制历史。`moveToPage`只更新共享owner，再在旧adapter列表查找包含目标的项；没有立即发布新的局部分组，下一次尺寸/匹配回调可能才把界面纠正。不能将原断言直接改成[6,7]。
+
+### 实现及红绿证据
+
+- 显式跳页调用`selectPage(..., publishLayout = true)`，复用既有`rebuildItems(page)`及锚点/内部IDLE保护，再定位原生页面；原生选页回调维持仅同步owner的路径，避免重入发布。既有有效组仍由共享owner决定。
+- `pairing-baseline-bounded`重新执行两项原用例，两项按原原因失败；带状态XML保存在`.gradle-coordinator/pairing-baseline-bounded-results.xml`。
+- `pairing-jump-red`执行修订边界用例、保持尾页单页要求的用例、新增直接冷跳接线用例：3项中边界通过，尾页及新增用例正确失败。新增用例owner预期[6,7]，原生实际[5,6]；其断言覆盖逻辑目标、共享组和真实ViewPager选择，而非扫描源码。红XML保存在同key的`-persistence.xml`及`-wiring.xml`。
+- `pairing-jump-green`最小实现后3项全通过。尾页用例继续执行真实SQLite读取，确认`last_page_read=7`且`read=true`；新增用例同时覆盖未知尺寸和已知纵页尺寸，中段及尾页跳转均不依赖新图片回调。
+- 所有Gradle调用串行经过协调器。第一次`pairing-baseline-trace`因宽泛方法筛选配合forkEvery=1触发大量无关类进程启动，确认后停止，状态CANCELLED；改用目标class文件include限制后再执行。`pairing-focused-green`仅init配置阶段失败（buildSrc没有app），修正条件后以`pairing-focused-verified`执行，前者不算测试结果。忽略目录init沿用1GB堆、单并发、按类fork、retry=0；未修改仓库测试配置。
+
+### 相关回归及旧夹具收口
+
+`pairing-focused-verified`执行配对持久化25项、Android共享接线27项、production进度37项及原生Holder精确3项，共92项；90通过、2失败，完整4份XML保存在`.gradle-coordinator/pairing-focused-results/`。后续production不再改动，只校正以下两个测试前提：
+
+- 模式切换用例原先从未进入的[3,4]候选直接跳到4，修复后正确得到[4]。现在先通过真实`moveToPage(3)`进入并断言[3,4]，再选后一页4；仍保留原组、VM逻辑页、真实内部IDLE重入、尺寸重排及切单页的全部断言。
+- Holder导航用例原先要求1→2→3逐源页前进，与用户已明确要求的整组翻页不符。本轮曾临时还原两个production文件到基线HEAD并仅运行该方法，`pairing-navigation-baseline`仍按同一原因失败（expected2/actual3），XML另存同key-results.xml；之后恢复本轮production差异。用例现精确要求[1,2]→[3]，同时断言owner/原生组一致，保留未绘制不结算、跨章节及回翻要求。
+
+这两处测试维护不放宽跳页和进度要求，不引入新的产品行为修改；复用上述未受影响的90项通过结果，仅补验本轮原问题、新回归和两个调整用例。
+
+最终补验：`pairing-final-focused`中边界、尾页、冷跳、整组导航4项通过；模式切换仍停在原内部IDLE前提。其后定向状态诊断证明，封面LEFT→FULL只改槽位、不改组数量，不能保证触发ViewPager内部IDLE。最终夹具先进入目标双页，真实启动SETTLING并断言该状态，再通过未进入的邻章页尺寸回调拆分相邻组，断言adapter项数增加；不模拟IDLE，不删除原重入/逻辑页/模式切换要求。`pairing-mode-window-verified`该方法通过（41秒），6个本轮Kotlin文件的Spotless检查通过。中间`pairing-mode-fixture-verified`、`pairing-mode-idle-verified`、`pairing-mode-native-verified`、`pairing-mode-state-trace`均因未制造IDLE的同一测试前提失败，未改production；临时状态输出已移除。
+
+最终证据为92项首次定向回归的90项通过，加上述2项对应补验；本轮原两项失败和新增冷跳回归也在最后5项中再次通过。所有本轮选定范围的失败均已关闭，不声称最终代码重新跑过92项或整个模块。主代理完成差异及证据自查，`git diff --check`通过。无新增代理、无全量测试、无图片识别；使用Robolectric执行真实Android ViewPager/VM及SQLite接线，未运行设备验收、构建APK、安装或远程推送。修复随测试和本记录同一提交进入本地主干。

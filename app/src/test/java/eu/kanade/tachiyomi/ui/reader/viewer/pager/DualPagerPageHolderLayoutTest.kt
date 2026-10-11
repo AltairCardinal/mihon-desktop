@@ -1092,12 +1092,13 @@ class DualPagerPageHolderLayoutTest {
         }
         viewer.adapter.setChapters(ViewerChapters(chapter, loadedChapter(10), next), false)
         viewer.moveToPage(requireNotNull(chapter.pages)[0])
-        for (source in 1..3) {
+        for ((source, expected) in listOf(1 to listOf(1, 2), 3 to listOf(3))) {
             viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PAGE_DOWN))
             val owner = requireNotNull(viewer.adapter.session(chapter))
             assertEquals(source, owner.location?.pageId?.sourcePageIndex)
             val displayed = viewer.adapter.items[viewer.pager.currentItem] as DisplayPage
-            assertTrue(displayed.containsPage(requireNotNull(chapter.pages)[source]))
+            assertEquals(expected, displayed.visiblePages.map { it.index })
+            assertEquals(expected, owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
             io.mockk.verify(exactly = 0) { viewer.activity.viewModel.onDualViewportSettled(any(), any()) }
         }
         viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_LEFT))

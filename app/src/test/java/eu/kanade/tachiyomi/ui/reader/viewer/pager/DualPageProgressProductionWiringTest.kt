@@ -522,7 +522,9 @@ class DualPageProgressProductionWiringTest {
     @Test
     fun `explicit second logical page survives real VM mode change after dual rearrangement`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        mountReadyViewer(renderFirstGroup = false, imageBytes = readerTestPng(1125, 1600))
+        val next = requireNotNull(model.state.value.viewerChapters?.nextChapter)
+        next.publishLoadedPageListForTest((0..4).map { ReaderPage(it).apply { chapter = next } })
+        mountReadyViewer(renderFirstGroup = false, imageBytes = readerTestPng(1125, 1600), nextChapter = next)
         val pages = requireNotNull(current.pages)
         withContext(Dispatchers.IO) { pages.forEach { it.publishHeaderFact() } }
         runCurrent()
@@ -537,6 +539,29 @@ class DualPageProgressProductionWiringTest {
                 it is DisplayPage.Double && it.visiblePages.map(ReaderPage::index) == listOf(3, 4)
             },
         )
+        // Enter the pair first: an unentered offscreen proposal cannot own a cold jump target.
+        viewer.moveToPage(pages[3])
+        runCurrent()
+        assertEquals(listOf(3, 4), viewer.adapter.session(current)!!.targetUnit!!.pageIds.map { it.sourcePageIndex })
+        // Start a real native settle so explicit publication and the later dimension change
+        // still exercise notifyDataSetChanged's internal IDLE with the second page selected.
+        val pairPosition = viewer.pager.currentItem
+        val earlierPairPosition = viewer.adapter.items.indexOfFirst { it is DisplayPage && it.containsPage(pages[1]) }
+        viewer.pager.setCurrentItem(earlierPairPosition, false)
+        viewer.pager.setCurrentItem(pairPosition, true)
+        val internalIdleEvents = mutableListOf<String>()
+        viewer.pager.addOnPageChangeListener(object : ViewPager.SimpleOnPageChangeListener() {
+            override fun onPageScrollStateChanged(state: Int) {
+                if (state == ViewPager.SCROLL_STATE_IDLE &&
+                    ReflectionHelpers.getField<Boolean>(viewer, "replacingPairing") && internalIdleEvents.size < 8
+                ) {
+                    internalIdleEvents +=
+                        "owner=${viewer.adapter.session(current)?.location?.pageId?.sourcePageIndex}" +
+                        ",native=${viewer.pager.currentItem}"
+                }
+            }
+        })
+        assertEquals(ViewPager.SCROLL_STATE_SETTLING, ReflectionHelpers.getField<Int>(viewer.pager, "mScrollState"))
         viewer.moveToPage(pages[4])
         runCurrent()
         val selected = viewer.adapter.items[viewer.pager.currentItem] as DisplayPage
@@ -550,19 +575,12 @@ class DualPageProgressProductionWiringTest {
             pages[4],
             model.currentReaderPage,
         )
-        val internalIdleEvents = mutableListOf<String>()
-        viewer.pager.addOnPageChangeListener(object : ViewPager.SimpleOnPageChangeListener() {
-            override fun onPageScrollStateChanged(state: Int) {
-                if (state == ViewPager.SCROLL_STATE_IDLE &&
-                    ReflectionHelpers.getField<Boolean>(viewer, "replacingPairing") && internalIdleEvents.size < 8
-                ) {
-                    internalIdleEvents +=
-                        "owner=${viewer.adapter.session(current)?.location?.pageId?.sourcePageIndex}" +
-                        ",native=${viewer.pager.currentItem}"
-                }
-            }
-        })
-        viewer.adapter.updatePageDimensions(pages[0], 1800, 1000)
+        // Split an unentered adjacent pair: its extra native item moves the selected position
+        // and forces a real data-set replacement during the pending scroll.
+        val countBefore = viewer.adapter.count
+        viewer.adapter.updatePageDimensions(requireNotNull(next.pages)[1], 1800, 1000)
+        assertTrue(viewer.adapter.count > countBefore)
+
         runCurrent()
         assertSame(
             "Explicit source=${pages[4].index}, VM=${model.currentReaderPage?.index}, " +

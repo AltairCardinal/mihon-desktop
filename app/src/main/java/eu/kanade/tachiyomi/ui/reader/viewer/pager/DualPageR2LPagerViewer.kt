@@ -248,7 +248,7 @@ class DualPageR2LPagerViewer(
     }
 
     override fun moveToPage(page: ReaderPage) {
-        adapter.selectPage(page)
+        adapter.selectPage(page, publishLayout = true)
         positionPage(page)
     }
 

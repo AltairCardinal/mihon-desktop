@@ -129,6 +129,29 @@ class SharedDualPageAndroidWiringTest {
     }
 
     @Test
+    fun `explicit cold jump publishes target group before any new image fact arrives`() {
+        for (ready in listOf(false, true)) {
+            val chapter = chapter(9)
+            val pages = requireNotNull(chapter.pages)
+            viewer.config.usePageTransitions = false
+            viewer.setChapters(ViewerChapters(chapter, null, null))
+            if (ready) pages.forEach { viewer.adapter.updatePageDimensions(it, 100, 200) }
+            val owner = requireNotNull(viewer.adapter.session(chapter))
+            assertTrue(owner.displayedHistory.isEmpty())
+            // Neither jump may inherit the preceding page from an unentered list proposal.
+            for ((target, expected) in listOf(6 to listOf(6, 7), 8 to listOf(8))) {
+                viewer.moveToPage(pages[target])
+                assertEquals(target, owner.location!!.pageId.sourcePageIndex)
+                assertEquals(expected, owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
+                assertEquals(
+                    expected,
+                    (viewer.adapter.items[viewer.pager.currentItem] as DisplayPage).visiblePages.map { it.index },
+                )
+            }
+        }
+    }
+
+    @Test
     fun `continuous native drags synchronize every anchor without jumping back at idle`() {
         val chapter = gestureChapter()
         val pages = requireNotNull(chapter.pages)

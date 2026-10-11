@@ -607,12 +607,17 @@ class AndroidChapterPairingPersistenceWiringTest {
             session(fixture).use { reader ->
                 val pages = requireNotNull(reader.model.state.value.currentChapter?.pages)
                 reader.viewer.setChapters(requireNotNull(reader.model.state.value.viewerChapters))
+                val owner = requireNotNull(reader.viewer.adapter.session(pages[0].chapter))
+                // The entered group already owns these pages before the late wide fact arrives.
+                assertEquals(listOf(4, 5), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
+                assertEquals(setOf(4, 5), visiblePair(reader.viewer))
                 reader.viewer.adapter.updatePageDimensions(pages[2], 2200, 1000)
                 reader.viewer.moveToPage(pages[2])
                 assertEquals(setOf(2), visiblePair(reader.viewer))
                 assertEquals(setOf(3), reader.viewer.adapter.appliedForcedSinglePages())
                 reader.viewer.moveToPage(pages[4])
-                assertEquals(setOf(4), visiblePair(reader.viewer))
+                assertEquals(setOf(4, 5), visiblePair(reader.viewer))
+                assertEquals(listOf(4, 5), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
                 assertEquals(
                     4,
                     reader.viewer.adapter.session(
@@ -847,7 +852,11 @@ class AndroidChapterPairingPersistenceWiringTest {
             session(fixture).use { reader ->
                 val pages = requireNotNull(reader.model.state.value.currentChapter?.pages)
                 reader.viewer.setChapters(requireNotNull(reader.model.state.value.viewerChapters))
+                val owner = requireNotNull(reader.viewer.adapter.session(pages[0].chapter))
+                assertTrue(owner.displayedHistory.isEmpty())
                 reader.viewer.moveToPage(pages[7])
+                assertEquals(7, owner.location!!.pageId.sourcePageIndex)
+                assertEquals(listOf(7), owner.targetUnit!!.pageIds.map { it.sourcePageIndex })
                 val spread = reader.viewer.adapter.items[reader.viewer.pager.currentItem] as DisplayPage
                 assertEquals(setOf(7), spread.visiblePages.map(ReaderPage::index).toSet())
                 assertEquals(Page.State.Ready, pages[6].status)

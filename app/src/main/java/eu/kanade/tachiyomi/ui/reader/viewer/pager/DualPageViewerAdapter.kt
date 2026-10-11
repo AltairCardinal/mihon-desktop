@@ -109,11 +109,16 @@ class DualPageViewerAdapter(
         owner: SharedDualPageSession,
     ): Boolean = chapterPairings.values.any { it.session === owner }
 
-    internal fun selectPage(page: ReaderPage) {
+    internal fun selectPage(page: ReaderPage, publishLayout: Boolean = false) {
         val entry = chapterPairings[page.chapter] ?: return
         if (entry.pages.getOrNull(page.index) !== page) return
         entry.session.goToPage(entry.session.identity.pageIds[page.index])
-        startMatching()
+        if (publishLayout) {
+            // An explicit jump can choose a different group from the old offscreen projection.
+            rebuildItems(page)
+        } else {
+            startMatching()
+        }
     }
 
     internal fun navigate(chapter: ReaderChapter, forward: Boolean): ReaderPage? {
