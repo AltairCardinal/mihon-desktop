@@ -1985,13 +1985,13 @@
     <string name="sync_setup_account_changed">GitHub 账号已更换，请重新连接后继续</string>
     <string name="sync_problem_not_private">同步仓库已变为公开，请在 GitHub 恢复为私有后重试。上传已暂停；恢复私有不能撤回此前可能公开的数据。</string>
     <string name="sync_create_title">创建同步空间</string>
-    <string name="sync_create_description">同步数据保存在你的 GitHub 私有空间。未设置同步密码时，新设备登录同一账号并获得访问权限即可同步。</string>
+    <string name="sync_create_description">推荐不设置同步密码，避免遗忘额外密码带来的恢复风险。同步数据保存在你的 GitHub 私有空间。未设置同步密码时，新设备登录同一账号并获得访问权限即可同步。</string>
     <string name="sync_create_unencrypted_boundary">未设置同步密码时，内容不额外加密；拥有此空间读取权限的人可以读取同步内容。</string>
     <string name="sync_create_password_optional">设置同步密码（可选）</string>
     <string name="sync_create_without_password">创建并开启同步</string>
     <string name="sync_create_with_password">设置密码并开启同步</string>
     <string name="sync_password_risk_title">请先保存密码，遗忘可能无法恢复数据</string>
-    <string name="sync_password_risk_body">同步密码不同于 GitHub 登录密码。本版本不提供找回或重置。\n\n若遗忘密码，且所有设备都失去解锁能力，将无法恢复远端加密数据；重新登录 GitHub 无效。\n\n本地现有内容不会因此删除。</string>
+    <string name="sync_password_risk_body">如需设置，请先将同步密码保存在可靠的密码管理器中。同步密码不同于 GitHub 登录密码。本版本不提供找回或重置。\n\n若遗忘密码，且所有设备都失去解锁能力，将无法恢复远端加密数据；重新登录 GitHub 无效。\n\n本地现有内容不会因此删除。</string>
     <string name="sync_password_risk_ack">我已了解遗忘密码的后果</string>
     <string name="sync_password_help">忘记同步密码？</string>
     <string name="sync_password_help_title">忘记同步密码</string>

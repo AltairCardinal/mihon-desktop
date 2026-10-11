@@ -2195,13 +2195,13 @@
     <string name="creator_settings_saved">Author settings saved</string>
     <string name="desktop_backup_preview_authors">Author archive: %1$d authors</string>
     <string name="sync_create_title">Create sync space</string>
-    <string name="sync_create_description">Sync data is stored in your private GitHub space. Without a sync password, new devices can sync after signing in to the same account and obtaining access.</string>
+    <string name="sync_create_description">We recommend leaving the sync password off to avoid losing access if you forget an extra password. Sync data is stored in your private GitHub space. Without a sync password, new devices can sync after signing in to the same account and obtaining access.</string>
     <string name="sync_create_unencrypted_boundary">Without a sync password, content is not additionally encrypted. Anyone with read access to this space can read its sync content.</string>
     <string name="sync_create_password_optional">Set a sync password (optional)</string>
     <string name="sync_create_without_password">Create and enable sync</string>
     <string name="sync_create_with_password">Set password and enable sync</string>
     <string name="sync_password_risk_title">Save your password first. Forgetting it may make data unrecoverable.</string>
-    <string name="sync_password_risk_body">The sync password is different from your GitHub password. This version offers no password recovery or reset.\n\nIf you forget it and all devices lose their ability to unlock, remote encrypted data cannot be recovered. Signing in to GitHub again will not help.\n\nYour existing local content will not be deleted.</string>
+    <string name="sync_password_risk_body">If you choose to set a sync password, save it in a trusted password manager first. The sync password is different from your GitHub password. This version offers no password recovery or reset.\n\nIf you forget it and all devices lose their ability to unlock, remote encrypted data cannot be recovered. Signing in to GitHub again will not help.\n\nYour existing local content will not be deleted.</string>
     <string name="sync_password_risk_ack">I understand the consequences of forgetting my password</string>
     <string name="sync_password_help">Forgot sync password?</string>
     <string name="sync_password_help_title">Forgot sync password</string>
