@@ -68,9 +68,12 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.model.CreatorMentionResolution
+import tachiyomi.domain.creator.service.CreatorTitleAttributionEditor
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.screens.LoadingScreen
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 class MangaScreen(
     private val mangaId: Long,
@@ -113,8 +116,10 @@ class MangaScreen(
         val successState = state as MangaScreenModel.State.Success
         val isHttpSource = remember { successState.source is HttpSource }
         val creatorNavigator = remember { AndroidMangaCreatorNavigator() }
-        val creatorMentions = remember(successState.manga.author, successState.manga.artist) {
-            creatorNavigator.mentions(successState.manga)
+        val titleAttributionEditor = remember { Injekt.get<CreatorTitleAttributionEditor>() }
+        val titleAttributionSources by titleAttributionEditor.enabledSourcesFlow.collectAsState(initial = emptySet())
+        val creatorMentions = remember(successState.manga, titleAttributionSources) {
+            titleAttributionEditor.extract(successState.manga)
         }
         var creatorIdentityPreparing by remember { mutableStateOf(false) }
         val creatorOpenCoordinator = remember(successState.manga, creatorNavigator) {
@@ -197,6 +202,13 @@ class MangaScreen(
             onSearch = { query, global -> scope.launch { performSearch(navigator, query, global) } },
             creatorMentions = creatorMentions,
             onCreatorClick = openCreator,
+            creatorTitleAttributionControl = {
+                eu.kanade.tachiyomi.ui.browse.author.CreatorTitleAttributionControl(
+                    successState.manga,
+                    successState.source.name,
+                    titleAttributionEditor,
+                )
+            },
             onCoverClicked = screenModel::showCoverDialog,
             onShareClicked = { shareManga(context, screenModel.manga, screenModel.source) }.takeIf { isHttpSource },
             onDownloadActionClicked = screenModel::runDownloadAction.takeIf { !successState.source.isLocalOrStub() },

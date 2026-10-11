@@ -106,6 +106,7 @@ import tachiyomi.domain.creator.model.WorkDecisionContract
 import tachiyomi.domain.creator.model.WorkDecisionProjection
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.model.WorkMatchState
+import tachiyomi.domain.creator.model.titleAttributionEvidence
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
@@ -131,6 +132,7 @@ class CreatorRepositoryImpl(
     private val bootstrap: CreatorArchiveBootstrap = ReadyCreatorArchiveBootstrap,
     private val identityMutationHook: () -> Unit = {},
     private val discoverySchedule: CreatorDiscoverySchedule = CreatorDiscoverySchedule(),
+    private val extractCreators: ExtractCreatorsFromManga = ExtractCreatorsFromManga(),
 ) : CreatorRepository, CreatorArchiveRepository {
     @Volatile
     private var exactIdentityReady = false
@@ -2805,6 +2807,7 @@ class CreatorRepositoryImpl(
     ) {
         entries.forEach { entry ->
             val manga = entry.manga
+            val hasTitleAttribution = entry.mentions.titleAttributionEvidence() != null
             val title = manga.title.ifBlank { "Untitled ${manga.id}" }
             val sourceWork = upsertSourceWorkRecord(
                 sourceId = manga.source,
@@ -2837,6 +2840,7 @@ class CreatorRepositoryImpl(
             val desiredCreatorIds = resolvedMentions.map { (creatorId, mentions) ->
                 val role = mentions.map { it.role.name }.reduce(::unionCreatorRole)
                 val sourceText = mentions.flatMap { it.sourceTexts }.distinct().joinToString(" | ")
+                val attributionEvidence = mentions.titleAttributionEvidence() ?: "library-index:name-exact"
                 val order = mentions.minOf { it.order }
                 author_archiveQueries.upsertArchiveMangaLink(
                     mangaId = manga.id,
@@ -2846,7 +2850,7 @@ class CreatorRepositoryImpl(
                     origin = "AUTOMATIC",
                     sourceText = sourceText,
                     confidence = 1.0,
-                    evidence = "library-index:name-exact",
+                    evidence = attributionEvidence,
                     createdAt = now,
                     lastModifiedAt = now,
                 )
@@ -2859,7 +2863,7 @@ class CreatorRepositoryImpl(
                     verification = "VERIFIED",
                     sourceText = sourceText,
                     confidence = 1.0,
-                    evidence = "library-index:name-exact",
+                    evidence = attributionEvidence,
                     createdAt = now,
                     lastModifiedAt = now,
                 )
@@ -2878,6 +2882,16 @@ class CreatorRepositoryImpl(
                 .filter { it.origin in AUTOMATIC_RELATION_ORIGINS && it.creatorId !in desiredCreatorIds }
                 .forEach {
                     author_archiveQueries.deleteAutomaticArchiveSourceWorkCreator(sourceWork.sourceWorkId, it.creatorId)
+                    if (hasTitleAttribution || it.evidence.startsWith("title-attribution:")) {
+                        author_archiveQueries.getArchiveDiscoveryByNaturalKey(
+                            it.creatorId,
+                            manga.source,
+                            manga.archiveStableUrl(),
+                        ).executeAsOneOrNull()?.let { discoveryId ->
+                            author_archiveQueries.markArchiveDiscoverySeen(now, discoveryId)
+                            author_archiveQueries.cancelArchiveDiscoveryNotifications(discoveryId)
+                        }
+                    }
                 }
         }
     }
@@ -3178,13 +3192,14 @@ class CreatorRepositoryImpl(
             createdAt = now,
             lastModifiedAt = now,
         )
-        val sameRootMentions = ExtractCreatorsFromManga().await(manga)
+        val sameRootMentions = extractCreators.await(manga)
             .filter {
                 author_archiveQueries.getArchiveCreatorIdByExactName(it.displayName).executeAsOneOrNull() ==
                     effectiveCreatorId
             }.ifEmpty { listOf(mention) }
         val role = sameRootMentions.map { it.role.name }.reduce(::unionCreatorRole)
         val sourceText = sameRootMentions.flatMap { it.sourceTexts }.distinct().joinToString(" | ")
+        val attributionEvidence = sameRootMentions.titleAttributionEvidence() ?: "NAME_EXACT"
         author_archiveQueries.upsertArchiveMangaLink(
             mangaId = manga.id,
             creatorId = effectiveCreatorId,
@@ -3193,7 +3208,7 @@ class CreatorRepositoryImpl(
             origin = origin,
             sourceText = sourceText,
             confidence = 1.0,
-            evidence = "NAME_EXACT",
+            evidence = attributionEvidence,
             createdAt = now,
             lastModifiedAt = now,
         )
@@ -3206,7 +3221,7 @@ class CreatorRepositoryImpl(
             verification = "VERIFIED",
             sourceText = sourceText,
             confidence = 1.0,
-            evidence = "NAME_EXACT",
+            evidence = attributionEvidence,
             createdAt = now,
             lastModifiedAt = now,
         )

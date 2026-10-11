@@ -37,6 +37,7 @@ class CatalogueCreatorDiscoverySourceAdapter(
         null
     },
     private val clock: () -> Long = { System.currentTimeMillis() },
+    private val titleAttributionPolicy: CreatorTitleAttributionPolicy = CreatorTitleAttributionPolicy.Disabled,
 ) : CreatorDiscoverySourcePort {
     private val mutex = Mutex()
     private var snapshotSources = emptyMap<Long, CatalogueSource>()
@@ -191,6 +192,7 @@ class CatalogueCreatorDiscoverySourceAdapter(
         thumbnailUrl = thumbnail_url,
         structuredCreatorMatches = structuredMatches,
         publishedDate = publishedDateProvider(this),
+        titleAttributionEnabled = titleAttributionPolicy.isEnabled(sourceId),
     )
 
     private fun AuthorSearchManga.key(sourceId: Long): SourceWorkNaturalKey = manga.toSnapshot(sourceId).key

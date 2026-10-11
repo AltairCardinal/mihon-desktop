@@ -22,6 +22,27 @@ class MangaRepositoryCreatorIndexIntegrationTest {
     private lateinit var driver: JdbcSqliteDriver
     private lateinit var handler: JvmDatabaseHandler
 
+    @Test
+    fun `chapter metadata transaction uses configured title attribution extractor`() = runBlocking<Unit> {
+        driver.execute(null, "UPDATE mangas SET favorite = 1, author = 'Uploader' WHERE _id = 1", 0)
+        val writer = RecordingWriter()
+        val extract = tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga(
+            tachiyomi.domain.creator.service.CreatorTitleAttributionPolicy { setOf("10") },
+        )
+        val repository = tachiyomi.data.chapter.ChapterRepositoryImpl(handler, writer, extract)
+        repository.syncDirectory(
+            tachiyomi.domain.chapter.service.ChapterDirectoryCommit(
+                mangaId = 1L,
+                source = emptyList(),
+                now = 100L,
+                allowEmpty = true,
+                mangaMetadata = MangaUpdate(1L, title = "[Circle (Artist)] Work"),
+            ),
+        )
+        writer.entries.single().mentions.map { it.displayName } shouldBe listOf("Artist", "Circle")
+        queryString("SELECT author FROM mangas WHERE _id = 1") shouldBe "Uploader"
+    }
+
     @BeforeEach
     fun setup() {
         driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)

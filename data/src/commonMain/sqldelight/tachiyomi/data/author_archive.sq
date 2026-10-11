@@ -4620,3 +4620,8 @@ AND discovery_id IN (
     JOIN author_archive_watches W ON W._id = D.watch_id
     WHERE W.creator_id = :creatorId
 );
+
+cancelArchiveDiscoveryNotifications:
+UPDATE author_archive_notification_outbox
+SET state = 'CANCELLED', next_attempt_at = NULL
+WHERE discovery_id = :discoveryId AND state IN ('PENDING', 'FAILED');

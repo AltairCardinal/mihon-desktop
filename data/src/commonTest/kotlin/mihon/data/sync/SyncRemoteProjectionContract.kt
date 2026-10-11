@@ -42,6 +42,36 @@ abstract class SyncRemoteProjectionContract {
     protected abstract fun open(): Storage
 
     @Test
+    fun `remote favorite uses device source title opt in without replacing raw descriptors`() = runBlocking {
+        open().use { s ->
+            s.prepare()
+            val extractor = tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga(
+                tachiyomi.domain.creator.service.CreatorTitleAttributionPolicy { setOf(SOURCE.toString()) },
+            )
+            val writer = SyncRemoteProjectionWriter(
+                s.handler,
+                s.creators,
+                s.creators,
+                s.bootstrap,
+                s.sources::contains,
+                extractCreators = extractor,
+            )
+            val descriptor = SyncObjectDescriptor(mangaKey, "[Circle (Artist)] Work", author = "Uploader")
+            writer.applyMembership(mangaKey, true) { descriptor }
+            val manga = requireNotNull(s.manga.getMangaByUrlAndSourceId("/manga", SOURCE))
+            assertEquals("Uploader", manga.author)
+            assertEquals("[Circle (Artist)] Work", manga.title)
+            assertEquals(
+                setOf("Artist", "Circle"),
+                s.creators.getCreatorsAsFlow().first().map {
+                    it.displayName
+                }.toSet(),
+            )
+            s.assertNoOutbox()
+        }
+    }
+
+    @Test
     fun `remote favorite reconstructs exact source identity and existing creator library index`() = runBlocking {
         open().use { s ->
             s.prepare()

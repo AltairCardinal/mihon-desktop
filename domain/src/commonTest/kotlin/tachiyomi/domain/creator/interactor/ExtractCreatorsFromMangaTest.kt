@@ -12,6 +12,52 @@ class ExtractCreatorsFromMangaTest {
     private val extract = ExtractCreatorsFromManga()
 
     @Test
+    fun `opted in source replaces uploader with two separate title credits and retains raw fields`() {
+        val manga = Manga.create().copy(
+            source = 10L,
+            title = "(C105) [micro page (Kuromotokun)] Example [汉化组]",
+            author = "Uploader",
+            artist = "Uploader",
+        )
+        val optedIn = ExtractCreatorsFromManga(
+            tachiyomi.domain.creator.service.CreatorTitleAttributionPolicy { setOf("10") },
+        )
+        val mentions = optedIn.await(manga)
+        mentions.map { it.displayName }.shouldContainExactly("Kuromotokun", "micro page")
+        mentions.map { it.role }.shouldContainExactly(CreatorRole.UNKNOWN, CreatorRole.UNKNOWN)
+        mentions.map { it.evidence.single().field.name }.shouldContainExactly("TITLE_CREATOR", "TITLE_CIRCLE")
+        mentions.map { it.evidence.single().rawField }.shouldContainExactly(manga.title, manga.title)
+        manga.author shouldBe "Uploader"
+        manga.artist shouldBe "Uploader"
+        extract.await(manga).single().displayName shouldBe "Uploader"
+        optedIn.await(manga.copy(source = 11L)).single().displayName shouldBe "Uploader"
+    }
+
+    @Test
+    fun `full width syntax preserves exact name width and case`() {
+        val optedIn = ExtractCreatorsFromManga(
+            tachiyomi.domain.creator.service.CreatorTitleAttributionPolicy { setOf("10") },
+        )
+        optedIn.await(Manga.create().copy(source = 10L, title = "（C105）［Ｓｏｃｉｅｔｙ （黒本君）］ 作品"))
+            .map { it.displayName }.shouldContainExactly("黒本君", "Ｓｏｃｉｅｔｙ")
+    }
+
+    @Test
+    fun `damaged ambiguous suffix only and empty titles safely retain metadata`() {
+        val optedIn = ExtractCreatorsFromManga(
+            tachiyomi.domain.creator.service.CreatorTitleAttributionPolicy { setOf("10") },
+        )
+        listOf(
+            "[Circle] Work", "[Circle (Artist)]", "Work [Circle (Artist)]", "(Other) [Circle (Artist)] Work",
+            "[Circle (Artist] Work", "[Circle ((Artist))] Work", "[Circle (A / B)] Work",
+            "[汉化组 (Artist)] Work", "[Circle (Artist)] [Other (Second)] Work",
+        ).forEach { title ->
+            optedIn.await(Manga.create().copy(source = 10L, title = title, author = "Uploader"))
+                .single().displayName shouldBe "Uploader"
+        }
+    }
+
+    @Test
     fun `splits people and folds author artist overlap into one ordered mention`() {
         val manga = Manga.create().copy(
             author = "ONE， 村田雄介 / ",

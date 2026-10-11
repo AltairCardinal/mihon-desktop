@@ -180,6 +180,7 @@ internal fun MangaHeader(
     onNotes: () -> Unit,
     onViewCover: () -> Unit,
     coverFocus: FocusRequester,
+    creatorTitleAttributionControl: @Composable (() -> Unit)? = null,
 ) {
     val coverRequestState = rememberMangaCoverRequestState(manga.id, manga.source, coverModel, coverLastModified)
     Column(Modifier.fillMaxWidth().padding(16.dp)) {
@@ -232,13 +233,13 @@ internal fun MangaHeader(
                     ) {
                         creatorMentions.forEach { mention ->
                             DetailMetadataContext(
-                                title = creatorRoleLabel(mention.role),
+                                title = if (mention.role == CreatorRole.UNKNOWN) mihon.desktop.ui.authors.creatorTitleCreditText(mention) else creatorRoleLabel(mention.role),
                                 searchLabel = MR.strings.action_search.localized(),
                                 enabled = !creatorIdentityLoading,
                                 onPrimary = { onCreatorClick(mention) },
                                 onSearch = { onCreatorSearch(mention) },
                                 onCopy = { onTagCopy(mention.displayName) },
-                            ) { Text(mention.displayName, style = MaterialTheme.typography.titleSmall) }
+                            ) { Text(mihon.desktop.ui.authors.creatorTitleCreditText(mention), style = MaterialTheme.typography.titleSmall) }
                         }
                         if (creatorIdentityLoading) {
                             CircularProgressIndicator(Modifier.layoutSize(24.dp))
@@ -267,6 +268,7 @@ internal fun MangaHeader(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
+                creatorTitleAttributionControl?.invoke()
                 if (manga.notes.isNotBlank()) {
                     Spacer(Modifier.height(8.dp))
                     Column(Modifier.fillMaxWidth().clickable(onClick = onNotes).padding(8.dp)) {

@@ -155,6 +155,7 @@ class DomainModule : InjektModule {
                 bootstrap = get(),
                 creatorIndexWriter = get(),
                 creatorRepository = get(),
+                extractCreators = get(),
                 sourceAvailable = { sources.get(it) != null },
                 secureStore = get(),
                 preferenceStore = get(),
@@ -199,7 +200,20 @@ class DomainModule : InjektModule {
                 get<tachiyomi.domain.creator.service.CreatorDiscoveryPreferences>()::current,
             )
         }
-        addSingletonFactory { CreatorRepositoryImpl(handler = get(), bootstrap = get(), discoverySchedule = get()) }
+        addSingletonFactory {
+            tachiyomi.domain.creator.service.CreatorTitleAttributionPolicy(
+                get<tachiyomi.domain.creator.service.CreatorDiscoveryPreferences>(),
+            )
+        }
+        addSingletonFactory { ExtractCreatorsFromManga(get()) }
+        addSingletonFactory {
+            CreatorRepositoryImpl(
+                handler = get(),
+                bootstrap = get(),
+                discoverySchedule = get(),
+                extractCreators = get(),
+            )
+        }
         addSingletonFactory<CreatorRepository> { get<CreatorRepositoryImpl>() }
         addSingletonFactory<CreatorArchiveRepository> { get<CreatorRepositoryImpl>() }
         addSingletonFactory { CreatorArchive(get<CreatorRepository>(), get<CreatorArchiveRepository>()) }
@@ -211,11 +225,14 @@ class DomainModule : InjektModule {
                 awaitIdentityReady = get<CreatorRepositoryImpl>()::awaitIdentityReady,
             )
         }
-        addSingletonFactory { MangaRepositoryImpl(get(), get<CreatorLibraryIndexWriter>()) }
+        addSingletonFactory { MangaRepositoryImpl(get(), get<CreatorLibraryIndexWriter>(), get()) }
         addSingletonFactory<MangaRepository> { get<MangaRepositoryImpl>() }
         addSingletonFactory<CreatorLibraryMangaSource> { get<MangaRepositoryImpl>() }
         addSingletonFactory {
-            CreatorLibraryIndexer(get(), get(), ExtractCreatorsFromManga())
+            CreatorLibraryIndexer(get(), get(), get())
+        }
+        addSingletonFactory {
+            tachiyomi.domain.creator.service.CreatorTitleAttributionEditor(get(), get(), get(), get(), get(), get())
         }
         addSingletonFactory { SourceMangaSearchService() }
         addSingletonFactory<tachiyomi.domain.creator.service.CreatorDiscoverySourcePort> {
@@ -225,6 +242,7 @@ class DomainModule : InjektModule {
                 enabledSourcesProvider = { sources.getCatalogueSources() },
                 sourceResolver = { sources.get(it) as? eu.kanade.tachiyomi.source.CatalogueSource },
                 sourceMangaSearchService = get(),
+                titleAttributionPolicy = get(),
                 languageProfileProvider = { source ->
                     source.lang.takeIf(String::isNotBlank)
                         ?.let(tachiyomi.domain.creator.service.CreatorSourceReadingLanguageProfile::Single)
@@ -244,6 +262,7 @@ class DomainModule : InjektModule {
                 archiveRepository = get(),
                 sourcePort = get(),
                 schedule = get(),
+                titleAttributionPolicy = get(),
             )
         }
         addFactory { GetCreators(get<CreatorRepository>()) }
@@ -311,7 +330,7 @@ class DomainModule : InjektModule {
         addFactory { InsertTrack(get()) }
         addFactory { SyncChapterProgressWithTrack(get(), get(), get()) }
 
-        addSingletonFactory<ChapterRepository> { ChapterRepositoryImpl(get(), get<CreatorLibraryIndexWriter>()) }
+        addSingletonFactory<ChapterRepository> { ChapterRepositoryImpl(get(), get<CreatorLibraryIndexWriter>(), get()) }
         addFactory { GetChapter(get()) }
         addFactory { GetChaptersByMangaId(get()) }
         addFactory { GetBookmarkedChaptersByMangaId(get()) }

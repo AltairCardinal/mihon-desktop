@@ -56,6 +56,7 @@ class CreatorDiscoveryService(
     private val sourceMangaSearchService: SourceMangaSearchService = SourceMangaSearchService(),
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val schedule: CreatorDiscoverySchedule = CreatorDiscoverySchedule(),
+    private val titleAttributionPolicy: CreatorTitleAttributionPolicy = CreatorTitleAttributionPolicy.Disabled,
 ) {
     private var sourcePort: CreatorDiscoverySourcePort? = null
     private var archiveRepository: CreatorArchiveRepository? = creatorRepository as? CreatorArchiveRepository
@@ -70,7 +71,8 @@ class CreatorDiscoveryService(
         clock: () -> Long = { System.currentTimeMillis() },
         backoffJitterMillis: () -> Long = { 0L },
         schedule: CreatorDiscoverySchedule = CreatorDiscoverySchedule(),
-    ) : this(creatorRepository, SourceMangaSearchService(), clock, schedule) {
+        titleAttributionPolicy: CreatorTitleAttributionPolicy = CreatorTitleAttributionPolicy.Disabled,
+    ) : this(creatorRepository, SourceMangaSearchService(), clock, schedule, titleAttributionPolicy) {
         this.archiveRepository = archiveRepository
         this.sourcePort = sourcePort
         this.bounds = bounds
@@ -669,6 +671,7 @@ class CreatorDiscoveryService(
             val identity = CreatorIdentityEvidenceEvaluator.evaluate(
                 listOf(creator.displayName) + creator.aliases,
                 details.work,
+                titleAttributionPolicy,
             )
             if (identity.verification != CreatorRelationVerification.VERIFIED) {
                 possible += 1
@@ -721,7 +724,7 @@ class CreatorDiscoveryService(
                     order = 0,
                     origin = CreatorRelationOrigin.AUTOMATIC,
                     verification = identity.verification,
-                    sourceText = details.work.authorText ?: details.work.artistText,
+                    sourceText = identity.sourceText,
                     confidence = identity.confidence,
                     relationEvidence = identity.evidence,
                     languageAssertion = languageAssertion,
@@ -860,6 +863,7 @@ class CreatorDiscoveryService(
             val identity = CreatorIdentityEvidenceEvaluator.evaluate(
                 listOf(creator.displayName) + creator.aliases,
                 details.work,
+                titleAttributionPolicy,
             )
             if (identity.verification != CreatorRelationVerification.VERIFIED) {
                 possible += 1
@@ -919,7 +923,7 @@ class CreatorDiscoveryService(
             candidateId = candidate.id,
             creatorId = creator.id,
             role = identity.role,
-            sourceText = details.work.authorText ?: details.work.artistText,
+            sourceText = identity.sourceText,
             confidence = identity.confidence,
             evidence = identity.evidence,
         )
@@ -1001,6 +1005,7 @@ class CreatorDiscoveryService(
                     ?: CreatorSourceReadingLanguageProfile.Unknown
             },
             clock = clock,
+            titleAttributionPolicy = titleAttributionPolicy,
         )
     }
 

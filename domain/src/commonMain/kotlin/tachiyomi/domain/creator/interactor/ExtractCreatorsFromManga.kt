@@ -7,9 +7,16 @@ import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.service.CreatorNameNormalizer
 import tachiyomi.domain.manga.model.Manga
 
-class ExtractCreatorsFromManga {
+class ExtractCreatorsFromManga(
+    private val titleAttributionPolicy: tachiyomi.domain.creator.service.CreatorTitleAttributionPolicy =
+        tachiyomi.domain.creator.service.CreatorTitleAttributionPolicy.Disabled,
+) {
 
     fun await(manga: Manga): List<CreatorMention> {
+        if (titleAttributionPolicy.isEnabled(manga.source)) {
+            val titleCredits = tachiyomi.domain.creator.service.TitleCreditParser.parse(manga.title)
+            if (titleCredits.isNotEmpty()) return titleCredits
+        }
         val ordered = linkedMapOf<String, MutableMention>()
         addNames(ordered, manga.author, CreatorRole.AUTHOR, CreatorMetadataField.AUTHOR)
         addNames(ordered, manga.artist, CreatorRole.ARTIST, CreatorMetadataField.ARTIST)

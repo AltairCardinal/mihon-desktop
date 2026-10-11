@@ -147,11 +147,14 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
 
         val screenModelFactory = LocalMangaDetailScreenModelFactory.current
         val model = rememberScreenModel { screenModelFactory(mangaId) }
+        val dependencies = LocalDesktopUiDependencies.current
+        val titleAttributionEditor = dependencies.creatorTitleAttributionEditor
+        val titleAttributionSources by (titleAttributionEditor?.enabledSourcesFlow ?: kotlinx.coroutines.flow.flowOf(emptySet()))
+            .collectAsState(initial = emptySet())
         val state by model.state.collectAsState()
         val downloadQueue by model.downloadQueueFlow().collectAsState()
         val downloadedOnly by model.downloadedOnlyFlow().collectAsState(false)
         val downloadAvailability by model.downloadAvailabilityFlow().collectAsState(0L)
-        val dependencies = LocalDesktopUiDependencies.current
         val appPreferences = dependencies.appPreferences
         val hideMissingChapterIndicators by appPreferences.hideMissingChapterIndicators.changes().collectAsState(
             initial = appPreferences.hideMissingChapterIndicators.get(),
@@ -1247,7 +1250,14 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     dependencies.shareService.copyText(text).toDesktopNotification(),
                                 )
                             },
-                            creatorMentions = model.creatorMentions(manga!!),
+                            creatorMentions = remember(manga, titleAttributionSources) {
+                                titleAttributionEditor?.extract(manga!!) ?: model.creatorMentions(manga!!)
+                            },
+                            creatorTitleAttributionControl = {
+                                titleAttributionEditor?.let {
+                                    mihon.desktop.ui.authors.CreatorTitleAttributionControl(manga!!, source?.name, it)
+                                }
+                            },
                             creatorIdentityLoading = creatorIdentityLoading,
                             onCreatorSearch = { mention ->
                                 navigator.push(GlobalSearchScreen(initialQuery = mention.displayName))

@@ -1574,4 +1574,20 @@
     <string name="creator_work_separate_display_done">已分開顯示此來源版本</string>
     <string name="creator_work_separate_display_undo">復原</string>
     <string name="creator_work_separate_display_failed">無法分開顯示此來源版本，請再試一次。</string>
+    <string name="creator_title_attribution_title">標題署名（預研）</string>
+    <string name="creator_title_attribution_description">為此裝置上的此圖源使用前置 [社團（作者）] 署名。儲存後更新目前作品；其他書架作品可另行整理。無法辨識的標題仍沿用圖源署名。</string>
+    <string name="creator_title_attribution_enabled">此圖源使用標題署名</string>
+    <string name="creator_title_attribution_preview">目前標題辨識結果</string>
+    <string name="creator_title_attribution_no_preview">未找到支援的標題署名。多人合作或含歧義括號的格式暫不辨識。</string>
+    <string name="creator_title_attribution_reindex">重新整理此圖源書架作者</string>
+    <string name="creator_title_attribution_progress">已整理 %d 部書架作品</string>
+    <string name="creator_title_attribution_enabled_result">已啟用此圖源的標題署名</string>
+    <string name="creator_title_attribution_disabled_result">已關閉此圖源的標題署名</string>
+    <string name="creator_title_attribution_reindexed_result">已整理 %d 部書架作品的署名，關注狀態保留</string>
+    <string name="creator_title_attribution_cancelled_result">已取消，已完成 %d 部；完成的批次保留，可重新整理</string>
+    <string name="creator_title_credit_creator">創作者</string>
+    <string name="creator_title_credit_circle">社團</string>
+    <string name="creator_title_credit_both">創作者／社團</string>
+    <string name="creator_title_attribution_original">圖源原始署名：%s</string>
+    <string name="creator_title_attribution_failed_result">整理未完成，已處理 %d 部書架作品。已完成的修改保留，可重試。</string>
 </resources>

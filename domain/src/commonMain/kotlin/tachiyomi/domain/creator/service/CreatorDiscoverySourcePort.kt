@@ -62,6 +62,7 @@ data class CreatorSourceWorkSnapshot(
     val thumbnailUrl: String?,
     val structuredCreatorMatches: List<CreatorStructuredIdentityMatch> = emptyList(),
     val publishedDate: SourceDateValue? = null,
+    val titleAttributionEnabled: Boolean = false,
 )
 
 data class CreatorStructuredIdentityMatch(

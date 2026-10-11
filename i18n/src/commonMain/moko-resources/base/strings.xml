@@ -2494,4 +2494,20 @@
     <string name="sync_setup_authorize_selected_space">Authorize this sync space</string>
     <string name="sync_setup_selected_access_unconfirmed">Access to %1$s is not confirmed. Grant the sync app access to this repository, then check again.</string>
     <string name="sync_setup_installed_status">Sync app installed; repository access pending</string>
+    <string name="creator_title_attribution_title">Title credits (experimental)</string>
+    <string name="creator_title_attribution_description">Use leading [circle (creator)] credits for this source on this device. Saving updates this work; rebuild library credits separately. Unrecognized titles keep source metadata.</string>
+    <string name="creator_title_attribution_enabled">Use title credits for this source</string>
+    <string name="creator_title_attribution_preview">Recognized title credits</string>
+    <string name="creator_title_attribution_no_preview">No supported credits found. Multiple creators and ambiguous brackets are not supported yet.</string>
+    <string name="creator_title_attribution_reindex">Rebuild library credits for this source</string>
+    <string name="creator_title_attribution_progress">Processed %d library works</string>
+    <string name="creator_title_attribution_enabled_result">Title credits enabled for this source</string>
+    <string name="creator_title_attribution_disabled_result">Title credits disabled for this source</string>
+    <string name="creator_title_attribution_reindexed_result">Rebuilt credits for %d library works. Follows were preserved.</string>
+    <string name="creator_title_attribution_cancelled_result">Cancelled after %d works. Completed batches remain; you can retry.</string>
+    <string name="creator_title_credit_creator">Creator</string>
+    <string name="creator_title_credit_circle">Circle</string>
+    <string name="creator_title_credit_both">Creator / circle</string>
+    <string name="creator_title_attribution_original">Original source credits: %s</string>
+    <string name="creator_title_attribution_failed_result">Stopped after %d library works. Completed changes are kept; retry to continue.</string>
 </resources>

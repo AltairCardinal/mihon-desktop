@@ -43,9 +43,9 @@ class SyncRemoteProjectionWriter(
     // Kept for existing platform wiring; remote records are restored from validated descriptors.
     @Suppress("UNUSED_PARAMETER") sourceAvailable: (Long) -> Boolean,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val extractCreators: ExtractCreatorsFromManga = ExtractCreatorsFromManga(),
     private val defaultCategoryFlags: () -> Long = { 0L },
 ) {
-    private val extractCreators = ExtractCreatorsFromManga()
 
     suspend fun prepare() = bootstrap.awaitReady()
 
