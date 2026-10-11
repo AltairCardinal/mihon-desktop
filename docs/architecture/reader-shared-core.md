@@ -412,7 +412,7 @@ Android RTL 双页在此状态保留章节过渡页；用户滑到过渡页或�
 Android `DualPagerPageHolder` 与 Desktop `DualPagePagerViewer` 的普通双页使用完整阅读视口、固定物理左右半屏槽。
 默认 Fit 保持原图宽高比、完整显示、垂直居中并朝书脊对齐。同宽高比的图片无论原始像素分辨率如何均显示为
 相同尺寸；不同宽高比允许自然留白，不能靠拉伸或隐式裁切强制等高。Desktop 显式选择其他缩放模式、封面槽、
-拆图等平台能力仍按既有设置工作；Android 单页保留完整视口及原有独立图片手势。
+拆图等平台能力仍按既有设置工作；Android 普通单页及双页模式的 FULL 单页保留完整视口及原有独立图片手势。
 
 槽位必须在图片就绪前建立。Android 由 View 测量生命周期计算槽内 Fit 尺寸，首次测量前缓存命中、左右到达顺序、
 重试及窗口 resize 都重新使用当前约束，不依赖某一张图的加载回调补做布局。图像尺寸通知仍交给既有配对 adapter；
@@ -422,8 +422,29 @@ Android `DualPagerPageHolder` 与 Desktop `DualPagePagerViewer` 的普通双页�
 共享验收向量位于 `domain/src/commonTest/resources/reader/dual-page-fit.csv`，仅是测试输入与预期矩形，不是 domain
 运行时几何模型。Android 测试执行真实 holder 字节绑定、Ready 状态收集与 View 测量，Desktop 测试挂载真实
 `DualPagePagerViewer`、图片 pipeline 与 `ZoomablePageBox` 并检验离屏像素；不能用源码扫描或测试内另写 Fit 算法
-替代这两条生产链路。Windows Robolectric 仅替代不可用的 Android 原生格式嗅探，尺寸解析及 View 实现保持真实；
-正式 APK 在实机上补验原生解码与交互。
+替代这两条生产链路。Windows Robolectric 的 Fit 测试替代不可用的 Android 原生格式嗅探，尺寸解析及 View 实现保持真实。
+瓦片专项在 JVM 不可用的 region codec 边界提供可控解码，仍执行 SSIV 任务、采样与 Canvas 绘制；设备测试另验随包
+JNI decoder 和真实窗口像素。模拟器组件验收不等于正式 APK、实体设备性能或稳定发布验收。
+
+半槽 Single（封面、尾页、伙伴未到）和 Double 使用同一个完整视口变换；不能按当前已加载张数重新 Fit、
+切换手势所有者或约束平移。`dual-page-zoom.csv` 补充跨平台缩放契约，描述固定 Fit 经完整视口中心缩放和平移后
+的未裁剪矩形；最后仅由阅读器边界裁剪。放大不会拼接 Bitmap、更新内容版本或重开编码源。
+
+Desktop 保留半槽布局，图片和高清 tiles 共用等价完整视口 pivot；region 请求把本地 Fit 几何加上槽原点，
+再交给既有可见源区域/瓦片算法。输入在未变换的 frame 接收，放大时禁用 pager 拖动，复位恢复。
+错误和重试留在固定槽位；右键应命中变换后实际所在图片。曝光需判断真实图片可见性，空白槽相交不足以确认阅读。
+
+Android 保留物理槽及反馈，把槽内原生图片 View 测量到完整视口，通过固定 Fit 与整组相机映射 SSIV 的
+CUSTOM 最小倍率、PAN_LIMIT_OUTSIDE 和 scale/center。因此高清采样可读取实际倍率。运动采样按显示帧合并，
+不为中间状态重开 decoder。已有方向修正后的图片尺寸必须在绑定源之前传入适配器，提前设置半槽 CUSTOM 最小倍率；
+不能等到 onReady/onDraw，否则已测量的 SSIV 可能先按整屏 Fit 初始化过细的 base tiles。显式源区域按其方向修正后的
+尺寸预置；未知裁边先按完整页保守采样，原 decoder 返回实际尺寸后再精确映射，不增加读图或更换 decoder。
+镜像目标按完整视口反解；裁边/有效源区域继续在固定 Fit 内居中。
+动画图片使用同一 drawable 的外部绘制矩阵，保留原动画时钟。背景只画实际图像矩形，避免全屏子 View 互相遮盖。
+普通单页没有这项视口适配，沿用原生控件的既有手势。窗口变化可重算 Fit，伙伴迟到不是重算当前页的理由。
+
+此适配当前属于[预研体验批次](../roadmap/2026-10-11-dual-page-zoom-preview.md)。实际验证结果和未覆盖的设备性能
+边界写入[调查与体验记录](../evidence/dual-page-zoom-investigation-2026-10-11.md)，不能由架构描述推定稳定发布验收通过。
 
 1. 产品行为严格红→绿→重构；source/HTTP 变更覆盖成功、空、403、429、500、畸形响应和 cached Retry。
 2. 每个平台 adapter 使用同一 shared contract 向量；production wiring 被绕过时集成测试必须失败。

@@ -12,7 +12,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
@@ -32,6 +31,8 @@ internal fun ReaderRegionTileLayer(
     alignment: Alignment,
     zoomState: ZoomState,
     viewport: ReaderRegionViewport = ReaderRegionViewport.Full,
+    imageViewport: ReaderImageViewport? = null,
+    transformedByParent: Boolean = false,
     modifier: Modifier = Modifier.fillMaxSize(),
 ) {
     val holder = presentationImage.regionHolder ?: return
@@ -58,24 +59,25 @@ internal fun ReaderRegionTileLayer(
             )
         }
     }
+    val requestGeometry = geometry?.let { imageViewport?.mapGeometry(it) ?: it }
     val requestedKeys = remember(
         holder,
         regionState.regionTilesEnabled,
-        geometry,
+        requestGeometry,
         viewport,
         zoomState,
     ) {
-        if (!regionState.regionTilesEnabled || geometry == null) {
+        if (!regionState.regionTilesEnabled || requestGeometry == null) {
             emptySet()
         } else {
             val sourcePixelsPerScreenPixel = renderedSourceBounds.width /
-                (geometry.drawSize.width * zoomState.scale)
+                (requestGeometry.drawSize.width * zoomState.scale)
             val level = resolveReaderRegionTileLevel(
                 sourcePixelsPerScreenPixel = sourcePixelsPerScreenPixel,
                 tileOutputExtent = TILE_OUTPUT_EXTENT,
             )
             val visible = resolveReaderVisibleSourceBounds(
-                geometry = geometry,
+                geometry = requestGeometry,
                 viewport = viewport,
                 zoomState = zoomState,
             )
@@ -87,8 +89,8 @@ internal fun ReaderRegionTileLayer(
                 )
                     .filter { region ->
                         readerRegionTileIntersectsViewport(
-                            geometry = geometry,
-                            tileDrawBounds = resolveReaderRegionTileDrawBounds(geometry, region),
+                            geometry = requestGeometry,
+                            tileDrawBounds = resolveReaderRegionTileDrawBounds(requestGeometry, region),
                             viewport = viewport,
                             zoomState = zoomState,
                         )
@@ -115,11 +117,8 @@ internal fun ReaderRegionTileLayer(
 
     val layerModifier = modifier
         .onSizeChanged { viewportSize = it }
-        .graphicsLayer(
-            scaleX = zoomState.scale,
-            scaleY = zoomState.scale,
-            translationX = zoomState.offsetX,
-            translationY = zoomState.offsetY,
+        .then(
+            if (transformedByParent) Modifier else Modifier.readerImageTransform(zoomState, imageViewport),
         )
     Canvas(layerModifier) {}
     regionState.readyTiles.forEach { (tileKey, _) ->

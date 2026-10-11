@@ -1,7 +1,8 @@
 package mihon.desktop.ui.reader
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.gestures.calculateCentroidSize
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,16 +19,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.isActive
 import mihon.desktop.reader.DesktopReaderPresentationImageState
@@ -53,6 +57,117 @@ internal fun zoomableGestureCapabilities(
     tapNavigationEnabled = handlesTapNavigation && hasNavigationCallbacks,
     doubleTapResetEnabled = true,
 )
+
+/** Input remains in viewport coordinates even when either image crosses the spine. */
+@Composable
+internal fun Modifier.readerZoomInput(
+    zoomState: ZoomState,
+    onZoomChange: (ZoomState) -> Unit,
+    onTap: ((Offset, Float, Float) -> Unit)? = null,
+): Modifier {
+    val latestZoom by rememberUpdatedState(zoomState)
+    val latestChange by rememberUpdatedState(onZoomChange)
+    val latestTap by rememberUpdatedState(onTap)
+    return pointerInput(Unit) {
+        var lastTapTime = 0L
+        var lastTapPosition = Offset.Zero
+        awaitPointerEventScope {
+            var downPosition: Offset? = null
+            var lastPanPosition = Offset.Zero
+            var downTime = 0L
+            var moved = false
+            var resetTap = false
+            var gestureZoom = latestZoom
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val pressed = event.changes.filter { it.pressed }
+                if (event.type == PointerEventType.Press && downPosition == null) {
+                    val down = event.changes.firstOrNull { it.pressed && !it.previousPressed } ?: continue
+                    if (!event.isReaderPrimaryPress() && down.type != PointerType.Touch) continue
+                    downPosition = down.position
+                    lastPanPosition = down.position
+                    downTime = System.currentTimeMillis()
+                    moved = false
+                    resetTap = downTime - lastTapTime < 300 &&
+                        (down.position - lastTapPosition).getDistance() < 50
+                    gestureZoom = if (resetTap) ZoomState() else latestZoom
+                    if (resetTap) {
+                        latestChange(gestureZoom)
+                        lastTapTime = 0L
+                        event.changes.forEach { it.consume() }
+                    }
+                }
+                if (downPosition == null) continue
+                if (pressed.size > 1) {
+                    moved = true
+                    val previousCentroid = event.calculateCentroid(useCurrent = false)
+                    val pan = event.calculatePan()
+                    val scale = (gestureZoom.scale * event.calculateZoom()).coerceIn(1f, ZoomState.MAX_SCALE)
+                    val factor = scale / gestureZoom.scale
+                    val center = Offset(size.width / 2f, size.height / 2f)
+                    gestureZoom = if (scale <= 1f) {
+                        ZoomState()
+                    } else {
+                        val focalOffset = previousCentroid - center
+                        ZoomState(
+                            scale,
+                            gestureZoom.offsetX * factor + focalOffset.x * (1f - factor) + pan.x,
+                            gestureZoom.offsetY * factor + focalOffset.y * (1f - factor) + pan.y,
+                        )
+                    }
+                    latestChange(gestureZoom)
+                    event.changes.forEach { it.consume() }
+                    lastPanPosition = pressed.first().position
+                } else if (pressed.isNotEmpty() &&
+                    (event.type == PointerEventType.Move || event.type == PointerEventType.Enter ||
+                        event.type == PointerEventType.Exit)
+                ) {
+                    // Desktop may deliver the first pressed movement as Enter after hit-test changes.
+                    // It carries a real delta and remains part of the captured drag.
+                    val change = pressed.first()
+                    if ((change.position - requireNotNull(downPosition)).getDistance() > 15f) moved = true
+                    if (moved && gestureZoom.scale > 1f) {
+                        val delta = change.position - lastPanPosition
+                        gestureZoom = gestureZoom.pan(delta.x, delta.y)
+                        latestChange(gestureZoom)
+                        event.changes.forEach { it.consume() }
+                    }
+                    lastPanPosition = change.position
+                } else if (pressed.size == 1) {
+                    lastPanPosition = pressed.first().position
+                }
+                if (pressed.isEmpty()) {
+                    if (!moved && !resetTap && System.currentTimeMillis() - downTime < 400) {
+                        lastTapTime = System.currentTimeMillis()
+                        lastTapPosition = event.changes.first().position
+                        if (gestureZoom.scale <= 1f && event.changes.none { it.isConsumed }) {
+                            latestTap?.invoke(lastTapPosition, size.width.toFloat(), size.height.toFloat())
+                        }
+                    }
+                    downPosition = null
+                }
+            }
+        }
+    }
+}
+
+internal fun Modifier.readerImageTransform(
+    zoomState: ZoomState,
+    viewport: ReaderImageViewport?,
+): Modifier = graphicsLayer {
+    scaleX = zoomState.scale
+    scaleY = zoomState.scale
+    translationX = zoomState.offsetX
+    translationY = zoomState.offsetY
+    transformOrigin = if (viewport == null || size.width <= 0f || size.height <= 0f) {
+        TransformOrigin.Center
+    } else {
+        TransformOrigin(
+            (viewport.size.width / 2f - viewport.slotOrigin.x) / size.width,
+            (viewport.size.height / 2f - viewport.slotOrigin.y) / size.height,
+        )
+    }
+}
 
 /**
  * A single manga page image with pinch-to-zoom, drag-to-pan, double-tap-to-reset,
@@ -99,6 +214,7 @@ internal fun ZoomablePageBox(
     )? = null,
     pageLabel: String,
     zoomState: ZoomState,
+    imageViewport: ReaderImageViewport? = null,
     onZoomChange: (ZoomState) -> Unit,
     cropBorders: Boolean = false,
     contextMenuScope: CoroutineScope? = null,
@@ -111,6 +227,7 @@ internal fun ZoomablePageBox(
     loadingAlignment: Alignment = Alignment.Center,
     showLoadingIndicator: Boolean = true,
     onLoadingStateChange: ((Boolean) -> Unit)? = null,
+    onFeedbackVisibilityChange: ((Boolean) -> Unit)? = null,
     onRetry: (() -> Unit)? = null,
     onSpreadDetected: (() -> Unit)? = null,
     scaleType: ScaleType = ScaleType.FIT_SCREEN,
@@ -126,7 +243,6 @@ internal fun ZoomablePageBox(
         hasNavigationCallbacks = onTapPrevious != null || onTapNext != null || onTapCenter != null,
     )
 
-    val latestZoom by rememberUpdatedState(zoomState)
     val identity = presentationImage.holder.identity
     val splitHalf = identity.splitHalf
     val sourceBounds = identity.sourceBounds
@@ -149,159 +265,38 @@ internal fun ZoomablePageBox(
     }
 
     val innerContent: @Composable () -> Unit = {
-        // Unified gesture handler using detectTapGestures for tap detection
-        // combined with transform gesture handling in a single pointerInput.
-        val gestureModifier = if (gestureCapabilities.transformEnabled) {
-            Modifier.pointerInput(navigationMode, isRtl, gestureCapabilities.tapNavigationEnabled) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-
-                        // Multi-touch → zoom/pan
-                        if (event.changes.size > 1) {
-                            val zoom = event.calculateZoom()
-                            if (zoom != 1f) {
-                                val current = latestZoom
-                                val newScale = (current.scale * zoom).coerceIn(1f, ZoomState.MAX_SCALE)
-                                val scaled = if (newScale <= 1f) ZoomState() else current.copy(scale = newScale)
-                                onZoomChange(scaled)
-                            }
-                            val pressedChanges = event.changes.filter { it.pressed }
-                            if (pressedChanges.isNotEmpty()) {
-                                val panX =
-                                    pressedChanges.sumOf {
-                                        (it.position.x - it.previousPosition.x).toDouble()
-                                    }.toFloat() /
-                                        pressedChanges.size
-                                val panY =
-                                    pressedChanges.sumOf {
-                                        (it.position.y - it.previousPosition.y).toDouble()
-                                    }.toFloat() /
-                                        pressedChanges.size
-                                if (panX != 0f || panY != 0f) {
-                                    val current = latestZoom
-                                    onZoomChange(current.pan(panX, panY))
-                                }
-                            }
-                            event.changes.forEach { it.consume() }
-                            continue
-                        }
-
-                        // Single-touch press → track for potential tap
-                        if (event.isReaderPrimaryPress()) {
-                            val down = event.changes.first()
-                            val downPos = down.position
-                            val downTime = System.currentTimeMillis()
-
-                            // Track gesture completion
-                            var gestureComplete = false
-                            var moved = false
-                            var isTap = false
-                            var releasePos = downPos
-
-                            while (!gestureComplete) {
-                                val nextEvent = awaitPointerEvent(PointerEventPass.Main)
-                                when (nextEvent.type) {
-                                    PointerEventType.Move -> {
-                                        val change = nextEvent.changes.first()
-                                        val dx = change.position.x - downPos.x
-                                        val dy = change.position.y - downPos.y
-                                        // Movement threshold: ~15px
-                                        if (dx * dx + dy * dy > 225f) {
-                                            moved = true
-                                            gestureComplete = true
-                                            // Pan when zoomed in
-                                            if (latestZoom.scale > 1f) {
-                                                val current = latestZoom
-                                                onZoomChange(
-                                                    current.pan(
-                                                        change.position.x - change.previousPosition.x,
-                                                        change.position.y - change.previousPosition.y,
-                                                    ),
-                                                )
-                                            }
-                                        }
-                                    }
-                                    PointerEventType.Release -> {
-                                        releasePos = nextEvent.changes.first().position
-                                        val elapsed = System.currentTimeMillis() - downTime
-                                        // Tap: released quickly (<400ms) without significant movement
-                                        if (elapsed < 400) {
-                                            isTap = true
-                                        }
-                                        gestureComplete = true
-                                    }
-                                    PointerEventType.Exit -> {
-                                        gestureComplete = true
-                                    }
-                                }
-                            }
-
-                            // Handle tap
-                            if (gestureCapabilities.tapNavigationEnabled && isTap && !moved) {
-                                val tapX = releasePos.x
-                                val tapY = releasePos.y
-                                val tapWidth = size.width.toFloat()
-                                val tapHeight = size.height.toFloat()
-                                if (latestZoom.scale <= 1f) {
-                                    when (tapNavRegion(tapX, tapY, tapWidth, tapHeight, navigationMode, isRtl)) {
-                                        TapNavRegion.PREV -> onTapPrevious?.invoke()
-                                        TapNavRegion.NEXT -> onTapNext?.invoke()
-                                        TapNavRegion.MENU -> onTapCenter?.invoke()
-                                    }
-                                }
-                            }
+        val gestureModifier = if (imageViewport == null) {
+            Modifier.readerZoomInput(
+                zoomState = zoomState,
+                onZoomChange = onZoomChange,
+                onTap = if (gestureCapabilities.tapNavigationEnabled) {
+                    { point, width, height ->
+                        when (tapNavRegion(point.x, point.y, width, height, navigationMode, isRtl)) {
+                            TapNavRegion.PREV -> onTapPrevious?.invoke()
+                            TapNavRegion.NEXT -> onTapNext?.invoke()
+                            TapNavRegion.MENU -> onTapCenter?.invoke()
                         }
                     }
-                }
-            }
-        } else {
-            Modifier
-        }
-
-        // Double-tap reset stays local even when single-tap navigation is delegated to a parent Row.
-        val doubleTapModifier = if (gestureCapabilities.doubleTapResetEnabled) {
-            Modifier.pointerInput(Unit) {
-                var lastTapTime = 0L
-                var lastTapPos = androidx.compose.ui.geometry.Offset.Zero
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Main)
-                        if (event.isReaderPrimaryPress()) {
-                            val now = System.currentTimeMillis()
-                            val pos = event.changes.first().position
-                            if (now - lastTapTime < 300 &&
-                                (pos - lastTapPos).getDistance() < 50
-                            ) {
-                                // Double-tap detected → reset zoom
-                                onZoomChange(ZoomState())
-                                lastTapTime = 0L
-                                event.changes.forEach { it.consume() }
-                            } else {
-                                lastTapTime = now
-                                lastTapPos = pos
-                            }
-                        }
-                    }
-                }
-            }
+                } else {
+                    null
+                },
+            )
         } else {
             Modifier
         }
 
         Box(
             modifier = modifier
-                .then(gestureModifier)
-                .then(doubleTapModifier)
-                .onGloballyPositioned { mountedCoordinates[0] = it },
+                .then(gestureModifier),
             contentAlignment = imageAlignment,
         ) {
             val fullDecodeFailed = presentationState is DesktopReaderPresentationImageState.Failed
             val presentationClosed = presentationState is DesktopReaderPresentationImageState.Closed
             val shouldShowLoading = !fullDecodeFailed && !presentationClosed &&
                 (asset == null || renderedImage == null)
-            LaunchedEffect(shouldShowLoading) {
+            LaunchedEffect(shouldShowLoading, fullDecodeFailed) {
                 onLoadingStateChange?.invoke(shouldShowLoading)
+                onFeedbackVisibilityChange?.invoke(shouldShowLoading || fullDecodeFailed)
             }
             if (showLoadingIndicator && shouldShowLoading) {
                 Box(
@@ -333,14 +328,7 @@ internal fun ZoomablePageBox(
                     }
             }
 
-            val imageModifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(
-                    scaleX = zoomState.scale,
-                    scaleY = zoomState.scale,
-                    translationX = zoomState.offsetX,
-                    translationY = zoomState.offsetY,
-                )
+            val imageModifier = Modifier.fillMaxSize().readerImageTransform(zoomState, imageViewport)
             if (renderedImage != null && !fullDecodeFailed && !presentationClosed) {
                 val observedMount = if (onObservedImageDraw != null) {
                     remember { mihon.desktop.test.state.readerState.nextDrawMountId() }
@@ -380,58 +368,94 @@ internal fun ZoomablePageBox(
                         }
                     }
                 }
-                // The base bitmap and region tiles share one preparation boundary. A mounted
-                // prefetch page may decode, but cannot acknowledge clipped-away pixels.
-                Box(
-                    Modifier.fillMaxSize().observeReaderPageDraw(
-                        {
-                            val accepted = renderedImage.acknowledgeDraw()
-                            if (onPageDrawn != null && renderedImage.currentPixels()) onPageDrawn.invoke()
-                            accepted
-                        },
-                        prepareDraw = {
-                            mountedCoordinates[0]?.takeIf { it.isAttached }?.boundsInRoot()?.isEmpty == false &&
-                                (
-                                    onPagePrepared == null ||
-                                        asset?.let { onPagePrepared(it.bitmap.width, it.bitmap.height) } == true
-                                    )
-                        },
-                    ),
-                ) {
-                    if (observedPainter != null) {
-                        Image(
-                            painter = observedPainter,
-                            contentDescription = pageLabel,
-                            alignment = imageAlignment,
-                            modifier = imageModifier.onGloballyPositioned {
-                                observedCoordinates?.set(0, it)
-                                observedPainter.lastLayoutCallbackMonotonicNanos = System.nanoTime()
+                val imageContent: @Composable () -> Unit = {
+                    // The base bitmap and region tiles share one preparation boundary. A mounted
+                    // prefetch page may decode, but cannot acknowledge clipped-away pixels.
+                    Box(
+                        Modifier.fillMaxSize().observeReaderPageDraw(
+                            {
+                                val accepted = renderedImage.acknowledgeDraw()
+                                if (onPageDrawn != null && renderedImage.currentPixels()) onPageDrawn.invoke()
+                                accepted
                             },
+                            prepareDraw = {
+                            val coordinates = mountedCoordinates[0]?.takeIf { it.isAttached }
+                            val localGeometry = coordinates?.takeIf {
+                                it.size.width > 0 && it.size.height > 0
+                            }?.let {
+                                resolveReaderRegionDrawGeometry(
+                                    viewportSize = it.size,
+                                    renderedBitmapSize = IntSize(renderedImage.bitmap.width, renderedImage.bitmap.height),
+                                    renderedSourceBounds = renderedImage.renderedSourceBounds,
+                                    contentScale = resolvedScale,
+                                    alignment = imageAlignment,
+                                )
+                            }
+                            val geometry = localGeometry?.let { imageViewport?.mapGeometry(it) ?: it }
+                            coordinates?.boundsInRoot()?.isEmpty == false && geometry != null &&
+                                resolveReaderVisibleSourceBounds(geometry, ReaderRegionViewport.Full, zoomState) != null &&
+                                    (
+                                        onPagePrepared == null ||
+                                            asset?.let { onPagePrepared(it.bitmap.width, it.bitmap.height) } == true
+                                        )
+                            },
+                        ),
+                    ) {
+                        if (observedPainter != null) {
+                            Image(
+                                painter = observedPainter,
+                                contentDescription = pageLabel,
+                                alignment = imageAlignment,
+                                modifier = Modifier.fillMaxSize().onGloballyPositioned {
+                                    observedCoordinates?.set(0, it)
+                                    observedPainter.lastLayoutCallbackMonotonicNanos = System.nanoTime()
+                                },
+                                contentScale = resolvedScale,
+                            )
+                        } else {
+                            Image(
+                                bitmap = renderedImage.bitmap,
+                                contentDescription = pageLabel,
+                                alignment = imageAlignment,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = resolvedScale,
+                            )
+                        }
+                        ReaderRegionTileLayer(
+                            presentationImage = presentationImage,
+                            renderedImage = renderedImage,
                             contentScale = resolvedScale,
-                        )
-                    } else {
-                        Image(
-                            bitmap = renderedImage.bitmap,
-                            contentDescription = pageLabel,
                             alignment = imageAlignment,
-                            modifier = imageModifier,
-                            contentScale = resolvedScale,
+                            zoomState = zoomState,
+                            imageViewport = imageViewport,
+                            transformedByParent = true,
                         )
                     }
-                    ReaderRegionTileLayer(
-                        presentationImage = presentationImage,
-                        renderedImage = renderedImage,
-                        contentScale = resolvedScale,
-                        alignment = imageAlignment,
-                        zoomState = zoomState,
-                    )
+                }
+                Box(imageModifier.onGloballyPositioned { mountedCoordinates[0] = it }) {
+                    if (imageViewport != null && contextMenuScope != null) {
+                        val binding = readerPageContextMenuBinding(presentationImage)
+                        PageContextMenu(
+                            imageLeaseProvider = binding.imageLeaseProvider,
+                            mangaTitle = mangaTitle,
+                            chapterTitle = chapterTitle,
+                            pageIndex = pageIndex,
+                            scope = contextMenuScope,
+                            onSetAsCover = onSetAsCover,
+                            splitHalf = binding.splitHalf,
+                            sourceBounds = binding.sourceBounds,
+                            content = imageContent,
+                        )
+                    } else {
+                        imageContent()
+                    }
                 }
             }
         }
     }
 
     val scope = contextMenuScope
-    if (scope != null && asset != null) {
+    if (imageViewport == null && scope != null && asset != null) {
         val binding = readerPageContextMenuBinding(presentationImage)
         PageContextMenu(
             imageLeaseProvider = binding.imageLeaseProvider,

@@ -1,0 +1,11 @@
+# id,slot,viewportWidth,viewportHeight,imageWidth,imageHeight,scale,offsetX,offsetY,expectedLeft,expectedTop,expectedRight,expectedBottom
+# Bounds describe the transformed image before clipping; right/bottom are exclusive.
+left-rest,LEFT,400,400,32,48,1,0,0,0,50,200,350
+right-rest,RIGHT,400,400,32,48,1,0,0,200,50,400,350
+left-focus,LEFT,400,400,32,48,2,200,0,0,-100,400,500
+right-focus,RIGHT,400,400,32,48,2,-200,0,0,-100,400,500
+left-cross-spine,LEFT,400,400,32,48,2,100,40,-100,-60,300,540
+right-cross-spine,RIGHT,400,400,32,48,2,-100,-40,100,-140,500,460
+landscape-left-rest,LEFT,1400,1000,1600,3200,1,0,0,200,0,700,1000
+landscape-left-focus,LEFT,1400,1000,1600,3200,2,600,0,300,-500,1300,1500
+landscape-right-focus,RIGHT,1400,1000,1600,3200,2,-600,0,100,-500,1100,1500

@@ -112,6 +112,57 @@ class DesktopReaderRegionPresentationWiringTest {
     }
 
     @Test
+    fun `dual zoom focuses visible tiles over the whole viewport without decoding the hidden partner tiles`() = runTest {
+        val fixture = Fixture(this) { key ->
+            coloredAsset(
+                color = when {
+                    key.purpose == PageDecodePurpose.FULL_PAGE -> PREVIEW_RED
+                    key.pageIndex == 2 -> TILE_BLUE
+                    else -> TILE_GREEN
+                },
+                sourceWidth = 4_000,
+                sourceHeight = 6_000,
+                bitmapWidth = 32,
+                bitmapHeight = 48,
+            )
+        }
+        val chapter = readerChapterSession(chapterId = CHAPTER_ID, generation = GENERATION, pageCount = 3)
+        val shared = desktopReaderPresentationRequest(chapter, ReaderDirection.LTR)
+            .copy(pageSizes = chapter.pages.associate { it.id to ReaderPageSize(4_000, 6_000) })
+            .withSharedOwner()
+        val scene = ImageComposeScene(400, 400, coroutineContext = coroutineContext) {}
+        try {
+            fixture.owner.beginGeneration(GENERATION)
+            scene.setContent {
+                ZoomablePagerViewer(
+                    chapter = chapter,
+                    currentPage = 1,
+                    isRtl = false,
+                    isDualPage = true,
+                    dualPageUnits = shared.dualPageUnits,
+                    zoomState = ZoomState(scale = 2f, offsetX = 200f),
+                    presentationImageOwner = fixture.owner,
+                    onPageChange = {},
+                    onZoomChange = {},
+                )
+            }
+            pumpUntilRegionPixels(scene, fixture, expectedPageIndexes = setOf(1)) { frame ->
+                sameRgb(frame.getColor(10, 200), TILE_GREEN) &&
+                    sameRgb(frame.getColor(390, 200), TILE_GREEN)
+            }
+            assertTrue(2 !in fixture.regionPageIndexes(), "The partner is outside the transformed viewport")
+            val regions = fixture.decodedKeys.filter {
+                it.pageIndex == 1 && it.purpose == PageDecodePurpose.REGION_TILE
+            }.mapNotNull(ReaderPageDecodeKey::region)
+            assertEquals(0, regions.minOf(PixelBounds::x))
+            assertEquals(4_000, regions.maxOf { it.x + it.width })
+        } finally {
+            scene.close()
+            fixture.close()
+        }
+    }
+
+    @Test
     fun `mounted Webtoon production presentation submits visible region tiles`() = runTest {
         val fixture = Fixture(this)
         val scene = ImageComposeScene(800, 600, coroutineContext = coroutineContext) {}

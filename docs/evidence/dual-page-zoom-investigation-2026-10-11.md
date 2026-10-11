@@ -4,7 +4,7 @@
 
 建议保留共享配对、显示锁定、图片缓存和解码体系，局部调整呈现层：**初始图片仍按固定槽位排版，缩放、拖动、裁剪和高清可见区域统一使用完整阅读视口。** 这里的“完整视口”指阅读器可显示漫画的区域，不是自动隐藏系统栏或切换操作系统全屏。
 
-两端已经分别执行真实 production 组件的预研。核心几何与资源复用可行性通过；正式修复尚未实施。实际大图瓦片绘制、动画图片、双图合成及设备帧时间仍是实施验收门槛，不能把本报告当作修复完成或性能通过证明。
+本报告前半部分保留首次只读调查与组件预研的历史结论；后续用户已授权在独立工作树构建双端体验版，实际实现和验证见文末“预研体验版实施”。体验版验证与稳定发布、设备性能验收分别记录，不能互相替代。
 
 ## 调查基线与证据边界
 
@@ -165,3 +165,82 @@ python scripts/gradle-coordinator.py run --key dual-zoom-android-replay -- .\gra
 复核前按根 AGENTS 设置 UTF-8、验证环境和 Android SDK；确认没有其他 Gradle 运行，并核对 archive 的基线再恢复测试，不能覆盖其他任务改动。这些本机过程文件不是产品代码或长期测试入口；正式实施应将有价值的预研断言改写为可维护的回归测试。
 
 本轮结论是呈现层调整具有可执行的技术路径，关键坐标与资源复用预研通过。真实高清瓦片、动画适配和设备性能没有被标记为通过，须按上述固定验收完成后才能宣称 bug 已修复。
+
+
+## 预研体验版实施
+
+用户在调查后要求：“已创建工作树，在本工作树中先构建预研性质的 windows 与安卓版本给我体验”。本次基线 `027ca888d24ff94a327eaf61963cbb7d8b274aa9`，工作树 `D:/Codex/worktrees/b7b3/mihon`，分支 `codex/dual-page-zoom-preview-20261011`。前文“未修改 production、未构建”等语句仅描述首次调查阶段；本节是后续实施证据。原有未跟踪 `docs/human/` 未修改、未提交。
+
+### 已实现的行为与边界
+
+- 两平台的 LEFT/RIGHT 孤页及双页共用整 frame 相机，初始 Fit 和左右槽位置不变；最大倍率仍为 5。普通单页与 FULL 图片保留原有适配路径。
+- Windows 手势捕获位于未变换的完整视口。底图、高清瓦片和右键对象使用同一变换；反馈留在槽位，并保持在图片之上。区域请求先加 slot origin 再反算全视口，阅读曝光根据实际图像交集判断。持续鼠标拖动同时处理按住时的 Move/Enter/Exit；首个 Enter 含真实位移，不能遗漏。
+- Android 原生图片 View 使用完整视口，SSIV 内部 scale/center 接入整组相机，继续使用同一 decoder 与原始输入。手势更新按显示帧合并，双击沿用设置中的动画时长；镜像在完整视口中反算，裁边保持原 Fit 内居中。动画图沿用原 drawable 与调度时钟，背景只绘制在实际图像矩形。
+- 伙伴迟到、重试和 Single↔Double 原位更新不重置相机或原页；图片完全离屏时不因槽内空白仍可见而上报阅读。共享配对、显示锁定、缓存、解码租约和进度格式未改。
+
+长期边界见[阅读器架构说明](../architecture/reader-shared-core.md)，实施范围见[本次计划](../roadmap/2026-10-11-dual-page-zoom-preview.md)。变更超过 8 文件/400 行的原因是完整相机需要同时覆盖两平台输入、底图/瓦片、曝光与原生适配，且必须带真实行为测试；没有借此扩展到分组、下载或数据库重构。
+
+### 红绿与定向验证
+
+共享 `domain/src/commonTest/resources/reader/dual-page-zoom.csv` 包含 9 条左右页、聚焦和跨中缝矩形向量，由双端 production 组件消费。所有 Gradle 任务串行经协调器运行；未运行完整模块或仓库全量测试。
+
+| 协调器 key | 有效结果与解释 |
+| --- | --- |
+| `zoom-preview-desktop-red` | 3 项正确红测：左右聚焦错误，以及持续拖动停滞 |
+| `zoom-preview-remaining-red` | Android 2 项正确红测：像素不跨槽、原生视口仍为局部；其中 Desktop 包名过滤错误的 no-match 不作为红测 |
+| `zoom-preview-desktop-tiles-red` | 1 项正确红测：瓦片边缘缺失/离屏伙伴请求，底图相机与 region 几何不一致 |
+| `zoom-preview-android-green2` | 30 项中 27 通过；3 个失败经查属于宿主夹具：Robolectric region decoder 返回空白位图，以及暂停时钟未逐帧推进动画；保留首次结果 |
+| `zoom-preview-android-green3` | 30/30 通过：9 项新增视口行为、16 项 holder 集成、5 项原始方向接线；Robolectric 仅替换无法工作的底层 region codec seam，仍执行真实 SSIV 任务、瓦片选择和 Canvas 绘制，设备测试另验随包 JNI codec |
+| `zoom-preview-desktop-green` | region 几何/接线、Bitmap 与 transform ownership 等相关范围通过；暴露首帧拖动和空白曝光两个目标失败，以及一条无关配对断言失败 |
+| `zoom-preview-desktop-green2` | 42 项中 41 通过，包括新曝光回归、跨槽真实右键复制、多触点改变、动画与稳定挂载；剩首次 Enter 位移失败 |
+| `zoom-preview-desktop-first-move` | 诊断确认首个按住移动是 Enter，具有真实 delta；保留失败证据，临时诊断输出已删除 |
+| `zoom-preview-desktop-final-focused2` | 连续拖动、多触点切换 2/2 通过，6 个修改文件定向 Spotless/ktlint Apply+Check 通过；与此前未受后续修复影响的结果组合收口，没有声称最终代码重新全量通过 |
+
+Android 新测试初次编译中的空值/方法调用错误，以及格式检查中的测试长名称问题，均单独修正，不作为行为红测。Desktop 模块没有独立 Spotless task，本次通过已有 app Spotless 配置定向检查 Desktop 6 个文件；首次错误 task 名未计作验证通过。
+
+无关失败：`DesktopReaderProductRegressionTest.manual boundary removes conflicting automatic edge and retains unrelated edge`。该断言只走现有共享配对/presentation owner，未进入本次修改的输入和图像组件；相关 production 文件未变。本次没有修它，也没有在旧提交重跑，故只报告“未改动且无调用关联的失败”，不称已证明的基线通过/失败。
+
+过程日志、argv、时间、PID、归档 XML 在本工作树忽略目录 `.gradle-coordinator/`，原始失败与补验结果均保留。两个代理分别实施平台变更，主代理独立复核输入坐标、曝光、资源身份和实际执行结果；没有增加第三个代理或全量验证。
+
+
+### Android 原生窗口补验
+
+使用本次新建的 `mihon-zoom-preview` AVD（API 36、`emulator-5586`、1536 MiB/2 核），明确核对实例、SDK、开发宿主 `app.mihon.desktop.fork.dev`、vc72 和测试包同一 Debug 证书。没有操作实体设备或既有模拟器数据。定向构建 `zoom-preview-android-native-build2` 通过（6 分 4 秒），包含本次 app 文件格式检查、Debug 与 AndroidTest APK。格式整理后的 `zoom-preview-android-refactor` 复验 30/30 通过（1 分 26 秒）。
+
+原生测试通过真实 Copy 1.4.85 APK（SHA-256 `0a208f10b4f8fa3f3f0fae7704935e1a487c6ee342722c7e7818a02ad8c8dd6a`）、本机虚构 HTTP 响应、原 loader、原生 View 和窗口像素执行；章节和图片使用 `reader.example`、虚构标题和 PNG/GIF，不接触真实用户漫画。JSON 字段按该 APK 的真实 serializer 核实，原件与两份合成输入保留在本机忽略目录。
+
+- 首次 `zoom-preview-android-native.log` 的 4 项均在缺少外置 JSON 的 fixture 构造时停止，没有进入产品验收。补齐暂存文件后，`native2` 的孤页双击和动画缩放/复位通过。
+- `native2` 中伙伴错误重试用例受新 AVD 首次全屏系统提示遮挡；失败时真实 LEFT 错误信息和英文 Retry 按钮已显示。`retry-window.png` 证明拦截者是系统“Viewing full screen”提示。未修改应用反馈或弱化断言；仅给自建 AVD 设置已读提示后，`zoom-preview-android-retry.log` 原用例通过（1 项，7.199 秒），覆盖原 SQL 进度、固定反馈、实际触摸 Retry 和伙伴追加。
+- 高清专项初次“2 倍必须产生更细采样”的断言错误：SSIV 的 base layer 已预解码细一档，该 AVD 的 1600×3200 夹具甚至已是 sample=1；因此既有底图能直接满足放大。测试需明确进入分级路径后，以真实捏合验证采样、同 decoder 与实际细瓦片绘制，不能把同档复用当作解码故障。
+
+
+随后发现与流畅性相关的额外时序风险：SSIV 的 `onTilesInited` 在图片已测量且 max tile 已指定时，会先 `initialiseBaseLayer`，再进入下一次绘制；仅在 `onDraw/onReady` 设置 CUSTOM 可能晚于首次解码。全屏图片 View 不能先按整屏 CENTER_INSIDE 选 base 再缩回半槽，否则会发生不必要的细档解码。该风险既可能影响已测量控件重绑，也可能影响正常异步初始化；因此停止仅靠测试重建 grid 的方案，增加首次绑定的专门红测并修正预置时序，完成后再封存最终候选。
+
+`zoom-preview-android-first-bind-red` 执行首次编码源绑定的真实 PageSlot/SSIV 链路，1 项因正确原因失败：1080×2400 视口中的 1600×3200 左侧孤页，base sample 预期 2，实际 1。该测试使用已布局但尚无图片/decoder 的新原生控件，替换 JVM 不可用的底层 codec，未重建 tile grid，也未修改采样 DPI 或 max tile 配置。原始 XML 已保存为同 key 的 `.xml`。
+
+`zoom-preview-android-first-bind-green` 同一回归 1/1 通过。修复复用 holder 已读到的方向修正尺寸，在源绑定前及布局阶段预置半槽 CUSTOM minimum；没有增加读图、换 decoder 或改 SSIV 库。已知 raw ROI 先修正方向，未知裁边以整页尺寸保守起步，真实尺寸返回后沿用原相机精校。红测中另有旧夹具任务晚于 codec seam 启动而触发 JVM 缺 JNI 的后台日志，已通过提前安装 seam、等待任务结束后撤销来清理；绿色结果无该异常，主断言仍检验真实 native base 和初始像素。
+
+`zoom-preview-android-final-check` 通过（1 分 35 秒）：目标 7 个 app 文件 Spotless/ktlint Apply+Check、31/31 focused tests（Viewport 10、holder 集成 16、方向接线 5）、Debug 与 AndroidTest 编译均完成。这是本次初始化修复后同一回归及影响范围的重构复验，XML 归档于对应 `-results/`。组合中的旧 bitmap 夹具仍有 Windows 缺 Android JNI 的后台日志，不能据此声称宿主已经验证 JNI；新增首绑用例单跑已清洁，随包 decoder 的正确性另由下述原生测试判定。
+
+初始化修复后的 `zoom-preview-android-native-final.log` 执行 4 项，3 通过/1 失败（48.215 秒）：孤页双击、动画同 drawable 缩放/复位、错误伙伴触摸 Retry 均通过。高清用例已记录真实首次 base sample=2、捏合后 sample=1 的 4 张细瓦片；失败在测试要求“触点总间距扩大 4 倍，最终倍率也必须为 4”。实际 Android 手势开始帧重置 previous span，夹具首个有效跨度为 550，最终为 1600，因此倍率为 2.9090908，与 native scale 0.98181814 / 初始 0.3375 一致。只修正该用例的错误预期：仍发送同样的真实输入，检查实际 viewport/native 倍率一致、细瓦片完成、资源身份与实际绘制；未改 production 或另 3 项测试。首次失败保留，仅补验受影响方法。
+
+`zoom-preview-android-native-span-check` 目标文件格式及 AndroidTest 增量构建通过（24 秒）。`zoom-preview-android-native-tile-recheck.log` 对上述单一方法补验通过（1 项，5.756 秒），已实际绘制细档 bitmap，确认同 native/decoder/provider 且真实窗口图片扩张。由首次 3 项通过加本次 1 项补验组合关闭原生范围；不描述为最终代码重新运行了完整 4 项。自建模拟器随后已停止，为最终打包释放内存。
+
+### 体验产物与验证边界
+
+Windows 最终执行 `zoom-preview-windows-final-package`，入口为 `scripts/build-desktop.sh preview`，构建与既有 production 扩展运行时检查通过；没有分配正式版本或执行完整测试。实际产物：
+
+- [Windows 预研版 EXE](<D:/Codex/worktrees/b7b3/mihon/app-desktop/artifacts/preview/windows/20261011T135832Z-5b4f5b70/Mihon-Desktop-0.11.19.91.027ca88-unpacked/Mihon Desktop.exe>)，文件已确认存在，SHA-256 `b5251e021aed7192a12de000b69e35ba5b516fd8f71dade14b790b62e2a1fa35`。
+- [Windows 构建清单](D:/Codex/worktrees/b7b3/mihon/app-desktop/artifacts/preview/windows/20261011T135832Z-5b4f5b70/preview-manifest.json) 记录 `build/sourceIntegrity/productionRuntime=PASS`、`nativeInteraction=NOT_RUN`；production 输入指纹 `e27445800212c2357e64df23762d90acfa0011a26270b8157b214385654fb182`。Windows 阅读器行为证据来自真实 Compose/Skia 组件事件与像素测试，不能将扩展运行时检查当成 EXE 阅读器的外部原生输入验收。
+
+Android 执行 `python scripts/build-android.py candidate --offline`，内部协调器 `android-candidate` 构建通过（2 分 53 秒）；随后单独执行 `verify --artifact` 再次核验交付文件。
+
+- [Android 预研版 APK](D:/Codex/worktrees/b7b3/mihon/app/artifacts/android/0.19.4-aex.54-zoom-preview-vc72-027ca888d2-release/Mihon-Fork-0.19.4-aex.54-zoom-preview-vc72-release-universal.apk)，SHA-256 `5334bafffc01aaebf2542f112f41cb3630efac37d2d1ff7b686c125a66e40df4`。
+- [Android 产物清单](D:/Codex/worktrees/b7b3/mihon/app/artifacts/android/0.19.4-aex.54-zoom-preview-vc72-027ca888d2-release/artifact.json)：`app.mihon.desktop.fork`、vc72、`0.19.4-aex.54-zoom-preview`、不可调试、四种 ABI、R8/资源压缩开启、v2/v3 签名通过。保留原证书 SHA-256 `bd8e3af75921fc4356deacabd44a3d491fda8439ffbc7d073c363974a648cae3`；安装属于现有 fork 的升级，不是 `.dev` 并行安装。
+- 本轮 R8 mapping 已随候选归档并校验，SHA-256 `eb1deac7f83e22b6ac4279933b9fd2142e4d857e6265b25da0caec241887cb5b`。没有执行 `install` 到实体设备，候选包运行和升级验收仍标为未执行。
+
+两端最终清单记录同一个 production 输入指纹 `e27445800212c2357e64df23762d90acfa0011a26270b8157b214385654fb182`。产物在统一提交前生成，清单如实记录基线 `027ca888d24ff94a327eaf61963cbb7d8b274aa9` 加本次工作区输入；不能将其中的基线版本标识说成“遗漏了本次修复”，也不冒称产物直接构建于之后的新提交。测试和报告不进入 production 输入指纹，提交后只需复核同一指纹，不为 Git 状态变化重复构建。
+
+体验步骤：Windows 退出旧版后打开上述 EXE；Android 自行安装上述同签名候选。两端进入阅读器的双页模式，选择封面或尾部孤页，双击/捏合放大后向另一半拖动，应能跨原槽位；复位回到原页侧，恢复正常翻页。普通单页、FULL 宽页沿用既有行为。
+
+预研边界：未做长期帧时间、最慢帧、解码任务峰值和内存对照，未覆盖不同实体设备、厂商系统或 Release APK 的运行/升级验收。首次采样修复证明减少了不必要的细档请求，不等于已经量化整机性能收益。本批保护配对、缓存和资源生命周期，仍需用户体验反馈与上述性能验证才能据此判断稳定发布就绪。

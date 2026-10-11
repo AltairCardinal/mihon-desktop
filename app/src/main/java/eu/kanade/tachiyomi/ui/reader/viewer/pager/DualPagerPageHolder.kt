@@ -1,8 +1,10 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Rect
+import android.graphics.RectF
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -54,8 +56,8 @@ import kotlin.math.min
  * When both images are loaded the holder reports their dimensions back to the adapter so that
  * the pairing algorithm can reassign pages if necessary.
  *
- * Zooming/panning in double mode is handled by a container-level gesture detector that applies
- * a shared transform to both child views.
+ * Physical half slots share one viewport gesture owner. Each native image consumes the same
+ * camera at its original Fit position, keeping native region decoding aware of the actual zoom.
  */
 @SuppressLint("ViewConstructor")
 class DualPagerPageHolder(
@@ -75,6 +77,8 @@ class DualPagerPageHolder(
     private val pageContainer = LinearLayout(readerThemedContext).also {
         it.orientation = LinearLayout.HORIZONTAL
         it.layoutDirection = View.LAYOUT_DIRECTION_LTR
+        it.clipChildren = false
+        it.clipToPadding = false
         addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
 
@@ -178,18 +182,37 @@ class DualPagerPageHolder(
     private val scope = MainScope()
     private val pageLoadJobs = mutableMapOf<ReaderPage, Job>()
 
-    // ── Zoom / pan state (double-page mode only) ────────────────────────────
+    // ── Zoom / pan state (all physical half-slot frames) ────────────────────
 
     private var currentScale = 1f
-    private val containerGestures = displayPage is DisplayPage.Double
+    private val containerGestures = displayPage is DisplayPage.Double ||
+        (displayPage as? DisplayPage.Single)?.slot in
+        setOf(ReaderPortraitSingleSlot.LEFT, ReaderPortraitSingleSlot.RIGHT)
     private var translateX = 0f
     private var translateY = 0f
+    private var viewportWidth = 0
+    private var transformScheduled = false
+    private var zoomAnimator: ValueAnimator? = null
+    private var previousFocusX = 0f
+    private var previousFocusY = 0f
 
     private val scaleGestureDetector = ScaleGestureDetector(
         readerThemedContext,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+                zoomAnimator?.cancel()
+                previousFocusX = detector.focusX
+                previousFocusY = detector.focusY
+                return true
+            }
+
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 val newScale = (currentScale * detector.scaleFactor).coerceIn(1f, 5f)
+                val ratio = newScale / currentScale
+                translateX = (translateX + width / 2f - previousFocusX) * ratio + detector.focusX - width / 2f
+                translateY = (translateY + height / 2f - previousFocusY) * ratio + detector.focusY - height / 2f
+                previousFocusX = detector.focusX
+                previousFocusY = detector.focusY
                 currentScale = newScale
                 constrainTranslation()
                 applyTransform()
@@ -204,10 +227,25 @@ class DualPagerPageHolder(
             override fun onDown(e: MotionEvent): Boolean = true
 
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                currentScale = if (currentScale > 1f) 1f else 2f
-                translateX = 0f
-                translateY = 0f
-                applyTransform()
+                val targetScale = if (currentScale > 1f) 1f else 2f
+                val targetX = if (targetScale == 1f) 0f else (width / 2f - e.x) * targetScale
+                val targetY = if (targetScale == 1f) 0f else (height / 2f - e.y) * targetScale
+                val startScale = currentScale
+                val startX = translateX
+                val startY = translateY
+                zoomAnimator?.cancel()
+                zoomAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                    duration = viewer.config.doubleTapAnimDuration.toLong()
+                    addUpdateListener {
+                        val fraction = it.animatedValue as Float
+                        currentScale = startScale + (targetScale - startScale) * fraction
+                        translateX = startX + (targetX - startX) * fraction
+                        translateY = startY + (targetY - startY) * fraction
+                        constrainTranslation()
+                        applyTransform()
+                    }
+                    start()
+                }
                 return true
             }
 
@@ -223,10 +261,7 @@ class DualPagerPageHolder(
     )
 
     init {
-        if (displayPage is DisplayPage.Double ||
-            (displayPage as? DisplayPage.Single)?.slot in
-            setOf(ReaderPortraitSingleSlot.LEFT, ReaderPortraitSingleSlot.RIGHT)
-        ) {
+        if (containerGestures) {
             leftSlot = PageSlot(readerThemedContext, alignRight = true).also {
                 pageContainer.addView(it, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
             }
@@ -238,6 +273,7 @@ class DualPagerPageHolder(
     }
 
     override fun onDetachedFromWindow() {
+        zoomAnimator?.cancel()
         super.onDetachedFromWindow()
         attachmentGeneration++
         presentationScope?.let(viewer::releasePresentation)
@@ -277,6 +313,7 @@ class DualPagerPageHolder(
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!containerGestures) return super.onTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) zoomAnimator?.cancel()
         if (event.pointerCount > 1 || currentScale > 1f) parent?.requestDisallowInterceptTouchEvent(true)
         scaleGestureDetector.onTouchEvent(event)
         gestureDetector.onTouchEvent(event)
@@ -288,9 +325,15 @@ class DualPagerPageHolder(
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
+        zoomAnimator?.cancel()
         constrainTranslation()
         applyTransform()
         feedbackContainers.forEach(::positionFeedback)
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        viewportWidth = MeasureSpec.getSize(widthMeasureSpec)
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 
     // ── Page loading ─────────────────────────────────────────────────────────
@@ -461,7 +504,7 @@ class DualPagerPageHolder(
                     minimumScaleType = com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
                         .SCALE_TYPE_CENTER_INSIDE,
                     cropBorders = viewer.config.imageCropBorders,
-                    zoomStartPosition = if (displayPage is DisplayPage.Double) {
+                    zoomStartPosition = if (containerGestures) {
                         ReaderPageImageView.ZoomStartPosition.CENTER
                     } else {
                         viewer.config.imageZoomType
@@ -608,6 +651,7 @@ class DualPagerPageHolder(
                     }
                 }
                 decodedImages[page] = BoundImage(source.clone(), isAnimated, config, callbackIsCurrent)
+                slot(side)?.applyTransform()
                 holder.setImage(source, isAnimated, config, page.index, callbackIsCurrent = callbackIsCurrent)
                 if (!isAnimated) holder.pageBackground = background
             }
@@ -645,12 +689,15 @@ class DualPagerPageHolder(
     }
 
     private fun applyTransform() {
-        pageContainer.pivotX = width / 2f
-        pageContainer.pivotY = height / 2f
-        pageContainer.scaleX = currentScale
-        pageContainer.scaleY = currentScale
-        pageContainer.translationX = translateX
-        pageContainer.translationY = translateY
+        if (!containerGestures || transformScheduled) return
+        transformScheduled = true
+        // Several motion samples may arrive in one display frame. Submit only the latest native
+        // pose, so SSIV never queues intermediate tile requests that cannot become visible.
+        postOnAnimation {
+            transformScheduled = false
+            leftSlot?.applyTransform()
+            rightSlot?.applyTransform()
+        }
     }
 
     // ── Sub-holder management ────────────────────────────────────────────────
@@ -762,9 +809,14 @@ class DualPagerPageHolder(
     private enum class Side { RIGHT, LEFT, CENTER }
 
     /** A stable physical half of the viewport; image availability never controls its size. */
-    private class PageSlot(context: Context, private val alignRight: Boolean) : ViewGroup(context) {
+    private inner class PageSlot(context: Context, private val alignRight: Boolean) : ViewGroup(context) {
         private var imageWidth = 0
         private var imageHeight = 0
+
+        init {
+            clipChildren = false
+            clipToPadding = false
+        }
 
         fun setImageDimensions(width: Int, height: Int) {
             imageWidth = width
@@ -779,17 +831,12 @@ class DualPagerPageHolder(
             val w = MeasureSpec.getSize(widthMeasureSpec)
             val h = MeasureSpec.getSize(heightMeasureSpec)
             setMeasuredDimension(w, h)
-            val scale = if (imageWidth > 0 && imageHeight > 0) {
-                min(w.toFloat() / imageWidth, h.toFloat() / imageHeight)
-            } else {
-                0f
-            }
             for (index in 0 until childCount) {
                 val child = getChildAt(index)
                 if (child is ReaderPageImageView) {
                     child.measure(
-                        MeasureSpec.makeMeasureSpec((imageWidth * scale).toInt(), MeasureSpec.EXACTLY),
-                        MeasureSpec.makeMeasureSpec((imageHeight * scale).toInt(), MeasureSpec.EXACTLY),
+                        MeasureSpec.makeMeasureSpec(viewportWidth, MeasureSpec.EXACTLY),
+                        MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY),
                     )
                 } else {
                     child.measure(
@@ -804,12 +851,33 @@ class DualPagerPageHolder(
             for (index in 0 until childCount) {
                 val child = getChildAt(index)
                 val x = if (child is ReaderPageImageView) {
-                    if (alignRight) width - child.measuredWidth else 0
+                    -left
                 } else {
                     (width - child.measuredWidth) / 2
                 }
                 val y = (height - child.measuredHeight) / 2
                 child.layout(x, y, x + child.measuredWidth, y + child.measuredHeight)
+            }
+            applyTransform()
+        }
+
+        fun applyTransform() {
+            if (imageWidth <= 0 || imageHeight <= 0 || width <= 0 || height <= 0) return
+            val fitScale = min(width.toFloat() / imageWidth, height.toFloat() / imageHeight)
+            val fitWidth = (imageWidth * fitScale).toInt()
+            val fitHeight = (imageHeight * fitScale).toInt()
+            val x = left + if (alignRight) width - fitWidth else 0
+            val y = (height - fitHeight) / 2
+            val fit = RectF(x.toFloat(), y.toFloat(), (x + fitWidth).toFloat(), (y + fitHeight).toFloat())
+            for (index in 0 until childCount) {
+                (getChildAt(index) as? ReaderPageImageView)?.setViewportTransform(
+                    fit,
+                    currentScale,
+                    translateX,
+                    translateY,
+                    imageWidth,
+                    imageHeight,
+                )
             }
         }
     }

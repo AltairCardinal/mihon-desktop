@@ -79,14 +79,16 @@ class SharedDualPageStableNativeAcceptanceTest(private val partner: String) {
                     }
                 }
                 run {
-                    val x = initial.content.exactCenterX()
+                    // Zoom around the spine so both the retained page and its late partner remain
+                    // visible. Focusing the right page intentionally moves the left page offscreen.
+                    val x = fixture.windowWidth() / 2f
                     val y = initial.content.exactCenterY()
                     val now = SystemClock.uptimeMillis()
                     fixture.touchWindow(MotionEvent.ACTION_DOWN, now, now, x, y)
                     fixture.touchWindow(MotionEvent.ACTION_UP, now, now + 30, x, y)
                     fixture.touchWindow(MotionEvent.ACTION_DOWN, now + 100, now + 100, x, y)
                     fixture.touchWindow(MotionEvent.ACTION_UP, now + 100, now + 130, x, y)
-                    fixture.awaitStable("Real dual-page double tap must zoom the retained container") {
+                    fixture.awaitStable("Real dual-page double tap must zoom the retained native camera") {
                         fixture.observeSlot(Color.RED).scaleX > 1f
                     }
                 }

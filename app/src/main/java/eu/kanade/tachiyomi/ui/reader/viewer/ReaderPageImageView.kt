@@ -61,6 +61,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.min
 
 /**
  * A wrapper view for showing page image.
@@ -103,6 +104,136 @@ open class ReaderPageImageView @JvmOverloads constructor(
     private var imageCallbackIsCurrent: () -> Boolean = { true }
     private var animatedDrawableIsCurrent: () -> Boolean = { false }
     private var regionInputStream: java.io.InputStream? = null
+
+    private data class ViewportTransform(
+        val fit: RectF,
+        val scale: Float,
+        val offsetX: Float,
+        val offsetY: Float,
+        val sourceWidth: Int,
+        val sourceHeight: Int,
+    )
+    private data class NativeViewportPose(
+        val scale: Float,
+        val baseScale: Float,
+        val centerX: Float,
+        val centerY: Float,
+    )
+    private var viewportTransform: ViewportTransform? = null
+    private var nativeViewportPose: NativeViewportPose? = null
+
+    /** A physical slot owns initial Fit; the unchanged native child owns the whole reading viewport. */
+    internal fun setViewportTransform(
+        fit: RectF,
+        scale: Float,
+        offsetX: Float,
+        offsetY: Float,
+        sourceWidth: Int,
+        sourceHeight: Int,
+    ) {
+        val next = ViewportTransform(RectF(fit), scale, offsetX, offsetY, sourceWidth, sourceHeight)
+        if (viewportTransform == next) return
+        viewportTransform = next
+        background = null
+        setWillNotDraw(false)
+        applyNativeViewport()
+        invalidateImageDraw()
+        invalidate()
+    }
+
+    internal val viewportFitBounds: RectF? get() = viewportTransform?.fit?.let(::RectF)
+    internal val viewportScale: Float get() = viewportTransform?.scale ?: 1f
+    internal val viewportOffsetX: Float get() = viewportTransform?.offsetX ?: 0f
+    internal val viewportOffsetY: Float get() = viewportTransform?.offsetY ?: 0f
+
+    internal fun viewportImageBounds(): RectF? = viewportTransform?.let { pose ->
+        // Preserve the previous CENTER_INSIDE behavior when border cropping or an integer Fit
+        // rectangle leaves a small margin around the actual decoded image.
+        val dimensions = when (val native = pageView) {
+            is SubsamplingScaleImageView -> if (native.sWidth > 0 && native.sHeight > 0) {
+                config?.sourceOrientation?.orientedSize(native.sWidth, native.sHeight)
+                    ?: mihon.domain.reader.ReaderPageSize(native.sWidth, native.sHeight)
+            } else {
+                null
+            }
+            is AppCompatImageView -> native.drawable?.let { drawable ->
+                if (drawable.intrinsicWidth > 0 && drawable.intrinsicHeight > 0) {
+                    mihon.domain.reader.ReaderPageSize(drawable.intrinsicWidth, drawable.intrinsicHeight)
+                } else {
+                    null
+                }
+            }
+            else -> null
+        }
+        val fit = RectF(pose.fit)
+        if (dimensions != null) {
+            val scale = min(fit.width() / dimensions.width, fit.height() / dimensions.height)
+            val insetX = (fit.width() - dimensions.width * scale) / 2f
+            val insetY = (fit.height() - dimensions.height * scale) / 2f
+            fit.inset(insetX, insetY)
+        }
+        val centerX = width / 2f
+        val centerY = height / 2f
+        RectF(
+            centerX + (fit.left - centerX) * pose.scale + pose.offsetX,
+            centerY + (fit.top - centerY) * pose.scale + pose.offsetY,
+            centerX + (fit.right - centerX) * pose.scale + pose.offsetX,
+            centerY + (fit.bottom - centerY) * pose.scale + pose.offsetY,
+        )
+    }
+
+    private fun applyNativeViewport() {
+        val pose = viewportTransform ?: return
+        val native = pageView as? SubsamplingScaleImageView ?: return
+        if (native.sWidth <= 0 || native.sHeight <= 0) {
+            prepareNativeViewportMinimum(native)
+            return
+        }
+        if (width <= 0 || height <= 0) return
+        val dimensions = config?.sourceOrientation?.orientedSize(native.sWidth, native.sHeight)
+            ?: mihon.domain.reader.ReaderPageSize(native.sWidth, native.sHeight)
+        val baseScale = min(pose.fit.width() / dimensions.width, pose.fit.height() / dimensions.height)
+        if (baseScale <= 0f) return
+        val bounds = requireNotNull(viewportImageBounds())
+        val scale = baseScale * pose.scale
+        // Native mirroring is around its full viewport. Reflect the destination before supplying
+        // the source center, otherwise a mirrored left page would move into the right slot.
+        val left = if (config?.sourceOrientation?.mirrorHorizontally == true) width - bounds.right else bounds.left
+        val next = NativeViewportPose(scale, baseScale, (width / 2f - left) / scale, (height / 2f - bounds.top) / scale)
+        if (nativeViewportPose == next) return
+        nativeViewportPose = next
+        native.minScale = baseScale
+        native.maxScale = baseScale * MAX_ZOOM_SCALE
+        native.setMinimumScaleType(SubsamplingScaleImageView.SCALE_TYPE_CUSTOM)
+        native.setPanLimit(SubsamplingScaleImageView.PAN_LIMIT_OUTSIDE)
+        native.isPanEnabled = false
+        native.isZoomEnabled = false
+        native.isQuickScaleEnabled = false
+        native.setScaleAndCenter(scale, PointF(next.centerX, next.centerY))
+    }
+
+    private fun prepareNativeViewportMinimum(native: SubsamplingScaleImageView): Boolean {
+        val pose = viewportTransform ?: return false
+        // Slot dimensions are already oriented. An explicit raw source region needs the same
+        // orientation before fitting; unknown border crops start conservatively from the full page.
+        val region = config?.sourceBounds?.let { bounds ->
+            config?.sourceOrientation?.orientedSize(bounds.width, bounds.height)
+        }
+        val sourceWidth = region?.width ?: pose.sourceWidth
+        val sourceHeight = region?.height ?: pose.sourceHeight
+        native.minScale = min(pose.fit.width() / sourceWidth, pose.fit.height() / sourceHeight)
+        native.setMinimumScaleType(SubsamplingScaleImageView.SCALE_TYPE_CUSTOM)
+        return true
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val bounds = viewportImageBounds() ?: return
+        pageBackground?.let { drawable ->
+            drawable.setBounds(bounds.left.toInt(), bounds.top.toInt(), bounds.right.toInt(), bounds.bottom.toInt())
+            drawable.draw(canvas)
+        }
+    }
 
     internal var decodedPageSideHint = mihon.domain.reader.ReaderPageSideHint.UNKNOWN
         private set
@@ -180,6 +311,10 @@ open class ReaderPageImageView @JvmOverloads constructor(
     var pageBackground: Drawable? = null
 
     private fun prepareNativeImageDraw(width: Int, height: Int): Boolean {
+        viewportImageBounds()?.let { bounds ->
+            val visible = Rect()
+            if (!getLocalVisibleRect(visible) || !RectF.intersects(bounds, RectF(visible))) return false
+        }
         if (beforeImageDraw == null && onImageDrawn == null) return true
         return imageCallbackIsCurrent() && width > 0 && height > 0 && getGlobalVisibleRect(Rect()) &&
             beforeImageDraw?.invoke(width, height) != false
@@ -197,7 +332,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     @CallSuper
     open fun onImageLoaded() {
         onImageLoaded?.invoke()
-        background = pageBackground
+        background = if (viewportTransform == null) pageBackground else null
     }
 
     @CallSuper
@@ -274,6 +409,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     fun setImage(drawable: Drawable, config: Config) {
+        nativeViewportPose = null
         val identity = decodeIdentitySource.next(-1)
         imageCallbackIsCurrent = identity::isCurrent
         resetDecodedSideHint()
@@ -294,6 +430,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         pageIndex: Int,
         callbackIsCurrent: () -> Boolean = { true },
     ) {
+        nativeViewportPose = null
         imageCallbackIsCurrent = callbackIsCurrent
         resetDecodedSideHint()
         this.config = config
@@ -313,6 +450,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         pageIndex: Int,
         callbackIsCurrent: () -> Boolean,
     ) {
+        nativeViewportPose = null
         imageCallbackIsCurrent = callbackIsCurrent
         resetDecodedSideHint()
         this.config = config
@@ -325,6 +463,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     open fun recycle() {
+        nativeViewportPose = null
         resetDecodedSideHint()
         decodeIdentitySource.invalidate()
         try {
@@ -414,6 +553,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         } else {
             object : SubsamplingScaleImageView(context) {
                 override fun onDraw(canvas: Canvas) {
+                    applyNativeViewport()
                     if (decodedSideEnabled()) {
                         val observed = ReaderDecodedPageCanvas(canvas) { bitmap, matrix ->
                             observeDecodedSide(this, bitmap, matrix)
@@ -460,6 +600,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     private fun SubsamplingScaleImageView.setupZoom(config: Config?) {
+        if (viewportTransform != null) {
+            nativeViewportPose = null
+            applyNativeViewport()
+            return
+        }
         // 5x zoom
         maxScale = scale * MAX_ZOOM_SCALE
         setDoubleTapZoomScale(scale * 2)
@@ -493,7 +638,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
         }
         scaleX = if (config.sourceOrientation.mirrorHorizontally) -1f else 1f
         setDoubleTapZoomDuration(config.zoomDuration.getSystemScaledDuration())
-        setMinimumScaleType(config.minimumScaleType)
+        // onTilesInited can allocate base tiles before onReady or the first onDraw. Supply the
+        // physical-slot minimum now so a full native viewport does not overdecode its initial Fit.
+        if (!prepareNativeViewportMinimum(this)) setMinimumScaleType(config.minimumScaleType)
         setMinimumDpi(1) // Just so that very small image will be fit for initial load
         setCropBorders(config.cropBorders)
         setOnImageEventListener(
@@ -587,7 +734,20 @@ open class ReaderPageImageView @JvmOverloads constructor(
                     val image = drawable
                     val current = image != null && animatedDrawableIsCurrent()
                     if (current && !prepareNativeImageDraw(image!!.intrinsicWidth, image.intrinsicHeight)) return
-                    super.onDraw(canvas)
+                    val bounds = viewportImageBounds()
+                    if (current && bounds != null && !image!!.bounds.isEmpty) {
+                        // PhotoView's setDisplayMatrix constrains and recenters small images. Draw
+                        // its original drawable with one external matrix instead; its callback,
+                        // scheduling and animation clock remain owned by the original ImageView.
+                        val checkpoint = canvas.save()
+                        canvas.translate(bounds.left, bounds.top)
+                        canvas.scale(bounds.width() / image.bounds.width(), bounds.height() / image.bounds.height())
+                        canvas.translate(-image.bounds.left.toFloat(), -image.bounds.top.toFloat())
+                        image.draw(canvas)
+                        canvas.restoreToCount(checkpoint)
+                    } else {
+                        super.onDraw(canvas)
+                    }
                     if (current) nativeImageDrawn()
                 }
             }

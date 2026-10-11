@@ -2,6 +2,7 @@ package mihon.desktop.ui.reader
 
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -36,6 +38,10 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.zIndex
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -98,6 +104,7 @@ internal fun DualPageDisplayUnitFrame(
     unit: DisplayUnit,
     onRetry: (ReaderPageId) -> Unit,
     mountIdentity: Any = unit.id,
+    foregroundSlots: Set<DisplaySlotId> = emptySet(),
     readyContent: @Composable (DisplaySlot, Modifier) -> Unit,
 ) {
     require(unit.id.mode == ReaderPresentationMode.DUAL_PAGED) { "A dual frame requires a dual display unit" }
@@ -141,6 +148,7 @@ internal fun DualPageDisplayUnitFrame(
                 showLoadingIndicator = placement == DualPageLoadingIndicatorPlacement.LeftHalfCenter,
                 onRetry = onRetry,
                 modifier = Modifier
+                    .zIndex(if (leftLoading || unit.slots[0].hasFeedback(foregroundSlots)) 1f else 0f)
                     .align(AbsoluteAlignment.CenterLeft)
                     .fillMaxWidth(0.5f)
                     .fillMaxHeight(),
@@ -152,6 +160,7 @@ internal fun DualPageDisplayUnitFrame(
                 showLoadingIndicator = placement == DualPageLoadingIndicatorPlacement.RightHalfCenter,
                 onRetry = onRetry,
                 modifier = Modifier
+                    .zIndex(if (rightLoading || unit.slots[1].hasFeedback(foregroundSlots)) 1f else 0f)
                     .align(AbsoluteAlignment.CenterRight)
                     .fillMaxWidth(0.5f)
                     .fillMaxHeight(),
@@ -208,6 +217,9 @@ private fun DisplaySlot.isLoading(): Boolean = when (page?.loadState) {
     -> true
     else -> false
 }
+
+private fun DisplaySlot.hasFeedback(foregroundSlots: Set<DisplaySlotId>): Boolean =
+    page?.loadState is ReaderPageLoadState.Error || id in foregroundSlots
 
 @Composable
 internal fun DualPagePagerViewer(
@@ -372,6 +384,7 @@ internal fun DualPagePagerViewer(
 
     HorizontalPager(
         state = pagerState,
+        userScrollEnabled = zoomState.scale <= 1f,
         beyondViewportPageCount = if (allowAdjacentViewport) 1 else 0,
         modifier = Modifier.fillMaxSize().readerMountedGeometry(
             pagerPresentationBinding,
@@ -404,17 +417,25 @@ internal fun DualPagePagerViewer(
             selected = selected,
             navigationLocation = navigationIntent.value?.logicalLocation ?: nativeLocation,
         )
-        Box(
-            modifier = Modifier.fillMaxSize().clipToBounds().onGloballyPositioned {
+        val imageGestures = if (unit.slots.size == 2 && unit.transitionDirection == null) {
+            Modifier.readerZoomInput(zoomState, onZoomChange)
+        } else {
+            Modifier
+        }
+        val feedbackSlots = remember(nativePresentation) { mutableStateMapOf<DisplaySlotId, Boolean>() }
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxSize().clipToBounds().then(imageGestures).onGloballyPositioned {
                 nativePresentation.setExposed(!it.boundsInRoot().isEmpty)
             }.semantics {
                 if (unit.id == selectedUnit.id) this[ReaderPagerNativePresentationKey] = nativePresentation
             },
         ) {
+            val viewportSize = IntSize(constraints.maxWidth, constraints.maxHeight)
             DualPageDisplayUnitFrame(
                 unit = unit,
                 onRetry = onRetryPage,
                 mountIdentity = nativePresentation,
+                foregroundSlots = feedbackSlots.filterValues { it }.keys,
             ) { slot, modifier ->
                 val page = requireNotNull(slot.page)
                 val physicalSlot = unit.slots.indexOf(slot)
@@ -469,6 +490,17 @@ internal fun DualPagePagerViewer(
                         page.id.sourcePageIndex + 1,
                     ),
                     zoomState = zoomState,
+                    imageViewport = if (unit.slots.size == 2) {
+                        ReaderImageViewport(
+                            viewportSize,
+                            IntOffset(
+                                if (physicalSlot == 0) 0 else viewportSize.width - (viewportSize.width * 0.5f).roundToInt(),
+                                0,
+                            ),
+                        )
+                    } else {
+                        null
+                    },
                     onZoomChange = onZoomChange,
                     cropBorders = cropBorders,
                     contextMenuScope = contextMenuScope,
@@ -476,6 +508,7 @@ internal fun DualPagePagerViewer(
                     chapterTitle = chapterTitle,
                     pageIndex = page.id.sourcePageIndex,
                     onRetry = { onRetryPage(page.id) },
+                    onFeedbackVisibilityChange = { feedbackSlots[slot.id] = it },
                     modifier = modifier,
                     imageAlignment = when {
                         unit.slots.size == 1 -> Alignment.Center

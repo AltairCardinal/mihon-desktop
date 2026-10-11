@@ -43,6 +43,17 @@ internal data class ReaderRegionDrawGeometry(
     }
 }
 
+/** The fixed slot keeps its Fit layout while its image uses the complete display-unit camera. */
+internal data class ReaderImageViewport(
+    val size: IntSize,
+    val slotOrigin: IntOffset,
+) {
+    fun mapGeometry(local: ReaderRegionDrawGeometry): ReaderRegionDrawGeometry = local.copy(
+        viewportSize = size,
+        drawOffset = local.drawOffset + slotOrigin,
+    )
+}
+
 internal data class ReaderRegionTileLevel(
     val sampleSize: Int,
     val sourceTileExtent: Int,

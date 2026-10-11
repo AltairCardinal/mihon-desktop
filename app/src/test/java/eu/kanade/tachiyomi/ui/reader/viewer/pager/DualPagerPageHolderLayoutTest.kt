@@ -823,8 +823,9 @@ class DualPagerPageHolderLayoutTest {
         val image = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
         assertEquals(700, (image.parent as View).width)
         assertEquals(0, (image.parent as View).left)
-        assertEquals(500, image.width)
-        assertEquals(700, image.right)
+        assertEquals(1400, image.width)
+        assertEquals(500f, requireNotNull(image.viewportFitBounds).width())
+        assertEquals(700f, requireNotNull(image.viewportFitBounds).right)
         assertEquals(page, holder.displayPage.firstPage)
         detach(holder)
     }
@@ -1362,10 +1363,13 @@ class DualPagerPageHolderLayoutTest {
                     val slot = image.parent as View
                     assertEquals(v[0] / 2, slot.width)
                     assertEquals(v[1], slot.height)
-                    assertEquals(v[offset], slot.left + image.left)
-                    assertEquals(v[offset + 1], slot.top + image.top)
-                    assertEquals(v[offset + 2], image.width)
-                    assertEquals(v[offset + 3], image.height)
+                    val fit = requireNotNull(image.viewportFitBounds)
+                    assertEquals(v[0], image.width)
+                    assertEquals(v[1], image.height)
+                    assertEquals(v[offset], fit.left.toInt())
+                    assertEquals(v[offset + 1], fit.top.toInt())
+                    assertEquals(v[offset + 2], fit.width().toInt())
+                    assertEquals(v[offset + 3], fit.height().toInt())
                 }
             } finally {
                 descendants(holder).filterIsInstance<ReaderPageImageView>().forEach { it.recycle() }
@@ -1399,7 +1403,7 @@ class DualPagerPageHolderLayoutTest {
     }
 
     @Test
-    fun `double tap zoom and reset transform the pair without child zoom or pager tap`() = runTest {
+    fun `double tap zoom and reset share native cameras without transforming feedback`() = runTest {
         val (holder, right, left) = pair()
         load(holder, right, "RIGHT")
         load(holder, left, "LEFT")
@@ -1407,12 +1411,14 @@ class DualPagerPageHolderLayoutTest {
         var pagerTaps = 0
         viewer.pager.tapListener = { pagerTaps++ }
         val container = holder.getChildAt(0)
+        val image = descendants(holder).filterIsInstance<ReaderPageImageView>().first()
         doubleTap(viewer.pager, SystemClock.uptimeMillis())
-        assertEquals(2f, container.scaleX, 0.001f)
-        assertEquals(2f, container.scaleY, 0.001f)
+        advanceGestureAnimation()
+        assertEquals(2f, image.viewportScale, 0.001f)
+        assertEquals(1f, container.scaleX, 0.001f)
         measure(holder, 3120, 1440)
-        assertEquals("Resize must use the new viewport pivot immediately", 1560f, container.pivotX, 0.001f)
-        assertEquals(720f, container.pivotY, 0.001f)
+        assertEquals("Resize must update the original native viewport immediately", 3120, image.width)
+        assertEquals(1440, image.height)
         measure(holder, 1440, 3120)
         descendants(holder).filterIsInstance<ReaderPageImageView>().forEach {
             assertEquals(1f, it.scaleX, 0.001f)
@@ -1434,12 +1440,16 @@ class DualPagerPageHolderLayoutTest {
                 it.recycle()
             }
         }
-        assertTrue("Zoomed drag pans the shared container", container.translationX > 0f)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+        assertTrue("Zoomed drag pans the shared native camera", image.viewportOffsetX > 0f)
         assertEquals("Zoomed drag cannot turn the outer pager", 1, viewer.pager.currentItem)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
         measure(viewer.pager, 1440, 3120)
         measure(holder, 1440, 3120)
         doubleTap(viewer.pager, SystemClock.uptimeMillis())
+        advanceGestureAnimation()
+        assertEquals(1f, image.viewportScale, 0.001f)
+        assertEquals(0f, image.viewportOffsetX, 0.001f)
         assertEquals(1f, container.scaleX, 0.001f)
         assertEquals(0f, container.translationX, 0.001f)
     }
@@ -1483,20 +1493,22 @@ class DualPagerPageHolderLayoutTest {
             }
         }
         send(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), start + 20, 300f, 900f)
-        val container = holder.getChildAt(0)
+        val image = descendants(holder).filterIsInstance<ReaderPageImageView>().first()
         var previousScale = 1f
         for ((index, span) in listOf(800f, 1000f, 1200f).withIndex()) {
             send(MotionEvent.ACTION_MOVE, start + 40 + index * 20, 600f - span / 2, 600f + span / 2)
-            assertTrue("An expanding physical pinch cannot shrink the group", container.scaleX >= previousScale)
-            previousScale = container.scaleX
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+            assertTrue("An expanding physical pinch cannot shrink the group", image.viewportScale >= previousScale)
+            previousScale = image.viewportScale
         }
-        assertTrue(container.scaleX > 1f)
+        assertTrue(image.viewportScale > 1f)
         for ((index, span) in listOf(1100f, 1000f).withIndex()) {
             send(MotionEvent.ACTION_MOVE, start + 100 + index * 20, 600f - span / 2, 600f + span / 2)
-            assertTrue("A contracting physical pinch cannot enlarge the group", container.scaleX <= previousScale)
-            previousScale = container.scaleX
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+            assertTrue("A contracting physical pinch cannot enlarge the group", image.viewportScale <= previousScale)
+            previousScale = image.viewportScale
         }
-        assertTrue(container.scaleX > 1f)
+        assertTrue(image.viewportScale > 1f)
         send(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), start + 160, 100f, 1100f)
         MotionEvent.obtain(start, start + 180, MotionEvent.ACTION_UP, 100f, 1400f, 0).also {
             viewer.pager.dispatchTouchEvent(it)
@@ -1504,8 +1516,8 @@ class DualPagerPageHolderLayoutTest {
         }
         load(holder, left, "LEFT")
         measure(holder, 1440, 3120)
-        assertEquals(previousScale, container.scaleX, 0.001f)
-        assertEquals(container.scaleX, container.scaleY, 0.001f)
+        assertEquals(previousScale, image.viewportScale, 0.001f)
+        assertEquals(1f, holder.getChildAt(0).scaleX, 0.001f)
         assertEquals(1, viewer.pager.currentItem)
     }
 
@@ -1920,14 +1932,9 @@ class DualPagerPageHolderLayoutTest {
             decoding.await()
             measure(viewer.pager, 1440, 3120)
             val image = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
-            assertEquals(720, image.width)
-            var left = image.left
-            var parent = image.parent
-            while (parent is View && parent !== holder) {
-                left += parent.left
-                parent = parent.parent
-            }
-            assertEquals(720, left)
+            assertEquals(1440, image.width)
+            assertEquals(720f, requireNotNull(image.viewportFitBounds).width())
+            assertEquals(720f, requireNotNull(image.viewportFitBounds).left)
         } finally {
             releaseWide.countDown()
             viewer.destroy()
@@ -2006,8 +2013,16 @@ class DualPagerPageHolderLayoutTest {
                     left += parent.left
                     parent = parent.parent
                 }
-                assertEquals("Real B2 page ${index + 1} physical image width", expectedWidth, image.width)
-                assertEquals("Real B2 page ${index + 1} physical image left", expectedLeft, left)
+                assertEquals(
+                    "Real B2 page ${index + 1} physical image width",
+                    expectedWidth,
+                    image.viewportFitBounds?.width()?.toInt() ?: image.width,
+                )
+                assertEquals(
+                    "Real B2 page ${index + 1} physical image left",
+                    expectedLeft,
+                    image.viewportFitBounds?.left?.toInt() ?: left,
+                )
                 assertEquals(index, viewer.adapter.session(chapter)?.location?.pageId?.sourcePageIndex)
             }
         } finally {
@@ -2153,15 +2168,18 @@ class DualPagerPageHolderLayoutTest {
         load(holder, right, "RIGHT")
         assertEquals("A successful neighbour cannot dismiss this page's error", View.VISIBLE, error.root.visibility)
         val surviving = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
-        assertEquals(720, surviving.width)
+        assertEquals(1440, surviving.width)
+        assertEquals(720f, requireNotNull(surviving.viewportFitBounds).width())
         var childTouches = 0
         surviving.getChildAt(0).setOnTouchListener { _, _ ->
             childTouches++
             true
         }
         doubleTap(holder, SystemClock.uptimeMillis(), x = 1080f)
+        advanceGestureAnimation()
         assertEquals("An error must not enable independent image gestures", 0, childTouches)
-        assertEquals(2f, holder.getChildAt(0).scaleX, 0.001f)
+        assertEquals(2f, surviving.viewportScale, 0.001f)
+        assertEquals(1f, holder.getChildAt(0).scaleX, 0.001f)
         left.stream = originalStream
         left.status = Page.State.Ready
         load(holder, left, "LEFT")
@@ -2198,6 +2216,14 @@ class DualPagerPageHolderLayoutTest {
                     it.recycle()
                 }
             }
+        }
+    }
+
+    private fun advanceGestureAnimation() {
+        // The paused Choreographer needs individual display frames. One large idleFor jump only
+        // starts ValueAnimator at its first frame; it does not reproduce a continuous animation.
+        repeat(viewer.config.doubleTapAnimDuration / 16 + 3) {
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
         }
     }
 
@@ -2286,15 +2312,16 @@ class DualPagerPageHolderLayoutTest {
         val images = descendants(holder).filterIsInstance<ReaderPageImageView>().toList()
         assertEquals("Both production images must be mounted", 2, images.size)
         images.forEachIndexed { index, image ->
-            assertEquals("image $index width", imageWidth, image.width)
-            assertEquals("image $index height", imageHeight, image.height)
-            var y = image.top
-            var parent = image.parent
-            while (parent is View && parent !== holder) {
-                y += parent.top
-                parent = parent.parent
-            }
-            assertEquals("image $index vertically centered in $width x $height", (height - imageHeight) / 2, y)
+            assertEquals("image $index native viewport width", width, image.width)
+            assertEquals("image $index native viewport height", height, image.height)
+            val fit = requireNotNull(image.viewportFitBounds)
+            assertEquals("image $index Fit width", imageWidth, fit.width().toInt())
+            assertEquals("image $index Fit height", imageHeight, fit.height().toInt())
+            assertEquals(
+                "image $index vertically centered in $width x $height",
+                (height - imageHeight) / 2,
+                fit.top.toInt(),
+            )
         }
     }
 

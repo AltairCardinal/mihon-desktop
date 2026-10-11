@@ -888,7 +888,14 @@ internal class HostReaderArtFixture(
                 .filterIsInstance<ReaderPageImageView>().first { view ->
                     val transformed = Rect()
                     view.isShown && view.getGlobalVisibleRect(transformed) &&
-                        transformed.contains(content.centerX(), content.centerY())
+                        transformed.contains(content.centerX(), content.centerY()) &&
+                        (
+                            view.viewportImageBounds()?.let { bounds ->
+                                val origin = IntArray(2).also(view::getLocationOnScreen)
+                                bounds.offset(origin[0].toFloat(), origin[1].toFloat())
+                                bounds.contains(content.exactCenterX(), content.exactCenterY())
+                            } != false
+                            )
                 }
             val transformed = Rect().also { check(image.getGlobalVisibleRect(it)) }
             val container = (image.parent as View).parent as View
@@ -897,10 +904,10 @@ internal class HostReaderArtFixture(
                 transformed,
                 image,
                 container,
-                container.scaleX,
-                container.scaleY,
-                container.translationX,
-                container.translationY,
+                image.viewportScale,
+                image.viewportScale,
+                image.viewportOffsetX,
+                image.viewportOffsetY,
             )
         }
         return requireNotNull(observation)
