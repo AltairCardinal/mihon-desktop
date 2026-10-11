@@ -302,3 +302,21 @@ Android 沿用专属 `mihon-zoom-preview` AVD（API 36、x86_64、1536 MiB、2 �
 本批交付为正式实现、回归证据及本地主干合并，不另分配正式版本或发布安装包。前节体验 EXE/APK 对应已验收的预研源码，保留其真实版本和来源；本轮两项加固包含在新的源码提交中，不能将旧包标为该新提交的构建。用户体验验收与此次自动化共同支持本功能合入主干，不表示完整稳定发布矩阵、长期压力或不同实体硬件性能已通过。
 
 合并前保护两工作树既有未跟踪 `docs/human/`，仅暂存本任务文件。Git fetch 已核对远端；本地主干有既有未推送提交，本批合并仅针对本地 `main`，不擅自推送无关历史。最终提交和主干包含关系由本轮完成报告记录。
+
+## 既有 Desktop 配对测试失败的专项关闭（2026-10-12）
+
+用户要求继续修复，并与会话 `01a11cdb-5dba-7140-887d-3a3216f14983` 协商。双方通过本机 `codex queue` 交换证据，对方只读核对产品契约及历史，确认由本工作树独占修改和验证，不并发修改文件或运行 Gradle。
+
+诊断基线为 `8d5b5c3aac`，仅给原断言增加分组消息、给测试 helper 增加临时状态输出。`pairing-boundary-trace-red` 再次复现失败，实际分组为 `[[0],[1],[2],[3,4],[5,6]]`（以下索引均从 0 开始）。此前未修改旧主干 `027ca888` 的失败记录继续保留，不能将此次关闭描述为缩放变更引入或修复了产品配对回归。
+
+已证实原因：`0ed7dce0d2c`（2026-10-09）为 `ReaderDualPagePresentationOwner.manualBoundaries` 引入旧格式边界的后继配对兼容规则。边界 `2` 除了要求该页单独显示，还要求紧接着的合法 `(3,4)` 配对；自动 `(4,5)` 与它共享页 `4`，因此并非旧测试声称的“无关配对”。该 Desktop 测试最后修改于 `dec006e7d3`（2026-10-05），断言未同步后来的契约。共享 `ReaderManualPairingIntentContractTest` 已覆盖后继配对、宽页例外及后来的显式关系优先级，另一个会话确认保留此产品规则。
+
+此次只维护测试：原用例明确断言手动单页及后继配对覆盖相邻自动 `(2,3)`、`(4,5)`；另增 9 页章节中的远端 `(6,7)` 自动匹配，并以相同手动边界、仅缺远端匹配的样本作对照，证明该组合不会靠默认分组通过。两组夹具均调用真实共享 owner、边缘评分及 Desktop 呈现注册器，没有复制分组算法。诊断输出已移除，helper 恢复原样。没有生产代码、持久化、Android adapter、构建身份或依赖变化，因此无需生成新的 EXE/APK 或重复原生缩放验收；此次不是产品行为变更的红绿开发。
+
+验证命令经协调器串行执行（离线、单 worker）：
+
+```text
+python scripts/gradle-coordinator.py run --key pairing-contract-focused --timeout-seconds 1200 -- .\gradlew.bat :app-desktop:jvmTest --tests mihon.desktop.ui.reader.DesktopReaderProductRegressionTest --tests mihon.desktop.ui.reader.presentation.SharedDualPageDesktopPresentationWiringTest :domain:jvmTest --tests mihon.domain.reader.ReaderManualPairingIntentContractTest --offline --no-parallel --max-workers=1 --console=plain
+```
+
+结果 **32/32 通过**：Desktop 产品回归 9、Desktop 共享呈现接线 6、共享手动配对契约 17；19 秒。XML 归档在 `.gradle-coordinator/pairing-contract-focused-results/`，原失败 XML 为 `pairing-boundary-trace-red.xml`。这是旧基线失败加相关定向补验的关闭证据，不是最终代码重新通过全量测试。格式核验仅针对修改的 Kotlin 文件，协调器 key 为 `pairing-contract-format`；提交前另执行 `git diff --check`。
