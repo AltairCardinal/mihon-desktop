@@ -1,13 +1,16 @@
 package eu.kanade.presentation.browse.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
@@ -25,6 +28,8 @@ fun BrowseSourceCompactGrid(
     contentPadding: PaddingValues,
     onMangaClick: (Manga) -> Unit,
     onMangaLongClick: (Manga) -> Unit,
+    visibleIndices: List<Int> = (0 until mangaList.itemCount).toList(),
+    automaticPaging: Boolean = true,
 ) {
     LazyVerticalGrid(
         columns = columns,
@@ -38,13 +43,21 @@ fun BrowseSourceCompactGrid(
             }
         }
 
-        items(count = mangaList.itemCount) { index ->
-            val manga by mangaList[index]?.collectAsState() ?: return@items
-            BrowseSourceCompactGridItem(
-                manga = manga,
-                onClick = { onMangaClick(manga) },
-                onLongClick = { onMangaLongClick(manga) },
-            )
+        items(count = visibleIndices.size) { visibleIndex ->
+            val index = visibleIndices[visibleIndex]
+            val item = if (automaticPaging) mangaList[index] else mangaList.peek(index)
+            val manga by item?.collectAsState() ?: return@items
+            Column {
+                BrowseSourceCompactGridItem(
+                    manga = manga,
+                    onClick = { onMangaClick(manga) },
+                    onLongClick = { onMangaLongClick(manga) },
+                )
+                BrowseSourceResultMetadata(
+                    manga = manga,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                )
+            }
         }
 
         if (mangaList.loadState.refresh is LoadState.Loading || mangaList.loadState.append is LoadState.Loading) {

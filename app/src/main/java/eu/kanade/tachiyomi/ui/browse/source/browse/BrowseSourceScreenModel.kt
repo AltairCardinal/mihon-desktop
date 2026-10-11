@@ -11,7 +11,6 @@ import androidx.paging.PagingConfig
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import androidx.paging.cachedIn
-import androidx.paging.filter
 import androidx.paging.map
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
@@ -55,10 +54,12 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.manga.model.toMangaUpdate
 import tachiyomi.domain.source.interactor.GetRemoteManga
+import tachiyomi.domain.source.service.CatalogResultFilter
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourcePageRequest
+import tachiyomi.domain.source.service.SourcePageResult
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryReducer
 import tachiyomi.domain.source.service.SourceQueryState
@@ -118,12 +119,13 @@ class BrowseSourceScreenModel(
     /**
      * Flow of Pager flow tied to [State.listing]
      */
-    private val hideInLibraryItems = sourcePreferences.hideInLibraryItems().get()
+    val hideInLibraryItems = sourcePreferences.hideInLibraryItems().get()
     val mangaPagerFlowFlow = state.map { it.listing }
         .distinctUntilChanged()
         .map { listing ->
             val generation = ++queryGeneration
-            Pager(PagingConfig(pageSize = 25)) {
+            // One access at the raw page boundary requests at most one nonempty source page.
+            Pager(PagingConfig(pageSize = 25, prefetchDistance = 1)) {
                 SharedSourcePagingSource(
                     source = source,
                     listing = listing,
@@ -137,7 +139,6 @@ class BrowseSourceScreenModel(
                         .map { it ?: manga }
                         .stateIn(ioCoroutineScope)
                 }
-                    .filter { !hideInLibraryItems || !it.value.favorite }
             }
                 .cachedIn(pagingScope)
         }
@@ -155,6 +156,10 @@ class BrowseSourceScreenModel(
 
     fun resetFilters() {
         mutableState.update { it.copy(filters = source.getFilterList()) }
+    }
+
+    fun setCatalogFilter(filter: CatalogResultFilter) {
+        mutableState.update { it.copy(catalogFilter = filter) }
     }
 
     fun setListing(listing: Listing) {
@@ -365,6 +370,7 @@ class BrowseSourceScreenModel(
         val filters: FilterList = FilterList(),
         val toolbarQuery: String? = null,
         val dialog: Dialog? = null,
+        val catalogFilter: CatalogResultFilter = CatalogResultFilter(),
     ) {
         val isUserQuery get() = listing is Listing.Search && !listing.query.isNullOrEmpty()
     }
@@ -383,6 +389,7 @@ internal class SharedSourcePagingSource(
 ) : PagingSource<Long, Manga>() {
     private val reducer = SourceQueryReducer()
     private var queryState: SourceQueryState? = null
+    private val localMangaByUrl = mutableMapOf<String, Manga>()
 
     override suspend fun load(params: LoadParams<Long>): LoadResult<Long, Manga> {
         val page = params.key ?: 1L
@@ -399,7 +406,6 @@ internal class SharedSourcePagingSource(
                 )
             },
         )
-        val previousUrls = queryState?.items?.mapTo(hashSetOf()) { it.url }.orEmpty()
         val loading = reducer.start(request, queryState)
         val result = sourceMangaSearchService.loadPageResult(source, request)
         val reduced = reducer.reduce(loading, result)
@@ -412,12 +418,16 @@ internal class SharedSourcePagingSource(
                         if (it.error == AppError.NoResults) NoResultsException() else SourcePageException(it),
                     )
                 }
-                val newItems = reduced.items
-                    .filterNot { it.url in previousUrls }
+                // Keep raw page boundaries even when an entire page repeats earlier URLs.
+                // Presentation deduplicates; empty Paging pages would trigger automatic extra loads.
+                val rawItems = (result as SourcePageResult.Content).items
+                val unseenItems = rawItems.filterNot { it.url in localMangaByUrl }.distinctBy { it.url }
                     .map { it.toDomainManga(source.id) }
-                    .let { networkToLocalManga(it) }
+                if (unseenItems.isNotEmpty()) {
+                    networkToLocalManga(unseenItems).forEach { localMangaByUrl[it.url] = it }
+                }
                 LoadResult.Page(
-                    data = newItems,
+                    data = rawItems.map { localMangaByUrl.getValue(it.url) },
                     prevKey = null,
                     nextKey = if (reduced.hasNextPage) page + 1 else null,
                 )

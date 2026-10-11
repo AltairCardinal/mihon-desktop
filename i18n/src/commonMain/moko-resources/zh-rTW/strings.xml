@@ -1590,4 +1590,16 @@
     <string name="creator_title_credit_both">創作者／社團</string>
     <string name="creator_title_attribution_original">圖源原始署名：%s</string>
     <string name="creator_title_attribution_failed_result">整理未完成，已處理 %d 部書架作品。已完成的修改保留，可重試。</string>
+    <string name="catalog_result_filter">語言／翻譯組</string>
+    <string name="catalog_result_language">閱讀語言</string>
+    <string name="catalog_result_groups">翻譯組署名</string>
+    <string name="catalog_result_unknown_language">包含待確認語言</string>
+    <string name="catalog_result_unknown_group">包含未識別翻譯組</string>
+    <string name="catalog_result_scope">已檢查 %1$d 項，符合 %2$d 項</string>
+    <string name="catalog_result_continue">繼續檢查下一頁</string>
+    <string name="catalog_result_no_match">已檢查範圍暫無符合項目</string>
+    <string name="catalog_result_inferred">推斷</string>
+    <string name="catalog_result_unknown">待確認</string>
+    <string name="catalog_result_no_groups">已檢查範圍內未識別到翻譯組</string>
+    <string name="catalog_result_filter_help">僅篩選已載入結果。語言與翻譯署名由標題或中繼資料推斷，未經正文核驗。語言內和組內任選符合，兩類條件需同時滿足。</string>
 </resources>

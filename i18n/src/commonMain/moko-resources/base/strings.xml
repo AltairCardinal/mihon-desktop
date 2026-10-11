@@ -2510,4 +2510,16 @@
     <string name="creator_title_credit_both">Creator / circle</string>
     <string name="creator_title_attribution_original">Original source credits: %s</string>
     <string name="creator_title_attribution_failed_result">Stopped after %d library works. Completed changes are kept; retry to continue.</string>
+    <string name="catalog_result_filter">Language / translation groups</string>
+    <string name="catalog_result_language">Reading language</string>
+    <string name="catalog_result_groups">Translation credits</string>
+    <string name="catalog_result_unknown_language">Include unconfirmed language</string>
+    <string name="catalog_result_unknown_group">Include unidentified translation groups</string>
+    <string name="catalog_result_scope">Checked %1$d works · %2$d matches</string>
+    <string name="catalog_result_continue">Check the next page</string>
+    <string name="catalog_result_no_match">No matches in the checked results</string>
+    <string name="catalog_result_inferred">Inferred</string>
+    <string name="catalog_result_unknown">Unconfirmed</string>
+    <string name="catalog_result_no_groups">No translation groups identified in the checked results</string>
+    <string name="catalog_result_filter_help">Filters loaded results only. Language and credits are inferred from titles or metadata; page text is not verified. Any selected language and any selected group must both match.</string>
 </resources>

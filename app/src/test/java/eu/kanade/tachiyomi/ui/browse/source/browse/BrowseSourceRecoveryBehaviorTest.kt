@@ -12,6 +12,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import mihon.domain.error.AppError
@@ -30,6 +31,40 @@ import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceRecoveryAction
 
 class BrowseSourceRecoveryBehaviorTest {
+
+    @Test
+    fun `duplicate raw pages retain a paging boundary for explicit result filtering`() = runTest {
+        val source = object : CatalogueSource {
+            override val id = 991L
+            override val name = "Repeated source page"
+            override val lang = "en"
+            override val supportsLatest = false
+            override suspend fun getPopularManga(page: Int) = MangasPage(
+                listOf(
+                    SManga.create().apply {
+                        url = "/same"
+                        title = "[English] Same work"
+                    },
+                ),
+                hasNextPage = page < 3,
+            )
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList) = getPopularManga(page)
+            override suspend fun getLatestUpdates(page: Int) = getPopularManga(page)
+            override fun getFilterList() = FilterList()
+            override suspend fun getMangaDetails(manga: SManga) = manga
+            override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
+            override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
+        }
+        val repository = mockk<MangaRepository>()
+        val pagingSource = pagingSource(source, repository)
+        val first = pagingSource.load(refresh()) as PagingSource.LoadResult.Page<Long, Manga>
+        val second = pagingSource.load(append(2)) as PagingSource.LoadResult.Page<Long, Manga>
+
+        assertEquals(listOf("/same"), first.data.map { it.url })
+        assertEquals(listOf("/same"), second.data.map { it.url })
+        assertEquals(3L, second.nextKey)
+        coVerify(exactly = 1) { repository.insertNetworkManga(any()) }
+    }
 
     @Test
     fun `refresh 403 preserves OpenLogin through the real paging source`() = runTest {
@@ -100,8 +135,10 @@ class BrowseSourceRecoveryBehaviorTest {
         assertEquals(0, loginAttempts)
     }
 
-    private fun pagingSource(source: CatalogueSource): SharedSourcePagingSource {
-        val repository = mockk<MangaRepository>()
+    private fun pagingSource(
+        source: CatalogueSource,
+        repository: MangaRepository = mockk(),
+    ): SharedSourcePagingSource {
         coEvery { repository.insertNetworkManga(any()) } answers { firstArg() }
         return SharedSourcePagingSource(
             source = source,

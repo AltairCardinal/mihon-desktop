@@ -1,24 +1,34 @@
 package eu.kanade.presentation.browse
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import eu.kanade.presentation.browse.components.BrowseSourceComfortableGrid
 import eu.kanade.presentation.browse.components.BrowseSourceCompactGrid
 import eu.kanade.presentation.browse.components.BrowseSourceList
+import eu.kanade.presentation.browse.components.catalogResultVisibleIndices
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.source.Source
@@ -31,6 +41,7 @@ import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
+import tachiyomi.domain.source.service.CatalogResultFilter
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceRecoveryAction
 import tachiyomi.i18n.MR
@@ -55,6 +66,8 @@ fun BrowseSourceContent(
     onLocalSourceHelpClick: () -> Unit,
     onMangaClick: (Manga) -> Unit,
     onMangaLongClick: (Manga) -> Unit,
+    catalogFilter: CatalogResultFilter = CatalogResultFilter(),
+    hideInLibraryItems: Boolean = false,
 ) {
     val context = LocalContext.current
 
@@ -149,32 +162,88 @@ fun BrowseSourceContent(
         return
     }
 
-    when (displayMode) {
-        LibraryDisplayMode.ComfortableGrid -> {
-            BrowseSourceComfortableGrid(
-                mangaList = mangaList,
-                columns = columns,
-                contentPadding = contentPadding,
-                onMangaClick = onMangaClick,
-                onMangaLongClick = onMangaLongClick,
-            )
+    val loadedManga = mangaList.itemSnapshotList.items.map { it.collectAsState().value }
+    val visibleIndices = remember(loadedManga, catalogFilter, hideInLibraryItems) {
+        catalogResultVisibleIndices(loadedManga, catalogFilter, hideInLibraryItems)
+    }
+    // Never send access hints while inspecting a filtered snapshot. The explicit action below
+    // accesses the final raw item once, even when no items match or a page contains only duplicates.
+    val manualPaging = catalogFilter.isActive || hideInLibraryItems || visibleIndices.size != loadedManga.size
+    Column(Modifier.fillMaxSize().padding(contentPadding)) {
+        if (manualPaging) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Text(
+                    stringResource(MR.strings.catalog_result_scope, loadedManga.size, visibleIndices.size),
+                    modifier = Modifier.testTag("catalog-result-scope"),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (visibleIndices.isEmpty()) {
+                    Text(
+                        stringResource(MR.strings.catalog_result_no_match),
+                        modifier = Modifier.testTag("catalog-result-no-match"),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                if (!mangaList.loadState.append.endOfPaginationReached) {
+                    TextButton(
+                        onClick = {
+                            if (errorState is LoadState.Error) {
+                                performBrowseSourceRecovery(pageError, mangaList::retry, onErrorAction)
+                            } else {
+                                mangaList[mangaList.itemCount - 1]
+                            }
+                        },
+                        enabled = mangaList.loadState.append !is LoadState.Loading &&
+                            mangaList.loadState.refresh !is LoadState.Loading &&
+                            pageError?.recoveryAction != SourceRecoveryAction.None,
+                        modifier = Modifier.testTag("catalog-result-continue"),
+                    ) {
+                        Text(
+                            stringResource(
+                                when {
+                                    pageError?.recoveryAction == SourceRecoveryAction.OpenLogin -> MR.strings.login
+                                    errorState is LoadState.Error -> MR.strings.action_retry
+                                    else -> MR.strings.catalog_result_continue
+                                },
+                            ),
+                        )
+                    }
+                }
+            }
         }
-        LibraryDisplayMode.List -> {
-            BrowseSourceList(
-                mangaList = mangaList,
-                contentPadding = contentPadding,
-                onMangaClick = onMangaClick,
-                onMangaLongClick = onMangaLongClick,
-            )
-        }
-        LibraryDisplayMode.CompactGrid, LibraryDisplayMode.CoverOnlyGrid -> {
-            BrowseSourceCompactGrid(
-                mangaList = mangaList,
-                columns = columns,
-                contentPadding = contentPadding,
-                onMangaClick = onMangaClick,
-                onMangaLongClick = onMangaLongClick,
-            )
+        when (displayMode) {
+            LibraryDisplayMode.ComfortableGrid -> {
+                BrowseSourceComfortableGrid(
+                    mangaList = mangaList,
+                    columns = columns,
+                    contentPadding = PaddingValues(),
+                    onMangaClick = onMangaClick,
+                    onMangaLongClick = onMangaLongClick,
+                    visibleIndices = visibleIndices,
+                    automaticPaging = !manualPaging,
+                )
+            }
+            LibraryDisplayMode.List -> {
+                BrowseSourceList(
+                    mangaList = mangaList,
+                    contentPadding = PaddingValues(),
+                    onMangaClick = onMangaClick,
+                    onMangaLongClick = onMangaLongClick,
+                    visibleIndices = visibleIndices,
+                    automaticPaging = !manualPaging,
+                )
+            }
+            LibraryDisplayMode.CompactGrid, LibraryDisplayMode.CoverOnlyGrid -> {
+                BrowseSourceCompactGrid(
+                    mangaList = mangaList,
+                    columns = columns,
+                    contentPadding = PaddingValues(),
+                    onMangaClick = onMangaClick,
+                    onMangaLongClick = onMangaLongClick,
+                    visibleIndices = visibleIndices,
+                    automaticPaging = !manualPaging,
+                )
+            }
         }
     }
 }

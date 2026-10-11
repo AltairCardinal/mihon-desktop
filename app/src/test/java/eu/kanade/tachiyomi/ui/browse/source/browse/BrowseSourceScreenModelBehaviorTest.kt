@@ -5,6 +5,7 @@ import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.track.interactor.AddTracks
+import eu.kanade.presentation.browse.components.catalogResultVisibleIndices
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -49,6 +50,7 @@ import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
+import tachiyomi.domain.source.service.CatalogResultFilter
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageResult
@@ -56,6 +58,50 @@ import tachiyomi.domain.source.service.SourceQuery
 
 class BrowseSourceScreenModelBehaviorTest {
     private val modelHost = ScreenModelTestHost()
+
+    @Test
+    fun `catalog filtering preserves author query source filters and the existing Pager`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        val source = DirectBrowseRejectingSource()
+        val model = screenModel(source)
+        val sourceFilters = FilterList(eu.kanade.tachiyomi.source.model.Filter.Header("Selected source filter"))
+        model.search("author:Alice", sourceFilters)
+        backgroundScope.launch(dispatcher) { model.mangaPagerFlowFlow.collect() }
+        runCurrent()
+        val originalPager = model.mangaPagerFlowFlow.value
+        val filter = CatalogResultFilter(languageTags = setOf("zh"))
+
+        model.setCatalogFilter(filter)
+        runCurrent()
+        assertEquals(filter, model.state.value.catalogFilter)
+        assertEquals("author:Alice", model.state.value.toolbarQuery)
+        assertSame(sourceFilters, model.state.value.listing.filters)
+        assertSame(originalPager, model.mangaPagerFlowFlow.value)
+
+        model.setCatalogFilter(CatalogResultFilter())
+        runCurrent()
+        assertSame(originalPager, model.mangaPagerFlowFlow.value)
+    }
+
+    @Test
+    fun `loaded result projection deduplicates and hides favorites without changing raw items`() {
+        val favorite = Manga.create().copy(url = "/favorite", title = "[Chinese] Favorite", favorite = true)
+        val english = Manga.create().copy(url = "/english", title = "[English] English")
+        val chinese = Manga.create().copy(url = "/chinese", title = "[Chinese] Chinese")
+        val unknown = Manga.create().copy(url = "/unknown", title = "Unknown")
+        val raw = listOf(favorite, english, chinese, chinese, unknown)
+        val filter = CatalogResultFilter(languageTags = setOf("zh"))
+
+        assertEquals(listOf(2), catalogResultVisibleIndices(raw, filter, hideInLibrary = true))
+        assertEquals(
+            listOf(2, 4),
+            catalogResultVisibleIndices(raw, filter.copy(includeUnknownLanguage = true), hideInLibrary = true),
+        )
+        assertEquals(listOf(0, 2), catalogResultVisibleIndices(raw, filter, hideInLibrary = false))
+        assertEquals(listOf(0, 1, 2, 4), catalogResultVisibleIndices(raw, CatalogResultFilter(), hideInLibrary = false))
+        assertEquals(listOf(favorite, english, chinese, chinese, unknown), raw)
+    }
 
     @Test
     fun `browse favorite toggles reach the repository as explicit user operations`() = runTest {

@@ -1,11 +1,15 @@
 package tachiyomi.domain.creator.service
 
 import tachiyomi.domain.creator.model.CreatorArchiveLanguageTag
+import tachiyomi.domain.source.service.CatalogLanguageLabels
+import tachiyomi.domain.source.service.CatalogTitleEvidenceParser
 
 data class LanguageDetection(
     val tag: String,
     val confidence: Double,
     val evidence: LanguageEvidence,
+    val conflict: Boolean = false,
+    val rawEvidence: List<String> = emptyList(),
 )
 
 enum class LanguageEvidence {
@@ -46,14 +50,41 @@ object MangaLanguageDetector {
         genres: List<String>,
     ): LanguageDetection {
         normalizeLanguage(explicitLanguage)?.let {
-            return LanguageDetection(it, 1.0, LanguageEvidence.EXPLICIT_METADATA)
+            return LanguageDetection(
+                it,
+                1.0,
+                LanguageEvidence.EXPLICIT_METADATA,
+                rawEvidence = listOfNotNull(explicitLanguage),
+            )
         }
 
-        genres.firstNotNullOfOrNull { normalizeLanguage(it) }?.let {
-            return LanguageDetection(it, 0.9, LanguageEvidence.GENRE_TAG)
+        val genreLanguages = genres.takeIf { it.size <= 128 }.orEmpty().mapNotNull { genre ->
+            CatalogLanguageLabels.languageTag(genre)?.let { genre to it }
+        }
+        if (genreLanguages.isNotEmpty()) {
+            val tag = CatalogLanguageLabels.compatibleTag(genreLanguages.map { it.second })
+            return LanguageDetection(
+                tag = tag ?: "und",
+                confidence = if (tag == null) 0.0 else 0.9,
+                evidence = LanguageEvidence.GENRE_TAG,
+                conflict = tag == null,
+                rawEvidence = genreLanguages.map { it.first },
+            )
         }
 
-        detectFromText("$title ${description.orEmpty()}")?.let {
+        val titleEvidence = CatalogTitleEvidenceParser.parse(title)
+        if (titleEvidence.rawLanguageEvidence.isNotEmpty()) {
+            return LanguageDetection(
+                tag = titleEvidence.languageTags.singleOrNull() ?: "und",
+                confidence = if (titleEvidence.conflict) 0.0 else 0.8,
+                evidence = LanguageEvidence.TEXT_DETECTED,
+                conflict = titleEvidence.conflict,
+                rawEvidence = titleEvidence.rawLanguageEvidence,
+            )
+        }
+        if (!titleEvidence.complete) return LanguageDetection("und", 0.0, LanguageEvidence.UNKNOWN)
+
+        detectFromText("${titleEvidence.textOutsideMarkers} ${description.orEmpty().take(4096)}")?.let {
             return LanguageDetection(it, 0.7, LanguageEvidence.TEXT_DETECTED)
         }
 
@@ -65,6 +96,7 @@ object MangaLanguageDetector {
     }
 
     private fun normalizeLanguage(value: String?): String? {
+        value?.let { CatalogLanguageLabels.languageTag(it) }?.let { return it }
         val normalized = value?.trim()?.lowercase()?.replace('_', '-')?.takeIf { it.isNotBlank() } ?: return null
         val alias = languageAliases[normalized] ?: normalized
         return CreatorArchiveLanguageTag.normalize(alias).takeUnless { it == "und" }
