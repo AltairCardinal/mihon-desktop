@@ -26,6 +26,30 @@ import tachiyomi.domain.creator.repository.CreatorRepository
 class CreatorDiscoveryServicePaginationTest {
 
     @Test
+    fun `legacy discovery discards fuzzy title and author matches and missing metadata`() = runBlocking {
+        val repository = FakeCreatorRepository(creator = creator(1L, "ONE"))
+        val source = StubSource(
+            pages = mapOf(
+                1 to MangasPage(
+                    listOf(
+                        smanga("/valid", "Valid", "ONE"),
+                        smanga("/near-name", "Near name", "ONE TWO"),
+                        smanga("/title-only", "ONE", "Someone else"),
+                        smanga("/missing", "Missing", "").also { it.author = null },
+                    ),
+                    false,
+                ),
+            ),
+        )
+
+        val result = CreatorDiscoveryService(repository).discoverCreator(1L, listOf(source))
+
+        assertEquals(listOf("/valid"), repository.candidates.map { it.url })
+        assertEquals(1, result.newCandidateCount)
+        assertEquals(0, result.errorCount)
+    }
+
+    @Test
     fun `specific creator discovery reuses paginated source search results`() = runBlocking {
         val repository = FakeCreatorRepository(creator = creator(1L, "大久保笃"))
         val source = StubSource(

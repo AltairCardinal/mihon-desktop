@@ -835,7 +835,7 @@ class CreatorLibraryIndexRepositoryTest {
     }
 
     @Test
-    fun `bounded discovery production service persists verified and possible relations without duplicate urls`() {
+    fun `bounded discovery production service persists only verified relations without duplicate urls`() {
         runBlocking {
             val creator = repository.upsertCreator("ONE")
             repository.upsertWatchPolicy(
@@ -886,10 +886,10 @@ class CreatorLibraryIndexRepositoryTest {
             result.sourceResults.single().notificationEligibleCount shouldBe 1
             result.sourceResults.single().truncated shouldBe true
             port.requestedPages.shouldContainExactly(1)
-            queryLong("SELECT COUNT(*) FROM author_archive_source_works") shouldBe 2L
+            queryLong("SELECT COUNT(*) FROM author_archive_source_works") shouldBe 1L
             queryStrings(
                 "SELECT verification FROM author_archive_source_work_creators ORDER BY source_work_id",
-            ).shouldContainExactly("VERIFIED", "POSSIBLE")
+            ).shouldContainExactly("VERIFIED")
         }
     }
 

@@ -3606,6 +3606,7 @@ LEFT JOIN author_archive_language_assertions OLA ON OLA._id = (
     LIMIT 1
 )
 WHERE SWC.creator_id = :creatorId
+AND SWC.verification = 'VERIFIED'
 ORDER BY coalesce(CW.primary_title, SW.title), SW.source_id, SW.stable_source_url;
 
 getCreatorCardProjectionRows:

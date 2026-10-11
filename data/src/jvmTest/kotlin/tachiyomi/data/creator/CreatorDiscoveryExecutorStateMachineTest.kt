@@ -81,6 +81,16 @@ class CreatorDiscoveryExecutorStateMachineTest {
     private var nextKey = 0L
 
     @Test
+    fun `discovery verifies detail authors through the real catalogue adapter and SQL archive`() = runBlocking {
+        verifyCreatorDiscoveryMetadata(handler)
+    }
+
+    @Test
+    fun `archive hides historical unverified relations and preserves manual confirmations`() = runBlocking {
+        verifyCreatorDiscoveryArchiveProjection(handler)
+    }
+
+    @Test
     fun `first successful scan archives and completes source baseline without any discovery or outbox`() {
         runBlocking {
             val now = MutableClock(1_000L)

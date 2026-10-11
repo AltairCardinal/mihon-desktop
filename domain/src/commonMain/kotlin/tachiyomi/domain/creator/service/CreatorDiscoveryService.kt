@@ -666,6 +666,16 @@ class CreatorDiscoveryService(
                     detailsResult.error,
                 )
             }
+            val identity = CreatorIdentityEvidenceEvaluator.evaluate(
+                listOf(creator.displayName) + creator.aliases,
+                details.work,
+            )
+            if (identity.verification != CreatorRelationVerification.VERIFIED) {
+                possible += 1
+                continue
+            }
+            matched += 1
+
             details.work.publishedDate?.let { date ->
                 archive.recordSourceDateQualityObservations(
                     listOf(
@@ -686,9 +696,6 @@ class CreatorDiscoveryService(
                     ),
                 )
             }
-            val identity = CreatorIdentityEvidenceEvaluator.evaluate(plan.aliases, details.work)
-            if (identity.verification == CreatorRelationVerification.POSSIBLE) possible += 1 else matched += 1
-
             val languageAssertion = details.toReadingLanguageAssertion(sourcePlan.source)
             val originalLanguageAssertion = details.toOriginalLanguageAssertion()
             val languageProjection = CreatorArchiveV2Policy.projectLanguage(
@@ -697,7 +704,7 @@ class CreatorDiscoveryService(
             )
             val policyDecision = CreatorDiscoveryResultPolicy.evaluate(languageProjection, policy)
             if (!policyDecision.includeInArchive) continue
-            if (policyDecision.notify && identity.verification == CreatorRelationVerification.VERIFIED) {
+            if (policyDecision.notify) {
                 notificationEligible += 1
             }
 
@@ -736,7 +743,6 @@ class CreatorDiscoveryService(
                 ),
             )
             val relation = observationResult.relation
-            if (identity.verification != CreatorRelationVerification.VERIFIED) continue
             if (relation is ArchiveUpsertOutcome.Inserted) insertedVerified += 1
             if (observationResult.discovery != null) {
                 eventCount += 1
@@ -851,8 +857,15 @@ class CreatorDiscoveryService(
                     detailsResult.error,
                 )
             }
-            val identity = CreatorIdentityEvidenceEvaluator.evaluate(plan.aliases, details.work)
-            if (identity.verification == CreatorRelationVerification.POSSIBLE) possible += 1 else matched += 1
+            val identity = CreatorIdentityEvidenceEvaluator.evaluate(
+                listOf(creator.displayName) + creator.aliases,
+                details.work,
+            )
+            if (identity.verification != CreatorRelationVerification.VERIFIED) {
+                possible += 1
+                continue
+            }
+            matched += 1
 
             val languageAssertion = details.toReadingLanguageAssertion(sourcePlan.source)
             val languageProjection = CreatorArchiveV2Policy.projectLanguage(
@@ -861,15 +874,12 @@ class CreatorDiscoveryService(
             )
             val policyDecision = CreatorDiscoveryResultPolicy.evaluate(languageProjection, policy)
             if (!policyDecision.includeInArchive) continue
-            if (policyDecision.notify && identity.verification == CreatorRelationVerification.VERIFIED) {
+            if (policyDecision.notify) {
                 notificationEligible += 1
             }
 
             persistLegacyCandidate(creator, details, identity, languageAssertion)
-            if (
-                identity.verification == CreatorRelationVerification.VERIFIED &&
-                (details.work.key.sourceId to details.work.key.stableSourceUrl) !in knownCandidateKeys
-            ) {
+            if ((details.work.key.sourceId to details.work.key.stableSourceUrl) !in knownCandidateKeys) {
                 insertedVerified += 1
             }
         }

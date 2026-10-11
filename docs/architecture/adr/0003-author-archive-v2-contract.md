@@ -85,8 +85,13 @@ data/src/commonMain/sqldelight/**
 10. 算法只能写入非显式 `SUGGESTED`；`USER` 决定必须显式，`RESTORE` 只能恢复显式 `CONFIRMED/REJECTED`。每次 typed write 或 legacy import 都先追加不可变事件，再从完整历史解析有效决定，并在同一事务重建 `canonical_versions`；被更高优先级压制的事件只能留作审计，不得直接增删物化关系。优先级为 `USER > RESTORE > ALGORITHM`；同一 work 的最新 USER 生效，首个 RESTORE 在没有 USER 时生效，只有新的显式用户动作可撤销或改变既有人工结果。
 11. identity merge 保留 source portable key tombstone，并写入 surviving creator redirect；事务必须折叠所有唯一关系、重映射 watch/discovery/creator relation 与 portable-key subject，且拒绝 redirect cycle。split 生成新的随机 portable key，并以用户选择的 source-work natural-key binding 表达最终归属；同名或同 alias 不触发重新合并。
 12. 运行时语言标签统一由 `CreatorArchiveLanguageTag` 规范化：trim、lowercase，主标签仅允许 2–3 个小写字母，后续子标签仅允许 2–8 个小写字母或数字；空值、`unknown/und`、`BL/GL/SF` 与非法格式一律降为 `und`。migration 必须对 tag、confidence 与 evidence 使用同一个有效性判定。
+13. 作者发现的搜索结果只用于产生候选；普通搜索与专用作者搜索都必须读取作品详情，再以详情中的 author/artist 署名复核。沿用现有多人署名分词规则，对 trim 后的完整名称做精确匹配；不使用包含、相似度、大小写或全半角归一化来确认身份。复核使用当前作者的全部已登记名称，不受搜索别名数量预算限制。搜索卡片或 structured search match 不能覆盖详情里的矛盾或缺失署名。
+14. 只有复核为 `VERIFIED` 的发现结果才能写入作者作品关系；不匹配或缺失署名计入本次 `possibleCount`，但不收录、不产生提醒。详情获取失败继续走现有 source failure/重试链路，不回退使用搜索卡片。此规则共用于 archive 与 legacy 发现入口，不新增详情请求；确属同一人的异名需要先登记为别名。
+15. 作者作品列表的读取与订阅统一过滤历史 `POSSIBLE` 关系，避免已有模糊搜索记录继续显示。只调整查询，不删除历史记录，不重写已有 `VERIFIED` 或人工确认；历史关系后来经详情复核升级为 `VERIFIED` 后重新显示。作品对应关系的 pending/rejected 与作者关系 verification 是不同维度，前者继续沿用既有规则。
 
 `CreatorArchiveV2Contract.kt` 是上述规则的 executable projection；AA1 的 SQLDelight repository 必须复用同一 contract vectors，而不是另写一套期望。
+
+作者发现详情复核由 `CreatorDiscoveryMetadataContract.kt` 提供双端共享行为契约，贯穿 production catalogue adapter、discovery interactor、SQL 写入和页面订阅的 archive 投影。2026-10-11 修复的文件跨 domain、data 和两端测试入口，均服务于同一收录规则；不涉及 schema 迁移、同步格式或 UI 布局变化。验证范围为发现执行器、名称判断、兼容入口、档案投影及两端作者 wiring 的 focused tests；原生外部图源验收仍依赖对应运行环境，不能由本地夹具通过代替。
 
 ## 5. Source port
 

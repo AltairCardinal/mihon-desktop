@@ -136,18 +136,7 @@ object CreatorIdentityEvidenceEvaluator {
             .filter(String::isNotBlank)
             .associateBy { it }
 
-        work.structuredCreatorMatches.firstOrNull { match ->
-            match.displayName.trim() in aliasesByExactName
-        }?.let { match ->
-            return CreatorIdentityEvidence(
-                verification = CreatorRelationVerification.VERIFIED,
-                role = match.role,
-                matchedAlias = aliasesByExactName[match.displayName.trim()],
-                confidence = 1.0,
-                evidence = match.evidence,
-            )
-        }
-
+        // Search evidence only selects candidates; fetched detail credits decide authorship.
         val authorAlias = matchingAlias(work.authorText, aliasesByExactName)
         val artistAlias = matchingAlias(work.artistText, aliasesByExactName)
         if (authorAlias != null || artistAlias != null) {
@@ -176,8 +165,8 @@ object CreatorIdentityEvidenceEvaluator {
     private fun matchingAlias(
         sourceText: String?,
         aliasesByExactName: Map<String, String>,
-    ): String? = CreatorNameNormalizer.splitNames(sourceText).firstNotNullOfOrNull { name ->
-        aliasesByExactName[name.trim()]
+    ): String? = CreatorNameNormalizer.tokenizeNames(sourceText).firstNotNullOfOrNull { token ->
+        aliasesByExactName[token.rawToken]
     }
 }
 
