@@ -754,7 +754,9 @@ class LibraryCategoryBehaviorTest {
                         if (controls.size == 2 &&
                             controls.none { it.config.contains(SemanticsProperties.Disabled) } &&
                             nodes(scene).any { count in it.semanticLabels() }
-                        ) break
+                        ) {
+                            break
+                        }
                         delay(10)
                     }
                 }
@@ -892,6 +894,14 @@ class LibraryCategoryBehaviorTest {
                     LibraryMembershipUpdate(second.id, true, 2L, listOf(1L, 2L)),
                 ),
             )
+            val journal = mihon.data.sync.journal.SyncLocalJournal(Injekt.get())
+            journal.connect(
+                "categories-space",
+                1,
+                mihon.domain.sync.transport.SyncRepository("owner", "sync", "sync"),
+                "desktop",
+                1,
+            )
             val rootModel = LibraryScreenModelFactory.create().also { model = it }
             var initialOwner = true
             var childModel: LibraryScreenModel? = null
@@ -971,6 +981,7 @@ class LibraryCategoryBehaviorTest {
             click(scene, MR.strings.action_cancel.localized())
             assertEquals(setOf(1L), rootModel.categoryIdsForManga(first.id))
             assertEquals(setOf(1L, 2L), rootModel.categoryIdsForManga(second.id))
+            assertTrue(journal.pendingEvents("categories-space", 1).isEmpty())
             render(scene)
             click(scene, MR.strings.action_move_category.localized())
             withTimeout(5_000) {
@@ -990,6 +1001,12 @@ class LibraryCategoryBehaviorTest {
                     delay(10)
                 }
             }
+            val categoryEvents = journal.pendingEvents("categories-space", 1)
+            assertEquals(2, categoryEvents.size)
+            assertTrue(categoryEvents.all { it.protocolVersion == 2 && it.origin == mihon.domain.sync.SyncOrigin.USER })
+            val effects = categoryEvents.flatMap { it.effects }
+            assertEquals(setOf("/first", "/second"), effects.map { it.objectKey.originalUrl }.toSet())
+            assertTrue(effects.all { it.field.name == "MANGA_CATEGORIES" && it.kind.name == "SET_CATEGORIES" })
             render(scene)
             assertTrue(nodes(scene).flatMap { it.semanticLabels() }.contains(MR.strings.action_filter.localized()))
 

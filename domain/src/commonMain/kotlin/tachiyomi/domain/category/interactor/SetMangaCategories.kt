@@ -14,7 +14,7 @@ class SetMangaCategories(
 
     suspend fun awaitResult(mangaId: Long, categoryIds: List<Long>): Result {
         try {
-            mangaRepository.setMangaCategories(mangaId, categoryIds)
+            mangaRepository.setMangaCategories(mangaId, categoryIds, mihon.domain.sync.SyncMutationContext.User)
             return Result.Success
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)

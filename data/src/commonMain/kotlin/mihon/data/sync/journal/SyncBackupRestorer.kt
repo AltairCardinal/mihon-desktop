@@ -77,6 +77,7 @@ class SyncBackupRestorer(
         }) {
             sync_importQueries.freezeFavorites(id!!, sourceId, url)
             sync_importQueries.freezeReading(id, sourceId, url)
+            freezeMetadataSnapshots(id, sourceId, url)
         }
     }
 

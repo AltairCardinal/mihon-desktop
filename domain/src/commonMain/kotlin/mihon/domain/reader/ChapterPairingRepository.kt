@@ -2,7 +2,7 @@ package mihon.domain.reader
 
 enum class ReaderChapterOpeningMode { AUTO, FIRST_SINGLE, FIRST_PAIR }
 
-/** Device-local manual layout for one stable database chapter. Ordinals are zero based. */
+/** Locally persisted manual layout; synchronization carries its value with portable chapter identity, not revision. */
 data class ChapterPairingRecord(
     val formatVersion: Long,
     val pageCount: Int,

@@ -154,8 +154,17 @@ class AndroidChapterPairingPersistenceWiringTest {
     @Test
     fun `general adjust button saves first pair from real reader appbar and restores after reopen`() = runBlocking {
         val file = temporaryFolder.newFile("general-opening-adjustment.db")
+        val receiverFile = temporaryFolder.newFile("general-opening-receiver.db")
         openDatabase(file, create = true).use { first ->
             seed(first.driver)
+            val journal = mihon.data.sync.journal.SyncLocalJournal(first.handler)
+            journal.connect(
+                "layout-space",
+                1,
+                mihon.domain.sync.transport.SyncRepository("owner", "sync", "sync"),
+                "android",
+                1,
+            )
             session(first).use { reader ->
                 reader.viewer.setChapters(requireNotNull(reader.model.state.value.viewerChapters))
                 val chapter = requireNotNull(reader.model.state.value.currentChapter)
@@ -176,11 +185,23 @@ class AndroidChapterPairingPersistenceWiringTest {
                     mihon.domain.reader.ReaderChapterOpeningMode.FIRST_PAIR,
                     first.repository.load(2, 1).record?.openingMode,
                 )
+                val events = journal.pendingEvents("layout-space", 1)
+                val event = events.single { it.effects.any { effect -> effect.field.name == "CHAPTER_PAIRING" } }
+                assertEquals(2, event.protocolVersion)
+                assertEquals(mihon.domain.sync.SyncOrigin.USER, event.origin)
+                assertEquals(mihon.domain.sync.SyncCategory.READING, event.category)
+                val effect = event.effects.single()
+                assertEquals("SET_PAIRING", effect.kind.name)
+                assertEquals("/chapter", effect.objectKey.originalUrl)
+                openDatabase(receiverFile, create = true).use { receiver ->
+                    seed(receiver.driver)
+                    receivePairing(receiver.handler, event)
+                }
                 assertEquals(setOf(0, 1), visiblePair(reader.viewer))
                 assertFalse(first.database.chaptersQueries.getChapterById(2).executeAsOne().read)
             }
         }
-        openDatabase(file).use { reopened ->
+        openDatabase(receiverFile).use { reopened ->
             session(reopened).use { reader ->
                 reader.viewer.setChapters(requireNotNull(reader.model.state.value.viewerChapters))
                 val pages = requireNotNull(reader.model.state.value.currentChapter?.pages)
@@ -1595,6 +1616,35 @@ class AndroidChapterPairingPersistenceWiringTest {
         )
         val handler = AndroidDatabaseHandler(database, driver)
         return DatabaseFixture(driver, database, ChapterPairingRepositoryImpl(handler), handler)
+    }
+
+    private suspend fun receivePairing(
+        handler: tachiyomi.data.DatabaseHandler,
+        event: mihon.domain.sync.SyncEventEnvelope,
+    ) {
+        val journal = mihon.data.sync.journal.SyncLocalJournal(handler)
+        journal.connect(
+            "layout-space",
+            1,
+            mihon.domain.sync.transport.SyncRepository("owner", "sync", "sync"),
+            "receiver",
+            1,
+        )
+        val bootstrap = tachiyomi.data.creator.CreatorArchiveLegacyBootstrap(
+            tachiyomi.data.creator.CreatorArchiveLegacyBridge(handler),
+        )
+        val creators = tachiyomi.data.creator.CreatorRepositoryImpl(handler, bootstrap = bootstrap)
+        val writer = mihon.data.sync.projection.SyncRemoteProjectionWriter(
+            handler,
+            creators,
+            creators,
+            bootstrap,
+            { true },
+        )
+        val batch = mihon.domain.sync.SyncBatch(1, "layout-space", 1, requireNotNull(event.batchId), listOf(event))
+        assertTrue(mihon.data.sync.inbox.SyncInboxStore(handler).ingest(batch).accepted)
+        assertEquals(1, mihon.data.sync.inbox.SyncInboxProjector(handler, writer).project("layout-space", 1))
+        assertTrue(journal.pendingEvents("layout-space", 1).isEmpty())
     }
 
     private fun seed(driver: JdbcSqliteDriver) {

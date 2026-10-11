@@ -1,6 +1,8 @@
 package tachiyomi.data.category
 
 import kotlinx.coroutines.flow.Flow
+import mihon.data.sync.journal.appendCategoryOperation
+import mihon.domain.sync.SyncMutationContext
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.category.model.Category
@@ -46,7 +48,7 @@ class CategoryRepositoryImpl(
     }
 
     override suspend fun updatePartial(update: CategoryUpdate) {
-        handler.await {
+        handler.await(inTransaction = true) {
             updatePartialBlocking(update)
         }
     }
@@ -60,12 +62,16 @@ class CategoryRepositoryImpl(
     }
 
     private fun Database.updatePartialBlocking(update: CategoryUpdate) {
+        val oldName = categoriesQueries.getCategory(update.id).executeAsOneOrNull()?.name
         categoriesQueries.update(
             name = update.name,
             order = update.order,
             flags = update.flags,
             categoryId = update.id,
         )
+        if (update.name != null && update.name != oldName) {
+            forEachManga(update.id) { appendCategoryOperation(it, SyncMutationContext.User) }
+        }
     }
 
     override suspend fun updateAllFlags(flags: Long?) {
@@ -75,10 +81,24 @@ class CategoryRepositoryImpl(
     }
 
     override suspend fun delete(categoryId: Long) {
-        handler.await {
+        handler.await(inTransaction = true) {
+            forEachManga(categoryId) { mangaId ->
+                mangas_categoriesQueries.deleteAssociation(mangaId, categoryId)
+                appendCategoryOperation(mangaId, SyncMutationContext.User)
+            }
             categoriesQueries.delete(
                 categoryId = categoryId,
             )
+        }
+    }
+
+    private fun Database.forEachManga(categoryId: Long, action: Database.(Long) -> Unit) {
+        var afterId = 0L
+        while (true) {
+            val page = mangas_categoriesQueries.getMangaIdsByCategory(categoryId, afterId, 256).executeAsList()
+            if (page.isEmpty()) return
+            page.forEach { action(it) }
+            afterId = page.last()
         }
     }
 

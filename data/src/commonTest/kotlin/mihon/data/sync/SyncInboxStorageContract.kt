@@ -291,11 +291,14 @@ abstract class SyncInboxStorageContract {
                     sync_inboxQueries.invalidateEvent("space", 1, "device-a:1:1", "invalid causal event")
                 }
                 storage.driver.execute(null, "DROP TABLE sync_repair_failures", 0)
+                storage.driver.execute(null, "DROP TABLE sync_metadata_imports", 0)
+                storage.driver.execute(null, "ALTER TABLE sync_import_entries DROP COLUMN snapshot_field", 0)
+                storage.driver.execute(null, "ALTER TABLE sync_import_entries DROP COLUMN snapshot_payload", 0)
                 storage.driver.execute(null, "DROP TABLE chapter_pairing_pairs", 0)
                 storage.driver.execute(null, "ALTER TABLE chapter_pairings DROP COLUMN opening_mode", 0)
                 storage.driver.execute(null, "PRAGMA user_version = 42", 0)
                 DatabaseMigration.migrateAtomically(storage.driver, 42, Database.Schema.version)
-                assertEquals(45L, Database.Schema.version)
+                assertEquals(46L, Database.Schema.version)
                 assertEquals(
                     2L,
                     SyncDataRepairService(storage.handler, storage.inbox, storage.projector)

@@ -15,6 +15,7 @@ import mihon.domain.sync.SyncEffectKind
 import mihon.domain.sync.SyncEffectRef
 import mihon.domain.sync.SyncEventEnvelope
 import mihon.domain.sync.SyncField
+import mihon.domain.sync.SyncMetadataPolicy
 import mihon.domain.sync.SyncObjectDescriptor
 import mihon.domain.sync.SyncObjectKey
 import mihon.domain.sync.SyncObjectType
@@ -296,6 +297,16 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
             return
         }
         when (field) {
+            SyncField.MANGA_CATEGORIES, SyncField.CHAPTER_PAIRING -> if (state.applied_heads != heads) {
+                SyncMetadataPolicy.choose(projection)?.let { effect ->
+                    val describe = descriptionLookup(state.space_id, state.generation)
+                    if (field == SyncField.MANGA_CATEGORIES) {
+                        writer.applyCategories(key, SyncMetadataPolicy.categoryNames(effect.payload), describe)
+                    } else {
+                        writer.applyPairing(key, SyncMetadataPolicy.pairingRecord(effect.payload), describe)
+                    }
+                }
+            }
             SyncField.FAVORITE, SyncField.FOLLOWING -> {
                 val local = writer.localMembership(key)
                 if (projection.value == true) {

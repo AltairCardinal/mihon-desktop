@@ -218,6 +218,9 @@ abstract class PublishedSchema40ConvergenceContract {
 
     private fun prepareSchema40(driver: JdbcSqliteDriver) {
         Database.Schema.create(driver)
+        driver.execute(null, "DROP TABLE sync_metadata_imports", 0)
+        driver.execute(null, "ALTER TABLE sync_import_entries DROP COLUMN snapshot_field", 0)
+        driver.execute(null, "ALTER TABLE sync_import_entries DROP COLUMN snapshot_payload", 0)
         driver.execute(null, "DROP TABLE chapter_pairing_pairs", 0)
         driver.execute(null, "ALTER TABLE chapter_pairings DROP COLUMN opening_mode", 0)
         listOf("insert_guard", "delete_guard", "insert", "delete").forEach { suffix ->

@@ -1,6 +1,7 @@
 package mihon.data.sync.journal
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import mihon.domain.sync.SyncCategory
@@ -9,14 +10,17 @@ import mihon.domain.sync.SyncEffectKind
 import mihon.domain.sync.SyncEffectRef
 import mihon.domain.sync.SyncField
 import mihon.domain.sync.SyncFieldKey
+import mihon.domain.sync.SyncMetadataPolicy
 import mihon.domain.sync.SyncMutationContext
 import mihon.domain.sync.SyncObjectDescriptor
 import mihon.domain.sync.SyncObjectKey
 import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.SyncOrigin
 import mihon.domain.sync.transport.SyncRepository
+import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.Sync_import_entries
+import tachiyomi.data.chapter.loadChapterPairing
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import java.util.UUID
 
@@ -40,7 +44,10 @@ class SyncBaselineStore(private val handler: DatabaseHandler, private val bootst
         return handler.await(inTransaction = true) {
             SyncLocalJournal(handler).connect(spaceId, generation, repository, actorId, epoch)
             val existing = sync_importQueries.getInitialImport(spaceId, generation).executeAsOneOrNull()
-            if (existing != null) return@await existing.import_id
+            if (existing != null) {
+                ensureMetadataBaseline(spaceId, generation)
+                return@await existing.import_id
+            }
             val actor = sync_journalQueries.getActiveActor().executeAsOne()
             val id = UUID.randomUUID().toString()
             sync_importQueries.insertImport(
@@ -55,6 +62,8 @@ class SyncBaselineStore(private val handler: DatabaseHandler, private val bootst
             sync_importQueries.freezeFavorites(id, null, null)
             sync_importQueries.freezeFollows(id, null)
             sync_importQueries.freezeReading(id, null, null)
+            freezeMetadataSnapshots(id)
+            sync_importQueries.markMetadataImport(spaceId, generation)
             sync_importQueries.setImportTotal(id)
             id
         }
@@ -102,8 +111,36 @@ class SyncBaselineStore(private val handler: DatabaseHandler, private val bootst
             sync_importQueries.freezeFavorites(importId, null, null)
             sync_importQueries.freezeFollows(importId, null)
             sync_importQueries.freezeReading(importId, null, null)
+            freezeMetadataSnapshots(importId)
+            if (!sync_importQueries.hasMetadataImport(spaceId, generation).executeAsOne()) {
+                sync_importQueries.markMetadataImport(spaceId, generation)
+            }
             sync_importQueries.setImportTotal(importId)
         }
+    }
+
+    /** Upgrade already-connected spaces before the ordinary exchange drains its durable import queue. */
+    suspend fun ensureMetadataBaseline(spaceId: String, generation: Long) = handler.await(inTransaction = true) {
+        if (sync_importQueries.hasMetadataImport(spaceId, generation).executeAsOne()) return@await
+        val actor = sync_journalQueries.getActiveActor().executeAsOneOrNull() ?: return@await
+        require(actor.space_id == spaceId && actor.generation == generation)
+        val existing = sync_importQueries.getInitialImport(spaceId, generation).executeAsOneOrNull()
+        val importId = existing?.import_id ?: UUID.randomUUID().toString().also {
+            sync_importQueries.insertImport(
+                it,
+                spaceId,
+                generation,
+                SyncOrigin.INITIAL_IMPORT.name,
+                actor.actor_id,
+                actor.epoch,
+                actor.next_seq,
+            )
+        }
+        val before = sync_importQueries.countImportEntries(importId).executeAsOne()
+        freezeMetadataSnapshots(importId)
+        val added = sync_importQueries.countImportEntries(importId).executeAsOne() - before
+        sync_importQueries.incrementImportTotal(added, importId)
+        sync_importQueries.markMetadataImport(spaceId, generation)
     }
 
     suspend fun process(importId: String, limit: Int = 50): SyncImportProgress {
@@ -183,7 +220,19 @@ private fun Sync_import_entries.material(): ImportMaterial {
     )
     if (category == SyncCategory.FAVORITE.name) {
         return ImportMaterial(
-            listOf(SyncEffect("favorite", manga, SyncField.FAVORITE, SyncEffectKind.ADD)),
+            listOf(
+                if (snapshot_field == SyncField.MANGA_CATEGORIES.name) {
+                    SyncEffect(
+                        "categories",
+                        manga,
+                        SyncField.MANGA_CATEGORIES,
+                        SyncEffectKind.SET_CATEGORIES,
+                        payload = Json.decodeFromString<JsonObject>(requireNotNull(snapshot_payload)),
+                    )
+                } else {
+                    SyncEffect("favorite", manga, SyncField.FAVORITE, SyncEffectKind.ADD)
+                },
+            ),
             listOf(mangaDescription),
         )
     }
@@ -195,6 +244,17 @@ private fun Sync_import_entries.material(): ImportMaterial {
             parentUrl = manga.originalUrl,
         )
     val effects = buildList {
+        if (snapshot_field == SyncField.CHAPTER_PAIRING.name) {
+            add(
+                SyncEffect(
+                    "pairing",
+                    chapter,
+                    SyncField.CHAPTER_PAIRING,
+                    SyncEffectKind.SET_PAIRING,
+                    payload = Json.decodeFromString<JsonObject>(requireNotNull(snapshot_payload)),
+                ),
+            )
+        }
         if (is_read != 0L) add(SyncEffect("read", chapter, SyncField.READ_STATUS, SyncEffectKind.MARK_READ))
         if (page_index > 0 || read_at > 0) {
             add(
@@ -239,4 +299,36 @@ private fun Sync_import_entries.material(): ImportMaterial {
             ),
         ),
     )
+}
+
+/** Freeze bounded pages in the caller's transaction. Ordinary absence is never a clear intent. */
+internal fun Database.freezeMetadataSnapshots(importId: String, sourceId: Long? = null, mangaUrl: String? = null) {
+    var afterId = 0L
+    while (true) {
+        val ids = sync_importQueries.getCategorySnapshotMangas(afterId, sourceId, mangaUrl, 256).executeAsList()
+        if (ids.isEmpty()) break
+        ids.forEach { mangaId ->
+            val effect = categorySnapshotEffect(mangaId)
+            SyncMetadataPolicy.categoryNames(effect.payload)
+            sync_importQueries.freezeCategorySnapshot(importId, effect.payload.toString(), mangaId)
+        }
+        afterId = ids.last()
+    }
+    afterId = 0L
+    while (true) {
+        val chapters = sync_importQueries.getPairingSnapshotChapters(afterId, sourceId, mangaUrl, 256).executeAsList()
+        if (chapters.isEmpty()) break
+        chapters.forEach { chapter ->
+            val record = loadChapterPairing(chapter._id, chapter.manga_id).record ?: return@forEach
+            if (!record.isValidFor(record.pageCount)) return@forEach
+            val (key, _) = readingObjectKeys(chapter._id)
+            sync_importQueries.freezePairingSnapshot(
+                importId,
+                requireNotNull(key.originalUrl),
+                SyncMetadataPolicy.pairingPayload(record).toString(),
+                chapter._id,
+            )
+        }
+        afterId = chapters.last()._id
+    }
 }

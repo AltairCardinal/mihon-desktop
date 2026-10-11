@@ -1608,6 +1608,19 @@ class SyncPanelContentTest {
     }
 
     @Test
+    fun `queue details describe category and pairing operations within existing groups`() = renderedEnglish(
+        connected().copy(queuedMembership = 2, queuedFavorites = 1, queuedFollows = 1, queuedReading = 1),
+    ) {
+        awaitTag("sync-now")
+        click("sync-progress-details-toggle")
+        render()
+        assertTrue(texts().contains("Collection, categories and follows"))
+        assertTrue(texts().contains("1 collection/category changes · 1 follows"))
+        assertTrue(texts().contains("Reading and page pairing"))
+        assertTrue(texts().contains("1 reading/pairing changes"))
+    }
+
+    @Test
     fun `modern idle queue is folded and schedule uses the durable deadline`() = renderedEnglish(
         connected().copy(periodMinutes = 60, nowMillis = 100_000, nextSyncAtMillis = 3_700_000),
     ) {

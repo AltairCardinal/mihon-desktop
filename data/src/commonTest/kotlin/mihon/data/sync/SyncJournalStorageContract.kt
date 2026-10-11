@@ -8,6 +8,8 @@ import mihon.data.sync.journal.SyncObjectDescriptions
 import mihon.domain.sync.SyncBatchCodec
 import mihon.domain.sync.SyncCategory
 import mihon.domain.sync.SyncEffectKind
+import mihon.domain.sync.SyncField
+import mihon.domain.sync.SyncMetadataPolicy
 import mihon.domain.sync.SyncMutationContext
 import mihon.domain.sync.SyncOrigin
 import mihon.domain.sync.SyncProtocol
@@ -88,15 +90,32 @@ abstract class SyncJournalStorageContract {
             val added = storage.journal.pendingEvents("space", 1).single()
             assertEquals(SyncCategory.FAVORITE, added.category)
             assertEquals(SyncOrigin.USER, added.origin)
-            assertEquals(SyncEffectKind.ADD, added.effects.single().kind)
-            assertEquals("9223372036854775806", added.effects.single().objectKey.sourceId)
-            assertEquals("/favorite", added.effects.single().objectKey.originalUrl)
+            assertEquals(2, added.protocolVersion)
+            assertEquals(
+                emptyList<String>(),
+                SyncMetadataPolicy.categoryNames(
+                    added.effects.single { it.field == SyncField.MANGA_CATEGORIES }.payload,
+                ),
+            )
+            assertEquals(SyncEffectKind.ADD, added.effects.single { it.field == SyncField.FAVORITE }.kind)
+            assertEquals(
+                "9223372036854775806",
+                added.effects.single {
+                    it.field == SyncField.FAVORITE
+                }.objectKey.sourceId,
+            )
+            assertEquals("/favorite", added.effects.single { it.field == SyncField.FAVORITE }.objectKey.originalUrl)
             assertTrue(command.await(manga.copy(favorite = true), false) is LibraryMembershipResult.Success)
             val events = storage.journal.pendingEvents("space", 1)
             assertEquals(listOf(1L, 2L), events.map { it.seq })
             assertEquals(added, events.first())
-            assertEquals(listOf(added.ref("favorite")), events.last().effects.single().parents)
-            assertEquals(SyncEffectKind.REMOVE, events.last().effects.single().kind)
+            assertEquals(
+                listOf(added.ref("favorite")),
+                events.last().effects.single {
+                    it.field == SyncField.FAVORITE
+                }.parents,
+            )
+            assertEquals(SyncEffectKind.REMOVE, events.last().effects.single { it.field == SyncField.FAVORITE }.kind)
         }
     }
 
@@ -209,7 +228,17 @@ abstract class SyncJournalStorageContract {
             }
             val events = storage.journal.pendingEvents("space", 1)
             assertEquals(2, events.size)
-            assertEquals(listOf(events.first().ref("favorite")), events.last().effects.single().parents)
+            assertEquals(
+                listOf(events.first().ref("categories")),
+                events.last().effects.single { it.field == SyncField.MANGA_CATEGORIES }.parents,
+            )
+            assertEquals(
+                listOf(events.first().ref("favorite")),
+                events.last().effects.single {
+                    it.field ==
+                        SyncField.FAVORITE
+                }.parents,
+            )
         }
     }
 

@@ -140,7 +140,7 @@ object SyncBatchCodec {
         val eventIds = mutableSetOf<SyncEventId>()
         val results = mutableListOf<SyncRejection>()
         batch.events.forEach { event ->
-            if (event.protocolVersion != batch.protocolVersion) {
+            if (event.protocolVersion !in SyncProtocol.CURRENT_VERSION..SyncProtocol.EVENT_METADATA_VERSION) {
                 results += SyncRejection(
                     SyncRejectionReason.UNKNOWN_PROTOCOL,
                     "event protocol differs from batch",
@@ -267,7 +267,7 @@ internal object SyncValidator {
         fun error(reason: SyncRejectionReason, message: String, effect: SyncEffect? = null) {
             errors += SyncRejection(reason, message, event.eventId, effect?.let { event.ref(it.effectId) })
         }
-        if (event.protocolVersion != SyncProtocol.CURRENT_VERSION) {
+        if (event.protocolVersion !in SyncProtocol.CURRENT_VERSION..SyncProtocol.EVENT_METADATA_VERSION) {
             error(SyncRejectionReason.UNKNOWN_PROTOCOL, "unsupported protocol version")
         }
         if (event.spaceId.isBlank() || event.spaceId.length > 128) {
@@ -313,6 +313,11 @@ internal object SyncValidator {
             }
             validateObjectKey(effect.objectKey, event, effect, errors)
             validateCombination(event.category, effect, errors)
+            if (effect.field in setOf(SyncField.MANGA_CATEGORIES, SyncField.CHAPTER_PAIRING) &&
+                event.protocolVersion < SyncProtocol.EVENT_METADATA_VERSION
+            ) {
+                error(SyncRejectionReason.UNKNOWN_PROTOCOL, "metadata snapshot requires event schema version 2", effect)
+            }
             validatePayload(effect, errors, event)
             if (effect.parents.size > SyncProtocol.MAX_PARENTS_PER_EFFECT) {
                 error(SyncRejectionReason.INVALID_EFFECT, "too many parents", effect)
@@ -398,18 +403,28 @@ internal object SyncValidator {
         val valid = when (category) {
             SyncCategory.FAVORITE ->
                 effect.objectKey.type == SyncObjectType.MANGA &&
-                    effect.field == SyncField.FAVORITE &&
-                    effect.kind in setOf(SyncEffectKind.ADD, SyncEffectKind.REMOVE)
+                    (
+                        (
+                            effect.field == SyncField.FAVORITE &&
+                                effect.kind in setOf(SyncEffectKind.ADD, SyncEffectKind.REMOVE)
+                            ) ||
+                            (effect.field == SyncField.MANGA_CATEGORIES && effect.kind == SyncEffectKind.SET_CATEGORIES)
+                        )
             SyncCategory.FOLLOW ->
                 effect.objectKey.type == SyncObjectType.AUTHOR &&
                     effect.field == SyncField.FOLLOWING &&
                     effect.kind in setOf(SyncEffectKind.ADD, SyncEffectKind.REMOVE)
             SyncCategory.READING ->
                 (
-                    effect.field == SyncField.READ_STATUS &&
+                    effect.field == SyncField.CHAPTER_PAIRING &&
                         effect.objectKey.type == SyncObjectType.CHAPTER &&
-                        effect.kind in setOf(SyncEffectKind.MARK_READ, SyncEffectKind.MARK_UNREAD)
+                        effect.kind == SyncEffectKind.SET_PAIRING
                     ) ||
+                    (
+                        effect.field == SyncField.READ_STATUS &&
+                            effect.objectKey.type == SyncObjectType.CHAPTER &&
+                            effect.kind in setOf(SyncEffectKind.MARK_READ, SyncEffectKind.MARK_UNREAD)
+                        ) ||
                     (
                         effect.field == SyncField.RESUME_POSITION &&
                             effect.objectKey.type == SyncObjectType.MANGA &&
@@ -445,6 +460,9 @@ internal object SyncValidator {
                     "contentVersion",
                 )
             SyncEffectKind.READING_SUMMARY -> setOf("chapterKey", "readAt")
+            SyncEffectKind.SET_CATEGORIES -> setOf("names")
+            SyncEffectKind.SET_PAIRING ->
+                setOf("formatVersion", "pageCount", "openingMode", "forcedSinglePages", "manualPairStarts")
         }
         val unknown = effect.payload.keys - allowed
         if (unknown.isNotEmpty()) {
@@ -462,6 +480,23 @@ internal object SyncValidator {
                 event.eventId,
                 event.ref(effect.effectId),
             )
+        }
+        if (effect.kind == SyncEffectKind.SET_CATEGORIES || effect.kind == SyncEffectKind.SET_PAIRING) {
+            val valid = runCatching {
+                if (effect.kind == SyncEffectKind.SET_CATEGORIES) {
+                    SyncMetadataPolicy.categoryNames(effect.payload)
+                } else {
+                    SyncMetadataPolicy.pairingRecord(effect.payload)
+                }
+            }.isSuccess
+            if (!valid) {
+                errors += SyncRejection(
+                    SyncRejectionReason.INVALID_PAYLOAD,
+                    "metadata snapshot is invalid",
+                    event.eventId,
+                    event.ref(effect.effectId),
+                )
+            }
         }
         if (effect.kind == SyncEffectKind.RESUME_POSITION) {
             val chapterElement = effect.payload["chapterKey"] as? JsonPrimitive

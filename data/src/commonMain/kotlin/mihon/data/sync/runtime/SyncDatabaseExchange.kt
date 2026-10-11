@@ -91,6 +91,7 @@ class SyncDatabaseExchange(
                 } == true
             }
             if (!enabled) return SyncRunResult(SyncRunStatus.SKIPPED)
+            if (runPlan == null && allowImport()) baseline.ensureMetadataBaseline(spaceId, generation)
             progress?.phase(SyncRunPhase.CHECKING, processed = 0, total = 0)
             while (runPlan == null && allowImport()) {
                 val importId = handler.await {
@@ -550,11 +551,15 @@ private fun SyncBatch.itemLogs(result: String): List<SyncBatchLogEntry> {
                 SyncObjectType.MANGA -> "漫画"
                 SyncObjectType.CHAPTER -> "阅读记录"
             }
-            val operation = when {
-                effects.any { it.field == SyncField.FOLLOWING } -> "作者关注"
-                effects.any { it.field == SyncField.FAVORITE } -> "收藏"
-                else -> "阅读记录"
-            }
+            val operation = effects.map { effect ->
+                when (effect.field) {
+                    SyncField.FOLLOWING -> "作者关注"
+                    SyncField.FAVORITE -> "收藏"
+                    SyncField.MANGA_CATEGORIES -> "作品分类"
+                    SyncField.CHAPTER_PAIRING -> "双页调整"
+                    else -> "阅读记录"
+                }
+            }.distinct().joinToString(" / ")
             SyncBatchLogEntry(stableKey, title, "$operation · $result")
         }
 }

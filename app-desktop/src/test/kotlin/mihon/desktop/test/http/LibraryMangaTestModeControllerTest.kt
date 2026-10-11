@@ -39,7 +39,7 @@ class LibraryMangaTestModeControllerTest {
     fun `detail actions use production model and report partial download failure`() = runBlocking {
         val membershipUpdates = mutableListOf<LibraryMembershipUpdate>()
         val mangaRepository = mockk<MangaRepository>()
-        coEvery { mangaRepository.setMangaCategories(any(), any()) } returns Unit
+        coEvery { mangaRepository.setMangaCategories(any(), any(), any()) } returns Unit
         val first = chapter(11)
         val second = chapter(12)
         val manga = libraryManga(favorite = false).manga
@@ -83,7 +83,9 @@ class LibraryMangaTestModeControllerTest {
         assertEquals(true, membershipUpdates.single().favorite)
 
         assertTrue(controller.execute("detail_categories", mapOf("categoryIds" to "3,4")).success)
-        coVerify(exactly = 1) { mangaRepository.setMangaCategories(1, listOf(3, 4)) }
+        coVerify(exactly = 1) {
+            mangaRepository.setMangaCategories(1, listOf(3, 4), mihon.domain.sync.SyncMutationContext.User)
+        }
 
         assertTrue(controller.execute("detail_cover", mapOf("operation" to "delete")).success)
         assertEquals("Cover deleted", controller.detailSnapshot()!!.coverFeedback)

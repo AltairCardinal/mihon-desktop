@@ -61,6 +61,28 @@ class DesktopSyncBackupRestoreTest {
     @TempDir lateinit var directory: File
 
     @Test
+    fun `restored categories use backup provenance without user outbox feedback`() = runBlocking {
+        Storage().use { s ->
+            s.connect()
+            val backup = backup().copy(
+                backupManga = backup().backupManga.map { it.copy(categories = listOf(4)) },
+                backupCategories = listOf(mihon.desktop.backup.models.BackupCategory("Restored category", 4)),
+            )
+            assertFalse(s.restorer().restore(backup).hasErrors)
+            val manga = requireNotNull(s.mangas.getMangaByUrlAndSourceId("/manga", 42))
+            assertEquals(listOf("Restored category"), s.categories.getCategoriesByMangaId(manga.id).map { it.name })
+            assertTrue(s.journal.pendingEvents("space", 1).none { it.origin == SyncOrigin.USER })
+            val importId = requireNotNull(s.text("SELECT import_id FROM sync_restore_runs"))
+            s.baseline.process(importId)
+            val event = s.journal.pendingEvents("space", 1).single {
+                it.effects.any { effect -> effect.field.name == "MANGA_CATEGORIES" }
+            }
+            assertEquals(SyncOrigin.BACKUP_RESTORE, event.origin)
+            assertEquals(2, event.protocolVersion)
+        }
+    }
+
+    @Test
     fun `restorer captures actual manga reading and author units as baseline`() = runBlocking {
         Storage().use { s ->
             s.connect()

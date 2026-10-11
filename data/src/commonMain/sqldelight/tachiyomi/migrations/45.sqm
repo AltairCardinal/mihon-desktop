@@ -1,0 +1,8 @@
+ALTER TABLE sync_import_entries ADD COLUMN snapshot_field TEXT;
+ALTER TABLE sync_import_entries ADD COLUMN snapshot_payload TEXT;
+CREATE TABLE sync_metadata_imports (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    PRIMARY KEY(space_id, generation),
+    FOREIGN KEY(space_id, generation) REFERENCES sync_spaces(space_id, generation)
+);

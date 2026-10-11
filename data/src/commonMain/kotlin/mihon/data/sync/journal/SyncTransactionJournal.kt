@@ -57,7 +57,15 @@ internal fun Database.appendSyncOperation(
     fun descriptionBytes() = SyncObjectDescriptions.batchBytes(objects) -
         SyncObjectDescriptions.batchBytes(previousObjects)
     fun envelope(batchId: String) = SyncEventEnvelope(
-        protocolVersion = SyncProtocol.CURRENT_VERSION,
+        protocolVersion = if (effects.any {
+                it.field == SyncField.MANGA_CATEGORIES ||
+                    it.field == SyncField.CHAPTER_PAIRING
+            }
+        ) {
+            SyncProtocol.EVENT_METADATA_VERSION
+        } else {
+            SyncProtocol.CURRENT_VERSION
+        },
         spaceId = actor.space_id,
         generation = actor.generation,
         actorId = actor.actor_id,
@@ -131,7 +139,12 @@ internal fun Database.appendSyncOperation(
     return event
 }
 
-internal fun Database.appendFavoriteOperation(mangaId: Long, favorite: Boolean, context: SyncMutationContext) {
+internal fun Database.appendFavoriteOperation(
+    mangaId: Long,
+    favorite: Boolean,
+    context: SyncMutationContext,
+    includeCategories: Boolean = false,
+) {
     if (!context.uploadAllowed || context.origin != SyncOrigin.USER) return
     val manga = mangasQueries.getMangaById(mangaId).executeAsOne()
     appendSyncOperation(
@@ -148,6 +161,6 @@ internal fun Database.appendFavoriteOperation(mangaId: Long, favorite: Boolean, 
                 field = SyncField.FAVORITE,
                 kind = if (favorite) SyncEffectKind.ADD else SyncEffectKind.REMOVE,
             ),
-        ),
+        ) + if (includeCategories) listOf(categorySnapshotEffect(mangaId)) else emptyList(),
     )
 }

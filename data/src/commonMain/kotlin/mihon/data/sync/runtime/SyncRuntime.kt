@@ -133,6 +133,10 @@ class SyncRuntime(
                 bootstrap,
                 sourceAvailable,
                 clock,
+                defaultCategoryFlags = {
+                    val sort = tachiyomi.domain.library.service.LibraryPreferences(preferenceStore).sortingMode().get()
+                    sort.type.flag or sort.direction.flag
+                },
             ),
         )
     private val refresher = GitHubTokenRefresher(

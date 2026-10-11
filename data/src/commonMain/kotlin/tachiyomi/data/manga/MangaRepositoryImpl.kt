@@ -4,6 +4,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.Json
 import logcat.LogPriority
+import mihon.data.sync.journal.appendCategoryOperation
 import mihon.data.sync.journal.appendFavoriteOperation
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.DatabaseHandler
@@ -112,11 +113,11 @@ class MangaRepositoryImpl(
             memo = null,
         )
         reconcileCreatorIndex(update.mangaId)
-        appendFavoriteOperation(update.mangaId, update.favorite, update.syncContext)
         if (update.updateCategories) {
             mangas_categoriesQueries.deleteMangaCategoryByMangaId(update.mangaId)
             update.categoryIds.forEach { mangas_categoriesQueries.insert(update.mangaId, it) }
         }
+        appendFavoriteOperation(update.mangaId, update.favorite, update.syncContext, update.updateCategories)
     }
 
     override suspend fun commitMigration(commit: mihon.domain.migration.MigrationCommit): Manga =
@@ -321,12 +322,20 @@ class MangaRepositoryImpl(
         }
     }
 
-    override suspend fun setMangaCategories(mangaId: Long, categoryIds: List<Long>) {
+    override suspend fun setMangaCategories(mangaId: Long, categoryIds: List<Long>) =
+        setMangaCategories(mangaId, categoryIds, mihon.domain.sync.SyncMutationContext.Metadata)
+
+    override suspend fun setMangaCategories(
+        mangaId: Long,
+        categoryIds: List<Long>,
+        syncContext: mihon.domain.sync.SyncMutationContext,
+    ) {
         handler.await(inTransaction = true) {
             mangas_categoriesQueries.deleteMangaCategoryByMangaId(mangaId)
             categoryIds.map { categoryId ->
                 mangas_categoriesQueries.insert(mangaId, categoryId)
             }
+            appendCategoryOperation(mangaId, syncContext)
         }
     }
 

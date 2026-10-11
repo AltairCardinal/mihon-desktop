@@ -63,3 +63,9 @@ flags = coalesce(?, flags);
 
 selectLastInsertedRowId:
 SELECT last_insert_rowid();
+
+getByExactName:
+SELECT _id FROM categories WHERE _id > 0 AND name = :name ORDER BY _id LIMIT 1;
+
+nextCategoryOrder:
+SELECT coalesce(max(sort) + 1, 0) FROM categories;

@@ -31,10 +31,51 @@ CREATE TABLE sync_import_entries (
     scanlator TEXT,
     is_read INTEGER NOT NULL DEFAULT 0,
     page_index INTEGER NOT NULL DEFAULT 0,
-    read_at INTEGER NOT NULL DEFAULT 0
+    read_at INTEGER NOT NULL DEFAULT 0,
+    snapshot_field TEXT,
+    snapshot_payload TEXT
 );
 
 CREATE INDEX sync_import_queue ON sync_import_entries(import_id, id);
+
+CREATE TABLE sync_metadata_imports (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    PRIMARY KEY(space_id, generation),
+    FOREIGN KEY(space_id, generation) REFERENCES sync_spaces(space_id, generation)
+);
+
+hasMetadataImport:
+SELECT EXISTS(SELECT 1 FROM sync_metadata_imports WHERE space_id = ? AND generation = ?);
+
+markMetadataImport:
+INSERT INTO sync_metadata_imports(space_id, generation) VALUES (?, ?);
+
+getCategorySnapshotMangas:
+SELECT M._id FROM mangas M WHERE M._id > :afterId
+AND (:sourceId IS NULL OR M.source = :sourceId) AND (:mangaUrl IS NULL OR M.url = :mangaUrl)
+AND EXISTS(SELECT 1 FROM mangas_categories MC JOIN categories C ON C._id = MC.category_id
+    WHERE MC.manga_id = M._id AND C._id > 0)
+ORDER BY M._id LIMIT :limit;
+
+getPairingSnapshotChapters:
+SELECT C._id, C.manga_id FROM chapters C JOIN mangas M ON M._id = C.manga_id
+JOIN chapter_pairings P ON P.chapter_id = C._id WHERE C._id > :afterId
+AND (:sourceId IS NULL OR M.source = :sourceId) AND (:mangaUrl IS NULL OR M.url = :mangaUrl)
+ORDER BY C._id LIMIT :limit;
+
+freezeCategorySnapshot:
+INSERT INTO sync_import_entries(import_id, category, source_id, object_url, title, author, artist, thumbnail,
+    snapshot_field, snapshot_payload)
+SELECT :importId, 'FAVORITE', M.source, M.url, M.title, M.author, M.artist, M.thumbnail_url,
+    'MANGA_CATEGORIES', :payload FROM mangas M WHERE M._id = :mangaId;
+
+freezePairingSnapshot:
+INSERT INTO sync_import_entries(import_id, category, source_id, object_url, parent_url, title, parent_title,
+    author, artist, thumbnail, chapter_number, source_order, scanlator, snapshot_field, snapshot_payload)
+SELECT :importId, 'READING', M.source, :chapterUrl, M.url, C.name, M.title, M.author, M.artist, M.thumbnail_url,
+    C.chapter_number, C.source_order, C.scanlator, 'CHAPTER_PAIRING', :payload
+FROM chapters C JOIN mangas M ON M._id = C.manga_id WHERE C._id = :chapterId;
 
 -- Only previous effects from the same frozen import may be causal parents of a baseline effect.
 CREATE TABLE sync_import_heads (

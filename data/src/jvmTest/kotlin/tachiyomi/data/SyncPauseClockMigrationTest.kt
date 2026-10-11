@@ -34,7 +34,7 @@ class SyncPauseClockMigrationTest {
                     0,
                 )
                 DatabaseMigration.migrateAtomically(driver, 40, Database.Schema.version)
-                assertEquals(45L, Database.Schema.version)
+                assertEquals(46L, Database.Schema.version)
                 assertEquals(11_000L, value(driver, "SELECT paused_at FROM sync_runtime_pause_clock"))
                 assertEquals(1_000L, value(driver, "SELECT planned_at FROM sync_runtime_pause_clock"))
                 assertEquals(0L, value(driver, "SELECT planned_paused_millis FROM sync_runtime_pause_clock"))

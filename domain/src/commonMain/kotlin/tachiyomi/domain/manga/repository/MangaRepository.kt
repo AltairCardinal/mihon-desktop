@@ -82,6 +82,9 @@ interface MangaRepository : LibraryMembershipRepository {
 
     suspend fun setMangaCategories(mangaId: Long, categoryIds: List<Long>)
 
+    suspend fun setMangaCategories(mangaId: Long, categoryIds: List<Long>, syncContext: SyncMutationContext) =
+        setMangaCategories(mangaId, categoryIds)
+
     suspend fun update(update: MangaUpdate): Boolean
 
     suspend fun updateAll(mangaUpdates: List<MangaUpdate>): Boolean

@@ -7,7 +7,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 
 object SyncProtocol {
+    /** Existing batch/AEAD envelope version; independent from newer event schemas. */
     const val CURRENT_VERSION = 1
+    const val EVENT_METADATA_VERSION = 2
     const val MAX_EVENTS_PER_BATCH = 256
     const val MAX_PLAINTEXT_BYTES_PER_BATCH = 512 * 1024
     const val MAX_EFFECTS_PER_EVENT = 32
@@ -35,6 +37,8 @@ enum class SyncField {
     READ_STATUS,
     RESUME_POSITION,
     READING_SUMMARY,
+    MANGA_CATEGORIES,
+    CHAPTER_PAIRING,
 }
 
 @Serializable
@@ -45,6 +49,8 @@ enum class SyncEffectKind {
     MARK_UNREAD,
     RESUME_POSITION,
     READING_SUMMARY,
+    SET_CATEGORIES,
+    SET_PAIRING,
 }
 
 @Serializable

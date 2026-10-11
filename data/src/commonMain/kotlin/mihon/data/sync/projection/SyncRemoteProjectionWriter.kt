@@ -1,5 +1,7 @@
 package mihon.data.sync.projection
 
+import mihon.domain.reader.ChapterPairingRecord
+import mihon.domain.sync.SyncMetadataPolicy
 import mihon.domain.sync.SyncMutationContext
 import mihon.domain.sync.SyncObjectDescriptor
 import mihon.domain.sync.SyncObjectKey
@@ -9,6 +11,8 @@ import tachiyomi.data.Chapters
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.Mangas
+import tachiyomi.data.chapter.loadChapterPairing
+import tachiyomi.data.chapter.writeChapterPairing
 import tachiyomi.data.creator.mergeCreatorIdentityGraph
 import tachiyomi.data.manga.MangaMapper
 import tachiyomi.domain.chapter.model.Chapter
@@ -39,6 +43,7 @@ class SyncRemoteProjectionWriter(
     // Kept for existing platform wiring; remote records are restored from validated descriptors.
     @Suppress("UNUSED_PARAMETER") sourceAvailable: (Long) -> Boolean,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val defaultCategoryFlags: () -> Long = { 0L },
 ) {
     private val extractCreators = ExtractCreatorsFromManga()
 
@@ -108,6 +113,49 @@ class SyncRemoteProjectionWriter(
         sync_projectionQueries.setReadStatus(read, chapter._id)
         sync_importQueries.setPublicReadStatus(if (read) 1L else 0L, chapter._id)
         sync_projectionQueries.restoreChapterSyncing(chapter.is_syncing, chapter._id)
+    }
+
+    suspend fun applyCategories(
+        key: SyncObjectKey,
+        names: List<String>,
+        describe: (SyncObjectKey) -> SyncObjectDescriptor?,
+    ): Unit = handler.await(inTransaction = true) {
+        validateIdentity(key)
+        require(key.type == SyncObjectType.MANGA)
+        val manga = ensureManga(key, describe)
+        val ids = names.map { name ->
+            categoriesQueries.getByExactName(name).executeAsOneOrNull() ?: run {
+                categoriesQueries.insert(
+                    name,
+                    categoriesQueries.nextCategoryOrder().executeAsOne(),
+                    defaultCategoryFlags(),
+                )
+                categoriesQueries.selectLastInsertedRowId().executeAsOne()
+            }
+        }
+        val current = categoriesQueries.getCategoriesByMangaId(manga._id).executeAsList().map { it.id }.toSet()
+        if (current == ids.toSet()) return@await
+        sync_projectionQueries.restoreMangaSyncing(1, manga._id)
+        mangas_categoriesQueries.deleteMangaCategoryByMangaId(manga._id)
+        ids.forEach { mangas_categoriesQueries.insert(manga._id, it) }
+        sync_projectionQueries.restoreMangaSyncing(manga.is_syncing, manga._id)
+    }
+
+    suspend fun applyPairing(
+        key: SyncObjectKey,
+        record: ChapterPairingRecord,
+        describe: (SyncObjectKey) -> SyncObjectDescriptor?,
+    ): Unit = handler.await(inTransaction = true) {
+        validateChapter(key)
+        val chapter = ensureChapter(key, describe)
+        val current = loadChapterPairing(chapter._id, chapter.manga_id)
+        val desired = record.takeUnless(SyncMetadataPolicy::isClear)
+        // The local journal also dirties its field. Reprojecting an equal value must not stale its reader CAS.
+        val normalized = current.record?.takeIf { it.isValidFor(record.pageCount) }
+            ?.copy(formatVersion = ChapterPairingRecord.FORMAT_VERSION)
+        if (current.record != desired && (desired == null || normalized != desired)) {
+            writeChapterPairing(chapter._id, record)
+        }
     }
 
     suspend fun applyResume(

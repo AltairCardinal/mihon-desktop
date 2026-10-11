@@ -34,6 +34,7 @@ object LegacySyncSchema32Contract {
     }
 
     fun removeChapterDirectoryAdditions(driver: SqlDriver) {
+        removeMetadataSnapshotAdditions(driver)
         listOf(
             "chapter_id_floor_insert_guard",
             "chapter_id_floor_delete_guard",
@@ -45,6 +46,12 @@ object LegacySyncSchema32Contract {
         listOf("chapter_directory_phases", "chapter_url_aliases", "chapter_id_floor").forEach {
             driver.execute(null, "DROP TABLE IF EXISTS $it", 0)
         }
+    }
+
+    fun removeMetadataSnapshotAdditions(driver: SqlDriver) {
+        driver.execute(null, "DROP TABLE sync_metadata_imports", 0)
+        driver.execute(null, "ALTER TABLE sync_import_entries DROP COLUMN snapshot_field", 0)
+        driver.execute(null, "ALTER TABLE sync_import_entries DROP COLUMN snapshot_payload", 0)
     }
 
     private fun prepare(driver: SqlDriver, hasRuntime: Boolean) {

@@ -228,8 +228,7 @@ object SyncBatchEncryption {
         require(batch.events.map { it.epoch }.toSet().size == 1) { "sync batch mixes epochs" }
         require(
             batch.events.all {
-                it.protocolVersion == batch.protocolVersion &&
-                    it.spaceId == batch.spaceId &&
+                it.spaceId == batch.spaceId &&
                     it.generation == batch.generation &&
                     it.batchId == batch.batchId
             },

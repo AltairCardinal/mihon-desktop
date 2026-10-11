@@ -414,8 +414,17 @@ class DesktopChapterPairingComposePersistenceTest {
     @Test
     fun `real reader adjustment button saves to file and reopened screen restores containing spread`() = runBlocking {
         val databaseFile = tempDir.resolve("pairing.sqlite")
+        val receiverFile = tempDir.resolve("pairing-receiver.sqlite")
         openDatabase(databaseFile, create = true).use { (first, driver) ->
             seed(driver)
+            val journal = mihon.data.sync.journal.SyncLocalJournal(first)
+            journal.connect(
+                "layout-space",
+                1,
+                mihon.domain.sync.transport.SyncRepository("owner", "sync", "sync"),
+                "desktop",
+                1,
+            )
             val repository = ChapterPairingRepositoryImpl(first)
             val coordinator = DesktopChapterPairingCoordinator(repository)
             val completedDecodes = ConcurrentHashMap.newKeySet<Int>()
@@ -430,6 +439,18 @@ class DesktopChapterPairingComposePersistenceTest {
                 withTimeout(10_000) {
                     while (repository.load(7, 10).record?.forcedSinglePages != setOf(1)) yield()
                 }
+                val events = journal.pendingEvents("layout-space", 1)
+                val event = events.single { it.effects.any { effect -> effect.field.name == "CHAPTER_PAIRING" } }
+                assertEquals(2, event.protocolVersion)
+                assertEquals(mihon.domain.sync.SyncOrigin.USER, event.origin)
+                assertEquals(mihon.domain.sync.SyncCategory.READING, event.category)
+                val effect = event.effects.single()
+                assertEquals("SET_PAIRING", effect.kind.name)
+                assertEquals("/current", effect.objectKey.originalUrl)
+                openDatabase(receiverFile, create = true).use { (receiver, receiverDriver) ->
+                    seed(receiverDriver)
+                    receivePairing(receiver, event)
+                }
                 assertEquals(5L, queryLong(driver, "SELECT last_page_read FROM chapters WHERE _id=7"))
             } finally {
                 fixture.close()
@@ -437,7 +458,7 @@ class DesktopChapterPairingComposePersistenceTest {
                 coordinator.awaitStopped()
             }
         }
-        openDatabase(databaseFile).use { (reopened, _) ->
+        openDatabase(receiverFile).use { (reopened, _) ->
             val coordinator = DesktopChapterPairingCoordinator(ChapterPairingRepositoryImpl(reopened))
             val completedDecodes = ConcurrentHashMap.newKeySet<Int>()
             mihon.desktop.test.state.readerState.open(7, 5, 8, false, "M", "C", false, false)
@@ -632,6 +653,35 @@ class DesktopChapterPairingComposePersistenceTest {
             driver,
         )
         return DatabaseFixture(handler, driver)
+    }
+
+    private suspend fun receivePairing(
+        handler: tachiyomi.data.DatabaseHandler,
+        event: mihon.domain.sync.SyncEventEnvelope,
+    ) {
+        val journal = mihon.data.sync.journal.SyncLocalJournal(handler)
+        journal.connect(
+            "layout-space",
+            1,
+            mihon.domain.sync.transport.SyncRepository("owner", "sync", "sync"),
+            "receiver",
+            1,
+        )
+        val bootstrap = tachiyomi.data.creator.CreatorArchiveLegacyBootstrap(
+            tachiyomi.data.creator.CreatorArchiveLegacyBridge(handler),
+        )
+        val creators = tachiyomi.data.creator.CreatorRepositoryImpl(handler, bootstrap = bootstrap)
+        val writer = mihon.data.sync.projection.SyncRemoteProjectionWriter(
+            handler,
+            creators,
+            creators,
+            bootstrap,
+            { true },
+        )
+        val batch = mihon.domain.sync.SyncBatch(1, "layout-space", 1, requireNotNull(event.batchId), listOf(event))
+        assertTrue(mihon.data.sync.inbox.SyncInboxStore(handler).ingest(batch).accepted)
+        assertEquals(1, mihon.data.sync.inbox.SyncInboxProjector(handler, writer).project("layout-space", 1))
+        assertTrue(journal.pendingEvents("layout-space", 1).isEmpty())
     }
 
     private fun seed(driver: JdbcSqliteDriver) {

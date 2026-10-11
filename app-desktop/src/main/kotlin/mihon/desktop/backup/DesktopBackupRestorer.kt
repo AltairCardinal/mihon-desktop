@@ -77,9 +77,17 @@ class DesktopBackupRestorer(
         onProgress: suspend (RestoreProgress) -> Unit = {},
     ): RestoreResult {
         (backupRestoreSync as? mihon.presentation.sync.SyncRecoveryBackupObserver)?.expectObjects(
-            backup.backupManga.map { mihon.domain.sync.SyncObjectKey(mihon.domain.sync.SyncObjectType.MANGA,
-                sourceId = it.source.toString(), originalUrl = it.url) } + backup.backupAuthorArchive?.watches.orEmpty().map {
-                mihon.domain.sync.SyncObjectKey(mihon.domain.sync.SyncObjectType.AUTHOR, portableKey = it.creatorPortableKey)
+            backup.backupManga.map {
+                mihon.domain.sync.SyncObjectKey(
+                    mihon.domain.sync.SyncObjectType.MANGA,
+                    sourceId = it.source.toString(),
+                    originalUrl = it.url,
+                )
+            } + backup.backupAuthorArchive?.watches.orEmpty().map {
+                mihon.domain.sync.SyncObjectKey(
+                    mihon.domain.sync.SyncObjectType.AUTHOR,
+                    portableKey = it.creatorPortableKey,
+                )
             },
         )
         val importId = if (backup.backupManga.isNotEmpty() || backup.backupAuthorArchive != null) {
@@ -497,7 +505,14 @@ class DesktopBackupRestorer(
         if (backupCategoryOrders.isEmpty()) return
         val ids = resolveBackupCategoryIds(backupCategoryOrders, backupCategories, categoryNameToId)
         if (ids.isNotEmpty()) {
-            mangaRepository.setMangaCategories(mangaId, ids)
+            mangaRepository.setMangaCategories(
+                mangaId,
+                ids,
+                syncContext = mihon.domain.sync.SyncMutationContext(
+                    origin = mihon.domain.sync.SyncOrigin.BACKUP_RESTORE,
+                    uploadAllowed = false,
+                ),
+            )
         }
     }
 

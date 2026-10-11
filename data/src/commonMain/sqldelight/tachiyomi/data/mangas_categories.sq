@@ -25,3 +25,10 @@ VALUES (:mangaId, :categoryId);
 deleteMangaCategoryByMangaId:
 DELETE FROM mangas_categories
 WHERE manga_id = :mangaId;
+
+getMangaIdsByCategory:
+SELECT DISTINCT manga_id FROM mangas_categories WHERE category_id = :categoryId
+AND manga_id > :afterId ORDER BY manga_id LIMIT :limit;
+
+deleteAssociation:
+DELETE FROM mangas_categories WHERE manga_id = :mangaId AND category_id = :categoryId;
